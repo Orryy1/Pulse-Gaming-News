@@ -231,6 +231,55 @@ test("goal batch packages hydrate cached HLS motion clips from visual V4 motion 
   }
 });
 
+test("goal batch packages hydrate cached Steam CDN aliases from visual V4 motion packs", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-steam-cdn-cache-"));
+  try {
+    const storyId = "steam-cdn-alias-story";
+    const cachedSourceUrl =
+      "https://video.akamai.steamstatic.com/store_trailers/1172620/204445374/hash/1773669773/hls_264_master.m3u8?t=old";
+    const motionPackSourceUrl =
+      "https://video.fastly.steamstatic.com/store_trailers/1172620/204445374/hash/1773669773/hls_264_master.m3u8?t=new";
+    const localMp4 = path.join(tempDir, `${storyId}_v4_clip_1_hls.mp4`);
+    fs.writeFileSync(localMp4, "not-a-real-video-for-steam-cdn-alias-test");
+    fs.writeJsonSync(`${localMp4}.json`, {
+      source_url: cachedSourceUrl,
+      media_start_s: 8.96,
+      duration_s: 5,
+    });
+
+    const clips = clipsFromVisualV4MotionPack(
+      {
+        readiness: { status: "v4_motion_ready" },
+        clips: [
+          {
+            id: "steam-fastly-window",
+            type: "motion_clip",
+            source_family: "steam_1172620_204445374",
+            path: motionPackSourceUrl,
+            source_url: motionPackSourceUrl,
+            source_kind: "hls_manifest",
+            source_url_kind: "hls_manifest",
+            source_type: "licensed_direct_media_url",
+            mediaStartS: 8.96,
+            durationS: 5,
+            validated: true,
+            segmentValidationPassed: true,
+          },
+        ],
+      },
+      { storyId, videoCacheDir: tempDir },
+    );
+
+    assert.equal(clips.length, 1);
+    assert.equal(clips[0].id, "steam-fastly-window");
+    assert.equal(clips[0].path, localMp4);
+    assert.equal(clips[0].source_url, motionPackSourceUrl);
+    assert.equal(clips[0].local_materialized_path, localMp4);
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages carry SFX inventory rights into governance", () => {
   const ready = greenStory("sfx-ledger-one");
   ready.sfx_assets = undefined;

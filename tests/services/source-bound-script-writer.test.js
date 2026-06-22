@@ -832,11 +832,226 @@ test("source-bound fallback treats system patch notes as concrete player-impact 
 test("source-bound fallback source does not carry internal analyst-note phrases", () => {
   assert.doesNotMatch(
     SOURCE,
-    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist|official follow-up gives players|small update either becomes|one concrete player question|stronger script keeps/i,
   );
   assert.doesNotMatch(
     EDITORIAL_ANGLE_SOURCE,
-    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist/i,
+    /source-backed update|not a blank cheque|not a blank check|invent extra details|named source confirms|wait-and-see column|Reddit reaction into evidence|core detail plainly|keep the claim tight|anything outside the report|fake certainty|what players can actually do with it|player-facing detail|separating from the noise|reason to exist beyond repeating the feed|fades into the feed|stronger short keeps|watchlist|official follow-up gives players|small update either becomes|one concrete player question|stronger script keeps/i,
+  );
+});
+
+test("source-bound fallback keeps non-horror release-date stories out of horror framing", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_phantom_blade_zero_release_date",
+      title: "Phantom Blade Zero release date confirmed for September 9, 2026",
+      source_type: "rss",
+      subreddit: "IGN",
+      article_url: "https://www.ign.com/articles/phantom-blade-zero-release-date-september-2026",
+    },
+    {
+      sourceName: "IGN",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "IGN reports Phantom Blade Zero launches on September 9, 2026 for PS5 and PC after a new gameplay trailer showed fast action combat.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Phantom Blade Zero\b/);
+  assert.match(script.full_script, /September 9, 2026|PS5|PC|combat|gameplay/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /horror|licensed weirdness|flat scares|enemy threat|October wildcard|recognisable licence/i,
+  );
+  assert.doesNotMatch(script.full_script, MASS_AUDIENCE_SCAFFOLD_RE);
+});
+
+test("source-bound fallback generic lane writes viewer-facing copy without template scaffolding", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_monster_hunter_wilds_benchmark",
+      title: "Monster Hunter Wilds gets a new PC benchmark tool update",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      article_url: "https://www.pcgamer.com/games/action/monster-hunter-wilds-benchmark-tool-update/",
+    },
+    {
+      sourceName: "PC Gamer",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "PC Gamer reports Monster Hunter Wilds has a new PC benchmark tool update that helps players test performance before changing settings or reinstalling the game.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Monster Hunter Wilds\b/);
+  assert.match(script.full_script, /benchmark|performance|settings|PC/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /one concrete player question|fresh .* update|proof still needs to arrive|official follow-up|small update|stronger script|source only answers one part/i,
+  );
+  assert.doesNotMatch(script.full_script, MASS_AUDIENCE_SCAFFOLD_RE);
+});
+
+test("source-bound fallback handles Halo PS5 account requirements without false subscription access", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_halo_campaign_evolved_ps5_account",
+      title:
+        "Halo: Campaign Evolved PS5 players will require an Xbox account and gamertag to play, as well as PS Plus for split-screen co-op",
+      source_type: "rss",
+      subreddit: "Eurogamer",
+      article_url: "https://www.eurogamer.net/halo-campaign-evolved-ps5-xbox-account-gamertag-psplus",
+    },
+    {
+      sourceName: "Eurogamer",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "Eurogamer reports Halo: Campaign Evolved PS5 players will require an Xbox account and gamertag to play, plus PS Plus to play split-screen co-op.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Halo\b/);
+  assert.match(script.full_script, /Xbox account|gamertag|PS Plus|split-screen co-op/i);
+  assert.doesNotMatch(script.full_script, /available through PS Plus|joined? a subscription|subscription service|easier to try/i);
+});
+
+test("source-bound fallback turns Black Ops port listings into a specific preservation price debate", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_black_ops_ports_pricey_playstation",
+      title: "Call of Duty: Black Ops 1 and 2 Listings Have Fans Fearing Pricey PlayStation Ports",
+      source_type: "rss",
+      subreddit: "IGN",
+      article_url:
+        "https://www.ign.com/articles/call-of-duty-black-ops-1-and-2-listings-have-fans-fearing-pricey-playstation-ports",
+    },
+    {
+      sourceName: "IGN",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "IGN reports PlayStation listings for Call of Duty: Black Ops 1 and 2 have fans watching whether the classic ports arrive as sensible re-releases or expensive nostalgia.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Black Ops 1 and 2\b/);
+  assert.match(script.full_script, /price|ports|preservation|storefront|multiplayer/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /first test is simple|headline belongs in the backlog|next proof has to be visible|player consequence/i,
+  );
+});
+
+test("source-bound fallback turns Cyberpunk launch damage into a specific CDPR trust-debt script", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_cyberpunk_trust_debt",
+      title:
+        "CD Projekt Red boss believes some fans were forever burned by Cyberpunk 2077's disastrous launch",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      article_url:
+        "https://www.pcgamer.com/games/rpg/cd-projekt-red-boss-believes-some-fans-were-forever-burned-by-cyberpunk-2077s-disastrous-launch/",
+    },
+    {
+      sourceName: "PC Gamer",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "PC Gamer reports a CD Projekt Red boss believes some fans lost faith indefinitely after Cyberpunk 2077's disastrous launch.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^CD Projekt Red\b/);
+  assert.match(script.full_script, /Cyberpunk 2077|trust|trailer|proof|real build/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /first test is simple|headline belongs in the backlog|next proof has to be visible|player consequence/i,
+  );
+});
+
+test("source-bound fallback does not say a game is launching on a release date when no date is named", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_gta6_date_reiterated",
+      title: "GTA 6 Release Date Confirmed Again By CEO Who Also Explains Why It's Taking So Long",
+      source_type: "rss",
+      subreddit: "GameSpot",
+      article_url: "https://www.gamespot.com/articles/gta-6-release-date-confirmed-again-by-ceo/",
+    },
+    {
+      sourceName: "GameSpot",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "GameSpot reports Take-Two's CEO reiterated the GTA 6 release date and discussed why the game is taking so long, without revealing new footage, editions or price details.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^GTA 6\b/);
+  assert.match(script.full_script, /Take-Two|Rockstar|delay|launch|date/i);
+  assert.doesNotMatch(script.full_script, /launching on a release date|on a release date|finally has a launch date/i);
+});
+
+test("source-bound fallback turns Xbox monetisation layoff stories into a named strategy script", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_xbox_monetisation_layoffs",
+      title:
+        "As Xbox eyes layoffs, Microsoft's CEO says its videogames aren't monetised enough, so it's not the cancelled games or $68.7 billion deals or AI overspending, then",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      article_url:
+        "https://www.pcgamer.com/gaming-industry/as-xbox-eyes-layoffs-microsofts-ceo-says-its-videogames-arent-monetised-enough/",
+    },
+    {
+      sourceName: "PC Gamer",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "PC Gamer reports Microsoft's CEO said Xbox videogames are not monetised enough as the company eyes layoffs, after cancelled games, a $68.7 billion acquisition and AI spending scrutiny.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Xbox\b/);
+  assert.match(script.full_script, /monetised|layoffs|Microsoft|spending|Game Pass|players/i);
+  assert.doesNotMatch(script.full_script, /As Xbox eyes layoffs.*just got an update|new As Xbox eyes layoffs/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /first test is simple|headline belongs in the backlog|next proof has to be visible|player consequence/i,
+  );
+});
+
+test("source-bound fallback turns Xbox dashboard exclusivity labels into a clear platform-trust script", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_xbox_exclusive_dashboard_label",
+      title: "Xbox's Confusing Exclusivity Criteria Now Aided by 'EXCLUSIVE' Label on Console Dashboard",
+      source_type: "rss",
+      subreddit: "IGN",
+      article_url: "https://www.ign.com/articles/xbox-confusing-exclusivity-criteria-exclusive-label-dashboard",
+    },
+    {
+      sourceName: "IGN",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "IGN reports Xbox's confusing exclusivity criteria are now aided by an EXCLUSIVE label on the console dashboard, as players try to understand what still counts as an Xbox exclusive.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Xbox\b/);
+  assert.match(script.full_script, /EXCLUSIVE label|dashboard|exclusivity|exclusive/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /Xbox's Confusing Exclusivity Criteria.*just got an update|new Xbox's Confusing Exclusivity Criteria/i,
+  );
+  assert.doesNotMatch(
+    script.full_script,
+    /first test is simple|headline belongs in the backlog|next proof has to be visible|player consequence/i,
   );
 });
 

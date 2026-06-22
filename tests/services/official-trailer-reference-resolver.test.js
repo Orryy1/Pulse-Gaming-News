@@ -294,6 +294,49 @@ test("official trailer resolver uses explicit canonical subjects as motion targe
   assert.ok(plan.planned_searches.every((item) => item.entity === "RuneScape: Dragonwilds"));
 });
 
+test("official trailer resolver keeps explicit canonical game ahead of editorial canonical title", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "sea-of-thieves-custom-seas",
+      title: "Sea of Thieves Custom Seas Could Split Crews",
+      canonical_title: "Sea of Thieves Custom Seas Could Split Crews",
+      canonical_subject: "Sea of Thieves",
+      canonical_game: "Sea of Thieves",
+      canonical_subject_confidence: "explicit",
+      full_script:
+        "Sea of Thieves is testing Custom Seas, and Rare now has to prove private sessions can protect the magic without draining the chaos.",
+    }),
+    {
+      officialSourceIntakeReport: {
+        accepted_references: [
+          {
+            story_id: "sea-of-thieves-custom-seas",
+            entity: "Sea of Thieves",
+            source_type: "licensed_direct_media_url",
+            provider: "licensed_direct_media_acquisition",
+            source_url:
+              "https://video.fastly.steamstatic.com/store_trailers/1172620/2026344220/hash/hls_264_master.m3u8",
+            source_url_kind: "hls_manifest",
+            segment_validation_eligible: true,
+            source_verified: true,
+            downloads_allowed: false,
+          },
+        ],
+      },
+      steamLookup: async () => {
+        throw new Error("licensed direct-media reference should not require Steam lookup");
+      },
+    },
+  );
+
+  assert.deepEqual(plan.target_entities, ["Sea of Thieves"]);
+  assert.deepEqual(plan.source_proof_missing_target_entities, []);
+  assert.deepEqual(plan.missing_target_entities, []);
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].entity, "Sea of Thieves");
+  assert.ok(!plan.search_queries.includes("Sea of Thieves Custom Seas Could Split Crews official trailer"));
+});
+
 test("official trailer resolver does not use broad context games as canonical-story footage", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

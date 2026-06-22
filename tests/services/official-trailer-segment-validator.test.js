@@ -1300,6 +1300,134 @@ test("official trailer segment validator accepts entity-matched licensed Steam c
   assert.equal(report.segments[0].action_sample_count, 0);
 });
 
+test("official trailer segment validator accepts entity-matched official publisher direct cinematic motion", async () => {
+  const outputRoot = tempOutputRoot("official-publisher-direct-cinematic-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://assets.nintendo.com/video/upload/Nintendo%20Direct/2026/WCoOemBsLzrm/TVxXhqZpkyEP/spotlight-10.mp4",
+        sourceType: "licensed_direct_media_url",
+        sourceFamily: "nintendo_official_ocarina_of_time_switch_2_direct_news",
+        source_family: "nintendo_official_ocarina_of_time_switch_2_direct_news",
+        sourceDurationS: 97.63,
+        mediaStartS: 40,
+        entity: "Ocarina of Time",
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          provider: "licensed_direct_media_acquisition",
+          rights_risk_class: "official_direct_media",
+          allowed_render_use: "official_direct_media_segment_candidate",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.114, saturation_mean: 0.72, dark_pixel_ratio: 0.35, score: 99.3 },
+          { edge_density: 0.114, saturation_mean: 0.73, dark_pixel_ratio: 0.34, score: 99.3 },
+          { edge_density: 0.111, saturation_mean: 0.73, dark_pixel_ratio: 0.34, score: 99 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `nintendo-official-publisher-cinematic-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: sample.dark_pixel_ratio,
+            bright_pixel_ratio: 0,
+            letterbox_bar_ratio: 0.15,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["colourful"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.equal(report.segments[0].action_sample_count, 0);
+});
+
+test("official trailer segment validator keeps mismatched publisher direct media out of cinematic fallback", async () => {
+  const outputRoot = tempOutputRoot("official-publisher-direct-cinematic-mismatch");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://assets.nintendo.com/video/upload/Nintendo%20Direct/2026/WCoOemBsLzrm/TVxXhqZpkyEP/spotlight-10.mp4",
+        sourceType: "licensed_direct_media_url",
+        sourceFamily: "nintendo_official_ocarina_of_time_switch_2_direct_news",
+        source_family: "nintendo_official_ocarina_of_time_switch_2_direct_news",
+        sourceDurationS: 97.63,
+        mediaStartS: 40,
+        entity: "Metroid Prime 4",
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          provider: "licensed_direct_media_acquisition",
+          rights_risk_class: "official_direct_media",
+          allowed_render_use: "official_direct_media_segment_candidate",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        return {
+          ...passingQa(outputPath),
+          content_hash: `nintendo-official-publisher-mismatch-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.114,
+            saturation_mean: 0.72,
+            dark_pixel_ratio: 0.35,
+            bright_pixel_ratio: 0,
+            letterbox_bar_ratio: 0.15,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: 99,
+            tags: ["colourful"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 0);
+  assert.equal(report.segments[0].validation_reason, "segment_lacks_gameplay_action_samples");
+  assert.equal(report.segments[0].segment_motion_class, "non_gameplay_context");
+});
+
 test("official trailer segment validator accepts short muted high-detail storefront cinematic motion", async () => {
   const outputRoot = tempOutputRoot("official-steam-muted-cinematic-motion");
   await cleanTempRoot(outputRoot);

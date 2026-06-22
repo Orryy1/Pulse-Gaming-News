@@ -37,6 +37,7 @@ function parseArgs(argv) {
     storyId: null,
     stories: null,
     segmentReport: DEFAULT_SEGMENT_REPORT,
+    segmentReportExplicit: false,
     trustedFootageReport: null,
     previousMotionPack: null,
     preserveExisting: true,
@@ -51,6 +52,7 @@ function parseArgs(argv) {
     else if (arg === "--stories") args.stories = argv[++i] || null;
     else if (arg === "--segment-report" || arg === "--segment-validation-report") {
       args.segmentReport = argv[++i] || DEFAULT_SEGMENT_REPORT;
+      args.segmentReportExplicit = true;
     } else if (arg === "--trusted-footage-report") {
       args.trustedFootageReport = argv[++i] || null;
     } else if (arg === "--previous-motion-pack") {
@@ -169,6 +171,9 @@ async function readJsonIfExists(filePath, fallback = {}) {
 }
 
 async function loadSegmentReport(args) {
+  if (args.previousMotionPack && !args.segmentReportExplicit) {
+    return { segments: [] };
+  }
   const primary = path.resolve(ROOT, args.segmentReport || DEFAULT_SEGMENT_REPORT);
   if (await fs.pathExists(primary)) return fs.readJson(primary);
   if (await fs.pathExists(FALLBACK_SEGMENT_REPORT)) return fs.readJson(FALLBACK_SEGMENT_REPORT);

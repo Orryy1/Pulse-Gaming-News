@@ -620,6 +620,110 @@ test("Visual V4 motion pack honours validator-approved Steam storefront trailer 
   );
 });
 
+test("Visual V4 motion pack honours validator-approved licensed direct storefront motion without repeat padding", () => {
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: "sea-of-thieves-custom-seas",
+      title: "Sea of Thieves Custom Seas Could Split Crews",
+      suggested_title: "Sea of Thieves Custom Seas Could Split Crews",
+      suggested_thumbnail_text: "CUSTOM SEAS",
+      canonical_subject: "Sea of Thieves",
+      canonical_game: "Sea of Thieves",
+      full_script:
+        "Sea of Thieves is testing Custom Seas, and Rare now has to prove private sessions can protect the magic without draining the chaos.",
+    },
+    trustedFootageReport: trustedReport("sea-of-thieves-custom-seas", [
+      "steam_1172620_2026344220",
+      "steam_1172620_2137521619",
+      "steam_1172620_1980334430",
+      "steam_1172620_204445374",
+    ]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "sea-of-thieves-custom-seas",
+        entity: "Sea of Thieves",
+        family: "steam_1172620_2026344220",
+        index: 1,
+        sourceUrl:
+          "https://video.fastly.steamstatic.com/store_trailers/1172620/2026344220/hash/hls_264_master.m3u8",
+        sourceType: "licensed_direct_media_url",
+        motionClass: "official_storefront_cinematic_motion",
+        validationReason: "official_storefront_cinematic_motion_samples_passed",
+        actionScore: 68,
+      }),
+      segment({
+        storyId: "sea-of-thieves-custom-seas",
+        entity: "Sea of Thieves",
+        family: "steam_1172620_2137521619",
+        index: 2,
+        sourceUrl:
+          "https://video.fastly.steamstatic.com/store_trailers/1172620/2137521619/hash/hls_264_master.m3u8",
+        sourceType: "licensed_direct_media_url",
+        motionClass: "official_storefront_cinematic_motion",
+        validationReason: "official_storefront_cinematic_motion_samples_passed",
+        actionScore: 75,
+      }),
+      segment({
+        storyId: "sea-of-thieves-custom-seas",
+        entity: "Sea of Thieves",
+        family: "steam_1172620_1980334430",
+        index: 3,
+        sourceUrl:
+          "https://video.fastly.steamstatic.com/store_trailers/1172620/1980334430/hash/hls_264_master.m3u8",
+        sourceType: "licensed_direct_media_url",
+        motionClass: "official_storefront_cinematic_motion",
+        validationReason: "official_storefront_cinematic_motion_samples_passed",
+        actionScore: 75,
+      }),
+      segment({
+        storyId: "sea-of-thieves-custom-seas",
+        entity: "Sea of Thieves",
+        family: "steam_1172620_204445374",
+        index: 4,
+        sourceUrl:
+          "https://video.fastly.steamstatic.com/store_trailers/1172620/204445374/hash/hls_264_master.m3u8",
+        sourceType: "licensed_direct_media_url",
+        motionClass: "gameplay_action",
+        validationReason: "trimmed_segment_samples_passed",
+        actionScore: 72,
+        start: 24,
+        recommendedStart: 24.45,
+        recommendedDuration: 2.95,
+        trimRecommended: true,
+      }),
+      segment({
+        storyId: "sea-of-thieves-custom-seas",
+        entity: "Sea of Thieves",
+        family: "steam_1172620_2137521619",
+        index: 5,
+        sourceUrl:
+          "https://video.fastly.steamstatic.com/store_trailers/1172620/2137521619/hash/hls_264_master.m3u8",
+        sourceType: "licensed_direct_media_url",
+        motionClass: "official_storefront_cinematic_motion",
+        validationReason: "official_storefront_cinematic_motion_samples_passed",
+        actionScore: 72,
+        start: 56,
+      }),
+    ]),
+    generatedAt: "2026-06-22T09:25:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 4);
+  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
+  assert.equal(pack.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), false);
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_already_used",
+    ),
+  );
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "segment_not_gameplay_action",
+    ),
+    false,
+  );
+});
+
 test("Visual V4 motion pack rejects official product motion when the story needs gameplay evidence", () => {
   const pack = buildVisualV4MotionPack({
     story: forzaStory({
@@ -654,7 +758,7 @@ test("Visual V4 motion pack rejects official product motion when the story needs
   );
 });
 
-test("Visual V4 motion pack can add one non-overlapping repeat after the distinct-family floor is met", () => {
+test("Visual V4 motion pack rejects same-source repeat windows after the source is used", () => {
   const families = ["steam", "xbox", "forza", "twistedvoxel", "gamesradar", "ign"];
   const pack = buildVisualV4MotionPack({
     story: forzaStory(),
@@ -672,10 +776,16 @@ test("Visual V4 motion pack can add one non-overlapping repeat after the distinc
     generatedAt: "2026-05-19T10:05:00.000Z",
   });
 
-  assert.equal(pack.clips.length, 7);
+  assert.equal(pack.clips.length, 6);
   assert.equal(new Set(pack.clips.map((clip) => clip.source_family)).size, 6);
   assert.equal(pack.motion_budget.available_distinct_families, 6);
-  assert.equal(pack.readiness.status, "v4_motion_ready");
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_already_used",
+    ),
+  );
+  assert.equal(pack.readiness.status, "v4_motion_blocked");
+  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
 });
 
 test("Visual V4 motion pack does not pad repeat slots with short trimmed montage cuts", () => {
@@ -705,7 +815,9 @@ test("Visual V4 motion pack does not pad repeat slots with short trimmed montage
   assert.equal(new Set(pack.clips.map((clip) => clip.source_family)).size, 6);
   assert.ok(
     pack.rejected_candidates.some(
-      (candidate) => candidate.reason === "repeat_short_trimmed_montage_not_allowed",
+      (candidate) =>
+        candidate.reason === "repeat_short_trimmed_montage_not_allowed" ||
+        candidate.reason === "source_asset_already_used",
     ),
   );
   assert.equal(pack.readiness.status, "v4_motion_blocked");
@@ -1111,7 +1223,9 @@ test("Visual V4 motion pack rejects overlapping alternate URLs for the same Stea
   assert.equal(pack.clips.length, 1);
   assert.ok(
     pack.rejected_candidates.some(
-      (candidate) => candidate.reason === "source_asset_window_too_close",
+      (candidate) =>
+        candidate.reason === "source_asset_window_too_close" ||
+        candidate.reason === "source_asset_already_used",
     ),
   );
 });
@@ -1138,7 +1252,7 @@ test("Visual V4 motion pack canonicalises Steam aliases from the media URL", () 
   assert.equal(pack.motion_budget.available_distinct_families, 1);
 });
 
-test("Visual V4 motion pack can use separate windows from one source asset without increasing family count", () => {
+test("Visual V4 motion pack does not use separate windows from one source asset as fresh motion", () => {
   const pack = buildVisualV4MotionPack({
     story: forzaStory(),
     trustedFootageReport: trustedReport("forza-v4-pack", ["steam_2483190_1133501958"]),
@@ -1162,15 +1276,19 @@ test("Visual V4 motion pack can use separate windows from one source asset witho
     generatedAt: "2026-05-26T09:15:00.000Z",
   });
 
-  assert.equal(pack.clips.length, 7);
+  assert.equal(pack.clips.length, 1);
   assert.equal(new Set(pack.clips.map((clip) => clip.source_family)).size, 1);
-  assert.equal(pack.motion_budget.available_motion_clips, 7);
+  assert.equal(pack.motion_budget.available_motion_clips, 1);
   assert.equal(pack.motion_budget.available_distinct_families, 1);
-  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), false);
+  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
   assert.equal(pack.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), true);
+  assert.equal(
+    pack.rejected_candidates.filter((candidate) => candidate.reason === "source_asset_already_used").length,
+    6,
+  );
 });
 
-test("Visual V4 motion pack tops up ready packs with extra repeat windows for premium benchmark density", () => {
+test("Visual V4 motion pack does not top up premium density with repeat windows", () => {
   const families = ["steam_alpha", "steam_beta", "steam_gamma", "steam_delta"];
   const sourceUrls = {
     steam_alpha:
@@ -1207,10 +1325,15 @@ test("Visual V4 motion pack tops up ready packs with extra repeat windows for pr
     generatedAt: "2026-05-26T09:20:00.000Z",
   });
 
-  assert.equal(pack.readiness.status, "v4_motion_ready");
-  assert.equal(pack.clips.length, 8);
-  assert.equal(pack.motion_budget.available_motion_clips, 8);
+  assert.equal(pack.readiness.status, "v4_motion_blocked");
+  assert.equal(pack.clips.length, 4);
+  assert.equal(pack.motion_budget.available_motion_clips, 4);
   assert.equal(pack.motion_budget.available_distinct_families, 4);
+  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
+  assert.equal(
+    pack.rejected_candidates.filter((candidate) => candidate.reason === "source_asset_already_used").length,
+    4,
+  );
 });
 
 test("Visual V4 motion pack accepts materialised Steam still-motion topups without relabelling them as gameplay", () => {
@@ -1269,7 +1392,7 @@ test("Visual V4 motion pack accepts materialised Steam still-motion topups witho
   assert.equal(pack.rejected_candidates.length, 0);
 });
 
-test("Visual V4 motion pack maximises non-overlapping repeat windows before scoring near-duplicates", () => {
+test("Visual V4 motion pack rejects product-video repeat windows instead of maximising them", () => {
   const sourceUrl =
     "https://video.fastly.steamstatic.com/store_trailers/353370/37301/hash/hls_264_master.m3u8?t=1470853282";
   const pack = buildVisualV4MotionPack({
@@ -1359,14 +1482,18 @@ test("Visual V4 motion pack maximises non-overlapping repeat windows before scor
     generatedAt: "2026-05-26T19:45:00.000Z",
   });
 
-  assert.equal(pack.clips.length, 5);
+  assert.equal(pack.clips.length, 1);
   assert.deepEqual(
     pack.clips.map((clip) => clip.mediaStartS).sort((a, b) => a - b),
-    [36, 42, 48, 54, 60],
+    [48],
   );
-  assert.equal(pack.motion_budget.available_motion_clips, 5);
-  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), false);
+  assert.equal(pack.motion_budget.available_motion_clips, 1);
+  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
   assert.equal(pack.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), true);
+  assert.equal(
+    pack.rejected_candidates.filter((candidate) => candidate.reason === "source_asset_already_used").length,
+    5,
+  );
 });
 
 test("Visual V4 motion pack treats separate Steam movie ids as distinct motion families", () => {
@@ -1490,6 +1617,80 @@ test("Visual V4 motion pack preserves previously validated families during fresh
   );
   assert.equal(preserved.provenance.source_report, "previous_visual_v4_motion_pack");
   assert.equal(preserved.mediaStartS, 298.98);
+});
+
+test("Visual V4 motion pack preserves real-motion materializer clips with provenance validation", () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1091500/637422/hash/hls_264_master.m3u8?t=1";
+  const previousMotionPack = {
+    source: "validated_real_motion_materializer",
+    clips: [
+      {
+        id: "materialized-1",
+        path: "output/video_cache/cyberpunk-1.mp4",
+        source_url: sourceUrl,
+        source_family: "segment_source_family_1_window_36_5",
+        source_type: "steam_movie",
+        durationS: 5,
+        mediaStartS: 36,
+        materialized: true,
+        counts_towards_motion_readiness: true,
+        provenance: {
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          validation_reason: "official_storefront_cinematic_motion_samples_passed",
+          segment_motion_class: "official_storefront_cinematic_motion",
+          segment_action_score: 90,
+          media_start_s: 36,
+          duration_s: 5,
+        },
+      },
+      {
+        id: "materialized-duplicate-asset",
+        path: "output/video_cache/cyberpunk-2.mp4",
+        source_url: sourceUrl,
+        source_family: "segment_source_family_1_window_42_5",
+        source_type: "steam_movie",
+        durationS: 5,
+        mediaStartS: 42,
+        materialized: true,
+        counts_towards_motion_readiness: true,
+        provenance: {
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          validation_reason: "official_storefront_cinematic_motion_samples_passed",
+          segment_motion_class: "official_storefront_cinematic_motion",
+          segment_action_score: 88,
+          media_start_s: 42,
+          duration_s: 5,
+        },
+      },
+    ],
+  };
+
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "cyberpunk-pack",
+      title: "Cyberpunk 2077's Trust Debt",
+      canonical_subject: "Cyberpunk 2077",
+      canonical_game: "Cyberpunk 2077",
+      full_script: "Cyberpunk 2077 has a trust debt to pay.",
+    }),
+    previousMotionPack,
+    segmentValidationReport: segmentReport([]),
+    generatedAt: "2026-06-22T12:32:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].source_family, "segment_source_family_1_window_36_5");
+  assert.equal(pack.clips[0].source_url, sourceUrl);
+  assert.equal(pack.clips[0].path, "output/video_cache/cyberpunk-1.mp4");
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_already_used",
+    ),
+    true,
+  );
 });
 
 test("Visual V4 motion pack filters irrelevant trusted source families before handoff", () => {
@@ -1629,6 +1830,7 @@ test("Visual V4 motion pack CLI is registered as a local manifest builder", () =
 
   assert.equal(args.storyId, "forza-v4-pack");
   assert.equal(args.maxClips, 8);
+  assert.equal(args.segmentReportExplicit, true);
   assert.match(
     packageJson.scripts["studio:v4:motion-pack"],
     /studio-v4-motion-pack\.js/,
@@ -1637,6 +1839,20 @@ test("Visual V4 motion pack CLI is registered as a local manifest builder", () =
     packageJson.scripts["ops:v4-motion-pack"],
     /studio-v4-motion-pack\.js/,
   );
+});
+
+test("Visual V4 motion pack CLI treats previous-pack rebuilds as previous-pack-only by default", () => {
+  const args = parseArgs([
+    "node",
+    "tools/studio-v4-motion-pack.js",
+    "--story-id",
+    "cyberpunk-pack",
+    "--previous-motion-pack",
+    "output/studio-v4/motion-packs/cyberpunk-pack_motion_pack_manifest.json",
+  ]);
+
+  assert.equal(args.previousMotionPack, "output/studio-v4/motion-packs/cyberpunk-pack_motion_pack_manifest.json");
+  assert.equal(args.segmentReportExplicit, false);
 });
 
 test("Visual V4 motion pack CLI normalises story_id rows for goal package inputs", () => {

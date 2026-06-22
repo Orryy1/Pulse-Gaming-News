@@ -50,6 +50,18 @@ test("story card specs are topical and do not reuse generic Metro copy", () => {
   assert.doesNotMatch(serialised, /METRO 2039/i);
 });
 
+test("story card specs split compact publisher labels before HyperFrames render", () => {
+  const specs = buildStoryCardSpecs({
+    storyId: "rss_0b39e0171f59712c",
+    title: "Dragonwilds Has One Last Early Access Test",
+    subreddit: "RockPaperShotgun",
+    source_type: "rss",
+    full_script: "Rock Paper Shotgun reports the last early access test is open now.",
+  });
+
+  assert.equal(specs.source.label, "ROCK PAPER SHOTGUN");
+});
+
 test("story card builder uses story-specific output names", () => {
   assert.equal(
     outputNameForCard("source", "rss_ca673f22ddbbbdfc", "pulse-gaming"),
@@ -146,6 +158,32 @@ test("quote card HTML applies compact layout and safe clamped text", () => {
   assert.match(html, /GAMESPOT/);
 });
 
+test("context card HTML shrinks long number labels before HyperFrames inspect", () => {
+  const template = `
+    <style>
+      .number { font-size: 152px; }
+    </style>
+    <div id="kicker">OLD</div>
+    <div id="number" class="number">OLD</div>
+    <div id="sub">OLD SUB</div>
+    <div id="micro">OLD MICRO</div>
+  `;
+  const html = applySpecToTemplate(
+    "context",
+    template,
+    {
+      kicker: "WHY IT MATTERS",
+      number: "DRAGONWILDS",
+      sub: "EARLY ACCESS TEST",
+      micro: "verified source, checked before publish",
+    },
+    "pulse-gaming",
+  );
+
+  assert.match(html, /font-size:\s*128px/);
+  assert.match(html, /DRAGONWILDS/);
+});
+
 test("quote card fitting shortens long tokens before they can be cut off", () => {
   const quote =
     "SupercalifragilisticexpialidociousEditionWithRidiculousSuffix is somehow the key quote that would normally break the frame.";
@@ -158,4 +196,18 @@ test("quote card fitting shortens long tokens before they can be cut off", () =>
     fitted,
   );
   assert.match(fitted, /\.\.\./);
+});
+
+test("HyperFrames card templates keep decorative text contrast-safe", () => {
+  const quoteTemplate = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-quote", "index.html"),
+    "utf8",
+  );
+  const takeawayTemplate = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-takeaway", "index.html"),
+    "utf8",
+  );
+
+  assert.match(quoteTemplate, /quote-mark[\s\S]*color:\s*rgba\(255,\s*107,\s*26,\s*0\.62\)/);
+  assert.match(takeawayTemplate, /pulse[\s\S]*color:\s*rgba\(255,\s*255,\s*255,\s*0\.62\)/);
 });

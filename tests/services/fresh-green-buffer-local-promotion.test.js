@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  buildCanonicalStoryManifest,
   buildFreshGreenBufferLocalPromotionReport,
   writeFreshGreenBufferLocalPromotionArtifacts,
 } = require("../../lib/fresh-green-buffer-local-promotion");
@@ -69,6 +70,8 @@ test("fresh buffer promotion writes local package work orders without publish or
   assert.ok(fs.existsSync(written.reportMd));
   assert.ok(fs.existsSync(written.renderInputWorkOrder));
   assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "canonical_story_manifest.json")));
+  assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "rights_ledger.json")));
+  assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "footage_inventory.json")));
   assert.ok(fs.existsSync(path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "render_readiness_work_order.json")));
 
   const canonical = JSON.parse(
@@ -81,6 +84,31 @@ test("fresh buffer promotion writes local package work orders without publish or
   assert.match(canonical.description, /Halo: Campaign Evolved has a public demo test/i);
   assert.match(canonical.description, /Source: Xbox Wire\./);
   assert.equal(canonical.public_copy.title, "Halo: Campaign Evolved Shows The Real Remake Test");
+
+  const rightsLedger = JSON.parse(
+    fs.readFileSync(
+      path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "rights_ledger.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(rightsLedger.verdict, "fail");
+  assert.deepEqual(rightsLedger.failures, ["rights:no_rights_record"]);
+  assert.deepEqual(rightsLedger.records, []);
+  assert.equal(rightsLedger.direct_media_validated, false);
+  assert.equal(rightsLedger.reference_only_sources[0].url, draftStory().primary_source_url);
+  assert.equal(rightsLedger.safety.no_publish_triggered, true);
+
+  const footageInventory = JSON.parse(
+    fs.readFileSync(
+      path.join(outDir, "packages", "fresh_xbox_halo_campaign_evolved_demo_20260610", "footage_inventory.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(footageInventory.readiness.status, "v4_motion_blocked");
+  assert.deepEqual(footageInventory.motion_inventory.accepted_local_clips, []);
+  assert.equal(footageInventory.motion_budget.available_motion_clips, 0);
+  assert.equal(footageInventory.direct_media_validated, false);
+  assert.equal(footageInventory.safety.no_publish_triggered, true);
 
   const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
   assert.equal(storyPackages[0].verdict, "local_proof_pending");
@@ -346,6 +374,42 @@ test("fresh buffer promotion rewrites weak coherent demo copy before packaging",
   assert.doesNotMatch(canonical.full_script, /\bhands-on demo beat\b/i);
   assert.match(canonical.public_title, /Demo/i);
   assert.match(canonical.full_script, /PlayStation Blog/i);
+});
+
+test("fresh buffer promotion lightly repairs repeated phrasing without replacing a strong sourced script", () => {
+  const canonical = buildCanonicalStoryManifest(
+    draftStory({
+      id: "rss_ocarina_hidden_switch_2_clue",
+      title: "Ocarina's Hidden Switch 2 Clue",
+      selected_title: "Ocarina's Hidden Switch 2 Clue",
+      canonical_subject: "Ocarina of Time",
+      canonical_game: "Ocarina of Time",
+      primary_source: {
+        name: "IGN",
+        url: "https://www.ign.com/articles/nintendo-removes-hidden-the-legend-of-zelda-ocarina-of-time-switch-2-description-that-suggested-its-a-faithful-remake",
+        type: "trusted_editorial_source",
+      },
+      primary_source_url:
+        "https://www.ign.com/articles/nintendo-removes-hidden-the-legend-of-zelda-ocarina-of-time-switch-2-description-that-suggested-its-a-faithful-remake",
+      confirmed_claims: [
+        "IGN reports Nintendo removed a hidden description for Ocarina of Time on Switch 2 that suggested a faithful remake.",
+      ],
+      narration_script:
+        "Ocarina of Time just dropped a new clue Nintendo pulled back. IGN reports Nintendo removed a hidden description for Ocarina of Time on Switch 2 that fans say pointed to a faithful update of the N64 original. That matters because hidden store copy is not marketing fluff once it disappears; fans read the removal as a sign Nintendo was not ready for that promise to be public. The sharper issue is what faithful even means: preserved structure, cleaner visuals or something closer to a remaster. It does not confirm a remake, and removed copy should be treated as cautious evidence rather than a finished announcement. The takeaway is narrow: the wording suggests intent, but Nintendo still has to show what Switch 2 actually changes. The removal changes the player question: did Nintendo pull unfinished store copy, or did it accidentally show the shape of the remake too early? A faithful update sounds simple, but Ocarina fans disagree hard on what should be preserved and what should be modernised. If Nintendo confirms it later, this pulled description becomes the first clue to what kind of Ocarina remake fans are really getting. Follow Pulse Gaming so you never miss a beat.",
+    }),
+    "2026-06-22T10:45:00.000Z",
+  );
+
+  assert.equal(canonical.public_title, "Ocarina's Hidden Switch 2 Clue");
+  assert.equal(canonical.script_coherence_result, "pass");
+  assert.equal(canonical.script_source, "provided_fresh_story_script_lightly_repaired");
+  assert.match(canonical.public_copy_repair_reason, /repeated_near_phrase/);
+  assert.match(canonical.full_script, /hidden description for Ocarina of Time on Switch 2/i);
+  assert.match(canonical.full_script, /line between preservation and modernisation/i);
+  assert.match(canonical.full_script, /pulled listing should be treated as cautious evidence/i);
+  assert.doesNotMatch(canonical.full_script, /removed cop(?:y|ies) should be treated/i);
+  assert.doesNotMatch(canonical.full_script, /got an update that changes the player decision/i);
+  assert.doesNotMatch(canonical.full_script, /Ocarina of Time Player Impact/i);
 });
 
 test("fresh buffer promotion packages fresh source claims as attention-led public metadata", async () => {

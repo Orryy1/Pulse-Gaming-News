@@ -466,6 +466,41 @@ test("Studio V4 source deficit report lets ready packs render V4", () => {
   assert.deepEqual(report.rows[0].required_acquisitions, []);
 });
 
+test("Studio V4 source deficit blocks ready packs that only repeat one direct-video URL", () => {
+  const sourceUrl = "https://vulcan.dl.playstation.net/img/rnd/202501/1101/ghost-at-dawn.mp4";
+  const report = buildStudioV4SourceDeficitReport({
+    motionPackReports: [
+      {
+        story_id: "ghost-direct-repeats",
+        title: "Ghost At Dawn Turns Fear Into A Choice",
+        readiness: { status: "v4_motion_ready", blockers: [] },
+        clips: Array.from({ length: 5 }, (_, index) => ({
+          id: `ghost-window-${index + 1}`,
+          path: `C:\\repo\\output\\video_cache\\ghost_window_${index + 1}.mp4`,
+          source_url: sourceUrl,
+          source_type: "licensed_direct_media_url",
+          media_kind: "direct_video",
+          source_family: `ghost_at_dawn_playstation_window_${index + 1}`,
+        })),
+        motion_budget: {
+          available_motion_clips: 5,
+          required_motion_scenes: 5,
+          available_distinct_families: 5,
+          required_distinct_families: 4,
+        },
+      },
+    ],
+  });
+
+  const row = report.rows[0];
+  assert.equal(report.summary.v4_ready_stories, 0);
+  assert.equal(report.summary.blocked_stories, 1);
+  assert.equal(row.render_decision, "hold_v4_source_acquisition_required");
+  assert.equal(row.current_motion_families.length, 1);
+  assert.equal(row.missing_motion_families, 3);
+  assert.ok(row.blockers.includes("visual_evidence:insufficient_real_visual_source_families"));
+});
+
 test("Studio V4 source deficit markdown and CLI are registered as local-only", async () => {
   const markdown = renderStudioV4SourceDeficitMarkdown({
     generated_at: "2026-05-19T22:30:00.000Z",

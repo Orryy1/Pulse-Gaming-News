@@ -579,6 +579,69 @@ test("Studio V4 source-family acquisition refreshes page-backed current families
   );
 });
 
+test("Studio V4 source-family acquisition reopens ready packs that repeat one direct-video URL", () => {
+  const sourceUrl = "https://vulcan.dl.playstation.net/img/rnd/202501/1101/ghost-at-dawn.mp4";
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "ghost-direct-repeats",
+        title: "Ghost At Dawn Turns Fear Into A Choice",
+        canonical_subject: "Ghost at Dawn",
+        canonical_game: "Ghost at Dawn",
+        readiness: { status: "v4_motion_ready", blockers: [], warnings: [] },
+        clips: Array.from({ length: 5 }, (_, index) => ({
+          id: `ghost-window-${index + 1}`,
+          path: `C:\\repo\\output\\video_cache\\ghost_window_${index + 1}.mp4`,
+          source_url: sourceUrl,
+          source_type: "licensed_direct_media_url",
+          media_kind: "direct_video",
+          source_family: `ghost_at_dawn_playstation_window_${index + 1}`,
+        })),
+        motion_budget: {
+          available_motion_clips: 5,
+          required_motion_scenes: 5,
+          available_distinct_families: 5,
+          required_distinct_families: 4,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: {
+      story_candidates: [
+        {
+          story_id: "ghost-direct-repeats",
+          entity: "Ghost at Dawn",
+          source_id: "ghost-official-xbox-trailer",
+          display_name: "Xbox official Ghost at Dawn trailer",
+          source_family: "ghost_at_dawn_xbox_wire_trailer",
+          source_tier: "official",
+          reference_url: "https://news.xbox.com/en-us/ghost-at-dawn/",
+          source_url: "https://www.youtube.com/watch?v=ghost-official",
+          source_url_kind: "youtube_watch",
+          segment_validation_eligible: false,
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.equal(report.summary.stories_needing_acquisition, 1);
+  assert.equal(report.summary.stories_blocked, 1);
+  assert.equal(row.story_id, "ghost-direct-repeats");
+  assert.equal(row.current_motion_families, 1);
+  assert.equal(row.missing_motion_families, 3);
+  assert.ok(row.blockers.includes("visual_evidence:insufficient_real_visual_source_families"));
+  assert.ok(
+    row.source_family_candidates.some(
+      (candidate) => candidate.source_family === "ghost_at_dawn_xbox_wire_trailer",
+    ),
+  );
+  assert.notEqual(report.acquisition_runway.status, "v4_ready_no_action");
+});
+
 test("Studio V4 source-family acquisition builds fillable official-source intake rows", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [motionPack()],
@@ -1378,6 +1441,95 @@ test("Studio V4 source-family acquisition rejects specific game footage for broa
   assert.deepEqual(row.official_search_actions, []);
   assert.ok(
     row.source_search_blockers.includes("broad_platform_story_requires_specific_visual_plan"),
+  );
+});
+
+test("Studio V4 source-family acquisition routes Xbox monetisation stories to owned HyperFrames explainers", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "xbox-monetisation-pressure",
+        title: "Xbox's Monetisation Pressure",
+        canonical_subject: "Xbox",
+        canonical_company: "Microsoft",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          source_id: "forza-official-x-fh6-accessibility-video",
+          display_name: "Forza Horizon official X - FH6 Accessibility video",
+          source_family: "forza_horizon_official_x_fh6_accessibility_video",
+          source_tier: "official",
+          source_url:
+            "https://video.twimg.com/amplify_video/2017238384930918400/vid/avc1/1280x720/iAH7hRim4lDKc7Ym.mp4?tag=14",
+          reference_url: "https://x.com/ForzaHorizon/status/2017238596088943035",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entities: ["Forza Horizon 6", "Xbox Game Studios", "Xbox"],
+        },
+      ],
+      story_candidates: [],
+    },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.primary_story_entity, "Xbox");
+  assert.deepEqual(row.source_family_candidates, []);
+  assert.deepEqual(row.official_search_actions, []);
+  assert.ok(
+    row.source_search_blockers.includes("broad_platform_story_requires_specific_visual_plan"),
+  );
+  assert.equal(row.governed_visual_plan.plan_type, "broad_platform_owned_explainer_plan");
+  assert.ok(
+    row.governed_visual_plan.allowed_asset_classes.includes(
+      "premium HyperFrames explainer cards",
+    ),
+  );
+  assert.ok(
+    row.governed_visual_plan.required_artefacts.includes(
+      "hyperframes_lint_validate_inspect_report.json",
+    ),
+  );
+});
+
+test("Studio V4 source-family acquisition repairs Halo PS5 stories to Halo rather than PS5 hardware", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "halo-ps5-account-catch",
+        title: "Halo's PS5 Account Catch",
+        canonical_subject: "Xbox",
+        canonical_company: "Microsoft",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: { accepted_sources: [], story_candidates: [] },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.ok(row.canonical_entity_repair_blockers.includes("canonical_subject_title_mismatch"));
+  assert.equal(report.canonical_entity_repair_template.entries[0].story_id, "halo-ps5-account-catch");
+  assert.equal(
+    report.canonical_entity_repair_template.entries[0].suggested_repaired_entity,
+    "Halo: Campaign Evolved",
   );
 });
 

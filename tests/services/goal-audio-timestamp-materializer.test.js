@@ -136,6 +136,45 @@ test("goal audio materializer passes an explicit TTS rate to narration generatio
   assert.equal(calls[0].rate, 0.92);
 });
 
+test("goal audio materializer cleans cached spoken scripts before TTS generation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-clean-spoken-"));
+  const artifactDir = await makePackage(root, "story-clean-spoken", {
+    selected_title: "The Expanse: Osiris Reborn Shows Real Gameplay",
+    narration_script:
+      "The Expanse: Osiris Reborn finally showed real gameplay. Follow Pulse [PAUSE] Gaming so you never miss a beat.",
+    tts_script:
+      "The Expanse: Osiris Reborn finally showed real gameplay. Follow Pulse [PAUSE] Gaming so you never miss a beat.",
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    workbenchReport: {
+      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      jobs: [workbenchJob("story-clean-spoken", artifactDir)],
+    },
+    generatedAt: "2026-05-22T06:00:15.000Z",
+    generateTtsForStory: async ({ story, text, outputPath, provider }) => {
+      calls.push({ story, text, outputPath, provider });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].text,
+    "The Expanse Osiris Reborn finally showed real gameplay. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.equal(calls[0].story.tts_script, calls[0].text);
+  assert.doesNotMatch(calls[0].text, /:|\[PAUSE\]/);
+});
+
 test("goal audio materializer force-regenerates a workbench ready pair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-force-ready-"));
   const artifactDir = await makePackage(root, "story-force-ready", {

@@ -122,7 +122,17 @@ function sourceLabel(story) {
     story?.publisher ||
     story?.source_name ||
     "Verified source";
-  const clean = normaliseText(raw).replace(/^r\//i, "");
+  const clean = normaliseText(raw)
+    .replace(/^r\//i, "")
+    .replace(/\bRockPaperShotgun\b/gi, "Rock Paper Shotgun")
+    .replace(/\bPCGamer\b/gi, "PC Gamer")
+    .replace(/\bGameSpot\b/gi, "GameSpot")
+    .replace(/\bGamesRadar\b/gi, "GamesRadar")
+    .replace(/\bVideoGamesChronicle\b/gi, "VGC")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
   return clean ? clean.toUpperCase() : "VERIFIED SOURCE";
 }
 
@@ -380,6 +390,13 @@ function renderTimelineBullets(bullets) {
     .join("\n");
 }
 
+function contextNumberFontSize(value) {
+  const text = normaliseText(value).replace(/\s+/g, "");
+  if (text.length >= 14) return 108;
+  if (text.length >= 10) return 128;
+  return 152;
+}
+
 function applySpecToTemplate(kind, templateHtml, spec, channelId) {
   let html = templateHtml;
 
@@ -388,6 +405,10 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
     html = replaceElementText(html, "label", spec.label);
     html = replaceElementText(html, "sublabel", spec.sublabel);
   } else if (kind === "context") {
+    html = html.replace(
+      /(\.number\s*\{[^}]*?font-size:\s*)\d+(px;)/,
+      `$1${contextNumberFontSize(spec.number)}$2`,
+    );
     html = replaceElementText(html, "kicker", spec.kicker);
     html = replaceElementText(html, "number", spec.number);
     html = replaceElementText(html, "sub", spec.sub);

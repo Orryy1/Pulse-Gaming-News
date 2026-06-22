@@ -53,6 +53,41 @@ test("counts repeated windows from one direct-video URL as one motion family", (
   assert.ok(profile.blockers.includes("visual_evidence:insufficient_real_visual_source_families"));
 });
 
+test("counts Steam CDN aliases for the same trailer as one motion family", () => {
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            id: "sea-of-thieves-fastly",
+            path: "C:\\repo\\output\\video_cache\\sea_fastly.mp4",
+            source_url:
+              "https://video.fastly.steamstatic.com/store_trailers/1172620/204445374/hash/1773669773/hls_264_master.m3u8?t=new",
+            source_type: "licensed_direct_media_url",
+            media_kind: "direct_video",
+            source_url_kind: "hls_manifest",
+            source_family: "steam_fastly_alias",
+          },
+          {
+            id: "sea-of-thieves-akamai",
+            path: "C:\\repo\\output\\video_cache\\sea_akamai.mp4",
+            source_url:
+              "https://video.akamai.steamstatic.com/store_trailers/1172620/204445374/hash/1773669773/hls_264_master.m3u8?t=old",
+            source_type: "licensed_direct_media_url",
+            media_kind: "direct_video",
+            source_url_kind: "hls_manifest",
+            source_family: "steam_akamai_alias",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 2);
+  assert.equal(profile.direct_video_motion_family_count, 1);
+  assert.equal(profile.real_media_family_count, 1);
+});
+
 test("does not count screenshot-derived local MP4s as direct-video motion evidence", () => {
   const profile = visualEvidenceProfile({
     footageInventory: {

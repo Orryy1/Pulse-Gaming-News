@@ -230,6 +230,86 @@ test("goal owned motion materializer CLI derives jobs from governed story packag
   assert.equal(generatedWorkOrder.jobs[0].actions[0].action_id, "materialise_owned_generated_motion_clips");
 });
 
+test("goal owned motion materializer CLI preserves existing direct-video work orders", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-preserve-workorder-"));
+  const artifactDir = path.join(root, "story-package");
+  const outDir = path.join(root, "out");
+  await fs.ensureDir(outDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "xbox-platform-story",
+    canonical_subject: "Xbox",
+    selected_title: "Xbox's Monetisation Pressure",
+    thumbnail_headline: "XBOX MONEY PRESSURE",
+    first_spoken_line: "Xbox has a monetisation problem players can actually see.",
+    primary_source: "PC Gamer",
+    source_card_label: "PC Gamer",
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "xbox-platform-story",
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { records: [] });
+
+  const directVideoWorkOrderPath = path.join(outDir, "render_input_work_order.json");
+  await fs.outputJson(directVideoWorkOrderPath, {
+    schema_version: 1,
+    mode: "DIRECT_VIDEO_ENRICHMENT_WORK_ORDER",
+    jobs: [
+      {
+        story_id: "xbox-platform-story",
+        artifact_dir: artifactDir,
+        blocker_type: "direct_video_motion_missing",
+        actions: [
+          {
+            action_id: "materialise_validated_real_motion_clips",
+            repair_lane: "validated_real_motion_materialisation",
+          },
+        ],
+      },
+    ],
+  });
+  const storyPackagesPath = path.join(root, "story-packages.json");
+  await fs.outputJson(storyPackagesPath, [
+    { story_id: "xbox-platform-story", artifact_dir: artifactDir },
+  ]);
+
+  const originalLog = console.log;
+  console.log = () => {};
+  let result;
+  try {
+    result = await main([
+      "--work-order",
+      directVideoWorkOrderPath,
+      "--story-packages",
+      storyPackagesPath,
+      "--out-dir",
+      outDir,
+      "--root",
+      root,
+      "--generated-at",
+      "2026-06-22T12:00:00.000Z",
+      "--json",
+    ], {
+      execFileSync: (bin, args) => fs.outputFileSync(args[args.length - 1], Buffer.alloc(2500, 6)),
+      ffprobeDuration: () => 2.8,
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(result.report.summary.materialized_clip_count, 13);
+  const preservedDirectWorkOrder = await fs.readJson(directVideoWorkOrderPath);
+  assert.equal(preservedDirectWorkOrder.mode, "DIRECT_VIDEO_ENRICHMENT_WORK_ORDER");
+  assert.equal(
+    preservedDirectWorkOrder.jobs[0].actions[0].action_id,
+    "materialise_validated_real_motion_clips",
+  );
+  const ownedMotionWorkOrder = await fs.readJson(path.join(outDir, "owned_motion_render_input_work_order.json"));
+  assert.equal(ownedMotionWorkOrder.mode, "LOCAL_OWNED_GENERATED_MOTION_WORK_ORDER");
+  assert.equal(ownedMotionWorkOrder.jobs[0].actions[0].action_id, "materialise_owned_generated_motion_clips");
+  assert.equal(result.written.renderInputWorkOrderPreserved, true);
+});
+
 test("goal owned motion materializer CLI dry-runs without materialising clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-dry-run-"));
   const artifactDir = path.join(root, "story-package");

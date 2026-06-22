@@ -171,6 +171,54 @@ test("Footage Empire does not count stills, cards, invalid clips or repeated sou
   assert.ok(plan.motion_inventory.rejected_local_assets.some((asset) => asset.reason === "clip_not_validated"));
 });
 
+test("Footage Empire counts validated official DASH manifest clips as motion", () => {
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "granblue-dash-motion",
+      title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      full_script:
+        "Granblue Fantasy: Relink has official storefront and PlayStation motion sources for a current demo story.",
+    },
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          story_id: "granblue-dash-motion",
+          entity: "Granblue Fantasy: Relink",
+          source_id: "steam-881020-655426",
+          display_name: "Steam official Granblue trailer",
+          source_tier: "official",
+          source_family: "steam_881020_655426",
+          reference_url: "https://store.steampowered.com/app/881020/Granblue_Fantasy_Relink/",
+          source_url_kind: "dash_manifest",
+          segment_validation_eligible: true,
+          autonomous_motion_candidate: true,
+          allowed_render_use: "official_direct_media_segment_candidate",
+          rights_risk_class: "official_direct_media",
+        },
+      ],
+    },
+    localMotionClips: [
+      {
+        id: "dash-motion",
+        source_family: "steam_881020_655426",
+        path: "https://video.fastly.steamstatic.com/store_trailers/881020/655426/hash/dash_h264.mpd?t=1",
+        durationS: 5,
+        validated: true,
+        source_type: "official_platform_product_page",
+        provider: "licensed_direct_media_acquisition",
+        allowed_render_use: "official_direct_media_segment_candidate",
+        rights_risk_class: "official_direct_media",
+      },
+    ],
+  });
+
+  assert.equal(plan.motion_budget.available_motion_clips, 1);
+  assert.equal(plan.motion_budget.available_distinct_families, 1);
+  assert.equal(plan.motion_inventory.accepted_local_clips[0].source_kind, "dash_manifest");
+  assert.equal(plan.motion_inventory.accepted_local_clips[0].trusted_source_evidence, true);
+  assert.equal(plan.motion_inventory.rejected_local_assets.length, 0);
+});
+
 test("Footage Empire prioritises licensed and segment-valid sources for local intake without starting downloads", () => {
   const plan = buildFootageEmpirePlan({
     story: forzaSteamStory(),

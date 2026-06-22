@@ -3650,6 +3650,90 @@ test("production cutover infers normal production lane for 50s Visual V4 renders
   assert.equal(candidate.duration_seconds, 50.6);
 });
 
+test("production cutover refreshes stale platform duration evidence from the final render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-duration-refresh-"));
+  const ready = await makeCutoverPackage(root, "duration-refresh-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Sea of Thieves",
+    title: "Sea of Thieves Custom Seas Could Split Crews",
+  });
+  const artifactDir = ready.artifact_dir;
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "duration-refresh-story",
+    canonical_subject: "Sea of Thieves",
+    canonical_game: "Sea of Thieves",
+    canonical_angle: "Custom Seas changes the public sandbox",
+    primary_source: "Xbox Wire",
+    selected_title: "Sea of Thieves Custom Seas Could Split Crews",
+    thumbnail_headline: "SEA OF THIEVES CUSTOM SEAS",
+    first_spoken_line: "Sea of Thieves just made its biggest social gamble in years.",
+    narration_script:
+      "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Custom Seas lets crews build private sessions and assign up to 24 players. That risk turns Rare's best creator tool into Sea of Thieves' biggest community split. Follow Pulse Gaming so you never miss a beat.",
+    description: "Sea of Thieves is testing Custom Seas. Source: Xbox Wire.",
+    source_card_label: "Xbox Wire",
+    duration_variant_repair_strategy: "normal_production_safe_script_expansion",
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "GREEN",
+    duration_lane: "normal_production",
+    duration_contract_strategy: "normal_production_safe_script_expansion",
+    rendered_duration_s: 62.369,
+    duration_contract_updated_at: "2026-06-22T09:47:11.291Z",
+    outputs: {
+      youtube_shorts: {
+        duration_strategy: "normal_production_safe_script_expansion",
+        duration_warnings: [],
+      },
+      tiktok: {
+        duration_strategy: "normal_production_safe_script_expansion",
+        creator_rewards_eligible: true,
+        creator_rewards_duration_seconds: { min: 61, max: 90 },
+        duration_warnings: [],
+      },
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: path.join(artifactDir, "narration.mp3"),
+    word_timestamps_path: path.join(artifactDir, "narration_timestamps.json"),
+  });
+  await fs.outputFile(path.join(artifactDir, "narration.mp3"), Buffer.alloc(4000, 2));
+  await fs.outputJson(path.join(artifactDir, "narration_timestamps.json"), {
+    words: [{ word: "Sea", start: 0, end: 0.3 }],
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "duration-refresh-story",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    sfx_mix_policy_version: STUDIO_V4_SFX_MIX_POLICY_VERSION,
+    voice_mix_policy_version: STUDIO_V4_VOICE_MIX_POLICY_VERSION,
+    visual_design_policy_version: STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 40.403,
+    clips: 28,
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [ready],
+    generatedAt: "2026-06-22T09:55:06.373Z",
+  });
+
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 1);
+  const candidate = plan.scheduler_bridge.candidates[0];
+  assert.equal(candidate.duration_seconds, 40.403);
+  assert.equal(candidate.platform_publish_manifest.rendered_duration_s, 40.403);
+  assert.equal(candidate.platform_publish_manifest.duration_contract_updated_at, "2026-06-22T09:55:06.373Z");
+  assert.equal(candidate.platform_publish_manifest.outputs.tiktok.creator_rewards_eligible, false);
+  assert.ok(
+    candidate.platform_publish_manifest.outputs.tiktok.duration_warnings.includes("below_creator_rewards_duration"),
+  );
+  const persisted = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.equal(persisted.rendered_duration_s, 40.403);
+  assert.equal(persisted.outputs.tiktok.creator_rewards_eligible, false);
+});
+
 test("production cutover exposes the actual selected render deck to scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-render-deck-"));
   const ready = await makeCutoverPackage(root, "selected-render-deck", {

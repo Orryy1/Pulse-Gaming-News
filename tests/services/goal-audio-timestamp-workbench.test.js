@@ -582,6 +582,57 @@ test("audio timestamp workbench blocks fresh files when Whisper aligned an old r
   assert.equal(report.jobs[0].timestamps.reason, "timestamp_transcript_mismatch_after_canonical_repair");
 });
 
+test("audio timestamp workbench blocks old ASR-clean audio when the current canonical script changed", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-current-script-mismatch-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");
+  const audioDir = path.join(root, "output", "audio");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-audio",
+    narration_script:
+      "Black Ops 1 and 2 just turned nostalgia into a price test. IGN reports PlayStation listings for the two classic Black Ops games have fans watching whether these ports become sensible re-releases or expensive nostalgia. The uncomfortable part is that these campaigns carry emotional value, but the storefront still has to justify the price. Players will forgive a paid port faster if the package is clear: campaign access, stable performance and honest multiplayer expectations. Follow Pulse Gaming so you never miss a beat.",
+  });
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: [{ word: "Black", start: 0, end: 0.2 }],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        model: "tiny.en",
+        transcript:
+          "Black Ops 1 and 2 just turned nostalgia into a price test. The next thing to watch is whether the official follow-up gives players a clear date, platform detail or gameplay proof. That is where a small update either becomes a real player decision or stays as background context. A sharper follow-up should answer the player question directly instead of making the announcement feel bigger than it is. Follow Pulse Gaming so you never miss a beat.",
+        script_expected_word_count: 82,
+        script_actual_word_count: 82,
+        script_matched_word_count: 82,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        audioJob({
+          artifact_dir: artifactDir,
+          blockers: [],
+        }),
+      ],
+    },
+    localTtsDoctorReport: { verdict: "green" },
+    providerPreference: "local",
+    generatedAt: "2026-05-28T03:45:00.000Z",
+  });
+
+  assert.equal(report.summary.ready_audio_timestamp_pair_count, 0);
+  assert.equal(report.summary.requires_generation_count, 1);
+  assert.equal(report.jobs[0].status, "requires_audio_timestamp_generation");
+  assert.deepEqual(report.jobs[0].missing, ["narration_audio", "word_timestamps"]);
+  assert.equal(report.jobs[0].audio.reason, "timestamp_current_script_mismatch");
+  assert.equal(report.jobs[0].timestamps.reason, "timestamp_current_script_mismatch");
+});
+
 test("audio timestamp workbench does not let legacy timing files hide bad ASR regeneration evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-asr-evidence-priority-"));
   const audioDir = path.join(root, "output", "audio");

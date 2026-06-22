@@ -209,6 +209,79 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
+test("goal production render materializer prefers repaired materialised motion over stale rights-ledger motion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-fresh-motion-"));
+  const artifactDir = await makePackage(root, "fresh-motion-wins");
+  const staleClips = ["stale-1.mp4", "stale-2.mp4", "stale-duplicate.mp4"];
+  const freshClips = ["fresh-1.mp4", "fresh-2.mp4", "fresh-3.mp4"];
+  await Promise.all(
+    [...staleClips, ...freshClips].map((clipName) =>
+      fs.outputFile(path.join(artifactDir, clipName), Buffer.alloc(2048, clipName.charCodeAt(0))),
+    ),
+  );
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: staleClips.map((clipName, index) => ({
+      id: `stale-rights-${index + 1}`,
+      path: path.join(artifactDir, clipName),
+      source_url: index === 2
+        ? "https://video.example.com/stale-trailer-1.m3u8"
+        : `https://video.example.com/stale-trailer-${index + 1}.m3u8`,
+      source_type: "steam_movie",
+      media_kind: "direct_video",
+      asset_type: "direct_video_motion_clip",
+      source_family: `stale_motion_${index + 1}`,
+      licence_basis: "official_reference_transformative_editorial_use",
+      commercial_use_allowed: true,
+      approval_status: "approved",
+    })),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    repaired_at: "2026-06-22T12:45:00.000Z",
+    clips: freshClips.map((clipName, index) => ({
+      id: `fresh-motion-${index + 1}`,
+      path: path.join(artifactDir, clipName),
+      source_url: `https://video.example.com/fresh-trailer-${index + 1}.m3u8`,
+      source_type: "steam_movie",
+      media_kind: "direct_video",
+      source_family: `fresh_motion_${index + 1}`,
+      counts_towards_motion_readiness: true,
+      materialized: true,
+      licence_basis: "official_reference_transformative_editorial_use",
+      commercial_use_allowed: true,
+      approval_status: "approved",
+    })),
+  });
+  const calls = [];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("fresh-motion-wins", artifactDir)] },
+    generatedAt: "2026-06-22T12:46:00.000Z",
+    force: true,
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 5));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 42,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.deepEqual(calls[0].video_clips, freshClips.map((clipName) => path.join(artifactDir, clipName)));
+  assert.deepEqual(
+    calls[0].visual_v4_bridge_video_clips.map((clip) => clip.source_family),
+    ["fresh_motion_1", "fresh_motion_2", "fresh_motion_3"],
+  );
+});
+
 test("goal production render materializer persists renderer loudness evidence beside the story package", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-loudness-"));
   const artifactDir = await makePackage(root, "story-loudness");

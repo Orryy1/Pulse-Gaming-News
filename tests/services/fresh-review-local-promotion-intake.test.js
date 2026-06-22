@@ -5,6 +5,7 @@ const test = require("node:test");
 
 const {
   buildFreshReviewLocalPromotionIntake,
+  qualityFailuresForDraft,
   storyDraftFromReprocessedRow,
 } = require("../../lib/fresh-review-local-promotion-intake");
 const { parseArgs } = require("../../tools/fresh-review-local-promotion-intake");
@@ -66,6 +67,25 @@ test("fresh review local promotion intake builds local promotion stories without
       source_bound_rewrite_work_orders: [{ story_id: "rss_black_ops_ports" }],
     },
     now: new Date("2026-06-21T23:00:00.000Z"),
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_black_ops_ports",
+        title: "Black Ops Classics Face A Price Test",
+        suggested_title: "Black Ops Classics Face A Price Test",
+        source_name: "IGN",
+        article_url:
+          "https://www.ign.com/articles/call-of-duty-black-ops-1-and-2-listings-have-fans-fearing-pricey-playstation-ports",
+        source_type: "rss",
+        source_published_at: "2026-06-21T22:00:00.000Z",
+        source_confidence_score: 90,
+        confirmed_claims: [
+          "IGN reports PlayStation listings for Call of Duty: Black Ops 1 and 2 have fans watching pricing and port details.",
+        ],
+        full_script:
+          "Black Ops 1 and 2 just turned nostalgia into a price test. IGN reports PlayStation listings for the two classic Call of Duty games, and that puts the pressure on price, features and whether these are proper preservation releases. The player question is simple: do these ports make old campaigns easy to revisit, or do they ask fans to pay premium money for convenience? Listings do not prove final pricing, release timing or multiplayer support, so the useful move is to wait for the official package detail. If Activision prices this cleanly, it gets an easy goodwill win. If not, the backlash writes itself before launch. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
   });
 
   assert.equal(report.mode, "FRESH_REVIEW_LOCAL_PROMOTION_INTAKE");
@@ -105,6 +125,45 @@ test("fresh review local promotion intake rejects generic source-bound scaffolds
   assert.equal(report.summary.local_promotion_story_count, 0);
   assert.equal(report.repair_results[0].output_story_ready, false);
   assert.ok(report.repair_results[0].quality_failures.includes("local_intake:generic_player_question_script"));
+});
+
+test("fresh review local promotion intake rejects reusable follow-up scaffold language", () => {
+  const failures = qualityFailuresForDraft({
+    selected_title: "Cyberpunk 2077's Trust Debt",
+    canonical_subject: "Cyberpunk 2077",
+    full_script:
+      "CD Projekt Red is still paying for Cyberpunk 2077's launch. The next thing to watch is whether the official follow-up gives players a clear date, platform detail or gameplay proof. That is where a small update either becomes a real player decision or stays as background context. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.ok(failures.includes("local_intake:generic_follow_up_scaffold_script"));
+});
+
+test("fresh review local promotion intake rejects internal value scaffold language", () => {
+  const failures = qualityFailuresForDraft({
+    selected_title: "Black Ops Classics Face A Price Test",
+    canonical_subject: "Call of Duty: Black Ops",
+    confirmed_claims: [
+      "IGN reports PlayStation listings for Black Ops 1 and 2 have fans watching pricing and port details.",
+    ],
+    full_script:
+      "Black Ops 1 and 2 just turned nostalgia into a price test. For viewers, the immediate value is knowing whether this affects a download, a setting, a wishlist or a purchase. The story does not need fake drama; it needs the player consequence to land clearly. If later footage, pricing or timing changes the picture, that becomes a new story. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.ok(failures.includes("local_intake:generic_value_scaffold_script"));
+});
+
+test("fresh review local promotion intake rejects horror-angle contamination on non-horror stories", () => {
+  const failures = qualityFailuresForDraft({
+    selected_title: "GTA 6 Gets A Date",
+    canonical_subject: "GTA 6",
+    confirmed_claims: [
+      "GameSpot reports GTA 6 release date was confirmed again by Take-Two's CEO.",
+    ],
+    full_script:
+      "GTA 6 finally has a date, and now tone has to do the hard work. That matters because a date turns a horror reveal from atmosphere into a real buy, wait or skip decision. A date does not prove quality by itself, especially for a licensed horror game that has to make the name feel playable. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.ok(failures.includes("local_intake:semantic_contamination_horror_angle"));
 });
 
 test("fresh review local promotion intake CLI is registered", () => {

@@ -8,6 +8,7 @@ const path = require("node:path");
 
 const {
   buildControlledRestartPack,
+  buildControlledRestartPackFromWorkspace,
   writeControlledRestartPack,
 } = require("../../lib/ops/controlled-restart-pack");
 
@@ -201,6 +202,74 @@ test("controlled restart pack accepts autonomous guarded-dispatch-ready enabled 
   });
 });
 
+test("controlled restart pack workspace prefers scheduler report overlapping current dry-run", async () => {
+  await withTempDir(async (root) => {
+    const id = "current-dry-run-story";
+    await writeStory(root, id, "Cyberpunk 2077 Trust Debt Lands", {
+      subject: "Cyberpunk 2077",
+      source: "PC Gamer",
+      thumbnail: "CYBERPUNK TRUST DEBT",
+    });
+    const artifactDir = path.join(root, "output", "goal-proof", "batch", id);
+    await fs.ensureDir(path.join(root, "test", "output"));
+    await fs.ensureDir(path.join(root, "output", "goal-contract", "scheduler_preflight_current"));
+    await fs.writeJson(path.join(root, "test", "output", "next_publish_candidates.json"), {
+      generated_at: "2026-06-22T10:00:00.000Z",
+      candidates: [],
+    });
+    await fs.writeJson(
+      path.join(root, "output", "goal-contract", "scheduler_preflight_current", "scheduler_preflight_report.json"),
+      {
+        generated_at: "2026-06-22T10:01:00.000Z",
+        candidates: [
+          {
+            id,
+            title: "Cyberpunk 2077 Trust Debt Lands",
+            status: "publish_ready",
+            score: 100,
+            duration_seconds: 43,
+            source: {
+              exported_path: path.join(artifactDir, "visual_v4_render.mp4"),
+            },
+            preflight_qa: {
+              status: "pass",
+              blockers: [],
+              warnings: [],
+              checks: {
+                timestamp_alignment: {
+                  result: "pass",
+                  evidence: { source: "local_whisper_word_alignment" },
+                },
+              },
+            },
+          },
+        ],
+      },
+    );
+    await fs.writeJson(path.join(root, "output", "goal-contract", "dry_run_publish_plan.json"), {
+      generated_at: "2026-06-22T10:02:00.000Z",
+      overall_verdict: "AMBER",
+      summary: { ready_story_count: 1 },
+      actions: [
+        guardedDispatchAction(id, "youtube_shorts"),
+        guardedDispatchAction(id, "instagram_reels"),
+        guardedDispatchAction(id, "facebook_reels"),
+        action(id, "tiktok", false),
+      ],
+    });
+
+    const { report } = await buildControlledRestartPackFromWorkspace({
+      root,
+      outDir: path.join(root, "output", "goal-contract"),
+      generatedAt: "2026-06-22T10:03:00.000Z",
+      candidateLimit: 1,
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [id]);
+    assert.equal(report.scheduler_preflight.generated_at, "2026-06-22T10:01:00.000Z");
+  });
+});
+
 test("controlled restart pack rejects HyperFrames candidates without passing premium-shell proof", async () => {
   await withTempDir(async (root) => {
     const id = "hyperframes-shell-missing";
@@ -235,6 +304,77 @@ test("controlled restart pack rejects HyperFrames candidates without passing pre
           {
             id,
             title: "HyperFrames Story Needs Shell Proof",
+            status: "publish_ready",
+            score: 100,
+            duration_seconds: 44,
+            source: {
+              exported_path: path.join(artifactDir, "visual_v4_render.mp4"),
+            },
+            preflight_qa: {
+              status: "pass",
+              blockers: [],
+              warnings: [],
+              checks: {
+                timestamp_alignment: {
+                  result: "pass",
+                  evidence: { source: "local_whisper_word_alignment" },
+                },
+              },
+            },
+          },
+        ],
+      },
+      strictDryRunPlan: {
+        overall_verdict: "AMBER",
+        actions: [
+          guardedDispatchAction(id, "youtube_shorts"),
+          guardedDispatchAction(id, "instagram_reels"),
+          guardedDispatchAction(id, "facebook_reels"),
+          action(id, "tiktok", false),
+        ],
+      },
+      platformStatusMatrix: {},
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), []);
+    const rejected = report.rejected_restart_candidates.find((candidate) => candidate.story_id === id);
+    assert.ok(rejected, "candidate should be rejected");
+    assert.ok(rejected.blockers.includes("hyperframes_premium_shell_not_passed"));
+  });
+});
+
+test("controlled restart pack rejects HyperFrames pass verdict without per-card shell proof", async () => {
+  await withTempDir(async (root) => {
+    const id = "hyperframes-shell-countless-pass";
+    await writeStory(root, id, "HyperFrames Shell Count Must Be Proven", {
+      subject: "HyperFrames Shell",
+      source: "Xbox Wire",
+      thumbnail: "SHELL COUNT NEEDED",
+    });
+    const artifactDir = path.join(root, "output", "goal-proof", "batch", id);
+    await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+      renderer: "visual_v4_production",
+      rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+      final_publish_render: true,
+      output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+      rendered_duration_s: 44,
+      hyperframesCardCount: 4,
+      hyperframesPremiumShellGate: {
+        verdict: "pass",
+        blockers: [],
+      },
+      render_invocation_mode: "final_production_render",
+    });
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-22T05:30:00.000Z",
+      candidateLimit: 1,
+      candidateReport: {
+        candidates: [
+          {
+            id,
+            title: "HyperFrames Shell Count Must Be Proven",
             status: "publish_ready",
             score: 100,
             duration_seconds: 44,

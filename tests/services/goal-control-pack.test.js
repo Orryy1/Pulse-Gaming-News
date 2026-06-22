@@ -300,6 +300,45 @@ test("goal control pack preserves guarded-plan zero after stale dry-run actions 
   }
 });
 
+test("goal control pack blocks handoff when controlled restart pack is red", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-pack-restart-red-"));
+  try {
+    const outDir = path.join(root, "output", "goal-contract");
+    await writeFixture(outDir);
+    await fs.writeJson(path.join(outDir, "controlled_restart_pack.json"), {
+      schema_version: 1,
+      generated_at: "2026-06-22T11:59:21.652Z",
+      mode: "CONTROLLED_RESTART_RELEASE_MANAGEMENT",
+      verdict: "RED",
+      safe_to_publish_boolean: false,
+      operator_can_manually_approve_now: false,
+      blockers: ["insufficient_restart_candidates:1/3"],
+      selected_restart_candidates: [{ story_id: "story-1", title: "Only Ready Story" }],
+    });
+
+    const pack = await buildGoalControlPack({
+      root,
+      outDir,
+      generatedAt: "2026-06-22T12:05:00.000Z",
+    });
+
+    assert.equal(pack.executor_arm_status.verdict, "GREEN");
+    assert.equal(pack.current_readiness_report.overall_verdict, "red");
+    assert.equal(pack.current_readiness_report.ready_story_count, 0);
+    assert.equal(pack.current_readiness_report.guarded_dispatch_ready_action_count, 0);
+    assert.equal(pack.current_readiness_report.executor_handoff_ready_action_count, 0);
+    assert.deepEqual(pack.current_readiness_report.blockers, ["insufficient_restart_candidates:1/3"]);
+    assert.equal(pack.current_readiness_report.controlled_restart.selected_story_count, 1);
+    assert.equal(pack.operator_approval_pack.current_state.controlled_restart_verdict, "RED");
+    assert.equal(pack.operator_approval_pack.current_state.executor_handoff_ready, false);
+    assert.equal(pack.operator_approval_pack.controlled_batch.ready_action_count, 0);
+    assert.equal(pack.operator_approval_pack.exact_next_command, null);
+    assert.match(pack.markdown.next_actions, /insufficient_restart_candidates:1\/3/);
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
 test("goal control pack CLI parses defaults and output override", () => {
   const args = parseArgs(["--root", "C:/repo", "--out-dir", "out", "--generated-at", "now", "--json"]);
   assert.equal(args.root, "C:/repo");

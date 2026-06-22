@@ -474,6 +474,41 @@ test("goal dry-run publisher blocks HyperFrames premium renders without shell pr
   );
 });
 
+test("goal dry-run publisher blocks partial HyperFrames renders without shell proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-partial-shell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "hf-partial-shell-missing",
+    "GREEN",
+    "Forza Horizon 6 Exposes Xbox's Steam Bet",
+    {
+      renderManifestPatch: {
+        premiumLane: {
+          rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+          verdict: "partial",
+          hyperframesCardCount: 2,
+        },
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-21T22:30:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_not_passed"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_missing"));
+});
+
 test("goal dry-run publisher defers externally blocked or operator-disabled platforms without blocking the story", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-state-"));
   const storyPackage = await makeStoryPackage(root);
@@ -1316,6 +1351,42 @@ test("goal dry-run publisher requires scheduler preflight pass when a candidate 
       .find((story) => story.story_id === "preflight-blocked")
       .blockers.includes("preflight_qa_blocked:content:gold_standard:first_3_seconds_hook_below_reference"),
   );
+});
+
+test("goal dry-run publisher counts story preflight evidence for already-public bridge stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-preflight-story-"));
+  const storyPackage = await makeStoryPackage(root, "already-public", "GREEN", "Granblue Fantasy Relink Demo Is Proof");
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T09:05:00.000Z",
+    candidatePreflightReport: {
+      totals: { stories_seen: 1, candidates: 0, excluded: 1 },
+      candidates: [],
+      excluded: [
+        {
+          id: "already-public",
+          reason: "already_has_public_platform_id:youtube_post_id,youtube_url,instagram_media_id,facebook_post_id",
+        },
+      ],
+      preflight_qa: {
+        enabled: true,
+        candidates_checked: 0,
+      },
+      story_preflight: {
+        enabled: true,
+        mode: "read_only",
+        story_id: "already-public",
+        status: "blocked",
+        blockers: ["visual_entity_match:direct_motion_subject_mismatch"],
+      },
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.preflight_checked_story_count, 1);
+  assert.equal(plan.skipped_stories[0].status, "already_public");
 });
 
 test("goal dry-run publisher accepts statusless cutover bridge candidates only with complete publish-ready evidence", async () => {
@@ -2748,6 +2819,77 @@ test("goal dry-run publisher blocks repeated direct-video windows from one sourc
       "visual_evidence:insufficient_real_visual_source_families",
     ),
   );
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.distinct_motion_families_ready,
+    false,
+  );
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.distinct_motion_family_count,
+    1,
+  );
+});
+
+test("goal dry-run publisher blocks repeated direct-motion segments even when enough unique sources exist", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-repeated-segment-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "repeated-segment-story",
+    "GREEN",
+    "Cyberpunk 2077 Carries A Trust Debt",
+    { canonicalSubject: "Cyberpunk 2077" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const clips = Array.from({ length: 7 }, (_, index) => {
+    const sourceIndex = index === 6 ? 0 : index;
+    return {
+      id: `cyberpunk-segment-${index + 1}`,
+      path: `motion/cyberpunk-segment-${index + 1}.mp4`,
+      source_url: `https://video.akamai.steamstatic.com/store_trailers/1091500/${sourceIndex + 1}/hash/hls_264_master.m3u8?t=1700000000`,
+      source_type: "steam_movie",
+      media_kind: "direct_video",
+      source_url_kind: "hls_manifest",
+      source_family: `steam_1091500_window_${sourceIndex + 1}`,
+      motion_family: `steam_1091500_window_${sourceIndex + 1}`,
+      mediaStartS: 36,
+      durationS: 5,
+      rights_risk_class: "official_reference_transformative_editorial_use",
+      licence_basis: "official_reference_transformative_editorial_use",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      counts_towards_motion_readiness: true,
+      materialized: true,
+    };
+  });
+  await Promise.all(
+    clips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "repeated-segment-story",
+    video_clips: clips,
+    visual_v4_bridge_video_clips: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+    distinct_motion_family_count: 6,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T12:40:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:repeated_direct_motion_segment"));
 });
 
 test("goal dry-run publisher blocks owned explainer decks unless a verified source exception is recorded", async () => {

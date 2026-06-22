@@ -276,6 +276,103 @@ test("controlled restart pack accepts partial enabled dispatch when other enable
   });
 });
 
+test("controlled restart pack excludes terminal duplicates ignored by guarded dispatch preflight", async () => {
+  await withTempDir(async (root) => {
+    const ids = ["terminal-dupe", "safe-gta", "safe-halo"];
+    const titles = {
+      "terminal-dupe": "Cyberpunk 2077 Trust Debt Lands",
+      "safe-gta": "GTA 6 Preorders Have A Price Risk",
+      "safe-halo": "Halo's PS5 Account Catch",
+    };
+    for (const id of ids) {
+      await writeStory(root, id, titles[id], {
+        subject: id === "safe-gta" ? "GTA 6" : id === "safe-halo" ? "Halo Campaign Evolved" : "Cyberpunk 2077",
+        source: id === "safe-halo" ? "Eurogamer" : id === "safe-gta" ? "GameSpot" : "PC Gamer",
+      });
+    }
+
+    const candidateFor = (id, score) => ({
+      id,
+      title: titles[id],
+      status: "publish_ready",
+      score,
+      duration_seconds: 44,
+      source: {
+        exported_path: path.join(root, "output", "goal-proof", "batch", id, "visual_v4_render.mp4"),
+      },
+      preflight_qa: {
+        status: "pass",
+        blockers: [],
+        warnings: [],
+        checks: {
+          timestamp_alignment: {
+            result: "pass",
+            evidence: { source: "local_whisper_word_alignment" },
+          },
+        },
+      },
+    });
+
+    const report = await buildControlledRestartPack({
+      root,
+      generatedAt: "2026-06-22T23:30:00.000Z",
+      candidateLimit: 2,
+      candidateReport: {
+        candidates: [
+          candidateFor("terminal-dupe", 120),
+          candidateFor("safe-gta", 100),
+          candidateFor("safe-halo", 95),
+        ],
+      },
+      strictDryRunPlan: {
+        overall_verdict: "AMBER",
+        actions: ids.flatMap((id) => [
+          guardedDispatchAction(id, "youtube_shorts"),
+          guardedDispatchAction(id, "instagram_reels"),
+          guardedDispatchAction(id, "facebook_reels"),
+          action(id, "tiktok", false),
+        ]),
+      },
+      guardedDispatchPreflight: {
+        verdict: "GREEN",
+        dispatch_ready_actions: [
+          { story_id: "safe-gta", platform: "youtube_shorts" },
+          { story_id: "safe-gta", platform: "instagram_reels" },
+          { story_id: "safe-gta", platform: "facebook_reels" },
+          { story_id: "safe-halo", platform: "youtube_shorts" },
+          { story_id: "safe-halo", platform: "instagram_reels" },
+          { story_id: "safe-halo", platform: "facebook_reels" },
+        ],
+        ignored_terminal_duplicate_actions: [
+          {
+            story_id: "terminal-dupe",
+            platform: "youtube_shorts",
+            reason: "terminal_duplicate_ignored_from_current_strict_dry_run",
+          },
+        ],
+      },
+    });
+
+    assert.deepEqual(report.selected_restart_candidates.map((candidate) => candidate.story_id), [
+      "safe-halo",
+      "safe-gta",
+    ]);
+    assert.deepEqual(
+      report.guarded_dispatch_plan.actions.map((entry) => `${entry.story_id}:${entry.platform}`),
+      [
+        "safe-halo:youtube_shorts",
+        "safe-halo:instagram_reels",
+        "safe-halo:facebook_reels",
+        "safe-gta:youtube_shorts",
+        "safe-gta:instagram_reels",
+        "safe-gta:facebook_reels",
+      ],
+    );
+    const rejected = report.rejected_restart_candidates.find((candidate) => candidate.story_id === "terminal-dupe");
+    assert.ok(rejected.blockers.includes("guarded_dispatch_action_not_ready:youtube_shorts"));
+  });
+});
+
 test("controlled restart pack trusts verified post-render motion evidence when anti-repeat compacts clip rows", async () => {
   await withTempDir(async (root) => {
     const id = "compacted-motion-story";

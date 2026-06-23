@@ -325,6 +325,54 @@ test("next publish report keeps partial platform stories eligible for missing en
   assert.ok(report.candidates[0].reasons.includes("partial_platform_completion"));
 });
 
+test("next publish report excludes stories when the only missing enabled platform is duplicate-blocked", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "cyberpunk-terminal-youtube",
+        title: "Cyberpunk 2077's Trust Debt",
+        instagram_media_id: "ig_live_123",
+        facebook_post_id: "fb_live_123",
+        youtube_error: "duplicate_blocked: Similar to existing: \"Cyberpunk 2077's Trust Debt\"",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-06-23T16:05:00.000Z" },
+  );
+
+  assert.equal(report.candidates.length, 0);
+  assert.equal(report.excluded.length, 1);
+  assert.equal(report.excluded[0].id, "cyberpunk-terminal-youtube");
+  assert.match(
+    report.excluded[0].reason,
+    /^enabled_platforms_already_public_or_terminal_duplicate:/,
+  );
+  assert.match(report.excluded[0].reason, /youtube_shorts:duplicate_blocked/);
+});
+
+test("next publish report keeps non-terminal missing platforms while exposing duplicate-blocked platforms", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "youtube-duplicate-needs-reels",
+        title: "Cyberpunk 2077 Trust Still Has A Reels Angle",
+        youtube_error: "duplicate_blocked: Similar to existing upload",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-06-23T16:10:00.000Z" },
+  );
+
+  assert.equal(report.excluded.length, 0);
+  assert.equal(report.candidates[0].id, "youtube-duplicate-needs-reels");
+  assert.deepEqual(
+    report.candidates[0].source.terminal_duplicate_blocked_platforms,
+    ["youtube_shorts"],
+  );
+  assert.deepEqual(
+    report.candidates[0].source.missing_enabled_platforms,
+    ["instagram_reels", "facebook_reels"],
+  );
+});
+
 test("next publish report excludes upstream anti-spam deferred bridge candidates", () => {
   const report = buildNextPublishCandidatesReport(
     [

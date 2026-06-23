@@ -71,6 +71,14 @@ const PUBLIC_PLATFORM_FIELD_GROUPS = {
   x: ["twitter_post_id", "x_post_id"],
 };
 
+const PLATFORM_ERROR_FIELD_GROUPS = {
+  youtube_shorts: ["youtube_error"],
+  tiktok: ["tiktok_error"],
+  instagram_reels: ["instagram_error"],
+  facebook_reels: ["facebook_error"],
+  x: ["twitter_error", "x_error"],
+};
+
 const SCHEDULER_PLATFORM_TO_PUBLISH_PLATFORM = {
   youtube: "youtube_shorts",
   instagram: "instagram_reels",
@@ -254,6 +262,17 @@ function publishedPlatformNames(story = {}) {
     .map(([platform]) => platform);
 }
 
+function errorTextIsDuplicateBlocked(value) {
+  const text = String(value || "").trim();
+  return /\b(?:duplicate_blocked|dupe-blocked)\b/i.test(text);
+}
+
+function terminalDuplicateBlockedPlatformNames(story = {}) {
+  return Object.entries(PLATFORM_ERROR_FIELD_GROUPS)
+    .filter(([, fields]) => fields.some((field) => errorTextIsDuplicateBlocked(story[field])))
+    .map(([platform]) => platform);
+}
+
 function enabledPublishPlatformNames(options = {}) {
   return schedulerGovernancePlatforms(options.env || process.env)
     .map((platform) => SCHEDULER_PLATFORM_TO_PUBLISH_PLATFORM[platform] || platform)
@@ -262,12 +281,16 @@ function enabledPublishPlatformNames(options = {}) {
 
 function missingEnabledPublishPlatformNames(story = {}, options = {}) {
   const published = new Set(publishedPlatformNames(story));
-  return enabledPublishPlatformNames(options).filter((platform) => !published.has(platform));
+  const terminalDuplicate = new Set(terminalDuplicateBlockedPlatformNames(story));
+  return enabledPublishPlatformNames(options).filter((platform) =>
+    !published.has(platform) && !terminalDuplicate.has(platform),
+  );
 }
 
 function hasCompletedEnabledPublishPlatforms(story = {}, options = {}) {
   const publicFields = existingPublicPlatformFields(story);
-  if (!publicFields.length) return false;
+  const terminalDuplicatePlatforms = terminalDuplicateBlockedPlatformNames(story);
+  if (!publicFields.length && !terminalDuplicatePlatforms.length) return false;
   return missingEnabledPublishPlatformNames(story, options).length === 0;
 }
 
@@ -761,7 +784,14 @@ function approvalScore(story = {}) {
 
 function exclusionReason(story = {}, options = {}) {
   const publicFields = existingPublicPlatformFields(story);
+  const terminalDuplicatePlatforms = terminalDuplicateBlockedPlatformNames(story);
   if (hasCompletedEnabledPublishPlatforms(story, options)) {
+    if (terminalDuplicatePlatforms.length) {
+      return `enabled_platforms_already_public_or_terminal_duplicate:${[
+        ...publicFields,
+        ...terminalDuplicatePlatforms.map((platform) => `${platform}:duplicate_blocked`),
+      ].join(",")}`;
+    }
     return `already_has_public_platform_id:${publicFields.join(",")}`;
   }
   const upstreamSkip = upstreamSkippedReason(story, options.upstreamAntiSpamReport || {});
@@ -797,6 +827,7 @@ function scoreCandidate(story = {}, options = {}) {
   const platform = platformReadiness(story);
   const tiktok = tiktokInboxReadiness(story);
   const alreadyPublishedPlatforms = publishedPlatformNames(story);
+  const terminalDuplicatePlatforms = terminalDuplicateBlockedPlatformNames(story);
   const missingEnabledPlatforms = missingEnabledPublishPlatformNames(story, options);
   const baseScore = Number(story.breaking_score || story.score || 0) * 0.12;
   const score = Math.round(
@@ -840,6 +871,7 @@ function scoreCandidate(story = {}, options = {}) {
       content_pillar: story.content_pillar || null,
       exported_path: story.exported_path || null,
       already_published_platforms: alreadyPublishedPlatforms,
+      terminal_duplicate_blocked_platforms: terminalDuplicatePlatforms,
       missing_enabled_platforms: missingEnabledPlatforms,
       public_platform_fields: existingPublicPlatformFields(story),
     },

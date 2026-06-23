@@ -2550,6 +2550,90 @@ test("goal dry-run publisher skips enabled platforms terminal duplicate-blocked 
   assert.equal(plan.summary.terminal_duplicate_evidence_loaded, true);
 });
 
+test("goal dry-run publisher consumes terminal duplicate evidence from scheduler preflight candidates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-preflight-terminal-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "preflight-terminal-duplicate-story",
+    "GREEN",
+    "Cyberpunk 2077's Trust Debt",
+    {
+      alreadyPublishedPlatforms: ["instagram_reels", "facebook_reels"],
+      missingEnabledPlatforms: ["youtube_shorts"],
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-23T16:20:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "preflight-terminal-duplicate-story",
+          status: "publish_ready",
+          source: {
+            terminal_duplicate_blocked_platforms: ["youtube_shorts"],
+            missing_enabled_platforms: ["youtube_shorts"],
+          },
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.planned_action_count, 0);
+  assert.equal(
+    plan.skipped_stories[0].status,
+    "enabled_platforms_already_public_or_terminal_duplicate",
+  );
+  assert.deepEqual(plan.skipped_stories[0].terminal_duplicate_blocked_platforms, [
+    "youtube_shorts",
+  ]);
+  assert.deepEqual(plan.skipped_stories[0].missing_enabled_platforms, []);
+});
+
+test("goal dry-run publisher skips scheduler-preflight excluded terminal duplicate stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-excluded-terminal-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "excluded-terminal-duplicate-story",
+    "GREEN",
+    "Cyberpunk 2077's Trust Debt",
+    {
+      alreadyPublishedPlatforms: ["instagram_reels", "facebook_reels"],
+      missingEnabledPlatforms: ["youtube_shorts"],
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-23T17:18:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [],
+      excluded: [
+        {
+          id: "excluded-terminal-duplicate-story",
+          reason:
+            "enabled_platforms_already_public_or_terminal_duplicate:instagram_media_id,facebook_post_id,youtube_shorts:duplicate_blocked",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(
+    plan.skipped_stories[0].status,
+    "enabled_platforms_already_public_or_terminal_duplicate",
+  );
+  assert.match(plan.skipped_stories[0].reason, /youtube_shorts:duplicate_blocked/);
+});
+
 test("goal dry-run publisher skips already-public enabled platforms before missing scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-published-no-preflight-"));
   const storyPackage = await makeStoryPackage(

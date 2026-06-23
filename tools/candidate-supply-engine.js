@@ -190,7 +190,9 @@ async function main(argv = process.argv) {
 
   if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   else process.stdout.write(markdown);
-  process.stderr.write(`[candidate-supply] out=${path.relative(ROOT, outDir)}\n`);
+  if (!args.json || report.verdict === "red") {
+    process.stderr.write(`[candidate-supply] out=${path.relative(ROOT, outDir)}\n`);
+  }
   if (report.verdict === "red") process.exitCode = 2;
   return { exitCode: process.exitCode || 0, report };
 }

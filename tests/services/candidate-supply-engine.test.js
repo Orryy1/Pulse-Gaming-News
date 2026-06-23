@@ -19,6 +19,7 @@ const {
 } = require("../../lib/ops/candidate-supply");
 const {
   buildFreshCandidateReport,
+  main,
   parseArgs,
 } = require("../../tools/candidate-supply-engine");
 const nextCandidates = require("../../tools/next-publish-candidates");
@@ -137,6 +138,115 @@ test("fresh candidate report enables media-house preflight for supply monitor tr
   await buildFreshCandidateReport({ limit: 5 });
 
   assert.equal(attachedOptions.mediaHouseQaEnabled, true);
+});
+
+test("candidate supply CLI keeps AMBER json output off stderr for automation consumers", async (t) => {
+  const original = {
+    getStories: db.getStories,
+    readBridgeCandidateManifest: nextCandidates.readBridgeCandidateManifest,
+    readOptionalJson: nextCandidates.readOptionalJson,
+    selectCandidateSourceStories: nextCandidates.selectCandidateSourceStories,
+    buildNextPublishCandidatesReport: nextCandidates.buildNextPublishCandidatesReport,
+    attachPreflightQa: nextCandidates.attachPreflightQa,
+    stdoutWrite: process.stdout.write,
+    stderrWrite: process.stderr.write,
+  };
+  t.after(() => {
+    Object.assign(db, { getStories: original.getStories });
+    Object.assign(nextCandidates, {
+      readBridgeCandidateManifest: original.readBridgeCandidateManifest,
+      readOptionalJson: original.readOptionalJson,
+      selectCandidateSourceStories: original.selectCandidateSourceStories,
+      buildNextPublishCandidatesReport: original.buildNextPublishCandidatesReport,
+      attachPreflightQa: original.attachPreflightQa,
+    });
+    process.stdout.write = original.stdoutWrite;
+    process.stderr.write = original.stderrWrite;
+  });
+
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-json-"));
+  const now = new Date().toISOString();
+  db.getStories = async () => [
+    {
+      id: "rss_single_ready",
+      title: "Nintendo confirms one Switch 2 gameplay trailer",
+      source_type: "rss",
+      subreddit: "IGN",
+      url: "https://www.ign.com/articles/switch-2-gameplay",
+      timestamp: now,
+    },
+  ];
+  nextCandidates.readBridgeCandidateManifest = async () => ({ candidates: [], candidate_count: 0 });
+  nextCandidates.readOptionalJson = async () => ({});
+  nextCandidates.selectCandidateSourceStories = ({ liveStories, bridgeManifest }) => ({
+    stories: liveStories,
+    bridge_manifest: bridgeManifest,
+  });
+  nextCandidates.buildNextPublishCandidatesReport = () => ({
+    generated_at: now,
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [
+      candidate("rss_single_ready", {
+        source_manifest: {
+          primary_source: {
+            name: "IGN",
+            url: "https://www.ign.com/articles/switch-2-gameplay",
+            published_at: now,
+          },
+          source_age_policy_hours: 168,
+        },
+        preflight_qa: {
+          status: "pass",
+          blockers: [],
+          checks: {
+            source_age: {
+              result: "pass",
+              evidence: {
+                source_published_at: now,
+                policy_hours: 168,
+              },
+            },
+            media_house: {
+              result: "pass",
+              evidence: {
+                verdict: "GREEN",
+                shorts_feed_competition_report: { status: "standout", score: 88 },
+                shorts_attention_report: { status: "pass" },
+              },
+            },
+          },
+        },
+      }),
+    ],
+  });
+  nextCandidates.attachPreflightQa = async () => {};
+
+  let stdout = "";
+  let stderr = "";
+  process.stdout.write = (chunk, ...args) => {
+    stdout += String(chunk);
+    if (typeof args.at(-1) === "function") args.at(-1)();
+    return true;
+  };
+  process.stderr.write = (chunk, ...args) => {
+    stderr += String(chunk);
+    if (typeof args.at(-1) === "function") args.at(-1)();
+    return true;
+  };
+
+  const result = await main([
+    "node",
+    "tools/candidate-supply-engine.js",
+    "--json",
+    "--out-dir",
+    outDir,
+    "--no-guarded-live-dispatch-report",
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.report.verdict, "amber");
+  assert.match(stdout, /"verdict": "amber"/);
+  assert.equal(stderr, "");
 });
 
 test("buildCandidateSupplyReport scores supply, dedupes stories and enforces green-ready targets", () => {
@@ -467,6 +577,34 @@ test("candidate supply excludes terminal duplicate-blocked enabled actions from 
   assert.equal(scorecard.clean_green, false);
   assert.deepEqual(scorecard.terminal_duplicate_blocked_platforms, ["youtube_shorts"]);
   assert.match(formatCandidateSupplyMonitorDiscord(report), /terminal duplicate-held 1/);
+});
+
+test("candidate supply tolerates missing guarded executor report in automation refreshes", () => {
+  const now = new Date("2026-06-23T21:30:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [candidate("ready-without-guarded-report")],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    guardedLiveDispatchExecutorReport: null,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  assert.equal(report.summary.raw_preflight_green_ready_candidates, 1);
+  assert.equal(report.summary.terminal_duplicate_blocked_action_count, 0);
+  assert.equal(report.summary.green_ready_candidates, 1);
 });
 
 test("candidate supply excludes preflight terminal duplicate platforms from green runway", () => {

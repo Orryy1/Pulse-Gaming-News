@@ -1374,6 +1374,9 @@ test("goal proof package keeps incomplete packages out of GREEN acceptance", () 
   assert.equal(pack.acceptance_entry.verdict, "RED");
   assert.ok(pack.acceptance_entry.blockers.includes("script:rewrite_required"));
   assert.ok(pack.acceptance_entry.blockers.includes("footage:v4_motion_blocked"));
+  assert.ok(pack.publish_verdict.blockers.includes("script_scorecard:script_verdict_rewrite_required"));
+  assert.ok(pack.publish_verdict.blockers.includes("footage:v4_motion_blocked"));
+  assert.ok(pack.publish_verdict.blockers.includes("render:final_publish_render_missing"));
 });
 
 test("goal proof package surfaces native Shorts title description and cover failures in publish blockers", () => {

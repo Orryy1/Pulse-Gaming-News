@@ -17,12 +17,14 @@ const {
   formatNextPublishCandidatesMarkdown,
   parseArgs,
   resolveUpstreamBenchmarkReportPath,
+  runCli,
   runPreflightQaForStory,
   scoreAnalyticsFit,
   mergeBridgeCandidates,
   selectCandidateSourceStories,
   visualEntityPreflightForStory,
 } = require("../../tools/next-publish-candidates");
+const db = require("../../lib/db");
 
 const analyticsText = [
   "## Tomorrow's recommendation",
@@ -655,6 +657,66 @@ test("next publish CLI defaults to the scheduler bridge candidate overlay", () =
     path.join(process.cwd(), "output", "goal-20", "goal20_readiness_report.json"),
   );
   assert.equal(args.upstreamAntiSpamReportPath, DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH);
+});
+
+test("next publish CLI keeps json output off stderr for automation consumers", async (t) => {
+  const original = {
+    getStories: db.getStories,
+    stdoutWrite: process.stdout.write,
+    stderrWrite: process.stderr.write,
+  };
+  t.after(() => {
+    db.getStories = original.getStories;
+    process.stdout.write = original.stdoutWrite;
+    process.stderr.write = original.stderrWrite;
+  });
+
+  const analyticsPath = path.join(
+    await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-candidates-cli-")),
+    "analytics.md",
+  );
+  await fs.outputFile(analyticsPath, analyticsText);
+  const now = new Date().toISOString();
+  db.getStories = async () => [
+    baseStory({
+      id: "json_cli_story",
+      title: "Nintendo confirms one Switch 2 gameplay trailer",
+      timestamp: now,
+      created_at: now,
+    }),
+  ];
+
+  let stdout = "";
+  let stderr = "";
+  process.stdout.write = (chunk, ...args) => {
+    stdout += String(chunk);
+    if (typeof args.at(-1) === "function") args.at(-1)();
+    return true;
+  };
+  process.stderr.write = (chunk, ...args) => {
+    stderr += String(chunk);
+    if (typeof args.at(-1) === "function") args.at(-1)();
+    return true;
+  };
+
+  const result = await runCli([
+    "node",
+    "tools/next-publish-candidates.js",
+    "--json",
+    "--limit",
+    "1",
+    "--analytics",
+    analyticsPath,
+    "--no-bridge",
+    "--no-direct-video-work-order",
+    "--no-source-family-acquisition",
+    "--no-goal10-report",
+    "--no-goal20-report",
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(stdout, /"candidates"/);
+  assert.equal(stderr, "");
 });
 
 test("next publish CLI resolves sibling Goal 10 evidence for custom bridge paths", async (t) => {

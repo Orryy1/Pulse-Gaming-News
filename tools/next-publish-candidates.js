@@ -4326,8 +4326,10 @@ async function runCli(argv = process.argv) {
 
   if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   else process.stdout.write(markdown);
-  process.stderr.write(`[next-publish-candidates] json=${path.relative(ROOT, jsonPath)}\n`);
-  process.stderr.write(`[next-publish-candidates] md=${path.relative(ROOT, mdPath)}\n`);
+  if (!args.json) {
+    process.stderr.write(`[next-publish-candidates] json=${path.relative(ROOT, jsonPath)}\n`);
+    process.stderr.write(`[next-publish-candidates] md=${path.relative(ROOT, mdPath)}\n`);
+  }
   return { exitCode: 0, report };
 }
 

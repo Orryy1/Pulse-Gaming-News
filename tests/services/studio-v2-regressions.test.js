@@ -873,6 +873,28 @@ test("studio production voice dedupes repeated hook and loop segment boundaries"
   assert.equal(segments.some((segment) => segment.label === "loop"), false);
 });
 
+test("studio production voice keeps colon game titles in one generated segment", () => {
+  const segments = buildProductionVoiceSegments(
+    {
+      hook: "Halo:",
+      body: "Campaign Evolved is the remake test Xbox cannot fake.",
+      loop: "",
+    },
+    { STUDIO_V2_DISABLE_SPOKEN_OUTRO: "true" },
+  );
+
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].label, "hook_body");
+  assert.equal(
+    segments[0].cleanText,
+    "Halo Campaign Evolved is the remake test Xbox cannot fake.",
+  );
+  assert.doesNotMatch(
+    segments.map((segment) => segment.cleanText).join(" | "),
+    /Halo:? \| Campaign Evolved/,
+  );
+});
+
 test("v2 quality report does not penalise SFX when explicitly disabled", () => {
   const oldMode = process.env.STUDIO_V2_SFX_MODE;
   process.env.STUDIO_V2_SFX_MODE = "off";

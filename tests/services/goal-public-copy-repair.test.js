@@ -1034,6 +1034,51 @@ test("public copy repair rewrites Halo remake stories into concrete mission-led 
   assert.ok(scorecard.viral_score >= 85, JSON.stringify(scorecard.scores));
 });
 
+test("public copy repair preserves Halo Campaign Evolved PS5 account-catch angle", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "halo-ps5-account-catch",
+      canonical_subject: "Halo: Campaign Evolved",
+      canonical_game: "Halo: Campaign Evolved",
+      selected_title: "Halo's PS5 Account Catch",
+      primary_source: "Eurogamer",
+      primary_source_url:
+        "https://www.eurogamer.net/halo-campaign-evolved-on-playstation-requires-an-xbox-account",
+      description:
+        "Halo: Campaign Evolved on PS5 now has an Xbox account catch. Check it before you buy, because one extra sign-in can turn split-screen co-op from an easy nostalgia play into setup friction. Source: Eurogamer.",
+      confirmed_claims: [
+        "Eurogamer reports Halo: Campaign Evolved PS5 players will need an Xbox account and gamertag.",
+        "Eurogamer reports PS Plus is needed for split-screen co-op.",
+      ],
+    },
+    { generatedAt: "2026-06-23T03:20:00.000Z", forceNarrationRewrite: true },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.equal(
+    repaired.manifest.selected_title,
+    "Halo Campaign Evolved Has A PS5 Account Catch",
+  );
+  assert.equal(repaired.manifest.thumbnail_headline, "HALO PS5 ACCOUNT CATCH");
+  assert.match(script, /^Halo: Campaign Evolved on PS5 has a real catch: an Xbox account\./);
+  assert.match(script, /Xbox account and gamertag/i);
+  assert.match(script, /PS Plus for split-screen co-op/i);
+  assert.doesNotMatch(script, /useful bit is simple/i);
+  assert.doesNotMatch(script, /between the two/i);
+  assert.doesNotMatch(script, /Assault on the Control Room|snowy mission|Banshees/i);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "halo-ps5-account-catch",
+      title: repaired.manifest.selected_title,
+      source_name: "Eurogamer",
+    },
+    script,
+  });
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+  assert.ok(scorecard.viral_score >= 85, JSON.stringify(scorecard.scores));
+});
+
 test("public copy repair rewrites Gears E-Day headline recaps into player-stakes scripts", () => {
   const repaired = repairGoalPublicCopyManifest(
     {

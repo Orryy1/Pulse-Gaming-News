@@ -471,6 +471,76 @@ test("buildRenderHealthSummary: generic Steam HLS sidecars do not create subject
   assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
 });
 
+test("buildRenderHealthSummary: direct-media source owner can satisfy subject match despite generic sidecar family", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "render-health-source-owner-subject",
+    "rss_halo_campaign_evolved_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    render_signature: "studio_v4_clip_materializer_accurate_seek_v2",
+    story_id: "rss_halo_campaign_evolved",
+    clip_id: "segment_direct_motion_1",
+    source_family: "steam_2806050_media_02_hls_264_master_window_59_70_5",
+    entity: "",
+    source_type: "steam_movie",
+    source_url_kind: "hls_manifest",
+    provider: "steam",
+    source_url: "https://video.fastly.steamstatic.com/store_trailers/2806050/hash/hls_264_master.m3u8",
+  });
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "halo-campaign-evolved-steam-hls",
+        title: "Halo Campaign Evolved Has A PS5 Account Catch",
+        canonical_subject: "Halo: Campaign Evolved",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "direct-1",
+            path: clipPath,
+            source_url: "https://video.fastly.steamstatic.com/store_trailers/2806050/hash/hls_264_master.m3u8",
+            source_type: "steam_movie",
+            source_url_kind: "hls_manifest",
+            source_kind: "hls_manifest",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+            licence_basis: "official_reference_transformative_editorial_use",
+            approval_status: "approved_for_transformative_editorial_use",
+            counts_towards_motion_readiness: true,
+            source_family: "steam_2806050_media_02_hls_264_master_window_59_70_5",
+            source_owner: "Halo: Campaign Evolved",
+          },
+        ],
+        rights_ledger: [
+          {
+            id: "ledger-direct-1",
+            path: clipPath,
+            source_url: "https://video.fastly.steamstatic.com/store_trailers/2806050/hash/hls_264_master.m3u8",
+            source_type: "steam_movie",
+            source_url_kind: "hls_manifest",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+            licence_basis: "official_reference_transformative_editorial_use",
+            source_family: "url:https://video.fastly.steamstatic.com/store_trailers/2806050/hash/hls_264_master.m3u8_window_42_40_5",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.equal(r.bridge.visual_evidence.direct_video_subject_mismatch_count, 0);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
 test("buildRenderHealthSummary: sidecar subject mismatches do not count as healthy direct video", async () => {
   const clipPath = path.join(
     "test",

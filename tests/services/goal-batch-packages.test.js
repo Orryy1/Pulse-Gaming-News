@@ -246,6 +246,67 @@ test("goal batch packages hydrate existing final render and audio evidence befor
   }
 });
 
+test("goal batch packages recover repaired audio evidence when audio manifest was downgraded", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-recovered-audio-"));
+  try {
+    const story = greenStory("recovered-audio-story");
+    delete story.render_manifest;
+    delete story.exported_path;
+    delete story.audio_manifest;
+    delete story.audio_path;
+    delete story.narration_audio_path;
+    delete story.word_timestamps_path;
+    delete story.timestamps_path;
+    const storyDir = path.join(tempDir, story.id);
+    const renderPath = path.join(storyDir, "visual_v4_render.mp4");
+    const audioPath = path.join(storyDir, "narration.mp3");
+    const timestampsPath = path.join(storyDir, "timestamps.json");
+    fs.ensureDirSync(storyDir);
+    fs.writeFileSync(renderPath, Buffer.alloc(4096, 7));
+    fs.writeFileSync(audioPath, Buffer.alloc(2048, 8));
+    fs.writeJsonSync(timestampsPath, { words: story.word_timestamps });
+    fs.writeJsonSync(path.join(storyDir, "audio_manifest.json"), {
+      narration_audio_path: null,
+      word_timestamps_path: null,
+    });
+    fs.writeJsonSync(path.join(storyDir, "narration_manifest.json"), {
+      status: "ready",
+      resolved_narration_audio_path: audioPath,
+      resolved_word_timestamps_path: timestampsPath,
+      word_timestamp_source: "local_whisper_word_alignment",
+      word_timestamp_count: story.word_timestamps.length,
+    });
+    fs.writeJsonSync(path.join(storyDir, "render_manifest.json"), {
+      final_publish_render: true,
+      output_path: renderPath,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+      rendered_duration_s: 48.2,
+      input_evidence: {
+        resolved_narration_audio_path: audioPath,
+        resolved_word_timestamps_path: timestampsPath,
+        word_timestamp_source: "local_whisper_word_alignment",
+      },
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-06-23T21:05:00.000Z",
+    });
+
+    const pack = batch.packages[0];
+    assert.equal(pack.audio_manifest.narration_audio_path, audioPath);
+    assert.equal(pack.audio_manifest.word_timestamps_path, timestampsPath);
+    assert.equal(pack.audio_manifest.word_timestamp_source, "local_whisper_word_alignment");
+    assert.ok(!pack.publish_verdict.reason_codes.includes("audio:narration_audio_missing"));
+    assert.ok(!pack.publish_verdict.reason_codes.includes("captions:word_timestamps_missing"));
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages hydrate cached HLS motion clips from visual V4 motion packs", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-cache-"));
   try {

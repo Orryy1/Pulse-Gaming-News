@@ -544,6 +544,29 @@ test("viral script intelligence treats source names as present despite casing di
   assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
 });
 
+test("viral script intelligence treats ASR-spaced source names as present", () => {
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "gta-free-upgrade",
+      title: "GTA 5 Has A Free Upgrade Catch",
+      source_name: "GameSpot",
+    },
+    script:
+      "GTA 5's paid current gen upgrade is suddenly free for the players most likely to miss it. " +
+      "Game Spot reports digital PlayStation 4 and Xbox One owners can claim the PlayStation 5 and Xbox Series X and S version from June 18. " +
+      "That matters because this is the native version, with better graphics and faster loading, not just backward compatibility. " +
+      "The catch is eligibility: if your old copy is not covered, the free headline does not help. " +
+      "Rockstar is moving old players forward before July's next online heist, and paying twice is exactly the mistake this story should prevent. " +
+      "The argument is obvious: generous upgrade, or a quiet way to refill G T A Online before the next heist? " +
+      "If the free claim brings lapsed owners back, Rockstar turns an old upgrade fee into a retention play instead of a simple gift. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(result.scores.source_safety, 86);
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 85, JSON.stringify(result.scores));
+});
+
 test("viral script intelligence recognises subscription runway stories as high-value debate scripts", () => {
   const script =
     "GTA 5 just became the GTA 6 waiting room. " +

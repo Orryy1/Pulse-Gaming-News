@@ -288,6 +288,35 @@ test("transcript audience audit can target an explicit current artifact dir", as
   });
 });
 
+test("transcript audience audit accepts ASR-spaced outlet names", async () => {
+  await withTempDir(async (root) => {
+    const currentDir = path.join(root, "output", "goal-contract", "current-package", "gta-free-upgrade");
+    await fs.ensureDir(currentDir);
+    await fs.writeJson(path.join(currentDir, "canonical_story_manifest.json"), {
+      story_id: "gta-free-upgrade",
+      selected_title: "GTA 5 Has A Free Upgrade Catch",
+      primary_source: "GameSpot",
+      narration_script:
+        "GTA 5's paid current-gen upgrade is suddenly free for the players most likely to miss it. GameSpot reports digital PS4 and Xbox One owners can claim the PS5 and Xbox Series X and S version from June 18. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(currentDir, "source_manifest.json"), {
+      primary_source: { name: "GameSpot", url: "https://www.gamespot.com/articles/example/" },
+    });
+    await fs.writeJson(path.join(currentDir, "narration_manifest.json"), {
+      final_transcript:
+        "G T A five's paid current gen upgrade is suddenly free for the players most likely to miss it. Game Spot reports digital PlayStation four and Xbox One owners can claim the PlayStation five and Xbox Series X and S version from June 18. That matters because this is the native version, with better graphics and faster loading, not just backward compatibility. The catch is eligibility: if your old copy is not covered, the free headline does not help. Rockstar is moving old players forward before July's next online heist, and paying twice is exactly the mistake this story should prevent. The argument is obvious: generous upgrade, or a quiet way to refill G T A Online before the next heist? If the free claim brings lapsed owners back, Rockstar turns an old upgrade fee into a retention play instead of a simple gift. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await auditGeneratedTranscripts({ root, artifactDirs: [currentDir] });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 1);
+    assert.equal(report.stories[0].verdict, "pass", JSON.stringify(report.stories[0], null, 2));
+    assert.equal(report.stories[0].scores.source_safety, 86);
+    assert.equal(report.stories[0].mass_audience.warnings.includes("mass_audience:source_not_named"), false);
+  });
+});
+
 test("transcript audience audit counts kart handling and track details as concrete", async () => {
   await withTempDir(async (root) => {
     const currentDir = path.join(root, "output", "goal-contract", "current-package", "yooka");

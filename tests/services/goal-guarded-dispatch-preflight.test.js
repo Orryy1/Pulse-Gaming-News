@@ -413,6 +413,15 @@ test("guarded dispatch preflight holds stale approvals when current strict dry-r
     approvalGateReport: approvalGateReport(readyMedia, [staleAction, readyAction]),
     strictDryRunPlan: strictDryRunPlan(readyMedia, [readyAction]),
     platformStatusMatrix: platformMatrix,
+    transcriptAudienceReport: transcriptAudienceRows([
+      {
+        story_id: "ready-story",
+        title: "Gears E-Day Has A 130GB Problem",
+        verdict: "pass",
+        blockers: [],
+        artifact_dir: readyMedia.dir,
+      },
+    ]),
   });
 
   assert.equal(report.verdict, "GREEN");

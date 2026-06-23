@@ -1022,6 +1022,122 @@ test("Visual V4 motion pack accepts refreshed RSS ids for same-entity official d
   assert.equal(pack.trusted_source_pipeline.references_found, 1);
 });
 
+test("Visual V4 motion pack treats trailer resolver plan references as trusted official evidence", () => {
+  const mediaUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/123456/7890/demo/hls_264_master.m3u8";
+  const family = "steam_123456_7890";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "invincible-vs-pack",
+      title: "Why Invincible VS Could Split Players",
+      suggested_title: "Why Invincible VS Could Split Players",
+      canonical_subject: "Invincible VS",
+      canonical_game: "Invincible VS",
+      full_script:
+        "Invincible VS has a roster problem: players need the fights to feel brutal, fair and readable.",
+    }),
+    trustedFootageReport: {
+      plans: [
+        {
+          story_id: "invincible-vs-pack",
+          references: [
+            {
+              story_id: "invincible-vs-pack",
+              entity: "Invincible VS",
+              source_type: "steam_movie",
+              provider: "steam",
+              source_url: mediaUrl,
+              source_family: family,
+              source_verified: true,
+              rights_risk_class: "storefront_promotional_video",
+              allowed_render_use: "reference_only_by_default",
+              source_url_kind: "hls_manifest",
+              segment_validation_eligible: true,
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "invincible-vs-pack",
+        entity: "Invincible VS",
+        family,
+        sourceUrl: mediaUrl,
+        sourceType: "steam_movie",
+        referenceTitle: "Invincible VS official Steam trailer",
+        validationReason: "segment_samples_passed",
+      }),
+    ]),
+    generatedAt: "2026-06-23T19:45:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].trusted_source_matched, true);
+  assert.equal(pack.trusted_source_pipeline.references_found, 1);
+  assert.equal(
+    pack.readiness.blockers.includes("no_trusted_footage_references_for_story"),
+    false,
+  );
+});
+
+test("Visual V4 motion pack does not trust reference-only labels without official source evidence", () => {
+  const mediaUrl = "https://example.com/article-video.mp4";
+  const family = "article_embed_rehosted_clip";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "weak-reference-label-pack",
+      title: "Why Invincible VS Could Split Players",
+      suggested_title: "Why Invincible VS Could Split Players",
+      canonical_subject: "Invincible VS",
+      canonical_game: "Invincible VS",
+      full_script:
+        "Invincible VS has a roster problem: players need the fights to feel brutal, fair and readable.",
+    }),
+    trustedFootageReport: {
+      plans: [
+        {
+          story_id: "weak-reference-label-pack",
+          references: [
+            {
+              story_id: "weak-reference-label-pack",
+              entity: "Invincible VS",
+              source_type: "article_embed",
+              provider: "unknown",
+              source_url: mediaUrl,
+              source_family: family,
+              source_verified: true,
+              rights_risk_class: "",
+              allowed_render_use: "reference_only_by_default",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "weak-reference-label-pack",
+        entity: "Invincible VS",
+        family,
+        sourceUrl: mediaUrl,
+        sourceType: "article_embed",
+        referenceTitle: "Rehosted article clip",
+        validationReason: "segment_samples_passed",
+      }),
+    ]),
+    generatedAt: "2026-06-23T19:47:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 0);
+  assert.equal(pack.trusted_source_pipeline.references_found, 0);
+  assert.equal(
+    pack.readiness.blockers.includes("no_trusted_footage_references_for_story"),
+    true,
+  );
+});
+
 test("Visual V4 motion pack still rejects mismatched refreshed ids for unrelated entities", () => {
   const pack = buildVisualV4MotionPack({
     story: forzaStory({

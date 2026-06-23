@@ -558,14 +558,20 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const segmentReferenceIndex = segmentValidationCall.args.indexOf("--reference-report");
     assert.match(
       segmentValidationCall.args[segmentReferenceIndex + 1],
-      /studio_v4_licensed_direct_media_acquisition\.json$/,
-      "expected segment validation to consume licensed-direct-media accepted references",
+      /official_trailer_references_fresh_refill\.json$/,
+      "expected segment validation to consume the refreshed trailer reference report",
     );
     const refreshedMotionCall = childCalls
       .filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js")
       .at(-1);
     assert.ok(refreshedMotionCall.args.includes("--segment-report"));
     assert.ok(refreshedMotionCall.args.includes("--trusted-footage-report"));
+    const trustedFootageIndex = refreshedMotionCall.args.indexOf("--trusted-footage-report");
+    assert.match(
+      refreshedMotionCall.args[trustedFootageIndex + 1],
+      /official_trailer_references_fresh_refill\.json$/,
+      "expected refreshed motion pack to trust the same trailer reference report used for validation",
+    );
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);

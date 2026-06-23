@@ -592,6 +592,62 @@ test("official trailer resolver derives Steam motion targets from accepted offic
   assert.equal(plan.segment_validation_reference_counts.eligible, 1);
 });
 
+test("official trailer resolver lets exact official intake suppress broader Steam franchise matches", async () => {
+  const lookedUpAppIds = [];
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "black-ops-gap",
+      title: "Black Ops Classics Face A Price Test",
+      full_script: "Call of Duty: Black Ops listings have players watching price and preservation.",
+      game_images: [
+        verifiedSteamAsset("Call of Duty", "1938090", "Call of Duty"),
+      ],
+    }),
+    {
+      officialSourceIntakeReport: {
+        accepted_references: [
+          {
+            story_id: "black-ops-gap",
+            source_type: "platform_storefront",
+            provider: "official_intake",
+            source_url: "https://store.steampowered.com/app/42700/Call_of_Duty_Black_Ops/",
+            movie_name: "Call of Duty: Black Ops",
+            entity: "Call of Duty: Black Ops",
+            source_family: "steam_42700_call_of_duty_black_ops",
+            source_owner: "Steam storefront for Call of Duty: Black Ops",
+            source_verified: true,
+          },
+        ],
+      },
+      steamLookup: async (appId) => {
+        lookedUpAppIds.push(String(appId));
+        return {
+          appId,
+          success: true,
+          title: appId === "42700" ? "Call of Duty: Black Ops" : "Call of Duty",
+          movies: [
+            {
+              id: appId === "42700" ? 4051 : 1281552379,
+              name: appId === "42700" ? "Celebrating 10 Years of Black Ops" : "MW4 Reveal",
+              hls_h264: `https://video.example/${appId}/hls_264_master.m3u8`,
+            },
+          ],
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(lookedUpAppIds, ["42700"]);
+  assert.deepEqual(plan.target_entities, ["Call of Duty: Black Ops"]);
+  assert.equal(plan.verified_store_targets.length, 1);
+  assert.equal(plan.verified_store_targets[0].store_app_id, "42700");
+  assert.deepEqual(plan.missing_target_entities, []);
+  assert.equal(plan.planned_searches.length, 0);
+  assert.equal(plan.references.length, 2);
+  assert.ok(plan.references.every((reference) => reference.store_app_id !== "1938090"));
+  assert.ok(plan.references.some((reference) => reference.store_app_id === "42700"));
+});
+
 test("official trailer resolver ignores mismatched official intake Steam storefront refs", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

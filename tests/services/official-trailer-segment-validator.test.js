@@ -2560,6 +2560,75 @@ test("segment validation merge can scope previous rows to the current story", ()
   assert.deepEqual(merged.merge.scoped_story_ids, ["1szzhy9"]);
 });
 
+test("segment validation merge drops stale same-story sources not in the current reference report", () => {
+  const previousReport = {
+    apply_local: true,
+    segments: [
+      {
+        story_id: "black-ops-gap",
+        clip_key: "https://video.example/call-of-duty.m3u8|call-of-duty|36.00",
+        source_url: "https://video.example/call-of-duty.m3u8",
+        entity: "Call of Duty",
+        store_app_id: "1938090",
+        media_start_s: 36,
+        status: "rejected",
+        segment_validated: false,
+      },
+      {
+        story_id: "black-ops-gap",
+        clip_key: "https://video.example/black-ops.m3u8|black-ops|42.00",
+        source_url: "https://video.example/black-ops.m3u8",
+        entity: "Call of Duty: Black Ops",
+        store_app_id: "42700",
+        media_start_s: 42,
+        status: "validated",
+        segment_validated: true,
+      },
+      {
+        story_id: "other-story",
+        clip_key: "https://video.example/other.m3u8|other|36.00",
+        source_url: "https://video.example/other.m3u8",
+        entity: "Other Game",
+        media_start_s: 36,
+        status: "validated",
+        segment_validated: true,
+      },
+    ],
+  };
+  const currentReport = {
+    apply_local: true,
+    segments: [
+      {
+        story_id: "black-ops-gap",
+        clip_key: "https://video.example/black-ops.m3u8|black-ops|72.00",
+        source_url: "https://video.example/black-ops.m3u8",
+        entity: "Call of Duty: Black Ops",
+        store_app_id: "42700",
+        media_start_s: 72,
+        status: "rejected",
+        segment_validated: false,
+      },
+    ],
+  };
+
+  const merged = mergeOfficialTrailerSegmentReports(previousReport, currentReport, {
+    preserveUnscopedPrevious: true,
+    storyIds: ["black-ops-gap"],
+    currentReferenceSourceUrls: ["https://video.example/black-ops.m3u8"],
+  });
+
+  assert.deepEqual(
+    merged.segments.map((segment) => segment.source_url),
+    [
+      "https://video.example/black-ops.m3u8",
+      "https://video.example/other.m3u8",
+      "https://video.example/black-ops.m3u8",
+    ],
+  );
+  assert.ok(merged.segments.every((segment) => segment.store_app_id !== "1938090"));
+  assert.equal(merged.merge.previous_stale_source_segment_count, 1);
+});
+
 test("segment validation merge can preserve the global ledger while rendering a story scope", () => {
   const previousReport = {
     apply_local: true,

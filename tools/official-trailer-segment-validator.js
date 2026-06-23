@@ -171,6 +171,14 @@ function reportOutputTargets(args = {}) {
   }));
 }
 
+function clipSourceUrl(clip = {}) {
+  return String(clip?.path || clip?.source_url || clip?.sourceUrl || clip?.clip_url || "").trim();
+}
+
+function currentReferenceSourceUrls(clipRefs = []) {
+  return [...new Set((Array.isArray(clipRefs) ? clipRefs : []).map(clipSourceUrl).filter(Boolean))];
+}
+
 async function loadFrameReport(args) {
   const filePath = path.resolve(ROOT, args.frameReport);
   if (!(await fs.pathExists(filePath))) {
@@ -573,6 +581,8 @@ async function main() {
   if (args.mergePrevious && loadedPrevious.report) {
     report = mergeOfficialTrailerSegmentReports(loadedPrevious.report, report, {
       preserveUnscopedPrevious: true,
+      storyIds: args.storyId ? [args.storyId] : [],
+      currentReferenceSourceUrls: currentReferenceSourceUrls(clipRefs),
     });
     if (args.storyId) report.display_story_ids = [args.storyId];
     report.current_run = currentRun;

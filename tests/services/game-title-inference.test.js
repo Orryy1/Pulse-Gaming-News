@@ -106,6 +106,20 @@ test("headline inference treats showed-style headlines as subject-first game sto
   );
 });
 
+test("headline inference extracts named games from how-style colon headlines", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("How Star Wars: Galactic Racer Turns Podracing into a Challenging Roguelite"),
+    ["Star Wars: Galactic Racer"],
+  );
+});
+
+test("headline inference trims prepares-style verbs from game subjects", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("The Elder Scrolls Online Prepares Set Sail For Adventure High Seas Of Tamriel"),
+    ["The Elder Scrolls Online"],
+  );
+});
+
 test("headline inference rejects editorial colon fragments but keeps credited games", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("It's brutal out there: Deus Ex and Unreal composer says game music is changing"),

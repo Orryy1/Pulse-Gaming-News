@@ -280,6 +280,62 @@ test("goal batch packages hydrate cached Steam CDN aliases from visual V4 motion
   }
 });
 
+test("goal batch packages collapse duplicate direct MP4 motion windows before director scoring", () => {
+  const storyId = "direct-mp4-duplicate-story";
+  const sourceUrl = "https://assets.example.com/gameplay/direct-gameplay.mp4";
+  const clips = clipsFromVisualV4MotionPack(
+    {
+      readiness: { status: "v4_motion_ready" },
+      handoff: {
+        visual_v4_local_motion_clips: [
+          {
+            id: "direct-window-one",
+            type: "motion_clip",
+            source_family: "official_gameplay_asset",
+            path: sourceUrl,
+            source_url: sourceUrl,
+            source_type: "official_game_site_news_page",
+            mediaStartS: 72,
+            durationS: 5,
+            validated: true,
+            segmentValidationPassed: true,
+          },
+          {
+            id: "direct-window-one-repeat",
+            type: "motion_clip",
+            source_family: "official_gameplay_asset",
+            path: sourceUrl,
+            source_url: sourceUrl,
+            source_type: "official_game_site_news_page",
+            mediaStartS: 72,
+            durationS: 5,
+            validated: true,
+            segmentValidationPassed: true,
+          },
+          {
+            id: "direct-window-two",
+            type: "motion_clip",
+            source_family: "official_gameplay_asset",
+            path: sourceUrl,
+            source_url: sourceUrl,
+            source_type: "official_game_site_news_page",
+            mediaStartS: 96,
+            durationS: 5,
+            validated: true,
+            segmentValidationPassed: true,
+          },
+        ],
+      },
+    },
+    { storyId },
+  );
+
+  assert.deepEqual(
+    clips.map((clip) => clip.id),
+    ["direct-window-one", "direct-window-two"],
+  );
+});
+
 test("goal batch packages carry SFX inventory rights into governance", () => {
   const ready = greenStory("sfx-ledger-one");
   ready.sfx_assets = undefined;
@@ -1837,10 +1893,29 @@ test("goal batch package extracts named subjects from awkward feed headlines", (
     article_url: "https://kotaku.com/example-nintendo-style",
     full_script: "",
   });
+  const starWarsRacer = prepareStoryForGoalProof({
+    id: "star-wars-racer",
+    title: "How Star Wars: Galactic Racer Turns Podracing into a Challenging Roguelite",
+    source_name: "Xbox Wire",
+    source_type: "rss",
+    article_url: "https://news.xbox.com/en-us/2026/06/23/star-wars-galactic-racer-turns-podracing-into-roguelite/",
+    full_script: "",
+  });
 
   assert.equal(expanse.canonical_subject, "The Expanse: Osiris Reborn");
   assert.equal(composer.canonical_subject, "Deus Ex Composer");
   assert.equal(nintendo.canonical_subject, "Nintendo");
+  assert.equal(starWarsRacer.canonical_subject, "Star Wars: Galactic Racer");
+  assert.equal(starWarsRacer.public_title, "Star Wars Podracing Has A Roguelite Risk");
+  assert.equal(starWarsRacer.suggested_thumbnail_text, "STAR WARS ROGUELITE RISK");
+  assert.doesNotMatch(starWarsRacer.public_title, /This Game/i);
+  assert.doesNotMatch(
+    starWarsRacer.full_script,
+    /This game story needs a clearer name|This Game|one clear detail|player test|background noise|Xbox Wire says How/i,
+  );
+  assert.match(starWarsRacer.full_script, /Star Wars: Galactic Racer/i);
+  assert.match(starWarsRacer.full_script, /roguelite racer/i);
+  assert.match(starWarsRacer.full_script, /Players have to decide whether to wishlist/i);
   assert.doesNotMatch(`${expanse.full_script}\n${composer.full_script}\n${nintendo.full_script}`, /\bIt should stay|^Nintendo, You Better Not Be|^Xbox has/m);
 });
 

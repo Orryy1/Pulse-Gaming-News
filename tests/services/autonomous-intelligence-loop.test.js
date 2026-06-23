@@ -261,7 +261,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [goalBatchPath, require.cache[goalBatchPath]],
   ]);
-  let capturedArgs = null;
+  const capturedArgCalls = [];
   const childCalls = [];
 
   try {
@@ -271,7 +271,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       loaded: true,
       exports: {
         async main(args) {
-          capturedArgs = args;
+          capturedArgCalls.push(args);
+          const hydratedPass = args.includes("--v4-motion-pack-dir");
           await fs.mkdir(artifactDir, { recursive: true });
           await fs.mkdir(contractOutDir, { recursive: true });
           await fs.writeFile(
@@ -360,8 +361,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
             batch: {
               summary: {
                 story_count: 12,
-                green_count: 2,
-                red_count: 10,
+                green_count: hydratedPass ? 3 : 2,
+                red_count: hydratedPass ? 9 : 10,
               },
             },
             outputs: {
@@ -425,7 +426,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       },
     );
 
-    assert.deepEqual(capturedArgs, [
+    assert.deepEqual(capturedArgCalls[0], [
       "--live-rss",
       "--rss-per-feed",
       "4",
@@ -436,16 +437,31 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "--contract-out-dir",
       contractOutDir,
     ]);
+    assert.deepEqual(capturedArgCalls[1], [
+      "--live-rss",
+      "--rss-per-feed",
+      "4",
+      "--limit",
+      "12",
+      "--out-dir",
+      outDir,
+      "--contract-out-dir",
+      contractOutDir,
+      "--v4-motion-pack-dir",
+      path.join(contractOutDir, "fresh_production_refill_repair", "motion-packs"),
+    ]);
     assert.equal(result.status, "completed");
     assert.equal(result.story_count, 12);
-    assert.equal(result.green_count, 2);
-    assert.equal(result.red_count, 10);
+    assert.equal(result.green_count, 3);
+    assert.equal(result.red_count, 9);
     assert.equal(result.safety.local_only, true);
     assert.equal(result.safety.no_publish, true);
     assert.equal(result.outputs.storyPackagesPath, path.join(contractOutDir, "story-packages.json"));
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
-    assert.equal(result.repair_evidence.child_processes.length, 4);
+    assert.equal(result.repair_evidence.child_processes.length, 7);
+    assert.equal(result.motion_hydrated_refill.status, "completed");
+    assert.equal(result.motion_hydrated_refill.green_count, 3);
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/studio-v4-motion-pack.js"),
       "expected fresh refill to create a V4 motion-pack repair index",
@@ -462,6 +478,18 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       childCalls.some((call) => call.args[0] === "tools/official-trailer-reference-resolver.js"),
       "expected fresh refill to create trailer reference evidence",
     );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/studio-v4-licensed-direct-media.js"),
+      "expected fresh refill to promote official direct media into licensed-direct-media evidence",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/official-trailer-segment-validator.js"),
+      "expected fresh refill to locally validate direct-media segment windows",
+    );
+    assert.ok(
+      childCalls.filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js").length >= 2,
+      "expected fresh refill to rebuild V4 motion packs after segment validation",
+    );
     const trailerReferenceCall = childCalls.find(
       (call) => call.args[0] === "tools/official-trailer-reference-resolver.js",
     );
@@ -471,10 +499,29 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       /official_direct_media_intake_report\.json$/,
       "expected trailer resolver to consume the direct-media intake report, not the article-only intake report",
     );
+    const segmentValidationCall = childCalls.find(
+      (call) => call.args[0] === "tools/official-trailer-segment-validator.js",
+    );
+    assert.ok(segmentValidationCall.args.includes("--apply-local"));
+    assert.ok(segmentValidationCall.args.includes("--deep-scan"));
+    const segmentReferenceIndex = segmentValidationCall.args.indexOf("--reference-report");
+    assert.match(
+      segmentValidationCall.args[segmentReferenceIndex + 1],
+      /studio_v4_licensed_direct_media_acquisition\.json$/,
+      "expected segment validation to consume licensed-direct-media accepted references",
+    );
+    const refreshedMotionCall = childCalls
+      .filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js")
+      .at(-1);
+    assert.ok(refreshedMotionCall.args.includes("--segment-report"));
+    assert.ok(refreshedMotionCall.args.includes("--trusted-footage-report"));
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
+    assert.equal(repairReport.summary.child_process_count, 7);
     assert.match(repairReport.outputs.direct_media_intake_report, /official_direct_media_intake_report\.json$/);
+    assert.match(repairReport.outputs.licensed_direct_media_report, /studio_v4_licensed_direct_media_acquisition\.json$/);
+    assert.match(repairReport.outputs.segment_validation_report, /official_trailer_segment_validation_apply_local\.json$/);
     assert.equal(repairReport.safety.no_publish, true);
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {

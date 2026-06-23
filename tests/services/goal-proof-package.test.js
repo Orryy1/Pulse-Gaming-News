@@ -1430,6 +1430,42 @@ test("goal proof package writes media-house score and blocks weak Shorts packagi
   assert.ok(await fs.pathExists(path.join(tmp, "pulse_media_house_score.json")));
 });
 
+test("goal proof package keeps roguelite podracing hooks instead of generic split-player copy", () => {
+  const pack = buildGoalProofPackage({
+    story: {
+      id: "star-wars-galactic-racer",
+      title: "Star Wars Podracing Has A Roguelite Risk",
+      public_title: "Star Wars Podracing Has A Roguelite Risk",
+      selected_title: "Star Wars Podracing Has A Roguelite Risk",
+      canonical_subject: "Star Wars: Galactic Racer",
+      source_name: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/06/23/star-wars-galactic-racer-turns-podracing-into-roguelite/",
+      suggested_thumbnail_text: "STAR WARS ROGUELITE RISK",
+      thumbnail_headline: "STAR WARS ROGUELITE RISK",
+      full_script: [
+        "Star Wars: Galactic Racer is turning podracing into something harsher than a nostalgia lap.",
+        "Xbox Wire says the new reveal frames it as a roguelite racer, where each run has to survive changing hazards, upgrades and wipeout pressure.",
+        "Players have to decide whether to wishlist it for that repeat-run risk, or wait for one uncut race before trusting the pitch.",
+        "If the handling makes every crash feel like a new route, this becomes a genuine wishlist fight; if it is only a familiar logo on repeat, fans will skip before lap two.",
+        "Follow Pulse Gaming so you never miss a beat.",
+      ].join(" "),
+    },
+    rightsLedger: [],
+  });
+
+  assert.equal(pack.canonical_story_manifest.public_title, "Star Wars Podracing Has A Roguelite Risk");
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "STAR WARS ROGUELITE RISK");
+  assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players/i);
+  assert.doesNotMatch(pack.canonical_story_manifest.thumbnail_headline, /PLAYER TEST/i);
+  assert.ok(
+    !pack.platform_publish_manifest.platform_native_evidence.failures.some((failure) =>
+      /weak_platform_title|weak_cover_headline|plain_platform_description/.test(failure.reason),
+    ),
+    JSON.stringify(pack.platform_publish_manifest.platform_native_evidence.failures),
+  );
+  assert.match(pack.youtube_publish_pack.description, /repeat runs, wipeout pressure and handling/i);
+});
+
 test("goal proof package writes goal-named artefacts", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-"));
   const pack = buildGoalProofPackage({

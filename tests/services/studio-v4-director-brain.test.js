@@ -336,6 +336,55 @@ test("Visual V4 Director recomputes stale motion readiness from materialised cli
   assert.equal(sourceLock.source, "IGN PREVIEW");
 });
 
+test("Visual V4 Director does not pad premium motion with repeated source-family clips", () => {
+  const repeatedClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `sea-repeat-${index + 1}`,
+    source_family: "steam_1172620_2137521619",
+    path: `C:\\media\\sea-repeat-${index + 1}.mp4`,
+    durationS: 2.6,
+    validated: true,
+  }));
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "sea-of-thieves-repeat-risk",
+      title: "Sea of Thieves Custom Seas Needs Better Footage",
+      full_script:
+        "Sea of Thieves has a Custom Seas update, but the visual package cannot keep looping one trailer window and call it a premium short.",
+    },
+    footagePlan: {
+      readiness: {
+        status: "blocked",
+        blockers: [
+          "actual_motion_clip_minimum_not_met",
+          "distinct_motion_families_minimum_not_met",
+        ],
+      },
+      motion_budget: {
+        required_motion_scenes: 5,
+        available_motion_clips: repeatedClips.length,
+        required_distinct_families: 4,
+        available_distinct_motion_families: 1,
+        max_static_card_ratio: 0.22,
+        max_static_card_seconds: 12,
+        target_motion_ratio: 0.68,
+      },
+      motion_inventory: {
+        accepted_local_clips: repeatedClips,
+      },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(plan.readiness.status, "director_blocked");
+  assert.ok(plan.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
+  assert.ok(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"));
+  assert.equal(motionShots.length, 1);
+  assert.equal(new Set(motionShots.map((shot) => shot.source_family)).size, 1);
+});
+
 test("Visual V4 Director normalises compact Steam k metrics into chart numbers", () => {
   const footagePlan = buildFootageEmpirePlan({
     story: {

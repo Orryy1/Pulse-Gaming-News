@@ -77,6 +77,32 @@ test("caption SRT keeps a protected game title together when local TTS expands t
   assert.doesNotMatch(srt, /\n2 is\n/);
 });
 
+test("caption SRT repairs Cyberpunk 2077 ASR split tokens", () => {
+  const srt = buildCaptionSrt(
+    "Cyberpunk 2077's biggest launch problem is not bugs anymore.",
+    6,
+    {
+      words: [
+        { word: "Cyberpunk", start: 0, end: 0.62 },
+        { word: "2070", start: 0.62, end: 1.34 },
+        { word: "seven's", start: 1.34, end: 2.04 },
+        { word: "biggest", start: 2.04, end: 2.4 },
+        { word: "launch", start: 2.4, end: 2.72 },
+        { word: "problem", start: 2.72, end: 3.1 },
+      ],
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 18,
+      maxPhraseDurationS: 1.05,
+      danglingMergeMaxWords: 2,
+    },
+  );
+
+  assert.match(srt, /\nCyberpunk 2077's\n/);
+  assert.doesNotMatch(srt, /\nCyberpunk\n/);
+  assert.doesNotMatch(srt, /\n2070\n/);
+  assert.doesNotMatch(srt, /seven's/);
+});
+
 test("caption SRT protects Pulse Gaming as one brand phrase", () => {
   const srt = buildCaptionSrt(
     "Follow Pulse Gaming so you never miss a beat.",

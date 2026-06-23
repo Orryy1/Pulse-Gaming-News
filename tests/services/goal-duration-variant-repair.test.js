@@ -2036,6 +2036,30 @@ test("duration variant repair gives preview impressions a concrete angle", () =>
   assert.doesNotMatch(repair.script, /needs more than a headline|strongest version|vague sense that news happened/i);
 });
 
+test("duration variant repair does not add Star Wars preview filler to hands-on demo stories", () => {
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "Granblue Fantasy: Relink",
+      canonical_game: "Granblue Fantasy: Relink",
+      selected_title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      narration_script:
+        "Granblue Fantasy: Relink just made its next update much harder to ignore. PlayStation Blog says Endless Ragnarok now has a playable demo after a new hands-on preview. That matters because this is not another trailer promise. Players can try the combat rhythm, party builds and boss pressure, then decide whether the grind is worth coming back for. The payoff is simple: if the demo makes the endgame loop feel sharper, Relink gets a second wind. If it feels like more of the same, fans find out before spending the time. Follow Pulse Gaming so you never miss a beat.",
+      primary_source: "PlayStation Blog",
+      confirmed_claims: [
+        "Granblue Fantasy: Relink Endless Ragnarok has a hands-on report and a playable demo available today.",
+      ],
+    },
+    {
+      current_duration_s: 32.879,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "elevenlabs",
+    },
+  );
+
+  assert.match(repair.script, /playable demo|combat rhythm|Relink/i);
+  assert.doesNotMatch(repair.script, /PC Gamer|Mass Effect|permadeath|squad layer/i);
+});
+
 test("duration variant repair does not reintroduce internal source-policy language after source attribution repair", () => {
   const repair = extendScriptToTarget(
     {

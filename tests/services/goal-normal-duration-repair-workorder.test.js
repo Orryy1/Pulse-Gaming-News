@@ -248,6 +248,32 @@ test("normal duration repair work order routes cutover duration-floor queue entr
   assert.equal(workOrder.source_cutover_generated_at, "2026-05-27T01:05:00.000Z");
 });
 
+test("normal duration repair work order accepts story-package arrays as dry-run input", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-story-packages-"));
+  const artifactDir = await makeArtifact(root, "story-package-short", 32.879);
+
+  const workOrder = await buildNormalDurationRepairWorkOrder({
+    generatedAt: "2026-06-23T20:50:00.000Z",
+    dryRunPlan: [
+      {
+        story_id: "story-package-short",
+        artifact_dir: artifactDir,
+        verdict: "RED",
+        blockers: [
+          "render:post_render_forensics_missing",
+          "normal_production_duration_below_quality_floor:32.879",
+        ],
+      },
+    ],
+  });
+
+  assert.equal(workOrder.summary.blocked_story_count, 1);
+  assert.equal(workOrder.summary.repair_required_count, 1);
+  assert.equal(workOrder.jobs[0].story_id, "story-package-short");
+  assert.equal(workOrder.jobs[0].repair_lane, "normal_production_duration_floor");
+  assert.equal(workOrder.jobs[0].current_duration_s, 32.879);
+});
+
 test("normal duration repair work order routes cutover-ready overlong renders by manifest duration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-normal-duration-cutover-ready-overlong-"));
   const artifactDir = await makeArtifact(root, "cutover-ready-long-story", 70.403);

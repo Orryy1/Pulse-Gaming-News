@@ -584,6 +584,7 @@ test("buildRenderHealthSummary: sidecar subject mismatches do not count as healt
 
   assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 0);
   assert.equal(r.bridge.visual_evidence.direct_video_subject_mismatch_count, 1);
+  assert.equal(r.bridge.visual_evidence.screenshot_derived_only_count, 0);
   assert.deepEqual(r.bridge.visual_evidence.direct_video_subject_mismatch_story_ids, [
     "minecraft-sidecar-mismatch",
   ]);
@@ -594,6 +595,65 @@ test("buildRenderHealthSummary: sidecar subject mismatches do not count as healt
     digest.formatDigest(r),
     /direct-video subject mismatch 1/,
   );
+});
+
+test("buildRenderHealthSummary: character-specific stories reject same-game wrong-character direct motion", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "render-health-character-specific-mismatch",
+    "rss_sf6_yasmine_v4_clip_1_sf6_alex_gameplay.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    render_signature: "studio_v4_clip_materializer_accurate_seek_v2",
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/1364780/sf6_alex_gameplay.mp4",
+    source_family: "url:https://video.akamai.steamstatic.com/store_trailers/1364780/sf6_alex_gameplay.mp4_window_36_5",
+    entity: "",
+    source_type: "steam_movie",
+    source_url_kind: "hls_manifest",
+  });
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "sf6-yasmine-wrong-character",
+        title: "Street Fighter 6 just made Yasmine look like a ranked-mode problem",
+        canonical_subject: "Street Fighter 6",
+        canonical_game: "Street Fighter 6",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "direct-1",
+            path: clipPath,
+            source_url: "https://video.akamai.steamstatic.com/store_trailers/1364780/sf6_alex_gameplay.mp4",
+            source_type: "steam_movie",
+            source_url_kind: "hls_manifest",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+            licence_basis: "official_reference_transformative_editorial_use",
+            approval_status: "approved_for_transformative_editorial_use",
+            counts_towards_motion_readiness: true,
+            source_family: "url:https://video.akamai.steamstatic.com/store_trailers/1364780/sf6_alex_gameplay.mp4_window_36_5",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 0);
+  assert.equal(r.bridge.visual_evidence.direct_video_subject_mismatch_count, 1);
+  assert.equal(r.bridge.visual_evidence.screenshot_derived_only_count, 0);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_subject_mismatch_story_ids, [
+    "sf6-yasmine-wrong-character",
+  ]);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, [
+    "sf6-yasmine-wrong-character",
+  ]);
 });
 
 test("buildRenderHealthSummary: bridge direct-video gaps become enrichment work orders", () => {

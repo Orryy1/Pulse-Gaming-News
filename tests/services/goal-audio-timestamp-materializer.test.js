@@ -73,6 +73,36 @@ function workbenchJob(storyId, artifactDir) {
   };
 }
 
+test("goal audio materializer treats stale local TTS blocks as eligible when ElevenLabs is explicit", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-elevenlabs-stale-local-"));
+  const artifactDir = await makePackage(root, "story-stale-local");
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    inspectOnly: true,
+    workbenchReport: {
+      local_tts: {
+        verdict: "stale",
+        ready: false,
+        reason: "local TTS doctor report is stale",
+      },
+      jobs: [
+        {
+          ...workbenchJob("story-stale-local", artifactDir),
+          status: "blocked_local_tts_stale",
+        },
+      ],
+    },
+    generatedAt: "2026-05-22T06:00:00.000Z",
+  });
+
+  assert.equal(report.summary.candidate_count, 1);
+  assert.equal(report.summary.inspect_only_count, 1);
+  assert.equal(report.jobs[0].story_id, "story-stale-local");
+  assert.equal(report.jobs[0].status, "inspect_only_pending_generation");
+});
+
 test("goal audio materializer generates local audio, word timestamps and updates the package manifest", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-"));
   const artifactDir = await makePackage(root);

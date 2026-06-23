@@ -375,6 +375,75 @@ test("Footage Empire counts validated official HLS windows as renderable motion 
   assert.equal(plan.safety.video_downloads_started, false);
 });
 
+test("Footage Empire lets official reveal stories satisfy family floor with hash-distinct trailer windows", () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/hash/1782090499/hls_264_master.m3u8?t=1";
+  const clips = [36, 42, 48, 54, 60].map((start, index) => ({
+    id: `sf6-window-${index + 1}`,
+    source_family: "steam_1364780_164062000",
+    path: sourceUrl,
+    source_url: sourceUrl,
+    mediaStartS: start,
+    durationS: 5,
+    validated: true,
+    segmentValidationPassed: true,
+    source_type: "steam_movie",
+    provider: "steam",
+    allowed_render_use: "reference_only_by_default",
+    rights_risk_class: "official_reference_only",
+    provenance: {
+      segment_motion_class: "gameplay_action",
+      validation_reason: "official_storefront_trailer_motion_samples_passed",
+      sample_content_hashes: [`w${start}-a`, `w${start}-b`, `w${start}-c`],
+    },
+  }));
+
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "sf6-yasmine-pack",
+      title: "Street Fighter 6 Yasmine Gameplay Reveal",
+      canonical_subject: "Street Fighter 6",
+      canonical_game: "Street Fighter 6",
+      full_script:
+        "Street Fighter 6 has a real Yasmine gameplay reveal. Capcom's official trailer shows enough separate combat beats to judge the character.",
+    },
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          story_id: "sf6-yasmine-pack",
+          entity: "Street Fighter 6",
+          source_id: "steam-sf6-yasmine",
+          display_name: "Steam official Street Fighter 6 Yasmine trailer",
+          source_tier: "official",
+          source_family: "steam_1364780_164062000",
+          reference_url: sourceUrl,
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          autonomous_motion_candidate: true,
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    localMotionClips: clips,
+  });
+
+  assert.equal(plan.motion_budget.available_motion_clips, 5);
+  assert.equal(plan.motion_budget.available_distinct_families, 1);
+  assert.equal(plan.motion_budget.hash_distinct_official_motion_windows, 5);
+  assert.equal(
+    plan.motion_budget.distinct_family_requirement_satisfied_by_hash_distinct_official_windows,
+    true,
+  );
+  assert.equal(plan.readiness.status, "v4_motion_ready");
+  assert.equal(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), false);
+  assert.ok(
+    plan.readiness.warnings.includes(
+      "distinct_family_floor_satisfied_by_hash_distinct_official_windows",
+    ),
+  );
+});
+
 test("Footage Empire counts signed direct MP4 URLs as renderable motion", () => {
   const plan = buildFootageEmpirePlan({
     story: forzaSteamStory(),

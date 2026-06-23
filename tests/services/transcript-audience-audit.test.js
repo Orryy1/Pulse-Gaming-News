@@ -456,6 +456,31 @@ test("transcript audience audit normalises recoverable spoken title aliases befo
   });
 });
 
+test("transcript audience audit accepts canonical game aliases in viewer narration", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "black-ops-price");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "black-ops-price",
+      canonical_subject: "Call of Duty: Black Ops",
+      selected_title: "Black Ops Classics Face A Price Test",
+      primary_source: "IGN",
+      narration_script:
+        "Black Ops 1 and 2 just turned nostalgia into a price test. IGN reports PlayStation listings for the two classic Black Ops games have fans watching for whether these ports land as sensible re-releases or expensive nostalgia. That matters because older Call of Duty campaigns are not just museum pieces; they are games people still want accessible without paying modern premium prices again. The split is direct: are these convenient classics, or another reminder that preservation can become a storefront upsell? Listings do not prove final price, performance, release timing or whether multiplayer support will be meaningful. Watch the price and feature list first, because nostalgia only carries this if the package respects what players are actually buying. The uncomfortable part is that these campaigns carry emotional value, but the storefront still has to justify the price. Players will forgive a paid port faster if the package is clear: campaign access, stable performance and honest multiplayer expectations. If Activision prices this cleanly, it gets an easy goodwill win; if not, the backlash writes itself before launch. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "IGN", url: "https://example.test/black-ops" },
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
 test("transcript audience audit still fails unrecoverable subject drift", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "beastro-wrong-subject");

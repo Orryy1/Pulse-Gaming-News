@@ -13,7 +13,7 @@ const {
   prepareStoryForGoalProof,
   writeGoalBatchPackages,
 } = require("../../lib/goal-batch-packages");
-const { buildGoalProofPackage } = require("../../lib/goal-proof-package");
+const { buildGoalProofPackage, buildPlatformNativePublishPacks } = require("../../lib/goal-proof-package");
 const {
   parseArgs: parseGoalBatchArgs,
   selectStoriesForGoalBatch,
@@ -532,6 +532,35 @@ test("goal batch package proof preparation avoids internal review fallback copy 
   assert.doesNotMatch(youtube.description, /real source detail|not enough practical consequence|strong Pulse short/i);
   assert.match(youtube.title, /Vesper Underground/i);
   assert.match(youtube.description, /Vesper Underground/i);
+});
+
+test("goal batch package proof keeps evidence-backed named-character cover headlines", () => {
+  const native = buildPlatformNativePublishPacks({
+    story: {
+      id: "rss_sf6_yasmine_pressure",
+      suggested_thumbnail_text: "YASMINE PRESSURE",
+      full_script:
+        "Street Fighter 6 just made Yasmine look dangerous for one simple reason: this trailer is about pressure, not patience. GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. Follow Pulse Gaming so you never miss a beat.",
+    },
+    canonical: {
+      canonical_subject: "Street Fighter 6",
+      canonical_game: "Street Fighter 6",
+      title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      thumbnail_headline: "YASMINE PRESSURE",
+      primary_source: "GameSpot",
+      first_spoken_line:
+        "Street Fighter 6 just made Yasmine look dangerous for one simple reason: this trailer is about pressure, not patience.",
+      description:
+        "GameSpot's footage shows Yasmine using fast pressure, knife feints and step-ins that punish anyone who backs up.",
+    },
+  });
+  const youtube = native.outputs.youtube_shorts;
+
+  assert.equal(youtube.cover_frame.headline, "YASMINE PRESSURE");
+  assert.ok(!native.platformNativeEvidence.failures.some(
+    (failure) => failure.reason === "weak_cover_headline",
+  ));
 });
 
 test("goal batch package proof preparation rewrites thin fresh RSS scripts into specific viewer copy", () => {

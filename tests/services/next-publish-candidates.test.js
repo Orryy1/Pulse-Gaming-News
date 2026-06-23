@@ -897,6 +897,57 @@ test("bridge candidate overlay drops stale live article media arrays", () => {
   assert.equal(merged[0].video_clips.length, 1);
 });
 
+test("bridge candidate overlay drops stale live SFX inventory when bridge omits it", () => {
+  const live = [
+    baseStory({
+      id: "same_story",
+      title: "Old SFX inventory story",
+      sfx_asset_inventory: [
+        {
+          asset_id: "old-impact",
+          path: "audio/epidemic/sfx/old-impact.mp3",
+          source_url: "file://audio/epidemic/sfx/old-impact.mp3",
+          source_type: "licensed_sfx_library_file",
+        },
+      ],
+    }),
+  ];
+  const bridged = [
+    baseStory({
+      id: "same_story",
+      title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      video_clips: [
+        {
+          asset_id: "same_story-motion-1",
+          path: "output/video_cache/same_story_clip.mp4",
+          source_url: "https://video.akamai.steamstatic.com/example/hls_264_master.m3u8",
+          source_type: "official_direct_video",
+        },
+      ],
+      rights_ledger: [
+        {
+          asset_id: "same_story-motion-1",
+          path: "output/video_cache/same_story_clip.mp4",
+          source_url: "https://video.akamai.steamstatic.com/example/hls_264_master.m3u8",
+          source_type: "official_direct_video",
+          licence_basis: "official_publisher_source",
+          commercial_use_allowed: true,
+          allowed_platforms: ["youtube", "instagram", "facebook"],
+          risk_score: 0.08,
+        },
+      ],
+    }),
+  ];
+
+  const merged = mergeBridgeCandidates(live, bridged);
+
+  assert.equal(merged[0].id, "same_story");
+  assert.equal(merged[0].scheduler_bridge_overlay_live_row, true);
+  assert.deepEqual(merged[0].sfx_asset_inventory, []);
+  assert.equal(merged[0].video_clips.length, 1);
+});
+
 test("current bridge manifest excludes stale live bridge rows that are not present", () => {
   const live = [
     baseStory({
@@ -3528,6 +3579,66 @@ test("visual entity preflight blocks Steam direct motion when rights ledger owne
   assert.equal(result.result, "fail");
   assert.ok(result.failures.includes("direct_motion_subject_mismatch"));
   assert.match(result.evidence.mismatched_motion_assets[0].provenance_text, /witcher 4/);
+});
+
+test("visual entity preflight blocks same-game wrong-character direct motion", async () => {
+  const alexTrailer =
+    "https://video.akamai.steamstatic.com/store_trailers/1364780/1659974978/e2cc6b24bc61a2692becfadca7a5687f36d6324b/1769127372/hls_264_master.m3u8?t=1769142439";
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-sf6-wrong-character",
+    "sf6_yasmine_v4_clip_1_alex_motion.mp4",
+  );
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "sf6_yasmine_wrong_character",
+      title: "Street Fighter 6 Yasmine Gameplay Reveal",
+      selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      canonical_subject: "Street Fighter 6",
+      canonical_game: "Street Fighter 6",
+      primary_source_url:
+        "https://www.gamespot.com/videos/street-fighter-6-yasmine-character-gameplay-reveal-trailer/",
+      scheduler_bridge_source: "goal_production_cutover",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: alexTrailer,
+          source_family: "SF6_ALEX_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+          source_title: "SF6_ALEX_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+          entity: "Street Fighter 6",
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url: alexTrailer,
+            source_family: "SF6_ALEX_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+            source_owner: "Street Fighter 6",
+            source_title: "SF6_ALEX_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+            source_type: "steam_movie",
+            media_kind: "direct_video",
+            licence_basis: "official_direct_media",
+            approval_status: "approved_for_transformative_editorial_use",
+          },
+        ],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("direct_motion_subject_mismatch"));
+  assert.deepEqual(result.evidence.required_specific_source_lock_tokens, ["yasmine"]);
+  assert.match(result.evidence.mismatched_motion_assets[0].provenance_text, /alex/i);
 });
 
 test("attachPreflightQa blocks direct motion when cache sidecar source does not match the subject", async () => {

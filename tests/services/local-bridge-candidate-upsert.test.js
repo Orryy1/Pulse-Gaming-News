@@ -70,6 +70,9 @@ async function fixture() {
       { id: "clip_b", path: "clip-b.mp4", source_family: "sea_family_b", media_kind: "direct_video" },
       { id: "clip_c", path: "clip-c.mp4", source_family: "sea_family_c", media_kind: "direct_video" },
     ],
+    materialized_clips: [
+      { id: "clip_a", path: "clip-a.mp4", source_family: "sea_family_a", media_kind: "direct_video" },
+    ],
   });
   await fs.writeJson(path.join(artifactDir, "distinct_motion_family_report.json"), {
     status: "ready",
@@ -90,6 +93,10 @@ async function fixture() {
   await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), {
     result: "pass",
     status: "pass",
+  });
+  await fs.writeJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    blockers: [],
   });
   await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     publish_status: "RED",
@@ -158,26 +165,37 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.governance_publish_status, "GREEN");
   assert.equal(candidate.scheduler_bridge_source, "local_bridge_candidate_upsert");
   assert.equal(candidate.duration_seconds, 38.5);
+  assert.equal(candidate.runtime_seconds, 38.5);
+  assert.equal(candidate.audio_duration, 38.5);
+  assert.equal(candidate.audio_duration_seconds, 38.5);
   assert.equal(candidate.duration_lane, "normal_production");
   assert.equal(candidate.min_video_duration_seconds, 35);
   assert.equal(candidate.target_video_duration_seconds_min, 35);
   assert.equal(candidate.target_video_duration_seconds_max, 60);
   assert.equal(candidate.max_video_duration_seconds, 60);
   assert.match(candidate.exported_path, /visual_v4_render\.mp4$/);
+  assert.equal(candidate.audio_path, path.join(files.root, "output", "audio", "story_custom_seas.mp3"));
+  assert.equal(candidate.relative_narration_audio_path, "output/audio/story_custom_seas.mp3");
+  assert.equal(candidate.word_timestamps_path, path.join(files.root, "output", "audio", "story_custom_seas_timestamps.json"));
+  assert.equal(candidate.relative_word_timestamps_path, "output/audio/story_custom_seas_timestamps.json");
   assert.match(candidate.manual_caption_path, /captions\.srt$/);
   assert.equal(candidate.platform_publish_manifest.outputs.youtube_shorts.title, "Sea of Thieves Custom Seas Could Split Crews");
   assert.equal(candidate.platform_publish_manifest.outputs.instagram_reels.title, "Sea of Thieves Custom Seas Could Split Crews");
   assert.equal(candidate.platform_publish_manifest.outputs.facebook_reels.description, "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.");
   assert.equal(candidate.rights_ledger.length, 2);
+  assert.equal(candidate.rights_records.length, 2);
+  assert.equal(candidate.provenance_ledger.length, 2);
   assert.equal(candidate.visual_v4_render_bridge_clip_count, 3);
   assert.equal(candidate.distinct_motion_family_count, 3);
   assert.equal(candidate.video_clips.length, 3);
+  assert.equal(candidate.suggested_thumbnail_text, "SEA THIEVES CUSTOM SEAS");
   assert.equal(candidate.video_clips[0].entity, "Sea of Thieves");
   assert.equal(candidate.video_clips[0].source_title, "Sea of Thieves");
   assert.equal(candidate.visual_quality_report.result, "pass");
   assert.equal(candidate.benchmark_report.result, "pass");
   assert.equal(candidate.director_beat_map.shot_plan.length, 1);
   assert.equal(candidate.audio_segment_loudness_report.result, "pass");
+  assert.equal(candidate.voice_quality_report.verdict, "PASS");
   assert.equal(candidate.publish_verdict.verdict, "GREEN");
   assert.equal(candidate.publish_verdict.can_auto_publish, true);
   assert.equal(candidate.publish_verdict.local_bridge_repaired_from_stale_verdict, true);
@@ -233,4 +251,12 @@ test("upsertLocalBridgeCandidate blocks non-GREEN packages before rewriting the 
   const updated = await fs.readJson(files.bridgePath);
   assert.equal(updated.scheduler_bridge_candidates.length, 1);
   assert.equal(updated.scheduler_bridge_candidates[0].id, "existing");
+});
+
+test("local bridge candidate upsert command is registered for operator runs", async () => {
+  const pkg = await fs.readJson(path.join(__dirname, "..", "..", "package.json"));
+  assert.equal(
+    pkg.scripts["ops:local-bridge-candidate-upsert"],
+    "node tools/local-bridge-candidate-upsert.js",
+  );
 });

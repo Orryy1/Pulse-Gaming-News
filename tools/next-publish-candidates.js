@@ -110,6 +110,7 @@ const BRIDGE_REPLACED_MEDIA_FIELDS = [
   "local_motion_clips",
   "motion_clips",
   "sfx_assets",
+  "sfx_asset_inventory",
   "sound_effects",
   "music_assets",
   "image_path",
@@ -1411,6 +1412,41 @@ const VISUAL_ENTITY_STOPWORDS = new Set([
   "news",
   "update",
 ]);
+const VISUAL_CHARACTER_SPECIFIC_CONTEXT_RE =
+  /\b(?:character|fighter|roster|new[-_\s]?fighter|new[-_\s]?character|dlc[-_\s]?fighter|gameplay[-_\s]?reveal|ranked|rushdown|zoner|footsie|footsies|meter|combo|combos|knife[-_\s]?feints?|eskrima|space[-_\s]?control)\b/i;
+const VISUAL_SPECIFIC_SOURCE_LOCK_STOPWORDS = new Set([
+  "ahead",
+  "beat",
+  "capcom",
+  "character",
+  "combat",
+  "control",
+  "dangerous",
+  "defenders",
+  "eskrima",
+  "fairness",
+  "fighter",
+  "footage",
+  "headline",
+  "just",
+  "knife",
+  "looks",
+  "made",
+  "mode",
+  "players",
+  "pressure",
+  "problem",
+  "ranked",
+  "reveal",
+  "revealed",
+  "rushdown",
+  "space",
+  "street",
+  "videos",
+  "while",
+  "zoner",
+  "zoners",
+]);
 
 function visualEntityTokenise(value = "") {
   return cleanText(value)
@@ -1467,6 +1503,67 @@ function visualSourceLockTokensForStory(story = {}) {
   } catch {
     return [];
   }
+}
+
+function visualSpecificSourceLockTokensForStory(story = {}) {
+  const context = [
+    story.title,
+    story.selected_title,
+    story.public_title,
+    story.short_title,
+    story.suggested_thumbnail_text,
+    story.thumbnail_headline,
+    story.full_script,
+    story.tts_script,
+    story.narration_script,
+    story.primary_source_url,
+    story.source_url,
+    story.url,
+  ]
+    .map(cleanText)
+    .filter(Boolean)
+    .join(" ");
+  if (!VISUAL_CHARACTER_SPECIFIC_CONTEXT_RE.test(context)) return [];
+
+  let urlPath = "";
+  const url = cleanText(story.primary_source_url || story.source_url || story.url);
+  if (url) {
+    try {
+      urlPath = new URL(url).pathname;
+    } catch {
+      urlPath = url;
+    }
+  }
+
+  const gameTokens = new Set(visualEntityTokenise(story.canonical_game || story.game_title || ""));
+  const sourceTokens = new Set([
+    ...visualEntityTokenise(story.source_name),
+    ...visualEntityTokenise(story.primary_source_name),
+  ]);
+  const seen = new Set();
+  return visualEntityTokenise([
+    story.motion_subject,
+    story.featured_character,
+    story.character_name,
+    story.title,
+    story.selected_title,
+    story.public_title,
+    story.short_title,
+    story.suggested_thumbnail_text,
+    story.thumbnail_headline,
+    urlPath,
+  ].map(cleanText).filter(Boolean).join(" "))
+    .filter((token) => token.length >= 4)
+    .filter((token) => !/^\d+$/.test(token))
+    .filter((token) => !gameTokens.has(token))
+    .filter((token) => !sourceTokens.has(token))
+    .filter((token) => !VISUAL_SPECIFIC_SOURCE_LOCK_STOPWORDS.has(token))
+    .filter((token) => {
+      if (seen.has(token)) return false;
+      seen.add(token);
+      return true;
+    })
+    .slice(0, 4);
 }
 
 function isLocalOrGeneratedReference(value = "") {
@@ -1824,7 +1921,10 @@ async function visualEntityPreflightForStory(story = {}) {
   if (!shouldRunIncidentGuardForStory(story)) return null;
   const subjectTokens = visualSubjectTokensForStory(story);
   const sourceLockTokens = visualSourceLockTokensForStory(story);
-  const lockTokens = [...new Set([...subjectTokens, ...sourceLockTokens])];
+  const requiredSpecificSourceLockTokens = visualSpecificSourceLockTokensForStory(story);
+  const lockTokens = requiredSpecificSourceLockTokens.length
+    ? requiredSpecificSourceLockTokens
+    : [...new Set([...subjectTokens, ...sourceLockTokens])];
   if (!lockTokens.length) return null;
 
   const [renderStory, footageInventoryArtifact, rightsLedgerArtifact, directorArtifact] = await Promise.all([
@@ -1861,7 +1961,9 @@ async function visualEntityPreflightForStory(story = {}) {
     .filter((asset) =>
       !visualAssetSubjectLocked(
         asset,
-        asset.source_sidecar_path ? subjectTokens : lockTokens,
+        asset.source_sidecar_path && !requiredSpecificSourceLockTokens.length
+          ? subjectTokens
+          : lockTokens,
       )
     )
     .map((asset) => ({
@@ -1880,6 +1982,7 @@ async function visualEntityPreflightForStory(story = {}) {
       evidence: {
         canonical_subject_tokens: subjectTokens,
         source_lock_tokens: sourceLockTokens,
+        required_specific_source_lock_tokens: requiredSpecificSourceLockTokens,
         direct_motion_asset_count: directMotionAssets.length,
         mismatched_motion_assets: mismatched.slice(0, 8),
       },
@@ -1893,6 +1996,7 @@ async function visualEntityPreflightForStory(story = {}) {
     evidence: {
       canonical_subject_tokens: subjectTokens,
       source_lock_tokens: sourceLockTokens,
+      required_specific_source_lock_tokens: requiredSpecificSourceLockTokens,
       direct_motion_asset_count: directMotionAssets.length,
       direct_motion_assets: directMotionAssets.slice(0, 8).map((asset) => ({
         id: cleanText(asset.id || asset.asset_id),

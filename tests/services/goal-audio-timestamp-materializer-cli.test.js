@@ -234,3 +234,16 @@ test("goal audio timestamp materializer can select ElevenLabs without local-only
   assert.equal(env.TTS_PROVIDER, "elevenlabs");
   assert.equal(Object.prototype.hasOwnProperty.call(env, "PULSE_LOCAL_TTS_ONLY"), false);
 });
+
+test("goal audio timestamp materializer keeps Whisper model retries for ElevenLabs batches", () => {
+  const env = {
+    TTS_PROVIDER: "local",
+    PULSE_LOCAL_TTS_ONLY: "true",
+  };
+
+  configureGoalTtsBatchEnv(env, { provider: "elevenlabs" });
+
+  assert.equal(env.TTS_PROVIDER, "elevenlabs");
+  assert.equal(Object.prototype.hasOwnProperty.call(env, "PULSE_LOCAL_TTS_ONLY"), false);
+  assert.equal(env.LOCAL_WHISPER_MODELS, "tiny.en,base.en,small.en");
+});

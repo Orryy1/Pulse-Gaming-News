@@ -240,6 +240,32 @@ test("caption SRT protects title and platform fragments before phrase grouping",
   assert.doesNotMatch(srt, /Game Spot|G T A|PlayStation five|twenty twenty six/);
 });
 
+test("caption SRT protects GameSpot possessives before phrase grouping", () => {
+  const srt = buildCaptionSrt(
+    "GameSpot's footage shows Capcom giving Yasmine fast step-ins.",
+    5,
+    {
+      words: [
+        { word: "Game", start: 0, end: 0.28 },
+        { word: "Spot's", start: 0.28, end: 0.62 },
+        { word: "footage", start: 0.62, end: 1.02 },
+        { word: "shows", start: 1.02, end: 1.26 },
+        { word: "Capcom", start: 1.26, end: 1.7 },
+        { word: "giving", start: 1.7, end: 2.0 },
+        { word: "Yasmine", start: 2.0, end: 2.48 },
+        { word: "fast", start: 2.48, end: 2.72 },
+        { word: "step-ins.", start: 2.72, end: 3.14 },
+      ],
+      maxWordsPerPhrase: 3,
+      maxPhraseChars: 26,
+      maxPhraseDurationS: 1.2,
+    },
+  );
+
+  assert.match(srt, /GameSpot's footage/);
+  assert.doesNotMatch(srt, /Game Spot/);
+});
+
 test("caption SRT prevents overlapping cue timings after protected token merges", () => {
   const srt = buildCaptionSrt(
     "GTA 6 preorders begin on June 25, while price still matters.",
@@ -3786,6 +3812,66 @@ test("public copy repair leaves duration-repaired clean packages unchanged", asy
   assert.equal(report.summary.unchanged_count, 1);
   assert.equal(after.narration_script, manifest.narration_script);
   assert.equal(after.duration_variant_repaired_at, "2026-05-22T13:30:00.000Z");
+});
+
+test("public copy repair leaves evidence-backed named-character cover headlines unchanged", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-repair-named-character-cover-"));
+  const artifactDir = path.join(root, "sf6-yasmine");
+  await fs.ensureDir(artifactDir);
+  const script =
+    "Street Fighter 6 just made Yasmine look like a ranked-mode problem. GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. That matters for players because zoner mains may have to spend meter just to breathe, while rushdown players may get a new bully on 3 August. The catch is her space control: defenders may not get time to reset. If that pressure survives release, ranked mode turns into a fight over fairness, not just hype. Follow Pulse Gaming so you never miss a beat.";
+  const manifest = {
+    schema_version: 1,
+    story_id: "rss_sf6_yasmine",
+    canonical_subject: "Street Fighter 6",
+    canonical_game: "Street Fighter 6",
+    selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+    public_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+    upload_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+    short_title: "Yasmine Looks Dangerous",
+    thumbnail_headline: "YASMINE PRESSURE",
+    thumbnail_text: "YASMINE PRESSURE",
+    suggested_thumbnail_text: "YASMINE PRESSURE",
+    first_spoken_line: "Street Fighter 6 just made Yasmine look dangerous for one simple reason: this trailer is about pressure, not patience.",
+    narration_hook: "Street Fighter 6 just made Yasmine look dangerous for one simple reason: this trailer is about pressure, not patience.",
+    narration_script: script,
+    full_script: script,
+    tts_script: script,
+    description: "Street Fighter 6 has a player-trust test now. Source: GameSpot.",
+    pinned_comment: "Source: GameSpot.",
+    primary_source: "GameSpot",
+    primary_source_url: "https://www.gamespot.com/videos/street-fighter-6-yasmine-character-gameplay-reveal-trailer/",
+    source_published_at: "2026-06-17T23:11:20.000Z",
+    confirmed_claims: [
+      "Capcom's official Street Fighter 6 trailer shows Yasmine gameplay.",
+      "Yasmine uses Eskrima-inspired pressure and close-range movement.",
+      "Yasmine is listed for a 3 August release in the source copy.",
+    ],
+    allowed_public_wording: [
+      "Street Fighter 6 Just Revealed A Rushdown Problem",
+      "Street Fighter 6 just made Yasmine look like a ranked-mode problem.",
+    ],
+    script_coherence_result: "pass",
+    script_coherence_failures: [],
+  };
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), manifest);
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "pass",
+    score: 92,
+    blockers: [],
+    failures: [],
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_sf6_yasmine", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-23T19:05:00.000Z",
+  });
+  const after = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+
+  assert.equal(report.summary.changed_count, 0);
+  assert.equal(report.summary.unchanged_count, 1);
+  assert.equal(after.thumbnail_headline, "YASMINE PRESSURE");
+  assert.equal(after.narration_script, script);
 });
 
 test("public copy repair syncs stale platform packs without shortening clean duration-extended scripts", async () => {

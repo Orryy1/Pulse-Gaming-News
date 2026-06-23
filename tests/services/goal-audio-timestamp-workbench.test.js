@@ -582,6 +582,60 @@ test("audio timestamp workbench blocks fresh files when Whisper aligned an old r
   assert.equal(report.jobs[0].timestamps.reason, "timestamp_transcript_mismatch_after_canonical_repair");
 });
 
+test("audio timestamp workbench accepts repaired scripts when acronym speech expands the raw word count", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-acronym-expansion-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");
+  const audioDir = path.join(root, "output", "audio");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-audio",
+    public_copy_repaired_at: "2026-06-23T11:22:35.313Z",
+    narration_script:
+      "Halo on PS5 just picked up a very Xbox-shaped requirement. Eurogamer reports Halo: Campaign Evolved PS5 players will need an Xbox account and gamertag to play, plus PS Plus for split-screen co-op. Follow Pulse Gaming so you never miss a beat.",
+  });
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: [
+      { word: "Halo", start: 0, end: 0.2 },
+      { word: "beat.", start: 7.1, end: 7.4 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        model: "small.en",
+        transcript:
+          "Halo on PlayStation five just picked up a very Xbox shaped requirement. Eurogamer reports Halo Campaign Evolved PlayStation five players will need an Xbox account and gamertag to play, plus PS Plus for split screen co op. Follow Pulse Gaming so you never miss a beat.",
+        script_expected_word_count: 48,
+        script_actual_word_count: 48,
+        script_matched_word_count: 48,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        audioJob({
+          artifact_dir: artifactDir,
+          blockers: [],
+        }),
+      ],
+    },
+    localTtsDoctorReport: { verdict: "green" },
+    providerPreference: "local",
+    generatedAt: "2026-06-23T11:45:00.000Z",
+  });
+
+  assert.equal(report.summary.ready_audio_timestamp_pair_count, 1);
+  assert.equal(report.summary.requires_generation_count, 0);
+  assert.equal(report.jobs[0].status, "ready_audio_timestamp_pair");
+  assert.equal(report.jobs[0].audio.usable, true);
+  assert.equal(report.jobs[0].timestamps.usable, true);
+});
+
 test("audio timestamp workbench blocks old ASR-clean audio when the current canonical script changed", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-current-script-mismatch-"));
   const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");

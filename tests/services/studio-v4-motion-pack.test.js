@@ -1293,6 +1293,187 @@ test("Visual V4 motion pack does not use separate windows from one source asset 
   );
 });
 
+test("Visual V4 motion pack accepts hash-distinct official windows from one Steam trailer without accepting loops", () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/hash/1782090499/hls_264_master.m3u8?t=1";
+  const hashedSamples = (windowId) => [
+    {
+      local_path: `test/output/sf6/${windowId}-a.jpg`,
+      status: "accepted",
+      qa: { content_hash: `${windowId}-a`, thumbnail_safe: true, black_frame: false, failures: [] },
+    },
+    {
+      local_path: `test/output/sf6/${windowId}-b.jpg`,
+      status: "accepted",
+      qa: { content_hash: `${windowId}-b`, thumbnail_safe: true, black_frame: false, failures: [] },
+    },
+    {
+      local_path: `test/output/sf6/${windowId}-c.jpg`,
+      status: "accepted",
+      qa: { content_hash: `${windowId}-c`, thumbnail_safe: true, black_frame: false, failures: [] },
+    },
+  ];
+
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "sf6-yasmine-pack",
+      title: "Street Fighter 6 Shows Yasmine Gameplay",
+      canonical_subject: "Street Fighter 6",
+      canonical_game: "Street Fighter 6",
+      full_script:
+        "Street Fighter 6 has a real Yasmine gameplay reveal. Capcom's official trailer shows separate combat beats, not one loop repeated over and over.",
+    }),
+    trustedFootageReport: trustedReport("sf6-yasmine-pack", ["steam_1364780_164062000"]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "sf6-yasmine-pack",
+        family: "steam_1364780_164062000",
+        index: 1,
+        sourceUrl,
+        start: 36,
+        samples: hashedSamples("w36"),
+      }),
+      segment({
+        storyId: "sf6-yasmine-pack",
+        family: "steam_1364780_164062000",
+        index: 2,
+        sourceUrl,
+        start: 42,
+        actionScore: 86,
+        samples: hashedSamples("w42"),
+      }),
+      segment({
+        storyId: "sf6-yasmine-pack",
+        family: "steam_1364780_164062000",
+        index: 3,
+        sourceUrl,
+        start: 48,
+        actionScore: 84,
+        samples: hashedSamples("w48"),
+      }),
+      segment({
+        storyId: "sf6-yasmine-pack",
+        family: "steam_1364780_164062000",
+        index: 4,
+        sourceUrl,
+        start: 42.4,
+        actionScore: 83,
+        samples: hashedSamples("w42"),
+      }),
+    ]),
+    maxClips: 6,
+    generatedAt: "2026-06-23T12:30:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 3);
+  assert.deepEqual(
+    pack.clips.map((clip) => clip.mediaStartS),
+    [36, 42, 48],
+  );
+  assert.equal(pack.motion_budget.available_motion_clips, 3);
+  assert.equal(pack.motion_budget.available_distinct_families, 1);
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_window_too_close",
+    ),
+    true,
+  );
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_already_used",
+    ),
+    false,
+  );
+});
+
+test("Visual V4 motion pack rejects same-game wrong-character trailers for character-specific stories", () => {
+  const yasmineUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/hash/1782090499/hls_264_master.m3u8?t=1";
+
+  const makeSf6Segment = ({ family, referenceTitle, movieId, score }) =>
+    segment({
+      storyId: "sf6-yasmine-pack",
+      family,
+      index: Number(movieId),
+      entity: "Street Fighter 6",
+      sourceUrl:
+        family === "sf6_yasmine_gameplay"
+          ? yasmineUrl
+          : `https://video.akamai.steamstatic.com/store_trailers/1364780/${movieId}/hash/hls_264_master.m3u8?t=1`,
+      sourceType: "steam_storefront_video_reference",
+      referenceTitle,
+      actionScore: score,
+      validationReason: "official_storefront_trailer_motion_samples_passed",
+    });
+
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "sf6-yasmine-pack",
+      title: "Street Fighter 6 Yasmine Gameplay Reveal",
+      selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      short_title: "Yasmine Looks Dangerous",
+      suggested_thumbnail_text: "YASMINE PRESSURE",
+      canonical_subject: "Street Fighter 6 – Yasmine Character Gameplay Reveal Trailer",
+      canonical_game: "",
+      full_script:
+        "Street Fighter 6 just made Yasmine look like a ranked-mode problem. Capcom's official trailer shows her rushdown pressure, knife feints and space control.",
+    }),
+    trustedFootageReport: trustedReport("sf6-yasmine-pack", [
+      "sf6_yasmine_gameplay",
+      "sf6_ingrid_gameplay",
+      "sf6_alex_gameplay",
+      "sf6_c_viper_gameplay",
+      "sf6_elena_gameplay",
+    ]),
+    segmentValidationReport: segmentReport([
+      makeSf6Segment({
+        family: "sf6_yasmine_gameplay",
+        referenceTitle: "SF6_YASMINE_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+        movieId: "164062000",
+        score: 96.7,
+      }),
+      makeSf6Segment({
+        family: "sf6_ingrid_gameplay",
+        referenceTitle: "SF6_INGRID_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+        movieId: "164062111",
+        score: 99,
+      }),
+      makeSf6Segment({
+        family: "sf6_alex_gameplay",
+        referenceTitle: "SF6_ALEX_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+        movieId: "164062222",
+        score: 98,
+      }),
+      makeSf6Segment({
+        family: "sf6_c_viper_gameplay",
+        referenceTitle: "SF6_C.Viper_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+        movieId: "164062333",
+        score: 97,
+      }),
+      makeSf6Segment({
+        family: "sf6_elena_gameplay",
+        referenceTitle: "SF6_ELENA_Gameplaytrailer_Multi_EN_ESRB_HD_Steam",
+        movieId: "164062444",
+        score: 95,
+      }),
+    ]),
+    maxClips: 5,
+    generatedAt: "2026-06-23T12:45:00.000Z",
+  });
+
+  const acceptedIdentityText = pack.clips
+    .map((clip) => `${clip.source_family} ${clip.provenance?.reference_title || ""}`)
+    .join(" ");
+  assert.match(acceptedIdentityText, /yasmine/i);
+  assert.doesNotMatch(acceptedIdentityText, /ingrid|alex|viper|elena/i);
+  assert.equal(
+    pack.rejected_candidates.filter(
+      (candidate) => candidate.reason === "story_subject_motion_mismatch",
+    ).length,
+    4,
+  );
+});
+
 test("Visual V4 motion pack does not top up premium density with repeat windows", () => {
   const families = ["steam_alpha", "steam_beta", "steam_gamma", "steam_delta"];
   const sourceUrls = {

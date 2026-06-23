@@ -17,6 +17,7 @@ function parseArgs(argv = process.argv) {
     storyPackages: null,
     outDir: DEFAULT_OUT,
     limit: null,
+    generatedAt: null,
     json: false,
   };
   for (let index = 2; index < argv.length; index += 1) {
@@ -25,6 +26,7 @@ function parseArgs(argv = process.argv) {
     else if (arg === "--story-packages") args.storyPackages = argv[++index];
     else if (arg === "--out-dir") args.outDir = argv[++index];
     else if (arg === "--limit") args.limit = Number(argv[++index]);
+    else if (arg === "--generated-at") args.generatedAt = argv[++index] || null;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
   }
@@ -40,6 +42,7 @@ function usage() {
     "  --story-packages <file>  Story package manifest JSON; overrides --bridge",
     "  --out-dir <dir>   Output directory for aggregate report",
     "  --limit <n>       Inspect first n candidates",
+    "  --generated-at <iso>  Fixed generated_at for deterministic proof refreshes",
     "  --json            Print aggregate JSON",
   ].join("\n");
 }
@@ -179,6 +182,7 @@ async function main() {
     storyPackagesPath: args.storyPackages,
     outDir,
     limit: args.limit,
+    generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const jsonPath = path.join(outDir, "audio_segment_loudness_report.json");
   await fs.writeJson(jsonPath, report, { spaces: 2 });

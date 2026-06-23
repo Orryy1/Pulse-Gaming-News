@@ -3600,9 +3600,9 @@ test("goal dry-run publisher blocks rendered packages that lack final narration,
   assert.ok(plan.summary.incident_guard_failed_story_count >= 1);
 });
 
-test("goal dry-run publisher blocks final renders without a narration manifest even when audio evidence exists", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-missing-narration-manifest-"));
-  const storyPackage = await makeStoryPackage(root, "missing-narration-manifest", "GREEN", "Hades II Just Broke PlayStation's Silence", {
+test("goal dry-run publisher accepts governed audio manifests without a separate narration manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-audio-manifest-narration-"));
+  const storyPackage = await makeStoryPackage(root, "audio-manifest-narration", "GREEN", "Hades II Just Broke PlayStation's Silence", {
     canonicalSubject: "Hades II",
   });
   await fs.remove(path.join(storyPackage.artifact_dir, "narration_manifest.json"));
@@ -3615,10 +3615,11 @@ test("goal dry-run publisher blocks final renders without a narration manifest e
     },
   });
 
-  assert.equal(plan.overall_verdict, "RED");
-  assert.equal(plan.summary.ready_story_count, 0);
-  assert.ok(plan.blocked_stories[0].blockers.includes("narration_manifest_missing"));
-  assert.ok(plan.blocked_stories[0].blockers.includes("incident:narration_missing"));
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.incident_guard_report.stories[0].file_evidence.narration_ready, true);
+  assert.ok(!plan.blocked_stories[0]?.blockers?.includes("narration_manifest_missing"));
+  assert.ok(!plan.blocked_stories[0]?.blockers?.includes("incident:narration_missing"));
 });
 
 test("goal dry-run publisher blocks stale narration manifests after audio regeneration", async () => {

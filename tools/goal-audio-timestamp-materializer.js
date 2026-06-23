@@ -108,6 +108,11 @@ function setMinimumInteger(env, key, minimum) {
   if (!Number.isInteger(current) || current < minimum) env[key] = String(minimum);
 }
 
+function configureWhisperRetryEnv(env = process.env) {
+  env.LOCAL_WHISPER_MODELS = env.LOCAL_WHISPER_MODELS || "tiny.en,base.en,small.en";
+  return env;
+}
+
 function configureLocalTtsBatchEnv(env = process.env, options = {}) {
   env.TTS_PROVIDER = "local";
   env.PULSE_LOCAL_TTS_ONLY = "true";
@@ -124,7 +129,7 @@ function configureLocalTtsBatchEnv(env = process.env, options = {}) {
   setMinimumMs(env, "LOCAL_TTS_START_WAIT_MS", 120000);
   setMinimumMs(env, "LOCAL_TTS_PREWARM_TIMEOUT_MS", 600000);
   env.LOCAL_TTS_OUTPUT_FORMAT = env.LOCAL_TTS_OUTPUT_FORMAT || "mp3_44100_256";
-  env.LOCAL_WHISPER_MODELS = env.LOCAL_WHISPER_MODELS || "tiny.en,base.en,small.en";
+  configureWhisperRetryEnv(env);
   env.LOCAL_TTS_SEGMENTED_MATERIALIZER = env.LOCAL_TTS_SEGMENTED_MATERIALIZER || "false";
   return env;
 }
@@ -136,6 +141,7 @@ function configureGoalTtsBatchEnv(env = process.env, { provider = "auto", localT
   if (selected === "elevenlabs") {
     env.TTS_PROVIDER = "elevenlabs";
     delete env.PULSE_LOCAL_TTS_ONLY;
+    configureWhisperRetryEnv(env);
     return env;
   }
   return configureLocalTtsBatchEnv(env, localOptions);

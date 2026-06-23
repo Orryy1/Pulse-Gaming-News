@@ -496,6 +496,94 @@ test("real motion materializer hydrates ready V4 motion packs into local direct-
   assert.ok(rights.records.every((record) => record.source_url.includes("video.akamai.steamstatic.com")));
 });
 
+test("real motion materializer restores package evidence from an already materialized central motion pack", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-central-restore-"));
+  const storyId = "sf6-central-restore";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const videoCache = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(videoCache);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+    },
+  });
+
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/hash/hls_264_master.m3u8?t=1782095041";
+  const clips = Array.from({ length: 6 }, (_, index) => {
+    const clipPath = path.join(videoCache, `${storyId}-clip-${index + 1}.mp4`);
+    fs.writeFileSync(clipPath, Buffer.alloc(4096, index + 1));
+    return {
+      id: `sf6-window-${index + 1}`,
+      type: "motion_clip",
+      source_family: `steam_1364780_164062000_window_${index + 1}`,
+      motion_family: `steam_1364780_164062000_window_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: sourceUrl,
+      source_kind: "hls_manifest",
+      source_url_kind: "hls_manifest",
+      source_type: "steam_movie",
+      provider: "steam",
+      entity: "Street Fighter 6",
+      mediaStartS: 36 + index * 3,
+      durationS: 3,
+      media_kind: "direct_video",
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      trusted_source_matched: false,
+      rights_basis: "official_direct_media",
+      rights_risk_class: "official_reference_only",
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "official_storefront_trailer_motion_samples_passed",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    };
+  });
+  await fs.outputJson(path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`), {
+    story_id: storyId,
+    source: "validated_real_motion_materializer",
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips,
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        title: "Street Fighter 6 Yasmine Gameplay Reveal",
+        artifact_dir: artifactDir,
+        status: "blocked_on_render_inputs",
+        blockers: ["materialised_motion_clips_missing"],
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-06-23T18:20:00.000Z",
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.materialized_clip_count, 6);
+  assert.equal(report.jobs[0].repair_scope, "central_materialized_motion_restore");
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 6);
+  assert.equal(materialised.clips.every((clip) => clip.media_kind === "direct_video"), true);
+  const familyReport = await fs.readJson(path.join(artifactDir, "distinct_motion_family_report.json"));
+  assert.equal(familyReport.status, "ready");
+  assert.equal(familyReport.summary.clip_count, 6);
+});
+
 test("real motion materializer expands one validated official trailer into multiple direct-video windows", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-window-floor-"));
   const storyId = "subnautica-window-floor";

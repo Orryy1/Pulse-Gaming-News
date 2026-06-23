@@ -102,11 +102,14 @@ test("render audio segment audit CLI accepts story package manifests", () => {
     "output/goal-contract/story-packages.json",
     "--limit",
     "30",
+    "--generated-at",
+    "2026-06-23T22:00:00.000Z",
     "--json",
   ]);
 
   assert.equal(args.storyPackages, "output/goal-contract/story-packages.json");
   assert.equal(args.limit, 30);
+  assert.equal(args.generatedAt, "2026-06-23T22:00:00.000Z");
   assert.equal(args.json, true);
   assert.deepEqual(normaliseCandidates({ story_packages: [{ story_id: "one" }] }), [
     { story_id: "one" },

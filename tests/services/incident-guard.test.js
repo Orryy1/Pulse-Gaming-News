@@ -177,6 +177,60 @@ test("incident guard passes only when public copy, final inputs and platform evi
   assert.deepEqual(report.disaster_upload_blockers, []);
 });
 
+test("incident guard accepts evidence-backed named-character cover headlines", () => {
+  const script =
+    "Street Fighter 6 just made Yasmine look like a ranked-mode problem. GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. That matters for players because zoner mains may have to spend meter just to breathe, while rushdown players may get a new bully on 3 August. The catch is her space control: defenders may not get time to reset. If that pressure survives release, ranked mode turns into a fight over fairness, not just hype. Follow Pulse Gaming so you never miss a beat.";
+  const report = evaluateIncidentGuard({
+    story_id: "sf6-yasmine",
+    canonical_story_manifest: {
+      story_id: "sf6-yasmine",
+      canonical_subject: "Street Fighter 6",
+      canonical_game: "Street Fighter 6",
+      selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      thumbnail_headline: "YASMINE PRESSURE",
+      first_spoken_line: "Street Fighter 6 just made Yasmine look like a ranked-mode problem.",
+      narration_script: script,
+      full_script: script,
+      tts_script: script,
+      description: "Yasmine's pressure tools change how Street Fighter 6 defenders may spend meter. Source: GameSpot.",
+      primary_source: { name: "GameSpot", url: "https://www.gamespot.com/videos/street-fighter-6-yasmine-character-gameplay-reveal-trailer/" },
+      confirmed_claims: [
+        "Capcom's official Street Fighter 6 trailer shows Yasmine gameplay.",
+        "Yasmine uses Eskrima-inspired pressure and close-range movement.",
+      ],
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Street Fighter 6"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: { title: "Street Fighter 6 Just Revealed A Rushdown Problem" },
+        instagram_reels: { caption: "Yasmine's pressure tools change how Street Fighter 6 defenders may spend meter." },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+    },
+  });
+
+  assert.equal(report.verdict, "pass");
+  assert.equal(report.safe_to_publish_boolean, true);
+  assert.ok(!report.disaster_upload_blockers.includes("incident:thumbnail_title_script_mismatch"));
+});
+
 test("incident guard blocks stale current-news wording on old event dates", () => {
   const report = evaluateIncidentGuard({
     story_id: "crimson-desert-stale-live",

@@ -2056,8 +2056,23 @@ test("duration variant repair does not add Star Wars preview filler to hands-on 
     },
   );
 
+  const qa = evaluateGoalPublicCopy({
+    canonical_subject: "Granblue Fantasy: Relink",
+    selected_title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+    narration_script: repair.script,
+    full_script: repair.script,
+    tts_script: repair.script,
+    first_spoken_line: "Granblue Fantasy: Relink just made its next update much harder to ignore.",
+    description: "Granblue Fantasy: Relink Endless Ragnarok has a hands-on report and a playable demo available today.",
+    primary_source: "PlayStation Blog",
+    confirmed_claims: [
+      "Granblue Fantasy: Relink Endless Ragnarok has a hands-on report and a playable demo available today.",
+    ],
+  });
+
   assert.match(repair.script, /playable demo|combat rhythm|Relink/i);
   assert.doesNotMatch(repair.script, /PC Gamer|Mass Effect|permadeath|squad layer/i);
+  assert.ok(!qa.failures.includes("public_copy:unsupported_specific_detail_narration"), JSON.stringify(qa));
 });
 
 test("duration variant repair does not reintroduce internal source-policy language after source attribution repair", () => {

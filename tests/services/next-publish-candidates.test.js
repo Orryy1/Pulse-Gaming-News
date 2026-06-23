@@ -234,6 +234,104 @@ async function passBridgeArtifactFreshnessQa() {
   return { result: "pass", failures: [], warnings: [] };
 }
 
+async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
+  const now = "2026-06-23T22:30:00.000Z";
+  const script =
+    "Street Fighter 6 just made Yasmine look like a ranked-mode problem. " +
+    "GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. " +
+    "That matters because zoner mains may have to spend meter just to breathe, while rushdown players may get a new bully when she arrives. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  await fs.outputFile(videoPath, "fake mp4 bytes");
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Street Fighter 6",
+    selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+    narration_script: script,
+    tts_script: script,
+  });
+  await fs.writeJson(path.join(artifactDir, "narration_manifest.json"), {
+    status: "ready",
+    final_transcript: script,
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 94,
+    blockers: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    story_id: storyId,
+    verdict: "GREEN",
+    status: "GREEN",
+    can_auto_publish: true,
+    enabled_platform_outputs: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    reason_codes: [],
+    generated_at: now,
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "GREEN",
+    can_auto_publish: true,
+    outputs: {
+      youtube_shorts: { duration_seconds: 37.1, captions: { file: "captions.srt" } },
+      instagram_reels: { duration_seconds: 37.1, captions: { file: "captions.srt" } },
+      facebook_reels: { duration_seconds: 37.1, captions: { file: "captions.srt" } },
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "coherence_report.json"), {
+    generated_at: now,
+    result: "pass",
+    verdict: "pass",
+    failures: [],
+    warnings: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    final_publish_render: true,
+    output_path: videoPath,
+    generated_at: now,
+    quality_gate_status: "post_render_forensics_passed",
+    post_render_forensic_result: "pass",
+    post_render_forensic_blockers: [],
+    clips: 30,
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: storyId,
+    voice_status: "materialized",
+    word_timestamp_count: 80,
+    word_timestamp_source: "local_whisper_word_alignment",
+    timestamp_whisper_alignment: {
+      script_coverage_ratio: 1,
+      script_inserted_actual_word_count: 0,
+      script_trailing_actual_word_count: 0,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: storyId,
+    status: "ready",
+    generated_at: now,
+    clips: Array.from({ length: 5 }, (_, index) => ({
+      id: `clip-${index + 1}`,
+      source_family: `official_${index + 1}`,
+      motion_family: `official_${index + 1}`,
+      materialized: true,
+      counts_towards_motion_readiness: true,
+    })),
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    story_id: storyId,
+    verdict: "GREEN",
+    status: "pass",
+    hard_failures: [],
+    scores: {
+      overall_media_house_score: 95,
+      title_strength_score: 100,
+      first_frame_score: 100,
+      first_3_seconds_score: 100,
+      competitor_parity_score: 98,
+      competitor_surpass_score: 93,
+    },
+  });
+}
+
 test("next publish report ranks clean approved candidates by approval, duration and analytics fit", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -4492,6 +4590,112 @@ test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallba
     await fs.remove(repoFallbackPath);
     await fs.remove(mediaRoot);
   }
+});
+
+test("attachPreflightQa trusts a current full GREEN proof package over stale preflight blockers", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-proof-"));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "current-green-package", videoPath);
+
+  const stories = [
+    baseStory({
+      id: "current-green-package",
+      title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      canonical_subject: "Street Fighter 6",
+      source_type: "rss",
+      timestamp: "2026-06-23T09:30:00.000Z",
+      source_manifest: {
+        primary_source: {
+          name: "GameSpot",
+          url: "https://www.gamespot.com/videos/street-fighter-6-yasmine-character-gameplay-reveal-trailer/",
+          published_at: "2026-06-23T09:30:00.000Z",
+        },
+        source_age_policy_hours: 168,
+      },
+      duration_seconds: 37.1,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      auto_approved: true,
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "Street Fighter 6 Just Revealed A Rushdown Problem" },
+          instagram_reels: { caption: "Street Fighter 6 just made Yasmine look like a ranked-mode problem." },
+          facebook_reels: { page_caption: "Street Fighter 6 just made Yasmine look like a ranked-mode problem." },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-23T22:30:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    env: {
+      TIKTOK_ENABLED: "false",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "false",
+    },
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({
+      result: "fail",
+      failures: ["subtitle_timing_unusable:too_few_words", "public_output:manual_captions_missing"],
+      warnings: [],
+    }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({
+      result: "fail",
+      failures: ["captions:missing_or_messy"],
+      warnings: [],
+    }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({
+      result: "fail",
+      failures: ["incident:distinct_motion_families_missing"],
+      warnings: [],
+    }),
+    runVoiceQualityQa: async () => ({ result: "fail", failures: ["voice_cadence:wpm_too_fast"], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVisualEntityQa: async () => ({
+      result: "fail",
+      failures: ["direct_motion_subject_mismatch"],
+      warnings: [],
+    }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "publish_ready");
+  assert.equal(candidate.preflight_qa.status, "pass");
+  assert.equal(candidate.current_proof_package.status, "green");
+  assert.ok(candidate.reasons.includes("current_green_proof_package"));
+  assert.ok(!candidate.reasons.includes("preflight_qa_blocked"));
+  assert.deepEqual(candidate.current_proof_package.superseded_preflight_blockers, [
+    "content:subtitle_timing_unusable:too_few_words",
+    "content:public_output:manual_captions_missing",
+    "governance:captions:missing_or_messy",
+    "incident_guard:incident:distinct_motion_families_missing",
+    "voice_quality:voice_cadence:wpm_too_fast",
+    "visual_entity_match:direct_motion_subject_mismatch",
+  ]);
+  assert.equal(report.preflight_qa.blocked, 0);
+  assert.equal(report.preflight_qa.pass, 1);
 });
 
 test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {

@@ -11,6 +11,9 @@ const {
   resolveDurationLane,
 } = require("../lib/services/short-duration-contract");
 const {
+  hydrateCandidateFromCurrentProofPackage,
+} = require("../lib/ops/candidate-supply");
+const {
   characterAlignmentToSubtitleWords,
   inspectSubtitleTimingWords,
 } = require("../lib/subtitle-timing");
@@ -3696,6 +3699,43 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
     const preflight = await runPreflightQaForStory(story, opts);
     candidate.preflight_qa = preflight;
     if (preflight.status === "blocked") {
+      const sourceAgeBlocked = asArray(preflight.blockers).some((blocker) =>
+        /^source_age:/i.test(cleanText(blocker)),
+      );
+      if (!sourceAgeBlocked) {
+        const hydrated = hydrateCandidateFromCurrentProofPackage(
+          {
+            ...candidate,
+            preflight_qa: preflight,
+            source: {
+              ...(candidate.source || {}),
+              artifact_dir:
+                candidate.source?.artifact_dir ||
+                story.scheduler_bridge_artifact_dir ||
+                story.artifact_dir ||
+                story.package_dir,
+              exported_path:
+                candidate.source?.exported_path ||
+                story.exported_path ||
+                story.final_mp4_path ||
+                story.final_render_path,
+            },
+          },
+          enabledPublishPlatformNames(opts),
+        );
+        if (hydrated.current_proof_package?.status === "green") {
+          Object.assign(candidate, hydrated);
+          candidate.preflight_qa = {
+            ...candidate.preflight_qa,
+            superseded_preflight_qa: {
+              status: preflight.status,
+              blockers: asArray(preflight.blockers),
+              warnings: asArray(preflight.warnings),
+            },
+          };
+          continue;
+        }
+      }
       candidate.status = "review";
       candidate.penalties = [...new Set([...(candidate.penalties || []), "preflight_qa_blocked"])];
       candidate.reasons = [...new Set([...(candidate.reasons || []), "preflight_qa_blocked"])];

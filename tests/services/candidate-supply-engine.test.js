@@ -688,6 +688,231 @@ test("candidate supply ignores stale transcript backlog when the current artifac
   assert.doesNotMatch(formatCandidateSupplyMonitorDiscord(report), /transcript-held 1/);
 });
 
+test("candidate supply trusts a current full GREEN proof package over stale blocked preflight rows", async (t) => {
+  const now = new Date("2026-06-23T22:30:00.000Z");
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-proof-package-"));
+  t.after(async () => {
+    await fs.remove(artifactDir);
+  });
+
+  const script =
+    "Street Fighter 6 just made Yasmine look like a ranked-mode problem. " +
+    "GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. " +
+    "That matters because zoner mains may have to spend meter just to breathe, while rushdown players may get a new bully when she arrives. " +
+    "The catch is her space control. Defenders may not get time to reset, and that is where the fairness argument starts. " +
+    "If that pressure survives release, ranked mode becomes a fairness argument for every match, not just a new-character celebration. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const videoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  await fs.outputFile(videoPath, "fake mp4 bytes");
+  await fs.writeJson(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+    {
+      story_id: "current-green-package",
+      canonical_subject: "Street Fighter 6",
+      selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      thumbnail_headline: "YASMINE PRESSURE",
+      source_card_label: "GameSpot",
+      primary_source: "GameSpot",
+      narration_script: script,
+      tts_script: script,
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "narration_manifest.json"),
+    {
+      status: "ready",
+      final_transcript: script,
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "script_scorecard.json"),
+    {
+      verdict: "viral_ready",
+      viral_score: 94,
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "publish_verdict.json"),
+    {
+      story_id: "current-green-package",
+      verdict: "GREEN",
+      status: "GREEN",
+      can_auto_publish: true,
+      enabled_platform_outputs: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      reason_codes: [],
+      generated_at: now.toISOString(),
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+    {
+      publish_status: "GREEN",
+      can_auto_publish: true,
+      outputs: {
+        youtube_shorts: { duration_seconds: 37.1, captions: { file: "captions.srt" } },
+        instagram_reels: { duration_seconds: 37.1, captions: { file: "captions.srt" } },
+        facebook_reels: { duration_seconds: 37.1, captions: { file: "captions.srt" } },
+      },
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "coherence_report.json"),
+    {
+      generated_at: now.toISOString(),
+      result: "pass",
+      verdict: "pass",
+      failures: [],
+      warnings: [],
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "render_manifest.json"),
+    {
+      story_id: "current-green-package",
+      final_publish_render: true,
+      output_path: videoPath,
+      generated_at: now.toISOString(),
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+      post_render_forensic_blockers: [],
+      clips: 30,
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "audio_manifest.json"),
+    {
+      story_id: "current-green-package",
+      voice_status: "materialized",
+      word_timestamp_count: 107,
+      word_timestamp_source: "local_whisper_word_alignment",
+      timestamp_whisper_alignment: {
+        script_coverage_ratio: 1,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "materialised_motion_clips.json"),
+    {
+      story_id: "current-green-package",
+      status: "ready",
+      generated_at: now.toISOString(),
+      clips: [
+        { id: "clip-1", source_family: "official_1", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-2", source_family: "official_2", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-3", source_family: "official_3", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-4", source_family: "official_4", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-5", source_family: "official_5", materialized: true, counts_towards_motion_readiness: true },
+      ],
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "pulse_media_house_score.json"),
+    {
+      story_id: "current-green-package",
+      verdict: "GREEN",
+      status: "pass",
+      hard_failures: [],
+      scores: {
+        overall_media_house_score: 95,
+        title_strength_score: 100,
+        first_frame_score: 100,
+        first_3_seconds_score: 100,
+        competitor_parity_score: 98,
+        competitor_surpass_score: 93,
+      },
+    },
+    { spaces: 2 },
+  );
+
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [
+      candidate("current-green-package", {
+        title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+        status: "review",
+        reasons: ["scheduler_bridge_candidate", "preflight_qa_blocked"],
+        penalties: ["preflight_qa_blocked"],
+        source: {
+          source_type: "rss",
+          exported_path: videoPath,
+          already_published_platforms: [],
+          terminal_duplicate_blocked_platforms: [],
+          missing_enabled_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+        },
+        source_manifest: {
+          primary_source: {
+            name: "GameSpot",
+            url: "https://www.gamespot.com/videos/street-fighter-6-yasmine-character-gameplay-reveal-trailer/",
+            published_at: "2026-06-23T09:30:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+        preflight_qa: {
+          status: "blocked",
+          blockers: [
+            "content:subtitle_timing_unusable:too_few_words",
+            "governance:captions:missing_or_messy",
+            "incident_guard:incident:distinct_motion_families_missing",
+          ],
+          checks: {
+            source_age: {
+              result: "pass",
+              evidence: {
+                source_published_at: "2026-06-23T09:30:00.000Z",
+                policy_hours: 168,
+              },
+            },
+          },
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  assert.equal(report.summary.raw_preflight_green_ready_candidates, 1);
+  assert.equal(report.summary.green_ready_candidates, 1);
+  assert.equal(report.summary.source_safe_candidates, 1);
+  assert.equal(report.summary.v4_ready_candidates, 1);
+  assert.equal(report.summary.fresh_youtube_upload_candidates, 1);
+  assert.equal(report.summary.current_green_proof_package_candidates, 1);
+  assert.ok(!report.blockers.includes("green_ready_candidate_buffer_empty"));
+  assert.ok(!report.blockers.includes("fresh_youtube_upload_candidate_buffer_empty"));
+  const scorecard = report.priority_scorecards.find((item) => item.story_id === "current-green-package");
+  assert.equal(scorecard.clean_green, true);
+  assert.deepEqual(scorecard.available_fresh_upload_platforms, ["youtube_shorts", "instagram_reels", "facebook_reels"]);
+  assert.deepEqual(scorecard.current_proof_package?.superseded_preflight_blockers, [
+    "content:subtitle_timing_unusable:too_few_words",
+    "governance:captions:missing_or_messy",
+    "incident_guard:incident:distinct_motion_families_missing",
+  ]);
+});
+
 test("candidate supply report exposes Shorts attention readiness and metadata blockers", () => {
   const now = new Date("2026-06-20T09:00:00.000Z");
   const candidateReport = {

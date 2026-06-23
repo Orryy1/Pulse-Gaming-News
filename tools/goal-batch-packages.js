@@ -230,6 +230,7 @@ async function main(argv = process.argv.slice(2)) {
     sfxAssetInventory,
     sfxRightsLedger,
     videoCacheDir: path.resolve(args.videoCacheDir),
+    existingArtifactRoot: path.resolve(args.outDir),
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const outputs = await writeGoalBatchPackages(batch, {

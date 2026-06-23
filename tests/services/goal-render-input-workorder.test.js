@@ -79,6 +79,84 @@ test("render input work order maps queued blockers to exact local actions", () =
   assert.equal(workOrder.safety.no_publish_triggered, true);
 });
 
+test("render input work order accepts story-package arrays after audio and motion repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-story-package-render-input-"));
+  const artifactDir = path.join(root, "packages", "story-package-ready");
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  const clips = [1, 2, 3, 4, 5].map((index) => ({
+    id: `clip-${index}`,
+    path: path.join(artifactDir, `clip-${index}.mp4`),
+    source_url: `https://cdn.example.com/trailer-${index}.mp4`,
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    source_family: index <= 3 ? `family-${index}` : `family-${index - 1}`,
+    counts_towards_motion_readiness: true,
+  }));
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-package-ready",
+    canonical_subject: "Granblue Fantasy: Relink",
+    selected_title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+    thumbnail_headline: "DEMO PROOF",
+    first_spoken_line: "Granblue Fantasy Relink just made its next update much harder to ignore.",
+    narration_script:
+      "Granblue Fantasy Relink just made its next update much harder to ignore. PlayStation Blog says Endless Ragnarok now has a playable demo after a new hands on preview.",
+    description:
+      "Granblue Fantasy Relink gets a playable demo signal from PlayStation Blog, turning the update from trailer promise into something players can test.",
+    primary_source: "PlayStation Blog",
+  });
+  await fs.outputFile(audioPath, Buffer.alloc(1024, 1));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "Granblue", start: 0, end: 0.4 }],
+  });
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(1024, 2));
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: clips.length,
+    distinct_motion_family_count: 4,
+    clips,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: [
+      {
+        story_id: "story-package-ready",
+        verdict: "RED",
+        blockers: [
+          "render:final_publish_render_missing",
+          "audio:narration_audio_missing",
+          "captions:word_timestamps_missing",
+        ],
+        artifact_dir: artifactDir,
+      },
+    ],
+    generatedAt: "2026-06-23T20:30:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.deepEqual(job.blockers, []);
+  assert.equal(job.title, "Granblue Fantasy: Relink Demo Is The Real Proof");
+  assert.equal(job.evidence.narration_audio_path, audioPath);
+  assert.equal(job.evidence.word_timestamps_path, timestampsPath);
+  assert.equal(job.evidence.word_timestamp_source, "local_whisper_word_alignment");
+  assert.equal(job.evidence.materialised_motion_clip_count, 5);
+  assert.equal(job.evidence.distinct_motion_family_count, 4);
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(job.actions[0].target_render_manifest.final_publish_render, true);
+});
+
 test("render input work order preserves publish-blocker repair backlog when render queue is empty", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

@@ -1592,3 +1592,50 @@ test("goal proof package materialises every claimed GREEN acceptance artefact", 
   assert.equal(renderManifest.final_publish_render, true);
   assert.equal(renderManifest.quality_gate_status, "post_render_forensics_passed");
 });
+
+test("goal proof package carries failed final-render forensic blockers into publish verdict", () => {
+  const story = greenStory();
+  story.render_manifest = {
+    ...story.render_manifest,
+    quality_gate_status: "post_render_forensics_failed",
+    post_render_forensic_result: "fail",
+    rendered_duration_s: 32.879,
+    post_render_forensic_blockers: [
+      "distinct_motion_families_minimum_not_met",
+      "voice_cadence:wpm_too_fast",
+      "visual_quality_failed",
+    ],
+  };
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-05-21T23:45:00.000Z",
+  });
+
+  assert.equal(pack.acceptance_entry.verdict, "RED");
+  assert.ok(pack.publish_verdict.reason_codes.includes("render:post_render_forensics_missing"));
+  assert.ok(pack.publish_verdict.reason_codes.includes("normal_production_duration_below_quality_floor:32.879"));
+  assert.ok(pack.publish_verdict.reason_codes.includes("distinct_motion_families_minimum_not_met"));
+  assert.ok(pack.publish_verdict.reason_codes.includes("voice_cadence:wpm_too_fast"));
+  assert.ok(pack.publish_verdict.reason_codes.includes("visual_quality_failed"));
+  assert.ok(!pack.publish_verdict.reason_codes.includes("render:final_publish_render_missing"));
+});
+
+test("goal proof package does not overwrite an existing final render with a local proof render", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-preserve-final-"));
+  const finalRenderPath = path.join(tmp, "visual_v4_render.mp4");
+  const existingBytes = Buffer.alloc(4096, 9);
+  await fs.outputFile(finalRenderPath, existingBytes);
+  const story = greenStory();
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-05-21T23:45:00.000Z",
+  });
+
+  assert.equal(pack.render_manifest.final_publish_render, true);
+  await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
+
+  assert.deepEqual(await fs.readFile(finalRenderPath), existingBytes);
+});

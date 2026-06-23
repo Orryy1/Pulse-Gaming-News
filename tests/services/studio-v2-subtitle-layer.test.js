@@ -46,9 +46,9 @@ test("buildKineticAss can skip script realignment for cached/non-editorial voice
     realign: false,
   });
 
-  assert.match(ass, /twenty/);
-  assert.match(ass, /six/);
-  assert.doesNotMatch(ass, /2026/);
+  assert.match(ass, /2026/);
+  assert.doesNotMatch(ass, /twenty/i);
+  assert.doesNotMatch(ass, /\bsix\b/i);
 });
 
 test("realignTimestampsToScript preserves numeric display tokens over spoken number expansions", () => {
@@ -161,6 +161,31 @@ test("buildKineticAss restores GTA sequel digits from spoken captions", () => {
   assert.match(text, /6/);
   assert.doesNotMatch(text, /\bfive\b/i);
   assert.doesNotMatch(text, /\bsix\b/i);
+});
+
+test("prepareSubtitleWords normalises raw ASR display tokens when realignment is skipped", () => {
+  const prepared = prepareSubtitleWords({
+    words: [
+      { word: "G.", start: 0, end: 0.08 },
+      { word: "T.", start: 0.08, end: 0.16 },
+      { word: "A.", start: 0.16, end: 0.24 },
+      { word: "Five's", start: 0.24, end: 0.48 },
+      { word: "PlayStation", start: 0.5, end: 0.76 },
+      { word: "Five", start: 0.76, end: 0.92 },
+      { word: "lands", start: 0.94, end: 1.1 },
+      { word: "twenty", start: 1.12, end: 1.28 },
+      { word: "twenty", start: 1.28, end: 1.44 },
+      { word: "six.", start: 1.44, end: 1.62 },
+    ],
+    duration: 2,
+    scriptText: "G T A Five's PlayStation Five lands twenty twenty six.",
+    strictEndCoverage: false,
+  });
+
+  assert.deepEqual(
+    prepared.map((word) => word.word),
+    ["GTA 5's", "PlayStation 5", "lands", "2026."],
+  );
 });
 
 test("prepareSubtitleWords keeps real numeric timings across natural local-TTS pauses", () => {

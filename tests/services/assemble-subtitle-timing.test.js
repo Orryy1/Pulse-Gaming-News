@@ -130,6 +130,22 @@ test("subtitle display merge keeps gaming names readable", () => {
   assert.deepEqual(merged, ["GTA 5", "and", "GTA 6.", "PlayStation 5"]);
 });
 
+test("subtitle display merge handles ASR punctuation and possessive gaming names", () => {
+  const words = [
+    { text: "G.", start: 0, end: 0.08 },
+    { text: "T.", start: 0.08, end: 0.16 },
+    { text: "A.", start: 0.16, end: 0.24 },
+    { text: "Five's", start: 0.24, end: 0.48 },
+    { text: "free", start: 0.5, end: 0.7 },
+    { text: "PlayStation", start: 0.72, end: 0.98 },
+    { text: "Five.", start: 0.98, end: 1.14 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA 5's", "free", "PlayStation 5."]);
+});
+
 test("subtitle display merge converts spoken modern years without rewriting ordinary numbers", () => {
   const words = [
     { text: "twenty", start: 0, end: 0.1 },

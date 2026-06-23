@@ -23,7 +23,10 @@ const {
   inspectSubtitleTimingWords,
   selectSubtitleScriptText,
 } = require("./lib/subtitle-timing");
-const { normaliseCaptionDisplayText } = require("./lib/caption-display-text");
+const {
+  normaliseCaptionDisplayText,
+  normaliseCaptionDisplayWords,
+} = require("./lib/caption-display-text");
 const {
   buildNarrationMusicMixFilter,
   buildNarrationOnlyMixFilter,
@@ -59,132 +62,8 @@ const LEGACY_OVERLAY_LAYOUT = Object.freeze({
   maxCommentLines: 4,
 });
 
-const CAPTION_ONES = Object.freeze({
-  one: 1,
-  two: 2,
-  three: 3,
-  four: 4,
-  five: 5,
-  six: 6,
-  seven: 7,
-  eight: 8,
-  nine: 9,
-});
-
-const CAPTION_TENS = Object.freeze({
-  twenty: 20,
-  thirty: 30,
-  forty: 40,
-  fifty: 50,
-  sixty: 60,
-  seventy: 70,
-  eighty: 80,
-  ninety: 90,
-});
-
-function cleanSubtitleToken(word = {}) {
-  return String(word.text || "")
-    .replace(/[^a-zA-Z0-9-]/g, "")
-    .toLowerCase();
-}
-
-function captionTrailingPunctuation(word = {}) {
-  return String(word.text || "").replace(/[a-zA-Z0-9-]/g, "");
-}
-
-function mergeSubtitleWordRange(words, startIndex, endIndex, text) {
-  return {
-    text: `${text}${captionTrailingPunctuation(words[endIndex])}`,
-    start: words[startIndex].start,
-    end: words[endIndex].end,
-  };
-}
-
-function captionNumberWord(value) {
-  const token = String(value || "").toLowerCase();
-  if (/^\d+$/.test(token)) return Number(token);
-  return CAPTION_ONES[token] ?? null;
-}
-
-function captionYearTail(tensToken, oneToken) {
-  const compact = String(tensToken || "").toLowerCase();
-  if (CAPTION_ONES[compact] !== undefined) return CAPTION_ONES[compact];
-  if (compact.includes("-")) {
-    const [tens, one] = compact.split("-");
-    if (CAPTION_TENS[tens] !== undefined) {
-      return CAPTION_TENS[tens] + (CAPTION_ONES[one] || 0);
-    }
-  }
-  if (CAPTION_TENS[compact] !== undefined) {
-    return CAPTION_TENS[compact] + (CAPTION_ONES[String(oneToken || "").toLowerCase()] || 0);
-  }
-  return null;
-}
-
 function mergeSubtitleWordsForDisplay(words = []) {
-  const source = Array.isArray(words) ? words : [];
-  const merged = [];
-  for (let i = 0; i < source.length; i += 1) {
-    const token = cleanSubtitleToken(source[i]);
-    const next = i + 1 < source.length ? cleanSubtitleToken(source[i + 1]) : "";
-    const third = i + 2 < source.length ? cleanSubtitleToken(source[i + 2]) : "";
-    const fourth = i + 3 < source.length ? cleanSubtitleToken(source[i + 3]) : "";
-
-    if (token === "g" && next === "t" && third === "a") {
-      const version = captionNumberWord(fourth);
-      if (version === 5 || version === 6) {
-        merged.push(mergeSubtitleWordRange(source, i, i + 3, `GTA ${version}`));
-        i += 3;
-      } else {
-        merged.push(mergeSubtitleWordRange(source, i, i + 2, "GTA"));
-        i += 2;
-      }
-      continue;
-    }
-
-    if (token === "gta") {
-      const version = captionNumberWord(next);
-      if (version === 5 || version === 6) {
-        merged.push(mergeSubtitleWordRange(source, i, i + 1, `GTA ${version}`));
-        i += 1;
-        continue;
-      }
-    }
-
-    if (token === "playstation") {
-      const version = captionNumberWord(next);
-      if (version === 4 || version === 5) {
-        merged.push(mergeSubtitleWordRange(source, i, i + 1, `PlayStation ${version}`));
-        i += 1;
-        continue;
-      }
-    }
-
-    if (token === "twenty") {
-      let yearTail = null;
-      let endOffset = 0;
-      if (next === "twenty") {
-        yearTail = CAPTION_ONES[third] !== undefined
-          ? 20 + CAPTION_ONES[third]
-          : captionYearTail(third, fourth);
-        endOffset = CAPTION_TENS[third] !== undefined && CAPTION_ONES[fourth] !== undefined ? 3 : 2;
-      } else if (/^twenty-/.test(next)) {
-        yearTail = captionYearTail(next);
-        endOffset = 1;
-      } else if (/^\d{1,2}$/.test(next)) {
-        yearTail = Number(next);
-        endOffset = 1;
-      }
-      if (yearTail !== null && yearTail >= 0 && yearTail <= 99) {
-        merged.push(mergeSubtitleWordRange(source, i, i + endOffset, String(2000 + yearTail)));
-        i += endOffset;
-        continue;
-      }
-    }
-
-    merged.push(source[i]);
-  }
-  return merged;
+  return normaliseCaptionDisplayWords(words, { textKey: "text" });
 }
 
 async function loadStudioV4TrustedFootageReport() {

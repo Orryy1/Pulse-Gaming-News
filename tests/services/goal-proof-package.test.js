@@ -451,6 +451,43 @@ test("goal proof package turns demo news into attention-led Shorts copy", () => 
   assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, pack.platform_publish_manifest), false);
 });
 
+test("goal proof package turns free upgrade news into owner-led Shorts packaging", () => {
+  const story = greenStory();
+  story.id = "gta-5-free-upgrade-pack";
+  story.canonical_subject = "GTA 5";
+  story.canonical_game = "GTA 5";
+  story.canonical_angle = "digital PS4 and Xbox One owners can claim the PS5 and Xbox Series upgrade free";
+  story.public_title = "GTA 5's $40 Upgrade Is Suddenly Free";
+  story.title = "GTA 5's $40 Upgrade Is Suddenly Free";
+  story.suggested_thumbnail_text = "$40 UPGRADE FREE";
+  story.primary_source = "GameSpot";
+  story.source_name = "GameSpot";
+  story.description =
+    "GameSpot reports digital PS4 and Xbox One GTA 5 owners can claim the PS5 and Xbox Series upgrade free from June 18th before July's Kortz Center Heist.";
+  story.full_script =
+    "Grand Theft Auto Five's current gen upgrade just became free, but only for the right owners. GameSpot reports digital PlayStation 4 and Xbox One owners can claim the PlayStation 5 and Xbox Series upgrade free before the next online update lands. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-23T02:05:00.000Z",
+  });
+
+  const evidence = pack.platform_publish_manifest.platform_native_evidence;
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(youtube.title, "GTA 5 Has A Free Upgrade Catch");
+  assert.equal(youtube.cover_frame.headline, "GTA 5 FREE UPGRADE");
+  assert.match(youtube.description, /eligible PS4 and Xbox One owners/i);
+  assert.equal(evidence.verdict, "pass");
+  assert.equal(
+    evidence.failures.some((failure) => /weak_platform_title|weak_cover_headline|plain_platform_description/.test(failure.reason)),
+    false,
+  );
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
+  assert.equal(mediaHousePrivate.weakFirstFrameOrThumbnailCopy(pack.canonical_story_manifest, pack.platform_publish_manifest), false);
+});
+
 test("goal proof package does not misclassify PlayStation strategy stories as survival news", () => {
   const story = greenStory();
   story.id = "playstation-strategy-attention-pack";

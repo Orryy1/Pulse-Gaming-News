@@ -4076,6 +4076,7 @@ function parseArgs(argv) {
     help: false,
     limit: null,
     analyticsPath: DEFAULT_ANALYTICS_PATH,
+    outDir: OUT,
     preflightQa: false,
     storyId: null,
     bridgeCandidatesPath: DEFAULT_BRIDGE_CANDIDATES_PATH,
@@ -4095,6 +4096,10 @@ function parseArgs(argv) {
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.split("=")[1] || DEFAULT_LIMIT);
     else if (arg === "--analytics") args.analyticsPath = argv[++i] || args.analyticsPath;
     else if (arg.startsWith("--analytics=")) args.analyticsPath = arg.slice("--analytics=".length);
+    else if (arg === "--out-dir") args.outDir = path.resolve(ROOT, argv[++i] || args.outDir);
+    else if (arg.startsWith("--out-dir=")) {
+      args.outDir = path.resolve(ROOT, arg.slice("--out-dir=".length));
+    }
     else if (arg === "--no-bridge" || arg === "--no-bridge-candidates") {
       args.bridgeCandidatesPath = null;
     }
@@ -4261,7 +4266,7 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--direct-video-work-order PATH|--no-direct-video-work-order] [--source-family-acquisition PATH|--no-source-family-acquisition] [--allow-live-fallback]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--out-dir DIR] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--direct-video-work-order PATH|--no-direct-video-work-order] [--source-family-acquisition PATH|--no-source-family-acquisition] [--allow-live-fallback]\n",
     );
     return { exitCode: 0 };
   }
@@ -4318,9 +4323,9 @@ async function runCli(argv = process.argv) {
     });
   }
   const markdown = formatNextPublishCandidatesMarkdown(report);
-  await fs.ensureDir(OUT);
-  const jsonPath = path.join(OUT, "next_publish_candidates.json");
-  const mdPath = path.join(OUT, "next_publish_candidates.md");
+  await fs.ensureDir(args.outDir);
+  const jsonPath = path.join(args.outDir, "next_publish_candidates.json");
+  const mdPath = path.join(args.outDir, "next_publish_candidates.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, markdown, "utf8");
 

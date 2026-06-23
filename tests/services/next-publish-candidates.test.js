@@ -675,6 +675,7 @@ test("next publish CLI keeps json output off stderr for automation consumers", a
     await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-candidates-cli-")),
     "analytics.md",
   );
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-candidates-cli-out-"));
   await fs.outputFile(analyticsPath, analyticsText);
   const now = new Date().toISOString();
   db.getStories = async () => [
@@ -707,6 +708,8 @@ test("next publish CLI keeps json output off stderr for automation consumers", a
     "1",
     "--analytics",
     analyticsPath,
+    "--out-dir",
+    outDir,
     "--no-bridge",
     "--no-direct-video-work-order",
     "--no-source-family-acquisition",
@@ -717,6 +720,7 @@ test("next publish CLI keeps json output off stderr for automation consumers", a
   assert.equal(result.exitCode, 0);
   assert.match(stdout, /"candidates"/);
   assert.equal(stderr, "");
+  assert.equal(await fs.pathExists(path.join(outDir, "next_publish_candidates.json")), true);
 });
 
 test("next publish CLI resolves sibling Goal 10 evidence for custom bridge paths", async (t) => {

@@ -396,6 +396,83 @@ test("goal audio materializer trusts strict ready pairs with harmless transcript
   assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
 });
 
+test("goal audio materializer regenerates title-colon audio without the current pronunciation profile", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-title-colon-profile-"));
+  const artifactDir = await makePackage(root, "story-title-colon-profile", {
+    selected_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    narration_script: "Halo: Campaign Evolved just gave Xbox a real remake test.",
+    tts_script: "Halo: Campaign Evolved just gave Xbox a real remake test.",
+  });
+  const audioPath = path.join(root, "output", "audio", "story-title-colon-profile.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-title-colon-profile_timestamps.json");
+  const oldTranscript = "Halo Campaign Evolved just gave Xbox a real remake test.";
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(oldTranscript),
+    meta: {
+      transcript: oldTranscript,
+      spoken_text: oldTranscript,
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "local",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [
+        {
+          ...workbenchJob("story-title-colon-profile", artifactDir),
+          status: "ready_audio_timestamp_pair",
+          missing: [],
+          audio: { path: audioPath, exists: true, usable: true },
+          timestamps: {
+            path: timestampPath,
+            exists: true,
+            usable: true,
+            word_count: oldTranscript.split(/\s+/).length,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-23T19:10:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(scriptText),
+      transcript: scriptText,
+      language: "en",
+      segments: 1,
+    }),
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].text, "Halo Campaign Evolved just gave Xbox a real remake test.");
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].reason, "existing_pair_stale_after_title_colon_pronunciation_profile");
+  const timestamps = await fs.readJson(timestampPath);
+  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "title-colon-pause-v2");
+  assert.equal(timestamps.meta.spoken_text, "Halo Campaign Evolved just gave Xbox a real remake test.");
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";

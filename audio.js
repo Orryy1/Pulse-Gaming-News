@@ -28,7 +28,10 @@ const PHONETIC_MAP = {
   dequeue: "dee-queue",
 };
 
-const { applyGamingPronunciation } = require("./lib/tts-pronunciation");
+const {
+  applyGamingPronunciation,
+  TTS_PRONUNCIATION_PROFILE_VERSION,
+} = require("./lib/tts-pronunciation");
 const { normaliseText } = require("./lib/text-hygiene");
 const { runBrandNameQa } = require("./lib/brand-name-qa");
 const { applyProduceSelection } = require("./lib/produce-selection");
@@ -319,6 +322,7 @@ function buildTtsAlignmentMeta({
     text: typeof text === "string" ? text : existingMeta.text || null,
     transcript,
     spokenOutroPresent: hasSpokenOutro(transcript),
+    ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
     voiceDiagnostics: voiceDiagnostics || existingMeta.voiceDiagnostics || null,
     acoustic:
       voiceDiagnostics?.acoustic ||

@@ -390,6 +390,35 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
         log() {},
         async runNodeJobChildProcess(options) {
           childCalls.push(options);
+          if (options.args[0] === "tools/official-search-intake-autofill.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) {
+              await fs.writeFile(
+                templatePath,
+                JSON.stringify({
+                  schema_version: 1,
+                  entries: [
+                    {
+                      story_id: "fresh_xbox_story",
+                      entity: "Halo Campaign Evolved",
+                      source_type: "platform_storefront",
+                      official_source_url:
+                        "https://store.steampowered.com/app/1240440/Halo_Infinite/",
+                      source_title: "Halo Infinite",
+                      source_owner: "Steam storefront for Halo Infinite",
+                      source_family: "steam_1240440_halo_infinite",
+                      evidence_of_officialness:
+                        "Steam official app matched the story entity strongly enough for media discovery.",
+                      entity_match_notes:
+                        "Autofilled from official-search template before direct media discovery.",
+                      downloads_allowed: false,
+                    },
+                  ],
+                }),
+              );
+            }
+          }
           if (options.args[0] === "tools/official-direct-media-discovery.js") {
             const templateIndex = options.args.indexOf("--output-template");
             const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
@@ -459,7 +488,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(result.outputs.storyPackagesPath, path.join(contractOutDir, "story-packages.json"));
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
-    assert.equal(result.repair_evidence.child_processes.length, 7);
+    assert.equal(result.repair_evidence.child_processes.length, 8);
     assert.equal(result.motion_hydrated_refill.status, "completed");
     assert.equal(result.motion_hydrated_refill.green_count, 3);
     assert.ok(
@@ -469,6 +498,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/studio-v4-source-family-acquisition.js"),
       "expected fresh refill to create a source-family repair report",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/official-search-intake-autofill.js"),
+      "expected fresh refill to autofill official search rows before direct media discovery",
     );
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/official-direct-media-discovery.js"),
@@ -492,6 +525,24 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     const trailerReferenceCall = childCalls.find(
       (call) => call.args[0] === "tools/official-trailer-reference-resolver.js",
+    );
+    const officialSearchAutofillCall = childCalls.find(
+      (call) => call.args[0] === "tools/official-search-intake-autofill.js",
+    );
+    const autofillMergeIndex = officialSearchAutofillCall.args.indexOf("--merge-input");
+    assert.match(
+      officialSearchAutofillCall.args[autofillMergeIndex + 1],
+      /visual_v4_source_family_intake_template\.json$/,
+      "expected autofill to preserve the source-family intake template rows",
+    );
+    const directMediaCall = childCalls.find(
+      (call) => call.args[0] === "tools/official-direct-media-discovery.js",
+    );
+    const directMediaInputIndex = directMediaCall.args.indexOf("--input");
+    assert.match(
+      directMediaCall.args[directMediaInputIndex + 1],
+      /visual_v4_source_family_intake_template_autofill\.json$/,
+      "expected direct media discovery to consume official-search autofill output",
     );
     const intakeArgIndex = trailerReferenceCall.args.indexOf("--official-source-intake-report");
     assert.match(
@@ -518,7 +569,12 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
-    assert.equal(repairReport.summary.child_process_count, 7);
+    assert.equal(repairReport.summary.child_process_count, 8);
+    assert.match(repairReport.outputs.official_search_autofill_report, /official_search_intake_autofill\.json$/);
+    assert.match(
+      repairReport.outputs.official_search_autofill_template,
+      /visual_v4_source_family_intake_template_autofill\.json$/,
+    );
     assert.match(repairReport.outputs.direct_media_intake_report, /official_direct_media_intake_report\.json$/);
     assert.match(repairReport.outputs.licensed_direct_media_report, /studio_v4_licensed_direct_media_acquisition\.json$/);
     assert.match(repairReport.outputs.segment_validation_report, /official_trailer_segment_validation_apply_local\.json$/);

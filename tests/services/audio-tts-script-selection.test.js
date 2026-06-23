@@ -166,6 +166,10 @@ test("cleanForTTS: removes title-colon pauses inside canonical game names", () =
     cleanForTTS("The Expanse: Osiris Reborn finally showed real gameplay."),
     "The Expanse Osiris Reborn finally showed real gameplay.",
   );
+  assert.equal(
+    cleanForTTS("Halo: Campaign Evolved just gave Xbox a real remake test."),
+    "Halo Campaign Evolved just gave Xbox a real remake test.",
+  );
 });
 
 test("cleanForTTS: removes hyphen pause from Gears of War E-Day while keeping the title together", () => {

@@ -1523,6 +1523,54 @@ test("goal proof package writes goal-named artefacts", async () => {
   assert.equal(Object.keys(written).length >= 15, true);
 });
 
+test("goal proof package writes explicit materialised motion clip evidence", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-motion-"));
+  const clipA = path.join(tmp, "clip-a.mp4");
+  const clipB = path.join(tmp, "clip-b.mp4");
+  await fs.writeFile(clipA, "fake mp4 a");
+  await fs.writeFile(clipB, "fake mp4 b");
+  const motionStory = {
+    ...greenStory(),
+    id: "motion-evidence-story",
+    video_clips: [
+      {
+        id: "clip-a",
+        path: clipA,
+        source_url: "https://example.com/clip-a.mp4",
+        source_family: "family-a",
+        source_type: "official_game_site_news_page",
+        validated: true,
+        materialized: true,
+        local_materialized_path: clipA,
+      },
+      {
+        id: "clip-b",
+        path: clipB,
+        source_url: "https://example.com/clip-b.mp4",
+        source_family: "family-b",
+        source_type: "official_game_site_news_page",
+        validated: true,
+        materialized: true,
+        local_materialized_path: clipB,
+      },
+    ],
+  };
+  const pack = buildGoalProofPackage({
+    story: motionStory,
+    rightsLedger: rightsForGreenStory(motionStory),
+    generatedAt: "2026-06-23T10:00:00.000Z",
+  });
+
+  await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
+  const motion = await fs.readJson(path.join(tmp, "materialised_motion_clips.json"));
+
+  assert.equal(motion.status, "ready");
+  assert.equal(motion.clip_count, 2);
+  assert.equal(motion.distinct_motion_family_count, 2);
+  assert.equal(motion.clips[0].local_materialized_path, clipA);
+  assert.equal(motion.clips[1].local_materialized_path, clipB);
+});
+
 test("goal proof package materialises every claimed GREEN acceptance artefact", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-complete-"));
   const story = greenStory();

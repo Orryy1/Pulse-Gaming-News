@@ -648,6 +648,58 @@ test("official trailer resolver lets exact official intake suppress broader Stea
   assert.ok(plan.references.some((reference) => reference.store_app_id === "42700"));
 });
 
+test("official trailer resolver promotes exact Steam HLS direct-media intake target", async () => {
+  const lookedUpAppIds = [];
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "granblue-direct-hls",
+      title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      canonical_subject: "Granblue Fantasy: Relink",
+      canonical_subject_confidence: "explicit",
+      canonical_game: "Granblue Fantasy",
+      full_script:
+        "Granblue Fantasy: Relink has a playable demo, and players can judge the expansion before launch.",
+    }),
+    {
+      officialSourceIntakeReport: {
+        accepted_references: [
+          {
+            story_id: "granblue-direct-hls",
+            source_type: "platform_storefront",
+            provider: "official_intake",
+            source_url:
+              "https://video.fastly.steamstatic.com/store_trailers/881020/769005/demo/hls_264_master.m3u8?t=1728493213",
+            reference_page_url:
+              "https://store.steampowered.com/app/881020/Granblue_Fantasy%3A_Relink/",
+            movie_name: "Granblue Fantasy: Relink",
+            entity: "Granblue Fantasy: Relink",
+            source_family: "steam_881020_granblue_fantasy_relink",
+            source_owner: "Steam storefront for Granblue Fantasy: Relink",
+            source_verified: true,
+          },
+        ],
+      },
+      steamLookup: async (appId) => {
+        lookedUpAppIds.push(String(appId));
+        return {
+          appId,
+          success: true,
+          title: "Granblue Fantasy: Relink",
+          movies: [],
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(lookedUpAppIds, ["881020"]);
+  assert.deepEqual(plan.target_entities, ["Granblue Fantasy: Relink"]);
+  assert.deepEqual(plan.missing_target_entities, []);
+  assert.equal(plan.planned_searches.length, 0);
+  assert.equal(plan.verified_store_targets.length, 1);
+  assert.equal(plan.verified_store_targets[0].store_app_id, "881020");
+  assert.equal(plan.verified_store_targets[0].entity, "Granblue Fantasy: Relink");
+});
+
 test("official trailer resolver ignores mismatched official intake Steam storefront refs", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

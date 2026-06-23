@@ -112,7 +112,31 @@ function greenStory(id = "green-one") {
     article_url: "https://www.gamesradar.com/forza-horizon-6-steam",
     manual_caption_generated: true,
     transformative_edit_evidence: true,
+    exported_path: `output/final/${id}.mp4`,
+    render_manifest: {
+      final_publish_render: true,
+      output_path: `output/final/${id}.mp4`,
+      duration_seconds: 48.2,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+    },
     audio_path: `output/audio/${id}.mp3`,
+    narration_audio_path: `output/audio/${id}.mp3`,
+    timestamps_path: `output/audio/${id}_timestamps.json`,
+    word_timestamps_path: `output/audio/${id}_timestamps.json`,
+    word_timestamp_source: "local_whisper_word_alignment",
+    word_timestamps: [
+      { word: "Forza", start: 0, end: 0.28 },
+      { word: "Horizon", start: 0.29, end: 0.68 },
+      { word: "6", start: 0.69, end: 0.82 },
+    ],
+    audio_manifest: {
+      voice_status: "materialized",
+      narration_audio_path: `output/audio/${id}.mp3`,
+      word_timestamps_path: `output/audio/${id}_timestamps.json`,
+      word_timestamp_source: "local_whisper_word_alignment",
+      word_timestamp_count: 3,
+    },
     full_script:
       "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.",
     video_clips: clips,
@@ -470,6 +494,31 @@ test("goal proof package publish verdict turns RED when local TTS was tempo-stre
   assert.equal(pack.platform_publish_manifest.publish_status, "RED");
 });
 
+test("goal proof package publish verdict turns RED for local proof without final audio and timestamps", () => {
+  const story = greenStory("local-proof-only");
+  delete story.exported_path;
+  delete story.render_manifest;
+  delete story.audio_path;
+  delete story.narration_audio_path;
+  delete story.timestamps_path;
+  delete story.word_timestamps_path;
+  delete story.word_timestamp_source;
+  delete story.word_timestamps;
+  delete story.audio_manifest;
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsFor({ ...story, audio_path: "output/audio/local-proof-only.mp3" }),
+  });
+
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+  assert.ok(pack.publish_verdict.reason_codes.includes("render:final_publish_render_missing"));
+  assert.ok(pack.publish_verdict.reason_codes.includes("audio:narration_audio_missing"));
+  assert.ok(pack.publish_verdict.reason_codes.includes("captions:word_timestamps_missing"));
+  assert.equal(pack.acceptance_entry.verdict, "RED");
+});
+
 test("goal batch CLI can select repaired live DB stories for governed packaging", () => {
   const args = parseGoalBatchArgs([
     "--db-stories",
@@ -505,6 +554,20 @@ test("goal batch CLI parses shared SFX evidence paths", () => {
 
   assert.equal(args.sfxAssetsPath, "output/goal-contract/sfx_asset_inventory.json");
   assert.equal(args.sfxRightsLedgerPath, "output/goal-contract/sfx_rights_ledger.json");
+});
+
+test("goal batch CLI defaults to retained licensed SFX evidence", () => {
+  const args = parseGoalBatchArgs([]);
+  const root = path.resolve(__dirname, "..", "..");
+
+  assert.equal(
+    args.sfxAssetsPath,
+    path.join(root, "output", "goal-contract", "sfx_asset_inventory.json"),
+  );
+  assert.equal(
+    args.sfxRightsLedgerPath,
+    path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"),
+  );
 });
 
 test("goal batch package proof preparation rewrites source-backed fallback narration before QA", () => {
@@ -1580,7 +1643,31 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
     source_name: "GamesRadar+",
     source_type: "rss",
     article_url: "https://www.gamesradar.com/forza-horizon-6-steam",
+    exported_path: "output/final/forza-rich-restore.mp4",
+    render_manifest: {
+      final_publish_render: true,
+      output_path: "output/final/forza-rich-restore.mp4",
+      duration_seconds: 48.2,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+    },
     audio_path: "output/audio/forza-rich-restore.mp3",
+    narration_audio_path: "output/audio/forza-rich-restore.mp3",
+    timestamps_path: "output/audio/forza-rich-restore_timestamps.json",
+    word_timestamps_path: "output/audio/forza-rich-restore_timestamps.json",
+    word_timestamp_source: "local_whisper_word_alignment",
+    word_timestamps: [
+      { word: "Forza", start: 0, end: 0.28 },
+      { word: "Horizon", start: 0.29, end: 0.68 },
+      { word: "6", start: 0.69, end: 0.82 },
+    ],
+    audio_manifest: {
+      voice_status: "materialized",
+      narration_audio_path: "output/audio/forza-rich-restore.mp3",
+      word_timestamps_path: "output/audio/forza-rich-restore_timestamps.json",
+      word_timestamp_source: "local_whisper_word_alignment",
+      word_timestamp_count: 3,
+    },
     sfx_asset_inventory: licensedSfxAssets(),
     full_script:
       "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports a major Steam peak during Premium Edition early access. The catch is whether that paid-access crowd turns into wider demand once the cheaper route opens. That split matters because a premium spike proves attention, but not long-term retention. If the standard launch holds, this becomes a real Xbox momentum story instead of a one-week Steam screenshot. Follow Pulse Gaming so you never miss a beat.",
@@ -1627,7 +1714,31 @@ test("goal batch packages create rights records for restored official V4 motion 
     source_name: "PlayStation Blog",
     source_type: "rss",
     article_url: "https://blog.playstation.com/2026/06/18/granblue-fantasy-relink-endless-ragnarok-hands-on-report-demo-available-today/",
+    exported_path: "output/final/granblue-official-restore.mp4",
+    render_manifest: {
+      final_publish_render: true,
+      output_path: "output/final/granblue-official-restore.mp4",
+      duration_seconds: 45.7,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+    },
     audio_path: "output/audio/granblue-official-restore.mp3",
+    narration_audio_path: "output/audio/granblue-official-restore.mp3",
+    timestamps_path: "output/audio/granblue-official-restore_timestamps.json",
+    word_timestamps_path: "output/audio/granblue-official-restore_timestamps.json",
+    word_timestamp_source: "local_whisper_word_alignment",
+    word_timestamps: [
+      { word: "Granblue", start: 0, end: 0.42 },
+      { word: "Fantasy", start: 0.43, end: 0.81 },
+      { word: "Relink", start: 0.82, end: 1.16 },
+    ],
+    audio_manifest: {
+      voice_status: "materialized",
+      narration_audio_path: "output/audio/granblue-official-restore.mp3",
+      word_timestamps_path: "output/audio/granblue-official-restore_timestamps.json",
+      word_timestamp_source: "local_whisper_word_alignment",
+      word_timestamp_count: 3,
+    },
     sfx_asset_inventory: licensedSfxAssets(),
     sfx_rights_ledger: licensedSfxAssets().map((asset) => ({
       ...asset,

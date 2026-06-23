@@ -116,7 +116,32 @@ function greenStory() {
     article_url: "https://www.gamesradar.com/forza-horizon-6-steam",
     manual_caption_generated: true,
     transformative_edit_evidence: true,
+    exported_path: "output/final/forza-green-proof.mp4",
+    render_manifest: {
+      final_publish_render: true,
+      output_path: "output/final/forza-green-proof.mp4",
+      duration_seconds: 48.2,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+    },
     audio_path: "output/audio/forza-green-proof.mp3",
+    narration_audio_path: "output/audio/forza-green-proof.mp3",
+    timestamps_path: "output/audio/forza-green-proof_timestamps.json",
+    word_timestamps_path: "output/audio/forza-green-proof_timestamps.json",
+    word_timestamp_source: "local_whisper_word_alignment",
+    word_timestamp_count: 3,
+    word_timestamps: [
+      { word: "Forza", start: 0, end: 0.28 },
+      { word: "Horizon", start: 0.29, end: 0.68 },
+      { word: "6", start: 0.69, end: 0.82 },
+    ],
+    audio_manifest: {
+      voice_status: "materialized",
+      narration_audio_path: "output/audio/forza-green-proof.mp3",
+      word_timestamps_path: "output/audio/forza-green-proof_timestamps.json",
+      word_timestamp_source: "local_whisper_word_alignment",
+      word_timestamp_count: 3,
+    },
     full_script:
       "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.",
     video_clips: clips,
@@ -1516,6 +1541,6 @@ test("goal proof package materialises every claimed GREEN acceptance artefact", 
   const renderStat = await fs.stat(path.join(tmp, "visual_v4_render.mp4"));
   assert.ok(renderStat.size > 1000, "visual_v4_render.mp4 should be a real local proof video");
   const renderManifest = await fs.readJson(path.join(tmp, "render_manifest.json"));
-  assert.equal(renderManifest.visual_tier, "local_proof_motion_graphic");
-  assert.equal(renderManifest.final_publish_render, false);
+  assert.equal(renderManifest.final_publish_render, true);
+  assert.equal(renderManifest.quality_gate_status, "post_render_forensics_passed");
 });

@@ -444,6 +444,70 @@ test("Footage Empire lets official reveal stories satisfy family floor with hash
   );
 });
 
+test("Footage Empire counts hash-distinct official product motion windows for game storefront stories", () => {
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/881020/655426/hash/hls_264_master.m3u8?t=1";
+  const clips = [36, 42, 48, 54, 60].map((start, index) => ({
+    id: `granblue-product-window-${index + 1}`,
+    source_family: "steam_881020_655426",
+    path: sourceUrl,
+    source_url: sourceUrl,
+    mediaStartS: start,
+    durationS: 5,
+    validated: true,
+    segmentValidationPassed: true,
+    source_type: "official_platform_product_page",
+    provider: "steam",
+    allowed_render_use: "reference_only_by_default",
+    rights_risk_class: "official_reference_only",
+    provenance: {
+      segment_motion_class: "official_product_motion",
+      validation_reason: "official_product_motion_samples_passed",
+      sample_content_hashes: [`granblue-${start}-a`, `granblue-${start}-b`],
+    },
+  }));
+
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "granblue-relink-demo",
+      title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+      canonical_subject: "Granblue Fantasy: Relink",
+      canonical_game: "Granblue Fantasy: Relink",
+      full_script:
+        "Granblue Fantasy: Relink has a fresh demo, and Steam's official storefront motion gives players enough separate visual moments to judge the update.",
+    },
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          story_id: "granblue-relink-demo",
+          entity: "Granblue Fantasy: Relink",
+          source_id: "steam-granblue-relink",
+          display_name: "Steam official Granblue Fantasy Relink trailer",
+          source_tier: "official",
+          source_family: "steam_881020_655426",
+          reference_url: sourceUrl,
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          autonomous_motion_candidate: true,
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    localMotionClips: clips,
+  });
+
+  assert.equal(plan.motion_budget.available_motion_clips, 5);
+  assert.equal(plan.motion_budget.available_distinct_families, 1);
+  assert.equal(plan.motion_budget.hash_distinct_official_motion_windows, 5);
+  assert.equal(
+    plan.motion_budget.distinct_family_requirement_satisfied_by_hash_distinct_official_windows,
+    true,
+  );
+  assert.equal(plan.readiness.status, "v4_motion_ready");
+  assert.equal(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), false);
+});
+
 test("Footage Empire counts signed direct MP4 URLs as renderable motion", () => {
   const plan = buildFootageEmpirePlan({
     story: forzaSteamStory(),

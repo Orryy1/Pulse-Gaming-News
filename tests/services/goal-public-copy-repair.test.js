@@ -179,6 +179,89 @@ test("caption SRT normalises hardware, years and GTA acronym-number ASR", () => 
   assert.doesNotMatch(srt, /G T A|PlayStation five|twenty twenty seven|twenty sixty|E Day/);
 });
 
+test("caption SRT protects title and platform fragments before phrase grouping", () => {
+  const srt = buildCaptionSrt(
+    "GameSpot says GTA 6 hits PlayStation 5 in 2026.",
+    8,
+    {
+      words: [
+        { word: "Game", start: 0, end: 0.2 },
+        { word: "Spot", start: 0.2, end: 0.44 },
+        { word: "says", start: 0.44, end: 0.68 },
+        { word: "G", start: 0.68, end: 0.8 },
+        { word: "T", start: 0.8, end: 0.92 },
+        { word: "A", start: 0.92, end: 1.04 },
+        { word: "six", start: 1.04, end: 1.28 },
+        { word: "hits", start: 1.28, end: 1.52 },
+        { word: "PlayStation", start: 1.52, end: 1.98 },
+        { word: "five", start: 1.98, end: 2.22 },
+        { word: "in", start: 2.22, end: 2.36 },
+        { word: "twenty", start: 2.36, end: 2.64 },
+        { word: "twenty", start: 2.64, end: 2.92 },
+        { word: "six.", start: 2.92, end: 3.2 },
+      ],
+      maxWordsPerPhrase: 2,
+      maxPhraseChars: 14,
+      maxPhraseDurationS: 0.8,
+      danglingMergeMaxWords: 2,
+    },
+  );
+
+  assert.match(srt, /GameSpot/);
+  assert.match(srt, /GTA 6/);
+  assert.match(srt, /PlayStation 5/);
+  assert.match(srt, /2026/);
+  assert.doesNotMatch(srt, /Game Spot|G T A|PlayStation five|twenty twenty six/);
+});
+
+test("caption SRT prevents overlapping cue timings after protected token merges", () => {
+  const srt = buildCaptionSrt(
+    "GTA 6 preorders begin on June 25, while price still matters.",
+    6,
+    {
+      words: [
+        { word: "G", start: 7.56, end: 7.72 },
+        { word: "T", start: 7.72, end: 7.96 },
+        { word: "A", start: 7.96, end: 8.16 },
+        { word: "six", start: 8.16, end: 8.72 },
+        { word: "preorders", start: 8.72, end: 9.16 },
+        { word: "begin", start: 9.16, end: 9.48 },
+        { word: "on", start: 9.48, end: 9.68 },
+        { word: "June", start: 9.68, end: 9.88 },
+        { word: "25,", start: 9.88, end: 10.46 },
+        { word: "while", start: 11.1, end: 11.18 },
+        { word: "price", start: 11.16, end: 11.6 },
+        { word: "still", start: 11.6, end: 12.0 },
+        { word: "matters.", start: 12.0, end: 12.36 },
+      ],
+      maxWordsPerPhrase: 3,
+      maxPhraseChars: 20,
+      maxPhraseDurationS: 1.2,
+    },
+  );
+  const timings = Array.from(srt.matchAll(/(\d\d):(\d\d):(\d\d),(\d\d\d) --> (\d\d):(\d\d):(\d\d),(\d\d\d)/g))
+    .map((match) => ({
+      start:
+        Number(match[1]) * 3600 +
+        Number(match[2]) * 60 +
+        Number(match[3]) +
+        Number(match[4]) / 1000,
+      end:
+        Number(match[5]) * 3600 +
+        Number(match[6]) * 60 +
+        Number(match[7]) +
+        Number(match[8]) / 1000,
+    }));
+
+  assert.ok(timings.length > 1);
+  for (let index = 1; index < timings.length; index += 1) {
+    assert.ok(
+      timings[index].start >= timings[index - 1].end,
+      `${JSON.stringify(timings[index - 1])} overlaps ${JSON.stringify(timings[index])}`,
+    );
+  }
+});
+
 test("caption SRT restores Grand Theft Auto roman numerals from spoken words", () => {
   const srt = buildCaptionSrt(
     "Grand Theft Auto VI cover art just became the first thing players judge.",

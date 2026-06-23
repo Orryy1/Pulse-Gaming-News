@@ -232,6 +232,99 @@ test("render input work order routes stale pronunciation-policy audio through th
   ]);
 });
 
+test("render input work order forces rerender when repaired package inputs supersede failed render QA", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-stale-render-qa-"));
+  const artifactDir = path.join(tmpDir, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "fresh-input-story",
+    canonical_subject: "GTA 5",
+    selected_title: "GTA 5's Free Upgrade Changes The GTA 6 Wait",
+    narration_script: "Fresh repaired narration script.",
+    description: "GameSpot reports the free upgrade timing.",
+    first_spoken_line: "GTA 5 just became the free waiting room for GTA 6.",
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    materialized_at: "2026-06-23T01:13:00.000Z",
+    narration_audio_path: "output/audio/fresh-input-story.mp3",
+    word_timestamps_path: "output/audio/fresh-input-story_timestamps.json",
+    voice_provider: "elevenlabs",
+    word_timestamp_source: "local_whisper_word_alignment",
+    timestamp_whisper_alignment: {
+      script_inserted_actual_word_count: 0,
+      script_trailing_actual_word_count: 0,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
+    generated_at: "2026-06-23T01:08:00.000Z",
+    readiness: { status: "pass", blockers: [] },
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-23T01:13:30.000Z",
+      blocked: [
+        {
+          story_id: "fresh-input-story",
+          title: "GTA 5's Free Upgrade Changes The GTA 6 Wait",
+          artifact_dir: artifactDir,
+          render_manifest: {
+            renderer: "visual_v4_production",
+            visual_tier: "production_v4_motion",
+            final_publish_render: true,
+            generated_at: "2026-06-23T01:04:00.000Z",
+            output: "visual_v4_render.mp4",
+            output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+            quality_gate_status: "post_render_forensics_failed",
+          },
+          visual_evidence_profile: {
+            asset_count: 8,
+            motion_asset_count: 8,
+            real_media_asset_count: 8,
+            direct_video_motion_asset_count: 8,
+            direct_video_motion_family_count: 4,
+            generated_only_motion_deck: false,
+            blockers: [],
+          },
+          selected_render_evidence: {
+            has_selected_render_assets: true,
+            direct_video_motion_asset_count: 8,
+            direct_video_motion_family_count: 4,
+            generated_only_motion_deck: false,
+            blockers: [],
+          },
+          status: "blocked",
+          blockers: [
+            "missing_input:platform_publish_manifest.json",
+            "benchmark_not_pass",
+            "benchmark_below_production_threshold:sfx_impact_score",
+          ],
+          target_render_manifest: {
+            renderer: "visual_v4_production",
+            final_publish_render: true,
+            hyperframes_premium_shell_required: true,
+            hyperframes_premium_shell_required_pass_count: 4,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-23T01:14:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.summary.stale_qa_refresh_jobs, 0);
+  assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
+  assert.equal(workOrder.jobs[0].force_final_render, true);
+  assert.deepEqual(
+    workOrder.jobs[0].actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(workOrder.jobs[0].actions[0].force, true);
+  assert.equal(workOrder.jobs[0].evidence.narration_audio_path, "output/audio/fresh-input-story.mp3");
+  assert.equal(workOrder.jobs[0].evidence.word_timestamps_path, "output/audio/fresh-input-story_timestamps.json");
+  assert.equal(workOrder.jobs[0].actions[0].target_render_manifest.hyperframes_premium_shell_required, true);
+});
+
 test("render input work order routes non-ASR local timestamps through the audio alignment lane", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

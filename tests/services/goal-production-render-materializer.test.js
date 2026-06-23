@@ -156,6 +156,50 @@ async function makePackage(root, storyId = "story-final") {
   return artifactDir;
 }
 
+async function writePassingHyperframesCard(root, storyId, kind) {
+  const outDir = path.join(root, "test", "output");
+  const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
+  const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
+  await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
+  await fs.outputJson(sidecarPath, {
+    story_id: storyId,
+    card_kind: kind,
+    channel_id: "pulse-gaming",
+    hyperframes_premium_shell: {
+      status: "pass",
+      story_id: storyId,
+      card_kind: kind,
+      channel_id: "pulse-gaming",
+      checks: {
+        lint: { status: "pass" },
+        validate: { status: "pass" },
+        inspect: { status: "pass" },
+        render: { status: "pass" },
+      },
+      visual_identity: {
+        status: "pass",
+        evidence: {
+          vertical_reel_viewport: true,
+          tracked_clip: true,
+          html_path: "index.html",
+          hyperframes_config_path: "hyperframes.json",
+        },
+      },
+      animation_contract: {
+        status: "pass",
+        evidence: {
+          timeline_registry: true,
+          paused_gsap_timeline: true,
+          main_timeline_registered: true,
+          timeline_animation_steps: 4,
+        },
+      },
+      blockers: [],
+    },
+  });
+  return cardPath;
+}
+
 test("goal production render materializer renders ready jobs and writes a final production manifest", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-"));
   const artifactDir = await makePackage(root);
@@ -207,6 +251,112 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.voice_mix_policy_version, STUDIO_V4_VOICE_MIX_POLICY_VERSION);
   assert.equal(manifest.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
+});
+
+test("goal production render materializer preserves HyperFrames premium-shell target proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-shell-"));
+  const artifactDir = await makePackage(root, "story-hf-shell");
+  const job = readyJob("story-hf-shell", artifactDir);
+  job.actions[0].target_render_manifest = {
+    ...job.actions[0].target_render_manifest,
+    hyperframes_premium_shell_required: true,
+    hyperframes_premium_shell_required_pass_count: 4,
+    hyperframes_card_count: 4,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      requiredPassCount: 4,
+      passCount: 4,
+      blockers: [],
+    },
+    premium_shell_verdict: "pass",
+    premium_shell_pass_count: 4,
+    premium_shell_blockers: [],
+  };
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-05-22T07:05:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: "story-hf-shell",
+        output,
+        clips: 4,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(manifest.hyperframes_premium_shell_required, true);
+  assert.equal(manifest.hyperframes_premium_shell_required_pass_count, 4);
+  assert.equal(manifest.premium_shell_required_pass_count, 4);
+  assert.equal(manifest.hyperframes_card_count, 4);
+  assert.equal(manifest.premium_shell_verdict, "pass");
+  assert.equal(manifest.premium_shell_pass_count, 4);
+  assert.deepEqual(manifest.premium_shell_blockers, []);
+  assert.equal(manifest.hyperframes_premium_shell_gate.verdict, "pass");
+  assert.equal(manifest.hyperframes_premium_shell_gate.passCount, 4);
+});
+
+test("goal production render materializer feeds passing HyperFrames shell cards into the V4 render story", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-card-use-"));
+  const artifactDir = await makePackage(root, "story-hf-card-use");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-card-use", kind),
+  ));
+  const job = readyJob("story-hf-card-use", artifactDir);
+  job.actions[0].target_render_manifest = {
+    ...job.actions[0].target_render_manifest,
+    hyperframes_premium_shell_required: true,
+    hyperframes_premium_shell_required_pass_count: 4,
+  };
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-05-22T07:06:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        hyperframes_premium_shell_required: renderStory.hyperframes_premium_shell_required,
+        hyperframes_card_count: renderStory.hyperframes_card_count,
+        hyperframes_premium_shell_gate: renderStory.hyperframes_premium_shell_gate,
+        premium_shell_verdict: renderStory.premium_shell_verdict,
+        premium_shell_pass_count: renderStory.premium_shell_pass_count,
+        premium_shell_required_pass_count: renderStory.premium_shell_required_pass_count,
+        premium_shell_blockers: renderStory.premium_shell_blockers,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(renderStory.hyperframes_premium_shell_required, true);
+  assert.equal(renderStory.hyperframes_card_count, 5);
+  assert.equal(renderStory.premium_shell_verdict, "pass");
+  assert.equal(renderStory.premium_shell_pass_count, 5);
+  assert.deepEqual(renderStory.premium_shell_blockers, []);
+  assert.ok(renderStory.video_clips.some((clip) => /hf_source_card_story-hf-card-use\.mp4$/.test(clip)));
+  assert.ok(
+    renderStory.visual_v4_bridge_video_clips.some(
+      (clip) => clip.source_type === "hyperframes_premium_shell_card",
+    ),
+  );
+  const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(manifest.hyperframes_premium_shell_required, true);
+  assert.equal(manifest.hyperframes_card_count, 5);
+  assert.equal(manifest.premium_shell_verdict, "pass");
+  assert.equal(manifest.premium_shell_pass_count, 5);
 });
 
 test("goal production render materializer prefers repaired materialised motion over stale rights-ledger motion", async () => {

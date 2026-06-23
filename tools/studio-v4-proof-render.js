@@ -1286,6 +1286,21 @@ async function renderProof({ storyJson, output }) {
     sfx_mix_policy_version: STUDIO_V4_SFX_MIX_POLICY_VERSION,
     voice_mix_policy_version: STUDIO_V4_VOICE_MIX_POLICY_VERSION,
     visual_design_policy_version: STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
+    hyperframes_premium_shell_required: story.hyperframes_premium_shell_required === true,
+    hyperframes_card_count: Number.isFinite(Number(story.hyperframes_card_count))
+      ? Number(story.hyperframes_card_count)
+      : null,
+    hyperframes_premium_shell_gate: story.hyperframes_premium_shell_gate || {},
+    premium_shell_verdict: story.premium_shell_verdict || null,
+    premium_shell_pass_count: Number.isFinite(Number(story.premium_shell_pass_count))
+      ? Number(story.premium_shell_pass_count)
+      : null,
+    premium_shell_required_pass_count: Number.isFinite(Number(story.premium_shell_required_pass_count))
+      ? Number(story.premium_shell_required_pass_count)
+      : null,
+    premium_shell_blockers: Array.isArray(story.premium_shell_blockers)
+      ? story.premium_shell_blockers
+      : [],
     narration_script_source: story.narration_script ? "narration_script" : story.full_script ? "full_script" : "tts_script",
     selected_sfx_cues: sfxCueMix.map((cue) => ({
       asset_id: cue.asset_id || null,

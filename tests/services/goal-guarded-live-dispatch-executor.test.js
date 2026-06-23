@@ -955,6 +955,46 @@ test("selectNextGuardedLiveAction skips actions blocked by the last-second quali
   ]);
 });
 
+test("selectNextGuardedLiveAction carries normal-production duration metadata into the last-second quality story", async () => {
+  let capturedStory = null;
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          action_id: "gta-story:youtube_shorts",
+          story_id: "gta-story",
+          duration_strategy: "normal_production_safe_script_expansion",
+          video_duration_s: 35.25,
+          video_path: "output/final/gta-story/youtube_shorts.mp4",
+        }),
+      ],
+    }),
+    stories: [story({ id: "gta-story", title: "GTA 6 Preorders Have A Price Risk" })],
+    runActionQualityGate: async ({ story: qualityStory }) => {
+      capturedStory = qualityStory;
+      const valid =
+        qualityStory.duration_lane === "normal_production" &&
+        qualityStory.duration_seconds === 35.25 &&
+        qualityStory.min_video_duration_seconds === 35 &&
+        qualityStory.max_video_duration_seconds === 60;
+      return valid
+        ? passActionQualityGate()
+        : {
+            result: "fail",
+            blockers: ["duration_contract_not_hydrated"],
+            checks: { qualityStory },
+          };
+    },
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "gta-story:youtube_shorts");
+  assert.equal(capturedStory.duration_lane, "normal_production");
+  assert.equal(capturedStory.duration_seconds, 35.25);
+  assert.equal(capturedStory.min_video_duration_seconds, 35);
+  assert.equal(capturedStory.max_video_duration_seconds, 60);
+});
+
 test("selectNextGuardedLiveAction skips pre-fix local TTS packages with slowed narration", async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-slow-local-tts-"));
   t.after(() => fs.remove(tmp));

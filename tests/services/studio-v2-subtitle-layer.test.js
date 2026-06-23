@@ -163,6 +163,37 @@ test("buildKineticAss restores GTA sequel digits from spoken captions", () => {
   assert.doesNotMatch(text, /\bsix\b/i);
 });
 
+test("buildKineticAss preserves compact GTA VI title text over spoken acronym expansion", () => {
+  const words = [
+    { word: "G", start: 0, end: 0.08 },
+    { word: "T", start: 0.09, end: 0.17 },
+    { word: "A", start: 0.18, end: 0.26 },
+    { word: "six", start: 0.27, end: 0.44 },
+    { word: "just", start: 0.46, end: 0.62 },
+    { word: "revealed", start: 0.64, end: 0.94 },
+  ];
+  const aligned = realignTimestampsToScript("GTA VI just revealed cover art.", words);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["GTA", "VI", "just", "revealed"],
+  );
+
+  const ass = buildKineticAss({
+    story: { title: "GTA VI Cover Art" },
+    words,
+    duration: 2,
+    scriptText: "GTA VI just revealed cover art.",
+  });
+
+  const text = extractAssDialogueText(ass).join(" ");
+  assert.match(text, /GTA/);
+  assert.match(text, /VI/);
+  assert.doesNotMatch(text, /\bG\s+T\s+A\b/i);
+  assert.doesNotMatch(text, /\bGTA\s+6\b/i);
+  assert.doesNotMatch(text, /\bsix\b/i);
+});
+
 test("prepareSubtitleWords normalises raw ASR display tokens when realignment is skipped", () => {
   const prepared = prepareSubtitleWords({
     words: [

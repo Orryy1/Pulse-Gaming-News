@@ -556,27 +556,55 @@ function buildClipScenePlan({
   xfadeS = XFADE_S,
   maxSceneDurationS = null,
   maxScenes = DEFAULT_DIRECT_CLIP_MAX_SCENES,
+  allowClipReuse = false,
 } = {}) {
-  const cleanClips = clips.filter(Boolean).slice(0, 8);
+  const maxSceneLimit = Math.max(1, Math.round(Number(maxScenes) || DEFAULT_DIRECT_CLIP_MAX_SCENES));
+  const cleanClips = [];
+  const seen = new Set();
+  for (const clip of clips.filter(Boolean)) {
+    const key = String(clip).trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    cleanClips.push(clip);
+    if (cleanClips.length >= maxSceneLimit) break;
+  }
   if (!cleanClips.length) {
-    return { scenes: [], segmentDurationS: 0, xfadeS };
+    return {
+      scenes: [],
+      segmentDurationS: 0,
+      xfadeS,
+      repeatFree: true,
+      blockers: ["direct_motion_clips_missing"],
+      requiredUniqueClipCount: 0,
+      availableUniqueClipCount: 0,
+    };
   }
   const duration = Math.max(1, Number(durationS) || 1);
-  let count = cleanClips.length;
+  let requiredCount = cleanClips.length;
   const maxDwell = Number(maxSceneDurationS);
   if (Number.isFinite(maxDwell) && maxDwell > xfadeS + 0.1) {
-    const requiredCount = Math.ceil((duration - xfadeS) / (maxDwell - xfadeS));
-    count = Math.max(count, Math.min(Number(maxScenes) || DIRECT_CLIP_MAX_SCENES, requiredCount));
+    const dwellRequiredCount = Math.ceil((duration - xfadeS) / (maxDwell - xfadeS));
+    requiredCount = Math.max(cleanClips.length, Math.min(maxSceneLimit, dwellRequiredCount));
   }
+  const blockers = [];
+  const repeatFree = allowClipReuse !== true;
+  if (repeatFree && requiredCount > cleanClips.length) {
+    blockers.push("direct_motion_clip_diversity_below_dwell_floor");
+  }
+  const count = repeatFree ? Math.min(cleanClips.length, requiredCount) : requiredCount;
   const segmentDurationS = Number(
     ((duration + xfadeS * Math.max(0, count - 1)) / count).toFixed(2),
   );
   return {
     segmentDurationS,
     xfadeS,
+    repeatFree,
+    blockers,
+    requiredUniqueClipCount: requiredCount,
+    availableUniqueClipCount: cleanClips.length,
     scenes: Array.from({ length: count }, (_, index) => ({
       index,
-      path: cleanClips[index % cleanClips.length],
+      path: repeatFree ? cleanClips[index] : cleanClips[index % cleanClips.length],
       durationS: segmentDurationS,
     })),
   };
@@ -1089,6 +1117,12 @@ async function renderProof({ storyJson, output }) {
     maxSceneDurationS: directClipMaxVisibleDwellS(),
     maxScenes: directClipMaxScenes(),
   });
+  if (Array.isArray(scenePlan.blockers) && scenePlan.blockers.length) {
+    throw new Error(
+      `direct_motion_scene_plan_blocked:${scenePlan.blockers.join(",")}:` +
+        `available=${scenePlan.availableUniqueClipCount}:required=${scenePlan.requiredUniqueClipCount}`,
+    );
+  }
   const assPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof.ass`);
   const timestampData = await fs.readJson(timestampsPath);
   const timestampValidation = validateProofTimestampPayload(timestampData, {

@@ -96,6 +96,37 @@ test("caption emphasis collapses spoken acronym letters back to GTA digits", () 
   assert.doesNotMatch(ass, /\bsix\b/i);
 });
 
+test("caption emphasis preserves GTA VI roman title when local voice spells GTA six", () => {
+  const words = [
+    { word: "G", start: 0, end: 0.1 },
+    { word: "T", start: 0.12, end: 0.22 },
+    { word: "A", start: 0.24, end: 0.34 },
+    { word: "six", start: 0.36, end: 0.58 },
+    { word: "cover", start: 0.6, end: 0.86 },
+    { word: "art", start: 0.88, end: 1.04 },
+  ];
+
+  const aligned = realignTimestampsToScript("GTA VI cover art", words);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["GTA", "VI", "cover", "art"],
+  );
+
+  const ass = buildAss({
+    story: { title: "GTA VI Cover Art" },
+    scriptText: "GTA VI cover art",
+    words,
+    duration: 3,
+  });
+
+  assert.match(ass, /GTA/);
+  assert.match(ass, /VI/);
+  assert.doesNotMatch(ass, /\bG\s+T\s+A\b/i);
+  assert.doesNotMatch(ass, /\bGTA\s+6\b/i);
+  assert.doesNotMatch(ass, /\bsix\b/i);
+});
+
 test("caption emphasis restores Grand Theft Auto roman numerals from spoken local TTS words", () => {
   const ass = buildAss({
     story: { title: "Grand Theft Auto VI Cover Art" },

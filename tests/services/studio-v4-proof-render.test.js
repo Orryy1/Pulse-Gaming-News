@@ -46,7 +46,7 @@ test("Studio V4 proof renderer plans motion-only scenes across full narration", 
   assert.deepEqual(plan.scenes.map((scene) => scene.path), ["a.mp4", "b.mp4", "c.mp4"]);
 });
 
-test("Studio V4 proof renderer caps direct clip dwell to avoid choppy source holds", () => {
+test("Studio V4 proof renderer refuses to repeat clips just to cap direct dwell", () => {
   const plan = buildClipScenePlan({
     clips: ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4"],
     durationS: 42.237,
@@ -54,19 +54,19 @@ test("Studio V4 proof renderer caps direct clip dwell to avoid choppy source hol
     maxSceneDurationS: 3,
   });
 
-  assert.equal(plan.scenes.length, 16);
-  assert.ok(plan.segmentDurationS <= 3);
+  assert.equal(plan.scenes.length, 8);
   assert.deepEqual(
-    plan.scenes.slice(0, 10).map((scene) => scene.path),
-    ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4", "a.mp4", "b.mp4"],
+    plan.scenes.map((scene) => scene.path),
+    ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4"],
   );
-  assert.deepEqual(
-    plan.scenes.map((scene) => scene.index),
-    Array.from({ length: 16 }, (_, index) => index),
-  );
+  assert.ok(plan.segmentDurationS > 3);
+  assert.equal(plan.repeatFree, true);
+  assert.equal(plan.requiredUniqueClipCount, 16);
+  assert.equal(plan.availableUniqueClipCount, 8);
+  assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
 });
 
-test("Studio V4 proof renderer keeps 50s direct-motion renders under the dwell cap", () => {
+test("Studio V4 proof renderer blocks 50s renders that would need looped direct clips", () => {
   const plan = buildClipScenePlan({
     clips: ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4"],
     durationS: 50.6,
@@ -74,12 +74,15 @@ test("Studio V4 proof renderer keeps 50s direct-motion renders under the dwell c
     maxSceneDurationS: 2.1,
   });
 
-  assert.ok(plan.scenes.length > 24);
-  assert.ok(plan.segmentDurationS <= 2.1);
+  assert.equal(plan.scenes.length, 8);
   assert.deepEqual(
-    plan.scenes.slice(24, 28).map((scene) => scene.path),
-    ["a.mp4", "b.mp4", "c.mp4", "d.mp4"],
+    plan.scenes.map((scene) => scene.path),
+    ["a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4", "f.mp4", "g.mp4", "h.mp4"],
   );
+  assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
+  assert.equal(plan.repeatFree, true);
+  assert.equal(plan.availableUniqueClipCount, 8);
+  assert.ok(plan.requiredUniqueClipCount > 24);
 });
 
 test("Studio V4 proof renderer defaults to fast direct-motion cuts", () => {
@@ -99,14 +102,33 @@ test("Studio V4 proof renderer defaults to fast direct-motion cuts", () => {
       maxScenes: directClipMaxScenes(),
     });
 
-    assert.ok(plan.scenes.length >= 37);
-    assert.ok(plan.segmentDurationS <= 1.5);
+    assert.equal(plan.scenes.length, 8);
+    assert.equal(plan.repeatFree, true);
+    assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
+    assert.ok(plan.requiredUniqueClipCount >= 37);
   } finally {
     if (previousDwell === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
     else process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = previousDwell;
     if (previousScenes === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
     else process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES = previousScenes;
   }
+});
+
+test("Studio V4 proof renderer can explicitly plan legacy repeated clips for diagnostics only", () => {
+  const plan = buildClipScenePlan({
+    clips: ["a.mp4", "b.mp4", "c.mp4"],
+    durationS: 12,
+    xfadeS: 0.25,
+    maxSceneDurationS: 2,
+    allowClipReuse: true,
+  });
+
+  assert.equal(plan.repeatFree, false);
+  assert.equal(plan.blockers.length, 0);
+  assert.deepEqual(
+    plan.scenes.map((scene) => scene.path),
+    ["a.mp4", "b.mp4", "c.mp4", "a.mp4", "b.mp4", "c.mp4", "a.mp4"],
+  );
 });
 
 test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {

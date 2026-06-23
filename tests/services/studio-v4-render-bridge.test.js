@@ -238,6 +238,61 @@ test("Studio V4 render bridge allows explicit non-repeated clips from the same s
   );
 });
 
+test("Studio V4 render bridge rejects explicit clips from the same source window", () => {
+  const bridge = buildStudioV4RenderBridge({
+    story: {
+      id: "same-window-explicit",
+      studio_v4_canonical_packet: {
+        readiness: { status: "ready_for_studio_v4_render", blockers: [] },
+        director_plan: {
+          shot_plan: [
+            {
+              id: "motion_a",
+              kind: "motion_clip",
+              source_family: "rockstar_cover_segment_a",
+              motion_pack_clip_id: "rockstar_clip_a",
+            },
+            {
+              id: "motion_b",
+              kind: "motion_clip",
+              source_family: "rockstar_cover_segment_b",
+              motion_pack_clip_id: "rockstar_clip_b",
+            },
+          ],
+        },
+      },
+      visual_v4_motion_pack: {
+        clips: [
+          {
+            id: "rockstar_clip_a",
+            source_family: "rockstar_cover_segment_a",
+            path: "C:/media/rockstar-a.mp4",
+            source_url: "https://www.youtube.com/watch?v=EiQEBYDox_k",
+            mediaStartS: 12,
+            durationS: 3,
+          },
+          {
+            id: "rockstar_clip_b",
+            source_family: "rockstar_cover_segment_b",
+            path: "C:/media/rockstar-b.mp4",
+            source_url: "https://www.youtube.com/watch?v=EiQEBYDox_k",
+            mediaStartS: 12.4,
+            durationS: 3,
+          },
+        ],
+      },
+    },
+    pathExists: () => true,
+  });
+
+  assert.equal(bridge.readiness.status, "bridge_ready");
+  assert.equal(bridge.video_clips.length, 1);
+  assert.equal(bridge.video_clips[0].id, "motion_a");
+  assert.ok(
+    bridge.rejected.some((item) => item.reason === "duplicate_source_window"),
+  );
+});
+
 test("Studio V4 render bridge applies clips and metadata onto the story", () => {
   const story = {
     id: "forza-v4",

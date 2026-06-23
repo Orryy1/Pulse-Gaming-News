@@ -1055,6 +1055,35 @@ test("source-bound fallback turns Xbox dashboard exclusivity labels into a clear
   );
 });
 
+test("source-bound fallback turns Lords of the Fallen 2 GTA 6 delay into a named release-calendar script", () => {
+  const script = buildSourceBoundFallbackScript(
+    {
+      id: "rss_lords_fallen_2_gta6_delay",
+      title: "Lords Of The Fallen 2 Delayed To Avoid GTA 6 And Get More Enhancements",
+      source_type: "rss",
+      subreddit: "PC Gamer",
+      article_url:
+        "https://www.pcgamer.com/games/action/lords-of-the-fallen-2-delayed-to-avoid-gta-6/",
+    },
+    {
+      sourceName: "PC Gamer",
+      runtimeProfile: SHORT_LOCAL_PROFILE,
+      sourceMaterial:
+        "PC Gamer reports Lords of the Fallen 2 has been delayed to avoid GTA 6 and give the sequel more enhancements before launch.",
+    },
+  );
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Lords of the Fallen 2\b/i);
+  assert.match(script.full_script, /delayed|delay|GTA 6|enhancements|release calendar/i);
+  assert.match(script.full_script, /Rockstar|launch window|publisher|players|pressure/i);
+  assert.doesNotMatch(script.suggested_title, /Player Impact/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /one concrete player question|just got an update that changes the player decision|new .{0,80} detail around access,\s*timing,\s*performance or expectations|PLAYER IMPACT|player impact/i,
+  );
+});
+
 test("source-bound fallback turns Dave the Diver DLC into concrete player impact", () => {
   const script = buildSourceBoundFallbackScript(
     {

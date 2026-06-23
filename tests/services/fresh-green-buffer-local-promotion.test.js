@@ -634,6 +634,7 @@ test("fresh buffer promotion maps current-news title subjects to source-search e
     ["rss_cyberpunk", "Cyberpunk 2077's Trust Debt", "CD Projekt Red is still paying for Cyberpunk 2077's launch.", "Cyberpunk 2077", "IGN reports Cyberpunk 2077 has a new update detail."],
     ["rss_xbox", "Xbox's Strategy Trust Problem", "An original Xbox insider just made the brand problem sound painfully simple.", "Xbox", "Kotaku reports a founding Xbox figure says early console-business fears still matter."],
     ["rss_halo_ps5", "Halo's PS5 Account Catch", "Halo on PS5 just picked up a very Xbox-shaped requirement.", "Halo: Campaign Evolved", "Eurogamer reports Halo: Campaign Evolved PS5 players will require an Xbox account and gamertag."],
+    ["rss_lords_fallen_2", "Lords Of The Fallen 2 Dodges GTA 6", "Lords of the Fallen 2 just blinked first in the GTA 6 traffic jam. GameSpot reports Lords of the Fallen 2 was delayed to avoid GTA 6 and give the sequel more enhancement time before launch. Dodging GTA 6 is sensible, but it also raises expectations.", "Lords of the Fallen 2", "GameSpot reports Lords of the Fallen 2 was delayed to avoid GTA 6 and get more enhancements."],
   ];
   const report = buildFreshGreenBufferLocalPromotionReport({
     stories: cases.map(([id, title, script, , claim]) =>
@@ -660,6 +661,13 @@ test("fresh buffer promotion maps current-news title subjects to source-search e
     );
     assert.equal(canonical.canonical_subject, expected);
     assert.equal(canonical.canonical_game, expected);
+    if (id === "rss_lords_fallen_2") {
+      assert.equal(canonical.script_coherence_result, "pass");
+      assert.match(canonical.description, /Lords of the Fallen 2/i);
+      assert.match(canonical.description, /release-calendar|GTA 6|breathing room|extra time|launch/i);
+      assert.doesNotMatch(canonical.description, /^GTA 6 has/i);
+      assert.doesNotMatch(canonical.description, /headline is interesting|useful question/i);
+    }
     const storyPackage = storyPackages.find((item) => item.story_id === id);
     assert.equal(storyPackage.canonical_subject, expected);
     assert.equal(storyPackage.canonical_game, expected);

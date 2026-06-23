@@ -359,6 +359,53 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.equal(manifest.premium_shell_pass_count, 5);
 });
 
+test("goal production render materializer auto-preserves HyperFrames shell cards on rerender work orders", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-auto-"));
+  const artifactDir = await makePackage(root, "story-hf-auto");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-auto", kind),
+  ));
+  const job = readyJob("story-hf-auto", artifactDir);
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-05-22T07:06:30.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        hyperframes_premium_shell_required: renderStory.hyperframes_premium_shell_required,
+        hyperframes_card_count: renderStory.hyperframes_card_count,
+        hyperframes_premium_shell_gate: renderStory.hyperframes_premium_shell_gate,
+        premium_shell_verdict: renderStory.premium_shell_verdict,
+        premium_shell_pass_count: renderStory.premium_shell_pass_count,
+        premium_shell_required_pass_count: renderStory.premium_shell_required_pass_count,
+        premium_shell_blockers: renderStory.premium_shell_blockers,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(renderStory.hyperframes_premium_shell_required, true);
+  assert.equal(renderStory.hyperframes_card_count, 5);
+  assert.equal(renderStory.premium_shell_verdict, "pass");
+  assert.equal(renderStory.premium_shell_pass_count, 5);
+  assert.deepEqual(renderStory.premium_shell_blockers, []);
+  const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(manifest.hyperframes_premium_shell_required, true);
+  assert.equal(manifest.hyperframes_card_count, 5);
+  assert.equal(manifest.premium_shell_verdict, "pass");
+  assert.equal(manifest.premium_shell_pass_count, 5);
+  assert.equal(manifest.hyperframes_premium_shell_gate.verdict, "pass");
+});
+
 test("goal production render materializer prefers repaired materialised motion over stale rights-ledger motion", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-fresh-motion-"));
   const artifactDir = await makePackage(root, "fresh-motion-wins");

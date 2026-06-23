@@ -1469,6 +1469,63 @@ test("public copy package repair creates missing script scorecards before schedu
   assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
 });
 
+test("public copy package repair rewrites GTA 5 free upgrade stories into viral-ready owner payoff", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-gta5-upgrade-"));
+  const artifactDir = path.join(root, "batch", "gta5-upgrade");
+  await fs.ensureDir(artifactDir);
+  const weakScript =
+    "GTA 5 has a free upgrade catch. GameSpot reports digital PS4 and Xbox One owners can claim the PS5 and Xbox Series X/S version from June 18. That matters because it is a useful player-facing update. Players should check the details before paying again. Comment what you think. Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "gta5-free-upgrade",
+    canonical_subject: "GTA 5",
+    canonical_game: "GTA 5",
+    selected_title: "GTA 5 Has A Free Upgrade Catch",
+    short_title: "GTA 5 Has A Free Upgrade Catch",
+    first_spoken_line: "GTA 5 has a free upgrade catch.",
+    primary_source: "GameSpot",
+    source_card_label: "GameSpot",
+    confirmed_claims: [
+      "GameSpot reports digital PS4 and Xbox One owners can claim the PS5 and Xbox Series X/S version from June 18.",
+    ],
+    narration_script: weakScript,
+    full_script: weakScript,
+    tts_script: weakScript,
+    description:
+      "GTA 5 just turned a paid current-gen upgrade into a free claim for eligible PS4 and Xbox One owners. Source: GameSpot.",
+    thumbnail_headline: "GTA 5 FREE UPGRADE",
+    thumbnail_text: "GTA 5 FREE UPGRADE",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "GTA 5 Has A Free Upgrade Catch",
+        description:
+          "GTA 5 just turned a paid current-gen upgrade into a free claim for eligible PS4 and Xbox One owners. Source: GameSpot.",
+      },
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "gta5-free-upgrade", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-23T02:30:00.000Z",
+    forceQualityRewriteStoryIds: ["gta5-free-upgrade"],
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+  assert.equal(report.changed[0].public_copy_regeneration_pending, true);
+  const repairedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(repairedManifest.thumbnail_headline, "GTA 5 FREE UPGRADE");
+  assert.equal(repairedManifest.thumbnail_text, "GTA 5 FREE UPGRADE");
+  assert.match(repairedManifest.narration_script, /retention play instead of a simple gift/);
+  assert.doesNotMatch(repairedManifest.narration_script, /\bGTA\s*6\b/i);
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.equal(savedScorecard.viral_score >= 85, true, JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.warnings, [], JSON.stringify(savedScorecard, null, 2));
+});
+
 test("public copy package repair keeps GTA preorder platform copy out of deal filler", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-gta-platform-"));
   const artifactDir = path.join(root, "batch", "gta6-platform");

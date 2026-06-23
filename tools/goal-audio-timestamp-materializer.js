@@ -25,6 +25,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     limit: 0,
     provider: "auto",
     ttsRate: null,
+    localTtsTimeoutMs: null,
+    localTtsRequestAttempts: null,
     localTtsSegmentedMaterializer: null,
     localTtsSegmentedWordThreshold: null,
     localTtsSegmentMaxWords: null,
@@ -45,6 +47,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--limit") args.limit = Number(argv[++i] || 0);
     else if (arg === "--provider") args.provider = argv[++i] || args.provider;
     else if (arg === "--tts-rate") args.ttsRate = Number(argv[++i] || 0) || null;
+    else if (arg === "--local-tts-timeout-ms") args.localTtsTimeoutMs = Number(argv[++i] || 0) || null;
+    else if (arg === "--local-tts-request-attempts") args.localTtsRequestAttempts = Number(argv[++i] || 0) || null;
     else if (arg === "--local-tts-segmented-materializer") args.localTtsSegmentedMaterializer = argv[++i] || null;
     else if (arg === "--local-tts-segmented-word-threshold") args.localTtsSegmentedWordThreshold = Number(argv[++i] || 0) || null;
     else if (arg === "--local-tts-segment-max-words") args.localTtsSegmentMaxWords = Number(argv[++i] || 0) || null;
@@ -76,6 +80,8 @@ function usage() {
     "  --story-id <id>       Generate only this story; repeatable",
     "  --provider <auto|local|elevenlabs>  Narration provider preference; auto uses the provider selected by the workbench",
     "  --tts-rate <number>    Explicit speaking-rate override for regenerated narration",
+    "  --local-tts-timeout-ms <n>       Explicit bounded local TTS request timeout",
+    "  --local-tts-request-attempts <n> Explicit bounded local TTS request attempts",
     "  --local-tts-segmented-materializer <true|false>  Enable sentence-level local TTS materialisation",
     "  --local-tts-segmented-word-threshold <n>         Segment local TTS scripts at or above this word count",
     "  --local-tts-segment-max-words <n>                Maximum words per local TTS segment",
@@ -102,11 +108,19 @@ function setMinimumInteger(env, key, minimum) {
   if (!Number.isInteger(current) || current < minimum) env[key] = String(minimum);
 }
 
-function configureLocalTtsBatchEnv(env = process.env) {
+function configureLocalTtsBatchEnv(env = process.env, options = {}) {
   env.TTS_PROVIDER = "local";
   env.PULSE_LOCAL_TTS_ONLY = "true";
-  setMinimumMs(env, "LOCAL_TTS_TIMEOUT_MS", 900000);
-  setMinimumInteger(env, "LOCAL_TTS_REQUEST_ATTEMPTS", 3);
+  if (Number.isFinite(Number(options.localTtsTimeoutMs)) && Number(options.localTtsTimeoutMs) > 0) {
+    env.LOCAL_TTS_TIMEOUT_MS = String(Math.max(30000, Math.trunc(Number(options.localTtsTimeoutMs))));
+  } else {
+    setMinimumMs(env, "LOCAL_TTS_TIMEOUT_MS", 900000);
+  }
+  if (Number.isInteger(Number(options.localTtsRequestAttempts)) && Number(options.localTtsRequestAttempts) > 0) {
+    env.LOCAL_TTS_REQUEST_ATTEMPTS = String(Math.max(1, Math.trunc(Number(options.localTtsRequestAttempts))));
+  } else {
+    setMinimumInteger(env, "LOCAL_TTS_REQUEST_ATTEMPTS", 3);
+  }
   setMinimumMs(env, "LOCAL_TTS_START_WAIT_MS", 120000);
   setMinimumMs(env, "LOCAL_TTS_PREWARM_TIMEOUT_MS", 600000);
   env.LOCAL_TTS_OUTPUT_FORMAT = env.LOCAL_TTS_OUTPUT_FORMAT || "mp3_44100_256";
@@ -115,15 +129,16 @@ function configureLocalTtsBatchEnv(env = process.env) {
   return env;
 }
 
-function configureGoalTtsBatchEnv(env = process.env, { provider = "auto" } = {}) {
+function configureGoalTtsBatchEnv(env = process.env, { provider = "auto", localTtsTimeoutMs = null, localTtsRequestAttempts = null } = {}) {
   const selected = String(provider || "auto").toLowerCase();
-  if (selected === "local") return configureLocalTtsBatchEnv(env);
+  const localOptions = { localTtsTimeoutMs, localTtsRequestAttempts };
+  if (selected === "local") return configureLocalTtsBatchEnv(env, localOptions);
   if (selected === "elevenlabs") {
     env.TTS_PROVIDER = "elevenlabs";
     delete env.PULSE_LOCAL_TTS_ONLY;
     return env;
   }
-  return configureLocalTtsBatchEnv(env);
+  return configureLocalTtsBatchEnv(env, localOptions);
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -132,7 +147,11 @@ async function main(argv = process.argv.slice(2)) {
     console.log(usage());
     return { help: true };
   }
-  configureGoalTtsBatchEnv(process.env, { provider: args.provider });
+  configureGoalTtsBatchEnv(process.env, {
+    provider: args.provider,
+    localTtsTimeoutMs: args.localTtsTimeoutMs,
+    localTtsRequestAttempts: args.localTtsRequestAttempts,
+  });
   const workbenchReport = await readJsonIfPresent(path.resolve(args.workbenchPath));
   const report = await materializeGoalAudioTimestamps({
     workbenchReport,

@@ -33,6 +33,10 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
     "elevenlabs",
     "--tts-rate",
     "0.92",
+    "--local-tts-timeout-ms",
+    "120000",
+    "--local-tts-request-attempts",
+    "1",
     "--local-tts-segmented-word-threshold",
     "20",
     "--local-tts-segment-max-words",
@@ -50,6 +54,8 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
   assert.deepEqual(args.storyIds, ["story-one", "story-two"]);
   assert.equal(args.provider, "elevenlabs");
   assert.equal(args.ttsRate, 0.92);
+  assert.equal(args.localTtsTimeoutMs, 120000);
+  assert.equal(args.localTtsRequestAttempts, 1);
   assert.equal(args.localTtsSegmentedWordThreshold, 20);
   assert.equal(args.localTtsSegmentMaxWords, 12);
   assert.equal(args.localTtsSegmentGapS, 0.4);
@@ -159,6 +165,34 @@ test("goal audio timestamp materializer configures long local TTS batch timeouts
   assert.equal(Object.prototype.hasOwnProperty.call(env, "LOCAL_TTS_SEGMENTED_WORD_THRESHOLD"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(env, "LOCAL_TTS_SEGMENT_MAX_WORDS"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(env, "LOCAL_TTS_SEGMENT_GAP_S"), false);
+});
+
+test("goal audio timestamp materializer supports bounded local TTS timeouts for autonomous refill", () => {
+  const env = {
+    LOCAL_TTS_TIMEOUT_MS: "900000",
+    LOCAL_TTS_REQUEST_ATTEMPTS: "3",
+  };
+  configureLocalTtsBatchEnv(env, {
+    localTtsTimeoutMs: 120000,
+    localTtsRequestAttempts: 1,
+  });
+
+  assert.equal(env.TTS_PROVIDER, "local");
+  assert.equal(env.PULSE_LOCAL_TTS_ONLY, "true");
+  assert.equal(env.LOCAL_TTS_TIMEOUT_MS, "120000");
+  assert.equal(env.LOCAL_TTS_REQUEST_ATTEMPTS, "1");
+});
+
+test("goal audio timestamp materializer clamps unsafe bounded local TTS values", () => {
+  const env = {};
+  configureGoalTtsBatchEnv(env, {
+    provider: "auto",
+    localTtsTimeoutMs: 1000,
+    localTtsRequestAttempts: 0,
+  });
+
+  assert.equal(env.LOCAL_TTS_TIMEOUT_MS, "30000");
+  assert.equal(env.LOCAL_TTS_REQUEST_ATTEMPTS, "3");
 });
 
 test("goal audio timestamp materializer preserves explicit opt-in local TTS segmentation tuning", () => {

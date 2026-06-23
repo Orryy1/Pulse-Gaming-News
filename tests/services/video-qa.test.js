@@ -7,6 +7,8 @@ const {
   parseFfprobeDuration,
   parseBlackdetectOutput,
   parseFreezedetectOutput,
+  parseFramehashOutput,
+  repeatedFrameHashPairs,
   DEFAULT_MIN_DURATION_SECONDS,
   DEFAULT_MIN_RETENTION_SHORT_SECONDS,
   DEFAULT_MIN_NORMAL_PRODUCTION_SECONDS,
@@ -78,6 +80,34 @@ test("parseFreezedetectOutput: parses freeze start, duration and end triples", (
   assert.deepStrictEqual(parseFreezedetectOutput(stderr), [
     { start: 21.9, end: 22.666667, duration: 0.766667 },
     { start: 32.666667, end: 33.466667, duration: 0.8 },
+  ]);
+});
+
+test("parseFramehashOutput extracts sampled frame hashes from framemd5 output", () => {
+  const stdout = `
+    #format: frame checksums
+    #stream#, dts,        pts, duration,     size, hash
+    0,          0,          0,        1,     4096, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    0,          1,          1,        1,     4096, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    0,          4,          4,        1,     4096, aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  `;
+
+  assert.deepStrictEqual(parseFramehashOutput(stdout), [
+    { index: 0, hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { index: 1, hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+    { index: 2, hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+  ]);
+});
+
+test("repeatedFrameHashPairs ignores adjacent repeats but catches later visual loops", () => {
+  const pairs = repeatedFrameHashPairs([
+    { index: 0, hash: "same" },
+    { index: 1, hash: "same" },
+    { index: 3, hash: "same" },
+  ]);
+
+  assert.deepStrictEqual(pairs, [
+    { hash: "same", first_index: 0, repeat_index: 3, gap: 3 },
   ]);
 });
 
@@ -246,6 +276,25 @@ test("classifyVideoQa: short duration AND long black → both failures captured"
   assert.strictEqual(r.failures.length, 2);
 });
 
+test("classifyVideoQa blocks non-adjacent repeated frame hashes", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 44,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    repeatedFramePairs: [
+      { hash: "loop", first_index: 2, repeat_index: 11, gap: 9 },
+    ],
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(
+    r.failures.some((f) => f.startsWith("repeated_frame_hashes")),
+    `got: ${r.failures.join(", ")}`,
+  );
+});
+
 // ---------- runVideoQa: mocked exec ----------
 
 function stubExec(handlers) {
@@ -300,7 +349,7 @@ test("runVideoQa: healthy video (50s, no black) → pass", async () => {
     }),
   });
   assert.strictEqual(r.result, "pass");
-  assert.strictEqual(callCount, 2);
+  assert.strictEqual(callCount, 3);
 });
 
 test("runVideoQa: short video (15s) + mid black → fail with both reasons", async () => {
@@ -387,6 +436,34 @@ test("runVideoQa: ffmpeg blackdetect exit code non-zero but output parseable →
   });
   assert.strictEqual(r.result, "fail");
   assert.ok(r.failures.some((f) => f.startsWith("black_segment_too_long")));
+});
+
+test("runVideoQa blocks repeated non-adjacent frame hashes from the repeat scan", async () => {
+  const r = await runVideoQa("/tmp/x.mp4", {
+    fs: fakeFs({ "/tmp/x.mp4": true }),
+    minDuration: 35,
+    maxDuration: 60,
+    exec: stubExec((cmd) => {
+      if (cmd.includes("ffprobe")) {
+        return { stdout: "duration=44.00\n", stderr: "" };
+      }
+      if (cmd.includes("framemd5")) {
+        return {
+          stdout: `
+            0,          0,          0,        1,     4096, 11111111111111111111111111111111
+            0,          1,          1,        1,     4096, 22222222222222222222222222222222
+            0,          2,          2,        1,     4096, 33333333333333333333333333333333
+            0,          9,          9,        1,     4096, 11111111111111111111111111111111
+          `,
+          stderr: "",
+        };
+      }
+      return { stdout: "", stderr: "" };
+    }),
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.some((f) => f.startsWith("repeated_frame_hashes")));
 });
 
 // ---------- defaults ----------

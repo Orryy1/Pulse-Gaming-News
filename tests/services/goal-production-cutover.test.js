@@ -1349,6 +1349,99 @@ test("production cutover blocks final HyperFrames renders without passing premiu
   assert.equal(plan.scheduler_bridge.candidate_count, 0);
 });
 
+test("production cutover target render manifest requires HyperFrames premium-shell proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-hf-target-"));
+  const storyPackage = await makeCutoverPackage(root, "hf-shell-target");
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T16:10:00.000Z",
+  });
+
+  assert.equal(plan.summary.queued_final_render_count, 1);
+  assert.equal(plan.queue[0].target_render_manifest.hyperframes_premium_shell_required, true);
+  assert.equal(plan.queue[0].target_render_manifest.hyperframes_premium_shell_required_pass_count, 4);
+});
+
+test("production cutover blocks final renders that require HyperFrames premium shell but have no proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-hf-required-missing-"));
+  const storyPackage = await makeCutoverPackage(root, "hf-required-missing", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Ninja Gaiden",
+    title: "Ninja Gaiden Needs A Premium Shell",
+  });
+  const renderManifestPath = path.join(storyPackage.artifact_dir, "render_manifest.json");
+  await fs.writeJson(
+    renderManifestPath,
+    {
+      ...(await fs.readJson(renderManifestPath)),
+      hyperframes_premium_shell_required: true,
+      hyperframes_premium_shell_required_pass_count: 4,
+    },
+    { spaces: 2 },
+  );
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T16:12:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_final_render_count, 0);
+  assert.equal(plan.summary.blocked_count, 1);
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell_not_passed"));
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell_required"));
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell_missing"));
+  assert.ok(plan.blocked[0].blockers.includes("hyperframes_premium_shell_pass_count_missing:4"));
+  assert.equal(plan.scheduler_bridge.candidate_count, 0);
+});
+
+test("production cutover bridge carries passing HyperFrames premium-shell proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-hf-proof-"));
+  const storyPackage = await makeCutoverPackage(root, "hf-proof-ready", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+    subject: "Metroid Prime 4",
+    title: "Metroid Prime 4 Has A Premium Shell",
+  });
+  const renderManifestPath = path.join(storyPackage.artifact_dir, "render_manifest.json");
+  await fs.writeJson(
+    renderManifestPath,
+    {
+      ...(await fs.readJson(renderManifestPath)),
+      rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+      hyperframesCardCount: 4,
+      hyperframes_premium_shell_required: true,
+      hyperframes_premium_shell_required_pass_count: 4,
+      hyperframesPremiumShellGate: {
+        verdict: "pass",
+        passCount: 4,
+        requiredPassCount: 4,
+        blockers: [],
+      },
+    },
+    { spaces: 2 },
+  );
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-22T16:14:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_final_render_count, 1);
+  assert.equal(plan.scheduler_bridge.candidate_count, 1);
+  const candidate = plan.scheduler_bridge.candidates[0];
+  assert.equal(candidate.hyperframes_premium_shell_required, true);
+  assert.equal(candidate.hyperframes_card_count, 4);
+  assert.equal(candidate.premium_shell_verdict, "pass");
+  assert.equal(candidate.premium_shell_pass_count, 4);
+  assert.equal(candidate.premium_shell_required_pass_count, 4);
+  assert.deepEqual(candidate.premium_shell_blockers, []);
+  assert.equal(candidate.hyperframes_premium_shell_gate.verdict, "pass");
+});
+
 test("production cutover bridge keeps canonical article source type over stale live reddit metadata", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-source-type-"));
   const storyPackage = await makeCutoverPackage(root, "article-source-ready", {

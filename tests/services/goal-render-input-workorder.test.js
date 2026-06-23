@@ -3016,6 +3016,14 @@ test("render input work order writes JSON and Markdown reports", async () => {
   assert.ok(repairBacklog.items[0].post_repair_validation_command);
   const autoRepairPlan = await fs.readJson(written.autoRepairPlanPath);
   assert.equal(autoRepairPlan.items.every((item) => item.auto_repairable), true);
+  assert.doesNotMatch(
+    autoRepairPlan.items.map((item) => item.recommended_command).join("\n"),
+    /output\/goal-contract\/render_input_work_order\.json/,
+  );
+  assert.match(
+    autoRepairPlan.items.map((item) => item.recommended_command).join("\n"),
+    new RegExp(`${root.replace(/\\/g, "/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/render_input_work_order\\.json`),
+  );
   const postRepairValidationPlan = await fs.readJson(written.postRepairValidationPlanPath);
   assert.equal(postRepairValidationPlan.items[0].story_id, "story-blocked");
   assert.equal(postRepairValidationPlan.items[0].validation_command, repairBacklog.items[0].post_repair_validation_command);

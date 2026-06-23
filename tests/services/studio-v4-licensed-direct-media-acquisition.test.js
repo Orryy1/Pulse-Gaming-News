@@ -110,6 +110,43 @@ test("licensed direct media lane promotes official discovered direct media to re
   assert.equal(row.approved_media_url, "https://cdn.xbox.com/forza-horizon-6/gameplay.webm");
 });
 
+test("licensed direct media lane blocks rating-board direct media before accepted references", () => {
+  const report = buildLicensedDirectMediaAcquisitionReport({
+    sourceFamilyReport: sourceFamilyReport({
+      source_family: "steam_forza_horizon_6_esrb_trailer",
+      source_type: "steam_storefront_video_reference",
+      source_owner: "Steam storefront",
+      official_source_url: "https://store.steampowered.com/app/example",
+      source_url_kind: "hls_manifest",
+      segment_validation_eligible: true,
+      movie_name: "Forza Horizon 6 Gameplay Trailer EN ESRB",
+    }),
+    directMediaReport: directDiscoveryReport({
+      source_family: "steam_forza_horizon_6_esrb_trailer",
+      direct_media_url: "https://video.akamai.steamstatic.com/store_trailers/forza/esrb/hls_264_master.m3u8",
+      source_url_kind: "hls_manifest",
+      movie_name: "Forza Horizon 6 Gameplay Trailer EN ESRB",
+    }),
+    operatorIntake: [
+      {
+        story_id: "forza-gap",
+        source_family: "steam_forza_horizon_6_esrb_trailer",
+        direct_media_url_if_available:
+          "https://video.akamai.steamstatic.com/store_trailers/forza/esrb/hls_264_master.m3u8",
+        movie_name: "Forza Horizon 6 Gameplay Trailer EN ESRB",
+      },
+    ],
+    generatedAt: GENERATED_AT,
+  });
+
+  assert.equal(report.summary.render_ready_sources, 0);
+  assert.equal(report.summary.blocked_sources, 1);
+  assert.equal(report.accepted_references.length, 0);
+  assert.equal(report.rows[0].status, "blocked");
+  assert.equal(report.rows[0].blocking_reason, "rating_board_reference");
+  assert.equal(report.rows[0].segment_validation_eligible, false);
+});
+
 test("licensed direct media lane preserves duration metadata from implicit official direct media candidates", () => {
   const report = buildLicensedDirectMediaAcquisitionReport({
     sourceFamilyReport: sourceFamilyReport({

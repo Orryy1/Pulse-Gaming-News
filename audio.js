@@ -1019,6 +1019,7 @@ async function concatAudioFiles(files, outputPath, options = {}) {
   // (which now lives under MEDIA_ROOT in production).
   const outputAbs = mediaPaths.writePath(outputPath);
   const listAbs = outputAbs.replace(/\.mp3$/, "_concat.txt");
+  await fs.ensureDir(path.dirname(outputAbs));
   const configuredGaps = Array.isArray(options.interSegmentGapsS)
     ? options.interSegmentGapsS
     : null;
@@ -1026,6 +1027,12 @@ async function concatAudioFiles(files, outputPath, options = {}) {
   const gapForIndex = (index) => {
     const value = configuredGaps ? Number(configuredGaps[index]) : gapS;
     return Number.isFinite(value) && value > 0.001 ? value : 0;
+  };
+  const concatFileLine = (filePath) => {
+    const resolved = path.isAbsolute(String(filePath || ""))
+      ? String(filePath)
+      : mediaPaths.writePath(filePath);
+    return `file '${resolved.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`;
   };
   const silenceByMs = new Map();
   const cleanupSilences = [];
@@ -1044,11 +1051,11 @@ async function concatAudioFiles(files, outputPath, options = {}) {
   }
   const listEntries = [];
   files.forEach((f, index) => {
-    listEntries.push(`file '${path.basename(f)}'`);
+    listEntries.push(concatFileLine(f));
     const gapAfterS = gapForIndex(index);
     if (index < files.length - 1 && gapAfterS > 0.001) {
       const silenceAbs = silenceByMs.get(Math.round(gapAfterS * 1000));
-      listEntries.push(`file '${path.basename(silenceAbs)}'`);
+      listEntries.push(concatFileLine(silenceAbs));
     }
   });
   const listContent = listEntries.join("\n");

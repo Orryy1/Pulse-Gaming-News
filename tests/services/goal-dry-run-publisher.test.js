@@ -511,6 +511,40 @@ test("goal dry-run publisher blocks partial HyperFrames renders without shell pr
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_missing"));
 });
 
+test("goal dry-run publisher blocks required HyperFrames premium shell when proof is absent", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-required-shell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "hf-required-shell-missing",
+    "GREEN",
+    "Forza Horizon 6 Exposes Xbox's Steam Bet",
+    {
+      renderManifestPatch: {
+        hyperframes_premium_shell_required: true,
+        hyperframes_premium_shell_required_pass_count: 4,
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-21T22:35:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+    },
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_not_passed"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_required"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_missing"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_pass_count_missing:4"));
+});
+
 test("goal dry-run publisher defers externally blocked or operator-disabled platforms without blocking the story", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-state-"));
   const storyPackage = await makeStoryPackage(root);

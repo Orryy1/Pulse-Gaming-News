@@ -576,6 +576,49 @@ test("guarded dispatch preflight ignores prior terminal duplicate actions instea
   assert.equal(report.guarded_dispatch_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
 });
 
+test("guarded dispatch preflight ignores current strict-dry-run terminal duplicate skips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-dryrun-terminal-dupe-"));
+  const media = await makeMedia(root, "cyberpunk-terminal");
+  const action = approvedAction(media, {
+    story_id: "cyberpunk-terminal",
+    title: "Cyberpunk 2077's Trust Debt",
+  });
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media, [action]),
+    strictDryRunPlan: {
+      ...strictDryRunPlan(media, []),
+      skipped_stories: [
+        {
+          story_id: "cyberpunk-terminal",
+          status: "enabled_platforms_already_public_or_terminal_duplicate",
+          reason:
+            "enabled_platforms_already_public_or_terminal_duplicate:instagram_media_id,facebook_post_id,youtube_shorts:duplicate_blocked",
+          already_published_platforms: ["instagram_reels", "facebook_reels"],
+          missing_enabled_platforms: [],
+        },
+      ],
+    },
+    platformStatusMatrix: {
+      ...platformStatusMatrix(),
+      platforms: {
+        youtube_shorts: {
+          ...platformStatusMatrix().platforms.youtube_shorts,
+          status: "no_ready_actions",
+          planned_story_ids: [],
+        },
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.summary.dispatch_ready_action_count, 0);
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.ignored_terminal_duplicate_action_count, 1);
+  assert.equal(report.ignored_terminal_duplicate_actions[0].story_id, "cyberpunk-terminal");
+  assert.equal(report.ignored_terminal_duplicate_actions[0].platform, "youtube_shorts");
+  assert.equal(report.guarded_dispatch_plan.required_next_step, "refresh_candidate_supply_and_strict_dry_run_after_published_actions");
+});
+
 test("guarded dispatch preflight rejects media path drift and missing media", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-media-"));
   const media = await makeMedia(root);

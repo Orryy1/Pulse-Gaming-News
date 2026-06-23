@@ -489,6 +489,7 @@ function countMatches(value, pattern) {
 
 function countTimelineAnimationSteps(html = "") {
   return countMatches(html, /\b(?:tl|timeline)\.(?:to|from|fromTo)\s*\(/g) +
+    countMatches(html, /(?:^|[\s);])\.(?:to|from|fromTo)\s*\(/g) +
     countMatches(html, /\bgsap\.(?:to|from|fromTo)\s*\(/g);
 }
 
@@ -808,6 +809,7 @@ module.exports = {
   clampQuoteText,
   quoteLayoutClass,
   applySpecToTemplate,
+  countTimelineAnimationSteps,
   inspectPremiumShellProject,
   outputNameForCard,
   pickStoryBackdrop,

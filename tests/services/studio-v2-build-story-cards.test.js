@@ -5,6 +5,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const {
+  countTimelineAnimationSteps,
+} = require("../../tools/studio-v2-build-story-cards");
+
 test("story-specific HyperFrames cards validate before render", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-build-story-cards.js"),
@@ -31,4 +35,18 @@ test("story-specific HyperFrames cards validate before render", () => {
   assert.ok(validateIndex < inspectIndex, "inspect must run after validate");
   assert.ok(inspectIndex < renderIndex, "inspect must run before render");
   assert.ok(renderIndex < shellIndex, "shell evidence must be written after render");
+});
+
+test("story-specific HyperFrames shell evidence counts chained GSAP timeline steps", () => {
+  const html = `
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#rule", { width: 720 }, 0)
+        .to("#kicker", { opacity: 1 }, 0.2)
+        .fromTo("#headline", { y: 24 }, { y: 0 }, 0.5);
+      gsap.from("#badge", { opacity: 0 });
+    </script>
+  `;
+
+  assert.equal(countTimelineAnimationSteps(html), 4);
 });

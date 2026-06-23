@@ -40,6 +40,27 @@ test("caption emphasis repairs spoken modern year transcripts for display captio
   assert.doesNotMatch(ass, /twenty twenty seven/i);
 });
 
+test("caption emphasis repairs Cyberpunk 2077 ASR split before phrase grouping", () => {
+  const ass = buildAss({
+    story: { title: "Cyberpunk 2077's Trust Debt" },
+    words: [
+      { word: "Cyberpunk", start: 0, end: 0.62 },
+      { word: "twenty", start: 0.62, end: 1.04 },
+      { word: "seventy", start: 1.04, end: 1.34 },
+      { word: "seven's", start: 1.34, end: 1.78 },
+      { word: "biggest", start: 1.78, end: 2.14 },
+      { word: "launch", start: 2.14, end: 2.44 },
+    ],
+    duration: 3,
+    scriptText: "Cyberpunk 2077's biggest launch problem is not bugs anymore.",
+  });
+
+  assert.match(ass, /Cyberpunk[\s\S]*2077/i);
+  assert.doesNotMatch(ass, /twenty/i);
+  assert.doesNotMatch(ass, /seventy/i);
+  assert.doesNotMatch(ass, /seven's/i);
+});
+
 test("caption emphasis collapses spoken acronym letters back to GTA digits", () => {
   const words = [
     { word: "G", start: 0, end: 0.1 },

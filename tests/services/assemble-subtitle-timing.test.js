@@ -179,6 +179,20 @@ test("subtitle display merge repairs Cyberpunk 2077 ASR split tokens", () => {
   assert.deepEqual(merged, ["Cyberpunk 2077's", "biggest", "launch"]);
 });
 
+test("subtitle display merge repairs spoken Cyberpunk 2077 year tokens", () => {
+  const words = [
+    { text: "Cyberpunk", start: 0, end: 0.62 },
+    { text: "twenty", start: 0.62, end: 1.04 },
+    { text: "seventy", start: 1.04, end: 1.34 },
+    { text: "seven's", start: 1.34, end: 1.78 },
+    { text: "biggest", start: 1.78, end: 2.14 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["Cyberpunk 2077's", "biggest"]);
+});
+
 test("legacy multi-image segment planner covers narration after xfade overlap", () => {
   const segment = planLegacySegmentDuration(62, 8, 0.5);
   const timeline = effectiveVisualTimelineDuration(segment, 8, 0.5);

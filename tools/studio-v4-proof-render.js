@@ -550,6 +550,60 @@ async function resolveStorySfxPaths(story = {}, { limit = 6 } = {}) {
   return mix.map((cue) => cue.path);
 }
 
+function sceneClipPath(clip) {
+  if (typeof clip === "string") return clip.trim();
+  return firstText(
+    clip?.resolved_path,
+    clip?.path,
+    clip?.media_path,
+    clip?.local_path,
+    clip?.local_materialized_path,
+  );
+}
+
+function normaliseSceneSourceKey(value = "") {
+  return firstText(value)
+    .toLowerCase()
+    .replace(/\\/g, "/")
+    .replace(/[?#].*$/, "")
+    .replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "")
+    .replace(/(?:[_/-]clip[_/-]?\d+)$/i, "")
+    .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "");
+}
+
+function sceneClipBaseSourceKey(clip = {}) {
+  if (!clip || typeof clip !== "object") return "";
+  const explicit = normaliseSceneSourceKey(
+    clip.base_source_family ||
+      clip.original_source_family ||
+      clip.provenance?.base_source_family ||
+      clip.provenance?.source_family ||
+      clip.source_family ||
+      clip.motion_family,
+  );
+  if (explicit) return explicit;
+  const url = firstText(clip.source_url, clip.url, clip.original_source_url, clip.reference_url);
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    return normaliseSceneSourceKey(`${parsed.hostname}${parsed.pathname}`);
+  } catch {
+    return normaliseSceneSourceKey(url);
+  }
+}
+
+function repeatedSceneBaseSources(entries = []) {
+  const counts = new Map();
+  for (const entry of entries) {
+    if (!entry.baseSourceKey) continue;
+    counts.set(entry.baseSourceKey, (counts.get(entry.baseSourceKey) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+}
+
 function buildClipScenePlan({
   clips = [],
   durationS,
@@ -559,16 +613,20 @@ function buildClipScenePlan({
   allowClipReuse = false,
 } = {}) {
   const maxSceneLimit = Math.max(1, Math.round(Number(maxScenes) || DEFAULT_DIRECT_CLIP_MAX_SCENES));
-  const cleanClips = [];
+  const cleanEntries = [];
   const seen = new Set();
   for (const clip of clips.filter(Boolean)) {
-    const key = String(clip).trim().toLowerCase();
+    const clipPath = sceneClipPath(clip);
+    const key = String(clipPath).trim().toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    cleanClips.push(clip);
-    if (cleanClips.length >= maxSceneLimit) break;
+    cleanEntries.push({
+      path: clipPath,
+      baseSourceKey: sceneClipBaseSourceKey(clip),
+    });
+    if (cleanEntries.length >= maxSceneLimit) break;
   }
-  if (!cleanClips.length) {
+  if (!cleanEntries.length) {
     return {
       scenes: [],
       segmentDurationS: 0,
@@ -580,18 +638,22 @@ function buildClipScenePlan({
     };
   }
   const duration = Math.max(1, Number(durationS) || 1);
-  let requiredCount = cleanClips.length;
+  let requiredCount = cleanEntries.length;
   const maxDwell = Number(maxSceneDurationS);
   if (Number.isFinite(maxDwell) && maxDwell > xfadeS + 0.1) {
     const dwellRequiredCount = Math.ceil((duration - xfadeS) / (maxDwell - xfadeS));
-    requiredCount = Math.max(cleanClips.length, Math.min(maxSceneLimit, dwellRequiredCount));
+    requiredCount = Math.max(cleanEntries.length, Math.min(maxSceneLimit, dwellRequiredCount));
   }
   const blockers = [];
   const repeatFree = allowClipReuse !== true;
-  if (repeatFree && requiredCount > cleanClips.length) {
+  const repeatedBaseSources = repeatFree ? repeatedSceneBaseSources(cleanEntries) : [];
+  if (repeatFree && repeatedBaseSources.length) {
+    blockers.push("direct_motion_base_source_repeated");
+  }
+  if (repeatFree && requiredCount > cleanEntries.length) {
     blockers.push("direct_motion_clip_diversity_below_dwell_floor");
   }
-  const count = repeatFree ? Math.min(cleanClips.length, requiredCount) : requiredCount;
+  const count = repeatFree ? Math.min(cleanEntries.length, requiredCount) : requiredCount;
   const segmentDurationS = Number(
     ((duration + xfadeS * Math.max(0, count - 1)) / count).toFixed(2),
   );
@@ -601,10 +663,11 @@ function buildClipScenePlan({
     repeatFree,
     blockers,
     requiredUniqueClipCount: requiredCount,
-    availableUniqueClipCount: cleanClips.length,
+    availableUniqueClipCount: cleanEntries.length,
+    repeatedBaseSources,
     scenes: Array.from({ length: count }, (_, index) => ({
       index,
-      path: repeatFree ? cleanClips[index] : cleanClips[index % cleanClips.length],
+      path: repeatFree ? cleanEntries[index].path : cleanEntries[index % cleanEntries.length].path,
       durationS: segmentDurationS,
     })),
   };
@@ -1145,13 +1208,17 @@ async function renderProof({ storyJson, output }) {
   }
 
   const bridgeClips = Array.isArray(story.visual_v4_bridge_video_clips)
-    ? story.visual_v4_bridge_video_clips.map((clip) => clip.path)
+    ? story.visual_v4_bridge_video_clips
     : [];
   const clipCandidates = bridgeClips.length ? bridgeClips : story.video_clips || [];
   const clips = [];
   for (const clip of clipCandidates) {
-    const resolved = await resolveReadableMediaPath(clip);
-    if (resolved && fs.existsSync(resolved)) clips.push(resolved);
+    const rawPath = sceneClipPath(clip);
+    const resolved = await resolveReadableMediaPath(rawPath);
+    if (resolved && fs.existsSync(resolved)) {
+      if (clip && typeof clip === "object") clips.push({ ...clip, path: resolved, original_path: rawPath });
+      else clips.push(resolved);
+    }
   }
   if (!clips.length) throw new Error("no local V4 clips available");
 

@@ -917,6 +917,98 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
   );
 });
 
+test("goal dry-run publisher blocks too-fast generated card clips even when overlay windows pass", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-generated-card-clip-dwell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "generated-card-clip-dwell-story",
+    "GREEN",
+    "Halo Campaign Evolved Needs A Cleaner Reveal",
+    {
+      canonicalSubject: "Halo Campaign Evolved",
+      durationSeconds: 44,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 44,
+        clips: 7,
+        overlay_card_windows: [
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 4, duration_s: 4 },
+          { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.4, duration_s: 4.4 },
+          { id: "proof_primary", kind: "proof_card", start_s: 9, end_s: 13, duration_s: 4 },
+          { id: "proof_secondary", kind: "proof_card", start_s: 16, end_s: 20, duration_s: 4 },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 6 }, (_, index) =>
+    directMotionClipFixture({
+      id: `halo-direct-${index + 1}`,
+      path: `motion/halo-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/halo-campaign-evolved/direct-${index + 1}.mp4`,
+      sourceFamily: `halo_campaign_evolved_direct_${index + 1}`,
+      startS: index * 7,
+    }),
+  );
+  const generatedCardClip = {
+    id: "halo-fast-hyperframe-card",
+    path: "output/generated-motion/generated-card-clip-dwell-story/01_card.mp4",
+    source_type: "internally_generated_motion_graphic",
+    media_kind: "hyperframes_card",
+    source_family: "halo_campaign_evolved_hyperframes_card",
+    motion_family: "halo_campaign_evolved_hyperframes_card",
+    duration_s: 1.6,
+    rights_risk_class: "owned_generated_motion",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    commercial_use_allowed: true,
+    approval_status: "approved",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  };
+  await Promise.all([
+    ...directClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+    fs.outputFile(path.join(root, generatedCardClip.path), Buffer.alloc(1600, 5)),
+  ]);
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "generated-card-clip-dwell-story",
+    video_clips: [...directClips, generatedCardClip],
+    visual_v4_bridge_video_clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: directClips,
+    distinct_motion_families: directClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    distinct_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [...directClips, generatedCardClip].map((clip) => ({
+      ...clip,
+      asset_type: clip.media_kind === "hyperframes_card" ? "owned_generated_motion_card" : "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T11:06:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:card_clip_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_too_fast_card_clips[0].duration_s,
+    1.6,
+  );
+});
+
 test("goal dry-run publisher blocks neighbouring windows overused from the same base source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-base-source-loop-"));
   const storyPackage = await makeStoryPackage(
@@ -1002,6 +1094,97 @@ test("goal dry-run publisher blocks even two final cuts from the same trailer ba
   const plan = await buildGoalDryRunPublishPlan({
     storyPackages: [storyPackage],
     generatedAt: "2026-06-24T10:20:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse.map(
+      (entry) => ({ count: entry.count, share: entry.share }),
+    ),
+    [{ count: 2, share: 0.25 }],
+  );
+});
+
+test("goal dry-run publisher checks final render-story clips for base-source loops even when materialised manifest is cleaner", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-render-story-source-loop-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "render-story-source-loop",
+    "GREEN",
+    "Street Fighter 6 Just Revealed A Rushdown Problem",
+    { canonicalSubject: "Street Fighter 6" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const sameBaseUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/source/hls_264_master.m3u8?t=1782095041";
+  const actualRenderClips = [
+    ...[36, 42].map((startS, index) =>
+      directMotionClipFixture({
+        id: `sf6-final-render-window-${index + 1}`,
+        path: `motion/sf6-final-render-window-${index + 1}.mp4`,
+        sourceUrl: sameBaseUrl,
+        sourceFamily:
+          `url:https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/source/hls_264_master.m3u8_window_${startS}_5`,
+        startS,
+        durationS: 5,
+      }),
+    ),
+    ...Array.from({ length: 6 }, (_, index) =>
+      directMotionClipFixture({
+        id: `sf6-render-distinct-${index + 1}`,
+        path: `motion/sf6-render-distinct-${index + 1}.mp4`,
+        sourceUrl: `https://cdn.example.com/street-fighter-6/render-distinct-${index + 1}.mp4`,
+        sourceFamily: `street_fighter_6_render_distinct_${index + 1}`,
+        startS: index * 7,
+        durationS: 5,
+      }),
+    ),
+  ];
+  const cleanerMaterialisedManifestClips = Array.from({ length: 8 }, (_, index) =>
+    directMotionClipFixture({
+      id: `sf6-clean-materialised-${index + 1}`,
+      path: `motion/sf6-clean-materialised-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/street-fighter-6/clean-materialised-${index + 1}.mp4`,
+      sourceFamily: `street_fighter_6_clean_materialised_${index + 1}`,
+      startS: index * 8,
+      durationS: 5,
+    }),
+  );
+  await Promise.all(
+    [...actualRenderClips, ...cleanerMaterialisedManifestClips].map((clip) =>
+      fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4)),
+    ),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "render-story-source-loop",
+    video_clips: actualRenderClips,
+    visual_v4_bridge_video_clips: actualRenderClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: cleanerMaterialisedManifestClips,
+    distinct_motion_families: cleanerMaterialisedManifestClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: cleanerMaterialisedManifestClips,
+    distinct_motion_family_count: cleanerMaterialisedManifestClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [...actualRenderClips, ...cleanerMaterialisedManifestClips].map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T11:14:00.000Z",
     platformOperationalConfig: enabledCorePlatformsOnly(),
   });
 

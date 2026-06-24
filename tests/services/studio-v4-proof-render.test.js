@@ -133,6 +133,33 @@ test("Studio V4 proof renderer can explicitly plan legacy repeated clips for dia
   );
 });
 
+test("Studio V4 proof renderer blocks repeated base-source windows before render", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "sea-window-36.mp4",
+        source_family: "steam_1172620_movie_418022350_window_36_5",
+      },
+      {
+        path: "sea-window-42.mp4",
+        source_family: "steam_1172620_movie_418022350_window_42_5",
+      },
+      {
+        path: "sea-store-page.mp4",
+        source_family: "sea_of_thieves_store_page_gameplay",
+      },
+    ],
+    durationS: 12,
+    xfadeS: 0.25,
+  });
+
+  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+  assert.deepEqual(
+    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
+    [{ key: "steam_1172620_movie_418022350", count: 2 }],
+  );
+});
+
 test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {
   assert.equal(typeof buildSceneCompositeFilterParts, "function");
 

@@ -10,6 +10,7 @@ const {
   buildLocalPromotionRenderInputWorkOrder,
   buildCanonicalStoryManifest,
   buildFreshGreenBufferLocalPromotionReport,
+  buildSourceManifest,
   writeFreshGreenBufferLocalPromotionArtifacts,
 } = require("../../lib/fresh-green-buffer-local-promotion");
 const mediaHousePrivate = require("../../lib/pulse-media-house-score")._private;
@@ -221,6 +222,59 @@ test("fresh buffer promotion CLI is registered and defaults to overnight output"
   assert.equal(args.generatedAt, "2026-06-12T08:00:00.000Z");
   assert.match(args.storiesPath, /fresh_source_intake_stories\.json$/);
   assert.match(args.outDir, /overnight-fresh-green-buffer$/);
+});
+
+test("fresh buffer promotion preserves official direct media references in local artefacts", async () => {
+  const story = draftStory({
+    id: "rss_gta_vi_article_story",
+    title: "GTA VI Launch Details Turn Into A Trust Test",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    selected_title: "GTA VI Launch Details Turn Into A Trust Test",
+    primary_source: {
+      name: "GameSpot",
+      url: "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+      type: "rss",
+    },
+    primary_source_url:
+      "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+    source_published_at: "2026-06-24T15:41:17.000Z",
+    direct_media_candidates: [
+      {
+        direct_media_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+        label: "Grand Theft Auto VI Trailer 2",
+        source_family: "rockstar_gta_vi_trailer_2",
+        source_type: "official_game_website_media_page",
+      },
+    ],
+    narration_script:
+      "GTA VI just turned launch wording into a trust test. GameSpot reports the game is being described around its single-player experience at launch. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const generatedAt = "2026-06-24T16:00:00.000Z";
+  const sourceManifest = buildSourceManifest(story, new Date(generatedAt));
+  assert.equal(sourceManifest.direct_media_candidates.length, 1);
+  assert.equal(
+    sourceManifest.direct_media_candidates[0].direct_media_url,
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+  );
+
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [story],
+    generatedAt,
+  });
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-direct-media-"));
+  await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const packageDir = path.join(outDir, "packages", "rss_gta_vi_article_story");
+  const canonical = JSON.parse(fs.readFileSync(path.join(packageDir, "canonical_story_manifest.json"), "utf8"));
+  const rightsLedger = JSON.parse(fs.readFileSync(path.join(packageDir, "rights_ledger.json"), "utf8"));
+  const footageInventory = JSON.parse(fs.readFileSync(path.join(packageDir, "footage_inventory.json"), "utf8"));
+
+  assert.equal(canonical.official_motion_references.length, 1);
+  assert.equal(canonical.official_motion_references[0].source_family, "rockstar_gta_vi_trailer_2");
+  assert.equal(rightsLedger.official_motion_references[0].source_family, "rockstar_gta_vi_trailer_2");
+  assert.equal(footageInventory.official_motion_references[0].source_family, "rockstar_gta_vi_trailer_2");
 });
 
 test("fresh buffer local render work order consumes current audio package evidence", async () => {

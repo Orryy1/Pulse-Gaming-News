@@ -1119,6 +1119,169 @@ test("fresh production refill repair preserves Rockstar direct media candidates"
   }
 });
 
+test("fresh production refill repair uses official direct media from article-sourced packages", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-article-direct-media-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+
+  try {
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          const outIndex = args.indexOf("--out-dir");
+          const contractIndex = args.indexOf("--contract-out-dir");
+          const effectiveOutDir = outIndex >= 0 ? args[outIndex + 1] : outDir;
+          const effectiveContractOutDir = contractIndex >= 0 ? args[contractIndex + 1] : contractOutDir;
+          const effectiveArtifactDir = path.join(effectiveOutDir, "rss_gta_vi_article_story");
+          await fs.mkdir(effectiveArtifactDir, { recursive: true });
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: "rss_gta_vi_article_story",
+              canonical_subject: "Grand Theft Auto VI",
+              canonical_game: "Grand Theft Auto VI",
+              canonical_title: "GTA VI Launch Details Turn Into A Trust Test",
+              selected_title: "GTA VI Launch Details Turn Into A Trust Test",
+              primary_source: "GameSpot",
+              primary_source_url:
+                "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+              narration_script:
+                "GTA VI just turned launch wording into a trust test. GameSpot reports the game is being described around its single-player experience at launch. Follow Pulse Gaming so you never miss a beat.",
+            }),
+          );
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "source_manifest.json"),
+            JSON.stringify({
+              story_id: "rss_gta_vi_article_story",
+              primary_source: {
+                name: "GameSpot",
+                url: "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+                type: "rss",
+                published_at: "2026-06-24T15:41:17.000Z",
+                age_hours: 1,
+              },
+              direct_media_candidates: [
+                {
+                  direct_media_url:
+                    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+                  source_title: "Official Cover Art Animation",
+                  source_family: "rockstar_gta_vi_cover_art_animation",
+                  source_type: "official_game_website_media_page",
+                  source_owner: "Rockstar Games",
+                },
+                {
+                  direct_media_url:
+                    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+                  source_title: "Grand Theft Auto VI Trailer 2",
+                  source_family: "rockstar_gta_vi_trailer_2",
+                  source_type: "official_game_website_media_page",
+                  source_owner: "Rockstar Games",
+                },
+              ],
+              freshness_gate: "pass",
+              coherence_gate: "pass",
+              blockers: [],
+            }),
+          );
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "script_scorecard.json"),
+            JSON.stringify({
+              story_id: "rss_gta_vi_article_story",
+              verdict: "viral_ready",
+              blockers: [],
+            }),
+          );
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: "rss_gta_vi_article_story",
+                artifact_dir: effectiveArtifactDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+            ]),
+          );
+          return {
+            batch: { summary: { story_count: 1, green_count: 0, red_count: 1 } },
+            outputs: {
+              storyPackagesPath,
+              batchReportPath: path.join(effectiveContractOutDir, "story-packages-report.json"),
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          if (options.args[0] === "tools/official-search-intake-autofill.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          if (options.args[0] === "tools/official-direct-media-discovery.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    const entries = JSON.parse(await fs.readFile(repairReport.outputs.official_source_entries, "utf8"));
+    assert.equal(result.repair_evidence.official_source_entries_count, 2);
+    assert.equal(repairReport.summary.official_source_entries_count, 2);
+    assert.deepEqual(
+      entries.map((entry) => entry.source_owner),
+      ["Rockstar Games official source", "Rockstar Games official source"],
+    );
+    assert.equal(
+      entries.every((entry) => entry.source_type === "official_game_website_media_page"),
+      true,
+    );
+    assert.equal(
+      entries.every((entry) => entry.official_source_url.includes("rockstargames.com")),
+      true,
+    );
+    assert.equal(
+      entries.every((entry) => entry.direct_media_provided === true && entry.downloads_allowed === false),
+      true,
+    );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("autonomous feedback monitor enqueues safe follow-ups for operational feedback", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const feedbackMonitorPath = require.resolve("../../lib/ops/autonomous-feedback-monitor");

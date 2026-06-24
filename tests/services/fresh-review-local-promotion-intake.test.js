@@ -104,6 +104,63 @@ test("fresh review local promotion intake builds local promotion stories without
   assert.equal(report.repair_results[0].output_story_ready, true);
 });
 
+test("fresh review local promotion intake attaches known official GTA VI direct media", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [
+      sourceBackedReviewRow({
+        id: "rss_gta_vi_launch",
+        story_id: "rss_gta_vi_launch",
+        title: "GTA 6 Features A Single-Player Experience At Launch",
+        description:
+          "GameSpot reports GTA 6 is being described around its launch single-player experience.",
+        article_url:
+          "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+        source_name: "GameSpot",
+        source_published_at: "2026-06-24T15:41:17.000Z",
+      }),
+    ],
+    plan: {
+      summary: { selected_count: 1 },
+      source_bound_rewrite_work_orders: [{ story_id: "rss_gta_vi_launch" }],
+    },
+    now: new Date("2026-06-24T16:00:00.000Z"),
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_gta_vi_launch",
+        title: "GTA VI Launch Details Turn Into A Trust Test",
+        suggested_title: "GTA VI Launch Details Turn Into A Trust Test",
+        canonical_subject: "Grand Theft Auto VI",
+        source_name: "GameSpot",
+        article_url:
+          "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+        source_type: "rss",
+        source_published_at: "2026-06-24T15:41:17.000Z",
+        source_confidence_score: 90,
+        confirmed_claims: [
+          "GameSpot reports GTA 6 is being described around its launch single-player experience.",
+        ],
+        full_script:
+          "GTA VI just turned launch wording into a trust test. GameSpot reports the game is being described around its single-player experience at launch, and that matters because players still need clear answers on editions, online timing and what Rockstar is actually asking people to buy first. The useful question is not whether GTA VI is huge; it is whether the launch package is clear before pre-order pressure peaks. If Rockstar explains that cleanly, hype becomes confidence. If not, the biggest game in the world still gets a messy buying argument. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
+  });
+
+  const story = report.fresh_source_intake_stories[0];
+  assert.equal(report.summary.local_promotion_story_count, 1);
+  assert.equal(story.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(story.direct_media_candidates.length, 3);
+  assert.deepEqual(
+    story.direct_media_candidates.map((entry) => entry.source_family),
+    [
+      "rockstar_gta_vi_cover_art_animation",
+      "rockstar_gta_vi_trailer_2",
+      "rockstar_gta_vi_trailer_1",
+    ],
+  );
+  assert.equal(story.primary_source.name, "GameSpot");
+});
+
 test("fresh review local promotion intake rejects generic source-bound scaffolds", async () => {
   const report = await buildFreshReviewLocalPromotionIntake({
     rows: [

@@ -1227,6 +1227,66 @@ test("goal proof package falls back to story source evidence when governance evi
   assert.deepEqual(pack.claim_inventory.confirmed, story.confirmed_claims);
 });
 
+test("goal proof package turns official direct media into trusted footage intake references", () => {
+  const story = {
+    id: "halo-direct-media-only-proof",
+    title: "Halo: Campaign Evolved Has A Demo Trust Test",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    suggested_thumbnail_text: "HALO DEMO TEST",
+    source_name: "Xbox Wire",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
+    source_published_at: "2026-06-10T00:00:00.000Z",
+    direct_media_candidates: [
+      {
+        direct_media_url: "https://assets.xbox.com/halo-campaign-evolved/gameplay-trailer.mp4",
+        label: "Campaign Gameplay Trailer",
+        source_family: "halo_campaign_gameplay_trailer",
+        source_type: "official_xbox_video",
+      },
+      {
+        direct_media_url: "https://assets.xbox.com/halo-campaign-evolved/developer-direct.mp4",
+        label: "Developer Direct",
+        source_family: "halo_campaign_developer_direct",
+        source_type: "official_xbox_video",
+      },
+    ],
+    confirmed_claims: [
+      "Xbox Wire says Halo: Campaign Evolved showed Assault on the Control Room in hands-on demo form.",
+    ],
+    full_script:
+      "Halo: Campaign Evolved just put the remake debate where it belongs. Xbox Wire says Halo Studios showed Assault on the Control Room in hands-on form. Follow Pulse Gaming so you never miss a beat.",
+  };
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: [],
+    generatedAt: "2026-06-24T10:00:00.000Z",
+  });
+
+  assert.deepEqual(
+    pack.source_manifest.direct_media_candidates.map((candidate) => candidate.source_family),
+    ["halo_campaign_gameplay_trailer", "halo_campaign_developer_direct"],
+  );
+  assert.equal(pack.footage_inventory.trusted_source_pipeline.references_found, 2);
+  assert.deepEqual(
+    [...pack.footage_inventory.trusted_source_pipeline.distinct_reference_families].sort(),
+    ["halo_campaign_gameplay_trailer", "halo_campaign_developer_direct"].sort(),
+  );
+  assert.deepEqual(
+    pack.footage_inventory.trusted_source_pipeline.intake_queue.map((source) => source.reference_url).sort(),
+    [
+      "https://assets.xbox.com/halo-campaign-evolved/gameplay-trailer.mp4",
+      "https://assets.xbox.com/halo-campaign-evolved/developer-direct.mp4",
+    ].sort(),
+  );
+  assert.ok(
+    !pack.footage_inventory.readiness.blockers.includes("no_trusted_footage_references_for_story"),
+  );
+  assert.ok(pack.footage_inventory.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
+});
+
 test("goal proof package preserves explicit Grand Theft Auto VI canonical subject", () => {
   const story = greenStory("gta-vi-proof");
   story.title = "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight";

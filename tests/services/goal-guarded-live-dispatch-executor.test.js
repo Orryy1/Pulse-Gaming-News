@@ -1062,6 +1062,152 @@ test("selectNextGuardedLiveAction restores normal-production duration metadata f
   assert.equal(capturedStory.max_video_duration_seconds, 59);
 });
 
+test("selectNextGuardedLiveAction uses current package caption and thumbnail proof over stale DB QA fields", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-package-proof-"));
+  t.after(() => fs.remove(tmp));
+  const packageDir = path.join(tmp, "sf6-story");
+  await fs.ensureDir(packageDir);
+  const videoPath = path.join(packageDir, "visual_v4_render.mp4");
+  const captionsPath = path.join(packageDir, "captions.srt");
+  const canonicalManifestPath = path.join(packageDir, "canonical_story_manifest.json");
+  const platformPublishManifestPath = path.join(packageDir, "platform_publish_manifest.json");
+
+  await fs.writeFile(videoPath, "fake mp4 bytes");
+  await fs.writeFile(captionsPath, "1\n00:00:00,000 --> 00:00:01,000\nStreet Fighter 6\n");
+  await fs.writeJson(canonicalManifestPath, {
+    story_id: "sf6-story",
+    selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+    canonical_subject: "Street Fighter 6",
+    primary_source: "GameSpot",
+    primary_source_url: "https://www.gamespot.com/videos/street-fighter-6-yasmine-character-gameplay-reveal-trailer/",
+    source_published_at: "2026-06-22T14:04:25.000Z",
+    narration_script:
+      "Street Fighter 6 just made Yasmine look like a ranked-mode problem. GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "YASMINE PRESSURE",
+  });
+  await fs.writeJson(path.join(packageDir, "render_manifest.json"), {
+    rendered_duration_s: 37.1,
+    final_publish_render: true,
+    post_render_forensic_result: "pass",
+    input_evidence: {
+      word_timestamps_path: path.join(packageDir, "timestamps.json"),
+    },
+    input_fingerprint: {
+      canonical_snapshot: {
+        canonical_subject: "Street Fighter 6",
+        narration_script:
+          "Street Fighter 6 just made Yasmine look like a ranked-mode problem. GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. Follow Pulse Gaming so you never miss a beat.",
+        thumbnail_headline: "YASMINE PRESSURE",
+      },
+    },
+  });
+  await fs.writeJson(path.join(packageDir, "caption_manifest.json"), {
+    status: "ready",
+    caption_srt_path: captionsPath,
+    resolved_caption_srt_path: captionsPath,
+    word_count: 107,
+    captions_source: "word_timestamps",
+    blockers: [],
+    checks: {
+      caption_file_present: true,
+      captions_well_formed: true,
+      caption_word_count_available: true,
+    },
+    timestamp_whisper_alignment: {
+      script_inserted_actual_word_count: 0,
+      script_trailing_actual_word_count: 0,
+    },
+  });
+  await fs.writeJson(platformPublishManifestPath, {
+    outputs: {
+      youtube_shorts: {
+        duration_seconds: 37.1,
+        cover_frame: {
+          headline: "YASMINE PRESSURE",
+          subject: "Street Fighter 6",
+          source_label: "GameSpot",
+        },
+      },
+    },
+  });
+
+  let capturedStory = null;
+  let capturedVideoOptions = null;
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          action_id: "sf6-story:youtube_shorts",
+          story_id: "sf6-story",
+          video_path: videoPath,
+          captions_path: captionsPath,
+          canonical_manifest_path: canonicalManifestPath,
+          platform_publish_manifest_path: platformPublishManifestPath,
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        id: "sf6-story",
+        title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+        canonical_subject: "Street Fighter 6",
+        duration_lane: "pulse_flash_short",
+        min_video_duration_seconds: 40,
+        max_video_duration_seconds: 75,
+        full_script:
+          "Street Fighter 6 just made Yasmine look like a ranked-mode problem. GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. Follow Pulse Gaming so you never miss a beat.",
+        suggested_thumbnail_text: "YASMINE PRESSURE",
+        subtitle_timing_inspection: {
+          usable: false,
+          reason: "too_few_words",
+        },
+      }),
+    ],
+    actionQualityGateOptions: {
+      runContentQa: async (qualityStory) => {
+        capturedStory = qualityStory;
+        const valid =
+          qualityStory.clean_manual_captions === true &&
+          qualityStory.manual_caption_generated === true &&
+          qualityStory.subtitle_timing_inspection?.usable === true &&
+          qualityStory.suggested_thumbnail_text === "Street Fighter 6 YASMINE PRESSURE" &&
+          qualityStory.duration_lane === "normal_production" &&
+          qualityStory.min_video_duration_seconds === 35 &&
+          qualityStory.max_video_duration_seconds === 60;
+        return valid
+          ? passActionQualityGate()
+          : {
+              result: "fail",
+              blockers: ["current_package_proof_not_hydrated"],
+              checks: { qualityStory },
+            };
+      },
+      runPublicMetadataQa: async (qualityStory) =>
+        qualityStory.suggested_thumbnail_text === "Street Fighter 6 YASMINE PRESSURE"
+          ? passActionQualityGate()
+          : {
+              result: "fail",
+              blockers: ["thumbnail_subject_not_hydrated"],
+            },
+      runVideoQa: async (_mp4Path, options) => {
+        capturedVideoOptions = options;
+        return options.minDuration === 35 && options.maxDuration === 60 ? passActionQualityGate() : {
+          result: "fail",
+          blockers: ["duration_floor_not_hydrated"],
+        };
+      },
+    },
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "sf6-story:youtube_shorts");
+  assert.equal(capturedStory.clean_manual_captions, true);
+  assert.equal(capturedStory.subtitle_timing_inspection.usable, true);
+  assert.equal(capturedStory.duration_lane, "normal_production");
+  assert.equal(capturedVideoOptions.minDuration, 35);
+  assert.equal(capturedVideoOptions.maxDuration, 60);
+});
+
 test("selectNextGuardedLiveAction skips pre-fix local TTS packages with slowed narration", async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-slow-local-tts-"));
   t.after(() => fs.remove(tmp));

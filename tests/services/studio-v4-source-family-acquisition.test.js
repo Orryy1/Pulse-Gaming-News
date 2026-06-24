@@ -2330,6 +2330,92 @@ test("Studio V4 source-family acquisition CLI filters repeatable story IDs befor
   }
 });
 
+test("Studio V4 source-family acquisition CLI hydrates post-render QA blockers from story packages", async () => {
+  const root = path.join(__dirname, "..", "..");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-source-family-package-qa-"));
+  try {
+    const packageRoot = path.join(tempDir, "packages");
+    const storyId = "gta6-package-qa";
+    const artifactDir = path.join(packageRoot, storyId);
+    await fs.ensureDir(artifactDir);
+    await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+      story_id: storyId,
+      selected_title: "GTA 6 Preorder Watch",
+      canonical_subject: "GTA 6",
+      canonical_game: "GTA 6",
+      primary_source: "GameSpot",
+      primary_source_url: "https://www.gamespot.com/articles/example-gta-6/",
+    });
+    await fs.writeJson(path.join(artifactDir, "forensic_qa_report.json"), {
+      verdict: "blocked_or_rewrite_required",
+      blockers: [
+        "gold_standard:visual_evidence:generated_only_motion_deck",
+        "gold_standard:visual_evidence:no_real_visual_media_asset",
+        "actual_motion_clip_minimum_not_met",
+      ],
+    });
+    await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), {
+      blockers: [
+        "gold_standard:visual_evidence:generated_only_motion_deck",
+        "gold_standard:visual_evidence:no_real_visual_media_asset",
+      ],
+    });
+    await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+      clips: Array.from({ length: 13 }, (_, index) => ({
+        id: `owned-${index + 1}`,
+        source_family: `owned_family_${index + 1}`,
+        media_kind: "owned_explainer_motion",
+        source_kind: "owned_source_card_explainer_motion",
+        durationS: 4.2,
+      })),
+    });
+
+    const storyPackages = path.join(tempDir, "story-packages.json");
+    const outputJson = path.join(tempDir, "source_family.json");
+    const outputMd = path.join(tempDir, "source_family.md");
+    const searchTemplate = path.join(tempDir, "search.json");
+    await fs.writeJson(storyPackages, {
+      packages: [{ story_id: storyId, artifact_dir: artifactDir }],
+    });
+
+    execFileSync(
+      process.execPath,
+      [
+        path.join(root, "tools", "studio-v4-source-family-acquisition.js"),
+        "--story-packages",
+        storyPackages,
+        "--no-work-order",
+        "--motion-pack-index",
+        path.join(tempDir, "missing-index.json"),
+        "--artifact-root",
+        packageRoot,
+        "--output-json",
+        outputJson,
+        "--output-md",
+        outputMd,
+        "--search-template",
+        searchTemplate,
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, PULSE_SKIP_DOTENV: "true" },
+        stdio: "pipe",
+      },
+    );
+
+    const report = await fs.readJson(outputJson);
+    assert.equal(report.summary.stories_needing_acquisition, 1);
+    assert.equal(report.summary.real_visual_or_human_review_entries, 1);
+    assert.equal(report.summary.official_search_template_entries, 1);
+    assert.equal(report.rows[0].story_id, storyId);
+    assert.equal(report.rows[0].real_visual_media_required_after_owned_explainer_failed, true);
+    assert.ok(report.rows[0].blockers.includes("visual_evidence:generated_only_motion_deck"));
+    assert.equal((await fs.readJson(searchTemplate))[0].query, "GTA 6 official gameplay trailer");
+  } finally {
+    await fs.remove(tempDir);
+  }
+});
+
 test("Studio V4 source-family acquisition CLI writes runnable next commands for custom templates", async () => {
   const root = path.join(__dirname, "..", "..");
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-source-family-paths-"));

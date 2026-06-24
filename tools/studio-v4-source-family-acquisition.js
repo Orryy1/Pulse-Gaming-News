@@ -338,6 +338,161 @@ function hydrateMotionPacksWithCanonicalManifests(motionPackReports = [], canoni
   });
 }
 
+function normalisePackageQaBlocker(value = "") {
+  const text = cleanText(value).replace(/^gold_standard:/i, "");
+  if (/generated_only_motion_deck/i.test(text)) return "visual_evidence:generated_only_motion_deck";
+  if (/no_real_visual_media_asset/i.test(text)) return "visual_evidence:no_real_visual_media_asset";
+  return text;
+}
+
+function packageQaBlockersFromReports(...reports) {
+  const blockers = [];
+  for (const report of reports) {
+    if (!report || typeof report !== "object") continue;
+    blockers.push(
+      ...asArray(report.blockers),
+      ...asArray(report.failures),
+      ...asArray(report.rejection_reasons),
+      ...asArray(report.visual_evidence_profile?.blockers),
+    );
+  }
+  return [...new Set(blockers.map(normalisePackageQaBlocker).filter(Boolean))];
+}
+
+function packageQaNeedsRealMotion(blockers = []) {
+  const text = normaliseMatchText(blockers.join(" "));
+  return (
+    text.includes("generated only motion deck") ||
+    text.includes("no real visual media asset") ||
+    text.includes("direct video motion missing") ||
+    text.includes("actual motion clip minimum not met")
+  );
+}
+
+function artifactDirFromManifest(manifest = {}) {
+  const explicit = firstText(manifest.artifact_dir, manifest.artifactDir, manifest.artefact_dir);
+  if (explicit) return resolveFromRoot(explicit);
+  const manifestPath = firstText(manifest.__manifest_path);
+  return manifestPath ? path.dirname(resolveFromRoot(manifestPath)) : null;
+}
+
+function materialisedMotionClipsFromReport(report = {}) {
+  return [
+    ...asArray(report.clips),
+    ...asArray(report.materialised_clips),
+    ...asArray(report.materialized_clips),
+    ...asArray(report.accepted_local_clips),
+  ].filter(Boolean);
+}
+
+function distinctMotionFamiliesFor(clips = []) {
+  return new Set(
+    asArray(clips)
+      .map((clip) => firstText(clip.source_family, clip.motion_family, clip.visual_family, clip.id))
+      .filter(Boolean),
+  ).size;
+}
+
+function buildPackageQaMotionPack({ manifest = {}, artifactDir, blockers = [], materialisedMotion = {} } = {}) {
+  const storyId = storyIdFrom(manifest);
+  const clips = materialisedMotionClipsFromReport(materialisedMotion);
+  const availableClipCount = clips.length;
+  const availableFamilyCount = distinctMotionFamiliesFor(clips);
+  const requiredMotionScenes = Math.max(5, availableClipCount);
+  return {
+    schema_version: 1,
+    story_id: storyId,
+    title: firstText(manifest.selected_title, manifest.canonical_title, manifest.title, storyId),
+    artifact_dir: artifactDir,
+    canonical_subject: firstText(manifest.canonical_subject, manifest.subject),
+    canonical_game: firstText(manifest.canonical_game, manifest.game),
+    canonical_company: firstText(manifest.canonical_company),
+    canonical_people: manifest.canonical_people,
+    canonical_platforms: manifest.canonical_platforms,
+    primary_source: firstText(manifest.primary_source),
+    primary_source_url: firstText(manifest.primary_source_url, manifest.source_url),
+    official_motion_references: asArray(manifest.official_motion_references),
+    trailer_references: asArray(manifest.trailer_references),
+    readiness: {
+      status: "v4_motion_blocked",
+      blockers,
+      warnings: [],
+    },
+    motion_budget: {
+      required_motion_scenes: requiredMotionScenes,
+      available_motion_clips: availableClipCount,
+      required_distinct_families: Math.max(4, Math.min(requiredMotionScenes, Math.max(availableFamilyCount, 4))),
+      available_distinct_families: availableFamilyCount,
+    },
+    clips,
+    trusted_source_pipeline: {
+      references_found: 0,
+      intake_queue: [],
+    },
+    direct_video_enrichment_requested: true,
+    real_visual_media_required_after_owned_explainer_failed:
+      blockers.includes("visual_evidence:generated_only_motion_deck") ||
+      blockers.includes("visual_evidence:no_real_visual_media_asset"),
+    synthetic_from_package_qa: true,
+    synthetic_source: "post_render_package_qa",
+  };
+}
+
+async function loadPackageQaMotionPacksFromStoryPackages(args, canonicalManifests = new Map()) {
+  if (!args.storyPackages) return [];
+  const filters = storyIdFilterSet(args);
+  const packs = [];
+  for (const [storyId, manifest] of canonicalManifests.entries()) {
+    if (!storyId || (filters && !filters.has(storyId))) continue;
+    const artifactDir = artifactDirFromManifest(manifest);
+    if (!artifactDir) continue;
+    const [forensicQa, visualQuality, benchmark, materialisedMotion] = await Promise.all([
+      readJsonIfExists(path.join(artifactDir, "forensic_qa_report.json"), null),
+      readJsonIfExists(path.join(artifactDir, "visual_quality_report.json"), null),
+      readJsonIfExists(path.join(artifactDir, "benchmark_report.json"), null),
+      readJsonIfExists(path.join(artifactDir, "materialised_motion_clips.json"), {}),
+    ]);
+    const blockers = packageQaBlockersFromReports(forensicQa, visualQuality, benchmark);
+    if (!packageQaNeedsRealMotion(blockers)) continue;
+    packs.push(buildPackageQaMotionPack({ manifest, artifactDir, blockers, materialisedMotion }));
+  }
+  return packs;
+}
+
+function mergePackageQaMotionPacks(motionPackReports = [], packageQaMotionPacks = []) {
+  const byStoryId = new Map();
+  for (const pack of asArray(motionPackReports)) {
+    const storyId = storyIdFrom(pack);
+    if (storyId) byStoryId.set(storyId, pack);
+  }
+  for (const qaPack of asArray(packageQaMotionPacks)) {
+    const storyId = storyIdFrom(qaPack);
+    if (!storyId) continue;
+    const existing = byStoryId.get(storyId);
+    if (!existing) {
+      byStoryId.set(storyId, qaPack);
+      continue;
+    }
+    byStoryId.set(storyId, {
+      ...existing,
+      ...qaPack,
+      readiness: {
+        ...existing.readiness,
+        ...qaPack.readiness,
+        blockers: [
+          ...new Set([
+            ...asArray(existing.readiness?.blockers),
+            ...asArray(qaPack.readiness?.blockers),
+          ].map(cleanText).filter(Boolean)),
+        ],
+      },
+      clips: asArray(existing.clips).length ? existing.clips : qaPack.clips,
+      synthetic_from_package_qa: true,
+    });
+  }
+  return [...byStoryId.values()];
+}
+
 function workOrderJobText(job = {}) {
   return normaliseMatchText(
     [
@@ -655,11 +810,16 @@ async function main() {
     motionPackReports,
     canonicalManifests,
   );
+  const packageQaMotionPacks = await loadPackageQaMotionPacksFromStoryPackages(args, canonicalManifests);
+  const packageQaHydratedMotionPackReports = mergePackageQaMotionPacks(
+    hydratedMotionPackReports,
+    packageQaMotionPacks,
+  );
   const trustedFootageReport = await loadTrustedReport(args);
   const referenceReport = await loadReferenceReport(args);
   const directVideoEnrichmentWorkOrder = await loadDirectVideoEnrichmentWorkOrder(args);
   const acquisitionMotionPackReports = synthesiseMotionPacksFromWorkOrder({
-    motionPackReports: hydratedMotionPackReports,
+    motionPackReports: packageQaHydratedMotionPackReports,
     canonicalManifests,
     workOrder: directVideoEnrichmentWorkOrder,
   });
@@ -688,6 +848,8 @@ if (require.main === module) {
 
 module.exports = {
   hydrateMotionPacksWithCanonicalManifests,
+  loadPackageQaMotionPacksFromStoryPackages,
+  mergePackageQaMotionPacks,
   synthesiseMotionPacksFromWorkOrder,
   mergeReferenceReports,
   parseArgs,

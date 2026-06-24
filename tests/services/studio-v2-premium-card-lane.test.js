@@ -71,8 +71,8 @@ async function writePassingShellSidecar(cardPath, { storyId, kind, channelId = "
           evidence: {
             readable_text: `${kind} proof card`,
             word_count: 3,
-            planned_visible_duration_s: 4,
-            minimum_visible_duration_s: 4,
+            planned_visible_duration_s: 6.5,
+            minimum_visible_duration_s: 6.5,
           },
         },
       },
@@ -341,6 +341,50 @@ test("premium card lane v2 rejects shell sidecars without readable hold proof", 
     assert.ok(
       result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
         "source:hyperframes_readability_contract_missing",
+      ),
+    );
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("premium card lane v2 rejects cards that are faster than Pulse readable dwell", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-too-fast-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      const cardPath = path.join(outDir, `hf_${kind}_card_story-1.mp4`);
+      await fs.writeFile(cardPath, "story");
+      await writePassingShellSidecar(cardPath, { storyId: "story-1", kind });
+    }
+    const sourceSidecar = shellSidecarPathForCard(
+      path.join(outDir, "hf_source_card_story-1.mp4"),
+    );
+    const shell = await fs.readJson(sourceSidecar);
+    shell.hyperframes_premium_shell.readability_contract = {
+      status: "pass",
+      evidence: {
+        readable_text:
+          "PLAYERS NEED PRICE, EDITIONS, PLATFORM DETAIL AND A REAL REASON TO CARE",
+        word_count: 12,
+        planned_visible_duration_s: 2.4,
+        minimum_visible_duration_s: 2.4,
+      },
+    };
+    await fs.writeJson(sourceSidecar, shell, { spaces: 2 });
+
+    const result = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(result.premiumLane.verdict, "partial");
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "source:hyperframes_readable_hold_below_internal_floor",
       ),
     );
   } finally {

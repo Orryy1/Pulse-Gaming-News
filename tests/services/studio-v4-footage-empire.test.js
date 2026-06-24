@@ -375,7 +375,7 @@ test("Footage Empire counts validated official HLS windows as renderable motion 
   assert.equal(plan.safety.video_downloads_started, false);
 });
 
-test("Footage Empire lets official reveal stories satisfy family floor with hash-distinct trailer windows", () => {
+test("Footage Empire blocks official reveal stories from satisfying family floor with one trailer", () => {
   const sourceUrl =
     "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/hash/1782090499/hls_264_master.m3u8?t=1";
   const clips = [36, 42, 48, 54, 60].map((start, index) => ({
@@ -433,18 +433,18 @@ test("Footage Empire lets official reveal stories satisfy family floor with hash
   assert.equal(plan.motion_budget.hash_distinct_official_motion_windows, 5);
   assert.equal(
     plan.motion_budget.distinct_family_requirement_satisfied_by_hash_distinct_official_windows,
-    true,
+    false,
   );
-  assert.equal(plan.readiness.status, "v4_motion_ready");
-  assert.equal(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), false);
+  assert.equal(plan.readiness.status, "v4_motion_blocked");
+  assert.equal(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), true);
   assert.ok(
     plan.readiness.warnings.includes(
-      "distinct_family_floor_satisfied_by_hash_distinct_official_windows",
+      "hash_distinct_official_windows_do_not_replace_source_family_diversity",
     ),
   );
 });
 
-test("Footage Empire counts hash-distinct official product motion windows for game storefront stories", () => {
+test("Footage Empire counts hash-distinct official windows but still requires source diversity", () => {
   const sourceUrl =
     "https://video.fastly.steamstatic.com/store_trailers/881020/655426/hash/hls_264_master.m3u8?t=1";
   const clips = [36, 42, 48, 54, 60].map((start, index) => ({
@@ -502,10 +502,78 @@ test("Footage Empire counts hash-distinct official product motion windows for ga
   assert.equal(plan.motion_budget.hash_distinct_official_motion_windows, 5);
   assert.equal(
     plan.motion_budget.distinct_family_requirement_satisfied_by_hash_distinct_official_windows,
+    false,
+  );
+  assert.equal(plan.readiness.status, "v4_motion_blocked");
+  assert.equal(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), true);
+  assert.ok(
+    plan.readiness.warnings.includes(
+      "hash_distinct_official_windows_do_not_replace_source_family_diversity",
+    ),
+  );
+});
+
+test("Footage Empire blocks alias families when they all come from the same source asset", () => {
+  const sourceUrl =
+    "https://cdn.example.com/game/official-reveal-trailer/master.m3u8";
+  const clips = [12, 18, 24, 30, 36].map((start, index) => ({
+    id: `alias-window-${index + 1}`,
+    source_family: `official_reveal_alias_${index + 1}`,
+    path: sourceUrl,
+    source_url: sourceUrl,
+    mediaStartS: start,
+    durationS: 5,
+    validated: true,
+    segmentValidationPassed: true,
+    source_type: "official_storefront_video_reference",
+    provider: "official",
+    allowed_render_use: "reference_only_by_default",
+    rights_risk_class: "official_reference_only",
+    provenance: {
+      segment_motion_class: "gameplay_action",
+      validation_reason: "official_storefront_trailer_motion_samples_passed",
+      sample_content_hashes: [`alias-${start}-a`, `alias-${start}-b`],
+    },
+  }));
+
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "single-source-alias-story",
+      title: "New Game Reveal Shows Official Trailer Details",
+      canonical_subject: "New Game",
+      canonical_game: "New Game",
+      full_script:
+        "New Game has one official trailer with several different windows, but that cannot masquerade as a fully varied premium short.",
+    },
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          story_id: "single-source-alias-story",
+          entity: "New Game",
+          source_id: "official-reveal-trailer",
+          display_name: "Official reveal trailer",
+          source_tier: "official",
+          source_family: "official_reveal_trailer",
+          reference_url: sourceUrl,
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          autonomous_motion_candidate: true,
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    localMotionClips: clips,
+  });
+
+  assert.equal(plan.motion_budget.available_motion_clips, 5);
+  assert.equal(plan.motion_budget.available_distinct_families, 5);
+  assert.equal(plan.motion_budget.available_distinct_source_assets, 1);
+  assert.equal(plan.readiness.status, "v4_motion_blocked");
+  assert.equal(
+    plan.readiness.blockers.includes("distinct_motion_source_assets_minimum_not_met"),
     true,
   );
-  assert.equal(plan.readiness.status, "v4_motion_ready");
-  assert.equal(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), false);
 });
 
 test("Footage Empire counts signed direct MP4 URLs as renderable motion", () => {

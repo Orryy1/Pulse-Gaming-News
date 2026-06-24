@@ -161,7 +161,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
-  const minimumDurationS = Number(overrides.minimumDurationS || 4);
+  const minimumDurationS = Number(overrides.minimumDurationS || 6.5);
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -366,7 +366,7 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.ok(
     renderStory.visual_v4_bridge_video_clips
       .filter((clip) => clip.source_type === "hyperframes_premium_shell_card")
-      .every((clip) => clip.durationS >= 4 && clip.duration_s >= 4),
+      .every((clip) => clip.durationS >= 6.5 && clip.duration_s >= 6.5),
   );
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
@@ -383,7 +383,7 @@ test("goal production render materializer preserves readable HyperFrames card dw
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "context"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "timeline", {
       readableText: "GTA VI cover art is live but the price and edition decision is not",
-      minimumDurationS: 7.2,
+      minimumDurationS: 10,
     }),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "quote"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "takeaway"),
@@ -417,8 +417,8 @@ test("goal production render materializer preserves readable HyperFrames card dw
   const timelineCard = renderStory.visual_v4_bridge_video_clips.find(
     (clip) => clip.id === "hyperframes_premium_shell_timeline_3",
   );
-  assert.equal(timelineCard.durationS, 7.2);
-  assert.equal(timelineCard.minimum_readable_duration_s, 7.2);
+  assert.equal(timelineCard.durationS, 10);
+  assert.equal(timelineCard.minimum_readable_duration_s, 10);
   assert.match(timelineCard.text, /price and edition decision/i);
 });
 

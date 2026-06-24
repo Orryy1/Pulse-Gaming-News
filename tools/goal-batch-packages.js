@@ -126,6 +126,52 @@ function dedupeStoriesById(stories = []) {
   return out;
 }
 
+function liveRssMotionPotentialScore(story = {}) {
+  const text = [
+    story.title,
+    story.description,
+    story.summary,
+    story.source_name,
+    story.url,
+    story.article_url,
+  ].map((value) => String(value || "")).join(" ");
+  let score = Number(story.breaking_score || story.score || 0) / 10;
+
+  if (/\b(?:official|xbox wire|playstation blog|nintendo|steam|capcom|sega|ubisoft|bethesda|rockstar|konami|square enix|bandai namco|ea|electronic arts)\b/i.test(text)) {
+    score += 35;
+  }
+  if (/\b(?:gameplay|deep dive|hands[- ]?on|trailer|showcase|direct|state of play|developer diary|dev diary|footage|demo|playtest|beta|launch trailer|reveal trailer)\b/i.test(text)) {
+    score += 55;
+  }
+  if (/\b(?:playable|try|available now|free update|new mode|new map|boss fight|combat|campaign|character reveal)\b/i.test(text)) {
+    score += 25;
+  }
+  if (/\b(?:review|score|metacritic|opencritic|ranking by views|review momentum)\b/i.test(text)) {
+    score -= 18;
+  }
+  if (/\b(?:deal|deals|discount|sale|price drop|memory card|ssd|controller discount|amazon prime day|woot|bundle)\b/i.test(text)) {
+    score -= 70;
+  }
+  if (/\b(?:best games|roundup|everything we know|what to play|guide|wishlist)\b/i.test(text)) {
+    score -= 35;
+  }
+  return score;
+}
+
+function prioritiseLiveRssStoriesForMotion(stories = []) {
+  return asStoryArray(stories)
+    .map((story, index) => ({
+      story,
+      index,
+      score: liveRssMotionPotentialScore(story),
+    }))
+    .sort((a, b) => {
+      const delta = b.score - a.score;
+      return Math.abs(delta) > 0.001 ? delta : a.index - b.index;
+    })
+    .map((entry) => entry.story);
+}
+
 function selectStoriesForGoalBatch({
   baseStories = [],
   dbStories = [],
@@ -135,7 +181,7 @@ function selectStoriesForGoalBatch({
 } = {}) {
   const wanted = new Set(normaliseStoryIds(storyIds));
   const sourceStories = useDbStories ? asStoryArray(dbStories) : asStoryArray(baseStories);
-  const merged = dedupeStoriesById([...asStoryArray(liveRssStories), ...sourceStories]);
+  const merged = dedupeStoriesById([...prioritiseLiveRssStoriesForMotion(liveRssStories), ...sourceStories]);
   if (!wanted.size) return merged;
   return merged.filter((story) => wanted.has(storyIdFor(story)));
 }
@@ -257,6 +303,7 @@ module.exports = {
   loadRevenueManifestByStory,
   loadMotionPackByStory,
   normaliseStoryIds,
+  prioritiseLiveRssStoriesForMotion,
   selectStoriesForGoalBatch,
   parseArgs,
   main,

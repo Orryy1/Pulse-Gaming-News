@@ -156,10 +156,12 @@ async function makePackage(root, storyId = "story-final") {
   return artifactDir;
 }
 
-async function writePassingHyperframesCard(root, storyId, kind) {
+async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) {
   const outDir = path.join(root, "test", "output");
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
+  const readableText = overrides.readableText || `${kind} proof card`;
+  const minimumDurationS = Number(overrides.minimumDurationS || 4);
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -192,6 +194,15 @@ async function writePassingHyperframesCard(root, storyId, kind) {
           paused_gsap_timeline: true,
           main_timeline_registered: true,
           timeline_animation_steps: 4,
+        },
+      },
+      readability_contract: {
+        status: "pass",
+        evidence: {
+          readable_text: readableText,
+          word_count: readableText.split(/\s+/).filter(Boolean).length,
+          planned_visible_duration_s: minimumDurationS,
+          minimum_visible_duration_s: minimumDurationS,
         },
       },
       blockers: [],
@@ -362,6 +373,53 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.equal(manifest.hyperframes_card_count, 5);
   assert.equal(manifest.premium_shell_verdict, "pass");
   assert.equal(manifest.premium_shell_pass_count, 5);
+});
+
+test("goal production render materializer preserves readable HyperFrames card dwell from shell sidecars", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-card-dwell-"));
+  const artifactDir = await makePackage(root, "story-hf-readable-dwell");
+  await Promise.all([
+    writePassingHyperframesCard(root, "story-hf-readable-dwell", "source"),
+    writePassingHyperframesCard(root, "story-hf-readable-dwell", "context"),
+    writePassingHyperframesCard(root, "story-hf-readable-dwell", "timeline", {
+      readableText: "GTA VI cover art is live but the price and edition decision is not",
+      minimumDurationS: 7.2,
+    }),
+    writePassingHyperframesCard(root, "story-hf-readable-dwell", "quote"),
+    writePassingHyperframesCard(root, "story-hf-readable-dwell", "takeaway"),
+  ]);
+  const job = readyJob("story-hf-readable-dwell", artifactDir);
+  job.actions[0].target_render_manifest = {
+    ...job.actions[0].target_render_manifest,
+    hyperframes_premium_shell_required: true,
+    hyperframes_premium_shell_required_pass_count: 4,
+  };
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-24T12:55:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 44,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const timelineCard = renderStory.visual_v4_bridge_video_clips.find(
+    (clip) => clip.id === "hyperframes_premium_shell_timeline_3",
+  );
+  assert.equal(timelineCard.durationS, 7.2);
+  assert.equal(timelineCard.minimum_readable_duration_s, 7.2);
+  assert.match(timelineCard.text, /price and edition decision/i);
 });
 
 test("goal production render materializer auto-preserves HyperFrames shell cards on rerender work orders", async () => {

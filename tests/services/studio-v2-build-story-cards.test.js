@@ -7,6 +7,8 @@ const path = require("node:path");
 
 const {
   countTimelineAnimationSteps,
+  applySpecToTemplate,
+  hyperframesCardReadabilityContractForSpec,
 } = require("../../tools/studio-v2-build-story-cards");
 
 test("story-specific HyperFrames cards validate before render", () => {
@@ -49,4 +51,27 @@ test("story-specific HyperFrames shell evidence counts chained GSAP timeline ste
   `;
 
   assert.equal(countTimelineAnimationSteps(html), 4);
+});
+
+test("story-specific HyperFrames cards stretch long copy to readable dwell", () => {
+  const templateHtml = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-timeline", "index.html"),
+    "utf8",
+  );
+  const spec = {
+    kicker: "WHAT WE KNOW",
+    heading: "GTA VI COVER ART",
+    bullets: [
+      { strong: "Art live", copy: "Rockstar showed the key image but not the price" },
+      { strong: "Buying gap", copy: "editions and upgrade details are still missing" },
+      { strong: "Player question", copy: "preorder now or wait for the next reveal" },
+    ],
+  };
+
+  const contract = hyperframesCardReadabilityContractForSpec("timeline", spec);
+  const html = applySpecToTemplate("timeline", templateHtml, spec, "pulse-gaming");
+
+  assert.equal(contract.status, "pass");
+  assert.equal(contract.evidence.minimum_visible_duration_s >= 7, true);
+  assert.match(html, /data-duration="7\.[0-9]"/);
 });

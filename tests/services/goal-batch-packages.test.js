@@ -658,6 +658,49 @@ test("goal batch CLI can select repaired live DB stories for governed packaging"
   assert.deepEqual(selected.map((story) => story.id), ["rss_story", "1tkik53"]);
 });
 
+test("goal batch live RSS selection prioritises motion-rich stories before deals and abstract reviews", () => {
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        id: "deal-card",
+        title: "Today’s Top Deals: Switch 2 Memory Cards And Controller Discounts",
+        source_name: "IGN Deals",
+      },
+      {
+        id: "review-abstract",
+        title: "Star Fox Review Has A Review Momentum Problem",
+        source_name: "PC Gamer",
+      },
+      {
+        id: "official-gameplay",
+        title: "Halo Campaign Evolved Shows New Gameplay In Official Xbox Deep Dive",
+        source_name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/24/halo-campaign-evolved-gameplay/",
+      },
+      {
+        id: "trailer-reveal",
+        title: "Resident Evil Requiem Gets A New Gameplay Trailer",
+        source_name: "GameSpot",
+      },
+      {
+        id: "demo-playable",
+        title: "Steam Next Fest Demo Lets Players Try The New Horror RPG Today",
+        source_name: "Steam",
+      },
+    ],
+    baseStories: [{ id: "daily", title: "Daily Story" }],
+  });
+
+  assert.deepEqual(
+    new Set(selected.slice(0, 3).map((story) => story.id)),
+    new Set(["official-gameplay", "trailer-reveal", "demo-playable"]),
+  );
+  assert.deepEqual(
+    selected.slice(3, 5).map((story) => story.id),
+    ["review-abstract", "deal-card"],
+  );
+});
+
 test("goal batch CLI parses shared SFX evidence paths", () => {
   const args = parseGoalBatchArgs([
     "--sfx-assets",

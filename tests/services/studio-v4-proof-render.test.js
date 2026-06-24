@@ -178,6 +178,47 @@ test("Studio V4 proof renderer detects repeated base-source windows from string 
   );
 });
 
+test("Studio V4 proof renderer uses materialized sidecars to detect repeated source windows", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-sidecar-repeat-"));
+  try {
+    const first = path.join(root, "halo_window_12.mp4");
+    const second = path.join(root, "halo_window_18.mp4");
+    const third = path.join(root, "halo_alt_source.mp4");
+    for (const clipPath of [first, second, third]) {
+      fs.writeFileSync(clipPath, Buffer.alloc(32, 1));
+    }
+    fs.writeFileSync(`${first}.json`, JSON.stringify({
+      source_family: "halo_campaign_evolved_official_trailer_window_12_5",
+      source_url: "https://cdn.example.com/halo/official-trailer.m3u8",
+      duration_s: 4,
+    }));
+    fs.writeFileSync(`${second}.json`, JSON.stringify({
+      source_family: "halo_campaign_evolved_official_trailer_window_18_5",
+      source_url: "https://cdn.example.com/halo/official-trailer.m3u8",
+      duration_s: 4,
+    }));
+    fs.writeFileSync(`${third}.json`, JSON.stringify({
+      source_family: "halo_campaign_evolved_gameplay_demo",
+      source_url: "https://cdn.example.com/halo/gameplay-demo.m3u8",
+      duration_s: 4,
+    }));
+
+    const plan = buildClipScenePlan({
+      clips: [first, second, third],
+      durationS: 14,
+      xfadeS: 0.25,
+    });
+
+    assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+    assert.deepEqual(
+      plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
+      [{ key: "halo_campaign_evolved_official_trailer", count: 2 }],
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Studio V4 proof renderer blocks short generated cards being stretched into looped scenes", () => {
   const clips = Array.from({ length: 13 }, (_, index) => ({
     path: `owned-card-${index + 1}.mp4`,

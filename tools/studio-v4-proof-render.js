@@ -575,31 +575,79 @@ function normaliseSceneSourceKey(value = "") {
     .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "");
 }
 
+function readSceneClipSidecar(clip = {}) {
+  const clipPath = sceneClipPath(clip);
+  if (!clipPath) return null;
+  const candidates = [`${clipPath}.json`];
+  if (clip && typeof clip === "object" && clip.original_path) {
+    candidates.push(`${clip.original_path}.json`);
+  }
+  for (const candidate of candidates) {
+    try {
+      if (candidate && fs.existsSync(candidate)) return fs.readJsonSync(candidate);
+    } catch {
+      // Sidecar evidence is optional. A bad sidecar should not hide
+      // the raw clip; other gates will still validate the render.
+    }
+  }
+  return null;
+}
+
 function sceneClipBaseSourceKey(clip = {}) {
-  if (typeof clip === "string") return normaliseSceneSourceKey(clip);
-  if (!clip || typeof clip !== "object") return "";
-  const explicit = normaliseSceneSourceKey(
-    clip.base_source_family ||
-      clip.original_source_family ||
-      clip.provenance?.base_source_family ||
-      clip.provenance?.source_family ||
-      clip.source_family ||
-      clip.motion_family,
-  );
+  if (!clip) return "";
+  const isObject = typeof clip === "object";
+  const explicit = isObject
+    ? normaliseSceneSourceKey(
+        clip.base_source_family ||
+          clip.original_source_family ||
+          clip.provenance?.base_source_family ||
+          clip.provenance?.source_family ||
+          clip.source_family ||
+          clip.motion_family,
+      )
+    : "";
   if (explicit) return explicit;
-  const url = firstText(clip.source_url, clip.url, clip.original_source_url, clip.reference_url);
-  if (!url) return "";
+  const sidecar = readSceneClipSidecar(clip);
+  const sidecarExplicit = normaliseSceneSourceKey(
+    sidecar?.base_source_family ||
+      sidecar?.original_source_family ||
+      sidecar?.source_family ||
+      sidecar?.motion_family,
+  );
+  if (sidecarExplicit) return sidecarExplicit;
+  const sidecarUrl = firstText(sidecar?.source_url, sidecar?.url, sidecar?.original_source_url);
+  if (sidecarUrl) {
+    try {
+      const parsed = new URL(sidecarUrl);
+      return normaliseSceneSourceKey(`${parsed.hostname}${parsed.pathname}`);
+    } catch {
+      return normaliseSceneSourceKey(sidecarUrl);
+    }
+  }
+  const url = isObject
+    ? firstText(clip.source_url, clip.url, clip.original_source_url, clip.reference_url)
+    : "";
+  if (!url) return isObject ? "" : normaliseSceneSourceKey(clip);
   try {
     const parsed = new URL(url);
     return normaliseSceneSourceKey(`${parsed.hostname}${parsed.pathname}`);
   } catch {
-    return normaliseSceneSourceKey(url);
+    return normaliseSceneSourceKey(url || clip);
   }
 }
 
 function sceneClipSourceDurationS(clip = {}) {
-  if (!clip || typeof clip !== "object") return null;
-  const duration = Number(clip.durationS ?? clip.duration_s ?? clip.duration);
+  if (!clip) return null;
+  const isObject = typeof clip === "object";
+  const sidecar = readSceneClipSidecar(clip);
+  const duration = Number(
+    (isObject ? clip.durationS : undefined) ??
+      (isObject ? clip.duration_s : undefined) ??
+      (isObject ? clip.duration : undefined) ??
+      sidecar?.durationS ??
+      sidecar?.duration_s ??
+      sidecar?.duration,
+  );
   return Number.isFinite(duration) && duration > 0 ? Number(duration.toFixed(2)) : null;
 }
 

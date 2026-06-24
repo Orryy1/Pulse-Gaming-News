@@ -66,6 +66,15 @@ async function writePassingShellSidecar(cardPath, { storyId, kind, channelId = "
             timeline_animation_steps: 3,
           },
         },
+        readability_contract: {
+          status: "pass",
+          evidence: {
+            readable_text: `${kind} proof card`,
+            word_count: 3,
+            planned_visible_duration_s: 4,
+            minimum_visible_duration_s: 4,
+          },
+        },
       },
     },
     { spaces: 2 },
@@ -297,6 +306,41 @@ test("premium card lane v2 rejects status-only shell sidecars without concrete p
     assert.ok(
       result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
         "source:hyperframes_animation_steps_too_thin",
+      ),
+    );
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("premium card lane v2 rejects shell sidecars without readable hold proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-readable-proof-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      const cardPath = path.join(outDir, `hf_${kind}_card_story-1.mp4`);
+      await fs.writeFile(cardPath, "story");
+      await writePassingShellSidecar(cardPath, { storyId: "story-1", kind });
+    }
+    const sourceSidecar = shellSidecarPathForCard(
+      path.join(outDir, "hf_source_card_story-1.mp4"),
+    );
+    const shell = await fs.readJson(sourceSidecar);
+    delete shell.hyperframes_premium_shell.readability_contract;
+    await fs.writeJson(sourceSidecar, shell, { spaces: 2 });
+
+    const result = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(result.premiumLane.verdict, "partial");
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "source:hyperframes_readability_contract_missing",
       ),
     );
   } finally {

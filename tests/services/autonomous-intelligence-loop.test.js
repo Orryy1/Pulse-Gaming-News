@@ -25,9 +25,12 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_hunt_on_runway_gap, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_fresh_review_script_repair, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_fresh_production_refill, true);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.enqueue_local_tts_retry_recovery, true);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_review_script_repair_limit, 6);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_production_refill_limit, 12);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_production_refill_rss_per_feed, 4);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.local_tts_retry_limit, 6);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.local_tts_retry_apply_limit, 3);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 10);
   assert.equal(schedule("competitor_forensics_daily")?.kind, "competitor_forensics_lab");
   assert.equal(schedule("competitor_quality_gate_daily")?.kind, "competitor_quality_gate");
@@ -47,6 +50,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(typeof handlers.commercial_learning_loop, "function");
   assert.equal(typeof handlers.safe_auto_repair_runner, "function");
   assert.equal(typeof handlers.local_tts_doctor, "function");
+  assert.equal(typeof handlers.local_tts_retry_recovery, "function");
   assert.equal(typeof handlers.fresh_review_script_repair, "function");
   assert.equal(typeof handlers.fresh_production_refill, "function");
 });
@@ -87,6 +91,105 @@ test("local TTS doctor handler restarts and prewarms through a safe child proces
   assert.equal(result.started_pid, 12345);
   assert.equal(result.prewarm_ok, true);
   assert.equal(result.gpu_ok, true);
+});
+
+test("local TTS retry recovery handler runs bounded local-only preflight and apply", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-retry-recovery-"));
+  const queuePath = path.join(tmp, "local_media_repair_queue.json");
+  const planPath = path.join(tmp, "local_script_extension_plan.json");
+  const applyPath = path.join(tmp, "local_script_extension_audio_apply.json");
+  const overnightPath = path.join(tmp, "local_tts_overnight_report.json");
+  const childCalls = [];
+
+  await fs.writeFile(queuePath, JSON.stringify({ items: [] }));
+  await fs.writeFile(
+    planPath,
+    JSON.stringify({
+      counts: { total: 3, ready: 2, review: 1 },
+      drafts: [
+        { story_id: "tts-one", action: "ready_for_local_liam_audio" },
+        { story_id: "tts-two", action: "ready_for_local_liam_audio" },
+      ],
+    }),
+  );
+  await fs.writeFile(
+    applyPath,
+    JSON.stringify({
+      applied: [{ story_id: "tts-one" }],
+      skipped: [{ story_id: "tts-two", failure_code: "tts_timeout" }],
+    }),
+  );
+  await fs.writeFile(
+    overnightPath,
+    JSON.stringify({
+      verdict: "AMBER",
+      autonomous_recovery: {
+        status: "ready_for_local_tts_retry_apply",
+        safe_retry_work_order_count: 2,
+      },
+    }),
+  );
+
+  const result = await handlers.local_tts_retry_recovery(
+    {
+      payload: {
+        limit: 6,
+        apply_limit: 1,
+        out_dir: tmp,
+      },
+    },
+    {
+      log() {},
+      async runNodeJobChildProcess(options) {
+        childCalls.push(options);
+        return { ok: true, stdout_tail: `${options.childKind} ok`, stderr_tail: "" };
+      },
+    },
+  );
+
+  assert.deepEqual(childCalls.map((call) => call.childKind), [
+    "local_tts_retry_doctor",
+    "local_tts_retry_queue",
+    "local_tts_retry_preflight",
+    "local_tts_retry_apply",
+    "local_tts_retry_report",
+  ]);
+  assert.deepEqual(childCalls[1].args, [
+    "tools/local-media-repair.js",
+    "--dry-run",
+    "--limit",
+    "6",
+    "--out-dir",
+    tmp,
+  ]);
+  assert.deepEqual(childCalls[2].args, [
+    "tools/local-script-extension.js",
+    "--dry-run",
+    "--limit",
+    "6",
+    "--out-dir",
+    tmp,
+    "--queue",
+    queuePath,
+  ]);
+  assert.deepEqual(childCalls[3].args, [
+    "tools/local-script-extension.js",
+    "--apply-local-audio",
+    "--apply-limit",
+    "1",
+    "--out-dir",
+    tmp,
+    "--queue",
+    queuePath,
+  ]);
+  assert.equal(result.status, "completed");
+  assert.equal(result.local_only, true);
+  assert.equal(result.no_publish, true);
+  assert.equal(result.no_db_mutation, true);
+  assert.equal(result.plan_ready_count, 2);
+  assert.equal(result.applied_count, 1);
+  assert.equal(result.skipped_count, 1);
+  assert.equal(result.overnight_verdict, "AMBER");
 });
 
 test("candidate supply monitor enqueues fresh intake and repair when runway has no reserve", async () => {
@@ -195,9 +298,12 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
           enqueue_hunt_on_runway_gap: true,
           enqueue_fresh_review_script_repair: true,
           enqueue_fresh_production_refill: true,
+          enqueue_local_tts_retry_recovery: true,
           fresh_review_script_repair_limit: 6,
           fresh_production_refill_limit: 12,
           fresh_production_refill_rss_per_feed: 4,
+          local_tts_retry_limit: 6,
+          local_tts_retry_apply_limit: 3,
           repair_limit: 10,
         },
       },
@@ -219,7 +325,8 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(result.fresh_intake_enqueued, true);
     assert.equal(result.fresh_review_script_repair_enqueued, true);
     assert.equal(result.fresh_production_refill_enqueued, true);
-    assert.equal(enqueued.length, 4);
+    assert.equal(result.local_tts_retry_recovery_enqueued, true);
+    assert.equal(enqueued.length, 5);
     assert.equal(enqueued[0].kind, "hunt");
     assert.equal(enqueued[0].payload.reason, "candidate_supply_monitor_fresh_intake");
     assert.equal(enqueued[0].idempotency_key, "candidate_supply_hunt:2026-06-17:08");
@@ -227,21 +334,26 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(enqueued[1].payload.reason, "candidate_supply_monitor_fresh_review_script_repair");
     assert.equal(enqueued[1].payload.limit, 6);
     assert.equal(enqueued[1].idempotency_key, "candidate_supply_fresh_review_script_repair:2026-06-17:08");
-    assert.equal(enqueued[2].kind, "fresh_production_refill");
-    assert.equal(enqueued[2].payload.reason, "candidate_supply_monitor_fresh_production_refill");
-    assert.equal(enqueued[2].payload.limit, 12);
-    assert.equal(enqueued[2].payload.rss_per_feed, 4);
+    assert.equal(enqueued[2].kind, "local_tts_retry_recovery");
+    assert.equal(enqueued[2].payload.reason, "candidate_supply_monitor_local_tts_retry_recovery");
+    assert.equal(enqueued[2].payload.limit, 6);
+    assert.equal(enqueued[2].payload.apply_limit, 3);
+    assert.equal(enqueued[2].idempotency_key, "candidate_supply_local_tts_retry_recovery:2026-06-17:08");
+    assert.equal(enqueued[3].kind, "fresh_production_refill");
+    assert.equal(enqueued[3].payload.reason, "candidate_supply_monitor_fresh_production_refill");
+    assert.equal(enqueued[3].payload.limit, 12);
+    assert.equal(enqueued[3].payload.rss_per_feed, 4);
     assert.equal(
-      enqueued[2].payload.out_dir,
+      enqueued[3].payload.out_dir,
       "output/candidate-supply/fresh-production-refill/2026-06-17-08/goal-proof-batch",
     );
     assert.equal(
-      enqueued[2].payload.contract_out_dir,
+      enqueued[3].payload.contract_out_dir,
       "output/candidate-supply/fresh-production-refill/2026-06-17-08/goal-contract",
     );
-    assert.equal(enqueued[2].idempotency_key, "candidate_supply_fresh_production_refill:2026-06-17:08");
-    assert.equal(enqueued[3].kind, "safe_auto_repair_runner");
-    assert.equal(enqueued[3].payload.reason, "candidate_supply_monitor_reserve_refill");
+    assert.equal(enqueued[3].idempotency_key, "candidate_supply_fresh_production_refill:2026-06-17:08");
+    assert.equal(enqueued[4].kind, "safe_auto_repair_runner");
+    assert.equal(enqueued[4].payload.reason, "candidate_supply_monitor_reserve_refill");
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

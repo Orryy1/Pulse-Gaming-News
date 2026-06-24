@@ -25,6 +25,8 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 const DEFAULT_CHANNEL = "pulse-gaming";
+const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = 4;
+const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = 7.5;
 
 const CARD_KINDS = [
   "source",
@@ -113,6 +115,67 @@ function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
     maxLines: 3,
     maxTokenChars: 22,
   });
+}
+
+function readableDurationRequiredS(text) {
+  const clean = normaliseText(text);
+  if (!clean) return MIN_READABLE_HYPERFRAMES_CARD_DURATION_S;
+  const words = clean.split(/\s+/).filter(Boolean).length;
+  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(clean) ? 0.35 : 0;
+  const computed = Math.max(
+    MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
+    0.85 * words + 1 + longTokenPenalty,
+  );
+  return Number(
+    Math.min(
+      MAX_READABLE_HYPERFRAMES_CARD_DURATION_S,
+      Math.ceil(computed * 10) / 10,
+    ).toFixed(1),
+  );
+}
+
+function cardTextForReadability(kind, spec = {}) {
+  if (kind === "source") return [spec.label, spec.sublabel].filter(Boolean).join(" ");
+  if (kind === "context") return [spec.number, spec.sub, spec.micro].filter(Boolean).join(" ");
+  if (kind === "timeline") {
+    const bullets = (spec.bullets || [])
+      .map((bullet) => [bullet.strong, bullet.copy].filter(Boolean).join(" "))
+      .join(" ");
+    return [spec.heading, bullets].filter(Boolean).join(" ");
+  }
+  if (kind === "quote") return spec.quoteText || spec.attribution || "";
+  if (kind === "takeaway" || kind === "outro") {
+    return [
+      ...(Array.isArray(spec.headlineWords) ? spec.headlineWords : []),
+      spec.cta,
+    ].filter(Boolean).join(" ");
+  }
+  return Object.values(spec).filter((value) => typeof value === "string").join(" ");
+}
+
+function hyperframesCardReadabilityContractForSpec(kind, spec = {}) {
+  const readableText = normaliseText(cardTextForReadability(kind, spec));
+  const minimum = readableDurationRequiredS(readableText);
+  return {
+    status: "pass",
+    evidence: {
+      readable_text: readableText,
+      word_count: readableText ? readableText.split(/\s+/).filter(Boolean).length : 0,
+      planned_visible_duration_s: minimum,
+      minimum_visible_duration_s: minimum,
+      min_readable_card_duration_s: MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
+      max_readable_card_duration_s: MAX_READABLE_HYPERFRAMES_CARD_DURATION_S,
+    },
+  };
+}
+
+function applyReadableDurationToTemplate(html, durationS) {
+  const duration = Number(durationS);
+  if (!Number.isFinite(duration) || duration <= 0) return html;
+  return String(html).replace(
+    /data-duration="[\d.]+"/g,
+    `data-duration="${duration.toFixed(1)}"`,
+  );
 }
 
 function sourceLabel(story) {
@@ -458,7 +521,12 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
     applyThemeToHtml,
     getChannelTheme,
   } = require("../lib/studio/v2/channel-themes");
-  return applyThemeToHtml(html, getChannelTheme(channelId));
+  html = applyThemeToHtml(html, getChannelTheme(channelId));
+  const readability = hyperframesCardReadabilityContractForSpec(kind, spec);
+  return applyReadableDurationToTemplate(
+    html,
+    readability.evidence.planned_visible_duration_s,
+  );
 }
 
 function runHyperframes(args, cwd) {
@@ -491,6 +559,80 @@ function countTimelineAnimationSteps(html = "") {
   return countMatches(html, /\b(?:tl|timeline)\.(?:to|from|fromTo)\s*\(/g) +
     countMatches(html, /(?:^|[\s);])\.(?:to|from|fromTo)\s*\(/g) +
     countMatches(html, /\bgsap\.(?:to|from|fromTo)\s*\(/g);
+}
+
+function firstNumber(...values) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+function htmlDataDurationS(html = "") {
+  const durations = [...String(html).matchAll(/data-duration="([\d.]+)"/g)]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return firstNumber(...durations);
+}
+
+function elementTextById(html = "", id = "") {
+  const pattern = new RegExp(`<[^>]+id="${id}"[^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i");
+  const match = String(html).match(pattern);
+  return match ? normaliseText(match[1]) : "";
+}
+
+function listTextById(html = "", id = "") {
+  const pattern = new RegExp(`<[^>]+id="${id}"[^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i");
+  const match = String(html).match(pattern);
+  if (!match) return "";
+  return normaliseText(match[1]);
+}
+
+function readableTextFromProjectHtml(kind, html = "") {
+  if (kind === "source") return [
+    elementTextById(html, "label"),
+    elementTextById(html, "sublabel"),
+  ].filter(Boolean).join(" ");
+  if (kind === "context") return [
+    elementTextById(html, "number"),
+    elementTextById(html, "sub"),
+    elementTextById(html, "micro"),
+  ].filter(Boolean).join(" ");
+  if (kind === "timeline") return [
+    elementTextById(html, "heading"),
+    listTextById(html, "bullets"),
+  ].filter(Boolean).join(" ");
+  if (kind === "quote") return [
+    elementTextById(html, "quote"),
+    elementTextById(html, "attribution"),
+  ].filter(Boolean).join(" ");
+  if (kind === "takeaway" || kind === "outro") return [
+    elementTextById(html, "headline"),
+    elementTextById(html, "cta"),
+  ].filter(Boolean).join(" ");
+  return "";
+}
+
+function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
+  const readableText = readableTextFromProjectHtml(kind, html);
+  const planned = htmlDataDurationS(html);
+  const minimum = readableDurationRequiredS(readableText);
+  const blockers = [];
+  if (planned == null) blockers.push("hyperframes_card_duration_missing");
+  else if (planned + 0.001 < minimum) blockers.push("hyperframes_card_visible_dwell_too_short");
+  return {
+    status: blockers.length ? "fail" : "pass",
+    blockers,
+    evidence: {
+      readable_text: readableText,
+      word_count: readableText ? readableText.split(/\s+/).filter(Boolean).length : 0,
+      planned_visible_duration_s: planned,
+      minimum_visible_duration_s: minimum,
+      min_readable_card_duration_s: MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
+      max_readable_card_duration_s: MAX_READABLE_HYPERFRAMES_CARD_DURATION_S,
+    },
+  };
 }
 
 async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
@@ -532,6 +674,7 @@ async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
   if (!html.includes("window.__timelines[\"main\"]")) {
     animationBlockers.push("main_timeline_not_registered");
   }
+  const readabilityContract = hyperframesCardReadabilityContractFromHtml(kind, html);
 
   return {
     visual_identity: {
@@ -559,6 +702,7 @@ async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
         single_card_transition_contract: "not_applicable_single_composition",
       },
     },
+    readability_contract: readabilityContract,
   };
 }
 
@@ -581,6 +725,7 @@ async function writeHyperframesPremiumShellEvidence({
     ),
     ...(projectEvidence.visual_identity.blockers || []),
     ...(projectEvidence.animation_contract.blockers || []),
+    ...(projectEvidence.readability_contract.blockers || []),
   ];
   if (checks?.inspect?.skipped === true) blockers.push("hyperframes_inspect_skipped");
 
@@ -810,6 +955,8 @@ module.exports = {
   quoteLayoutClass,
   applySpecToTemplate,
   countTimelineAnimationSteps,
+  hyperframesCardReadabilityContractForSpec,
+  hyperframesCardReadabilityContractFromHtml,
   inspectPremiumShellProject,
   outputNameForCard,
   pickStoryBackdrop,

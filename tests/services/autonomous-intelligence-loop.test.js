@@ -1015,6 +1015,20 @@ test("fresh production refill repair preserves Rockstar direct media candidates"
                     source_family: "rockstar_gta_vi_trailer_1",
                     source_type: "official_game_website_media_page",
                   },
+                  {
+                    direct_media_url:
+                      "https://www.rockstargames.com/VI/_next/static/media/2160.06.kcaed--eoc.mp4",
+                    source_title: "Rockstar GTA VI official site motion 2160.06.kcaed",
+                    source_family: "rockstar_gta_vi_official_site_motion_2160_06_kcaed",
+                    source_type: "official_game_website_media_page",
+                  },
+                  {
+                    direct_media_url:
+                      "https://www.rockstargames.com/VI/_next/static/media/2160.0.f7p3scjp9hn.mp4",
+                    source_title: "Rockstar GTA VI official site motion 2160.0.f7p3",
+                    source_family: "rockstar_gta_vi_official_site_motion_2160_0_f7p3",
+                    source_type: "official_game_website_media_page",
+                  },
                 ],
               },
               freshness_gate: "pass",
@@ -1089,16 +1103,21 @@ test("fresh production refill repair preserves Rockstar direct media candidates"
     const entries = JSON.parse(
       await fs.readFile(repairReport.outputs.official_source_entries, "utf8"),
     );
-    assert.equal(result.repair_evidence.official_source_entries_count, 3);
-    assert.equal(repairReport.summary.official_source_entries_count, 3);
+    assert.equal(result.repair_evidence.official_source_entries_count, 5);
+    assert.equal(repairReport.summary.official_source_entries_count, 5);
     assert.deepEqual(
-      entries.map((entry) => entry.source_family),
+      entries.slice(0, 3).map((entry) => entry.source_family),
       [
         "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_cover_art_animation",
         "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_2",
         "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_1",
       ],
     );
+    const officialSiteFamilies = entries.slice(3).map((entry) => entry.source_family);
+    assert.equal(new Set(officialSiteFamilies).size, 2);
+    assert.ok(officialSiteFamilies.every((family) => family.length <= 120));
+    assert.ok(officialSiteFamilies[0].endsWith("rockstar_gta_vi_official_site_motion_2160_06_kcaed"));
+    assert.ok(officialSiteFamilies[1].endsWith("rockstar_gta_vi_official_site_motion_2160_0_f7p3"));
     assert.equal(
       entries.every((entry) => entry.direct_media_provided === true && entry.downloads_allowed === false),
       true,

@@ -67,21 +67,21 @@ function readyDirectorPlan(storyId = "story-director") {
         id: "source_lock",
         kind: "source_lock",
         startS: 2.2,
-        durationS: 2,
+        durationS: 6.5,
         source: "IGN",
         visual_treatment: "large readable source bug",
       },
       {
         id: "proof_card",
         kind: "proof_card",
-        startS: 4.6,
-        durationS: 2,
+        startS: 9,
+        durationS: 6.5,
         label: "SOURCE LOCKED",
       },
       {
         id: "motion_clip_02",
         kind: "motion_clip",
-        startS: 7,
+        startS: 16,
         durationS: 3,
         source_family: "xbox",
         media_path: "output/video/clip-2.mp4",
@@ -89,7 +89,7 @@ function readyDirectorPlan(storyId = "story-director") {
       {
         id: "motion_clip_03",
         kind: "motion_clip",
-        startS: 13,
+        startS: 22,
         durationS: 3,
         source_family: "steamdb",
         media_path: "output/video/clip-3.mp4",
@@ -97,7 +97,7 @@ function readyDirectorPlan(storyId = "story-director") {
       {
         id: "motion_clip_04",
         kind: "motion_clip",
-        startS: 20,
+        startS: 30,
         durationS: 3,
         source_family: "publisher",
         media_path: "output/video/clip-4.mp4",
@@ -105,22 +105,22 @@ function readyDirectorPlan(storyId = "story-director") {
       {
         id: "motion_clip_05",
         kind: "motion_clip",
-        startS: 28,
+        startS: 39,
         durationS: 3,
         source_family: "gameplay",
         media_path: "output/video/clip-5.mp4",
       },
     ],
     sound_transition_plan: {
-      duration_s: 42,
+      duration_s: 55,
       readiness: { verdict: "pass", blockers: [], warnings: [] },
     },
     transition_plan: {
       planned: [
         { into: "motion_clip_01", atS: 0.31, family: "speed_ramp" },
         { into: "source_lock", atS: 2.16, family: "source_wipe" },
-        { into: "proof_card", atS: 4.56, family: "hard_cut" },
-        { into: "motion_clip_02", atS: 6.96, family: "whip_pan" },
+        { into: "proof_card", atS: 8.96, family: "hard_cut" },
+        { into: "motion_clip_02", atS: 15.96, family: "whip_pan" },
       ],
       max_same_transition_run: 1,
     },
@@ -130,11 +130,11 @@ function readyDirectorPlan(storyId = "story-director") {
         { id: "sfx_01", target: "hook_slam", target_kind: "hook_slam", atS: 0, family: "impact" },
         { id: "sfx_02", target: "motion_clip_01", target_kind: "motion_clip", atS: 0.35, family: "whoosh" },
         { id: "sfx_03", target: "source_lock", target_kind: "source_lock", atS: 2.2, family: "source_tick" },
-        { id: "sfx_04", target: "proof_card", target_kind: "proof_card", atS: 4.6, family: "transition_hit" },
-        { id: "sfx_05", target: "motion_clip_02", target_kind: "motion_clip", atS: 7, family: "whoosh" },
-        { id: "sfx_06", target: "motion_clip_03", target_kind: "motion_clip", atS: 13, family: "transition_hit" },
-        { id: "sfx_07", target: "motion_clip_04", target_kind: "motion_clip", atS: 20, family: "whoosh" },
-        { id: "sfx_08", target: "motion_clip_05", target_kind: "motion_clip", atS: 28, family: "transition_hit" },
+        { id: "sfx_04", target: "proof_card", target_kind: "proof_card", atS: 9, family: "transition_hit" },
+        { id: "sfx_05", target: "motion_clip_02", target_kind: "motion_clip", atS: 16, family: "whoosh" },
+        { id: "sfx_06", target: "motion_clip_03", target_kind: "motion_clip", atS: 22, family: "transition_hit" },
+        { id: "sfx_07", target: "motion_clip_04", target_kind: "motion_clip", atS: 30, family: "whoosh" },
+        { id: "sfx_08", target: "motion_clip_05", target_kind: "motion_clip", atS: 39, family: "transition_hit" },
       ],
       max_same_family_run: 1,
       mastering: {
@@ -179,6 +179,30 @@ test("Goal 07 director brain passes a timed plan with early visual change, motio
   assert.equal(report.timeline_plan.stories[0].timeline.length, 8);
   assert.equal(report.retention_intent_map.stories[0].first_1_5s_visual_change, true);
   assert.equal(report.retention_intent_map.stories[0].first_3s_strength, "strong");
+});
+
+test("Goal 07 director brain blocks source and proof cards that are too quick to read", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-short-card-dwell-"));
+  const shortCards = readyDirectorPlan("story-short-card-dwell");
+  for (const shot of shortCards.shot_plan) {
+    if (["source_lock", "proof_card"].includes(shot.kind)) {
+      shot.durationS = 2.2;
+    }
+  }
+  const storyPackage = await makePackage(root, "story-short-card-dwell", shortCards);
+
+  const report = await buildGoal07DirectorBrain({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-07"),
+    generatedAt: "2026-06-24T22:05:00.000Z",
+  });
+
+  const blockers = report.stories[0].blockers;
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(blockers.includes("director:card_dwell_too_short"));
+  assert.ok(blockers.includes("director:source_lock_dwell_too_short"));
+  assert.equal(report.stories[0].metrics.too_short_readable_card_count, 2);
 });
 
 test("Goal 07 director brain blocks upstream director holds without pretending the plan is ready", async () => {
@@ -377,6 +401,7 @@ test("Goal 07 director brain blocks weak first seconds, card-heavy edits and mis
     { id: "proof_1", kind: "proof_card", startS: 6.5, durationS: 5 },
     { id: "proof_2", kind: "proof_card", startS: 12, durationS: 5 },
   ];
+  weak.sound_transition_plan.duration_s = 30;
   weak.sfx_plan = { cues: [{ target: "hook_slam", atS: 0, family: "impact" }], cue_count: 1 };
   const storyPackage = await makePackage(root, "story-weak", weak);
 

@@ -1586,6 +1586,38 @@ test("goal batch packages repair fragment subjects before public packaging", () 
   assert.doesNotMatch(titles[1], /PUBG now/i);
 });
 
+test("goal batch packages make generic gameplay reveal scripts source-specific enough for transcript gates", () => {
+  const batch = buildGoalBatchPackages({
+    stories: [
+      {
+        id: "rss_resonance_gameplay",
+        title: "Resonance: A Plague Tale Legacy Combat and Exploration Gameplay",
+        source_type: "rss",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "GameSpot",
+          url: "https://www.gamespot.com/articles/resonance-a-plague-tale-legacy-combat-and-exploration-gameplay/1100-6532891/",
+          type: "gaming_press",
+        },
+        source_published_at: "2026-06-24T09:00:00.000Z",
+      },
+    ],
+    generatedAt: "2026-06-24T10:00:00.000Z",
+  });
+
+  const pack = batch.packages[0];
+  const manifest = pack.canonical_story_manifest;
+  const script = manifest.narration_script || manifest.full_script || "";
+
+  assert.equal(pack.script_scorecard.verdict, "viral_ready", pack.script_scorecard.blockers.join(", "));
+  assert.match(script, /Resonance/i);
+  assert.match(script, /camera|hit timing|enemy pressure|readable/i);
+  assert.match(script, /If\b.*\b(?:busy|launch|warning|argument)/i);
+  assert.doesNotMatch(script, /actual play|Players can finally judge|specifics on screen|promising trailer|trust at launch/i);
+  assert.ok(!pack.script_scorecard.blockers.includes("missing_story_specific_payoff"), JSON.stringify(pack.script_scorecard));
+  assert.ok(!pack.script_scorecard.blockers.includes("generic_player_test_template"), JSON.stringify(pack.script_scorecard));
+});
+
 test("goal batch packages generate viewer-facing scripts for current official RSS proof stories", () => {
   const batch = buildGoalBatchPackages({
     stories: [

@@ -808,6 +808,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
     assert.equal(repairReport.summary.script_blocked_package_count, 1);
+    assert.equal(repairReport.summary.script_rewrite_work_order_count, 1);
     assert.deepEqual(repairReport.summary.quarantined_package_ids, ["fresh_generic_story"]);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
     assert.equal(repairReport.summary.child_process_count, 9);
@@ -822,7 +823,27 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.match(repairReport.outputs.segment_validation_report, /official_trailer_segment_validation_apply_local\.json$/);
     assert.match(repairReport.outputs.real_motion_materialization_report, /real_motion_materialization_report\.json$/);
     assert.match(repairReport.outputs.materialized_motion_pack_dir, /output[\\/]studio-v4[\\/]motion-packs$/);
+    assert.match(
+      repairReport.outputs.script_rewrite_work_order,
+      /fresh_refill_script_rewrite_work_order\.json$/,
+    );
+    assert.match(
+      repairReport.outputs.script_rewrite_work_order_markdown,
+      /fresh_refill_script_rewrite_work_order\.md$/,
+    );
     assert.equal(repairReport.safety.no_publish, true);
+    const scriptRewriteWorkOrder = JSON.parse(
+      await fs.readFile(repairReport.outputs.script_rewrite_work_order, "utf8"),
+    );
+    assert.deepEqual(scriptRewriteWorkOrder.jobs.map((job) => job.story_id), ["fresh_generic_story"]);
+    assert.equal(scriptRewriteWorkOrder.jobs[0].repair_lane, "source_bound_script_rewrite");
+    assert.equal(scriptRewriteWorkOrder.jobs[0].safety.no_publish, true);
+    assert.equal(scriptRewriteWorkOrder.jobs[0].safety.no_db_mutation, true);
+    assert.match(scriptRewriteWorkOrder.jobs[0].current_script, /The hook here is/i);
+    assert.ok(
+      scriptRewriteWorkOrder.jobs[0].scorecard_blockers.includes("generic_player_test_template"),
+      JSON.stringify(scriptRewriteWorkOrder.jobs[0]),
+    );
     const candidateStories = JSON.parse(
       await fs.readFile(repairReport.outputs.candidate_stories, "utf8"),
     );

@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  handleGuardedLiveDispatchPublish,
   guardedPublishFailureMessage,
   guardedPublishResultShouldFailJob,
   readGuardedLiveExecutorPlanForScheduler,
@@ -64,6 +65,133 @@ test("guarded publish failure message includes the action and reason", () => {
     }),
     "guarded_publish_window_failed:story-1:instagram_reels:failed",
   );
+});
+
+test("guarded publish failure message includes a safe platform error detail", () => {
+  const message = guardedPublishFailureMessage({
+    guarded_live_dispatch: true,
+    status: "red",
+    action_id: "story-1:youtube_shorts",
+    outcome: "failed",
+    error: "YouTube upload failed: access_token=abc123 and quota exceeded",
+  });
+
+  assert.match(message, /^guarded_publish_window_failed:story-1:youtube_shorts:failed:/);
+  assert.match(message, /youtube_upload_failed/);
+  assert.match(message, /access_token_redacted/);
+  assert.doesNotMatch(message, /abc123/);
+});
+
+test("guarded publish handler preserves failed platform error in thrown job message", async () => {
+  const executorPath = require.resolve("../../lib/goal-guarded-live-dispatch-executor");
+  const dbPath = require.resolve("../../lib/db");
+  const notifyPath = require.resolve("../../notify");
+  const originalCache = new Map([
+    [executorPath, require.cache[executorPath]],
+    [dbPath, require.cache[dbPath]],
+    [notifyPath, require.cache[notifyPath]],
+  ]);
+  const originalEnv = {
+    PULSE_GUARDED_EXECUTOR_PLAN_PATH: process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH,
+  };
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-error-detail-"));
+  const planPath = path.join(root, "guarded_dispatch_executor_plan.json");
+  try {
+    await fs.writeJson(planPath, {
+      mode: "GUARDED_DISPATCH_EXECUTOR_PREFLIGHT",
+      handoff_ready_actions: [
+        {
+          action_id: "story-1:youtube_shorts",
+          story_id: "story-1",
+          platform: "youtube_shorts",
+          title: "A Failed Upload",
+        },
+      ],
+      safety: {
+        no_publish_triggered: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    });
+    process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH = planPath;
+    require.cache[executorPath] = {
+      id: executorPath,
+      filename: executorPath,
+      loaded: true,
+      exports: {
+        async selectNextGuardedLiveAction() {
+          return {
+            exhausted: false,
+            action_id: "story-1:youtube_shorts",
+            selected_action_ids: ["story-1:youtube_shorts"],
+            action: {
+              action_id: "story-1:youtube_shorts",
+              story_id: "story-1",
+              platform: "youtube_shorts",
+              title: "A Failed Upload",
+            },
+          };
+        },
+        async runGuardedLiveDispatchExecutor() {
+          return {
+            verdict: "RED",
+            summary: {
+              upload_attempt_count: 0,
+              db_mutation_count: 1,
+            },
+            actions: [
+              {
+                action_id: "story-1:youtube_shorts",
+                story_id: "story-1",
+                platform: "youtube_shorts",
+                outcome: "failed",
+                error: "YouTube upload failed: quota exceeded",
+                uploaded: false,
+                db_mutated: true,
+              },
+            ],
+            blocked_actions: [],
+          };
+        },
+        async writeGuardedLiveDispatchExecutorReport() {
+          return {};
+        },
+      },
+    };
+    require.cache[dbPath] = {
+      id: dbPath,
+      filename: dbPath,
+      loaded: true,
+      exports: {
+        async getStories() {
+          return [];
+        },
+      },
+    };
+    require.cache[notifyPath] = {
+      id: notifyPath,
+      filename: notifyPath,
+      loaded: true,
+      exports: async () => {},
+    };
+
+    await assert.rejects(
+      () => handleGuardedLiveDispatchPublish({ id: 123 }, { log() {} }),
+      /guarded_publish_window_failed:story-1:youtube_shorts:failed:youtube_upload_failed_quota_exceeded/,
+    );
+  } finally {
+    for (const [id, entry] of originalCache.entries()) {
+      if (entry) require.cache[id] = entry;
+      else delete require.cache[id];
+    }
+    if (originalEnv.PULSE_GUARDED_EXECUTOR_PLAN_PATH === undefined) {
+      delete process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH;
+    } else {
+      process.env.PULSE_GUARDED_EXECUTOR_PLAN_PATH = originalEnv.PULSE_GUARDED_EXECUTOR_PLAN_PATH;
+    }
+    await fs.remove(root);
+  }
 });
 
 test("scheduler refreshes a stale partial executor handoff from the guarded dispatch plan", async () => {

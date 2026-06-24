@@ -36,8 +36,8 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
-const MIN_OVERLAY_CARD_DURATION_S = 4;
-const MAX_OVERLAY_CARD_DURATION_S = 7.5;
+const MIN_OVERLAY_CARD_DURATION_S = 5.5;
+const MAX_OVERLAY_CARD_DURATION_S = 8.5;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
@@ -1196,7 +1196,7 @@ function overlayCardWindowsForStory(story = {}) {
       kind: "source_lock",
       text: openingText,
       startS: 0,
-      durationS: readableOverlayCardDurationS(openingText, { minS: 4 }),
+      durationS: readableOverlayCardDurationS(openingText),
     });
     windows.push(openingWindow);
   }
@@ -1207,21 +1207,21 @@ function overlayCardWindowsForStory(story = {}) {
       kind: "proof_card",
       text: headlineText,
       startS: headlineStartS,
-      durationS: readableOverlayCardDurationS(headlineText, { minS: 4.4 }),
+      durationS: readableOverlayCardDurationS(headlineText, { minS: MIN_OVERLAY_CARD_DURATION_S + 0.3 }),
     });
     const proofPrimaryWindow = overlayWindow({
       id: "proof_primary",
       kind: "proof_card",
       text: proofPrimaryText,
       startS: Math.max(9, headlineWindow.end_s + 0.8),
-      durationS: readableOverlayCardDurationS(proofPrimaryText, { minS: 4 }),
+      durationS: readableOverlayCardDurationS(proofPrimaryText),
     });
     const proofSecondaryWindow = overlayWindow({
       id: "proof_secondary",
       kind: "proof_card",
       text: proofSecondaryText,
       startS: Math.max(16, proofPrimaryWindow.end_s + 0.8),
-      durationS: readableOverlayCardDurationS(proofSecondaryText, { minS: 4 }),
+      durationS: readableOverlayCardDurationS(proofSecondaryText),
     });
     windows.push(
       headlineWindow,

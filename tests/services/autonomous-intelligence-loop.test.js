@@ -664,7 +664,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "--contract-out-dir",
       path.join(contractOutDir, "motion-hydrated"),
       "--v4-motion-pack-dir",
-      path.join(contractOutDir, "fresh_production_refill_repair", "motion-packs"),
+      path.join(__dirname, "..", "..", "output", "studio-v4", "motion-packs"),
       "--story-id",
       "fresh_xbox_story",
     ]);
@@ -680,7 +680,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
-    assert.equal(result.repair_evidence.child_processes.length, 8);
+    assert.equal(result.repair_evidence.child_processes.length, 9);
     assert.equal(result.motion_hydrated_refill.status, "completed");
     assert.equal(result.motion_hydrated_refill.green_count, 1);
     assert.match(result.motion_hydrated_refill.outputs.storyPackagesPath, /motion-hydrated[\\/]story-packages\.json$/);
@@ -715,6 +715,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.ok(
       childCalls.filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js").length >= 2,
       "expected fresh refill to rebuild V4 motion packs after segment validation",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-real-motion-materializer.js"),
+      "expected fresh refill to materialise validated official motion before hydrating packages",
     );
     const trailerReferenceCall = childCalls.find(
       (call) => call.args[0] === "tools/official-trailer-reference-resolver.js",
@@ -778,12 +782,35 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       /official_trailer_references_fresh_refill\.json$/,
       "expected refreshed motion pack to trust the same trailer reference report used for validation",
     );
+    const materializerCall = childCalls.find(
+      (call) => call.args[0] === "tools/goal-real-motion-materializer.js",
+    );
+    const workOrderIndex = materializerCall.args.indexOf("--work-order");
+    assert.match(
+      materializerCall.args[workOrderIndex + 1],
+      /fresh_refill_real_motion_work_order\.json$/,
+      "expected real-motion materializer to use the fresh refill work-order shell",
+    );
+    const materializerSegmentIndex = materializerCall.args.indexOf("--segment-report");
+    assert.match(
+      materializerCall.args[materializerSegmentIndex + 1],
+      /official_trailer_segment_validation_apply_local\.json$/,
+      "expected real-motion materializer to consume validated segment windows",
+    );
+    const materializerArtifactRootIndex = materializerCall.args.indexOf("--artifact-root");
+    assert.equal(materializerCall.args[materializerArtifactRootIndex + 1], outDir);
+    assert.ok(materializerCall.args.includes("--story-id"));
+    assert.equal(materializerCall.args[materializerCall.args.indexOf("--story-id") + 1], "fresh_xbox_story");
+    assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-clips") + 1], "5");
+    assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-families") + 1], "4");
+    assert.equal(materializerCall.args[materializerCall.args.indexOf("--max-clips") + 1], "8");
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
     assert.equal(repairReport.summary.script_blocked_package_count, 1);
     assert.deepEqual(repairReport.summary.quarantined_package_ids, ["fresh_generic_story"]);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
-    assert.equal(repairReport.summary.child_process_count, 8);
+    assert.equal(repairReport.summary.child_process_count, 9);
+    assert.equal(repairReport.summary.real_motion_materialization_status, "attempted");
     assert.match(repairReport.outputs.official_search_autofill_report, /official_search_intake_autofill\.json$/);
     assert.match(
       repairReport.outputs.official_search_autofill_template,
@@ -792,6 +819,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.match(repairReport.outputs.direct_media_intake_report, /official_direct_media_intake_report\.json$/);
     assert.match(repairReport.outputs.licensed_direct_media_report, /studio_v4_licensed_direct_media_acquisition\.json$/);
     assert.match(repairReport.outputs.segment_validation_report, /official_trailer_segment_validation_apply_local\.json$/);
+    assert.match(repairReport.outputs.real_motion_materialization_report, /real_motion_materialization_report\.json$/);
+    assert.match(repairReport.outputs.materialized_motion_pack_dir, /output[\\/]studio-v4[\\/]motion-packs$/);
     assert.equal(repairReport.safety.no_publish, true);
     const candidateStories = JSON.parse(
       await fs.readFile(repairReport.outputs.candidate_stories, "utf8"),

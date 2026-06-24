@@ -25,8 +25,8 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 const DEFAULT_CHANNEL = "pulse-gaming";
-const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = 4;
-const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = 7.5;
+const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = 5.5;
+const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = 8.5;
 
 const CARD_KINDS = [
   "source",

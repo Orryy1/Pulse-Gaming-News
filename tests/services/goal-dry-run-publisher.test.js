@@ -830,9 +830,9 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         rendered_duration_s: 42,
         clips: 6,
         overlay_card_windows: [
-          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 4, duration_s: 4 },
-          { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.4, duration_s: 4.4 },
-          { id: "proof_primary", kind: "proof_card", start_s: 9, end_s: 13, duration_s: 4 },
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 5.5, duration_s: 5.5 },
+          { id: "headline_card", kind: "proof_card", start_s: 5.7, end_s: 11.5, duration_s: 5.8 },
+          { id: "proof_primary", kind: "proof_card", start_s: 12.3, end_s: 17.8, duration_s: 5.5 },
         ],
       },
     },

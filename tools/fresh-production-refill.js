@@ -29,6 +29,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     outDir: path.join(ROOT, "output", "fresh-green-refill", stamp, "goal-proof-batch"),
     contractOutDir: path.join(ROOT, "output", "fresh-green-refill", stamp, "goal-contract"),
     repairEvidence: true,
+    storiesFile: "",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -44,6 +45,8 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     else if (arg.startsWith("--out-dir=")) args.outDir = resolveRepoPath(arg.slice("--out-dir=".length));
     else if (arg === "--contract-out-dir") args.contractOutDir = resolveRepoPath(argv[++i] || args.contractOutDir);
     else if (arg.startsWith("--contract-out-dir=")) args.contractOutDir = resolveRepoPath(arg.slice("--contract-out-dir=".length));
+    else if (arg === "--stories-file") args.storiesFile = resolveRepoPath(argv[++i] || "");
+    else if (arg.startsWith("--stories-file=")) args.storiesFile = resolveRepoPath(arg.slice("--stories-file=".length));
     else if (arg === "--no-repair-evidence") args.repairEvidence = false;
   }
   if (!Number.isFinite(args.limit) || args.limit <= 0) args.limit = 12;
@@ -66,6 +69,7 @@ function usage() {
     "  --rss-per-feed <n>       Live RSS rows per feed, default 4",
     "  --out-dir <path>         Proof-package output directory",
     "  --contract-out-dir <p>   Contract/report output directory",
+    "  --stories-file <path>    Optional local fresh official/direct-media story seed file",
     "  --no-repair-evidence     Skip local repair-evidence child commands",
     "  --json                   Print machine-readable result",
   ].join("\n");
@@ -87,6 +91,7 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
         rss_per_feed: args.rssPerFeed,
         out_dir: args.outDir,
         contract_out_dir: args.contractOutDir,
+        seed_stories_file: args.storiesFile,
         repair_evidence: args.repairEvidence,
         reason: "operator_safe_fresh_production_refill",
       },

@@ -1178,6 +1178,21 @@ test("goal proof package falls back to story source evidence when governance evi
   story.source_name = "Xbox Wire";
   story.primary_source_url = "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/";
   story.source_published_at = "2026-06-10T00:00:00.000Z";
+  story.approved_direct_media_url = "https://assets.xbox.com/halo-campaign-evolved/gameplay-trailer.mp4";
+  story.direct_media_candidates = [
+    {
+      direct_media_url: story.approved_direct_media_url,
+      label: "Campaign Gameplay Trailer",
+      source_family: "halo_campaign_gameplay_trailer",
+      source_type: "official_xbox_video",
+    },
+    {
+      direct_media_url: "https://assets.xbox.com/halo-campaign-evolved/developer-direct.mp4",
+      label: "Developer Direct",
+      source_family: "halo_campaign_developer_direct",
+      source_type: "official_xbox_video",
+    },
+  ];
   story.confirmed_claims = [
     "Xbox Wire says Halo: Campaign Evolved showed Assault on the Control Room in hands-on demo form.",
   ];
@@ -1191,8 +1206,45 @@ test("goal proof package falls back to story source evidence when governance evi
   assert.equal(pack.source_manifest.primary_source.name, "Xbox Wire");
   assert.equal(pack.source_manifest.primary_source.url, story.primary_source_url);
   assert.equal(pack.source_manifest.primary_source.published_at, story.source_published_at);
+  assert.equal(
+    pack.source_manifest.primary_source.direct_media_url_if_available,
+    story.approved_direct_media_url,
+  );
+  assert.equal(pack.source_manifest.direct_media_url_if_available, story.approved_direct_media_url);
+  assert.equal(pack.source_manifest.approved_direct_media_url, story.approved_direct_media_url);
+  assert.deepEqual(
+    pack.source_manifest.direct_media_candidates.map((candidate) => candidate.source_family),
+    ["halo_campaign_gameplay_trailer", "halo_campaign_developer_direct"],
+  );
+  assert.deepEqual(
+    pack.source_manifest.primary_source.direct_media_candidates.map((candidate) => candidate.direct_media_url),
+    [
+      "https://assets.xbox.com/halo-campaign-evolved/gameplay-trailer.mp4",
+      "https://assets.xbox.com/halo-campaign-evolved/developer-direct.mp4",
+    ],
+  );
   assert.deepEqual(pack.source_manifest.blockers, []);
   assert.deepEqual(pack.claim_inventory.confirmed, story.confirmed_claims);
+});
+
+test("goal proof package preserves explicit Grand Theft Auto VI canonical subject", () => {
+  const story = greenStory("gta-vi-proof");
+  story.title = "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight";
+  story.canonical_subject = "Grand Theft Auto VI";
+  story.canonical_game = "Grand Theft Auto VI";
+  story.suggested_thumbnail_text = "GTA VI PREORDER TEST";
+  story.full_script =
+    "Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI. Rockstar Newswire says the new cover art is live and pre-orders open on June 25. Pre-order because it is gaming's safest blockbuster, or wait until Rockstar proves what the money actually buys. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-24T10:00:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(pack.canonical_story_manifest.canonical_game, "Grand Theft Auto VI");
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "GTA VI PREORDER TEST");
 });
 
 test("goal proof package separates adjacent story formats for anti-spam variation", () => {

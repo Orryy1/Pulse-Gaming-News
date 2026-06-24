@@ -26,6 +26,8 @@ test("fresh production refill CLI is registered and parses safe local-only optio
     "output/refill-proof",
     "--contract-out-dir",
     "output/refill-contract",
+    "--stories-file",
+    "output/manual-seeds/gta-vi.json",
     "--no-repair-evidence",
   ], { now: new Date("2026-06-24T13:40:00.000Z") });
 
@@ -34,6 +36,7 @@ test("fresh production refill CLI is registered and parses safe local-only optio
   assert.equal(args.rssPerFeed, 5);
   assert.match(args.outDir, /output[\\/]refill-proof$/);
   assert.match(args.contractOutDir, /output[\\/]refill-contract$/);
+  assert.match(args.storiesFile, /output[\\/]manual-seeds[\\/]gta-vi\.json$/);
   assert.equal(args.repairEvidence, false);
 });
 
@@ -91,6 +94,8 @@ test("fresh production refill CLI delegates to the scheduler refill handler with
       outDir,
       "--contract-out-dir",
       contractOutDir,
+      "--stories-file",
+      path.join(tmp, "seed-stories.json"),
     ], {
       stdout: { write: (value) => stdout.push(String(value)) },
       stderr: { write: (value) => stderr.push(String(value)) },
@@ -102,6 +107,7 @@ test("fresh production refill CLI delegates to the scheduler refill handler with
     assert.equal(calls[0].job.payload.rss_per_feed, 4);
     assert.equal(calls[0].job.payload.out_dir, outDir);
     assert.equal(calls[0].job.payload.contract_out_dir, contractOutDir);
+    assert.equal(calls[0].job.payload.seed_stories_file, path.join(tmp, "seed-stories.json"));
     assert.equal(calls[0].job.payload.repair_evidence, true);
     assert.equal(calls[0].job.payload.reason, "operator_safe_fresh_production_refill");
     assert.equal(result.status, "completed");

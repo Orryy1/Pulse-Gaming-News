@@ -42,6 +42,33 @@ test("Visual V3 plans a Steam chart, entity fly-in and source lock for stat-led 
   assert.equal(plan.events.find((event) => event.kind === "entity_fly_in").entity, "Forza Horizon 6");
 });
 
+test("Visual V3 gives dense information overlays readable mobile hold time", () => {
+  const plan = buildVisualV3OverlayPlan({
+    story: {
+      id: "forza-readable-v3",
+      title: "Forza Horizon 6 Hits 92 on Metacritic as Steam Numbers Skyrocket to 178,009",
+      source_name: "Twisted Voxel",
+      full_script:
+        "Twisted Voxel says Forza Horizon 6 now sits on a 92 Metacritic aggregate, with SteamDB showing 178,009 concurrent users. The important context is that the Steam peak came during Premium Edition early access, around $120 before standard launch.",
+    },
+    words: wordsFrom(
+      "Twisted Voxel says Forza Horizon 6 now sits on a ninety two Metacritic aggregate with SteamDB showing one hundred and seventy eight thousand and nine concurrent users",
+    ),
+    durationS: 70,
+  });
+
+  const infoCards = plan.events.filter((event) =>
+    /^(?:steam_chart|review_score_card|ranking_snap|source_lock|caveat_card|price_snap)$/.test(event.kind),
+  );
+
+  assert.ok(infoCards.length >= 4);
+  assert.equal(
+    infoCards.every((event) => Number(event.durationS) >= 5.5),
+    true,
+    JSON.stringify(infoCards.map((event) => ({ kind: event.kind, durationS: event.durationS }))),
+  );
+});
+
 test("Visual V3 trims review-score headline verbs from entity fly-ins", () => {
   const plan = buildVisualV3OverlayPlan({
     story: {
@@ -249,7 +276,7 @@ test("Visual V3 filter emits a labelled ffmpeg overlay chain", () => {
   assert.match(filter, /STEAM PEAK/);
   assert.match(filter, /130\\,000/);
   assert.match(filter, /FORZA HORIZON 6/);
-  assert.match(filter, /between\(t\\,6\.00\\,10\.00\)/);
+  assert.match(filter, /between\(t\\,6\.00\\,11\.50\)/);
 });
 
 test("Visual V3 chart overlays avoid empty placeholder bars and delayed box-only flashes", () => {
@@ -277,8 +304,38 @@ test("Visual V3 chart overlays avoid empty placeholder bars and delayed box-only
 
   assert.doesNotMatch(filter, /color=white@0\.(26|36)/);
   assert.ok(drawboxSegments.every((segment) => !segment.includes("6.00\\,10.00")));
-  assert.match(filter, /drawbox=[^;\n]+between\(t\\,6\.12\\,10\.00\)/);
-  assert.match(filter, /drawtext=[^;\n]+STEAM PEAK[^;\n]+between\(t\\,6\.00\\,10\.00\)/);
+  assert.match(filter, /drawbox=[^;\n]+between\(t\\,6\.12\\,11\.50\)/);
+  assert.match(filter, /drawtext=[^;\n]+STEAM PEAK[^;\n]+between\(t\\,6\.00\\,11\.50\)/);
+});
+
+test("Visual V3 drops information overlays instead of squeezing them into unreadable windows", () => {
+  const plan = buildVisualV3OverlayPlan({
+    story: {
+      id: "forza-short-windows",
+      title: "Forza Horizon 6 hits 130,000 concurrent players on Steam",
+      full_script:
+        "GamesRadar reports Forza Horizon 6 hit 130,000 concurrent players on Steam during early access.",
+      publisher: "GamesRadar",
+    },
+    words: wordsFrom(
+      "GamesRadar reports Forza Horizon 6 hit one hundred and thirty thousand concurrent players on Steam during early access",
+    ),
+    durationS: 18,
+    scenes: [
+      { type: "opener", duration: 4, entity: "Forza Horizon 6" },
+      { type: "card.source", duration: 3.2 },
+      { type: "clip", duration: 3.8, entity: "Forza Horizon 6" },
+      { type: "card.quote", duration: 3.4 },
+      { type: "clip", duration: 3.6, entity: "Forza Horizon 6" },
+    ],
+  });
+
+  const infoCards = plan.events.filter((event) =>
+    /^(?:steam_chart|review_score_card|ranking_snap|source_lock|caveat_card|price_snap)$/.test(event.kind),
+  );
+
+  assert.equal(infoCards.length, 0);
+  assert.ok(plan.blockers.includes("visual_v3_missing_steam_chart"));
 });
 
 test("Visual V3 caveat cards stay out of the subtitle band", () => {

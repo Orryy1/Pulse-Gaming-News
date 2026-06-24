@@ -789,6 +789,31 @@ test("goal batch package proof preparation rewrites source-backed fallback narra
   assert.equal(evaluateGoalPublicCopy(manifest).verdict, "pass");
 });
 
+test("goal batch package proof preparation writes concrete GTA VI preorder scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "gta-vi-cover-art-proof",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+      primary_source: "Rockstar Newswire",
+      source_type: "official",
+      article_url:
+        "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+      full_script: "source-backed update clean read",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "Grand Theft Auto VI");
+  assert.match(prepared.full_script, /^Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI/i);
+  assert.match(prepared.full_script, /pre-orders open on June 25/i);
+  assert.match(prepared.full_script, /price, editions, bonuses/i);
+  assert.match(prepared.full_script, /what the money actually buys/i);
+  assert.equal(prepared.suggested_thumbnail_text, "GTA VI PREORDER TEST");
+  assert.doesNotMatch(prepared.full_script, /source-backed update|this story finally has something specific/i);
+});
+
 test("goal batch owned fallback motion clips use readable card dwell", () => {
   const prepared = prepareStoryForGoalProof(
     {

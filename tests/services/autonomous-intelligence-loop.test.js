@@ -840,6 +840,285 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
   }
 });
 
+test("fresh production refill handler can run from a seeded official story file", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-seed-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const seedStoriesFile = path.join(tmp, "official-direct-media-seeds.json");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const capturedArgCalls = [];
+
+  try {
+    await fs.writeFile(seedStoriesFile, JSON.stringify([
+      {
+        id: "rockstar_gta_vi_cover_art_20260624",
+        title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+        source_name: "Rockstar Newswire",
+        primary_source_url:
+          "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+        approved_direct_media_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+      },
+    ]));
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          capturedArgCalls.push(args);
+          await fs.mkdir(contractOutDir, { recursive: true });
+          const storyPackagesPath = path.join(contractOutDir, "story-packages.json");
+          await fs.writeFile(storyPackagesPath, JSON.stringify([
+            {
+              story_id: "rockstar_gta_vi_cover_art_20260624",
+              verdict: "GREEN",
+              blockers: [],
+              artifact_dir: path.join(outDir, "rockstar_gta_vi_cover_art_20260624"),
+            },
+          ]));
+          return {
+            batch: {
+              summary: {
+                story_count: 1,
+                green_count: 1,
+                red_count: 0,
+              },
+            },
+            outputs: {
+              storyPackagesPath,
+              batchReportPath: path.join(contractOutDir, "story-packages-report.json"),
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          rss_per_feed: 4,
+          seed_stories_file: seedStoriesFile,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+        },
+      },
+      {
+        log() {},
+      },
+    );
+
+    assert.deepEqual(capturedArgCalls[0], [
+      "--stories-file",
+      seedStoriesFile,
+      "--limit",
+      "1",
+      "--out-dir",
+      outDir,
+      "--contract-out-dir",
+      contractOutDir,
+    ]);
+    assert.equal(result.status, "completed");
+    assert.equal(result.story_count, 1);
+    assert.equal(result.green_count, 1);
+    assert.equal(result.repair_evidence.status, "not_needed");
+    assert.equal(result.safety.no_publish, true);
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill repair preserves Rockstar direct media candidates", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-rockstar-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const artifactDir = path.join(outDir, "rockstar_gta_vi_preorder_cover_art_20260624");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const childCalls = [];
+
+  try {
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          const outIndex = args.indexOf("--out-dir");
+          const contractIndex = args.indexOf("--contract-out-dir");
+          const effectiveOutDir = outIndex >= 0 ? args[outIndex + 1] : outDir;
+          const effectiveContractOutDir = contractIndex >= 0 ? args[contractIndex + 1] : contractOutDir;
+          const effectiveArtifactDir = path.join(effectiveOutDir, "rockstar_gta_vi_preorder_cover_art_20260624");
+          await fs.mkdir(effectiveArtifactDir, { recursive: true });
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: "rockstar_gta_vi_preorder_cover_art_20260624",
+              canonical_subject: "Grand Theft Auto VI",
+              canonical_game: "Grand Theft Auto VI",
+              canonical_title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+              selected_title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+              primary_source: "Rockstar Newswire",
+              primary_source_url:
+                "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+              narration_script:
+                "Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI. Rockstar Newswire says the new cover art is live and pre-orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
+            }),
+          );
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "source_manifest.json"),
+            JSON.stringify({
+              story_id: "rockstar_gta_vi_preorder_cover_art_20260624",
+              primary_source: {
+                name: "Rockstar Newswire",
+                url: "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+                type: "official",
+                published_at: "2026-06-24T00:00:00.000Z",
+                age_hours: 1,
+                direct_media_candidates: [
+                  {
+                    direct_media_url:
+                      "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+                    source_title: "Official Cover Art Animation",
+                    source_family: "rockstar_gta_vi_cover_art_animation",
+                    source_type: "official_game_website_media_page",
+                  },
+                  {
+                    direct_media_url:
+                      "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+                    source_title: "Grand Theft Auto VI Trailer 2",
+                    source_family: "rockstar_gta_vi_trailer_2",
+                    source_type: "official_game_website_media_page",
+                  },
+                  {
+                    direct_media_url:
+                      "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_1/GTAVI_Trailer_1.mp4",
+                    source_title: "Grand Theft Auto VI Trailer 1",
+                    source_family: "rockstar_gta_vi_trailer_1",
+                    source_type: "official_game_website_media_page",
+                  },
+                ],
+              },
+              freshness_gate: "pass",
+              coherence_gate: "pass",
+              blockers: [],
+            }),
+          );
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "script_scorecard.json"),
+            JSON.stringify({
+              story_id: "rockstar_gta_vi_preorder_cover_art_20260624",
+              verdict: "viral_ready",
+              blockers: [],
+            }),
+          );
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: "rockstar_gta_vi_preorder_cover_art_20260624",
+                artifact_dir: effectiveArtifactDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+            ]),
+          );
+          return {
+            batch: {
+              summary: { story_count: 1, green_count: 0, red_count: 1 },
+            },
+            outputs: {
+              storyPackagesPath,
+              batchReportPath: path.join(effectiveContractOutDir, "story-packages-report.json"),
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          if (options.args[0] === "tools/official-search-intake-autofill.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          if (options.args[0] === "tools/official-direct-media-discovery.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    const entries = JSON.parse(
+      await fs.readFile(repairReport.outputs.official_source_entries, "utf8"),
+    );
+    assert.equal(result.repair_evidence.official_source_entries_count, 3);
+    assert.equal(repairReport.summary.official_source_entries_count, 3);
+    assert.deepEqual(
+      entries.map((entry) => entry.source_family),
+      [
+        "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_cover_art_animation",
+        "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_2",
+        "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_1",
+      ],
+    );
+    assert.equal(
+      entries.every((entry) => entry.direct_media_provided === true && entry.downloads_allowed === false),
+      true,
+    );
+    const directMediaCall = childCalls.find(
+      (call) => call.args[0] === "tools/official-direct-media-discovery.js",
+    );
+    assert.equal(
+      directMediaCall.args[directMediaCall.args.indexOf("--input") + 1],
+      repairReport.outputs.official_source_entries,
+    );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("autonomous feedback monitor enqueues safe follow-ups for operational feedback", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const feedbackMonitorPath = require.resolve("../../lib/ops/autonomous-feedback-monitor");

@@ -418,23 +418,6 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
               blockers: [],
             }),
           );
-          await fs.writeFile(
-            path.join(contractOutDir, "story-packages.json"),
-            JSON.stringify([
-              {
-                story_id: "fresh_xbox_story",
-                artifact_dir: artifactDir,
-                verdict: "RED",
-                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
-              },
-              {
-                story_id: "fresh_gamespot_story",
-                artifact_dir: path.join(outDir, "fresh_gamespot_story"),
-                verdict: "RED",
-                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
-              },
-            ]),
-          );
           const gamespotDir = path.join(outDir, "fresh_gamespot_story");
           await fs.mkdir(gamespotDir, { recursive: true });
           await fs.writeFile(
@@ -469,12 +452,84 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
               blockers: [],
             }),
           );
+          const genericDir = path.join(outDir, "fresh_generic_story");
+          await fs.mkdir(genericDir, { recursive: true });
+          await fs.writeFile(
+            path.join(genericDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_generic_story",
+              canonical_subject: "GTA 6",
+              canonical_game: "GTA 6",
+              canonical_title: "Why GTA 6 Could Split Players",
+              selected_title: "Why GTA 6 Could Split Players",
+              primary_source: "Xbox Wire",
+              primary_source_url: "https://news.xbox.com/en-us/2026/06/19/gta-6-demo/",
+              source_published_at: "Fri, 19 Jun 2026 09:00:00 +0000",
+              narration_script:
+                "The hook here is that GTA 6 could split players because this story finally has something specific to judge. Follow Pulse Gaming so you never miss a beat.",
+            }),
+          );
+          await fs.writeFile(
+            path.join(genericDir, "source_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_generic_story",
+              primary_source: {
+                name: "Xbox Wire",
+                url: "https://news.xbox.com/en-us/2026/06/19/gta-6-demo/",
+                type: "rss",
+                published_at: "Fri, 19 Jun 2026 09:00:00 +0000",
+                age_hours: 1,
+              },
+              freshness_gate: "pass",
+              coherence_gate: "pass",
+              blockers: [],
+            }),
+          );
+          await fs.writeFile(
+            path.join(genericDir, "script_scorecard.json"),
+            JSON.stringify({
+              story_id: "fresh_generic_story",
+              verdict: "rewrite_required",
+              blockers: [
+                "generic_title_template",
+                "generic_could_split_title_template",
+                "generic_player_test_template",
+              ],
+            }),
+          );
+          await fs.writeFile(
+            path.join(contractOutDir, "story-packages.json"),
+            JSON.stringify([
+              {
+                story_id: "fresh_xbox_story",
+                artifact_dir: artifactDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+              {
+                story_id: "fresh_gamespot_story",
+                artifact_dir: gamespotDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+              {
+                story_id: "fresh_generic_story",
+                artifact_dir: genericDir,
+                verdict: "RED",
+                blockers: [
+                  "script:rewrite_required",
+                  "footage:v4_motion_blocked",
+                  "director:director_blocked",
+                ],
+              },
+            ]),
+          );
           return {
             batch: {
               summary: {
-                story_count: 12,
+                story_count: 13,
                 green_count: hydratedPass ? 3 : 2,
-                red_count: hydratedPass ? 9 : 10,
+                red_count: hydratedPass ? 10 : 11,
               },
             },
             outputs: {
@@ -595,9 +650,9 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       path.join(contractOutDir, "fresh_production_refill_repair", "motion-packs"),
     ]);
     assert.equal(result.status, "completed");
-    assert.equal(result.story_count, 12);
+    assert.equal(result.story_count, 13);
     assert.equal(result.green_count, 3);
-    assert.equal(result.red_count, 9);
+    assert.equal(result.red_count, 10);
     assert.equal(result.safety.local_only, true);
     assert.equal(result.safety.no_publish, true);
     assert.equal(result.outputs.storyPackagesPath, path.join(contractOutDir, "story-packages.json"));
@@ -702,6 +757,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
+    assert.equal(repairReport.summary.script_blocked_package_count, 1);
+    assert.deepEqual(repairReport.summary.quarantined_package_ids, ["fresh_generic_story"]);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
     assert.equal(repairReport.summary.child_process_count, 8);
     assert.match(repairReport.outputs.official_search_autofill_report, /official_search_intake_autofill\.json$/);
@@ -713,6 +770,14 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.match(repairReport.outputs.licensed_direct_media_report, /studio_v4_licensed_direct_media_acquisition\.json$/);
     assert.match(repairReport.outputs.segment_validation_report, /official_trailer_segment_validation_apply_local\.json$/);
     assert.equal(repairReport.safety.no_publish, true);
+    const candidateStories = JSON.parse(
+      await fs.readFile(repairReport.outputs.candidate_stories, "utf8"),
+    );
+    assert.deepEqual(
+      candidateStories.map((story) => story.story_id),
+      ["fresh_xbox_story"],
+      "script-blocked generic packages must not enter motion repair or hydrated refill inputs",
+    );
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

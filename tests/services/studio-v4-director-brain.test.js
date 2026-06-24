@@ -410,6 +410,59 @@ test("Visual V4 Director does not pad premium motion with repeated source-family
   assert.equal(new Set(motionShots.map((shot) => shot.source_family)).size, 1);
 });
 
+test("Visual V4 Director does not count timestamp windows from the same source video as distinct assets", () => {
+  const repeatedBaseSourceClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `granblue-window-${index + 1}`,
+    source_family: `playstation_blog_granblue_window_${index + 1}`,
+    base_source_family: index < 3
+      ? "url:https://example.com/granblue-trailer-a.mp4"
+      : "url:https://example.com/granblue-trailer-b.mp4",
+    path: `C:\\media\\granblue-window-${index + 1}.mp4`,
+    durationS: 2.6,
+    validated: true,
+  }));
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "granblue-window-repeat-risk",
+      title: "Granblue Fantasy Relink Needs Better Footage Variety",
+      full_script:
+        "Granblue Fantasy Relink has official footage, but five slices from two MP4s still look like loops when they repeat in a Short.",
+    },
+    footagePlan: {
+      readiness: {
+        status: "ready",
+        blockers: [],
+      },
+      motion_budget: {
+        required_motion_scenes: 5,
+        available_motion_clips: repeatedBaseSourceClips.length,
+        required_distinct_families: 4,
+        required_distinct_source_assets: 4,
+        available_distinct_motion_families: repeatedBaseSourceClips.length,
+        available_distinct_source_assets: 2,
+        max_static_card_ratio: 0.22,
+        max_static_card_seconds: 12,
+        target_motion_ratio: 0.68,
+      },
+      motion_inventory: {
+        accepted_local_clips: repeatedBaseSourceClips,
+      },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(plan.readiness.status, "director_blocked");
+  assert.ok(plan.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
+  assert.ok(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"));
+  assert.ok(plan.readiness.blockers.includes("distinct_motion_source_assets_minimum_not_met"));
+  assert.equal(motionShots.length, 2);
+  assert.equal(new Set(motionShots.map((shot) => shot.base_source_family)).size, 2);
+  assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 2);
+});
+
 test("Visual V4 Director normalises compact Steam k metrics into chart numbers", () => {
   const footagePlan = buildFootageEmpirePlan({
     story: {

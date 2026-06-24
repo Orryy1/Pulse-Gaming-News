@@ -205,6 +205,36 @@ test("Goal 07 director brain blocks source and proof cards that are too quick to
   assert.equal(report.stories[0].metrics.too_short_readable_card_count, 2);
 });
 
+test("Goal 07 director brain blocks repeated timestamp windows from the same base video", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-base-source-repeat-"));
+  const repeatedBasePlan = readyDirectorPlan("story-base-source-repeat");
+  let index = 0;
+  for (const shot of repeatedBasePlan.shot_plan) {
+    if (shot.kind !== "motion_clip") continue;
+    index += 1;
+    shot.source_family = `halo_campaign_window_${index}`;
+    shot.base_source_family = index <= 3
+      ? "url:https://example.com/halo-campaign-trailer-a.mp4"
+      : "url:https://example.com/halo-campaign-trailer-b.mp4";
+  }
+  repeatedBasePlan.shot_budget.min_distinct_motion_source_assets = 4;
+  repeatedBasePlan.shot_budget.available_distinct_motion_source_assets = 2;
+  const storyPackage = await makePackage(root, "story-base-source-repeat", repeatedBasePlan);
+
+  const report = await buildGoal07DirectorBrain({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-07"),
+    generatedAt: "2026-06-24T22:20:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].blockers.includes("director:distinct_motion_source_assets_minimum_not_met"));
+  assert.equal(report.stories[0].metrics.motion_shot_count, 5);
+  assert.equal(report.stories[0].metrics.distinct_motion_family_count, 5);
+  assert.equal(report.stories[0].metrics.distinct_motion_source_asset_count, 2);
+});
+
 test("Goal 07 director brain blocks upstream director holds without pretending the plan is ready", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-upstream-"));
   const blocked = readyDirectorPlan("story-blocked");

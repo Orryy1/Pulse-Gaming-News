@@ -209,13 +209,13 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 3.3],
+      ["opening_source_lock", "source_lock", 4],
       ["headline_card", "proof_card", 4.4],
-      ["proof_primary", "proof_card", 3.4],
-      ["proof_secondary", "proof_card", 3.3],
+      ["proof_primary", "proof_card", 4],
+      ["proof_secondary", "proof_card", 4],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= 2.5));
+  assert.ok(windows.every((window) => window.duration_s >= 4));
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
@@ -1250,7 +1250,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,3\.3\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,4\.0\)'/);
   assert.match(chain, /0x38BDF8@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });

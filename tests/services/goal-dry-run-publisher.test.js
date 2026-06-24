@@ -830,9 +830,9 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         rendered_duration_s: 42,
         clips: 6,
         overlay_card_windows: [
-          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 3.3, duration_s: 3.3 },
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 4, duration_s: 4 },
           { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.4, duration_s: 4.4 },
-          { id: "proof_primary", kind: "proof_card", start_s: 9, end_s: 12.4, duration_s: 3.4 },
+          { id: "proof_primary", kind: "proof_card", start_s: 9, end_s: 13, duration_s: 4 },
         ],
       },
     },
@@ -961,6 +961,58 @@ test("goal dry-run publisher blocks neighbouring windows overused from the same 
   assert.equal(
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse[0].count,
     5,
+  );
+});
+
+test("goal dry-run publisher blocks even two final cuts from the same trailer base", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-two-window-base-source-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "two-window-base-source-story",
+    "GREEN",
+    "Street Fighter 6 Just Revealed A Rushdown Problem",
+    { canonicalSubject: "Street Fighter 6" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const sameBaseUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/source/hls_264_master.m3u8?t=1782095041";
+  const sameBaseClips = [36, 42].map((startS, index) =>
+    directMotionClipFixture({
+      id: `sf6-same-trailer-${index + 1}`,
+      path: `motion/sf6-same-trailer-${index + 1}.mp4`,
+      sourceUrl: sameBaseUrl,
+      sourceFamily:
+        `url:https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/source/hls_264_master.m3u8_window_${startS}_5`,
+      startS,
+      durationS: 5,
+    }),
+  );
+  const otherClips = Array.from({ length: 6 }, (_, index) =>
+    directMotionClipFixture({
+      id: `sf6-distinct-${index + 1}`,
+      path: `motion/sf6-distinct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/street-fighter-6/distinct-${index + 1}.mp4`,
+      sourceFamily: `street_fighter_6_distinct_source_${index + 1}`,
+      startS: index * 7,
+      durationS: 5,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, [...sameBaseClips, ...otherClips]);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:20:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse.map(
+      (entry) => ({ count: entry.count, share: entry.share }),
+    ),
+    [{ count: 2, share: 0.25 }],
   );
 });
 

@@ -4418,8 +4418,8 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
   });
   await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.6 },
-      { id: "proof_card", kind: "proof_card", startS: 4.45, durationS: 2.8 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 4 },
+      { id: "proof_card", kind: "proof_card", startS: 4.45, durationS: 4.2 },
     ],
   });
 

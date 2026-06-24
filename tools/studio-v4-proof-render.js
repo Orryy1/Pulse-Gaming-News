@@ -36,6 +36,8 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
+const MIN_OVERLAY_CARD_DURATION_S = 4;
+const MAX_OVERLAY_CARD_DURATION_S = 7.5;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
@@ -562,16 +564,19 @@ function sceneClipPath(clip) {
 }
 
 function normaliseSceneSourceKey(value = "") {
-  return firstText(value)
+  const withoutQuery = firstText(value)
     .toLowerCase()
     .replace(/\\/g, "/")
-    .replace(/[?#].*$/, "")
+    .replace(/[?#].*$/, "");
+  return withoutQuery
+    .replace(/\.(?:mp4|mov|webm|mkv|m3u8|mpd)$/i, "")
     .replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "")
     .replace(/(?:[_/-]clip[_/-]?\d+)$/i, "")
     .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "");
 }
 
 function sceneClipBaseSourceKey(clip = {}) {
+  if (typeof clip === "string") return normaliseSceneSourceKey(clip);
   if (!clip || typeof clip !== "object") return "";
   const explicit = normaliseSceneSourceKey(
     clip.base_source_family ||
@@ -1093,49 +1098,87 @@ function drawtextLinesForBlock(block, { fontOpt, fontcolor, enable, shadow = tru
   return filters;
 }
 
+function readableOverlayCardDurationS(value = "", { minS = MIN_OVERLAY_CARD_DURATION_S } = {}) {
+  const text = firstText(value);
+  if (!text) return minS;
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(text) ? 0.35 : 0;
+  const computed = Math.max(minS, 0.85 * words + 1 + longTokenPenalty);
+  return Number(Math.min(MAX_OVERLAY_CARD_DURATION_S, Math.ceil(computed * 10) / 10).toFixed(1));
+}
+
+function overlayWindow({
+  id,
+  kind,
+  startS,
+  durationS,
+  text = "",
+  source = "studio_v4_overlay_chain",
+}) {
+  const start = Number(startS.toFixed(2));
+  const duration = Number(durationS.toFixed(2));
+  return {
+    id,
+    kind,
+    text,
+    start_s: start,
+    end_s: Number((start + duration).toFixed(2)),
+    duration_s: duration,
+    source,
+  };
+}
+
 function overlayCardWindowsForStory(story = {}) {
   const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
   const suppressOpeningStoryCard =
     suppressAllStoryCards ||
     story.suppress_opening_story_cards === true ||
     String(story.visual_repair_lane || "").trim() === "visual_first_frame_rerender";
+  const layout = buildOverlayLayout({ story });
+  const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
+  const openingText = firstText(blockById.hook_card?.text, story.first_frame_text, story.title);
+  const headlineText = firstText(blockById.headline_card?.text, story.thumbnail_headline, story.title);
+  const proofPrimaryText = firstText(blockById.proof_primary?.text, story.proof_card_primary, story.player_impact);
+  const proofSecondaryText = firstText(blockById.proof_secondary?.text, story.proof_card_secondary, story.player_impact);
   const windows = [];
+  let openingWindow = null;
   if (!suppressOpeningStoryCard) {
-    windows.push({
+    openingWindow = overlayWindow({
       id: "opening_source_lock",
       kind: "source_lock",
-      start_s: 0,
-      end_s: 4,
-      duration_s: 4,
-      source: "studio_v4_overlay_chain",
+      text: openingText,
+      startS: 0,
+      durationS: readableOverlayCardDurationS(openingText, { minS: 4 }),
     });
+    windows.push(openingWindow);
   }
   if (!suppressAllStoryCards) {
+    const headlineStartS = Math.max(4, (openingWindow?.end_s || 0) + 0.2);
+    const headlineWindow = overlayWindow({
+      id: "headline_card",
+      kind: "proof_card",
+      text: headlineText,
+      startS: headlineStartS,
+      durationS: readableOverlayCardDurationS(headlineText, { minS: 4.4 }),
+    });
+    const proofPrimaryWindow = overlayWindow({
+      id: "proof_primary",
+      kind: "proof_card",
+      text: proofPrimaryText,
+      startS: Math.max(9, headlineWindow.end_s + 0.8),
+      durationS: readableOverlayCardDurationS(proofPrimaryText, { minS: 4 }),
+    });
+    const proofSecondaryWindow = overlayWindow({
+      id: "proof_secondary",
+      kind: "proof_card",
+      text: proofSecondaryText,
+      startS: Math.max(16, proofPrimaryWindow.end_s + 0.8),
+      durationS: readableOverlayCardDurationS(proofSecondaryText, { minS: 4 }),
+    });
     windows.push(
-      {
-        id: "headline_card",
-        kind: "proof_card",
-        start_s: 4,
-        end_s: 8.4,
-        duration_s: 4.4,
-        source: "studio_v4_overlay_chain",
-      },
-      {
-        id: "proof_primary",
-        kind: "proof_card",
-        start_s: 9,
-        end_s: 13,
-        duration_s: 4,
-        source: "studio_v4_overlay_chain",
-      },
-      {
-        id: "proof_secondary",
-        kind: "proof_card",
-        start_s: 16,
-        end_s: 20,
-        duration_s: 4,
-        source: "studio_v4_overlay_chain",
-      },
+      headlineWindow,
+      proofPrimaryWindow,
+      proofSecondaryWindow,
     );
   }
   return windows;
@@ -1158,6 +1201,25 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
   const openingCardY = 252;
   const openingCardH = 214;
   const openingChipX = safeMarginMode ? 102 : 90;
+  const cardWindows = overlayCardWindowsForStory(story);
+  const windowById = Object.fromEntries(cardWindows.map((window) => [window.id, window]));
+  const openingWindow = windowById.opening_source_lock || { start_s: 0, end_s: 0 };
+  const headlineWindow = windowById.headline_card || { start_s: 4, end_s: 8.4 };
+  const proofPrimaryWindow = windowById.proof_primary || { start_s: 9, end_s: 13 };
+  const proofSecondaryWindow = windowById.proof_secondary || { start_s: 16, end_s: 20 };
+  const t = (value) => {
+    const number = Number(value || 0);
+    if (Math.abs(number) < 0.005) return "0";
+    if (Math.abs(number - Math.round(number)) < 0.005) return number.toFixed(1);
+    if (Math.abs(number * 10 - Math.round(number * 10)) < 0.005) return number.toFixed(1);
+    return number.toFixed(2);
+  };
+  const enableFor = (window) => `between(t,${t(window.start_s)},${t(window.end_s)})`;
+  const openingEnable = enableFor(openingWindow);
+  const headlineEnable = enableFor(headlineWindow);
+  const proofPrimaryEnable = enableFor(proofPrimaryWindow);
+  const proofSecondaryEnable = enableFor(proofSecondaryWindow);
+  const progressStart = (window, offsetS) => t(Number(window.start_s || 0) + offsetS);
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
@@ -1166,36 +1228,36 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
     `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=0xFF6B1A@0.055:t=fill`,
     ...(suppressOpeningStoryCard ? [] : [
-    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='between(t,0,4.0)'`,
-    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='between(t,0,4.0)'`,
-    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0xF8FAFC@0.16:t=2:enable='between(t,0,4.0)'`,
-    `drawbox=x=${openingCardX}:y=${openingCardY}:w=118:h=3:color=0xF8FAFC@0.88:t=fill:enable='between(t,0,4.0)'`,
-    `drawbox=x=${openingCardX}:y=${openingCardY}:w='if(lt(t\\,0.18)\\,1\\,1+(${openingCardW}-1)*(t-0.18)/0.30)':h=5:color=0x38BDF8@0.92:t=fill:enable='between(t,0,4.0)'`,
-    `drawbox=x=${openingCardX}:y=${openingCardY + openingCardH - 6}:w=600:h=5:color=0xFF6B1A@0.68:t=fill:enable='between(t,0,4.0)'`,
-    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.16:t=fill:enable='between(t,0,4.0)'`,
-    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.56:t=2:enable='between(t,0,4.0)'`,
-    `drawtext=text='PULSE VERIFIED':${fontOpt}:fontcolor=0xBEEBFF:fontsize=18:x=${openingChipX + 16}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='between(t,0,4.0)'`,
-    ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt, fontcolor: "0xFFB15C", enable: "between(t,0,4.0)", shadow: false }),
-    `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='between(t,0,4.0)'`,
-    ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: "between(t,0,4.0)" }),
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0xF8FAFC@0.16:t=2:enable='${openingEnable}'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w=118:h=3:color=0xF8FAFC@0.88:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w='if(lt(t\\,${progressStart(openingWindow, 0.18)})\\,1\\,1+(${openingCardW}-1)*(t-${progressStart(openingWindow, 0.18)})/0.30)':h=5:color=0x38BDF8@0.92:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY + openingCardH - 6}:w=600:h=5:color=0xFF6B1A@0.68:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.16:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.56:t=2:enable='${openingEnable}'`,
+    `drawtext=text='PULSE VERIFIED':${fontOpt}:fontcolor=0xBEEBFF:fontsize=18:x=${openingChipX + 16}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${openingEnable}'`,
+    ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt, fontcolor: "0xFFB15C", enable: openingEnable, shadow: false }),
+    `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='${openingEnable}'`,
+    ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: openingEnable }),
     ]),
     ...(suppressAllStoryCards ? [] : [
-    `drawbox=x=64:y=520:w=956:h=222:color=0x0B0F19@0.48:t=fill:enable='between(t,4.0,8.4)'`,
-    `drawbox=x=64:y=520:w=956:h=222:color=0xF8FAFC@0.16:t=2:enable='between(t,4.0,8.4)'`,
-    `drawbox=x=64:y=520:w=956:h=4:color=white@0.22:t=fill:enable='between(t,4.0,8.4)'`,
-    `drawbox=x=64:y=736:w='if(lt(t\\,4.22)\\,1\\,1+(956-1)*(t-4.22)/0.34)':h=6:color=0x38BDF8@0.92:t=fill:enable='between(t,4.0,8.4)'`,
-    ...drawtextLinesForBlock(blockById.headline_card, { fontOpt, fontcolor: "white", enable: "between(t,4.0,8.4)" }),
-    ...drawtextLinesForBlock(blockById.headline_source, { fontOpt, fontcolor: "0xFFB15C", enable: "between(t,4.0,8.4)", shadow: false }),
-    `drawbox=x=76:y=812:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='between(t,9.0,13.0)'`,
-    `drawbox=x=76:y=812:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='between(t,9.0,13.0)'`,
-    `drawbox=x=76:y=812:w='if(lt(t\\,9.18)\\,1\\,1+(690-1)*(t-9.18)/0.28)':h=5:color=0x38BDF8@0.92:t=fill:enable='between(t,9.0,13.0)'`,
-    `drawtext=text='PROOF BEAT':${fontOpt}:fontcolor=0x38BDF8:fontsize=18:x=98:y=824:enable='between(t,9.0,13.0)'`,
-    ...drawtextLinesForBlock(blockById.proof_primary, { fontOpt, fontcolor: "white", enable: "between(t,9.0,13.0)" }),
-    `drawbox=x=96:y=1010:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='between(t,16.0,20.0)'`,
-    `drawbox=x=96:y=1010:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='between(t,16.0,20.0)'`,
-    `drawbox=x=96:y=1144:w='if(lt(t\\,16.18)\\,1\\,1+(690-1)*(t-16.18)/0.32)':h=5:color=0x38BDF8@0.92:t=fill:enable='between(t,16.0,20.0)'`,
-    `drawtext=text='PLAYER READ':${fontOpt}:fontcolor=0x38BDF8:fontsize=18:x=118:y=1022:enable='between(t,16.0,20.0)'`,
-    ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: "between(t,16.0,20.0)" }),
+    `drawbox=x=64:y=520:w=956:h=222:color=0x0B0F19@0.48:t=fill:enable='${headlineEnable}'`,
+    `drawbox=x=64:y=520:w=956:h=222:color=0xF8FAFC@0.16:t=2:enable='${headlineEnable}'`,
+    `drawbox=x=64:y=520:w=956:h=4:color=white@0.22:t=fill:enable='${headlineEnable}'`,
+    `drawbox=x=64:y=736:w='if(lt(t\\,${progressStart(headlineWindow, 0.22)})\\,1\\,1+(956-1)*(t-${progressStart(headlineWindow, 0.22)})/0.34)':h=6:color=0x38BDF8@0.92:t=fill:enable='${headlineEnable}'`,
+    ...drawtextLinesForBlock(blockById.headline_card, { fontOpt, fontcolor: "white", enable: headlineEnable }),
+    ...drawtextLinesForBlock(blockById.headline_source, { fontOpt, fontcolor: "0xFFB15C", enable: headlineEnable, shadow: false }),
+    `drawbox=x=76:y=812:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofPrimaryEnable}'`,
+    `drawbox=x=76:y=812:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofPrimaryEnable}'`,
+    `drawbox=x=76:y=812:w='if(lt(t\\,${progressStart(proofPrimaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofPrimaryWindow, 0.18)})/0.28)':h=5:color=0x38BDF8@0.92:t=fill:enable='${proofPrimaryEnable}'`,
+    `drawtext=text='PROOF BEAT':${fontOpt}:fontcolor=0x38BDF8:fontsize=18:x=98:y=824:enable='${proofPrimaryEnable}'`,
+    ...drawtextLinesForBlock(blockById.proof_primary, { fontOpt, fontcolor: "white", enable: proofPrimaryEnable }),
+    `drawbox=x=96:y=1010:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofSecondaryEnable}'`,
+    `drawbox=x=96:y=1010:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofSecondaryEnable}'`,
+    `drawbox=x=96:y=1144:w='if(lt(t\\,${progressStart(proofSecondaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofSecondaryWindow, 0.18)})/0.32)':h=5:color=0x38BDF8@0.92:t=fill:enable='${proofSecondaryEnable}'`,
+    `drawtext=text='PLAYER READ':${fontOpt}:fontcolor=0x38BDF8:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
+    ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: proofSecondaryEnable }),
     ]),
     `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white@0.78:fontsize=28:x=w-tw-42:y=h-92:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
     `noise=alls=${OVERLAY_ANTI_FREEZE_NOISE_STRENGTH}:allf=t+u`,

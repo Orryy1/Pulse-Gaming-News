@@ -160,6 +160,24 @@ test("Studio V4 proof renderer blocks repeated base-source windows before render
   );
 });
 
+test("Studio V4 proof renderer detects repeated base-source windows from string clip paths", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      "motion/sea-of-thieves-trailer-window-36-5.mp4",
+      "motion/sea-of-thieves-trailer-window-42-5.mp4",
+      "motion/sea-of-thieves-store-page-gameplay.mp4",
+    ],
+    durationS: 12,
+    xfadeS: 0.25,
+  });
+
+  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+  assert.deepEqual(
+    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
+    [{ key: "motion/sea-of-thieves-trailer", count: 2 }],
+  );
+});
+
 test("Studio V4 proof renderer blocks short generated cards being stretched into looped scenes", () => {
   const clips = Array.from({ length: 13 }, (_, index) => ({
     path: `owned-card-${index + 1}.mp4`,
@@ -275,6 +293,26 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
     ],
   );
   assert.ok(windows.every((window) => window.duration_s >= 4));
+});
+
+test("Studio V4 proof renderer keeps long HyperFrames cards visible long enough to read", () => {
+  const windows = overlayCardWindowsForStory({
+    canonical_subject: "GTA VI",
+    primary_source: "Rockstar Games",
+    first_frame_text: "GTA VI JUST MOVED",
+    thumbnail_headline: "PREORDERS STILL NEED PRICE, EDITIONS AND PLATFORM DETAIL",
+    proof_card_primary: "ROCKSTAR SHOWED THE ART BUT NOT THE BUYING DECISION",
+    proof_card_secondary: "PLAYERS STILL NEED THE DATE, EDITIONS AND UPGRADE PATH",
+  });
+  const byId = Object.fromEntries(windows.map((window) => [window.id, window]));
+
+  assert.match(byId.headline_card.text, /PREORDERS STILL NEED PRICE/);
+  assert.equal(byId.headline_card.duration_s >= 7, true);
+  assert.equal(byId.proof_primary.duration_s >= 7, true);
+  assert.equal(byId.proof_secondary.duration_s >= 7, true);
+  assert.equal(byId.headline_card.start_s >= byId.opening_source_lock.end_s + 0.1, true);
+  assert.equal(byId.proof_primary.start_s >= byId.headline_card.end_s + 0.6, true);
+  assert.equal(byId.proof_secondary.start_s >= byId.proof_primary.end_s + 0.6, true);
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {

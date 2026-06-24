@@ -85,13 +85,13 @@ test("Studio V4 proof renderer blocks 50s renders that would need looped direct 
   assert.ok(plan.requiredUniqueClipCount > 24);
 });
 
-test("Studio V4 proof renderer defaults to fast direct-motion cuts", () => {
+test("Studio V4 proof renderer defaults to readable non-repeating direct-motion cuts", () => {
   const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
   const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
   delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
   delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
   try {
-    assert.equal(directClipMaxVisibleDwellS(), 1.5);
+    assert.equal(directClipMaxVisibleDwellS(), 7);
     assert.equal(directClipMaxScenes(), 40);
 
     const plan = buildClipScenePlan({
@@ -104,8 +104,9 @@ test("Studio V4 proof renderer defaults to fast direct-motion cuts", () => {
 
     assert.equal(plan.scenes.length, 8);
     assert.equal(plan.repeatFree, true);
-    assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
-    assert.ok(plan.requiredUniqueClipCount >= 37);
+    assert.equal(plan.blockers.length, 0);
+    assert.equal(plan.requiredUniqueClipCount, 8);
+    assert.ok(plan.segmentDurationS < directClipMaxVisibleDwellS());
   } finally {
     if (previousDwell === undefined) delete process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
     else process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = previousDwell;

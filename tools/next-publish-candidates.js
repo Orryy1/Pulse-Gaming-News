@@ -17,6 +17,11 @@ const {
   characterAlignmentToSubtitleWords,
   inspectSubtitleTimingWords,
 } = require("../lib/subtitle-timing");
+const {
+  directMotionBaseSourceOveruseEvidence,
+  finalRenderVisualReuseEvidence,
+  hyperframesReadableDwellEvidence,
+} = require("../lib/goal-dry-run-publisher");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -1952,6 +1957,27 @@ async function readArtifactJsonObjectForStory(story = {}, fileName = "") {
   }
 }
 
+async function readCurrentRenderManifestForStory(story = {}) {
+  const artifactDir = artifactDirForStory(story);
+  const candidates = [
+    cleanText(story.render_manifest_path),
+    artifactDir ? path.join(artifactDir, "render_manifest.json") : "",
+  ].filter(Boolean);
+  for (const rawPath of [...new Set(candidates)]) {
+    const filePath = path.isAbsolute(rawPath)
+      ? rawPath
+      : path.resolve(ROOT, rawPath);
+    try {
+      if (!(await fs.pathExists(filePath))) continue;
+      const value = await fs.readJson(filePath);
+      if (value && typeof value === "object" && !Array.isArray(value)) return value;
+    } catch {
+      // Stale or unreadable package evidence is handled by bridge freshness.
+    }
+  }
+  return {};
+}
+
 async function visualEntityPreflightForStory(story = {}) {
   if (!shouldRunIncidentGuardForStory(story)) return null;
   const subjectTokens = visualSubjectTokensForStory(story);
@@ -3412,11 +3438,101 @@ function incidentGuardFileEvidenceForStory(story = {}) {
   };
 }
 
-function incidentGuardPreflightForStory(story = {}) {
+function materialisedMotionEvidenceClipsForStory({
+  story = {},
+  ownedMotionManifest = {},
+  materialisedMotionClips = {},
+} = {}) {
+  return [
+    ...asArray(story.materialised_motion_clips),
+    ...asArray(story.motion_clips),
+    ...asArray(ownedMotionManifest.materialised_clips),
+    ...asArray(ownedMotionManifest.clips),
+    ...asArray(ownedMotionManifest.assets),
+    ...asArray(
+      Array.isArray(materialisedMotionClips)
+        ? materialisedMotionClips
+        : materialisedMotionClips.clips || materialisedMotionClips.materialised_clips,
+    ),
+  ];
+}
+
+async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
+  const [
+    renderStoryArtifact,
+    directorArtifact,
+    ownedMotionArtifact,
+    materialisedMotionArtifact,
+  ] = await Promise.all([
+    readArtifactJsonObjectForStory(story, "visual_v4_render_story.json"),
+    readArtifactJsonObjectForStory(story, "director_beat_map.json"),
+    readArtifactJsonObjectForStory(story, "owned_motion_manifest.json"),
+    readArtifactJsonObjectForStory(story, "materialised_motion_clips.json"),
+  ]);
+  const renderStory = {
+    ...renderStoryArtifact,
+    video_clips: [
+      ...asArray(story.video_clips),
+      ...asArray(renderStoryArtifact.video_clips),
+    ],
+    visual_v4_bridge_video_clips: [
+      ...asArray(story.visual_v4_bridge_video_clips),
+      ...asArray(renderStoryArtifact.visual_v4_bridge_video_clips),
+    ],
+  };
+  const directorBeatMap = objectValue(
+    story.director_beat_map ||
+      story.visual_v4_director_plan ||
+      story.director_plan,
+    directorArtifact,
+  );
+  const materialisedMotion = materialisedMotionEvidenceClipsForStory({
+    story,
+    ownedMotionManifest: objectValue(story.owned_motion_manifest, ownedMotionArtifact),
+    materialisedMotionClips: objectValue(story.materialised_motion_clips_manifest, materialisedMotionArtifact),
+  });
+  const directMotionSegmentEvidenceSource = materialisedMotion.length
+    ? materialisedMotion
+    : [
+        ...asArray(renderStory.visual_v4_bridge_video_clips),
+        ...asArray(renderStory.video_clips),
+      ];
+  const finalRenderVisualReuse = finalRenderVisualReuseEvidence({ renderManifest, renderStory });
+  const hyperframesReadableDwell = hyperframesReadableDwellEvidence({
+    renderManifest,
+    renderStory,
+    directorBeatMap,
+  });
+  const directMotionBaseSourceOveruse = directMotionBaseSourceOveruseEvidence(directMotionSegmentEvidenceSource);
+  const blockers = [
+    ...finalRenderVisualReuse.blockers,
+    ...hyperframesReadableDwell.blockers,
+    ...directMotionBaseSourceOveruse.blockers,
+  ];
+  return {
+    result: blockers.length ? "fail" : "pass",
+    failures: blockers,
+    warnings: [],
+    evidence: {
+      file_evidence: {
+        ...finalRenderVisualReuse.evidence,
+        ...hyperframesReadableDwell.evidence,
+        ...directMotionBaseSourceOveruse.evidence,
+      },
+    },
+  };
+}
+
+async function incidentGuardPreflightForStory(story = {}) {
   if (!shouldRunIncidentGuardForStory(story)) return null;
   const { evaluateIncidentGuard } = require("../lib/incident-guard");
   const { visualEvidenceProfile } = require("../lib/visual-evidence-classifier");
-  const renderManifest = objectValue(story.render_manifest, {});
+  const embeddedRenderManifest = objectValue(story.render_manifest, {});
+  const currentRenderManifest = await readCurrentRenderManifestForStory(story);
+  const renderManifest = {
+    ...embeddedRenderManifest,
+    ...currentRenderManifest,
+  };
   const renderLane = cleanText(renderManifest.render_lane || renderManifest.lane || story.render_lane);
   const renderClass = cleanText(
     renderManifest.render_quality_class ||
@@ -3492,11 +3608,21 @@ function incidentGuardPreflightForStory(story = {}) {
   ) {
     generatedVisualFailures.push("visual_evidence:direct_video_motion_missing");
   }
-  if (report.verdict === "pass" && !generatedVisualFailures.length) {
+  const visualLoop = await visualLoopPreflightForStory(story, {
+    ...renderManifest,
+    final_publish_render:
+      renderManifest.final_publish_render === true ||
+      Boolean(story.exported_path && /visual_v4|studio_v4/i.test(renderLane)),
+    render_lane: renderLane,
+    render_quality_class: renderClass,
+  });
+  const visualLoopFailures = asArray(visualLoop.failures);
+  if (report.verdict === "pass" && !generatedVisualFailures.length && !visualLoopFailures.length) {
     return {
       result: "pass",
       failures: [],
       warnings: report.warnings || [],
+      evidence: visualLoop.evidence,
     };
   }
   return {
@@ -3504,8 +3630,12 @@ function incidentGuardPreflightForStory(story = {}) {
     failures: [
       ...asArray(report.disaster_upload_blockers || ["incident_guard_failed"]),
       ...generatedVisualFailures,
+      ...visualLoopFailures,
     ],
     warnings: report.warnings || [],
+    evidence: {
+      ...(visualLoop.evidence || {}),
+    },
   };
 }
 
@@ -3702,7 +3832,12 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
       const sourceAgeBlocked = asArray(preflight.blockers).some((blocker) =>
         /^source_age:/i.test(cleanText(blocker)),
       );
-      if (!sourceAgeBlocked) {
+      const visualLoopBlocked = asArray(preflight.blockers).some((blocker) =>
+        /(?:final_render_reuses_visual_units|card_visible_dwell_too_short|director_card_dwell_too_short|direct_motion_base_source_overused|repeated_direct_motion_segment)/i.test(
+          cleanText(blocker),
+        ),
+      );
+      if (!sourceAgeBlocked && !visualLoopBlocked) {
         const hydrated = hydrateCandidateFromCurrentProofPackage(
           {
             ...candidate,

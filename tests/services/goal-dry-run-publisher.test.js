@@ -345,6 +345,63 @@ async function makeStoryPackage(
   };
 }
 
+function directMotionClipFixture({
+  id,
+  path: clipPath,
+  sourceUrl,
+  sourceFamily,
+  startS = 0,
+  durationS = 4,
+}) {
+  return {
+    id,
+    path: clipPath,
+    source_url: sourceUrl,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: sourceFamily,
+    motion_family: sourceFamily,
+    mediaStartS: startS,
+    durationS,
+    rights_risk_class: "official_reference_transformative_editorial_use",
+    licence_basis: "official_reference_transformative_editorial_use",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  };
+}
+
+async function writeDirectMotionFixturePack(artifactDir, clips) {
+  await Promise.all(
+    clips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: path.basename(artifactDir),
+    video_clips: clips,
+    visual_v4_bridge_video_clips: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: clips,
+    distinct_motion_families: clips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+    distinct_motion_family_count: clips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: clips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+}
+
 test("goal dry-run publisher emits exact platform actions without publishing", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-"));
   const storyPackage = await makeStoryPackage(root);
@@ -543,6 +600,190 @@ test("goal dry-run publisher blocks required HyperFrames premium shell when proo
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_required"));
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_missing"));
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_pass_count_missing:4"));
+});
+
+test("goal dry-run publisher blocks final renders that expand a small visual unit pool into repeated cuts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-final-render-loop-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "final-render-loop-story",
+    "GREEN",
+    "Halo Campaign Evolved Has A PS5 Account Catch",
+    {
+      canonicalSubject: "Halo: Campaign Evolved",
+      renderedDurationS: 42,
+      renderManifestPatch: {
+        clips: 30,
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const clips = Array.from({ length: 6 }, (_, index) =>
+    directMotionClipFixture({
+      id: `halo-direct-${index + 1}`,
+      path: `motion/halo-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/halo-campaign-evolved/trailer-${index + 1}.mp4`,
+      sourceFamily: `halo_campaign_evolved_official_source_${index + 1}`,
+      startS: index * 6,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, clips);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:10:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:final_render_reuses_visual_units"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.final_render_clip_count,
+    30,
+  );
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.final_render_unique_visual_unit_count,
+    6,
+  );
+});
+
+test("goal dry-run publisher blocks HyperFrames cards that are too fast to read", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-readable-dwell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "hf-readable-dwell-story",
+    "GREEN",
+    "GTA 5 Has A Free Upgrade Catch",
+    {
+      canonicalSubject: "GTA 5",
+      renderedDurationS: 50,
+      renderManifestPatch: {
+        clips: 40,
+        hyperframes_premium_shell_required: true,
+        hyperframes_card_count: 5,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 5,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 8 }, (_, index) =>
+    directMotionClipFixture({
+      id: `gta-direct-${index + 1}`,
+      path: `motion/gta-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/gta-5/source-${index + 1}.mp4`,
+      sourceFamily: `gta_5_official_source_${index + 1}`,
+      startS: index * 6,
+    }),
+  );
+  const cardClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `gta-hyperframe-card-${index + 1}`,
+    path: `hyperframes/gta-card-${index + 1}.mp4`,
+    source_type: "hyperframes_card",
+    media_kind: "hyperframes_card",
+    source_family: `hyperframes_card_${index + 1}`,
+    durationS: 1.25,
+  }));
+  await Promise.all([
+    ...directClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+    ...cardClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 5))),
+  ]);
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "hf-readable-dwell-story",
+    video_clips: [...directClips, ...cardClips],
+    visual_v4_bridge_video_clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: directClips,
+    distinct_motion_families: directClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    distinct_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    shot_plan: [
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.2 },
+      { id: "source_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.35 },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: directClips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:12:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:card_visible_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:director_card_dwell_too_short"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_estimated_card_visible_duration_s,
+    1.25,
+  );
+});
+
+test("goal dry-run publisher blocks neighbouring windows overused from the same base source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-base-source-loop-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "base-source-loop-story",
+    "GREEN",
+    "Sea Of Thieves Custom Seas Could Split Crews",
+    { canonicalSubject: "Sea of Thieves" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const sameBaseClips = [36, 42, 48, 54, 60].map((startS, index) =>
+    directMotionClipFixture({
+      id: `sea-window-${index + 1}`,
+      path: `motion/sea-window-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/sea-of-thieves/trailer-window-${startS}.mp4`,
+      sourceFamily: `steam_1172620_movie_418022350_window_${startS}_5`,
+      startS,
+      durationS: 5,
+    }),
+  );
+  const otherClips = [1, 2, 3].map((index) =>
+    directMotionClipFixture({
+      id: `sea-other-${index}`,
+      path: `motion/sea-other-${index}.mp4`,
+      sourceUrl: `https://cdn.example.com/sea-of-thieves/other-source-${index}.mp4`,
+      sourceFamily: `sea_of_thieves_other_source_${index}`,
+      startS: index * 8,
+      durationS: 5,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, [...sameBaseClips, ...otherClips]);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:15:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse[0].count,
+    5,
+  );
 });
 
 test("goal dry-run publisher defers externally blocked or operator-disabled platforms without blocking the story", async () => {

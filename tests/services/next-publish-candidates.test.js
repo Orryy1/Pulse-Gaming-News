@@ -172,8 +172,8 @@ function directVideoFixture(storyId = "bridge_direct_video_resolved") {
     source_type: "official_platform_product_page",
     media_kind: "direct_video",
     source_url_kind: "hls_manifest",
-    source_family: `steam_353370_37301_window_${index + 1}`,
-    motion_family: `steam_353370_37301_window_${index + 1}`,
+    source_family: `steam_353370_${37301 + index}`,
+    motion_family: `steam_353370_${37301 + index}`,
     rights_risk_class: "official_reference_transformative_editorial_use",
     rights_basis: "official_reference_transformative_editorial_use",
     licence_basis: "official_reference_transformative_editorial_use",
@@ -4293,6 +4293,206 @@ test("media-house preflight scores current artifact platform manifest over stale
 
   assert.equal(preflight.checks.media_house.result, "pass");
   assert.equal(preflight.status, "pass");
+});
+
+test("runPreflightQaForStory blocks final renders with repeated visual-unit expansion", async () => {
+  const clips = Array.from({ length: 6 }, (_, index) => ({
+    id: `halo-motion-${index + 1}`,
+    path: `motion/halo-motion-${index + 1}.mp4`,
+    source_url: `https://cdn.example.com/halo-campaign-evolved/source-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: `halo_campaign_evolved_official_${index + 1}`,
+    motion_family: `halo_campaign_evolved_official_${index + 1}`,
+    materialized: true,
+    counts_towards_motion_readiness: true,
+  }));
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "halo_looping_render",
+      title: "Halo Campaign Evolved Shows A Trailer Problem",
+      canonical_subject: "Halo: Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Shows A Trailer Problem",
+      first_spoken_line: "Halo Campaign Evolved just made its trailer footage the story.",
+      description: "Halo Campaign Evolved has a trailer-footage problem players can judge clearly. Source: Xbox.",
+      full_script:
+        "Halo Campaign Evolved just made its trailer footage the story. Xbox footage gives players a clear look at the remake pitch, but repeated clips can make the package feel thinner than the news deserves. Follow Pulse Gaming so you never miss a beat.",
+      scheduler_bridge_source: "goal_production_cutover",
+      exported_path: "D:/pulse-data/media/output/final/halo_looping_render.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/halo_looping_render.mp3",
+      timestamps_path: "D:/pulse-data/media/output/timestamps/halo_looping_render.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/halo_looping_render.srt",
+      render_manifest: {
+        final_publish_render: true,
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+        rendered_duration_s: 42,
+        clips: 30,
+        visual_count: 6,
+      },
+      visual_v4_bridge_video_clips: clips,
+      video_clips: clips,
+      visual_v4_render_bridge_clip_count: clips.length,
+      rights_ledger: clips.map((clip) => ({
+        ...clip,
+        asset_type: "direct_video_motion_clip",
+        commercial_use_allowed: true,
+        approval_status: "approved_for_transformative_editorial_use",
+      })),
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      },
+      platform_policy_report: {
+        status: "pass",
+        disclosure_requirements: { affiliate: false, commercial: false },
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      ...bridgeVisualEvidence("Halo: Campaign Evolved"),
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("incident_guard:visual_evidence:final_render_reuses_visual_units"),
+    JSON.stringify(preflight.blockers),
+  );
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.final_render_clip_count,
+    30,
+  );
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.final_render_unique_visual_unit_count,
+    6,
+  );
+});
+
+test("runPreflightQaForStory prefers current package render manifest over stale embedded clip counts", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-render-manifest-"));
+  t.after(() => fs.remove(tmpDir));
+  const clips = Array.from({ length: 6 }, (_, index) => ({
+    id: `street-fighter-motion-${index + 1}`,
+    path: `motion/street-fighter-motion-${index + 1}.mp4`,
+    source_url: `https://cdn.example.com/street-fighter-6/yasmine-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: `street_fighter_6_yasmine_official_${index + 1}`,
+    motion_family: `street_fighter_6_yasmine_official_${index + 1}`,
+    materialized: true,
+    counts_towards_motion_readiness: true,
+  }));
+  const renderManifestPath = path.join(tmpDir, "render_manifest.json");
+  await fs.writeJson(renderManifestPath, {
+    final_publish_render: true,
+    render_lane: "visual_v4_production",
+    render_quality_class: "premium",
+    rendered_duration_s: 42,
+    output_path: "D:/pulse-data/media/output/final/street_fighter_fixed.mp4",
+    clips: 6,
+    visual_count: 6,
+  });
+  await fs.writeJson(path.join(tmpDir, "visual_v4_render_story.json"), {
+    video_clips: clips,
+    visual_v4_bridge_video_clips: clips,
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "street_fighter_current_manifest",
+      title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      canonical_subject: "Street Fighter 6",
+      selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
+      first_spoken_line: "Street Fighter 6 just made Yasmine look like a ranked-mode problem.",
+      description: "Street Fighter 6 shows Yasmine pressure players can judge clearly. Source: Capcom.",
+      full_script:
+        "Street Fighter 6 just made Yasmine look like a ranked-mode problem. Capcom footage shows her pressure, spacing and player-impact clearly. Follow Pulse Gaming so you never miss a beat.",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmpDir,
+      render_manifest_path: renderManifestPath,
+      exported_path: "D:/pulse-data/media/output/final/street_fighter_fixed.mp4",
+      duration_seconds: 42,
+      audio_path: "D:/pulse-data/media/output/audio/street_fighter_fixed.mp3",
+      timestamps_path: "D:/pulse-data/media/output/timestamps/street_fighter_fixed.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/street_fighter_fixed.srt",
+      render_manifest: {
+        final_publish_render: true,
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+        rendered_duration_s: 42,
+        clips: 30,
+        visual_count: 6,
+      },
+      visual_v4_bridge_video_clips: clips,
+      video_clips: clips,
+      visual_v4_render_bridge_clip_count: clips.length,
+      rights_ledger: clips.map((clip) => ({
+        ...clip,
+        asset_type: "direct_video_motion_clip",
+        commercial_use_allowed: true,
+        approval_status: "approved_for_transformative_editorial_use",
+      })),
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      },
+      platform_policy_report: {
+        status: "pass",
+        disclosure_requirements: { affiliate: false, commercial: false },
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      ...bridgeVisualEvidence("Street Fighter 6"),
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.final_render_clip_count,
+    6,
+  );
+  assert.ok(
+    !preflight.blockers.includes("incident_guard:visual_evidence:final_render_reuses_visual_units"),
+    JSON.stringify(preflight.blockers),
+  );
 });
 
 test("attachPreflightQa blocks local-clone narration when word timestamps are not ASR aligned", async () => {

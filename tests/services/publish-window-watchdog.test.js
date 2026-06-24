@@ -464,6 +464,95 @@ test("publish window watchdog surfaces advisory AMBER without blocking guarded p
   ]);
 });
 
+test("publish window watchdog lets guarded runtime proof cover missing readiness scope", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-24T08:55:00.000Z",
+    windowLabel: "publish_morning",
+    runtimeSentinel: {
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+        next_action: "observe_guarded_scheduler_window",
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 3,
+        executor_handoff_action_count: 3,
+        enabled_dry_run_story_count: 1,
+        executor_handoff_story_count: 1,
+        enabled_dry_run_youtube_action_count: 1,
+        executor_handoff_youtube_action_count: 1,
+        enabled_dry_run_youtube_story_count: 1,
+        executor_handoff_youtube_story_count: 1,
+        missing_from_executor_count: 0,
+        missing_from_executor_story_count: 0,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "amber",
+      blockers: [],
+      readiness_scope: { name: "all_platforms", guard_ready: false, overridden_pillars: [] },
+      advisory: [
+        "strict_dry_run_control: human_review_required_or_platforms_deferred",
+        "platform_status: disabled: threads=threads_not_configured",
+      ],
+      next_action: "observe_guarded_scheduler_window",
+    },
+    queueReport: {
+      verdict: "review",
+      blockers: [],
+      warnings: ["recent_failed_jobs_present"],
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.safe_to_publish_window, true);
+  assert.equal(report.hold_scheduler_or_dispatch, false);
+  assert.equal(report.readiness_guard_ready, true);
+  assert.equal(report.readiness_scope, "runtime_scheduler_proof");
+  assert.deepEqual(report.blockers, []);
+});
+
+test("publish window watchdog does not let unrelated explicit readiness holds through", () => {
+  const report = buildPublishWindowWatchdogReport({
+    generatedAt: "2026-06-24T08:55:00.000Z",
+    windowLabel: "publish_morning",
+    runtimeSentinel: {
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 3,
+        executor_handoff_action_count: 3,
+        enabled_dry_run_story_count: 1,
+        executor_handoff_story_count: 1,
+        missing_from_executor_count: 0,
+        missing_from_executor_story_count: 0,
+      },
+    },
+    publishReadiness: {
+      overall_verdict: "amber",
+      blockers: [],
+      readiness_scope: { name: "operator_hold", guard_ready: false },
+      advisory: ["operator_hold: waiting_for_human_review"],
+    },
+    queueReport: {
+      verdict: "pass",
+      blockers: [],
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.safe_to_publish_window, false);
+  assert.equal(report.hold_scheduler_or_dispatch, true);
+  assert.equal(report.readiness_guard_ready, false);
+  assert.equal(report.readiness_scope, "operator_hold");
+});
+
 test("publish window watchdog does not call skipped queue proof GREEN", () => {
   const report = buildPublishWindowWatchdogReport({
     generatedAt: "2026-06-14T13:55:00.000Z",

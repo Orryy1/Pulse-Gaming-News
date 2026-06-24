@@ -168,6 +168,36 @@ test("owned motion materializer renders newsroom-grade motion cards instead of f
   assert.match(vf, /shadowcolor=black@0\.82:shadowx=3:shadowy=3/);
 });
 
+test("owned motion materializer enforces readable dwell time for explainer cards", () => {
+  const canonical = {
+    canonical_subject: "Halo Campaign Evolved",
+    thumbnail_headline: "Halo Campaign Evolved Finally Shows Its PS5 Catch",
+    selected_title: "Halo Campaign Evolved Finally Shows Its PS5 Catch",
+    primary_source: "Xbox Wire",
+  };
+  const clip = {
+    id: "halo-owned-motion-1",
+    source_family: "halo_kinetic_title_card",
+    visual_purpose: "source-backed platform catch",
+    path: "output/generated-motion/halo/01_kinetic_title_card.mp4",
+    source_url: "local://pulse-generated-motion/halo/kinetic_title_card",
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    rights_risk_class: "owned_generated_motion",
+    owned_explainer_visual_plan: true,
+    durationS: 3.2,
+  };
+
+  const args = buildOwnedMotionFfmpegArgs({
+    clip,
+    canonical,
+    output: path.join("output", "generated-motion", "halo", "01_kinetic_title_card.mp4"),
+  });
+
+  assert.equal(args[args.indexOf("-t") + 1], "6.50");
+  assert.match(args[args.indexOf("-i") + 1], /d=6\.50$/);
+});
+
 test("owned motion materializer does not cut card text mid-word", () => {
   const canonical = {
     canonical_subject: "Warhammer 40,000 Boltgun 2",
@@ -389,6 +419,60 @@ test("owned motion materializer creates a source-locked explainer deck when foot
   assert.equal(rights.records.length, requiredAssetClasses.length);
   assert.ok(rights.records.every((record) => record.licence_basis === "owned_generated_editorial_motion_graphic"));
   assert.ok(rights.records.every((record) => record.commercial_use_allowed === true));
+});
+
+test("owned motion materializer executes readable HyperFrames rematerialisation lane", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-readable-lane-"));
+  const artifactDir = path.join(root, "readable-package");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "readable-package",
+    canonical_subject: "Halo Campaign Evolved",
+    selected_title: "Halo Campaign Evolved Has A PS5 Catch",
+    thumbnail_headline: "HALO PS5 CATCH",
+    first_spoken_line: "Halo Campaign Evolved has one platform catch.",
+    confirmed_claims: ["Halo Campaign Evolved requires an account sign-in on PS5."],
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "readable-package",
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { records: [] });
+
+  const calls = [];
+  const report = await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: "readable-package",
+          title: "Halo Campaign Evolved Has A PS5 Catch",
+          artifact_dir: artifactDir,
+          actions: [
+            {
+              action_id: "materialise_owned_generated_motion_clips",
+              repair_lane: "readable_hyperframes_card_motion_rematerialisation",
+            },
+          ],
+        },
+      ],
+    },
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: () => 6.5,
+  });
+
+  assert.equal(report.summary.materialized_clip_count, 13);
+  assert.equal(calls.length, 13);
+  assert.ok(calls.every((call) => call.args[call.args.indexOf("-t") + 1] === "6.50"));
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 13);
+  assert.ok(materialised.clips.every((clip) => clip.durationS >= 6.5));
 });
 
 test("owned motion materializer blocks source-card generation for Reddit-only discovery stories", async () => {

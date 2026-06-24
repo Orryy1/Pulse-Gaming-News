@@ -1147,6 +1147,96 @@ test("render input work order routes stale owned motion through owned motion rem
   assert.equal(workOrder.summary.auto_repairable_jobs, 1);
 });
 
+test("render input work order routes too-fast HyperFrames cards through readable owned-motion refresh", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T21:00:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-06-24T21:01:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "fast-card-story",
+          title: "Halo Campaign Evolved Has A PS5 Catch",
+          artifact_dir: "C:/repo/output/goal-proof/batch/fast-card-story",
+          blockers: ["hyperframes:director_card_dwell_too_short"],
+          incident_guard: {
+            evidence: {
+              file_evidence: {
+                hyperframes_effective_too_fast_card_shots: [
+                  {
+                    id: "source_proof_card",
+                    kind: "proof_card",
+                    duration_s: 2.35,
+                    minimum_required_duration_s: 10,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-24T21:02:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.owned_motion_materialisation_jobs, 1);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 1);
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.action_id, "materialise_owned_generated_motion_clips");
+  assert.equal(action.repair_lane, "readable_hyperframes_card_motion_rematerialisation");
+  assert.equal(action.auto_repairable, true);
+  assert.equal(action.operator_approval_required, false);
+  assert.deepEqual(action.reason_codes, ["hyperframes_readable_dwell_repair_required"]);
+  assert.match(action.recommended_command, /--refresh-existing\b/);
+  assert.match(action.exact_missing_input, /6\.5s/);
+  assert.equal(action.evidence.too_fast_card_count, 1);
+});
+
+test("render input work order routes repeated direct motion through distinct source replacement", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T21:10:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-06-24T21:11:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "repeat-motion-story",
+          title: "Sea Of Thieves Has A Looping Footage Problem",
+          artifact_dir: "C:/repo/output/goal-proof/batch/repeat-motion-story",
+          blockers: ["visual_evidence:direct_motion_base_source_overused"],
+          incident_guard: {
+            evidence: {
+              file_evidence: {
+                direct_motion_base_source_overuse: [
+                  { key: "url:sea-of-thieves-trailer", count: 4, total: 6, share: 0.667 },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-24T21:12:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 1);
+  assert.equal(workOrder.summary.operator_required_jobs, 1);
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.action_id, "materialise_validated_real_motion_clips");
+  assert.equal(action.repair_lane, "replace_repeated_or_overused_motion_source_family");
+  assert.equal(action.auto_repairable, false);
+  assert.equal(action.operator_approval_required, true);
+  assert.deepEqual(action.reason_codes, ["visual_motion_repeat_repair_required"]);
+  assert.match(action.exact_missing_input, /distinct official or licensed motion source families/i);
+  assert.equal(action.evidence.direct_motion_base_source_overuse[0].count, 4);
+});
+
 test("render input work order does not keep rescanning exhausted trailer segments", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

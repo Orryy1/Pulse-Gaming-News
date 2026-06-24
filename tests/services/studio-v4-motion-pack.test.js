@@ -1590,6 +1590,43 @@ test("Visual V4 motion pack rejects same-game wrong-character trailers for chara
   );
 });
 
+test("Visual V4 motion pack does not reject exact game trailers because of generic editorial title wording", () => {
+  const storyId = "invincible-vs-pack";
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: storyId,
+      title: "Why Invincible VS Could Split Players",
+      canonical_subject: "Invincible VS",
+      canonical_game: "Invincible VS",
+      full_script:
+        "Invincible VS is the actual game here. The official trailer shows why its tag-fighter format could split players.",
+    },
+    trustedFootageReport: trustedReport(storyId, ["steam_2353060_946822689"]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId,
+        family: "steam_2353060_946822689",
+        entity: "Invincible VS",
+        sourceUrl:
+          "https://video.akamai.steamstatic.com/store_trailers/2353060/946822689/hash/hls_264_master.m3u8",
+        referenceTitle: "Invincible VS | Launch Trailer",
+        actionScore: 87.4,
+        validationReason: "official_storefront_trailer_motion_samples_passed",
+      }),
+    ]),
+    generatedAt: "2026-06-24T15:58:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].entity, "Invincible VS");
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "story_subject_motion_mismatch",
+    ),
+    false,
+  );
+});
+
 test("Visual V4 motion pack does not top up premium density with repeat windows", () => {
   const families = ["steam_alpha", "steam_beta", "steam_gamma", "steam_delta"];
   const sourceUrls = {

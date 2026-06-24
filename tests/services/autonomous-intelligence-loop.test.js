@@ -579,9 +579,12 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       contractOutDir,
     ]);
     assert.deepEqual(capturedArgCalls[1], [
-      "--live-rss",
-      "--rss-per-feed",
-      "4",
+      "--stories-file",
+      path.join(
+        contractOutDir,
+        "fresh_production_refill_repair",
+        "official_source_candidate_stories.json",
+      ),
       "--limit",
       "12",
       "--out-dir",
@@ -667,6 +670,19 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
     assert.ok(segmentValidationCall.args.includes("--deep-scan"));
+    assert.ok(segmentValidationCall.args.includes("--include-frame-anchored-windows"));
+    const segmentMaxIndex = segmentValidationCall.args.indexOf("--max-segments");
+    assert.equal(
+      Number(segmentValidationCall.args[segmentMaxIndex + 1]),
+      96,
+      "expected fresh refill to validate enough official/direct-motion windows to avoid one-clip repeat loops",
+    );
+    const candidateWindowsIndex = segmentValidationCall.args.indexOf("--candidate-windows-per-source");
+    assert.equal(
+      Number(segmentValidationCall.args[candidateWindowsIndex + 1]),
+      8,
+      "expected fresh refill to inspect multiple windows per official source before declaring motion blocked",
+    );
     const segmentReferenceIndex = segmentValidationCall.args.indexOf("--reference-report");
     assert.match(
       segmentValidationCall.args[segmentReferenceIndex + 1],

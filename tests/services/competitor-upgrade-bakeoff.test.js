@@ -48,6 +48,14 @@ test("competitor upgrade bakeoff compares 30 stories and keeps stronger Pulse-or
   assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.ai_disclosure), true);
   assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.caption_manifest), true);
   assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.platform_packs), true);
+  assert.equal(
+    report.upgraded_green_candidates.candidates.every((candidate) =>
+      candidate.director_beat_map.shot_plan
+        .filter((shot) => /card/i.test(`${shot.id || ""} ${shot.kind || ""}`))
+        .every((shot) => Number(shot.durationS || 0) >= 6.5),
+    ),
+    true,
+  );
   assert.ok(report.rejected_variants.variants.some((variant) => variant.reason === "baseline_lost_to_upgraded_variant"));
 });
 

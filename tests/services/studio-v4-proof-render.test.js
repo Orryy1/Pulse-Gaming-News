@@ -12,6 +12,7 @@ const {
   buildClipScenePlan,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
+  overlayCardWindowsForStory,
   drawtextEscape,
   parseArgs,
   renderNarrationScriptText,
@@ -193,6 +194,28 @@ test("Studio V4 overlay chain adds temporal grain to prevent static-frame holds"
 
   assert.match(chain, /noise=alls=10:allf=t\+u/);
   assert.match(chain, /trim=duration=42\.000,setpts=PTS-STARTPTS\[out\]/);
+});
+
+test("Studio V4 proof renderer reports readable overlay card windows", () => {
+  const windows = overlayCardWindowsForStory({
+    canonical_subject: "Street Fighter 6",
+    primary_source: "Capcom",
+    first_frame_text: "YASMINE PRESSURE",
+    thumbnail_headline: "YASMINE PRESSURE",
+    proof_card_primary: "RUSHDOWN PROBLEM",
+    proof_card_secondary: "TOURNAMENT META",
+  });
+
+  assert.deepEqual(
+    windows.map((window) => [window.id, window.kind, window.duration_s]),
+    [
+      ["opening_source_lock", "source_lock", 3.3],
+      ["headline_card", "proof_card", 4.4],
+      ["proof_primary", "proof_card", 3.4],
+      ["proof_secondary", "proof_card", 3.3],
+    ],
+  );
+  assert.ok(windows.every((window) => window.duration_s >= 2.5));
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {

@@ -4416,6 +4416,12 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
     video_clips: clips,
     visual_v4_bridge_video_clips: clips,
   });
+  await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
+    shot_plan: [
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.6 },
+      { id: "proof_card", kind: "proof_card", startS: 4.45, durationS: 2.8 },
+    ],
+  });
 
   const preflight = await runPreflightQaForStory(
     baseStory({
@@ -4442,6 +4448,12 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
         rendered_duration_s: 42,
         clips: 30,
         visual_count: 6,
+      },
+      director_beat_map: {
+        shot_plan: [
+          { id: "stale_source_lock", kind: "source_lock", startS: 2.75, durationS: 2.2 },
+          { id: "stale_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.35 },
+        ],
       },
       visual_v4_bridge_video_clips: clips,
       video_clips: clips,
@@ -4492,6 +4504,10 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
   assert.ok(
     !preflight.blockers.includes("incident_guard:visual_evidence:final_render_reuses_visual_units"),
     JSON.stringify(preflight.blockers),
+  );
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.hyperframes_too_fast_card_shots.length,
+    0,
   );
 });
 

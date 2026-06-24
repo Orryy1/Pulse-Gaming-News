@@ -3480,12 +3480,15 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
       ...asArray(renderStoryArtifact.visual_v4_bridge_video_clips),
     ],
   };
-  const directorBeatMap = objectValue(
-    story.director_beat_map ||
-      story.visual_v4_director_plan ||
-      story.director_plan,
-    directorArtifact,
-  );
+  const directorArtifactHasShots = asArray(directorArtifact.shot_plan || directorArtifact.shots).length > 0;
+  const directorBeatMap = directorArtifactHasShots
+    ? directorArtifact
+    : objectValue(
+        story.director_beat_map ||
+          story.visual_v4_director_plan ||
+          story.director_plan,
+        directorArtifact,
+      );
   const materialisedMotion = materialisedMotionEvidenceClipsForStory({
     story,
     ownedMotionManifest: objectValue(story.owned_motion_manifest, ownedMotionArtifact),

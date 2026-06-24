@@ -739,6 +739,184 @@ test("goal dry-run publisher blocks HyperFrames cards that are too fast to read"
   );
 });
 
+test("goal dry-run publisher blocks unreadable source and proof cards even without HyperFrames clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-director-card-dwell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "director-card-dwell-story",
+    "GREEN",
+    "Street Fighter 6 Just Revealed A Rushdown Problem",
+    {
+      canonicalSubject: "Street Fighter 6",
+      durationSeconds: 42,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 42,
+        clips: 6,
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 6 }, (_, index) =>
+    directMotionClipFixture({
+      id: `sf6-direct-${index + 1}`,
+      path: `motion/sf6-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/street-fighter-6/trailer-${index + 1}.mp4`,
+      sourceFamily: `street_fighter_6_trailer_${index + 1}`,
+      startS: index * 6,
+    }),
+  );
+  await Promise.all(
+    directClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "director-card-dwell-story",
+    video_clips: directClips,
+    visual_v4_bridge_video_clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: directClips,
+    distinct_motion_families: directClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    distinct_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    shot_plan: [
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.2 },
+      { id: "source_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.35 },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: directClips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:18:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:director_card_dwell_too_short"));
+  assert.equal(plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_card_count, 0);
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_too_fast_card_shots.length,
+    2,
+  );
+});
+
+test("goal dry-run publisher accepts readable rendered card windows over stale director dwell", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-render-card-window-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "render-card-window-story",
+    "GREEN",
+    "Street Fighter 6 Just Revealed A Rushdown Problem",
+    {
+      canonicalSubject: "Street Fighter 6",
+      durationSeconds: 42,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 42,
+        clips: 6,
+        overlay_card_windows: [
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 3.3, duration_s: 3.3 },
+          { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.4, duration_s: 4.4 },
+          { id: "proof_primary", kind: "proof_card", start_s: 9, end_s: 12.4, duration_s: 3.4 },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const sourceFamilies = [
+    "capcom_official_trailer",
+    "playstation_blog_capture",
+    "xbox_wire_showcase",
+    "steam_store_clip",
+    "ign_preview_broll",
+    "gamespot_interview_broll",
+  ];
+  const directClips = Array.from({ length: 6 }, (_, index) =>
+    directMotionClipFixture({
+      id: `sf6-render-window-${index + 1}`,
+      path: `motion/sf6-render-window-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/street-fighter-6/window-${index + 1}.mp4`,
+      sourceFamily: sourceFamilies[index],
+      startS: index * 6,
+    }),
+  );
+  await Promise.all(
+    directClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "render-card-window-story",
+    video_clips: directClips,
+    visual_v4_bridge_video_clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: directClips,
+    distinct_motion_families: directClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    distinct_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    shot_plan: [
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.2 },
+      { id: "source_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.35 },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: directClips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:24:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(
+    plan.summary.ready_story_count,
+    1,
+    JSON.stringify({
+      blocked: plan.blocked_stories.map((story) => ({
+        id: story.story_id,
+        blockers: story.blockers,
+        file_evidence: story.incident_guard?.evidence?.file_evidence,
+      })),
+    }),
+  );
+  assert.equal(plan.summary.blocked_story_count, 0);
+  const fileEvidence = plan.incident_guard_report.stories.find(
+    (story) => story.story_id === "render-card-window-story",
+  ).file_evidence;
+  assert.equal(fileEvidence.rendered_card_window_count, 3);
+  assert.equal(fileEvidence.rendered_too_fast_card_windows.length, 0);
+  assert.equal(
+    fileEvidence.hyperframes_effective_too_fast_card_shots.length,
+    0,
+  );
+});
+
 test("goal dry-run publisher blocks neighbouring windows overused from the same base source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-base-source-loop-"));
   const storyPackage = await makeStoryPackage(

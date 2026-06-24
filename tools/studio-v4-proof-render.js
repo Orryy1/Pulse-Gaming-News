@@ -1006,6 +1006,54 @@ function drawtextLinesForBlock(block, { fontOpt, fontcolor, enable, shadow = tru
   return filters;
 }
 
+function overlayCardWindowsForStory(story = {}) {
+  const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
+  const suppressOpeningStoryCard =
+    suppressAllStoryCards ||
+    story.suppress_opening_story_cards === true ||
+    String(story.visual_repair_lane || "").trim() === "visual_first_frame_rerender";
+  const windows = [];
+  if (!suppressOpeningStoryCard) {
+    windows.push({
+      id: "opening_source_lock",
+      kind: "source_lock",
+      start_s: 0,
+      end_s: 3.3,
+      duration_s: 3.3,
+      source: "studio_v4_overlay_chain",
+    });
+  }
+  if (!suppressAllStoryCards) {
+    windows.push(
+      {
+        id: "headline_card",
+        kind: "proof_card",
+        start_s: 4,
+        end_s: 8.4,
+        duration_s: 4.4,
+        source: "studio_v4_overlay_chain",
+      },
+      {
+        id: "proof_primary",
+        kind: "proof_card",
+        start_s: 9,
+        end_s: 12.4,
+        duration_s: 3.4,
+        source: "studio_v4_overlay_chain",
+      },
+      {
+        id: "proof_secondary",
+        kind: "proof_card",
+        start_s: 16,
+        end_s: 19.3,
+        duration_s: 3.3,
+        source: "studio_v4_overlay_chain",
+      },
+    );
+  }
+  return windows;
+}
+
 function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt }) {
   const layout = buildOverlayLayout({ story });
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
@@ -1325,6 +1373,7 @@ async function renderProof({ storyJson, output }) {
       ? Number(story.hyperframes_card_count)
       : null,
     hyperframes_premium_shell_gate: story.hyperframes_premium_shell_gate || {},
+    overlay_card_windows: overlayCardWindowsForStory(story),
     premium_shell_verdict: story.premium_shell_verdict || null,
     premium_shell_pass_count: Number.isFinite(Number(story.premium_shell_pass_count))
       ? Number(story.premium_shell_pass_count)
@@ -1409,6 +1458,7 @@ module.exports = {
   buildClipScenePlan,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
+  overlayCardWindowsForStory,
   buildFinalSocialAudioMixFilter,
   drawtextEscape,
   renderNarrationScriptText,

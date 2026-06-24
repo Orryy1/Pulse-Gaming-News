@@ -16,7 +16,10 @@ const {
 const { buildGoalProofPackage, buildPlatformNativePublishPacks } = require("../../lib/goal-proof-package");
 const {
   parseArgs: parseGoalBatchArgs,
+  filterLiveRssStoriesForMotion,
+  liveRssMotionGate,
   selectStoriesForGoalBatch,
+  shouldFillRevenuePathsForGoalBatch,
 } = require("../../tools/goal-batch-packages");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 const { buildViralScriptIntelligence } = require("../../lib/viral-script-intelligence");
@@ -658,7 +661,7 @@ test("goal batch CLI can select repaired live DB stories for governed packaging"
   assert.deepEqual(selected.map((story) => story.id), ["rss_story", "1tkik53"]);
 });
 
-test("goal batch live RSS selection prioritises motion-rich stories before deals and abstract reviews", () => {
+test("goal batch live RSS selection filters weak motion stories before packaging", () => {
   const selected = selectStoriesForGoalBatch({
     liveRssStories: [
       {
@@ -670,6 +673,17 @@ test("goal batch live RSS selection prioritises motion-rich stories before deals
         id: "review-abstract",
         title: "Star Fox Review Has A Review Momentum Problem",
         source_name: "PC Gamer",
+      },
+      {
+        id: "generic-platform",
+        title: "Xbox Has A Player-Return Problem",
+        source_name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/24/xbox-player-return-problem/",
+      },
+      {
+        id: "template-title",
+        title: "Why This Game Could Split Players",
+        source_name: "Eurogamer",
       },
       {
         id: "official-gameplay",
@@ -684,7 +698,8 @@ test("goal batch live RSS selection prioritises motion-rich stories before deals
       },
       {
         id: "demo-playable",
-        title: "Steam Next Fest Demo Lets Players Try The New Horror RPG Today",
+        title: "Hell Is Us Steam Demo Lets Players Try New Gameplay Today",
+        canonical_subject: "Hell Is Us",
         source_name: "Steam",
       },
     ],
@@ -692,13 +707,24 @@ test("goal batch live RSS selection prioritises motion-rich stories before deals
   });
 
   assert.deepEqual(
-    new Set(selected.slice(0, 3).map((story) => story.id)),
-    new Set(["official-gameplay", "trailer-reveal", "demo-playable"]),
+    selected.map((story) => story.id),
+    ["official-gameplay", "demo-playable", "trailer-reveal", "daily"],
   );
-  assert.deepEqual(
-    selected.slice(3, 5).map((story) => story.id),
-    ["review-abstract", "deal-card"],
-  );
+});
+
+test("goal batch live RSS motion gate preserves official direct-media stories", () => {
+  const story = {
+    id: "rockstar-gta-vi-cover",
+    title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+    source_name: "Rockstar Newswire",
+    source_type: "official",
+    url: "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+    approved_direct_media_url:
+      "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+  };
+
+  assert.equal(liveRssMotionGate(story).pass, true);
+  assert.deepEqual(filterLiveRssStoriesForMotion([story]).map((row) => row.id), [story.id]);
 });
 
 test("goal batch CLI parses shared SFX evidence paths", () => {
@@ -711,6 +737,15 @@ test("goal batch CLI parses shared SFX evidence paths", () => {
 
   assert.equal(args.sfxAssetsPath, "output/goal-contract/sfx_asset_inventory.json");
   assert.equal(args.sfxRightsLedgerPath, "output/goal-contract/sfx_rights_ledger.json");
+});
+
+test("goal batch live RSS only mode blocks stale backlog revenue fallback", () => {
+  const args = parseGoalBatchArgs(["--live-rss-only", "--limit", "12"]);
+
+  assert.equal(args.liveRss, true);
+  assert.equal(args.liveRssOnly, true);
+  assert.equal(shouldFillRevenuePathsForGoalBatch(args), false);
+  assert.equal(shouldFillRevenuePathsForGoalBatch(parseGoalBatchArgs(["--live-rss"])), true);
 });
 
 test("goal batch CLI defaults to retained licensed SFX evidence", () => {
@@ -771,7 +806,7 @@ test("goal batch owned fallback motion clips use readable card dwell", () => {
 
   assert.ok(prepared.video_clips.length >= 6);
   assert.equal(
-    prepared.video_clips.every((clip) => Number(clip.durationS) >= 4.2),
+    prepared.video_clips.every((clip) => Number(clip.durationS) >= 6.5),
     true,
     JSON.stringify(prepared.video_clips.map((clip) => ({ id: clip.id, durationS: clip.durationS }))),
   );

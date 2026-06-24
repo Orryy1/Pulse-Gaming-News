@@ -641,6 +641,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
 
     assert.deepEqual(capturedArgCalls[0], [
       "--live-rss",
+      "--live-rss-only",
       "--rss-per-feed",
       "4",
       "--limit",

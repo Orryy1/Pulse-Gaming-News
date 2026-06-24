@@ -38,6 +38,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     contractOutDir: path.join(ROOT, "output", "goal-contract"),
     generatedAt: null,
     liveRss: false,
+    liveRssOnly: false,
     rssPerFeed: 8,
     dbStories: false,
     storyIds: [],
@@ -57,6 +58,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--contract-out-dir") args.contractOutDir = argv[++i] || args.contractOutDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--live-rss") args.liveRss = true;
+    else if (arg === "--live-rss-only") {
+      args.liveRss = true;
+      args.liveRssOnly = true;
+    }
     else if (arg === "--rss-per-feed") args.rssPerFeed = Number(argv[++i] || args.rssPerFeed);
     else if (arg === "--db-stories") args.dbStories = true;
     else if (arg === "--story-id" || arg === "--story" || arg === "--story-ids") {
@@ -88,6 +93,7 @@ function usage() {
     "  --contract-out-dir <dir>",
     "  --generated-at <iso>",
     "  --live-rss                 Prepend current source-backed RSS proof candidates from Pulse Gaming feeds",
+    "  --live-rss-only            Use only current gated live-RSS candidates; prevents stale backlog/revenue fill",
     "  --rss-per-feed <n>          Defaults to 8 when --live-rss is set",
     "  --db-stories               Read story rows from the configured local DB instead of daily_news.json",
     "  --story-id <id[,id]>        Package only the named story IDs; may be repeated",
@@ -126,17 +132,144 @@ function dedupeStoriesById(stories = []) {
   return out;
 }
 
-function liveRssMotionPotentialScore(story = {}) {
-  const text = [
+function cleanSearchText(value) {
+  if (value == null) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+  if (Array.isArray(value)) return value.map(cleanSearchText).filter(Boolean).join(" ");
+  if (typeof value === "object") {
+    return [
+      value.title,
+      value.name,
+      value.label,
+      value.source_name,
+      value.publisher,
+      value.outlet,
+      value.url,
+      value.href,
+      value.source_url,
+      value.article_url,
+      value.official_source_url,
+      value.reference_url,
+      value.direct_media_url,
+      value.direct_media_url_if_available,
+      value.approved_direct_media_url,
+      value.video_url,
+      value.trailer_url,
+    ].map(cleanSearchText).filter(Boolean).join(" ");
+  }
+  return "";
+}
+
+function liveRssStorySearchText(story = {}) {
+  return [
     story.title,
     story.description,
     story.summary,
     story.source_name,
+    story.publisher,
+    story.outlet,
     story.url,
     story.article_url,
-  ].map((value) => String(value || "")).join(" ");
+    story.primary_source_url,
+    story.official_source_url,
+    story.approved_direct_media_url,
+    story.direct_media_url,
+    story.direct_media_url_if_available,
+    story.video_url,
+    story.trailer_url,
+    cleanSearchText(story.primary_source),
+    cleanSearchText(story.official_source),
+    cleanSearchText(story.media_candidates),
+    cleanSearchText(story.trailer_references),
+    cleanSearchText(story.official_source_entries),
+    cleanSearchText(story.source_manifest),
+  ].map(cleanSearchText).filter(Boolean).join(" ");
+}
+
+function liveRssDirectMotionEvidence(story = {}) {
+  const text = liveRssStorySearchText(story);
+  const directFields = [
+    story.approved_direct_media_url,
+    story.direct_media_url,
+    story.direct_media_url_if_available,
+    story.video_url,
+    story.trailer_url,
+    story.media_url,
+  ].map(cleanSearchText);
+  if (directFields.some((url) => /\.(?:mp4|mov|m4v|webm)(?:[?#]|$)/i.test(url))) return true;
+  if (
+    /\b(?:gameplay|deep dive|hands[- ]?on|trailer|showcase|direct|state of play|developer diary|dev diary|footage|demo|playtest|beta|launch trailer|reveal trailer|official video|cover art animation)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function liveRssWeakUnattendedPattern(story = {}) {
+  const text = liveRssStorySearchText(story);
+  return /\b(?:today[’']?s top deals|top deals|deal|deals|discount|sale|price drop|memory card|ssd|controller discount|amazon prime day|woot|bundle|best games|roundup|everything we know|what to play|guide|wishlist|review momentum|ranking by views|could split players|why this game|why .* could split players)\b/i.test(
+    text,
+  );
+}
+
+function genericLiveRssSubject(value = "") {
+  const clean = cleanSearchText(value);
+  if (!clean) return true;
+  if (/^(?:xbox|playstation|ps5|ps4|nintendo|switch|switch 2|steam|valve|pc|pc gamer|game|games|this game|this story|the update|the story|today)$/i.test(clean)) {
+    return true;
+  }
+  if (/^(?:why|what|how|while|today[’']?s|everything we know|best games|top deals)\b/i.test(clean)) return true;
+  return false;
+}
+
+function leadingSubjectFromTitle(title = "") {
+  const clean = cleanSearchText(title).replace(/^["'“”]+|["'“”]+$/g, "");
+  const beforeVerb = clean.match(
+    /^(.{2,70}?)\s+(?:gets?|got|has|have|is|are|will|just|shows?|showed|reveals?|revealed|launches?|adds?|returns?|drops?|joins?|scores?|announces?|announced|turns?|puts?|makes?|delays?|delayed|moves?)\b/i,
+  );
+  if (beforeVerb) return beforeVerb[1].trim();
+  const colon = clean.match(/^([^:]{2,70}):\s+/);
+  if (colon) return colon[1].trim();
+  return "";
+}
+
+function liveRssHasSpecificSubject(story = {}) {
+  const explicit = [
+    story.canonical_subject,
+    story.canonical_game,
+    story.game_title,
+    story.primary_entity,
+    story.franchise,
+  ].map(cleanSearchText).find((value) => value && !genericLiveRssSubject(value));
+  if (explicit) return true;
+
+  const title = cleanSearchText(story.title);
+  if (
+    /\b(?:Grand Theft Auto\s+VI|GTA\s*(?:6|VI)|Halo:?\s*Campaign Evolved|Gears of War:?\s*E[- ]Day|Resident Evil:?\s*Requiem|Resident Evil|Forza Horizon\s+6|Fable|Sea of Thieves|Ninja Gaiden\s+4|Phantom Blade Zero|Doom:?\s*The Dark Ages|Quake Champions|Granblue Fantasy:?\s*Relink|RuneScape:?\s*Dragonwilds|Yooka[- ]Laylee|007 First Light|Hell Is Us|Hades\s+II|Star Fox|Metroid Prime|Mario Kart World|Final Fantasy|Dragon Quest|Monster Hunter|Silent Hill|Persona\s+\d|Like a Dragon)\b/i.test(
+      title,
+    )
+  ) {
+    return true;
+  }
+
+  const leadingSubject = leadingSubjectFromTitle(title);
+  if (leadingSubject && !genericLiveRssSubject(leadingSubject) && /[A-Z][a-z]+(?:\s+[A-Z0-9][A-Za-z0-9'’:+-]+)+/.test(leadingSubject)) {
+    return true;
+  }
+  return false;
+}
+
+function liveRssMotionPotentialScore(story = {}) {
+  const text = liveRssStorySearchText(story);
   let score = Number(story.breaking_score || story.score || 0) / 10;
 
+  if (liveRssDirectMotionEvidence(story)) {
+    score += 35;
+  }
   if (/\b(?:official|xbox wire|playstation blog|nintendo|steam|capcom|sega|ubisoft|bethesda|rockstar|konami|square enix|bandai namco|ea|electronic arts)\b/i.test(text)) {
     score += 35;
   }
@@ -145,6 +278,9 @@ function liveRssMotionPotentialScore(story = {}) {
   }
   if (/\b(?:playable|try|available now|free update|new mode|new map|boss fight|combat|campaign|character reveal)\b/i.test(text)) {
     score += 25;
+  }
+  if (/\b(?:cover art|pre[- ]?order|official media|media page|download and share|artwork reveal)\b/i.test(text)) {
+    score += 20;
   }
   if (/\b(?:review|score|metacritic|opencritic|ranking by views|review momentum)\b/i.test(text)) {
     score -= 18;
@@ -156,6 +292,26 @@ function liveRssMotionPotentialScore(story = {}) {
     score -= 35;
   }
   return score;
+}
+
+const MIN_LIVE_RSS_MOTION_SCORE = 45;
+
+function liveRssMotionGate(story = {}) {
+  const score = liveRssMotionPotentialScore(story);
+  const reasons = [];
+  const hasSpecificSubject = liveRssHasSpecificSubject(story);
+  const hasDirectMotion = liveRssDirectMotionEvidence(story);
+  if (liveRssWeakUnattendedPattern(story)) reasons.push("weak_unattended_live_rss_pattern");
+  if (!hasSpecificSubject) reasons.push("specific_subject_missing");
+  if (!hasDirectMotion) reasons.push("direct_motion_signal_missing");
+  if (score < MIN_LIVE_RSS_MOTION_SCORE) reasons.push("motion_potential_below_threshold");
+  return {
+    pass: reasons.length === 0,
+    score,
+    reasons,
+    has_specific_subject: hasSpecificSubject,
+    has_direct_motion_signal: hasDirectMotion,
+  };
 }
 
 function prioritiseLiveRssStoriesForMotion(stories = []) {
@@ -172,6 +328,21 @@ function prioritiseLiveRssStoriesForMotion(stories = []) {
     .map((entry) => entry.story);
 }
 
+function filterLiveRssStoriesForMotion(stories = []) {
+  return asStoryArray(stories)
+    .map((story, index) => ({
+      story,
+      index,
+      gate: liveRssMotionGate(story),
+    }))
+    .filter((entry) => entry.gate.pass)
+    .sort((a, b) => {
+      const delta = b.gate.score - a.gate.score;
+      return Math.abs(delta) > 0.001 ? delta : a.index - b.index;
+    })
+    .map((entry) => entry.story);
+}
+
 function selectStoriesForGoalBatch({
   baseStories = [],
   dbStories = [],
@@ -181,9 +352,16 @@ function selectStoriesForGoalBatch({
 } = {}) {
   const wanted = new Set(normaliseStoryIds(storyIds));
   const sourceStories = useDbStories ? asStoryArray(dbStories) : asStoryArray(baseStories);
-  const merged = dedupeStoriesById([...prioritiseLiveRssStoriesForMotion(liveRssStories), ...sourceStories]);
+  const liveRssSelection = wanted.size
+    ? prioritiseLiveRssStoriesForMotion(liveRssStories)
+    : filterLiveRssStoriesForMotion(liveRssStories);
+  const merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]);
   if (!wanted.size) return merged;
   return merged.filter((story) => wanted.has(storyIdFor(story)));
+}
+
+function shouldFillRevenuePathsForGoalBatch(args = {}) {
+  return normaliseStoryIds(args.storyIds).length === 0 && args.liveRssOnly !== true;
 }
 
 async function loadMotionPackByStory(dirPath) {
@@ -237,7 +415,9 @@ async function main(argv = process.argv.slice(2)) {
     return { help: true };
   }
   loadDotenvForCli();
-  const baseStories = args.dbStories ? [] : asStoryArray(await fs.readJson(path.resolve(args.storiesFile)));
+  const baseStories = args.dbStories || args.liveRssOnly
+    ? []
+    : asStoryArray(await fs.readJson(path.resolve(args.storiesFile)));
   const dbStories = args.dbStories ? await require("../lib/db").getStories() : [];
   const liveRssStories = args.liveRss
     ? await fetchRssProofStories({
@@ -267,7 +447,7 @@ async function main(argv = process.argv.slice(2)) {
     storyIds: args.storyIds,
   });
   const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit, {
-    fillRevenuePaths: args.storyIds.length === 0,
+    fillRevenuePaths: shouldFillRevenuePathsForGoalBatch(args),
   });
   const batch = buildGoalBatchPackages({
     stories,
@@ -302,9 +482,13 @@ if (require.main === module) {
 module.exports = {
   loadRevenueManifestByStory,
   loadMotionPackByStory,
+  filterLiveRssStoriesForMotion,
+  liveRssMotionGate,
+  liveRssMotionPotentialScore,
   normaliseStoryIds,
   prioritiseLiveRssStoriesForMotion,
   selectStoriesForGoalBatch,
   parseArgs,
+  shouldFillRevenuePathsForGoalBatch,
   main,
 };

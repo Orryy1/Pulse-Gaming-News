@@ -125,6 +125,75 @@ test("direct-media discovery accepts same-app Steam trailer manifests with gener
   );
 });
 
+test("direct-media discovery falls back to Steam appdetails movie metadata", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "black-ops-gap",
+        entity: "Call of Duty: Black Ops",
+        source_family: "steam_42700_call_of_duty_black_ops",
+        source_type: "platform_storefront",
+        source_owner: "Steam storefront for Call of Duty: Black Ops",
+        official_source_url: "https://store.steampowered.com/app/42700/Call_of_Duty_Black_Ops/",
+      },
+    ],
+    generatedAt: "2026-06-24T12:20:00.000Z",
+    fetchText: async () => ({
+      ok: true,
+      status: 200,
+      text: "<html><title>Age-check shell without trailer manifests</title></html>",
+    }),
+    fetchJson: async (url) => {
+      assert.equal(url, "https://store.steampowered.com/api/appdetails?appids=42700&l=english&cc=us&filters=movies,basic");
+      return {
+        ok: true,
+        status: 200,
+        json: {
+          42700: {
+            success: true,
+            data: {
+              name: "Call of Duty: Black Ops",
+              movies: [
+                {
+                  id: 9001,
+                  name: "Call of Duty: Black Ops Launch Trailer",
+                  hls_h264: "https://video.fastly.steamstatic.com/store_trailers/42700/9001/hls_264_master.m3u8",
+                  dash_h264: "https://video.fastly.steamstatic.com/store_trailers/42700/9001/dash_h264.mpd",
+                  mp4: {
+                    max: "https://video.fastly.steamstatic.com/store_trailers/42700/9001/movie_max.mp4",
+                    480: "https://video.fastly.steamstatic.com/store_trailers/42700/9001/movie480.mp4",
+                  },
+                  webm: {
+                    max: "https://video.fastly.steamstatic.com/store_trailers/42700/9001/movie_max.webm",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      };
+    },
+    probeMedia: async (url) => {
+      assert.equal(url, "https://video.fastly.steamstatic.com/store_trailers/42700/9001/hls_264_master.m3u8");
+      return { duration_seconds: 91, width: 1920, height: 1080 };
+    },
+  });
+
+  assert.equal(report.summary.discovered, 1);
+  assert.equal(report.rows[0].status, "direct_media_found");
+  assert.equal(report.rows[0].discovery_source, "steam_appdetails_movie_metadata");
+  assert.equal(
+    report.rows[0].direct_media_url,
+    "https://video.fastly.steamstatic.com/store_trailers/42700/9001/hls_264_master.m3u8",
+  );
+  assert.equal(report.rows[0].direct_media_candidates[0].media_identity, "hls_264_master");
+  assert.equal(
+    report.output_template.entries[0].direct_media_url_if_available,
+    "https://video.fastly.steamstatic.com/store_trailers/42700/9001/hls_264_master.m3u8",
+  );
+  assert.equal(report.output_template.entries[0].downloads_allowed, false);
+});
+
 test("direct-media discovery accepts official GTA VI compact-title media", async () => {
   const report = await buildOfficialDirectMediaDiscoveryReport({
     entries: [

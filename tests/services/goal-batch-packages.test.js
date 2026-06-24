@@ -754,6 +754,29 @@ test("goal batch package proof preparation rewrites source-backed fallback narra
   assert.equal(evaluateGoalPublicCopy(manifest).verdict, "pass");
 });
 
+test("goal batch owned fallback motion clips use readable card dwell", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "owned-card-dwell",
+      canonical_subject: "Invincible VS",
+      canonical_game: "Invincible VS",
+      title: "Invincible VS Shows Its First Real Roster Problem",
+      primary_source: "IGN",
+      article_url: "https://www.ign.com/articles/invincible-vs-roster-trailer",
+      full_script:
+        "Invincible VS has a roster problem fighting games cannot hide. IGN says the new trailer focuses on character matchups, tag timing and how quickly assists can flip a round. That matters because a famous licence only helps if the fights stay readable once three characters start filling the screen. If the roster has depth without becoming visual noise, this becomes a real contender. If it does not, the licence will carry the trailer and lose the match. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.ok(prepared.video_clips.length >= 6);
+  assert.equal(
+    prepared.video_clips.every((clip) => Number(clip.durationS) >= 4.2),
+    true,
+    JSON.stringify(prepared.video_clips.map((clip) => ({ id: clip.id, durationS: clip.durationS }))),
+  );
+});
+
 test("goal batch package proof preparation avoids source-backed fallback claim when title is missing", () => {
   const prepared = prepareStoryForGoalProof(
     {

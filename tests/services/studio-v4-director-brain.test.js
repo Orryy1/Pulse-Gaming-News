@@ -312,6 +312,31 @@ test("Visual V4 Director turns Steam, score, price and retention signals into a 
   );
 });
 
+test("Visual V4 Director gives every card-like beat readable dwell time", () => {
+  const footagePlan = buildFootageEmpirePlan({
+    story: story(),
+    trustedFootageReport: trustedReport(),
+    localMotionClips: localClips(8),
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: story(),
+    footagePlan,
+    localTimeline: localTimeline(),
+    retentionIntelligence: retentionIntelligence(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const cardLike = plan.shot_plan.filter((shot) =>
+    /(?:card|source_lock|steam_chart|price_snap|review_score)/i.test(`${shot.kind} ${shot.id}`),
+  );
+
+  assert.ok(cardLike.length >= 3);
+  assert.equal(
+    cardLike.every((shot) => Number(shot.durationS) >= 4),
+    true,
+    JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
+  );
+});
+
 test("Visual V4 Director recomputes stale motion readiness from materialised clips", () => {
   const plan = buildVisualV4DirectorPlan({
     story: {

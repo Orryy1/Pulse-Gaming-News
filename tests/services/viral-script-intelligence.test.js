@@ -729,6 +729,28 @@ test("viral script intelligence rejects generated placeholder title templates", 
   assert.ok(result.blockers.includes("generic_title_template"), JSON.stringify(result));
 });
 
+test("viral script intelligence rejects generic player-test fallback templates", () => {
+  const script =
+    "Invincible VS has one clear detail players can check before the hype gets ahead of it. " +
+    "IGN says the new trailer shows another look at the roster. " +
+    "The player test is simple: does this change what people install, wishlist, finish or ignore? " +
+    "If it changes that decision, the story earns attention. If it does not, it is background noise. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "invincible-generic-fallback",
+      title: "Why Invincible VS Could Split Players",
+      source_name: "IGN",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("generic_player_test_template"), JSON.stringify(result));
+  assert.ok(result.blockers.includes("generic_could_split_title_template"), JSON.stringify(result));
+});
+
 test("viral script intelligence rejects article-fragment subjects as narration hooks", () => {
   const script =
     "Hide-and-seek game where you paint just blinked in one of the year's most crowded release windows. " +

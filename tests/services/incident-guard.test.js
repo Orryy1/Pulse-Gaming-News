@@ -860,6 +860,115 @@ test("incident guard blocks weak first-frame and source-lock evidence despite GR
   assert.ok(report.disaster_upload_blockers.includes("incident:below_benchmark_polish"));
 });
 
+test("incident guard blocks too-fast or repeated HyperFrames card evidence", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "hyperframes-too-fast",
+    canonical_story_manifest: {
+      story_id: "hyperframes-too-fast",
+      canonical_subject: "GTA VI",
+      selected_title: "GTA VI Cover Art Reveals A Preorder Problem",
+      thumbnail_headline: "GTA VI PREORDER PROBLEM",
+      first_spoken_line: "GTA VI just turned cover art into a preorder question.",
+      narration_script:
+        "GTA VI just turned cover art into a preorder question. Rockstar showed the art, but players still need the price, editions and platform details before the buying decision is real.",
+      description: "Rockstar showed GTA VI cover art. Source: Rockstar Games.",
+      primary_source: "Rockstar Games",
+      discovery_source: "Rockstar Games",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("GTA VI"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: { title: "GTA VI Cover Art Reveals A Preorder Problem" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+      rendered_too_fast_card_windows: [
+        { id: "proof_primary", duration_s: 1.8, minimum_required_duration_s: 4 },
+      ],
+      hyperframes_too_fast_card_clips: [
+        { id: "gta-card-01", duration_s: 2.2, minimum_required_duration_s: 4.2 },
+      ],
+      hyperframes_repeated_card_families: [
+        { family: "gta_cover_art_explainer", count: 3 },
+      ],
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(report.disaster_upload_blockers.includes("incident:hyperframes_card_dwell_too_short"));
+  assert.ok(report.disaster_upload_blockers.includes("incident:hyperframes_repeated_card_family"));
+});
+
+test("incident guard blocks repeated direct-motion segment evidence", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "repeated-direct-motion",
+    canonical_story_manifest: {
+      story_id: "repeated-direct-motion",
+      canonical_subject: "Halo: Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Keeps Reusing The Same Trailer Beat",
+      thumbnail_headline: "HALO LOOP WARNING",
+      first_spoken_line: "Halo Campaign Evolved needs fresh trailer motion, not the same clip looped again.",
+      narration_script:
+        "Halo Campaign Evolved needs fresh trailer motion, not the same clip looped again. Xbox footage can carry the story only if the edit shows enough distinct moments to prove the point.",
+      description: "Halo Campaign Evolved footage needs visual variety. Source: Xbox.",
+      primary_source: "Xbox",
+      discovery_source: "Xbox",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Halo: Campaign Evolved"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: { title: "Halo Campaign Evolved Keeps Reusing The Same Trailer Beat" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+      repeated_direct_motion_segments: [
+        {
+          key: "https://cdn.example.test/halo-trailer.m3u8|start:12.0|duration:5.0",
+          first_id: "halo-clip-a",
+          repeated_id: "halo-clip-b",
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(report.disaster_upload_blockers.includes("incident:repeated_direct_motion_segment"));
+});
+
 test("incident guard blocks cut-off text and caption collision frame rules", () => {
   const report = evaluateIncidentGuard({
     story_id: "frame-rules-risk",

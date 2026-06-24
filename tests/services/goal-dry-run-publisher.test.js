@@ -739,6 +739,93 @@ test("goal dry-run publisher blocks HyperFrames cards that are too fast to read"
   );
 });
 
+test("goal dry-run publisher blocks HyperFrames cards that omit readable dwell evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-missing-dwell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "hf-missing-dwell-story",
+    "GREEN",
+    "GTA VI Cover Art Made The Price Debate Louder",
+    {
+      canonicalSubject: "GTA VI",
+      durationSeconds: 52,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 52,
+        clips: 8,
+        hyperframes_premium_shell_required: true,
+        hyperframes_card_count: 2,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 6 }, (_, index) =>
+    directMotionClipFixture({
+      id: `gta-vi-direct-${index + 1}`,
+      path: `motion/gta-vi-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/gta-vi/direct-${index + 1}.mp4`,
+      sourceFamily: `gta_vi_official_source_${index + 1}`,
+      startS: index * 6,
+    }),
+  );
+  const cardClips = Array.from({ length: 2 }, (_, index) => ({
+    id: `gta-vi-hyperframe-card-${index + 1}`,
+    path: `hyperframes/gta-vi-card-${index + 1}.mp4`,
+    source_type: "hyperframes_card",
+    media_kind: "hyperframes_card",
+    source_family: `gta_vi_hyperframes_card_${index + 1}`,
+    text: index === 0 ? "PRICE STILL UNCONFIRMED" : "PREORDERS NEED PLATFORM DETAIL",
+  }));
+  await Promise.all([
+    ...directClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+    ...cardClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 5))),
+  ]);
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "hf-missing-dwell-story",
+    video_clips: [...directClips, ...cardClips],
+    visual_v4_bridge_video_clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: directClips,
+    distinct_motion_families: directClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    distinct_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [...directClips, ...cardClips].map((clip) => ({
+      ...clip,
+      asset_type: clip.media_kind === "hyperframes_card" ? "owned_generated_motion_card" : "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T21:45:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:card_clip_dwell_missing"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_missing"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_missing_duration_card_clips.length,
+    2,
+  );
+});
+
 test("goal dry-run publisher blocks unreadable source and proof cards even without HyperFrames clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-director-card-dwell-"));
   const storyPackage = await makeStoryPackage(

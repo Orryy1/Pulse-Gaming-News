@@ -3836,7 +3836,7 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
         /^source_age:/i.test(cleanText(blocker)),
       );
       const visualLoopBlocked = asArray(preflight.blockers).some((blocker) =>
-        /(?:final_render_reuses_visual_units|card_visible_dwell_too_short|director_card_dwell_too_short|direct_motion_base_source_overused|repeated_direct_motion_segment)/i.test(
+        /(?:final_render_reuses_visual_units|card_visible_dwell_too_short|card_visible_dwell_missing|card_clip_dwell_missing|director_card_dwell_too_short|direct_motion_base_source_overused|repeated_direct_motion_segment)/i.test(
           cleanText(blocker),
         ),
       );

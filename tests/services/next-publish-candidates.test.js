@@ -4996,6 +4996,136 @@ test("attachPreflightQa trusts a current full GREEN proof package over stale pre
   assert.equal(report.preflight_qa.pass, 1);
 });
 
+test("attachPreflightQa does not supersede missing HyperFrames dwell evidence", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-hf-missing-dwell-"));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "hf-missing-dwell-package", videoPath);
+  const renderManifestPath = path.join(tmp, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    rendered_duration_s: 52,
+    clips: 8,
+    hyperframes_premium_shell_required: true,
+    hyperframes_card_count: 2,
+    overlay_card_windows: [],
+  }, { spaces: 2 });
+  const directClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `gta-direct-${index + 1}`,
+    path: `motion/gta-direct-${index + 1}.mp4`,
+    source_url: `https://cdn.example.com/gta-vi/direct-${index + 1}.mp4`,
+    source_family: `gta_vi_official_source_${index + 1}`,
+    motion_family: `gta_vi_official_source_${index + 1}`,
+    media_kind: "direct_video",
+  }));
+  const cardClips = [
+    {
+      id: "gta-proof-card",
+      path: "hyperframes/gta-proof-card.mp4",
+      source_type: "hyperframes_card",
+      media_kind: "hyperframes_card",
+      source_family: "gta_vi_proof_card",
+      text: "PRICE STILL UNCONFIRMED",
+    },
+    {
+      id: "gta-context-card",
+      path: "hyperframes/gta-context-card.mp4",
+      source_type: "hyperframes_card",
+      media_kind: "hyperframes_card",
+      source_family: "gta_vi_context_card",
+      text: "PREORDERS NEED PLATFORM DETAIL",
+    },
+  ];
+  await fs.writeJson(path.join(tmp, "visual_v4_render_story.json"), {
+    id: "hf-missing-dwell-package",
+    video_clips: [...directClips, ...cardClips],
+    visual_v4_bridge_video_clips: directClips,
+  }, { spaces: 2 });
+
+  const stories = [
+    baseStory({
+      id: "hf-missing-dwell-package",
+      title: "GTA VI Cover Art Made The Price Debate Louder",
+      selected_title: "GTA VI Cover Art Made The Price Debate Louder",
+      canonical_subject: "GTA VI",
+      source_type: "rss",
+      timestamp: "2026-06-24T19:30:00.000Z",
+      source_manifest: {
+        primary_source: {
+          name: "Rockstar Games",
+          url: "https://www.rockstargames.com/VI",
+          published_at: "2026-06-24T19:30:00.000Z",
+        },
+        source_age_policy_hours: 168,
+      },
+      duration_seconds: 52,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      auto_approved: true,
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "GTA VI Cover Art Made The Price Debate Louder" },
+          instagram_reels: { caption: "GTA VI cover art just made the preorder debate louder." },
+          facebook_reels: { page_caption: "GTA VI cover art just made the preorder debate louder." },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-24T21:55:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    env: {
+      TIKTOK_ENABLED: "false",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "false",
+    },
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({
+      result: "fail",
+      failures: ["visual_evidence:card_visible_dwell_missing"],
+      warnings: [],
+    }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(candidate.reasons.includes("preflight_qa_blocked"));
+  assert.ok(!candidate.reasons.includes("current_green_proof_package"));
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "incident_guard:visual_evidence:card_visible_dwell_missing",
+    ),
+  );
+  assert.equal(report.preflight_qa.blocked, 1);
+});
+
 test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {
   const stories = [
     baseStory({

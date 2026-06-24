@@ -127,6 +127,53 @@ test("fresh review local promotion intake rejects generic source-bound scaffolds
   assert.ok(report.repair_results[0].quality_failures.includes("local_intake:generic_player_question_script"));
 });
 
+test("fresh review local promotion intake rejects source-angle drift from GTA trailer timing into preorder claims", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [
+      sourceBackedReviewRow({
+        id: "rss_gta_trailer_timing",
+        story_id: "rss_gta_trailer_timing",
+        title: "If Rockstar Follows Its Own Precedent, Don't Expect GTA 6 Trailer 3 This Week",
+        description:
+          "GameSpot reports Rockstar's previous trailer cadence suggests GTA 6 Trailer 3 is not likely this week.",
+        article_url:
+          "https://www.gamespot.com/articles/if-rockstar-follows-its-own-precedent-dont-expect-gta-6-trailer-3-this-week/",
+        source_name: "GameSpot",
+        source_published_at: "2026-06-24T11:06:12.000Z",
+      }),
+    ],
+    plan: {
+      summary: { selected_count: 1 },
+      source_bound_rewrite_work_orders: [{ story_id: "rss_gta_trailer_timing" }],
+    },
+    now: new Date("2026-06-24T12:00:00.000Z"),
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_gta_trailer_timing",
+        title: "GTA 6's Preorder Decision",
+        suggested_title: "GTA 6's Preorder Decision",
+        source_name: "GameSpot",
+        article_url:
+          "https://www.gamespot.com/articles/if-rockstar-follows-its-own-precedent-dont-expect-gta-6-trailer-3-this-week/",
+        source_type: "rss",
+        source_published_at: "2026-06-24T11:06:12.000Z",
+        source_confidence_score: 90,
+        full_script:
+          "GTA 6 just turned cover art into a preorder pressure test. Rockstar revealed new key art while preorders still have no confirmed start date, and that matters because store pages usually tell players price, editions and platform detail before the hype cycle gets louder. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
+  });
+
+  assert.equal(report.summary.local_promotion_story_count, 0);
+  assert.equal(report.repair_results[0].output_story_ready, false);
+  assert.ok(
+    report.repair_results[0].quality_failures.includes(
+      "local_intake:source_script_mismatch_gta_preorder_vs_trailer_timing",
+    ),
+  );
+});
+
 test("fresh review local promotion intake rejects reusable follow-up scaffold language", () => {
   const failures = qualityFailuresForDraft({
     selected_title: "Cyberpunk 2077's Trust Debt",

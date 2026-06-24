@@ -1009,6 +1009,162 @@ test("goal dry-run publisher blocks too-fast generated card clips even when over
   );
 });
 
+test("goal dry-run publisher blocks long proof cards that do not have enough readable dwell", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-long-card-dwell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "long-card-dwell-story",
+    "GREEN",
+    "GTA VI Cover Art Reveals A Price Pressure Problem",
+    {
+      canonicalSubject: "GTA VI",
+      durationSeconds: 52,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 52,
+        clips: 10,
+        hyperframes_premium_shell_required: true,
+        hyperframes_card_count: 4,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+        overlay_card_windows: [
+          {
+            id: "proof_primary",
+            kind: "proof_card",
+            text: "PREORDERS STILL NEED PRICE, EDITIONS AND PLATFORM DETAIL",
+            start_s: 4,
+            end_s: 8.25,
+            duration_s: 4.25,
+          },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 8 }, (_, index) =>
+    directMotionClipFixture({
+      id: `gta-direct-long-card-${index + 1}`,
+      path: `motion/gta-direct-long-card-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/gta-vi/source-${index + 1}.mp4`,
+      sourceFamily: `gta_vi_direct_source_${index + 1}`,
+      startS: index * 7,
+      durationS: 5,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, directClips);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T12:30:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows[0].minimum_required_duration_s > 4.25,
+    true,
+  );
+});
+
+test("goal dry-run publisher blocks repeated HyperFrames card families", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-repeated-hf-card-family-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "repeated-hf-card-family-story",
+    "GREEN",
+    "Halo Campaign Evolved Needs A Cleaner Reveal",
+    {
+      canonicalSubject: "Halo: Campaign Evolved",
+      durationSeconds: 46,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 46,
+        clips: 10,
+        hyperframes_premium_shell_required: true,
+        hyperframes_card_count: 4,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+        overlay_card_windows: [
+          { id: "opening_source_lock", kind: "source_lock", text: "XBOX WIRE", start_s: 0, end_s: 4.2, duration_s: 4.2 },
+          { id: "proof_primary", kind: "proof_card", text: "PS5 ACCOUNT CATCH", start_s: 5, end_s: 9.4, duration_s: 4.4 },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 8 }, (_, index) =>
+    directMotionClipFixture({
+      id: `halo-direct-repeated-card-${index + 1}`,
+      path: `motion/halo-direct-repeated-card-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/halo-campaign-evolved/source-${index + 1}.mp4`,
+      sourceFamily: `halo_campaign_evolved_direct_${index + 1}`,
+      startS: index * 7,
+      durationS: 5,
+    }),
+  );
+  const repeatedCards = [1, 2].map((index) => ({
+    id: `halo-proof-card-repeat-${index}`,
+    path: `hyperframes/halo-proof-card-repeat-${index}.mp4`,
+    source_type: "hyperframes_card",
+    media_kind: "hyperframes_card",
+    source_family: "halo_campaign_evolved_same_proof_card",
+    motion_family: "halo_campaign_evolved_same_proof_card",
+    durationS: 4.5,
+  }));
+  await Promise.all([
+    ...directClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+    ...repeatedCards.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 5))),
+  ]);
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "repeated-hf-card-family-story",
+    video_clips: [...directClips, ...repeatedCards],
+    visual_v4_bridge_video_clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: directClips,
+    distinct_motion_families: directClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    distinct_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [...directClips, ...repeatedCards].map((clip) => ({
+      ...clip,
+      asset_type: clip.media_kind === "hyperframes_card" ? "owned_generated_motion_card" : "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T12:35:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:repeated_card_family"));
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_repeated_card_families,
+    [{ family: "halo_campaign_evolved_same_proof_card", count: 2 }],
+  );
+});
+
 test("goal dry-run publisher blocks neighbouring windows overused from the same base source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-base-source-loop-"));
   const storyPackage = await makeStoryPackage(

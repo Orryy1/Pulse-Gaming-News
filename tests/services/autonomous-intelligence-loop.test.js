@@ -385,10 +385,16 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
         async main(args) {
           capturedArgCalls.push(args);
           const hydratedPass = args.includes("--v4-motion-pack-dir");
+          const outIndex = args.indexOf("--out-dir");
+          const contractIndex = args.indexOf("--contract-out-dir");
+          const effectiveOutDir = outIndex >= 0 ? args[outIndex + 1] : outDir;
+          const effectiveContractOutDir = contractIndex >= 0 ? args[contractIndex + 1] : contractOutDir;
+          const effectiveArtifactDir = path.join(effectiveOutDir, "fresh_xbox_story");
           await fs.mkdir(artifactDir, { recursive: true });
-          await fs.mkdir(contractOutDir, { recursive: true });
+          await fs.mkdir(effectiveArtifactDir, { recursive: true });
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
           await fs.writeFile(
-            path.join(artifactDir, "canonical_story_manifest.json"),
+            path.join(hydratedPass ? effectiveArtifactDir : artifactDir, "canonical_story_manifest.json"),
             JSON.stringify({
               story_id: "fresh_xbox_story",
               canonical_subject: "Halo Campaign Evolved",
@@ -403,7 +409,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
             }),
           );
           await fs.writeFile(
-            path.join(artifactDir, "source_manifest.json"),
+            path.join(hydratedPass ? effectiveArtifactDir : artifactDir, "source_manifest.json"),
             JSON.stringify({
               story_id: "fresh_xbox_story",
               primary_source: {
@@ -498,43 +504,54 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
             }),
           );
           await fs.writeFile(
-            path.join(contractOutDir, "story-packages.json"),
-            JSON.stringify([
-              {
-                story_id: "fresh_xbox_story",
-                artifact_dir: artifactDir,
-                verdict: "RED",
-                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
-              },
-              {
-                story_id: "fresh_gamespot_story",
-                artifact_dir: gamespotDir,
-                verdict: "RED",
-                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
-              },
-              {
-                story_id: "fresh_generic_story",
-                artifact_dir: genericDir,
-                verdict: "RED",
-                blockers: [
-                  "script:rewrite_required",
-                  "footage:v4_motion_blocked",
-                  "director:director_blocked",
-                ],
-              },
-            ]),
+            path.join(effectiveContractOutDir, "story-packages.json"),
+            JSON.stringify(
+              hydratedPass
+                ? [
+                    {
+                      story_id: "fresh_xbox_story",
+                      artifact_dir: effectiveArtifactDir,
+                      verdict: "GREEN",
+                      blockers: [],
+                    },
+                  ]
+                : [
+                    {
+                      story_id: "fresh_xbox_story",
+                      artifact_dir: artifactDir,
+                      verdict: "RED",
+                      blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+                    },
+                    {
+                      story_id: "fresh_gamespot_story",
+                      artifact_dir: gamespotDir,
+                      verdict: "RED",
+                      blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+                    },
+                    {
+                      story_id: "fresh_generic_story",
+                      artifact_dir: genericDir,
+                      verdict: "RED",
+                      blockers: [
+                        "script:rewrite_required",
+                        "footage:v4_motion_blocked",
+                        "director:director_blocked",
+                      ],
+                    },
+                  ],
+            ),
           );
           return {
             batch: {
               summary: {
-                story_count: 13,
-                green_count: hydratedPass ? 3 : 2,
-                red_count: hydratedPass ? 10 : 11,
+                story_count: hydratedPass ? 1 : 13,
+                green_count: hydratedPass ? 1 : 2,
+                red_count: hydratedPass ? 0 : 11,
               },
             },
             outputs: {
-              storyPackagesPath: path.join(contractOutDir, "story-packages.json"),
-              batchReportPath: path.join(contractOutDir, "story-packages-report.json"),
+              storyPackagesPath: path.join(effectiveContractOutDir, "story-packages.json"),
+              batchReportPath: path.join(effectiveContractOutDir, "story-packages-report.json"),
             },
           };
         },
@@ -643,24 +660,30 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "--limit",
       "12",
       "--out-dir",
-      outDir,
+      path.join(outDir, "motion-hydrated"),
       "--contract-out-dir",
-      contractOutDir,
+      path.join(contractOutDir, "motion-hydrated"),
       "--v4-motion-pack-dir",
       path.join(contractOutDir, "fresh_production_refill_repair", "motion-packs"),
+      "--story-id",
+      "fresh_xbox_story",
     ]);
     assert.equal(result.status, "completed");
-    assert.equal(result.story_count, 13);
-    assert.equal(result.green_count, 3);
-    assert.equal(result.red_count, 10);
+    assert.equal(result.story_count, 1);
+    assert.equal(result.green_count, 1);
+    assert.equal(result.red_count, 0);
     assert.equal(result.safety.local_only, true);
     assert.equal(result.safety.no_publish, true);
-    assert.equal(result.outputs.storyPackagesPath, path.join(contractOutDir, "story-packages.json"));
+    assert.equal(
+      result.outputs.storyPackagesPath,
+      path.join(contractOutDir, "motion-hydrated", "story-packages.json"),
+    );
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
     assert.equal(result.repair_evidence.child_processes.length, 8);
     assert.equal(result.motion_hydrated_refill.status, "completed");
-    assert.equal(result.motion_hydrated_refill.green_count, 3);
+    assert.equal(result.motion_hydrated_refill.green_count, 1);
+    assert.match(result.motion_hydrated_refill.outputs.storyPackagesPath, /motion-hydrated[\\/]story-packages\.json$/);
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/studio-v4-motion-pack.js"),
       "expected fresh refill to create a V4 motion-pack repair index",

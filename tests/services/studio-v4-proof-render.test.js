@@ -160,6 +160,38 @@ test("Studio V4 proof renderer blocks repeated base-source windows before render
   );
 });
 
+test("Studio V4 proof renderer blocks short generated cards being stretched into looped scenes", () => {
+  const clips = Array.from({ length: 13 }, (_, index) => ({
+    path: `owned-card-${index + 1}.mp4`,
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    source_family: `owned_card_${index + 1}`,
+    durationS: 2.8,
+  }));
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 60,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.repeatFree, true);
+  assert.ok(plan.segmentDurationS > 4);
+  assert.ok(plan.blockers.includes("motion_scene_duration_exceeds_source_duration"));
+  assert.equal(plan.sourceDurationOverruns.length, 13);
+  assert.deepEqual(
+    plan.sourceDurationOverruns[0],
+    {
+      path: "owned-card-1.mp4",
+      planned_duration_s: 4.85,
+      source_duration_s: 2.8,
+      overrun_s: 2.05,
+    },
+  );
+});
+
 test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {
   assert.equal(typeof buildSceneCompositeFilterParts, "function");
 

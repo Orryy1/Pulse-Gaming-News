@@ -359,7 +359,7 @@ test("owned motion materializer creates a source-locked explainer deck when foot
   assert.ok(materialised.clips.every((clip) => clip.source_type === "internally_generated_motion_graphic"));
   assert.ok(materialised.clips.every((clip) => clip.counts_towards_motion_readiness === true));
   assert.ok(materialised.clips.every((clip) => clip.file_path && clip.file_path === clip.path));
-  assert.ok(materialised.clips.every((clip) => clip.duration >= 2.5));
+  assert.ok(materialised.clips.every((clip) => clip.duration >= 4));
   assert.ok(materialised.clips.every((clip) => clip.dimensions.width === 1080 && clip.dimensions.height === 1920));
   assert.ok(materialised.clips.every((clip) => clip.frame_rate === 30));
   assert.ok(materialised.clips.every((clip) => clip.motion_family));
@@ -723,6 +723,7 @@ test("owned motion materializer refresh expands thin owned explainer decks to th
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.clip_count, 13);
   assert.equal(materialised.distinct_motion_family_count, 13);
+  assert.equal(materialised.clips.every((clip) => clip.durationS >= 4), true);
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "branded_wipe"));
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "instagram_carousel_slide"));
 

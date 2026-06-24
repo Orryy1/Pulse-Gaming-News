@@ -1632,6 +1632,8 @@ test("goal production render materializer accepts approved owned explainer motio
       local_materialized_path: clipPath,
       source_url: `local://pulse-generated-motion/owned-explainer-render/${index + 1}`,
       source_type: "internally_generated_motion_graphic",
+      source_kind: "owned_source_card_explainer_motion",
+      asset_class: index === 0 ? "kinetic_title_card" : "animated_source_card",
       source_family: `owned_explainer_family_${index + 1}`,
       motion_family: `owned_explainer_family_${index + 1}`,
       media_kind: "owned_explainer_motion",
@@ -1640,6 +1642,7 @@ test("goal production render materializer accepts approved owned explainer motio
       counts_towards_motion_readiness: true,
       owned_explainer_visual_plan: true,
       materialized: true,
+      durationS: 2.8,
     };
   });
   for (const clip of ownedClips) await fs.outputFile(clip.path, Buffer.alloc(2048, 12));
@@ -1698,6 +1701,10 @@ test("goal production render materializer accepts approved owned explainer motio
   });
 
   assert.deepEqual(calls[0].video_clips, ownedClips.map((clip) => clip.path));
+  assert.equal(calls[0].visual_v4_bridge_video_clips[0].durationS, 2.8);
+  assert.equal(calls[0].visual_v4_bridge_video_clips[0].source_kind, "owned_source_card_explainer_motion");
+  assert.equal(calls[0].visual_v4_bridge_video_clips[0].asset_class, "kinetic_title_card");
+  assert.equal(calls[0].visual_v4_bridge_video_clips[0].owned_explainer_visual_plan, true);
   const refreshedDirector = await fs.readJson(path.join(artifactDir, "director_beat_map.json"));
   assert.equal(refreshedDirector.shot_budget.available_motion_clips, 13);
 });

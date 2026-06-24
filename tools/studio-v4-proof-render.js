@@ -592,6 +592,12 @@ function sceneClipBaseSourceKey(clip = {}) {
   }
 }
 
+function sceneClipSourceDurationS(clip = {}) {
+  if (!clip || typeof clip !== "object") return null;
+  const duration = Number(clip.durationS ?? clip.duration_s ?? clip.duration);
+  return Number.isFinite(duration) && duration > 0 ? Number(duration.toFixed(2)) : null;
+}
+
 function repeatedSceneBaseSources(entries = []) {
   const counts = new Map();
   for (const entry of entries) {
@@ -623,6 +629,7 @@ function buildClipScenePlan({
     cleanEntries.push({
       path: clipPath,
       baseSourceKey: sceneClipBaseSourceKey(clip),
+      sourceDurationS: sceneClipSourceDurationS(clip),
     });
     if (cleanEntries.length >= maxSceneLimit) break;
   }
@@ -635,6 +642,7 @@ function buildClipScenePlan({
       blockers: ["direct_motion_clips_missing"],
       requiredUniqueClipCount: 0,
       availableUniqueClipCount: 0,
+      sourceDurationOverruns: [],
     };
   }
   const duration = Math.max(1, Number(durationS) || 1);
@@ -657,6 +665,20 @@ function buildClipScenePlan({
   const segmentDurationS = Number(
     ((duration + xfadeS * Math.max(0, count - 1)) / count).toFixed(2),
   );
+  const sourceDurationOverruns = repeatFree
+    ? cleanEntries.slice(0, count)
+        .filter((entry) => Number.isFinite(entry.sourceDurationS))
+        .map((entry) => ({
+          path: entry.path,
+          planned_duration_s: segmentDurationS,
+          source_duration_s: entry.sourceDurationS,
+          overrun_s: Number((segmentDurationS - entry.sourceDurationS).toFixed(2)),
+        }))
+        .filter((entry) => entry.overrun_s > 0.12)
+    : [];
+  if (sourceDurationOverruns.length) {
+    blockers.push("motion_scene_duration_exceeds_source_duration");
+  }
   return {
     segmentDurationS,
     xfadeS,
@@ -665,10 +687,12 @@ function buildClipScenePlan({
     requiredUniqueClipCount: requiredCount,
     availableUniqueClipCount: cleanEntries.length,
     repeatedBaseSources,
+    sourceDurationOverruns,
     scenes: Array.from({ length: count }, (_, index) => ({
       index,
       path: repeatFree ? cleanEntries[index].path : cleanEntries[index % cleanEntries.length].path,
       durationS: segmentDurationS,
+      sourceDurationS: repeatFree ? cleanEntries[index]?.sourceDurationS || null : cleanEntries[index % cleanEntries.length]?.sourceDurationS || null,
     })),
   };
 }

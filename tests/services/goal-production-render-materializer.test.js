@@ -1984,6 +1984,53 @@ test("goal production render materializer rerenders existing final MP4s with sta
   assert.equal(calls.length, 2);
 });
 
+test("goal production render materializer rerenders v8 visuals before repeat-free readable-card publishing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-stale-v8-"));
+  const artifactDir = await makePackage(root);
+  const job = readyJob("story-final", artifactDir);
+  const calls = [];
+
+  const firstReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-24T23:01:00.000Z",
+    renderProof: async ({ output }) => {
+      calls.push(output);
+      await fs.outputFile(output, Buffer.alloc(4096, 6));
+      return { clips: 8, rendered_duration_s: 52 };
+    },
+  });
+  assert.equal(firstReport.summary.rendered_count, 1);
+
+  const manifestPath = path.join(artifactDir, "render_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  await fs.writeJson(
+    manifestPath,
+    {
+      ...manifest,
+      visual_design_policy_version: "newsroom_safe_vertical_compose_v8",
+    },
+    { spaces: 2 },
+  );
+
+  const secondReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-24T23:02:00.000Z",
+    renderProof: async ({ output }) => {
+      calls.push(output);
+      await fs.outputFile(output, Buffer.alloc(4096, 7));
+      return { clips: 8, rendered_duration_s: 52 };
+    },
+  });
+
+  assert.equal(secondReport.summary.rendered_count, 1);
+  assert.equal(secondReport.summary.skipped_existing_count, 0);
+  assert.equal(calls.length, 2);
+  const refreshed = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(refreshed.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
+});
+
 test("goal production render materializer rerenders existing final MP4s that predate repaired public copy", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-stale-existing-"));
   const artifactDir = await makePackage(root);

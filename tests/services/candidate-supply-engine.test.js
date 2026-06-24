@@ -16,6 +16,7 @@ const {
   formatCandidateSupplyMonitorDiscord,
   formatCandidateSupplyMarkdown,
   shouldNotifyCandidateSupplyMonitor,
+  currentProofPackageEvidence,
 } = require("../../lib/ops/candidate-supply");
 const {
   buildFreshCandidateReport,
@@ -921,6 +922,17 @@ test("candidate supply trusts a current full GREEN proof package over stale bloc
       post_render_forensic_result: "pass",
       post_render_forensic_blockers: [],
       clips: 30,
+      repeat_guard: {
+        status: "pass",
+        min_card_duration_s: 4,
+        direct_motion_base_source_policy: {
+          max_clips_per_base: 1,
+        },
+      },
+      overlay_card_windows: [
+        { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 4, duration_s: 4 },
+        { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
+      ],
     },
     { spaces: 2 },
   );
@@ -945,12 +957,16 @@ test("candidate supply trusts a current full GREEN proof package over stale bloc
       story_id: "current-green-package",
       status: "ready",
       generated_at: now.toISOString(),
+      repeat_guard: {
+        status: "pass",
+        policy: "one_clip_per_direct_motion_base_source",
+      },
       clips: [
-        { id: "clip-1", source_family: "official_1", materialized: true, counts_towards_motion_readiness: true },
-        { id: "clip-2", source_family: "official_2", materialized: true, counts_towards_motion_readiness: true },
-        { id: "clip-3", source_family: "official_3", materialized: true, counts_towards_motion_readiness: true },
-        { id: "clip-4", source_family: "official_4", materialized: true, counts_towards_motion_readiness: true },
-        { id: "clip-5", source_family: "official_5", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-1", source_family: "official_1_window_12_5", base_source_family: "official_1", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-2", source_family: "official_2_window_18_5", base_source_family: "official_2", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-3", source_family: "official_3_window_24_5", base_source_family: "official_3", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-4", source_family: "official_4_window_30_5", base_source_family: "official_4", materialized: true, counts_towards_motion_readiness: true },
+        { id: "clip-5", source_family: "official_5_window_36_5", base_source_family: "official_5", materialized: true, counts_towards_motion_readiness: true },
       ],
     },
     { spaces: 2 },
@@ -1049,6 +1065,98 @@ test("candidate supply trusts a current full GREEN proof package over stale bloc
     "governance:captions:missing_or_messy",
     "incident_guard:incident:distinct_motion_families_missing",
   ]);
+});
+
+test("current proof package evidence rejects too-fast visible card windows", async () => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-proof-fast-card-"));
+  const storyId = "fast-card-proof";
+  const videoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const now = "2026-06-24T12:00:00.000Z";
+  try {
+    await fs.outputFile(videoPath, "fake mp4 bytes");
+    await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+      story_id: storyId,
+      verdict: "GREEN",
+      status: "GREEN",
+      can_auto_publish: true,
+      enabled_platform_outputs: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      reason_codes: [],
+      generated_at: now,
+    });
+    await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+      publish_status: "GREEN",
+      can_auto_publish: true,
+      outputs: {
+        youtube_shorts: {},
+        instagram_reels: {},
+        facebook_reels: {},
+      },
+    });
+    await fs.writeJson(path.join(artifactDir, "coherence_report.json"), {
+      result: "pass",
+      verdict: "pass",
+      failures: [],
+      blockers: [],
+    });
+    await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+      story_id: storyId,
+      final_publish_render: true,
+      output_path: videoPath,
+      generated_at: now,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+      post_render_forensic_blockers: [],
+      clips: 7,
+      repeat_guard: { status: "pass" },
+      overlay_card_windows: [
+        { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 6.1, duration_s: 2.1 },
+      ],
+    });
+    await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+      story_id: storyId,
+      voice_status: "materialized",
+      word_timestamp_count: 80,
+      word_timestamp_source: "local_whisper_word_alignment",
+      timestamp_whisper_alignment: {
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    });
+    await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+      story_id: storyId,
+      status: "ready",
+      repeat_guard: { status: "pass" },
+      clips: Array.from({ length: 5 }, (_, index) => ({
+        id: `clip-${index + 1}`,
+        source_family: `official_${index + 1}_window_12_5`,
+        base_source_family: `official_${index + 1}`,
+        materialized: true,
+        counts_towards_motion_readiness: true,
+      })),
+    });
+    await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+      story_id: storyId,
+      verdict: "GREEN",
+      status: "pass",
+      hard_failures: [],
+      scores: {
+        overall_media_house_score: 95,
+        first_3_seconds_score: 95,
+        competitor_parity_score: 95,
+      },
+    });
+
+    const proof = currentProofPackageEvidence({
+      id: storyId,
+      source: {
+        artifact_dir: artifactDir,
+        exported_path: videoPath,
+      },
+    });
+    assert.equal(proof, null);
+  } finally {
+    await fs.remove(artifactDir);
+  }
 });
 
 test("candidate supply report exposes Shorts attention readiness and metadata blockers", () => {

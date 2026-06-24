@@ -294,6 +294,17 @@ async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
     post_render_forensic_result: "pass",
     post_render_forensic_blockers: [],
     clips: 30,
+    repeat_guard: {
+      status: "pass",
+      min_card_duration_s: 4,
+      direct_motion_base_source_policy: {
+        max_clips_per_base: 1,
+      },
+    },
+    overlay_card_windows: [
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 4, duration_s: 4 },
+      { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
+    ],
   });
   await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
     story_id: storyId,
@@ -310,10 +321,15 @@ async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
     story_id: storyId,
     status: "ready",
     generated_at: now,
+    repeat_guard: {
+      status: "pass",
+      policy: "one_clip_per_direct_motion_base_source",
+    },
     clips: Array.from({ length: 5 }, (_, index) => ({
       id: `clip-${index + 1}`,
-      source_family: `official_${index + 1}`,
-      motion_family: `official_${index + 1}`,
+      source_family: `official_${index + 1}_window_${12 + index * 6}_5`,
+      base_source_family: `official_${index + 1}`,
+      motion_family: `official_${index + 1}_window_${12 + index * 6}_5`,
       materialized: true,
       counts_towards_motion_readiness: true,
     })),

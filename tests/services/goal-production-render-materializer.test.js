@@ -352,6 +352,11 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
       (clip) => clip.source_type === "hyperframes_premium_shell_card",
     ),
   );
+  assert.ok(
+    renderStory.visual_v4_bridge_video_clips
+      .filter((clip) => clip.source_type === "hyperframes_premium_shell_card")
+      .every((clip) => clip.durationS >= 4 && clip.duration_s >= 4),
+  );
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
   assert.equal(manifest.hyperframes_card_count, 5);

@@ -105,6 +105,48 @@ test("official search autofill rejects weak Steam result matches", async () => {
   assert.equal(report.rows[0].reason, "no_exact_or_strong_steam_app_match");
 });
 
+test("official search autofill falls back from character trailer phrasing to the canonical Steam app", async () => {
+  const calls = [];
+  const report = await buildOfficialSearchIntakeAutofillReport({
+    entries: [
+      {
+        story_id: "sf6-gap",
+        entity: "Street Fighter 6 Yasmine Character Gameplay",
+        query: "Street Fighter 6 Yasmine Character Gameplay official trailer",
+        accepted_sources: ["Steam", "official publisher channel", "platform storefront"],
+      },
+    ],
+    fetchJson: async (url) => {
+      calls.push(url);
+      if (url === steamApiSearchUrl("Street Fighter 6 Yasmine Character Gameplay")) {
+        return { ok: true, status: 200, json: { items: [] } };
+      }
+      assert.equal(url, steamApiSearchUrl("Street Fighter 6"));
+      return {
+        ok: true,
+        status: 200,
+        json: {
+          items: [
+            { id: 2154900, name: "Street Fighter 6 Demo" },
+            { id: 1364780, name: "Street Fighter™ 6" },
+            { id: 310950, name: "Street Fighter V" },
+          ],
+        },
+      };
+    },
+  });
+
+  assert.deepEqual(calls, [
+    steamApiSearchUrl("Street Fighter 6 Yasmine Character Gameplay"),
+    steamApiSearchUrl("Street Fighter 6"),
+  ]);
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.no_confident_match, 0);
+  assert.equal(report.rows[0].matched_app_name, "Street Fighter™ 6");
+  assert.equal(report.output_template.entries[0].source_family, "steam_1364780_street_fighter_6");
+  assert.match(report.output_template.entries[0].entity_match_notes, /Street Fighter 6 Yasmine Character Gameplay/);
+});
+
 test("official search autofill rejects derivative store products as game matches", async () => {
   const report = await buildOfficialSearchIntakeAutofillReport({
     entries: [

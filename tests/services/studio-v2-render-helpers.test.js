@@ -92,6 +92,29 @@ test("fallback release cards become authored motion beats when HyperFrames lane 
   );
 });
 
+test("fallback release replacement uses distinct direct-motion base sources first", () => {
+  const scenes = [
+    { type: SCENE_TYPES.CARD_RELEASE, label: "card_release_a", duration: 5 },
+    { type: SCENE_TYPES.CARD_RELEASE, label: "card_release_b", duration: 5 },
+  ];
+
+  const result = replaceFallbackReleaseCardsWithMotion({
+    scenes,
+    story: { title: "Sea of Thieves update" },
+    mediaClips: [
+      { path: "C:\\clips\\sea-window-12.mp4", base_source_family: "sea_trailer_main" },
+      { path: "C:\\clips\\sea-window-24.mp4", base_source_family: "sea_trailer_main" },
+      { path: "C:\\clips\\sea-gameplay-broll.mp4", base_source_family: "sea_gameplay_broll" },
+    ],
+    hyperframesCardCount: 5,
+  });
+
+  assert.deepEqual(
+    result.scenes.map((scene) => scene.source),
+    ["C:\\clips\\sea-window-12.mp4", "C:\\clips\\sea-gameplay-broll.mp4"],
+  );
+});
+
 test("fallback release replacement is skipped when there are not enough clips", () => {
   const result = replaceFallbackReleaseCardsWithMotion({
     scenes: [
@@ -129,6 +152,28 @@ test("motion density boost splits a long motion scene without changing duration"
   assert.equal(sumSceneDurations(result.scenes), sumSceneDurations(scenes));
   assert.equal(result.scenes[0].sceneType, "punch");
   assert.equal(result.scenes[1].sceneType, "punch");
+});
+
+test("motion density boost avoids splitting into another window from the same base source", () => {
+  const scenes = [
+    { type: SCENE_TYPES.CLIP, label: "clip_a", source: "C:\\clips\\halo-window-12.mp4", duration: 8 },
+    { type: "outro", label: "outro", duration: 4 },
+  ];
+
+  const result = boostMotionDensityForShorts({
+    scenes,
+    mediaClips: [
+      { path: "C:\\clips\\halo-window-12.mp4", base_source_family: "halo_demo_trailer" },
+      { path: "C:\\clips\\halo-window-24.mp4", base_source_family: "halo_demo_trailer" },
+      { path: "C:\\clips\\halo-gameplay-broll.mp4", base_source_family: "halo_gameplay_broll" },
+    ],
+    audioDurationS: 60,
+    minPerMinute: 2,
+  });
+
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.scenes[0].source, "C:\\clips\\halo-window-12.mp4");
+  assert.equal(result.scenes[1].source, "C:\\clips\\halo-gameplay-broll.mp4");
 });
 
 test("studio outro extends short renders beyond the TikTok one-minute floor", () => {

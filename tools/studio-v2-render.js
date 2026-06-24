@@ -748,6 +748,75 @@ function fallbackMotionCaption(story, scene, index) {
   return index === 0 ? "SOURCE CHECKED" : "WHAT CHANGED";
 }
 
+function normaliseMotionSourceKey(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\\/g, "/")
+    .replace(/[?#].*$/, "")
+    .replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "")
+    .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "")
+    .replace(/(?:[_/-]clip[_/-]?\d+)$/i, "");
+}
+
+function motionClipPath(clip = {}) {
+  return String(clip?.path || clip?.local_path || clip?.media_path || clip?.source || "").trim();
+}
+
+function motionClipBaseKey(clip = {}) {
+  const explicit = String(
+    clip?.base_source_family ||
+      clip?.original_source_family ||
+      clip?.provenance?.base_source_family ||
+      clip?.provenance?.source_family ||
+      clip?.source_family ||
+      clip?.motion_family ||
+      "",
+  ).trim();
+  if (explicit) return normaliseMotionSourceKey(explicit);
+  const url = String(clip?.source_url || clip?.url || clip?.reference_url || "").trim();
+  if (url) return normaliseMotionSourceKey(url);
+  return normaliseMotionSourceKey(motionClipPath(clip));
+}
+
+function uniqueMotionClipPool(mediaClips = []) {
+  const seenPaths = new Set();
+  const seenBase = new Set();
+  const primary = [];
+  const fallback = [];
+  for (const clip of mediaClips) {
+    const clipPath = motionClipPath(clip);
+    if (!/\.(mp4|mov|m4v|webm)$/i.test(clipPath)) continue;
+    const pathKey = normaliseMotionSourceKey(clipPath);
+    if (!pathKey || seenPaths.has(pathKey)) continue;
+    seenPaths.add(pathKey);
+    const baseKey = motionClipBaseKey(clip);
+    const entry = { clip, path: clipPath, baseKey };
+    if (baseKey && seenBase.has(baseKey)) {
+      fallback.push(entry);
+      continue;
+    }
+    if (baseKey) seenBase.add(baseKey);
+    primary.push(entry);
+  }
+  return primary.length ? primary : fallback;
+}
+
+function baseKeyForSource(source, clipPool = []) {
+  const sourceKey = normaliseMotionSourceKey(source);
+  const match = clipPool.find((entry) => normaliseMotionSourceKey(entry.path) === sourceKey);
+  return match?.baseKey || sourceKey;
+}
+
+function pickMotionClip(clipPool = [], startIndex = 0, avoidBaseKey = "") {
+  if (!clipPool.length) return null;
+  for (let offset = 0; offset < clipPool.length; offset++) {
+    const entry = clipPool[(startIndex + offset) % clipPool.length];
+    if (!avoidBaseKey || !entry.baseKey || entry.baseKey !== avoidBaseKey) return entry;
+  }
+  return clipPool[startIndex % clipPool.length];
+}
+
 function replaceFallbackReleaseCardsWithMotion({
   scenes,
   story,
@@ -756,12 +825,10 @@ function replaceFallbackReleaseCardsWithMotion({
   enabled = true,
 }) {
   const out = scenes.map((scene) => ({ ...scene }));
-  const clipPaths = mediaClips
-    .map((clip) => clip?.path)
-    .filter((clipPath) => /\.(mp4|mov|m4v|webm)$/i.test(String(clipPath || "")));
+  const clipPool = uniqueMotionClipPool(mediaClips);
   const replacements = [];
 
-  if (!enabled || hyperframesCardCount < MIN_PREMIUM_HYPERFRAMES_CARDS || clipPaths.length === 0) {
+  if (!enabled || hyperframesCardCount < MIN_PREMIUM_HYPERFRAMES_CARDS || clipPool.length === 0) {
     return { scenes: out, replacements };
   }
 
@@ -776,7 +843,8 @@ function replaceFallbackReleaseCardsWithMotion({
       continue;
     }
 
-    const source = clipPaths[replacedCount % clipPaths.length];
+    const selected = pickMotionClip(clipPool, replacedCount);
+    const source = selected.path;
     const caption = fallbackMotionCaption(story, scene, replacedCount);
     const motion = buildFreezeFrameScene({
       slot: 0,
@@ -796,6 +864,7 @@ function replaceFallbackReleaseCardsWithMotion({
       atIdx: i,
       replaced: scene.label || scene.type,
       source: path.basename(source),
+      baseSource: selected.baseKey || null,
       caption,
     });
     replacedCount++;
@@ -819,11 +888,9 @@ function boostMotionDensityForShorts({
   }
 
   const targetTransitions = Math.ceil((Number(minPerMinute || 12) * duration) / 60);
-  const clipPaths = mediaClips
-    .map((clip) => clip?.path)
-    .filter((clipPath) => /\.(mp4|mov|m4v|webm)$/i.test(String(clipPath || "")));
+  const clipPool = uniqueMotionClipPool(mediaClips);
 
-  while (out.length - 1 < targetTransitions && clipPaths.length > 0) {
+  while (out.length - 1 < targetTransitions && clipPool.length > 0) {
     const candidate = out
       .map((scene, idx) => ({ scene, idx }))
       .filter(({ scene }) => {
@@ -845,8 +912,13 @@ function boostMotionDensityForShorts({
 
     const sourceA = /\.(mp4|mov|m4v|webm)$/i.test(String(candidate.scene.source || ""))
       ? candidate.scene.source
-      : clipPaths[applied.length % clipPaths.length];
-    const sourceB = clipPaths[(applied.length + 1) % clipPaths.length] || sourceA;
+      : pickMotionClip(clipPool, applied.length)?.path;
+    const sourceBEntry = pickMotionClip(
+      clipPool,
+      applied.length + 1,
+      baseKeyForSource(sourceA, clipPool),
+    );
+    const sourceB = sourceBEntry?.path || sourceA;
     const clipDurA = ffprobeDuration(sourceA) || 6;
     const clipDurB = ffprobeDuration(sourceB) || 6;
     const startA = Math.max(0.15, Math.min(clipDurA - durationA - 0.2, clipDurA * 0.22));
@@ -873,6 +945,10 @@ function boostMotionDensityForShorts({
       atIdx: candidate.idx,
       replaced: candidate.scene.label || candidate.scene.type,
       sources: [path.basename(sourceA), path.basename(sourceB)],
+      baseSources: [
+        baseKeyForSource(sourceA, clipPool) || null,
+        sourceBEntry?.baseKey || baseKeyForSource(sourceB, clipPool) || null,
+      ],
     });
   }
 

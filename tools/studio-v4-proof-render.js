@@ -36,8 +36,8 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
-const MIN_OVERLAY_CARD_DURATION_S = 5.5;
-const MAX_OVERLAY_CARD_DURATION_S = 8.5;
+const MIN_OVERLAY_CARD_DURATION_S = 6.5;
+const MAX_OVERLAY_CARD_DURATION_S = 10;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
@@ -1150,9 +1150,14 @@ function readableOverlayCardDurationS(value = "", { minS = MIN_OVERLAY_CARD_DURA
   const text = firstText(value);
   if (!text) return minS;
   const words = text.split(/\s+/).filter(Boolean).length;
-  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(text) ? 0.35 : 0;
+  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(text) ? 0.5 : 0;
   const computed = Math.max(minS, 0.85 * words + 1 + longTokenPenalty);
-  return Number(Math.min(MAX_OVERLAY_CARD_DURATION_S, Math.ceil(computed * 10) / 10).toFixed(1));
+  return Number(
+    Math.min(
+      MAX_OVERLAY_CARD_DURATION_S,
+      Math.ceil(Math.max(computed, 1.05 * words + 1.2 + longTokenPenalty) * 10) / 10,
+    ).toFixed(1),
+  );
 }
 
 function overlayWindow({

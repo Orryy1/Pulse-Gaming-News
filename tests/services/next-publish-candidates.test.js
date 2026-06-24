@@ -296,14 +296,14 @@ async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
     clips: 30,
     repeat_guard: {
       status: "pass",
-      min_card_duration_s: 5.5,
+      min_card_duration_s: 6.5,
       direct_motion_base_source_policy: {
         max_clips_per_base: 1,
       },
     },
     overlay_card_windows: [
-      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 5.5, duration_s: 5.5 },
-      { id: "headline_card", kind: "proof_card", start_s: 5.7, end_s: 11.5, duration_s: 5.8 },
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 6.5, duration_s: 6.5 },
+      { id: "headline_card", kind: "proof_card", start_s: 6.7, end_s: 13.5, duration_s: 6.8 },
     ],
   });
   await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
@@ -4434,8 +4434,8 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
   });
   await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 5.5 },
-      { id: "proof_card", kind: "proof_card", startS: 8.45, durationS: 5.8 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 6.5 },
+      { id: "proof_card", kind: "proof_card", startS: 8.45, durationS: 6.5 },
     ],
   });
 

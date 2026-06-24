@@ -72,6 +72,6 @@ test("story-specific HyperFrames cards stretch long copy to readable dwell", () 
   const html = applySpecToTemplate("timeline", templateHtml, spec, "pulse-gaming");
 
   assert.equal(contract.status, "pass");
-  assert.equal(contract.evidence.minimum_visible_duration_s >= 8, true);
-  assert.match(html, /data-duration="8\.[0-9]"/);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 10);
+  assert.match(html, /data-duration="10\.0"/);
 });

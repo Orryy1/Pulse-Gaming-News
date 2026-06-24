@@ -327,13 +327,13 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 5.5],
-      ["headline_card", "proof_card", 5.8],
-      ["proof_primary", "proof_card", 5.5],
-      ["proof_secondary", "proof_card", 5.5],
+      ["opening_source_lock", "source_lock", 6.5],
+      ["headline_card", "proof_card", 6.8],
+      ["proof_primary", "proof_card", 6.5],
+      ["proof_secondary", "proof_card", 6.5],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= 5.5));
+  assert.ok(windows.every((window) => window.duration_s >= 6.5));
 });
 
 test("Studio V4 proof renderer keeps long HyperFrames cards visible long enough to read", () => {
@@ -1388,7 +1388,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,5\.5\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,6\.5\)'/);
   assert.match(chain, /0x38BDF8@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });
@@ -1475,7 +1475,7 @@ test("Studio V4 overlay chain suppresses only the opening card during first-fram
   assert.doesNotMatch(chain, /drawtext=text='SOURCE LOCK\s+ROCKSTAR'.*between\(t,0,3\.3\)/);
   assert.doesNotMatch(chain, /color=0x111827@0\.58:t=fill:enable='between\(t,0,3\.3\)'/);
   assert.doesNotMatch(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,0,3\.3\)/);
-  assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,9\.8\)/);
+  assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,10\.8\)/);
   assert.match(chain, /PROOF BEAT/);
   assert.match(chain, /PLAYER READ/);
   assert.match(chain, /PULSE GAMING/);

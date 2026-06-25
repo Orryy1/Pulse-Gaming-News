@@ -916,7 +916,8 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         final_publish_render: true,
         rendered_duration_s: 42,
         clips: 6,
-        overlay_card_windows: [
+        overlay_card_windows: [],
+        card_visible_windows: [
           { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 6.5, duration_s: 6.5 },
           { id: "headline_card", kind: "proof_card", start_s: 6.7, end_s: 13.5, duration_s: 6.8 },
           { id: "proof_primary", kind: "proof_card", start_s: 14.3, end_s: 20.8, duration_s: 6.5 },
@@ -1002,6 +1003,110 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
     fileEvidence.hyperframes_effective_too_fast_card_shots.length,
     0,
   );
+});
+
+test("goal dry-run publisher trusts rendered card windows over low average clip duration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-render-card-window-short-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "render-card-window-short-story",
+    "GREEN",
+    "Halo Campaign Evolved Needs A Cleaner Reveal",
+    {
+      canonicalSubject: "Halo Campaign Evolved",
+      durationSeconds: 29.92,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 29.92,
+        clips: 5,
+        retention_short_approved: true,
+        hyperframes_premium_shell_required: true,
+        hyperframes_premium_shell_required_pass_count: 4,
+        hyperframes_card_count: 4,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+        premium_shell_verdict: "pass",
+        premium_shell_pass_count: 4,
+        premium_shell_blockers: [],
+        overlay_card_windows: [],
+        card_visible_windows: [
+          { id: "scene_2_quote", kind: "quote", start_s: 9.5, end_s: 16.47, duration_s: 6.97 },
+          { id: "scene_3_proof", kind: "proof", start_s: 16.22, end_s: 23.19, duration_s: 6.97 },
+          { id: "scene_4_screenshot", kind: "screenshot", start_s: 22.94, end_s: 29.91, duration_s: 6.97 },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 5 }, (_, index) =>
+    directMotionClipFixture({
+      id: `halo-direct-${index + 1}`,
+      path: `motion/halo-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/halo-campaign-evolved/direct-${index + 1}.mp4`,
+      sourceFamily: `halo_campaign_evolved_direct_${index + 1}`,
+      startS: index * 6,
+    }),
+  );
+  const cardClips = ["quote", "proof", "screenshot"].map((kind, index) => ({
+    id: `halo-${kind}-card`,
+    path: `hyperframes/halo-${kind}-card.mp4`,
+    source_type: "hyperframes_card",
+    media_kind: "hyperframes_card",
+    source_family: `halo_${kind}_card_${index + 1}`,
+    text: `${kind} card`,
+  }));
+  await Promise.all(
+    [...directClips, ...cardClips].map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4))),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "render-card-window-short-story",
+    video_clips: [...directClips, ...cardClips],
+    visual_v4_bridge_video_clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: directClips,
+    distinct_motion_families: directClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    distinct_motion_family_count: directClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [...directClips, ...cardClips].map((clip) => ({
+      ...clip,
+      asset_type: clip.media_kind === "hyperframes_card" ? "owned_generated_motion_card" : "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+  const platformManifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(platformManifestPath);
+  platformManifest.retention_short_approved = true;
+  platformManifest.outputs.youtube_shorts.publish_duration_seconds = { min: 15, max: 60 };
+  platformManifest.outputs.instagram_reels.publish_duration_seconds = { min: 15, max: 60 };
+  platformManifest.outputs.facebook_reels.publish_duration_seconds = { min: 15, max: 60 };
+  await fs.writeJson(platformManifestPath, platformManifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-25T02:30:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+  const allBlockers = [...plan.blocked_stories, ...plan.ready_stories].flatMap((story) => story.blockers || []);
+  const fileEvidence = plan.incident_guard_report.stories.find(
+    (story) => story.story_id === "render-card-window-short-story",
+  ).file_evidence;
+
+  assert.equal(fileEvidence.rendered_card_window_count, 3);
+  assert.equal(fileEvidence.rendered_too_fast_card_windows.length, 0);
+  assert.equal(fileEvidence.hyperframes_missing_duration_card_clips.length, 0);
+  assert.equal(allBlockers.includes("hyperframes:card_visible_dwell_too_short"), false);
 });
 
 test("goal dry-run publisher blocks too-fast generated card clips even when overlay windows pass", async () => {

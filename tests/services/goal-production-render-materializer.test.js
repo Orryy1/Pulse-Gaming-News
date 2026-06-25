@@ -261,6 +261,9 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.sfx_mix_policy_version, STUDIO_V4_SFX_MIX_POLICY_VERSION);
   assert.equal(manifest.voice_mix_policy_version, STUDIO_V4_VOICE_MIX_POLICY_VERSION);
   assert.equal(manifest.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
+  assert.equal(manifest.overlay_card_windows.length >= 4, true);
+  assert.deepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
+  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 6.5));
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
@@ -311,6 +314,65 @@ test("goal production render materializer preserves HyperFrames premium-shell ta
   assert.deepEqual(manifest.premium_shell_blockers, []);
   assert.equal(manifest.hyperframes_premium_shell_gate.verdict, "pass");
   assert.equal(manifest.hyperframes_premium_shell_gate.passCount, 4);
+});
+
+test("goal production render materializer preserves rendered card-visible windows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-visible-cards-"));
+  const artifactDir = await makePackage(root, "story-visible-cards");
+  const visibleWindows = [
+    {
+      id: "scene_1_quote",
+      kind: "quote",
+      text: "THIS QUOTE CHANGES THE STORY",
+      start_s: 5,
+      end_s: 13,
+      duration_s: 8,
+      minimum_readable_duration_s: 7,
+      source: "visual_v4_scene_plan",
+    },
+    {
+      id: "scene_2_proof",
+      kind: "proof",
+      text: "SOURCE LOCKED",
+      start_s: 12.75,
+      end_s: 19.75,
+      duration_s: 7,
+      minimum_readable_duration_s: 6.5,
+      source: "visual_v4_scene_plan",
+    },
+  ];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-visible-cards", artifactDir)] },
+    generatedAt: "2026-05-22T07:04:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: "story-visible-cards",
+        output,
+        clips: 5,
+        rendered_duration_s: 28,
+        size_bytes: 4096,
+        clip_scene_plan: {
+          repeat_free: true,
+          repeated_base_sources: [],
+          scenes: [
+            { index: 0, path: "direct-a.mp4", baseSourceKey: "direct_a", durationS: 5 },
+            { index: 1, path: "quote.mp4", readableCardKind: "quote", durationS: 8 },
+          ],
+        },
+        card_visible_windows: visibleWindows,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.deepEqual(manifest.card_visible_windows, visibleWindows);
+  assert.equal(manifest.clip_scene_plan.repeat_free, true);
+  assert.deepEqual(manifest.clip_scene_plan.repeated_base_sources, []);
+  assert.equal(manifest.overlay_card_windows.length >= 4, true);
 });
 
 test("goal production render materializer feeds passing HyperFrames shell cards into the V4 render story", async () => {

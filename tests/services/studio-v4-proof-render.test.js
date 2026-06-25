@@ -285,6 +285,122 @@ test("Studio V4 proof renderer blocks short generated cards being stretched into
   assert.ok(plan.scenes.every((scene) => scene.durationS <= 2.8));
 });
 
+test("Studio V4 proof renderer reports readable owned-card scene windows", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "direct-trailer.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "direct_trailer_1",
+        durationS: 5,
+      },
+      {
+        path: "output/generated-motion/story/03_animated_quote_card.mp4",
+        source_type: "internally_generated_motion_graphic",
+        source_kind: "owned_source_card_explainer_motion",
+        media_kind: "owned_explainer_motion",
+        source_family: "story_animated_quote_card",
+        asset_class: "animated_quote_card",
+        readable_text: "THIS QUOTE CHANGES THE STORY",
+        minimum_readable_duration_s: 7,
+        durationS: 8,
+      },
+      {
+        path: "output/generated-motion/story/07_platform_proof_card.mp4",
+        source_type: "internally_generated_motion_graphic",
+        source_kind: "owned_source_card_explainer_motion",
+        media_kind: "owned_explainer_motion",
+        source_family: "story_platform_proof_card",
+        asset_class: "platform_proof_card",
+        text: "SOURCE LOCKED",
+        minimum_readable_duration_s: 6.5,
+        durationS: 7,
+      },
+    ],
+    durationS: 18,
+    xfadeS: 0.25,
+    maxSceneDurationS: 10,
+  });
+
+  assert.equal(plan.cardVisibleWindows.length, 2);
+  assert.deepEqual(
+    plan.cardVisibleWindows.map((window) => ({
+      kind: window.kind,
+      text: window.text,
+      duration_s: window.duration_s,
+      minimum_readable_duration_s: window.minimum_readable_duration_s,
+    })),
+    [
+      {
+        kind: "quote",
+        text: "THIS QUOTE CHANGES THE STORY",
+        duration_s: 7,
+        minimum_readable_duration_s: 7,
+      },
+      {
+        kind: "proof",
+        text: "SOURCE LOCKED",
+        duration_s: 6.5,
+        minimum_readable_duration_s: 6.5,
+      },
+    ],
+  );
+});
+
+test("Studio V4 proof renderer keeps generated cards readable within the final video duration", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "elliot-trailer-a.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_trailer_a",
+        durationS: 5,
+      },
+      {
+        path: "elliot-trailer-b.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_trailer_b",
+        durationS: 5,
+      },
+      {
+        path: "output/generated-motion/elliot/03_animated_quote_card.mp4",
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        source_family: "elliot_quote_card",
+        durationS: 10,
+        minimum_readable_duration_s: 6.5,
+      },
+      {
+        path: "output/generated-motion/elliot/07_platform_proof_card.mp4",
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        source_family: "elliot_proof_card",
+        durationS: 10,
+        minimum_readable_duration_s: 6.5,
+      },
+      {
+        path: "output/generated-motion/elliot/08_safe_article_screenshot_transform.mp4",
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        source_family: "elliot_screenshot_card",
+        durationS: 10,
+        minimum_readable_duration_s: 6.5,
+      },
+    ],
+    durationS: 29.92,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.cardVisibleWindows.length, 3);
+  assert.ok(plan.cardVisibleWindows.every((window) => window.duration_s >= 6.5));
+  assert.ok(plan.cardVisibleWindows.every((window) => window.end_s <= 29.92 + 0.01));
+});
+
 test("Studio V4 proof renderer accepts equal source and planned scene durations", () => {
   const clips = Array.from({ length: 6 }, (_, index) => ({
     path: `direct-clip-${index + 1}.mp4`,

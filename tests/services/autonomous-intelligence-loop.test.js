@@ -784,6 +784,28 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       childCalls.some((call) => call.args[0] === "tools/official-trailer-segment-validator.js"),
       "expected fresh refill to locally validate direct-media segment windows",
     );
+    const segmentValidatorCall = childCalls.find(
+      (call) => call.args[0] === "tools/official-trailer-segment-validator.js",
+    );
+    assert.ok(
+      segmentValidatorCall.args.includes("--no-reference-duration-probe"),
+      "fresh refill segment validation must not stall on remote duration probes",
+    );
+    assert.equal(
+      segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--max-segments") + 1],
+      "36",
+      "fresh refill should use a bounded segment budget instead of deep remote sampling",
+    );
+    assert.equal(
+      segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--candidate-windows-per-source") + 1],
+      "2",
+      "fresh refill should avoid repeated windows from the same source",
+    );
+    assert.equal(
+      segmentValidatorCall.args.includes("--include-frame-anchored-windows"),
+      false,
+      "fresh refill should not add extra frame-anchored windows that increase repeated clip risk",
+    );
     assert.ok(
       childCalls.filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js").length >= 2,
       "expected fresh refill to rebuild V4 motion packs after segment validation",
@@ -860,18 +882,19 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
     assert.ok(segmentValidationCall.args.includes("--deep-scan"));
-    assert.ok(segmentValidationCall.args.includes("--include-frame-anchored-windows"));
+    assert.equal(segmentValidationCall.args.includes("--include-frame-anchored-windows"), false);
+    assert.ok(segmentValidationCall.args.includes("--no-reference-duration-probe"));
     const segmentMaxIndex = segmentValidationCall.args.indexOf("--max-segments");
     assert.equal(
       Number(segmentValidationCall.args[segmentMaxIndex + 1]),
-      96,
-      "expected fresh refill to validate enough official/direct-motion windows to avoid one-clip repeat loops",
+      36,
+      "expected fresh refill to bound official/direct-motion validation so it does not create repeated windows or hang",
     );
     const candidateWindowsIndex = segmentValidationCall.args.indexOf("--candidate-windows-per-source");
     assert.equal(
       Number(segmentValidationCall.args[candidateWindowsIndex + 1]),
-      8,
-      "expected fresh refill to inspect multiple windows per official source before declaring motion blocked",
+      2,
+      "expected fresh refill to inspect a small number of windows per source before requiring better source material",
     );
     const segmentReferenceArgs = segmentValidationCall.args
       .map((arg, index) => (arg === "--reference-report" ? segmentValidationCall.args[index + 1] : null))

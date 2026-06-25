@@ -1287,6 +1287,69 @@ test("goal proof package turns official direct media into trusted footage intake
   assert.ok(pack.footage_inventory.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
 });
 
+test("goal proof package preserves official YouTube references in source manifest", () => {
+  const pack = buildGoalProofPackage({
+    story: {
+      id: "seed_capcom_spotlight_pressure_20260625",
+      title: "Capcom Spotlight Has To Prove These Games Are More Than Names",
+      canonical_subject: "Capcom Spotlight",
+      canonical_game: "Capcom Spotlight",
+      source_type: "official_showcase_page",
+      primary_source: {
+        name: "Capcom Spotlight",
+        url: "https://www.capcom-games.com/showcase/spotlight/",
+        type: "official_showcase_page",
+      },
+      source_published_at: "2026-06-25T00:00:00.000Z",
+      direct_media_candidates: [
+        {
+          direct_media_url: "https://www.youtube.com/watch?v=cwpiuMofOeo",
+          label: "Teaser: Capcom Spotlight US",
+          source_family: "capcom_spotlight_us_teaser",
+          source_type: "official_youtube_reference",
+        },
+        {
+          direct_media_url_if_available: "https://www.youtube.com/watch?v=_m8DUO8gjnE",
+          label: "Teaser: Capcom Spotlight UK",
+          source_family: "capcom_spotlight_uk_teaser",
+          source_type: "official_youtube_reference",
+        },
+      ],
+      confirmed_claims: [
+        "Capcom's official Spotlight page lists the June 25 showcase.",
+      ],
+      full_script:
+        "Capcom has thirty minutes tonight to make three very different games feel urgent. Players need a demo, date or gameplay hook before the showcase can change what they buy, wait for or skip. Follow Pulse Gaming so you never miss a beat.",
+    },
+    generatedAt: "2026-06-25T11:00:00.000Z",
+  });
+
+  assert.equal(pack.source_manifest.direct_media_url_if_available, null);
+  assert.equal(pack.source_manifest.approved_direct_media_url, null);
+  assert.deepEqual(
+    pack.source_manifest.direct_media_candidates.map((candidate) => ({
+      url: candidate.direct_media_url,
+      type: candidate.source_type,
+      family: candidate.source_family,
+      segment_validation_eligible: candidate.segment_validation_eligible,
+    })),
+    [
+      {
+        url: "https://www.youtube.com/watch?v=cwpiuMofOeo",
+        type: "official_youtube_reference",
+        family: "capcom_spotlight_us_teaser",
+        segment_validation_eligible: false,
+      },
+      {
+        url: "https://www.youtube.com/watch?v=_m8DUO8gjnE",
+        type: "official_youtube_reference",
+        family: "capcom_spotlight_uk_teaser",
+        segment_validation_eligible: false,
+      },
+    ],
+  );
+});
+
 test("goal proof package preserves explicit Grand Theft Auto VI canonical subject", () => {
   const story = greenStory("gta-vi-proof");
   story.title = "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight";

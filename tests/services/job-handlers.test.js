@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   handleGuardedLiveDispatchPublish,
+  buildFreshRefillOfficialSourceEvidence,
   guardedPublishFailureMessage,
   guardedPublishResultShouldFailJob,
   readGuardedLiveExecutorPlanForScheduler,
@@ -80,6 +81,68 @@ test("guarded publish failure message includes a safe platform error detail", ()
   assert.match(message, /youtube_upload_failed/);
   assert.match(message, /access_token_redacted/);
   assert.doesNotMatch(message, /abc123/);
+});
+
+test("fresh refill source evidence preserves official YouTube watch references as reference-only sources", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-youtube-"));
+  const artifactDir = path.join(tmp, "seed_capcom_spotlight_pressure_20260625");
+  const outputDir = path.join(tmp, "repair");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "seed_capcom_spotlight_pressure_20260625",
+    selected_title: "Capcom Spotlight Has To Prove These Games Are More Than Names",
+    canonical_title: "Capcom Spotlight Has To Prove These Games Are More Than Names",
+    canonical_subject: "Capcom Spotlight",
+    canonical_game: "Capcom Spotlight",
+    narration_script:
+      "Capcom has thirty minutes tonight to make three very different games feel urgent. Follow Pulse Gaming so you never miss a beat.",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: {
+      name: "Capcom Spotlight",
+      url: "https://www.capcom-games.com/showcase/spotlight/",
+      type: "official_showcase_page",
+    },
+    direct_media_candidates: [
+      {
+        direct_media_url: "https://www.youtube.com/watch?v=cwpiuMofOeo",
+        label: "Teaser: Capcom Spotlight US",
+        source_family: "capcom_spotlight_us_teaser",
+        source_type: "official_youtube_reference",
+      },
+      {
+        direct_media_url_if_available: "https://www.youtube.com/watch?v=_m8DUO8gjnE",
+        label: "Teaser: Capcom Spotlight UK",
+        source_family: "capcom_spotlight_uk_teaser",
+        source_type: "official_youtube_reference",
+      },
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(storyPackagesPath, [
+    {
+      story_id: "seed_capcom_spotlight_pressure_20260625",
+      artifact_dir: artifactDir,
+    },
+  ], { spaces: 2 });
+
+  const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+  const entries = await fs.readJson(result.officialSourceEntriesPath);
+  const intake = await fs.readJson(result.officialSourceIntakeJsonPath);
+
+  assert.equal(result.story_count, 1);
+  assert.equal(entries.length, 2);
+  assert.deepEqual(entries.map((entry) => entry.official_source_url), [
+    "https://www.youtube.com/watch?v=cwpiuMofOeo",
+    "https://www.youtube.com/watch?v=_m8DUO8gjnE",
+  ]);
+  assert.ok(entries.every((entry) => entry.source_type === "official_youtube_channel_url"));
+  assert.ok(entries.every((entry) => entry.direct_media_url_if_available === ""));
+  assert.equal(intake.summary.accepted, 2);
+  assert.equal(intake.summary.rejected, 0);
+  assert.ok(intake.accepted_references.every((reference) => reference.source_url_kind === "youtube_watch"));
+  assert.ok(intake.accepted_references.every((reference) => reference.segment_validation_eligible === false));
 });
 
 test("guarded publish handler preserves failed platform error in thrown job message", async () => {

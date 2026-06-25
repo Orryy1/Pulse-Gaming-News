@@ -890,6 +890,76 @@ test("goal batch package proof preparation writes specific GTA VI PS5 scripts", 
   );
 });
 
+test("goal batch package proof preparation writes specific current showcase scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "seed_capcom_spotlight_pressure_20260625",
+      canonical_subject: "Capcom Spotlight",
+      canonical_game: "Capcom Spotlight",
+      title: "Capcom Spotlight Has To Prove These Games Are More Than Names",
+      source_name: "Capcom",
+      source_type: "official_showcase_page",
+      article_url: "https://www.capcom-games.com/showcase/spotlight/",
+      source_published_at: "2026-06-25T00:00:00.000Z",
+      confirmed_claims: [
+        "Capcom's official Spotlight page lists the June 25 showcase.",
+        "Capcom's official teaser says the show is focused on Monster Hunter Stories 3: Twisted Reflection, Dragon's Dogma 2: Dark Arisen and Onimusha: Way of the Sword.",
+      ],
+      full_script:
+        "Capcom's Spotlight is not just another showcase; it is a pressure check. The official lineup puts Monster Hunter Stories 3, Onimusha and Dragon's Dogma 2: Dark Arisen under one short broadcast. That means every minute has to prove why players should care now, not just recognise the logo. The danger is simple: if the show only repeats names, it becomes background noise. If it gives real gameplay stakes, release windows or demos, Capcom can turn a quiet slate into a proper argument. A showcase only works if it changes what players want next. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.match(prepared.full_script, /^Capcom has thirty minutes tonight to make three very different games feel urgent\./i);
+  assert.match(prepared.full_script, /Monster Hunter Stories 3, Onimusha: Way of the Sword and Dragon's Dogma 2: Dark Arisen/i);
+  assert.match(prepared.full_script, /demo, date, gameplay hook or upgrade/i);
+  assert.doesNotMatch(prepared.full_script, /one clear detail|player test|install, wishlist|background noise|Capcom Spotlight says Capcom Spotlight/i);
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+});
+
+test("goal batch package proof preparation writes specific current Star Fox launch scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "seed_star_fox_switch2_launch_20260625",
+      canonical_subject: "Star Fox",
+      canonical_game: "Star Fox",
+      title: "Star Fox Has To Prove Old-School Arcade Design Still Hits",
+      source_name: "Nintendo",
+      source_type: "official_game_site",
+      article_url: "https://www.nintendo.com/ph/games/switch2/abgwa/index.html",
+      source_published_at: "2026-06-25T00:00:00.000Z",
+      confirmed_claims: [
+        "Nintendo's official Star Fox page says the game is available June 25 exclusively for Nintendo Switch 2.",
+        "Nintendo's official page describes Star Fox as a shooter starring Fox McCloud and the Star Fox team.",
+        "Nintendo's official page lists Overview Trailer and Prologue videos.",
+      ],
+      full_script:
+        "Star Fox is back today, and the real test is not nostalgia. Nintendo says the Switch 2 release sends Fox McCloud and the team back into high-speed aerial combat, but that old-school arcade structure has to fight a very modern problem: attention. Players now expect constant rewards, live updates and endless progression. Star Fox is asking whether sharp levels, replay routes and pure skill can still feel premium. If it lands, Nintendo proves a classic format can still cut through. If it does not, nostalgia becomes a very expensive safety net. The question is whether Star Fox feels timeless or just old. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.match(prepared.full_script, /^Star Fox is back today, and the real test is not nostalgia\./i);
+  assert.match(prepared.full_script, /Switch 2 release is available on June 25/i);
+  assert.match(prepared.full_script, /focused arcade loop/i);
+  assert.match(prepared.full_script, /nostalgia will not protect it/i);
+  assert.doesNotMatch(prepared.full_script, /content push|more than maintenance|one clear detail|player test|Nintendo says Star Fox Has/i);
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+});
+
 test("goal batch package proof preparation writes specific PS5 Pro tech scripts", () => {
   const prepared = prepareStoryForGoalProof(
     {

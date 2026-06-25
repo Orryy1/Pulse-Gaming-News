@@ -918,9 +918,9 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         clips: 6,
         overlay_card_windows: [],
         card_visible_windows: [
-          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 6.5, duration_s: 6.5 },
-          { id: "headline_card", kind: "proof_card", start_s: 6.7, end_s: 13.5, duration_s: 6.8 },
-          { id: "proof_primary", kind: "proof_card", start_s: 14.3, end_s: 20.8, duration_s: 6.5 },
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 8.5, duration_s: 8.5 },
+          { id: "headline_card", kind: "proof_card", start_s: 8.7, end_s: 17.5, duration_s: 8.8 },
+          { id: "proof_primary", kind: "proof_card", start_s: 18.3, end_s: 26.8, duration_s: 8.5 },
         ],
       },
     },
@@ -1005,7 +1005,7 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
   );
 });
 
-test("goal dry-run publisher trusts rendered card windows over low average clip duration", async () => {
+test("goal dry-run publisher trusts readable rendered card windows over low average clip duration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-render-card-window-short-"));
   const storyPackage = await makeStoryPackage(
     root,
@@ -1034,9 +1034,9 @@ test("goal dry-run publisher trusts rendered card windows over low average clip 
         premium_shell_blockers: [],
         overlay_card_windows: [],
         card_visible_windows: [
-          { id: "scene_2_quote", kind: "quote", start_s: 9.5, end_s: 16.47, duration_s: 6.97 },
-          { id: "scene_3_proof", kind: "proof", start_s: 16.22, end_s: 23.19, duration_s: 6.97 },
-          { id: "scene_4_screenshot", kind: "screenshot", start_s: 22.94, end_s: 29.91, duration_s: 6.97 },
+          { id: "scene_2_quote", kind: "quote", start_s: 1.2, end_s: 9.9, duration_s: 8.7 },
+          { id: "scene_3_proof", kind: "proof", start_s: 10.2, end_s: 18.9, duration_s: 8.7 },
+          { id: "scene_4_screenshot", kind: "screenshot", start_s: 19.1, end_s: 27.8, duration_s: 8.7 },
         ],
       },
     },
@@ -1107,6 +1107,75 @@ test("goal dry-run publisher trusts rendered card windows over low average clip 
   assert.equal(fileEvidence.rendered_too_fast_card_windows.length, 0);
   assert.equal(fileEvidence.hyperframes_missing_duration_card_clips.length, 0);
   assert.equal(allBlockers.includes("hyperframes:card_visible_dwell_too_short"), false);
+});
+
+test("goal dry-run publisher blocks legacy 6.5s rendered HyperFrames card windows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-legacy-card-window-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "legacy-card-window-story",
+    "GREEN",
+    "Street Fighter 6 Just Revealed A Rushdown Problem",
+    {
+      canonicalSubject: "Street Fighter 6",
+      durationSeconds: 42,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 42,
+        clips: 6,
+        hyperframes_premium_shell_required: true,
+        hyperframes_card_count: 3,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+        card_visible_windows: [
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 6.5, duration_s: 6.5 },
+          { id: "headline_card", kind: "proof_card", start_s: 6.7, end_s: 13.2, duration_s: 6.5 },
+          { id: "proof_primary", kind: "proof_card", start_s: 14, end_s: 20.5, duration_s: 6.5 },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const sourceFamilies = [
+    "capcom_official_trailer",
+    "playstation_blog_capture",
+    "xbox_wire_showcase",
+    "steam_store_clip",
+    "ign_preview_broll",
+    "gamespot_interview_broll",
+  ];
+  const directClips = Array.from({ length: 6 }, (_, index) =>
+    directMotionClipFixture({
+      id: `sf6-legacy-window-${index + 1}`,
+      path: `motion/sf6-legacy-window-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/street-fighter-6/legacy-${index + 1}.mp4`,
+      sourceFamily: sourceFamilies[index],
+      startS: index * 8,
+      durationS: 5,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, directClips);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-25T10:30:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
+      (window) => window.duration_s,
+    ),
+    [6.5, 6.5, 6.5],
+  );
 });
 
 test("goal dry-run publisher blocks too-fast generated card clips even when overlay windows pass", async () => {

@@ -161,7 +161,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
-  const minimumDurationS = Number(overrides.minimumDurationS || 6.5);
+  const minimumDurationS = Number(overrides.minimumDurationS || 8.5);
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -263,7 +263,7 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
   assert.equal(manifest.overlay_card_windows.length >= 4, true);
   assert.deepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
-  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 6.5));
+  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 8.5));
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
@@ -320,26 +320,26 @@ test("goal production render materializer preserves rendered card-visible window
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-visible-cards-"));
   const artifactDir = await makePackage(root, "story-visible-cards");
   const visibleWindows = [
-    {
-      id: "scene_1_quote",
-      kind: "quote",
-      text: "THIS QUOTE CHANGES THE STORY",
-      start_s: 5,
-      end_s: 13,
-      duration_s: 8,
-      minimum_readable_duration_s: 7,
-      source: "visual_v4_scene_plan",
-    },
-    {
-      id: "scene_2_proof",
-      kind: "proof",
-      text: "SOURCE LOCKED",
-      start_s: 12.75,
-      end_s: 19.75,
-      duration_s: 7,
-      minimum_readable_duration_s: 6.5,
-      source: "visual_v4_scene_plan",
-    },
+      {
+        id: "scene_1_quote",
+        kind: "quote",
+        text: "THIS QUOTE CHANGES THE STORY",
+        start_s: 5,
+        end_s: 13.6,
+        duration_s: 8.6,
+        minimum_readable_duration_s: 8.5,
+        source: "visual_v4_scene_plan",
+      },
+      {
+        id: "scene_2_proof",
+        kind: "proof",
+        text: "SOURCE LOCKED",
+        start_s: 13.85,
+        end_s: 22.45,
+        duration_s: 8.6,
+        minimum_readable_duration_s: 8.5,
+        source: "visual_v4_scene_plan",
+      },
   ];
 
   const report = await materializeGoalProductionRenders({
@@ -428,7 +428,7 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.ok(
     renderStory.visual_v4_bridge_video_clips
       .filter((clip) => clip.source_type === "hyperframes_premium_shell_card")
-      .every((clip) => clip.durationS >= 6.5 && clip.duration_s >= 6.5),
+      .every((clip) => clip.durationS >= 8.5 && clip.duration_s >= 8.5),
   );
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
@@ -445,7 +445,7 @@ test("goal production render materializer preserves readable HyperFrames card dw
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "context"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "timeline", {
       readableText: "GTA VI cover art is live but the price and edition decision is not",
-      minimumDurationS: 10,
+      minimumDurationS: 12,
     }),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "quote"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "takeaway"),
@@ -479,8 +479,8 @@ test("goal production render materializer preserves readable HyperFrames card dw
   const timelineCard = renderStory.visual_v4_bridge_video_clips.find(
     (clip) => clip.id === "hyperframes_premium_shell_timeline_3",
   );
-  assert.equal(timelineCard.durationS, 10);
-  assert.equal(timelineCard.minimum_readable_duration_s, 10);
+  assert.equal(timelineCard.durationS, 12);
+  assert.equal(timelineCard.minimum_readable_duration_s, 12);
   assert.match(timelineCard.text, /price and edition decision/i);
 });
 
@@ -1754,7 +1754,7 @@ test("goal production render materializer interleaves readable owned cards befor
       durationS: 5,
     });
   }
-  const ownedClips = [10, 8, 6.5].map((durationS, index) => {
+  const ownedClips = [10, 8.5, 8.5].map((durationS, index) => {
     const clipPath = path.join(root, "output", "generated-motion", `elliot-owned-${index + 1}.mp4`);
     return {
       id: `elliot-owned-${index + 1}`,
@@ -1839,7 +1839,7 @@ test("goal production render materializer collapses repeated Steam delivery vari
       durationS: 5,
     });
   }
-  const ownedClips = [10, 8, 6.5].map((durationS, index) => {
+  const ownedClips = [10, 8.5, 8.5].map((durationS, index) => {
     const clipPath = path.join(root, "output", "generated-motion", `elliot-readable-owned-${index + 1}.mp4`);
     return {
       id: `elliot-readable-owned-${index + 1}`,

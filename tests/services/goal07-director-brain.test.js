@@ -43,7 +43,7 @@ function readyDirectorPlan(storyId = "story-director") {
       min_distinct_motion_families: 4,
       available_distinct_motion_families: 5,
       max_static_card_ratio: 0.28,
-      max_static_card_seconds: 14,
+      max_static_card_seconds: 18,
       target_motion_ratio: 0.64,
     },
     shot_plan: [
@@ -67,7 +67,7 @@ function readyDirectorPlan(storyId = "story-director") {
         id: "source_lock",
         kind: "source_lock",
         startS: 2.2,
-        durationS: 6.5,
+        durationS: 8.5,
         source: "IGN",
         visual_treatment: "large readable source bug",
       },
@@ -75,7 +75,7 @@ function readyDirectorPlan(storyId = "story-director") {
         id: "proof_card",
         kind: "proof_card",
         startS: 9,
-        durationS: 6.5,
+        durationS: 8.5,
         label: "SOURCE LOCKED",
       },
       {
@@ -112,7 +112,7 @@ function readyDirectorPlan(storyId = "story-director") {
       },
     ],
     sound_transition_plan: {
-      duration_s: 55,
+      duration_s: 65,
       readiness: { verdict: "pass", blockers: [], warnings: [] },
     },
     transition_plan: {

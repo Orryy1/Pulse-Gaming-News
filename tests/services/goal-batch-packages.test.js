@@ -967,7 +967,7 @@ test("goal batch owned fallback motion clips use readable card dwell", () => {
 
   assert.ok(prepared.video_clips.length >= 6);
   assert.equal(
-    prepared.video_clips.every((clip) => Number(clip.durationS) >= 6.5),
+    prepared.video_clips.every((clip) => Number(clip.durationS) >= 8.5),
     true,
     JSON.stringify(prepared.video_clips.map((clip) => ({ id: clip.id, durationS: clip.durationS }))),
   );

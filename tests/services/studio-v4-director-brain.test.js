@@ -331,7 +331,7 @@ test("Visual V4 Director gives every card-like beat readable dwell time", () => 
 
   assert.ok(cardLike.length >= 3);
   assert.equal(
-    cardLike.every((shot) => Number(shot.durationS) >= 6.5),
+    cardLike.every((shot) => Number(shot.durationS) >= 8.5),
     true,
     JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
   );

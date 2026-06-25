@@ -195,9 +195,9 @@ test("render input work order resolves media-root audio and clears stale readabl
       primary_source: "Xbox Wire",
     });
     const ownedClips = [
-      { id: "source", asset_class: "animated_source_card", durationS: 6.5 },
+      { id: "source", asset_class: "animated_source_card", durationS: 8.5 },
       { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
-      { id: "stat", asset_class: "stat_card", durationS: 8 },
+      { id: "stat", asset_class: "stat_card", durationS: 8.5 },
     ].map((clip, index) => ({
       ...clip,
       path: path.join(artifactDir, `clip-${index + 1}.mp4`),
@@ -334,9 +334,9 @@ test("render input work order promotes repaired blocked local-proof jobs to fina
     primary_source: "Eurogamer",
   });
   const ownedClips = [
-    { id: "source", asset_class: "animated_source_card", durationS: 8 },
+    { id: "source", asset_class: "animated_source_card", durationS: 8.5 },
     { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
-    { id: "stat", asset_class: "stat_card", durationS: 8 },
+    { id: "stat", asset_class: "stat_card", durationS: 8.5 },
   ].map((clip, index) => ({
     ...clip,
     path: path.join(artifactDir, `clip-${index + 1}.mp4`),
@@ -424,9 +424,9 @@ test("render input work order does not promote readable owned-only decks without
     primary_source: "Eurogamer",
   });
   const clips = [
-    { id: "source", asset_class: "animated_source_card", durationS: 8 },
+    { id: "source", asset_class: "animated_source_card", durationS: 8.5 },
     { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
-    { id: "stat", asset_class: "stat_card", durationS: 8 },
+    { id: "stat", asset_class: "stat_card", durationS: 8.5 },
   ].map((clip, index) => ({
     ...clip,
     path: path.join(artifactDir, `clip-${index + 1}.mp4`),
@@ -498,9 +498,9 @@ test("render input work order lets newer blocked real-motion evidence override s
     primary_source: "Steam",
   });
   const readableClips = [
-    { id: "source", asset_class: "animated_source_card", durationS: 8 },
+    { id: "source", asset_class: "animated_source_card", durationS: 8.5 },
     { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
-    { id: "stat", asset_class: "stat_card", durationS: 8 },
+    { id: "stat", asset_class: "stat_card", durationS: 8.5 },
   ].map((clip, index) => ({
     ...clip,
     path: path.join(artifactDir, `card-${index + 1}.mp4`),
@@ -1618,7 +1618,7 @@ test("render input work order routes too-fast HyperFrames cards through readable
   assert.equal(action.operator_approval_required, false);
   assert.deepEqual(action.reason_codes, ["hyperframes_readable_dwell_repair_required"]);
   assert.match(action.recommended_command, /--refresh-existing\b/);
-  assert.match(action.exact_missing_input, /6\.5s/);
+  assert.match(action.exact_missing_input, /8\.5s/);
   assert.equal(action.evidence.too_fast_card_count, 1);
 });
 

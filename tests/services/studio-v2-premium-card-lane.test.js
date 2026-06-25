@@ -9,6 +9,7 @@ const path = require("node:path");
 const { SCENE_TYPES } = require("../../lib/scene-composer");
 const {
   applyPremiumCardLaneV2,
+  MIN_HYPERFRAMES_READABLE_HOLD_S,
   MIN_PREMIUM_HYPERFRAMES_CARDS,
   resolveCardAssetsV2,
   shellSidecarPathForCard,
@@ -24,7 +25,10 @@ function cardScenes() {
   ];
 }
 
-async function writePassingShellSidecar(cardPath, { storyId, kind, channelId = "pulse-gaming" }) {
+async function writePassingShellSidecar(
+  cardPath,
+  { storyId, kind, channelId = "pulse-gaming", plannedVisibleDurationS = 8.5 } = {},
+) {
   await fs.writeJson(
     shellSidecarPathForCard(cardPath),
     {
@@ -71,8 +75,8 @@ async function writePassingShellSidecar(cardPath, { storyId, kind, channelId = "
           evidence: {
             readable_text: `${kind} proof card`,
             word_count: 3,
-            planned_visible_duration_s: 6.5,
-            minimum_visible_duration_s: 6.5,
+            planned_visible_duration_s: plannedVisibleDurationS,
+            minimum_visible_duration_s: plannedVisibleDurationS,
           },
         },
       },
@@ -342,6 +346,41 @@ test("premium card lane v2 rejects shell sidecars without readable hold proof", 
       result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
         "source:hyperframes_readability_contract_missing",
       ),
+    );
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("premium card lane v2 rejects legacy 6.5s readable-card sidecars", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-legacy-dwell-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      const cardPath = path.join(outDir, `hf_${kind}_card_story-1.mp4`);
+      await fs.writeFile(cardPath, "story");
+      await writePassingShellSidecar(cardPath, {
+        storyId: "story-1",
+        kind,
+        plannedVisibleDurationS: 6.5,
+      });
+    }
+
+    const result = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Pokemon Go" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 8.5);
+    assert.equal(result.premiumLane.verdict, "partial");
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.some((blocker) =>
+        blocker.endsWith("hyperframes_readable_hold_below_internal_floor"),
+      ),
+      result.premiumLane.hyperframesPremiumShellGate.blockers.join(", "),
     );
   } finally {
     await fs.remove(root).catch(() => {});

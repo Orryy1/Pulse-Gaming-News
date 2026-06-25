@@ -52,7 +52,7 @@ test("competitor upgrade bakeoff compares 30 stories and keeps stronger Pulse-or
     report.upgraded_green_candidates.candidates.every((candidate) =>
       candidate.director_beat_map.shot_plan
         .filter((shot) => /card/i.test(`${shot.id || ""} ${shot.kind || ""}`))
-        .every((shot) => Number(shot.durationS || 0) >= 6.5),
+        .every((shot) => Number(shot.durationS || 0) >= 8.5),
     ),
     true,
   );

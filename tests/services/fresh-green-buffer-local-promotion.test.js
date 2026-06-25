@@ -415,6 +415,9 @@ test("fresh buffer local render work order consumes current materialised motion 
       };
     })()),
   );
+  for (let index = 0; index < 8; index += 1) {
+    fs.writeFileSync(path.join(packageDir, `clip-${index + 1}.mp4`), Buffer.alloc(2048, 2));
+  }
 
   const workOrder = buildLocalPromotionRenderInputWorkOrder({
     generatedAt,
@@ -484,6 +487,9 @@ test("fresh buffer local render work order honours validated V4 official reveal 
       validation_reason: "official_storefront_trailer_motion_samples_passed",
     },
   }));
+  for (const clip of clips) {
+    fs.writeFileSync(clip.path, Buffer.alloc(2048, 2));
+  }
   fs.writeFileSync(
     path.join(packageDir, "materialised_motion_clips.json"),
     JSON.stringify({

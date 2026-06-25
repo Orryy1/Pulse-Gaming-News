@@ -159,6 +159,104 @@ test("render input work order accepts story-package arrays after audio and motio
   assert.equal(job.actions[0].target_render_manifest.final_publish_render, true);
 });
 
+test("render input work order blocks Steam delivery variants that collapse below direct source-family floor", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-steam-variant-render-input-"));
+  const artifactDir = path.join(root, "packages", "steam-variant-story");
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  const firstTrailerRoot =
+    "steamstatic:/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626";
+  const secondTrailerRoot =
+    "steamstatic:/store_trailers/3483510/387849926/60a658bbf5d52df79e13601620dd1ae0918b2c0a/1770160497";
+  const variants = [
+    [firstTrailerRoot, "hls_264_master.m3u8"],
+    [secondTrailerRoot, "hls_264_master.m3u8"],
+    [firstTrailerRoot, "dash_av1.mpd"],
+    [firstTrailerRoot, "dash_h264.mpd"],
+    [secondTrailerRoot, "dash_av1.mpd"],
+    [secondTrailerRoot, "dash_h264.mpd"],
+  ];
+  const directClips = variants.map(([rootUrl, variant], index) => ({
+    id: `steam-direct-${index + 1}`,
+    path: path.join(artifactDir, `steam-direct-${index + 1}.mp4`),
+    source_url: `https://video.fastly.steamstatic.com/${rootUrl.replace("steamstatic:/", "")}/${variant}?t=1781798240`,
+    source_type: "official_platform_product_page",
+    base_source_family: `${rootUrl}/${variant}`,
+    source_family: `elliot_variant_${index + 1}_window_36_5`,
+    media_kind: "direct_video",
+    counts_towards_motion_readiness: true,
+    durationS: 5,
+  }));
+  const ownedClips = ["animated_source_card", "animated_quote_card", "platform_proof_card"].map((assetClass, index) => ({
+    id: `owned-card-${index + 1}`,
+    path: path.join(artifactDir, `owned-card-${index + 1}.mp4`),
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_source_card_explainer_motion",
+    asset_class: assetClass,
+    source_family: `owned_card_family_${index + 1}`,
+    media_kind: "owned_explainer_motion",
+    owned_explainer_visual_plan: true,
+    counts_towards_motion_readiness: true,
+    durationS: 8.5,
+  }));
+
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "steam-variant-story",
+    canonical_subject: "The Adventures Of Elliot",
+    selected_title: "The Adventures Of Elliot Has A Retro Trust Problem",
+    thumbnail_headline: "ELLIOT TRUST PROBLEM",
+    first_spoken_line: "The Adventures Of Elliot needs more than a throwback look.",
+    narration_script: "The Adventures Of Elliot needs more than a throwback look.",
+    description: "The Adventures Of Elliot needs more than a throwback look. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+  });
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "The", start: 0, end: 0.2 }],
+  });
+  for (const clip of [...directClips, ...ownedClips]) {
+    await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+  }
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: 19,
+    materialised_motion_clip_count: 19,
+    distinct_motion_family_count: 19,
+    direct_video_motion_clip_count: 6,
+    direct_video_motion_family_count: 6,
+    clips: [...directClips, ...ownedClips],
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: [
+      {
+        story_id: "steam-variant-story",
+        verdict: "RED",
+        blockers: ["render:final_publish_render_missing"],
+        artifact_dir: artifactDir,
+      },
+    ],
+    generatedAt: "2026-06-25T12:20:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 0);
+  assert.equal(workOrder.summary.blocked_on_render_inputs_count, 1);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "blocked_on_render_inputs");
+  assert.equal(job.evidence.direct_video_motion_clip_count, 6);
+  assert.equal(job.evidence.direct_video_motion_family_count, 2);
+  assert.ok(job.blockers.includes("visual_evidence:insufficient_real_visual_source_families"));
+  assert.ok(
+    job.actions.some((action) => action.action_id === "materialise_validated_real_motion_clips"),
+  );
+});
+
 test("render input work order resolves media-root audio and clears stale readable-card blockers", async () => {
   const previousMediaRoot = process.env.MEDIA_ROOT;
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-workorder-"));

@@ -1873,7 +1873,8 @@ test("goal production render materializer interleaves readable owned cards befor
   assert.deepEqual(calls[0].video_clips.slice(0, 4), directClips.slice(0, 4).map((clip) => clip.path));
   assert.equal(calls[0].video_clips[4], ownedClips[0].path);
   assert.deepEqual(calls[0].video_clips.slice(5, 7), directClips.slice(4).map((clip) => clip.path));
-  assert.deepEqual(calls[0].video_clips.slice(7), ownedClips.slice(1).map((clip) => clip.path));
+  assert.deepEqual(calls[0].video_clips.slice(7), [ownedClips[1].path]);
+  assert.equal(calls[0].video_clips.includes(ownedClips[2].path), false);
   assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 10);
 });
 
@@ -1955,13 +1956,12 @@ test("goal production render materializer collapses repeated Steam delivery vari
     },
   });
 
-  assert.deepEqual(calls[0].video_clips.slice(0, 2), [directClips[0].path, directClips[1].path]);
-  assert.deepEqual(calls[0].video_clips.slice(2), ownedClips.map((clip) => clip.path));
+  assert.deepEqual(calls[0].video_clips, [directClips[0].path, directClips[1].path]);
   assert.equal(calls[0].video_clips.includes(directClips[2].path), false);
   assert.equal(calls[0].video_clips.includes(directClips[3].path), false);
   assert.equal(calls[0].video_clips.includes(directClips[4].path), false);
   assert.equal(calls[0].video_clips.includes(directClips[5].path), false);
-  assert.equal(calls[0].visual_v4_bridge_video_clips[2].minimum_readable_duration_s, 10);
+  assert.equal(calls[0].video_clips.includes(ownedClips[0].path), false);
 });
 
 test("goal production render materializer accepts approved owned explainer motion without job path fallback", async () => {

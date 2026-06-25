@@ -118,6 +118,179 @@ test("Footage Empire blocks Visual V4 readiness when a Steam metric story lacks 
   assert.equal(plan.safety.social_posting_triggered, false);
 });
 
+test("Footage Empire counts hash-distinct official storefront trailer windows as product motion", () => {
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "doom-ps5-pro-motion",
+      title: "Doom The Dark Ages Becomes A PS5 Pro Test",
+      canonical_game: "Doom: The Dark Ages",
+      full_script:
+        "Doom The Dark Ages is now a PS5 Pro hardware test because its latest update gives players a direct performance comparison.",
+    },
+    trustedFootageReport: {
+      story_candidates: [
+        {
+          story_id: "doom-ps5-pro-motion",
+          entity: "Doom: The Dark Ages",
+          source_family: "steam_3017860_1777709634",
+          source_tier: "official",
+          reference_url:
+            "https://video.akamai.steamstatic.com/store_trailers/3017860/1777709634/hash/hls_264_master.m3u8",
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          rights_risk_class: "official_reference_only",
+          allowed_render_use: "reference_only_by_default",
+        },
+        {
+          story_id: "doom-ps5-pro-motion",
+          entity: "Doom: The Dark Ages",
+          source_family: "steam_3017860_1887810588",
+          source_tier: "official",
+          reference_url:
+            "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          rights_risk_class: "official_reference_only",
+          allowed_render_use: "reference_only_by_default",
+        },
+      ],
+    },
+    localMotionClips: [
+      {
+        id: "doom-window-1",
+        source_family: "steam_3017860_1777709634",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1777709634/hash/hls_264_master.m3u8",
+        path:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1777709634/hash/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        provider: "steam",
+        durationS: 5,
+        mediaStartS: 36,
+        validated: true,
+        rights_risk_class: "official_reference_only",
+        allowed_render_use: "reference_only_by_default",
+        segment_motion_class: "gameplay_action",
+        validation_reason: "official_storefront_trailer_motion_samples_passed",
+        sample_content_hashes: ["doom-window-1-a", "doom-window-1-b"],
+      },
+      {
+        id: "doom-window-2",
+        source_family: "steam_3017860_1887810588",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+        path:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        provider: "steam",
+        durationS: 5,
+        mediaStartS: 78,
+        validated: true,
+        rights_risk_class: "official_reference_only",
+        allowed_render_use: "reference_only_by_default",
+        segment_motion_class: "gameplay_action",
+        validation_reason: "official_storefront_trailer_motion_samples_passed",
+        sample_content_hashes: ["doom-window-2-a", "doom-window-2-b"],
+      },
+    ],
+  });
+
+  assert.equal(plan.motion_budget.product_motion_story, true);
+  assert.equal(plan.motion_budget.available_official_product_motion_clips, 2);
+  assert.equal(plan.motion_budget.available_official_product_motion_families, 2);
+  assert.equal(plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"), false);
+  assert.equal(plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"), false);
+});
+
+test("Footage Empire counts validated materialised storefront windows without reusing the same window", () => {
+  const trustedFootageReport = {
+    story_candidates: [
+      {
+        story_id: "doom-materialized-window-motion",
+        entity: "Doom: The Dark Ages",
+        source_family:
+          "steamstatic:/store_trailers/3017860/1887810588/hash_window_36_5",
+        source_tier: "official",
+        reference_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+        source_url_kind: "hls_manifest",
+        segment_validation_eligible: true,
+        rights_risk_class: "official_reference_only",
+        allowed_render_use: "reference_only_by_default",
+      },
+      {
+        story_id: "doom-materialized-window-motion",
+        entity: "Doom: The Dark Ages",
+        source_family:
+          "steamstatic:/store_trailers/3017860/1777709634/hash_window_42_5",
+        source_tier: "official",
+        reference_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1777709634/hash/hls_264_master.m3u8",
+        source_url_kind: "hls_manifest",
+        segment_validation_eligible: true,
+        rights_risk_class: "official_reference_only",
+        allowed_render_use: "reference_only_by_default",
+      },
+    ],
+  };
+  const baseClip = {
+    path: "C:\\media\\doom-window.mp4",
+    source_type: "steam_movie",
+    durationS: 5,
+    validated: true,
+    rights_risk_class: "official_reference_only",
+    allowed_render_use: "reference_only_by_default",
+    validation_reason: "official_storefront_trailer_motion_samples_passed",
+    sample_content_hashes: [],
+    trusted_source_evidence: true,
+  };
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "doom-materialized-window-motion",
+      title: "Doom The Dark Ages Becomes A PS5 Pro Test",
+      canonical_game: "Doom: The Dark Ages",
+      full_script:
+        "Doom The Dark Ages is now a PS5 Pro hardware test because its latest update gives players a direct performance comparison.",
+    },
+    trustedFootageReport,
+    localMotionClips: [
+      {
+        ...baseClip,
+        id: "doom-window-36",
+        source_family:
+          "steamstatic:/store_trailers/3017860/1887810588/hash_window_36_5",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+        mediaStartS: 36,
+      },
+      {
+        ...baseClip,
+        id: "doom-window-42",
+        source_family:
+          "steamstatic:/store_trailers/3017860/1777709634/hash_window_42_5",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1777709634/hash/hls_264_master.m3u8",
+        mediaStartS: 42,
+      },
+      {
+        ...baseClip,
+        id: "doom-window-36-repeat",
+        source_family:
+          "steamstatic:/store_trailers/3017860/1887810588/hash_window_36_5",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+        mediaStartS: 36,
+      },
+    ],
+  });
+
+  assert.equal(plan.motion_budget.available_official_product_motion_clips, 3);
+  assert.equal(plan.motion_budget.available_official_product_motion_families, 2);
+  assert.equal(plan.motion_budget.hash_distinct_official_motion_windows, 2);
+  assert.equal(plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"), false);
+  assert.equal(plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"), false);
+});
+
 test("Footage Empire does not count stills, cards, invalid clips or repeated source families as fresh motion", () => {
   const plan = buildFootageEmpirePlan({
     story: forzaSteamStory(),

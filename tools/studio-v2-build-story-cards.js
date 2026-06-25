@@ -25,8 +25,8 @@ const {
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 const DEFAULT_CHANNEL = "pulse-gaming";
-const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = 6.5;
-const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = 10;
+const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = 8.5;
+const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = 12;
 
 const CARD_KINDS = [
   "source",
@@ -124,7 +124,7 @@ function readableDurationRequiredS(text) {
   const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(clean) ? 0.5 : 0;
   const computed = Math.max(
     MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
-    1.05 * words + 1.2 + longTokenPenalty,
+    1.15 * words + 1.5 + longTokenPenalty,
   );
   return Number(
     Math.min(

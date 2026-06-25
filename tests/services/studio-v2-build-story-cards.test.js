@@ -72,6 +72,22 @@ test("story-specific HyperFrames cards stretch long copy to readable dwell", () 
   const html = applySpecToTemplate("timeline", templateHtml, spec, "pulse-gaming");
 
   assert.equal(contract.status, "pass");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 10);
-  assert.match(html, /data-duration="10\.0"/);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 12);
+  assert.match(html, /data-duration="12\.0"/);
+});
+
+test("story-specific HyperFrames cards keep short copy on screen long enough for mobile", () => {
+  const spec = {
+    kicker: "SOURCE",
+    label: "ROCKSTAR",
+    sublabel: "TRAILER",
+  };
+
+  const contract = hyperframesCardReadabilityContractForSpec("source", spec);
+
+  assert.equal(contract.status, "pass");
+  assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
+  assert.equal(contract.evidence.minimum_visible_duration_s, 8.5);
+  assert.equal(contract.evidence.planned_visible_duration_s, 8.5);
+  assert.equal(contract.evidence.min_readable_card_duration_s, 8.5);
 });

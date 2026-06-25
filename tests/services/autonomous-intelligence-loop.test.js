@@ -693,10 +693,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
                       evidence: {
                         readable_text: `${kind} card readable proof for ${storyId}`,
                         word_count: 6,
-                        planned_visible_duration_s: 8.5,
-                        minimum_visible_duration_s: 6.5,
-                        min_readable_card_duration_s: 6.5,
-                        max_readable_card_duration_s: 10,
+                        planned_visible_duration_s: 9,
+                        minimum_visible_duration_s: 8.5,
+                        min_readable_card_duration_s: 8.5,
+                        max_readable_card_duration_s: 12,
                       },
                     },
                     blockers: [],
@@ -822,6 +822,24 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       /visual_v4_source_family_intake_template\.json$/,
       "expected autofill to preserve the source-family intake template rows",
     );
+    const autofillInputIndex = officialSearchAutofillCall.args.indexOf("--input");
+    const officialSearchInput = JSON.parse(
+      await fs.readFile(officialSearchAutofillCall.args[autofillInputIndex + 1], "utf8"),
+    );
+    const officialSearchRows = Array.isArray(officialSearchInput)
+      ? officialSearchInput
+      : officialSearchInput.entries || officialSearchInput.rows || [];
+    assert.ok(
+      officialSearchRows.some(
+        (row) =>
+          row.story_id === "fresh_xbox_story" &&
+          row.entity === "Halo Campaign Evolved" &&
+          /official gameplay trailer/i.test(row.query || "") &&
+          (row.accepted_sources || []).includes("Steam") &&
+          row.reason === "fresh_refill_motion_variety_deficit",
+      ),
+      "expected fresh refill to add a supplemental storefront search for motion-starved candidates",
+    );
     const directMediaCall = childCalls.find(
       (call) => call.args[0] === "tools/official-direct-media-discovery.js",
     );
@@ -855,11 +873,23 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       8,
       "expected fresh refill to inspect multiple windows per official source before declaring motion blocked",
     );
-    const segmentReferenceIndex = segmentValidationCall.args.indexOf("--reference-report");
+    const segmentReferenceArgs = segmentValidationCall.args
+      .map((arg, index) => (arg === "--reference-report" ? segmentValidationCall.args[index + 1] : null))
+      .filter(Boolean);
+    assert.equal(
+      segmentReferenceArgs.length,
+      2,
+      "expected segment validation to merge trailer and licensed direct-media reports",
+    );
     assert.match(
-      segmentValidationCall.args[segmentReferenceIndex + 1],
+      segmentReferenceArgs[0],
       /official_trailer_references_fresh_refill\.json$/,
       "expected segment validation to consume the refreshed trailer reference report",
+    );
+    assert.match(
+      segmentReferenceArgs[1],
+      /studio_v4_licensed_direct_media_acquisition\.json$/,
+      "expected segment validation to consume the licensed direct-media report",
     );
     const refreshedMotionCall = childCalls
       .filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js")
@@ -935,9 +965,9 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(hyperframesCardEvidence.summary.card_count, 6);
     assert.equal(hyperframesCardEvidence.summary.passing_card_count, 6);
     assert.equal(hyperframesCardEvidence.summary.failing_card_count, 0);
-    assert.equal(hyperframesCardEvidence.summary.shortest_planned_visible_duration_s, 8.5);
-    assert.equal(hyperframesCardEvidence.summary.longest_required_visible_duration_s, 6.5);
-    assert.equal(hyperframesCardEvidence.stories[0].cards[0].readability.planned_visible_duration_s, 8.5);
+    assert.equal(hyperframesCardEvidence.summary.shortest_planned_visible_duration_s, 9);
+    assert.equal(hyperframesCardEvidence.summary.longest_required_visible_duration_s, 8.5);
+    assert.equal(hyperframesCardEvidence.stories[0].cards[0].readability.planned_visible_duration_s, 9);
     assert.deepEqual(scriptRewriteWorkOrder.jobs.map((job) => job.story_id), ["fresh_generic_story"]);
     assert.equal(scriptRewriteWorkOrder.jobs[0].repair_lane, "source_bound_script_rewrite");
     assert.equal(scriptRewriteWorkOrder.jobs[0].safety.no_publish, true);

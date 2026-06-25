@@ -369,14 +369,15 @@ function filterLiveRssStoriesForMotion(stories = []) {
       gate: liveRssMotionGate(story),
     }));
   const directMotionEntries = entries.filter((entry) => entry.gate.pass);
-  const selectedEntries = directMotionEntries.length
-    ? directMotionEntries
-    : entries
-        .map((entry) => ({
-          ...entry,
-          repairGate: liveRssRepairIntakeGate(entry.story, entry.gate),
-        }))
-        .filter((entry) => entry.repairGate.pass);
+  const directIds = new Set(directMotionEntries.map((entry) => storyIdFor(entry.story)).filter(Boolean));
+  const repairEntries = entries
+    .filter((entry) => !directIds.has(storyIdFor(entry.story)))
+    .map((entry) => ({
+      ...entry,
+      repairGate: liveRssRepairIntakeGate(entry.story, entry.gate),
+    }))
+    .filter((entry) => entry.repairGate.pass);
+  const selectedEntries = [...directMotionEntries, ...repairEntries];
   return selectedEntries
     .sort((a, b) => {
       const aScore = Number(a.gate?.score ?? a.repairGate?.score ?? 0);

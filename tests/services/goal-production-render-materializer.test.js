@@ -161,7 +161,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
-  const minimumDurationS = Number(overrides.minimumDurationS || 10.5);
+  const minimumDurationS = Number(overrides.minimumDurationS || 12);
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -293,7 +293,7 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
   assert.equal(manifest.overlay_card_windows.length >= 4, true);
   assert.deepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
-  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 10.5));
+  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 12));
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
@@ -355,19 +355,19 @@ test("goal production render materializer preserves rendered card-visible window
         kind: "quote",
         text: "THIS QUOTE CHANGES THE STORY",
         start_s: 5,
-        end_s: 15.5,
-        duration_s: 10.5,
-        minimum_readable_duration_s: 10.5,
+        end_s: 17,
+        duration_s: 12,
+        minimum_readable_duration_s: 12,
         source: "visual_v4_scene_plan",
       },
       {
         id: "scene_2_proof",
         kind: "proof",
         text: "SOURCE LOCKED",
-        start_s: 15.85,
-        end_s: 26.35,
-        duration_s: 10.5,
-        minimum_readable_duration_s: 10.5,
+        start_s: 17.35,
+        end_s: 29.35,
+        duration_s: 12,
+        minimum_readable_duration_s: 12,
         source: "visual_v4_scene_plan",
       },
   ];
@@ -414,9 +414,9 @@ test("goal production render materializer preserves nested actual card-visible w
       kind: "source",
       text: "XBOX WIRE",
       start_s: 12,
-      end_s: 22.5,
-      duration_s: 10.5,
-      minimum_readable_duration_s: 10.5,
+      end_s: 24,
+      duration_s: 12,
+      minimum_readable_duration_s: 12,
       source: "visual_v4_scene_plan",
     },
   ];
@@ -439,7 +439,7 @@ test("goal production render materializer preserves nested actual card-visible w
           card_visible_windows: actualWindows,
           scenes: [
             { index: 0, path: "direct-a.mp4", baseSourceKey: "direct_a", durationS: 5 },
-            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 10.5 },
+            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 12 },
           ],
         },
       };
@@ -481,7 +481,7 @@ test("goal production render materializer rejects repeated clips and too-fast ca
               start_s: 5,
               end_s: 8.2,
               duration_s: 3.2,
-              minimum_readable_duration_s: 10.5,
+              minimum_readable_duration_s: 12,
               source: "visual_v4_scene_plan",
             },
           ],
@@ -553,7 +553,7 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.ok(
     renderStory.visual_v4_bridge_video_clips
       .filter((clip) => clip.source_type === "hyperframes_premium_shell_card")
-      .every((clip) => clip.durationS >= 10.5 && clip.duration_s >= 10.5),
+      .every((clip) => clip.durationS >= 12 && clip.duration_s >= 12),
   );
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
@@ -570,7 +570,7 @@ test("goal production render materializer preserves readable HyperFrames card dw
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "context"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "timeline", {
       readableText: "GTA VI cover art is live but the price and edition decision is not",
-      minimumDurationS: 12,
+      minimumDurationS: 14,
     }),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "quote"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "takeaway"),
@@ -605,8 +605,8 @@ test("goal production render materializer preserves readable HyperFrames card dw
   const timelineCard = renderStory.visual_v4_bridge_video_clips.find(
     (clip) => clip.source_family === "hyperframes_timeline_card",
   );
-  assert.equal(timelineCard.durationS, 12);
-  assert.equal(timelineCard.minimum_readable_duration_s, 12);
+  assert.equal(timelineCard.durationS, 14);
+  assert.equal(timelineCard.minimum_readable_duration_s, 14);
   assert.match(timelineCard.text, /price and edition decision/i);
 });
 
@@ -658,11 +658,70 @@ test("goal production render materializer limits HyperFrames cards to a readable
   assert.equal(cardClips.length, 3);
   assert.equal(renderStory.hyperframes_card_count, 3);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.ok(cardClips.every((clip) => clip.durationS >= 10.5 && clip.minimum_readable_duration_s >= 10.5));
+  assert.ok(cardClips.every((clip) => clip.durationS >= 12 && clip.minimum_readable_duration_s >= 12));
   assert.deepEqual(
     [...new Set(cardClips.map((clip) => clip.source_family))],
     cardClips.map((clip) => clip.source_family),
   );
+});
+
+test("goal production render materializer limits HyperFrames cards by narration duration budget", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-duration-budget-"));
+  const artifactDir = await makePackage(root, "story-hf-duration-budget");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-duration-budget", kind),
+  ));
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 34.6,
+      spoken_wpm: 160,
+    },
+  });
+  const clipPaths = Array.from({ length: 5 }, (_, index) =>
+    path.join(artifactDir, `duration-budget-clip-${index + 1}.mp4`),
+  );
+  await Promise.all(clipPaths.map((clipPath, index) =>
+    fs.outputFile(clipPath, Buffer.alloc(2048, 50 + index)),
+  ));
+  const job = readyJob("story-hf-duration-budget", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: 5,
+      distinct_motion_family_count: 5,
+      materialised_motion_clip_paths: clipPaths,
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-25T20:40:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 34.6,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+  assert.equal(cardClips.length, 1);
+  assert.equal(renderStory.hyperframes_card_count, 1);
+  assert.equal(renderStory.hyperframes_available_card_count, 5);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 12);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
 });
 
 test("goal production render materializer auto-preserves HyperFrames shell cards on rerender work orders", async () => {
@@ -1278,6 +1337,130 @@ test("goal production render quality refresh builds director motion shots from s
   );
   const refreshedBenchmark = await fs.readJson(path.join(artifactDir, "benchmark_report.json"));
   assert.equal(refreshedBenchmark.visual_evidence_profile.direct_video_motion_asset_count >= 5, true);
+});
+
+test("goal production render quality refresh scores the final rendered scene plan instead of stale inventory", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-quality-scene-plan-"));
+  const artifactDir = await makePackage(root, "scene-plan-scored");
+  await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 31));
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "scene-plan-scored",
+    canonical_subject: "Granblue Fantasy: Relink",
+    selected_title: "Granblue Fantasy Relink Has A Free Demo Test",
+    thumbnail_headline: "DEMO TEST",
+    primary_source: "PlayStation Blog",
+    source_card_label: "PlayStation Blog",
+    confirmed_claims: ["PlayStation Blog highlighted a new Granblue Fantasy: Relink demo."],
+    narration_script:
+      "Granblue Fantasy Relink has a free demo test, and the useful part is what players can judge before buying. PlayStation Blog points to a hands-on slice that shows combat flow, party roles and boss pacing.",
+    first_spoken_line:
+      "Granblue Fantasy Relink has a free demo test, and the useful part is what players can judge before buying.",
+    description: "PlayStation Blog highlighted a Granblue Fantasy: Relink demo. Source: PlayStation Blog.",
+  });
+
+  const directClips = [];
+  for (let index = 0; index < 5; index += 1) {
+    const clipPath = path.join(artifactDir, `granblue-direct-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, 40 + index));
+    directClips.push({
+      id: `granblue-direct-${index + 1}`,
+      asset_id: `granblue-direct-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://video.steamstatic.com/store_trailers/granblue/${index + 1}/hls_master.m3u8`,
+      source_type: "official_trailer_segment",
+      source_family: `granblue_direct_family_${index + 1}`,
+      base_source_family: `granblue_direct_base_${index + 1}`,
+      media_kind: "official_video",
+      rights_basis: "official_publisher_reference_editorial_commentary",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      counts_towards_motion_readiness: true,
+      durationS: 5,
+    });
+  }
+  const hyperframesCardPath = path.join(artifactDir, "granblue-source-card.mp4");
+  await fs.outputFile(hyperframesCardPath, Buffer.alloc(2048, 71));
+  const clipScenePlan = {
+    repeat_free: true,
+    covered_duration_s: 36,
+    repeated_base_sources: [],
+    scenes: [
+      ...directClips.slice(0, 4).map((clip, index) => ({
+        index,
+        path: clip.path,
+        durationS: 4.8,
+        sourceDurationS: 5,
+        baseSourceKey: clip.base_source_family,
+      })),
+      {
+        index: 4,
+        path: hyperframesCardPath,
+        durationS: 12,
+        sourceDurationS: 12,
+        minimumReadableDurationS: 12,
+        baseSourceKey: "hyperframes_source_card",
+        readableCardKind: "source",
+        readableText: "PLAYSTATION BLOG SOURCE",
+      },
+      {
+        index: 5,
+        path: directClips[4].path,
+        durationS: 4.8,
+        sourceDurationS: 5,
+        baseSourceKey: directClips[4].base_source_family,
+      },
+    ],
+    card_visible_windows: [
+      {
+        id: "scene_4_source",
+        kind: "source",
+        start_s: 19.2,
+        end_s: 31.2,
+        duration_s: 12,
+        source: "clip_scene_plan",
+      },
+    ],
+  };
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: {
+      selected_assets: licensedSfxAssets(),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "scene-plan-scored",
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 36,
+    clips: 6,
+    clip_scene_plan: clipScenePlan,
+    card_visible_windows: clipScenePlan.card_visible_windows,
+  });
+
+  const refresh = await refreshFinalRenderQualityOnly({
+    storyId: "scene-plan-scored",
+    artifactDir,
+    generatedAt: "2026-06-25T20:40:00.000Z",
+  });
+
+  assert.equal(refresh.status, "quality_refreshed");
+  assert.equal(refresh.clip_count, 6);
+  assert.equal(refresh.director_motion_shot_count >= 6, true);
+  const refreshedBenchmark = await fs.readJson(path.join(artifactDir, "benchmark_report.json"));
+  assert.ok(refreshedBenchmark.scores.motion_density_score >= 75);
+  assert.equal(refreshedBenchmark.visual_evidence_profile.motion_asset_count >= 6, true);
+  const refreshedManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.deepEqual(refreshedManifest.clip_scene_plan.scenes.map((scene) => scene.path), clipScenePlan.scenes.map((scene) => scene.path));
 });
 
 test("goal production render materializer refreshes stale quality reports without rerendering", async () => {
@@ -1936,7 +2119,7 @@ test("goal production render materializer interleaves readable owned cards befor
       durationS: 5,
     });
   }
-  const ownedClips = [10.5, 10.5, 10.5].map((durationS, index) => {
+  const ownedClips = [12, 12, 12].map((durationS, index) => {
     const clipPath = path.join(root, "output", "generated-motion", `elliot-owned-${index + 1}.mp4`);
     return {
       id: `elliot-owned-${index + 1}`,
@@ -1981,9 +2164,10 @@ test("goal production render materializer interleaves readable owned cards befor
   assert.deepEqual(calls[0].video_clips.slice(0, 4), directClips.slice(0, 4).map((clip) => clip.path));
   assert.equal(calls[0].video_clips[4], ownedClips[0].path);
   assert.deepEqual(calls[0].video_clips.slice(5, 7), directClips.slice(4).map((clip) => clip.path));
-  assert.deepEqual(calls[0].video_clips.slice(7), [ownedClips[1].path]);
+  assert.deepEqual(calls[0].video_clips.slice(7), []);
+  assert.equal(calls[0].video_clips.includes(ownedClips[1].path), false);
   assert.equal(calls[0].video_clips.includes(ownedClips[2].path), false);
-  assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 10.5);
+  assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 12);
 });
 
 test("goal production render materializer collapses repeated Steam delivery variants before card top-up", async () => {
@@ -2022,7 +2206,7 @@ test("goal production render materializer collapses repeated Steam delivery vari
       durationS: 5,
     });
   }
-  const ownedClips = [10.5, 10.5, 10.5].map((durationS, index) => {
+  const ownedClips = [12, 12, 12].map((durationS, index) => {
     const clipPath = path.join(root, "output", "generated-motion", `elliot-readable-owned-${index + 1}.mp4`);
     return {
       id: `elliot-readable-owned-${index + 1}`,

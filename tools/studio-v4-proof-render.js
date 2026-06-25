@@ -36,8 +36,8 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
-const MIN_OVERLAY_CARD_DURATION_S = 10.5;
-const MAX_OVERLAY_CARD_DURATION_S = 12;
+const MIN_OVERLAY_CARD_DURATION_S = 12;
+const MAX_OVERLAY_CARD_DURATION_S = 14;
 const MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS = 4;
 const MAX_READABLE_CARD_DURATION_RATIO = 0.42;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
@@ -857,6 +857,25 @@ function buildClipScenePlan({
   const desiredSceneDurationTotalS = Number(
     (duration + xfadeS * Math.max(0, selectedEntries.length - 1)).toFixed(2),
   );
+  const readableCardIndexes = selectedEntries
+    .map((entry, index) => Number.isFinite(entry.minimumReadableDurationS) && entry.readableCardKind ? index : -1)
+    .filter((index) => index >= 0);
+  const directSceneIndexes = selectedEntries
+    .map((entry, index) => entry.readableCardKind ? -1 : index)
+    .filter((index) => index >= 0);
+  const readableCardMinimumTotalS = Number(
+    readableCardIndexes
+      .reduce((sum, index) => sum + Number(selectedEntries[index].minimumReadableDurationS || 0), 0)
+      .toFixed(2),
+  );
+  const directSceneBudgetS =
+    readableCardIndexes.length && directSceneIndexes.length
+      ? Number((desiredSceneDurationTotalS - readableCardMinimumTotalS).toFixed(2))
+      : null;
+  const directSceneEqualDurationS =
+    directSceneBudgetS != null && directSceneBudgetS > 0
+      ? Number((directSceneBudgetS / directSceneIndexes.length).toFixed(3))
+      : null;
   const plannedDurations = selectedEntries.map((entry) => {
     const maxDuration = Number.isFinite(entry.sourceDurationS)
       ? entry.sourceDurationS
@@ -864,7 +883,10 @@ function buildClipScenePlan({
     const minimumReadable = Number.isFinite(entry.minimumReadableDurationS)
       ? entry.minimumReadableDurationS
       : null;
-    const baseline = minimumReadable || Math.min(maxDuration, equalSegmentDurationS);
+    const baseline = minimumReadable ||
+      (directSceneEqualDurationS != null
+        ? Math.min(maxDuration, directSceneEqualDurationS)
+        : Math.min(maxDuration, equalSegmentDurationS));
     return Number(Math.max(1, Math.min(maxDuration, baseline)).toFixed(2));
   });
   let remainingExtraS = Number(
@@ -1470,7 +1492,7 @@ function overlayWindow({
   };
 }
 
-function overlayCardWindowsForStory(story = {}) {
+function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
   const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
   const suppressOpeningStoryCard =
     suppressAllStoryCards ||
@@ -1523,7 +1545,9 @@ function overlayCardWindowsForStory(story = {}) {
       proofSecondaryWindow,
     );
   }
-  return windows;
+  const finalDuration = Number(durationS);
+  if (!Number.isFinite(finalDuration) || finalDuration <= 0) return windows;
+  return windows.filter((window) => Number(window.end_s || 0) <= finalDuration + 0.05);
 }
 
 function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt }) {
@@ -1543,12 +1567,16 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
   const openingCardY = 252;
   const openingCardH = 214;
   const openingChipX = safeMarginMode ? 102 : 90;
-  const cardWindows = overlayCardWindowsForStory(story);
+  const cardWindows = overlayCardWindowsForStory(story, { durationS });
   const windowById = Object.fromEntries(cardWindows.map((window) => [window.id, window]));
-  const openingWindow = windowById.opening_source_lock || { start_s: 0, end_s: 0 };
-  const headlineWindow = windowById.headline_card || { start_s: 4, end_s: 8.4 };
-  const proofPrimaryWindow = windowById.proof_primary || { start_s: 9, end_s: 13 };
-  const proofSecondaryWindow = windowById.proof_secondary || { start_s: 16, end_s: 20 };
+  const disabledWindow = {
+    start_s: Number.isFinite(Number(durationS)) ? Number(durationS) + 1 : 9999,
+    end_s: Number.isFinite(Number(durationS)) ? Number(durationS) + 1 : 9999,
+  };
+  const openingWindow = windowById.opening_source_lock || disabledWindow;
+  const headlineWindow = windowById.headline_card || disabledWindow;
+  const proofPrimaryWindow = windowById.proof_primary || disabledWindow;
+  const proofSecondaryWindow = windowById.proof_secondary || disabledWindow;
   const t = (value) => {
     const number = Number(value || 0);
     if (Math.abs(number) < 0.005) return "0";
@@ -1877,7 +1905,7 @@ async function renderProof({ storyJson, output }) {
       ? Number(story.hyperframes_card_count)
       : null,
     hyperframes_premium_shell_gate: story.hyperframes_premium_shell_gate || {},
-    overlay_card_windows: overlayCardWindowsForStory(story),
+    overlay_card_windows: overlayCardWindowsForStory(story, { durationS: finalDuration || durationS }),
     card_visible_windows: scenePlan.cardVisibleWindows,
     premium_shell_verdict: story.premium_shell_verdict || null,
     premium_shell_pass_count: Number.isFinite(Number(story.premium_shell_pass_count))

@@ -750,6 +750,41 @@ test("goal batch live RSS selection keeps official-source stories for motion rep
   );
 });
 
+test("goal batch live RSS selection keeps repairable official-source backups behind direct-motion stories", () => {
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        id: "direct-gta",
+        title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        source_name: "Rockstar Newswire",
+        source_type: "official",
+        url: "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+        approved_direct_media_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+      },
+      {
+        id: "official-doom-repair",
+        title: "Upgraded PSSR comes to Doom: The Dark Ages on PS5 Pro",
+        canonical_subject: "Doom: The Dark Ages",
+        source_name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/06/24/upgraded-pssr-comes-to-doom-the-dark-ages-on-ps5-pro/",
+      },
+      {
+        id: "deal-card",
+        title: "Today's Top Deals: Switch 2 Memory Cards And Controller Discounts",
+        source_name: "IGN Deals",
+      },
+    ],
+    baseStories: [],
+  });
+
+  assert.deepEqual(
+    selected.map((story) => story.id),
+    ["direct-gta", "official-doom-repair"],
+  );
+});
+
 test("goal batch live RSS motion gate preserves official direct-media stories", () => {
   const story = {
     id: "rockstar-gta-vi-cover",
@@ -1397,8 +1432,8 @@ test("goal batch package proof preparation does not invert GTA VI screenshot ana
       "GTA 6 Looks Amazing, but finally has the reveal fans cannot dodge: real gameplay. IGN has shown enough footage to move the debate from promise to proof. Follow Pulse Gaming so you never miss a beat.",
   });
 
-  assert.equal(prepared.canonical_subject, "GTA 6");
-  assert.equal(prepared.canonical_game, "GTA 6");
+  assert.equal(prepared.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(prepared.canonical_game, "Grand Theft Auto VI");
   assert.equal(prepared.public_title, "GTA VI Screenshots Are Not Gameplay Proof");
   assert.doesNotMatch(prepared.public_title, /finally shows real gameplay/i);
   assert.doesNotMatch(prepared.full_script, /real gameplay|shown enough footage|promise to proof/i);
@@ -2599,6 +2634,27 @@ test("goal batch package extracts named subjects from awkward feed headlines", (
   assert.match(starWarsRacer.full_script, /roguelite racer/i);
   assert.match(starWarsRacer.full_script, /Players have to decide whether to wishlist/i);
   assert.doesNotMatch(`${expanse.full_script}\n${composer.full_script}\n${nintendo.full_script}`, /\bIt should stay|^Nintendo, You Better Not Be|^Xbox has/m);
+});
+
+test("goal batch package prefers GTA VI entity over editorial headline fragments", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "gta-vi-price-trailer-gap",
+    title: "It's wild of Rockstar to ask us for $80, minimum, without showing a GTA 6 gameplay trailer",
+    source_name: "PC Gamer",
+    source_type: "rss",
+    article_url:
+      "https://www.pcgamer.com/games/grand-theft-auto/its-wild-of-rockstar-to-ask-us-for-usd80-minimum-without-showing-a-gta-6-gameplay-trailer/",
+    primary_source_url:
+      "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+    full_script: "",
+  });
+
+  assert.equal(prepared.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(prepared.canonical_game, "Grand Theft Auto VI");
+  assert.equal(prepared.public_title, "GTA VI Pre-Orders Have A Gameplay Gap");
+  assert.doesNotMatch(prepared.public_title, /It's wild|Rockstar to/i);
+  assert.match(prepared.public_title, /Grand Theft Auto VI|GTA VI/i);
+  assert.doesNotMatch(prepared.full_script, /^It's wild of Rockstar/i);
 });
 
 test("goal batch preparation preserves a viral-ready non-subject hook instead of forcing a weaker opener", () => {

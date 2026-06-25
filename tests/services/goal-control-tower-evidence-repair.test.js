@@ -227,3 +227,38 @@ test("control tower evidence repair refuses to promote missing policy proof", as
   assert.ok(report.items[0].blockers.includes("platform_policy_proof_not_passed"));
   assert.equal(await fs.pathExists(path.join(story.artifact_dir, "platform_policy_report.json")), false);
 });
+
+test("control tower evidence repair promotes stale RED platform manifest when native proof passes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-evidence-platform-manifest-"));
+  const story = await makeControlTowerPackage(root, "story-stale-platform-manifest");
+  const platformManifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(platformManifestPath);
+  await fs.writeJson(platformManifestPath, {
+    ...platformManifest,
+    publish_status: "RED",
+    can_auto_publish: false,
+  });
+
+  const report = await repairGoalControlTowerEvidence({
+    storyPackages: [story],
+    goal16Report: goal16Pass("story-stale-platform-manifest"),
+    landingManifestReport: landingProof("story-stale-platform-manifest"),
+    goal17Report: goal17Pass("story-stale-platform-manifest"),
+    platformPolicyReport: policyProof("story-stale-platform-manifest"),
+    generatedAt: "2026-06-22T02:30:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups"),
+  });
+
+  assert.equal(report.summary.repairable_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.summary.repaired_count, 1);
+  assert.deepEqual(report.items[0].blockers, []);
+  assert.ok(report.items[0].stale_files.includes("platform_publish_manifest.json"));
+
+  const repairedPlatformManifest = await fs.readJson(platformManifestPath);
+  const publishVerdict = await fs.readJson(path.join(story.artifact_dir, "publish_verdict.json"));
+  assert.equal(repairedPlatformManifest.publish_status, "GREEN");
+  assert.equal(repairedPlatformManifest.can_auto_publish, true);
+  assert.equal(publishVerdict.verdict, "GREEN");
+  assert.equal(publishVerdict.can_auto_publish, true);
+});

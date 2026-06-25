@@ -197,7 +197,7 @@ test("render input work order blocks Steam delivery variants that collapse below
     media_kind: "owned_explainer_motion",
     owned_explainer_visual_plan: true,
     counts_towards_motion_readiness: true,
-    durationS: 10.5,
+    durationS: 12,
   }));
 
   await fs.ensureDir(artifactDir);
@@ -293,9 +293,9 @@ test("render input work order resolves media-root audio and clears stale readabl
       primary_source: "Xbox Wire",
     });
     const ownedClips = [
-      { id: "source", asset_class: "animated_source_card", durationS: 10.5 },
-      { id: "proof", asset_class: "platform_proof_card", durationS: 10.5 },
-      { id: "stat", asset_class: "stat_card", durationS: 10.5 },
+      { id: "source", asset_class: "animated_source_card", durationS: 12 },
+      { id: "proof", asset_class: "platform_proof_card", durationS: 12 },
+      { id: "stat", asset_class: "stat_card", durationS: 12 },
     ].map((clip, index) => ({
       ...clip,
       path: path.join(artifactDir, `clip-${index + 1}.mp4`),
@@ -432,9 +432,9 @@ test("render input work order promotes repaired blocked local-proof jobs to fina
     primary_source: "Eurogamer",
   });
   const ownedClips = [
-    { id: "source", asset_class: "animated_source_card", durationS: 10.5 },
-    { id: "proof", asset_class: "platform_proof_card", durationS: 10.5 },
-    { id: "stat", asset_class: "stat_card", durationS: 10.5 },
+    { id: "source", asset_class: "animated_source_card", durationS: 12 },
+    { id: "proof", asset_class: "platform_proof_card", durationS: 12 },
+    { id: "stat", asset_class: "stat_card", durationS: 12 },
   ].map((clip, index) => ({
     ...clip,
     path: path.join(artifactDir, `clip-${index + 1}.mp4`),
@@ -522,9 +522,9 @@ test("render input work order does not promote readable owned-only decks without
     primary_source: "Eurogamer",
   });
   const clips = [
-    { id: "source", asset_class: "animated_source_card", durationS: 10.5 },
-    { id: "proof", asset_class: "platform_proof_card", durationS: 10.5 },
-    { id: "stat", asset_class: "stat_card", durationS: 10.5 },
+    { id: "source", asset_class: "animated_source_card", durationS: 12 },
+    { id: "proof", asset_class: "platform_proof_card", durationS: 12 },
+    { id: "stat", asset_class: "stat_card", durationS: 12 },
   ].map((clip, index) => ({
     ...clip,
     path: path.join(artifactDir, `clip-${index + 1}.mp4`),
@@ -596,9 +596,9 @@ test("render input work order lets newer blocked real-motion evidence override s
     primary_source: "Steam",
   });
   const readableClips = [
-    { id: "source", asset_class: "animated_source_card", durationS: 10.5 },
-    { id: "proof", asset_class: "platform_proof_card", durationS: 10.5 },
-    { id: "stat", asset_class: "stat_card", durationS: 10.5 },
+    { id: "source", asset_class: "animated_source_card", durationS: 12 },
+    { id: "proof", asset_class: "platform_proof_card", durationS: 12 },
+    { id: "stat", asset_class: "stat_card", durationS: 12 },
   ].map((clip, index) => ({
     ...clip,
     path: path.join(artifactDir, `card-${index + 1}.mp4`),
@@ -1716,7 +1716,7 @@ test("render input work order routes too-fast HyperFrames cards through readable
   assert.equal(action.operator_approval_required, false);
   assert.deepEqual(action.reason_codes, ["hyperframes_readable_dwell_repair_required"]);
   assert.match(action.recommended_command, /--refresh-existing\b/);
-  assert.match(action.exact_missing_input, /10\.5s/);
+  assert.match(action.exact_missing_input, /12s/);
   assert.equal(action.evidence.too_fast_card_count, 1);
 });
 
@@ -1743,7 +1743,7 @@ test("render input work order derives readable-card repair from dry-run file evi
                     id: "scene_3_proof",
                     kind: "proof",
                     duration_s: 7.2,
-                    minimum_required_duration_s: 10.5,
+                    minimum_required_duration_s: 12,
                   },
                 ],
               },
@@ -1784,7 +1784,7 @@ test("render input work order derives readable-card repair from queued render ev
                 id: "scene_2_quote",
                 kind: "quote",
                 duration_s: 7.74,
-                minimum_required_duration_s: 10.5,
+                minimum_required_duration_s: 12,
               },
             ],
           },
@@ -1826,14 +1826,14 @@ test("render input work order keeps readable-card repair when ready flag conflic
                 id: "source_lock",
                 kind: "source_lock",
                 duration_s: 6.5,
-                minimum_required_duration_s: 10.5,
+                minimum_required_duration_s: 12,
               },
             ],
             hyperframes_missing_duration_card_clips: [
               {
                 id: "hyperframes_card",
                 duration_s: null,
-                minimum_required_duration_s: 10.5,
+                minimum_required_duration_s: 12,
               },
             ],
           },
@@ -1867,8 +1867,8 @@ test("render input work order clears stale fast-card estimates when current owne
       owned_explainer_visual_plan: true,
       hyperframes_card: true,
       readable_card_kind: kind,
-      durationS: 10.5,
-      minimum_readable_duration_s: 10.5,
+      durationS: 12,
+      minimum_readable_duration_s: 12,
     });
   }
   await fs.writeJson(path.join(artifactDir, "owned_motion_manifest.json"), {
@@ -1892,20 +1892,20 @@ test("render input work order clears stale fast-card estimates when current owne
             readable_hyperframes_ready: true,
             readable_hyperframes_clip_count: 39,
             readable_hyperframes_too_fast_count: 0,
-            minimum_readable_card_duration_s: 10.5,
+            minimum_readable_card_duration_s: 12,
             hyperframes_effective_too_fast_card_shots: [
               {
                 id: "source_lock",
                 kind: "source_lock",
                 duration_s: 6.5,
-                minimum_required_duration_s: 10.5,
+                minimum_required_duration_s: 12,
               },
             ],
             hyperframes_missing_duration_card_clips: [
               {
                 id: "stale_hyperframes_card",
                 duration_s: null,
-                minimum_required_duration_s: 10.5,
+                minimum_required_duration_s: 12,
               },
             ],
           },

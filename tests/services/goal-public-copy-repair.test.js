@@ -614,6 +614,90 @@ test("public copy repair can force a quality rewrite for Hellraiser release-date
   assert.equal(renderWorkOrder.summary.ready_for_final_render_job_count, 1);
 });
 
+test("public copy repair can force a quality rewrite for Doom PS5 Pro PSSR packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-doom-pssr-quality-rewrite-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_d574fecf8311b041",
+    canonical_subject: "Doom: The Dark Ages",
+    canonical_game: "Doom: The Dark Ages",
+    canonical_title: "Doom The Dark Ages Becomes A PS5 Pro Test",
+    selected_title: "Doom The Dark Ages Becomes A PS5 Pro Test",
+    short_title: "Doom The Dark Ages Becomes A PS5 Pro Test",
+    thumbnail_headline: "DOOM PS5 PRO",
+    first_spoken_line: "Doom: The Dark Ages just became a PS5 Pro tech test.",
+    narration_script:
+      "Doom: The Dark Ages just became a PS5 Pro tech test. PlayStation Blog says upgraded PSSR is coming to Doom: The Dark Ages on PS5 Pro. That matters because image quality is where fast shooters either look premium or turn into blur once the arena gets loud. If the upgrade keeps Doom sharp in motion, PS5 Pro owners get a real showcase. If not, it is another spec-sheet promise. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Doom: The Dark Ages just became a PS5 Pro tech test. If not, it is another spec-sheet promise. Source: PlayStation Blog.",
+    primary_source: "PlayStation Blog",
+    source_card_label: "PlayStation Blog",
+    confirmed_claims: [
+      "Upgraded PSSR comes to Doom: The Dark Ages on PS5 Pro",
+    ],
+  }, { spaces: 2 });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: ["clip-a.mp4", "clip-b.mp4", "clip-c.mp4"],
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Doom The Dark Ages Becomes A PS5 Pro Test",
+        description:
+          "Doom: The Dark Ages just became a PS5 Pro tech test. If not, it is another spec-sheet promise. Source: PlayStation Blog.",
+        cover_frame: { headline: "DOOM PS5 PRO" },
+      },
+      instagram_reels: {
+        caption:
+          "Doom: The Dark Ages just became a PS5 Pro tech test. If not, it is another spec-sheet promise. Source: PlayStation Blog.",
+        cover_frame: { headline: "DOOM PS5 PRO" },
+      },
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_d574fecf8311b041", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-25T21:20:00.000Z",
+    forceQualityRewriteStoryIds: ["rss_d574fecf8311b041"],
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
+  const mediaHouseScore = buildPulseMediaHouseScore({
+    story_id: "rss_d574fecf8311b041",
+    canonical: updated,
+    platformManifest,
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+  assert.equal(updated.selected_title, "Doom The Dark Ages PS5 Pro Upgrade Risks Blur");
+  assert.equal(updated.thumbnail_headline, "DOOM DARK AGES BLUR RISK");
+  assert.match(updated.narration_script, /^Doom The Dark Ages has one PlayStation 5 Pro risk players will feel fast\./);
+  assert.match(updated.narration_script, /readability when fire, steel and demons fill the arena/);
+  assert.match(updated.narration_script, /sharper fights, or expensive blur/);
+  assert.doesNotMatch(updated.narration_script, /^Doom: The Dark Ages/);
+  assert.doesNotMatch(updated.narration_script, /tech test|spec-sheet promise|source-backed update/);
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.ok(savedScorecard.viral_score >= 90, JSON.stringify(savedScorecard, null, 2));
+  assert.equal(platformManifest.outputs.youtube_shorts.title, "Doom The Dark Ages PS5 Pro Upgrade Risks Blur");
+  assert.match(platformManifest.outputs.youtube_shorts.description, /fast arena combat/i);
+  assert.equal(platformManifest.outputs.instagram_reels.cover_frame.headline, "DOOM DARK AGES BLUR RISK");
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:platform_copy_too_plain"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:shorts_feed_competition_weak"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.match(srt, /PlayStation 5 Pro/);
+  assert.match(srt, /expensive blur/);
+});
+
 test("public copy repair can force a quality rewrite for Cyberpunk trust-debt packages", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-cyberpunk-quality-rewrite-"));
   const artifactDir = path.join(root, "story");
@@ -4319,6 +4403,54 @@ test("public copy rerender work order blocks repaired copy without local V4 clip
   assert.equal(workOrder.summary.blocked_on_render_inputs_count, 1);
   assert.equal(workOrder.jobs[0].status, "blocked_on_render_inputs");
   assert.deepEqual(workOrder.jobs[0].blockers, ["materialised_motion_clip_paths_missing"]);
+});
+
+test("public copy rerender work order accepts materialised motion manifest clips", async () => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-rerender-materialised-clips-"));
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: [
+      {
+        path: "C:\\clips\\doom-pssr-1.mp4",
+        local_materialized_path: "C:\\clips\\doom-pssr-1.mp4",
+        materialized: true,
+        validated: true,
+        counts_towards_motion_readiness: true,
+      },
+      {
+        local_materialized_path: "C:\\clips\\doom-pssr-2.mp4",
+        materialized: true,
+        validated: true,
+        counts_towards_motion_readiness: true,
+      },
+    ],
+  });
+  const report = {
+    generated_at: "2026-06-25T22:00:00.000Z",
+    changed: [
+      {
+        story_id: "doom-pssr",
+        title: "Doom The Dark Ages PS5 Pro Upgrade Risks Blur",
+        artifact_dir: artifactDir,
+        status: "quality_rewrite_pending_audio_rerender",
+        public_copy_regeneration_pending: true,
+      },
+    ],
+  };
+
+  const workOrder = await buildProductionRerenderWorkOrder(report);
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.summary.blocked_on_render_inputs_count, 0);
+  assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
+  assert.deepEqual(workOrder.jobs[0].blockers, []);
+  assert.deepEqual(workOrder.jobs[0].evidence.materialised_motion_clip_paths, [
+    "C:\\clips\\doom-pssr-1.mp4",
+    "C:\\clips\\doom-pssr-2.mp4",
+  ]);
 });
 
 test("public copy repair fixes Warhammer description subjects without shortening duration-extended scripts", async () => {

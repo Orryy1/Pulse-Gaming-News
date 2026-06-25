@@ -3709,12 +3709,12 @@ test("goal audio materializer repairs zero-duration local Whisper words before c
       ok: true,
       source: "local_whisper_word_alignment",
       model: "tiny.en",
-      transcript: "Follow Paul's Gaming, so you never miss a beat.",
+      transcript: "Follow Pulse Gaming, so you never miss a beat.",
       language: "en",
       segments: 1,
       words: [
         { word: "Follow", start: 40.88, end: 40.88 },
-        { word: "Paul's", start: 40.88, end: 41.32 },
+        { word: "Pulse", start: 40.88, end: 41.32 },
         { word: "Gaming,", start: 41.32, end: 41.46 },
         { word: "so", start: 41.62, end: 41.74 },
         { word: "you", start: 41.74, end: 41.88 },
@@ -3739,6 +3739,57 @@ test("goal audio materializer repairs zero-duration local Whisper words before c
   assert.equal(
     timestamps.words.filter((word) => word.end - word.start <= 0.03).length,
     0,
+  );
+});
+
+test("goal audio materializer blocks Pulse Gaming ASR brand confusion instead of captioning over it", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-brand-confusion-"));
+  const artifactDir = await makePackage(root, "story-brand-confusion", {
+    narration_script: "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-brand-confusion", artifactDir)],
+    },
+    generatedAt: "2026-06-25T20:30:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: "Follow Paul's Gaming so you never miss a beat.",
+      words: [
+        { word: "Follow", start: 0.04, end: 0.24 },
+        { word: "Paul's", start: 0.26, end: 0.54 },
+        { word: "Gaming", start: 0.56, end: 0.86 },
+        { word: "so", start: 0.88, end: 0.98 },
+        { word: "you", start: 1.0, end: 1.1 },
+        { word: "never", start: 1.12, end: 1.32 },
+        { word: "miss", start: 1.34, end: 1.5 },
+        { word: "a", start: 1.52, end: 1.58 },
+        { word: "beat.", start: 1.6, end: 1.84 },
+      ],
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.equal(report.jobs[0].status, "failed");
+  assert.match(report.jobs[0].error, /whisper_protected_brand_phrase_mismatch/);
+  assert.equal(
+    report.jobs[0].timestamp_whisper_alignment.error,
+    "whisper_protected_brand_phrase_mismatch",
   );
 });
 

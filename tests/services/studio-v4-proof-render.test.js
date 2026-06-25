@@ -299,7 +299,7 @@ test("Studio V4 proof renderer blocks short generated cards being stretched into
     clips,
     durationS: 60,
     xfadeS: 0.25,
-    maxSceneDurationS: 7,
+    maxSceneDurationS: 12,
   });
 
   assert.equal(plan.repeatFree, true);
@@ -337,7 +337,7 @@ test("Studio V4 proof renderer reports readable owned-card scene windows", () =>
         source_family: "story_platform_proof_card",
         asset_class: "platform_proof_card",
         text: "SOURCE LOCKED",
-        minimum_readable_duration_s: 10.5,
+        minimum_readable_duration_s: 12,
         durationS: 12,
       },
     ],
@@ -358,14 +358,14 @@ test("Studio V4 proof renderer reports readable owned-card scene windows", () =>
       {
         kind: "quote",
         text: "THIS QUOTE CHANGES THE STORY",
-        duration_s: 11.25,
-        minimum_readable_duration_s: 10.5,
+        duration_s: 12,
+        minimum_readable_duration_s: 12,
       },
       {
         kind: "proof",
         text: "SOURCE LOCKED",
-        duration_s: 11.25,
-        minimum_readable_duration_s: 10.5,
+        duration_s: 12,
+        minimum_readable_duration_s: 12,
       },
     ],
   );
@@ -379,14 +379,42 @@ test("Studio V4 proof renderer keeps generated cards readable within the final v
         source_type: "official_platform_product_page",
         media_kind: "direct_video",
         source_family: "elliot_trailer_a",
-        durationS: 5,
+        durationS: 12,
       },
       {
         path: "elliot-trailer-b.mp4",
         source_type: "official_platform_product_page",
         media_kind: "direct_video",
         source_family: "elliot_trailer_b",
-        durationS: 5,
+        durationS: 12,
+      },
+      {
+        path: "elliot-trailer-c.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_trailer_c",
+        durationS: 12,
+      },
+      {
+        path: "elliot-trailer-d.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_trailer_d",
+        durationS: 12,
+      },
+      {
+        path: "elliot-trailer-e.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_trailer_e",
+        durationS: 12,
+      },
+      {
+        path: "elliot-trailer-f.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_trailer_f",
+        durationS: 12,
       },
       {
         path: "output/generated-motion/elliot/03_animated_quote_card.mp4",
@@ -394,7 +422,7 @@ test("Studio V4 proof renderer keeps generated cards readable within the final v
         media_kind: "owned_explainer_motion",
         source_family: "elliot_quote_card",
         durationS: 12,
-        minimum_readable_duration_s: 10.5,
+        minimum_readable_duration_s: 12,
       },
       {
         path: "output/generated-motion/elliot/07_platform_proof_card.mp4",
@@ -402,7 +430,7 @@ test("Studio V4 proof renderer keeps generated cards readable within the final v
         media_kind: "owned_explainer_motion",
         source_family: "elliot_proof_card",
         durationS: 12,
-        minimum_readable_duration_s: 10.5,
+        minimum_readable_duration_s: 12,
       },
       {
         path: "output/generated-motion/elliot/08_safe_article_screenshot_transform.mp4",
@@ -410,19 +438,19 @@ test("Studio V4 proof renderer keeps generated cards readable within the final v
         media_kind: "owned_explainer_motion",
         source_family: "elliot_screenshot_card",
         durationS: 12,
-        minimum_readable_duration_s: 10.5,
+        minimum_readable_duration_s: 12,
       },
     ],
-    durationS: 42,
+    durationS: 106,
     xfadeS: 0.25,
-    maxSceneDurationS: 7,
+    maxSceneDurationS: 12,
   });
 
   assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
   assert.equal(plan.blockers.includes("approved_scene_duration_exceeds_audio_duration"), false);
   assert.equal(plan.cardVisibleWindows.length, 3);
-  assert.ok(plan.cardVisibleWindows.every((window) => window.duration_s >= 10.5));
-  assert.ok(plan.cardVisibleWindows.every((window) => window.end_s <= 42 + 0.01));
+  assert.ok(plan.cardVisibleWindows.every((window) => window.duration_s >= 12));
+  assert.ok(plan.cardVisibleWindows.every((window) => window.end_s <= 106 + 0.01));
 });
 
 test("Studio V4 proof renderer blocks generated cards that would be squeezed below readable dwell", () => {
@@ -478,7 +506,7 @@ test("Studio V4 proof renderer blocks generated cards that would be squeezed bel
 
   assert.ok(plan.blockers.includes("approved_scene_duration_exceeds_audio_duration"));
   assert.ok(plan.blockers.includes("readable_card_scene_duration_below_minimum"));
-  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 10.5));
+  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 12));
   assert.ok(
     plan.readableDurationUnderruns.some((entry) =>
       entry.path.endsWith("04_stat_card.mp4"),
@@ -580,6 +608,43 @@ test("Studio V4 proof renderer blocks repeated HyperFrames card kinds", () => {
   assert.deepEqual(plan.repeatedReadableCardKinds, [{ kind: "proof", count: 2 }]);
 });
 
+test("Studio V4 proof renderer fits one readable HyperFrames card by trimming direct dwell", () => {
+  const clips = [
+    ...Array.from({ length: 5 }, (_, index) => ({
+      path: `direct-${index + 1}.mp4`,
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_family: `direct_family_${index + 1}`,
+      durationS: 5,
+    })),
+    {
+      path: "output/generated-motion/story/source-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_source_card",
+      text: "SOURCE LOCKED",
+      durationS: 12,
+      minimum_readable_duration_s: 12,
+    },
+  ];
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 34.6,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("approved_scene_duration_exceeds_audio_duration"), false);
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
+  assert.equal(plan.repeatFree, true);
+  assert.equal(plan.scenes.length, 6);
+  assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length, 1);
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 12);
+  assert.ok(plan.scenes.filter((scene) => !scene.readableCardKind).every((scene) => scene.durationS < 5));
+});
+
 test("Studio V4 proof renderer blocks cramped HyperFrames decks instead of clipping readable cards", () => {
   const plan = buildClipScenePlan({
     clips: [
@@ -597,7 +662,7 @@ test("Studio V4 proof renderer blocks cramped HyperFrames decks instead of clipp
         source_family: "hyperframes_source_card",
         text: "SOURCE LOCKED",
         durationS: 10,
-        minimum_readable_duration_s: 10.5,
+        minimum_readable_duration_s: 12,
       },
       {
         path: "output/generated-motion/story/takeaway-card.mp4",
@@ -606,7 +671,7 @@ test("Studio V4 proof renderer blocks cramped HyperFrames decks instead of clipp
         source_family: "hyperframes_takeaway_card",
         text: "THE PLAYER IMPACT NEEDS SPACE",
         durationS: 10,
-        minimum_readable_duration_s: 10.5,
+        minimum_readable_duration_s: 12,
       },
     ],
     durationS: 13,
@@ -614,7 +679,7 @@ test("Studio V4 proof renderer blocks cramped HyperFrames decks instead of clipp
     maxSceneDurationS: 7,
   });
 
-  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 10.5));
+  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 12));
   assert.ok(plan.blockers.includes("approved_scene_duration_exceeds_audio_duration"));
   assert.equal(plan.repeatFree, true);
 });
@@ -717,13 +782,13 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 10.5],
-      ["headline_card", "proof_card", 10.8],
-      ["proof_primary", "proof_card", 10.5],
-      ["proof_secondary", "proof_card", 10.5],
+      ["opening_source_lock", "source_lock", 12],
+      ["headline_card", "proof_card", 12.3],
+      ["proof_primary", "proof_card", 12],
+      ["proof_secondary", "proof_card", 12],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= 10.5));
+  assert.ok(windows.every((window) => window.duration_s >= 12));
 });
 
 test("Studio V4 proof renderer keeps long HyperFrames cards visible long enough to read", () => {
@@ -738,12 +803,33 @@ test("Studio V4 proof renderer keeps long HyperFrames cards visible long enough 
   const byId = Object.fromEntries(windows.map((window) => [window.id, window]));
 
   assert.match(byId.headline_card.text, /PREORDERS STILL NEED PRICE/);
-  assert.equal(byId.headline_card.duration_s >= 10.5, true);
-  assert.equal(byId.proof_primary.duration_s >= 10.5, true);
-  assert.equal(byId.proof_secondary.duration_s >= 10.5, true);
+  assert.equal(byId.headline_card.duration_s >= 12, true);
+  assert.equal(byId.proof_primary.duration_s >= 12, true);
+  assert.equal(byId.proof_secondary.duration_s >= 12, true);
   assert.equal(byId.headline_card.start_s >= byId.opening_source_lock.end_s + 0.1, true);
   assert.equal(byId.proof_primary.start_s >= byId.headline_card.end_s + 0.6, true);
   assert.equal(byId.proof_secondary.start_s >= byId.proof_primary.end_s + 0.6, true);
+});
+
+test("Studio V4 proof renderer omits unreadable overlay card windows that do not fit the render duration", () => {
+  const windows = overlayCardWindowsForStory(
+    {
+      canonical_subject: "Granblue Fantasy: Relink",
+      primary_source: "PlayStation Blog",
+      first_frame_text: "GRANBLUE HAS A DEMO TEST",
+      thumbnail_headline: "DEMO TEST",
+      proof_card_primary: "PLAYERS CAN CHECK COMBAT FLOW BEFORE BUYING",
+      proof_card_secondary: "THE PAYOFF IS WHETHER BOSSES FEEL READABLE",
+    },
+    { durationS: 34.6 },
+  );
+
+  assert.deepEqual(windows.map((window) => window.id), [
+    "opening_source_lock",
+    "headline_card",
+  ]);
+  assert.equal(windows.every((window) => window.duration_s >= 12), true);
+  assert.equal(windows.every((window) => window.end_s <= 34.6), true);
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
@@ -1778,7 +1864,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,10\.5\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,12\.0\)'/);
   assert.match(chain, /0x38BDF8@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });
@@ -1865,7 +1951,7 @@ test("Studio V4 overlay chain suppresses only the opening card during first-fram
   assert.doesNotMatch(chain, /drawtext=text='SOURCE LOCK\s+ROCKSTAR'.*between\(t,0,3\.3\)/);
   assert.doesNotMatch(chain, /color=0x111827@0\.58:t=fill:enable='between\(t,0,3\.3\)'/);
   assert.doesNotMatch(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,0,3\.3\)/);
-  assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,14\.8\)/);
+  assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,16\.3\)/);
   assert.match(chain, /PROOF BEAT/);
   assert.match(chain, /PLAYER READ/);
   assert.match(chain, /PULSE GAMING/);

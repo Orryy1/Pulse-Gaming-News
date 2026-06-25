@@ -296,14 +296,14 @@ async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
     clips: 30,
     repeat_guard: {
       status: "pass",
-      min_card_duration_s: 10.5,
+      min_card_duration_s: 12,
       direct_motion_base_source_policy: {
         max_clips_per_base: 1,
       },
     },
     overlay_card_windows: [
-      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 10.5, duration_s: 10.5 },
-      { id: "headline_card", kind: "proof_card", start_s: 10.8, end_s: 21.3, duration_s: 10.5 },
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 12, duration_s: 12 },
+      { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 24.3, duration_s: 12 },
     ],
   });
   await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
@@ -863,6 +863,98 @@ test("next publish report preserves already-public bridge exclusions beyond the 
   );
 });
 
+test("candidate source selection falls back when authoritative bridge is empty", () => {
+  const selected = selectCandidateSourceStories({
+    liveStories: [
+      baseStory({ id: "live-clean", title: "Nintendo confirms Switch 2 bundle outcome" }),
+    ],
+    bridgeCandidates: [],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 0,
+    },
+  });
+
+  assert.equal(selected.bridge_manifest.authoritative, false);
+  assert.equal(selected.bridge_manifest.live_fallback_used, true);
+  assert.equal(selected.bridge_manifest.live_db_rows_ignored, 0);
+  assert.deepEqual(selected.stories.map((story) => story.id), ["live-clean"]);
+});
+
+test("candidate source selection falls back when every bridge candidate is already public on enabled platforms", () => {
+  const selected = selectCandidateSourceStories({
+    liveStories: [
+      baseStory({
+        id: "bridge-already-public",
+        title: "Granblue Fantasy Relink Demo Has A Reinstall Catch",
+        youtube_post_id: "yt-live",
+        youtube_url: "https://youtube.com/shorts/yt-live",
+        instagram_media_id: "ig-live",
+        facebook_post_id: "fb-live",
+      }),
+      baseStory({ id: "live-clean", title: "Nintendo confirms Switch 2 bundle outcome" }),
+    ],
+    bridgeCandidates: [
+      baseStory({
+        id: "bridge-already-public",
+        title: "Granblue Fantasy: Relink Demo Is The Real Proof",
+        scheduler_bridge_source: "local_bridge_candidate_upsert",
+      }),
+    ],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 1,
+    },
+  });
+
+  assert.equal(selected.bridge_manifest.authoritative, false);
+  assert.equal(selected.bridge_manifest.live_fallback_used, true);
+  assert.equal(selected.bridge_manifest.live_db_rows_ignored, 0);
+  assert.ok(selected.stories.some((story) => story.id === "live-clean"));
+  assert.ok(
+    selected.stories.some(
+      (story) =>
+        story.id === "bridge-already-public" &&
+        story.scheduler_bridge_overlay_live_row === true &&
+        story.youtube_post_id === "yt-live",
+    ),
+  );
+});
+
+test("candidate source selection keeps authoritative bridge when a bridge candidate has missing enabled platforms", () => {
+  const selected = selectCandidateSourceStories({
+    liveStories: [
+      baseStory({
+        id: "bridge-youtube-only",
+        title: "Mina The Hollower Has A Sequel Risk",
+        youtube_post_id: "yt-live",
+        youtube_url: "https://youtube.com/shorts/yt-live",
+      }),
+      baseStory({ id: "live-clean", title: "Nintendo confirms Switch 2 bundle outcome" }),
+    ],
+    bridgeCandidates: [
+      baseStory({
+        id: "bridge-youtube-only",
+        title: "Mina The Hollower Needs Reels Completion",
+        scheduler_bridge_source: "local_bridge_candidate_upsert",
+      }),
+    ],
+    bridgeManifest: {
+      requested: true,
+      exists: true,
+      candidate_count: 1,
+    },
+  });
+
+  assert.equal(selected.bridge_manifest.authoritative, true);
+  assert.equal(selected.bridge_manifest.live_fallback_used, false);
+  assert.equal(selected.bridge_manifest.live_db_rows_considered, 1);
+  assert.equal(selected.stories.length, 1);
+  assert.equal(selected.stories[0].id, "bridge-youtube-only");
+});
+
 test("next publish report keeps 76-90s extended Shorts in review instead of excluding them", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -1231,7 +1323,7 @@ test("current bridge manifest excludes stale live bridge rows that are not prese
   );
 });
 
-test("explicit empty scheduler bridge manifest blocks live DB fallback", () => {
+test("explicit empty scheduler bridge manifest allows live DB fallback", () => {
   const selected = selectCandidateSourceStories({
     liveStories: [
       baseStory({
@@ -1255,13 +1347,14 @@ test("explicit empty scheduler bridge manifest blocks live DB fallback", () => {
   });
   const markdown = formatNextPublishCandidatesMarkdown(report);
 
-  assert.deepEqual(selected.stories, []);
-  assert.equal(report.totals.candidates, 0);
+  assert.equal(selected.stories.length, 1);
+  assert.equal(selected.stories[0].id, "live_only_after_policy_bump");
+  assert.equal(report.totals.candidates, 1);
   assert.equal(report.bridge_candidates.count, 0);
-  assert.equal(report.bridge_candidates.authoritative, true);
-  assert.equal(report.bridge_candidates.live_fallback_used, false);
-  assert.equal(report.bridge_candidates.live_db_rows_ignored, 1);
-  assert.match(markdown, /live fallback: blocked/);
+  assert.equal(report.bridge_candidates.authoritative, false);
+  assert.equal(report.bridge_candidates.live_fallback_used, true);
+  assert.equal(report.bridge_candidates.live_db_rows_ignored, 0);
+  assert.match(markdown, /live fallback: used/);
 });
 
 test("analytics specificity scoring rewards named corporate outcomes and penalises vague speculation", () => {
@@ -4434,8 +4527,8 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
   });
   await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 10.5 },
-      { id: "proof_card", kind: "proof_card", startS: 13.5, durationS: 10.5 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 12 },
+      { id: "proof_card", kind: "proof_card", startS: 15, durationS: 12 },
     ],
   });
 

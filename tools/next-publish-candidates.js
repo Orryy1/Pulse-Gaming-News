@@ -1017,32 +1017,41 @@ function selectCandidateSourceStories({
   });
   const authoritative = bridgeManifestIsAuthoritative(normalisedManifest);
 
-  if (authoritative) {
+  if (authoritative && bridges.length) {
     const bridgeIds = new Set(bridges.map(bridgeCandidateId).filter(Boolean));
     const liveRowsForBridgeIds = liveRows.filter((story) =>
       bridgeIds.has(String(story?.id || "").trim()),
     );
     const stories = mergeBridgeCandidates(liveRowsForBridgeIds, bridges);
-    return {
-      stories,
-      bridge_manifest: {
-        ...normalisedManifest,
-        authoritative: true,
-        mode: "authoritative_bridge_only",
-        source: "scheduler_bridge_candidates",
-        live_fallback_used: false,
-        live_db_rows_seen: liveRows.length,
-        live_db_rows_considered: liveRowsForBridgeIds.length,
-        live_db_rows_ignored: Math.max(0, liveRows.length - liveRowsForBridgeIds.length),
-      },
-    };
+    const bridgeHasEnabledRunway = stories.some((story) => {
+      const id = String(story?.id || story?.story_id || "").trim();
+      if (!id || !bridgeIds.has(id)) return false;
+      return missingEnabledPublishPlatformNames(story).length > 0;
+    });
+    if (bridgeHasEnabledRunway) {
+      return {
+        stories,
+        bridge_manifest: {
+          ...normalisedManifest,
+          authoritative: true,
+          mode: "authoritative_bridge_only",
+          source: "scheduler_bridge_candidates",
+          live_fallback_used: false,
+          live_db_rows_seen: liveRows.length,
+          live_db_rows_considered: liveRowsForBridgeIds.length,
+          live_db_rows_ignored: Math.max(0, liveRows.length - liveRowsForBridgeIds.length),
+        },
+      };
+    }
   }
 
   const stories = mergeBridgeCandidates(liveRows, bridges);
   const fallbackUsed =
     normalisedManifest.requested === true &&
     normalisedManifest.disabled !== true &&
-    (normalisedManifest.exists !== true || normalisedManifest.allowLiveFallback === true);
+    (normalisedManifest.exists !== true ||
+      normalisedManifest.allowLiveFallback === true ||
+      authoritative === true);
   return {
     stories,
     bridge_manifest: {

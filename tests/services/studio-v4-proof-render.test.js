@@ -402,6 +402,161 @@ test("Studio V4 proof renderer keeps generated cards readable within the final v
   assert.ok(plan.cardVisibleWindows.every((window) => window.end_s <= 34.6 + 0.01));
 });
 
+test("Studio V4 proof renderer blocks generated cards that would be squeezed below readable dwell", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "elliot-direct-a.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_direct_a",
+        durationS: 5,
+      },
+      {
+        path: "elliot-direct-b.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "elliot_direct_b",
+        durationS: 5,
+      },
+      {
+        path: "output/generated-motion/elliot/03_animated_quote_card.mp4",
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        source_family: "elliot_quote_card",
+        durationS: 10,
+      },
+      {
+        path: "output/generated-motion/elliot/07_platform_proof_card.mp4",
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        source_family: "elliot_proof_card",
+        durationS: 10,
+      },
+      {
+        path: "output/generated-motion/elliot/08_safe_article_screenshot_transform.mp4",
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        source_family: "elliot_screenshot_card",
+        durationS: 10,
+      },
+      {
+        path: "output/generated-motion/elliot/04_stat_card.mp4",
+        source_type: "internally_generated_motion_graphic",
+        media_kind: "owned_explainer_motion",
+        source_family: "elliot_stat_card",
+        durationS: 8,
+      },
+    ],
+    durationS: 39.706,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.ok(plan.blockers.includes("approved_scene_duration_exceeds_audio_duration"));
+  assert.ok(plan.blockers.includes("readable_card_scene_duration_below_minimum"));
+  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 8.5));
+  assert.ok(
+    plan.readableDurationUnderruns.some((entry) =>
+      entry.path.endsWith("04_stat_card.mp4"),
+    ),
+  );
+});
+
+test("Studio V4 proof renderer blocks card-heavy decks with too little real motion", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "clip-a.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "clip_a",
+        durationS: 5,
+      },
+      {
+        path: "clip-b.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "clip_b",
+        durationS: 5,
+      },
+      {
+        path: "output/generated-motion/story/source-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_source_card",
+        text: "SOURCE LOCKED",
+        durationS: 10,
+      },
+      {
+        path: "output/generated-motion/story/context-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_context_card",
+        text: "WHY PLAYERS SHOULD CARE",
+        durationS: 10,
+      },
+      {
+        path: "output/generated-motion/story/takeaway-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_takeaway_card",
+        text: "THE PAYOFF NEEDS SPACE",
+        durationS: 10,
+      },
+    ],
+    durationS: 35.5,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.ok(plan.blockers.includes("direct_motion_scene_count_below_premium_floor"));
+  assert.ok(plan.blockers.includes("readable_card_duration_ratio_above_premium_floor"));
+});
+
+test("Studio V4 proof renderer blocks repeated HyperFrames card kinds", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "clip-a.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "clip_a",
+        durationS: 8,
+      },
+      {
+        path: "clip-b.mp4",
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: "clip_b",
+        durationS: 8,
+      },
+      {
+        path: "output/generated-motion/story/proof-card-a.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_proof_card_a",
+        text: "SOURCE LOCKED",
+        durationS: 10,
+      },
+      {
+        path: "output/generated-motion/story/proof-card-b.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_proof_card_b",
+        text: "PLAYER IMPACT",
+        durationS: 10,
+      },
+    ],
+    durationS: 34,
+    xfadeS: 0.25,
+    maxSceneDurationS: 8,
+  });
+
+  assert.ok(plan.blockers.includes("readable_card_kind_repeated"));
+  assert.deepEqual(plan.repeatedReadableCardKinds, [{ kind: "proof", count: 2 }]);
+});
+
 test("Studio V4 proof renderer blocks cramped HyperFrames decks instead of clipping readable cards", () => {
   const plan = buildClipScenePlan({
     clips: [
@@ -1482,7 +1637,7 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.match(source, /visual_design_policy_version:\s*STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION/);
   assert.equal(STUDIO_V4_SFX_MIX_POLICY_VERSION, "source_lock_news_tick_v6");
   assert.equal(STUDIO_V4_VOICE_MIX_POLICY_VERSION, "local_voice_levelled_v2");
-  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_repeat_free_readable_cards_v9");
+  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_repeat_free_readable_cards_v10");
 });
 
 test("Studio V4 overlay chain brightens the opening instead of globally darkening first frames", () => {

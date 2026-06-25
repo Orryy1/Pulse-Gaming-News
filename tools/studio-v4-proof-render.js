@@ -38,6 +38,8 @@ const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
 const MIN_OVERLAY_CARD_DURATION_S = 8.5;
 const MAX_OVERLAY_CARD_DURATION_S = 12;
+const MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS = 4;
+const MAX_READABLE_CARD_DURATION_RATIO = 0.42;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
@@ -718,6 +720,19 @@ function sceneClipReadableText(clip = {}, fallbackKind = "") {
   );
 }
 
+function readableCardMinimumDurationS({ readableText = "", explicitMinimumS = null } = {}) {
+  const explicit = Number(explicitMinimumS);
+  const text = cleanCardText(readableText);
+  const textMinimum = readableOverlayCardDurationS(text, { minS: MIN_OVERLAY_CARD_DURATION_S });
+  return Number(
+    Math.max(
+      MIN_OVERLAY_CARD_DURATION_S,
+      Number.isFinite(explicit) && explicit > 0 ? explicit : 0,
+      textMinimum,
+    ).toFixed(2),
+  );
+}
+
 function cleanCardText(value = "") {
   return firstText(value)
     .replace(/[_-]+/g, " ")
@@ -738,6 +753,18 @@ function repeatedSceneBaseSources(entries = []) {
     .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }
 
+function repeatedReadableCardKinds(entries = []) {
+  const counts = new Map();
+  for (const entry of entries) {
+    if (!entry.readableCardKind) continue;
+    counts.set(entry.readableCardKind, (counts.get(entry.readableCardKind) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([kind, count]) => ({ kind, count }))
+    .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind));
+}
+
 function buildClipScenePlan({
   clips = [],
   durationS,
@@ -755,13 +782,20 @@ function buildClipScenePlan({
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const readableCardKind = sceneClipReadableCardKind(clip);
+    const readableText = sceneClipReadableText(clip, readableCardKind);
+    const explicitReadableMinimum = sceneClipMinimumReadableDurationS(clip);
     cleanEntries.push({
       path: clipPath,
       baseSourceKey: sceneClipBaseSourceKey(clip),
       sourceDurationS: sceneClipSourceDurationS(clip),
-      minimumReadableDurationS: sceneClipMinimumReadableDurationS(clip),
+      minimumReadableDurationS: readableCardKind
+        ? readableCardMinimumDurationS({
+            readableText,
+            explicitMinimumS: explicitReadableMinimum,
+          })
+        : explicitReadableMinimum,
       readableCardKind,
-      readableText: sceneClipReadableText(clip, readableCardKind),
+      readableText,
     });
     if (cleanEntries.length >= maxSceneLimit) break;
   }
@@ -794,6 +828,10 @@ function buildClipScenePlan({
   const repeatedBaseSources = repeatFree ? repeatedSceneBaseSources(cleanEntries) : [];
   if (repeatFree && repeatedBaseSources.length) {
     blockers.push("direct_motion_base_source_repeated");
+  }
+  const repeatedReadableCards = repeatFree ? repeatedReadableCardKinds(cleanEntries) : [];
+  if (repeatFree && repeatedReadableCards.length) {
+    blockers.push("readable_card_kind_repeated");
   }
   if (repeatFree && requiredCount > cleanEntries.length) {
     blockers.push("direct_motion_clip_diversity_below_dwell_floor");
@@ -892,6 +930,49 @@ function buildClipScenePlan({
   if (repeatFree && coveredDurationS - 0.12 > duration) {
     blockers.push("approved_scene_duration_exceeds_audio_duration");
   }
+  const readableCardSceneCount = sceneEntries.filter((entry) => entry.readableCardKind).length;
+  const directMotionSceneCount = sceneEntries.length - readableCardSceneCount;
+  const readableCardDurationS = Number(
+    sceneEntries
+      .filter((entry) => entry.readableCardKind)
+      .reduce((sum, entry) => sum + Number(entry.durationS || 0), 0)
+      .toFixed(2),
+  );
+  const directMotionDurationS = Number(
+    sceneEntries
+      .filter((entry) => !entry.readableCardKind)
+      .reduce((sum, entry) => sum + Number(entry.durationS || 0), 0)
+      .toFixed(2),
+  );
+  const readableCardDurationRatio =
+    coveredDurationS > 0
+      ? Number((readableCardDurationS / coveredDurationS).toFixed(3))
+      : 0;
+  const readableCardSceneMetrics = {
+    readable_card_scene_count: readableCardSceneCount,
+    direct_motion_scene_count: directMotionSceneCount,
+    readable_card_duration_s: readableCardDurationS,
+    direct_motion_duration_s: directMotionDurationS,
+    readable_card_duration_ratio: readableCardDurationRatio,
+    max_readable_card_duration_ratio: MAX_READABLE_CARD_DURATION_RATIO,
+    min_direct_motion_scene_count_with_readable_cards:
+      MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS,
+  };
+  if (
+    repeatFree &&
+    readableCardSceneCount >= 2 &&
+    directMotionSceneCount > 0 &&
+    directMotionSceneCount < MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS
+  ) {
+    blockers.push("direct_motion_scene_count_below_premium_floor");
+  }
+  if (
+    repeatFree &&
+    readableCardSceneCount > 0 &&
+    readableCardDurationRatio > MAX_READABLE_CARD_DURATION_RATIO
+  ) {
+    blockers.push("readable_card_duration_ratio_above_premium_floor");
+  }
   const transitionOffsets = sceneEntries.slice(1).map((_, index) => {
     const scenesBeforeTransition = sceneEntries.slice(0, index + 1);
     return Number(
@@ -939,8 +1020,10 @@ function buildClipScenePlan({
     requiredUniqueClipCount: requiredCount,
     availableUniqueClipCount: cleanEntries.length,
     repeatedBaseSources,
+    repeatedReadableCardKinds: repeatedReadableCards,
     sourceDurationOverruns,
     readableDurationUnderruns,
+    readableCardSceneMetrics,
     coveredDurationS,
     transitionOffsets,
     cardVisibleWindows,

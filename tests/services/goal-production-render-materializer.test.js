@@ -1670,6 +1670,164 @@ test("goal production render materializer tops up limited real clips with owned 
   assert.equal(refreshedBenchmark.visual_evidence_profile.generated_only_motion_deck, false);
 });
 
+test("goal production render materializer interleaves readable owned cards before direct clip tail", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-direct-owned-interleave-"));
+  const artifactDir = await makePackage(root, "direct-owned-interleave");
+  const directClips = [];
+  for (let index = 0; index < 6; index += 1) {
+    const clipPath = path.join(root, "output", "video_cache", `elliot-direct-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, index + 40));
+    directClips.push({
+      id: `elliot-direct-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://video.fastly.steamstatic.com/store_trailers/elliot/${index + 1}/hls_264_master.m3u8`,
+      source_type: "official_platform_product_page",
+      source_family: `elliot_direct_family_${index + 1}`,
+      motion_family: `elliot_direct_family_${index + 1}`,
+      media_kind: "direct_video",
+      rights_basis: "official_direct_media",
+      counts_towards_motion_readiness: true,
+      materialized: true,
+      durationS: 5,
+    });
+  }
+  const ownedClips = [10, 8, 6.5].map((durationS, index) => {
+    const clipPath = path.join(root, "output", "generated-motion", `elliot-owned-${index + 1}.mp4`);
+    return {
+      id: `elliot-owned-${index + 1}`,
+      asset_id: `elliot-owned-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `local://pulse-generated-motion/direct-owned-interleave/${index + 1}`,
+      source_type: "internally_generated_motion_graphic",
+      source_kind: "owned_source_card_explainer_motion",
+      asset_class: index === 0 ? "animated_quote_card" : "proof_card",
+      source_family: `elliot_owned_family_${index + 1}`,
+      motion_family: `elliot_owned_family_${index + 1}`,
+      media_kind: "owned_explainer_motion",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      counts_towards_motion_readiness: true,
+      owned_explainer_visual_plan: true,
+      materialized: true,
+      durationS,
+      minimum_readable_duration_s: durationS,
+    };
+  });
+  for (const clip of ownedClips) await fs.outputFile(clip.path, Buffer.alloc(2048, 70));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: [...directClips, ...ownedClips],
+    materialised_clips: [...directClips, ...ownedClips],
+  });
+
+  const calls = [];
+  await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("direct-owned-interleave", artifactDir)] },
+    generatedAt: "2026-06-25T02:05:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 9));
+      return { story_id: story.id, output, clips: story.video_clips.length, rendered_duration_s: 38, size_bytes: 4096 };
+    },
+  });
+
+  assert.deepEqual(calls[0].video_clips.slice(0, 4), directClips.slice(0, 4).map((clip) => clip.path));
+  assert.equal(calls[0].video_clips[4], ownedClips[0].path);
+  assert.deepEqual(calls[0].video_clips.slice(5, 7), directClips.slice(4).map((clip) => clip.path));
+  assert.deepEqual(calls[0].video_clips.slice(7), ownedClips.slice(1).map((clip) => clip.path));
+  assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 10);
+});
+
+test("goal production render materializer collapses repeated Steam delivery variants before card top-up", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-variant-collapse-"));
+  const artifactDir = await makePackage(root, "steam-variant-collapse");
+  const firstTrailerRoot =
+    "steamstatic:/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626";
+  const secondTrailerRoot =
+    "steamstatic:/store_trailers/3483510/387849926/60a658bbf5d52df79e13601620dd1ae0918b2c0a/1770160497";
+  const variants = [
+    [firstTrailerRoot, "hls_264_master.m3u8"],
+    [secondTrailerRoot, "hls_264_master.m3u8"],
+    [firstTrailerRoot, "dash_av1.mpd"],
+    [firstTrailerRoot, "dash_h264.mpd"],
+    [secondTrailerRoot, "dash_av1.mpd"],
+    [secondTrailerRoot, "dash_h264.mpd"],
+  ];
+  const directClips = [];
+  for (let index = 0; index < variants.length; index += 1) {
+    const [rootUrl, variant] = variants[index];
+    const clipPath = path.join(root, "output", "video_cache", `elliot-steam-variant-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, index + 81));
+    directClips.push({
+      id: `elliot-steam-variant-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://video.fastly.steamstatic.com/${rootUrl.replace("steamstatic:/", "")}/${variant}?t=1781798240`,
+      source_type: "official_platform_product_page",
+      base_source_family: `${rootUrl}/${variant}`,
+      source_family: `elliot_variant_${index + 1}_window_36_5`,
+      motion_family: `elliot_variant_${index + 1}_window_36_5`,
+      media_kind: "direct_video",
+      rights_basis: "official_direct_media",
+      counts_towards_motion_readiness: true,
+      materialized: true,
+      durationS: 5,
+    });
+  }
+  const ownedClips = [10, 8, 6.5].map((durationS, index) => {
+    const clipPath = path.join(root, "output", "generated-motion", `elliot-readable-owned-${index + 1}.mp4`);
+    return {
+      id: `elliot-readable-owned-${index + 1}`,
+      asset_id: `elliot-readable-owned-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `local://pulse-generated-motion/steam-variant-collapse/${index + 1}`,
+      source_type: "internally_generated_motion_graphic",
+      source_kind: "owned_source_card_explainer_motion",
+      asset_class: index === 0 ? "animated_quote_card" : "proof_card",
+      source_family: `elliot_readable_owned_${index + 1}`,
+      motion_family: `elliot_readable_owned_${index + 1}`,
+      media_kind: "owned_explainer_motion",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      counts_towards_motion_readiness: true,
+      owned_explainer_visual_plan: true,
+      materialized: true,
+      durationS,
+      minimum_readable_duration_s: durationS,
+    };
+  });
+  for (const clip of ownedClips) await fs.outputFile(clip.path, Buffer.alloc(2048, 96));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: [...directClips, ...ownedClips],
+    materialised_clips: [...directClips, ...ownedClips],
+  });
+
+  const calls = [];
+  await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("steam-variant-collapse", artifactDir)] },
+    generatedAt: "2026-06-25T02:25:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 9));
+      return { story_id: story.id, output, clips: story.video_clips.length, rendered_duration_s: 36, size_bytes: 4096 };
+    },
+  });
+
+  assert.deepEqual(calls[0].video_clips.slice(0, 2), [directClips[0].path, directClips[1].path]);
+  assert.deepEqual(calls[0].video_clips.slice(2), ownedClips.map((clip) => clip.path));
+  assert.equal(calls[0].video_clips.includes(directClips[2].path), false);
+  assert.equal(calls[0].video_clips.includes(directClips[3].path), false);
+  assert.equal(calls[0].video_clips.includes(directClips[4].path), false);
+  assert.equal(calls[0].video_clips.includes(directClips[5].path), false);
+  assert.equal(calls[0].visual_v4_bridge_video_clips[2].minimum_readable_duration_s, 10);
+});
+
 test("goal production render materializer accepts approved owned explainer motion without job path fallback", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-owned-explainer-render-"));
   const artifactDir = await makePackage(root, "owned-explainer-render");

@@ -219,6 +219,49 @@ test("Studio V4 proof renderer uses materialized sidecars to detect repeated sou
   }
 });
 
+test("Studio V4 proof renderer blocks repeated Steam trailer delivery variants", () => {
+  const sameTrailerRoot =
+    "steamstatic:/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626";
+  const alternateTrailerRoot =
+    "steamstatic:/store_trailers/3483510/387849926/60a658bbf5d52df79e13601620dd1ae0918b2c0a/1770160497";
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "elliot-hls.mp4",
+        base_source_family: `${sameTrailerRoot}/hls_264_master.m3u8`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626/hls_264_master.m3u8?t=1781798240`,
+        durationS: 5,
+      },
+      {
+        path: "elliot-dash-av1.mp4",
+        base_source_family: `${sameTrailerRoot}/dash_av1.mpd`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626/dash_av1.mpd?t=1781798240`,
+        durationS: 5,
+      },
+      {
+        path: "elliot-dash-h264.mp4",
+        base_source_family: `${sameTrailerRoot}/dash_h264.mpd`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626/dash_h264.mpd?t=1781798240`,
+        durationS: 5,
+      },
+      {
+        path: "elliot-second-trailer.mp4",
+        base_source_family: `${alternateTrailerRoot}/hls_264_master.m3u8`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/3483510/387849926/60a658bbf5d52df79e13601620dd1ae0918b2c0a/1770160497/hls_264_master.m3u8?t=1770306982`,
+        durationS: 5,
+      },
+    ],
+    durationS: 16,
+    xfadeS: 0.25,
+  });
+
+  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+  assert.deepEqual(
+    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
+    [{ key: sameTrailerRoot, count: 3 }],
+  );
+});
+
 test("Studio V4 proof renderer blocks short generated cards being stretched into looped scenes", () => {
   const clips = Array.from({ length: 13 }, (_, index) => ({
     path: `owned-card-${index + 1}.mp4`,
@@ -237,18 +280,31 @@ test("Studio V4 proof renderer blocks short generated cards being stretched into
   });
 
   assert.equal(plan.repeatFree, true);
-  assert.ok(plan.segmentDurationS > 4);
-  assert.ok(plan.blockers.includes("motion_scene_duration_exceeds_source_duration"));
-  assert.equal(plan.sourceDurationOverruns.length, 13);
-  assert.deepEqual(
-    plan.sourceDurationOverruns[0],
-    {
-      path: "owned-card-1.mp4",
-      planned_duration_s: 4.85,
-      source_duration_s: 2.8,
-      overrun_s: 2.05,
-    },
-  );
+  assert.ok(plan.blockers.includes("approved_scene_duration_below_audio_duration"));
+  assert.equal(plan.sourceDurationOverruns.length, 0);
+  assert.ok(plan.scenes.every((scene) => scene.durationS <= 2.8));
+});
+
+test("Studio V4 proof renderer accepts equal source and planned scene durations", () => {
+  const clips = Array.from({ length: 6 }, (_, index) => ({
+    path: `direct-clip-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_family: `direct_family_${index + 1}`,
+    durationS: 6,
+  }));
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 34.75,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("motion_scene_duration_exceeds_source_duration"), false);
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.scenes.length, 6);
+  assert.ok(plan.scenes.every((scene) => scene.durationS === 6));
 });
 
 test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {

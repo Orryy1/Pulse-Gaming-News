@@ -570,6 +570,10 @@ function normaliseSceneSourceKey(value = "") {
     .replace(/[?#].*$/, "");
   return withoutQuery
     .replace(/\.(?:mp4|mov|webm|mkv|m3u8|mpd)$/i, "")
+    .replace(
+      /\/(?:hls(?:_[a-z0-9]+)*_master|hls(?:_[a-z0-9]+)*|dash(?:_[a-z0-9]+)*|movie(?:_max|\d+)?(?:_[a-z0-9]+)*)$/i,
+      "",
+    )
     .replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "")
     .replace(/(?:[_/-]clip[_/-]?\d+)$/i, "")
     .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "");
@@ -651,6 +655,20 @@ function sceneClipSourceDurationS(clip = {}) {
   return Number.isFinite(duration) && duration > 0 ? Number(duration.toFixed(2)) : null;
 }
 
+function sceneClipMinimumReadableDurationS(clip = {}) {
+  if (!clip || typeof clip !== "object") return null;
+  const sidecar = readSceneClipSidecar(clip);
+  const duration = Number(
+    clip.minimum_readable_duration_s ??
+      clip.minimum_visible_duration_s ??
+      clip.min_readable_duration_s ??
+      sidecar?.hyperframes_premium_shell?.readability_contract?.evidence?.minimum_visible_duration_s ??
+      sidecar?.minimum_readable_duration_s ??
+      sidecar?.minimum_visible_duration_s,
+  );
+  return Number.isFinite(duration) && duration > 0 ? Number(duration.toFixed(2)) : null;
+}
+
 function repeatedSceneBaseSources(entries = []) {
   const counts = new Map();
   for (const entry of entries) {
@@ -683,6 +701,7 @@ function buildClipScenePlan({
       path: clipPath,
       baseSourceKey: sceneClipBaseSourceKey(clip),
       sourceDurationS: sceneClipSourceDurationS(clip),
+      minimumReadableDurationS: sceneClipMinimumReadableDurationS(clip),
     });
     if (cleanEntries.length >= maxSceneLimit) break;
   }
@@ -715,25 +734,60 @@ function buildClipScenePlan({
     blockers.push("direct_motion_clip_diversity_below_dwell_floor");
   }
   const count = repeatFree ? Math.min(cleanEntries.length, requiredCount) : requiredCount;
-  const segmentDurationS = Number(
+  const equalSegmentDurationS = Number(
     ((duration + xfadeS * Math.max(0, count - 1)) / count).toFixed(2),
   );
+  const sceneEntries = [];
+  let coveredDurationS = 0;
+  for (let index = 0; index < count; index += 1) {
+    const entry = repeatFree ? cleanEntries[index] : cleanEntries[index % cleanEntries.length];
+    if (!entry) continue;
+    const maxDuration = Number.isFinite(entry.sourceDurationS)
+      ? entry.sourceDurationS
+      : equalSegmentDurationS;
+    const minimumReadable = Number.isFinite(entry.minimumReadableDurationS)
+      ? entry.minimumReadableDurationS
+      : null;
+    const plannedDurationS = Number(
+      Math.max(
+        1,
+        Math.min(
+          Math.max(maxDuration, minimumReadable || 0),
+          Math.max(maxDuration, minimumReadable || equalSegmentDurationS),
+        ),
+      ).toFixed(2),
+    );
+    sceneEntries.push({
+      ...entry,
+      durationS: plannedDurationS,
+      plannedDurationS,
+    });
+    coveredDurationS = Number(
+      (coveredDurationS + plannedDurationS - (sceneEntries.length > 1 ? xfadeS : 0)).toFixed(2),
+    );
+    if (repeatFree && coveredDurationS >= duration) break;
+  }
   const sourceDurationOverruns = repeatFree
-    ? cleanEntries.slice(0, count)
+    ? sceneEntries
         .filter((entry) => Number.isFinite(entry.sourceDurationS))
         .map((entry) => ({
           path: entry.path,
-          planned_duration_s: segmentDurationS,
+          planned_duration_s: entry.plannedDurationS,
           source_duration_s: entry.sourceDurationS,
-          overrun_s: Number((segmentDurationS - entry.sourceDurationS).toFixed(2)),
+          overrun_s: Number((entry.plannedDurationS - entry.sourceDurationS).toFixed(2)),
         }))
         .filter((entry) => entry.overrun_s > 0.12)
     : [];
   if (sourceDurationOverruns.length) {
     blockers.push("motion_scene_duration_exceeds_source_duration");
   }
+  if (repeatFree && coveredDurationS + 0.12 < duration) {
+    blockers.push("approved_scene_duration_below_audio_duration");
+  }
   return {
-    segmentDurationS,
+    segmentDurationS: sceneEntries.length
+      ? Number((sceneEntries.reduce((sum, scene) => sum + scene.durationS, 0) / sceneEntries.length).toFixed(2))
+      : 0,
     xfadeS,
     repeatFree,
     blockers,
@@ -741,11 +795,22 @@ function buildClipScenePlan({
     availableUniqueClipCount: cleanEntries.length,
     repeatedBaseSources,
     sourceDurationOverruns,
-    scenes: Array.from({ length: count }, (_, index) => ({
+    coveredDurationS,
+    transitionOffsets: sceneEntries.slice(1).map((_, index) => {
+      const scenesBeforeTransition = sceneEntries.slice(0, index + 1);
+      return Number(
+        (
+          scenesBeforeTransition.reduce((sum, scene) => sum + scene.durationS, 0) -
+          xfadeS * Math.max(0, scenesBeforeTransition.length - 1)
+        ).toFixed(2),
+      );
+    }),
+    scenes: sceneEntries.map((entry, index) => ({
       index,
-      path: repeatFree ? cleanEntries[index].path : cleanEntries[index % cleanEntries.length].path,
-      durationS: segmentDurationS,
-      sourceDurationS: repeatFree ? cleanEntries[index]?.sourceDurationS || null : cleanEntries[index % cleanEntries.length]?.sourceDurationS || null,
+      path: entry.path,
+      durationS: entry.durationS,
+      sourceDurationS: entry.sourceDurationS || null,
+      minimumReadableDurationS: entry.minimumReadableDurationS || null,
     })),
   };
 }
@@ -1450,7 +1515,8 @@ async function renderProof({ storyJson, output }) {
   let prev = "v0";
   for (let i = 1; i < scenePlan.scenes.length; i++) {
     const out = i === scenePlan.scenes.length - 1 ? "base" : `xf${i}`;
-    const offset = i * (scenePlan.segmentDurationS - scenePlan.xfadeS);
+    const offset = (Array.isArray(scenePlan.transitionOffsets) ? scenePlan.transitionOffsets : [])[i - 1] ??
+      i * (scenePlan.segmentDurationS - scenePlan.xfadeS);
     filterParts.push(
       `[${prev}][v${i}]xfade=transition=smoothleft:duration=${scenePlan.xfadeS}:offset=${offset.toFixed(2)}[${out}]`,
     );

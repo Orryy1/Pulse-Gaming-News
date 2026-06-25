@@ -2686,3 +2686,65 @@ test("goal batch preparation preserves a viral-ready non-subject hook instead of
   assert.equal(prepared.hook, "One bad ten-minute demo can bury a good game.");
   assert.doesNotMatch(prepared.first_spoken_line, /^Steam Next Fest has the one kind/i);
 });
+
+test("goal batch package scores narration_script when full_script is absent", () => {
+  const script = [
+    "Grand Theft Auto VI just made its first purchase decision feel real.",
+    "Rockstar's cover art reveal puts Jason, Lucia and Leonida on the box, then points players toward June 25 pre-orders.",
+    "This reveal has a real catch: buy early because this is gaming's safest blockbuster, or wait because a box reveal is still not gameplay proof.",
+    "Early buyers need the details that actually change the decision: editions, bonuses, file size and console performance.",
+    "If Rockstar shows those before launch, pre-orders look like confidence.",
+    "If it waits, the hype train is asking for trust before proof.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const directMedia = [
+    {
+      direct_media_url:
+        "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+      label: "Grand Theft Auto VI Official Cover Art Reveal",
+      source_title: "Grand Theft Auto VI Official Cover Art Reveal",
+      source_family: "rockstar_gta_vi_cover_art_animation",
+      source_type: "official_game_website_media_page",
+    },
+  ];
+
+  const score = buildViralScriptIntelligence({
+    story: {
+      canonical_subject: "Grand Theft Auto VI",
+      source_name: "Rockstar Newswire",
+    },
+    script,
+  });
+  assert.equal(score.verdict, "viral_ready");
+
+  const batch = buildGoalBatchPackages({
+    stories: [
+      {
+        id: "rockstar_gta_vi_preorder_cover_art_20260625",
+        title: "GTA VI Pre-Orders Start The Trust Test",
+        canonical_subject: "Grand Theft Auto VI",
+        canonical_game: "Grand Theft Auto VI",
+        source_name: "Rockstar Newswire",
+        primary_source: {
+          name: "Rockstar Newswire",
+          url: "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+          type: "official_publisher_news",
+          published_at: "2026-06-25T04:06:35.000Z",
+        },
+        direct_media_candidates: directMedia,
+        narration_script: script,
+        description:
+          "Grand Theft Auto VI has one clear detail players can check. The player test is simple: decide whether this is signal or noise.",
+      },
+    ],
+    generatedAt: "2026-06-25T22:45:00.000Z",
+    limit: 1,
+  });
+
+  const pack = batch.packages[0];
+  assert.equal(pack.canonical_story_manifest.narration_script, script);
+  assert.equal(pack.script_scorecard.verdict, "viral_ready");
+  assert.doesNotMatch(pack.script_scorecard.blockers.join(" "), /generic_player_test_template|source_title_recitation/);
+  assert.equal(pack.source_manifest.direct_media_candidates.length, 1);
+});

@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-06-25T18:40:00.000Z",
+  "objective": "Make official/direct-motion repair reliable after the repeat-free v12 gate by bounding remote duration probes and scoping validation to the requested story.",
+  "safety": {
+    "manual_publish": false,
+    "oauth_token_mutation": false,
+    "platform_setting_mutation": false,
+    "production_db_mutation": false,
+    "external_upload": false,
+    "local_segment_sampling_only": true
+  },
+  "changes": [
+    {
+      "file": "tools/official-trailer-segment-validator.js",
+      "summary": "Added story-scoped reference duration probing, per-probe timeouts and a maximum probe budget so story-specific validation does not hang on unrelated remote media."
+    },
+    {
+      "file": "lib/studio/media-acquisition.js",
+      "summary": "Added a bounded ffprobe duration timeout so remote HLS/DASH probes cannot block the repair process indefinitely."
+    },
+    {
+      "file": "tests/services/official-trailer-segment-validator.test.js",
+      "summary": "Added regression coverage for story-scoped duration probing and timeout continuation."
+    },
+    {
+      "file": "tests/services/studio-media-acquisition-timeout.test.js",
+      "summary": "Added focused coverage for the shared ffprobe timeout resolver."
+    }
+  ],
+  "live_repair_probe": {
+    "reference_report": "output/goal-contract/official_trailer_references_after_policy_v12.json",
+    "bounded_validation_commands": [
+      "npm run media:validate-trailer-segments -- --reference-report output/goal-contract/official_trailer_references_after_policy_v12.json --story-id rss_e45d2d74d88274eb --apply-local --deep-scan --reference-duration-probe-timeout-ms 3000 --max-reference-duration-probes 2 --max-segments 4 --candidate-windows-per-source 1 --json",
+      "npm run media:validate-trailer-segments -- --reference-report output/goal-contract/official_trailer_references_after_policy_v12.json --story-id rss_3398672f3635f31a --apply-local --deep-scan --reference-duration-probe-timeout-ms 3000 --max-reference-duration-probes 2 --max-segments 6 --candidate-windows-per-source 2 --json",
+      "npm run media:validate-trailer-segments -- --reference-report output/goal-contract/official_trailer_references_after_policy_v12.json --story-id rss_d11f5d1da0fcd86e --apply-local --deep-scan --reference-duration-probe-timeout-ms 3000 --max-reference-duration-probes 6 --max-segments 12 --candidate-windows-per-source 2 --json"
+    ],
+    "validated_segment_result": {
+      "story_id": "rss_d11f5d1da0fcd86e",
+      "title": "GTA 6 PS5-exclusive features detailed, PS5 Pro enhanced confirmed",
+      "segments_checked": 12,
+      "segments_validated": 1,
+      "segments_rejected": 11,
+      "validated_source": "Cluckin' Bell Farm Raid",
+      "validated_motion_class": "gameplay_action",
+      "still_blocked_reason": "Only one validated official clip/family exists; V4 still requires more distinct real motion to avoid repetition."
+    }
+  },
+  "readiness_after_repair_probe": {
+    "next_publish_candidates": {
+      "candidates": 0,
+      "preflight_pass": 0,
+      "blocked_motion_pack_story_count": 11
+    },
+    "strict_dry_run": {
+      "publish_ready_action_count": 0,
+      "ready_for_unattended_publish": false
+    },
+    "publish_readiness": {
+      "verdict": "RED",
+      "reason": "repair backlog remains; runtime must be restarted after this commit before readiness can reassess the current commit."
+    }
+  },
+  "verification": {
+    "focused": "node --test tests/services/official-trailer-segment-validator.test.js tests/services/studio-media-acquisition-timeout.test.js: 76 passed",
+    "full": "npm test: 6206 passed, 0 failed",
+    "build": "npm run build: passed",
+    "agent_rules": "npm run ops:agent-rules: passed",
+    "docs_doctor": "npm run docs:doctor: passed with existing low-signal advisory only"
+  },
+  "artefacts": [
+    "test/output/official_trailer_segment_validation_story_rss_d11f5d1da0fcd86e_apply_local.json",
+    "output/studio-v4/motion-packs/rss_d11f5d1da0fcd86e_motion_pack_manifest.json",
+    "output/goal-contract/source_family_acquisition_after_bounded_validator_v12.json",
+    "output/goal-contract/render_inputs_after_bounded_validator_v12.console.txt",
+    "output/goal-contract/next_publish_candidates_after_bounded_validator_v12.console.txt",
+    "output/goal-contract/strict_dry_run_after_bounded_validator_v12.console.txt",
+    "output/goal-contract/publish_readiness_after_bounded_validator_v12.console.txt"
+  ],
+  "next_best_action": "Use the bounded validator on additional official source references and/or provide official source intake for stories whose storefront search cannot resolve a second direct media family."
+}

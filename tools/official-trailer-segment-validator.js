@@ -31,6 +31,14 @@ const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_FRAME_REPORT = path.join(OUT, "controlled_frame_extraction_worker_v1.json");
 const DEFAULT_REFERENCE_REPORT = path.join(OUT, "official_trailer_references_v1.json");
 const DEFAULT_ACQUISITION_PLAN = path.join(OUT, "flash_lane_footage_acquisition_v1.json");
+const DEFAULT_REFERENCE_DURATION_PROBE_TIMEOUT_MS = 10000;
+const DEFAULT_MAX_REFERENCE_DURATION_PROBES = 12;
+
+function boundedPositiveInteger(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
 
 function parseArgs(argv) {
   const args = {
@@ -44,6 +52,16 @@ function parseArgs(argv) {
     previousValidationReport: null,
     noReferenceReport: false,
     noReferenceDurationProbe: false,
+    referenceDurationProbeTimeoutMs: boundedPositiveInteger(
+      process.env.REFERENCE_DURATION_PROBE_TIMEOUT_MS,
+      DEFAULT_REFERENCE_DURATION_PROBE_TIMEOUT_MS,
+      { min: 1000, max: 120000 },
+    ),
+    maxReferenceDurationProbes: boundedPositiveInteger(
+      process.env.MAX_REFERENCE_DURATION_PROBES,
+      DEFAULT_MAX_REFERENCE_DURATION_PROBES,
+      { min: 1, max: 500 },
+    ),
     mergePrevious: false,
     dryRun: true,
     applyLocal: false,
@@ -72,6 +90,16 @@ function parseArgs(argv) {
       args.referenceReports = [];
     } else if (arg === "--no-reference-duration-probe") {
       args.noReferenceDurationProbe = true;
+    } else if (arg === "--reference-duration-probe-timeout-ms") {
+      args.referenceDurationProbeTimeoutMs = boundedPositiveInteger(argv[++i], args.referenceDurationProbeTimeoutMs, {
+        min: 1000,
+        max: 120000,
+      });
+    } else if (arg === "--max-reference-duration-probes") {
+      args.maxReferenceDurationProbes = boundedPositiveInteger(argv[++i], args.maxReferenceDurationProbes, {
+        min: 1,
+        max: 500,
+      });
     } else if (arg === "--acquisition-plan") {
       args.acquisitionPlan = argv[++i] || DEFAULT_ACQUISITION_PLAN;
     } else if (arg === "--previous-validation-report") {
@@ -122,6 +150,10 @@ function printHelp() {
       "  --no-reference-report  Ignore test/output/official_trailer_references_v1.json",
       "  --no-reference-duration-probe",
       "                         Do not ffprobe missing HLS/DASH/direct durations before deep scan",
+      "  --reference-duration-probe-timeout-ms <n>",
+      "                         Bound each reference duration probe, default 10000",
+      "  --max-reference-duration-probes <n>",
+      "                         Bound batch duration probes before validation, default 12",
       "  --acquisition-plan <p>",
       "                         Use Flash Lane shopping-list windows from test/output/flash_lane_footage_acquisition_v1.json",
       "  --previous-validation-report <p>",
@@ -242,6 +274,52 @@ function durationProbeEligibleReference(reference = {}) {
   if (!sourceUrl) return false;
   const urlKind = reference.source_url_kind || mediaSourceUrlKindFields(sourceUrl).source_url_kind;
   return ["direct_video", "hls_manifest", "dash_manifest", "local_video_file"].includes(urlKind);
+}
+
+function scopedStoryIdSet(options = {}) {
+  const raw = [
+    options.storyId,
+    options.story_id,
+    ...(Array.isArray(options.storyIds) ? options.storyIds : []),
+    ...(Array.isArray(options.story_ids) ? options.story_ids : []),
+  ];
+  return new Set(raw.map((item) => String(item || "").trim()).filter(Boolean));
+}
+
+function referenceInStoryScope(plan = {}, reference = {}, storyIds = new Set()) {
+  if (!storyIds.size) return true;
+  const candidates = [
+    plan.story_id,
+    plan.storyId,
+    reference.story_id,
+    reference.storyId,
+    reference.provenance?.story_id,
+    reference.provenance?.storyId,
+  ].map((item) => String(item || "").trim());
+  return candidates.some((item) => item && storyIds.has(item));
+}
+
+function durationProbeTimeoutError(timeoutMs) {
+  const err = new Error(`duration_probe_timeout_${timeoutMs}ms`);
+  err.code = "duration_probe_timeout";
+  return err;
+}
+
+function durationProbeWithTimeout(durationProbe, sourceUrl, reference, timeoutMs) {
+  const timeout = boundedPositiveInteger(timeoutMs, DEFAULT_REFERENCE_DURATION_PROBE_TIMEOUT_MS, {
+    min: 1,
+    max: 120000,
+  });
+  let timer = null;
+  return Promise.race([
+    Promise.resolve().then(() => durationProbe(sourceUrl, reference)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(durationProbeTimeoutError(timeout)), timeout);
+      if (typeof timer.unref === "function") timer.unref();
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 function referenceRowsFromLicensedDirectMediaReport(report = {}) {
@@ -412,12 +490,28 @@ function mergeReferenceReportPayloads(reports = []) {
 async function enrichReferenceReportDurations(report = null, options = {}) {
   const enabled = options.enabled !== false;
   const durationProbe = options.durationProbe || ffprobeDuration;
+  const storyIds = scopedStoryIdSet(options);
+  const timeoutMs = boundedPositiveInteger(
+    options.durationProbeTimeoutMs ?? options.timeoutMs,
+    DEFAULT_REFERENCE_DURATION_PROBE_TIMEOUT_MS,
+    { min: 1, max: 120000 },
+  );
+  const maxProbes = boundedPositiveInteger(
+    options.maxProbes ?? options.maxReferenceDurationProbes,
+    Number.POSITIVE_INFINITY,
+    { min: 1, max: Number.MAX_SAFE_INTEGER },
+  );
   const summary = {
     enabled,
     candidates: 0,
     probed: 0,
     failed: 0,
+    timed_out: 0,
+    skipped_out_of_scope: 0,
+    skipped_probe_budget: 0,
     skipped_existing_duration: 0,
+    timeout_ms: timeoutMs,
+    max_probes: Number.isFinite(maxProbes) ? maxProbes : null,
   };
   const normalisedReport = normaliseReferenceReportPayload(report);
   if (!normalisedReport || typeof normalisedReport !== "object") return { report: normalisedReport, summary };
@@ -433,15 +527,23 @@ async function enrichReferenceReportDurations(report = null, options = {}) {
 
   for (const plan of enriched.plans) {
     for (const reference of plan.references) {
+      if (!referenceInStoryScope(plan, reference, storyIds)) {
+        summary.skipped_out_of_scope += 1;
+        continue;
+      }
       if (existingDurationSeconds(reference)) {
         summary.skipped_existing_duration += 1;
         continue;
       }
       if (!durationProbeEligibleReference(reference)) continue;
+      if (Number.isFinite(maxProbes) && summary.candidates >= maxProbes) {
+        summary.skipped_probe_budget += 1;
+        continue;
+      }
       summary.candidates += 1;
       const sourceUrl = String(reference.source_url || reference.sourceUrl || reference.local_path || "").trim();
       try {
-        const duration = await Promise.resolve(durationProbe(sourceUrl, reference));
+        const duration = await durationProbeWithTimeout(durationProbe, sourceUrl, reference, timeoutMs);
         const number = Number(duration);
         if (!Number.isFinite(number) || number <= 0) {
           summary.failed += 1;
@@ -455,8 +557,17 @@ async function enrichReferenceReportDurations(report = null, options = {}) {
           duration_probe: "ffprobe",
         };
         summary.probed += 1;
-      } catch {
+      } catch (err) {
         summary.failed += 1;
+        if (err?.code === "duration_probe_timeout") {
+          summary.timed_out += 1;
+          reference.provenance = {
+            ...(reference.provenance || {}),
+            duration_probe: "ffprobe",
+            duration_probe_error: "timeout",
+            duration_probe_timeout_ms: timeoutMs,
+          };
+        }
       }
     }
   }
@@ -575,6 +686,9 @@ async function main() {
   const loadedReference = await loadOptionalReferenceReport(args);
   const enrichedReference = await enrichReferenceReportDurations(loadedReference.report, {
     enabled: args.applyLocal && args.includeExploratoryWindows && !args.noReferenceDurationProbe,
+    storyId: args.storyId,
+    durationProbeTimeoutMs: args.referenceDurationProbeTimeoutMs,
+    maxProbes: args.maxReferenceDurationProbes,
   });
   const loadedPrevious = await loadOptionalPreviousValidationReport(args);
   const loadedAcquisition = await loadOptionalAcquisitionPlan(args);

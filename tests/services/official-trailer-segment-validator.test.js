@@ -580,6 +580,95 @@ test("segment validator duration-probes reference reports before default deep sc
   assert.ok(refs.some((ref) => ref.mediaStartS === 126));
 });
 
+test("segment validator duration-probes only the requested story scope", async () => {
+  const calls = [];
+  const referenceReport = {
+    plans: [
+      {
+        story_id: "story-a",
+        references: [
+          {
+            source_type: "steam_movie",
+            provider: "steam",
+            source_url: "https://video.example/story-a.m3u8",
+            source_url_kind: "hls_manifest",
+            segment_validation_eligible: true,
+          },
+        ],
+      },
+      {
+        story_id: "story-b",
+        references: [
+          {
+            source_type: "steam_movie",
+            provider: "steam",
+            source_url: "https://video.example/story-b.m3u8",
+            source_url_kind: "hls_manifest",
+            segment_validation_eligible: true,
+          },
+        ],
+      },
+    ],
+  };
+
+  const enriched = await enrichReferenceReportDurations(referenceReport, {
+    enabled: true,
+    storyId: "story-b",
+    durationProbe: (sourceUrl) => {
+      calls.push(sourceUrl);
+      return 91.4;
+    },
+  });
+
+  assert.deepEqual(calls, ["https://video.example/story-b.m3u8"]);
+  assert.equal(enriched.summary.candidates, 1);
+  assert.equal(enriched.summary.skipped_out_of_scope, 1);
+  assert.equal(enriched.report.plans[0].references[0].source_duration_s, undefined);
+  assert.equal(enriched.report.plans[1].references[0].source_duration_s, 91.4);
+});
+
+test("segment validator duration-probe timeout records failure and continues", async () => {
+  const referenceReport = {
+    plans: [
+      {
+        story_id: "story-1",
+        references: [
+          {
+            source_type: "steam_movie",
+            provider: "steam",
+            source_url: "https://video.example/hangs.m3u8",
+            source_url_kind: "hls_manifest",
+            segment_validation_eligible: true,
+          },
+          {
+            source_type: "steam_movie",
+            provider: "steam",
+            source_url: "https://video.example/ok.m3u8",
+            source_url_kind: "hls_manifest",
+            segment_validation_eligible: true,
+          },
+        ],
+      },
+    ],
+  };
+
+  const enriched = await enrichReferenceReportDurations(referenceReport, {
+    enabled: true,
+    durationProbeTimeoutMs: 5,
+    durationProbe: (sourceUrl) => {
+      if (sourceUrl.includes("hangs")) return new Promise(() => {});
+      return 84.2;
+    },
+  });
+
+  assert.equal(enriched.summary.candidates, 2);
+  assert.equal(enriched.summary.probed, 1);
+  assert.equal(enriched.summary.failed, 1);
+  assert.equal(enriched.summary.timed_out, 1);
+  assert.equal(enriched.report.plans[0].references[0].source_duration_s, undefined);
+  assert.equal(enriched.report.plans[0].references[1].source_duration_s, 84.2);
+});
+
 test("official trailer segment validator apply-local marks clean sampled windows as Flash Lane allowed", async () => {
   const outputRoot = tempOutputRoot("clean");
   await cleanTempRoot(outputRoot);

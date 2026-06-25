@@ -200,13 +200,26 @@ function liveRssDirectMotionEvidence(story = {}) {
   ].map(cleanSearchText);
   if (directFields.some((url) => /\.(?:mp4|mov|m4v|webm)(?:[?#]|$)/i.test(url))) return true;
   if (
-    /\b(?:gameplay|deep dive|hands[- ]?on|trailer|showcase|direct|state of play|developer diary|dev diary|footage|demo|playtest|beta|launch trailer|reveal trailer|official video|cover art animation)\b/i.test(
+    /\b(?:gameplay|deep dive|hands[- ]?on|trailer|teaser|showcase|direct|state of play|developer diary|dev diary|footage|demo|playtest|beta|launch trailer|reveal trailer|official video|cover art animation)\b/i.test(
       text,
     )
   ) {
     return true;
   }
   return false;
+}
+
+function liveRssOfficialPlatformSource(story = {}) {
+  const text = [
+    story.source_name,
+    story.primary_source,
+    story.source_type,
+    story.url,
+    story.article_url,
+    story.primary_source_url,
+    story.official_source_url,
+  ].map(cleanSearchText).filter(Boolean).join(" ");
+  return /\b(?:official|playstation blog|blog\.playstation\.com|xbox wire|news\.xbox\.com|nintendo|steam news|steampowered|rockstar newswire|rockstargames|capcom|sega|ubisoft|bethesda|square enix|bandai namco|konami|ea|electronic arts)\b/i.test(text);
 }
 
 function liveRssWeakUnattendedPattern(story = {}) {
@@ -314,6 +327,26 @@ function liveRssMotionGate(story = {}) {
   };
 }
 
+function liveRssRepairIntakeGate(story = {}, motionGate = liveRssMotionGate(story)) {
+  const reasons = [];
+  const officialPlatformSource = liveRssOfficialPlatformSource(story);
+  const hasSpecificSubject =
+    motionGate.has_specific_subject === true || liveRssHasSpecificSubject(story);
+  const score = Number(motionGate.score || liveRssMotionPotentialScore(story));
+  if (liveRssWeakUnattendedPattern(story)) reasons.push("weak_unattended_live_rss_pattern");
+  if (!officialPlatformSource) reasons.push("official_or_platform_source_missing");
+  if (!hasSpecificSubject) reasons.push("specific_subject_missing");
+  if (score < 30) reasons.push("repair_intake_score_below_threshold");
+  return {
+    pass: reasons.length === 0,
+    score,
+    reasons,
+    official_platform_source: officialPlatformSource,
+    has_specific_subject: hasSpecificSubject,
+    mode: "official_source_motion_repair_intake",
+  };
+}
+
 function prioritiseLiveRssStoriesForMotion(stories = []) {
   return asStoryArray(stories)
     .map((story, index) => ({
@@ -329,15 +362,26 @@ function prioritiseLiveRssStoriesForMotion(stories = []) {
 }
 
 function filterLiveRssStoriesForMotion(stories = []) {
-  return asStoryArray(stories)
+  const entries = asStoryArray(stories)
     .map((story, index) => ({
       story,
       index,
       gate: liveRssMotionGate(story),
-    }))
-    .filter((entry) => entry.gate.pass)
+    }));
+  const directMotionEntries = entries.filter((entry) => entry.gate.pass);
+  const selectedEntries = directMotionEntries.length
+    ? directMotionEntries
+    : entries
+        .map((entry) => ({
+          ...entry,
+          repairGate: liveRssRepairIntakeGate(entry.story, entry.gate),
+        }))
+        .filter((entry) => entry.repairGate.pass);
+  return selectedEntries
     .sort((a, b) => {
-      const delta = b.gate.score - a.gate.score;
+      const aScore = Number(a.gate?.score ?? a.repairGate?.score ?? 0);
+      const bScore = Number(b.gate?.score ?? b.repairGate?.score ?? 0);
+      const delta = bScore - aScore;
       return Math.abs(delta) > 0.001 ? delta : a.index - b.index;
     })
     .map((entry) => entry.story);
@@ -485,6 +529,7 @@ module.exports = {
   filterLiveRssStoriesForMotion,
   liveRssMotionGate,
   liveRssMotionPotentialScore,
+  liveRssRepairIntakeGate,
   normaliseStoryIds,
   prioritiseLiveRssStoriesForMotion,
   selectStoriesForGoalBatch,

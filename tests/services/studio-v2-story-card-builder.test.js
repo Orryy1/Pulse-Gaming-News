@@ -10,6 +10,7 @@ const {
   buildStoryCardSpecs,
   applySpecToTemplate,
   clampQuoteText,
+  loadStoryFromFile,
   outputNameForCard,
   pickStoryBackdrop,
   quoteLayoutClass,
@@ -94,6 +95,32 @@ test("story card builder prefers smart-cropped story backdrops", async () => {
     });
 
     assert.equal(picked, smart);
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("story card builder loads fresh candidate rows from a story file", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-story-file-"));
+  try {
+    const storyFile = path.join(root, "official_source_candidate_stories.json");
+    await fs.writeJson(storyFile, [
+      {
+        story_id: "fresh_xbox_story",
+        selected_title: "Halo Campaign Evolved Demo Lands",
+        canonical_subject: "Halo Campaign Evolved",
+        primary_source: "Xbox Wire",
+        narration_script: "Halo Campaign Evolved just turned its demo into the real Xbox test.",
+      },
+    ]);
+
+    const story = await loadStoryFromFile(storyFile, "fresh_xbox_story");
+
+    assert.equal(story.id, "fresh_xbox_story");
+    assert.equal(story.storyId, "fresh_xbox_story");
+    assert.equal(story.title, "Halo Campaign Evolved Demo Lands");
+    assert.equal(story.subreddit, "Xbox Wire");
+    assert.match(story.full_script, /real Xbox test/);
   } finally {
     await fs.remove(root).catch(() => {});
   }

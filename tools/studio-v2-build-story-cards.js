@@ -420,6 +420,38 @@ async function loadStoryForCards(storyId) {
   }
 }
 
+async function loadStoryFromFile(storyFile, storyId) {
+  const payload = await fs.readJson(storyFile);
+  const rows = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.stories)
+      ? payload.stories
+      : Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload?.entries)
+          ? payload.entries
+          : payload && typeof payload === "object"
+            ? [payload]
+            : [];
+  const wanted = normaliseText(storyId);
+  const row = rows.find((item) =>
+    [item?.story_id, item?.storyId, item?.id].some((value) => normaliseText(value) === wanted),
+  ) || (rows.length === 1 ? rows[0] : null);
+  if (!row) {
+    throw new Error(`Story ${storyId} not found in ${storyFile}`);
+  }
+  const id = normaliseText(row.story_id || row.storyId || row.id || storyId);
+  if (!id) throw new Error(`Story id missing in ${storyFile}`);
+  return {
+    ...row,
+    storyId: id,
+    id,
+    title: normaliseText(row.title || row.selected_title || row.canonical_title || row.canonical_subject),
+    subreddit: row.subreddit || row.primary_source || row.source_name || row.publisher,
+    full_script: row.full_script || row.narration_script,
+  };
+}
+
 function replaceElementText(html, id, value) {
   const re = new RegExp(`(<[^>]+id="${id}"[^>]*>)[\\s\\S]*?(</[^>]+>)`);
   return html.replace(re, `$1${escapeHtml(value)}$2`);
@@ -913,17 +945,34 @@ async function buildStoryCards({
 
 async function main() {
   const args = process.argv.slice(2);
-  const storyId = args.find((arg) => !arg.startsWith("--"));
+  let storyId = "";
+  let storyFile = "";
+  let channelId = process.env.CHANNEL || DEFAULT_CHANNEL;
+  const positional = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--story-id") storyId = args[++i] || storyId;
+    else if (arg.startsWith("--story-id=")) storyId = arg.slice("--story-id=".length);
+    else if (arg === "--story-file") storyFile = args[++i] || storyFile;
+    else if (arg.startsWith("--story-file=")) storyFile = arg.slice("--story-file=".length);
+    else if (arg === "--channel-id") channelId = args[++i] || channelId;
+    else if (arg.startsWith("--channel-id=")) channelId = arg.slice("--channel-id=".length);
+    else if (!arg.startsWith("--")) positional.push(arg);
+  }
+  storyId = storyId || positional[0] || "";
   const noRender = args.includes("--no-render");
   const noInspect = args.includes("--no-inspect");
   if (!storyId) {
     throw new Error(
-      "Usage: node tools/studio-v2-build-story-cards.js <storyId> [--no-render] [--no-inspect]",
+      "Usage: node tools/studio-v2-build-story-cards.js <storyId|--story-id id> [--story-file file] [--no-render] [--no-inspect]",
     );
   }
 
+  const story = storyFile ? await loadStoryFromFile(storyFile, storyId) : null;
   const result = await buildStoryCards({
     storyId,
+    story,
+    channelId,
     render: !noRender,
     inspect: !noInspect,
   });
@@ -952,6 +1001,7 @@ module.exports = {
   buildStoryCardSpecs,
   writeHyperframesPremiumShellEvidence,
   clampQuoteText,
+  loadStoryFromFile,
   quoteLayoutClass,
   applySpecToTemplate,
   countTimelineAnimationSteps,

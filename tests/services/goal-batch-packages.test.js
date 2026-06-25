@@ -712,6 +712,44 @@ test("goal batch live RSS selection filters weak motion stories before packaging
   );
 });
 
+test("goal batch live RSS selection keeps official-source stories for motion repair intake when direct motion is absent", () => {
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        id: "deal-card",
+        title: "Today's Top Deals: Switch 2 Memory Cards And Controller Discounts",
+        source_name: "IGN Deals",
+      },
+      {
+        id: "generic-platform",
+        title: "Xbox Has A Player-Return Problem",
+        source_name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/24/xbox-player-return-problem/",
+      },
+      {
+        id: "official-gta",
+        title: "Grand Theft Auto VI plays best on PS5 November 19",
+        canonical_subject: "Grand Theft Auto VI",
+        source_name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/06/24/grand-theft-auto-vi-plays-best-on-ps5-november-19/",
+      },
+      {
+        id: "official-doom",
+        title: "Upgraded PSSR comes to Doom: The Dark Ages on PS5 Pro",
+        canonical_subject: "Doom: The Dark Ages",
+        source_name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/06/24/upgraded-pssr-comes-to-doom-the-dark-ages-on-ps5-pro/",
+      },
+    ],
+    baseStories: [],
+  });
+
+  assert.deepEqual(
+    selected.map((story) => story.id),
+    ["official-gta", "official-doom"],
+  );
+});
+
 test("goal batch live RSS motion gate preserves official direct-media stories", () => {
   const story = {
     id: "rockstar-gta-vi-cover",
@@ -812,6 +850,104 @@ test("goal batch package proof preparation writes concrete GTA VI preorder scrip
   assert.match(prepared.full_script, /what the money actually buys/i);
   assert.equal(prepared.suggested_thumbnail_text, "GTA VI PREORDER TEST");
   assert.doesNotMatch(prepared.full_script, /source-backed update|this story finally has something specific/i);
+});
+
+test("goal batch package proof preparation writes specific GTA VI PS5 scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_gta_vi_ps5_blog",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      title: "Grand Theft Auto VI plays best on PS5 November 19",
+      primary_source: "PlayStation Blog",
+      source_name: "PlayStation Blog",
+      source_type: "official_platform",
+      article_url:
+        "https://blog.playstation.com/2026/06/24/grand-theft-auto-vi-plays-best-on-ps5-november-19/",
+      full_script:
+        "Grand Theft Auto VI plays has one clear detail players can check before the hype gets ahead of it. PlayStation Blog says Grand Theft Auto VI plays best on PS5 November 19. The player test is simple: does this change what people install, wishlist, finish or ignore? If it changes that decision, the story earns attention. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.public_title, "GTA VI Just Made PS5 The Version To Watch");
+  assert.equal(prepared.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(prepared.canonical_game, "Grand Theft Auto VI");
+  assert.equal(prepared.suggested_thumbnail_text, "GTA VI PS5 TEST");
+  assert.match(prepared.full_script, /^Sony just made GTA VI's console pitch very direct\./i);
+  assert.match(prepared.full_script, /PlayStation Blog says Grand Theft Auto VI plays best on PS5 on November 19\./i);
+  assert.match(prepared.full_script, /whether PS5 becomes the default version people expect to play/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /one clear detail|player test|install, wishlist|background noise|Grand Theft Auto VI plays has/i,
+  );
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+});
+
+test("goal batch package proof preparation writes specific PS5 Pro tech scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_doom_pssr_blog",
+      canonical_subject: "Doom: The Dark Ages",
+      canonical_game: "Doom: The Dark Ages",
+      title: "Upgraded PSSR comes to Doom: The Dark Ages on PS5 Pro",
+      primary_source: "PlayStation Blog",
+      source_name: "PlayStation Blog",
+      source_type: "official_platform",
+      article_url:
+        "https://blog.playstation.com/2026/06/24/upgraded-pssr-comes-to-doom-the-dark-ages-on-ps5-pro/",
+      full_script:
+        "Doom: The Dark Ages has one clear detail players can check before the hype gets ahead of it. PlayStation Blog says Upgraded PSSR comes to Doom: The Dark Ages on PS5 Pro. The player test is simple: does this change what people install, wishlist, finish or ignore? Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.public_title, "Doom The Dark Ages Becomes A PS5 Pro Test");
+  assert.equal(prepared.canonical_subject, "Doom: The Dark Ages");
+  assert.equal(prepared.canonical_game, "Doom: The Dark Ages");
+  assert.equal(prepared.suggested_thumbnail_text, "DOOM PS5 PRO");
+  assert.match(prepared.full_script, /^Doom: The Dark Ages just became a PS5 Pro tech test\./i);
+  assert.match(prepared.full_script, /upgraded PSSR is coming to Doom: The Dark Ages on PS5 Pro/i);
+  assert.match(prepared.full_script, /If the upgrade keeps Doom sharp in motion/i);
+  assert.doesNotMatch(prepared.full_script, /one clear detail|player test|background noise/i);
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+});
+
+test("goal batch package proof preparation maps Yoshie boss fragments to Denshattack", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_denshattack_yoshie",
+      canonical_subject: "Meet Yoshie",
+      canonical_game: "Meet Yoshie",
+      title: "Meet Yoshie, Denshattack's first major boss battle",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      source_type: "official_platform",
+      article_url: "https://news.xbox.com/en-us/2026/06/24/denshattack-yoshie-boss-battle/",
+      full_script:
+        "Meet Yoshie has one clear detail players can check before the hype gets ahead of it. Xbox Wire says Meet Yoshie, Denshattack's first major boss battle. The player test is simple: does this change what people install, wishlist, finish or ignore? Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "Denshattack");
+  assert.equal(prepared.canonical_game, "Denshattack");
+  assert.equal(prepared.public_title, "Denshattack Has A Boss Fight Test");
+  assert.equal(prepared.suggested_thumbnail_text, "BOSS FIGHT TEST");
+  assert.match(prepared.full_script, /^Denshattack just showed the boss fight/i);
+  assert.doesNotMatch(prepared.full_script, /one clear detail|player test|Meet Yoshie has/i);
 });
 
 test("goal batch owned fallback motion clips use readable card dwell", () => {

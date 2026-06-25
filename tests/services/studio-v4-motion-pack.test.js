@@ -1252,6 +1252,91 @@ test("Visual V4 motion pack accepts legend-labelled official social clips when s
   );
 });
 
+test("Visual V4 motion pack accepts validated official trailer clips for preorder stories", () => {
+  const family =
+    "xbox_store_grand_theft_auto_vi_seed_gta_vi_preorder_xbox_20260625_rockstar_gta_vi_trailer_2";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "seed_gta_vi_preorder_xbox_20260625",
+      title: "GTA VI Preorders Just Changed The Buying Argument",
+      canonical_game: "Grand Theft Auto VI",
+      canonical_subject: "Grand Theft Auto VI",
+    }),
+    trustedFootageReport: trustedReport("seed_gta_vi_preorder_xbox_20260625", [family]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "seed_gta_vi_preorder_xbox_20260625",
+        family,
+        index: 1,
+        entity: "Grand Theft Auto VI",
+        sourceType: "official_game_website_media_page",
+        sourceUrl:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+        referenceTitle: "Grand Theft Auto VI Trailer 2",
+        actionScore: 95,
+        samples: [
+          { local_path: "test/output/gta/trailer2-a.jpg", content_hash: "gta-trailer-2-a" },
+          { local_path: "test/output/gta/trailer2-b.jpg", content_hash: "gta-trailer-2-b" },
+          { local_path: "test/output/gta/trailer2-c.jpg", content_hash: "gta-trailer-2-c" },
+        ],
+      }),
+    ]),
+    generatedAt: "2026-06-25T10:00:00.000Z",
+  });
+
+  assert.ok(
+    pack.clips.some((clip) => clip.source_family === family),
+    JSON.stringify(pack.rejected_candidates, null, 2),
+  );
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.source_family === family && candidate.reason === "promo_card_source_family",
+    ),
+    false,
+  );
+});
+
+test("Visual V4 motion pack still rejects cover-art animation for preorder stories", () => {
+  const family =
+    "xbox_store_grand_theft_auto_vi_seed_gta_vi_preorder_xbox_20260625_rockstar_gta_vi_cover_art_animation";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory({
+      id: "seed_gta_vi_preorder_xbox_20260625",
+      title: "GTA VI Preorders Just Changed The Buying Argument",
+      canonical_game: "Grand Theft Auto VI",
+      canonical_subject: "Grand Theft Auto VI",
+    }),
+    trustedFootageReport: trustedReport("seed_gta_vi_preorder_xbox_20260625", [family]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "seed_gta_vi_preorder_xbox_20260625",
+        family,
+        index: 1,
+        entity: "Grand Theft Auto VI",
+        sourceType: "official_game_website_media_page",
+        sourceUrl:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+        referenceTitle: "Official Cover Art Animation",
+        actionScore: 95,
+        samples: [
+          { local_path: "test/output/gta/cover-a.jpg", content_hash: "gta-cover-a" },
+          { local_path: "test/output/gta/cover-b.jpg", content_hash: "gta-cover-b" },
+          { local_path: "test/output/gta/cover-c.jpg", content_hash: "gta-cover-c" },
+        ],
+      }),
+    ]),
+    generatedAt: "2026-06-25T10:00:00.000Z",
+  });
+
+  assert.equal(pack.clips.some((clip) => clip.source_family === family), false);
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.source_family === family && candidate.reason === "promo_card_source_family",
+    ),
+    JSON.stringify(pack.rejected_candidates, null, 2),
+  );
+});
+
 test("Visual V4 motion pack rejects specialised accessibility visual clips for general story renders", () => {
   const pack = buildVisualV4MotionPack({
     story: forzaStory(),

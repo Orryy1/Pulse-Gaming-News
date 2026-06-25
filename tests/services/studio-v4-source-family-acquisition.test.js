@@ -1560,6 +1560,65 @@ test("Studio V4 source-family acquisition accepts already repaired Halo PS5 cano
   assert.equal(report.canonical_entity_repair_template.entries.length, 0);
 });
 
+test("Studio V4 source-family acquisition accepts GTA VI acronym titles with PS5 platform context", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "gta-vi-ps5-version",
+        title: "GTA VI Just Made PS5 The Version To Watch",
+        canonical_subject: "Grand Theft Auto VI",
+        canonical_game: "Grand Theft Auto VI",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: { accepted_sources: [], story_candidates: [] },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.primary_story_entity, "Grand Theft Auto VI");
+  assert.deepEqual(row.canonical_entity_repair_blockers, []);
+  assert.equal(report.canonical_entity_repair_template.entries.length, 0);
+});
+
+test("Studio V4 source-family acquisition repairs Doom PS5 Pro stories to the game rather than hardware", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "doom-pssr-ps5-pro",
+        title: "Doom The Dark Ages Becomes A PS5 Pro Test",
+        canonical_subject: "Upgraded PSSR comes to Doom",
+        canonical_game: "Upgraded PSSR comes to Doom",
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 0,
+          required_distinct_families: 4,
+          available_distinct_families: 0,
+        },
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    trustedFootageReport: { accepted_sources: [], story_candidates: [] },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.ok(row.canonical_entity_repair_blockers.includes("canonical_subject_title_mismatch"));
+  assert.equal(report.canonical_entity_repair_template.entries[0].story_id, "doom-pssr-ps5-pro");
+  assert.equal(
+    report.canonical_entity_repair_template.entries[0].suggested_repaired_entity,
+    "Doom: The Dark Ages",
+  );
+});
+
 test("Studio V4 source-family acquisition filters planned searches to the canonical story entity", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [

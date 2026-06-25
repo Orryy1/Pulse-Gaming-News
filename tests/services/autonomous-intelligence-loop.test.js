@@ -375,6 +375,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
   ]);
   const capturedArgCalls = [];
   const childCalls = [];
+  const events = [];
 
   try {
     require.cache[goalBatchPath] = {
@@ -385,6 +386,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
         async main(args) {
           capturedArgCalls.push(args);
           const hydratedPass = args.includes("--v4-motion-pack-dir");
+          events.push(hydratedPass ? "hydrated_package_generation" : "initial_package_generation");
           const outIndex = args.indexOf("--out-dir");
           const contractIndex = args.indexOf("--contract-out-dir");
           const effectiveOutDir = outIndex >= 0 ? args[outIndex + 1] : outDir;
@@ -573,6 +575,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       {
         log() {},
         async runNodeJobChildProcess(options) {
+          events.push(options.args[0]);
           childCalls.push(options);
           if (options.args[0] === "tools/official-search-intake-autofill.js") {
             const templateIndex = options.args.indexOf("--output-template");
@@ -681,7 +684,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
-    assert.equal(result.repair_evidence.child_processes.length, 9);
+    assert.equal(result.repair_evidence.child_processes.length, 10);
     assert.equal(result.motion_hydrated_refill.status, "completed");
     assert.equal(result.motion_hydrated_refill.green_count, 1);
     assert.match(result.motion_hydrated_refill.outputs.storyPackagesPath, /motion-hydrated[\\/]story-packages\.json$/);
@@ -720,6 +723,24 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/goal-real-motion-materializer.js"),
       "expected fresh refill to materialise validated official motion before hydrating packages",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/studio-v2-build-story-cards.js"),
+      "expected fresh refill to build story-specific HyperFrames premium shell cards before hydrating packages",
+    );
+    const storyCardCall = childCalls.find(
+      (call) => call.args[0] === "tools/studio-v2-build-story-cards.js",
+    );
+    assert.equal(storyCardCall.args[storyCardCall.args.indexOf("--story-id") + 1], "fresh_xbox_story");
+    assert.match(
+      storyCardCall.args[storyCardCall.args.indexOf("--story-file") + 1],
+      /official_source_candidate_stories\.json$/,
+    );
+    assert.ok(
+      events.indexOf("tools/studio-v2-build-story-cards.js") >= 0 &&
+        events.indexOf("tools/studio-v2-build-story-cards.js") <
+          events.indexOf("hydrated_package_generation"),
+      "expected HyperFrames card evidence before the motion-hydrated package pass",
     );
     const trailerReferenceCall = childCalls.find(
       (call) => call.args[0] === "tools/official-trailer-reference-resolver.js",
@@ -811,8 +832,11 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(repairReport.summary.script_rewrite_work_order_count, 1);
     assert.deepEqual(repairReport.summary.quarantined_package_ids, ["fresh_generic_story"]);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
-    assert.equal(repairReport.summary.child_process_count, 9);
+    assert.equal(repairReport.summary.child_process_count, 10);
     assert.equal(repairReport.summary.real_motion_materialization_status, "attempted");
+    assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");
+    assert.equal(repairReport.summary.hyperframes_card_sets_completed, 1);
+    assert.equal(repairReport.summary.hyperframes_card_sets_failed, 0);
     assert.match(repairReport.outputs.official_search_autofill_report, /official_search_intake_autofill\.json$/);
     assert.match(
       repairReport.outputs.official_search_autofill_template,
@@ -822,6 +846,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.match(repairReport.outputs.licensed_direct_media_report, /studio_v4_licensed_direct_media_acquisition\.json$/);
     assert.match(repairReport.outputs.segment_validation_report, /official_trailer_segment_validation_apply_local\.json$/);
     assert.match(repairReport.outputs.real_motion_materialization_report, /real_motion_materialization_report\.json$/);
+    assert.match(repairReport.outputs.hyperframes_card_evidence_report, /fresh_refill_hyperframes_card_evidence\.json$/);
     assert.match(repairReport.outputs.materialized_motion_pack_dir, /output[\\/]studio-v4[\\/]motion-packs$/);
     assert.match(
       repairReport.outputs.script_rewrite_work_order,

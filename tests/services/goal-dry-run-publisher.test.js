@@ -533,6 +533,58 @@ test("goal dry-run publisher blocks HyperFrames premium renders without shell pr
   );
 });
 
+test("goal dry-run publisher blocks passing HyperFrames shells with dwell blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-pass-with-blockers-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "hf-pass-with-dwell-blockers",
+    "GREEN",
+    "GTA VI Cover Art Needs A Cleaner Read",
+    {
+      canonicalSubject: "GTA VI",
+      renderManifestPatch: {
+        premiumLane: {
+          rendererSplit: "ffmpeg-backbone-story-specific-hyperframes-cards",
+          verdict: "pass",
+          hyperframesCardCount: 4,
+          premiumShellPassCount: 4,
+          premiumShellRequiredPassCount: 4,
+          hyperframesPremiumShellGate: {
+            verdict: "pass",
+            passCount: 4,
+            requiredPassCount: 4,
+            blockers: [
+              "source:hyperframes_readable_hold_below_internal_floor",
+              "source:hyperframes_repeated_card_family",
+            ],
+          },
+        },
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-25T09:10:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.overall_verdict, "RED");
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes_premium_shell_not_passed"));
+  assert.ok(
+    plan.blocked_stories[0].blockers.includes(
+      "hyperframes_premium_shell:source:hyperframes_readable_hold_below_internal_floor",
+    ),
+  );
+  assert.ok(
+    plan.blocked_stories[0].blockers.includes(
+      "hyperframes_premium_shell:source:hyperframes_repeated_card_family",
+    ),
+  );
+});
+
 test("goal dry-run publisher blocks partial HyperFrames renders without shell proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-partial-shell-"));
   const storyPackage = await makeStoryPackage(

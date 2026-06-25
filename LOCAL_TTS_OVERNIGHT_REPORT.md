@@ -1,14 +1,13 @@
 # Local TTS Overnight Report
 
-Generated: 2026-06-25T15:40:29.173Z
-Verdict: RED
+Generated: 2026-06-25T17:05:55.014Z
+Verdict: AMBER
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted
 
 ## Doctor
-- verdict=amber action=wait_for_gpu ready=false voice=liam loaded=true ref=true
-- failure=gpu_saturated
-- reason=GPU free memory 2033MB is below 3072MB
+- verdict=green action=none ready=true voice=liam loaded=true ref=true
+- reason=local TTS is ready with the accepted voice loaded
 
 ## Proof Batch
 - applied=32 voice_ready=18 rejected=9 skipped=6 superseded=10
@@ -68,7 +67,7 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 
 ## Local Recovery Plan
 - local_only=true
-- autonomous_status=blocked_tts_not_ready
+- autonomous_status=ready_for_local_tts_retry_preflight
 - safe_to_run_local_tts_retry=false
 - safe_retry_work_orders=6
 - retry_preflight_work_orders=6

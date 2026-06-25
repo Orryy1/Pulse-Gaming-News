@@ -1915,6 +1915,190 @@ test("public copy package repair treats tighten-before-TTS scorecards as not pub
   assert.ok(savedScorecard.viral_score >= 85, JSON.stringify(savedScorecard, null, 2));
 });
 
+test("public copy package repair rewrites source-locked scaffold narration into viral-ready viewer scripts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-scaffold-rewrite-"));
+  const artifactDir = path.join(root, "batch", "playstation-pc-trust");
+  await fs.ensureDir(artifactDir);
+  const staleScript = [
+    "PlayStation needs one cleaner proof point before the hype is worth trusting.",
+    "IGN says Sony Ditches Mention of PC Releases From Business Strategy Document, as PlayStation's Single-Player Games Now Expected to Be Fully Exclusive.",
+    "The source is real, but the useful part for players is still the missing detail: what changes on screen, on the store page or in their next download.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "playstation-pc-trust",
+    canonical_subject: "PlayStation",
+    canonical_game: "PlayStation",
+    selected_title: "PlayStation Has A PC Port Trust Problem",
+    short_title: "PlayStation Has A PC Port Trust Problem",
+    thumbnail_headline: "PLAYSTATION PC TRUST",
+    first_spoken_line: "PlayStation needs one cleaner proof point before the hype is worth trusting.",
+    narration_script: staleScript,
+    full_script: staleScript,
+    tts_script: staleScript,
+    description: "PlayStation changed wording around PC releases in a Sony business strategy document. Source: IGN.",
+    pinned_comment: "Source: IGN.",
+    primary_source: "IGN",
+    confirmed_claims: [
+      "Sony Ditches Mention of PC Releases From Business Strategy Document, as PlayStation's Single-Player Games Now Expected to Be Fully Exclusive",
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    viral_score: 48,
+    blockers: ["source_title_recitation", "missing_story_specific_payoff"],
+    warnings: ["no_curiosity_marker"],
+    scores: {
+      hook_strength: 41,
+      curiosity_gap: 35,
+      insight_density: 50,
+      source_safety: 48,
+      retention_pacing: 62,
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "playstation-pc-trust", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-25T16:15:00.000Z",
+  });
+
+  const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  const freshScorecard = buildViralScriptIntelligence({
+    story: {
+      id: savedManifest.story_id,
+      title: savedManifest.selected_title,
+      source_name: savedManifest.primary_source,
+    },
+    script: savedManifest.narration_script,
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "script_scorecard_repaired");
+  assert.match(savedManifest.narration_script, /PlayStation just made PC players read the fine print again/i);
+  assert.match(savedManifest.narration_script, /first-party games/i);
+  assert.match(savedManifest.narration_script, /strategy slide/i);
+  assert.doesNotMatch(
+    savedManifest.narration_script,
+    /needs one cleaner proof point|source is real|missing detail|source-backed update|IGN says Sony Ditches/i,
+  );
+  assert.deepEqual(savedScorecard.blockers, []);
+  assert.deepEqual(freshScorecard.blockers, []);
+  assert.equal(savedScorecard.verdict, "viral_ready");
+  assert.ok(savedScorecard.viral_score >= 85, JSON.stringify(savedScorecard, null, 2));
+});
+
+test("public copy package repair clears current scaffolded backlog story classes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-current-backlog-"));
+  const cases = [
+    {
+      storyId: "planet-crafter",
+      subject: "The Planet Crafter",
+      title: "The Planet Crafter Has A PS5 Survival Risk",
+      source: "PlayStation Blog",
+      claim: "The Planet Crafter launches on PS5 July 21",
+      staleHook: "The Planet Crafter is about to find out whether its survival loop works on PS5.",
+      expectedScript: /slow survival loop has to feel worth the wait/i,
+      forbiddenScript: /controller|pad|raids|jump scares|needs one cleaner proof point|source is real/i,
+    },
+    {
+      storyId: "steam-next-fest",
+      subject: "Steam Next Fest June 2026:",
+      title: "Steam Next Fest June 2026: Has A Demo Trust Test",
+      source: "GameSpot",
+      claim: "Steam Next Fest June 2026: 35 Of The Best Demos You Can Play Right Now",
+      staleHook: "Steam Next Fest June 2026: needs one cleaner proof point before the hype is worth trusting.",
+      expectedTitle: /Steam Next Fest Has A Demo Overload Problem/i,
+      expectedScript: /filtering problem/i,
+      forbiddenScript: /needs one cleaner proof point|source is real|missing detail/i,
+    },
+    {
+      storyId: "steam-controller",
+      subject: "If You Haven't Reserved Steam",
+      title: "Steam Controller Has A 2027 Wait Problem",
+      source: "GameSpot",
+      claim: "If You Haven't Reserved A Steam Controller Yet, You'll Have To Wait Until Next Year",
+      staleHook: "If You Haven't Reserved Steam needs one cleaner proof point before the hype is worth trusting.",
+      expectedTitle: /Steam Controller Has A 2027 Wait Problem/i,
+      expectedScript: /wait is now part of the pitch/i,
+      forbiddenScript: /needs one cleaner proof point|source is real|missing detail/i,
+    },
+    {
+      storyId: "pragmata-diana",
+      subject: "Pragmata's development team included group",
+      title: "Pragmata Has A Character Trust Problem",
+      source: "Eurogamer",
+      claim: "Pragmata's development team included a group of women known as the \"Diana Police\" to convincingly capture her child-like innocence",
+      staleHook: "Pragmata's development team included group needs one cleaner proof point before the hype is worth trusting.",
+      expectedTitle: /Pragmata Has A Character Trust Problem/i,
+      expectedScript: /Diana Police/i,
+      expectedThumbnail: /PRAGMATA DIANA/i,
+      forbiddenScript: /needs one cleaner proof point|source is real|missing detail/i,
+    },
+  ];
+  const packages = [];
+
+  for (const item of cases) {
+    const artifactDir = path.join(root, "batch", item.storyId);
+    packages.push({ story_id: item.storyId, artifact_dir: artifactDir });
+    await fs.ensureDir(artifactDir);
+    const staleScript = [
+      item.staleHook,
+      `${item.source} says ${item.claim}.`,
+      "The source is real, but the useful part for players is still the missing detail: what changes on screen, on the store page or in their next download.",
+      "Follow Pulse Gaming so you never miss a beat.",
+    ].join(" ");
+    await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+      story_id: item.storyId,
+      canonical_subject: item.subject,
+      canonical_game: item.subject,
+      selected_title: item.title,
+      short_title: item.title,
+      thumbnail_headline: item.title.toUpperCase().split(/\s+/).slice(0, 5).join(" "),
+      first_spoken_line: item.staleHook,
+      narration_script: staleScript,
+      full_script: staleScript,
+      tts_script: staleScript,
+      description: `${item.claim}. Source: ${item.source}.`,
+      pinned_comment: `Source: ${item.source}.`,
+      primary_source: item.source,
+      confirmed_claims: [item.claim],
+    }, { spaces: 2 });
+    await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+      verdict: "rewrite_required",
+      viral_score: 50,
+      blockers: ["source_title_recitation", "missing_story_specific_payoff"],
+      warnings: ["no_curiosity_marker"],
+      scores: {
+        hook_strength: 42,
+        curiosity_gap: 35,
+        insight_density: 50,
+        source_safety: 50,
+        retention_pacing: 70,
+      },
+    }, { spaces: 2 });
+  }
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: packages,
+    generatedAt: "2026-06-25T16:30:00.000Z",
+  });
+
+  assert.equal(report.summary.blocked_count, 0, JSON.stringify(report, null, 2));
+  assert.equal(report.summary.changed_count, cases.length, JSON.stringify(report, null, 2));
+  for (const item of cases) {
+    const artifactDir = path.join(root, "batch", item.storyId);
+    const manifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+    const scorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+    if (item.expectedTitle) assert.match(manifest.selected_title, item.expectedTitle);
+    if (item.expectedThumbnail) assert.match(manifest.thumbnail_headline, item.expectedThumbnail);
+    assert.match(manifest.narration_script, item.expectedScript);
+    assert.doesNotMatch(manifest.narration_script, item.forbiddenScript);
+    assert.deepEqual(scorecard.blockers, []);
+    assert.ok(scorecard.viral_score >= 75, JSON.stringify(scorecard, null, 2));
+  }
+});
+
 test("public copy package repair gives leak and deal scripts recognised curiosity markers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-curiosity-classes-"));
   const cases = [

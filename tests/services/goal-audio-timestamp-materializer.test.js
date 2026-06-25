@@ -3742,6 +3742,62 @@ test("goal audio materializer repairs zero-duration local Whisper words before c
   );
 });
 
+test("normaliseTimestampFile writes display-safe caption tokens for spoken platform, year and GTA expansions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-caption-display-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "PlayStation", start: 0, end: 0.42 },
+      { word: "five", start: 0.43, end: 0.68 },
+      { word: "gets", start: 0.7, end: 0.9 },
+      { word: "a", start: 0.91, end: 1.0 },
+      { word: "June", start: 1.02, end: 1.2 },
+      { word: "twenty", start: 1.21, end: 1.48 },
+      { word: "twenty", start: 1.49, end: 1.76 },
+      { word: "six", start: 1.77, end: 2.0 },
+      { word: "G", start: 2.1, end: 2.18 },
+      { word: "T", start: 2.19, end: 2.27 },
+      { word: "A", start: 2.28, end: 2.36 },
+      { word: "six", start: 2.37, end: 2.6 },
+      { word: "cover.", start: 2.61, end: 2.9 },
+    ],
+    meta: {
+      wordTimestampSource: "local_alignment_normalised",
+      timestampWhisperAlignment: {
+        repaired: true,
+        strategy: "local_whisper_word_alignment",
+      },
+    },
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-06-25T16:00:00.000Z",
+    text: "PS5 gets a June 2026 GTA VI cover.",
+    spokenText: "PlayStation five gets a June twenty twenty six G T A six cover.",
+    provider: "local",
+    alignmentMode: "off",
+  });
+
+  const timestamps = await fs.readJson(timestampPath);
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+  const display = timestamps.words.map((word) => word.word).join(" ");
+  assert.equal(display, "PS5 gets a June 2026 GTA VI cover.");
+  assert.equal(timestamps.words[0].start, 0);
+  assert.equal(timestamps.words[0].end, 0.68);
+  assert.equal(timestamps.words[4].word, "2026");
+  assert.equal(timestamps.words[4].start, 1.21);
+  assert.equal(timestamps.words[4].end, 2);
+  assert.equal(timestamps.words[5].word, "GTA VI");
+  assert.equal(timestamps.words[5].start, 2.1);
+  assert.equal(timestamps.words[5].end, 2.6);
+  assert.equal(timestamps.meta.timestampDisplayTextRepair.repaired, true);
+  assert.deepEqual(timestamps.meta.timestampDisplayTextRepair.replacements, [
+    "PlayStation five->PS5",
+    "twenty twenty six->2026",
+    "G T A six->GTA VI",
+  ]);
+});
+
 test("normaliseTimestampFile does not clamp long aligned words to stale segment duration metadata", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-stale-duration-"));
   const timestampPath = path.join(root, "timestamps.json");

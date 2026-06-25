@@ -1852,6 +1852,86 @@ test("render input work order keeps readable-card repair when ready flag conflic
   assert.equal(readableAction.evidence.missing_duration_card_count, 1);
 });
 
+test("render input work order clears stale fast-card estimates when current owned HyperFrames clips are readable", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-current-readable-hf-"));
+  const artifactDir = path.join(root, "goal-proof", "batch", "current-readable-card-story");
+  await fs.ensureDir(artifactDir);
+  const clips = [];
+  for (const kind of ["title", "source", "proof", "takeaway"]) {
+    const clipPath = path.join(artifactDir, `${kind}.mp4`);
+    await fs.writeFile(clipPath, "fake mp4");
+    clips.push({
+      id: `owned-${kind}`,
+      path: clipPath,
+      source_kind: "owned_source_card_explainer_motion",
+      owned_explainer_visual_plan: true,
+      hyperframes_card: true,
+      readable_card_kind: kind,
+      durationS: 10.5,
+      minimum_readable_duration_s: 10.5,
+    });
+  }
+  await fs.writeJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: clips,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T21:09:30.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "current-readable-card-story",
+          title: "Halo Campaign Evolved Has A Repaired Proof Card",
+          artifact_dir: artifactDir,
+          render_input_blockers: [
+            "visual_evidence:generated_only_motion_deck",
+            "visual_evidence:no_real_visual_media_asset",
+          ],
+          render_input_evidence: {
+            readable_hyperframes_ready: true,
+            readable_hyperframes_clip_count: 39,
+            readable_hyperframes_too_fast_count: 0,
+            minimum_readable_card_duration_s: 10.5,
+            hyperframes_effective_too_fast_card_shots: [
+              {
+                id: "source_lock",
+                kind: "source_lock",
+                duration_s: 6.5,
+                minimum_required_duration_s: 10.5,
+              },
+            ],
+            hyperframes_missing_duration_card_clips: [
+              {
+                id: "stale_hyperframes_card",
+                duration_s: null,
+                minimum_required_duration_s: 10.5,
+              },
+            ],
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-06-24T21:09:45.000Z",
+  });
+
+  const job = workOrder.jobs[0];
+  assert.equal(job.evidence.readable_hyperframes_ready, true);
+  assert.equal(job.evidence.readable_hyperframes_evidence_source, "current_owned_motion_manifest");
+  assert.equal(job.evidence.readable_hyperframes_clip_count, 4);
+  assert.equal(job.evidence.readable_hyperframes_too_fast_count, 0);
+  assert.deepEqual(job.evidence.hyperframes_effective_too_fast_card_shots, []);
+  assert.deepEqual(job.evidence.hyperframes_too_fast_card_shots, []);
+  assert.deepEqual(job.evidence.hyperframes_too_fast_card_clips, []);
+  assert.deepEqual(job.evidence.hyperframes_missing_duration_card_clips, []);
+  assert.deepEqual(job.evidence.rendered_too_fast_card_windows, []);
+  assert.equal(job.blockers.includes("hyperframes_readable_dwell_repair_required"), false);
+  assert.equal(
+    job.actions.some((action) => action.repair_lane === "readable_hyperframes_card_motion_rematerialisation"),
+    false,
+  );
+});
+
 test("render input work order rematerialises repeated HyperFrames card families", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {
@@ -2575,6 +2655,66 @@ test("render input work order blocks auto motion repair when public copy is a de
   assert.equal(workOrder.summary.operator_required_jobs, 1);
 });
 
+test("render input work order clears stale public-copy repair blockers when the current manifest passes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-stale-public-copy-blocker-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "stale-public-copy-blocker",
+    canonical_subject: "Pragmata",
+    canonical_game: "Pragmata",
+    selected_title: "Pragmata Has A Character Trust Problem",
+    thumbnail_headline: "TRUST PROBLEM",
+    first_spoken_line: "Pragmata's strangest detail is not the robot suit.",
+    narration_script:
+      "Pragmata's strangest detail is not the robot suit. Eurogamer says Capcom is building the story around Diana, a companion players have to trust before the world makes sense.",
+    description:
+      "Pragmata has a sharper hook now: can Diana turn mystery into trust before the puzzle-action pitch loses people?",
+    primary_source: "Eurogamer",
+    source_card_label: "Eurogamer",
+    primary_source_url: "https://www.eurogamer.net/pragmata-preview",
+    confirmed_claims: [
+      "Eurogamer previewed Pragmata and described Diana as central to the game's story.",
+    ],
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-05-25T10:00:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "stale-public-copy-blocker",
+          title: "Old Placeholder Title",
+          artifact_dir: artifactDir,
+          render_input_blockers: [
+            "public_copy_repair_required",
+            "public_output_coherence_mismatch",
+            "visual_evidence:generated_only_motion_deck",
+          ],
+          render_input_evidence: {
+            public_copy_qa: {
+              verdict: "fail",
+              failures: ["public_copy:formulaic_public_narration"],
+            },
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-05-25T10:01:00.000Z",
+  });
+
+  const job = workOrder.jobs[0];
+  assert.equal(job.title, "Old Placeholder Title");
+  assert.equal(job.evidence.public_copy_qa.verdict, "pass");
+  assert.equal(job.evidence.public_copy_repair_evidence_source, "current_canonical_story_manifest");
+  assert.equal(job.blockers.includes("public_copy_repair_required"), false);
+  assert.equal(job.blockers.includes("public_output_coherence_mismatch"), false);
+  assert.equal(
+    job.actions.some((action) => action.action_id === "repair_public_output_coherence"),
+    false,
+  );
+});
+
 test("render input work order includes cutover-blocked public-copy stories in the repair backlog", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {
@@ -2891,6 +3031,78 @@ test("render input work order routes strict dry-run script and sound benchmark b
   assert.equal(soundJob.actions[0].repair_lane, "sound_visual_benchmark_repair");
   assert.match(soundJob.actions[0].recommended_command, /ops:goal-sfx-evidence-repair/);
   assert.match(soundJob.actions[0].post_repair_validation_command, /ops:goal10-gold-standard-forensics/);
+});
+
+test("render input work order reads package script scorecards and routes weak scripts to rewrite repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-script-score-"));
+  const artifactDir = path.join(root, "batch", "weak-script-scorecard");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "weak-script-scorecard",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_game: "Halo: Campaign Evolved",
+    selected_title: "Halo Campaign Evolved Needs One Proof Point",
+    first_spoken_line: "Halo: Campaign Evolved still needs one cleaner proof point.",
+    primary_source: "Xbox",
+    confirmed_claims: [
+      "Xbox showed Halo: Campaign Evolved during its latest showcase.",
+    ],
+    narration_script:
+      "Halo: Campaign Evolved still needs one cleaner proof point. Xbox showed Halo: Campaign Evolved during its latest showcase. This story finally has something specific to judge, but the source-backed update needs more detail before players can decide. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "Halo: Campaign Evolved still needs one cleaner proof point. Xbox showed Halo: Campaign Evolved during its latest showcase. This story finally has something specific to judge, but the source-backed update needs more detail before players can decide. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Halo: Campaign Evolved still needs one cleaner proof point. Xbox showed Halo: Campaign Evolved during its latest showcase. This story finally has something specific to judge, but the source-backed update needs more detail before players can decide. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Xbox showed Halo: Campaign Evolved during its latest showcase. Source: Xbox.",
+    thumbnail_headline: "HALO CAMPAIGN EVOLVED",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    viral_score: 61,
+    blockers: ["missing_story_specific_payoff"],
+    warnings: ["no_curiosity_marker"],
+    scores: {
+      hook_strength: 64,
+      curiosity_gap: 42,
+      insight_density: 45,
+      source_safety: 86,
+      retention_pacing: 70,
+    },
+  }, { spaces: 2 });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-25T16:10:00.000Z",
+      queue: [
+        {
+          story_id: "weak-script-scorecard",
+          title: "Halo Campaign Evolved Needs One Proof Point",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          render_input_blockers: ["materialised_motion_clips_missing"],
+        },
+      ],
+    },
+    generatedAt: "2026-06-25T16:11:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.script_scorecard_repair_jobs, 1);
+  const job = workOrder.jobs.find((item) => item.story_id === "weak-script-scorecard");
+  assert.ok(job.blockers.includes("script_scorecard_repair_required"), JSON.stringify(job, null, 2));
+  assert.ok(job.actions.some((action) => action.action_id === "repair_script_scorecard"));
+  const scriptAction = job.actions.find((action) => action.action_id === "repair_script_scorecard");
+  assert.equal(scriptAction.repair_lane, "script_rewrite_and_audio_rerender");
+  assert.deepEqual(
+    job.evidence.script_scorecard_qa.failures,
+    [
+      "script_scorecard:missing_story_specific_payoff",
+      "script_scorecard:no_curiosity_marker",
+      "script_scorecard:script_score_below_threshold",
+      "script_scorecard:curiosity_gap_below_threshold",
+      "script_scorecard:script_verdict_rewrite_required",
+    ],
+  );
 });
 
 test("render input work order routes aggregate visual benchmark failures away from sound-only repair", () => {

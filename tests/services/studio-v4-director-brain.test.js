@@ -463,6 +463,64 @@ test("Visual V4 Director does not count timestamp windows from the same source v
   assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 2);
 });
 
+test("Visual V4 Director refuses extra windows from the same base source even when hashes differ", () => {
+  const baseSources = [
+    "url:https://example.com/granblue-trailer-a.mp4",
+    "url:https://example.com/granblue-trailer-b.mp4",
+    "url:https://example.com/granblue-steam-trailer-a.m3u8",
+    "url:https://example.com/granblue-steam-trailer-b.m3u8",
+  ];
+  const officialWindows = Array.from({ length: 8 }, (_, index) => {
+    const base = baseSources[index % baseSources.length];
+    return {
+      id: `granblue-distinct-window-${index + 1}`,
+      source_family: `granblue_distinct_window_${index + 1}`,
+      base_source_family: base,
+      path: `C:\\media\\granblue-distinct-window-${index + 1}.mp4`,
+      durationS: 2.8,
+      validated: true,
+    };
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "granblue-enough-base-sources",
+      title: "Granblue Fantasy Relink Has Enough Official Motion",
+      full_script:
+        "Granblue Fantasy Relink has official trailer windows from multiple source videos, so the edit can stay varied without looping the same clip.",
+    },
+    footagePlan: {
+      readiness: {
+        status: "ready",
+        blockers: [],
+      },
+      motion_budget: {
+        required_motion_scenes: 5,
+        available_motion_clips: officialWindows.length,
+        required_distinct_families: 4,
+        required_distinct_source_assets: 4,
+        available_distinct_motion_families: officialWindows.length,
+        available_distinct_source_assets: baseSources.length,
+        max_static_card_ratio: 0.22,
+        max_static_card_seconds: 12,
+        target_motion_ratio: 0.68,
+      },
+      motion_inventory: {
+        accepted_local_clips: officialWindows,
+      },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(plan.readiness.status, "director_blocked");
+  assert.ok(plan.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
+  assert.equal(motionShots.length, 4);
+  assert.equal(new Set(motionShots.map((shot) => shot.source_family)).size, 4);
+  assert.equal(new Set(motionShots.map((shot) => shot.base_source_family)).size, 4);
+});
+
 test("Visual V4 Director normalises compact Steam k metrics into chart numbers", () => {
   const footagePlan = buildFootageEmpirePlan({
     story: {

@@ -439,6 +439,62 @@ test("incident guard blocks final renders when SFX source evidence is unresolved
   assert.ok(report.disaster_upload_blockers.includes("sfx_source:local_bespoke_or_generated_only"));
 });
 
+test("incident guard blocks stale HyperFrames repeat guards with sub-readable card floors", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "stale-card-floor",
+    canonical_story_manifest: {
+      story_id: "stale-card-floor",
+      canonical_subject: "Halo Campaign Evolved",
+      canonical_game: "Halo Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Needs A Cleaner Reveal",
+      thumbnail_headline: "HALO REVEAL CATCH",
+      first_spoken_line: "Halo Campaign Evolved has a reveal problem Xbox needs to solve quickly.",
+      narration_script:
+        "Halo Campaign Evolved has a reveal problem Xbox needs to solve quickly. Xbox Wire shows the campaign idea clearly, but the player question is whether this remake proves enough beyond nostalgia.",
+      description:
+        "Halo Campaign Evolved has to prove it is more than nostalgia. Source: Xbox Wire.",
+      primary_source: { name: "Xbox Wire", url: "https://news.xbox.com/example" },
+      discovery_source: { name: "Xbox Wire", url: "https://news.xbox.com/example" },
+    },
+    render_manifest: {
+      final_publish_render: true,
+      renderer: "visual_v4_production",
+      visual_tier: "production_v4_motion",
+      ...currentRenderPolicyManifest(),
+      render_quality_class: "premium",
+      visual_count: 8,
+      repeat_guard: {
+        status: "pass",
+        min_card_duration_s: 4,
+      },
+    },
+    ...cleanVisualEvidence("Halo Campaign Evolved"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: { title: "Halo Campaign Evolved Needs A Cleaner Reveal" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(
+    report.disaster_upload_blockers.includes("incident:hyperframes_repeat_guard_card_floor_too_low"),
+  );
+});
+
 test("incident guard blocks environmental SFX assets even when a stale source plan says pass", () => {
   const report = evaluateIncidentGuard({
     story_id: "sfx-wrong-assets",

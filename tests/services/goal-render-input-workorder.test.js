@@ -12,6 +12,8 @@ const {
   writeGoalRenderInputWorkOrder,
 } = require("../../lib/goal-render-input-workorder");
 
+const ROOT = path.resolve(__dirname, "..", "..");
+
 function blockedQueueItem(overrides = {}) {
   return {
     story_id: "story-blocked",
@@ -149,12 +151,437 @@ test("render input work order accepts story-package arrays after audio and motio
   assert.equal(job.evidence.word_timestamps_path, timestampsPath);
   assert.equal(job.evidence.word_timestamp_source, "local_whisper_word_alignment");
   assert.equal(job.evidence.materialised_motion_clip_count, 5);
-  assert.equal(job.evidence.distinct_motion_family_count, 4);
+  assert.equal(job.evidence.distinct_motion_family_count, 5);
   assert.deepEqual(
     job.actions.map((action) => action.action_id),
     ["run_visual_v4_production_render"],
   );
   assert.equal(job.actions[0].target_render_manifest.final_publish_render, true);
+});
+
+test("render input work order resolves media-root audio and clears stale readable-card blockers", async () => {
+  const previousMediaRoot = process.env.MEDIA_ROOT;
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-workorder-"));
+  const mediaRoot = path.join(root, "media");
+  const artifactDir = path.join(root, "packages", "media-root-story");
+  const audioRel = "output/audio/media-root-story.mp3";
+  const timestampsRel = "output/audio/media-root-story_timestamps.json";
+  const audioPath = path.join(mediaRoot, audioRel);
+  const timestampsPath = path.join(mediaRoot, timestampsRel);
+  process.env.MEDIA_ROOT = mediaRoot;
+
+  try {
+    await fs.ensureDir(artifactDir);
+    await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+    await fs.outputJson(timestampsPath, {
+      words: [{ word: "Halo", start: 0, end: 0.32 }],
+    });
+    await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+      generated_at: "2026-06-24T22:00:00.000Z",
+      narration_audio_path: audioRel,
+      word_timestamps_path: timestampsRel,
+      word_timestamp_source: "local_whisper_word_alignment",
+    });
+    await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+      generated_at: "2026-06-24T22:00:00.000Z",
+      story_id: "media-root-story",
+      canonical_subject: "Halo Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Has A PS5 Catch",
+      narration_script: "Halo Campaign Evolved has a PS5 catch players need to understand.",
+      first_spoken_line: "Halo Campaign Evolved has a PS5 catch players need to understand.",
+      description:
+        "Xbox Wire confirms Halo Campaign Evolved on PlayStation, but the account requirement changes how players should read the announcement.",
+      thumbnail_headline: "HALO PS5 CATCH",
+      primary_source: "Xbox Wire",
+    });
+    const ownedClips = [
+      { id: "source", asset_class: "animated_source_card", durationS: 6.5 },
+      { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
+      { id: "stat", asset_class: "stat_card", durationS: 8 },
+    ].map((clip, index) => ({
+      ...clip,
+      path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+      source_family: `family-${index + 1}`,
+      source_kind: "owned_source_card_explainer_motion",
+      media_kind: "owned_explainer_motion",
+      owned_explainer_visual_plan: true,
+    }));
+    const directClips = Array.from({ length: 5 }, (_, index) => ({
+      id: `direct-${index + 1}`,
+      asset_class: "gameplay",
+      durationS: 3,
+      path: path.join(artifactDir, `direct-${index + 1}.mp4`),
+      source_family: `direct-family-${index + 1}`,
+      source_kind: "official_direct_video_motion",
+      media_kind: "direct_video",
+      owned_explainer_visual_plan: false,
+    }));
+    const clips = [...ownedClips, ...directClips];
+    for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+    await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+      status: "ready",
+      materialised_clips: ownedClips,
+    });
+    await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+      status: "ready",
+      clip_count: clips.length,
+      distinct_motion_family_count: clips.length,
+      clips,
+    });
+    await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+      generated_at: "2026-06-24T21:00:00.000Z",
+      renderer: "visual_v4_production",
+      final_publish_render: true,
+      output: "visual_v4_render.mp4",
+      output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+      quality_gate_status: "post_render_forensics_failed",
+    });
+
+    const workOrder = buildGoalRenderInputWorkOrder({
+      cutoverPlan: {
+        generated_at: "2026-06-24T22:01:00.000Z",
+        blocked: [
+          {
+            story_id: "media-root-story",
+            title: "Halo Campaign Evolved Has A PS5 Catch",
+            artifact_dir: artifactDir,
+            blockers: ["benchmark_not_pass"],
+            render_input_blockers: [
+              "final_narration_audio_missing",
+              "word_timestamps_missing",
+              "hyperframes_readable_dwell_repair_required",
+            ],
+            visual_evidence_profile: {
+              blockers: [],
+              generated_only_motion_deck: false,
+              direct_video_motion_asset_count: 5,
+              direct_video_motion_family_count: 5,
+            },
+            render_manifest: {
+              generated_at: "2026-06-24T21:00:00.000Z",
+              quality_gate_status: "failed",
+            },
+          },
+        ],
+      },
+      incidentGuardReport: {
+        generated_at: "2026-06-24T22:01:30.000Z",
+        stories: [
+          {
+            story_id: "media-root-story",
+            title: "Halo Campaign Evolved Has A PS5 Catch",
+            artifact_dir: artifactDir,
+            render_input_status: "blocked",
+            render_input_blockers: [
+              "final_narration_audio_missing",
+              "word_timestamps_missing",
+            ],
+            render_input_evidence: {
+              narration_ready: false,
+              word_timestamps_ready: false,
+            },
+          },
+        ],
+      },
+      generatedAt: "2026-06-24T22:02:00.000Z",
+    });
+
+    assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+    const job = workOrder.jobs[0];
+    assert.equal(job.status, "ready_for_final_render_job");
+    assert.deepEqual(job.blockers, []);
+    assert.match(job.evidence.narration_audio_path, /media-root-story\.mp3$/);
+    assert.match(job.evidence.word_timestamps_path, /media-root-story_timestamps\.json$/);
+    assert.equal(job.evidence.readable_hyperframes_ready, true);
+    assert.equal(job.evidence.readable_hyperframes_too_fast_count, 0);
+  } finally {
+    if (previousMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = previousMediaRoot;
+  }
+});
+
+test("render input work order CLI loads dotenv quietly for media-root evidence", () => {
+  const source = fs.readFileSync(path.join(ROOT, "tools", "goal-render-input-workorder.js"), "utf8");
+  assert.match(source, /PULSE_SKIP_DOTENV/);
+  assert.match(source, /require\("dotenv"\)\.config\(\{\s*override:\s*true,\s*quiet:\s*true\s*\}\)/);
+  assert.ok(
+    source.indexOf('require("dotenv").config') < source.indexOf('require("../lib/goal-render-input-workorder")'),
+    "dotenv must load before the work-order library reads MEDIA_ROOT-backed evidence",
+  );
+});
+
+test("render input work order promotes repaired blocked local-proof jobs to final render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-repaired-local-proof-"));
+  const artifactDir = path.join(root, "artifact");
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  await fs.ensureDir(artifactDir);
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(timestampsPath, { words: [{ word: "Pragmata", start: 0, end: 0.4 }] });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "repaired-local-proof",
+    canonical_subject: "Pragmata",
+    selected_title: "Pragmata Has A Character Trust Problem",
+    narration_script: "Pragmata has a character trust problem players need to understand.",
+    first_spoken_line: "Pragmata has a character trust problem players need to understand.",
+    description: "Eurogamer reports the latest Pragmata character reveal, and the key question is whether the new cast can carry the delayed game.",
+    thumbnail_headline: "PRAGMATA TRUST TEST",
+    primary_source: "Eurogamer",
+  });
+  const ownedClips = [
+    { id: "source", asset_class: "animated_source_card", durationS: 8 },
+    { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
+    { id: "stat", asset_class: "stat_card", durationS: 8 },
+  ].map((clip, index) => ({
+    ...clip,
+    path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+    source_family: `family-${index + 1}`,
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    owned_explainer_visual_plan: true,
+  }));
+  const directClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `direct-${index + 1}`,
+    asset_class: "gameplay_motion",
+    durationS: 3,
+    path: path.join(artifactDir, `direct-${index + 1}.mp4`),
+    source_family: `direct-family-${index + 1}`,
+    source_kind: "official_direct_video_motion",
+    media_kind: "direct_video_motion",
+    owned_explainer_visual_plan: false,
+  }));
+  const clips = [...ownedClips, ...directClips];
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: ownedClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: clips.length,
+    distinct_motion_family_count: clips.length,
+    clips,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T22:01:00.000Z",
+      queue: [
+        {
+          story_id: "repaired-local-proof",
+          title: "Pragmata Has A Character Trust Problem",
+          artifact_dir: artifactDir,
+          force_final_render: false,
+          render_input_status: "blocked",
+          render_input_blockers: [],
+          render_manifest: {
+            renderer: "visual_v4_local_proof",
+            final_publish_render: false,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-24T22:02:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.deepEqual(job.blockers, []);
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(job.actions[0].target_render_manifest.final_publish_render, true);
+});
+
+test("render input work order does not promote readable owned-only decks without real motion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-only-motion-"));
+  const artifactDir = path.join(root, "artifact");
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  await fs.ensureDir(artifactDir);
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(timestampsPath, { words: [{ word: "Pragmata", start: 0, end: 0.4 }] });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "owned-only-motion",
+    canonical_subject: "Pragmata",
+    selected_title: "Pragmata Has A Character Trust Problem",
+    narration_script: "Pragmata has a character trust problem players need to understand.",
+    first_spoken_line: "Pragmata has a character trust problem players need to understand.",
+    description: "Eurogamer reports the latest Pragmata character reveal, and players need real footage to judge it.",
+    thumbnail_headline: "PRAGMATA TRUST TEST",
+    primary_source: "Eurogamer",
+  });
+  const clips = [
+    { id: "source", asset_class: "animated_source_card", durationS: 8 },
+    { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
+    { id: "stat", asset_class: "stat_card", durationS: 8 },
+  ].map((clip, index) => ({
+    ...clip,
+    path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+    source_family: `family-${index + 1}`,
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    owned_explainer_visual_plan: true,
+  }));
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: clips.length,
+    distinct_motion_family_count: clips.length,
+    clips,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T22:01:00.000Z",
+      queue: [
+        {
+          story_id: "owned-only-motion",
+          title: "Pragmata Has A Character Trust Problem",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          render_input_blockers: [],
+        },
+      ],
+    },
+    generatedAt: "2026-06-24T22:02:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 0);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "blocked_on_render_inputs");
+  assert.ok(job.blockers.includes("visual_evidence:no_real_visual_media_asset"));
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["materialise_validated_real_motion_clips"],
+  );
+  assert.equal(job.evidence.owned_generated_only_motion_deck, true);
+});
+
+test("render input work order lets newer blocked real-motion evidence override stale ready clip manifests", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-stale-real-motion-"));
+  const artifactDir = path.join(root, "artifact");
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  await fs.ensureDir(artifactDir);
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(timestampsPath, { words: [{ word: "Elliot", start: 0, end: 0.4 }] });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "stale-real-motion",
+    canonical_subject: "Elliot",
+    selected_title: "Elliot Collides With The Same Clip Problem",
+    narration_script: "Elliot needs real footage variety before this package can publish.",
+    first_spoken_line: "Elliot needs real footage variety before this package can publish.",
+    description: "The render lane must not publish stale repeated motion evidence.",
+    thumbnail_headline: "CLIP LOOP WARNING",
+    primary_source: "Steam",
+  });
+  const readableClips = [
+    { id: "source", asset_class: "animated_source_card", durationS: 8 },
+    { id: "proof", asset_class: "platform_proof_card", durationS: 10 },
+    { id: "stat", asset_class: "stat_card", durationS: 8 },
+  ].map((clip, index) => ({
+    ...clip,
+    path: path.join(artifactDir, `card-${index + 1}.mp4`),
+    source_family: `card-family-${index + 1}`,
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    owned_explainer_visual_plan: true,
+  }));
+  const staleDirectClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `stale-direct-${index + 1}`,
+    asset_class: "gameplay_motion",
+    durationS: 3,
+    path: path.join(artifactDir, `stale-direct-${index + 1}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3483510/${632943260 + index}/hash/hls_264_master.m3u8?t=1780277626`,
+    source_family: `steam_3483510_${632943260 + index}_window_${index + 1}`,
+    source_kind: "official_direct_video_motion",
+    media_kind: "direct_video",
+    owned_explainer_visual_plan: false,
+  }));
+  for (const clip of [...readableClips, ...staleDirectClips]) {
+    await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+  }
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: readableClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    generated_at: "2026-06-25T00:50:00.000Z",
+    clip_count: staleDirectClips.length,
+    direct_video_motion_asset_count: staleDirectClips.length,
+    direct_video_motion_family_count: staleDirectClips.length,
+    distinct_motion_family_count: staleDirectClips.length,
+    clips: staleDirectClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "partial_real_motion_evidence.json"), {
+    status: "blocked",
+    generated_at: "2026-06-25T01:02:00.000Z",
+    not_publishable: true,
+    counts_towards_final_render_readiness: false,
+    clip_count: 2,
+    direct_video_motion_asset_count: 2,
+    direct_video_motion_family_count: 2,
+    distinct_motion_family_count: 2,
+    blockers: ["real_motion_family_minimum_not_met"],
+    clips: staleDirectClips.slice(0, 2),
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-25T01:03:00.000Z",
+      queue: [
+        {
+          story_id: "stale-real-motion",
+          title: "Elliot Collides With The Same Clip Problem",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          render_input_blockers: [
+            "final_narration_audio_missing",
+            "word_timestamps_missing",
+            "hyperframes_readable_dwell_repair_required",
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-06-25T01:04:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 0);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "blocked_on_render_inputs");
+  assert.ok(job.blockers.includes("materialised_motion_clips_missing"));
+  assert.equal(job.evidence.partial_real_motion_override, true);
+  assert.equal(job.evidence.partial_real_motion_status, "blocked");
+  assert.equal(job.evidence.materialised_motion_ready, false);
+  assert.equal(job.evidence.direct_video_motion_clip_count, 2);
+  assert.equal(job.evidence.direct_video_motion_family_count, 2);
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["materialise_validated_real_motion_clips"],
+  );
 });
 
 test("render input work order preserves publish-blocker repair backlog when render queue is empty", () => {

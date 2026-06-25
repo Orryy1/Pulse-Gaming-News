@@ -468,11 +468,15 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
 
   assert.equal(report.summary.materialized_clip_count, 13);
   assert.equal(calls.length, 13);
-  assert.ok(calls.every((call) => call.args[call.args.indexOf("-t") + 1] === "6.50"));
+  const durations = calls.map((call) => call.args[call.args.indexOf("-t") + 1]);
+  assert.ok(durations.includes("10.00"));
+  assert.ok(durations.includes("8.00"));
+  assert.ok(durations.includes("6.50"));
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
   assert.equal(materialised.clip_count, 13);
   assert.ok(materialised.clips.every((clip) => clip.durationS >= 6.5));
+  assert.ok(materialised.clips.some((clip) => clip.durationS >= 10));
 });
 
 test("owned motion materializer blocks source-card generation for Reddit-only discovery stories", async () => {

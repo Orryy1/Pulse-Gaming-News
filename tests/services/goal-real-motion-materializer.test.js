@@ -1626,6 +1626,101 @@ test("real motion materializer blocks repeated windows from one direct video sou
   assert.equal(partial.clips[0].provenance?.base_source_family, partial.clips[0].base_source_family);
 });
 
+test("real motion materializer treats Steam HLS and DASH variants from one trailer as one source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-steam-variant-families-"));
+  const storyId = "steam-variant-family";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const base =
+    "https://video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626";
+  const urls = [
+    `${base}/hls_264_master.m3u8?t=1781798240`,
+    `${base}/dash_av1.mpd?t=1781798240`,
+    `${base}/dash_h264.mpd?t=1781798240`,
+    `${base}/hls_264_master.m3u8?t=1781798240`,
+    `${base}/dash_av1.mpd?t=1781798240`,
+  ];
+  const segmentValidationReport = {
+    segments: urls.map((sourceUrl, index) => ({
+      story_id: storyId,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      validation_reason: "segment_samples_passed",
+      segment_motion_class: "gameplay_action",
+      action_score: 88,
+      source_url: sourceUrl,
+      source_type: "official_platform_product_page",
+      source_url_kind: sourceUrl.includes("hls_") ? "hls_manifest" : "dash_manifest",
+      provider: "licensed_direct_media_acquisition",
+      entity: "The Adventures Of Elliot",
+      source_family: `steam_3483510_elliot_variant_${index + 1}`,
+      media_start_s: 36 + index * 6,
+      duration_s: 5,
+      source_duration_s: 130,
+      rights_risk_class: "official_direct_media",
+      allowed_render_use: "official_direct_media_segment_candidate",
+      provenance: {
+        source: "official_trailer_segment_validator",
+      },
+    })),
+  };
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["visual_evidence:direct_video_motion_missing"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["visual_evidence:direct_video_motion_missing"],
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    generatedAt: "2026-06-25T01:05:00.000Z",
+    maxClips: 5,
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].materialized_count, 1);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
+
+  const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
+  assert.equal(partial.direct_video_motion_family_count, 1);
+  assert.match(
+    partial.clips[0].base_source_family,
+    /^steamstatic:\/store_trailers\/3483510\/632943268\/ab5efa5d538a2c90f09927047b2df6199cf5e9d6\/1780277626$/,
+  );
+});
+
 test("real motion materializer reconciles stale owned-motion distinct family budgets after real media repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-budget-reconcile-"));
   const storyId = "pokemon-budget-reconcile";

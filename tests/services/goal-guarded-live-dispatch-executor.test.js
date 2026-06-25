@@ -1581,7 +1581,7 @@ test("guarded live dispatch executor hydrates canonical claim evidence before pu
     canonical_title: "Halo: Campaign Evolved Shows The Real Remake Test",
     primary_source: "Xbox Wire",
     primary_source_url: "https://news.xbox.com/en-us/2026/06/10/halo-campaign-evolved-hands-on-demo-2/",
-    source_published_at: "2026-06-18T00:00:00.000Z",
+    source_published_at: "2026-06-24T00:00:00.000Z",
     narration_script:
       "Halo Campaign Evolved's remake debate finally has a real stress test. Xbox Wire says Halo Studios showed Assault on the Control Room hands-on. The remake launches July 28, with early access July 23 for Premium Edition owners. Follow Pulse Gaming so you never miss a beat.",
     full_script:

@@ -36,8 +36,8 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
-const MIN_OVERLAY_CARD_DURATION_S = 6.5;
-const MAX_OVERLAY_CARD_DURATION_S = 10;
+const MIN_OVERLAY_CARD_DURATION_S = 8.5;
+const MAX_OVERLAY_CARD_DURATION_S = 12;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
@@ -666,7 +666,9 @@ function sceneClipMinimumReadableDurationS(clip = {}) {
       sidecar?.minimum_readable_duration_s ??
       sidecar?.minimum_visible_duration_s,
   );
-  return Number.isFinite(duration) && duration > 0 ? Number(duration.toFixed(2)) : null;
+  return Number.isFinite(duration) && duration > 0
+    ? Number(Math.max(MIN_OVERLAY_CARD_DURATION_S, duration).toFixed(2))
+    : null;
 }
 
 function sceneClipReadableCardKind(clip = {}) {
@@ -886,6 +888,9 @@ function buildClipScenePlan({
   }
   if (repeatFree && coveredDurationS + 0.12 < duration) {
     blockers.push("approved_scene_duration_below_audio_duration");
+  }
+  if (repeatFree && coveredDurationS - 0.12 > duration) {
+    blockers.push("approved_scene_duration_exceeds_audio_duration");
   }
   const transitionOffsets = sceneEntries.slice(1).map((_, index) => {
     const scenesBeforeTransition = sceneEntries.slice(0, index + 1);
@@ -1343,12 +1348,12 @@ function readableOverlayCardDurationS(value = "", { minS = MIN_OVERLAY_CARD_DURA
   const text = firstText(value);
   if (!text) return minS;
   const words = text.split(/\s+/).filter(Boolean).length;
-  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(text) ? 0.5 : 0;
-  const computed = Math.max(minS, 0.85 * words + 1 + longTokenPenalty);
+  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(text) ? 0.7 : 0;
+  const computed = Math.max(minS, 0.95 * words + 1.4 + longTokenPenalty);
   return Number(
     Math.min(
       MAX_OVERLAY_CARD_DURATION_S,
-      Math.ceil(Math.max(computed, 1.05 * words + 1.2 + longTokenPenalty) * 10) / 10,
+      Math.ceil(Math.max(computed, 1.15 * words + 1.5 + longTokenPenalty) * 10) / 10,
     ).toFixed(1),
   );
 }

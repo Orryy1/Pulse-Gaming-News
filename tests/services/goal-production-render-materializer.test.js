@@ -400,8 +400,8 @@ test("goal production render materializer preserves nested actual card-visible w
       kind: "source",
       text: "XBOX WIRE",
       start_s: 12,
-      end_s: 15.2,
-      duration_s: 3.2,
+      end_s: 22.5,
+      duration_s: 10.5,
       minimum_readable_duration_s: 10.5,
       source: "visual_v4_scene_plan",
     },
@@ -425,7 +425,7 @@ test("goal production render materializer preserves nested actual card-visible w
           card_visible_windows: actualWindows,
           scenes: [
             { index: 0, path: "direct-a.mp4", baseSourceKey: "direct_a", durationS: 5 },
-            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 3.2 },
+            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 10.5 },
           ],
         },
       };
@@ -436,6 +436,53 @@ test("goal production render materializer preserves nested actual card-visible w
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.deepEqual(manifest.card_visible_windows, actualWindows);
   assert.notDeepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
+});
+
+test("goal production render materializer rejects repeated clips and too-fast card windows from renderer reports", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-repeat-card-reject-"));
+  const artifactDir = await makePackage(root, "story-repeat-card-reject");
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-repeat-card-reject", artifactDir)] },
+    generatedAt: "2026-06-25T16:20:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: "story-repeat-card-reject",
+        output,
+        clips: 6,
+        rendered_duration_s: 42,
+        size_bytes: 4096,
+        clip_scene_plan: {
+          repeat_free: true,
+          blockers: ["readable_card_kind_repeated"],
+          repeated_base_sources: [{ key: "official_trailer_a", count: 3 }],
+          repeated_readable_card_kinds: [{ kind: "proof", count: 2 }],
+          card_visible_windows: [
+            {
+              id: "scene_2_proof",
+              kind: "proof",
+              text: "SOURCE LOCKED",
+              start_s: 5,
+              end_s: 8.2,
+              duration_s: 3.2,
+              minimum_readable_duration_s: 10.5,
+              source: "visual_v4_scene_plan",
+            },
+          ],
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.match(report.jobs[0].error, /production_render_visual_cadence_blocked/);
+  assert.match(report.jobs[0].error, /direct_motion_base_source_repeated/);
+  assert.match(report.jobs[0].error, /readable_card_kind_repeated/);
+  assert.match(report.jobs[0].error, /card_visible_window_below_readable_floor/);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "render_manifest.json")), false);
 });
 
 test("goal production render materializer feeds passing HyperFrames shell cards into the V4 render story", async () => {

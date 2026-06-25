@@ -1720,6 +1720,185 @@ test("render input work order routes too-fast HyperFrames cards through readable
   assert.equal(action.evidence.too_fast_card_count, 1);
 });
 
+test("render input work order derives readable-card repair from dry-run file evidence", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T21:05:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-06-24T21:06:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "actual-fast-card-story",
+          title: "GTA VI Cover Art Has A Preorder Trap",
+          artifact_dir: "C:/repo/output/goal-proof/batch/actual-fast-card-story",
+          blockers: ["visual_evidence:generated_only_motion_deck"],
+          incident_guard: {
+            evidence: {
+              file_evidence: {
+                minimum_readable_card_duration_s: 10.5,
+                rendered_too_fast_card_windows: [
+                  {
+                    id: "scene_3_proof",
+                    kind: "proof",
+                    duration_s: 7.2,
+                    minimum_required_duration_s: 10.5,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-24T21:07:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.owned_motion_materialisation_jobs, 1);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 1);
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.action_id, "materialise_owned_generated_motion_clips");
+  assert.equal(action.repair_lane, "readable_hyperframes_card_motion_rematerialisation");
+  assert.deepEqual(action.reason_codes, ["hyperframes_readable_dwell_repair_required"]);
+  assert.equal(action.evidence.too_fast_card_count, 1);
+});
+
+test("render input work order derives readable-card repair from queued render evidence", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T21:08:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "queued-fast-card-story",
+          title: "Sea Of Thieves Has A Clip Loop Problem",
+          render_input_blockers: [
+            "visual_evidence:generated_only_motion_deck",
+            "visual_evidence:no_real_visual_media_asset",
+          ],
+          render_input_evidence: {
+            minimum_readable_card_duration_s: 10.5,
+            rendered_too_fast_card_windows: [
+              {
+                id: "scene_2_quote",
+                kind: "quote",
+                duration_s: 7.74,
+                minimum_required_duration_s: 10.5,
+              },
+            ],
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-06-24T21:09:00.000Z",
+  });
+
+  const lanes = workOrder.jobs[0].actions.map((action) => action.repair_lane);
+  assert.ok(lanes.includes("validated_real_motion_materialisation"));
+  assert.ok(lanes.includes("readable_hyperframes_card_motion_rematerialisation"));
+  assert.equal(workOrder.summary.owned_motion_materialisation_jobs, 1);
+  const readableAction = workOrder.jobs[0].actions.find(
+    (action) => action.repair_lane === "readable_hyperframes_card_motion_rematerialisation",
+  );
+  assert.equal(readableAction.evidence.too_fast_card_count, 1);
+});
+
+test("render input work order keeps readable-card repair when ready flag conflicts with effective fast-card evidence", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T21:09:30.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "conflicting-readable-card-story",
+          title: "Halo Campaign Evolved Has A Proof Card Problem",
+          render_input_blockers: [
+            "visual_evidence:generated_only_motion_deck",
+            "visual_evidence:no_real_visual_media_asset",
+          ],
+          render_input_evidence: {
+            readable_hyperframes_ready: true,
+            readable_hyperframes_clip_count: 39,
+            readable_hyperframes_too_fast_count: 0,
+            minimum_readable_card_duration_s: 10.5,
+            hyperframes_effective_too_fast_card_shots: [
+              {
+                id: "source_lock",
+                kind: "source_lock",
+                duration_s: 6.5,
+                minimum_required_duration_s: 10.5,
+              },
+            ],
+            hyperframes_missing_duration_card_clips: [
+              {
+                id: "hyperframes_card",
+                duration_s: null,
+                minimum_required_duration_s: 10.5,
+              },
+            ],
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-06-24T21:09:45.000Z",
+  });
+
+  const lanes = workOrder.jobs[0].actions.map((action) => action.repair_lane);
+  assert.ok(lanes.includes("readable_hyperframes_card_motion_rematerialisation"));
+  const readableAction = workOrder.jobs[0].actions.find(
+    (action) => action.repair_lane === "readable_hyperframes_card_motion_rematerialisation",
+  );
+  assert.equal(readableAction.evidence.too_fast_card_count, 1);
+  assert.equal(readableAction.evidence.missing_duration_card_count, 1);
+});
+
+test("render input work order rematerialises repeated HyperFrames card families", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-24T21:09:50.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-06-24T21:09:55.000Z",
+      blocked_stories: [
+        {
+          story_id: "repeated-card-family-story",
+          title: "GTA VI Cover Art Has A Reveal Trap",
+          artifact_dir: "C:/repo/output/goal-proof/batch/repeated-card-family-story",
+          blockers: [
+            "hyperframes:repeated_card_family",
+            "visual_evidence:repeated_card_family",
+          ],
+          incident_guard: {
+            evidence: {
+              file_evidence: {
+                readable_hyperframes_ready: true,
+                readable_hyperframes_clip_count: 8,
+                readable_hyperframes_too_fast_count: 0,
+                hyperframes_repeated_card_families: [
+                  { kind: "proof", count: 3 },
+                  { kind: "source", count: 2 },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-24T21:10:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.owned_motion_materialisation_jobs, 1);
+  assert.equal(workOrder.summary.auto_repairable_jobs, 1);
+  const action = workOrder.jobs[0].actions[0];
+  assert.equal(action.action_id, "materialise_owned_generated_motion_clips");
+  assert.equal(action.repair_lane, "readable_hyperframes_card_motion_rematerialisation");
+  assert.deepEqual(action.reason_codes, ["hyperframes_card_family_repair_required"]);
+  assert.equal(action.evidence.repeated_card_family_count, 2);
+  assert.match(action.exact_missing_input, /non-repeating/i);
+});
+
 test("render input work order routes repeated direct motion through distinct source replacement", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

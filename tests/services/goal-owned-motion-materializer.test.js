@@ -474,6 +474,16 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
   assert.equal(materialised.status, "ready");
   assert.equal(materialised.clip_count, 13);
   assert.ok(materialised.clips.every((clip) => clip.durationS >= 10.5));
+  const readableCards = materialised.clips.filter((clip) => clip.readable_card_kind);
+  assert.ok(readableCards.length >= 8);
+  assert.ok(readableCards.every((clip) => clip.minimum_readable_duration_s >= 10.5));
+  assert.deepEqual(
+    readableCards.filter((clip) => clip.readable_card_kind === "source").map((clip) => clip.readable_text),
+    ["Xbox Wire"],
+  );
+  const sourceSidecar = await fs.readJson(`${readableCards.find((clip) => clip.readable_card_kind === "source").path}.json`);
+  assert.equal(sourceSidecar.card_kind, "source");
+  assert.equal(sourceSidecar.minimum_readable_duration_s, 10.5);
 });
 
 test("owned motion materializer blocks source-card generation for Reddit-only discovery stories", async () => {

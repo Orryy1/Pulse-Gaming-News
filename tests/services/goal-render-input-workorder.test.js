@@ -3730,6 +3730,11 @@ test("render input work order routes commercial disclosure incidents to disclosu
     workOrder.jobs[0].actions.map((action) => action.action_id),
     ["repair_commercial_disclosure_evidence"],
   );
+  assert.match(
+    workOrder.jobs[0].actions[0].recommended_command,
+    /ops:goal-commercial-disclosure-repair -- --story-packages output\/goal-contract\/production_cutover_story_packages\.json --work-order output\/goal-contract\/render_input_work_order\.json/,
+  );
+  assert.doesNotMatch(workOrder.jobs[0].actions[0].recommended_command, /--story-id/);
   assert.ok(workOrder.jobs[0].blockers.includes("commercial_deal_disclosure_missing"));
 });
 

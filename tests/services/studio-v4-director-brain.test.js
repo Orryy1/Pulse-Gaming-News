@@ -463,6 +463,80 @@ test("Visual V4 Director does not count timestamp windows from the same source v
   assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 2);
 });
 
+test("Visual V4 Director treats generated segment variants from one V4 clip as one source asset", () => {
+  const segmentVariantClips = [
+    {
+      id: "story-segment-1",
+      source_family: "rss_story_v4_clip_1_segment_direct_motion_1_a1b2c3d4",
+      path: "C:\\media\\rss_story_v4_clip_1_segment_direct_motion_1_a1b2c3d4.mp4",
+      durationS: 2.8,
+      validated: true,
+    },
+    {
+      id: "story-segment-2",
+      source_family: "rss_story_v4_clip_1_segment_direct_motion_2_e5f6a7b8",
+      path: "C:\\media\\rss_story_v4_clip_1_segment_direct_motion_2_e5f6a7b8.mp4",
+      durationS: 2.8,
+      validated: true,
+    },
+    {
+      id: "story-segment-3",
+      source_family: "rss_story_v4_clip_1_segment_direct_motion_3_ffeeddcc",
+      path: "C:\\media\\rss_story_v4_clip_1_segment_direct_motion_3_ffeeddcc.mp4",
+      durationS: 2.8,
+      validated: true,
+    },
+    {
+      id: "story-alt-1",
+      source_family: "rss_story_v4_clip_2_segment_direct_motion_1_c9d0e1f2",
+      path: "C:\\media\\rss_story_v4_clip_2_segment_direct_motion_1_c9d0e1f2.mp4",
+      durationS: 2.8,
+      validated: true,
+    },
+  ];
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "generated-segment-repeat-risk",
+      title: "Generated Segment Variants Cannot Pad A Premium Edit",
+      full_script:
+        "A premium edit cannot repeat tiny windows from the same V4 clip and pretend the motion is fresh.",
+    },
+    footagePlan: {
+      readiness: {
+        status: "ready",
+        blockers: [],
+      },
+      motion_budget: {
+        required_motion_scenes: 4,
+        available_motion_clips: segmentVariantClips.length,
+        required_distinct_families: 4,
+        required_distinct_source_assets: 4,
+        available_distinct_motion_families: segmentVariantClips.length,
+        available_distinct_source_assets: segmentVariantClips.length,
+      },
+      motion_inventory: {
+        accepted_local_clips: segmentVariantClips,
+      },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(plan.readiness.status, "director_blocked");
+  assert.ok(plan.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
+  assert.ok(plan.readiness.blockers.includes("distinct_motion_families_minimum_not_met"));
+  assert.ok(plan.readiness.blockers.includes("distinct_motion_source_assets_minimum_not_met"));
+  assert.deepEqual(
+    motionShots.map((shot) => shot.base_source_family),
+    [
+      "rss_story_v4_clip_1",
+      "rss_story_v4_clip_2",
+    ],
+  );
+});
+
 test("Visual V4 Director refuses extra windows from the same base source even when hashes differ", () => {
   const baseSources = [
     "url:https://example.com/granblue-trailer-a.mp4",

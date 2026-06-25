@@ -227,6 +227,20 @@ async function addMotionEvidence(artifactDir, job, count = 7, prefix = "motion")
   return clipPaths;
 }
 
+function cleanRepeatFreeScenePlan() {
+  return {
+    repeatFree: true,
+    blockers: [],
+    repeatedBaseSources: [],
+    repeatedReadableCardKinds: [],
+    scenes: [
+      { path: "clip-1.mp4", durationS: 12, baseSourceKey: "clip_1" },
+      { path: "clip-2.mp4", durationS: 12, baseSourceKey: "clip_2" },
+    ],
+    cardVisibleWindows: [],
+  };
+}
+
 test("goal production render materializer renders ready jobs and writes a final production manifest", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-"));
   const artifactDir = await makePackage(root);
@@ -2171,7 +2185,11 @@ test("goal production render materializer skips an existing final production ren
     generatedAt: "2026-05-22T07:02:00.000Z",
     renderProof: async ({ output }) => {
       await fs.outputFile(output, Buffer.alloc(4096, 5));
-      return { clips: 2, rendered_duration_s: 24 };
+      return {
+        clips: 2,
+        rendered_duration_s: 24,
+        clip_scene_plan: cleanRepeatFreeScenePlan(),
+      };
     },
   });
   assert.equal(firstReport.summary.rendered_count, 1);
@@ -2187,6 +2205,44 @@ test("goal production render materializer skips an existing final production ren
 
   assert.equal(report.summary.skipped_existing_count, 1);
   assert.equal(report.jobs[0].status, "skipped_existing_final_render");
+});
+
+test("goal production render materializer rerenders existing final MP4s without current repeat and card cadence evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-no-cadence-evidence-"));
+  const artifactDir = await makePackage(root);
+  const job = readyJob("story-final", artifactDir);
+  const calls = [];
+
+  const firstReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-25T09:00:00.000Z",
+    renderProof: async ({ output }) => {
+      calls.push(output);
+      await fs.outputFile(output, Buffer.alloc(4096, 5));
+      return { clips: 2, rendered_duration_s: 24 };
+    },
+  });
+  assert.equal(firstReport.summary.rendered_count, 1);
+
+  const secondReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-25T09:01:00.000Z",
+    renderProof: async ({ output }) => {
+      calls.push(output);
+      await fs.outputFile(output, Buffer.alloc(4096, 6));
+      return {
+        clips: 2,
+        rendered_duration_s: 24,
+        clip_scene_plan: cleanRepeatFreeScenePlan(),
+      };
+    },
+  });
+
+  assert.equal(secondReport.summary.rendered_count, 1);
+  assert.equal(secondReport.summary.skipped_existing_count, 0);
+  assert.equal(calls.length, 2);
 });
 
 test("goal production render materializer stamps public-copy regeneration when render is fresh", async () => {
@@ -2209,7 +2265,7 @@ test("goal production render materializer stamps public-copy regeneration when r
     generatedAt: "2026-05-22T07:02:00.000Z",
     renderProof: async ({ output }) => {
       await fs.outputFile(output, Buffer.alloc(4096, 5));
-      return { clips: 2, rendered_duration_s: 42 };
+      return { clips: 2, rendered_duration_s: 42, clip_scene_plan: cleanRepeatFreeScenePlan() };
     },
   });
   const afterRender = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
@@ -2259,7 +2315,7 @@ test("goal production render materializer clears stale duration invalidation aft
     generatedAt: "2026-05-22T07:02:00.000Z",
     renderProof: async ({ output }) => {
       await fs.outputFile(output, Buffer.alloc(4096, 5));
-      return { clips: 2, rendered_duration_s: 42 };
+      return { clips: 2, rendered_duration_s: 42, clip_scene_plan: cleanRepeatFreeScenePlan() };
     },
   });
 

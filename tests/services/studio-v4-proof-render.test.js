@@ -178,6 +178,29 @@ test("Studio V4 proof renderer detects repeated base-source windows from string 
   );
 });
 
+test("Studio V4 proof renderer blocks generated direct-motion segment variants from the same source clip", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      "output/fresh-green-refill-20260619/goal-proof-batch/rss_story/rss_story_v4_clip_1_segment_direct_motion_1_a1b2c3d4.mp4",
+      "output/fresh-green-refill-20260619/goal-proof-batch/rss_story/rss_story_v4_clip_1_segment_direct_motion_2_e5f6a7b8.mp4",
+      "output/fresh-green-refill-20260619/goal-proof-batch/rss_story/rss_story_v4_clip_2_segment_direct_motion_1_c9d0e1f2.mp4",
+    ],
+    durationS: 18,
+    xfadeS: 0.25,
+  });
+
+  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+  assert.deepEqual(
+    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
+    [
+      {
+        key: "output/fresh-green-refill-20260619/goal-proof-batch/rss_story/rss_story_v4_clip_1",
+        count: 2,
+      },
+    ],
+  );
+});
+
 test("Studio V4 proof renderer uses materialized sidecars to detect repeated source windows", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-sidecar-repeat-"));
   try {
@@ -1637,7 +1660,7 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.match(source, /visual_design_policy_version:\s*STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION/);
   assert.equal(STUDIO_V4_SFX_MIX_POLICY_VERSION, "source_lock_news_tick_v6");
   assert.equal(STUDIO_V4_VOICE_MIX_POLICY_VERSION, "local_voice_levelled_v2");
-  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_repeat_free_readable_cards_v11");
+  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_repeat_free_readable_cards_v12");
 });
 
 test("Studio V4 overlay chain brightens the opening instead of globally darkening first frames", () => {

@@ -573,11 +573,19 @@ function normaliseSceneSourceKey(value = "") {
   return withoutQuery
     .replace(/\.(?:mp4|mov|webm|mkv|m3u8|mpd)$/i, "")
     .replace(
+      /([_/-]v4[_/-]clip[_/-]?\d+)[_/-]segment[_/-]direct[_/-]motion[_/-]?\d+(?:[_/-][a-f0-9]{6,})?$/i,
+      "$1",
+    )
+    .replace(
+      /[_/-]segment[_/-]direct[_/-]motion[_/-]?\d+(?:[_/-][a-f0-9]{6,})?$/i,
+      "",
+    )
+    .replace(
       /\/(?:hls(?:_[a-z0-9]+)*_master|hls(?:_[a-z0-9]+)*|dash(?:_[a-z0-9]+)*|movie(?:_max|\d+)?(?:_[a-z0-9]+)*)$/i,
       "",
     )
     .replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "")
-    .replace(/(?:[_/-]clip[_/-]?\d+)$/i, "")
+    .replace(/(?<!v4)(?:[_/-]clip[_/-]?\d+)$/i, "")
     .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "");
 }
 

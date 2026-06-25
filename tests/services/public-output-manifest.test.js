@@ -220,6 +220,37 @@ test("public output gate blocks thumbnail/title/script subject drift", () => {
   assert.ok(gate.failures.includes("public_output:thumbnail_missing_canonical_subject"));
 });
 
+test("public output gate treats GTA VI as Grand Theft Auto VI subject parity", () => {
+  const story = {
+    id: "gta-vi-alias",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    selected_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+    suggested_thumbnail_text: "GTA VI PREORDER TEST",
+    primary_source: "Rockstar Newswire",
+    source_card_label: "Rockstar Newswire",
+    full_script:
+      "GTA VI just made the buying argument real. Rockstar says pre-orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
+    manual_caption_generated: true,
+  };
+
+  const gate = runPublicOutputCoherenceGate({
+    story,
+    publicTitle: story.selected_title,
+    script: story.full_script,
+    thumbnailText: story.suggested_thumbnail_text,
+    sourceCardLabel: story.source_card_label,
+    captionFileExists: true,
+  });
+
+  assert.equal(gate.result, "pass");
+  assert.equal(
+    gate.failures.some((failure) => failure.includes("canonical_subject")),
+    false,
+  );
+}
+);
+
 test("public output gate treats subject thumbnails without leading articles as aligned", () => {
   const gate = runPublicOutputCoherenceGate({
     story: {

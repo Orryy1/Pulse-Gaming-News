@@ -852,6 +852,46 @@ test("goal batch package proof preparation writes concrete GTA VI preorder scrip
   assert.doesNotMatch(prepared.full_script, /source-backed update|this story finally has something specific/i);
 });
 
+test("goal batch package proof preparation promotes named game over generic platform source labels", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_gta_vi_xbox_store",
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      title: "Xbox Has A New Wait Problem",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      source_type: "official_platform",
+      primary_source_url: "https://www.xbox.com/en-US/games/store/grand-theft-auto-vi/9NNZSNHLR63L#new_tab",
+      confirmed_claims: [
+        "Pre-Order Grand Theft Auto VI Now. Coming to XBOX Series X|S November 19, 2026",
+      ],
+      claim_inventory: {
+        confirmed: [
+          "Pre-Order Grand Theft Auto VI Now. Coming to XBOX Series X|S November 19, 2026",
+        ],
+      },
+      description:
+        "Xbox Wire says the new cover art is live and pre-orders open on June 25. Pre-order because it is gaming's safest blockbuster, or wait until Rockstar proves what the money actually buys.",
+      full_script:
+        "Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI. Xbox Wire says the new cover art is live and pre-orders open on June 25. The first store page now has to answer the question hype cannot: price, editions, bonuses and whether locking in early is actually smart. Pre-order because it is gaming's safest blockbuster, or wait until Rockstar proves what the money actually buys. Follow Pulse Gaming so you never miss a beat.",
+      suggested_thumbnail_text: "GTA VI PREORDER TEST",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+  const proofPackage = buildGoalProofPackage({ story: prepared });
+
+  assert.equal(prepared.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(prepared.canonical_game, "Grand Theft Auto VI");
+  assert.match(prepared.public_title, /GTA VI|Grand Theft Auto VI/i);
+  assert.notEqual(prepared.public_title, "Xbox Has A New Wait Problem");
+  assert.equal(prepared.suggested_thumbnail_text, "GTA VI PREORDER TEST");
+  assert.equal(proofPackage.canonical_story_manifest.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(proofPackage.canonical_story_manifest.canonical_game, "Grand Theft Auto VI");
+  assert.equal(proofPackage.canonical_story_manifest.thumbnail_headline, "GTA VI PREORDER TEST");
+  assert.equal(proofPackage.visual_quality_report.frame_rules.first_frame_subject, "Grand Theft Auto VI");
+});
+
 test("goal batch package proof preparation writes specific GTA VI PS5 scripts", () => {
   const prepared = prepareStoryForGoalProof(
     {

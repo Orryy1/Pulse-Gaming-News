@@ -1228,6 +1228,71 @@ test("goal dry-run publisher blocks legacy 6.5s rendered HyperFrames card window
   );
 });
 
+test("goal dry-run publisher checks actual rendered HyperFrames windows before overlay fallback", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-actual-card-window-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "actual-card-window-story",
+    "GREEN",
+    "Halo Campaign Evolved Still Needs A Clearer Reveal",
+    {
+      canonicalSubject: "Halo Campaign Evolved",
+      durationSeconds: 46,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 46,
+        clips: 8,
+        hyperframes_premium_shell_required: true,
+        hyperframes_card_count: 3,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+        overlay_card_windows: [
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 10.5, duration_s: 10.5 },
+          { id: "headline_card", kind: "proof_card", start_s: 10.8, end_s: 21.3, duration_s: 10.5 },
+          { id: "proof_primary", kind: "proof_card", start_s: 21.6, end_s: 32.1, duration_s: 10.5 },
+        ],
+        card_visible_windows: [
+          { id: "scene_4_source", kind: "source", text: "XBOX WIRE SOURCE LOCK", start_s: 15, end_s: 18.2, duration_s: 3.2 },
+          { id: "scene_5_quote", kind: "quote", text: "CAMPAIGN EVOLVED NEEDS CONTEXT", start_s: 18.45, end_s: 21.9, duration_s: 3.45 },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 7 }, (_, index) =>
+    directMotionClipFixture({
+      id: `halo-actual-window-${index + 1}`,
+      path: `motion/halo-actual-window-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/halo-campaign-evolved/actual-${index + 1}.mp4`,
+      sourceFamily: `halo_campaign_evolved_actual_${index + 1}`,
+      startS: index * 7,
+      durationS: 5,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, directClips);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-25T13:25:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
+      (window) => window.duration_s,
+    ),
+    [3.2, 3.45],
+  );
+});
+
 test("goal dry-run publisher blocks too-fast generated card clips even when overlay windows pass", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-generated-card-clip-dwell-"));
   const storyPackage = await makeStoryPackage(

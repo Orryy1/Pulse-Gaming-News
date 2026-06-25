@@ -1022,6 +1022,35 @@ test("goal public copy QA blocks stale platform packs that drift onto another su
   assert.ok(report.failures.includes("public_copy:platform_copy_missing_canonical_subject"));
 });
 
+test("goal public copy QA treats GTA VI platform copy as Grand Theft Auto VI subject parity", () => {
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Grand Theft Auto VI",
+    selected_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+    first_spoken_line: "GTA VI just made the buying argument real.",
+    narration_script:
+      "GTA VI just made the buying argument real. Rockstar says pre-orders open on June 25. The payoff is whether players buy early or wait for the editions to prove themselves.",
+    description:
+      "GTA VI cover art turned pre-orders into a real buying debate. Source: Rockstar Newswire.",
+    primary_source: "Rockstar Newswire",
+    source_card_label: "Rockstar Newswire",
+    platform_publish_manifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "GTA VI Cover Art Starts The Pre-Order Fight",
+          description:
+            "GTA VI cover art turned pre-orders into a real buying debate. Source: Rockstar Newswire.",
+        },
+        instagram_reels: {
+          caption:
+            "GTA VI cover art turned pre-orders into a real buying debate. Source: Rockstar Newswire.",
+        },
+      },
+    },
+  });
+
+  assert.equal(report.failures.includes("public_copy:platform_copy_missing_canonical_subject"), false);
+});
+
 test("goal public copy QA blocks stale platform source labels", () => {
   const report = evaluateGoalPublicCopy({
     canonical_subject: "The Expanse: Osiris Reborn",

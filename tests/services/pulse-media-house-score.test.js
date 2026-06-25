@@ -101,6 +101,42 @@ test("strong Pulse-original package passes competitor-informed score", () => {
   assert.deepEqual(report.hard_failures, []);
 });
 
+test("media-house score treats GTA VI as Grand Theft Auto VI subject parity", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      public_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      first_spoken_line: "GTA VI just made the buying argument real.",
+      narration_script:
+        "GTA VI just made the buying argument real. Rockstar says pre-orders open on June 25. The payoff is simple: players finally get to argue about price, editions and whether locking in early is smart. Follow Pulse Gaming so you never miss a beat.",
+      thumbnail_headline: "GTA VI PREORDER TEST",
+      first_frame_text: "GTA VI PREORDER TEST",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "GTA VI Cover Art Starts The Pre-Order Fight",
+          description:
+            "GTA VI just turned cover art into a real pre-order debate: price, editions and whether buying early is smart. Source: Rockstar Newswire.",
+          cover_frame: { headline: "GTA VI PREORDER TEST" },
+        },
+        instagram_reels: {
+          caption:
+            "GTA VI just turned cover art into a real pre-order debate. Source: Rockstar Newswire.",
+          cover_frame: { headline: "GTA VI PREORDER TEST" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.hard_failures.includes("media_house:source_title_mismatch"), false);
+  assert.equal(report.hard_failures.includes("media_house:platform_title_too_plain"), false);
+  assert.equal(report.shorts_feed_competition_report.signals.title_has_subject, true);
+});
+
 test("generic title fails", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: { ...strongStory().canonical, selected_title: "Gaming news update" },

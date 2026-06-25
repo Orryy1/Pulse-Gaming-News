@@ -391,6 +391,53 @@ test("goal production render materializer preserves rendered card-visible window
   assert.equal(manifest.overlay_card_windows.length >= 4, true);
 });
 
+test("goal production render materializer preserves nested actual card-visible windows over overlay fallback", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-nested-visible-cards-"));
+  const artifactDir = await makePackage(root, "story-nested-visible-cards");
+  const actualWindows = [
+    {
+      id: "scene_3_source",
+      kind: "source",
+      text: "XBOX WIRE",
+      start_s: 12,
+      end_s: 15.2,
+      duration_s: 3.2,
+      minimum_readable_duration_s: 10.5,
+      source: "visual_v4_scene_plan",
+    },
+  ];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-nested-visible-cards", artifactDir)] },
+    generatedAt: "2026-06-25T13:40:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: "story-nested-visible-cards",
+        output,
+        clips: 6,
+        rendered_duration_s: 32,
+        size_bytes: 4096,
+        clip_scene_plan: {
+          repeat_free: true,
+          repeated_base_sources: [],
+          card_visible_windows: actualWindows,
+          scenes: [
+            { index: 0, path: "direct-a.mp4", baseSourceKey: "direct_a", durationS: 5 },
+            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 3.2 },
+          ],
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.deepEqual(manifest.card_visible_windows, actualWindows);
+  assert.notDeepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
+});
+
 test("goal production render materializer feeds passing HyperFrames shell cards into the V4 render story", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-card-use-"));
   const artifactDir = await makePackage(root, "story-hf-card-use");

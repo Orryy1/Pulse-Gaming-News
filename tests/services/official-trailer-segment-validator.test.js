@@ -23,7 +23,9 @@ const {
   balanceClipRefsAcrossStories,
   buildClipRefsFromReport,
   enrichReferenceReportDurations,
+  mergeReferenceReportPayloads,
   normaliseReferenceReportPayload,
+  parseArgs,
   reportOutputTargets,
 } = require("../../tools/official-trailer-segment-validator");
 
@@ -232,6 +234,76 @@ test("segment validator accepts licensed direct-media acquisition reports as ref
   assert.equal(refs[0].sourceType, "licensed_direct_media_url");
   assert.equal(refs[0].path, licensedReport.accepted_references[0].source_url);
   assert.equal(refs[0].provenance.provider, "licensed_direct_media_acquisition");
+});
+
+test("segment validator merges repeated reference-report inputs for one story", () => {
+  const steamReport = {
+    execution_mode: "visual_v4_licensed_direct_media_acquisition",
+    accepted_references: [
+      {
+        story_id: "doom-mixed-sources",
+        entity: "Doom: The Dark Ages",
+        source_family: "steam_3017860_doom_the_dark_ages_media_02",
+        source_type: "licensed_direct_media_url",
+        provider: "licensed_direct_media_acquisition",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+        source_url_kind: "hls_manifest",
+        source_duration_s: 146,
+        segment_validation_eligible: true,
+      },
+    ],
+  };
+  const playStationReport = {
+    plans: [
+      {
+        story_id: "doom-mixed-sources",
+        references: [
+          {
+            story_id: "doom-mixed-sources",
+            entity: "Doom: The Dark Ages",
+            source_family: "playstation_blog_doom_the_dark_ages_media_03",
+            source_type: "official_game_site_news_page",
+            provider: "official_intake",
+            source_url: "https://vulcan.dl.playstation.net/img/rnd/202505/doom-gameplay.mp4",
+            source_url_kind: "direct_video",
+            source_duration_s: 112,
+            segment_validation_eligible: true,
+            downloads_allowed: false,
+          },
+        ],
+      },
+    ],
+  };
+
+  const args = parseArgs([
+    "node",
+    "tools/official-trailer-segment-validator.js",
+    "--reference-report",
+    "steam.json",
+    "--reference-report",
+    "playstation.json",
+  ]);
+  assert.deepEqual(args.referenceReports, ["steam.json", "playstation.json"]);
+
+  const merged = mergeReferenceReportPayloads([steamReport, playStationReport]);
+  assert.equal(merged.plans.length, 1);
+  assert.equal(merged.plans[0].references.length, 2);
+
+  const refs = buildClipRefsFromReport({}, merged, "doom-mixed-sources", {
+    includeExploratoryWindows: true,
+    exploratoryStartSeconds: [36],
+    candidateWindowsPerSource: 1,
+    maxSegments: 4,
+  });
+
+  assert.deepEqual(
+    refs.map((ref) => ref.sourceFamily).sort(),
+    [
+      "playstation_blog_doom_the_dark_ages_media_03",
+      "steam_3017860_doom_the_dark_ages_media_02",
+    ],
+  );
 });
 
 test("segment validator accepts official game-site news pages with direct media", () => {

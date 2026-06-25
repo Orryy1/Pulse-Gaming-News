@@ -39,6 +39,7 @@ function parseArgs(argv) {
     storyId: null,
     frameReport: DEFAULT_FRAME_REPORT,
     referenceReport: DEFAULT_REFERENCE_REPORT,
+    referenceReports: [],
     acquisitionPlan: null,
     previousValidationReport: null,
     noReferenceReport: false,
@@ -62,10 +63,13 @@ function parseArgs(argv) {
     else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
     else if (arg === "--frame-report") args.frameReport = argv[++i] || DEFAULT_FRAME_REPORT;
     else if (arg === "--reference-report" || arg === "--trailer-references") {
-      args.referenceReport = argv[++i] || DEFAULT_REFERENCE_REPORT;
+      const referenceReport = argv[++i] || DEFAULT_REFERENCE_REPORT;
+      args.referenceReport = referenceReport;
+      args.referenceReports.push(referenceReport);
       args.noReferenceReport = false;
     } else if (arg === "--no-reference-report" || arg === "--no-trailer-references") {
       args.noReferenceReport = true;
+      args.referenceReports = [];
     } else if (arg === "--no-reference-duration-probe") {
       args.noReferenceDurationProbe = true;
     } else if (arg === "--acquisition-plan") {
@@ -190,10 +194,24 @@ async function loadFrameReport(args) {
 
 async function loadOptionalReferenceReport(args) {
   if (args.noReferenceReport) return { report: null, filePath: null };
-  const filePath = path.resolve(ROOT, args.referenceReport || DEFAULT_REFERENCE_REPORT);
-  if (!(await fs.pathExists(filePath))) return { report: null, filePath: null };
-  const report = normaliseReferenceReportPayload(await fs.readJson(filePath));
-  return { report, filePath };
+  const referencePaths = Array.isArray(args.referenceReports) && args.referenceReports.length
+    ? args.referenceReports
+    : [args.referenceReport || DEFAULT_REFERENCE_REPORT];
+  const filePaths = [];
+  const reports = [];
+  for (const referencePath of referencePaths) {
+    const filePath = path.resolve(ROOT, referencePath);
+    filePaths.push(filePath);
+    if (!(await fs.pathExists(filePath))) {
+      if (referencePaths.length === 1) return { report: null, filePath: null };
+      continue;
+    }
+    reports.push(await fs.readJson(filePath));
+  }
+  return {
+    report: reports.length ? mergeReferenceReportPayloads(reports) : null,
+    filePath: filePaths.length === 1 ? filePaths[0] : filePaths,
+  };
 }
 
 function existingDurationSeconds(record = {}) {
@@ -338,6 +356,52 @@ function normaliseReferenceReportPayload(report = {}) {
   return {
     ...report,
     reference_report_adapter: "licensed_direct_media_accepted_references_v1",
+    plans: [...byStoryId.entries()].map(([storyId, references]) => ({
+      story_id: storyId,
+      references,
+    })),
+  };
+}
+
+function mergeReferenceReportPayloads(reports = []) {
+  const normalisedReports = (Array.isArray(reports) ? reports : [reports])
+    .map((report) => normaliseReferenceReportPayload(report))
+    .filter((report) => report && typeof report === "object");
+  if (normalisedReports.length <= 1) return normalisedReports[0] || null;
+
+  const byStoryId = new Map();
+  for (const report of normalisedReports) {
+    for (const plan of Array.isArray(report.plans) ? report.plans : []) {
+      const storyId = String(plan.story_id || plan.storyId || "").trim();
+      if (!storyId) continue;
+      if (!byStoryId.has(storyId)) byStoryId.set(storyId, []);
+      const references = byStoryId.get(storyId);
+      const seen = new Set(
+        references.map((reference) =>
+          [
+            String(reference.source_url || reference.sourceUrl || reference.local_path || "").trim(),
+            String(reference.entity || "").trim().toLowerCase(),
+            String(reference.source_family || reference.sourceFamily || "").trim().toLowerCase(),
+          ].join("|"),
+        ),
+      );
+      for (const reference of Array.isArray(plan.references) ? plan.references : []) {
+        const key = [
+          String(reference.source_url || reference.sourceUrl || reference.local_path || "").trim(),
+          String(reference.entity || "").trim().toLowerCase(),
+          String(reference.source_family || reference.sourceFamily || "").trim().toLowerCase(),
+        ].join("|");
+        if (!key.trim() || seen.has(key)) continue;
+        seen.add(key);
+        references.push(reference);
+      }
+    }
+  }
+
+  return {
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    reference_report_adapter: "merged_reference_reports_v1",
     plans: [...byStoryId.entries()].map(([storyId, references]) => ({
       story_id: storyId,
       references,
@@ -632,4 +696,5 @@ module.exports = {
   parseArgs,
   reportOutputTargets,
   enrichReferenceReportDurations,
+  mergeReferenceReportPayloads,
 };

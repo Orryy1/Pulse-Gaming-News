@@ -637,6 +637,74 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
               );
             }
           }
+          if (options.args[0] === "tools/studio-v2-build-story-cards.js") {
+            const storyId = options.args[options.args.indexOf("--story-id") + 1];
+            const repoRoot = path.join(__dirname, "..", "..");
+            const testOutputDir = path.join(repoRoot, "test", "output");
+            await fs.mkdir(testOutputDir, { recursive: true });
+            for (const kind of ["source", "context", "timeline", "quote", "takeaway", "outro"]) {
+              const cardPath = path.join(testOutputDir, `hf_${kind}_card_${storyId}.mp4`);
+              const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
+              await fs.writeFile(cardPath, "fake hyperframes card");
+              await fs.writeFile(
+                sidecarPath,
+                JSON.stringify({
+                  schema_version: 1,
+                  story_id: storyId,
+                  card_kind: kind,
+                  channel_id: "pulse-gaming",
+                  hyperframes_premium_shell: {
+                    status: "pass",
+                    shell_type: "story_specific_card",
+                    story_id: storyId,
+                    card_kind: kind,
+                    channel_id: "pulse-gaming",
+                    output_path: path.relative(repoRoot, cardPath).replace(/\\/g, "/"),
+                    project_dir: `experiments/hf-${kind}-${storyId}`,
+                    checks: {
+                      lint: { status: "pass" },
+                      validate: { status: "pass" },
+                      inspect: { status: "pass" },
+                      render: { status: "pass" },
+                    },
+                    visual_identity: {
+                      status: "pass",
+                      blockers: [],
+                      evidence: {
+                        vertical_reel_viewport: true,
+                        tracked_clip: true,
+                        html_path: `experiments/hf-${kind}-${storyId}/index.html`,
+                        hyperframes_config_path: `experiments/hf-${kind}-${storyId}/hyperframes.json`,
+                      },
+                    },
+                    animation_contract: {
+                      status: "pass",
+                      blockers: [],
+                      evidence: {
+                        timeline_registry: true,
+                        paused_gsap_timeline: true,
+                        main_timeline_registered: true,
+                        timeline_animation_steps: 4,
+                      },
+                    },
+                    readability_contract: {
+                      status: "pass",
+                      blockers: [],
+                      evidence: {
+                        readable_text: `${kind} card readable proof for ${storyId}`,
+                        word_count: 6,
+                        planned_visible_duration_s: 8.5,
+                        minimum_visible_duration_s: 6.5,
+                        min_readable_card_duration_s: 6.5,
+                        max_readable_card_duration_s: 10,
+                      },
+                    },
+                    blockers: [],
+                  },
+                }),
+              );
+            }
+          }
           return { ok: true, stdout_tail: "ok", stderr_tail: "" };
         },
       },
@@ -837,6 +905,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");
     assert.equal(repairReport.summary.hyperframes_card_sets_completed, 1);
     assert.equal(repairReport.summary.hyperframes_card_sets_failed, 0);
+    assert.equal(repairReport.summary.hyperframes_card_evidence_blocked_count, 0);
     assert.match(repairReport.outputs.official_search_autofill_report, /official_search_intake_autofill\.json$/);
     assert.match(
       repairReport.outputs.official_search_autofill_template,
@@ -860,6 +929,15 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const scriptRewriteWorkOrder = JSON.parse(
       await fs.readFile(repairReport.outputs.script_rewrite_work_order, "utf8"),
     );
+    const hyperframesCardEvidence = JSON.parse(
+      await fs.readFile(repairReport.outputs.hyperframes_card_evidence_report, "utf8"),
+    );
+    assert.equal(hyperframesCardEvidence.summary.card_count, 6);
+    assert.equal(hyperframesCardEvidence.summary.passing_card_count, 6);
+    assert.equal(hyperframesCardEvidence.summary.failing_card_count, 0);
+    assert.equal(hyperframesCardEvidence.summary.shortest_planned_visible_duration_s, 8.5);
+    assert.equal(hyperframesCardEvidence.summary.longest_required_visible_duration_s, 6.5);
+    assert.equal(hyperframesCardEvidence.stories[0].cards[0].readability.planned_visible_duration_s, 8.5);
     assert.deepEqual(scriptRewriteWorkOrder.jobs.map((job) => job.story_id), ["fresh_generic_story"]);
     assert.equal(scriptRewriteWorkOrder.jobs[0].repair_lane, "source_bound_script_rewrite");
     assert.equal(scriptRewriteWorkOrder.jobs[0].safety.no_publish, true);

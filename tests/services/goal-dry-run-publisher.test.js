@@ -918,9 +918,9 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         clips: 6,
         overlay_card_windows: [],
         card_visible_windows: [
-          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 8.5, duration_s: 8.5 },
-          { id: "headline_card", kind: "proof_card", start_s: 8.7, end_s: 17.5, duration_s: 8.8 },
-          { id: "proof_primary", kind: "proof_card", start_s: 18.3, end_s: 26.8, duration_s: 8.5 },
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 10.5, duration_s: 10.5 },
+          { id: "headline_card", kind: "proof_card", start_s: 10.8, end_s: 21.3, duration_s: 10.5 },
+          { id: "proof_primary", kind: "proof_card", start_s: 21.6, end_s: 32.1, duration_s: 10.5 },
         ],
       },
     },
@@ -1064,10 +1064,10 @@ test("goal dry-run publisher trusts readable rendered card windows over low aver
     "Halo Campaign Evolved Needs A Cleaner Reveal",
     {
       canonicalSubject: "Halo Campaign Evolved",
-      durationSeconds: 29.92,
+      durationSeconds: 37.2,
       renderManifestPatch: {
         final_publish_render: true,
-        rendered_duration_s: 29.92,
+        rendered_duration_s: 37.2,
         clips: 5,
         retention_short_approved: true,
         hyperframes_premium_shell_required: true,
@@ -1084,9 +1084,9 @@ test("goal dry-run publisher trusts readable rendered card windows over low aver
         premium_shell_blockers: [],
         overlay_card_windows: [],
         card_visible_windows: [
-          { id: "scene_2_quote", kind: "quote", start_s: 1.2, end_s: 9.9, duration_s: 8.7 },
-          { id: "scene_3_proof", kind: "proof", start_s: 10.2, end_s: 18.9, duration_s: 8.7 },
-          { id: "scene_4_screenshot", kind: "screenshot", start_s: 19.1, end_s: 27.8, duration_s: 8.7 },
+          { id: "scene_2_quote", kind: "quote", start_s: 1.2, end_s: 11.7, duration_s: 10.5 },
+          { id: "scene_3_proof", kind: "proof", start_s: 12.1, end_s: 22.6, duration_s: 10.5 },
+          { id: "scene_4_screenshot", kind: "screenshot", start_s: 23, end_s: 33.5, duration_s: 10.5 },
         ],
       },
     },

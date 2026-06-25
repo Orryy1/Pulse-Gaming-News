@@ -89,6 +89,30 @@ test("viral script intelligence accepts sharp non-numeric gameplay stories with 
   assert.equal(result.cta.count, 1);
 });
 
+test("viral script intelligence rejects gameplay-proof claims when source says screenshots are not gameplay", () => {
+  const script =
+    "GTA VI finally has real gameplay on screen. " +
+    "IGN has shown enough footage to move the debate from promise to proof. " +
+    "Now players can judge camera distance, street density and whether the reveal stays readable when the screen gets busy. " +
+    "If this footage holds up, Rockstar has a launch argument before release day. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "gta-vi-screenshots-not-gameplay",
+      title: "GTA 6 Looks Amazing, but the 63 New Screenshots Probably Don't Represent Gameplay, Tech Experts Believe",
+      source_name: "IGN",
+      confirmed_claims: [
+        "GTA 6 Looks Amazing, but the 63 New Screenshots Probably Don't Represent Gameplay, Tech Experts Believe",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("source_inversion_gameplay_claim"), JSON.stringify(result, null, 2));
+});
+
 test("viral script intelligence rejects abstract title-test narration before TTS", () => {
   const script =
     "Halo Campaign Evolved's remake debate finally has a real stress test. " +

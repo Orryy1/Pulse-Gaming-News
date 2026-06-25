@@ -194,8 +194,8 @@ test("owned motion materializer enforces readable dwell time for explainer cards
     output: path.join("output", "generated-motion", "halo", "01_kinetic_title_card.mp4"),
   });
 
-  assert.equal(args[args.indexOf("-t") + 1], "8.50");
-  assert.match(args[args.indexOf("-i") + 1], /d=8\.50$/);
+  assert.equal(args[args.indexOf("-t") + 1], "10.50");
+  assert.match(args[args.indexOf("-i") + 1], /d=10\.50$/);
 });
 
 test("owned motion materializer does not cut card text mid-word", () => {
@@ -463,19 +463,17 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
       calls.push({ bin, args });
       fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
     },
-    ffprobeDuration: () => 8.5,
+    ffprobeDuration: () => 10.5,
   });
 
   assert.equal(report.summary.materialized_clip_count, 13);
   assert.equal(calls.length, 13);
   const durations = calls.map((call) => call.args[call.args.indexOf("-t") + 1]);
-  assert.ok(durations.includes("10.00"));
-  assert.ok(durations.includes("8.50"));
+  assert.equal(durations.every((duration) => duration === "10.50"), true);
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
   assert.equal(materialised.clip_count, 13);
-  assert.ok(materialised.clips.every((clip) => clip.durationS >= 8.5));
-  assert.ok(materialised.clips.some((clip) => clip.durationS >= 10));
+  assert.ok(materialised.clips.every((clip) => clip.durationS >= 10.5));
 });
 
 test("owned motion materializer blocks source-card generation for Reddit-only discovery stories", async () => {

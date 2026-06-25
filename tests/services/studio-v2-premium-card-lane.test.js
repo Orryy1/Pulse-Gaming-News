@@ -27,7 +27,7 @@ function cardScenes() {
 
 async function writePassingShellSidecar(
   cardPath,
-  { storyId, kind, channelId = "pulse-gaming", plannedVisibleDurationS = 8.5 } = {},
+  { storyId, kind, channelId = "pulse-gaming", plannedVisibleDurationS = 10.5 } = {},
 ) {
   await fs.writeJson(
     shellSidecarPathForCard(cardPath),
@@ -374,7 +374,7 @@ test("premium card lane v2 rejects legacy 6.5s readable-card sidecars", async ()
       channelId: "pulse-gaming",
     });
 
-    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 8.5);
+    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 10.5);
     assert.equal(result.premiumLane.verdict, "partial");
     assert.ok(
       result.premiumLane.hyperframesPremiumShellGate.blockers.some((blocker) =>

@@ -693,9 +693,9 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
                       evidence: {
                         readable_text: `${kind} card readable proof for ${storyId}`,
                         word_count: 6,
-                        planned_visible_duration_s: 9,
-                        minimum_visible_duration_s: 8.5,
-                        min_readable_card_duration_s: 8.5,
+                        planned_visible_duration_s: 10.5,
+                        minimum_visible_duration_s: 10.5,
+                        min_readable_card_duration_s: 10.5,
                         max_readable_card_duration_s: 12,
                       },
                     },
@@ -988,9 +988,9 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(hyperframesCardEvidence.summary.card_count, 6);
     assert.equal(hyperframesCardEvidence.summary.passing_card_count, 6);
     assert.equal(hyperframesCardEvidence.summary.failing_card_count, 0);
-    assert.equal(hyperframesCardEvidence.summary.shortest_planned_visible_duration_s, 9);
-    assert.equal(hyperframesCardEvidence.summary.longest_required_visible_duration_s, 8.5);
-    assert.equal(hyperframesCardEvidence.stories[0].cards[0].readability.planned_visible_duration_s, 9);
+    assert.equal(hyperframesCardEvidence.summary.shortest_planned_visible_duration_s, 10.5);
+    assert.equal(hyperframesCardEvidence.summary.longest_required_visible_duration_s, 10.5);
+    assert.equal(hyperframesCardEvidence.stories[0].cards[0].readability.planned_visible_duration_s, 10.5);
     assert.deepEqual(scriptRewriteWorkOrder.jobs.map((job) => job.story_id), ["fresh_generic_story"]);
     assert.equal(scriptRewriteWorkOrder.jobs[0].repair_lane, "source_bound_script_rewrite");
     assert.equal(scriptRewriteWorkOrder.jobs[0].safety.no_publish, true);

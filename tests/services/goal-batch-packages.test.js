@@ -1037,7 +1037,7 @@ test("goal batch owned fallback motion clips use readable card dwell", () => {
 
   assert.ok(prepared.video_clips.length >= 6);
   assert.equal(
-    prepared.video_clips.every((clip) => Number(clip.durationS) >= 8.5),
+    prepared.video_clips.every((clip) => Number(clip.durationS) >= 10.5),
     true,
     JSON.stringify(prepared.video_clips.map((clip) => ({ id: clip.id, durationS: clip.durationS }))),
   );
@@ -1339,6 +1339,59 @@ test("goal batch package proof preparation quarantines malformed generated refil
   const pack = buildGoalProofPackage({ story: prepared });
   assert.equal(pack.script_scorecard.verdict, "rewrite_required");
   assert.ok(pack.acceptance_entry.blockers.includes("script:rewrite_required"));
+});
+
+test("goal batch package proof preparation does not invert GTA VI screenshot analysis into gameplay proof", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_gta_vi_screenshot_analysis",
+    title: "GTA 6 Looks Amazing, but the 63 New Screenshots Probably Don't Represent Gameplay, Tech Experts Believe",
+    source_type: "rss",
+    source_name: "IGN",
+    article_url:
+      "https://www.ign.com/articles/gta-6-looks-amazing-but-the-63-new-screenshots-probably-dont-represent-gameplay-tech-experts-believe",
+    freshness_gate: "pass",
+    confirmed_claims: [
+      "GTA 6 Looks Amazing, but the 63 New Screenshots Probably Don't Represent Gameplay, Tech Experts Believe",
+    ],
+    full_script:
+      "GTA 6 Looks Amazing, but finally has the reveal fans cannot dodge: real gameplay. IGN has shown enough footage to move the debate from promise to proof. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.canonical_subject, "GTA 6");
+  assert.equal(prepared.canonical_game, "GTA 6");
+  assert.equal(prepared.public_title, "GTA VI Screenshots Are Not Gameplay Proof");
+  assert.doesNotMatch(prepared.public_title, /finally shows real gameplay/i);
+  assert.doesNotMatch(prepared.full_script, /real gameplay|shown enough footage|promise to proof/i);
+  assert.match(prepared.full_script, /screenshots/i);
+
+  const pack = buildGoalProofPackage({ story: prepared });
+  assert.equal(pack.canonical_story_manifest.public_title, "GTA VI Screenshots Are Not Gameplay Proof");
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "GTA VI NOT GAMEPLAY");
+  assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players/i);
+  assert.equal(pack.script_scorecard.verdict, "viral_ready", JSON.stringify(pack.script_scorecard, null, 2));
+});
+
+test("goal batch package proof preparation replaces Could Split Players fallback for Star Fox visual showcase reviews", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_star_fox_visual_showcase",
+    title: "Star Fox is the Switch 2's most impressive visual showcase yet",
+    source_type: "rss",
+    source_name: "The Verge Gaming",
+    article_url: "https://www.theverge.com/entertainment/955300/star-fox-review-nintendo-switch-2",
+    freshness_gate: "pass",
+    confirmed_claims: ["Star Fox is the Switch 2's most impressive visual showcase yet"],
+    full_script:
+      "Star Fox is back today, and the real test is not nostalgia. The Verge Gaming says the Switch 2 release is available on June 25 and puts Fox McCloud back into high-speed aerial combat. If the levels are tight, Star Fox becomes a clean argument for focused games. If not, nostalgia will not protect it. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.canonical_subject, "Star Fox");
+  assert.equal(prepared.public_title, "Star Fox Is Switch 2's Visual Test");
+  assert.doesNotMatch(prepared.public_title, /Could Split Players|New Signal/i);
+
+  const pack = buildGoalProofPackage({ story: prepared });
+  assert.equal(pack.canonical_story_manifest.public_title, "Star Fox Is Switch 2's Visual Test");
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "STAR FOX VISUAL TEST");
+  assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players|New Signal/i);
 });
 
 test("goal batch package proof preparation rejects cross-story contaminated scripts", () => {

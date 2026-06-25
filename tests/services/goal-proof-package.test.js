@@ -298,6 +298,39 @@ test("goal proof package turns source-admin copy into attention-led Shorts packa
   );
 });
 
+test("goal proof package uses repaired attention copy for visual quality first-frame checks", () => {
+  const story = greenStory();
+  story.id = "gta-vi-screenshot-caveat";
+  story.canonical_subject = "GTA 6";
+  story.canonical_game = "GTA 6";
+  story.title =
+    "GTA 6 Looks Amazing, but the 63 New Screenshots Probably Don't Represent Gameplay, Tech Experts Believe";
+  story.public_title = story.title;
+  story.suggested_title = story.title;
+  story.suggested_thumbnail_text = "GTA 6 LOOKS";
+  story.first_frame_text = "GTA 6 LOOKS";
+  story.primary_source = "IGN";
+  story.source_name = "IGN";
+  story.article_url =
+    "https://www.ign.com/articles/gta-6-looks-amazing-but-the-63-new-screenshots-probably-dont-represent-gameplay-tech-experts-believe";
+  story.description =
+    "IGN says tech experts believe the 63 new GTA 6 screenshots probably do not represent gameplay.";
+  story.full_script =
+    "GTA VI's new screenshots look incredible, but they are not gameplay proof yet. IGN says tech experts believe the 63 new screenshots probably do not represent gameplay. That matters because still images can prove art direction, density and atmosphere, but not driving feel, mission pacing or how the world behaves when players control it. That means the smart debate is restraint: get excited by the image quality, but wait for Rockstar to show the game moving before calling it proof. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-25T12:30:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.public_title, "GTA VI Screenshots Are Not Gameplay Proof");
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "GTA VI NOT GAMEPLAY");
+  assert.equal(pack.canonical_story_manifest.first_frame_text, "GTA VI NOT GAMEPLAY");
+  assert.equal(pack.visual_quality_report.frame_rules.first_frame_text, "GTA VI NOT GAMEPLAY");
+  assert.doesNotMatch(pack.visual_quality_report.frame_rules.first_frame_text, /GTA 6 LOOKS/);
+});
+
 test("goal proof package keeps hyphenated game titles clean in cover headlines", () => {
   const story = greenStory();
   story.id = "gears-e-day-attention-pack";

@@ -272,7 +272,7 @@ test("Visual V4 motion pack turns validated trailer segments into canonical loca
   assert.equal(pack.safety.social_posting_triggered, false);
 });
 
-test("Visual V4 motion pack keeps repeat official windows as motion beats without inflating family count", () => {
+test("Visual V4 motion pack blocks repeat official windows instead of treating them as motion beats", () => {
   const pack = buildVisualV4MotionPack({
     story: forzaStory({
       full_script:
@@ -297,11 +297,15 @@ test("Visual V4 motion pack keeps repeat official windows as motion beats withou
     generatedAt: "2026-05-19T10:05:00.000Z",
   });
 
-  assert.equal(pack.clips.length, 5);
+  assert.equal(pack.clips.length, 1);
   assert.ok(pack.clips.every((clip) => clip.source_family === "steam"));
   assert.equal(pack.motion_budget.available_distinct_families, 1);
-  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), false);
+  assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
   assert.equal(pack.readiness.blockers.includes("distinct_motion_families_minimum_not_met"), true);
+  assert.equal(
+    pack.rejected_candidates.filter((candidate) => candidate.reason === "source_family_already_used").length,
+    4,
+  );
   assert.ok(
     pack.rejected_candidates.some(
       (candidate) => candidate.reason === "segment_action_score_too_low",
@@ -791,6 +795,73 @@ test("Visual V4 motion pack rejects same-source repeat windows after the source 
   );
   assert.equal(pack.readiness.status, "v4_motion_blocked");
   assert.equal(pack.readiness.blockers.includes("actual_motion_clip_minimum_not_met"), true);
+});
+
+test("Visual V4 motion pack refuses same-family padding even when the distinct floor is met", () => {
+  const families = ["steam", "xbox", "forza", "ign"];
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory(),
+    trustedFootageReport: trustedReport("forza-v4-pack", families),
+    segmentValidationReport: segmentReport([
+      ...families.map((family, index) => segment({ family, index: index + 1 })),
+      segment({
+        family: "steam",
+        index: 9,
+        start: 84,
+        sourceUrl:
+          "https://video.fastly.steamstatic.com/store_trailers/2483190/9911/steam/alternate.mp4",
+      }),
+    ]),
+    generatedAt: "2026-06-25T12:00:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 4);
+  assert.equal(new Set(pack.clips.map((clip) => clip.source_family)).size, 4);
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_family_already_used",
+    ),
+  );
+  assert.equal(pack.readiness.status, "v4_motion_blocked");
+});
+
+test("Visual V4 motion pack refuses same-source asset padding even with distinct sample hashes", () => {
+  const samples = (prefix) => [
+    { qa: { content_hash: `${prefix}-a`, thumbnail_safe: true, visual_taste: { verdict: "pass" } } },
+    { qa: { content_hash: `${prefix}-b`, thumbnail_safe: true, visual_taste: { verdict: "pass" } } },
+  ];
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/2483190/7777/steam/shared.mp4";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory(),
+    trustedFootageReport: trustedReport("forza-v4-pack", ["steam", "xbox", "forza", "ign"]),
+    segmentValidationReport: segmentReport([
+      segment({ family: "steam", index: 1, sourceUrl, samples: samples("first") }),
+      segment({ family: "xbox", index: 2 }),
+      segment({ family: "forza", index: 3 }),
+      segment({ family: "ign", index: 4 }),
+      segment({
+        family: "steam_alt",
+        index: 5,
+        sourceUrl,
+        start: 90,
+        samples: samples("second"),
+      }),
+    ]),
+    generatedAt: "2026-06-25T12:05:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 4);
+  assert.equal(
+    pack.clips.filter((clip) => clip.source_url === sourceUrl).length,
+    1,
+  );
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_already_used",
+    ),
+  );
+  assert.equal(pack.readiness.status, "v4_motion_blocked");
 });
 
 test("Visual V4 motion pack does not pad repeat slots with short trimmed montage cuts", () => {
@@ -1494,7 +1565,7 @@ test("Visual V4 motion pack does not use separate windows from one source asset 
   );
 });
 
-test("Visual V4 motion pack accepts hash-distinct official windows from one Steam trailer without accepting loops", () => {
+test("Visual V4 motion pack rejects hash-distinct windows from one Steam trailer as repeat-padding", () => {
   const sourceUrl =
     "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/hash/1782090499/hls_264_master.m3u8?t=1";
   const hashedSamples = (windowId) => [
@@ -1566,25 +1637,26 @@ test("Visual V4 motion pack accepts hash-distinct official windows from one Stea
     generatedAt: "2026-06-23T12:30:00.000Z",
   });
 
-  assert.equal(pack.clips.length, 3);
+  assert.equal(pack.clips.length, 1);
   assert.deepEqual(
     pack.clips.map((clip) => clip.mediaStartS),
-    [36, 42, 48],
+    [36],
   );
-  assert.equal(pack.motion_budget.available_motion_clips, 3);
+  assert.equal(pack.motion_budget.available_motion_clips, 1);
   assert.equal(pack.motion_budget.available_distinct_families, 1);
   assert.equal(
     pack.rejected_candidates.some(
       (candidate) => candidate.reason === "source_asset_window_too_close",
     ),
-    true,
+    false,
   );
   assert.equal(
     pack.rejected_candidates.some(
       (candidate) => candidate.reason === "source_asset_already_used",
     ),
-    false,
+    true,
   );
+  assert.equal(pack.readiness.status, "v4_motion_blocked");
 });
 
 test("Visual V4 motion pack rejects same-game wrong-character trailers for character-specific stories", () => {

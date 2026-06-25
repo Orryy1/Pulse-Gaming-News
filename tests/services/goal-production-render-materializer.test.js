@@ -161,7 +161,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
-  const minimumDurationS = Number(overrides.minimumDurationS || 8.5);
+  const minimumDurationS = Number(overrides.minimumDurationS || 10.5);
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -279,7 +279,7 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
   assert.equal(manifest.overlay_card_windows.length >= 4, true);
   assert.deepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
-  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 8.5));
+  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 10.5));
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
@@ -341,19 +341,19 @@ test("goal production render materializer preserves rendered card-visible window
         kind: "quote",
         text: "THIS QUOTE CHANGES THE STORY",
         start_s: 5,
-        end_s: 13.6,
-        duration_s: 8.6,
-        minimum_readable_duration_s: 8.5,
+        end_s: 15.5,
+        duration_s: 10.5,
+        minimum_readable_duration_s: 10.5,
         source: "visual_v4_scene_plan",
       },
       {
         id: "scene_2_proof",
         kind: "proof",
         text: "SOURCE LOCKED",
-        start_s: 13.85,
-        end_s: 22.45,
-        duration_s: 8.6,
-        minimum_readable_duration_s: 8.5,
+        start_s: 15.85,
+        end_s: 26.35,
+        duration_s: 10.5,
+        minimum_readable_duration_s: 10.5,
         source: "visual_v4_scene_plan",
       },
   ];
@@ -445,7 +445,7 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.ok(
     renderStory.visual_v4_bridge_video_clips
       .filter((clip) => clip.source_type === "hyperframes_premium_shell_card")
-      .every((clip) => clip.durationS >= 8.5 && clip.duration_s >= 8.5),
+      .every((clip) => clip.durationS >= 10.5 && clip.duration_s >= 10.5),
   );
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
@@ -550,7 +550,7 @@ test("goal production render materializer limits HyperFrames cards to a readable
   assert.equal(cardClips.length, 3);
   assert.equal(renderStory.hyperframes_card_count, 3);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.ok(cardClips.every((clip) => clip.durationS >= 8.5 && clip.minimum_readable_duration_s >= 8.5));
+  assert.ok(cardClips.every((clip) => clip.durationS >= 10.5 && clip.minimum_readable_duration_s >= 10.5));
   assert.deepEqual(
     [...new Set(cardClips.map((clip) => clip.source_family))],
     cardClips.map((clip) => clip.source_family),
@@ -1828,7 +1828,7 @@ test("goal production render materializer interleaves readable owned cards befor
       durationS: 5,
     });
   }
-  const ownedClips = [10, 8.5, 8.5].map((durationS, index) => {
+  const ownedClips = [10.5, 10.5, 10.5].map((durationS, index) => {
     const clipPath = path.join(root, "output", "generated-motion", `elliot-owned-${index + 1}.mp4`);
     return {
       id: `elliot-owned-${index + 1}`,
@@ -1875,7 +1875,7 @@ test("goal production render materializer interleaves readable owned cards befor
   assert.deepEqual(calls[0].video_clips.slice(5, 7), directClips.slice(4).map((clip) => clip.path));
   assert.deepEqual(calls[0].video_clips.slice(7), [ownedClips[1].path]);
   assert.equal(calls[0].video_clips.includes(ownedClips[2].path), false);
-  assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 10);
+  assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 10.5);
 });
 
 test("goal production render materializer collapses repeated Steam delivery variants before card top-up", async () => {
@@ -1914,7 +1914,7 @@ test("goal production render materializer collapses repeated Steam delivery vari
       durationS: 5,
     });
   }
-  const ownedClips = [10, 8.5, 8.5].map((durationS, index) => {
+  const ownedClips = [10.5, 10.5, 10.5].map((durationS, index) => {
     const clipPath = path.join(root, "output", "generated-motion", `elliot-readable-owned-${index + 1}.mp4`);
     return {
       id: `elliot-readable-owned-${index + 1}`,

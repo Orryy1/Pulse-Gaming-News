@@ -87,7 +87,7 @@ test("story-specific HyperFrames cards keep short copy on screen long enough for
 
   assert.equal(contract.status, "pass");
   assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 8.5);
-  assert.equal(contract.evidence.planned_visible_duration_s, 8.5);
-  assert.equal(contract.evidence.min_readable_card_duration_s, 8.5);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 10.5);
+  assert.equal(contract.evidence.planned_visible_duration_s, 10.5);
+  assert.equal(contract.evidence.min_readable_card_duration_s, 10.5);
 });

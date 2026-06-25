@@ -211,6 +211,22 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   return cardPath;
 }
 
+async function addMotionEvidence(artifactDir, job, count = 7, prefix = "motion") {
+  const clipPaths = Array.from({ length: count }, (_, index) =>
+    path.join(artifactDir, `${prefix}-${index + 1}.mp4`),
+  );
+  await Promise.all(clipPaths.map((clipPath, index) =>
+    fs.outputFile(clipPath, Buffer.alloc(2048, 40 + index)),
+  ));
+  job.evidence = {
+    ...(job.evidence || {}),
+    materialised_motion_clip_count: count,
+    distinct_motion_family_count: count,
+    materialised_motion_clip_paths: clipPaths,
+  };
+  return clipPaths;
+}
+
 test("goal production render materializer renders ready jobs and writes a final production manifest", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-"));
   const artifactDir = await makePackage(root);
@@ -382,6 +398,7 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
     writePassingHyperframesCard(root, "story-hf-card-use", kind),
   ));
   const job = readyJob("story-hf-card-use", artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-card-use-motion");
   job.actions[0].target_render_manifest = {
     ...job.actions[0].target_render_manifest,
     hyperframes_premium_shell_required: true,
@@ -451,6 +468,7 @@ test("goal production render materializer preserves readable HyperFrames card dw
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "takeaway"),
   ]);
   const job = readyJob("story-hf-readable-dwell", artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-readable-dwell-motion");
   job.actions[0].target_render_manifest = {
     ...job.actions[0].target_render_manifest,
     hyperframes_premium_shell_required: true,
@@ -477,11 +495,66 @@ test("goal production render materializer preserves readable HyperFrames card dw
 
   assert.equal(report.summary.rendered_count, 1);
   const timelineCard = renderStory.visual_v4_bridge_video_clips.find(
-    (clip) => clip.id === "hyperframes_premium_shell_timeline_3",
+    (clip) => clip.source_family === "hyperframes_timeline_card",
   );
   assert.equal(timelineCard.durationS, 12);
   assert.equal(timelineCard.minimum_readable_duration_s, 12);
   assert.match(timelineCard.text, /price and edition decision/i);
+});
+
+test("goal production render materializer limits HyperFrames cards to a readable motion-balanced subset", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-balanced-"));
+  const artifactDir = await makePackage(root, "story-hf-balanced");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-balanced", kind),
+  ));
+  const clipPaths = Array.from({ length: 5 }, (_, index) =>
+    path.join(artifactDir, `balanced-clip-${index + 1}.mp4`),
+  );
+  await Promise.all(clipPaths.map((clipPath, index) =>
+    fs.outputFile(clipPath, Buffer.alloc(2048, 30 + index)),
+  ));
+  const job = readyJob("story-hf-balanced", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: 5,
+      distinct_motion_family_count: 5,
+      materialised_motion_clip_paths: clipPaths,
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-25T10:15:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 48,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+  assert.equal(cardClips.length, 3);
+  assert.equal(renderStory.hyperframes_card_count, 3);
+  assert.equal(renderStory.hyperframes_available_card_count, 5);
+  assert.ok(cardClips.every((clip) => clip.durationS >= 8.5 && clip.minimum_readable_duration_s >= 8.5));
+  assert.deepEqual(
+    [...new Set(cardClips.map((clip) => clip.source_family))],
+    cardClips.map((clip) => clip.source_family),
+  );
 });
 
 test("goal production render materializer auto-preserves HyperFrames shell cards on rerender work orders", async () => {
@@ -491,6 +564,7 @@ test("goal production render materializer auto-preserves HyperFrames shell cards
     writePassingHyperframesCard(root, "story-hf-auto", kind),
   ));
   const job = readyJob("story-hf-auto", artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-auto-motion");
   let renderStory = null;
 
   const report = await materializeGoalProductionRenders({

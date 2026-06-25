@@ -1005,6 +1005,56 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
   );
 });
 
+test("goal dry-run publisher blocks unreadable rendered source cards without HyperFrames clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-render-source-window-dwell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "render-source-window-dwell-story",
+    "GREEN",
+    "Street Fighter 6 Just Revealed A Rushdown Problem",
+    {
+      canonicalSubject: "Street Fighter 6",
+      durationSeconds: 37,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 37,
+        clips: 7,
+        overlay_card_windows: [
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 4, duration_s: 4 },
+          { id: "headline_card", kind: "proof_card", start_s: 4.2, end_s: 8.2, duration_s: 4 },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 7 }, (_, index) =>
+    directMotionClipFixture({
+      id: `sf6-window-dwell-direct-${index + 1}`,
+      path: `motion/sf6-window-dwell-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/street-fighter-6/window-dwell-${index + 1}.mp4`,
+      sourceFamily: `street_fighter_6_window_dwell_${index + 1}`,
+      startS: index * 6,
+      durationS: 5,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, directClips);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-25T11:10:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.length,
+    2,
+  );
+});
+
 test("goal dry-run publisher trusts readable rendered card windows over low average clip duration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-render-card-window-short-"));
   const storyPackage = await makeStoryPackage(

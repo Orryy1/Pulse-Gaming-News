@@ -1366,6 +1366,23 @@ test("goal batch package proof preparation writes concrete scripts for fresh ref
           "Xbox needs one cleaner proof point before the hype is worth trusting. IGN says Xbox's confusing exclusivity criteria now has an EXCLUSIVE label.",
       },
       required: [/exclusive label|dashboard/i, /confusing|clarity|promise/i, /PlayStation|PC|console/i],
+      expectedTitle: "Xbox's New Exclusive Label Has One Problem",
+    },
+    {
+      story: {
+        id: "rss_black_ops_ports",
+        title: "Call of Duty: Black Ops 1 and 2 Listings Have Fans Fearing Pricey PlayStation Ports",
+        canonical_subject: "Call of Duty: Black Ops",
+        canonical_game: "Call of Duty: Black Ops",
+        source_type: "rss",
+        source_name: "IGN",
+        article_url:
+          "https://www.ign.com/articles/call-of-duty-black-ops-1-and-2-listings-have-fans-fearing-pricey-playstation-ports",
+        full_script:
+          "Black Ops 1 and 2 just turned nostalgia into a price test. IGN reports PlayStation listings for the two classic Black Ops games have fans watching for whether these ports land as sensible re-releases or expensive nostalgia. Follow Pulse Gaming so you never miss a beat.",
+      },
+      required: [/Black Ops/i, /price|nostalgia/i, /PlayStation listings|ports/i],
+      expectedTitle: "Black Ops Classics Have A Price Problem",
     },
   ];
 
@@ -1377,6 +1394,11 @@ test("goal batch package proof preparation writes concrete scripts for fresh ref
     );
     for (const required of item.required) assert.match(prepared.full_script, required);
     assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+    assert.doesNotMatch(prepared.public_title, /Could Split Players/i);
+    if (item.expectedTitle) assert.equal(prepared.public_title, item.expectedTitle);
+    const pack = buildGoalProofPackage({ story: prepared });
+    assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players/i);
+    if (item.expectedTitle) assert.equal(pack.canonical_story_manifest.public_title, item.expectedTitle);
     assert.equal(evaluateGoalPublicCopy({
       ...prepared,
       selected_title: prepared.public_title,
@@ -2655,6 +2677,27 @@ test("goal batch package prefers GTA VI entity over editorial headline fragments
   assert.doesNotMatch(prepared.public_title, /It's wild|Rockstar to/i);
   assert.match(prepared.public_title, /Grand Theft Auto VI|GTA VI/i);
   assert.doesNotMatch(prepared.full_script, /^It's wild of Rockstar/i);
+});
+
+test("goal batch package does not preserve GTA VI editorial angles as canonical game", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_gta_vi_date_trust_check",
+    title: "GTA VI Cover Art Starts The Pre-Order Fight",
+    canonical_subject: "GTA 6",
+    canonical_game: "GTA 6's Date Trust Check",
+    source_name: "GameSpot",
+    source_type: "rss",
+    article_url:
+      "https://www.gamespot.com/articles/pre-order-grand-theft-auto-vi-on-june-25/",
+    primary_source_url:
+      "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+    full_script:
+      "GTA 6's release date just became a trust check, not a new reveal. GameSpot reports GTA 6's release timing has been reiterated without new footage, price or edition detail. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.canonical_subject, "GTA 6");
+  assert.equal(prepared.canonical_game, "GTA 6");
+  assert.doesNotMatch(prepared.canonical_game, /Date Trust Check/i);
 });
 
 test("goal batch preparation preserves a viral-ready non-subject hook instead of forcing a weaker opener", () => {

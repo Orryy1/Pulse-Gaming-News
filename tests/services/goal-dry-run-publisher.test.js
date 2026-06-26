@@ -4116,6 +4116,49 @@ test("goal dry-run publisher lets current scheduler preflight override stale pac
   );
 });
 
+test("goal dry-run publisher uses separate candidate report before stale verdict inspection", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-candidate-report-stale-verdict-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "candidate-report-stale-verdict",
+    "GREEN",
+    "GTA VI Starts The Preorder Fight",
+    { canonicalSubject: "Grand Theft Auto VI" },
+  );
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: [
+      "footage:v4_motion_blocked",
+      "media_house:shorts_feed_competition_weak",
+      "media_house:source_lock_not_verified",
+    ],
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "candidate-report-stale-verdict",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    generatedAt: "2026-06-26T05:42:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.ready_stories[0].story_id, "candidate-report-stale-verdict");
+  assert.equal(
+    plan.incident_guard_report.stories[0].disaster_upload_blockers.includes("incident:control_tower_verdict_not_green"),
+    false,
+  );
+});
+
 test("goal dry-run publisher does not override stale publish verdict without current media-house proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-publish-verdict-media-house-"));
   const storyPackage = await makeStoryPackage(

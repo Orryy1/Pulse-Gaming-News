@@ -164,6 +164,8 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.auto_approved, true);
   assert.equal(candidate.governance_publish_status, "GREEN");
   assert.equal(candidate.scheduler_bridge_source, "local_bridge_candidate_upsert");
+  assert.equal(candidate.artifact_dir, files.artifactDir);
+  assert.equal(candidate.scheduler_bridge_artifact_dir, files.artifactDir);
   assert.equal(candidate.duration_seconds, 38.5);
   assert.equal(candidate.runtime_seconds, 38.5);
   assert.equal(candidate.audio_duration, 38.5);

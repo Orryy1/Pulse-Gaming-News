@@ -98,6 +98,8 @@ test("fresh review local promotion intake builds local promotion stories without
   assert.equal(report.safety.no_oauth_or_token_change, true);
   assert.equal(report.fresh_source_intake_stories[0].id, "rss_black_ops_ports");
   assert.equal(report.fresh_source_intake_stories[0].primary_source.name, "IGN");
+  assert.equal(report.fresh_source_intake_stories[0].canonical_subject, "Call of Duty: Black Ops");
+  assert.equal(report.fresh_source_intake_stories[0].canonical_game, "Call of Duty: Black Ops");
   assert.match(report.fresh_source_intake_stories[0].selected_title, /Black Ops/i);
   assert.match(report.fresh_source_intake_stories[0].full_script, /price test|PlayStation listings|nostalgia/i);
   assert.doesNotMatch(report.fresh_source_intake_stories[0].full_script, /one concrete player question/i);
@@ -149,6 +151,7 @@ test("fresh review local promotion intake attaches known official GTA VI direct 
   const story = report.fresh_source_intake_stories[0];
   assert.equal(report.summary.local_promotion_story_count, 1);
   assert.equal(story.canonical_subject, "Grand Theft Auto VI");
+  assert.equal(story.canonical_game, "Grand Theft Auto VI");
   assert.equal(story.direct_media_candidates.length, 3);
   assert.deepEqual(
     story.direct_media_candidates.map((entry) => entry.source_family),
@@ -227,6 +230,56 @@ test("fresh review local promotion intake rejects source-angle drift from GTA tr
   assert.ok(
     report.repair_results[0].quality_failures.includes(
       "local_intake:source_script_mismatch_gta_preorder_vs_trailer_timing",
+    ),
+  );
+});
+
+test("fresh review local promotion intake rejects GTA context-only source drift into GTA lead story", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [
+      sourceBackedReviewRow({
+        id: "rss_gta_shadow_context",
+        story_id: "rss_gta_shadow_context",
+        title: "I Have Nothing But Respect For This Game That Doesn't Care About Launching In GTA 6's Shadow",
+        description:
+          "GameSpot reports a different game is choosing not to dodge the GTA 6 launch window.",
+        article_url:
+          "https://www.gamespot.com/articles/i-have-nothing-but-respect-for-this-game-that-doesnt-care-about-launching-in-gta-6s-shadow/",
+        source_name: "GameSpot",
+        source_published_at: "2026-06-25T17:00:46.000Z",
+      }),
+    ],
+    plan: {
+      summary: { selected_count: 1 },
+      source_bound_rewrite_work_orders: [{ story_id: "rss_gta_shadow_context" }],
+    },
+    now: new Date("2026-06-25T18:00:00.000Z"),
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_gta_shadow_context",
+        title: "GTA 6's Date Trust Check",
+        suggested_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+        source_name: "GameSpot",
+        article_url:
+          "https://www.gamespot.com/articles/i-have-nothing-but-respect-for-this-game-that-doesnt-care-about-launching-in-gta-6s-shadow/",
+        source_type: "rss",
+        source_published_at: "2026-06-25T17:00:46.000Z",
+        source_confidence_score: 90,
+        confirmed_claims: [
+          "GameSpot reports I Have Nothing But Respect For This Game That Doesn't Care About Launching In GTA 6's Shadow.",
+        ],
+        full_script:
+          "GTA 6's release date just became a trust check, not a new reveal. GameSpot reports GTA 6's release timing has been reiterated without new footage, price or edition detail. The pressure now shifts back to proof: gameplay, platform wording, editions and whether Rockstar's next official beat makes the schedule feel solid. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
+  });
+
+  assert.equal(report.summary.local_promotion_story_count, 0);
+  assert.equal(report.repair_results[0].output_story_ready, false);
+  assert.ok(
+    report.repair_results[0].quality_failures.includes(
+      "local_intake:source_script_mismatch_gta_context_only",
     ),
   );
 });

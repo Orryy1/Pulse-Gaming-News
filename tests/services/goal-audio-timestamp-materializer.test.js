@@ -2394,6 +2394,27 @@ test("goal audio materializer blocks tiny ASR insertions even on long high-cover
   assert.equal(await fs.pathExists(path.join(root, "output", "audio", "story-whisper-long-insertions_timestamps.json")), false);
 });
 
+test("goal audio materializer covers title openings when ASR spells GTA 6 possessives", async () => {
+  const script = "GTA 6's release date just became a trust check, not a new reveal.";
+  const words = "G T A six's release date just became a trust check not a new reveal"
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: Number((index * 0.2).toFixed(3)),
+      end: Number((index * 0.2 + 0.12).toFixed(3)),
+    }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({
+    words,
+    scriptText: script,
+  });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.reason, "coverage_ok");
+  assert.equal(coverage.opening_covered, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+});
+
 test("goal audio materializer uses configured stronger Whisper fallbacks before rejecting clean speech", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-default-whisper-fallback-"));
   const script =

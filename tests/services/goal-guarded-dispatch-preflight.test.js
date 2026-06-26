@@ -810,6 +810,68 @@ test("guarded dispatch preflight CLI skips stale transcript audit missing curren
   assert.deepEqual(parsed.held_actions, []);
 });
 
+test("guarded dispatch preflight CLI refreshes transcript audit older than current strict dry-run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-refresh-transcript-"));
+  const media = await makeMedia(root);
+  const goalDir = path.join(root, "output", "goal-contract");
+  const outDir = path.join(root, "out");
+  await fs.ensureDir(goalDir);
+  await fs.writeJson(path.join(media.dir, "canonical_story_manifest.json"), {
+    story_id: "story-one",
+    selected_title: "Doom The Dark Ages PS5 Pro Upgrade Risks Blur",
+    canonical_subject: "Doom: The Dark Ages",
+    primary_source: "PlayStation Blog",
+    narration_script:
+      "Doom The Dark Ages has one PlayStation 5 Pro risk players will feel fast. PlayStation Blog says upgraded PSSR is coming to the PlayStation 5 Pro version. The danger is not frame counting. It is readability when fire, steel and demons fill the arena at once. If PSSR holds that chaos together, Sony gets a shooter upgrade players can judge instantly, not another slow beauty shot. If it smears, the Pro badge becomes the thing people mock. That is the argument: sharper fights, or expensive blur? This is the proof fight to watch. Follow Pulse Gaming so you never miss a beat.",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(media.dir, "source_manifest.json"), {
+    primary_source: { name: "PlayStation Blog", url: "https://blog.playstation.com/example" },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "human_review_approval_gate_report.json"), approvalGateReport(media), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "dry_run_publish_plan.json"), strictDryRunPlan(media), { spaces: 2 });
+  await fs.writeJson(path.join(goalDir, "platform_status_matrix.json"), platformStatusMatrix(), { spaces: 2 });
+  await fs.writeJson(
+    path.join(goalDir, "transcript_audience_audit.json"),
+    {
+      ...transcriptAudienceReport("rewrite_required", ["mass_audience:low_concrete_detail"]),
+      generated_at: "2026-05-31T17:00:00.000Z",
+    },
+    { spaces: 2 },
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "tools/goal-guarded-dispatch-preflight.js",
+      "--root",
+      root,
+      "--out-dir",
+      outDir,
+      "--json",
+    ],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PULSE_SKIP_DOTENV: "true",
+        USE_SQLITE: "false",
+        SQLITE_DB_PATH: "",
+      },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.verdict, "GREEN");
+  assert.equal(parsed.summary.dispatch_ready_action_count, 1);
+  assert.equal(parsed.summary.transcript_held_action_count, 0);
+  const refreshed = await fs.readJson(path.join(goalDir, "transcript_audience_audit.json"));
+  assert.equal(refreshed.summary.pass, 1);
+  assert.equal(refreshed.stories[0].verdict, "pass");
+  assert.equal(path.resolve(refreshed.stories[0].artifact_dir), path.resolve(media.dir));
+});
+
 test("guarded dispatch preflight ignores stale terminal duplicate approvals outside current strict dry-run", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-stale-duplicate-"));
   const oldMedia = await makeMedia(root, "old-duplicate");

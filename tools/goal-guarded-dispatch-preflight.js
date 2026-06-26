@@ -13,6 +13,10 @@ const {
   renderGuardedDispatchPreflightMarkdown,
   writeGuardedDispatchPreflight,
 } = require("../lib/goal-guarded-dispatch-preflight");
+const {
+  auditGeneratedTranscripts,
+  writeTranscriptAudienceAudit,
+} = require("../lib/ops/transcript-audience-audit");
 
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
@@ -106,13 +110,124 @@ function transcriptAudienceReportCoversStories(report = {}, storyIds = []) {
   return required.every((storyId) => present.has(storyId));
 }
 
-async function firstExistingJson(paths = [], { requiredStoryIds = [] } = {}) {
+function generatedAtMs(value = {}) {
+  const raw = typeof value === "string" ? value : value?.generated_at;
+  const ms = Date.parse(clean(raw));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function dirOfPath(value = "") {
+  const resolved = clean(value);
+  return resolved ? path.dirname(resolved) : "";
+}
+
+function artifactDirsFromStrictDryRunPlan(plan = {}) {
+  const dirs = [];
+  const collect = (row = {}) => {
+    const candidates = [
+      row.artifact_dir,
+      dirOfPath(row.canonical_manifest_path),
+      dirOfPath(row.platform_publish_manifest_path),
+      dirOfPath(row.video_path),
+      dirOfPath(row.captions_path),
+      dirOfPath(row.cover_frame_source),
+      dirOfPath(row.first_frame_source),
+    ];
+    dirs.push(...candidates);
+  };
+  for (const action of Array.isArray(plan.actions) ? plan.actions : []) {
+    if (clean(action.action) === "would_publish") collect(action);
+  }
+  for (const story of Array.isArray(plan.ready_stories) ? plan.ready_stories : []) collect(story);
+  return Array.from(new Set(dirs.map((dir) => clean(dir)).filter(Boolean)));
+}
+
+function pathMatches(left = "", right = "") {
+  const normalise = (value) => clean(value).replace(/\\/g, "/").toLowerCase().replace(/\/+$/, "");
+  return normalise(left) === normalise(right);
+}
+
+function transcriptAudienceReportMatchesCurrentArtifacts(report = {}, plan = {}) {
+  const rowsByStory = new Map();
+  for (const row of Array.isArray(report.stories) ? report.stories : []) {
+    const storyId = clean(row.story_id || row.id);
+    if (!storyId) continue;
+    if (!rowsByStory.has(storyId)) rowsByStory.set(storyId, []);
+    rowsByStory.get(storyId).push(row);
+  }
+  const dirsByStory = new Map();
+  const collect = (row = {}) => {
+    const storyId = clean(row.story_id || row.id);
+    if (!storyId) return;
+    const dirs = [
+      row.artifact_dir,
+      dirOfPath(row.canonical_manifest_path),
+      dirOfPath(row.platform_publish_manifest_path),
+      dirOfPath(row.video_path),
+      dirOfPath(row.captions_path),
+      dirOfPath(row.cover_frame_source),
+      dirOfPath(row.first_frame_source),
+    ].map((dir) => clean(dir)).filter(Boolean);
+    if (!dirs.length) return;
+    if (!dirsByStory.has(storyId)) dirsByStory.set(storyId, new Set());
+    for (const dir of dirs) dirsByStory.get(storyId).add(dir);
+  };
+  for (const action of Array.isArray(plan.actions) ? plan.actions : []) {
+    if (clean(action.action) === "would_publish") collect(action);
+  }
+  for (const story of Array.isArray(plan.ready_stories) ? plan.ready_stories : []) collect(story);
+
+  for (const [storyId, currentDirs] of dirsByStory.entries()) {
+    const rows = rowsByStory.get(storyId) || [];
+    const rowsWithArtifacts = rows.filter((row) => clean(row.artifact_dir));
+    if (!rowsWithArtifacts.length) continue;
+    const matches = rowsWithArtifacts.some((row) =>
+      Array.from(currentDirs).some((dir) => pathMatches(row.artifact_dir, dir)),
+    );
+    if (!matches) return false;
+  }
+  return true;
+}
+
+function transcriptAudienceReportFreshForStrictDryRun(report = {}, strictDryRunPlan = {}, requiredStoryIds = []) {
+  if (!report || !transcriptAudienceReportCoversStories(report, requiredStoryIds)) return false;
+  const planGeneratedAt = generatedAtMs(strictDryRunPlan);
+  const reportGeneratedAt = generatedAtMs(report);
+  if (planGeneratedAt !== null && (reportGeneratedAt === null || reportGeneratedAt < planGeneratedAt)) {
+    return false;
+  }
+  return transcriptAudienceReportMatchesCurrentArtifacts(report, strictDryRunPlan);
+}
+
+async function refreshTranscriptAudienceReportForStrictDryRun({ root, strictDryRunPlan, outputPath } = {}) {
+  const artifactDirs = artifactDirsFromStrictDryRunPlan(strictDryRunPlan)
+    .filter((dir) => fs.existsSync(path.join(dir, "canonical_story_manifest.json")));
+  if (!artifactDirs.length) return null;
+  const report = await auditGeneratedTranscripts({ root, artifactDirs });
+  await writeTranscriptAudienceAudit(report, {
+    outputDir: path.dirname(outputPath),
+  });
+  return report;
+}
+
+async function firstExistingJson(paths = [], { requiredStoryIds = [], strictDryRunPlan = null, root = process.cwd() } = {}) {
   const existing = [];
   for (const filePath of paths) {
     if (!filePath || !await fs.pathExists(filePath)) continue;
     const report = await fs.readJson(filePath);
     existing.push(report);
-    if (transcriptAudienceReportCoversStories(report, requiredStoryIds)) return report;
+    if (!strictDryRunPlan && transcriptAudienceReportCoversStories(report, requiredStoryIds)) return report;
+    if (strictDryRunPlan && transcriptAudienceReportFreshForStrictDryRun(report, strictDryRunPlan, requiredStoryIds)) {
+      return report;
+    }
+  }
+  if (strictDryRunPlan && paths[0]) {
+    const refreshed = await refreshTranscriptAudienceReportForStrictDryRun({
+      root,
+      strictDryRunPlan,
+      outputPath: paths[0],
+    });
+    if (refreshed) return refreshed;
   }
   return existing[0] || null;
 }
@@ -268,6 +383,8 @@ async function main(argv = process.argv.slice(2)) {
       ? await readOptionalJson(transcriptAudienceReportPaths[0])
       : await firstExistingJson(transcriptAudienceReportPaths, {
         requiredStoryIds: storyIdsFromStrictDryRunPlan(strictDryRunPlan),
+        strictDryRunPlan,
+        root,
       }),
     guardedLiveDispatchExecutorReport: await readOptionalJson(guardedLiveDispatchExecutorReportPath),
     publishedPlatformEvidence: publishedEvidence.rows,
@@ -291,9 +408,11 @@ if (require.main === module) {
 
 module.exports = {
   firstExistingJson,
+  artifactDirsFromStrictDryRunPlan,
   main,
   parseArgs,
   readPublishedPlatformEvidenceFromSqlite,
   storyIdsFromStrictDryRunPlan,
   transcriptAudienceReportCoversStories,
+  transcriptAudienceReportFreshForStrictDryRun,
 };

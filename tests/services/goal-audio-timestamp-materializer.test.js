@@ -1520,21 +1520,21 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
       ok: true,
       source: "local_whisper_word_alignment",
       model: "tiny.en",
-      transcript: "G T A five just became the G T A six waiting room.",
+      transcript: "Grand Theft Auto five just became the Grand Theft Auto six waiting room.",
       words: [
-        { word: "G", start: 0.08, end: 0.16 },
-        { word: "T", start: 0.18, end: 0.26 },
-        { word: "A", start: 0.28, end: 0.36 },
-        { word: "five", start: 0.38, end: 0.56 },
-        { word: "just", start: 0.58, end: 0.72 },
-        { word: "became", start: 0.74, end: 1 },
-        { word: "the", start: 1.02, end: 1.14 },
-        { word: "G", start: 1.16, end: 1.24 },
-        { word: "T", start: 1.26, end: 1.34 },
-        { word: "A", start: 1.36, end: 1.44 },
-        { word: "six", start: 1.46, end: 1.64 },
-        { word: "waiting", start: 1.66, end: 1.96 },
-        { word: "room.", start: 1.98, end: 2.22 },
+        { word: "Grand", start: 0.08, end: 0.22 },
+        { word: "Theft", start: 0.24, end: 0.4 },
+        { word: "Auto", start: 0.42, end: 0.58 },
+        { word: "five", start: 0.6, end: 0.78 },
+        { word: "just", start: 0.8, end: 0.94 },
+        { word: "became", start: 0.96, end: 1.22 },
+        { word: "the", start: 1.24, end: 1.36 },
+        { word: "Grand", start: 1.38, end: 1.52 },
+        { word: "Theft", start: 1.54, end: 1.7 },
+        { word: "Auto", start: 1.72, end: 1.88 },
+        { word: "six", start: 1.9, end: 2.08 },
+        { word: "waiting", start: 2.1, end: 2.4 },
+        { word: "room.", start: 2.42, end: 2.66 },
       ],
     }),
     generateTtsForStory: async ({ text, outputPath }) => {
@@ -1548,11 +1548,11 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
     },
   });
 
-  assert.equal(calls[0].text, "G T A five just became the G T A six waiting room.");
+  assert.equal(calls[0].text, "Grand Theft Auto five just became the Grand Theft Auto six waiting room.");
   assert.equal(report.summary.materialized_count, 1);
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-gta-spoken_timestamps.json"));
   assert.equal(timestamps.meta.text, script);
-  assert.equal(timestamps.meta.transcript, "G T A five just became the G T A six waiting room.");
+  assert.equal(timestamps.meta.transcript, "Grand Theft Auto five just became the Grand Theft Auto six waiting room.");
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
   assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
 });

@@ -158,7 +158,7 @@ test("buildKineticAss restores GTA sequel digits from spoken captions", () => {
   const text = extractAssDialogueText(ass).join(" ");
   assert.match(text, /GTA/);
   assert.match(text, /5/);
-  assert.match(text, /6/);
+  assert.match(text, /VI/);
   assert.doesNotMatch(text, /\bfive\b/i);
   assert.doesNotMatch(text, /\bsix\b/i);
 });

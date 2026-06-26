@@ -144,7 +144,7 @@ test("caption emphasis restores Grand Theft Auto roman numerals from spoken loca
     duration: 3,
   });
 
-  assert.match(ass, /Grand Theft Auto VI/i);
+  assert.match(ass, /GTA VI/i);
   assert.doesNotMatch(ass, /Grand Theft Auto Six/i);
 });
 

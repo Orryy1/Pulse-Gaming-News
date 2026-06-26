@@ -207,8 +207,18 @@ test("cleanForTTS: expands PS5 when it leads a spoken news line", () => {
 test("cleanForTTS: speaks GTA 5 and GTA 6 in consistent word form for local alignment", () => {
   assert.equal(
     cleanForTTS("GTA 5 just became the GTA 6 waiting room. GTA V still feeds GTA VI interest."),
-    "G T A five just became the G T A six waiting room. G T A five still feeds G T A six interest.",
+    "Grand Theft Auto five just became the Grand Theft Auto six waiting room. Grand Theft Auto five still feeds Grand Theft Auto six interest.",
   );
+});
+
+test("cleanForTTS: removes old spaced GTA acronym forms before local narration", () => {
+  const spoken = cleanForTTS("G T A six is the hook, but GTA VI is the title.");
+
+  assert.equal(
+    spoken,
+    "Grand Theft Auto six is the hook, but Grand Theft Auto six is the title.",
+  );
+  assert.doesNotMatch(spoken, /\bG\s+T\s+A\s+six\b/i);
 });
 
 test("cleanForTTS: turns article-style deal snippets into spoken sentences", () => {

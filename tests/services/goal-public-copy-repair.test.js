@@ -197,7 +197,7 @@ test("caption SRT normalises hardware, years and GTA acronym-number ASR", () => 
     },
   );
 
-  assert.match(srt, /GTA 6/);
+  assert.match(srt, /GTA VI/);
   assert.match(srt, /PlayStation 5/);
   assert.match(srt, /2027/);
   assert.match(srt, /Gears of War E-Day/);
@@ -234,7 +234,7 @@ test("caption SRT protects title and platform fragments before phrase grouping",
   );
 
   assert.match(srt, /GameSpot/);
-  assert.match(srt, /GTA 6/);
+  assert.match(srt, /GTA VI/);
   assert.match(srt, /PlayStation 5/);
   assert.match(srt, /2026/);
   assert.doesNotMatch(srt, /Game Spot|G T A|PlayStation five|twenty twenty six/);
@@ -340,7 +340,7 @@ test("caption SRT restores Grand Theft Auto roman numerals from spoken words", (
     },
   );
 
-  assert.match(srt, /Grand Theft Auto VI/);
+  assert.match(srt, /GTA VI/);
   assert.doesNotMatch(srt, /Grand Theft Auto Six/);
 });
 

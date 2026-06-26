@@ -127,7 +127,7 @@ test("subtitle display merge keeps gaming names readable", () => {
 
   const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
 
-  assert.deepEqual(merged, ["GTA 5", "and", "GTA 6.", "PlayStation 5"]);
+  assert.deepEqual(merged, ["GTA 5", "and", "GTA VI.", "PlayStation 5"]);
 });
 
 test("subtitle display merge handles ASR punctuation and possessive gaming names", () => {
@@ -144,6 +144,21 @@ test("subtitle display merge handles ASR punctuation and possessive gaming names
   const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
 
   assert.deepEqual(merged, ["GTA 5's", "free", "PlayStation 5."]);
+});
+
+test("subtitle display merge renders spoken Grand Theft Auto six as GTA VI", () => {
+  const words = [
+    { text: "Grand", start: 0, end: 0.18 },
+    { text: "Theft", start: 0.18, end: 0.36 },
+    { text: "Auto", start: 0.36, end: 0.54 },
+    { text: "six", start: 0.54, end: 0.74 },
+    { text: "preorders", start: 0.76, end: 1.1 },
+    { text: "changed", start: 1.1, end: 1.4 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA VI", "preorders", "changed"]);
 });
 
 test("subtitle display merge converts spoken modern years without rewriting ordinary numbers", () => {

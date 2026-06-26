@@ -858,6 +858,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
           row.entity === "Halo Campaign Evolved" &&
           /official gameplay trailer/i.test(row.query || "") &&
           (row.accepted_sources || []).includes("Steam") &&
+          (row.accepted_sources || []).includes("official game site") &&
           row.reason === "fresh_refill_motion_variety_deficit",
       ),
       "expected fresh refill to add a supplemental storefront search for motion-starved candidates",

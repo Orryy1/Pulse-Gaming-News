@@ -204,6 +204,9 @@ test("direct-media discovery accepts official GTA VI compact-title media", async
         source_type: "official_game_website_media_page",
         source_owner: "Rockstar Games",
         official_source_url: "https://www.rockstargames.com/VI/",
+        source_url_kind: "html_or_unknown_page",
+        segment_validation_eligible: false,
+        segment_validation_ineligible_reason: "segment_source_url_not_direct_media",
       },
     ],
     fetchText: async (url) => {
@@ -233,6 +236,13 @@ test("direct-media discovery accepts official GTA VI compact-title media", async
   assert.equal(report.rows[0].status, "direct_media_found");
   assert.equal(report.rows[0].entity_mismatch_candidate_count, 0);
   assert.equal(report.rows[0].source_duration_s, 32.67);
+  assert.equal(
+    report.output_template.entries[0].direct_media_url_if_available,
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+  );
+  assert.equal(report.output_template.entries[0].source_url_kind, "direct_video");
+  assert.equal(report.output_template.entries[0].segment_validation_eligible, true);
+  assert.equal(report.output_template.entries[0].segment_validation_ineligible_reason, null);
 });
 
 test("direct-media discovery rejects Steam trailer manifests from a different app id", async () => {

@@ -77,6 +77,53 @@ test("official search autofill accepts only exact or strong Steam storefront mat
   assert.match(entry.evidence_of_officialness, /Steam official app 881020/);
 });
 
+test("official search autofill adds trusted official media pages for known publisher entities", async () => {
+  let steamFetches = 0;
+  const report = await buildOfficialSearchIntakeAutofillReport({
+    entries: [
+      {
+        story_id: "gta-vi-gap",
+        entity: "Grand Theft Auto VI",
+        query: "Grand Theft Auto VI official gameplay trailer",
+        accepted_sources: ["official publisher channel", "official game site", "platform storefront"],
+        status: "official_search_required",
+        downloads_allowed: false,
+      },
+    ],
+    fetchJson: async () => {
+      steamFetches += 1;
+      return { ok: true, status: 200, json: { items: [] } };
+    },
+  });
+
+  assert.equal(steamFetches, 0);
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.output_entries, 1);
+  assert.deepEqual(report.safety.provider_scope, [
+    "official_site_catalog",
+    "steam_storesearch",
+  ]);
+  const row = report.rows[0];
+  assert.equal(row.provider, "official_site_catalog");
+  assert.equal(row.status, "accepted");
+  assert.equal(row.reason, null);
+  const entry = report.output_template.entries[0];
+  assert.equal(entry.story_id, "gta-vi-gap");
+  assert.equal(entry.entity, "Grand Theft Auto VI");
+  assert.equal(entry.source_type, "official_game_website_media_page");
+  assert.equal(entry.source_owner, "Rockstar Games official site");
+  assert.equal(entry.source_title, "Grand Theft Auto VI Videos");
+  assert.equal(entry.official_source_url, "https://www.rockstargames.com/VI/media/videos");
+  assert.equal(entry.direct_media_url_if_available, "");
+  assert.equal(entry.downloads_allowed, false);
+  assert.equal(entry.autonomous_use_approved, false);
+  assert.equal(
+    entry.candidate_generation_policy,
+    "official_media_page_reference_only_direct_media_discovery_required",
+  );
+  assert.match(entry.evidence_of_officialness, /Rockstar Games official media page/);
+});
+
 test("official search autofill rejects weak Steam result matches", async () => {
   const report = await buildOfficialSearchIntakeAutofillReport({
     entries: [

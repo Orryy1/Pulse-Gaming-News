@@ -821,6 +821,63 @@ test("pillarLocalPostingReadiness: stale local posting artefacts keep cutover am
   }
 });
 
+test("buildLocalPostingReadinessPillar: refreshes stale local posting evidence before verdict", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-local-posting-refresh-"));
+  const reportPath = path.join(dir, "local_posting_readiness.json");
+  try {
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify({
+        verdict: "red",
+        status: "not_ready",
+        readiness: { local_tts_green: false },
+        blockers: ["local Liam TTS readiness is not green"],
+      }),
+    );
+    const stale = new Date("2026-06-01T00:00:00.000Z");
+    fs.utimesSync(reportPath, stale, stale);
+
+    const pillar = await pr.buildLocalPostingReadinessPillar({
+      localPostingReadinessPath: reportPath,
+      now: Date.parse("2026-06-01T05:00:00.000Z"),
+      maxArtifactAgeHours: 2,
+      refreshLocalPostingArtifacts: true,
+      localPostingArtifactRefresh: async ({ staleArtifacts }) => {
+        assert.deepEqual(
+          staleArtifacts.map((artifact) => artifact.name),
+          ["local_posting_readiness"],
+        );
+        fs.writeFileSync(
+          reportPath,
+          JSON.stringify({
+            verdict: "green",
+            status: "ready_to_resume_local_posting",
+            readiness: {
+              local_health: true,
+              public_health: true,
+              tunnel_connected: true,
+              local_tts_green: true,
+              local_voice_ready_count: 2,
+            },
+            blockers: [],
+            warnings: [],
+          }),
+        );
+        const fresh = new Date("2026-06-01T05:00:00.000Z");
+        fs.utimesSync(reportPath, fresh, fresh);
+        return { refreshed: true };
+      },
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.artifact_refresh.attempted, true);
+    assert.equal(pillar.raw.artifact_refresh.ok, true);
+    assert.equal(pillar.raw.artifact_freshness.stale_count, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("pillarLocalPostingReadiness: passes fresh tunnel evidence into aggregate report", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-local-posting-tunnel-"));
   const cutoverPath = path.join(dir, "local_cutover_plan.json");

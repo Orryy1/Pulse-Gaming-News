@@ -20,6 +20,7 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 require("dotenv").config({ override: true });
 const {
   buildPublishReadinessReport,
@@ -35,6 +36,7 @@ function parseArgs(argv) {
     json: false,
     discord: false,
     help: false,
+    refreshLocalPostingArtifacts: true,
     strictDryRunPlanPath: null,
     schedulerBridgeCandidatesPath: null,
     platformDurationContractPath: null,
@@ -44,6 +46,7 @@ function parseArgs(argv) {
     const a = values[index];
     if (a === "--json") args.json = true;
     else if (a === "--discord") args.discord = true;
+    else if (a === "--no-local-posting-refresh") args.refreshLocalPostingArtifacts = false;
     else if (a === "--dry-run-plan" || a === "--strict-dry-run-plan") {
       args.strictDryRunPlanPath = path.resolve(ROOT, values[++index] || "");
     } else if (a.startsWith("--dry-run-plan=")) {
@@ -66,6 +69,49 @@ function parseArgs(argv) {
   return args;
 }
 
+function tailLines(value, maxLines = 8) {
+  return String(value || "")
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(-maxLines);
+}
+
+function runRefreshScript(scriptName, args = []) {
+  const scriptPath = path.join(ROOT, "tools", scriptName);
+  const result = spawnSync(process.execPath, [scriptPath, ...args], {
+    cwd: ROOT,
+    env: process.env,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 180000,
+  });
+  return {
+    script: scriptName,
+    args,
+    exit_code: result.status,
+    signal: result.signal || null,
+    error: result.error ? result.error.message : null,
+    stdout_tail: tailLines(result.stdout),
+    stderr_tail: tailLines(result.stderr),
+  };
+}
+
+async function refreshLocalPostingArtifacts() {
+  const commands = [
+    runRefreshScript("local-primary-readiness.js", ["--json"]),
+    runRefreshScript("local-tunnel-readiness.js", ["--json"]),
+    runRefreshScript("local-cutover-plan.js", ["--json"]),
+    runRefreshScript("local-tts-doctor.js"),
+    runRefreshScript("local-posting-readiness.js", ["--json"]),
+  ];
+  return {
+    refreshed_at: new Date().toISOString(),
+    safety: "read-only local proof refresh; no publish, DB edit, OAuth, token, billing or platform-setting mutation",
+    commands,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
@@ -73,6 +119,7 @@ async function main() {
       "Usage: node tools/publish-readiness.js [--json] [--discord]\n" +
         "  --json     Emit the full JSON report to stdout\n" +
         "  --discord  Also post the markdown verdict to Discord\n" +
+        "  --no-local-posting-refresh  Do not refresh local posting/TTS evidence before verdict\n" +
         "  --dry-run-plan <path>  Strict dry-run plan to evaluate\n" +
         "  --bridge-candidates <path>  Scheduler bridge candidates to evaluate\n" +
         "  --platform-duration-contract <path>  Platform duration contract report\n",
@@ -84,6 +131,10 @@ async function main() {
     strictDryRunPlanPath: args.strictDryRunPlanPath || undefined,
     schedulerBridgeCandidatesPath: args.schedulerBridgeCandidatesPath || undefined,
     platformDurationContractPath: args.platformDurationContractPath || undefined,
+    refreshLocalPostingArtifacts: args.refreshLocalPostingArtifacts,
+    localPostingArtifactRefresh: args.refreshLocalPostingArtifacts
+      ? refreshLocalPostingArtifacts
+      : undefined,
   });
   const markdown = formatPublishReadinessMarkdown(report);
 
@@ -143,5 +194,6 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  refreshLocalPostingArtifacts,
   main,
 };

@@ -375,6 +375,59 @@ test("local posting readiness accepts fresh standalone doctor when overnight rep
   assert.ok(!report.blockers.includes("local Liam TTS readiness is not green"));
 });
 
+test("local posting readiness does not block completed publishing when local TTS GPU capacity is temporarily busy", () => {
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "green",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: true,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Active connections: 2" },
+      health: {
+        local: { ok: true, status: 200 },
+        public: { ok: true, status: 200 },
+      },
+    },
+    primaryReadiness: {
+      checks: {
+        primary_enabled: true,
+        use_job_queue_enabled: true,
+        auto_publish_enabled: true,
+      },
+      health: {
+        local: { ok: true, status: 200 },
+        public: { ok: true, status: 200 },
+      },
+    },
+    ttsReport: { verdict: "RED", proof_batch: { voice_ready_count: 4 } },
+    ttsDoctorReport: {
+      verdict: "amber",
+      action: "wait_for_gpu",
+      failure_code: "gpu_saturated",
+      reason: "GPU free memory 1770MB is below 3072MB",
+      before: {
+        ready: true,
+        voice: { alias: "liam", loaded: true, refResolved: true },
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.readiness.local_tts_green, true);
+  assert.equal(report.readiness.local_tts_generation_capacity, "amber");
+  assert.ok(!report.blockers.includes("local Liam TTS readiness is not green"));
+  assert.ok(
+    report.warnings.some((warning) =>
+      /completed renders can publish but fresh narration generation may wait/.test(warning),
+    ),
+  );
+});
+
 test("local posting readiness markdown is operator readable", () => {
   const report = buildLocalPostingReadiness({
     cutoverPlan: {

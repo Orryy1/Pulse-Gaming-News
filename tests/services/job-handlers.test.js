@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const {
   handleGuardedLiveDispatchPublish,
   buildFreshRefillOfficialSourceEvidence,
+  freshRefillNarrationProviderPreference,
   guardedPublishFailureMessage,
   guardedPublishResultShouldFailJob,
   readGuardedLiveExecutorPlanForScheduler,
@@ -81,6 +82,24 @@ test("guarded publish failure message includes a safe platform error detail", ()
   assert.match(message, /youtube_upload_failed/);
   assert.match(message, /access_token_redacted/);
   assert.doesNotMatch(message, /abc123/);
+});
+
+test("fresh refill narration provider stays local unless ElevenLabs is explicitly enabled", () => {
+  assert.equal(freshRefillNarrationProviderPreference({ payload: {}, env: {} }), "local");
+  assert.equal(
+    freshRefillNarrationProviderPreference({
+      payload: { tts_provider_preference: "elevenlabs" },
+      env: {},
+    }),
+    "elevenlabs",
+  );
+  assert.equal(
+    freshRefillNarrationProviderPreference({
+      payload: {},
+      env: { PULSE_FRESH_REFILL_ALLOW_ELEVENLABS_TTS: "true" },
+    }),
+    "elevenlabs",
+  );
 });
 
 test("fresh refill source evidence preserves official YouTube watch references as reference-only sources", async () => {

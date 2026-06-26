@@ -1195,6 +1195,7 @@ test("fresh production refill continues motion-hydrated stories through audio an
           rss_per_feed: 1,
           out_dir: outDir,
           contract_out_dir: contractOutDir,
+          tts_provider_preference: "elevenlabs",
         },
       },
       {
@@ -1258,6 +1259,7 @@ test("fresh production refill continues motion-hydrated stories through audio an
     assert.equal(result.motion_hydrated_refill.green_count, 0);
     assert.equal(result.materialization_continuation.status, "completed");
     assert.equal(result.materialization_continuation.final_green_count, 1);
+    assert.equal(result.materialization_continuation.narration_provider_preference, "elevenlabs");
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-workbench.js"),
       "expected continuation to plan fresh audio/timestamp generation",
@@ -1266,6 +1268,14 @@ test("fresh production refill continues motion-hydrated stories through audio an
       childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-materializer.js"),
       "expected continuation to materialise local narration and Whisper timestamps",
     );
+    for (const tool of [
+      "tools/goal-audio-timestamp-workbench.js",
+      "tools/goal-audio-timestamp-materializer.js",
+    ]) {
+      const call = childCalls.find((entry) => entry.args[0] === tool);
+      assert.ok(call, `expected ${tool} child call`);
+      assert.equal(call.args[call.args.indexOf("--provider") + 1], "elevenlabs");
+    }
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/goal-production-render-materializer.js"),
       "expected continuation to render the final Visual V4 MP4 after audio became ready",

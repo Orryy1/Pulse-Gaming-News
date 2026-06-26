@@ -387,6 +387,50 @@ test("local restart readiness blocks stale running build and disabled cadence ga
   );
 });
 
+test("local restart readiness allows report-only commit drift", async () => {
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "2222222222222222222222222222222222222222",
+      commit_short: "2222222",
+      branch: "codex/test",
+    },
+    localHealth: healthy("1111111111111111111111111111111111111111"),
+    publicHealth: healthy("1111111111111111111111111111111111111111"),
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+    execFileSyncImpl(file, args) {
+      assert.equal(file, "git");
+      assert.deepEqual(args, [
+        "diff",
+        "--name-only",
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222",
+        "--",
+      ]);
+      return "LOCAL_TTS_OVERNIGHT_REPORT.md\n";
+    },
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.deepEqual(report.blockers, []);
+  assert.equal(report.running.local.commit_drift.safe_to_ignore, true);
+  assert.equal(report.running.public.commit_drift.safe_to_ignore, true);
+  assert.ok(
+    report.advisory.some((line) =>
+      /commit drift is non-runtime-only/i.test(line),
+    ),
+  );
+});
+
 test("local restart readiness blocks runtime ownership drift even when commit matches", async () => {
   const drifted = healthy("abcdef1234567890", {
     schedulerActive: false,

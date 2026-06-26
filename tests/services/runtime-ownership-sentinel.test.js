@@ -191,6 +191,92 @@ test("runtime sentinel fails red for wrong runtime drift and legacy dispatch", (
   assert.equal(report.recommendation, "hold_scheduler_and_recover_runtime_ownership");
 });
 
+test("runtime sentinel does not hold publishing for report-only commit drift", () => {
+  const reportOnlyHealth = health();
+  reportOnlyHealth.json.build = {
+    commit_sha: "1111111111111111111111111111111111111111",
+    commit_short: "1111111",
+    branch: "codex/live",
+  };
+  const report = buildRuntimeOwnershipSentinel({
+    expectedBuild: {
+      commit_sha: "2222222222222222222222222222222222222222",
+      commit_short: "2222222",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: reportOnlyHealth,
+    publicHealth: reportOnlyHealth,
+    processSnapshot: goodProcessSnapshot,
+    execFileSyncImpl(file, args) {
+      assert.equal(file, "git");
+      assert.deepEqual(args, [
+        "diff",
+        "--name-only",
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222",
+        "--",
+      ]);
+      return "LOCAL_TTS_OVERNIGHT_REPORT.md\n";
+    },
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.deepEqual(report.blockers, []);
+  assert.ok(
+    report.advisory.some((line) =>
+      /commit drift is non-runtime-only/i.test(line),
+    ),
+  );
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, true);
+  assert.equal(report.health.local.facts.commit_drift.safe_to_ignore, true);
+  assert.deepEqual(report.health.local.facts.commit_drift.runtime_relevant_files, []);
+});
+
+test("runtime sentinel still blocks commit drift when runtime files changed", () => {
+  const staleRuntimeHealth = health();
+  staleRuntimeHealth.json.build = {
+    commit_sha: "1111111111111111111111111111111111111111",
+    commit_short: "1111111",
+    branch: "codex/live",
+  };
+  const report = buildRuntimeOwnershipSentinel({
+    expectedBuild: {
+      commit_sha: "2222222222222222222222222222222222222222",
+      commit_short: "2222222",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: staleRuntimeHealth,
+    publicHealth: staleRuntimeHealth,
+    processSnapshot: goodProcessSnapshot,
+    execFileSyncImpl() {
+      return "LOCAL_TTS_OVERNIGHT_REPORT.md\nlib/job-handlers.js\n";
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(
+    report.blockers.some((line) =>
+      /runtime-relevant files changed/i.test(line),
+    ),
+  );
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, false);
+  assert.deepEqual(report.health.local.facts.commit_drift.runtime_relevant_files, [
+    "lib/job-handlers.js",
+  ]);
+});
+
 test("runtime sentinel fails red when guarded executor handoff is stale against current dry-run proof", () => {
   const report = buildRuntimeOwnershipSentinel({
     now: new Date("2026-06-14T13:55:00Z"),

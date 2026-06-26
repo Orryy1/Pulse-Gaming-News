@@ -463,6 +463,62 @@ test("Visual V4 Director does not count timestamp windows from the same source v
   assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 2);
 });
 
+test("Visual V4 Director counts official trailer segment windows as distinct rendered scene assets", () => {
+  const officialWindows = Array.from({ length: 8 }, (_, index) => {
+    const windowStart = 36 + index * 6;
+    return {
+      id: `gta-vi-window-${index + 1}`,
+      source_family: `rockstar_gta_vi_official_videos__media_02_gtavi_trailer_2_window_${windowStart}_5`,
+      source_url:
+        "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+      source_type: "official_trailer_segment",
+      source_url_kind: "direct_video",
+      media_kind: "direct_video",
+      path: `C:\\media\\gta-vi-window-${windowStart}.mp4`,
+      durationS: 5,
+      validated: true,
+    };
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "gta-vi-official-window-scenes",
+      title: "GTA VI Starts The Preorder Fight",
+      full_script:
+        "Grand Theft Auto VI now has one real preorder catch. Xbox Wire says pre-orders open on June 25 after Rockstar put Jason and Lucia on the official cover art.",
+    },
+    footagePlan: {
+      readiness: {
+        status: "ready",
+        blockers: [],
+      },
+      motion_budget: {
+        required_motion_scenes: 5,
+        available_motion_clips: officialWindows.length,
+        required_distinct_families: 4,
+        required_distinct_source_assets: 4,
+        available_distinct_motion_families: officialWindows.length,
+        available_distinct_source_assets: officialWindows.length,
+        max_static_card_ratio: 0.22,
+        max_static_card_seconds: 12,
+        target_motion_ratio: 0.68,
+      },
+      motion_inventory: {
+        accepted_local_clips: officialWindows,
+      },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(plan.readiness.status, "director_ready");
+  assert.equal(motionShots.length, 8);
+  assert.equal(new Set(motionShots.map((shot) => shot.source_family)).size, 8);
+  assert.equal(new Set(motionShots.map((shot) => shot.base_source_family)).size, 8);
+  assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 8);
+});
+
 test("Visual V4 Director treats generated segment variants from one V4 clip as one source asset", () => {
   const segmentVariantClips = [
     {

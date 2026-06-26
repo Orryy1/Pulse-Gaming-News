@@ -177,6 +177,56 @@ test("incident guard passes only when public copy, final inputs and platform evi
   assert.deepEqual(report.disaster_upload_blockers, []);
 });
 
+test("incident guard accepts GTA VI aliases for Grand Theft Auto VI public copy", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "gta-vi-clean",
+    canonical_story_manifest: {
+      story_id: "gta-vi-clean",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      selected_title: "GTA VI Starts The Preorder Fight",
+      thumbnail_headline: "GTA VI PREORDER TEST",
+      first_spoken_line: "GTA VI now has one real preorder catch.",
+      narration_script:
+        "GTA VI now has one real preorder catch. Xbox Wire says pre-orders open after Rockstar put Jason and Lucia on the official cover art. The cover is hype. The store page is the test. Follow Pulse Gaming so you never miss a beat.",
+      description:
+        "GTA VI pre-orders open after the official cover art reveal. Source: Xbox Wire.",
+      primary_source: { name: "Xbox Wire", url: "https://news.xbox.com/en-us/example-gta-vi" },
+      discovery_source: { name: "RSS", url: "https://news.xbox.com/en-us/feed" },
+      secondary_sources: [],
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("GTA VI"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: { title: "GTA VI Starts The Preorder Fight" },
+        instagram_reels: { caption: "GTA VI pre-orders are now the first real test." },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, true);
+  assert.ok(!report.disaster_upload_blockers.includes("incident:title_missing_canonical_subject"));
+  assert.ok(!report.disaster_upload_blockers.includes("incident:first_line_missing_canonical_subject"));
+});
+
 test("incident guard accepts evidence-backed named-character cover headlines", () => {
   const script =
     "Street Fighter 6 just made Yasmine look like a ranked-mode problem. GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. That matters for players because zoner mains may have to spend meter just to breathe, while rushdown players may get a new bully on 3 August. The catch is her space control: defenders may not get time to reset. If that pressure survives release, ranked mode turns into a fight over fairness, not just hype. Follow Pulse Gaming so you never miss a beat.";

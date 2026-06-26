@@ -1501,15 +1501,14 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
 });
 
 test("goal audio materializer coverage treats compact and split outlet/game phrases as same words", () => {
-  const scriptText = "GameSpot says G T A six preorders open today, wait or skip.";
+  const scriptText = "GameSpot says G T A six pre-orders open today, wait or skip.";
   const words = [
     { word: "Game", start: 0, end: 0.18 },
     { word: "Spot", start: 0.18, end: 0.36 },
     { word: "says", start: 0.38, end: 0.52 },
     { word: "GTA", start: 0.54, end: 0.74 },
     { word: "six", start: 0.76, end: 0.94 },
-    { word: "pre", start: 0.96, end: 1.08 },
-    { word: "order", start: 1.08, end: 1.24 },
+    { word: "preorders", start: 0.96, end: 1.24 },
     { word: "open", start: 1.26, end: 1.44 },
     { word: "today,", start: 1.46, end: 1.7 },
     { word: "weight", start: 1.72, end: 1.94 },
@@ -1522,6 +1521,72 @@ test("goal audio materializer coverage treats compact and split outlet/game phra
   assert.equal(coverage.ok, true);
   assert.equal(coverage.inserted_actual_word_count, 0);
   assert.equal(coverage.unmatched_expected_word_count, 0);
+});
+
+test("goal audio materializer coverage accepts GTA VI roman numeral ASR variants without allowing inserted words", () => {
+  const scriptText =
+    "Grand Theft Auto VI now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.";
+  const words = [
+    { word: "Grand", start: 0, end: 0.18 },
+    { word: "Theft", start: 0.2, end: 0.38 },
+    { word: "Auto", start: 0.4, end: 0.58 },
+    { word: "6", start: 0.6, end: 0.72 },
+    { word: "ic", start: 0.72, end: 0.8 },
+    { word: "now", start: 0.82, end: 0.96 },
+    { word: "has", start: 0.98, end: 1.1 },
+    { word: "one", start: 1.12, end: 1.24 },
+    { word: "real", start: 1.26, end: 1.4 },
+    { word: "preorder", start: 1.42, end: 1.68 },
+    { word: "catch.", start: 1.7, end: 1.9 },
+    { word: "Follow", start: 1.92, end: 2.1 },
+    { word: "Pulse", start: 2.12, end: 2.28 },
+    { word: "Gaming", start: 2.3, end: 2.48 },
+    { word: "so", start: 2.5, end: 2.58 },
+    { word: "you", start: 2.6, end: 2.7 },
+    { word: "never", start: 2.72, end: 2.88 },
+    { word: "miss", start: 2.9, end: 3.04 },
+    { word: "a", start: 3.06, end: 3.1 },
+    { word: "beat.", start: 3.12, end: 3.3 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[0].word, "Grand");
+  assert.equal(reconciled.words[3].word, "VI");
+
+  const c6Coverage = _testables.analyseWhisperScriptCoverage({
+    words: [
+      { word: "Grand", start: 0, end: 0.18 },
+      { word: "Theft", start: 0.2, end: 0.38 },
+      { word: "Auto", start: 0.4, end: 0.58 },
+      { word: "C6", start: 0.6, end: 0.78 },
+      { word: "now", start: 0.8, end: 0.94 },
+      { word: "has", start: 0.96, end: 1.08 },
+      { word: "one", start: 1.1, end: 1.22 },
+      { word: "real", start: 1.24, end: 1.38 },
+      { word: "preorder", start: 1.4, end: 1.66 },
+      { word: "catch.", start: 1.68, end: 1.88 },
+      { word: "Follow", start: 1.9, end: 2.08 },
+      { word: "Pulse", start: 2.1, end: 2.26 },
+      { word: "Gaming", start: 2.28, end: 2.46 },
+      { word: "so", start: 2.48, end: 2.56 },
+      { word: "you", start: 2.58, end: 2.68 },
+      { word: "never", start: 2.7, end: 2.86 },
+      { word: "miss", start: 2.88, end: 3.02 },
+      { word: "a", start: 3.04, end: 3.08 },
+      { word: "beat.", start: 3.1, end: 3.28 },
+    ],
+    scriptText,
+  });
+
+  assert.equal(c6Coverage.ok, true);
+  assert.equal(c6Coverage.opening_covered, true);
+  assert.equal(c6Coverage.inserted_actual_word_count, 0);
 });
 
 test("goal audio materializer aligns hyphenated script words when Whisper splits them", async () => {

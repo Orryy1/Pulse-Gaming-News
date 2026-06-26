@@ -1510,6 +1510,40 @@ function visualEntityTokenise(value = "") {
     );
 }
 
+function visualSubjectAliasTokens(value = "") {
+  const key = cleanText(value)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const compact = key.replace(/\s+/g, "");
+  const aliases = new Set();
+  if (
+    /\bgrand theft auto vi\b|\bgta vi\b|\bgta 6\b/.test(key) ||
+    ["grandtheftautovi", "grandtheftauto6", "gtavi", "gta6"].includes(compact)
+  ) {
+    aliases.add("grand theft auto vi");
+    aliases.add("grand theft auto 6");
+    aliases.add("gta vi");
+    aliases.add("gta 6");
+    aliases.add("gtavi");
+    aliases.add("gta6");
+  }
+  if (
+    /\bgrand theft auto v\b|\bgta v\b|\bgta 5\b/.test(key) ||
+    ["grandtheftautov", "grandtheftauto5", "gtav", "gta5"].includes(compact)
+  ) {
+    aliases.add("grand theft auto v");
+    aliases.add("grand theft auto 5");
+    aliases.add("gta v");
+    aliases.add("gta 5");
+    aliases.add("gtav");
+    aliases.add("gta5");
+  }
+  return Array.from(aliases).filter(Boolean);
+}
+
 function visualSubjectTokensForStory(story = {}) {
   const subject = cleanText(
     story.canonical_subject ||
@@ -1526,6 +1560,7 @@ function visualSubjectTokensForStory(story = {}) {
       "",
   );
   const tokens = visualEntityTokenise(subject || fallbackTitle);
+  tokens.push(...visualSubjectAliasTokens(subject || fallbackTitle));
   if (tokens.includes("gta")) tokens.push("grand", "theft", "auto");
   if (tokens.includes("gta")) {
     for (const token of tokens) {
@@ -1858,9 +1893,29 @@ const OPAQUE_SIDECAR_PROVENANCE_TOKENS = new Set([
 
 function provenanceContainsSubjectToken(provenance = "", subjectTokens = []) {
   if (!provenance) return false;
-  return subjectTokens.some((token) =>
-    new RegExp(`(^|[^a-z0-9])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(provenance),
-  );
+  const rawProvenance = cleanText(provenance).toLowerCase();
+  const normalisedProvenance = rawProvenance
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const compactProvenance = normalisedProvenance.replace(/\s+/g, "");
+  return subjectTokens.some((token) => {
+    const rawToken = cleanText(token).toLowerCase();
+    const normalisedToken = rawToken
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalisedToken) return false;
+    const compactToken = normalisedToken.replace(/\s+/g, "");
+    if (normalisedToken.includes(" ")) {
+      return normalisedProvenance.includes(normalisedToken) ||
+        (compactToken.length >= 4 && compactProvenance.includes(compactToken));
+    }
+    return new RegExp(`(^|[^a-z0-9])${normalisedToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(normalisedProvenance) ||
+      (compactToken.length >= 4 && compactProvenance.includes(compactToken));
+  });
 }
 
 function sidecarProvenanceLooksOpaque(provenance = "") {

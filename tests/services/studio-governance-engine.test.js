@@ -170,6 +170,52 @@ test("Studio Governance Engine returns GREEN with the required publish artefacts
   assert.equal(report.correction_plan.actions.length, 0);
 });
 
+test("Studio Governance Engine accepts GTA VI aliases in public title and description", () => {
+  const story = cleanStory({
+    id: "gta-vi-governance",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_angle: "pre-orders open after official cover art reveal",
+    public_title: "GTA VI Starts The Preorder Fight",
+    suggested_title: "GTA VI Starts The Preorder Fight",
+    suggested_thumbnail_text: "GTA VI PREORDER TEST",
+    full_script:
+      "GTA VI now has one real preorder catch. Xbox Wire says pre-orders open after Rockstar put Jason and Lucia on the official cover art. The cover is hype. The store page is the test. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "GTA VI pre-orders open after the official cover art reveal. Source: Xbox Wire.",
+    downloaded_images: [
+      {
+        id: "gta-vi-key-art",
+        type: "article_hero",
+        path: "output/images/gta-vi-key-art.jpg",
+        source_url: "https://news.xbox.com/en-us/example-gta-vi",
+        rights_risk_class: "article_editorial_reference",
+        source_type: "article_image",
+      },
+    ],
+    video_clips: [
+      {
+        id: "gta-vi-official-trailer",
+        type: "official_trailer_clip",
+        path: "output/video/gta-vi-official-trailer.mp4",
+        source_url: "https://www.rockstargames.com/VI",
+        rights_risk_class: "official_reference_only",
+        source_type: "official_trailer",
+        source_family: "rockstar_gta_vi",
+      },
+    ],
+  });
+
+  const report = buildStudioGovernanceReport({
+    story,
+    rightsLedger: rightsLedgerFor(story),
+    generatedAt: "2026-06-26T08:45:00.000Z",
+  });
+
+  assert.equal(report.public_output_coherence_gate.result, "pass");
+  assert.ok(!report.rejection_reasons.reason_codes.includes("public_output:description_missing_canonical_subject"));
+  assert.ok(!report.rejection_reasons.reason_codes.includes("public_output:canonical_subject_missing_from_title"));
+});
+
 // goal-test:missing_rights_record_rejection
 // goal-test:affiliate_disclosure_rejection
 // goal-test:repeated_visual_pattern_rejection

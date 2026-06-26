@@ -783,6 +783,186 @@ test("real motion materializer accepts capped distinct windows from multiple off
   assert.equal(new Set(materialised.clips.map((clip) => clip.base_source_family)).size, 3);
 });
 
+test("real motion materializer raises official-window cap to satisfy an eight clip floor without exact repeats", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-eight-official-windows-"));
+  const storyId = "gta-vi-official-window-floor";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrls = [
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_1/GTAVI_Trailer_1.mp4",
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+  ];
+  const segmentValidationReport = {
+    segments: sourceUrls.flatMap((sourceUrl, sourceIndex) =>
+      [0, 1, 2, 3].map((windowIndex) => ({
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+        source_url: sourceUrl,
+        source_type: "official_game_website_media_page",
+        source_url_kind: "direct_video",
+        provider: "licensed_direct_media_acquisition",
+        entity: "Grand Theft Auto VI",
+        source_family: `rockstar_gtavi_source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+        media_start_s: 12 + sourceIndex * 20 + windowIndex * 6,
+        duration_s: 5,
+        source_duration_s: 160,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+      })),
+    ),
+  };
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["direct_video_motion_clip_floor_not_met"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["direct_video_motion_clip_floor_not_met"],
+              evidence: { direct_video_motion_clip_floor: 8 },
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    minClips: 8,
+    maxClips: 8,
+    generatedAt: "2026-06-26T02:30:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.jobs[0].materialized_count, 8);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 8);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 8);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 3);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
+    [3, 3, 2],
+  );
+  assert.equal(report.jobs[0].skipped_duplicate_direct_window_count, 0);
+  assert.equal(calls.length, 8);
+});
+
+test("real motion materializer reallocates official-window capacity when source windows are uneven", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-uneven-official-windows-"));
+  const storyId = "gta-vi-uneven-official-window-floor";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrls = [
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_1/GTAVI_Trailer_1.mp4",
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+  ];
+  const windowsBySource = [3, 8, 1];
+  const segmentValidationReport = {
+    segments: sourceUrls.flatMap((sourceUrl, sourceIndex) =>
+      Array.from({ length: windowsBySource[sourceIndex] }, (_, windowIndex) => ({
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+        source_url: sourceUrl,
+        source_type: "official_game_website_media_page",
+        source_url_kind: "direct_video",
+        provider: "licensed_direct_media_acquisition",
+        entity: "Grand Theft Auto VI",
+        source_family: `rockstar_gtavi_source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+        media_start_s: 12 + sourceIndex * 20 + windowIndex * 6,
+        duration_s: 5,
+        source_duration_s: 170,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+      })),
+    ),
+  };
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["real_motion_clip_minimum_not_met"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["real_motion_clip_minimum_not_met"],
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    minClips: 8,
+    maxClips: 8,
+    generatedAt: "2026-06-26T02:55:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.jobs[0].materialized_count, 8);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 4);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
+    [4, 3, 1],
+  );
+  assert.equal(calls.length, 8);
+});
+
 test("real motion materializer samples before a late official trailer window when forward windows fail", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-late-window-"));
   const storyId = "late-official-trailer-window";

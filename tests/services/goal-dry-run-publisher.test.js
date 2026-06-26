@@ -11,6 +11,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 
 const {
   buildGoalDryRunPublishPlan,
+  directMotionBaseSourceOveruseEvidence,
   writeGoalDryRunPublishPlan,
 } = require("../../lib/goal-dry-run-publisher");
 const {
@@ -133,6 +134,16 @@ async function makeStoryPackage(
       facebook_reels: { duration_seconds: { min: 35, max: 60 } },
       x: { duration_seconds: { min: 25, max: 60 } },
     },
+  });
+  await fs.outputJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    schema_version: 1,
+    story_id: id,
+    status: "pass",
+    verdict: options.mediaHouseVerdict || "GREEN",
+    overall_media_house_score: options.mediaHouseScore ?? 92,
+    hard_failures: options.mediaHouseFailures || [],
+    blockers: options.mediaHouseBlockers || [],
+    generated_at: options.mediaHouseGeneratedAt || "2026-05-24T20:09:00.000Z",
   });
   await fs.outputJson(path.join(artifactDir, "landing_page_manifest.json"), {
     landing_page_slug: "/p/forza-horizon-6-steam-bet",
@@ -350,6 +361,7 @@ function directMotionClipFixture({
   path: clipPath,
   sourceUrl,
   sourceFamily,
+  sourceType = "official_platform_product_page",
   startS = 0,
   durationS = 4,
 }) {
@@ -357,7 +369,7 @@ function directMotionClipFixture({
     id,
     path: clipPath,
     source_url: sourceUrl,
-    source_type: "official_platform_product_page",
+    source_type: sourceType,
     media_kind: "direct_video",
     source_url_kind: "hls_manifest",
     source_family: sourceFamily,
@@ -412,7 +424,14 @@ test("goal dry-run publisher emits exact platform actions without publishing", a
   });
 
   assert.equal(plan.mode, "DRY_RUN_PUBLISH");
-  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(
+    plan.summary.ready_story_count,
+    1,
+    JSON.stringify(plan.blocked_stories.map((story) => ({
+      blockers: story.blockers,
+      overuse: story.incident_guard?.evidence?.file_evidence?.direct_motion_base_source_overuse,
+    })), null, 2),
+  );
   assert.equal(plan.summary.blocked_story_count, 0);
   assert.equal(plan.summary.planned_action_count, 7);
   assert.equal(plan.summary.platform_publish_now_action_count, 0);
@@ -1698,6 +1717,42 @@ test("goal dry-run publisher blocks even two final cuts from the same trailer ba
     ),
     [{ count: 2, share: 0.25 }],
   );
+});
+
+test("goal dry-run publisher treats validated official trailer windows as distinct motion sources", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-official-window-sources-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "official-window-source-story",
+    "GREEN",
+    "GTA VI Starts The Preorder Fight",
+    { canonicalSubject: "GTA VI" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const sameOfficialTrailerUrl =
+    "https://video.rockstargames.com/gta-vi/official-trailer-2/hls_264_master.m3u8?t=1782100000";
+  const officialWindowClips = [0, 8, 16, 24, 32, 40, 48, 56].map((startS, index) =>
+    directMotionClipFixture({
+      id: `gta-vi-official-window-${index + 1}`,
+      path: `motion/gta-vi-official-window-${index + 1}.mp4`,
+      sourceUrl: sameOfficialTrailerUrl,
+      sourceFamily: `rockstar_gta_vi_official_trailer_segment_window_${startS}_5`,
+      sourceType: "official_trailer_segment",
+      startS,
+      durationS: 5,
+    }),
+  );
+  assert.deepEqual(directMotionBaseSourceOveruseEvidence(officialWindowClips).blockers, []);
+  await writeDirectMotionFixturePack(artifactDir, officialWindowClips);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:25:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
 });
 
 test("goal dry-run publisher checks final render-story clips for base-source loops even when materialised manifest is cleaner", async () => {
@@ -4021,6 +4076,81 @@ test("goal dry-run publisher blocks non-GREEN or incomplete packages", async () 
   assert.ok(plan.blocked_stories[1].blockers.includes("missing_artefact:captions.srt"));
 });
 
+test("goal dry-run publisher lets current scheduler preflight override stale package publish verdict debt", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-publish-verdict-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "stale-verdict-story",
+    "GREEN",
+    "GTA VI Starts The Preorder Fight",
+    { canonicalSubject: "Grand Theft Auto VI" },
+  );
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: [
+      "footage:v4_motion_blocked",
+      "media_house:shorts_feed_competition_weak",
+      "media_house:source_lock_not_verified",
+    ],
+  });
+
+  const preflightStoryPackage = {
+    ...storyPackage,
+    scheduler_preflight_package_source: "candidate_exported_path",
+    scheduler_preflight_qa: { status: "pass", blockers: [] },
+  };
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [preflightStoryPackage],
+    generatedAt: "2026-06-26T05:40:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.ready_stories[0].story_id, "stale-verdict-story");
+  assert.deepEqual(plan.ready_stories[0].warnings, []);
+  assert.equal(
+    plan.incident_guard_report.stories[0].disaster_upload_blockers.includes("incident:control_tower_verdict_not_green"),
+    false,
+  );
+});
+
+test("goal dry-run publisher does not override stale publish verdict without current media-house proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-publish-verdict-media-house-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "weak-media-house-story",
+    "GREEN",
+    "GTA VI Starts The Preorder Fight",
+    {
+      canonicalSubject: "Grand Theft Auto VI",
+      mediaHouseVerdict: "RED",
+      mediaHouseBlockers: ["source_lock_not_verified"],
+    },
+  );
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: ["media_house:source_lock_not_verified"],
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [{
+      ...storyPackage,
+      scheduler_preflight_package_source: "candidate_exported_path",
+      scheduler_preflight_qa: { status: "pass", blockers: [] },
+    }],
+    generatedAt: "2026-06-26T05:41:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("publish_verdict_not_green"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("incident:control_tower_verdict_not_green"));
+});
+
 test("goal dry-run publisher blocks packages without post-render visual QA proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-visual-qa-missing-"));
   const storyPackage = await makeStoryPackage(root, "visual-qa-missing", "GREEN", "Boltgun 2 Leaves The Corridors", {
@@ -5490,6 +5620,34 @@ test("goal dry-run CLI auto-loads scheduler preflight report when present", asyn
   const report = await readCandidateReport(root);
 
   assert.equal(report.candidates[0].id, "story-one");
+});
+
+test("goal dry-run CLI prefers production scheduler preflight over stale test output", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-preflight-production-first-"));
+  await fs.outputJson(path.join(root, "test", "output", "next_publish_candidates.json"), {
+    generated_at: "2026-06-26T08:00:00.000Z",
+    candidates: [
+      {
+        id: "stale-test-story",
+        status: "publish_ready",
+        preflight_qa: { status: "pass", blockers: [] },
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "next_publish_candidates.json"), {
+    generated_at: "2026-06-26T09:00:00.000Z",
+    candidates: [
+      {
+        id: "production-proof-story",
+        status: "publish_ready",
+        preflight_qa: { status: "pass", blockers: [] },
+      },
+    ],
+  });
+
+  const report = await readCandidateReport(root);
+
+  assert.equal(report.candidates[0].id, "production-proof-story");
 });
 
 test("goal dry-run CLI skips story-filtered scheduler preflight reports by default", async () => {

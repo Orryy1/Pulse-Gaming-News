@@ -86,6 +86,30 @@ test("Studio V4 proof renderer blocks 50s renders that would need looped direct 
   assert.ok(plan.requiredUniqueClipCount > 24);
 });
 
+test("Studio V4 proof renderer treats distinct official trailer windows as non-repeating direct motion", () => {
+  const clips = [36, 42, 48, 54, 60, 66, 72, 78].map((windowStart) => ({
+    path: `gta-trailer-window-${windowStart}.mp4`,
+    source_url: "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+    base_source_family: "url:https://media.rockstargames.com/vi/downloads/videos/gtavi_trailer_2/gtavi_trailer_2.mp4",
+    source_family: `rockstar_gta_vi_official_videos__media_02_gtavi_trailer_2_window_${windowStart}_5`,
+    motion_family: `rockstar_gta_vi_official_videos__media_02_gtavi_trailer_2_window_${windowStart}_5`,
+    media_kind: "direct_video",
+    durationS: 5,
+  }));
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 36.96,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.scenes.length, 8);
+  assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 8);
+});
+
 test("Studio V4 proof renderer defaults to readable non-repeating direct-motion cuts", () => {
   const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
   const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
@@ -133,7 +157,7 @@ test("Studio V4 proof renderer can explicitly plan legacy repeated clips for dia
   );
 });
 
-test("Studio V4 proof renderer blocks repeated base-source windows before render", () => {
+test("Studio V4 proof renderer accepts distinct base-source windows before render", () => {
   const plan = buildClipScenePlan({
     clips: [
       {
@@ -153,14 +177,12 @@ test("Studio V4 proof renderer blocks repeated base-source windows before render
     xfadeS: 0.25,
   });
 
-  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
-  assert.deepEqual(
-    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
-    [{ key: "steam_1172620_movie_418022350", count: 2 }],
-  );
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.deepEqual(plan.repeatedBaseSources, []);
+  assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 3);
 });
 
-test("Studio V4 proof renderer detects repeated base-source windows from string clip paths", () => {
+test("Studio V4 proof renderer accepts distinct base-source windows from string clip paths", () => {
   const plan = buildClipScenePlan({
     clips: [
       "motion/sea-of-thieves-trailer-window-36-5.mp4",
@@ -171,11 +193,9 @@ test("Studio V4 proof renderer detects repeated base-source windows from string 
     xfadeS: 0.25,
   });
 
-  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
-  assert.deepEqual(
-    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
-    [{ key: "motion/sea-of-thieves-trailer", count: 2 }],
-  );
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.deepEqual(plan.repeatedBaseSources, []);
+  assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 3);
 });
 
 test("Studio V4 proof renderer blocks generated direct-motion segment variants from the same source clip", () => {
@@ -201,7 +221,7 @@ test("Studio V4 proof renderer blocks generated direct-motion segment variants f
   );
 });
 
-test("Studio V4 proof renderer uses materialized sidecars to detect repeated source windows", () => {
+test("Studio V4 proof renderer uses materialized sidecars to accept distinct source windows", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-sidecar-repeat-"));
   try {
     const first = path.join(root, "halo_window_12.mp4");
@@ -232,11 +252,9 @@ test("Studio V4 proof renderer uses materialized sidecars to detect repeated sou
       xfadeS: 0.25,
     });
 
-    assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
-    assert.deepEqual(
-      plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
-      [{ key: "halo_campaign_evolved_official_trailer", count: 2 }],
-    );
+    assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+    assert.deepEqual(plan.repeatedBaseSources, []);
+    assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 3);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

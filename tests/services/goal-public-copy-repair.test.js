@@ -1766,6 +1766,100 @@ test("public copy package repair keeps GTA preorder platform copy out of deal fi
   assert.doesNotMatch(platformCopy, /saving|deal|discount|source_locked_update/i);
 });
 
+test("public copy package repair force-rewrites GTA VI cover art packages into a publishable rerender lane", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-gta-cover-quality-"));
+  const artifactDir = path.join(root, "batch", "gta-vi-cover");
+  await fs.ensureDir(artifactDir);
+  const staleScript =
+    "Grand Theft Auto VI Cover Art Revealed. Xbox Wire says Grand Theft Auto VI has new cover art and preorders start soon. Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_b36937ce024ac02b",
+    canonical_subject: "GTA VI",
+    canonical_game: "GTA VI",
+    selected_title: "Grand Theft Auto VI Cover Art Revealed",
+    short_title: "Grand Theft Auto VI Cover Art Revealed",
+    first_spoken_line: "Grand Theft Auto VI Cover Art Revealed.",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    official_source: "Rockstar",
+    confirmed_claims: [
+      "Xbox Wire says Grand Theft Auto VI pre-orders open on June 25 after Rockstar revealed new Jason and Lucia cover art.",
+    ],
+    narration_script: staleScript,
+    full_script: staleScript,
+    tts_script: staleScript,
+    description:
+      "Xbox Wire says GTA VI pre-orders open on June 25 after Rockstar revealed new Jason and Lucia cover art. Source: Xbox Wire.",
+    thumbnail_headline: "GTA VI COVER ART",
+    thumbnail_text: "GTA VI COVER ART",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "rewrite_required",
+    viral_score: 58,
+    blockers: ["weak_hook_repeats_headline"],
+    warnings: [],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Grand Theft Auto VI Cover Art Revealed",
+        description:
+          "Xbox Wire says GTA VI pre-orders open on June 25 after Rockstar revealed new Jason and Lucia cover art. Source: Xbox Wire.",
+      },
+      instagram_reels: {
+        caption:
+          "Xbox Wire says GTA VI pre-orders open on June 25 after Rockstar revealed new Jason and Lucia cover art. Source: Xbox Wire.",
+      },
+      facebook_reels: {
+        page_caption:
+          "Xbox Wire says GTA VI pre-orders open on June 25 after Rockstar revealed new Jason and Lucia cover art. Source: Xbox Wire.",
+      },
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: [
+      { local_materialized_path: "C:\\clips\\gta-vi-cover-1.mp4", materialized: true, validated: true, counts_towards_motion_readiness: true },
+      { local_materialized_path: "C:\\clips\\gta-vi-cover-2.mp4", materialized: true, validated: true, counts_towards_motion_readiness: true },
+    ],
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_b36937ce024ac02b", artifact_dir: artifactDir }],
+    generatedAt: "2026-06-26T03:15:00.000Z",
+    forceQualityRewriteStoryIds: ["rss_b36937ce024ac02b"],
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const renderWorkOrder = await buildProductionRerenderWorkOrder(report);
+
+  assert.match(updated.selected_title, /GTA VI/i);
+  assert.equal(updated.thumbnail_headline, "GTA VI PREORDER FIGHT");
+  assert.equal(updated.thumbnail_text, "GTA VI PREORDER FIGHT");
+  assert.doesNotMatch(updated.narration_script, /^Grand Theft Auto VI Cover Art Revealed\./);
+  assert.match(updated.narration_script, /Jason and Lucia/i);
+  assert.match(updated.narration_script, /June 25/i);
+  assert.match(updated.narration_script, /^Grand Theft Auto VI now has one real preorder catch\./);
+  assert.match(updated.narration_script, /store page is the test/i);
+  assert.match(updated.narration_script, /where fans split/i);
+  assert.match(updated.narration_script, /Wait for value, or lock in/i);
+  assert.match(updated.narration_script, /the reveal becomes the first real fight/i);
+  assert.match(updated.narration_script, /which version is worth buying/i);
+  assert.doesNotMatch(updated.narration_script, /fine print lands|GTA VI's preorder fight/i);
+  assert.match(updated.narration_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.warnings, [], JSON.stringify(savedScorecard, null, 2));
+  assert.match(platformManifest.outputs.youtube_shorts.description, /price, editions and bonuses/i);
+  assert.match(platformManifest.outputs.youtube_shorts.description, /buy, wait or skip/i);
+  assert.equal(renderWorkOrder.summary.ready_for_final_render_job_count, 1);
+  assert.deepEqual(renderWorkOrder.jobs[0].blockers, []);
+});
+
 test("public copy package repair refreshes stale script scorecards before scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-script-score-"));
   const artifactDir = path.join(root, "batch", "v-rising");

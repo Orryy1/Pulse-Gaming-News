@@ -3784,6 +3784,58 @@ test("visual entity preflight accepts Steam direct motion when rights ledger own
   assert.match(result.evidence.direct_motion_assets[0].provenance_text, /cyberpunk 2077/);
 });
 
+test("visual entity preflight accepts GTA VI aliases for Grand Theft Auto VI official motion", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-gta-vi-alias-official-motion",
+    "gta_vi_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    source_url: "https://video.rockstargames.com/gta-vi/official-trailer-2/master.m3u8",
+    source_type: "official_trailer_segment",
+    source_family: "rockstar_gta_vi_official_trailer_segment_window_36_5",
+    rights_basis: "official_reference_transformative_editorial_use",
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "fresh_gta_vi_cover_art",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      primary_source_url: "https://www.rockstargames.com/VI",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "gta-vi-official-window",
+          path: clipPath,
+          source_url: "https://video.rockstargames.com/gta-vi/official-trailer-2/master.m3u8",
+          source_family: "rockstar_gta_vi_official_trailer_segment_window_36_5",
+          source_title: "GTA VI Official Trailer",
+          entity: "GTA VI",
+          entities: ["GTA VI", "Grand Theft Auto VI"],
+          source_type: "official_trailer_segment",
+          media_kind: "direct_video",
+          rights_basis: "official_reference_transformative_editorial_use",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.match(result.evidence.canonical_subject_tokens.join(" "), /gta vi/);
+});
+
 test("visual entity preflight accepts URL-prefixed opaque sidecars when rights owner names the subject", async () => {
   const clipPath = path.join(
     "test",

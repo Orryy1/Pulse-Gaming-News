@@ -115,8 +115,8 @@ async function readCandidateReport(root, explicitPath = null) {
   const candidates = explicit
     ? [path.resolve(root, explicitPath)]
     : [
-        path.join(root, "test", "output", "next_publish_candidates.json"),
         path.join(root, "output", "goal-contract", "next_publish_candidates.json"),
+        path.join(root, "test", "output", "next_publish_candidates.json"),
       ];
   for (const filePath of candidates) {
     if (!(await fs.pathExists(filePath))) continue;
@@ -373,6 +373,8 @@ function mergePreflightCandidateStoryPackages(storyPackages = [], candidatePrefl
     merged.push({
       story_id: storyId,
       artifact_dir: artifactDir,
+      scheduler_preflight_qa: candidate.preflight_qa || {},
+      scheduler_preflight_status: cleanText(candidate.preflight_qa?.status || candidate.status),
       already_published_platforms: uniqueCleanStrings([
         ...asArray(candidate.already_published_platforms),
         ...asArray(candidate.published_platforms),

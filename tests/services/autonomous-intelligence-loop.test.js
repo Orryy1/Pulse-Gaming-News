@@ -945,8 +945,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(materializerCall.args[materializerArtifactRootIndex + 1], outDir);
     assert.ok(materializerCall.args.includes("--story-id"));
     assert.equal(materializerCall.args[materializerCall.args.indexOf("--story-id") + 1], "fresh_xbox_story");
-    assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-clips") + 1], "5");
-    assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-families") + 1], "4");
+    assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-clips") + 1], "8");
+    assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-families") + 1], "5");
     assert.equal(materializerCall.args[materializerCall.args.indexOf("--max-clips") + 1], "8");
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
@@ -1009,6 +1009,273 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       ["fresh_xbox_story"],
       "script-blocked generic packages must not enter motion repair or hydrated refill inputs",
     );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill continues motion-hydrated stories through audio and final render materialisation", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-continuation-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const capturedArgCalls = [];
+  const childCalls = [];
+  let hydratedCalls = 0;
+  let hydratedArtifactDir = "";
+  const strongGtaScript =
+    "GTA VI just turned its cover art into a buyer pressure test. Rockstar Newswire revealed the new artwork, and the important bit is what it asks players to believe before the next gameplay trailer arrives. Jason, Lucia and Vice City are being sold as one story fantasy, not just a giant map. That creates the argument: do players pre order on Rockstar trust, or wait until the footage proves what the game actually feels like? If gameplay stays hidden, the cover art becomes the launch campaign's first real risk. Follow Pulse Gaming so you never miss a beat.";
+  const publicDescription =
+    "Rockstar's GTA VI cover art reveal matters because players can now judge how the pre-order campaign is being framed: Jason, Lucia, Vice City, story trust and whether to buy now or wait for gameplay proof. Source: Rockstar Newswire.";
+
+  try {
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          capturedArgCalls.push(args);
+          const hydratedPass = args.includes("--v4-motion-pack-dir");
+          const outIndex = args.indexOf("--out-dir");
+          const contractIndex = args.indexOf("--contract-out-dir");
+          const effectiveOutDir = outIndex >= 0 ? args[outIndex + 1] : outDir;
+          const effectiveContractOutDir = contractIndex >= 0 ? args[contractIndex + 1] : contractOutDir;
+          const artifactDir = path.join(effectiveOutDir, "fresh_gta_vi_story");
+          await fs.mkdir(artifactDir, { recursive: true });
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          await fs.writeFile(
+            path.join(artifactDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_gta_vi_story",
+              canonical_subject: "Grand Theft Auto VI",
+              canonical_game: "Grand Theft Auto VI",
+              canonical_title: "GTA VI Cover Art Turns Into A Pre Order Test",
+              selected_title: "GTA VI Cover Art Turns Into A Pre Order Test",
+              primary_source: "Rockstar Newswire",
+              primary_source_url:
+                "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+              source_published_at: "Fri, 26 Jun 2026 09:00:00 +0000",
+              description: publicDescription,
+              public_description: publicDescription,
+              narration_script: strongGtaScript,
+              full_script: strongGtaScript,
+              tts_script: strongGtaScript,
+            }),
+          );
+          await fs.writeFile(
+            path.join(artifactDir, "source_manifest.json"),
+            JSON.stringify({
+              story_id: "fresh_gta_vi_story",
+              primary_source: {
+                name: "Rockstar Newswire",
+                url:
+                  "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+                type: "official_platform_news",
+                published_at: "Fri, 26 Jun 2026 09:00:00 +0000",
+                age_hours: 1,
+              },
+              freshness_gate: "pass",
+              coherence_gate: "pass",
+              blockers: [],
+            }),
+          );
+          await fs.writeFile(
+            path.join(artifactDir, "script_scorecard.json"),
+            JSON.stringify({
+              story_id: "fresh_gta_vi_story",
+              verdict: "viral_ready",
+              viral_score: 90,
+              scores: {
+                hook_strength: 82,
+                curiosity_gap: 100,
+                insight_density: 100,
+                source_safety: 86,
+                retention_pacing: 82,
+              },
+              blockers: [],
+              warnings: [],
+            }),
+          );
+
+          if (hydratedPass) {
+            hydratedCalls += 1;
+            hydratedArtifactDir = artifactDir;
+            const clips = Array.from({ length: 8 }, (_, index) => ({
+              path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+              source_family: `rockstar_gtavi_trailer_${index + 1}`,
+              base_source_family: `rockstar_gtavi_trailer_${index < 3 ? "a" : index < 6 ? "b" : "c"}`,
+              media_kind: "direct_video",
+              counts_towards_motion_readiness: true,
+            }));
+            for (const clip of clips) await fs.writeFile(clip.path, Buffer.alloc(2048, 7));
+            await fs.writeFile(
+              path.join(artifactDir, "materialised_motion_clips.json"),
+              JSON.stringify({
+                status: "ready",
+                clip_count: clips.length,
+                distinct_motion_family_count: clips.length,
+                direct_video_motion_asset_count: clips.length,
+                direct_video_motion_family_count: clips.length,
+                clips,
+                materialised_clips: clips,
+              }),
+            );
+          }
+
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          const hydratedReady = hydratedPass && hydratedCalls > 1;
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: "fresh_gta_vi_story",
+                artifact_dir: artifactDir,
+                title: "GTA VI Cover Art Turns Into A Pre Order Test",
+                public_title: "GTA VI Cover Art Turns Into A Pre Order Test",
+                selected_title: "GTA VI Cover Art Turns Into A Pre Order Test",
+                canonical_subject: "Grand Theft Auto VI",
+                canonical_game: "Grand Theft Auto VI",
+                primary_source: "Rockstar Newswire",
+                source_name: "Rockstar Newswire",
+                primary_source_url:
+                  "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+                source_published_at: "Fri, 26 Jun 2026 09:00:00 +0000",
+                description: publicDescription,
+                public_description: publicDescription,
+                full_script: strongGtaScript,
+                narration_script: strongGtaScript,
+                tts_script: strongGtaScript,
+                verdict: hydratedReady ? "GREEN" : "RED",
+                blockers: hydratedReady
+                  ? []
+                  : hydratedPass
+                    ? [
+                        "audio:narration_audio_missing",
+                        "captions:word_timestamps_missing",
+                        "render:final_publish_render_missing",
+                      ]
+                    : ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+            ]),
+          );
+          return {
+            batch: {
+              summary: {
+                story_count: 1,
+                green_count: hydratedReady ? 1 : 0,
+                red_count: hydratedReady ? 0 : 1,
+              },
+            },
+            outputs: {
+              storyPackagesPath,
+              batchReportPath: path.join(effectiveContractOutDir, "story-packages-report.json"),
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          rss_per_feed: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          if (options.args[0] === "tools/goal-audio-timestamp-materializer.js") {
+            const audioDir = path.join(tmp, "output", "audio");
+            await fs.mkdir(audioDir, { recursive: true });
+            const audioPath = path.join(audioDir, "fresh_gta_vi_story.mp3");
+            const timestampPath = path.join(audioDir, "fresh_gta_vi_story_timestamps.json");
+            await fs.writeFile(audioPath, Buffer.alloc(4096, 2));
+            await fs.writeFile(timestampPath, JSON.stringify({ words: [{ word: "GTA", start: 0, end: 0.2 }] }));
+            await fs.writeFile(
+              path.join(hydratedArtifactDir, "audio_manifest.json"),
+              JSON.stringify({
+                narration_audio_path: audioPath,
+                word_timestamps_path: timestampPath,
+                word_timestamp_source: "local_whisper_word_alignment",
+              }),
+            );
+          }
+          if (options.args[0] === "tools/goal-production-render-materializer.js") {
+            await fs.writeFile(path.join(hydratedArtifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 5));
+            await fs.writeFile(
+              path.join(hydratedArtifactDir, "render_manifest.json"),
+              JSON.stringify({
+                renderer: "visual_v4_production",
+                final_publish_render: true,
+                output_path: path.join(hydratedArtifactDir, "visual_v4_render.mp4"),
+                quality_gate_status: "post_render_forensics_passed",
+                post_render_forensic_result: "pass",
+                post_render_forensic_blockers: [],
+              }),
+            );
+            await fs.writeFile(
+              path.join(hydratedArtifactDir, "captions.srt"),
+              "1\n00:00:00,000 --> 00:00:01,000\nGTA VI\n",
+            );
+            await fs.writeFile(
+              path.join(hydratedArtifactDir, "caption_manifest.json"),
+              JSON.stringify({
+                status: "ready",
+                blockers: [],
+                checks: {
+                  caption_file_present: true,
+                  captions_well_formed: true,
+                },
+              }),
+            );
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.green_count, 1);
+    assert.equal(result.red_count, 0);
+    assert.equal(capturedArgCalls.length, 3);
+    assert.equal(result.motion_hydrated_refill.green_count, 0);
+    assert.equal(result.materialization_continuation.status, "completed");
+    assert.equal(result.materialization_continuation.final_green_count, 1);
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-workbench.js"),
+      "expected continuation to plan fresh audio/timestamp generation",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-materializer.js"),
+      "expected continuation to materialise local narration and Whisper timestamps",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-production-render-materializer.js"),
+      "expected continuation to render the final Visual V4 MP4 after audio became ready",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-platform-native-pack-repair.js"),
+      "expected continuation to refresh enabled-platform native package evidence",
+    );
+    assert.equal(result.safety.no_publish, true);
+    assert.equal(result.safety.no_db_mutation, true);
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

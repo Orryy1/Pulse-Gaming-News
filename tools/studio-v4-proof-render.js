@@ -584,9 +584,20 @@ function normaliseSceneSourceKey(value = "") {
       /\/(?:hls(?:_[a-z0-9]+)*_master|hls(?:_[a-z0-9]+)*|dash(?:_[a-z0-9]+)*|movie(?:_max|\d+)?(?:_[a-z0-9]+)*)$/i,
       "",
     )
-    .replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "")
     .replace(/(?<!v4)(?:[_/-]clip[_/-]?\d+)$/i, "")
     .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "");
+}
+
+function windowedSceneSourceKey(clip = {}) {
+  if (!clip || typeof clip !== "object") return "";
+  const value = firstText(
+    clip.source_family,
+    clip.motion_family,
+    clip.provenance?.source_family,
+    clip.provenance?.motion_family,
+  );
+  if (!/(?:^|[_/-])window[_/-]?\d+/i.test(value)) return "";
+  return normaliseSceneSourceKey(value);
 }
 
 function readSceneClipSidecar(clip = {}) {
@@ -610,6 +621,8 @@ function readSceneClipSidecar(clip = {}) {
 function sceneClipBaseSourceKey(clip = {}) {
   if (!clip) return "";
   const isObject = typeof clip === "object";
+  const windowed = isObject ? windowedSceneSourceKey(clip) : "";
+  if (windowed) return windowed;
   const explicit = isObject
     ? normaliseSceneSourceKey(
         clip.base_source_family ||

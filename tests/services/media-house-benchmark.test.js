@@ -105,6 +105,45 @@ test("media-house benchmark emits every requested workbook-derived score", () =>
   assert.ok(benchmark.scores.media_house_polish_score >= 85);
 });
 
+test("media-house benchmark treats a specific catch hook as first-three-second curiosity", () => {
+  const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
+
+  const benchmark = runMediaHouseBenchmark({
+    story: {
+      id: "gta_vi_catch_hook",
+      title: "GTA VI Starts The Preorder Fight",
+      suggested_title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      hook: "Grand Theft Auto VI now has one real preorder catch.",
+      full_script:
+        "Grand Theft Auto VI now has one real preorder catch. Xbox Wire says pre-orders open on June 25 after Rockstar put Jason and Lucia on the official cover art.",
+      suggested_thumbnail_text: "PREORDER FIGHT",
+      source_card_label: "Xbox Wire",
+      video_clips: Array.from({ length: 8 }, (_, index) => ({
+        id: `gta-window-${index + 1}`,
+        path: `C:\\media\\gta-window-${index + 1}.mp4`,
+        source_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+        source_type: "official_trailer_segment",
+        media_kind: "direct_video",
+        source_family: `rockstar_gta_vi_trailer_2_window_${36 + index * 6}_5`,
+        rights_risk_class: "official_reference_clip",
+      })),
+      clean_manual_captions: true,
+      manual_caption_generated: true,
+      subtitle_timing_source: "timestamps",
+    },
+    directorPlan: strongDirectorPlan(),
+    requireGate: true,
+  });
+
+  assert.ok(benchmark.scores.first_3_seconds_hook_score >= 75);
+  assert.equal(
+    benchmark.failures.includes("gold_standard:first_3_seconds_hook_below_reference"),
+    false,
+  );
+});
+
 test("media-house benchmark preserves director caption policy when story fields are absent", () => {
   const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
 

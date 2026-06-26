@@ -53,6 +53,31 @@ test("counts repeated windows from one direct-video URL as one motion family", (
   assert.ok(profile.blockers.includes("visual_evidence:insufficient_real_visual_source_families"));
 });
 
+test("counts official trailer segment windows as distinct scene evidence", () => {
+  const sourceUrl =
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4";
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: Array.from({ length: 5 }, (_, index) => ({
+          id: `gta-vi-trailer-window-${index + 1}`,
+          path: `C:\\repo\\output\\video_cache\\gta_vi_window_${index + 1}.mp4`,
+          source_url: sourceUrl,
+          source_type: "official_trailer_segment",
+          media_kind: "direct_video",
+          source_url_kind: "direct_video",
+          source_family: `rockstar_gta_vi_trailer_2_window_${36 + index * 6}_5`,
+        })),
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 5);
+  assert.equal(profile.direct_video_motion_family_count, 5);
+  assert.equal(profile.real_media_family_count, 5);
+  assert.deepEqual(profile.blockers, []);
+});
+
 test("counts Steam CDN aliases for the same trailer as one motion family", () => {
   const profile = visualEvidenceProfile({
     footageInventory: {

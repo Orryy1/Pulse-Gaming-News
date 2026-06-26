@@ -5650,6 +5650,38 @@ test("goal dry-run CLI prefers production scheduler preflight over stale test ou
   assert.equal(report.candidates[0].id, "production-proof-story");
 });
 
+test("goal dry-run CLI prefers newer scheduler preflight over stale production proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-preflight-newer-test-"));
+  await fs.outputJson(path.join(root, "output", "goal-contract", "next_publish_candidates.json"), {
+    generated_at: "2026-06-26T08:00:00.000Z",
+    candidates: [
+      {
+        id: "stale-production-story",
+        status: "publish_ready",
+        preflight_qa: { status: "pass", blockers: [] },
+      },
+    ],
+  });
+  await fs.outputJson(path.join(root, "test", "output", "next_publish_candidates.json"), {
+    generated_at: "2026-06-26T09:00:00.000Z",
+    candidates: [
+      {
+        id: "fresh-blocked-story",
+        status: "review",
+        preflight_qa: {
+          status: "blocked",
+          blockers: ["timestamp_alignment:word_timestamps_timing_unusable:timeline_runs_past_audio"],
+        },
+      },
+    ],
+  });
+
+  const report = await readCandidateReport(root);
+
+  assert.equal(report.candidates[0].id, "fresh-blocked-story");
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+});
+
 test("goal dry-run CLI skips story-filtered scheduler preflight reports by default", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-story-filter-preflight-"));
   const reportPath = path.join(root, "test", "output", "next_publish_candidates.json");

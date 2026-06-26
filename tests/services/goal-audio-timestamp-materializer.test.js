@@ -130,14 +130,71 @@ test("goal audio materializer generates local audio, word timestamps and updates
   assert.equal(report.summary.materialized_count, 1);
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(await fs.pathExists(path.join(root, "output", "audio", "story-audio.mp3")), true);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "audio", "narration.mp3")), true);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "audio", "word_timestamps.json")), true);
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-audio_timestamps.json"));
   assert.ok(timestamps.words.length >= 5);
   const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
-  assert.equal(manifest.narration_audio_path, "output/audio/story-audio.mp3");
-  assert.equal(manifest.word_timestamps_path, "output/audio/story-audio_timestamps.json");
+  assert.equal(manifest.narration_audio_path, "audio/narration.mp3");
+  assert.equal(manifest.word_timestamps_path, "audio/word_timestamps.json");
+  assert.equal(manifest.resolved_narration_audio_path, path.join(artifactDir, "audio", "narration.mp3"));
+  assert.equal(manifest.resolved_word_timestamps_path, path.join(artifactDir, "audio", "word_timestamps.json"));
+  assert.equal(manifest.package_audio_stabilized, true);
   assert.equal(manifest.voice_provider, "local_tts");
   assert.equal(manifest.safety.local_only, true);
   assert.equal(report.safety.no_publish_triggered, true);
+});
+
+test("goal audio materializer stabilizes same-story refill audio inside each package", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-stable-package-"));
+  const artifactDirA = await makePackage(root, "story-repeat");
+  const artifactDirB = path.join(root, "output", "goal-proof", "batch-b", "story-repeat");
+  await fs.outputJson(path.join(artifactDirB, "canonical_story_manifest.json"), {
+    story_id: "story-repeat",
+    selected_title: "Star Fox Deal Has One Catch",
+    narration_script: "Star Fox just got a sharper Switch 2 camera deal.",
+  });
+  await fs.outputJson(path.join(artifactDirB, "audio_manifest.json"), {
+    schema_version: 1,
+    story_id: "story-repeat",
+    narration_audio_path: null,
+    safety: { local_only: true },
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [
+        workbenchJob("story-repeat", artifactDirA),
+        workbenchJob("story-repeat", artifactDirB),
+      ],
+    },
+    generatedAt: "2026-05-22T06:00:30.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push(outputPath);
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, calls.length));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.candidate_count, 2);
+  assert.ok(report.summary.materialized_count >= 1);
+  const manifestA = await fs.readJson(path.join(artifactDirA, "audio_manifest.json"));
+  const manifestB = await fs.readJson(path.join(artifactDirB, "audio_manifest.json"));
+  assert.equal(manifestA.narration_audio_path, "audio/narration.mp3");
+  assert.equal(manifestB.narration_audio_path, "audio/narration.mp3");
+  assert.equal(manifestA.word_timestamps_path, "audio/word_timestamps.json");
+  assert.equal(manifestB.word_timestamps_path, "audio/word_timestamps.json");
+  assert.notEqual(manifestA.resolved_narration_audio_path, manifestB.resolved_narration_audio_path);
+  assert.notEqual(manifestA.resolved_word_timestamps_path, manifestB.resolved_word_timestamps_path);
+  assert.equal(await fs.pathExists(manifestA.resolved_narration_audio_path), true);
+  assert.equal(await fs.pathExists(manifestB.resolved_narration_audio_path), true);
 });
 
 test("goal audio materializer passes an explicit TTS rate to narration generation", async () => {
@@ -2889,7 +2946,7 @@ test("goal audio materializer adds ElevenLabs narration to the rights ledger", a
   const audioRecord = rights.records.find((record) => record.asset_id === "story-elevenlabs-rights_audio_path");
   assert.equal(audioRecord.source_type, "elevenlabs_tts_voice");
   assert.equal(audioRecord.licence_basis, "elevenlabs_commercial_tts_generation");
-  assert.equal(audioRecord.path, "output/audio/story-elevenlabs-rights.mp3");
+  assert.equal(audioRecord.path, "audio/narration.mp3");
   assert.equal(audioRecord.commercial_use_allowed, true);
 });
 
@@ -3418,10 +3475,13 @@ test("goal audio materializer does not regenerate when fresh MEDIA_ROOT audio su
     assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
     assert.equal(report.jobs[0].audio_size_bytes, 4096);
     const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
+    assert.equal(manifest.word_timestamps_path, "audio/word_timestamps.json");
     assert.equal(
       manifest.resolved_word_timestamps_path,
-      path.join(mediaRoot, "output", "audio", "story-audio_timestamps.json"),
+      path.join(artifactDir, "audio", "word_timestamps.json"),
     );
+    const packageTimestamps = await fs.readJson(manifest.resolved_word_timestamps_path);
+    assert.equal(packageTimestamps.words[0].word, "Fresh");
   } finally {
     if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
     else process.env.MEDIA_ROOT = originalMediaRoot;
@@ -3590,12 +3650,13 @@ test("goal audio materializer normalises an existing media-root character alignm
     );
     assert.ok(timestamps.words.length >= 5);
     const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
-    assert.equal(manifest.word_timestamps_path, "output/audio/story-audio_timestamps.json");
+    assert.equal(manifest.word_timestamps_path, "audio/word_timestamps.json");
     assert.equal(manifest.word_timestamp_source, "local_alignment_normalised");
     assert.equal(
       manifest.resolved_word_timestamps_path,
-      path.join(mediaRoot, "output", "audio", "story-audio_timestamps.json"),
+      path.join(artifactDir, "audio", "word_timestamps.json"),
     );
+    assert.equal(await fs.pathExists(path.join(artifactDir, "audio", "narration.mp3")), true);
   } finally {
     if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
     else process.env.MEDIA_ROOT = originalMediaRoot;
@@ -3670,13 +3731,14 @@ test("goal audio materializer realigns existing local audio with Whisper without
   assert.equal(timestamps.meta.timestampWhisperAlignment.repaired, true);
   assert.equal(timestamps.words[0].start, 0.12);
   const manifest = await fs.readJson(path.join(artifactDir, "audio_manifest.json"));
-  assert.equal(manifest.word_timestamps_path, "output/audio/story-audio_timestamps.json");
+  assert.equal(manifest.word_timestamps_path, "audio/word_timestamps.json");
   assert.equal(manifest.word_timestamp_source, "local_whisper_word_alignment");
   assert.equal(manifest.timestamp_whisper_alignment.repaired, true);
   assert.equal(
     manifest.resolved_word_timestamps_path,
-    path.join(root, "output", "audio", "story-audio_timestamps.json"),
+    path.join(artifactDir, "audio", "word_timestamps.json"),
   );
+  assert.equal(await fs.pathExists(path.join(artifactDir, "audio", "narration.mp3")), true);
   assert.equal(manifest.voice_provider, "existing");
 });
 

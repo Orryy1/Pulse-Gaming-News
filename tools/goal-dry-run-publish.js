@@ -118,14 +118,28 @@ async function readCandidateReport(root, explicitPath = null) {
         path.join(root, "output", "goal-contract", "next_publish_candidates.json"),
         path.join(root, "test", "output", "next_publish_candidates.json"),
       ];
+  const usableReports = [];
   for (const filePath of candidates) {
     if (!(await fs.pathExists(filePath))) continue;
     const report = await fs.readJson(filePath);
+    if (explicit) return report;
     if (!explicit && candidateReportIsStoryFiltered(report)) continue;
     if (!explicit && await candidateReportIsStaleAgainstBridge(root, report, filePath)) continue;
-    return report;
+    usableReports.push({
+      report,
+      filePath,
+      generatedAtMs: await reportGeneratedAtMs(report, filePath),
+      productionPriority: filePath.includes(`${path.sep}output${path.sep}goal-contract${path.sep}`) ? 1 : 0,
+    });
   }
-  return null;
+  if (!usableReports.length) return null;
+  usableReports.sort((a, b) => {
+    const aMs = a.generatedAtMs ?? -Infinity;
+    const bMs = b.generatedAtMs ?? -Infinity;
+    if (aMs !== bMs) return bMs - aMs;
+    return b.productionPriority - a.productionPriority;
+  });
+  return usableReports[0].report;
 }
 
 function candidateReportIsStoryFiltered(report = {}) {

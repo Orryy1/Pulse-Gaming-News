@@ -18,10 +18,15 @@ const {
   inspectSubtitleTimingWords,
 } = require("../lib/subtitle-timing");
 const {
+  clipScenePlanVisualCadenceEvidence,
   directMotionBaseSourceOveruseEvidence,
   finalRenderVisualReuseEvidence,
   hyperframesReadableDwellEvidence,
 } = require("../lib/goal-dry-run-publisher");
+const {
+  applyGamingPronunciation,
+  TTS_PRONUNCIATION_PROFILE_VERSION,
+} = require("../lib/tts-pronunciation");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -2748,6 +2753,85 @@ function timestampCadenceWarnings(cadence = {}, report = {}) {
   return warnings;
 }
 
+function comparableVoiceText(value = "") {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/[\u2018\u2019']/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function expectedSpokenTextForVoicePreflight(story = {}) {
+  const raw = cleanText(
+    story.spoken_narration_script ||
+      story.tts_script ||
+      story.narration_script ||
+      story.full_script ||
+      story.caption_display_text ||
+      story.display_script ||
+      story.first_spoken_line,
+  );
+  if (!raw) return "";
+  return cleanText(applyGamingPronunciation(raw));
+}
+
+function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
+  const meta =
+    timestampPayload?.meta && typeof timestampPayload.meta === "object"
+      ? timestampPayload.meta
+      : {};
+  const expectedSpoken = expectedSpokenTextForVoicePreflight(story);
+  const rawSpoken = cleanText(
+    story.spoken_narration_script ||
+      story.tts_script ||
+      story.narration_script ||
+      story.full_script ||
+      story.first_spoken_line,
+  );
+  const profileSensitive =
+    Boolean(expectedSpoken) &&
+    Boolean(rawSpoken) &&
+    comparableVoiceText(expectedSpoken) !== comparableVoiceText(rawSpoken);
+  if (!profileSensitive) {
+    return {
+      failures: [],
+      warnings: [],
+      evidence: {
+        expected_tts_pronunciation_profile_version: TTS_PRONUNCIATION_PROFILE_VERSION,
+        profile_sensitive: false,
+      },
+    };
+  }
+
+  const actualProfile = cleanText(meta.ttsPronunciationProfileVersion);
+  const recordedSpoken = cleanText(meta.spoken_text || meta.transcript || meta.text);
+  const failures = [];
+  const warnings = [];
+  if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION) {
+    failures.push("voice_pronunciation_profile_stale");
+  }
+  if (
+    recordedSpoken &&
+    comparableVoiceText(recordedSpoken) !== comparableVoiceText(expectedSpoken)
+  ) {
+    failures.push("voice_pronunciation_text_stale");
+  } else if (!recordedSpoken) {
+    warnings.push("voice_pronunciation_recorded_text_missing");
+  }
+
+  return {
+    failures,
+    warnings,
+    evidence: {
+      expected_tts_pronunciation_profile_version: TTS_PRONUNCIATION_PROFILE_VERSION,
+      actual_tts_pronunciation_profile_version: actualProfile || null,
+      profile_sensitive: true,
+      expected_spoken_text: expectedSpoken,
+      recorded_spoken_text: recordedSpoken || null,
+    },
+  };
+}
+
 async function voiceQualityPreflightForStory(story = {}) {
   const embedded =
     story.voice_quality_report ||
@@ -2786,17 +2870,23 @@ async function voiceQualityPreflightForStory(story = {}) {
   const currentCadence = timestampCadenceEvidence(timestampEvidence.payload || {});
   const currentCadenceFailures = timestampCadenceFailures(currentCadence, report);
   const currentCadenceWarnings = timestampCadenceWarnings(currentCadence, report);
+  const pronunciationProfile = voicePronunciationProfileEvidence(
+    story,
+    timestampEvidence.payload || {},
+  );
   const verdict = cleanText(report.verdict || report.status || report.result).toLowerCase();
   const blockers = [
     ...asArray(report.blockers || report.failures),
     ...asArray(report.cadence?.blockers),
     ...segmentationFailures,
     ...currentCadenceFailures,
+    ...pronunciationProfile.failures,
   ].map(cleanText).filter(Boolean);
   const warnings = [
     ...asArray(report.warnings),
     ...asArray(report.cadence?.warnings),
     ...currentCadenceWarnings,
+    ...pronunciationProfile.warnings,
   ].map(cleanText).filter(Boolean);
   const failed =
     blockers.length > 0 ||
@@ -2825,6 +2915,7 @@ async function voiceQualityPreflightForStory(story = {}) {
             local_tts_segment_gap_s: segmentationEvidence.segment_gap_s,
           }
         : {}),
+      ...pronunciationProfile.evidence,
     },
   };
 }
@@ -3570,10 +3661,12 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     renderStory,
     directorBeatMap,
   });
+  const clipScenePlanVisualCadence = clipScenePlanVisualCadenceEvidence(renderManifest);
   const directMotionBaseSourceOveruse = directMotionBaseSourceOveruseEvidence(directMotionSegmentEvidenceSource);
   const blockers = [
     ...finalRenderVisualReuse.blockers,
     ...hyperframesReadableDwell.blockers,
+    ...clipScenePlanVisualCadence.blockers,
     ...directMotionBaseSourceOveruse.blockers,
   ];
   return {
@@ -3584,6 +3677,7 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
       file_evidence: {
         ...finalRenderVisualReuse.evidence,
         ...hyperframesReadableDwell.evidence,
+        ...clipScenePlanVisualCadence.evidence,
         ...directMotionBaseSourceOveruse.evidence,
       },
     },
@@ -3881,6 +3975,18 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
   }
 }
 
+function preflightBlockerIsNonSupersedableVisualLoop(blocker = "") {
+  return /(?:final_render_reuses_visual_units|clip_scene_plan_not_repeat_free|direct_motion_base_source_repeated|direct_motion_base_source_overused|repeated_direct_motion_segment|repeated_card_family|readable_card_kind_repeated|card_visible_dwell_too_short|card_visible_dwell_missing|card_visible_window_below_readable_floor|rendered_card_window_dwell_too_short|card_clip_dwell_too_short|card_clip_dwell_missing|director_card_dwell_too_short|readable_card_scene_duration_below_minimum|overlay_card_window_below_readable_floor|motion_scene_duration_exceeds_source_duration)/i.test(
+    cleanText(blocker),
+  );
+}
+
+function preflightBlockerIsNonSupersedableVoiceQuality(blocker = "") {
+  return /(?:^|:)voice_quality:|(?:^|:)voice_cadence:|local_tts_|word_timestamps_not_strict_whisper_aligned/i.test(
+    cleanText(blocker),
+  );
+}
+
 async function attachPreflightQa(report = {}, stories = [], opts = {}) {
   const byId = new Map(
     (Array.isArray(stories) ? stories : [])
@@ -3905,12 +4011,11 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
       const sourceAgeBlocked = asArray(preflight.blockers).some((blocker) =>
         /^source_age:/i.test(cleanText(blocker)),
       );
-      const visualLoopBlocked = asArray(preflight.blockers).some((blocker) =>
-        /(?:final_render_reuses_visual_units|card_visible_dwell_too_short|card_visible_dwell_missing|card_clip_dwell_missing|director_card_dwell_too_short|direct_motion_base_source_overused|repeated_direct_motion_segment)/i.test(
-          cleanText(blocker),
-        ),
+      const nonSupersedableBlocked = asArray(preflight.blockers).some((blocker) =>
+        preflightBlockerIsNonSupersedableVisualLoop(blocker) ||
+        preflightBlockerIsNonSupersedableVoiceQuality(blocker),
       );
-      if (!sourceAgeBlocked && !visualLoopBlocked) {
+      if (!sourceAgeBlocked && !nonSupersedableBlocked) {
         const hydrated = hydrateCandidateFromCurrentProofPackage(
           {
             ...candidate,

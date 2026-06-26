@@ -320,7 +320,7 @@ test("goal audio materializer force-regenerates a workbench ready pair", async (
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].provider, "elevenlabs");
-  assert.match(calls[0].text, /Grand Theft Auto Six/);
+  assert.match(calls[0].text, /Grand Theft Auto six/);
   assert.equal(report.summary.candidate_count, 1);
   assert.equal(report.summary.materialized_count, 1);
   assert.equal(report.jobs[0].provider, "elevenlabs");
@@ -526,7 +526,7 @@ test("goal audio materializer regenerates title-colon audio without the current 
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_title_colon_pronunciation_profile");
   const timestamps = await fs.readJson(timestampPath);
-  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "title-colon-pause-v2");
+  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-roman-title-v3");
   assert.equal(timestamps.meta.spoken_text, "Halo Campaign Evolved just gave Xbox a real remake test.");
 });
 
@@ -648,7 +648,7 @@ test("goal audio materializer refreshes stale narration and caption manifests af
 test("goal audio materializer separates spoken TTS text from display captions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-display-captions-"));
   const displayScript = "Grand Theft Auto VI pre orders open on June 25.";
-  const spokenScript = "Grand Theft Auto Six pre orders open on June 25.";
+  const spokenScript = "Grand Theft Auto six pre orders open on June 25.";
   const artifactDir = await makePackage(root, "story-display-captions", {
     selected_title: "Grand Theft Auto VI Cover Art",
     narration_script: displayScript,
@@ -679,7 +679,7 @@ test("goal audio materializer separates spoken TTS text from display captions", 
   assert.match(captions, /\bVI\b/);
   assert.match(captions, /June/);
   assert.match(captions, /\b25\./);
-  assert.doesNotMatch(captions, /Grand Theft Auto Six/);
+  assert.doesNotMatch(captions, /Grand Theft Auto six/);
 });
 
 test("goal audio materializer anchors local word timestamps to measured speech pauses", async () => {

@@ -3234,6 +3234,90 @@ test("attachPreflightQa blocks stale voice reports when current timestamps prove
   );
 });
 
+test("attachPreflightQa blocks stale GTA roman-numeral voice pronunciation metadata", async () => {
+  const words = [
+    { word: "Grand", start: 0, end: 0.3 },
+    { word: "Theft", start: 0.31, end: 0.6 },
+    { word: "Auto", start: 0.61, end: 0.9 },
+    { word: "VI", start: 0.91, end: 1.1 },
+    { word: "now", start: 1.11, end: 1.3 },
+    { word: "has", start: 1.31, end: 1.5 },
+    { word: "one", start: 1.51, end: 1.7 },
+    { word: "catch", start: 1.71, end: 1.96 },
+  ];
+  const stories = [
+    baseStory({
+      id: "stale_gta_roman_voice_profile",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      narration_script: "Grand Theft Auto VI now has one catch.",
+      tts_script: "Grand Theft Auto VI now has one catch.",
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 137.6,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      word_timestamps_payload: {
+        words,
+        meta: {
+          transcript: "Grand Theft Auto VI now has one catch.",
+          spoken_text: "Grand Theft Auto VI now has one catch.",
+          ttsPronunciationProfileVersion: "title-colon-pause-v2",
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-26T23:05:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:voice_pronunciation_profile_stale",
+    ),
+  );
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:voice_pronunciation_text_stale",
+    ),
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.expected_tts_pronunciation_profile_version,
+    "gta-roman-title-v3",
+  );
+});
+
 test("attachPreflightQa blocks segmented local TTS that can drift between sentences despite normal WPM", async () => {
   const stories = [
     baseStory({
@@ -5108,7 +5192,7 @@ test("attachPreflightQa trusts a current full GREEN proof package over stale pre
       failures: ["incident:distinct_motion_families_missing"],
       warnings: [],
     }),
-    runVoiceQualityQa: async () => ({ result: "fail", failures: ["voice_cadence:wpm_too_fast"], warnings: [] }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runVisualEntityQa: async () => ({
@@ -5134,11 +5218,98 @@ test("attachPreflightQa trusts a current full GREEN proof package over stale pre
     "content:public_output:manual_captions_missing",
     "governance:captions:missing_or_messy",
     "incident_guard:incident:distinct_motion_families_missing",
-    "voice_quality:voice_cadence:wpm_too_fast",
     "visual_entity_match:direct_motion_subject_mismatch",
   ]);
   assert.equal(report.preflight_qa.blocked, 0);
   assert.equal(report.preflight_qa.pass, 1);
+});
+
+test("attachPreflightQa does not supersede voice cadence blockers with current proof packages", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-proof-voice-"));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "current-green-voice-fail", videoPath);
+
+  const stories = [
+    baseStory({
+      id: "current-green-voice-fail",
+      title: "GTA VI Starts The Preorder Fight",
+      selected_title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      source_type: "rss",
+      timestamp: "2026-06-26T09:30:00.000Z",
+      source_manifest: {
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/25/grand-theft-auto-vi-preorder/",
+          published_at: "2026-06-26T09:30:00.000Z",
+        },
+        source_age_policy_hours: 168,
+      },
+      duration_seconds: 44.1,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      auto_approved: true,
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "GTA VI Starts The Preorder Fight" },
+          instagram_reels: { caption: "GTA VI now has one real preorder catch." },
+          facebook_reels: { page_caption: "GTA VI now has one real preorder catch." },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-26T22:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    env: {
+      TIKTOK_ENABLED: "false",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "false",
+    },
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVoiceQualityQa: async () => ({
+      result: "fail",
+      failures: ["voice_cadence:wpm_too_fast"],
+      warnings: [],
+    }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(candidate.reasons.includes("preflight_qa_blocked"));
+  assert.ok(!candidate.reasons.includes("current_green_proof_package"));
+  assert.ok(
+    candidate.preflight_qa.blockers.includes("voice_quality:voice_cadence:wpm_too_fast"),
+  );
+  assert.equal(report.preflight_qa.blocked, 1);
+  assert.equal(report.preflight_qa.pass, 0);
 });
 
 test("attachPreflightQa does not supersede missing HyperFrames dwell evidence", async () => {
@@ -5269,6 +5440,163 @@ test("attachPreflightQa does not supersede missing HyperFrames dwell evidence", 
     ),
   );
   assert.equal(report.preflight_qa.blocked, 1);
+});
+
+test("attachPreflightQa does not supersede repeated HyperFrames card families", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-hf-repeat-family-"));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "hf-repeated-family-package", videoPath);
+
+  const stories = [
+    baseStory({
+      id: "hf-repeated-family-package",
+      title: "GTA VI Cover Art Made The Price Debate Louder",
+      selected_title: "GTA VI Cover Art Made The Price Debate Louder",
+      canonical_subject: "GTA VI",
+      source_type: "rss",
+      timestamp: "2026-06-24T19:30:00.000Z",
+      source_manifest: {
+        primary_source: {
+          name: "Rockstar Games",
+          url: "https://www.rockstargames.com/VI",
+          published_at: "2026-06-24T19:30:00.000Z",
+        },
+        source_age_policy_hours: 168,
+      },
+      duration_seconds: 48,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      auto_approved: true,
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "GTA VI Cover Art Made The Price Debate Louder" },
+          instagram_reels: { caption: "GTA VI cover art just made the preorder debate louder." },
+          facebook_reels: { page_caption: "GTA VI cover art just made the preorder debate louder." },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-24T21:58:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({
+      result: "fail",
+      failures: ["hyperframes:repeated_card_family"],
+      warnings: [],
+    }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(candidate.reasons.includes("preflight_qa_blocked"));
+  assert.ok(!candidate.reasons.includes("current_green_proof_package"));
+  assert.ok(
+    candidate.preflight_qa.blockers.includes("incident_guard:hyperframes:repeated_card_family"),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+});
+
+test("runPreflightQaForStory blocks current packages with non-repeat-free clip scene plans", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-scene-plan-repeat-"));
+  t.after(() => fs.remove(tmp));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "clip-scene-repeat-package", videoPath);
+  const renderManifestPath = path.join(tmp, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    final_publish_render: true,
+    rendered_duration_s: 44,
+    clips: 12,
+    clip_scene_plan: {
+      repeat_free: false,
+      blockers: ["direct_motion_base_source_repeated"],
+      repeated_base_sources: [{ key: "steamstatic:/halo/trailer", count: 4 }],
+      scenes: Array.from({ length: 12 }, (_, index) => ({
+        path: `clip-${(index % 3) + 1}.mp4`,
+        duration_s: 3.6,
+      })),
+    },
+  }, { spaces: 2 });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "clip-scene-repeat-package",
+      title: "Halo Campaign Evolved Keeps Reusing The Same Footage",
+      selected_title: "Halo Campaign Evolved Keeps Reusing The Same Footage",
+      canonical_subject: "Halo: Campaign Evolved",
+      source_type: "rss",
+      timestamp: "2026-06-24T18:00:00.000Z",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "Halo Campaign Evolved Keeps Reusing The Same Footage" },
+        },
+      },
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("incident_guard:visual_evidence:clip_scene_plan_not_repeat_free"),
+    JSON.stringify(preflight.blockers),
+  );
+  assert.ok(
+    preflight.blockers.includes("incident_guard:visual_evidence:direct_motion_base_source_repeated"),
+    JSON.stringify(preflight.blockers),
+  );
 });
 
 test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {

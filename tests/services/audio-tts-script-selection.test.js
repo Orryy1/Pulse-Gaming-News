@@ -209,6 +209,10 @@ test("cleanForTTS: speaks GTA 5 and GTA 6 in consistent word form for local alig
     cleanForTTS("GTA 5 just became the GTA 6 waiting room. GTA V still feeds GTA VI interest."),
     "Grand Theft Auto five just became the Grand Theft Auto six waiting room. Grand Theft Auto five still feeds Grand Theft Auto six interest.",
   );
+  assert.equal(
+    cleanForTTS("Grand Theft Auto VI now has one real preorder catch."),
+    "Grand Theft Auto six now has one real preorder catch.",
+  );
 });
 
 test("cleanForTTS: removes old spaced GTA acronym forms before local narration", () => {

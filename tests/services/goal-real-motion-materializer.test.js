@@ -667,21 +667,120 @@ test("real motion materializer blocks one official trailer from masquerading as 
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.deepEqual(calls.map((call) => call.args[call.args.indexOf("-ss") + 1]), [
     "0",
+    "3.50",
   ]);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 2);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
 
   assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
-  assert.equal(partial.clip_count, 1);
-  assert.equal(partial.direct_video_motion_asset_count, 1);
-  assert.equal(partial.direct_video_motion_family_count, 1);
+  assert.equal(partial.clip_count, 2);
+  assert.equal(partial.direct_video_motion_asset_count, 2);
+  assert.equal(partial.direct_video_motion_family_count, 2);
   assert.equal(partial.clips[0].counts_towards_motion_readiness, false);
+});
+
+test("real motion materializer accepts capped distinct windows from multiple official base sources", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-multi-source-windows-"));
+  const storyId = "multi-official-window-story";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrls = [
+    "https://video.fastly.steamstatic.com/store_trailers/100/111/hash-a/hls_264_master.m3u8?t=1780000001",
+    "https://video.fastly.steamstatic.com/store_trailers/100/222/hash-b/hls_264_master.m3u8?t=1780000002",
+    "https://video.fastly.steamstatic.com/store_trailers/100/333/hash-c/hls_264_master.m3u8?t=1780000003",
+  ];
+  const segmentValidationReport = {
+    segments: sourceUrls.flatMap((sourceUrl, sourceIndex) =>
+      [0, 1].map((windowIndex) => ({
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+        source_url: sourceUrl,
+        source_type: "official_platform_product_page",
+        source_url_kind: "hls_manifest",
+        provider: "licensed_direct_media_acquisition",
+        entity: "GTA VI",
+        source_family: `gta_vi_official_source_${sourceIndex + 1}`,
+        media_start_s: 12 + sourceIndex * 18 + windowIndex * 6,
+        duration_s: 5,
+        source_duration_s: 90,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+      })),
+    ),
+  };
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["visual_evidence:direct_video_motion_missing"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["visual_evidence:direct_video_motion_missing"],
+              evidence: { direct_video_motion_clip_floor: 5 },
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    minClips: 5,
+    maxClips: 5,
+    generatedAt: "2026-06-26T02:10:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.jobs[0].materialized_count, 5);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 5);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 5);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
+    [2, 2, 1],
+  );
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 0);
+  assert.equal(calls.length, 5);
+
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.clip_count, 5);
+  assert.equal(materialised.direct_video_motion_family_count, 5);
+  assert.equal(new Set(materialised.clips.map((clip) => clip.base_source_family)).size, 3);
 });
 
 test("real motion materializer samples before a late official trailer window when forward windows fail", async () => {
@@ -772,10 +871,10 @@ test("real motion materializer samples before a late official trailer window whe
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
-  assert.deepEqual(starts, [120]);
+  assert.deepEqual(starts, [120, 114.5]);
 });
 
 test("real motion materializer includes pending original direct candidates while expanding the direct-video floor", async () => {
@@ -866,10 +965,10 @@ test("real motion materializer includes pending original direct candidates while
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
-  assert.deepEqual(starts, [42]);
+  assert.deepEqual(starts, [42, 52]);
 });
 
 test("real motion materializer expands official product-page direct MP4 windows", async () => {
@@ -941,8 +1040,8 @@ test("real motion materializer expands official product-page direct MP4 windows"
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 2);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 1);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
 });
 
@@ -1078,17 +1177,17 @@ test("real motion materializer blocks repeated validated official segments when 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
   assert.equal(report.summary.materialized_clip_count, 0);
-  assert.equal(report.jobs[0].materialized_count, 1);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(report.jobs[0].materialized_count, 2);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
   assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 
   const partial = await fs.readJson(path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
   assert.equal(partial.status, "blocked");
-  assert.equal(partial.clip_count, 1);
-  assert.equal(partial.distinct_motion_family_count, 1);
-  assert.equal(partial.direct_video_motion_family_count, 1);
+  assert.equal(partial.clip_count, 2);
+  assert.equal(partial.distinct_motion_family_count, 2);
+  assert.equal(partial.direct_video_motion_family_count, 2);
   assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
 });
 
@@ -1608,20 +1707,20 @@ test("real motion materializer blocks repeated windows from one direct video sou
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].materialized_count, 1);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(report.jobs[0].materialized_count, 2);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 2);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
   assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
   assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
 
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
   assert.equal(partial.status, "blocked");
   assert.equal(partial.not_publishable, true);
-  assert.equal(partial.clip_count, 1);
-  assert.equal(partial.distinct_motion_family_count, 1);
-  assert.equal(partial.direct_video_motion_family_count, 1);
-  assert.equal(partial.clips.length, 1);
+  assert.equal(partial.clip_count, 2);
+  assert.equal(partial.distinct_motion_family_count, 2);
+  assert.equal(partial.direct_video_motion_family_count, 2);
+  assert.equal(partial.clips.length, 2);
   assert.match(partial.clips[0].base_source_family, /^url:https:\/\/vulcan\.dl\.playstation\.net\/img\/rnd\/202606\/1802\/granblue-relink-demo\.mp4$/);
   assert.equal(partial.clips[0].provenance?.base_source_family, partial.clips[0].base_source_family);
 });
@@ -1707,14 +1806,14 @@ test("real motion materializer treats Steam HLS and DASH variants from one trail
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].materialized_count, 1);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(report.jobs[0].materialized_count, 2);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 2);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
   assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
 
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
-  assert.equal(partial.direct_video_motion_family_count, 1);
+  assert.equal(partial.direct_video_motion_family_count, 2);
   assert.match(
     partial.clips[0].base_source_family,
     /^steamstatic:\/store_trailers\/3483510\/632943268\/ab5efa5d538a2c90f09927047b2df6199cf5e9d6\/1780277626$/,

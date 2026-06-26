@@ -793,18 +793,18 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(
       segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--max-segments") + 1],
-      "36",
-      "fresh refill should use a bounded segment budget instead of deep remote sampling",
+      "72",
+      "fresh refill should use a bounded deep-scan budget so motion-rich official sources can build runway",
     );
     assert.equal(
       segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--candidate-windows-per-source") + 1],
-      "2",
-      "fresh refill should avoid repeated windows from the same source",
+      "6",
+      "fresh refill should inspect enough windows per source to avoid underfilling motion-rich official sources",
     );
     assert.equal(
       segmentValidatorCall.args.includes("--include-frame-anchored-windows"),
-      false,
-      "fresh refill should not add extra frame-anchored windows that increase repeated clip risk",
+      true,
+      "fresh refill should include frame-anchored windows while downstream no-repeat gates prevent clip reuse",
     );
     assert.ok(
       childCalls.filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js").length >= 2,
@@ -882,19 +882,19 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
     assert.ok(segmentValidationCall.args.includes("--deep-scan"));
-    assert.equal(segmentValidationCall.args.includes("--include-frame-anchored-windows"), false);
+    assert.equal(segmentValidationCall.args.includes("--include-frame-anchored-windows"), true);
     assert.ok(segmentValidationCall.args.includes("--no-reference-duration-probe"));
     const segmentMaxIndex = segmentValidationCall.args.indexOf("--max-segments");
     assert.equal(
       Number(segmentValidationCall.args[segmentMaxIndex + 1]),
-      36,
-      "expected fresh refill to bound official/direct-motion validation so it does not create repeated windows or hang",
+      72,
+      "expected fresh refill to deep-scan enough official/direct-motion windows to fill publish runway",
     );
     const candidateWindowsIndex = segmentValidationCall.args.indexOf("--candidate-windows-per-source");
     assert.equal(
       Number(segmentValidationCall.args[candidateWindowsIndex + 1]),
-      2,
-      "expected fresh refill to inspect a small number of windows per source before requiring better source material",
+      6,
+      "expected fresh refill to inspect enough windows per source before requiring better source material",
     );
     const segmentReferenceArgs = segmentValidationCall.args
       .map((arg, index) => (arg === "--reference-report" ? segmentValidationCall.args[index + 1] : null))

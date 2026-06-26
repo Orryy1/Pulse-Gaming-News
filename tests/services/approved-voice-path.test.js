@@ -294,6 +294,26 @@ test("approved voice path rejects misheard Pulse Gaming outro transcripts", () =
   assert.equal(result.transcript.spoken_outro_misheard, true);
 });
 
+test("approved voice path rejects malformed GTA VI spoken stutters", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("gta-vi-stutter.mp3"),
+      transcript:
+        "GTA si-six starts the preorder fight. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("gta_vi_spoken_stutter"));
+  assert.equal(result.transcript.gta_vi_spoken_stutter, true);
+});
+
 test("approved voice path markdown is readable for operators", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

@@ -507,6 +507,43 @@ test("transcript audience audit accepts canonical game aliases in viewer narrati
   });
 });
 
+test("transcript audience audit accepts GTA VI caption and spoken-title aliases", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "gta-vi-preorder");
+    await fs.ensureDir(dir);
+    const spokenScript =
+      "Grand Theft Auto six just turned cover art into a real buying argument. " +
+      "Rockstar Newswire says preorders open on June 25 after Jason, Lucia and Vice City moved onto the official artwork. " +
+      "That matters because players can finally judge price, editions and whether buying early makes sense before the next gameplay trailer. " +
+      "The risk is simple: if Rockstar asks for money before fresh gameplay proof, the cover art becomes the first trust test. " +
+      "Wait for the edition details unless the bonuses are actually worth locking in early. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "gta-vi-preorder",
+      canonical_subject: "Grand Theft Auto VI",
+      selected_title: "GTA VI Starts The Preorder Fight",
+      primary_source: "Rockstar Newswire",
+      narration_script:
+        "GTA VI just turned cover art into a real buying argument. Rockstar Newswire says preorders open on June 25 after Jason, Lucia and Vice City moved onto the official artwork. That matters because players can finally judge price, editions and whether buying early makes sense before the next gameplay trailer. The risk is simple: if Rockstar asks for money before fresh gameplay proof, the cover art becomes the first trust test. Wait for the edition details unless the bonuses are actually worth locking in early. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "Rockstar Newswire", url: "https://www.rockstargames.com/newswire" },
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript: spokenScript,
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.first_line.startsWith("GTA VI"), true);
+    assert.match(row.raw_transcript, /^Grand Theft Auto six/);
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
 test("transcript audience audit still fails unrecoverable subject drift", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "beastro-wrong-subject");

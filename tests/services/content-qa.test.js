@@ -855,6 +855,64 @@ test("runContentQa: strict local publish accepts explicit V4 word timestamp meta
   }
 });
 
+test("runContentQa: strict local publish blocks malformed GTA VI narration stutters", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-voice-stutter-"));
+  const artifactDir = path.join(tmp, "story");
+  const audioDir = path.join(artifactDir, "audio");
+  const mp4 = path.join(artifactDir, "visual_v4_render.mp4");
+  const audio = path.join(audioDir, "narration.mp3");
+  const timestamps = path.join(audioDir, "word_timestamps.json");
+  const transcript =
+    "GTA si-six starts the preorder fight. Follow Pulse Gaming so you never miss a beat.";
+  await fs.ensureDir(audioDir);
+  await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
+  await fs.writeFile(audio, Buffer.from("fake local audio"));
+  await fs.writeJson(timestamps, {
+    meta: {
+      provider: "local",
+      source: "local-tts-server",
+      transcript,
+      acoustic: { medianPitchHz: 118, integratedLufs: -16, truePeakDb: -2.1 },
+      approvedLocalVoice: true,
+      acceptedLocalVoice: {
+        id: "pulse-sleepy-liam-20260502",
+        fileName: "pulse_liam_sleepy.wav",
+        referencePresent: true,
+        referenceHash: "a".repeat(40),
+      },
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+    },
+    words: [
+      { word: "GTA", start: 0, end: 0.2 },
+      { word: "si", start: 0.2, end: 0.3 },
+      { word: "six", start: 0.3, end: 0.5 },
+    ],
+  });
+
+  try {
+    const qa = await runContentQa(
+      goodStory({
+        exported_path: mp4,
+        audio_path: audio,
+        word_timestamps_path: timestamps,
+        full_script: goodStory().full_script.replace("A dead franchise", "GTA VI"),
+      }),
+      {
+        env: {
+          DEPLOYMENT_MODE: "local",
+          AUTO_PUBLISH: "true",
+          STUDIO_V2_LOCAL_VOICE_APPROVED: "true",
+        },
+      },
+    );
+
+    assert.strictEqual(qa.result, "fail", JSON.stringify(qa));
+    assert.ok(qa.failures.includes("approved_voice:gta_vi_spoken_stutter"));
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("runContentQa: non-strict publish reports voice provenance issues as warnings", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-voice-qa-"));
   const mp4 = path.join(tmp, "out.mp4");

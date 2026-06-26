@@ -1110,6 +1110,20 @@ test("fresh production refill continues motion-hydrated stories through audio an
           if (hydratedPass) {
             hydratedCalls += 1;
             hydratedArtifactDir = artifactDir;
+            const audioDir = path.join(tmp, "output", "audio");
+            await fs.mkdir(audioDir, { recursive: true });
+            const audioPath = path.join(audioDir, "fresh_gta_vi_story.mp3");
+            const timestampPath = path.join(audioDir, "fresh_gta_vi_story_timestamps.json");
+            await fs.writeFile(audioPath, Buffer.alloc(4096, 2));
+            await fs.writeFile(timestampPath, JSON.stringify({ words: [{ word: "GTA", start: 0, end: 0.2 }] }));
+            await fs.writeFile(
+              path.join(artifactDir, "audio_manifest.json"),
+              JSON.stringify({
+                narration_audio_path: audioPath,
+                word_timestamps_path: timestampPath,
+                word_timestamp_source: "local_whisper_word_alignment",
+              }),
+            );
             const clips = Array.from({ length: 8 }, (_, index) => ({
               path: path.join(artifactDir, `clip-${index + 1}.mp4`),
               source_family: `rockstar_gtavi_trailer_${index + 1}`,
@@ -1203,18 +1217,19 @@ test("fresh production refill continues motion-hydrated stories through audio an
         async runNodeJobChildProcess(options) {
           childCalls.push(options);
           if (options.args[0] === "tools/goal-audio-timestamp-materializer.js") {
-            const audioDir = path.join(tmp, "output", "audio");
-            await fs.mkdir(audioDir, { recursive: true });
-            const audioPath = path.join(audioDir, "fresh_gta_vi_story.mp3");
-            const timestampPath = path.join(audioDir, "fresh_gta_vi_story_timestamps.json");
-            await fs.writeFile(audioPath, Buffer.alloc(4096, 2));
-            await fs.writeFile(timestampPath, JSON.stringify({ words: [{ word: "GTA", start: 0, end: 0.2 }] }));
             await fs.writeFile(
-              path.join(hydratedArtifactDir, "audio_manifest.json"),
+              path.join(hydratedArtifactDir, "captions.srt"),
+              "1\n00:00:00,000 --> 00:00:01,000\nGTA VI\n",
+            );
+            await fs.writeFile(
+              path.join(hydratedArtifactDir, "caption_manifest.json"),
               JSON.stringify({
-                narration_audio_path: audioPath,
-                word_timestamps_path: timestampPath,
-                word_timestamp_source: "local_whisper_word_alignment",
+                status: "ready",
+                blockers: [],
+                checks: {
+                  caption_file_present: true,
+                  captions_well_formed: true,
+                },
               }),
             );
           }
@@ -1260,6 +1275,10 @@ test("fresh production refill continues motion-hydrated stories through audio an
     assert.equal(result.materialization_continuation.status, "completed");
     assert.equal(result.materialization_continuation.final_green_count, 1);
     assert.equal(result.materialization_continuation.narration_provider_preference, "elevenlabs");
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/auto-repair-runner.js"),
+      "expected continuation to execute its context-aware safe auto-repair plan before final readiness",
+    );
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-workbench.js"),
       "expected continuation to plan fresh audio/timestamp generation",

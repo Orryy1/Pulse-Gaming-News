@@ -377,6 +377,64 @@ test("fresh buffer local render work order resolves generated MEDIA_ROOT audio w
   }
 });
 
+test("fresh buffer local render work order emits context-aware auto repair commands", () => {
+  const generatedAt = "2026-06-26T08:00:00.000Z";
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-contextual-repair-"));
+  const contractDir = path.join(root, "goal-contract", "motion-hydrated");
+  const proofRoot = path.join(root, "goal-proof-batch", "motion-hydrated");
+  const artifactDir = path.join(proofRoot, "story-contextual");
+  const storyPackagesPath = path.join(contractDir, "story-packages.json");
+  const continuationDir = path.join(contractDir, "materialization-continuation");
+  const renderInputWorkOrderPath = path.join(continuationDir, "render_input_work_order.json");
+  const segmentReportPath = path.join(root, "test-output", "official_trailer_segment_validation_apply_local.json");
+  const realMotionOutDir = path.join(root, "studio-v4", "motion-packs");
+  fs.mkdirSync(artifactDir, { recursive: true });
+
+  const workOrder = buildLocalPromotionRenderInputWorkOrder({
+    generatedAt,
+    storyPackagesPath,
+    outputDir: continuationDir,
+    renderInputWorkOrderPath,
+    segmentReportPath,
+    realMotionOutDir,
+    packages: [
+      {
+        story_id: "story-contextual",
+        title: "GTA VI Starts The Preorder Fight",
+        artifact_dir: artifactDir,
+        canonical_subject: "Grand Theft Auto VI",
+        primary_source: "Xbox Wire",
+        primary_source_url: "https://news.xbox.com/en-us/2026/06/25/grand-theft-auto-vi-cover-art/",
+        source_published_at: "2026-06-25T04:06:35.000Z",
+        status: "needs_media_house_render_proof",
+        verdict: "local_proof_pending",
+      },
+    ],
+  });
+
+  const commands = workOrder.auto_repair_plan.items
+    .map((item) => item.recommended_command)
+    .filter(Boolean);
+  const joined = commands.join("\n");
+  const realMotionCommand = commands.find((command) => command.includes("ops:goal-real-motion"));
+  const audioCommand = commands.find((command) => command.includes("ops:goal-audio-timestamps"));
+  const renderCommand = commands.find((command) => command.includes("ops:goal-production-render"));
+  const cmdPath = (value) => value.replace(/\\/g, "/");
+
+  assert.ok(realMotionCommand);
+  assert.ok(realMotionCommand.includes(`--work-order ${cmdPath(renderInputWorkOrderPath)}`));
+  assert.ok(realMotionCommand.includes(`--out-dir ${cmdPath(realMotionOutDir)}`));
+  assert.ok(realMotionCommand.includes(`--artifact-root ${cmdPath(proofRoot)}`));
+  assert.ok(realMotionCommand.includes(`--segment-report ${cmdPath(segmentReportPath)}`));
+  assert.ok(realMotionCommand.includes("--min-clips 8 --min-families 5 --max-clips 8"));
+  assert.ok(audioCommand?.includes(`--work-order ${cmdPath(renderInputWorkOrderPath)}`));
+  assert.ok(audioCommand?.includes(`--out-dir ${cmdPath(continuationDir)}`));
+  assert.ok(renderCommand?.includes(`--work-order ${cmdPath(renderInputWorkOrderPath)}`));
+  assert.ok(renderCommand?.includes(`--out-dir ${cmdPath(continuationDir)}`));
+  assert.doesNotMatch(joined, /output\/goal-contract\/render_input_work_order\.json/);
+  assert.doesNotMatch(joined, /output\/goal-contract\/production_cutover_story_packages\.json/);
+});
+
 test("fresh buffer local render work order consumes current materialised motion package evidence", async () => {
   const generatedAt = "2026-06-23T13:20:00.000Z";
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-promotion-motion-evidence-"));

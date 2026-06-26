@@ -150,7 +150,7 @@ test("fresh review script repair excludes stale, non-script, published and reddi
   assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
 });
 
-test("fresh review script repair turns transcript backlog into safe rewrite work orders", () => {
+test("fresh review script repair turns current bridge transcript backlog into bridge rewrite work orders", () => {
   const plan = buildFreshReviewScriptRepairPlan({
     rows: [],
     now: NOW,
@@ -161,6 +161,9 @@ test("fresh review script repair turns transcript backlog into safe rewrite work
           title: "Gears Of War E-Day PC Specs Are A Storage Warning",
           status: "publish_ready",
           score: 92,
+          source: {
+            exported_path: "C:\\pulse\\output\\fresh\\fresh_gears_eday_pc_specs_20260616\\visual_v4_render.mp4",
+          },
           source_manifest: {
             primary_source: {
               name: "PC Gamer",
@@ -189,14 +192,15 @@ test("fresh review script repair turns transcript backlog into safe rewrite work
   assert.equal(plan.summary.selected_count, 1);
   assert.equal(plan.summary.transcript_backlog_selected_count, 1);
   assert.equal(plan.source_bound_rewrite_work_orders[0].blocker_type, "transcript_audience_rewrite_required");
-  assert.equal(plan.source_bound_rewrite_work_orders[0].repair_lane, "source_bound_script_rewrite");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].repair_lane, "bridge_transcript_artifact_rewrite_required");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].auto_repairable, false);
+  assert.equal(
+    plan.source_bound_rewrite_work_orders[0].artifact_dir,
+    "C:\\pulse\\output\\fresh\\fresh_gears_eday_pc_specs_20260616",
+  );
   assert.match(
     plan.source_bound_rewrite_work_orders[0].recommended_command,
-    /^npm run ops:reprocess-script-failures -- --story-id fresh_gears_eday_pc_specs_20260616 --force-story --source-bound-only --dry-run --json$/,
-  );
-  assert.equal(
-    commandSafety(plan.source_bound_rewrite_work_orders[0].recommended_command).safe,
-    true,
+    /^npm run ops:transcript-audience-audit -- --artifact-dir "C:\\pulse\\output\\fresh\\fresh_gears_eday_pc_specs_20260616" --json$/,
   );
 });
 
@@ -211,6 +215,9 @@ test("fresh review script repair prioritises current candidate transcript rewrit
           title: "Doom The Dark Ages PS5 Pro Upgrade Risks Blur",
           status: "publish_ready",
           score: 92,
+          source: {
+            exported_path: "C:\\pulse\\output\\fresh\\current_publish_candidate\\visual_v4_render.mp4",
+          },
           source_manifest: {
             primary_source: {
               url: "https://blog.playstation.com/2026/06/16/doom-the-dark-ages-ps5-pro-upgrade",
@@ -237,5 +244,8 @@ test("fresh review script repair prioritises current candidate transcript rewrit
   assert.equal(plan.summary.selected_count, 2);
   assert.equal(plan.source_bound_rewrite_work_orders[0].story_id, "current_publish_candidate");
   assert.equal(plan.source_bound_rewrite_work_orders[0].blocker_type, "transcript_audience_rewrite_required");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].repair_lane, "bridge_transcript_artifact_rewrite_required");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].auto_repairable, false);
   assert.equal(plan.source_bound_rewrite_work_orders[1].story_id, "db_backlog");
+  assert.equal(plan.source_bound_rewrite_work_orders[1].auto_repairable, true);
 });

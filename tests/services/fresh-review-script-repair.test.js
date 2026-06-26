@@ -36,7 +36,7 @@ test("fresh review script repair selects current source-backed script-quality bl
     row(),
     row({
       story_id: "rss_word_count",
-      title: "Switch 2 Deal Needs A Better Short",
+      title: "Switch 2 Firmware Update Needs A Better Short",
       decision_reason: "Actual spoken word count 149 outside 204-250",
       total: 71,
     }),
@@ -84,6 +84,32 @@ test("fresh review script repair excludes commerce deals roundups from editorial
       title: "The Best Deals Today: AirPods Pro 3, Tears of the Kingdom Switch 2 Edition, Nioh 3, and More",
       url: "https://www.ign.com/articles/best-deals-for-june-21-2026",
       article_url: "https://www.ign.com/articles/best-deals-for-june-21-2026",
+    }),
+  ], { now: NOW, limit: 10 });
+
+  assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
+});
+
+test("fresh review script repair excludes Prime Day shopping deal rows", () => {
+  const selected = selectFreshReviewScriptRepairRows([
+    row({ story_id: "fresh_good" }),
+    row({
+      story_id: "prime_day_bundle",
+      title: "The Only Pokemon Pokopia Deal During Prime Day Is a Nintendo Switch 2 Bundle",
+      url: "https://www.ign.com/articles/pokemon-pokopia-switch-2-bundle-prime-day",
+      article_url: "https://www.ign.com/articles/pokemon-pokopia-switch-2-bundle-prime-day",
+    }),
+    row({
+      story_id: "console_shopping_price",
+      title: "The Nintendo Switch 2 Gaming Console Is Going for as Low as $399 for Prime Day",
+      url: "https://www.ign.com/articles/nintendo-switch-2-console-prime-day",
+      article_url: "https://www.ign.com/articles/nintendo-switch-2-console-prime-day",
+    }),
+    row({
+      story_id: "woot_console_sale",
+      title: "Woot Is Selling the Nintendo Switch 2 From $399 Ahead of Scheduled September Price Hike",
+      url: "https://www.ign.com/articles/woot-nintendo-switch-2-from-399",
+      article_url: "https://www.ign.com/articles/woot-nintendo-switch-2-from-399",
     }),
   ], { now: NOW, limit: 10 });
 
@@ -172,4 +198,44 @@ test("fresh review script repair turns transcript backlog into safe rewrite work
     commandSafety(plan.source_bound_rewrite_work_orders[0].recommended_command).safe,
     true,
   );
+});
+
+test("fresh review script repair prioritises current candidate transcript rewrites before DB backlog", () => {
+  const plan = buildFreshReviewScriptRepairPlan({
+    rows: [row({ story_id: "db_backlog", title: "Gears of War E-Day PC Specs Revealed", total: 80 })],
+    now: NOW,
+    candidateReport: {
+      candidates: [
+        {
+          id: "current_publish_candidate",
+          title: "Doom The Dark Ages PS5 Pro Upgrade Risks Blur",
+          status: "publish_ready",
+          score: 92,
+          source_manifest: {
+            primary_source: {
+              url: "https://blog.playstation.com/2026/06/16/doom-the-dark-ages-ps5-pro-upgrade",
+            },
+          },
+        },
+      ],
+    },
+    transcriptAudienceReport: {
+      generated_at: NOW,
+      summary: { total: 1, pass: 0, rewrite_required: 1 },
+      stories: [
+        {
+          story_id: "current_publish_candidate",
+          title: "Doom The Dark Ages PS5 Pro Upgrade Risks Blur",
+          verdict: "rewrite_required",
+          blockers: ["generic_could_split_title_template", "mass_audience:low_concrete_detail"],
+          viral_score: 55,
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.selected_count, 2);
+  assert.equal(plan.source_bound_rewrite_work_orders[0].story_id, "current_publish_candidate");
+  assert.equal(plan.source_bound_rewrite_work_orders[0].blocker_type, "transcript_audience_rewrite_required");
+  assert.equal(plan.source_bound_rewrite_work_orders[1].story_id, "db_backlog");
 });

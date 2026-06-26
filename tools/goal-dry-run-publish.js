@@ -117,9 +117,65 @@ function storyPackagesFromJson(value, filePath) {
   throw new Error(`story package file is not an array: ${filePath}`);
 }
 
-async function readStoryPackageSource(filePath, priority = 0) {
+function normalizeVerdictToken(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function storyPackageVerdictTokens(storyPackage = {}) {
+  return [
+    storyPackage.verdict,
+    storyPackage.status,
+    storyPackage.publish_status,
+    storyPackage.readiness_status,
+    storyPackage.publish_verdict?.verdict,
+    storyPackage.publish_verdict?.status,
+    storyPackage.platform_publish_manifest?.verdict,
+    storyPackage.platform_publish_manifest?.status,
+    storyPackage.platform_publish_manifest?.publish_status,
+    storyPackage.scheduler_preflight_qa?.status,
+  ].map(normalizeVerdictToken).filter(Boolean);
+}
+
+function storyPackageLooksReady(storyPackage = {}) {
+  const tokens = storyPackageVerdictTokens(storyPackage);
+  if (tokens.some((token) => ["green", "pass", "passed", "ready", "publish_ready"].includes(token))) {
+    return true;
+  }
+  if (storyPackage.publish_verdict?.can_auto_publish === true) return true;
+  if (storyPackage.platform_publish_manifest?.can_auto_publish === true) return true;
+  return false;
+}
+
+function storyPackageLooksBlocked(storyPackage = {}) {
+  const tokens = storyPackageVerdictTokens(storyPackage);
+  if (tokens.some((token) => ["red", "fail", "failed", "blocked", "held", "hard_stop"].includes(token))) {
+    return true;
+  }
+  if (Array.isArray(storyPackage.blockers) && storyPackage.blockers.length > 0) return true;
+  if (Array.isArray(storyPackage.reason_codes) && storyPackage.reason_codes.length > 0) return true;
+  if (Array.isArray(storyPackage.publish_verdict?.reason_codes) && storyPackage.publish_verdict.reason_codes.length > 0) {
+    return true;
+  }
+  return false;
+}
+
+function isAllRedGenericStoryPackageSource(source = {}) {
+  return source.name === "story_packages" &&
+    Array.isArray(source.packages) &&
+    source.packages.length > 0 &&
+    source.packages.every((storyPackage) => (
+      !storyPackageLooksReady(storyPackage) &&
+      storyPackageLooksBlocked(storyPackage)
+    ));
+}
+
+async function readStoryPackageSource(filePath, priority = 0, name = null) {
   const value = await fs.readJson(filePath);
   return {
+    name,
     filePath,
     packages: storyPackagesFromJson(value, filePath),
     generatedAtMs: await reportGeneratedAtMs(value, filePath),
@@ -141,16 +197,20 @@ async function readStoryPackages(root, explicitPath = null) {
   const usableSources = [];
   for (const candidate of candidates) {
     if (!(await fs.pathExists(candidate.filePath))) continue;
-    usableSources.push(await readStoryPackageSource(candidate.filePath, candidate.priority));
+    usableSources.push(await readStoryPackageSource(candidate.filePath, candidate.priority, candidate.name));
   }
   if (!usableSources.length) throw new Error(`story package file not found: ${candidates[0].filePath}`);
-  usableSources.sort((a, b) => {
+  const hasAlternativeSource = usableSources.some((source) => source.name !== "story_packages");
+  const selectableSources = hasAlternativeSource
+    ? usableSources.filter((source) => !isAllRedGenericStoryPackageSource(source))
+    : usableSources;
+  selectableSources.sort((a, b) => {
     const aMs = a.generatedAtMs ?? -Infinity;
     const bMs = b.generatedAtMs ?? -Infinity;
     if (aMs !== bMs) return bMs - aMs;
     return b.priority - a.priority;
   });
-  return usableSources[0].packages;
+  return selectableSources[0].packages;
 }
 
 async function readCandidateReport(root, explicitPath = null) {

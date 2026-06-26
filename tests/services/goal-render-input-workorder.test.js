@@ -159,6 +159,93 @@ test("render input work order accepts story-package arrays after audio and motio
   assert.equal(job.actions[0].target_render_manifest.final_publish_render, true);
 });
 
+test("render input work order respects fresh distinct-motion family proof for windowed direct clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-windowed-motion-proof-"));
+  const artifactDir = path.join(root, "packages", "windowed-motion-story");
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  const sourceUrls = [
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_1/GTAVI_Trailer_1.mp4",
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+  ];
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    id: `segment-direct-motion-${index + 1}`,
+    path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+    source_url: sourceUrls[index % sourceUrls.length],
+    source_family: `rockstar_gta_vi_official_videos_window_${index + 1}`,
+    media_kind: "direct_video",
+    source_type: "official_direct_video",
+    durationS: 5,
+  }));
+
+  await fs.ensureDir(artifactDir);
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "GTA", start: 0, end: 0.2 }],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "windowed-motion-story",
+    canonical_subject: "GTA VI",
+    selected_title: "GTA VI Starts The Preorder Fight",
+    thumbnail_headline: "PREORDER FIGHT",
+    first_spoken_line: "GTA VI just turned preorders into a platform fight.",
+    narration_script: "GTA VI just turned preorders into a platform fight.",
+    description: "Rockstar footage and Xbox Store evidence show GTA VI entering the preorder stage.",
+    primary_source: "Xbox Store",
+  });
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: clips.length,
+    distinct_motion_family_count: clips.length,
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "distinct_motion_family_report.json"), {
+    schema_version: 1,
+    story_id: "windowed-motion-story",
+    status: "ready",
+    generated_at: "2026-06-26T10:55:54.868Z",
+    summary: {
+      clip_count: clips.length,
+      distinct_motion_family_count: clips.length,
+      direct_video_motion_family_count: clips.length,
+      minimum_required_distinct_motion_families: 4,
+    },
+    distinct_motion_families: clips.map((clip) => clip.source_family),
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: [
+      {
+        story_id: "windowed-motion-story",
+        verdict: "RED",
+        blockers: ["render:final_publish_render_missing"],
+        artifact_dir: artifactDir,
+      },
+    ],
+    generatedAt: "2026-06-26T11:00:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.deepEqual(job.blockers, []);
+  assert.equal(job.evidence.direct_video_motion_clip_count, 8);
+  assert.equal(job.evidence.direct_video_motion_family_count, 8);
+  assert.equal(job.evidence.distinct_motion_family_count, 8);
+  assert.equal(job.evidence.distinct_motion_family_report_ready, true);
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+});
+
 test("render input work order blocks Steam delivery variants that collapse below direct source-family floor", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-steam-variant-render-input-"));
   const artifactDir = path.join(root, "packages", "steam-variant-story");

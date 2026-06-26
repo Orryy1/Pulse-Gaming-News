@@ -56,6 +56,40 @@ function enabledCorePlatformsOnly() {
   };
 }
 
+test("goal dry-run CLI prefers scheduler bridge over newer all-red generic story packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-dry-run-source-selection-"));
+  const contractDir = path.join(root, "output", "goal-contract");
+  await fs.ensureDir(contractDir);
+  const bridgePath = path.join(contractDir, "scheduler_bridge_candidates.json");
+  const storyPackagesPath = path.join(contractDir, "story-packages.json");
+  await fs.writeJson(bridgePath, [
+    {
+      id: "bridge-ready",
+      title: "GTA VI Starts The Preorder Fight",
+      exported_path: path.join(root, "bridge-ready", "visual_v4_render.mp4"),
+      platform_publish_manifest: { publish_status: "GREEN", can_auto_publish: true },
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+    },
+  ]);
+  await fs.writeJson(storyPackagesPath, [
+    {
+      id: "repair-red",
+      title: "Repair Package Still Blocked",
+      verdict: "RED",
+      blockers: ["audio:narration_audio_missing"],
+    },
+  ]);
+  const older = new Date("2026-06-26T10:00:00.000Z");
+  const newer = new Date("2026-06-26T11:00:00.000Z");
+  await fs.utimes(bridgePath, older, older);
+  await fs.utimes(storyPackagesPath, newer, newer);
+
+  const packages = await readStoryPackages(root);
+
+  assert.equal(packages.length, 1);
+  assert.equal(packages[0].id, "bridge-ready");
+});
+
 async function makeStoryPackage(
   root,
   id = "story-one",

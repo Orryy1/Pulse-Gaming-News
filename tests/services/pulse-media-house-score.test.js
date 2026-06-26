@@ -137,6 +137,27 @@ test("media-house score treats GTA VI as Grand Theft Auto VI subject parity", ()
   assert.equal(report.shorts_feed_competition_report.signals.title_has_subject, true);
 });
 
+test("fresh direct-motion family proof overrides stale distinct-source blocker", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    footageEmpireV2: {
+      verdict: "v4_motion_blocked",
+      blockers: ["distinct_motion_source_assets_minimum_not_met"],
+    },
+    distinctMotionFamily: {
+      status: "ready",
+      summary: {
+        clip_count: 8,
+        distinct_motion_family_count: 8,
+        direct_video_motion_family_count: 8,
+        minimum_required_distinct_motion_families: 4,
+      },
+    },
+  }));
+
+  assert.equal(report.source_lock_report.status, "pass");
+  assert.equal(report.hard_failures.includes("media_house:source_lock_not_verified"), false);
+});
+
 test("generic title fails", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: { ...strongStory().canonical, selected_title: "Gaming news update" },

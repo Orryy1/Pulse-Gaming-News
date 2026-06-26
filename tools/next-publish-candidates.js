@@ -3735,6 +3735,12 @@ async function mediaHousePreflightForStory(story = {}) {
     uniqueness: objectValue(story.uniqueness_report || story.uniqueness, {}),
     competitorSimilarity: objectValue(story.competitor_similarity_report || story.competitorSimilarity, {}),
     footageEmpireV2: objectValue(story.footage_empire_v2 || story.footageEmpireV2 || story.footage_empire, {}),
+    distinctMotionFamily: objectValue(
+      story.distinct_motion_family_report ||
+        story.distinctMotionFamilyReport ||
+        story.distinct_motion_family ||
+        {},
+    ),
   });
   const failures = asArray(score.hard_failures).map((failure) =>
     cleanText(failure).replace(/^media_house:/, ""),

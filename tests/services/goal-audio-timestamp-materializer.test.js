@@ -1081,6 +1081,23 @@ test("local-clone segment splitter clamps tiny max word settings to avoid choppy
   );
 });
 
+test("local-clone segment splitter keeps protected gaming names inside one segment", () => {
+  const script = [
+    "Grand Theft Auto VI just turned cover art into a preorder fight with players watching every version closely.",
+    "Halo Campaign Evolved should be spoken as one title when the remake debate comes up.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const segments = _testables.splitLocalTtsSegments(script, { maxWords: 3, allowMicroSegments: true });
+  const joined = segments.join(" | ");
+
+  assert.equal(/Grand Theft(?:\s*\|\s*)Auto/i.test(joined), false, joined);
+  assert.equal(/Grand Theft Auto(?:\s*\|\s*)VI/i.test(joined), false, joined);
+  assert.equal(/Halo(?:\s*\|\s*)Campaign/i.test(joined), false, joined);
+  assert.equal(/Campaign(?:\s*\|\s*)Evolved/i.test(joined), false, joined);
+  assert.equal(/Pulse(?:\s*\|\s*)Gaming/i.test(joined), false, joined);
+});
+
 test("goal audio voice metadata repair restores approved local metadata from segment sidecars", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-voice-meta-repair-"));
   const storyId = "story-voice-meta-repair";

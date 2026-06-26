@@ -161,6 +161,24 @@ test("subtitle display merge renders spoken Grand Theft Auto six as GTA VI", () 
   assert.deepEqual(merged, ["GTA VI", "preorders", "changed"]);
 });
 
+test("subtitle display merge hides malformed GTA VI ASR stutters", () => {
+  const words = [
+    { text: "GTA", start: 0, end: 0.18 },
+    { text: "si", start: 0.18, end: 0.25 },
+    { text: "six", start: 0.25, end: 0.44 },
+    { text: "starts", start: 0.46, end: 0.7 },
+    { text: "Grand", start: 0.72, end: 0.9 },
+    { text: "Theft", start: 0.9, end: 1.08 },
+    { text: "Auto", start: 1.08, end: 1.24 },
+    { text: "si", start: 1.24, end: 1.32 },
+    { text: "six.", start: 1.32, end: 1.52 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA VI", "starts", "GTA VI."]);
+});
+
 test("subtitle display merge converts spoken modern years without rewriting ordinary numbers", () => {
   const words = [
     { text: "twenty", start: 0, end: 0.1 },

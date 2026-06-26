@@ -787,6 +787,16 @@ function resolveLocalTtsSpeakingRate(rate, env = process.env) {
     1.0,
   );
   const speedEffectsAllowed = allowLocalTtsSpeedEffects(env);
+  const safeNativeFloor = clamp(
+    finiteNumber(
+      env.LOCAL_TTS_SAFE_MIN_SPEAKING_RATE ||
+        env.PULSE_LOCAL_TTS_SAFE_MIN_SPEAKING_RATE ||
+        env.STUDIO_V2_LOCAL_TTS_SAFE_MIN_SPEAKING_RATE,
+      0.9,
+    ),
+    0.85,
+    1.0,
+  );
   const minRequestRate = speedEffectsAllowed
     ? clamp(
         finiteNumber(
@@ -797,7 +807,7 @@ function resolveLocalTtsSpeakingRate(rate, env = process.env) {
         0.5,
         1.0,
       )
-    : 1.0;
+    : safeNativeFloor;
   let effectiveCap = finiteNumber(
     env.LOCAL_TTS_EFFECTIVE_RATE_CAP ||
       env.STUDIO_V2_LOCAL_TTS_EFFECTIVE_RATE_CAP,

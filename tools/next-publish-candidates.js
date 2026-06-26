@@ -3082,7 +3082,7 @@ async function timestampAlignmentPreflightForStory(story = {}) {
   }
 
   const localTtsSpeakingRate = localTtsSpeakingRateForPayload(payload);
-  const minNativeLocalTtsRate = 0.98;
+  const minNativeLocalTtsRate = 0.9;
   if (localTtsSpeakingRate != null && localTtsSpeakingRate < minNativeLocalTtsRate) {
     return {
       result: "fail",

@@ -158,6 +158,42 @@ test("fresh direct-motion family proof overrides stale distinct-source blocker",
   assert.equal(report.hard_failures.includes("media_house:source_lock_not_verified"), false);
 });
 
+test("materialised direct-motion clips override stale source-lock blockers", () => {
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    id: `clip-${index + 1}`,
+    path: `C:\\media\\gta-vi-${index + 1}.mp4`,
+    source_family: `rockstar_gta_vi_official_${index + 1}`,
+    motion_family: `rockstar_gta_vi_official_${index + 1}`,
+    source_url: `https://media.rockstargames.com/VI/trailer-${index + 1}.mp4`,
+    media_kind: "direct_video",
+    validated: true,
+    counts_towards_motion_readiness: true,
+  }));
+  const report = buildPulseMediaHouseScore(strongStory({
+    footageEmpireV2: {
+      verdict: "v4_motion_blocked",
+      readiness: {
+        status: "v4_motion_blocked",
+        blockers: ["distinct_motion_source_assets_minimum_not_met"],
+      },
+      blockers: ["distinct_motion_source_assets_minimum_not_met"],
+    },
+    materialisedMotionClips: {
+      status: "ready",
+      clip_count: clips.length,
+      distinct_motion_family_count: clips.length,
+      distinct_motion_families: clips.map((clip) => clip.source_family),
+      clips,
+      materialised_clips: clips,
+    },
+  }));
+
+  assert.equal(report.source_lock_report.status, "pass");
+  assert.equal(report.source_lock_report.evidence.distinct_motion_family_count, 8);
+  assert.equal(report.source_lock_report.evidence.direct_video_motion_family_count, 8);
+  assert.equal(report.hard_failures.includes("media_house:source_lock_not_verified"), false);
+});
+
 test("generic title fails", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: { ...strongStory().canonical, selected_title: "Gaming news update" },

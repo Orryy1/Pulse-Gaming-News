@@ -228,6 +228,42 @@ test("goal proof package produces a GREEN acceptance entry only when every core 
   assert.ok(pack.acceptance_entry.artefacts.includes("platform_publish_manifest.json"));
 });
 
+test("goal proof package does not keep stale footage blocker after materialised direct-motion proof", () => {
+  const story = greenStory();
+  story.id = "gta-windowed-motion-proof";
+  story.canonical_subject = "Grand Theft Auto VI";
+  story.canonical_game = "Grand Theft Auto VI";
+  story.title = "GTA VI Cover Art Starts The Pre-Order Fight";
+  story.public_title = "GTA VI Cover Art Starts The Pre-Order Fight";
+  story.suggested_title = "GTA VI Cover Art Starts The Pre-Order Fight";
+  story.suggested_thumbnail_text = "GTA VI PREORDER TEST";
+  story.source_name = "Xbox Wire";
+  story.primary_source = "Xbox Wire";
+  story.article_url = "https://www.xbox.com/en-US/games/store/grand-theft-auto-vi/9NNZSNHLR63L";
+  story.full_script =
+    "Grand Theft Auto VI just made the buying argument real. Xbox Wire says pre-orders open on June 25. The payoff is simple: players finally get to argue about price, editions and whether locking in early is smart. Follow Pulse Gaming so you never miss a beat.";
+  story.video_clips = Array.from({ length: 8 }, (_, index) => ({
+    id: `gta-window-${index + 1}`,
+    type: "motion_clip",
+    path: `output/video/gta-window-${index + 1}.mp4`,
+    source_url: `https://media.rockstargames.com/VI/trailer-${(index % 3) + 1}.mp4`,
+    source_type: "official_trailer_segment",
+    rights_risk_class: "official_reference_only",
+    source_family: `rockstar_gta_vi_window_${index + 1}`,
+    durationS: 4.8,
+    validated: true,
+  }));
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-26T19:45:00.000Z",
+  });
+
+  assert.equal(pack.publish_verdict.reason_codes.includes("footage:v4_motion_blocked"), false);
+  assert.equal(pack.publish_verdict.reason_codes.includes("distinct_motion_source_assets_minimum_not_met"), false);
+});
+
 test("goal proof package proves each social pack is platform-native rather than mirrored", () => {
   const story = greenStory();
   const pack = buildGoalProofPackage({

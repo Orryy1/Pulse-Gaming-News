@@ -205,6 +205,38 @@ test("Pulse local TTS refuses sub-native production speed caps by default", () =
   assert.equal(local.speaking_rate, 1.0);
 });
 
+test("Pulse local TTS allows mild generation-side cadence repair by default", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const {
+    resolveVoiceSettingsForProvider,
+  } = require("../../audio");
+
+  const local = resolveVoiceSettingsForProvider(
+    "local",
+    { speaking_rate: 1.1 },
+    0.9,
+    {},
+  );
+
+  assert.equal(local.speaking_rate, 0.9);
+});
+
+test("Pulse local TTS still blocks heavily stretched production speed by default", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const {
+    resolveVoiceSettingsForProvider,
+  } = require("../../audio");
+
+  const local = resolveVoiceSettingsForProvider(
+    "local",
+    { speaking_rate: 1.1 },
+    0.82,
+    {},
+  );
+
+  assert.equal(local.speaking_rate, 0.9);
+});
+
 test("Pulse local TTS speed effects require explicit proof-only override", () => {
   process.env.PULSE_SKIP_DOTENV = "true";
   const {

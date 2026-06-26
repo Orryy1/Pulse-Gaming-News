@@ -221,6 +221,18 @@ test("cleanForTTS: removes old spaced GTA acronym forms before local narration",
   assert.doesNotMatch(spoken, /\bG\s+T\s+A\s+six\b/i);
 });
 
+test("cleanForTTS: repairs malformed GTA VI stutters before local narration", () => {
+  const spoken = cleanForTTS(
+    "GTA si-six starts the preorder fight. Grand Theft Auto si-six is still months away.",
+  );
+
+  assert.equal(
+    spoken,
+    "Grand Theft Auto six starts the preorder fight. Grand Theft Auto six is still months away.",
+  );
+  assert.doesNotMatch(spoken, /\b(?:si|sigh|s)\s*[- ]?\s*six\b/i);
+});
+
 test("cleanForTTS: turns article-style deal snippets into spoken sentences", () => {
   assert.equal(
     cleanForTTS("Super Mario RPG - $15 (70% off) at GameStop, physical, lowest price ever."),

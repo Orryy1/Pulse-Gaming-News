@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   NORMAL_PRODUCTION_REPAIR_STRATEGY,
+  durationRepairLocalTtsSegmentationOptions,
   durationRepairThumbnailHeadline,
   extendScriptToTarget,
   materializeDurationVariantRepairs,
@@ -32,6 +33,28 @@ function charAlignment(text) {
 function simpleWordCount(value = "") {
   return String(value).trim().split(/\s+/).filter(Boolean).length;
 }
+
+test("duration repair defaults long local TTS scripts to segmented generation", () => {
+  const options = durationRepairLocalTtsSegmentationOptions(
+    { provider: "local" },
+    { repaired_word_count: 134 },
+  );
+
+  assert.equal(options.localTtsSegmentedMaterializer, true);
+  assert.equal(options.localTtsSegmentedWordThreshold, 45);
+  assert.equal(options.localTtsSegmentMaxWords, 26);
+  assert.equal(options.localTtsRetrySegmentMaxWords, 22);
+  assert.equal(options.localTtsFinalRetrySegmentMaxWords, 18);
+
+  assert.deepEqual(
+    durationRepairLocalTtsSegmentationOptions({ provider: "elevenlabs" }, { repaired_word_count: 134 }),
+    {},
+  );
+  assert.deepEqual(
+    durationRepairLocalTtsSegmentationOptions({ provider: "local" }, { repaired_word_count: 70 }),
+    {},
+  );
+});
 
 async function makePackage(root, storyId = "story-duration", overrides = {}) {
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -877,6 +900,121 @@ test("duration variant repair preserves dense fast-cadence scripts instead of ap
   assert.equal(repair.appended_word_count, 0);
   assert.equal(repair.repaired_word_count, simpleWordCount(script));
   assert.doesNotMatch(repair.script, /One reveal cannot settle the game/i);
+});
+
+test("duration variant repair extends GTA VI preorder scripts without generic QA residue", () => {
+  const baseScript = [
+    "Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI.",
+    "Xbox Wire says the new cover art is live and pre-orders open on June 25.",
+    "The first store page now has to answer the question hype cannot: price, editions, bonuses and whether locking in early is actually smart.",
+    "Pre-order because it is gaming's safest blockbuster, or wait until Rockstar proves what the money actually buys.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const repair = extendScriptToTarget(
+    {
+      story_id: "gta-preorder-duration",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      selected_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      thumbnail_headline: "GTA VI PREORDER TEST",
+      first_spoken_line: "Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI.",
+      narration_script: baseScript,
+      full_script: baseScript,
+      tts_script: baseScript,
+      primary_source: "Xbox Wire",
+      source_card_label: "Xbox Wire",
+      confirmed_claims: [
+        "Xbox Wire says Grand Theft Auto VI pre-orders open on June 25 after Rockstar put Jason and Lucia on the official cover art.",
+      ],
+    },
+    {
+      repair_lane: "normal_production_duration_floor",
+      current_duration_s: 34.567,
+      target_duration_seconds: { min: 40, max: 59 },
+      source_blockers: [
+        "normal_production_duration_below_quality_floor:34.567",
+        "voice_cadence:wpm_too_fast",
+      ],
+    },
+  );
+
+  assert.ok(repair.repaired_word_count >= 110, repair.script);
+  assert.match(repair.script, /Jason and Lucia/i);
+  assert.match(repair.script, /June 25/i);
+  assert.match(repair.script, /price/i);
+  assert.doesNotMatch(repair.script, /GTA 6/i);
+  assert.doesNotMatch(
+    repair.script,
+    /one concrete change worth remembering|clean shape|source visible|extra lore|buy,\s*wait|buy early,\s*wait|argue about the premium version|price,\s*editions|editions\s+and\s+bonuses/i,
+  );
+  assert.match(repair.script, /prices, versions and bonuses/i);
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "gta-preorder-duration",
+      title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      source_name: "Xbox Wire",
+    },
+    script: repair.script,
+  });
+  assert.equal(scorecard.blockers.includes("duplicated_source_attribution"), false, JSON.stringify(scorecard));
+  assert.equal(scorecard.blockers.includes("missing_story_specific_payoff"), false, JSON.stringify(scorecard));
+
+  const staleRepairedScript = [
+    "Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI.",
+    "Xbox Wire says the new cover art is live and pre-orders open on June 25.",
+    "The first store page now has to answer the question hype cannot: prices, versions and bonuses and whether locking in early is actually smart.",
+    "Pre-order because it is gaming's safest blockbuster, or wait until Rockstar proves what the money actually buys.",
+    "Grand Theft Auto VI just turned cover art into a checkout countdown.",
+    "Xbox Wire reports Rockstar confirmed GTA 6 preorders begin on June 25, with prices, versions and bonuses carrying the value risk.",
+    "Jason and Lucia are no longer only trailer faces; they are the box-art promise Rockstar is asking players to trust before launch.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+  const staleRepair = extendScriptToTarget(
+    {
+      story_id: "gta-preorder-duration",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      selected_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      first_spoken_line: "Rockstar just put Jason and Lucia back at the centre of Grand Theft Auto VI.",
+      narration_script: staleRepairedScript,
+      full_script: staleRepairedScript,
+      tts_script: staleRepairedScript,
+      primary_source: "Xbox Wire",
+      source_card_label: "Xbox Wire",
+      confirmed_claims: [
+        "Xbox Wire says Grand Theft Auto VI pre-orders open on June 25 after Rockstar put Jason and Lucia on the official cover art.",
+      ],
+    },
+    {
+      repair_lane: "normal_production_duration_floor",
+      current_duration_s: 49.767,
+      target_duration_seconds: { min: 40, max: 59 },
+      source_blockers: ["voice_cadence:wpm_too_fast"],
+    },
+  );
+  const staleScorecard = buildViralScriptIntelligence({
+    story: {
+      id: "gta-preorder-duration",
+      title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      source_name: "Xbox Wire",
+    },
+    script: staleRepair.script,
+  });
+  assert.equal(
+    staleScorecard.blockers.includes("duplicated_source_attribution"),
+    false,
+    JSON.stringify({ script: staleRepair.script, staleScorecard }),
+  );
+  assert.equal(
+    staleScorecard.blockers.includes("missing_story_specific_payoff"),
+    false,
+    JSON.stringify({ script: staleRepair.script, staleScorecard }),
+  );
+  assert.doesNotMatch(staleRepair.script, /price,\s*editions|editions\s+and\s+bonuses/i);
+  assert.match(staleRepair.script, /prices, versions and bonuses/i);
+  assert.doesNotMatch(staleRepair.script, /GTA 6/i);
+  assert.ok(staleRepair.repaired_word_count >= 115, staleRepair.script);
 });
 
 test("voice cadence repair preserves an existing platform-native thumbnail headline", async () => {
@@ -3044,7 +3182,9 @@ test("duration variant repair tightens GTA preorder risk stories without deal fi
   assert.ok(repair.repaired_word_count < repair.original_word_count);
   assert.ok(repair.repaired_word_count >= 85, repair.script);
   assert.ok(repair.repaired_word_count <= 135, repair.script);
-  assert.match(repair.script, /GTA 6 preorders/i);
+  assert.match(repair.script, /Grand Theft Auto VI/i);
+  assert.match(repair.script, /preorders/i);
+  assert.doesNotMatch(repair.script, /GTA 6/i);
   assert.match(repair.script, /June 25/i);
   assert.match(repair.script, /price, editions and bonuses|premium version|wallet test/i);
   assert.match(repair.script, /Follow Pulse Gaming/);

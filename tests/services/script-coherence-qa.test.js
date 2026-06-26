@@ -361,6 +361,21 @@ test("script coherence allows common sequel-title expansions when the abbreviati
   );
 
   assert.equal(qa.result, "pass", qa.failures.join(", "));
+
+  const romanQa = runScriptCoherenceQa(
+    {
+      title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      source_type: "rss",
+      source_name: "Xbox Wire",
+      source_title: "GTA VI cover art and preorders confirmed",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Xbox Wire reports Rockstar confirmed Grand Theft Auto VI preorders begin on June 25. If the page feels messy, preorders open the price fight before launch. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(romanQa.result, "pass", romanQa.failures.join(", "));
 });
 
 test("script coherence blocks generic uncertainty boilerplate and internal Pulse framing", () => {

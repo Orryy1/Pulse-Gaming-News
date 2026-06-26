@@ -249,6 +249,53 @@ test("goal batch packages hydrate existing final render and audio evidence befor
   }
 });
 
+test("goal batch packages preserve newer repaired canonical public copy from existing artifacts", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-repaired-canonical-"));
+  try {
+    const story = greenStory("repaired-canonical-story");
+    story.first_spoken_line = "Forza Horizon 6 reviews are finally in.";
+    story.narration_script =
+      "Forza Horizon 6 reviews are finally in. Old package copy should not replace the repaired narration. Follow Pulse Gaming so you never miss a beat.";
+    story.full_script = story.narration_script;
+    story.tts_script = story.narration_script;
+    story.description = "Old package copy should not replace the repaired description. Source: GamesRadar+.";
+
+    const storyDir = path.join(tempDir, story.id);
+    fs.ensureDirSync(storyDir);
+    const repairedScript =
+      "Forza Horizon 6 just broke Xbox's Steam ceiling. GamesRadar+ reports a major Steam peak during early access, which matters because PC players are showing where Xbox demand is strongest. The catch is price: early access can make launch hype look bigger before standard players arrive. If that momentum survives, Xbox gets a PC win it can actually point to. Follow Pulse Gaming so you never miss a beat.";
+    fs.writeJsonSync(path.join(storyDir, "canonical_story_manifest.json"), {
+      ...story,
+      story_id: story.id,
+      first_spoken_line: "Forza Horizon 6 just broke Xbox's Steam ceiling.",
+      narration_hook: "Forza Horizon 6 just broke Xbox's Steam ceiling.",
+      narration_script: repairedScript,
+      full_script: repairedScript,
+      tts_script: repairedScript,
+      description:
+        "Forza Horizon 6 has a major Steam early-access signal, but standard launch momentum is the real Xbox test. Source: GamesRadar+.",
+      duration_variant_repaired_at: "2026-06-26T21:35:43.545Z",
+      public_copy_repaired_at: "2026-06-26T21:35:43.545Z",
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-06-26T21:40:00.000Z",
+    });
+
+    const manifest = batch.packages[0].canonical_story_manifest;
+    assert.equal(manifest.first_spoken_line, "Forza Horizon 6 just broke Xbox's Steam ceiling.");
+    assert.equal(manifest.narration_script, repairedScript);
+    assert.match(manifest.description, /PC win it can actually point to/i);
+    assert.doesNotMatch(manifest.description, /Old package copy should not replace/i);
+    assert.doesNotMatch(manifest.narration_script, /Old package copy should not replace/i);
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages recover repaired audio evidence when audio manifest was downgraded", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-recovered-audio-"));
   try {

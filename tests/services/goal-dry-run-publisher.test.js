@@ -5781,6 +5781,32 @@ test("goal dry-run CLI prefers current production cutover story packages by defa
   assert.equal(packages[0].story_id, "fresh-cutover-package");
 });
 
+test("goal dry-run CLI prefers newer scheduler bridge packages over stale default packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-current-bridge-packages-"));
+  const storyPackagesPath = path.join(root, "output", "goal-contract", "story-packages.json");
+  const cutoverPath = path.join(root, "output", "goal-contract", "production_cutover_story_packages.json");
+  const bridgePath = path.join(root, "output", "goal-contract", "scheduler_bridge_candidates.json");
+  await fs.outputJson(storyPackagesPath, [
+    { story_id: "stale-package", artifact_dir: "stale" },
+  ]);
+  await fs.outputJson(cutoverPath, [
+    { story_id: "stale-cutover-package", artifact_dir: "stale-cutover" },
+  ]);
+  await fs.outputJson(bridgePath, [
+    { story_id: "fresh-bridge-package", artifact_dir: "fresh-bridge" },
+  ]);
+  const staleTime = new Date("2026-06-26T08:00:00.000Z");
+  const freshTime = new Date("2026-06-26T09:00:00.000Z");
+  await fs.utimes(storyPackagesPath, staleTime, staleTime);
+  await fs.utimes(cutoverPath, staleTime, staleTime);
+  await fs.utimes(bridgePath, freshTime, freshTime);
+
+  const packages = await readStoryPackages(root);
+
+  assert.equal(packages.length, 1);
+  assert.equal(packages[0].story_id, "fresh-bridge-package");
+});
+
 test("goal dry-run CLI merges publish-ready scheduler candidates with exported artefact paths", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-merge-preflight-packages-"));
   const existing = await makeStoryPackage(root, "existing-cutover", "GREEN", "Existing Cutover Story Works");

@@ -17,6 +17,23 @@ const {
 const { buildPlatformOperationalConfig } = require("../lib/ops/platform-status");
 
 const CANDIDATE_REPORT_BRIDGE_WRITE_SKEW_MS = 10_000;
+const DEFAULT_STORY_PACKAGE_SOURCES = [
+  {
+    name: "production_cutover",
+    priority: 3,
+    relativePath: ["output", "goal-contract", "production_cutover_story_packages.json"],
+  },
+  {
+    name: "scheduler_bridge",
+    priority: 2,
+    relativePath: ["output", "goal-contract", "scheduler_bridge_candidates.json"],
+  },
+  {
+    name: "story_packages",
+    priority: 1,
+    relativePath: ["output", "goal-contract", "story-packages.json"],
+  },
+];
 
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
@@ -90,24 +107,50 @@ function usage() {
   ].join("\n");
 }
 
-async function readStoryPackages(root, explicitPath = null) {
-  const candidates = explicitPath
-    ? [path.resolve(root, explicitPath)]
-    : [
-        path.join(root, "output", "goal-contract", "production_cutover_story_packages.json"),
-        path.join(root, "output", "goal-contract", "story-packages.json"),
-      ];
-  let filePath = null;
-  for (const candidate of candidates) {
-    if (await fs.pathExists(candidate)) {
-      filePath = candidate;
-      break;
-    }
+function storyPackagesFromJson(value, filePath) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") {
+    if (Array.isArray(value.story_packages)) return value.story_packages;
+    if (Array.isArray(value.packages)) return value.packages;
+    if (Array.isArray(value.candidates)) return value.candidates;
   }
-  if (!filePath) throw new Error(`story package file not found: ${candidates[0]}`);
+  throw new Error(`story package file is not an array: ${filePath}`);
+}
+
+async function readStoryPackageSource(filePath, priority = 0) {
   const value = await fs.readJson(filePath);
-  if (!Array.isArray(value)) throw new Error(`story package file is not an array: ${filePath}`);
-  return value;
+  return {
+    filePath,
+    packages: storyPackagesFromJson(value, filePath),
+    generatedAtMs: await reportGeneratedAtMs(value, filePath),
+    priority,
+  };
+}
+
+async function readStoryPackages(root, explicitPath = null) {
+  if (explicitPath) {
+    const filePath = path.resolve(root, explicitPath);
+    if (!(await fs.pathExists(filePath))) throw new Error(`story package file not found: ${filePath}`);
+    return (await readStoryPackageSource(filePath)).packages;
+  }
+
+  const candidates = DEFAULT_STORY_PACKAGE_SOURCES.map((source) => ({
+    ...source,
+    filePath: path.join(root, ...source.relativePath),
+  }));
+  const usableSources = [];
+  for (const candidate of candidates) {
+    if (!(await fs.pathExists(candidate.filePath))) continue;
+    usableSources.push(await readStoryPackageSource(candidate.filePath, candidate.priority));
+  }
+  if (!usableSources.length) throw new Error(`story package file not found: ${candidates[0].filePath}`);
+  usableSources.sort((a, b) => {
+    const aMs = a.generatedAtMs ?? -Infinity;
+    const bMs = b.generatedAtMs ?? -Infinity;
+    if (aMs !== bMs) return bMs - aMs;
+    return b.priority - a.priority;
+  });
+  return usableSources[0].packages;
 }
 
 async function readCandidateReport(root, explicitPath = null) {

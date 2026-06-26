@@ -344,6 +344,32 @@ test("transcript audience audit counts kart handling and track details as concre
   });
 });
 
+test("transcript audience audit counts visual upgrade and image-quality stakes as concrete", async () => {
+  await withTempDir(async (root) => {
+    const currentDir = path.join(root, "output", "goal-contract", "current-package", "doom");
+    await fs.ensureDir(currentDir);
+    await fs.writeJson(path.join(currentDir, "canonical_story_manifest.json"), {
+      story_id: "doom",
+      selected_title: "Doom The Dark Ages PS5 Pro Upgrade Risks Blur",
+      canonical_subject: "Doom: The Dark Ages",
+      primary_source: "PlayStation Blog",
+      narration_script:
+        "Doom The Dark Ages has one PlayStation 5 Pro risk players will feel fast. PlayStation Blog says upgraded PSSR is coming to the PlayStation 5 Pro version. The danger is not frame counting. It is readability when fire, steel and demons fill the arena at once. If PSSR holds that chaos together, Sony gets a shooter upgrade players can judge instantly, not another slow beauty shot. If it smears, the Pro badge becomes the thing people mock. That is the argument: sharper fights, or expensive blur? This is the proof fight to watch. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(currentDir, "source_manifest.json"), {
+      primary_source: { name: "PlayStation Blog", url: "https://blog.playstation.com/2026/06/24/upgraded-pssr-comes-to-doom-the-dark-ages-on-ps5-pro/" },
+    });
+
+    const report = await auditGeneratedTranscripts({ root, artifactDirs: [currentDir] });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", JSON.stringify(row, null, 2));
+    assert.equal(row.mass_audience.blockers.includes("mass_audience:low_concrete_detail"), false);
+    assert.equal(row.mass_audience.concrete_detail_count >= 3, true);
+  });
+});
+
 test("transcript audience audit CLI writes explicit current artifact reports", async () => {
   await withTempDir(async (root) => {
     const currentDir = path.join(root, "current-package", "fresh_story");

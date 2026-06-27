@@ -1522,6 +1522,8 @@ const VISUAL_SPECIFIC_SOURCE_LOCK_STOPWORDS = new Set([
   "fighter",
   "footage",
   "headline",
+  "finally",
+  "fighting",
   "just",
   "knife",
   "looks",
@@ -1533,7 +1535,9 @@ const VISUAL_SPECIFIC_SOURCE_LOCK_STOPWORDS = new Set([
   "ranked",
   "reveal",
   "revealed",
+  "real",
   "rushdown",
+  "shows",
   "space",
   "street",
   "videos",
@@ -1635,7 +1639,28 @@ function visualSourceLockTokensForStory(story = {}) {
 }
 
 function visualSpecificSourceLockTokensForStory(story = {}) {
+  const explicitSpecificSubject = cleanText(
+    story.motion_subject ||
+      story.featured_character ||
+      story.character_name ||
+      "",
+  );
+  const titleContext = [
+    story.motion_subject,
+    story.featured_character,
+    story.character_name,
+    story.title,
+    story.selected_title,
+    story.public_title,
+    story.short_title,
+    story.suggested_thumbnail_text,
+    story.thumbnail_headline,
+  ]
+    .map(cleanText)
+    .filter(Boolean)
+    .join(" ");
   const context = [
+    titleContext,
     story.title,
     story.selected_title,
     story.public_title,
@@ -1655,7 +1680,12 @@ function visualSpecificSourceLockTokensForStory(story = {}) {
   if (!VISUAL_CHARACTER_SPECIFIC_CONTEXT_RE.test(context)) return [];
 
   let urlPath = "";
-  const url = cleanText(story.primary_source_url || story.source_url || story.url);
+  const includeUrlPathForSpecificSubject =
+    Boolean(explicitSpecificSubject) ||
+    VISUAL_CHARACTER_SPECIFIC_CONTEXT_RE.test(titleContext);
+  const url = includeUrlPathForSpecificSubject
+    ? cleanText(story.primary_source_url || story.source_url || story.url)
+    : "";
   if (url) {
     try {
       urlPath = new URL(url).pathname;
@@ -3712,16 +3742,14 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     readArtifactJsonObjectForStory(story, "owned_motion_manifest.json"),
     readArtifactJsonObjectForStory(story, "materialised_motion_clips.json"),
   ]);
+  const artifactVideoClips = asArray(renderStoryArtifact.video_clips);
+  const artifactBridgeVideoClips = asArray(renderStoryArtifact.visual_v4_bridge_video_clips);
+  const storyVideoClips = asArray(story.video_clips);
+  const storyBridgeVideoClips = asArray(story.visual_v4_bridge_video_clips);
   const renderStory = {
     ...renderStoryArtifact,
-    video_clips: [
-      ...asArray(renderStoryArtifact.video_clips),
-      ...asArray(story.video_clips),
-    ],
-    visual_v4_bridge_video_clips: [
-      ...asArray(renderStoryArtifact.visual_v4_bridge_video_clips),
-      ...asArray(story.visual_v4_bridge_video_clips),
-    ],
+    video_clips: artifactVideoClips.length ? artifactVideoClips : storyVideoClips,
+    visual_v4_bridge_video_clips: artifactBridgeVideoClips.length ? artifactBridgeVideoClips : storyBridgeVideoClips,
   };
   const directorArtifactHasShots = asArray(directorArtifact.shot_plan || directorArtifact.shots).length > 0;
   const directorBeatMap = directorArtifactHasShots
@@ -3737,11 +3765,16 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     ownedMotionManifest: objectValue(story.owned_motion_manifest, ownedMotionArtifact),
     materialisedMotionClips: objectValue(story.materialised_motion_clips_manifest, materialisedMotionArtifact),
   });
-  const directMotionSegmentEvidenceSource = [
-    ...materialisedMotion,
+  const finalRenderMotionEvidence = [
     ...asArray(renderStory.visual_v4_bridge_video_clips),
     ...asArray(renderStory.video_clips),
   ];
+  const directMotionSegmentEvidenceSource = finalRenderMotionEvidence.length >= 3
+    ? finalRenderMotionEvidence
+    : [
+        ...materialisedMotion,
+        ...finalRenderMotionEvidence,
+      ];
   const finalRenderVisualReuse = finalRenderVisualReuseEvidence({ renderManifest, renderStory });
   const hyperframesReadableDwell = hyperframesReadableDwellEvidence({
     renderManifest,

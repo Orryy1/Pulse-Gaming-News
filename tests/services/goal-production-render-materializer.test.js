@@ -11,6 +11,7 @@ const {
   refreshFinalRenderQualityOnly,
   writeGoalProductionRenderMaterializationReport,
 } = require("../../lib/goal-production-render-materializer");
+const { directMotionBaseSourceOveruseEvidence } = require("../../lib/goal-dry-run-publisher");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
@@ -403,6 +404,66 @@ test("goal production render materializer preserves rendered card-visible window
   assert.equal(manifest.clip_scene_plan.repeat_free, true);
   assert.deepEqual(manifest.clip_scene_plan.repeated_base_sources, []);
   assert.equal(manifest.overlay_card_windows.length >= 4, true);
+});
+
+test("goal production render materializer prefers unique direct motion bases for short-ready renders", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-unique-direct-bases-"));
+  const artifactDir = await makePackage(root, "story-unique-direct-bases");
+  const clipRows = [
+    ["clip-a-36.mp4", "steamstatic:/store_trailers/1/a/hash/video_window_36_5", "https://video.akamai.steamstatic.com/store_trailers/1/a/hash/video/hls_264_master.m3u8?t=1"],
+    ["clip-b-36.mp4", "steamstatic:/store_trailers/1/b/hash/video_window_36_5", "https://video.akamai.steamstatic.com/store_trailers/1/b/hash/video/hls_264_master.m3u8?t=1"],
+    ["clip-c-36.mp4", "steamstatic:/store_trailers/1/c/hash/video_window_36_5", "https://video.akamai.steamstatic.com/store_trailers/1/c/hash/video/hls_264_master.m3u8?t=1"],
+    ["clip-d-36.mp4", "steamstatic:/store_trailers/1/d/hash/video_window_36_5", "https://video.akamai.steamstatic.com/store_trailers/1/d/hash/video/hls_264_master.m3u8?t=1"],
+    ["clip-e-36.mp4", "steamstatic:/store_trailers/1/e/hash/video_window_36_5", "https://video.akamai.steamstatic.com/store_trailers/1/e/hash/video/hls_264_master.m3u8?t=1"],
+    ["clip-f-36.mp4", "steamstatic:/store_trailers/1/f/hash/video_window_36_5", "https://video.akamai.steamstatic.com/store_trailers/1/f/hash/video/hls_264_master.m3u8?t=1"],
+    ["clip-b-42.mp4", "steamstatic:/store_trailers/1/b/hash/video_window_42_5", "https://video.akamai.steamstatic.com/store_trailers/1/b/hash/video/hls_264_master.m3u8?t=1"],
+    ["clip-c-42.mp4", "steamstatic:/store_trailers/1/c/hash/video_window_42_5", "https://video.akamai.steamstatic.com/store_trailers/1/c/hash/video/hls_264_master.m3u8?t=1"],
+  ];
+  const clips = [];
+  for (const [fileName, sourceFamily, sourceUrl] of clipRows) {
+    const clipPath = path.join(artifactDir, fileName);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, clips.length + 20));
+    clips.push({
+      id: fileName.replace(/\.mp4$/i, ""),
+      path: clipPath,
+      source_family: sourceFamily,
+      motion_family: sourceFamily,
+      source_url: sourceUrl,
+      source_type: "steam_movie",
+      media_kind: "direct_video",
+      durationS: 5,
+      validated: true,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+
+  const calls = [];
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-unique-direct-bases", artifactDir)] },
+    generatedAt: "2026-05-22T07:08:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: "story-unique-direct-bases",
+        output,
+        clips: story.visual_v4_bridge_video_clips.length,
+        rendered_duration_s: 36,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].visual_v4_bridge_video_clips.length, 6);
+  assert.deepEqual(directMotionBaseSourceOveruseEvidence(calls[0].visual_v4_bridge_video_clips).blockers, []);
+  assert.equal(calls[0].visual_v4_bridge_video_clips.some((clip) => /clip-b-42|clip-c-42/.test(clip.path)), false);
 });
 
 test("goal production render materializer preserves nested actual card-visible windows over overlay fallback", async () => {

@@ -4025,6 +4025,66 @@ test("visual entity preflight treats generic segment sidecar families as opaque 
   assert.match(result.evidence.direct_motion_assets[0].provenance_text, /sea of thieves/);
 });
 
+test("visual entity preflight accepts game-level motion when source URL mentions characters but title stays game-level", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-game-level-character-url",
+    "marvel_tokon_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    source_url:
+      "https://video.akamai.steamstatic.com/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008/hls_264_master.m3u8?t=1780942450",
+    source_family:
+      "steamstatic:/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008_window_36_5",
+    rights_basis: "official_direct_media",
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "rss_893a55fd9e664d31",
+      title: "MARVEL Tokon Finally Shows Real Gameplay",
+      selected_title: "MARVEL Tokon Finally Shows Real Gameplay",
+      canonical_subject: "MARVEL Tokon",
+      canonical_game: "MARVEL Tokon",
+      primary_source_url:
+        "https://www.gamespot.com/videos/marvel-tokon-fighting-souls-magneto-and-black-panther-gameplay/",
+      full_script:
+        "MARVEL Tokon could win the trailer war and still lose players fast. GameSpot's gameplay shows Magneto and Black Panther in two-on-two combat, with assists and screen-filling supers.",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url:
+            "https://video.akamai.steamstatic.com/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008/hls_264_master.m3u8?t=1780942450",
+          source_family:
+            "steamstatic:/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008_window_36_5",
+          source_title: "MARVEL Tokon",
+          entity: "MARVEL Tokon",
+          entities: ["MARVEL Tokon"],
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: {
+        verdict: "pass",
+        assets: [],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.deepEqual(result.evidence.required_specific_source_lock_tokens, []);
+  assert.match(result.evidence.direct_motion_assets[0].provenance_text, /marvel tokon/);
+});
+
 test("visual entity preflight accepts Steam direct motion when rights ledger owner names the subject", async () => {
   const clipPath = path.join(
     "test",
@@ -5024,6 +5084,156 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
   assert.equal(
     preflight.checks.incident_guard.evidence.file_evidence.hyperframes_too_fast_card_shots.length,
     0,
+  );
+});
+
+test("runPreflightQaForStory scores direct-motion overuse from final render clips before stale raw inventory", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-final-render-motion-overuse-"));
+  t.after(() => fs.remove(tmpDir));
+  const cleanRenderClips = [
+    ["a", "steamstatic:/store_trailers/1/a/hash/video_window_36_5"],
+    ["b", "steamstatic:/store_trailers/1/b/hash/video_window_36_5"],
+    ["c", "steamstatic:/store_trailers/1/c/hash/video_window_36_5"],
+    ["d", "steamstatic:/store_trailers/1/d/hash/video_window_36_5"],
+    ["e", "steamstatic:/store_trailers/1/e/hash/video_window_36_5"],
+    ["f", "steamstatic:/store_trailers/1/f/hash/video_window_36_5"],
+  ].map(([key, family]) => ({
+    id: `tokon-${key}`,
+    path: path.join(tmpDir, `tokon-${key}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/1/${key}/hash/video/hls_264_master.m3u8?t=1`,
+    source_type: "steam_movie",
+    source_kind: "video_file",
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    source_family: family,
+    motion_family: family,
+    durationS: 5,
+  }));
+  const staleRawClips = [
+    ...cleanRenderClips,
+    {
+      ...cleanRenderClips[1],
+      id: "tokon-b-repeat",
+      path: path.join(tmpDir, "tokon-b-repeat.mp4"),
+      source_family: "steamstatic:/store_trailers/1/b/hash/video_window_42_5",
+      motion_family: "steamstatic:/store_trailers/1/b/hash/video_window_42_5",
+    },
+    {
+      ...cleanRenderClips[2],
+      id: "tokon-c-repeat",
+      path: path.join(tmpDir, "tokon-c-repeat.mp4"),
+      source_family: "steamstatic:/store_trailers/1/c/hash/video_window_42_5",
+      motion_family: "steamstatic:/store_trailers/1/c/hash/video_window_42_5",
+    },
+  ];
+  await Promise.all(staleRawClips.map((clip, index) => fs.outputFile(clip.path, Buffer.alloc(2048, 40 + index))));
+  await fs.writeJson(path.join(tmpDir, "visual_v4_render_story.json"), {
+    video_clips: cleanRenderClips,
+    visual_v4_bridge_video_clips: cleanRenderClips,
+  });
+  await fs.writeJson(path.join(tmpDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: staleRawClips,
+  });
+  await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
+    shot_plan: [
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 12 },
+      { id: "proof_card", kind: "proof_card", startS: 15, durationS: 12 },
+    ],
+  });
+  await fs.writeJson(path.join(tmpDir, "render_manifest.json"), {
+    final_publish_render: true,
+    render_lane: "visual_v4_production",
+    render_quality_class: "premium",
+    rendered_duration_s: 35,
+    output_path: "D:/pulse-data/media/output/final/tokon_unique.mp4",
+    clip_scene_plan: {
+      repeat_free: true,
+      repeated_base_sources: [],
+      scenes: cleanRenderClips.map((clip, index) => ({
+        id: `scene_${index + 1}`,
+        path: clip.path,
+        source_family: clip.source_family,
+        durationS: 5,
+      })),
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "tokon_final_render_motion",
+      title: "MARVEL Tokon Finally Shows Real Gameplay",
+      canonical_subject: "MARVEL Tokon",
+      selected_title: "MARVEL Tokon Finally Shows Real Gameplay",
+      primary_source: "GameSpot",
+      primary_source_url: "https://www.gamespot.com/videos/marvel-tokon-fighting-souls-magneto-and-black-panther-gameplay/",
+      first_spoken_line: "MARVEL Tokon finally shows real gameplay.",
+      description: "MARVEL Tokon finally shows real gameplay. Source: GameSpot.",
+      full_script:
+        "MARVEL Tokon finally shows real gameplay. GameSpot shows Magneto and Black Panther in readable two on two fights. Follow Pulse Gaming so you never miss a beat.",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmpDir,
+      render_manifest_path: path.join(tmpDir, "render_manifest.json"),
+      exported_path: "D:/pulse-data/media/output/final/tokon_unique.mp4",
+      duration_seconds: 35,
+      audio_path: "D:/pulse-data/media/output/audio/tokon_unique.mp3",
+      timestamps_path: "D:/pulse-data/media/output/timestamps/tokon_unique.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/tokon_unique.srt",
+      render_manifest: {
+        final_publish_render: true,
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+        rendered_duration_s: 35,
+      },
+      visual_v4_bridge_video_clips: cleanRenderClips,
+      video_clips: cleanRenderClips,
+      visual_v4_render_bridge_clip_count: cleanRenderClips.length,
+      rights_ledger: cleanRenderClips.map((clip) => ({
+        ...clip,
+        asset_type: "direct_video_motion_clip",
+        commercial_use_allowed: true,
+        approval_status: "approved_for_transformative_editorial_use",
+      })),
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+      },
+      platform_policy_report: {
+        status: "pass",
+        disclosure_requirements: { affiliate: false, commercial: false },
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      ...bridgeVisualEvidence("MARVEL Tokon"),
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.direct_motion_base_source_overuse.length,
+    0,
+  );
+  assert.ok(
+    !preflight.blockers.includes("incident_guard:visual_evidence:direct_motion_base_source_overused"),
+    JSON.stringify(preflight.blockers),
   );
 });
 

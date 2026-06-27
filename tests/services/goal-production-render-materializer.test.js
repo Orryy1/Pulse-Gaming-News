@@ -610,7 +610,7 @@ test("goal production render materializer preserves readable HyperFrames card dw
   assert.match(timelineCard.text, /price and edition decision/i);
 });
 
-test("goal production render materializer deduplicates repeated official trailer windows from the same source", async () => {
+test("goal production render materializer preserves validated official trailer windows from the same source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-official-window-dedupe-"));
   const artifactDir = await makePackage(root, "story-official-window-dedupe");
   const clipPaths = [];
@@ -673,12 +673,80 @@ test("goal production render materializer deduplicates repeated official trailer
   const directClips = renderStory.visual_v4_bridge_video_clips.filter(
     (clip) => clip.media_kind === "direct_video",
   );
-  assert.equal(directClips.length, 1);
+  assert.equal(directClips.length, 8);
   assert.equal(new Set(directClips.map((clip) => clip.source_url)).size, 1);
-  assert.equal(
-    directClips[0].source_url,
-    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+  assert.equal(new Set(directClips.map((clip) => clip.source_family)).size, 8);
+  assert.ok(directClips.every(
+    (clip) => clip.source_url === "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+  ));
+});
+
+test("goal production render materializer preserves validated Steam trailer windows from the same source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-window-dedupe-"));
+  const artifactDir = await makePackage(root, "story-steam-window-dedupe");
+  const clipPaths = [];
+  const clips = [];
+  for (let index = 0; index < 8; index += 1) {
+    const windowStart = 36 + index * 6;
+    const clipPath = path.join(artifactDir, `steam-window-${windowStart}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, 70 + index));
+    clipPaths.push(clipPath);
+    clips.push({
+      id: `segment_steam_motion_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008/hls_264_master.m3u8",
+      source_type: "steam_movie",
+      source_kind: "video_file",
+      source_family: `steamstatic:/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008_window_${windowStart}_5`,
+      motion_family: `steamstatic:/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008_window_${windowStart}_5`,
+      media_kind: "direct_video",
+      source_url_kind: "hls_manifest",
+      counts_towards_motion_readiness: true,
+      validated: true,
+      durationS: 5,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  const job = readyJob("story-steam-window-dedupe", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: 8,
+      distinct_motion_family_count: 8,
+      materialised_motion_clip_paths: clipPaths,
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-26T04:15:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 5));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 37,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const directClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.media_kind === "direct_video",
   );
+  assert.equal(directClips.length, 8);
+  assert.equal(new Set(directClips.map((clip) => clip.source_url)).size, 1);
+  assert.equal(new Set(directClips.map((clip) => clip.source_family)).size, 8);
 });
 
 test("goal production render materializer limits HyperFrames cards to a readable motion-balanced subset", async () => {

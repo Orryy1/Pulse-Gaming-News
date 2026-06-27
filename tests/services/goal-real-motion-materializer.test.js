@@ -876,6 +876,190 @@ test("real motion materializer blocks eight-clip floors when only three official
   assert.equal(calls.length, 3);
 });
 
+test("real motion materializer fills eight-clip floors from enough official base sources without overusing one source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-balanced-official-windows-"));
+  const storyId = "marvel-tokon-balanced-official-window-floor";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrls = Array.from({ length: 5 }, (_, sourceIndex) =>
+    `https://video.fastly.steamstatic.com/store_trailers/3787240/${sourceIndex + 100}/hash_${sourceIndex}/hls_264_master.m3u8?t=177000000${sourceIndex}`,
+  );
+  const segmentValidationReport = {
+    segments: sourceUrls.flatMap((sourceUrl, sourceIndex) =>
+      [0, 1].map((windowIndex) => ({
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 91,
+        source_url: sourceUrl,
+        source_type: "official_platform_product_page",
+        source_url_kind: "hls_manifest",
+        provider: "steam",
+        entity: "MARVEL Tokon",
+        source_family: `steam_marvel_tokon_source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+        media_start_s: 12 + sourceIndex * 14 + windowIndex * 6,
+        duration_s: 5,
+        source_duration_s: 130,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+      })),
+    ),
+  };
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["direct_video_motion_clip_floor_not_met"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["direct_video_motion_clip_floor_not_met"],
+              evidence: { direct_video_motion_clip_floor: 8 },
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    minClips: 8,
+    minFamilies: 5,
+    maxClips: 8,
+    generatedAt: "2026-06-27T16:45:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].materialized_count, 8);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 8);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 8);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 2);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
+    [2, 2, 2, 1, 1],
+  );
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 0);
+  assert.equal(calls.length, 8);
+});
+
+test("real motion materializer fills long-narration floors with balanced third official windows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-long-official-windows-"));
+  const storyId = "marvel-tokon-long-official-window-floor";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrls = Array.from({ length: 5 }, (_, sourceIndex) =>
+    `https://video.fastly.steamstatic.com/store_trailers/3787240/${sourceIndex + 200}/hash_${sourceIndex}/hls_264_master.m3u8?t=178000000${sourceIndex}`,
+  );
+  const segmentValidationReport = {
+    segments: sourceUrls.flatMap((sourceUrl, sourceIndex) =>
+      [0, 1, 2].map((windowIndex) => ({
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 91,
+        source_url: sourceUrl,
+        source_type: "official_platform_product_page",
+        source_url_kind: "hls_manifest",
+        provider: "steam",
+        entity: "MARVEL Tokon",
+        source_family: `steam_marvel_tokon_long_source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+        media_start_s: 12 + sourceIndex * 18 + windowIndex * 6,
+        duration_s: 5,
+        source_duration_s: 160,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+      })),
+    ),
+  };
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["direct_video_motion_clip_floor_not_met"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["direct_video_motion_clip_floor_not_met"],
+              evidence: { direct_video_motion_clip_floor: 12 },
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    minClips: 12,
+    minFamilies: 5,
+    maxClips: 12,
+    generatedAt: "2026-06-27T17:30:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].materialized_count, 12);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 12);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 12);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 3);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
+    [3, 3, 2, 2, 2],
+  );
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 0);
+  assert.equal(calls.length, 12);
+});
+
 test("real motion materializer blocks uneven official-window sets instead of overusing one source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-uneven-official-windows-"));
   const storyId = "gta-vi-uneven-official-window-floor";

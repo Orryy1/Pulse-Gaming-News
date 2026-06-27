@@ -527,7 +527,7 @@ test("goal audio materializer regenerates title-colon audio without the current 
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_title_colon_pronunciation_profile");
   const timestamps = await fs.readJson(timestampPath);
-  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-safe-next-title-v6");
+  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-safe-next-title-v7");
   assert.equal(timestamps.meta.spoken_text, "Halo Campaign Evolved just gave Xbox a real remake test.");
 });
 

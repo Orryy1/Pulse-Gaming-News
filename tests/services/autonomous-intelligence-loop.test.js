@@ -42,6 +42,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("local_tts_doctor_hourly")?.cron_expr, "25 * * * *");
   assert.equal(schedule("local_tts_doctor_hourly")?.payload.restart, true);
   assert.equal(schedule("local_tts_doctor_hourly")?.payload.prewarm, true);
+  assert.equal(schedule("local_tts_doctor_hourly")?.payload.smoke, true);
   assert.equal(schedule("autonomous_feedback_monitor_30m")?.payload.enqueue_followups, true);
 
   assert.equal(typeof handlers.candidate_supply_monitor, "function");
@@ -84,6 +85,7 @@ test("local TTS doctor handler restarts and prewarms through a safe child proces
     "--json",
     "--restart",
     "--prewarm",
+    "--smoke",
   ]);
   assert.equal(captured.childKind, "local_tts_doctor");
   assert.equal(result.status, "green");
@@ -153,6 +155,13 @@ test("local TTS retry recovery handler runs bounded local-only preflight and app
     "local_tts_retry_preflight",
     "local_tts_retry_apply",
     "local_tts_retry_report",
+  ]);
+  assert.deepEqual(childCalls[0].args, [
+    "tools/local-tts-doctor.js",
+    "--json",
+    "--restart",
+    "--prewarm",
+    "--smoke",
   ]);
   assert.deepEqual(childCalls[1].args, [
     "tools/local-media-repair.js",

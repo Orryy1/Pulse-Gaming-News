@@ -81,6 +81,37 @@ function numberOrZero(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function directMotionBaseSource(clip = {}) {
+  const text = [
+    clip.media_kind,
+    clip.source_type,
+    clip.source_kind,
+    clip.source_url,
+    clip.source_asset_key,
+  ].map(cleanText).join(" ").toLowerCase();
+  if (!/direct_video|official_.*video|https?:\/\//.test(text)) return "";
+  const raw = cleanText(clip.source_asset_key || clip.source_url || clip.base_source_family || clip.source_family || clip.motion_family);
+  if (!raw) return "";
+  return raw
+    .toLowerCase()
+    .replace(/[?#].*$/, "")
+    .replace(/(?:__|_)window_\d+(?:_\d+)?$/i, "")
+    .replace(/\/window_\d+(?:_\d+)?$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasOverusedDirectMotionBaseSource(clips = []) {
+  const counts = new Map();
+  for (const clip of asArray(clips)) {
+    if (isOwnedGeneratedMotion(clip)) continue;
+    const base = directMotionBaseSource(clip);
+    if (!base) continue;
+    counts.set(base, (counts.get(base) || 0) + 1);
+  }
+  return Array.from(counts.values()).some((count) => count > 1);
+}
+
 function selectedStoryIds(storyIds = []) {
   return new Set(asArray(storyIds).map(cleanText).filter(Boolean));
 }
@@ -121,7 +152,16 @@ async function motionEvidenceReady(artifactDir) {
     asArray(materialised.distinct_motion_families).length,
     asArray(familyReport.families).length,
   );
-  return materialised.status === "ready" && clipCount >= 5 && familyCount >= 4;
+  const clips = [
+    ...asArray(materialised.clips),
+    ...asArray(materialised.materialised_clips),
+  ];
+  return (
+    materialised.status === "ready" &&
+    clipCount >= 5 &&
+    familyCount >= 4 &&
+    !hasOverusedDirectMotionBaseSource(clips)
+  );
 }
 
 async function ownedMotionEvidencePresent(artifactDir) {

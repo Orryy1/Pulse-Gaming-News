@@ -3357,7 +3357,7 @@ test("attachPreflightQa blocks stale GTA roman-numeral voice pronunciation metad
   );
   assert.equal(
     candidate.preflight_qa.checks.voice_quality.evidence.expected_tts_pronunciation_profile_version,
-    "gta-safe-next-title-v6",
+    "gta-safe-next-title-v7",
   );
 });
 
@@ -3397,7 +3397,7 @@ test("attachPreflightQa blocks GTA VI pronunciation-sensitive packages without r
       word_timestamps_payload: {
         words,
         meta: {
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v6",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v7",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3561,7 +3561,7 @@ test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener eve
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v6",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v7",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3644,7 +3644,7 @@ test("attachPreflightQa blocks malformed GTA VI stutters in recorded opening spe
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v6",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v7",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3732,7 +3732,7 @@ test("attachPreflightQa blocks early GTA VI spoken-six after a safe preface", as
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v6",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v7",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,

@@ -230,6 +230,80 @@ test("goal owned motion materializer CLI derives jobs from governed story packag
   assert.equal(generatedWorkOrder.jobs[0].actions[0].action_id, "materialise_owned_generated_motion_clips");
 });
 
+test("goal owned motion materializer derives jobs when ready-looking clips repeat one direct source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-repeat-source-"));
+  const repeatedDir = path.join(root, "repeated-direct-package");
+  const outDir = path.join(root, "out");
+  const repeatedClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `repeat-${index + 1}`,
+    path: path.join(repeatedDir, `repeat-${index + 1}.mp4`),
+    source_url: index < 4
+      ? "https://publisher.example/videos/trailer-1.mp4"
+      : "https://publisher.example/videos/trailer-2.mp4",
+    source_asset_key: index < 4
+      ? "https://publisher.example/videos/trailer-1.mp4"
+      : "https://publisher.example/videos/trailer-2.mp4",
+    source_family: `official_trailer_window_${index + 1}`,
+    motion_family: `official_trailer_window_${index + 1}`,
+    media_kind: "direct_video",
+    source_type: "official_game_website_media_page",
+    durationS: 5,
+    counts_towards_motion_readiness: true,
+  }));
+  await fs.outputJson(path.join(repeatedDir, "canonical_story_manifest.json"), {
+    story_id: "repeated-direct-story",
+    canonical_subject: "GTA VI",
+    selected_title: "GTA VI Just Made PS5 The Version To Watch",
+    primary_source: "Rockstar Games",
+  });
+  await fs.outputJson(path.join(repeatedDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: 5,
+    distinct_motion_family_count: 5,
+    clips: repeatedClips,
+  });
+  await fs.outputJson(path.join(repeatedDir, "distinct_motion_family_report.json"), {
+    status: "ready",
+    summary: { distinct_motion_family_count: 5 },
+    families: repeatedClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(repeatedDir, "footage_inventory.json"), {
+    story_id: "repeated-direct-story",
+    motion_inventory: { accepted_local_clips: repeatedClips },
+  });
+  const storyPackagesPath = path.join(root, "story-packages.json");
+  await fs.outputJson(storyPackagesPath, [
+    { story_id: "repeated-direct-story", artifact_dir: repeatedDir },
+  ]);
+  const workOrderPath = path.join(root, "work-order.json");
+  await fs.outputJson(workOrderPath, { jobs: [] });
+
+  const originalLog = console.log;
+  console.log = () => {};
+  let result;
+  try {
+    result = await main([
+      "--work-order",
+      workOrderPath,
+      "--story-packages",
+      storyPackagesPath,
+      "--out-dir",
+      outDir,
+      "--root",
+      root,
+      "--generated-at",
+      "2026-06-27T23:10:00.000Z",
+      "--dry-run",
+      "--json",
+    ]);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(result.report.summary.story_count, 1);
+  assert.equal(result.report.stories[0].story_id, "repeated-direct-story");
+});
+
 test("goal owned motion materializer CLI preserves existing direct-video work orders", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-preserve-workorder-"));
   const artifactDir = path.join(root, "story-package");

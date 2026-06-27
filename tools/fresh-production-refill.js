@@ -30,6 +30,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     contractOutDir: path.join(ROOT, "output", "fresh-green-refill", stamp, "goal-contract"),
     repairEvidence: true,
     storiesFile: "",
+    ttsProvider: "",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -47,6 +48,8 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     else if (arg.startsWith("--contract-out-dir=")) args.contractOutDir = resolveRepoPath(arg.slice("--contract-out-dir=".length));
     else if (arg === "--stories-file") args.storiesFile = resolveRepoPath(argv[++i] || "");
     else if (arg.startsWith("--stories-file=")) args.storiesFile = resolveRepoPath(arg.slice("--stories-file=".length));
+    else if (arg === "--tts-provider") args.ttsProvider = String(argv[++i] || "").trim().toLowerCase();
+    else if (arg.startsWith("--tts-provider=")) args.ttsProvider = String(arg.slice("--tts-provider=".length) || "").trim().toLowerCase();
     else if (arg === "--no-repair-evidence") args.repairEvidence = false;
   }
   if (!Number.isFinite(args.limit) || args.limit <= 0) args.limit = 12;
@@ -54,6 +57,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
   args.limit = Math.max(1, Math.min(30, Math.round(args.limit)));
   args.rssPerFeed = Math.max(1, Math.min(10, Math.round(args.rssPerFeed)));
   args.channelId = String(args.channelId || "pulse-gaming").trim() || "pulse-gaming";
+  if (!["", "local", "elevenlabs"].includes(args.ttsProvider)) args.ttsProvider = "";
   return args;
 }
 
@@ -70,6 +74,7 @@ function usage() {
     "  --out-dir <path>         Proof-package output directory",
     "  --contract-out-dir <p>   Contract/report output directory",
     "  --stories-file <path>    Optional local fresh official/direct-media story seed file",
+    "  --tts-provider <name>     Optional narration provider for repair continuation: local or elevenlabs",
     "  --no-repair-evidence     Skip local repair-evidence child commands",
     "  --json                   Print machine-readable result",
   ].join("\n");
@@ -93,6 +98,7 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
         contract_out_dir: args.contractOutDir,
         seed_stories_file: args.storiesFile,
         repair_evidence: args.repairEvidence,
+        tts_provider_preference: args.ttsProvider || undefined,
         reason: "operator_safe_fresh_production_refill",
       },
     },

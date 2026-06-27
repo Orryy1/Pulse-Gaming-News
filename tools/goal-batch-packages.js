@@ -42,6 +42,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     rssPerFeed: 8,
     dbStories: false,
     storyIds: [],
+    includePublished: false,
     json: false,
     help: false,
   };
@@ -64,6 +65,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     }
     else if (arg === "--rss-per-feed") args.rssPerFeed = Number(argv[++i] || args.rssPerFeed);
     else if (arg === "--db-stories") args.dbStories = true;
+    else if (arg === "--include-published") args.includePublished = true;
     else if (arg === "--story-id" || arg === "--story" || arg === "--story-ids") {
       args.storyIds.push(...normaliseStoryIds(argv[++i] || ""));
     }
@@ -96,6 +98,7 @@ function usage() {
     "  --live-rss-only            Use only current gated live-RSS candidates; prevents stale backlog/revenue fill",
     "  --rss-per-feed <n>          Defaults to 8 when --live-rss is set",
     "  --db-stories               Read story rows from the configured local DB instead of daily_news.json",
+    "  --include-published        Allow live-RSS packaging of stories that already have public publish evidence",
     "  --story-id <id[,id]>        Package only the named story IDs; may be repeated",
     "  --json",
   ].join("\n");
@@ -130,6 +133,82 @@ function dedupeStoriesById(stories = []) {
     out.push(story);
   }
   return out;
+}
+
+function storyHasLegacyPublishEvidence(story = {}) {
+  return [
+    story.youtube_post_id,
+    story.youtube_url,
+    story.tiktok_post_id,
+    story.instagram_media_id,
+    story.instagram_story_id,
+    story.facebook_post_id,
+    story.facebook_story_id,
+    story.twitter_post_id,
+    story.twitter_image_tweet_id,
+  ].some((value) => String(value || "").trim());
+}
+
+async function loadPublishedStoryIdsForGoalBatch({ dbModule = null } = {}) {
+  const ids = new Set();
+  let dbApi = dbModule;
+  if (!dbApi) {
+    try {
+      dbApi = require("../lib/db");
+    } catch {
+      dbApi = null;
+    }
+  }
+
+  if (!dbApi) return ids;
+
+  try {
+    const published = typeof dbApi.getPublished === "function" ? await dbApi.getPublished() : [];
+    for (const story of asStoryArray(published)) {
+      const id = storyIdFor(story);
+      if (id) ids.add(id);
+    }
+  } catch {}
+
+  try {
+    const stories =
+      typeof dbApi.getStoriesSync === "function"
+        ? dbApi.getStoriesSync()
+        : typeof dbApi.getStories === "function"
+          ? await dbApi.getStories()
+          : [];
+    for (const story of asStoryArray(stories)) {
+      if (!storyHasLegacyPublishEvidence(story)) continue;
+      const id = storyIdFor(story);
+      if (id) ids.add(id);
+    }
+  } catch {}
+
+  try {
+    const db = typeof dbApi.getDb === "function" ? dbApi.getDb() : null;
+    const tableRows = db?.prepare?.("PRAGMA table_info(platform_posts)")?.all?.() || [];
+    const hasStoryId = tableRows.some((row) => row?.name === "story_id");
+    if (db && hasStoryId) {
+      const rows = db
+        .prepare(
+          `SELECT DISTINCT story_id
+             FROM platform_posts
+            WHERE story_id IS NOT NULL
+              AND TRIM(story_id) <> ''
+              AND (
+                status = 'published'
+                OR (external_id IS NOT NULL AND TRIM(external_id) <> '' AND status NOT IN ('failed', 'skipped'))
+              )`,
+        )
+        .all();
+      for (const row of rows) {
+        const id = String(row?.story_id || "").trim();
+        if (id) ids.add(id);
+      }
+    }
+  } catch {}
+
+  return ids;
 }
 
 function cleanSearchText(value) {
@@ -394,13 +473,19 @@ function selectStoriesForGoalBatch({
   liveRssStories = [],
   useDbStories = false,
   storyIds = [],
+  excludedStoryIds = [],
 } = {}) {
   const wanted = new Set(normaliseStoryIds(storyIds));
+  const excluded = new Set(normaliseStoryIds(excludedStoryIds));
   const sourceStories = useDbStories ? asStoryArray(dbStories) : asStoryArray(baseStories);
   const liveRssSelection = wanted.size
     ? prioritiseLiveRssStoriesForMotion(liveRssStories)
     : filterLiveRssStoriesForMotion(liveRssStories);
-  const merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]);
+  const merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]).filter((story) => {
+    if (wanted.size) return true;
+    const id = storyIdFor(story);
+    return !id || !excluded.has(id);
+  });
   if (!wanted.size) return merged;
   return merged.filter((story) => wanted.has(storyIdFor(story)));
 }
@@ -484,12 +569,17 @@ async function main(argv = process.argv.slice(2)) {
   const motionPackByStory = await loadMotionPackByStory(args.v4MotionPackDir);
   const sfxAssetInventory = await readJsonIfPresent(args.sfxAssetsPath, []);
   const sfxRightsLedger = await readJsonIfPresent(args.sfxRightsLedgerPath, []);
+  const excludedStoryIds =
+    args.liveRssOnly && !args.includePublished
+      ? Array.from(await loadPublishedStoryIdsForGoalBatch())
+      : [];
   const selectedStories = selectStoriesForGoalBatch({
     baseStories,
     dbStories,
     liveRssStories,
     useDbStories: args.dbStories,
     storyIds: args.storyIds,
+    excludedStoryIds,
   });
   const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit, {
     fillRevenuePaths: shouldFillRevenuePathsForGoalBatch(args),
@@ -528,6 +618,7 @@ module.exports = {
   loadRevenueManifestByStory,
   loadMotionPackByStory,
   filterLiveRssStoriesForMotion,
+  loadPublishedStoryIdsForGoalBatch,
   liveRssMotionGate,
   liveRssMotionPotentialScore,
   liveRssRepairIntakeGate,

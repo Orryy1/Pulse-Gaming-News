@@ -1415,6 +1415,86 @@ test("fresh production refill handler can run from a seeded official story file"
   }
 });
 
+test("fresh refill HyperFrames card generation targets only real-motion materialized stories", async () => {
+  const { freshRefillHyperframesStoryIdsAfterMotion } = require("../../lib/job-handlers");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-hyperframes-motion-"));
+  try {
+    const reportPath = path.join(tmp, "real_motion_materialization_report.json");
+    await fs.writeFile(
+      reportPath,
+      JSON.stringify({
+        schema_version: 1,
+        summary: {
+          materialized_story_count: 1,
+          blocked_story_count: 1,
+        },
+        jobs: [
+          {
+            story_id: "motion-ready-story",
+            status: "materialized",
+            materialized_count: 8,
+            total_direct_video_motion_family_count: 8,
+            blockers: [],
+          },
+          {
+            story_id: "motion-blocked-story",
+            status: "blocked",
+            materialized_count: 3,
+            direct_video_motion_family_count: 3,
+            blockers: ["real_motion_clip_minimum_not_met"],
+          },
+        ],
+      }),
+    );
+
+    assert.deepEqual(
+      await freshRefillHyperframesStoryIdsAfterMotion({
+        candidateStoryIds: ["motion-ready-story", "motion-blocked-story"],
+        realMotionReportPath: reportPath,
+      }),
+      ["motion-ready-story"],
+    );
+
+    await fs.writeFile(
+      reportPath,
+      JSON.stringify({
+        schema_version: 1,
+        summary: {
+          materialized_story_count: 0,
+          blocked_story_count: 2,
+        },
+        jobs: [
+          {
+            story_id: "motion-blocked-story",
+            status: "blocked",
+            materialized_count: 3,
+            direct_video_motion_family_count: 3,
+            blockers: ["real_motion_clip_minimum_not_met"],
+          },
+        ],
+      }),
+    );
+
+    assert.deepEqual(
+      await freshRefillHyperframesStoryIdsAfterMotion({
+        candidateStoryIds: ["motion-blocked-story"],
+        realMotionReportPath: reportPath,
+      }),
+      [],
+    );
+
+    assert.deepEqual(
+      await freshRefillHyperframesStoryIdsAfterMotion({
+        candidateStoryIds: ["legacy-mock-story"],
+        realMotionReportPath: path.join(tmp, "missing.json"),
+      }),
+      ["legacy-mock-story"],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh production refill repair preserves Rockstar direct media candidates", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

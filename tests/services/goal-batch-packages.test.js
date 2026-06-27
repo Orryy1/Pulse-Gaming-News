@@ -17,6 +17,7 @@ const { buildGoalProofPackage, buildPlatformNativePublishPacks } = require("../.
 const {
   parseArgs: parseGoalBatchArgs,
   filterLiveRssStoriesForMotion,
+  loadPublishedStoryIdsForGoalBatch,
   liveRssMotionGate,
   selectStoriesForGoalBatch,
   shouldFillRevenuePathsForGoalBatch,
@@ -706,6 +707,103 @@ test("goal batch CLI can select repaired live DB stories for governed packaging"
   });
 
   assert.deepEqual(selected.map((story) => story.id), ["rss_story", "1tkik53"]);
+});
+
+test("goal batch live RSS selection excludes already-published story IDs from fresh unattended refill", () => {
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        id: "already-posted-gta",
+        title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        source_name: "Rockstar Newswire",
+        source_type: "official",
+        url: "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+        approved_direct_media_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+      },
+      {
+        id: "fresh-halo-demo",
+        title: "Halo: Campaign Evolved Shows A Playable Campaign Demo",
+        canonical_subject: "Halo: Campaign Evolved",
+        source_name: "Xbox Wire",
+        source_type: "official",
+        url: "https://news.xbox.com/en-us/halo-campaign-evolved-demo",
+        approved_direct_media_url: "https://cdn.example.com/halo-campaign-evolved-demo.mp4",
+      },
+    ],
+    excludedStoryIds: ["already-posted-gta"],
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["fresh-halo-demo"]);
+});
+
+test("goal batch explicit story selection can still package already-published IDs for repair", () => {
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        id: "already-posted-gta",
+        title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        source_name: "Rockstar Newswire",
+        source_type: "official",
+        url: "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+        approved_direct_media_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+      },
+      {
+        id: "fresh-halo-demo",
+        title: "Halo: Campaign Evolved Shows A Playable Campaign Demo",
+        canonical_subject: "Halo: Campaign Evolved",
+        source_name: "Xbox Wire",
+        source_type: "official",
+        url: "https://news.xbox.com/en-us/halo-campaign-evolved-demo",
+        approved_direct_media_url: "https://cdn.example.com/halo-campaign-evolved-demo.mp4",
+      },
+    ],
+    storyIds: ["already-posted-gta"],
+    excludedStoryIds: ["already-posted-gta"],
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["already-posted-gta"]);
+});
+
+test("goal batch reads published story IDs from legacy and structured publish evidence", async () => {
+  const ids = await loadPublishedStoryIdsForGoalBatch({
+    dbModule: {
+      async getPublished() {
+        return [{ id: "legacy-youtube", youtube_post_id: "abc123" }];
+      },
+      getStoriesSync() {
+        return [
+          { id: "legacy-instagram", instagram_media_id: "ig123" },
+          { id: "unpublished-story" },
+        ];
+      },
+      getDb() {
+        return {
+          prepare(sql) {
+            if (/PRAGMA table_info\(platform_posts\)/i.test(sql)) {
+              return { all: () => [{ name: "story_id" }, { name: "status" }, { name: "external_id" }] };
+            }
+            return {
+              all: () => [
+                { story_id: "structured-published" },
+                { story_id: "structured-external-id" },
+              ],
+            };
+          },
+        };
+      },
+    },
+  });
+
+  assert.deepEqual(Array.from(ids).sort(), [
+    "legacy-instagram",
+    "legacy-youtube",
+    "structured-external-id",
+    "structured-published",
+  ]);
 });
 
 test("goal batch live RSS selection filters weak motion stories before packaging", () => {

@@ -3184,12 +3184,66 @@ test("render input work order reads package script scorecards and routes weak sc
     job.evidence.script_scorecard_qa.failures,
     [
       "script_scorecard:missing_story_specific_payoff",
-      "script_scorecard:no_curiosity_marker",
       "script_scorecard:script_score_below_threshold",
       "script_scorecard:curiosity_gap_below_threshold",
       "script_scorecard:script_verdict_rewrite_required",
     ],
   );
+});
+
+test("render input work order does not route viral-ready no-curiosity-marker warnings to rewrite repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-script-warning-"));
+  const artifactDir = path.join(root, "batch", "warning-only-scorecard");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "warning-only-scorecard",
+    canonical_subject: "Call of Duty: Black Ops 7",
+    selected_title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+    first_spoken_line: "Black Ops 7 has a retention problem hiding inside its June 25 update.",
+    primary_source: "Call of Duty",
+    narration_script:
+      "Black Ops 7 has a retention problem hiding inside its June 25 update. The official Call of Duty page lists new and remastered multiplayer maps, Endgame content and Zombies content, but patch size is not the real story. The brutal test is whether lapsed players see one clear reason to reinstall. A map can win one evening; progression and weapon prestige decide the second week. That is why the official clips matter: Activision is selling systems, not just explosions. If those systems make every match feel like progress, Black Ops 7 gets momentum back. If they feel like another checklist, players will call it padding before the weekend is over. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "Black Ops 7 has a retention problem hiding inside its June 25 update. The official Call of Duty page lists new and remastered multiplayer maps, Endgame content and Zombies content, but patch size is not the real story. The brutal test is whether lapsed players see one clear reason to reinstall. A map can win one evening; progression and weapon prestige decide the second week. That is why the official clips matter: Activision is selling systems, not just explosions. If those systems make every match feel like progress, Black Ops 7 gets momentum back. If they feel like another checklist, players will call it padding before the weekend is over. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "The official Call of Duty page lists new and remastered multiplayer maps, Endgame content and Zombies content, but patch size is not the real story. The brutal test is whether lapsed players see one clear reason to reinstall. Source: Call of Duty.",
+    thumbnail_headline: "BLACK OPS 7 REINSTALL CATCH",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 94,
+    blockers: [],
+    warnings: ["no_curiosity_marker"],
+    scores: {
+      hook_strength: 100,
+      curiosity_gap: 100,
+      insight_density: 100,
+      source_safety: 86,
+      retention_pacing: 82,
+    },
+  }, { spaces: 2 });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-27T04:25:00.000Z",
+      queue: [
+        {
+          story_id: "warning-only-scorecard",
+          title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          render_input_blockers: ["render_manifest_missing"],
+        },
+      ],
+    },
+    generatedAt: "2026-06-27T04:26:00.000Z",
+  });
+
+  const job = workOrder.jobs.find((item) => item.story_id === "warning-only-scorecard");
+  assert.ok(job);
+  assert.ok(!job.blockers.includes("script_scorecard_repair_required"), JSON.stringify(job, null, 2));
+  assert.equal(job.evidence.script_scorecard_qa.verdict, "pass");
+  assert.deepEqual(job.evidence.script_scorecard_qa.failures, []);
 });
 
 test("render input work order routes aggregate visual benchmark failures away from sound-only repair", () => {

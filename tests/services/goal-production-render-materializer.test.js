@@ -1636,6 +1636,16 @@ test("goal production render materializer refreshes stale quality reports withou
       "gold_standard:rights_risk_above_reference",
     ],
   });
+  await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
+    schema_version: 1,
+    result: "fail",
+    verdict: "fail",
+    failures: ["public_output:description_missing_canonical_subject"],
+    manifest: {
+      canonical_subject: "Xbox Controller",
+      description: "Xbox lists a limited-edition controller and headset. Source: Xbox.",
+    },
+  });
 
   const refresh = await refreshFinalRenderQualityOnly({
     storyId: "xbox-quality-refresh",
@@ -1656,6 +1666,10 @@ test("goal production render materializer refreshes stale quality reports withou
   assert.equal(refreshedForensics.checks.final_render_mp4, "pass");
   assert.equal(refreshedForensics.evidence.motion_clip_count >= 5, true);
   assert.equal(refreshedForensics.repair_source, "post_render_quality_refresh");
+  const refreshedCoherence = await fs.readJson(path.join(artifactDir, "coherence_report.json"));
+  assert.equal(refreshedCoherence.result, "pass");
+  assert.deepEqual(refreshedCoherence.failures, []);
+  assert.equal(refreshedCoherence.repair_source, "post_render_quality_refresh");
   const refreshedRenderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(refreshedRenderManifest.quality_gate_status, "post_render_forensics_passed");
   assert.equal(refreshedRenderManifest.post_render_quality_refreshed_at, "2026-05-26T08:00:00.000Z");

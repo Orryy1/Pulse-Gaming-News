@@ -207,6 +207,43 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.local_bridge_validation.evidence.render_bytes, 600_000);
 });
 
+test("buildLocalBridgeCandidate keeps concise platform cover headlines instead of prepending full subject", async () => {
+  const files = await fixture();
+  const canonicalPath = path.join(files.artifactDir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  await fs.writeJson(canonicalPath, {
+    ...canonical,
+    story_id: "story_black_ops_update",
+    selected_title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+    public_title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+    canonical_subject: "Call of Duty: Black Ops 7",
+    canonical_game: "Call of Duty: Black Ops 7",
+    thumbnail_headline: "BLACK OPS 7 REINSTALL CATCH",
+  });
+  const packPath = path.join(files.artifactDir, "platform_publish_manifest.json");
+  const pack = await fs.readJson(packPath);
+  await fs.writeJson(packPath, {
+    ...pack,
+    outputs: {
+      ...pack.outputs,
+      youtube_shorts: {
+        ...pack.outputs.youtube_shorts,
+        title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+        cover_frame: { headline: "BLACK OPS 7 REINSTALL CATCH" },
+      },
+    },
+  });
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-06-27T11:40:00.000Z",
+  });
+
+  assert.equal(candidate.suggested_thumbnail_text, "BLACK OPS 7 REINSTALL CATCH");
+  assert.equal(candidate.thumbnail_headline, "BLACK OPS 7 REINSTALL CATCH");
+  assert.doesNotMatch(candidate.suggested_thumbnail_text, /Call of Duty/i);
+});
+
 test("upsertLocalBridgeCandidate rewrites only bridge JSON with backup and no side effects", async () => {
   const files = await fixture();
   const report = await upsertLocalBridgeCandidate({

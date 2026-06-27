@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -83,6 +84,17 @@ test("guarded-dispatch reconciliation CLI preserves explicit operator environmen
 });
 
 test("reconciliation treats legacy YouTube result as terminal even when platform_posts row is missing", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-reconcile-"));
+  const cleanTimestampsPath = path.join(tempDir, "1s4j81q_native_timestamps.json");
+  fs.writeFileSync(
+    cleanTimestampsPath,
+    JSON.stringify({
+      characters: ["C", "l", "e", "a", "n"],
+      character_start_times_seconds: [0, 0.1, 0.2, 0.3, 0.4],
+      character_end_times_seconds: [0.1, 0.2, 0.3, 0.4, 0.5],
+      meta: { elevenlabs: { speakingRate: 1.0 } },
+    }),
+  );
   const stories = [
     {
       id: "1s49ty7",
@@ -106,7 +118,9 @@ test("reconciliation treats legacy YouTube result as terminal even when platform
         action("1s49ty7", "instagram_reels"),
         action("1s49ty7", "facebook_reels"),
         action("1s4j81q", "youtube_shorts"),
-        action("1s4j81q", "instagram_reels"),
+        action("1s4j81q", "instagram_reels", {
+          word_timestamps_path: cleanTimestampsPath,
+        }),
       ],
     },
     stories,

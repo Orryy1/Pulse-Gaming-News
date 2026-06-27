@@ -44,7 +44,7 @@ module.exports = {
     stability: 0.2,
     similarity_boost: 0.8,
     style: 0.75,
-    speaking_rate: 1.1,
+    speaking_rate: 1.0,
   },
 
   // Content sources

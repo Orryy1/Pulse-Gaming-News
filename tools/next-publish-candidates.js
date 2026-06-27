@@ -22,6 +22,8 @@ const {
   directMotionBaseSourceOveruseEvidence,
   finalRenderVisualReuseEvidence,
   hyperframesReadableDwellEvidence,
+  repeatedDirectMotionSegmentEvidence,
+  repeatedDirectMotionSegmentBlockers,
 } = require("../lib/goal-dry-run-publisher");
 const {
   applyGamingPronunciation,
@@ -29,7 +31,7 @@ const {
 } = require("../lib/tts-pronunciation");
 
 const ROOT = path.resolve(__dirname, "..");
-const OUT = path.join(ROOT, "test", "output");
+const OUT = path.join(ROOT, "output", "goal-contract");
 const DEFAULT_BRIDGE_CANDIDATES_PATH = path.join(
   ROOT,
   "output",
@@ -2299,6 +2301,16 @@ function scriptScoreFromScorecard(scorecard = {}) {
   return null;
 }
 
+function scriptScorecardCuriosityMarkerStillBlocking(scorecard = {}, { score = null, threshold = DEFAULT_SCRIPT_SCORE_THRESHOLD, verdict = "" } = {}) {
+  const curiosityGap = Number(scorecard.scores?.curiosity_gap ?? scorecard.curiosity_gap);
+  const insightDensity = Number(scorecard.scores?.insight_density ?? scorecard.insight_density);
+  const publishReadyVerdict = /^(?:viral_ready|pass|green|approved)$/i.test(cleanText(verdict));
+  const highEnoughScore = Number.isFinite(score) && score >= Math.max(threshold, 85);
+  const strongCuriosity = Number.isFinite(curiosityGap) && curiosityGap >= 75;
+  const strongInsight = !Number.isFinite(insightDensity) || insightDensity >= 75;
+  return !(publishReadyVerdict && highEnoughScore && strongCuriosity && strongInsight);
+}
+
 function embeddedScriptScorecard(story = {}) {
   return objectValue(
     story.script_scorecard ||
@@ -2346,7 +2358,7 @@ async function scriptScorecardPreflightForStory(story = {}, opts = {}) {
   for (const blocker of blockers) {
     failures.push(`script_blocker:${blocker}`);
   }
-  if (warnings.includes("no_curiosity_marker")) {
+  if (warnings.includes("no_curiosity_marker") && scriptScorecardCuriosityMarkerStillBlocking(scorecard, { score, threshold, verdict })) {
     failures.push("no_curiosity_marker");
   }
 
@@ -3627,12 +3639,12 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
   const renderStory = {
     ...renderStoryArtifact,
     video_clips: [
-      ...asArray(story.video_clips),
       ...asArray(renderStoryArtifact.video_clips),
+      ...asArray(story.video_clips),
     ],
     visual_v4_bridge_video_clips: [
-      ...asArray(story.visual_v4_bridge_video_clips),
       ...asArray(renderStoryArtifact.visual_v4_bridge_video_clips),
+      ...asArray(story.visual_v4_bridge_video_clips),
     ],
   };
   const directorArtifactHasShots = asArray(directorArtifact.shot_plan || directorArtifact.shots).length > 0;
@@ -3649,12 +3661,11 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     ownedMotionManifest: objectValue(story.owned_motion_manifest, ownedMotionArtifact),
     materialisedMotionClips: objectValue(story.materialised_motion_clips_manifest, materialisedMotionArtifact),
   });
-  const directMotionSegmentEvidenceSource = materialisedMotion.length
-    ? materialisedMotion
-    : [
-        ...asArray(renderStory.visual_v4_bridge_video_clips),
-        ...asArray(renderStory.video_clips),
-      ];
+  const directMotionSegmentEvidenceSource = [
+    ...materialisedMotion,
+    ...asArray(renderStory.visual_v4_bridge_video_clips),
+    ...asArray(renderStory.video_clips),
+  ];
   const finalRenderVisualReuse = finalRenderVisualReuseEvidence({ renderManifest, renderStory });
   const hyperframesReadableDwell = hyperframesReadableDwellEvidence({
     renderManifest,
@@ -3662,11 +3673,14 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     directorBeatMap,
   });
   const clipScenePlanVisualCadence = clipScenePlanVisualCadenceEvidence(renderManifest);
+  const repeatedDirectMotionSegments = repeatedDirectMotionSegmentEvidence(directMotionSegmentEvidenceSource);
+  const repeatedDirectMotionBlockers = repeatedDirectMotionSegmentBlockers(directMotionSegmentEvidenceSource);
   const directMotionBaseSourceOveruse = directMotionBaseSourceOveruseEvidence(directMotionSegmentEvidenceSource);
   const blockers = [
     ...finalRenderVisualReuse.blockers,
     ...hyperframesReadableDwell.blockers,
     ...clipScenePlanVisualCadence.blockers,
+    ...repeatedDirectMotionBlockers,
     ...directMotionBaseSourceOveruse.blockers,
   ];
   return {
@@ -3678,6 +3692,8 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
         ...finalRenderVisualReuse.evidence,
         ...hyperframesReadableDwell.evidence,
         ...clipScenePlanVisualCadence.evidence,
+        repeated_direct_motion_segment_count: repeatedDirectMotionSegments.length,
+        repeated_direct_motion_segments: repeatedDirectMotionSegments,
         ...directMotionBaseSourceOveruse.evidence,
       },
     },

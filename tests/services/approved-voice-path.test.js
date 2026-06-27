@@ -202,6 +202,26 @@ test("approved voice path rejects non-native local TTS metadata voice settings",
   assert.equal(result.rate_adjustment.evidence.field, "voiceSettings.speaking_rate");
 });
 
+test("approved voice path rejects non-native managed TTS speaking rates", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath: audioFile("elevenlabs-rate-110.mp3"),
+      transcript: "Rockstar has a new GTA update. Follow Pulse Gaming so you never miss a beat.",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+        speakingRate: 1.1,
+      },
+    },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("managed_tts_non_native_rate_applied"));
+  assert.equal(result.rate_adjustment.rate, 1.1);
+});
+
 test("approved voice path rejects old local Liam proofs without mastering evidence", () => {
   const result = evaluateApprovedVoicePath({
     narration: {
@@ -312,6 +332,26 @@ test("approved voice path rejects malformed GTA VI spoken stutters", () => {
   assert.equal(result.verdict, "rejected");
   assert.ok(result.blockers.includes("gta_vi_spoken_stutter"));
   assert.equal(result.transcript.gta_vi_spoken_stutter, true);
+});
+
+test("approved voice path rejects risky GTA VI spoken-six openers", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath: audioFile("gta-vi-risky-opener.mp3"),
+      transcript:
+        "Grand Theft Auto six now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("gta_vi_opening_spoken_six_risk"));
+  assert.equal(result.transcript.gta_vi_opening_spoken_six_risk, true);
 });
 
 test("approved voice path markdown is readable for operators", () => {

@@ -62,11 +62,13 @@ test("requestTtsWithRetry: retries local voice-QA candidate rejection without ch
   assert.deepEqual(response, { data: { audio_base64: "ok" } });
 });
 
-test("shouldUseDynamicPacingForProvider: disables split pacing for local Liam", () => {
+test("shouldUseDynamicPacingForProvider: disables split pacing unless explicitly enabled", () => {
   const previous = process.env.TTS_DYNAMIC_PACING;
-  process.env.TTS_DYNAMIC_PACING = "true";
   try {
     assert.equal(shouldUseDynamicPacingForProvider("local"), false);
+    delete process.env.TTS_DYNAMIC_PACING;
+    assert.equal(shouldUseDynamicPacingForProvider("elevenlabs"), false);
+    process.env.TTS_DYNAMIC_PACING = "true";
     assert.equal(shouldUseDynamicPacingForProvider("elevenlabs"), true);
   } finally {
     if (previous === undefined) delete process.env.TTS_DYNAMIC_PACING;

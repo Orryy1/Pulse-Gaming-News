@@ -1502,6 +1502,59 @@ test("guarded live dispatch executor blocks explicit slowed local TTS actions be
   ]);
 });
 
+test("guarded live dispatch executor blocks non-native managed TTS rates before upload", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-managed-tts-rate-"));
+  t.after(() => fs.remove(tmp));
+  const timestampsPath = path.join(tmp, "story-one_timestamps.json");
+  await fs.writeJson(timestampsPath, {
+    meta: {
+      source: "elevenlabs-production-path",
+      elevenlabs: { speakingRate: 1.1 },
+    },
+    words: [{ word: "GTA", start: 0, end: 0.2 }],
+  });
+
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          word_timestamps_path: timestampsPath,
+          video_path: path.join(tmp, "youtube.mp4"),
+        }),
+      ],
+    }),
+    stories: [story({ title: "GTA VI Starts The Preorder Fight" })],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.deepEqual(report.blocked_actions[0].blockers, [
+    "last_second_local_tts_speed_failed",
+    "tts_speaking_rate_non_native:1.10",
+  ]);
+});
+
 test("guarded live dispatch executor blocks public metadata QA failures before upload", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;

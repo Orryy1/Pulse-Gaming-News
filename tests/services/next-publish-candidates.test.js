@@ -4445,6 +4445,65 @@ test("attachPreflightQa blocks final bridge candidates with no curiosity marker"
   assert.equal(report.candidates[0].preflight_qa.checks.script_scorecard.result, "fail");
 });
 
+test("attachPreflightQa does not block viral-ready scripts with a stale no curiosity marker warning", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-script-curiosity-strong-preflight-"));
+  await fs.writeJson(path.join(tmp, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 94,
+    blockers: [],
+    warnings: ["no_curiosity_marker"],
+    scores: {
+      hook_strength: 100,
+      curiosity_gap: 100,
+      insight_density: 100,
+      source_safety: 86,
+      retention_pacing: 82,
+    },
+  });
+  const stories = [
+    baseStory({
+      id: "strong_script_bridge",
+      title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      ...bridgeVisualEvidence("Call of Duty: Black Ops 7"),
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: [{ asset_id: "black-ops-render" }],
+      video_clips: [
+        { path: "clip-a.mp4", source_family: "official_trailer_a" },
+        { path: "clip-b.mp4", source_family: "official_trailer_b" },
+        { path: "clip-c.mp4", source_family: "official_trailer_c" },
+      ],
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-27T11:15:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "strong_script_bridge", status: "ready", blockers: [] }],
+    },
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+  });
+
+  assert.ok(
+    !report.candidates[0].preflight_qa.blockers.includes(
+      "script_scorecard:no_curiosity_marker",
+    ),
+  );
+  assert.equal(report.candidates[0].preflight_qa.checks.script_scorecard.result, "pass");
+});
+
 test("media-house preflight scores current artifact platform manifest over stale bridge copy", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-platform-manifest-preflight-"));
   await fs.writeJson(path.join(tmp, "platform_publish_manifest.json"), {
@@ -5150,6 +5209,24 @@ test("attachPreflightQa trusts a current full GREEN proof package over stale pre
       scheduler_bridge_source: "goal_production_cutover",
       scheduler_bridge_artifact_dir: tmp,
       exported_path: videoPath,
+      visual_v4_bridge_video_clips: [
+        {
+          id: "halo-direct-1",
+          path: "output/video_cache/halo-direct-1.mp4",
+          source_url: "https://video.example.test/halo/campaign-evolved-trailer.mp4",
+          media_kind: "direct_video",
+          mediaStartS: 12,
+          durationS: 5,
+        },
+        {
+          id: "halo-direct-2",
+          path: "output/video_cache/halo-direct-2.mp4",
+          source_url: "https://video.example.test/halo/campaign-evolved-trailer.mp4",
+          media_kind: "direct_video",
+          mediaStartS: 24,
+          durationS: 5,
+        },
+      ],
       publish_verdict: { verdict: "GREEN", can_auto_publish: true },
       platform_publish_manifest: {
         publish_status: "GREEN",
@@ -5596,6 +5673,91 @@ test("runPreflightQaForStory blocks current packages with non-repeat-free clip s
   assert.ok(
     preflight.blockers.includes("incident_guard:visual_evidence:direct_motion_base_source_repeated"),
     JSON.stringify(preflight.blockers),
+  );
+});
+
+test("runPreflightQaForStory blocks repeated direct clips from final render story even when materialised clips are refreshed", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-final-render-repeat-"));
+  t.after(() => fs.remove(tmp));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "final-render-repeat-package", videoPath);
+  await fs.writeJson(path.join(tmp, "visual_v4_render_story.json"), {
+    video_clips: [
+      {
+        id: "halo-direct-1",
+        path: "output/video_cache/halo-direct-1.mp4",
+        source_url: "https://video.example.test/halo/campaign-evolved-trailer.mp4",
+        media_kind: "direct_video",
+        source_family: "halo_campaign_evolved_trailer_window_unknown_a",
+        duration_s: 5,
+      },
+      {
+        id: "halo-direct-2",
+        path: "output/video_cache/halo-direct-2.mp4",
+        source_url: "https://video.example.test/halo/campaign-evolved-trailer.mp4",
+        media_kind: "direct_video",
+        source_family: "halo_campaign_evolved_trailer_window_unknown_b",
+        duration_s: 5,
+      },
+      {
+        id: "halo-direct-3",
+        path: "output/video_cache/halo-direct-3.mp4",
+        source_url: "https://video.example.test/halo/campaign-evolved-gameplay.mp4",
+        media_kind: "direct_video",
+        source_family: "halo_campaign_evolved_gameplay_window_unique",
+        duration_s: 5,
+      },
+    ],
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "final-render-repeat-package",
+      title: "Halo Campaign Evolved Keeps Reusing The Same Trailer",
+      selected_title: "Halo Campaign Evolved Keeps Reusing The Same Trailer",
+      canonical_subject: "Halo: Campaign Evolved",
+      source_type: "rss",
+      timestamp: "2026-06-24T18:00:00.000Z",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "Halo Campaign Evolved Keeps Reusing The Same Trailer" },
+        },
+      },
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("incident_guard:visual_evidence:repeated_direct_motion_segment"),
+    JSON.stringify(preflight.blockers),
+  );
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.repeated_direct_motion_segment_count,
+    1,
   );
 });
 

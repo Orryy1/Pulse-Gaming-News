@@ -101,7 +101,7 @@ function resolveTtsProvider(env = process.env) {
 
 function shouldUseDynamicPacingForProvider(provider = process.env.TTS_PROVIDER || "elevenlabs") {
   if (isLocalTtsProvider(provider)) return false;
-  return !/^(false|0|no|off)$/i.test(String(process.env.TTS_DYNAMIC_PACING || "true"));
+  return /^(true|1|yes|on)$/i.test(String(process.env.TTS_DYNAMIC_PACING || ""));
 }
 
 function isValidTtsOutputFormat(value) {
@@ -779,6 +779,14 @@ function allowLocalTtsSpeedEffects(env = process.env) {
   );
 }
 
+function allowManagedTtsSpeedEffects(env = process.env) {
+  return (
+    isTruthy(env.TTS_ALLOW_NON_NATIVE_RATE) ||
+    isTruthy(env.ELEVENLABS_ALLOW_NON_NATIVE_RATE) ||
+    isTruthy(env.TTS_DYNAMIC_PACING)
+  );
+}
+
 function resolveLocalTtsSpeakingRate(rate, env = process.env) {
   const requested = finiteNumber(rate, 1.0);
   const baseSpeed = finiteNumber(
@@ -792,7 +800,7 @@ function resolveLocalTtsSpeakingRate(rate, env = process.env) {
       env.LOCAL_TTS_SAFE_MIN_SPEAKING_RATE ||
         env.PULSE_LOCAL_TTS_SAFE_MIN_SPEAKING_RATE ||
         env.STUDIO_V2_LOCAL_TTS_SAFE_MIN_SPEAKING_RATE,
-      0.9,
+      1.0,
     ),
     0.85,
     1.0,
@@ -838,7 +846,11 @@ function resolveVoiceSettingsForProvider(
     );
   } else {
     const requestedSpeed = finiteNumber(settings.speaking_rate ?? settings.speed, 1.0);
-    settings.speed = clamp(requestedSpeed, 0.7, 1.2);
+    const managedRate = allowManagedTtsSpeedEffects(env)
+      ? clamp(requestedSpeed, 0.7, 1.2)
+      : 1.0;
+    settings.speaking_rate = managedRate;
+    settings.speed = managedRate;
   }
   return settings;
 }
@@ -1299,7 +1311,7 @@ async function generateTTS(text, outputPath, rateOverride, providerOverride = nu
       stability: 0.2,
       similarity_boost: 0.8,
       style: 0.75,
-      speaking_rate: 1.1,
+      speaking_rate: 1.0,
     },
   );
   const resolvedVoiceSettings = resolveVoiceSettingsForProvider(
@@ -1582,20 +1594,20 @@ async function generateAudio() {
 
       // Dynamic pacing: if story has separate hook/body/cta, generate each
       // segment at a different speaking rate then concatenate
-      const baseRate = (brand.voiceSettings || {}).speaking_rate || 1.1;
+      const baseRate = (brand.voiceSettings || {}).speaking_rate || 1.0;
       if (shouldUseDynamicPacingForProvider(provider) && story.hook && story.body && story.cta) {
         const segments = [
           {
             text: cleanForTTS(story.hook),
-            rate: baseRate * 1.05,
+            rate: baseRate,
             label: "hook",
           },
           {
             text: cleanForTTS(story.body),
-            rate: baseRate * 0.95,
+            rate: baseRate,
             label: "body",
           },
-          { text: cleanForTTS(story.cta), rate: baseRate * 1.0, label: "cta" },
+          { text: cleanForTTS(story.cta), rate: baseRate, label: "cta" },
         ].filter((s) => s.text.length > 0);
         assertBrandNameQaForTts(story, {
           hook: segments.find((s) => s.label === "hook")?.text || "",

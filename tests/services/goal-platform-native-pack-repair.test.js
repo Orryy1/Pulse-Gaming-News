@@ -948,6 +948,201 @@ test("platform-native pack repair gives Cyberpunk trust stories feed-competitive
   assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:shorts_feed_competition_weak"));
 });
 
+test("platform-native repair keeps update stories specific enough for Shorts competition", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-native-update-copy-"));
+  const artifactDir = path.join(tmp, "story");
+  await fs.ensureDir(artifactDir);
+
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "official_callofduty_blackops7_s04_reloaded_20260625",
+    canonical_subject: "Call of Duty: Black Ops 7",
+    canonical_game: "Call of Duty: Black Ops 7",
+    selected_title: "Call of Duty: Black Ops 7 Has A Player-Return Problem",
+    primary_source: { name: "Call of Duty" },
+    first_spoken_line:
+      "Call of Duty: Black Ops 7 has a June 25 update trying to win back lapsed players fast.",
+    description:
+      "Call of Duty says the June 25 update adds remastered maps, Endgame and Zombies content, progression changes and weapon prestige for returning players.",
+    narration_script:
+      "Call of Duty: Black Ops 7 has a June 25 update trying to win back lapsed players fast. The useful detail is not just more content. It is whether maps, Zombies, Endgame and weapon prestige give people a reason to reinstall. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "CALL OF DUTY RETURN RISK",
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: false,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 48.2,
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "GREEN",
+    outputs: {
+      youtube_shorts: {
+        platform: "youtube_shorts",
+        title: "Call of Duty: Black Ops 7 Has A Player-Return Problem",
+        description:
+          "Call of Duty: Black Ops 7 has a player-return problem to solve. More content only matters if it gives people a real reason to come back now. Source: Call of Duty.",
+        cover_frame: { headline: "CALL OF DUTY: ONE BRUTAL" },
+      },
+      instagram_reels: {
+        platform: "instagram_reels",
+        caption:
+          "Call of Duty: Black Ops 7 has a player-return problem to solve. More content only matters if it gives people a real reason to come back now. Source: Call of Duty.",
+        cover_frame: { headline: "CALL OF DUTY: ONE BRUTAL" },
+      },
+    },
+    platform_native_evidence: { verdict: "fail" },
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_variant_scorecard.json"), {});
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    status: "pass",
+    scores: { hook_strength: 90, specificity: 88 },
+  });
+  await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), {
+    scores: { first_3_seconds_hook_score: 96, source_lock_quality_score: 96 },
+  });
+  await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
+    shot_plan: [{ id: "hook", kind: "motion_clip", start_s: 0.1 }],
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    voice_status: "materialized",
+    word_timestamp_count: 130,
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), { status: "pass", failures: [] });
+  await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 100,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      transition_energy_score: 94,
+      sfx_impact_score: 96,
+      rights_risk_score: 100,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "affiliate_link_manifest.json"), {});
+  await fs.writeJson(path.join(artifactDir, "landing_page_manifest.json"), {
+    landing_page_slug: "black-ops-7-june-25-update",
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    status: "fail",
+    hard_failures: ["media_house:platform_copy_too_plain", "media_house:shorts_feed_competition_weak"],
+  });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: [
+      "platform_native:youtube_shorts:weak_platform_title",
+      "media_house:platform_copy_too_plain",
+      "media_house:shorts_feed_competition_weak",
+      "render:final_publish_render_missing",
+    ],
+    blockers: [
+      "platform_native:youtube_shorts:weak_platform_title",
+      "media_house:platform_copy_too_plain",
+      "media_house:shorts_feed_competition_weak",
+      "render:final_publish_render_missing",
+    ],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages: [{
+      story_id: "official_callofduty_blackops7_s04_reloaded_20260625",
+      verdict: "GREEN",
+      blockers: [],
+      artifact_dir: artifactDir,
+    }],
+    generatedAt: "2026-06-27T03:30:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.match(dryRun.items[0].target_youtube_title, /June 25 Update/i);
+  assert.match(dryRun.items[0].target_youtube_description, /Call of Duty: Black Ops 7/i);
+  assert.match(dryRun.items[0].target_youtube_description, /maps/i);
+  assert.match(dryRun.items[0].target_youtube_description, /Zombies/i);
+  assert.match(dryRun.items[0].target_youtube_description, /reinstall/i);
+  assert.doesNotMatch(dryRun.items[0].target_youtube_title, /Player-Return Problem/i);
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:platform_copy_too_plain"));
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:shorts_feed_competition_weak"));
+
+  await repairPlatformNativePacks({
+    storyPackages: [{
+      story_id: "official_callofduty_blackops7_s04_reloaded_20260625",
+      verdict: "GREEN",
+      blockers: [],
+      artifact_dir: artifactDir,
+    }],
+    generatedAt: "2026-06-27T03:31:00.000Z",
+    apply: true,
+    backupRoot: path.join(tmp, "backups"),
+  });
+  const repairedCanonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.match(repairedCanonical.description, /Call of Duty: Black Ops 7/i);
+  assert.match(repairedCanonical.description, /reinstall/i);
+  const refreshedPublishVerdict = await fs.readJson(path.join(artifactDir, "publish_verdict.json"));
+  assert.ok(!refreshedPublishVerdict.reason_codes.includes("media_house:platform_copy_too_plain"));
+  assert.ok(!refreshedPublishVerdict.reason_codes.includes("media_house:shorts_feed_competition_weak"));
+  assert.ok(refreshedPublishVerdict.reason_codes.includes("render:final_publish_render_missing"));
+
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    ...repairedCanonical,
+    description:
+      "The official Call of Duty page lists maps, Endgame and Zombies, but the real test is whether lapsed players reinstall. Source: Call of Duty.",
+  });
+  const canonicalOnlyRepair = await repairPlatformNativePacks({
+    storyPackages: [{
+      story_id: "official_callofduty_blackops7_s04_reloaded_20260625",
+      verdict: "GREEN",
+      blockers: [],
+      artifact_dir: artifactDir,
+    }],
+    generatedAt: "2026-06-27T03:31:30.000Z",
+    apply: true,
+    backupRoot: path.join(tmp, "backups-canonical-only"),
+  });
+  const canonicalOnlyRefreshed = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(canonicalOnlyRepair.summary.repairable_count, 1);
+  assert.equal(canonicalOnlyRepair.summary.repaired_count, 1);
+  assert.equal(canonicalOnlyRepair.items[0].canonical_public_copy_stale, true);
+  assert.match(canonicalOnlyRefreshed.description, /Call of Duty: Black Ops 7/i);
+
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: [
+      "platform_native:youtube_shorts:weak_platform_title",
+      "media_house:platform_copy_too_plain",
+      "media_house:shorts_feed_competition_weak",
+      "render:final_publish_render_missing",
+    ],
+    blockers: [
+      "platform_native:youtube_shorts:weak_platform_title",
+      "media_house:platform_copy_too_plain",
+      "media_house:shorts_feed_competition_weak",
+      "render:final_publish_render_missing",
+    ],
+  });
+  const verdictOnlyRepair = await repairPlatformNativePacks({
+    storyPackages: [{
+      story_id: "official_callofduty_blackops7_s04_reloaded_20260625",
+      verdict: "GREEN",
+      blockers: [],
+      artifact_dir: artifactDir,
+    }],
+    generatedAt: "2026-06-27T03:32:00.000Z",
+    apply: true,
+    backupRoot: path.join(tmp, "backups-verdict-only"),
+  });
+  const verdictOnlyRefreshed = await fs.readJson(path.join(artifactDir, "publish_verdict.json"));
+  assert.equal(verdictOnlyRepair.summary.repairable_count, 1);
+  assert.equal(verdictOnlyRepair.summary.repaired_count, 1);
+  assert.ok(!verdictOnlyRefreshed.reason_codes.includes("media_house:platform_copy_too_plain"));
+});
+
 test("platform-native repair derives Facebook Reels duration from render manifest", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-native-repair-"));
   const artifactDir = path.join(tmp, "story");

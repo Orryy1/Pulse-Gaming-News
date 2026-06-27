@@ -667,26 +667,25 @@ test("real motion materializer blocks one official trailer from masquerading as 
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1);
   assert.deepEqual(calls.map((call) => call.args[call.args.indexOf("-ss") + 1]), [
     "0",
-    "3.50",
   ]);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
-  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 2);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 1);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
 
   assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
-  assert.equal(partial.clip_count, 2);
-  assert.equal(partial.direct_video_motion_asset_count, 2);
-  assert.equal(partial.direct_video_motion_family_count, 2);
+  assert.equal(partial.clip_count, 1);
+  assert.equal(partial.direct_video_motion_asset_count, 1);
+  assert.equal(partial.direct_video_motion_family_count, 1);
   assert.equal(partial.clips[0].counts_towards_motion_readiness, false);
 });
 
-test("real motion materializer accepts capped distinct windows from multiple official base sources", async () => {
+test("real motion materializer blocks instead of padding with repeated official base-source windows", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-multi-source-windows-"));
   const storyId = "multi-official-window-story";
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -764,26 +763,27 @@ test("real motion materializer accepts capped distinct windows from multiple off
     ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
   });
 
-  assert.equal(report.summary.materialized_story_count, 1);
-  assert.equal(report.summary.blocked_story_count, 0);
-  assert.equal(report.jobs[0].materialized_count, 5);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 5);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 5);
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].materialized_count, 3);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 3);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 3);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 3);
   assert.deepEqual(
     report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
-    [2, 2, 1],
+    [1, 1, 1],
   );
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 0);
-  assert.equal(calls.length, 5);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(calls.length, 3);
 
-  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
-  assert.equal(materialised.clip_count, 5);
-  assert.equal(materialised.direct_video_motion_family_count, 5);
-  assert.equal(new Set(materialised.clips.map((clip) => clip.base_source_family)).size, 3);
+  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
+  const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
+  assert.equal(partial.clip_count, 3);
+  assert.equal(partial.direct_video_motion_family_count, 3);
+  assert.equal(new Set(partial.clips.map((clip) => clip.base_source_family)).size, 3);
 });
 
-test("real motion materializer raises official-window cap to satisfy an eight clip floor without exact repeats", async () => {
+test("real motion materializer blocks eight-clip floors when only three official base sources exist", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-eight-official-windows-"));
   const storyId = "gta-vi-official-window-floor";
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -861,21 +861,22 @@ test("real motion materializer raises official-window cap to satisfy an eight cl
     ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
   });
 
-  assert.equal(report.summary.materialized_story_count, 1);
-  assert.equal(report.summary.blocked_story_count, 0);
-  assert.equal(report.jobs[0].materialized_count, 8);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 8);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 8);
-  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 3);
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].materialized_count, 3);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 3);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 3);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 1);
   assert.deepEqual(
     report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
-    [3, 3, 2],
+    [1, 1, 1],
   );
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 9);
   assert.equal(report.jobs[0].skipped_duplicate_direct_window_count, 0);
-  assert.equal(calls.length, 8);
+  assert.equal(calls.length, 3);
 });
 
-test("real motion materializer reallocates official-window capacity when source windows are uneven", async () => {
+test("real motion materializer blocks uneven official-window sets instead of overusing one source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-uneven-official-windows-"));
   const storyId = "gta-vi-uneven-official-window-floor";
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -953,14 +954,15 @@ test("real motion materializer reallocates official-window capacity when source 
     ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
   });
 
-  assert.equal(report.summary.materialized_story_count, 1);
-  assert.equal(report.jobs[0].materialized_count, 8);
-  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 4);
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.jobs[0].materialized_count, 3);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 1);
   assert.deepEqual(
     report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
-    [4, 3, 1],
+    [1, 1, 1],
   );
-  assert.equal(calls.length, 8);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 9);
+  assert.equal(calls.length, 3);
 });
 
 test("real motion materializer samples before a late official trailer window when forward windows fail", async () => {
@@ -1051,10 +1053,10 @@ test("real motion materializer samples before a late official trailer window whe
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
-  assert.deepEqual(starts, [120, 114.5]);
+  assert.deepEqual(starts, [120]);
 });
 
 test("real motion materializer includes pending original direct candidates while expanding the direct-video floor", async () => {
@@ -1145,10 +1147,10 @@ test("real motion materializer includes pending original direct candidates while
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
-  assert.deepEqual(starts, [42, 52]);
+  assert.deepEqual(starts, [42]);
 });
 
 test("real motion materializer expands official product-page direct MP4 windows", async () => {
@@ -1220,8 +1222,8 @@ test("real motion materializer expands official product-page direct MP4 windows"
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 2);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 2);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
 });
 
@@ -1357,17 +1359,17 @@ test("real motion materializer blocks repeated validated official segments when 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
   assert.equal(report.summary.materialized_clip_count, 0);
-  assert.equal(report.jobs[0].materialized_count, 2);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 2);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(report.jobs[0].materialized_count, 1);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
   assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1);
 
   const partial = await fs.readJson(path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
   assert.equal(partial.status, "blocked");
-  assert.equal(partial.clip_count, 2);
-  assert.equal(partial.distinct_motion_family_count, 2);
-  assert.equal(partial.direct_video_motion_family_count, 2);
+  assert.equal(partial.clip_count, 1);
+  assert.equal(partial.distinct_motion_family_count, 1);
+  assert.equal(partial.direct_video_motion_family_count, 1);
   assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
 });
 
@@ -1887,20 +1889,20 @@ test("real motion materializer blocks repeated windows from one direct video sou
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].materialized_count, 2);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 2);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(report.jobs[0].materialized_count, 1);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
   assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
   assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
 
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
   assert.equal(partial.status, "blocked");
   assert.equal(partial.not_publishable, true);
-  assert.equal(partial.clip_count, 2);
-  assert.equal(partial.distinct_motion_family_count, 2);
-  assert.equal(partial.direct_video_motion_family_count, 2);
-  assert.equal(partial.clips.length, 2);
+  assert.equal(partial.clip_count, 1);
+  assert.equal(partial.distinct_motion_family_count, 1);
+  assert.equal(partial.direct_video_motion_family_count, 1);
+  assert.equal(partial.clips.length, 1);
   assert.match(partial.clips[0].base_source_family, /^url:https:\/\/vulcan\.dl\.playstation\.net\/img\/rnd\/202606\/1802\/granblue-relink-demo\.mp4$/);
   assert.equal(partial.clips[0].provenance?.base_source_family, partial.clips[0].base_source_family);
 });
@@ -1986,14 +1988,14 @@ test("real motion materializer treats Steam HLS and DASH variants from one trail
 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].materialized_count, 2);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 2);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(report.jobs[0].materialized_count, 1);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 1);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
   assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
 
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
-  assert.equal(partial.direct_video_motion_family_count, 2);
+  assert.equal(partial.direct_video_motion_family_count, 1);
   assert.match(
     partial.clips[0].base_source_family,
     /^steamstatic:\/store_trailers\/3483510\/632943268\/ab5efa5d538a2c90f09927047b2df6199cf5e9d6\/1780277626$/,

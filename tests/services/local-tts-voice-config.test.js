@@ -173,8 +173,8 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
     1.68,
     {},
   );
-  assert.equal(eleven.speaking_rate, 1.68);
-  assert.equal(eleven.speed, 1.2);
+  assert.equal(eleven.speaking_rate, 1.0);
+  assert.equal(eleven.speed, 1.0);
 
   const slowerEleven = resolveVoiceSettingsForProvider(
     "elevenlabs",
@@ -182,8 +182,17 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
     0.92,
     {},
   );
-  assert.equal(slowerEleven.speaking_rate, 0.92);
-  assert.equal(slowerEleven.speed, 0.92);
+  assert.equal(slowerEleven.speaking_rate, 1.0);
+  assert.equal(slowerEleven.speed, 1.0);
+
+  const explicitProofRate = resolveVoiceSettingsForProvider(
+    "elevenlabs",
+    { speaking_rate: 1.1 },
+    1.68,
+    { ELEVENLABS_ALLOW_NON_NATIVE_RATE: "true" },
+  );
+  assert.equal(explicitProofRate.speaking_rate, 1.2);
+  assert.equal(explicitProofRate.speed, 1.2);
 });
 
 test("Pulse local TTS refuses sub-native production speed caps by default", () => {
@@ -205,7 +214,7 @@ test("Pulse local TTS refuses sub-native production speed caps by default", () =
   assert.equal(local.speaking_rate, 1.0);
 });
 
-test("Pulse local TTS allows mild generation-side cadence repair by default", () => {
+test("Pulse local TTS keeps native generation speed by default", () => {
   process.env.PULSE_SKIP_DOTENV = "true";
   const {
     resolveVoiceSettingsForProvider,
@@ -218,10 +227,10 @@ test("Pulse local TTS allows mild generation-side cadence repair by default", ()
     {},
   );
 
-  assert.equal(local.speaking_rate, 0.9);
+  assert.equal(local.speaking_rate, 1.0);
 });
 
-test("Pulse local TTS still blocks heavily stretched production speed by default", () => {
+test("Pulse local TTS blocks heavily stretched production speed back to native by default", () => {
   process.env.PULSE_SKIP_DOTENV = "true";
   const {
     resolveVoiceSettingsForProvider,
@@ -234,7 +243,7 @@ test("Pulse local TTS still blocks heavily stretched production speed by default
     {},
   );
 
-  assert.equal(local.speaking_rate, 0.9);
+  assert.equal(local.speaking_rate, 1.0);
 });
 
 test("Pulse local TTS speed effects require explicit proof-only override", () => {

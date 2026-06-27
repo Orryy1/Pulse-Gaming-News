@@ -1268,6 +1268,49 @@ test("bridge candidate overlay drops stale live SFX inventory when bridge omits 
   assert.equal(merged[0].video_clips.length, 1);
 });
 
+test("bridge candidate overlay preserves live terminal publish state over stale bridge readiness", () => {
+  const live = [
+    baseStory({
+      id: "same_story",
+      title: "GTA VI Starts The Preorder Fight",
+      publish_status: "failed",
+      publish_error: "script_validation_review_required_public_row_repair",
+      youtube_post_id: "yt-live",
+      youtube_url: "https://youtube.com/shorts/yt-live",
+      facebook_post_id: "fb-live",
+    }),
+  ];
+  const bridged = [
+    baseStory({
+      id: "same_story",
+      title: "GTA VI Starts The Preorder Fight",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      auto_approved: true,
+      publish_status: null,
+      publish_error: null,
+      qa_failed: false,
+      qa_failures: [],
+    }),
+  ];
+
+  const merged = mergeBridgeCandidates(live, bridged);
+  const report = buildNextPublishCandidatesReport(merged, {
+    analyticsText,
+    generatedAt: "2026-06-27T17:10:00.000Z",
+  });
+
+  assert.equal(merged[0].publish_status, "failed");
+  assert.equal(merged[0].publish_error, "script_validation_review_required_public_row_repair");
+  assert.equal(report.candidates.length, 0);
+  assert.ok(
+    report.excluded.some(
+      (row) =>
+        row.id === "same_story" &&
+        row.reason === "qa_failure:publish_status=failed",
+    ),
+  );
+});
+
 test("current bridge manifest excludes stale live bridge rows that are not present", () => {
   const live = [
     baseStory({

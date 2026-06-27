@@ -143,6 +143,37 @@ const BRIDGE_REPLACED_MEDIA_FIELDS = [
   "sfx_path",
 ];
 
+const LIVE_TERMINAL_GOVERNANCE_FIELDS = [
+  "publish_status",
+  "publish_error",
+  "qa_failed",
+  "qa_failures",
+  "video_qa_failures",
+  "content_qa_failures",
+  "script_generation_status",
+  "script_review_reason",
+];
+
+function isTruthyFlag(value) {
+  return value === true || value === 1 || String(value || "").toLowerCase() === "true";
+}
+
+function hasLiveTerminalGovernanceState(story = {}) {
+  const status = String(story.publish_status || "").toLowerCase();
+  const publishError = String(story.publish_error || "");
+  return (
+    status === "failed" ||
+    isTruthyFlag(story.qa_failed) ||
+    story.script_generation_status === "review_required" ||
+    /(script_validation_review_required|public_row_repair|content_qa|video_qa|script validation failed)/i.test(
+      publishError,
+    ) ||
+    parseFailureList(story.qa_failures).length > 0 ||
+    parseFailureList(story.video_qa_failures).length > 0 ||
+    parseFailureList(story.content_qa_failures).length > 0
+  );
+}
+
 const COMPANY_TERMS = [
   "Amazon",
   "Apple",
@@ -579,7 +610,7 @@ function qaFailures(story = {}) {
     ...parseFailureList(story.video_qa_failures),
     ...parseFailureList(story.content_qa_failures),
   ];
-  if (story.qa_failed === true) failures.push("qa_failed=true");
+  if (isTruthyFlag(story.qa_failed)) failures.push("qa_failed=true");
   if (String(story.publish_status || "").toLowerCase() === "failed") {
     failures.push("publish_status=failed");
   }
@@ -600,7 +631,7 @@ function pendingAudioReason(story = {}) {
     return null;
   }
   if (
-    story.qa_failed !== true &&
+    !isTruthyFlag(story.qa_failed) &&
     story.audio_path &&
     story.exported_path
   ) {
@@ -934,6 +965,13 @@ function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
       scheduler_bridge_source: bridge.scheduler_bridge_source || "scheduler_bridge_candidates",
       scheduler_bridge_overlay_live_row: true,
     };
+    if (hasLiveTerminalGovernanceState(live)) {
+      for (const field of LIVE_TERMINAL_GOVERNANCE_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(live, field)) {
+          overlay[field] = live[field];
+        }
+      }
+    }
     for (const field of BRIDGE_REPLACED_MEDIA_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(bridge, field)) continue;
       overlay[field] = Array.isArray(live[field]) ? [] : null;

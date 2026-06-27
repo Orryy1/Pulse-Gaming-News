@@ -334,14 +334,33 @@ test("approved voice path rejects malformed GTA VI spoken stutters", () => {
   assert.equal(result.transcript.gta_vi_spoken_stutter, true);
 });
 
-test("approved voice path rejects risky GTA VI spoken-six openers", () => {
+test("approved voice path allows clean Grand Theft Auto Six narration", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath: audioFile("gta-vi-clean-opener.mp3"),
+      transcript:
+        "Grand Theft Auto Six now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+  });
+
+  assert.equal(result.verdict, "approved_for_studio_v2_proof");
+  assert.equal(result.transcript.gta_vi_opening_spoken_six_risk, false);
+});
+
+test("approved voice path rejects abbreviated GTA VI spoken-six openers", () => {
   const result = evaluateApprovedVoicePath({
     narration: {
       provider: "elevenlabs",
       source: "elevenlabs-production-path",
       audioPath: audioFile("gta-vi-risky-opener.mp3"),
       transcript:
-        "Grand Theft Auto six now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+        "GTA six now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
       elevenlabs: {
         voiceId: "TX3LPaxmHKxFdv7VOQHJ",
         modelId: "eleven_multilingual_v2",
@@ -361,7 +380,7 @@ test("approved voice path rejects early GTA VI spoken-six after a safe preface",
       source: "elevenlabs-production-path",
       audioPath: audioFile("gta-vi-early-risk.mp3"),
       transcript:
-        "Rockstar's next Grand Theft Auto just made pre orders a trust test. Xbox Wire says Grand Theft Auto six pre orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
+        "Rockstar's next Grand Theft Auto just made pre orders a trust test. Xbox Wire says GTA six pre orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
       elevenlabs: {
         voiceId: "TX3LPaxmHKxFdv7VOQHJ",
         modelId: "eleven_multilingual_v2",

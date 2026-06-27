@@ -2785,7 +2785,8 @@ function hasGtaViSpokenSixInOpening(value = "") {
   const opening = openingVoiceText(value);
   if (!opening) return false;
   return (
-    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:six|s\s+six|si\s+six|sy\s+six|sigh\s+six|six\s+six)\b/.test(opening)
+    /\b(?:g\s+t\s+a|gta)\s+six\b/.test(opening) ||
+    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+six|si\s+six|sy\s+six|sigh\s+six|six\s+six)\b/.test(opening)
   );
 }
 

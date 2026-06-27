@@ -1155,7 +1155,9 @@ test("goal batch package proof preparation writes specific GTA VI PS5 scripts", 
   assert.equal(prepared.suggested_thumbnail_text, "GTA VI PS5 TEST");
   assert.match(prepared.full_script, /^Sony just made GTA VI's console pitch very direct\./i);
   assert.match(prepared.full_script, /PlayStation Blog says Grand Theft Auto VI plays best on PS5 on November 19\./i);
-  assert.match(prepared.full_script, /whether PS5 becomes the default version people expect to play/i);
+  assert.match(prepared.full_script, /PlayStation is trying to own the default console version/i);
+  assert.match(prepared.full_script, /Xbox and PC players, the smarter move is patience/i);
+  assert.ok(prepared.full_script.split(/\s+/).length >= 115, prepared.full_script);
   assert.doesNotMatch(
     prepared.full_script,
     /one clear detail|player test|install, wishlist|background noise|Grand Theft Auto VI plays has/i,
@@ -1166,6 +1168,24 @@ test("goal batch package proof preparation writes specific GTA VI PS5 scripts", 
       script: prepared.full_script,
     }).verdict,
     "viral_ready",
+  );
+
+  const pack = buildGoalProofPackage({
+    story: prepared,
+    rightsLedger: rightsFor(prepared),
+    generatedAt: "2026-06-27T12:05:00.000Z",
+  });
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  const instagram = pack.platform_publish_manifest.outputs.instagram_reels;
+  assert.match(youtube.description, /default PS5 version|Xbox and PC players|wait for footage/i);
+  assert.match(instagram.caption, /default PS5 version|Xbox and PC players|wait for footage/i);
+  assert.ok(
+    !pack.pulse_media_house_score.hard_failures.includes("media_house:platform_copy_too_plain"),
+    JSON.stringify(pack.pulse_media_house_score.hard_failures),
+  );
+  assert.ok(
+    !pack.pulse_media_house_score.hard_failures.includes("media_house:shorts_feed_competition_weak"),
+    JSON.stringify(pack.pulse_media_house_score.hard_failures),
   );
 });
 

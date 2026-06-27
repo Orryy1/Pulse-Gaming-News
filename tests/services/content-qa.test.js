@@ -966,7 +966,7 @@ test("runContentQa: production auto-publish blocks malformed GTA VI narration st
   }
 });
 
-test("runContentQa: production auto-publish blocks risky GTA VI spoken-six openers", async () => {
+test("runContentQa: production auto-publish blocks abbreviated GTA VI spoken-six openers", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-production-risky-opener-"));
   const artifactDir = path.join(tmp, "story");
   const audioDir = path.join(artifactDir, "audio");
@@ -974,7 +974,7 @@ test("runContentQa: production auto-publish blocks risky GTA VI spoken-six opene
   const audio = path.join(audioDir, "narration.mp3");
   const timestamps = path.join(audioDir, "word_timestamps.json");
   const transcript =
-    "Grand Theft Auto six now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.";
+    "GTA six now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.";
   await fs.ensureDir(audioDir);
   await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
   await fs.writeFile(audio, Buffer.from("fake elevenlabs audio"));
@@ -989,10 +989,8 @@ test("runContentQa: production auto-publish blocks risky GTA VI spoken-six opene
       },
     },
     words: [
-      { word: "Grand", start: 0, end: 0.2 },
-      { word: "Theft", start: 0.2, end: 0.35 },
-      { word: "Auto", start: 0.35, end: 0.55 },
-      { word: "six", start: 0.55, end: 0.75 },
+      { word: "GTA", start: 0, end: 0.2 },
+      { word: "six", start: 0.2, end: 0.42 },
     ],
   });
 

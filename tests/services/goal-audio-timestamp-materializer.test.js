@@ -320,7 +320,7 @@ test("goal audio materializer force-regenerates a workbench ready pair", async (
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].provider, "elevenlabs");
-  assert.match(calls[0].text, /Grand Theft Auto V I/);
+  assert.match(calls[0].text, /Grand Theft Auto Six/);
   assert.equal(report.summary.candidate_count, 1);
   assert.equal(report.summary.materialized_count, 1);
   assert.equal(report.jobs[0].provider, "elevenlabs");
@@ -526,7 +526,7 @@ test("goal audio materializer regenerates title-colon audio without the current 
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_title_colon_pronunciation_profile");
   const timestamps = await fs.readJson(timestampPath);
-  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-roman-title-v4");
+  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-clean-six-title-v5");
   assert.equal(timestamps.meta.spoken_text, "Halo Campaign Evolved just gave Xbox a real remake test.");
 });
 
@@ -648,7 +648,7 @@ test("goal audio materializer refreshes stale narration and caption manifests af
 test("goal audio materializer separates spoken TTS text from display captions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-display-captions-"));
   const displayScript = "Grand Theft Auto VI pre orders open on June 25.";
-  const spokenScript = "Grand Theft Auto V I pre orders open on June 25.";
+  const spokenScript = "Grand Theft Auto Six pre orders open on June 25.";
   const artifactDir = await makePackage(root, "story-display-captions", {
     selected_title: "Grand Theft Auto VI Cover Art",
     narration_script: displayScript,
@@ -1537,7 +1537,7 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
       ok: true,
       source: "local_whisper_word_alignment",
       model: "tiny.en",
-      transcript: "Grand Theft Auto five just became the Grand Theft Auto V I waiting room.",
+      transcript: "Grand Theft Auto five just became the Grand Theft Auto Six waiting room.",
       words: [
         { word: "Grand", start: 0.08, end: 0.22 },
         { word: "Theft", start: 0.24, end: 0.4 },
@@ -1549,8 +1549,7 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
         { word: "Grand", start: 1.38, end: 1.52 },
         { word: "Theft", start: 1.54, end: 1.7 },
         { word: "Auto", start: 1.72, end: 1.88 },
-        { word: "V", start: 1.9, end: 2.0 },
-        { word: "I", start: 2.02, end: 2.12 },
+        { word: "Six", start: 1.9, end: 2.12 },
         { word: "waiting", start: 2.14, end: 2.44 },
         { word: "room.", start: 2.46, end: 2.7 },
       ],
@@ -1566,11 +1565,11 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
     },
   });
 
-  assert.equal(calls[0].text, "Grand Theft Auto five just became the Grand Theft Auto V I waiting room.");
+  assert.equal(calls[0].text, "Grand Theft Auto five just became the Grand Theft Auto Six waiting room.");
   assert.equal(report.summary.materialized_count, 1);
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-gta-spoken_timestamps.json"));
   assert.equal(timestamps.meta.text, script);
-  assert.equal(timestamps.meta.transcript, "Grand Theft Auto five just became the Grand Theft Auto V I waiting room.");
+  assert.equal(timestamps.meta.transcript, "Grand Theft Auto five just became the Grand Theft Auto Six waiting room.");
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
   assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
 });

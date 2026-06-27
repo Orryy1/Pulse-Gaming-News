@@ -3314,13 +3314,13 @@ test("attachPreflightQa blocks stale GTA roman-numeral voice pronunciation metad
   );
   assert.equal(
     candidate.preflight_qa.checks.voice_quality.evidence.expected_tts_pronunciation_profile_version,
-    "gta-roman-title-v4",
+    "gta-clean-six-title-v5",
   );
 });
 
 test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener even with current voice metadata", async () => {
   const spoken =
-    "Rockstar just turned Grand Theft Auto six pre orders into a buy, wait or skip argument. " +
+    "Rockstar just turned GTA six pre orders into a buy, wait or skip argument. " +
     "Follow Pulse Gaming so you never miss a beat.";
   const words = spoken
     .replace(/[,.]/g, "")
@@ -3357,7 +3357,7 @@ test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener eve
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-roman-title-v4",
+          ttsPronunciationProfileVersion: "gta-clean-six-title-v5",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3404,7 +3404,7 @@ test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener eve
 test("attachPreflightQa blocks early GTA VI spoken-six after a safe preface", async () => {
   const spoken =
     "Rockstar's next Grand Theft Auto just made pre orders a trust test. " +
-    "Xbox Wire says Grand Theft Auto six pre orders open on June 25. " +
+    "Xbox Wire says GTA six pre orders open on June 25. " +
     "Follow Pulse Gaming so you never miss a beat.";
   const words = spoken
     .replace(/[,.]/g, "")
@@ -3443,7 +3443,7 @@ test("attachPreflightQa blocks early GTA VI spoken-six after a safe preface", as
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-roman-title-v4",
+          ttsPronunciationProfileVersion: "gta-clean-six-title-v5",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,

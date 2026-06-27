@@ -207,11 +207,11 @@ test("cleanForTTS: expands PS5 when it leads a spoken news line", () => {
 test("cleanForTTS: speaks GTA 5 and GTA 6 in consistent word form for local alignment", () => {
   assert.equal(
     cleanForTTS("GTA 5 just became the GTA 6 waiting room. GTA V still feeds GTA VI interest."),
-    "Grand Theft Auto five just became the Grand Theft Auto V I waiting room. Grand Theft Auto five still feeds Grand Theft Auto V I interest.",
+    "Grand Theft Auto five just became the Grand Theft Auto Six waiting room. Grand Theft Auto five still feeds Grand Theft Auto Six interest.",
   );
   assert.equal(
     cleanForTTS("Grand Theft Auto VI now has one real preorder catch."),
-    "Grand Theft Auto V I now has one real preorder catch.",
+    "Grand Theft Auto Six now has one real preorder catch.",
   );
 });
 
@@ -220,7 +220,7 @@ test("cleanForTTS: removes old spaced GTA acronym forms before local narration",
 
   assert.equal(
     spoken,
-    "Grand Theft Auto V I is the hook, but Grand Theft Auto V I is the title.",
+    "Grand Theft Auto Six is the hook, but Grand Theft Auto Six is the title.",
   );
   assert.doesNotMatch(spoken, /\bG\s+T\s+A\s+six\b/i);
 });
@@ -232,7 +232,7 @@ test("cleanForTTS: repairs malformed GTA VI stutters before local narration", ()
 
   assert.equal(
     spoken,
-    "Grand Theft Auto V I starts the preorder fight. Grand Theft Auto V I is still months away.",
+    "Grand Theft Auto Six starts the preorder fight. Grand Theft Auto Six is still months away.",
   );
   assert.doesNotMatch(spoken, /\b(?:si|sigh|s)\s*[- ]?\s*six\b/i);
 });

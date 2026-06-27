@@ -2867,6 +2867,12 @@ function hasGtaViSpokenSixInOpening(value = "") {
   );
 }
 
+function hasGtaViSpokenStutter(value = "") {
+  const text = comparableVoiceText(value);
+  if (!text) return false;
+  return /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+six|si\s+six|sy\s+six|sigh\s+six|six\s+six)\b/.test(text);
+}
+
 function hasGtaViTitleAlias(value = "") {
   const text = comparableVoiceText(value);
   if (!text) return false;
@@ -2880,15 +2886,22 @@ function hasGtaViTitleAlias(value = "") {
 }
 
 function gtaViOpeningVoiceRiskEvidence(...texts) {
-  const sources = [];
+  const openingRiskSources = [];
+  const stutterSources = [];
   for (const [label, text] of texts) {
-    if (hasGtaViSpokenSixInOpening(text)) sources.push(label);
+    if (hasGtaViSpokenSixInOpening(text)) openingRiskSources.push(label);
+    if (hasGtaViSpokenStutter(text)) stutterSources.push(label);
   }
+  const failures = [];
+  if (openingRiskSources.length) failures.push("gta_vi_opening_spoken_six_risk");
+  if (stutterSources.length) failures.push("gta_vi_spoken_stutter");
   return {
-    failures: sources.length ? ["gta_vi_opening_spoken_six_risk"] : [],
+    failures,
     evidence: {
-      gta_vi_opening_spoken_six_risk: sources.length > 0,
-      gta_vi_opening_spoken_six_risk_sources: sources,
+      gta_vi_opening_spoken_six_risk: openingRiskSources.length > 0,
+      gta_vi_opening_spoken_six_risk_sources: openingRiskSources,
+      gta_vi_spoken_stutter: stutterSources.length > 0,
+      gta_vi_spoken_stutter_sources: stutterSources,
     },
   };
 }

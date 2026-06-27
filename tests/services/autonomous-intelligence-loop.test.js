@@ -723,6 +723,38 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
               );
             }
           }
+          if (options.args[0] === "tools/goal-real-motion-materializer.js") {
+            const outDirIndex = options.args.indexOf("--out-dir");
+            const motionOutDir = outDirIndex >= 0 ? options.args[outDirIndex + 1] : tmp;
+            await fs.mkdir(motionOutDir, { recursive: true });
+            await fs.writeFile(
+              path.join(motionOutDir, "real_motion_materialization_report.json"),
+              JSON.stringify({
+                schema_version: 1,
+                summary: {
+                  materialized_story_count: 1,
+                  materialized_clip_count: 8,
+                  failed_story_count: 0,
+                },
+                jobs: [
+                  {
+                    story_id: "fresh_xbox_story",
+                    status: "materialized",
+                    materialized_count: 8,
+                    direct_video_motion_family_count: 5,
+                    blockers: [],
+                  },
+                  {
+                    story_id: "fresh_gamespot_story",
+                    status: "blocked",
+                    materialized_count: 3,
+                    direct_video_motion_family_count: 3,
+                    blockers: ["real_motion_clip_minimum_not_met"],
+                  },
+                ],
+              }),
+            );
+          }
           return { ok: true, stdout_tail: "ok", stderr_tail: "" };
         },
       },
@@ -890,6 +922,12 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       /visual_v4_source_family_intake_template_autofill\.json$/,
       "expected direct media discovery to consume official-search autofill output",
     );
+    const maxDirectMediaCandidatesIndex = directMediaCall.args.indexOf("--max-candidates-per-entry");
+    assert.equal(
+      directMediaCall.args[maxDirectMediaCandidatesIndex + 1],
+      "8",
+      "expected direct media discovery to carry enough official variants forward for no-repeat motion readiness",
+    );
     const intakeArgIndex = trailerReferenceCall.args.indexOf("--official-source-intake-report");
     assert.match(
       trailerReferenceCall.args[intakeArgIndex + 1],
@@ -991,7 +1029,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "expected fresh refill to keep newly discovered storefront direct media rows",
     );
     assert.equal(repairReport.summary.child_process_count, 10);
-    assert.equal(repairReport.summary.real_motion_materialization_status, "attempted");
+    assert.equal(repairReport.summary.real_motion_materialization_status, "materialized");
     assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");
     assert.equal(repairReport.summary.hyperframes_card_sets_completed, 1);
     assert.equal(repairReport.summary.hyperframes_card_sets_failed, 0);
@@ -1042,8 +1080,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.deepEqual(
       candidateStories.map((story) => story.story_id),
-      ["fresh_xbox_story"],
-      "script-blocked generic packages must not enter motion repair or hydrated refill inputs",
+      ["fresh_xbox_story", "fresh_gamespot_story"],
+      "non-script-blocked stories may enter supplemental official search; script-blocked generic packages must not",
     );
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {

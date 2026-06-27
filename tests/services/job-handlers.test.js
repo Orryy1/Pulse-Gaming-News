@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const {
   handleGuardedLiveDispatchPublish,
   buildFreshRefillOfficialSourceEvidence,
+  freshRefillHyperframesStoryIdsAfterMotion,
   freshRefillNarrationProviderPreference,
   guardedPublishFailureMessage,
   guardedPublishResultShouldFailJob,
@@ -162,6 +163,79 @@ test("fresh refill source evidence preserves official YouTube watch references a
   assert.equal(intake.summary.rejected, 0);
   assert.ok(intake.accepted_references.every((reference) => reference.source_url_kind === "youtube_watch"));
   assert.ok(intake.accepted_references.every((reference) => reference.segment_validation_eligible === false));
+});
+
+test("fresh refill source evidence keeps candidate stories that need supplemental official search", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-supplemental-"));
+  const artifactDir = path.join(tmp, "rss_marvel_tokon");
+  const outputDir = path.join(tmp, "repair");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_marvel_tokon",
+    selected_title: "MARVEL Tokon Finally Shows Real Gameplay",
+    canonical_title: "MARVEL Tokon Finally Shows Real Gameplay",
+    canonical_subject: "MARVEL Tokon",
+    canonical_game: "MARVEL Tokon",
+    narration_script:
+      "MARVEL Tokon just gave fighting-game fans the proof they were waiting for. Follow Pulse Gaming so you never miss a beat.",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: {
+      name: "PC Gamer",
+      url: "https://www.pcgamer.com/games/fighting/marvel-tokon-finally-shows-real-gameplay/",
+      type: "rss",
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(storyPackagesPath, [
+    {
+      story_id: "rss_marvel_tokon",
+      artifact_dir: artifactDir,
+    },
+  ], { spaces: 2 });
+
+  const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+  const candidateStories = await fs.readJson(result.candidateStoriesPath);
+  const entries = await fs.readJson(result.officialSourceEntriesPath);
+  const intake = await fs.readJson(result.officialSourceIntakeJsonPath);
+
+  assert.equal(result.story_count, 1);
+  assert.deepEqual(candidateStories.map((story) => story.story_id), ["rss_marvel_tokon"]);
+  assert.equal(candidateStories[0].canonical_subject, "MARVEL Tokon");
+  assert.equal(entries.length, 0);
+  assert.equal(intake.summary.accepted, 0);
+  assert.equal(intake.summary.rejected, 0);
+});
+
+test("fresh refill hyperframes follow-up handles materialized motion reports", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-hyperframes-"));
+  const reportPath = path.join(tmp, "real_motion_materialization_report.json");
+  await fs.writeJson(reportPath, {
+    jobs: [
+      {
+        story_id: "rss_marvel_tokon",
+        status: "blocked",
+        materialized_count: 5,
+        direct_video_motion_family_count: 5,
+        blockers: [],
+      },
+      {
+        story_id: "rss_xbox_prices",
+        status: "blocked",
+        materialized_count: 2,
+        direct_video_motion_family_count: 2,
+        blockers: ["real_motion_clip_minimum_not_met"],
+      },
+    ],
+  }, { spaces: 2 });
+
+  const ids = await freshRefillHyperframesStoryIdsAfterMotion({
+    candidateStoryIds: ["rss_marvel_tokon", "rss_xbox_prices"],
+    realMotionReportPath: reportPath,
+  });
+
+  assert.deepEqual(ids, ["rss_marvel_tokon"]);
 });
 
 test("guarded publish handler preserves failed platform error in thrown job message", async () => {

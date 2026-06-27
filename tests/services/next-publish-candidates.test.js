@@ -3401,6 +3401,92 @@ test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener eve
   );
 });
 
+test("attachPreflightQa blocks early GTA VI spoken-six after a safe preface", async () => {
+  const spoken =
+    "Rockstar's next Grand Theft Auto just made pre orders a trust test. " +
+    "Xbox Wire says Grand Theft Auto six pre orders open on June 25. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const words = spoken
+    .replace(/[,.]/g, "")
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: Number((index * 0.5).toFixed(2)),
+      end: Number((index * 0.5 + 0.22).toFixed(2)),
+    }));
+  words[words.length - 1].end = Number((words.length * 0.5).toFixed(2));
+  const stories = [
+    baseStory({
+      id: "current_gta_vi_late_opening_spoken_six",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      narration_script:
+        "Rockstar's next Grand Theft Auto just made pre-orders a trust test. " +
+        "Xbox Wire says GTA VI pre-orders open on June 25. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      tts_script:
+        "Rockstar's next Grand Theft Auto just made pre-orders a trust test. " +
+        "Xbox Wire says GTA VI pre-orders open on June 25. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 151.2,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      word_timestamps_payload: {
+        words,
+        meta: {
+          transcript: spoken,
+          spoken_text: spoken,
+          ttsPronunciationProfileVersion: "gta-roman-title-v3",
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-27T07:25:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:gta_vi_opening_spoken_six_risk",
+    ),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_opening_spoken_six_risk,
+    true,
+  );
+});
+
 test("attachPreflightQa blocks segmented local TTS that can drift between sentences despite normal WPM", async () => {
   const stories = [
     baseStory({

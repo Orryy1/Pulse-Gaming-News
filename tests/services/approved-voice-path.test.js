@@ -354,6 +354,26 @@ test("approved voice path rejects risky GTA VI spoken-six openers", () => {
   assert.equal(result.transcript.gta_vi_opening_spoken_six_risk, true);
 });
 
+test("approved voice path rejects early GTA VI spoken-six after a safe preface", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath: audioFile("gta-vi-early-risk.mp3"),
+      transcript:
+        "Rockstar's next Grand Theft Auto just made pre orders a trust test. Xbox Wire says Grand Theft Auto six pre orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("gta_vi_opening_spoken_six_risk"));
+  assert.equal(result.transcript.gta_vi_opening_spoken_six_risk, true);
+});
+
 test("approved voice path markdown is readable for operators", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

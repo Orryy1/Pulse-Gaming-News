@@ -584,6 +584,60 @@ test("transcript audience audit accepts GTA VI caption and spoken-title aliases"
   });
 });
 
+test("transcript audience audit accepts safe GTA VI narration that avoids spoken six", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "gta-vi-safe-spoken-form");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "gta-vi-safe-spoken-form",
+      canonical_subject: "Grand Theft Auto VI",
+      selected_title: "GTA VI Starts The Preorder Fight",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Rockstar's next Grand Theft Auto just turned cover art into a real buying argument. Xbox Wire says pre-orders open on June 25 after Jason, Lucia and Vice City moved onto the official artwork. That matters because players can finally judge price, editions and whether buying early makes sense before the next gameplay trailer. The risk is simple: if Rockstar asks for money before fresh gameplay proof, the cover art becomes the first trust test. Wait for the edition details unless the bonuses are actually worth locking in early. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "Xbox Wire", url: "https://example.test/gta-vi" },
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript:
+        "Rockstar's next Grand Theft Auto just turned cover art into a real buying argument. Xbox Wire says pre orders open on June 25 after Jason, Lucia and Vice City moved onto the official artwork. That matters because players can finally judge price, editions and whether buying early makes sense before the next gameplay trailer. The risk is simple: if Rockstar asks for money before fresh gameplay proof, the cover art becomes the first trust test. Wait for the edition details unless the bonuses are actually worth locking in early. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
+test("transcript audience audit accepts Call of Duty Black Ops 7 spoken in separated natural phrases", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "black-ops-7-separated-subject");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "black-ops-7-separated-subject",
+      canonical_subject: "Call of Duty: Black Ops 7",
+      selected_title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+      primary_source: "Call of Duty",
+      narration_script:
+        "Black Ops 7 has a retention problem hiding inside its June 25 update. The official Call of Duty page lists new and remastered multiplayer maps, Endgame content and Zombies content, but patch size is not the real story. The brutal test is whether lapsed players see one clear reason to reinstall. A map can win one evening; progression and weapon prestige decide the second week. That is why the official clips matter: Activision is selling systems, not just explosions. If those systems make every match feel like progress, Black Ops 7 gets momentum back. If they feel like another checklist, players will call it padding before the weekend is over. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "Call of Duty", url: "https://example.test/black-ops-7" },
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
 test("transcript audience audit still fails unrecoverable subject drift", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "beastro-wrong-subject");

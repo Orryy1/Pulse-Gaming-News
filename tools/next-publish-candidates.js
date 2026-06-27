@@ -2773,7 +2773,7 @@ function comparableVoiceText(value = "") {
     .trim();
 }
 
-function openingVoiceText(value = "", maxWords = 12) {
+function openingVoiceText(value = "", maxWords = 24) {
   return comparableVoiceText(value)
     .split(/\s+/)
     .filter(Boolean)

@@ -417,6 +417,88 @@ test("job child process evidence preserves actionable failure diagnostics", () =
   assert.equal(failedWithCode.actionable_diagnostic, true);
 });
 
+test("fresh refill repair filter skips already scheduler-ready stories", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-ready-skip-"));
+  const packagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+  const readyDir = path.join(tmp, "ready_story");
+  const newDir = path.join(tmp, "new_story");
+
+  try {
+    await fs.mkdir(readyDir, { recursive: true });
+    await fs.mkdir(newDir, { recursive: true });
+    for (const [dir, storyId, title] of [
+      [readyDir, "ready_story", "Already Ready Story"],
+      [newDir, "new_story", "New Runway Story"],
+    ]) {
+      await fs.writeFile(
+        path.join(dir, "canonical_story_manifest.json"),
+        JSON.stringify({
+          story_id: storyId,
+          selected_title: title,
+          narration_script: `${title} has a concrete player consequence. Follow Pulse Gaming so you never miss a beat.`,
+        }),
+      );
+      await fs.writeFile(
+        path.join(dir, "source_manifest.json"),
+        JSON.stringify({
+          story_id: storyId,
+          freshness_gate: "pass",
+          coherence_gate: "pass",
+          blockers: [],
+        }),
+      );
+      await fs.writeFile(
+        path.join(dir, "script_scorecard.json"),
+        JSON.stringify({
+          story_id: storyId,
+          verdict: "viral_ready",
+          blockers: [],
+          failures: [],
+        }),
+      );
+    }
+    await fs.writeFile(
+      packagesPath,
+      JSON.stringify([
+        {
+          story_id: "ready_story",
+          title: "Already Ready Story",
+          artifact_dir: readyDir,
+          blockers: ["footage:v4_motion_blocked"],
+        },
+        {
+          story_id: "new_story",
+          title: "New Runway Story",
+          artifact_dir: newDir,
+          blockers: ["footage:v4_motion_blocked"],
+        },
+      ]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath: packagesPath,
+      outputDir,
+      alreadyReadyStoryIds: ["ready_story"],
+    });
+
+    assert.deepEqual(result.eligibleRows.map((row) => row.story_id), ["new_story"]);
+    assert.deepEqual(result.alreadyReadyRows.map((row) => row.story_id), ["ready_story"]);
+    assert.equal(result.quarantinedRows.length, 0);
+    const quarantineReport = JSON.parse(
+      await fs.readFile(result.quarantineReportPath, "utf8"),
+    );
+    assert.equal(quarantineReport.summary.already_ready_skipped_story_package_count, 1);
+    assert.deepEqual(
+      JSON.parse(await fs.readFile(result.eligibleStoryPackagesPath, "utf8")).map((row) => row.story_id),
+      ["new_story"],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh production refill handler builds live-RSS local proof packages", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

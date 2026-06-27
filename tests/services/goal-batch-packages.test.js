@@ -297,6 +297,65 @@ test("goal batch packages preserve newer repaired canonical public copy from exi
   }
 });
 
+test("goal batch packages preserve viral-ready generated canonical copy through refill hydration", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-viral-canonical-"));
+  try {
+    const story = greenStory("rss_free_play_days_hydration");
+    story.canonical_subject = "Xbox Free Play Days";
+    story.canonical_game = "Free Play Days - House";
+    story.title = "Free Play Days Has A Free-Access Risk";
+    story.selected_title = story.title;
+    story.primary_source = "Xbox Wire";
+    story.source_name = "Xbox Wire";
+    story.source_type = "official_platform";
+    story.article_url = "https://news.xbox.com/en-us/2026/06/25/free-play-days-06-25-2026/";
+    story.confirmed_claims = ["Free Play Days Has A Free-Access Risk"];
+    story.full_script =
+      "Xbox Free Play Days has one clear detail players can check before the hype gets ahead of it. Xbox Wire says Free Play Days Has A Free-Access Risk. The player test is simple: does this change what people install, wishlist, finish or ignore? If it changes that decision, the story earns attention. If it does not, it is background noise. Follow Pulse Gaming so you never miss a beat.";
+
+    const storyDir = path.join(tempDir, story.id);
+    fs.ensureDirSync(storyDir);
+    const generatedScript =
+      "Xbox Free Play Days has a better lineup than the phrase free weekend usually suggests. Xbox Wire says House Flipper 2, Blades of Fire and Assetto Corsa Competizione are playable in this Free Play Days run. That creates a clean weekend choice: build, fight or race before the timer turns the offer back into a purchase decision. The useful question is which one deserves the download before Monday, because free access only matters if it changes what players try next. Follow Pulse Gaming so you never miss a beat.";
+    fs.writeJsonSync(path.join(storyDir, "canonical_story_manifest.json"), {
+      ...story,
+      story_id: story.id,
+      canonical_subject: "Xbox Free Play Days",
+      canonical_game: "Xbox Free Play Days",
+      title: "Xbox Free Play Days Has A Weekend Trap",
+      public_title: "Xbox Free Play Days Has A Weekend Trap",
+      selected_title: "Xbox Free Play Days Has A Weekend Trap",
+      first_spoken_line: "Xbox Free Play Days has a better lineup than the phrase free weekend usually suggests.",
+      narration_hook: "Xbox Free Play Days has a better lineup than the phrase free weekend usually suggests.",
+      narration_script: generatedScript,
+      full_script: generatedScript,
+      tts_script: generatedScript,
+      description:
+        "Xbox Free Play Days has a better lineup than the phrase free weekend usually suggests. The useful question is which one deserves the download before Monday, because free access only matters if it changes what players try next. Source: Xbox Wire.",
+    });
+    fs.writeJsonSync(path.join(storyDir, "script_scorecard.json"), {
+      verdict: "viral_ready",
+      viral_score: 91,
+      blockers: [],
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-06-27T09:40:00.000Z",
+    });
+
+    const manifest = batch.packages[0].canonical_story_manifest;
+    assert.equal(manifest.canonical_game, "Xbox Free Play Days");
+    assert.equal(manifest.public_title, "Xbox Free Play Days Has A Weekend Trap");
+    assert.match(manifest.narration_script, /which one deserves the download before Monday/i);
+    assert.doesNotMatch(manifest.narration_script, /one clear detail|player test|background noise/i);
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages recover repaired audio evidence when audio manifest was downgraded", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-recovered-audio-"));
   try {
@@ -1206,6 +1265,82 @@ test("goal batch package proof preparation writes specific PS5 Pro tech scripts"
   assert.match(prepared.full_script, /upgraded PSSR is coming to Doom: The Dark Ages on PS5 Pro/i);
   assert.match(prepared.full_script, /If the upgrade keeps Doom sharp in motion/i);
   assert.doesNotMatch(prepared.full_script, /one clear detail|player test|background noise/i);
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+});
+
+test("goal batch package proof preparation writes specific Xbox console price scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_xbox_console_price_update",
+      canonical_subject: "Updated XBOX Console Prices",
+      canonical_game: "Updated XBOX Console Prices",
+      title: "Updated XBOX Console Prices",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      source_type: "official_platform",
+      article_url: "https://news.xbox.com/en-us/2026/06/25/xbox-console-price-update/",
+      source_published_at: "Thu, 25 Jun 2026 16:35:15 +0000",
+      confirmed_claims: [
+        "Xbox Wire says Microsoft has updated Xbox console prices.",
+      ],
+      full_script:
+        "Updated XBOX Console Prices is getting a content push that has to prove it is more than maintenance. Xbox Wire says Updated XBOX Console Prices has a new player-facing detail to judge. Players will judge the practical change first: what feels better, what lasts longer and what gives them a reason to come back now. If the update does not change that loop, the headline fades before the patch notes do. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "Xbox console prices");
+  assert.equal(prepared.canonical_game, "Xbox console prices");
+  assert.equal(prepared.public_title, "Xbox Console Prices Just Became The Trust Test");
+  assert.equal(prepared.suggested_thumbnail_text, "XBOX PRICE TEST");
+  assert.match(prepared.full_script, /^Xbox console prices just turned hardware into a trust test\./i);
+  assert.match(prepared.full_script, /Xbox Wire says Microsoft has updated Xbox console prices/i);
+  assert.match(prepared.full_script, /buy now, wait for a bundle or look at PC and used hardware instead/i);
+  assert.doesNotMatch(prepared.full_script, /new player-facing detail|content push|player test|background noise/i);
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+});
+
+test("goal batch package proof preparation writes specific Xbox Free Play Days scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_xbox_free_play_days_20260625",
+      canonical_subject: "Free Play Days",
+      canonical_game: "Free Play Days - House",
+      title: "Free Play Days - House Flipper 2, Blades of Fire and Assetto Corsa Competizione",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      source_type: "official_platform",
+      article_url: "https://news.xbox.com/en-us/2026/06/25/free-play-days-06-25-2026/",
+      source_published_at: "Thu, 25 Jun 2026 15:00:00 +0000",
+      confirmed_claims: [
+        "Xbox Wire says House Flipper 2, Blades of Fire and Assetto Corsa Competizione are in Free Play Days.",
+      ],
+      full_script:
+        "Free Play Days has one clear detail players can check before the hype gets ahead of it. Xbox Wire says Free Play Days - House Flipper 2, Blades of Fire and Assetto Corsa Competizione. The player test is simple: does this change what people install, wishlist, finish or ignore? If it changes that decision, the story earns attention. If it does not, it is background noise. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "Xbox Free Play Days");
+  assert.equal(prepared.canonical_game, "Xbox Free Play Days");
+  assert.equal(prepared.public_title, "Xbox Free Play Days Has A Weekend Trap");
+  assert.equal(prepared.suggested_thumbnail_text, "FREE WEEKEND TRAP");
+  assert.match(prepared.full_script, /^Xbox Free Play Days has a better lineup than the phrase free weekend usually suggests\./i);
+  assert.match(prepared.full_script, /House Flipper 2, Blades of Fire and Assetto Corsa Competizione/i);
+  assert.match(prepared.full_script, /which one deserves the download before Monday/i);
+  assert.doesNotMatch(prepared.full_script, /new signal|one clear detail|player test|background noise/i);
   assert.equal(
     buildViralScriptIntelligence({
       story: { ...prepared, title: prepared.public_title },

@@ -791,6 +791,107 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
 });
 
+test("goal production render materializer does not stack legacy owned cards on premium HyperFrames cards", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-no-stack-"));
+  const artifactDir = await makePackage(root, "story-hf-no-stack");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-no-stack", kind),
+  ));
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 38.88,
+      spoken_wpm: 150,
+    },
+  });
+  const directClips = Array.from({ length: 8 }, (_, index) => ({
+    id: `direct-motion-${index + 1}`,
+    path: path.join(artifactDir, `direct-${index + 1}.mp4`),
+    source_url: `https://media.example.com/trailer-window-${index + 1}.mp4`,
+    source_type: "official_game_website_media_page",
+    media_kind: "direct_video",
+    source_family: `official_trailer_window_${index + 1}_5`,
+    counts_towards_motion_readiness: true,
+    durationS: 5,
+  }));
+  const legacyOwnedCards = [
+    {
+      id: "legacy-owned-source-card",
+      path: path.join(artifactDir, "legacy-source-card.mp4"),
+      source_type: "internally_generated_motion_graphic",
+      media_kind: "owned_explainer_motion",
+      source_family: "legacy_animated_source_card",
+      text: "SOURCE LOCKED",
+      owned_explainer_visual_plan: true,
+      counts_towards_motion_readiness: true,
+      durationS: 12,
+    },
+    {
+      id: "legacy-owned-quote-card",
+      path: path.join(artifactDir, "legacy-quote-card.mp4"),
+      source_type: "internally_generated_motion_graphic",
+      media_kind: "owned_explainer_motion",
+      source_family: "legacy_animated_quote_card",
+      text: "THE QUOTE NEEDS TIME TO READ",
+      owned_explainer_visual_plan: true,
+      counts_towards_motion_readiness: true,
+      durationS: 12,
+    },
+  ];
+  await Promise.all([...directClips, ...legacyOwnedCards].map((clip, index) =>
+    fs.outputFile(clip.path, Buffer.alloc(2048, 70 + index)),
+  ));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    owned_explainer_visual_plan: true,
+    clips: [...directClips, ...legacyOwnedCards],
+  });
+  const job = readyJob("story-hf-no-stack", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: 10,
+      distinct_motion_family_count: 10,
+      materialised_motion_clip_paths: [...directClips, ...legacyOwnedCards].map((clip) => clip.path),
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-27T05:05:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 38.88,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const readableCards = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) =>
+      clip.source_type === "hyperframes_premium_shell_card" ||
+      clip.media_kind === "owned_explainer_motion",
+  );
+  assert.equal(readableCards.length, 1);
+  assert.equal(readableCards[0].source_type, "hyperframes_premium_shell_card");
+  assert.equal(renderStory.hyperframes_card_count, 1);
+  assert.equal(renderStory.hyperframes_available_card_count, 5);
+  assert.ok(
+    renderStory.visual_v4_bridge_video_clips
+      .filter((clip) => clip.media_kind === "direct_video")
+      .length >= 8,
+  );
+});
+
 test("goal production render materializer auto-preserves HyperFrames shell cards on rerender work orders", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-auto-"));
   const artifactDir = await makePackage(root, "story-hf-auto");

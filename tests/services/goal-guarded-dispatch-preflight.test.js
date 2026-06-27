@@ -435,6 +435,59 @@ test("guarded dispatch preflight holds stale approvals when current strict dry-r
   assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, true);
 });
 
+test("guarded dispatch preflight holds stale approvals missing from current platform plan when ready actions exist", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-stale-platform-held-"));
+  const staleMedia = await makeMedia(root, "stale-story");
+  const readyMedia = await makeMedia(root, "ready-story");
+  const staleAction = approvedAction(staleMedia, {
+    story_id: "stale-story",
+    title: "Cyberpunk 2077's Trust Debt",
+  });
+  const readyAction = approvedAction(readyMedia, {
+    story_id: "ready-story",
+    platform: "instagram_reels",
+    title: "GTA VI Starts The Preorder Fight",
+  });
+  const platformMatrix = platformStatusMatrix();
+  platformMatrix.platforms.youtube_shorts.status = "blocked_current_scope";
+  platformMatrix.platforms.youtube_shorts.planned_story_ids = ["other-story"];
+  platformMatrix.platforms.instagram_reels = {
+    platform: "instagram_reels",
+    status: "ready_now",
+    operational_state: "enabled",
+    publish_now_action_count: 1,
+    blocked_action_count: 0,
+    deferred_action_count: 0,
+    planned_story_ids: ["ready-story"],
+  };
+
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(readyMedia, [staleAction, readyAction]),
+    strictDryRunPlan: strictDryRunPlan(readyMedia, [readyAction]),
+    platformStatusMatrix: platformMatrix,
+    transcriptAudienceReport: transcriptAudienceRows([
+      {
+        story_id: "ready-story",
+        title: "GTA VI Starts The Preorder Fight",
+        verdict: "pass",
+        blockers: [],
+        artifact_dir: readyMedia.dir,
+      },
+    ]),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.dispatch_ready_action_count, 1);
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.held_action_count, 1);
+  assert.equal(report.held_actions[0].story_id, "stale-story");
+  assert.equal(report.held_actions[0].reason, "stale_approval_not_in_current_strict_dry_run");
+  assert.ok(report.held_actions[0].blockers.includes("approved_action_missing_from_current_strict_dry_run"));
+  assert.ok(report.held_actions[0].blockers.includes("platform_not_ready_now:youtube_shorts"));
+  assert.ok(report.held_actions[0].blockers.includes("platform_status_missing_story:youtube_shorts"));
+  assert.equal(report.guarded_dispatch_plan.ready_for_guarded_dispatch, true);
+});
+
 test("guarded dispatch preflight ignores approvals for already-published platforms", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-already-published-"));
   const media = await makeMedia(root);

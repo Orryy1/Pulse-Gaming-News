@@ -3503,6 +3503,65 @@ test("render input work order routes public-copy-newer with fresh final inputs t
   assert.equal(job.actions[0].force, true);
 });
 
+test("render input work order routes approved voice pronunciation failures to audio regeneration", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-06-27T04:20:00.000Z",
+      queue: [],
+    },
+    dryRunPlan: {
+      generated_at: "2026-06-27T04:26:00.000Z",
+      blocked_stories: [
+        {
+          story_id: "gta-voice-stutter-story",
+          title: "GTA VI Starts The Preorder Fight",
+          artifact_dir: "C:/repo/output/goal-proof/batch/gta-voice-stutter-story",
+          blockers: [
+            "preflight_candidate_not_publish_ready:review",
+            "preflight_qa_blocked:content:approved_voice:managed_tts_non_native_rate_applied",
+            "preflight_qa_blocked:content:approved_voice:gta_vi_opening_spoken_six_risk",
+          ],
+          scheduler_preflight: {
+            status: "blocked",
+            blockers: [
+              "content:approved_voice:managed_tts_non_native_rate_applied",
+              "content:approved_voice:gta_vi_opening_spoken_six_risk",
+            ],
+            checks: {
+              content: {
+                result: "fail",
+                failures: [
+                  "approved_voice:managed_tts_non_native_rate_applied",
+                  "approved_voice:gta_vi_opening_spoken_six_risk",
+                ],
+              },
+            },
+          },
+          incident_guard: {
+            evidence: {
+              title: "GTA VI Starts The Preorder Fight",
+              canonical_subject: "GTA VI",
+            },
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-27T04:27:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.story_count, 1);
+  assert.equal(workOrder.summary.audio_timestamp_jobs, 1);
+  assert.equal(workOrder.summary.operator_required_jobs, 0);
+  const job = workOrder.jobs.find((entry) => entry.story_id === "gta-voice-stutter-story");
+  assert.ok(job.blockers.includes("final_narration_audio_stale_after_pronunciation_repair"));
+  assert.ok(job.blockers.includes("word_timestamps_stale_after_pronunciation_repair"));
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["generate_final_narration_audio_and_word_timestamps"],
+  );
+  assert.match(job.actions[0].recommended_command, /ops:goal-audio-timestamps/);
+});
+
 test("render input work order routes dry-run duration failures to normal-duration repair", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

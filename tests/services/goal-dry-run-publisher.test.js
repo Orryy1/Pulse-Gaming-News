@@ -3387,6 +3387,75 @@ test("goal dry-run publisher holds generated-only benchmark failures for operato
   ]);
 });
 
+test("goal dry-run publisher holds repeated direct-motion replacement lanes for operator source review", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-repeated-motion-hold-"));
+  const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const repeatedMotionPackage = await makeStoryPackage(
+    root,
+    "cod-repeated-motion",
+    "GREEN",
+    "Black Ops 7's June 25 Update Has One Reinstall Catch",
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [readyPackage, repeatedMotionPackage],
+    generatedAt: "2026-06-27T05:20:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "bridge-ready",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+        {
+          id: "cod-repeated-motion",
+          status: "review",
+          preflight_qa: {
+            status: "blocked",
+            blockers: [
+              "incident_guard:visual_evidence:repeated_direct_motion_segment",
+            ],
+            warnings: [],
+          },
+        },
+      ],
+    },
+    repairWorkOrder: {
+      jobs: [
+        {
+          story_id: "cod-repeated-motion",
+          status: "blocked_on_render_inputs",
+          blockers: ["visual_motion_repeat_repair_required"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              status: "operator_required",
+              repair_lane: "replace_repeated_or_overused_motion_source_family",
+              exact_missing_input: "distinct official or licensed motion source families that replace repeated base-source footage",
+              auto_repairable: false,
+              operator_approval_required: true,
+              dead_end_blocker: false,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.held_story_count, 1);
+  assert.equal(plan.overall_verdict, "AMBER");
+  assert.ok(plan.readiness_reasons.includes("stories_quarantined_or_operator_held"));
+  assert.ok(!plan.readiness_reasons.includes("stories_blocked"));
+  assert.equal(plan.held_stories[0].story_id, "cod-repeated-motion");
+  assert.equal(plan.held_stories[0].status, "held_for_operator_source_review");
+  assert.ok(plan.held_stories[0].hold_reasons.includes("operator_source_review_required"));
+  assert.ok(plan.held_stories[0].repair_lanes.includes("replace_repeated_or_overused_motion_source_family"));
+  assert.equal(plan.held_stories[0].operator_approval_required, true);
+});
+
 test("goal dry-run publisher skips visually unsupported stories after a source-review artefact", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-visual-source-reject-"));
   const readyPackage = await makeStoryPackage(root, "bridge-ready", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");

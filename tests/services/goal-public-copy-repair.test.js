@@ -1843,7 +1843,11 @@ test("public copy package repair force-rewrites GTA VI cover art packages into a
   assert.doesNotMatch(updated.narration_script, /^Grand Theft Auto VI Cover Art Revealed\./);
   assert.match(updated.narration_script, /Jason and Lucia/i);
   assert.match(updated.narration_script, /June 25/i);
-  assert.match(updated.narration_script, /^Grand Theft Auto VI now has one real preorder catch\./);
+  assert.match(
+    updated.narration_script,
+    /^Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument\./,
+  );
+  assert.doesNotMatch(updated.narration_script, /^Grand Theft Auto VI\b/);
   assert.match(updated.narration_script, /store page is the test/i);
   assert.match(updated.narration_script, /where fans split/i);
   assert.match(updated.narration_script, /Wait for value, or lock in/i);

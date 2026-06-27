@@ -129,6 +129,89 @@ test("bridge candidate metadata refresh updates embedded platform manifest from 
   );
 });
 
+test("bridge candidate metadata refresh updates stale copy and narration QA from artefacts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-copy-refresh-"));
+  const artifactDir = path.join(root, "story-gta");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    rendered_duration_s: 39.102,
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    duration_seconds: 39.102,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.writeJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    generated_at: "2026-06-27T04:52:34.589Z",
+    cadence: {
+      spoken_wpm: 167.3,
+      duration_seconds: 39.102,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "ready",
+    display_text:
+      "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+  });
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story_gta",
+    selected_title: "GTA VI Starts The Preorder Fight",
+    narration_script:
+      "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+    full_script:
+      "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+    tts_script:
+      "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+    first_spoken_line:
+      "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+    thumbnail_headline: "GTA VI PREORDER FIGHT",
+  });
+  const bridgePath = path.join(root, "scheduler_bridge_candidates.json");
+  await fs.writeJson(bridgePath, {
+    scheduler_bridge_candidates: [
+      {
+        id: "story_gta",
+        title: "GTA VI Starts The Preorder Fight",
+        scheduler_bridge_artifact_dir: artifactDir,
+        duration_seconds: 37.338,
+        narration_script: "Grand Theft Auto VI now has one real preorder catch.",
+        full_script: "Grand Theft Auto VI now has one real preorder catch.",
+        tts_script: "Grand Theft Auto VI now has one real preorder catch.",
+        voice_quality_report: {
+          verdict: "PASS",
+          generated_at: "2026-06-26T07:54:11.652Z",
+          cadence: {
+            spoken_wpm: 137.6,
+            duration_seconds: 44.489,
+          },
+        },
+      },
+    ],
+  });
+
+  const report = await refreshBridgeCandidateMetadata({
+    bridgePath,
+    storyIds: ["story_gta"],
+    generatedAt: "2026-06-27T05:10:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.refreshed_count, 1);
+  assert.equal(report.rows[0].after.copy_refreshed, true);
+  assert.equal(report.rows[0].after.voice_quality_refreshed, true);
+  assert.equal(report.rows[0].after.caption_manifest_refreshed, true);
+  const updated = await fs.readJson(bridgePath);
+  const story = updated.scheduler_bridge_candidates[0];
+  assert.equal(
+    story.tts_script,
+    "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+  );
+  assert.equal(story.voice_quality_report.cadence.duration_seconds, 39.102);
+  assert.equal(story.caption_manifest.display_text, "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.");
+  assert.equal(story.thumbnail_headline, "GTA VI PREORDER FIGHT");
+});
+
 test("bridge candidate metadata refresh dry-run leaves bridge file unchanged", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-meta-dry-"));
   const artifactDir = path.join(root, "story-a");

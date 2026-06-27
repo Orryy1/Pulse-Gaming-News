@@ -144,6 +144,43 @@ test("media-house benchmark treats a specific catch hook as first-three-second c
   );
 });
 
+test("media-house benchmark recognises GTA acronym aliases for Grand Theft Auto subjects", () => {
+  const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
+
+  const benchmark = runMediaHouseBenchmark({
+    story: {
+      id: "gta_vi_acronym_hook",
+      title: "GTA VI Starts The Preorder Fight",
+      suggested_title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      hook: "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+      full_script:
+        "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument. Xbox Wire says pre-orders open on June 25.",
+      suggested_thumbnail_text: "GTA VI FIGHT",
+      source_card_label: "Xbox Wire",
+      video_clips: Array.from({ length: 8 }, (_, index) => ({
+        id: `gta-window-${index + 1}`,
+        path: `C:\\media\\gta-window-${index + 1}.mp4`,
+        source_type: "official_trailer_segment",
+        media_kind: "direct_video",
+        source_family: `rockstar_gta_vi_trailer_2_window_${36 + index * 6}_5`,
+        rights_risk_class: "official_reference_clip",
+      })),
+      clean_manual_captions: true,
+      manual_caption_generated: true,
+      subtitle_timing_source: "timestamps",
+    },
+    directorPlan: strongDirectorPlan(),
+    requireGate: true,
+  });
+
+  assert.ok(benchmark.scores.first_3_seconds_hook_score >= 75);
+  assert.equal(
+    benchmark.failures.includes("gold_standard:first_3_seconds_hook_below_reference"),
+    false,
+  );
+});
+
 test("media-house benchmark preserves director caption policy when story fields are absent", () => {
   const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
 

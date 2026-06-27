@@ -179,6 +179,37 @@ test("subtitle display merge hides malformed GTA VI ASR stutters", () => {
   assert.deepEqual(merged, ["GTA VI", "starts", "GTA VI."]);
 });
 
+test("subtitle display merge hides one-token GTA VI ASR stutters", () => {
+  const words = [
+    { text: "GTA", start: 0, end: 0.18 },
+    { text: "si-six", start: 0.18, end: 0.44 },
+    { text: "starts", start: 0.46, end: 0.7 },
+    { text: "Grand", start: 0.72, end: 0.9 },
+    { text: "Theft", start: 0.9, end: 1.08 },
+    { text: "Auto", start: 1.08, end: 1.24 },
+    { text: "si-six.", start: 1.24, end: 1.52 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA VI", "starts", "GTA VI."]);
+});
+
+test("subtitle display merge renders PS five spellings as PlayStation 5", () => {
+  const words = [
+    { text: "P", start: 0, end: 0.1 },
+    { text: "S", start: 0.1, end: 0.2 },
+    { text: "five", start: 0.2, end: 0.45 },
+    { text: "and", start: 0.45, end: 0.6 },
+    { text: "PS", start: 0.6, end: 0.8 },
+    { text: "Five.", start: 0.8, end: 1.05 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["PlayStation 5", "and", "PlayStation 5."]);
+});
+
 test("subtitle display merge converts spoken modern years without rewriting ordinary numbers", () => {
   const words = [
     { text: "twenty", start: 0, end: 0.1 },

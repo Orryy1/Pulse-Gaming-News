@@ -3314,7 +3314,7 @@ test("attachPreflightQa blocks stale GTA roman-numeral voice pronunciation metad
   );
   assert.equal(
     candidate.preflight_qa.checks.voice_quality.evidence.expected_tts_pronunciation_profile_version,
-    "gta-roman-title-v3",
+    "gta-roman-title-v4",
   );
 });
 
@@ -3357,7 +3357,7 @@ test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener eve
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-roman-title-v3",
+          ttsPronunciationProfileVersion: "gta-roman-title-v4",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3443,7 +3443,7 @@ test("attachPreflightQa blocks early GTA VI spoken-six after a safe preface", as
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-roman-title-v3",
+          ttsPronunciationProfileVersion: "gta-roman-title-v4",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,

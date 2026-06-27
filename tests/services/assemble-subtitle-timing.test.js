@@ -161,6 +161,21 @@ test("subtitle display merge renders spoken Grand Theft Auto six as GTA VI", () 
   assert.deepEqual(merged, ["GTA VI", "preorders", "changed"]);
 });
 
+test("subtitle display merge renders spoken Grand Theft Auto V I as GTA VI", () => {
+  const words = [
+    { text: "Grand", start: 0, end: 0.18 },
+    { text: "Theft", start: 0.18, end: 0.36 },
+    { text: "Auto", start: 0.36, end: 0.54 },
+    { text: "V", start: 0.54, end: 0.62 },
+    { text: "I", start: 0.62, end: 0.74 },
+    { text: "preorders", start: 0.76, end: 1.1 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA VI", "preorders"]);
+});
+
 test("subtitle display merge hides malformed GTA VI ASR stutters", () => {
   const words = [
     { text: "GTA", start: 0, end: 0.18 },

@@ -613,6 +613,36 @@ test("transcript audience audit accepts safe GTA VI narration that avoids spoken
   });
 });
 
+test("transcript audience audit accepts GTA VI V I spoken form as the same subject", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "gta-vi-v-i-spoken-form");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "gta-vi-v-i-spoken-form",
+      canonical_subject: "Grand Theft Auto VI",
+      selected_title: "GTA VI Starts The Preorder Fight",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Grand Theft Auto V I just turned cover art into a real buying argument. Xbox Wire says pre-orders open on June 25 after Jason, Lucia and Vice City moved onto the official artwork. That matters because players can finally judge price, editions and whether buying early makes sense before the next gameplay trailer. The risk is simple: if Rockstar asks for money before fresh gameplay proof, the cover art becomes the first trust test. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "Xbox Wire", url: "https://example.test/gta-vi" },
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript:
+        "Grand Theft Auto V I just turned cover art into a real buying argument. Xbox Wire says pre orders open on June 25 after Jason, Lucia and Vice City moved onto the official artwork. That matters because players can finally judge price, editions and whether buying early makes sense before the next gameplay trailer. The risk is simple: if Rockstar asks for money before fresh gameplay proof, the cover art becomes the first trust test. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.first_line.startsWith("GTA VI"), true);
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
 test("transcript audience audit accepts Call of Duty Black Ops 7 spoken in separated natural phrases", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "black-ops-7-separated-subject");

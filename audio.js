@@ -424,8 +424,8 @@ function cleanForTTS(raw) {
       // Patch versions: "v1.2" or "V2.0"
       .replace(/[vV](\d+)\.(\d+)/g, (_, a, b) => `version ${a} point ${b}`)
       // Game titles and acronyms - spell out for clear TTS pronunciation
-      .replace(/\bGTA\s*VI\b/gi, "G T A six")
-      .replace(/\bGTA\s*6\b/gi, "G T A six")
+      .replace(/\bGTA\s*VI\b/gi, "Grand Theft Auto V I")
+      .replace(/\bGTA\s*6\b/gi, "Grand Theft Auto V I")
       .replace(/\bGTA\s*V\b/gi, "G T A five")
       .replace(/\bGTA\s*5\b/gi, "G T A five")
       .replace(/\bGTA\b/g, "G T A")

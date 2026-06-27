@@ -2867,6 +2867,18 @@ function hasGtaViSpokenSixInOpening(value = "") {
   );
 }
 
+function hasGtaViTitleAlias(value = "") {
+  const text = comparableVoiceText(value);
+  if (!text) return false;
+  return (
+    /\bg\s+t\s+a\s+(?:6|six|v\s+i|vi)\b/.test(text) ||
+    /\bgta\s+(?:6|six|v\s+i|vi)\b/.test(text) ||
+    /\bgrand\s+theft\s+auto\s+(?:6|six|v\s+i|vi)\b/.test(text) ||
+    /\brockstars\s+next\s+grand\s+theft\s+auto\b/.test(text) ||
+    /\bthe\s+next\s+grand\s+theft\s+auto\b/.test(text)
+  );
+}
+
 function gtaViOpeningVoiceRiskEvidence(...texts) {
   const sources = [];
   for (const [label, text] of texts) {
@@ -2919,6 +2931,9 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
     Boolean(expectedSpoken) &&
     Boolean(rawSpoken) &&
     comparableVoiceText(expectedSpoken) !== comparableVoiceText(rawSpoken);
+  const gtaViPronunciationSensitive =
+    profileSensitive &&
+    (hasGtaViTitleAlias(rawSpoken) || hasGtaViTitleAlias(expectedSpoken));
   if (!profileSensitive) {
     return {
       failures: [...openingRisk.failures],
@@ -2926,6 +2941,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       evidence: {
         expected_tts_pronunciation_profile_version: TTS_PRONUNCIATION_PROFILE_VERSION,
         profile_sensitive: false,
+        gta_vi_pronunciation_sensitive: false,
         ...openingRisk.evidence,
       },
     };
@@ -2947,7 +2963,11 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
   ) {
     failures.push("voice_pronunciation_text_stale");
   } else if (!recordedSpoken) {
-    warnings.push("voice_pronunciation_recorded_text_missing");
+    if (gtaViPronunciationSensitive) {
+      failures.push("voice_pronunciation_recorded_text_missing");
+    } else {
+      warnings.push("voice_pronunciation_recorded_text_missing");
+    }
   }
 
   return {
@@ -2957,6 +2977,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       expected_tts_pronunciation_profile_version: TTS_PRONUNCIATION_PROFILE_VERSION,
       actual_tts_pronunciation_profile_version: actualProfile || null,
       profile_sensitive: true,
+      gta_vi_pronunciation_sensitive: gtaViPronunciationSensitive,
       expected_spoken_text: expectedSpoken,
       recorded_spoken_text: recordedSpoken || null,
       ...openingRisk.evidence,

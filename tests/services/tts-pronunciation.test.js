@@ -145,6 +145,10 @@ test("GTA V and GTA VI title variants use stable spoken names", () => {
     applyGamingPronunciation("G.T.A. VI preorders opened after GTA V stayed huge."),
     "Grand Theft Auto Six preorders opened after Grand Theft Auto five stayed huge.",
   );
+  assert.equal(
+    applyGamingPronunciation("GTA Online is the retention test after GTA VI hype."),
+    "Grand Theft Auto Online is the retention test after Grand Theft Auto Six hype.",
+  );
 });
 
 test("Stranger Than Heaven Five Eras avoids Eris/heiress ASR drift in local narration", () => {

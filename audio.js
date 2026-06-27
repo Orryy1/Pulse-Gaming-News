@@ -429,7 +429,7 @@ function cleanForTTS(raw) {
       .replace(/\bGTA\s*6\b/gi, "Grand Theft Auto Six")
       .replace(/\bGTA\s*V\b/gi, "Grand Theft Auto five")
       .replace(/\bGTA\s*5\b/gi, "Grand Theft Auto five")
-      .replace(/\bGTA\b/g, "G T A")
+      .replace(/\bGTA\b/g, "Grand Theft Auto")
       // Compound hyphenated words: join with space, no dash (prevents TTS pauses)
       .replace(/(\w)-(\w)/g, "$1 $2")
       // Currency

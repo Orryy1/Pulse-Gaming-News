@@ -237,6 +237,16 @@ test("cleanForTTS: repairs malformed GTA VI stutters before local narration", ()
   assert.doesNotMatch(spoken, /\b(?:si|sigh|s)\s*[- ]?\s*six\b/i);
 });
 
+test("cleanForTTS: never leaves standalone GTA as spaced letters for local narration", () => {
+  const spoken = cleanForTTS("GTA Online is the argument after GTA VI pre-orders.");
+
+  assert.equal(
+    spoken,
+    "Grand Theft Auto Online is the argument after Grand Theft Auto Six pre orders.",
+  );
+  assert.doesNotMatch(spoken, /\bG\s+T\s+A\b/);
+});
+
 test("cleanForTTS: turns article-style deal snippets into spoken sentences", () => {
   assert.equal(
     cleanForTTS("Super Mario RPG - $15 (70% off) at GameStop, physical, lowest price ever."),

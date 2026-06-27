@@ -2924,8 +2924,13 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
 
   const failures = [...openingRisk.failures];
   const warnings = [];
-  if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION) {
+  const recordedMatchesExpected =
+    Boolean(recordedSpoken) &&
+    comparableVoiceText(recordedSpoken) === comparableVoiceText(expectedSpoken);
+  if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION && !recordedMatchesExpected) {
     failures.push("voice_pronunciation_profile_stale");
+  } else if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION) {
+    warnings.push("voice_pronunciation_profile_metadata_stale");
   }
   if (
     recordedSpoken &&

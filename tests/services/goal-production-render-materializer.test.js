@@ -2356,6 +2356,100 @@ test("goal production render materializer interleaves readable owned cards befor
   assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 12);
 });
 
+test("goal production render materializer balances scarce direct clips with non-readable owned motion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-direct-owned-balance-"));
+  const artifactDir = await makePackage(root, "direct-owned-balance");
+  const directClips = [];
+  for (let index = 0; index < 3; index += 1) {
+    const clipPath = path.join(root, "output", "video_cache", `gta-direct-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, index + 40));
+    directClips.push({
+      id: `gta-direct-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_${index + 1}/GTAVI_Trailer_${index + 1}.mp4`,
+      source_type: "official_game_website_media_page",
+      source_family: `gta_direct_family_${index + 1}`,
+      motion_family: `gta_direct_family_${index + 1}`,
+      media_kind: "direct_video",
+      rights_basis: "official_direct_media",
+      counts_towards_motion_readiness: true,
+      materialized: true,
+      durationS: 5,
+    });
+  }
+  const ownedMotion = ["lower_third", "motion_background", "branded_wipe"].map((kind, index) => {
+    const clipPath = path.join(root, "output", "generated-motion", `gta-${kind}.mp4`);
+    return {
+      id: `gta-${kind}`,
+      asset_id: `gta-${kind}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `local://pulse-generated-motion/direct-owned-balance/${kind}`,
+      source_type: "internally_generated_motion_graphic",
+      source_kind: "owned_source_card_explainer_motion",
+      asset_class: kind,
+      source_family: `gta_${kind}`,
+      motion_family: `gta_${kind}`,
+      media_kind: "owned_explainer_motion",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      counts_towards_motion_readiness: true,
+      owned_explainer_visual_plan: true,
+      materialized: true,
+      durationS: 12,
+    };
+  });
+  const readableCardPath = path.join(root, "output", "generated-motion", "gta-source-card.mp4");
+  const readableCard = {
+    id: "gta-source-card",
+    asset_id: "gta-source-card",
+    path: readableCardPath,
+    local_materialized_path: readableCardPath,
+    source_url: "local://pulse-generated-motion/direct-owned-balance/source-card",
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_source_card_explainer_motion",
+    asset_class: "animated_source_card",
+    source_family: "gta_source_card",
+    motion_family: "gta_source_card",
+    media_kind: "owned_explainer_motion",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    counts_towards_motion_readiness: true,
+    owned_explainer_visual_plan: true,
+    materialized: true,
+    durationS: 12,
+    minimum_readable_duration_s: 12,
+  };
+  for (const clip of [...ownedMotion, readableCard]) await fs.outputFile(clip.path, Buffer.alloc(2048, 70));
+  await writePassingHyperframesCard(root, "direct-owned-balance", "source");
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    owned_explainer_visual_plan: true,
+    clips: [...directClips, ...ownedMotion, readableCard],
+    materialised_clips: [...directClips, ...ownedMotion, readableCard],
+  });
+
+  const calls = [];
+  await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("direct-owned-balance", artifactDir)] },
+    generatedAt: "2026-06-27T07:05:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 9));
+      return { story_id: story.id, output, clips: story.video_clips.length, rendered_duration_s: 38, size_bytes: 4096 };
+    },
+  });
+
+  const selected = calls[0].visual_v4_bridge_video_clips;
+  assert.ok(selected.length >= 6);
+  assert.deepEqual(selected.slice(0, 3).map((clip) => clip.path), directClips.map((clip) => clip.path));
+  assert.ok(selected.some((clip) => clip.path === ownedMotion[0].path));
+  assert.ok(selected.some((clip) => clip.path === ownedMotion[1].path));
+  assert.equal(selected.some((clip) => clip.path === readableCard.path), false);
+  assert.equal(selected.filter((clip) => clip.path === readableCard.path && clip.minimum_readable_duration_s).length, 0);
+});
+
 test("goal production render materializer collapses repeated Steam delivery variants before card top-up", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-variant-collapse-"));
   const artifactDir = await makePackage(root, "steam-variant-collapse");

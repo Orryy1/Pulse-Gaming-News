@@ -179,6 +179,46 @@ test("transcript audience audit rejects public safety scaffold padding", async (
   });
 });
 
+test("transcript audience audit rejects generic source-bound player-stakes filler", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "xbox-price-filler");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "xbox-price-filler",
+      canonical_subject: "Updated XBOX Console Prices",
+      selected_title: "Updated XBOX Console Prices Has A Player-Return Problem",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Updated XBOX Console Prices is getting a content push that has to prove it is more than maintenance. " +
+        "Xbox Wire says Updated XBOX Console Prices has a new player-facing detail to judge. " +
+        "Players will judge the practical change first: what feels better, what lasts longer and what gives them a reason to come back now. " +
+        "If the update does not change that loop, the headline fades before the patch notes do. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/25/xbox-console-price-update/",
+      },
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.summary.pass, 0);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "rewrite_required");
+    assert.ok(
+      row.blockers.includes("script_coherence:vague_filler:generic_source_bound_padding"),
+      row.blockers.join(", "),
+    );
+    assert.ok(
+      row.mass_audience.blockers.includes("mass_audience:public_safety_scaffold"),
+      row.mass_audience.blockers.join(", "),
+    );
+  });
+});
+
 test("transcript audience audit rejects critic-style figurative payoff", async () => {
   await withTempDir(async (root) => {
     await writeStory(

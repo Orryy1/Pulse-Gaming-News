@@ -728,6 +728,35 @@ test("script coherence blocks subscription and paid-crowd templates without matc
   );
 });
 
+test("script coherence blocks source-bound filler that invents generic player stakes", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Xbox Console Price Update",
+      source_type: "rss",
+      subreddit: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/06/25/xbox-console-price-update/",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Updated XBOX Console Prices is getting a content push that has to prove it is more than maintenance. " +
+        "Xbox Wire says Updated XBOX Console Prices has a new player-facing detail to judge. " +
+        "Players will judge the practical change first: what feels better, what lasts longer and what gives them a reason to come back now. " +
+        "If the update does not change that loop, the headline fades before the patch notes do. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:generic_source_bound_padding"),
+    qa.failures.join(", "),
+  );
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:producer_scaffold_language"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence does not block named game scripts when no source context exists", () => {
   const qa = runScriptCoherenceQa(
     {

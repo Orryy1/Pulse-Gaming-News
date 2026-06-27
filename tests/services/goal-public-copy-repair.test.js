@@ -240,6 +240,36 @@ test("caption SRT protects title and platform fragments before phrase grouping",
   assert.doesNotMatch(srt, /Game Spot|G T A|PlayStation five|twenty twenty six/);
 });
 
+test("public copy rewrite avoids fragile GTA VI spoken-six opener", () => {
+  const manifest = {
+    story_id: "rss_gta_vi_preorder_voice",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    canonical_title: "GTA VI Starts The Preorder Fight",
+    selected_title: "GTA VI Starts The Preorder Fight",
+    short_title: "GTA VI Starts The Preorder Fight",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://www.xbox.com/en-US/games/store/grand-theft-auto-vi/9NNZSNHLR63L#new_tab",
+    confirmed_claims: [
+      "Xbox Wire says Grand Theft Auto VI pre-orders open on June 25 after Rockstar put Jason and Lucia on the official cover art.",
+    ],
+    narration_script:
+      "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.",
+  };
+
+  const repair = repairGoalPublicCopyManifest(manifest, {
+    generatedAt: "2026-06-27T00:00:00.000Z",
+    forceNarrationRewrite: true,
+  });
+  const opener = repair.manifest.narration_script.split(/\s+/).slice(0, 12).join(" ");
+
+  assert.equal(repair.after.verdict, "pass");
+  assert.doesNotMatch(opener, /\b(?:GTA\s+VI|GTA\s+6|Grand Theft Auto VI)\b/i);
+  assert.doesNotMatch(opener, /\bGrand Theft Auto six\b/i);
+  assert.match(repair.manifest.narration_script, /Grand Theft Auto VI pre-orders open on June 25/i);
+  assert.match(repair.manifest.selected_title, /GTA VI Starts The Preorder Fight/i);
+});
+
 test("caption SRT protects GameSpot possessives before phrase grouping", () => {
   const srt = buildCaptionSrt(
     "GameSpot's footage shows Capcom giving Yasmine fast step-ins.",
@@ -1845,7 +1875,11 @@ test("public copy package repair force-rewrites GTA VI cover art packages into a
   assert.match(updated.narration_script, /June 25/i);
   assert.match(
     updated.narration_script,
-    /^Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument\./,
+    /^Rockstar's next Grand Theft Auto just made pre-orders a trust test\./,
+  );
+  assert.doesNotMatch(
+    updated.narration_script.split(/\s+/).slice(0, 12).join(" "),
+    /\b(?:GTA\s+VI|GTA\s+6|Grand Theft Auto VI|Grand Theft Auto six)\b/i,
   );
   assert.doesNotMatch(updated.narration_script, /^Grand Theft Auto VI\b/);
   assert.match(updated.narration_script, /store page is the test/i);

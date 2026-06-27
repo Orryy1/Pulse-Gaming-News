@@ -2773,6 +2773,36 @@ function comparableVoiceText(value = "") {
     .trim();
 }
 
+function openingVoiceText(value = "", maxWords = 12) {
+  return comparableVoiceText(value)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, maxWords)
+    .join(" ");
+}
+
+function hasGtaViSpokenSixInOpening(value = "") {
+  const opening = openingVoiceText(value);
+  if (!opening) return false;
+  return (
+    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:six|s\s+six|si\s+six|sy\s+six|sigh\s+six|six\s+six)\b/.test(opening)
+  );
+}
+
+function gtaViOpeningVoiceRiskEvidence(...texts) {
+  const sources = [];
+  for (const [label, text] of texts) {
+    if (hasGtaViSpokenSixInOpening(text)) sources.push(label);
+  }
+  return {
+    failures: sources.length ? ["gta_vi_opening_spoken_six_risk"] : [],
+    evidence: {
+      gta_vi_opening_spoken_six_risk: sources.length > 0,
+      gta_vi_opening_spoken_six_risk_sources: sources,
+    },
+  };
+}
+
 function expectedSpokenTextForVoicePreflight(story = {}) {
   const raw = cleanText(
     story.spoken_narration_script ||
@@ -2800,24 +2830,30 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       story.full_script ||
       story.first_spoken_line,
   );
+  const actualProfile = cleanText(meta.ttsPronunciationProfileVersion);
+  const recordedSpoken = cleanText(meta.spoken_text || meta.transcript || meta.text);
+  const openingRisk = gtaViOpeningVoiceRiskEvidence(
+    ["expected_spoken_text", expectedSpoken],
+    ["recorded_spoken_text", recordedSpoken],
+    ["raw_spoken_text", rawSpoken],
+  );
   const profileSensitive =
     Boolean(expectedSpoken) &&
     Boolean(rawSpoken) &&
     comparableVoiceText(expectedSpoken) !== comparableVoiceText(rawSpoken);
   if (!profileSensitive) {
     return {
-      failures: [],
+      failures: [...openingRisk.failures],
       warnings: [],
       evidence: {
         expected_tts_pronunciation_profile_version: TTS_PRONUNCIATION_PROFILE_VERSION,
         profile_sensitive: false,
+        ...openingRisk.evidence,
       },
     };
   }
 
-  const actualProfile = cleanText(meta.ttsPronunciationProfileVersion);
-  const recordedSpoken = cleanText(meta.spoken_text || meta.transcript || meta.text);
-  const failures = [];
+  const failures = [...openingRisk.failures];
   const warnings = [];
   if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION) {
     failures.push("voice_pronunciation_profile_stale");
@@ -2840,6 +2876,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       profile_sensitive: true,
       expected_spoken_text: expectedSpoken,
       recorded_spoken_text: recordedSpoken || null,
+      ...openingRisk.evidence,
     },
   };
 }

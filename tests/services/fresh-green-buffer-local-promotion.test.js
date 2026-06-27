@@ -753,6 +753,9 @@ test("fresh buffer promotion maps current-news title subjects to source-search e
     ["rss_xbox", "Xbox's Strategy Trust Problem", "An original Xbox insider just made the brand problem sound painfully simple.", "Xbox", "Kotaku reports a founding Xbox figure says early console-business fears still matter."],
     ["rss_halo_ps5", "Halo's PS5 Account Catch", "Halo on PS5 just picked up a very Xbox-shaped requirement.", "Halo: Campaign Evolved", "Eurogamer reports Halo: Campaign Evolved PS5 players will require an Xbox account and gamertag."],
     ["rss_lords_fallen_2", "Lords Of The Fallen 2 Dodges GTA 6", "Lords of the Fallen 2 just blinked first in the GTA 6 traffic jam. GameSpot reports Lords of the Fallen 2 was delayed to avoid GTA 6 and give the sequel more enhancement time before launch. Dodging GTA 6 is sensible, but it also raises expectations.", "Lords of the Fallen 2", "GameSpot reports Lords of the Fallen 2 was delayed to avoid GTA 6 and get more enhancements."],
+    ["rss_onimusha", "Onimusha's September Gamble Just Got Real", "Onimusha Way of the Sword just gave players the trailer that matters more than the nostalgia.", "Onimusha: Way of the Sword", "Capcom released a game overview trailer for Onimusha: Way of the Sword."],
+    ["rss_diablo", "Diablo 4's New Season Has One Real Test", "Diablo 4's next season has a problem trailers alone cannot solve.", "Diablo IV", "Blizzard released official trailer material for Diablo IV Season of Death Awakening."],
+    ["rss_dead_by_daylight", "Dead By Daylight Just Took A Weird Detour", "Dead by Daylight just took the kind of detour that either refreshes a live game or annoys its most loyal players.", "Dead by Daylight", "Behaviour Interactive released official trailer material for Dead by Daylight: The Life Road."],
   ];
   const report = buildFreshGreenBufferLocalPromotionReport({
     stories: cases.map(([id, title, script, , claim]) =>

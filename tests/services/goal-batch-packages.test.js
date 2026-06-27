@@ -1375,6 +1375,60 @@ test("goal batch package proof preparation maps Yoshie boss fragments to Denshat
   assert.doesNotMatch(prepared.full_script, /one clear detail|player test|Meet Yoshie has/i);
 });
 
+test("goal batch package proof preparation gives Invincible VS roster stories enough sharp runtime", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_invincible_roster",
+      canonical_subject: "Invincible VS",
+      canonical_game: "Invincible VS",
+      title: "Invincible VS gets two new fighters Universa and The Immortal",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      source_type: "official_platform",
+      article_url: "https://news.xbox.com/en-us/2026/06/23/invincible-vs-roster-universa-the-immortal/",
+      full_script:
+        "Invincible VS just made its roster argument nastier. Xbox Wire says Universa and The Immortal are joining the roster. For a fighting game, new names only matter if the matchups change how people imagine the meta. If those kits look distinct, the reveal fuels wishlists. If not, it is just another character graphic. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.public_title, "Invincible VS Turns Its Roster Into A Meta Fight");
+  assert.equal(prepared.suggested_thumbnail_text, "INVINCIBLE ROSTER FIGHT");
+  assert.match(prepared.full_script, /Universa should change screen control/i);
+  assert.match(prepared.full_script, /The Immortal should change pressure/i);
+  assert.match(prepared.full_script, /screen gets chaotic/i);
+  assert.ok(prepared.full_script.split(/\s+/).length >= 95, prepared.full_script);
+  assert.doesNotMatch(prepared.public_title, /trust problem|character trust/i);
+  assert.doesNotMatch(prepared.full_script, /another character graphic/i);
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+
+  const pack = buildGoalProofPackage({
+    story: prepared,
+    rightsLedger: rightsFor(prepared),
+    generatedAt: "2026-06-27T11:20:00.000Z",
+  });
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  const instagram = pack.platform_publish_manifest.outputs.instagram_reels;
+  const x = pack.platform_publish_manifest.outputs.x;
+  const pinterest = pack.platform_publish_manifest.outputs.pinterest;
+  assert.match(youtube.description, /wishlist now|readable fights|tag fighters/i);
+  assert.match(instagram.caption, /wishlist now|readable fights|tag fighters/i);
+  assert.match(x.hot_take_post, /wishlist now|readable fights|tag fighters|matchups/i);
+  assert.match(pinterest.pin_description, /wishlist now|readable fights|tag fighters|matchups/i);
+  assert.doesNotMatch(youtube.description, /character trust problem|behind-the-scenes/i);
+  assert.doesNotMatch(`${x.hot_take_post} ${pinterest.pin_description}`, /music_licence_preservation|source_locked_update/i);
+  assert.ok(
+    !pack.pulse_media_house_score.hard_failures.includes("media_house:platform_copy_too_plain"),
+    JSON.stringify(pack.pulse_media_house_score.hard_failures),
+  );
+});
+
 test("goal batch owned fallback motion clips use readable card dwell", () => {
   const prepared = prepareStoryForGoalProof(
     {

@@ -2687,6 +2687,111 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
   assert.equal(batch.summary.green_count, 1);
 });
 
+test("goal batch packages restore sibling motion-hydrated materialised clips before proof packaging", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-sibling-motion-proof-"));
+  try {
+    const story = greenStory("sibling-motion-story");
+    delete story.video_clips;
+    delete story.visual_v4_local_motion_clips;
+    delete story.motion_clips;
+    delete story.render_manifest;
+    delete story.exported_path;
+    delete story.audio_manifest;
+    delete story.audio_path;
+    delete story.narration_audio_path;
+    delete story.word_timestamps_path;
+    delete story.timestamps_path;
+
+    const artifactDir = path.join(tempDir, story.id);
+    const motionHydratedDir = path.join(tempDir, "motion-hydrated", story.id);
+    const renderPath = path.join(artifactDir, "visual_v4_render.mp4");
+    const audioPath = path.join(artifactDir, "audio", "narration.mp3");
+    const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+    fs.ensureDirSync(path.dirname(audioPath));
+    fs.writeFileSync(renderPath, Buffer.alloc(4096, 7));
+    fs.writeFileSync(audioPath, Buffer.alloc(2048, 8));
+    fs.writeJsonSync(timestampsPath, { words: story.word_timestamps });
+    fs.writeJsonSync(path.join(artifactDir, "render_manifest.json"), {
+      final_publish_render: true,
+      output_path: renderPath,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+      rendered_duration_s: 48.2,
+    });
+    fs.writeJsonSync(path.join(artifactDir, "audio_manifest.json"), {
+      voice_status: "materialized",
+      narration_audio_path: audioPath,
+      word_timestamps_path: timestampsPath,
+      word_timestamp_source: "local_whisper_word_alignment",
+      word_timestamp_count: story.word_timestamps.length,
+    });
+    fs.writeJsonSync(path.join(artifactDir, "materialised_motion_clips.json"), {
+      status: "missing",
+      clip_count: 0,
+      clips: [],
+      materialised_clips: [],
+      readiness: {
+        status: "v4_motion_blocked",
+        blockers: ["actual_motion_clip_minimum_not_met"],
+      },
+    });
+
+    const clips = Array.from({ length: 8 }, (_, index) => ({
+      id: `sibling-official-window-${index + 1}`,
+      type: "motion_clip",
+      path: path.join(motionHydratedDir, `clip-${index + 1}.mp4`),
+      local_materialized_path: path.join(motionHydratedDir, `clip-${index + 1}.mp4`),
+      source_url: `https://video.akamai.steamstatic.com/store_trailers/2353060/${index + 1}/hls_264_master.m3u8`,
+      source_type: "steam_movie",
+      source_kind: "video_file",
+      media_kind: "direct_video",
+      source_family: `steamstatic:/store_trailers/2353060/${index + 1}_window_36_5`,
+      motion_family: `steamstatic:/store_trailers/2353060/${index + 1}_window_36_5`,
+      rights_risk_class: "official_reference_only",
+      allowed_render_use: "reference_only_by_default",
+      validation_reason: "official_storefront_trailer_motion_samples_passed",
+      trust_evidence_source: "validated_official_local_motion",
+      trusted_source_evidence: true,
+      counts_towards_motion_readiness: true,
+      materialized: true,
+      validated: true,
+      durationS: 5,
+    }));
+    fs.ensureDirSync(motionHydratedDir);
+    for (const clip of clips) fs.writeFileSync(clip.path, Buffer.alloc(4096, 2));
+    fs.writeJsonSync(path.join(motionHydratedDir, "materialised_motion_clips.json"), {
+      schema_version: 1,
+      story_id: story.id,
+      status: "ready",
+      clip_count: clips.length,
+      distinct_motion_family_count: clips.length,
+      direct_video_motion_asset_count: clips.length,
+      direct_video_motion_family_count: clips.length,
+      distinct_motion_families: clips.map((clip) => clip.source_family),
+      clips,
+      materialised_clips: clips,
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor({ ...story, video_clips: clips }) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-06-27T14:00:00.000Z",
+    });
+
+    const pack = batch.packages[0];
+    assert.equal(pack.footage_inventory.readiness.status, "v4_motion_ready");
+    assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips.length, 8);
+    assert.equal(pack.publish_verdict.reason_codes.includes("footage:v4_motion_blocked"), false);
+    assert.equal(pack.publish_verdict.reason_codes.includes("director:director_blocked"), false);
+    assert.equal(pack.publish_verdict.reason_codes.includes("media_house:source_lock_not_verified"), false);
+    assert.deepEqual(pack.publish_verdict.reason_codes, []);
+    assert.equal(batch.summary.green_count, 1);
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages create rights records for restored official V4 motion clips", () => {
   const story = {
     id: "granblue-official-restore",

@@ -480,6 +480,38 @@ test("candidate supply monitor treats covered windows without reserve as actiona
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Warnings:/);
 });
 
+test("candidate supply report creates an actionable refill plan when YouTube runway is undercovered", () => {
+  const now = new Date("2026-06-16T22:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 2, returned: 2, pending_audio: 0 },
+    candidates: Array.from({ length: 2 }, (_, index) => candidate(`ready-${index + 1}`)),
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    channelConfig: {},
+    now,
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.youtube_upload_runway.covered_publish_windows_24h, 2);
+  assert.equal(report.youtube_upload_runway.uncovered_publish_windows_24h, 3);
+  assert.equal(report.refill_action_plan.status, "needed");
+  assert.equal(report.refill_action_plan.needed_fresh_youtube_candidates_for_24h, 3);
+  assert.equal(report.refill_action_plan.needed_clean_green_candidates_for_target, 8);
+  assert.equal(report.refill_action_plan.minimum_new_green_candidates, 8);
+  assert.equal(report.refill_action_plan.recommended_refill_limit, 16);
+  assert.equal(report.refill_action_plan.recommended_rss_per_feed, 6);
+  assert.match(
+    report.refill_action_plan.safe_refill_command,
+    /npm run ops:fresh-production-refill -- --json --limit 16 --rss-per-feed 6/,
+  );
+  assert.match(formatCandidateSupplyMarkdown(report), /Refill Action Plan/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Refill: need 8 GREEN/);
+});
+
 test("candidate supply monitor separates fresh YouTube runway from platform catch-up candidates", () => {
   const now = new Date("2026-06-20T09:00:00.000Z");
   const candidateReport = {

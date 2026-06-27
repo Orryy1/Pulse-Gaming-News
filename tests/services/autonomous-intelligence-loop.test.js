@@ -235,6 +235,13 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     dedupe: {},
     blockers: [],
     warnings: ["publish_window_reserve_empty", "durable_green_ready_candidates_below_target:3/10"],
+    refill_action_plan: {
+      status: "needed",
+      recommended_refill_limit: 18,
+      recommended_rss_per_feed: 6,
+      minimum_new_green_candidates: 9,
+      safe_refill_command: "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6",
+    },
   };
 
   try {
@@ -341,8 +348,13 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(enqueued[2].idempotency_key, "candidate_supply_local_tts_retry_recovery:2026-06-17:08");
     assert.equal(enqueued[3].kind, "fresh_production_refill");
     assert.equal(enqueued[3].payload.reason, "candidate_supply_monitor_fresh_production_refill");
-    assert.equal(enqueued[3].payload.limit, 12);
-    assert.equal(enqueued[3].payload.rss_per_feed, 4);
+    assert.equal(enqueued[3].payload.limit, 18);
+    assert.equal(enqueued[3].payload.rss_per_feed, 6);
+    assert.equal(enqueued[3].payload.source_minimum_new_green_candidates, 9);
+    assert.equal(
+      enqueued[3].payload.source_refill_command,
+      "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6",
+    );
     assert.equal(
       enqueued[3].payload.out_dir,
       "output/candidate-supply/fresh-production-refill/2026-06-17-08/goal-proof-batch",

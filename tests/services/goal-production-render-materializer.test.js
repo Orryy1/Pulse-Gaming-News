@@ -610,9 +610,9 @@ test("goal production render materializer preserves readable HyperFrames card dw
   assert.match(timelineCard.text, /price and edition decision/i);
 });
 
-test("goal production render materializer keeps distinct official trailer windows from the same source", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-official-windows-"));
-  const artifactDir = await makePackage(root, "story-official-windows");
+test("goal production render materializer deduplicates repeated official trailer windows from the same source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-official-window-dedupe-"));
+  const artifactDir = await makePackage(root, "story-official-window-dedupe");
   const clipPaths = [];
   const clips = [];
   for (let index = 0; index < 8; index += 1) {
@@ -640,7 +640,7 @@ test("goal production render materializer keeps distinct official trailer window
     status: "ready",
     clips,
   });
-  const job = readyJob("story-official-windows", artifactDir, {
+  const job = readyJob("story-official-window-dedupe", artifactDir, {
     evidence: {
       narration_audio_path: path.join(artifactDir, "audio.mp3"),
       word_timestamps_path: path.join(artifactDir, "timestamps.json"),
@@ -673,8 +673,12 @@ test("goal production render materializer keeps distinct official trailer window
   const directClips = renderStory.visual_v4_bridge_video_clips.filter(
     (clip) => clip.media_kind === "direct_video",
   );
-  assert.equal(directClips.length, 8);
-  assert.equal(new Set(directClips.map((clip) => clip.source_family)).size, 8);
+  assert.equal(directClips.length, 1);
+  assert.equal(new Set(directClips.map((clip) => clip.source_url)).size, 1);
+  assert.equal(
+    directClips[0].source_url,
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+  );
 });
 
 test("goal production render materializer limits HyperFrames cards to a readable motion-balanced subset", async () => {

@@ -420,7 +420,25 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
                 type: "rss",
                 published_at: "Fri, 19 Jun 2026 09:00:00 +0000",
                 age_hours: 1,
+                direct_media_candidates: [
+                  {
+                    direct_media_url:
+                      "https://assets.xbox.com/halo-campaign-evolved/source-manifest-gameplay.mp4",
+                    source_title: "Halo Campaign Evolved source-manifest gameplay",
+                    source_family: "xbox_source_manifest_halo_campaign_evolved_gameplay",
+                    source_type: "official_game_site_news_page",
+                  },
+                ],
               },
+              direct_media_candidates: [
+                {
+                  direct_media_url:
+                    "https://assets.xbox.com/halo-campaign-evolved/source-manifest-gameplay.mp4",
+                  source_title: "Halo Campaign Evolved source-manifest gameplay",
+                  source_family: "xbox_source_manifest_halo_campaign_evolved_gameplay",
+                  source_type: "official_game_site_news_page",
+                },
+              ],
               freshness_gate: "pass",
               coherence_gate: "pass",
               blockers: [],
@@ -618,15 +636,15 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
                     {
                       story_id: "fresh_xbox_story",
                       entity: "Halo Campaign Evolved",
-                      source_type: "official_game_site_news_page",
-                      official_source_url: "https://news.xbox.com/en-us/2026/06/19/halo-campaign-evolved-demo/",
+                      source_type: "platform_storefront",
+                      official_source_url: "https://store.steampowered.com/app/1240440/Halo_Infinite/",
                       direct_media_url_if_available:
-                        "https://assets.xbox.com/halo-campaign-evolved/gameplay-trailer.mp4",
-                      source_title: "Halo Campaign Evolved official gameplay trailer",
-                      source_owner: "Xbox Wire official source",
-                      source_family: "xbox_wire_halo_campaign_evolved_fresh_xbox_story",
+                        "https://video.akamai.steamstatic.com/store_trailers/1240440/halo/hls_264_master.m3u8",
+                      source_title: "Halo Campaign Evolved Steam trailer",
+                      source_owner: "Steam storefront",
+                      source_family: "steam_halo_campaign_evolved_discovered",
                       evidence_of_officialness:
-                        "Xbox Wire is the official platform source recorded in this story package source manifest.",
+                        "Steam storefront direct media discovered during supplemental motion search.",
                       entity_match_notes:
                         "Story entity is Halo Campaign Evolved; direct media URL and official source concern the same story.",
                       source_duration_s: 62,
@@ -953,7 +971,25 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(repairReport.summary.script_blocked_package_count, 1);
     assert.equal(repairReport.summary.script_rewrite_work_order_count, 1);
     assert.deepEqual(repairReport.summary.quarantined_package_ids, ["fresh_generic_story"]);
-    assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
+    assert.equal(repairReport.summary.direct_media_intake_accepted_count, 2);
+    const directMediaIntakeReport = JSON.parse(
+      await fs.readFile(repairReport.outputs.direct_media_intake_report, "utf8"),
+    );
+    const acceptedDirectMediaUrls = directMediaIntakeReport.accepted_entries.map((entry) =>
+      entry.direct_media_url_if_available,
+    );
+    assert.ok(
+      acceptedDirectMediaUrls.includes(
+        "https://assets.xbox.com/halo-campaign-evolved/source-manifest-gameplay.mp4",
+      ),
+      "expected fresh refill to preserve source-manifest official direct MP4 rows alongside discovered rows",
+    );
+    assert.ok(
+      acceptedDirectMediaUrls.includes(
+        "https://video.akamai.steamstatic.com/store_trailers/1240440/halo/hls_264_master.m3u8",
+      ),
+      "expected fresh refill to keep newly discovered storefront direct media rows",
+    );
     assert.equal(repairReport.summary.child_process_count, 10);
     assert.equal(repairReport.summary.real_motion_materialization_status, "attempted");
     assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");

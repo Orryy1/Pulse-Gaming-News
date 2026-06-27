@@ -131,23 +131,27 @@ test("Hades II / 2 -> Hades two without comma artefacts or subtitle drift", () =
 test("GTA V and GTA VI title variants use stable spoken names", () => {
   assert.equal(
     applyGamingPronunciation("GTA VI just turned cover art into a buying argument."),
-    "Grand Theft Auto Six just turned cover art into a buying argument.",
+    "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.",
   );
   assert.equal(
     applyGamingPronunciation("Grand Theft Auto VI now has one real preorder catch."),
-    "Grand Theft Auto Six now has one real preorder catch.",
+    "Rockstar's next Grand Theft Auto now has one real preorder catch.",
   );
   assert.equal(
     applyGamingPronunciation("GTA 6 is not the same traffic story as G T A five."),
-    "Grand Theft Auto Six is not the same traffic story as Grand Theft Auto five.",
+    "Rockstar's next Grand Theft Auto is not the same traffic story as Grand Theft Auto five.",
   );
   assert.equal(
     applyGamingPronunciation("G.T.A. VI preorders opened after GTA V stayed huge."),
-    "Grand Theft Auto Six preorders opened after Grand Theft Auto five stayed huge.",
+    "Rockstar's next Grand Theft Auto preorders opened after Grand Theft Auto five stayed huge.",
   );
   assert.equal(
     applyGamingPronunciation("GTA Online is the retention test after GTA VI hype."),
-    "Grand Theft Auto Online is the retention test after Grand Theft Auto Six hype.",
+    "Grand Theft Auto Online is the retention test after Rockstar's next Grand Theft Auto hype.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Rockstar just made Grand Theft Auto VI feel real in one image."),
+    "Rockstar just made the next Grand Theft Auto feel real in one image.",
   );
 });
 

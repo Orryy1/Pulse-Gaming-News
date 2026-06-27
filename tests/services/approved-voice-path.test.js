@@ -334,7 +334,7 @@ test("approved voice path rejects malformed GTA VI spoken stutters", () => {
   assert.equal(result.transcript.gta_vi_spoken_stutter, true);
 });
 
-test("approved voice path allows clean Grand Theft Auto Six narration", () => {
+test("approved voice path rejects Grand Theft Auto Six opening narration risk", () => {
   const result = evaluateApprovedVoicePath({
     narration: {
       provider: "elevenlabs",
@@ -342,6 +342,26 @@ test("approved voice path allows clean Grand Theft Auto Six narration", () => {
       audioPath: audioFile("gta-vi-clean-opener.mp3"),
       transcript:
         "Grand Theft Auto Six now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("gta_vi_opening_spoken_six_risk"));
+  assert.equal(result.transcript.gta_vi_opening_spoken_six_risk, true);
+});
+
+test("approved voice path allows safe GTA VI narration that avoids spoken six", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath: audioFile("gta-vi-safe-opener.mp3"),
+      transcript:
+        "Rockstar's next Grand Theft Auto now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
       elevenlabs: {
         voiceId: "TX3LPaxmHKxFdv7VOQHJ",
         modelId: "eleven_multilingual_v2",

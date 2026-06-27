@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "test" / "output" / "local-tts-voice-audition-v2"
 REF_DIR = OUT_DIR / "refs"
 TEXT = (
-    "Pulse Gaming voice check. GTA six, Pokemon and Xbox news should sound sharp, "
+    "Pulse Gaming voice check. The next Grand Theft Auto, Pokemon and Xbox news should sound sharp, "
     "confident and natural without rushing or dropping into a broken low voice."
 )
 PROMPT_TEXT = (

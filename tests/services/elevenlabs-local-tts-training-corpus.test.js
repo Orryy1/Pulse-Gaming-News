@@ -24,10 +24,11 @@ async function writeStory(root, storyId, overrides = {}) {
     { word: "Games", start: 0.24, end: 0.44 },
     { word: "just", start: 0.5, end: 0.66 },
     { word: "made", start: 0.7, end: 0.88 },
-    { word: "Grand", start: 0.95, end: 1.12 },
-    { word: "Theft", start: 1.16, end: 1.34 },
-    { word: "Auto", start: 1.4, end: 1.62 },
-    { word: "Six", start: 1.68, end: 1.9 },
+    { word: "the", start: 0.95, end: 1.08 },
+    { word: "next", start: 1.1, end: 1.28 },
+    { word: "Grand", start: 1.3, end: 1.48 },
+    { word: "Theft", start: 1.5, end: 1.68 },
+    { word: "Auto", start: 1.7, end: 1.92 },
   ];
   await fs.outputJson(
     timestampPath,
@@ -36,9 +37,9 @@ async function writeStory(root, storyId, overrides = {}) {
         provider: overrides.provider || "elevenlabs",
         source: "elevenlabs-production-path",
         text: overrides.transcript ||
-          "Rockstar Games just made Grand Theft Auto Six feel real in one image.",
+          "Rockstar Games just made the next Grand Theft Auto feel real in one image.",
         transcript: overrides.transcript ||
-          "Rockstar Games just made Grand Theft Auto Six feel real in one image.",
+          "Rockstar Games just made the next Grand Theft Auto feel real in one image.",
         elevenlabs: {
           voiceId: "TX3LPaxmHKxFdv7VOQHJ",
           modelId: "eleven_multilingual_v2",
@@ -83,9 +84,9 @@ async function writeStory(root, storyId, overrides = {}) {
       resolved_audio_path: audioPath,
       resolved_word_timestamps_path: timestampPath,
       transcript: overrides.transcript ||
-        "Rockstar Games just made Grand Theft Auto Six feel real in one image.",
+        "Rockstar Games just made the next Grand Theft Auto feel real in one image.",
       final_transcript: overrides.transcript ||
-        "Rockstar Games just made Grand Theft Auto Six feel real in one image.",
+        "Rockstar Games just made the next Grand Theft Auto feel real in one image.",
       display_text: overrides.displayText ||
         "Rockstar Games just made GTA 6 feel real in one image.",
       word_timestamp_source: "elevenlabs_alignment_normalised",

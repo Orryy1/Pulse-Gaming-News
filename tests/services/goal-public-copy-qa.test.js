@@ -841,7 +841,7 @@ test("goal public copy QA allows pronunciation-only TTS script differences", () 
     narration_script: narration,
     full_script: narration,
     tts_script:
-      "Rockstar Games just revealed the official Grand Theft Auto Six cover art. Pre orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
+      "Rockstar Games just revealed the official cover art for the next Grand Theft Auto. Pre orders open on June 25. Follow Pulse Gaming so you never miss a beat.",
     description: "Rockstar Games revealed the official Grand Theft Auto VI cover art. Source: Rockstar Games.",
     primary_source: "Rockstar Games",
   });

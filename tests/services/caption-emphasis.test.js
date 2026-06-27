@@ -148,6 +148,29 @@ test("caption emphasis restores Grand Theft Auto roman numerals from spoken loca
   assert.doesNotMatch(ass, /Grand Theft Auto Six/i);
 });
 
+test("caption emphasis restores safe GTA VI spoken alias to compact display title", () => {
+  const ass = buildAss({
+    story: { title: "GTA VI Cover Art" },
+    scriptText: "Rockstar's next Grand Theft Auto just revealed its cover.",
+    words: [
+      { word: "Rockstar's", start: 0, end: 0.28 },
+      { word: "next", start: 0.3, end: 0.48 },
+      { word: "Grand", start: 0.5, end: 0.66 },
+      { word: "Theft", start: 0.68, end: 0.84 },
+      { word: "Auto", start: 0.86, end: 1.04 },
+      { word: "just", start: 1.06, end: 1.22 },
+      { word: "revealed", start: 1.24, end: 1.52 },
+      { word: "its", start: 1.54, end: 1.66 },
+      { word: "cover.", start: 1.68, end: 2.02 },
+    ],
+    duration: 3,
+  });
+
+  assert.match(ass, /GTA VI/i);
+  assert.doesNotMatch(ass, /Rockstar/i);
+  assert.doesNotMatch(ass, /Grand Theft Auto/i);
+});
+
 test("caption emphasis restores spoken two-digit dates to script digits", () => {
   const ass = buildAss({
     story: { title: "Grand Theft Auto VI Pre Orders" },

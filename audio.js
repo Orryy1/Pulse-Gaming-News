@@ -423,10 +423,15 @@ function cleanForTTS(raw) {
       })
       // Patch versions: "v1.2" or "V2.0"
       .replace(/[vV](\d+)\.(\d+)/g, (_, a, b) => `version ${a} point ${b}`)
-      // Game titles and acronyms - spell out for clear TTS pronunciation
-      .replace(/\bGrand\s+Theft\s+Auto\s+V\s+I\b/gi, "Grand Theft Auto Six")
-      .replace(/\bGTA\s*VI\b/gi, "Grand Theft Auto Six")
-      .replace(/\bGTA\s*6\b/gi, "Grand Theft Auto Six")
+      // Game titles and acronyms - spell out for clear TTS pronunciation.
+      // GTA VI/6 deliberately avoids a spoken "six" opener; the voice
+      // stack has produced audible "si-six" artefacts on that word.
+      .replace(/\b(the)\s+Grand\s+Theft\s+Auto\s+V\s+I\b/gi, "$1 next Grand Theft Auto")
+      .replace(/\bGrand\s+Theft\s+Auto\s+V\s+I\b/gi, "Rockstar's next Grand Theft Auto")
+      .replace(/\b(the)\s+GTA\s*VI\b/gi, "$1 next Grand Theft Auto")
+      .replace(/\bGTA\s*VI\b/gi, "Rockstar's next Grand Theft Auto")
+      .replace(/\b(the)\s+GTA\s*6\b/gi, "$1 next Grand Theft Auto")
+      .replace(/\bGTA\s*6\b/gi, "Rockstar's next Grand Theft Auto")
       .replace(/\bGTA\s*V\b/gi, "Grand Theft Auto five")
       .replace(/\bGTA\s*5\b/gi, "Grand Theft Auto five")
       .replace(/\bGTA\b/g, "Grand Theft Auto")

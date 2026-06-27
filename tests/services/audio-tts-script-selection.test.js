@@ -204,14 +204,14 @@ test("cleanForTTS: expands PS5 when it leads a spoken news line", () => {
   );
 });
 
-test("cleanForTTS: speaks GTA 5 and GTA 6 in consistent word form for local alignment", () => {
+test("cleanForTTS: speaks GTA 5 and GTA 6 without risky GTA VI spoken-six openers", () => {
   assert.equal(
     cleanForTTS("GTA 5 just became the GTA 6 waiting room. GTA V still feeds GTA VI interest."),
-    "Grand Theft Auto five just became the Grand Theft Auto Six waiting room. Grand Theft Auto five still feeds Grand Theft Auto Six interest.",
+    "Grand Theft Auto five just became the next Grand Theft Auto waiting room. Grand Theft Auto five still feeds Rockstar's next Grand Theft Auto interest.",
   );
   assert.equal(
     cleanForTTS("Grand Theft Auto VI now has one real preorder catch."),
-    "Grand Theft Auto Six now has one real preorder catch.",
+    "Rockstar's next Grand Theft Auto now has one real preorder catch.",
   );
 });
 
@@ -220,9 +220,10 @@ test("cleanForTTS: removes old spaced GTA acronym forms before local narration",
 
   assert.equal(
     spoken,
-    "Grand Theft Auto Six is the hook, but Grand Theft Auto Six is the title.",
+    "Rockstar's next Grand Theft Auto is the hook, but the next Grand Theft Auto is the title.",
   );
   assert.doesNotMatch(spoken, /\bG\s+T\s+A\s+six\b/i);
+  assert.doesNotMatch(spoken, /\b(?:GTA|Grand Theft Auto)\s+Six\b/i);
 });
 
 test("cleanForTTS: repairs malformed GTA VI stutters before local narration", () => {
@@ -232,7 +233,7 @@ test("cleanForTTS: repairs malformed GTA VI stutters before local narration", ()
 
   assert.equal(
     spoken,
-    "Grand Theft Auto Six starts the preorder fight. Grand Theft Auto Six is still months away.",
+    "Rockstar's next Grand Theft Auto starts the preorder fight. Rockstar's next Grand Theft Auto is still months away.",
   );
   assert.doesNotMatch(spoken, /\b(?:si|sigh|s)\s*[- ]?\s*six\b/i);
 });
@@ -242,7 +243,7 @@ test("cleanForTTS: never leaves standalone GTA as spaced letters for local narra
 
   assert.equal(
     spoken,
-    "Grand Theft Auto Online is the argument after Grand Theft Auto Six pre orders.",
+    "Grand Theft Auto Online is the argument after Rockstar's next Grand Theft Auto pre orders.",
   );
   assert.doesNotMatch(spoken, /\bG\s+T\s+A\b/);
 });

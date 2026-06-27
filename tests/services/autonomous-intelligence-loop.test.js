@@ -374,6 +374,49 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
   }
 });
 
+test("job child process evidence preserves actionable failure diagnostics", () => {
+  const { normaliseJobChildProcessEvidence } = require("../../lib/job-handlers");
+
+  const timedOut = normaliseJobChildProcessEvidence({
+    childKind: "fresh_refill_segment_validation",
+    args: ["tools/official-trailer-segment-validator.js", "--json"],
+    result: {
+      ok: false,
+      exit_code: 124,
+      signal: "SIGTERM",
+      timed_out: true,
+      stdout_tail: "",
+      stderr_tail: "",
+    },
+  });
+
+  assert.equal(timedOut.ok, false);
+  assert.equal(timedOut.child_kind, "fresh_refill_segment_validation");
+  assert.equal(timedOut.exit_code, 124);
+  assert.equal(timedOut.signal, "SIGTERM");
+  assert.equal(timedOut.timed_out, true);
+  assert.equal(timedOut.failure_reason, "timed_out");
+  assert.equal(timedOut.actionable_diagnostic, true);
+
+  const error = new Error("segment validator child process failed with code 2: bad input");
+  error.exit_code = 2;
+  error.stdout_tail = "last stdout line";
+  error.stderr_tail = "";
+
+  const failedWithCode = normaliseJobChildProcessEvidence({
+    childKind: "fresh_refill_segment_validation",
+    args: ["tools/official-trailer-segment-validator.js", "--json"],
+    error,
+  });
+
+  assert.equal(failedWithCode.ok, false);
+  assert.equal(failedWithCode.exit_code, 2);
+  assert.equal(failedWithCode.failure_reason, "exit_code_2");
+  assert.equal(failedWithCode.stdout_tail, "last stdout line");
+  assert.equal(failedWithCode.error, error.message);
+  assert.equal(failedWithCode.actionable_diagnostic, true);
+});
+
 test("fresh production refill handler builds live-RSS local proof packages", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

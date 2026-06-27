@@ -2450,6 +2450,226 @@ test("goal production render materializer balances scarce direct clips with non-
   assert.equal(selected.filter((clip) => clip.path === readableCard.path && clip.minimum_readable_duration_s).length, 0);
 });
 
+test("goal production render materializer recovers direct footage when materialised motion drifted to owned-only", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-owned-drift-"));
+  const artifactDir = await makePackage(root, "owned-drift-direct-recovery");
+  const directClips = [];
+  for (let index = 0; index < 8; index += 1) {
+    const clipPath = path.join(root, "output", "video_cache", `black-ops-direct-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(220_000, index + 20));
+    directClips.push({
+      id: `black-ops-direct-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://www.callofduty.com/content/dam/atvi/callofduty/cod-touchui/blog/body/bo7/bo7-gameplay-${index + 1}.mp4`,
+      source_type: "official_game_website_media_page",
+      source_family: `callofduty_official_direct_${index + 1}`,
+      motion_family: `callofduty_official_direct_${index + 1}`,
+      media_kind: "direct_video",
+      rights_basis: "official_direct_media_editorial_reference",
+      counts_towards_motion_readiness: true,
+      materialized: true,
+      durationS: 5,
+    });
+  }
+  const ownedClips = ["lower_third", "motion_background", "branded_wipe", "source_card"].map((kind, index) => {
+    const clipPath = path.join(root, "output", "generated-motion", "owned-drift-direct-recovery", `${kind}.mp4`);
+    return {
+      id: `owned-${kind}`,
+      asset_id: `owned-${kind}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `local://pulse-generated-motion/owned-drift-direct-recovery/${kind}`,
+      source_type: "internally_generated_motion_graphic",
+      source_kind: "owned_source_card_explainer_motion",
+      asset_class: kind === "source_card" ? "animated_source_card" : kind,
+      source_family: `owned_${kind}`,
+      motion_family: `owned_${kind}`,
+      media_kind: "owned_explainer_motion",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      counts_towards_motion_readiness: true,
+      owned_explainer_visual_plan: true,
+      materialized: true,
+      durationS: 12,
+      ...(kind === "source_card" ? { minimum_readable_duration_s: 12 } : {}),
+    };
+  });
+  await Promise.all(ownedClips.map((clip, index) => fs.outputFile(clip.path, Buffer.alloc(2048, 90 + index))));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    owned_explainer_visual_plan: true,
+    clips: ownedClips,
+    materialised_clips: ownedClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      production_motion_clips: directClips,
+      accepted_local_clips: directClips,
+      distinct_source_families: directClips.map((clip) => clip.source_family),
+      trusted_local_source_families: directClips.map((clip) => clip.source_family),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: directClips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: "motion_clip",
+      kind: "video",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      source_family: clip.source_family,
+      media_kind: clip.media_kind,
+      licence_basis: "official_direct_media_editorial_reference",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+
+  const calls = [];
+  await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob("owned-drift-direct-recovery", artifactDir, {
+          evidence: {
+            ...readyJob("owned-drift-direct-recovery", artifactDir).evidence,
+            materialised_motion_clip_count: directClips.length,
+            distinct_motion_family_count: directClips.length,
+            materialised_motion_clip_paths: [path.join(artifactDir, "materialised_motion_clips.json")],
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-06-27T08:45:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      return { story_id: story.id, output, clips: story.video_clips.length, rendered_duration_s: 47, size_bytes: 4096 };
+    },
+  });
+
+  assert.deepEqual(calls[0].video_clips.slice(0, 8), directClips.map((clip) => clip.path));
+  assert.equal(
+    calls[0].visual_v4_bridge_video_clips.some((clip) => clip.media_kind === "owned_explainer_motion"),
+    false,
+  );
+});
+
+test("goal production render materializer reuses previous direct scene windows when rerendering stale audio", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-scene-window-reuse-"));
+  const artifactDir = await makePackage(root, "scene-window-reuse");
+  const directClips = [];
+  const sourceUrls = [
+    "https://www.callofduty.com/cod/cdn/bo7/BO7_MP_Mastery_Camo.mp4",
+    "https://www.callofduty.com/cod/cdn/bo7/BO7_MP_Weapons-weapons.mp4",
+    "https://video.akamai.steamstatic.com/store_trailers/3606480/1043203640/920cef5f1e97f01e1fcb7a31bd8552587ddea323/1780522130/hls_264_master.m3u8",
+    "https://www.callofduty.com/cod/cdn/bo7/BO7_MP_Mastery_Camo.mp4",
+    "https://video.akamai.steamstatic.com/store_trailers/3606480/1043203640/920cef5f1e97f01e1fcb7a31bd8552587ddea323/1780522130/hls_264_master.m3u8",
+    "https://www.callofduty.com/cod/cdn/bo7/BO7_MP_Weapons-weapons.mp4",
+    "https://video.akamai.steamstatic.com/store_trailers/3606480/1200945818/709290607c4727b595dad45245a359ce0c0ac0d1/1762893198/hls_264_master.m3u8",
+    "https://video.akamai.steamstatic.com/store_trailers/3606480/25223131/09df1c2fe13fbbbec035df7261dd522054cc6ed3/1762999072/hls_264_master.m3u8",
+  ];
+  for (let index = 0; index < sourceUrls.length; index += 1) {
+    const clipPath = path.join(root, "output", "video_cache", `scene-window-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(220_000, index + 40));
+    await fs.outputJson(`${clipPath}.json`, {
+      schema_version: 1,
+      source_family: `callofduty_scene_window_${index + 1}`,
+      source_url: sourceUrls[index],
+      source_type: index < 6 ? "official_game_website_media_page" : "steam_movie",
+      duration_s: 5,
+    });
+    directClips.push({
+      id: `scene-window-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: sourceUrls[index],
+      source_type: index < 6 ? "official_game_website_media_page" : "steam_movie",
+      source_family: `callofduty_scene_window_${index + 1}`,
+      base_source_family: `callofduty_scene_window_${index + 1}`,
+      motion_family: `callofduty_scene_window_${index + 1}`,
+      media_kind: "direct_video",
+      rights_basis: "official_direct_media_editorial_reference",
+      counts_towards_motion_readiness: true,
+      materialized: true,
+    });
+  }
+  const ownedClipPath = path.join(root, "output", "generated-motion", "scene-window-reuse", "lower_third.mp4");
+  await fs.outputFile(ownedClipPath, Buffer.alloc(2048, 90));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    owned_explainer_visual_plan: true,
+    clips: [{
+      id: "owned-lower-third",
+      path: ownedClipPath,
+      source_url: "local://pulse-generated-motion/scene-window-reuse/lower-third",
+      source_type: "internally_generated_motion_graphic",
+      media_kind: "owned_explainer_motion",
+      owned_explainer_visual_plan: true,
+      counts_towards_motion_readiness: true,
+      durationS: 12,
+    }],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      production_motion_clips: directClips,
+      distinct_source_families: directClips.map((clip) => clip.source_family),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: directClips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: "motion_clip",
+      kind: "video",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      source_family: clip.source_family,
+      base_source_family: clip.base_source_family,
+      media_kind: clip.media_kind,
+      licence_basis: "official_direct_media_editorial_reference",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    clip_scene_plan: {
+      repeatFree: true,
+      blockers: [],
+      scenes: directClips.map((clip, index) => ({
+        id: `previous_scene_${index + 1}`,
+        path: clip.path,
+        source_url: clip.source_url,
+        source_type: clip.source_type,
+        media_kind: clip.media_kind,
+        baseSourceKey: clip.source_family,
+        durationS: 4.3,
+      })),
+    },
+  });
+
+  const calls = [];
+  await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("scene-window-reuse", artifactDir)] },
+    generatedAt: "2026-06-27T09:05:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      return { story_id: story.id, output, clips: story.video_clips.length, rendered_duration_s: 47, size_bytes: 4096 };
+    },
+  });
+
+  assert.deepEqual(calls[0].video_clips.slice(0, 8), directClips.map((clip) => clip.path));
+  assert.deepEqual(
+    calls[0].visual_v4_bridge_video_clips.slice(0, 8).map((clip) => clip.durationS),
+    Array(8).fill(5),
+  );
+  assert.equal(calls[0].video_clips.includes(ownedClipPath), false);
+});
+
 test("goal production render materializer collapses repeated Steam delivery variants before card top-up", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-variant-collapse-"));
   const artifactDir = await makePackage(root, "steam-variant-collapse");

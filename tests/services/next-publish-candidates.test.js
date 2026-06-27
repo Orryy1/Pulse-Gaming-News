@@ -4167,6 +4167,81 @@ test("visual entity preflight accepts game-level motion when source URL mentions
   assert.match(result.evidence.direct_motion_assets[0].provenance_text, /marvel tokon/);
 });
 
+test("visual entity preflight accepts trusted game-level roster motion without treating editorial title words as source locks", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-trusted-roster-game-level",
+    "invincible_vs_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  const steamUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/2353060/1367633524/c24c1d0fb5dd20215e88147944ccadd70326b8ef/1782152721/hls_264_master.m3u8?t=1782230244";
+  const sourceFamily =
+    "steamstatic:/store_trailers/2353060/1367633524/c24c1d0fb5dd20215e88147944ccadd70326b8ef/1782152721_window_36_5";
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    source_url: steamUrl,
+    source_family: sourceFamily,
+    source_type: "steam_movie",
+    rights_basis: "official_reference_only",
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "rss_336678f89aaf64b2",
+      title: "Invincible VS Turns Its Roster Into A Meta Fight",
+      selected_title: "Invincible VS Turns Its Roster Into A Meta Fight",
+      canonical_subject: "Invincible VS",
+      canonical_game: "Invincible VS",
+      primary_source_url: "https://news.xbox.com/en-us/2026/06/23/invincible-vs-universa-the-immortal/",
+      full_script:
+        "Invincible VS just made the roster question sharper. Xbox Wire says Universa and The Immortal are joining the roster. Tag fighters live or die on matchups, not names on a reveal card.",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: steamUrl,
+          source_family: sourceFamily,
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_reference_only",
+        },
+      ],
+      video_clips: [clipPath],
+      footage_inventory: {
+        trusted_source_pipeline: {
+          intake_queue: [
+            {
+              source_id: "segment_direct_motion_1",
+              display_name: sourceFamily,
+              entity: "Invincible VS",
+              entities: ["Invincible VS"],
+              source_family: sourceFamily,
+              source_tier: "official",
+              reference_url: steamUrl,
+              source_url_kind: "web_page",
+              intake_mode: "local_reference_to_motion_pack",
+              rights_risk_class: "official_reference_only",
+            },
+          ],
+        },
+      },
+      rights_ledger: {
+        verdict: "pass",
+        assets: [],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.deepEqual(result.evidence.required_specific_source_lock_tokens, []);
+  assert.equal(result.evidence.direct_motion_assets[0].entity, "Invincible VS");
+});
+
 test("visual entity preflight accepts Steam direct motion when rights ledger owner names the subject", async () => {
   const clipPath = path.join(
     "test",

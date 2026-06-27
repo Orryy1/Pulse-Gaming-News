@@ -1507,7 +1507,7 @@ const VISUAL_ENTITY_STOPWORDS = new Set([
   "update",
 ]);
 const VISUAL_CHARACTER_SPECIFIC_CONTEXT_RE =
-  /\b(?:character|fighter|roster|new[-_\s]?fighter|new[-_\s]?character|dlc[-_\s]?fighter|gameplay[-_\s]?reveal|ranked|rushdown|zoner|footsie|footsies|meter|combo|combos|knife[-_\s]?feints?|eskrima|space[-_\s]?control)\b/i;
+  /\b(?:character|fighter|new[-_\s]?fighter|new[-_\s]?character|dlc[-_\s]?fighter|gameplay[-_\s]?reveal|ranked|rushdown|zoner|footsie|footsies|meter|combo|combos|knife[-_\s]?feints?|eskrima|space[-_\s]?control)\b/i;
 const VISUAL_SPECIFIC_SOURCE_LOCK_STOPWORDS = new Set([
   "ahead",
   "beat",
@@ -1520,14 +1520,17 @@ const VISUAL_SPECIFIC_SOURCE_LOCK_STOPWORDS = new Set([
   "eskrima",
   "fairness",
   "fighter",
+  "fight",
   "footage",
   "headline",
   "finally",
   "fighting",
+  "into",
   "just",
   "knife",
   "looks",
   "made",
+  "meta",
   "mode",
   "players",
   "pressure",
@@ -1536,10 +1539,12 @@ const VISUAL_SPECIFIC_SOURCE_LOCK_STOPWORDS = new Set([
   "reveal",
   "revealed",
   "real",
+  "roster",
   "rushdown",
   "shows",
   "space",
   "street",
+  "turns",
   "videos",
   "while",
   "zoner",
@@ -2168,6 +2173,8 @@ async function visualEntityPreflightForStory(story = {}) {
     )
     .map((asset) => ({
       id: cleanText(asset.id || asset.asset_id),
+      entity: cleanText(asset.entity),
+      entities: asArray(asset.entities).map(cleanText).filter(Boolean),
       source_family: cleanText(asset.source_family || asset.motion_family || asset.family),
       source_url: cleanText(asset.source_url || asset.url),
       path: cleanText(asset.path || asset.local_path || asset.media_path),
@@ -2198,11 +2205,13 @@ async function visualEntityPreflightForStory(story = {}) {
       source_lock_tokens: sourceLockTokens,
       required_specific_source_lock_tokens: requiredSpecificSourceLockTokens,
       direct_motion_asset_count: directMotionAssets.length,
-      direct_motion_assets: directMotionAssets.slice(0, 8).map((asset) => ({
-        id: cleanText(asset.id || asset.asset_id),
-        source_family: cleanText(asset.source_family || asset.motion_family || asset.family),
-        source_url: cleanText(asset.source_url || asset.url),
-        path: cleanText(asset.path || asset.local_path || asset.media_path),
+        direct_motion_assets: directMotionAssets.slice(0, 8).map((asset) => ({
+          id: cleanText(asset.id || asset.asset_id),
+          entity: cleanText(asset.entity),
+          entities: asArray(asset.entities).map(cleanText).filter(Boolean),
+          source_family: cleanText(asset.source_family || asset.motion_family || asset.family),
+          source_url: cleanText(asset.source_url || asset.url),
+          path: cleanText(asset.path || asset.local_path || asset.media_path),
         sidecar_source_family: cleanText(asset.sidecar_source_family),
         sidecar_source_url: cleanText(asset.sidecar_source_url),
         source_sidecar_path: cleanText(asset.source_sidecar_path),

@@ -184,6 +184,39 @@ test("Studio V4 clip materializer preserves existing local render clips", async 
   assert.equal(execCount, 0);
 });
 
+test("Studio V4 clip materializer accepts usable output when HLS ffmpeg exits noisily", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-v4-materializer-"));
+  const directUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/3606480/1200945818/hash/hls_264_master.m3u8?t=1763096482";
+  const result = await materializeStudioV4BridgeClips({
+    root,
+    story: { id: "blackops7-v4" },
+    bridge: {
+      readiness: { status: "bridge_ready", blockers: [] },
+      video_clips: [
+        {
+          id: "hls-noisy",
+          source_family: "blackops7_hls_window",
+          path: directUrl,
+          mediaStartS: 54,
+          durationS: 5,
+        },
+      ],
+    },
+    execFileSync: (bin, args) => {
+      fs.outputFileSync(args[args.length - 1], "usable clip despite ffmpeg decode warnings");
+      throw new Error("ffmpeg exited with HLS decode warnings after writing output");
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(result.readiness.status, "materialized");
+  assert.equal(result.bridge.video_clips.length, 1);
+  assert.equal(result.rejected.length, 0);
+  assert.equal(result.bridge.video_clips[0].source_url, directUrl);
+  assert.match(result.bridge.video_clips[0].path, /blackops7-v4_v4_clip_1_hls-noisy_[a-f0-9]{12}\.mp4$/);
+});
+
 test("Studio V4 clip materializer blocks unsafe or non-direct media URLs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-v4-materializer-"));
   const result = await materializeStudioV4BridgeClips({

@@ -1017,6 +1017,126 @@ test("duration variant repair extends GTA VI preorder scripts without generic QA
   assert.ok(staleRepair.repaired_word_count >= 115, staleRepair.script);
 });
 
+test("duration variant repair strips GTA six-stutter fragments before narration repair", () => {
+  const baseScript = [
+    "GTA si-six just put Jason and Lucia back in the centre of the argument.",
+    "Xbox Wire says the new cover art is live and pre-orders open on June 25.",
+    "The real question is whether the first store page makes the price, versions and bonuses clear before players lock money in.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const repair = extendScriptToTarget(
+    {
+      story_id: "gta-six-stutter-duration",
+      canonical_subject: "GTA si-six",
+      canonical_game: "GTA si-six",
+      selected_title: "GTA VI Cover Art Starts The Pre-Order Fight",
+      first_spoken_line: "GTA si-six just put Jason and Lucia back in the centre of the argument.",
+      narration_script: baseScript,
+      full_script: baseScript,
+      tts_script: baseScript,
+      primary_source: "Xbox Wire",
+      source_card_label: "Xbox Wire",
+      confirmed_claims: [
+        "Xbox Wire says Grand Theft Auto VI pre-orders open on June 25 after Rockstar put Jason and Lucia on the official cover art.",
+      ],
+    },
+    {
+      repair_lane: "normal_production_duration_floor",
+      current_duration_s: 31.12,
+      target_duration_seconds: { min: 40, max: 59 },
+      source_blockers: [
+        "normal_production_duration_below_quality_floor:31.120",
+        "voice_cadence:wpm_too_fast",
+      ],
+    },
+  );
+
+  assert.match(repair.script, /Rockstar|Grand Theft Auto/i);
+  assert.match(repair.script, /Jason and Lucia/i);
+  assert.match(repair.script, /June 25/i);
+  assert.doesNotMatch(repair.script, /\bGTA\s*s(?:i|y|igh)?[-\s]*six\b/i);
+  assert.doesNotMatch(repair.script, /\bG\s*T\s*A\b/i);
+  assert.doesNotMatch(repair.script, /\bGTA\s*6\b/i);
+  assert.match(repair.script, /Follow Pulse Gaming so you never miss a beat\.$/);
+});
+
+test("duration variant repair avoids ASR-fragile stylised title repeats", () => {
+  const baseScript = [
+    "GUILTY GEAR -STRIVE- Robo-Ky Official just dodged a release-date fight.",
+    "GameSpot is carrying the footage, but the useful read is whether the new fighter looks playable instead of just nostalgic.",
+    "The roster already has a loud personality, so this reveal has to show why the character changes matches.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const repair = extendScriptToTarget(
+    {
+      story_id: "guilty-gear-robo-ky-duration",
+      canonical_subject: "GUILTY GEAR -STRIVE- Robo-Ky Official",
+      canonical_game: "GUILTY GEAR -STRIVE-",
+      selected_title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+      canonical_angle: "source_locked_update",
+      first_spoken_line: "GUILTY GEAR -STRIVE- Robo-Ky Official just dodged a release-date fight.",
+      narration_script: baseScript,
+      full_script: baseScript,
+      tts_script: baseScript,
+      description:
+        "GameSpot showed new Guilty Gear Strive footage for its new fighter reveal. Source: GameSpot.",
+      primary_source: "GameSpot",
+      source_card_label: "GameSpot",
+      confirmed_claims: [
+        "GameSpot showed new GUILTY GEAR -STRIVE- Robo-Ky official footage.",
+      ],
+    },
+    {
+      repair_lane: "normal_production_duration_floor",
+      current_duration_s: 28.16,
+      target_duration_seconds: { min: 35, max: 59 },
+      source_blockers: [
+        "normal_production_duration_below_quality_floor:28.160",
+        "voice_cadence:wpm_too_fast",
+      ],
+    },
+  );
+
+  assert.match(repair.script, /Guilty Gear Strive/i);
+  assert.match(repair.script, /GameSpot/i);
+  assert.match(repair.script, /fighter|character|roster/i);
+  assert.doesNotMatch(repair.script, /\bGUILTY\s+GEAR\b/);
+  assert.doesNotMatch(repair.script, /[-–—]\s*STRIVE\s*[-–—]/i);
+  assert.doesNotMatch(repair.script, /Robo[-\s]?Ky\s+Official|Robo\s+Key/i);
+  assert.doesNotMatch(repair.script, /Strivejust/i);
+  assert.doesNotMatch(repair.script, /frame[- ]?rate clips|matchmaking clips|balance complaints/i);
+  assert.doesNotMatch(
+    repair.script,
+    /one concrete change worth remembering|clean shape|source visible|extra lore/i,
+  );
+  const publicCopyQa = evaluateGoalPublicCopy({
+    story_id: "guilty-gear-robo-ky-duration",
+    canonical_subject: "Guilty Gear Strive",
+    canonical_game: "Guilty Gear Strive",
+    selected_title: "Robo-Ky Gives Guilty Gear A Gameplay Test",
+    thumbnail_headline: "GUILTY GEAR PLAYER TEST",
+    first_spoken_line: "Guilty Gear Strive just dodged a release-date fight.",
+    narration_script: repair.script,
+    full_script: repair.script,
+    tts_script: repair.script,
+    description:
+      "GameSpot showed new Guilty Gear Strive footage for its new fighter reveal. Source: GameSpot.",
+    primary_source: "GameSpot",
+    source_card_label: "GameSpot",
+    confirmed_claims: [
+      "GameSpot showed new Guilty Gear Strive footage for its new fighter reveal.",
+    ],
+  });
+  assert.equal(
+    publicCopyQa.failures.includes("public_copy:unsupported_specific_detail_narration"),
+    false,
+    JSON.stringify({ script: repair.script, publicCopyQa }),
+  );
+  assert.match(repair.script, /Follow Pulse Gaming so you never miss a beat\.$/);
+});
+
 test("voice cadence repair preserves an existing platform-native thumbnail headline", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-thumbnail-preserve-"));
   const ghostScript =

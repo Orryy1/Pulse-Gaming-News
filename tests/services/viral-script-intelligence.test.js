@@ -775,6 +775,34 @@ test("viral script intelligence rejects generic player-test fallback templates",
   assert.ok(result.blockers.includes("generic_could_split_title_template"), JSON.stringify(result));
 });
 
+test("viral script intelligence rejects public safety scaffold narration", () => {
+  const script =
+    "Black Ops 7 has a retention problem hiding inside its June 25 update. " +
+    "The official Call of Duty page lists new and remastered multiplayer maps, Endgame content and Zombies content, but patch size is not the real story. " +
+    "The player-facing consequence matters more than stretching the headline beyond the source. " +
+    "Players should watch for a named update from the studio, store page or platform holder. " +
+    "For players, the decision point is simple: does this change what they can buy, play or trust today? " +
+    "That means the claim still needs official confirmation before players treat it as locked in. " +
+    "Until that appears, the honest angle is what has changed for players today. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "black-ops-scaffold",
+      title: "Black Ops 7's June 25 Update Has One Reinstall Catch",
+      source_name: "Call of Duty",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("public_safety_scaffold"), JSON.stringify(result));
+  assert.ok(
+    result.rewrite_recommendations.some((item) => /safety scaffolding/i.test(item)),
+    JSON.stringify(result.rewrite_recommendations),
+  );
+});
+
 test("viral script intelligence rejects article-fragment subjects as narration hooks", () => {
   const script =
     "Hide-and-seek game where you paint just blinked in one of the year's most crowded release windows. " +

@@ -347,6 +347,59 @@ test("goal production render materializer passes safe GTA VI TTS script to rende
   assert.doesNotMatch(calls[0].tts_script, /\b(?:GTA|Grand Theft Auto)\s+(?:VI|six|6)\b/i);
 });
 
+test("goal production render materializer repairs explicit stale GTA VI TTS script before render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-gta-explicit-"));
+  const narrationScript =
+    "Rockstar's next Grand Theft Auto just made pre-orders a trust test. " +
+    "Xbox Wire says Grand Theft Auto VI pre-orders open on June 25. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const staleTtsScript =
+    "GTA si-six just made pre-orders a trust test. " +
+    "Xbox Wire says GTA VI pre-orders open on June 25. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "gta-vi-explicit", {
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    selected_title: "GTA VI Starts The Preorder Fight",
+    thumbnail_headline: "GTA VI PREORDER FIGHT",
+    primary_source: "Xbox Wire",
+    narration_script: narrationScript,
+    full_script: narrationScript,
+    tts_script: staleTtsScript,
+    first_spoken_line: "Rockstar's next Grand Theft Auto just made pre-orders a trust test.",
+    description: "Xbox Wire says GTA VI pre-orders open on June 25. Source: Xbox Wire.",
+  });
+  const calls = [];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("gta-vi-explicit", artifactDir)] },
+    generatedAt: "2026-06-28T21:35:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].tts_script,
+    "Rockstar's next Grand Theft Auto just made pre-orders a trust test. " +
+      "Xbox Wire says Rockstar's next Grand Theft Auto pre-orders open on June 25. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.doesNotMatch(calls[0].tts_script, /\b(?:GTA|Grand Theft Auto)\s+(?:VI|six|6|si[-\s]*six)\b/i);
+});
+
 test("goal production render materializer preserves HyperFrames premium-shell target proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-shell-"));
   const artifactDir = await makePackage(root, "story-hf-shell");

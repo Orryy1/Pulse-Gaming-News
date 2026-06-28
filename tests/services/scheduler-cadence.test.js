@@ -135,3 +135,23 @@ test("schedules: produce/publish priorities unchanged (regression)", () => {
     assert.strictEqual(byName(n).priority, 20);
   }
 });
+
+test("schedules: stale-claim reaper outranks publish and repair work", () => {
+  const reaper = byName("jobs_reap_stale");
+  assert.ok(reaper, "missing jobs_reap_stale schedule");
+  assert.strictEqual(reaper.kind, "jobs_reap");
+  assert.strictEqual(reaper.cron_expr, "*/1 * * * *");
+
+  const competingWork = DEFAULT_SCHEDULES.filter((schedule) =>
+    ["publish", "candidate_supply_monitor", "fresh_review_script_repair", "fresh_production_refill", "safe_auto_repair_runner"].includes(
+      schedule.kind,
+    ),
+  );
+  assert.ok(competingWork.length > 0, "expected publish/repair schedules to compare against");
+  for (const schedule of competingWork) {
+    assert.ok(
+      reaper.priority < schedule.priority,
+      `jobs_reap_stale priority ${reaper.priority} should outrank ${schedule.name} priority ${schedule.priority}`,
+    );
+  }
+});

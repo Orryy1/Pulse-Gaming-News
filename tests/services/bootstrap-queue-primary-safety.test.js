@@ -118,6 +118,136 @@ test("bootstrap-queue: env flag resets persisted schedule payloads on boot", asy
   }
 });
 
+test("bootstrap-queue: critical maintenance schedules are reconciled without broad reset", async () => {
+  const bootstrapPath = path.resolve(__dirname, "..", "..", "lib", "bootstrap-queue.js");
+  const schedulerPath = path.resolve(__dirname, "..", "..", "lib", "scheduler.js");
+  const reposPath = path.resolve(__dirname, "..", "..", "lib", "repositories", "index.js");
+  const originalCache = new Map([
+    [bootstrapPath, require.cache[bootstrapPath]],
+    [schedulerPath, require.cache[schedulerPath]],
+    [reposPath, require.cache[reposPath]],
+  ]);
+  const seedCalls = [];
+  const schedulerRows = new Map([
+    [
+      "jobs_reap_stale",
+      {
+        name: "jobs_reap_stale",
+        kind: "jobs_reap",
+        cron_expr: "*/1 * * * *",
+        payload: JSON.stringify({ idempotencyTemplate: "jobs_reap:{date}:{hour}:{minute}" }),
+        priority: 99,
+      },
+    ],
+    [
+      "publish_primary",
+      {
+        name: "publish_primary",
+        kind: "publish",
+        cron_expr: "0 19 * * *",
+        payload: JSON.stringify({ idempotencyTemplate: "publish:{date}:19" }),
+        priority: 20,
+      },
+    ],
+  ]);
+  try {
+    require.cache[schedulerPath] = {
+      id: schedulerPath,
+      filename: schedulerPath,
+      loaded: true,
+      exports: {
+        DEFAULT_SCHEDULES: [
+          {
+            name: "jobs_reap_stale",
+            kind: "jobs_reap",
+            cron_expr: "*/1 * * * *",
+            priority: 1,
+            idempotencyTemplate: "jobs_reap:{date}:{hour}:{minute}",
+          },
+          {
+            name: "publish_primary",
+            kind: "publish",
+            cron_expr: "0 19 * * *",
+            priority: 20,
+            idempotencyTemplate: "publish:{date}:19",
+          },
+        ],
+        seed(options) {
+          seedCalls.push(options);
+        },
+        start() {
+          throw new Error("scheduler should not start in this test");
+        },
+      },
+    };
+    require.cache[reposPath] = {
+      id: reposPath,
+      filename: reposPath,
+      loaded: true,
+      exports: {
+        getRepos() {
+          return {
+            db: {
+              prepare(sql) {
+                if (/SELECT \* FROM schedules WHERE name = \?/i.test(sql)) {
+                  return { get: (name) => schedulerRows.get(name) || null };
+                }
+                if (/UPDATE schedules/i.test(sql)) {
+                  return {
+                    run(cronExpr, payload, priority, kind, name) {
+                      const row = schedulerRows.get(name);
+                      schedulerRows.set(name, {
+                        ...row,
+                        cron_expr: cronExpr,
+                        payload,
+                        priority,
+                        kind,
+                      });
+                      return { changes: row ? 1 : 0 };
+                    },
+                  };
+                }
+                throw new Error(`unexpected SQL: ${sql}`);
+              },
+            },
+          };
+        },
+      },
+    };
+
+    await withEnv(
+      {
+        USE_SQLITE: "true",
+        PULSE_PRIMARY_INSTANCE: "true",
+        PULSE_RESET_SCHEDULES_ON_BOOT: undefined,
+      },
+      async () => {
+        const bootstrap = loadFreshBootstrap();
+        try {
+          await bootstrap.start({
+            runScheduler: false,
+            runRunner: false,
+            autoSeed: true,
+            log() {},
+          });
+        } finally {
+          await bootstrap.stop().catch(() => {});
+        }
+      },
+    );
+
+    assert.equal(seedCalls.length, 1);
+    assert.equal(seedCalls[0].reset, false);
+    assert.equal(schedulerRows.get("jobs_reap_stale").priority, 1);
+    assert.equal(schedulerRows.get("publish_primary").priority, 20);
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+  }
+});
+
 test("bootstrap-queue: PULSE_PRIMARY_INSTANCE=false refuses to start scheduler+runner", async () => {
   await withEnv(
     {

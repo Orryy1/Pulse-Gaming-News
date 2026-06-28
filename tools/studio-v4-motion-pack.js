@@ -226,6 +226,52 @@ function previousMotionPackFromFootageInventory(story = {}, footageInventory = {
   };
 }
 
+function previousMotionPackFromStoryMotionClips(story = {}) {
+  const storyId = cleanText(story.id || story.story_id);
+  const clips = [
+    ...asArray(story.visual_v4_local_motion_clips),
+    ...asArray(story.video_clips),
+  ]
+    .filter((clip) => (
+      clip.counts_towards_motion_readiness !== false &&
+      clip.validated !== false &&
+      clip.segmentValidationPassed !== false
+    ))
+    .map((clip, index) => ({
+      ...clip,
+      id: cleanText(clip.id || clip.asset_id || `story-motion-${index + 1}`),
+      mediaStartS: Number.isFinite(Number(clip.mediaStartS ?? clip.media_start_s))
+        ? Number(clip.mediaStartS ?? clip.media_start_s)
+        : 0,
+      durationS: Number.isFinite(Number(clip.durationS ?? clip.duration_s ?? clip.duration))
+        ? Number(clip.durationS ?? clip.duration_s ?? clip.duration)
+        : 5,
+      validated: true,
+      segmentValidationPassed: true,
+      allowed_for_flash_lane: true,
+      provenance: {
+        ...(clip.provenance || {}),
+        source_report: "story_validated_motion_clips",
+        story_id: storyId || clip.provenance?.story_id || null,
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason:
+          cleanText(clip.validation_reason || clip.provenance?.validation_reason) ||
+          "story_validated_motion_clip_preserved",
+        segment_motion_class:
+          cleanText(clip.segment_motion_class || clip.provenance?.segment_motion_class) ||
+          "gameplay_action",
+        segment_action_score: Number(clip.action_score || clip.provenance?.segment_action_score || 72),
+      },
+    }));
+  return {
+    schema_version: 1,
+    source: "story_validated_motion_clips",
+    story_id: storyId || null,
+    clips,
+  };
+}
+
 function mergePreviousMotionPacks(...packs) {
   const clips = [];
   const byKey = new Map();
@@ -327,16 +373,19 @@ async function loadPreviousMotionPack(args, story, outDir) {
     ? await readJsonIfExists(path.join(artifactDir, "footage_inventory.json"), {})
     : {};
   const inventoryMotionPack = previousMotionPackFromFootageInventory(story, footageInventory);
+  const storyMotionPack = previousMotionPackFromStoryMotionClips(story);
   if (args.previousMotionPack) {
     return mergePreviousMotionPacks(
       await readJsonIfExists(args.previousMotionPack, {}),
       inventoryMotionPack,
+      storyMotionPack,
     );
   }
   const base = safeName(story.id || story.story_id);
   return mergePreviousMotionPacks(
     await readJsonIfExists(path.join(outDir, `${base}_motion_pack_manifest.json`), {}),
     inventoryMotionPack,
+    storyMotionPack,
   );
 }
 
@@ -449,4 +498,5 @@ module.exports = {
   ownedMotionClipsFromFootageInventory,
   parseArgs,
   previousMotionPackFromFootageInventory,
+  previousMotionPackFromStoryMotionClips,
 };

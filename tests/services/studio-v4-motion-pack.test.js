@@ -18,6 +18,7 @@ const {
   normaliseStory,
   parseArgs,
   previousMotionPackFromFootageInventory,
+  previousMotionPackFromStoryMotionClips,
 } = require("../../tools/studio-v4-motion-pack");
 const packageJson = require("../../package.json");
 
@@ -1838,6 +1839,60 @@ test("Visual V4 motion pack does not reject exact game trailers because of gener
   );
 });
 
+test("Visual V4 motion pack ignores editorial headline modifiers when official game identity matches", () => {
+  const storyId = "marvel-tokon-pack";
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: storyId,
+      title: "MARVEL Tokon Finally Shows Real Gameplay",
+      suggested_title: "MARVEL Tokon Finally Shows Real Gameplay",
+      suggested_thumbnail_text: "MARVEL TOKON FINALLY SHOWS REAL GAMEPLAY",
+      canonical_subject: "MARVEL Tokon",
+      canonical_game: "MARVEL Tokon",
+      full_script:
+        "MARVEL Tokon could win the trailer war and still lose players fast. GameSpot's gameplay shows Magneto and Black Panther in two-on-two combat.",
+    },
+    trustedFootageReport: trustedReport(storyId, ["steam_3787240_1293753200"]),
+    segmentValidationReport: segmentReport([
+      {
+        story_id: null,
+        clip_key: "steamstatic-store-trailer-3787240-1293753200|36",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3787240/1293753200/hash/hls_264_master.m3u8",
+        source_family:
+          "steamstatic_store_trailers_3787240_1293753200_hash_window_36_5",
+        source_type: "steam_movie",
+        provider: "steam",
+        entity: "",
+        reference_title: "",
+        media_start_s: 36,
+        duration_s: 5,
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+        action_sample_count: 3,
+        validation_reason: "official_storefront_trailer_motion_samples_passed",
+        samples: [
+          { local_path: "test/output/marvel-tokon/a.jpg", content_hash: "tokon-a" },
+          { local_path: "test/output/marvel-tokon/b.jpg", content_hash: "tokon-b" },
+          { local_path: "test/output/marvel-tokon/c.jpg", content_hash: "tokon-c" },
+        ],
+      },
+    ]),
+    generatedAt: "2026-06-28T14:45:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].entity, "MARVEL Tokon");
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "story_subject_motion_mismatch",
+    ),
+    false,
+  );
+});
+
 test("Visual V4 motion pack does not top up premium density with repeat windows", () => {
   const families = ["steam_alpha", "steam_beta", "steam_gamma", "steam_delta"];
   const sourceUrls = {
@@ -2533,4 +2588,58 @@ test("Visual V4 motion pack previous-pack merge lets fresh inventory override st
   assert.equal(merged.clips.length, 1);
   assert.equal(merged.clips[0].rights_risk_class, "owned_generated_motion");
   assert.equal(merged.clips[0].licence_basis, "owned_generated_editorial_motion_graphic");
+});
+
+test("Visual V4 motion pack seeds bridge-hydrated validated story clips when segment report is stale", () => {
+  const storyId = "marvel-tokon-pack";
+  const story = {
+    id: storyId,
+    title: "MARVEL Tokon Finally Shows Real Gameplay",
+    canonical_subject: "MARVEL Tokon",
+    canonical_game: "MARVEL Tokon",
+    full_script:
+      "MARVEL Tokon could win the trailer war and still lose players fast. GameSpot's gameplay shows Magneto and Black Panther in two-on-two combat.",
+    video_clips: [
+      {
+        id: "segment_direct_motion_1",
+        source_family:
+          "steamstatic:/store_trailers/3787240/1293753200/hash/window_36_5",
+        source_url:
+          "https://video.akamai.steamstatic.com/store_trailers/3787240/1293753200/hash/hls_264_master.m3u8",
+        path: "C:/media/tokon-1.mp4",
+        entity: "",
+        mediaStartS: 36,
+        durationS: 5,
+        validated: true,
+        counts_towards_motion_readiness: true,
+        source_type: "steam_movie",
+        rights_risk_class: "official_reference_only",
+      },
+    ],
+  };
+
+  const pack = buildVisualV4MotionPack({
+    story,
+    trustedFootageReport: trustedReport(storyId, ["steam_3787240_1293753200"]),
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "other-story",
+        family: "steam_999_other",
+        entity: "Other Game",
+        actionScore: 92,
+      }),
+    ]),
+    previousMotionPack: previousMotionPackFromStoryMotionClips(story),
+    generatedAt: "2026-06-28T15:05:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].entity, "MARVEL Tokon");
+  assert.equal(pack.clips[0].provenance.source_report, "previous_visual_v4_motion_pack");
+  assert.equal(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "story_subject_motion_mismatch",
+    ),
+    false,
+  );
 });

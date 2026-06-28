@@ -130,6 +130,37 @@ test("buildStoryManifest emits the full canonical story manifest contract", () =
   assert.equal(manifest.publish_status, "AMBER");
 });
 
+test("buildStoryManifest keeps GTA VI display copy but writes safe spoken TTS fields", () => {
+  const script =
+    "Sony just made GTA VI's console pitch very direct. " +
+    "PlayStation Blog says Grand Theft Auto VI plays best on PS5 on November 19. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const manifest = buildStoryManifest(
+    mixtapeStory({
+      id: "rss_gta_vi_ps5_pitch",
+      title: "GTA VI Just Made PS5 The Version To Watch",
+      suggested_title: "GTA VI Just Made PS5 The Version To Watch",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      primary_source: "PlayStation Blog",
+      source_card_label: "PlayStation Blog",
+      full_script: script,
+      tts_script: "",
+    }),
+  );
+
+  assert.equal(manifest.selected_title, "GTA VI Just Made PS5 The Version To Watch");
+  assert.equal(manifest.narration_script, script);
+  assert.equal(
+    manifest.tts_script,
+    "Sony just made Rockstar's next Grand Theft Auto console pitch very direct. " +
+      "PlayStation Blog says Rockstar's next Grand Theft Auto plays best on PlayStation five on November 19. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.equal(manifest.spoken_narration_script, manifest.tts_script);
+  assert.doesNotMatch(manifest.tts_script, /\b(?:GTA|Grand Theft Auto)\s+(?:VI|six|6)\b/i);
+});
+
 test("public output gate passes a viewer-facing Mixtape pack", () => {
   const story = mixtapeStory();
   const manifest = buildStoryManifest(story);

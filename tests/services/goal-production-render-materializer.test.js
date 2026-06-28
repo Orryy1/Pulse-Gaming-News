@@ -120,7 +120,7 @@ function readyJob(storyId, artifactDir, overrides = {}) {
   };
 }
 
-async function makePackage(root, storyId = "story-final") {
+async function makePackage(root, storyId = "story-final", canonicalOverrides = {}) {
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
   await fs.ensureDir(artifactDir);
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
@@ -133,6 +133,7 @@ async function makePackage(root, storyId = "story-final") {
     narration_script: "Lego Batman has more Arkham DNA than it first looks.",
     first_spoken_line: "Lego Batman has more Arkham DNA than it first looks.",
     description: "Lego Batman has more Arkham DNA than it first looks. Source: GameSpot.",
+    ...canonicalOverrides,
   });
   await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
     shot_plan: [{ kind: "proof_card", label: "ROCKSTEADY LISTED", detail: "ARKHAM-LITE COMBAT" }],
@@ -296,6 +297,54 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.deepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
   assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 12));
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
+});
+
+test("goal production render materializer passes safe GTA VI TTS script to renderer", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-gta-tts-"));
+  const publicScript =
+    "Sony just made GTA VI's console pitch very direct. " +
+    "PlayStation Blog says Grand Theft Auto VI plays best on PS5 on November 19. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "gta-vi-final", {
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    selected_title: "GTA VI Just Made PS5 The Version To Watch",
+    thumbnail_headline: "GTA VI PS5 TEST",
+    primary_source: "PlayStation Blog",
+    narration_script: publicScript,
+    first_spoken_line: "Sony just made GTA VI's console pitch very direct.",
+    description: "PlayStation Blog says Grand Theft Auto VI plays best on PS5. Source: PlayStation Blog.",
+  });
+  const calls = [];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("gta-vi-final", artifactDir)] },
+    generatedAt: "2026-06-28T21:15:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].full_script, publicScript);
+  assert.equal(
+    calls[0].tts_script,
+    "Sony just made Rockstar's next Grand Theft Auto console pitch very direct. " +
+      "PlayStation Blog says Rockstar's next Grand Theft Auto plays best on PlayStation five on November 19. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.doesNotMatch(calls[0].tts_script, /\b(?:GTA|Grand Theft Auto)\s+(?:VI|six|6)\b/i);
 });
 
 test("goal production render materializer preserves HyperFrames premium-shell target proof", async () => {

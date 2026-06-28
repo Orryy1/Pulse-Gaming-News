@@ -849,6 +849,25 @@ test("goal public copy QA allows pronunciation-only TTS script differences", () 
   assert.ok(!report.failures.includes("public_copy:tts_script_diverges_from_narration"));
 });
 
+test("goal public copy QA allows GTA VI safe spoken TTS without changing display copy", () => {
+  const narration =
+    "GTA VI just turned the console argument into a real buying decision. PlayStation Blog says Grand Theft Auto VI has a new gameplay breakdown for PS5. Follow Pulse Gaming so you never miss a beat.";
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Grand Theft Auto VI",
+    selected_title: "GTA VI Just Changed The Console Argument",
+    first_spoken_line: "GTA VI just turned the console argument into a real buying decision.",
+    narration_script: narration,
+    full_script: narration,
+    tts_script:
+      "Rockstar's next Grand Theft Auto just turned the console argument into a real buying decision. PlayStation Blog says Rockstar's next Grand Theft Auto has a new gameplay breakdown for PlayStation five. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "GTA VI has a new console-focused gameplay breakdown. Source: PlayStation Blog.",
+    primary_source: "PlayStation Blog",
+  });
+
+  assert.ok(!report.failures.includes("public_copy:tts_script_diverges_from_narration"));
+});
+
 test("goal public copy QA blocks source-process narration that reads like internal notes", () => {
   const report = evaluateGoalPublicCopy({
     canonical_subject: "Spellcasters Chronicles",

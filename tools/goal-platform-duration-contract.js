@@ -72,6 +72,38 @@ function activeStoryIdsFromDryRunPlan(plan = null) {
   return [...new Set(actions.map((action) => String(action?.story_id || action?.storyId || "").trim()).filter(Boolean))];
 }
 
+function resolveActionArtifactDir(root, action = {}) {
+  const candidates = [
+    action.canonical_manifest_path,
+    action.platform_publish_manifest_path,
+    action.video_path,
+    action.cover_frame_source,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
+    if (!value) continue;
+    const resolved = path.isAbsolute(value) ? value : path.resolve(root, value);
+    return path.dirname(resolved);
+  }
+  return "";
+}
+
+function activeStoryPackageOverridesFromDryRunPlan(plan = null, root = process.cwd()) {
+  const actions = Array.isArray(plan?.actions) ? plan.actions : [];
+  const overrides = new Map();
+  for (const action of actions) {
+    const storyId = String(action?.story_id || action?.storyId || "").trim();
+    if (!storyId || overrides.has(storyId)) continue;
+    const artifactDir = resolveActionArtifactDir(root, action);
+    if (!artifactDir) continue;
+    overrides.set(storyId, {
+      story_id: storyId,
+      artifact_dir: artifactDir,
+    });
+  }
+  return overrides;
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -88,6 +120,7 @@ async function main(argv = process.argv.slice(2)) {
     storyPackages,
     generatedAt: args.generatedAt || new Date().toISOString(),
     activeStoryIds: dryRunPlan ? activeStoryIdsFromDryRunPlan(dryRunPlan) : null,
+    activeStoryPackageOverrides: dryRunPlan ? activeStoryPackageOverridesFromDryRunPlan(dryRunPlan, root) : null,
   });
   const artefacts = await writeGoalPlatformDurationContractReport(report, {
     outputDir: path.resolve(root, args.outDir),
@@ -106,6 +139,7 @@ if (require.main === module) {
 
 module.exports = {
   activeStoryIdsFromDryRunPlan,
+  activeStoryPackageOverridesFromDryRunPlan,
   parseArgs,
   readStoryPackages,
   main,

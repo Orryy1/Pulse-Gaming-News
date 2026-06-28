@@ -73,6 +73,36 @@ test("platform duration contract repair updates package manifests without publis
   assert.ok(updated.outputs.tiktok.duration_warnings.includes("below_creator_rewards_duration"));
 });
 
+test("platform duration contract repair prefers current active dry-run artifact over stale story package dir", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-active-override-"));
+  const storyId = "rss_336678f89aaf64b2";
+  const stalePackage = await makePackage(root, storyId, null);
+  const currentPackage = await makePackage(root, `${storyId}-current`, 48.233);
+
+  const report = await repairGoalPlatformDurationContracts({
+    storyPackages: [stalePackage],
+    activeStoryIds: [storyId],
+    activeStoryPackageOverrides: new Map([
+      [
+        storyId,
+        {
+          story_id: storyId,
+          artifact_dir: currentPackage.artifact_dir,
+        },
+      ],
+    ]),
+    generatedAt: "2026-06-28T03:42:00.000Z",
+  });
+
+  assert.equal(report.summary.package_count, 1);
+  assert.equal(report.summary.updated_count, 1);
+  assert.equal(report.summary.blocked_count, 0);
+  assert.equal(report.updated[0].story_id, storyId);
+  assert.equal(report.updated[0].artifact_dir, currentPackage.artifact_dir);
+  assert.equal(report.updated[0].rendered_duration_s, 48.233);
+  assert.equal(report.blocked.length, 0);
+});
+
 test("platform duration contract repair overwrites stale Instagram legacy duration windows", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-contract-stale-ig-"));
   const storyPackage = await makePackage(root, "gears-stale-ig", 51.736, {

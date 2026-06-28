@@ -2698,6 +2698,34 @@ test("Studio V4 source-family acquisition blocks official search from malformed 
   );
 });
 
+test("Studio V4 source-family acquisition searches canonical game for official trailer suffix headlines", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "guilty-gear-roboky",
+        title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+        canonical_subject: "GUILTY GEAR -STRIVE- Robo-Ky Official",
+        canonical_game: "",
+        trusted_source_pipeline: { intake_queue: [] },
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 7,
+          available_motion_clips: 0,
+          required_distinct_families: 6,
+          available_distinct_families: 0,
+        },
+      }),
+    ],
+    generatedAt: "2026-06-28T08:00:00.000Z",
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.official_search_actions[0].entity, "GUILTY GEAR -STRIVE-");
+  assert.match(row.official_search_actions[0].query, /^GUILTY GEAR -STRIVE- official gameplay trailer$/);
+  assert.doesNotMatch(row.official_search_actions[0].query, /Official official/i);
+  assert.deepEqual(row.source_search_blockers, []);
+});
+
 test("Studio V4 source-family acquisition avoids fake gameplay searches for non-game stories", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [

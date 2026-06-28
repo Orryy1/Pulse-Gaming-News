@@ -1363,8 +1363,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(
       segmentValidationCall.timeoutMs,
-      180000,
-      "fresh refill segment validation must have its own bounded timeout so one motion-heavy candidate cannot stall scheduler refill",
+      480000,
+      "fresh refill segment validation must have enough bounded time to finish official/direct-motion repair for the actual repair lane",
     );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
     assert.ok(

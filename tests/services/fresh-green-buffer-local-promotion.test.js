@@ -925,6 +925,44 @@ test("fresh buffer promotion uses selected title over long source headline when 
   assert.equal(storyPackages[0].canonical_game, "GTA 5");
 });
 
+test("fresh buffer promotion strips trailer labels and rebuilds too-short narration", () => {
+  const canonical = buildCanonicalStoryManifest(
+    draftStory({
+      id: "rss_guilty_gear_robo_ky_trailer",
+      title: "GUILTY GEAR -STRIVE- Robo-Ky Official Trailer",
+      selected_title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+      canonical_subject: "GUILTY GEAR -STRIVE- Robo-Ky Official",
+      canonical_game: "GUILTY GEAR -STRIVE- Robo-Ky Official",
+      primary_source: {
+        name: "GameSpot",
+        url: "https://www.gamespot.com/videos/guilty-gear-strive-robo-ky-official-trailer/",
+        type: "trusted_editorial_source",
+      },
+      primary_source_url: "https://www.gamespot.com/videos/guilty-gear-strive-robo-ky-official-trailer/",
+      source_published_at: "2026-06-27T21:36:49.000Z",
+      confirmed_claims: [
+        "GameSpot carries the GUILTY GEAR -STRIVE- Robo-Ky official trailer.",
+      ],
+      thumbnail_headline: "GUILTY GEAR PLAYER TEST",
+      narration_script:
+        "GUILTY GEAR -STRIVE- Robo-Ky Official just moved from hype to the part players can actually judge. GameSpot is carrying the new footage. Follow Pulse Gaming so you never miss a beat.",
+    }),
+    "2026-06-28T08:00:00.000Z",
+  );
+
+  assert.equal(canonical.canonical_subject, "GUILTY GEAR -STRIVE-");
+  assert.equal(canonical.canonical_game, "GUILTY GEAR -STRIVE-");
+  assert.match(canonical.public_title, /Robo-Ky/i);
+  assert.doesNotMatch(canonical.public_title, /\bOfficial\b/i);
+  assert.doesNotMatch(canonical.full_script, /\bRobo-Ky Official\b/i);
+  assert.doesNotMatch(canonical.full_script, /\bGame Spot\b/i);
+  assert.doesNotMatch(canonical.full_script, /part players can actually judge/i);
+  assert.match(canonical.full_script, /\b(?:matchup|roster|fighting game|mains|pressure)\b/i);
+  assert.ok(canonical.full_script.split(/\s+/).length >= 115, canonical.full_script);
+  assert.equal(canonical.public_copy_repaired_at, "2026-06-28T08:00:00.000Z");
+  assert.match(canonical.public_copy_repair_reason, /script_runtime:too_short|weak_public_copy_pattern/);
+});
+
 test("fresh buffer promotion rewrites unsupported GTA 6 context into specific GTA 5 upgrade copy", () => {
   const canonical = buildCanonicalStoryManifest(
     draftStory({
@@ -1051,7 +1089,7 @@ test("fresh buffer promotion rebuilds stale failing narration before packaging",
 
   assert.equal(canonical.script_coherence_result, "pass");
   assert.equal(canonical.public_copy_repaired_at, generatedAt);
-  assert.match(canonical.public_copy_repair_reason, /repeated_near_phrase|public_narration_meta_language/);
+  assert.match(canonical.public_copy_repair_reason, /repeated_near_phrase|public_narration_meta_language|argument_scaffold_leaked/);
   assert.doesNotMatch(canonical.full_script, /perfect trailer a perfect trailer|something sharper to argue/i);
   assert.match(canonical.full_script, /blunt test is this: does the gameplay stay fun/i);
 });

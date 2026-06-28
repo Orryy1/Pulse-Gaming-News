@@ -40,6 +40,8 @@ const MIN_OVERLAY_CARD_DURATION_S = 12;
 const MAX_OVERLAY_CARD_DURATION_S = 14;
 const MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS = 4;
 const MAX_READABLE_CARD_DURATION_RATIO = 0.42;
+const MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO = 0.55;
+const MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT = 4;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
@@ -600,6 +602,10 @@ function windowedSceneSourceKey(clip = {}) {
   return normaliseSceneSourceKey(value);
 }
 
+function stripWindowFromSceneSourceKey(value = "") {
+  return normaliseSceneSourceKey(value).replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "");
+}
+
 function readSceneClipSidecar(clip = {}) {
   const clipPath = sceneClipPath(clip);
   if (!clipPath) return null;
@@ -661,6 +667,44 @@ function sceneClipBaseSourceKey(clip = {}) {
   } catch {
     return normaliseSceneSourceKey(url || clip);
   }
+}
+
+function sceneClipSourceRootKey(clip = {}) {
+  if (!clip) return "";
+  const isObject = typeof clip === "object";
+  const sidecar = isObject ? readSceneClipSidecar(clip) : null;
+  const url = isObject
+    ? firstText(
+        clip.source_url,
+        clip.url,
+        clip.original_source_url,
+        clip.reference_url,
+        sidecar?.source_url,
+        sidecar?.url,
+        sidecar?.original_source_url,
+      )
+    : "";
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      return stripWindowFromSceneSourceKey(`${parsed.hostname}${parsed.pathname}`);
+    } catch {
+      return stripWindowFromSceneSourceKey(url);
+    }
+  }
+  const explicit = isObject
+    ? firstText(
+        clip.source_root_family,
+        clip.base_source_family,
+        clip.original_source_family,
+        clip.provenance?.base_source_family,
+        sidecar?.source_root_family,
+        sidecar?.base_source_family,
+        sidecar?.original_source_family,
+      )
+    : "";
+  if (explicit) return stripWindowFromSceneSourceKey(explicit);
+  return stripWindowFromSceneSourceKey(sceneClipBaseSourceKey(clip));
 }
 
 function sceneClipSourceDurationS(clip = {}) {
@@ -786,6 +830,33 @@ function repeatedReadableCardKinds(entries = []) {
     .sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind));
 }
 
+function directMotionSourceConcentration(entries = []) {
+  const directEntries = entries.filter((entry) => !entry.readableCardKind);
+  const total = directEntries.length;
+  const counts = new Map();
+  for (const entry of directEntries) {
+    if (!entry.sourceRootKey) continue;
+    counts.set(entry.sourceRootKey, (counts.get(entry.sourceRootKey) || 0) + 1);
+  }
+  const concentrated = [...counts.entries()]
+    .map(([key, count]) => ({
+      key,
+      count,
+      ratio: total > 0 ? Number((count / total).toFixed(3)) : 0,
+    }))
+    .filter((entry) =>
+      entry.count > MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT &&
+      entry.ratio > MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO,
+    )
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  return {
+    direct_motion_scene_count: total,
+    max_scenes_per_source_root: MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT,
+    max_source_concentration_ratio: MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO,
+    concentrated_sources: concentrated,
+  };
+}
+
 function buildClipScenePlan({
   clips = [],
   durationS,
@@ -808,6 +879,7 @@ function buildClipScenePlan({
     cleanEntries.push({
       path: clipPath,
       baseSourceKey: sceneClipBaseSourceKey(clip),
+      sourceRootKey: sceneClipSourceRootKey(clip),
       sourceDurationS: sceneClipSourceDurationS(clip),
       minimumReadableDurationS: readableCardKind
         ? readableCardMinimumDurationS({
@@ -853,6 +925,16 @@ function buildClipScenePlan({
   const repeatedReadableCards = repeatFree ? repeatedReadableCardKinds(cleanEntries) : [];
   if (repeatFree && repeatedReadableCards.length) {
     blockers.push("readable_card_kind_repeated");
+  }
+  const directMotionSourceConcentrationMetrics =
+    repeatFree ? directMotionSourceConcentration(cleanEntries) : {
+      direct_motion_scene_count: cleanEntries.filter((entry) => !entry.readableCardKind).length,
+      max_scenes_per_source_root: MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT,
+      max_source_concentration_ratio: MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO,
+      concentrated_sources: [],
+    };
+  if (repeatFree && directMotionSourceConcentrationMetrics.concentrated_sources.length) {
+    blockers.push("direct_motion_source_concentration_above_premium_floor");
   }
   if (repeatFree && requiredCount > cleanEntries.length) {
     blockers.push("direct_motion_clip_diversity_below_dwell_floor");
@@ -1032,6 +1114,7 @@ function buildClipScenePlan({
     sourceDurationS: entry.sourceDurationS || null,
     minimumReadableDurationS: entry.minimumReadableDurationS || null,
     baseSourceKey: entry.baseSourceKey || null,
+    sourceRootKey: entry.sourceRootKey || null,
     readableCardKind: entry.readableCardKind || null,
     readableText: entry.readableText || "",
   }));
@@ -1064,6 +1147,7 @@ function buildClipScenePlan({
     availableUniqueClipCount: cleanEntries.length,
     repeatedBaseSources,
     repeatedReadableCardKinds: repeatedReadableCards,
+    directMotionSourceConcentrationMetrics,
     sourceDurationOverruns,
     readableDurationUnderruns,
     readableCardSceneMetrics,

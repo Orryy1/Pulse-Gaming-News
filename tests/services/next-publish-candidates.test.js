@@ -6510,6 +6510,90 @@ test("runPreflightQaForStory blocks current packages with non-repeat-free clip s
   );
 });
 
+test("runPreflightQaForStory blocks source-concentrated direct-motion plans", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-source-concentration-"));
+  t.after(() => fs.remove(tmp));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "source-concentrated-package", videoPath);
+  const renderManifestPath = path.join(tmp, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    final_publish_render: true,
+    rendered_duration_s: 44,
+    clips: 8,
+    clip_scene_plan: {
+      repeat_free: true,
+      blockers: [],
+      repeated_base_sources: [],
+      direct_motion_source_concentration_metrics: {
+        direct_motion_scene_count: 7,
+        max_scenes_per_source_root: 4,
+        max_source_concentration_ratio: 0.55,
+        concentrated_sources: [
+          {
+            key: "video.example.test/halo/campaign-evolved-trailer",
+            count: 6,
+            ratio: 0.857,
+          },
+        ],
+      },
+      scenes: Array.from({ length: 7 }, (_, index) => ({
+        path: `halo-window-${index + 1}.mp4`,
+        duration_s: 5,
+        base_source_key: `halo_campaign_evolved_trailer_window_${index + 1}_5`,
+        source_root_key: "video.example.test/halo/campaign-evolved-trailer",
+      })),
+    },
+  }, { spaces: 2 });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "source-concentrated-package",
+      title: "Halo Campaign Evolved Needs More Than One Trailer Loop",
+      selected_title: "Halo Campaign Evolved Needs More Than One Trailer Loop",
+      canonical_subject: "Halo: Campaign Evolved",
+      source_type: "rss",
+      timestamp: "2026-06-24T18:00:00.000Z",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "Halo Campaign Evolved Needs More Than One Trailer Loop" },
+        },
+      },
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("incident_guard:visual_evidence:direct_motion_source_concentration_above_premium_floor"),
+    JSON.stringify(preflight.blockers),
+  );
+});
+
 test("runPreflightQaForStory blocks repeated direct clips from final render story even when materialised clips are refreshed", async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-final-render-repeat-"));
   t.after(() => fs.remove(tmp));

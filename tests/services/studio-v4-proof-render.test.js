@@ -110,6 +110,34 @@ test("Studio V4 proof renderer treats distinct official trailer windows as non-r
   assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 8);
 });
 
+test("Studio V4 proof renderer blocks premium shorts dominated by one direct-video source", () => {
+  const clips = [12, 18, 24, 30, 36, 42, 48].map((windowStart) => ({
+    path: `sea-trailer-window-${windowStart}.mp4`,
+    source_url: "https://cdn.example.com/sea-of-thieves/official-gameplay-trailer.mp4",
+    source_family: `sea_of_thieves_official_gameplay_trailer_window_${windowStart}_5`,
+    motion_family: `sea_of_thieves_official_gameplay_trailer_window_${windowStart}_5`,
+    media_kind: "direct_video",
+    durationS: 5,
+  }));
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 36.4,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.ok(plan.blockers.includes("direct_motion_source_concentration_above_premium_floor"));
+  assert.deepEqual(plan.directMotionSourceConcentrationMetrics.concentrated_sources, [
+    {
+      key: "cdn.example.com/sea-of-thieves/official-gameplay-trailer",
+      count: 7,
+      ratio: 1,
+    },
+  ]);
+});
+
 test("Studio V4 proof renderer defaults to readable non-repeating direct-motion cuts", () => {
   const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
   const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;

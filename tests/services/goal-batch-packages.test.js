@@ -1827,6 +1827,66 @@ test("goal batch package proof preparation quarantines malformed generated refil
   assert.ok(pack.acceptance_entry.blockers.includes("script:rewrite_required"));
 });
 
+test("goal batch package proof preparation rewrites generic collectible and retrospective refill scripts", () => {
+  const cases = [
+    {
+      story: {
+        id: "rss_nintendo_film_slides",
+        title: "The Hot New Nintendo Collectibles Are 35mm Film Slides From Super Mario 64",
+        source_type: "rss",
+        source_name: "Kotaku",
+        article_url: "https://kotaku.com/nintendo-collectibles-super-mario-64-35mm-film-slides",
+        freshness_gate: "pass",
+        confirmed_claims: ["The Hot New Nintendo Collectibles Are 35mm Film Slides From Super Mario 64"],
+        full_script:
+          "The Hot New Nintendo Collectibles Has A Player-Return Problem. Kotaku says The Hot New Nintendo Collectibles Are 35mm Film Slides From Super Mario 64. Follow Pulse Gaming so you never miss a beat.",
+      },
+      expectedTitle: "Super Mario 64 Film Slides Are A Collector Test",
+      requiredScript: [/Super Mario 64/i, /35mm film slides/i, /collector|collectors/i, /scarcity|piece of gaming history/i],
+    },
+    {
+      story: {
+        id: "rss_mario_kart_64_retrospective",
+        title: "Mario Kart 64 transformed the series",
+        source_type: "rss",
+        source_name: "Polygon",
+        article_url: "https://www.polygon.com/mario-kart-64-transformed-series",
+        freshness_gate: "pass",
+        confirmed_claims: ["Mario Kart 64 transformed the series"],
+        full_script:
+          "Mario Kart 64 transformed series Has A Player-Return Problem. Polygon says Mario Kart 64 transformed series. Follow Pulse Gaming so you never miss a beat.",
+      },
+      expectedTitle: "Mario Kart 64 Made The Blueprint",
+      requiredScript: [/Mario Kart 64/i, /four-player|battle mode|kart racer/i, /blueprint|series/i, /still argue|debate/i],
+    },
+  ];
+
+  for (const item of cases) {
+    const prepared = prepareStoryForGoalProof(item.story, { allowOwnedMotionFallback: true });
+    assert.equal(prepared.public_title, item.expectedTitle);
+    assert.doesNotMatch(prepared.full_script, /feed update|real player decision|practical part is what changes now|timing, access, price, performance|stay below the line|Player-Return Problem|Could Split Players/i);
+    for (const required of item.requiredScript) assert.match(prepared.full_script, required);
+    assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+
+    const pack = buildGoalProofPackage({ story: prepared });
+    assert.equal(pack.canonical_story_manifest.public_title, item.expectedTitle);
+    assert.equal(evaluateGoalPublicCopy({
+      ...prepared,
+      selected_title: prepared.public_title,
+      thumbnail_headline: prepared.thumbnail_headline,
+      narration_script: prepared.full_script,
+      first_spoken_line: prepared.first_spoken_line,
+    }).verdict, "pass");
+    assert.equal(
+      buildViralScriptIntelligence({
+        story: { ...prepared, title: prepared.public_title },
+        script: prepared.full_script,
+      }).verdict,
+      "viral_ready",
+    );
+  }
+});
+
 test("goal batch package proof preparation does not invert GTA VI screenshot analysis into gameplay proof", () => {
   const prepared = prepareStoryForGoalProof({
     id: "rss_gta_vi_screenshot_analysis",

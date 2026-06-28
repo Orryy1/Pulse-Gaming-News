@@ -245,6 +245,48 @@ test("direct-media discovery accepts official GTA VI compact-title media", async
   assert.equal(report.output_template.entries[0].segment_validation_ineligible_reason, null);
 });
 
+test("direct-media discovery supplements GTA VI official pages with Rockstar site motion families", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "gta-vi-ps5",
+        entity: "Grand Theft Auto VI",
+        source_family: "rockstar_gta_vi_official_videos",
+        source_type: "official_game_website_media_page",
+        source_owner: "Rockstar Games",
+        official_source_url: "https://www.rockstargames.com/VI/media/videos",
+      },
+    ],
+    maxCandidatesPerEntry: 8,
+    fetchText: async () => ({
+      ok: true,
+      status: 200,
+      text: `
+        <source src="https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4">
+        <source src="https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4">
+        <source src="https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_1/GTAVI_Trailer_1.mp4">
+      `,
+    }),
+    probeMedia: async (url) => {
+      if (url.includes("Cover_Art")) return { duration_seconds: 32.67, width: 3840, height: 2160 };
+      if (url.includes("Trailer_2")) return { duration_seconds: 166.73, width: 3840, height: 2160 };
+      if (url.includes("Trailer_1")) return { duration_seconds: 90.03, width: 3840, height: 2160 };
+      if (url.includes("2160.06.kcaed--eoc")) return { duration_seconds: 8, width: 2376, height: 1336 };
+      throw new Error(`unexpected probe: ${url}`);
+    },
+  });
+
+  const urls = report.output_template.entries.map((entry) => entry.direct_media_url_if_available);
+  assert.equal(report.summary.discovered, 1);
+  assert.equal(report.summary.expanded_template_entries, 4);
+  assert.equal(report.rows[0].direct_media_candidates.length, 4);
+  assert.ok(
+    urls.includes("https://www.rockstargames.com/VI/_next/static/media/2160.06.kcaed--eoc.mp4"),
+  );
+  assert.equal(new Set(report.output_template.entries.map((entry) => entry.source_family)).size, 4);
+  assert.ok(report.output_template.entries.every((entry) => entry.downloads_allowed === false));
+});
+
 test("direct-media discovery rejects Steam trailer manifests from a different app id", async () => {
   const report = await buildOfficialDirectMediaDiscoveryReport({
     entries: [

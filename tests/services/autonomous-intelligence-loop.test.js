@@ -1343,8 +1343,21 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const directMediaInputIndex = directMediaCall.args.indexOf("--input");
     assert.match(
       directMediaCall.args[directMediaInputIndex + 1],
-      /visual_v4_source_family_intake_template_autofill\.json$/,
-      "expected direct media discovery to consume official-search autofill output",
+      /official_direct_media_discovery_input\.json$/,
+      "expected direct media discovery to consume merged source-manifest and official-search rows",
+    );
+    const directMediaInputRows = JSON.parse(
+      await fs.readFile(directMediaCall.args[directMediaInputIndex + 1], "utf8"),
+    );
+    assert.ok(
+      directMediaInputRows.some((row) => row.direct_media_url_if_available),
+      "expected merged direct media discovery input to preserve source-manifest direct media rows",
+    );
+    assert.ok(
+      directMediaInputRows.some(
+        (row) => !row.direct_media_url_if_available && row.official_source_url,
+      ),
+      "expected merged direct media discovery input to preserve official-search rows",
     );
     const maxDirectMediaCandidatesIndex = directMediaCall.args.indexOf("--max-candidates-per-entry");
     assert.equal(

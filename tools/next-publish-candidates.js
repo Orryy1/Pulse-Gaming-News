@@ -4341,8 +4341,9 @@ function preflightBlockerIsNonSupersedableVisualLoop(blocker = "") {
 }
 
 function preflightBlockerIsNonSupersedableVoiceQuality(blocker = "") {
-  return /(?:^|:)voice_quality:|(?:^|:)voice_cadence:|local_tts_|word_timestamps_not_strict_whisper_aligned/i.test(
-    cleanText(blocker),
+  const text = cleanText(blocker);
+  return /(?:^|:)voice_quality:|(?:^|:)voice_cadence:|local_tts_|word_timestamps_not_strict_whisper_aligned|risky_gta_vi_|voice_pronunciation_|gta_vi_(?:opening_spoken_six_risk|spoken_six|spoken_stutter|spoken_roman_split)/i.test(
+    text,
   );
 }
 

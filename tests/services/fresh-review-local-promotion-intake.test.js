@@ -152,13 +152,14 @@ test("fresh review local promotion intake attaches known official GTA VI direct 
   assert.equal(report.summary.local_promotion_story_count, 1);
   assert.equal(story.canonical_subject, "Grand Theft Auto VI");
   assert.equal(story.canonical_game, "Grand Theft Auto VI");
-  assert.equal(story.direct_media_candidates.length, 3);
+  assert.equal(story.direct_media_candidates.length, 4);
   assert.deepEqual(
     story.direct_media_candidates.map((entry) => entry.source_family),
     [
       "rockstar_gta_vi_cover_art_animation",
       "rockstar_gta_vi_trailer_2",
       "rockstar_gta_vi_trailer_1",
+      "rockstar_gta_vi_site_motion_lucia_neon",
     ],
   );
   assert.equal(story.primary_source.name, "GameSpot");

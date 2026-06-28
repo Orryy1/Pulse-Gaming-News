@@ -6624,6 +6624,98 @@ test("attachPreflightQa does not supersede voice cadence blockers with current p
   assert.equal(report.preflight_qa.pass, 0);
 });
 
+test("attachPreflightQa does not supersede risky GTA VI TTS script blockers with current proof packages", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-proof-gta-tts-"));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "current-green-gta-tts-fail", videoPath);
+
+  const stories = [
+    baseStory({
+      id: "current-green-gta-tts-fail",
+      title: "GTA VI Starts The Preorder Fight",
+      selected_title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      source_type: "rss",
+      timestamp: "2026-06-26T09:30:00.000Z",
+      source_manifest: {
+        primary_source: {
+          name: "Rockstar Games",
+          url: "https://www.rockstargames.com/VI",
+          published_at: "2026-06-26T09:30:00.000Z",
+        },
+        source_age_policy_hours: 168,
+      },
+      full_script:
+        "Grand Theft Auto VI now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+      tts_script:
+        "Grand Theft Auto V I now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+      duration_seconds: 44.1,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      auto_approved: true,
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "GTA VI Starts The Preorder Fight" },
+          instagram_reels: { caption: "GTA VI now has one real preorder catch." },
+          facebook_reels: { page_caption: "GTA VI now has one real preorder catch." },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-26T22:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    env: {
+      TIKTOK_ENABLED: "false",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "false",
+    },
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({
+      result: "fail",
+      failures: ["risky_gta_vi_tts_script:tts_script"],
+      warnings: [],
+    }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(candidate.reasons.includes("preflight_qa_blocked"));
+  assert.ok(!candidate.reasons.includes("current_green_proof_package"));
+  assert.ok(
+    candidate.preflight_qa.blockers.includes("content:risky_gta_vi_tts_script:tts_script"),
+  );
+  assert.equal(report.preflight_qa.blocked, 1);
+  assert.equal(report.preflight_qa.pass, 0);
+});
+
 test("attachPreflightQa does not supersede missing HyperFrames dwell evidence", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-hf-missing-dwell-"));
   const videoPath = path.join(tmp, "visual_v4_render.mp4");

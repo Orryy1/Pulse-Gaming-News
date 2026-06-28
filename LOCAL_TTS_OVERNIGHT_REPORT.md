@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-06-28T17:09:21.819Z
+Generated: 2026-06-28T20:09:37.243Z
 Verdict: AMBER
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted

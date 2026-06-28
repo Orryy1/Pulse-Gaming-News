@@ -92,3 +92,112 @@ test("heartbeat extends a claimed job with a real future lease", () => {
     db.close();
   }
 });
+
+test("claim skips pending jobs that already exhausted max attempts", () => {
+  const db = createJobsDb();
+  try {
+    const jobs = bind(db);
+    const exhausted = jobs.enqueue({
+      kind: "publish",
+      priority: 1,
+      max_attempts: 1,
+    });
+    db.prepare(`UPDATE jobs SET attempt_count = max_attempts WHERE id = ?`).run(
+      exhausted.id,
+    );
+    const fresh = jobs.enqueue({
+      kind: "publish",
+      priority: 20,
+      max_attempts: 3,
+    });
+
+    const claimed = jobs.claim("worker-exhaustion-test", { leaseMs: 60_000 });
+
+    assert.equal(claimed.id, fresh.id);
+    assert.equal(claimed.attempt_count, 1);
+    assert.equal(jobs.get(exhausted.id).attempt_count, 1);
+  } finally {
+    db.close();
+  }
+});
+
+test("reapStaleClaims fails stale claimed jobs that exhausted max attempts", () => {
+  const db = createJobsDb();
+  try {
+    const jobs = bind(db);
+    const queued = jobs.enqueue({
+      kind: "publish",
+      priority: 1,
+      max_attempts: 1,
+    });
+    const claimed = jobs.claim("worker-stale-exhausted-test", {
+      leaseMs: 60_000,
+    });
+    assert.equal(claimed.id, queued.id);
+    db.prepare(
+      `UPDATE jobs
+       SET status = 'running',
+           lease_until = datetime('now', '-1 minute')
+       WHERE id = ?`,
+    ).run(claimed.id);
+
+    const changed = jobs.reapStaleClaims();
+
+    assert.equal(changed, 1);
+    const reaped = jobs.get(claimed.id);
+    assert.equal(reaped.status, "failed");
+    assert.equal(reaped.claimed_by, null);
+    assert.equal(reaped.lease_until, null);
+    assert.match(reaped.last_error, /exceeded max attempts/);
+    assert.ok(reaped.completed_at);
+
+    const run = db
+      .prepare(`SELECT * FROM job_runs WHERE job_id = ?`)
+      .get(claimed.id);
+    assert.equal(run.status, "failed");
+    assert.ok(run.finished_at);
+    assert.match(run.error_message, /exceeded max attempts/);
+  } finally {
+    db.close();
+  }
+});
+
+test("reapStaleClaims recycles retryable stale claims and closes the stale run", () => {
+  const db = createJobsDb();
+  try {
+    const jobs = bind(db);
+    const queued = jobs.enqueue({
+      kind: "publish",
+      priority: 1,
+      max_attempts: 2,
+    });
+    const claimed = jobs.claim("worker-stale-retry-test", {
+      leaseMs: 60_000,
+    });
+    assert.equal(claimed.id, queued.id);
+    db.prepare(
+      `UPDATE jobs
+       SET status = 'running',
+           lease_until = datetime('now', '-1 minute')
+       WHERE id = ?`,
+    ).run(claimed.id);
+
+    const changed = jobs.reapStaleClaims();
+
+    assert.equal(changed, 1);
+    const reaped = jobs.get(claimed.id);
+    assert.equal(reaped.status, "pending");
+    assert.equal(reaped.claimed_by, null);
+    assert.equal(reaped.lease_until, null);
+    assert.equal(reaped.attempt_count, 1);
+
+    const run = db
+      .prepare(`SELECT * FROM job_runs WHERE job_id = ?`)
+      .get(claimed.id);
+    assert.equal(run.status, "failed");
+    assert.ok(run.finished_at);
+    assert.match(run.error_message, /stale claim/);
+  } finally {
+    db.close();
+  }
+});

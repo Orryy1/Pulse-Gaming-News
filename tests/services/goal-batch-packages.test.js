@@ -1091,6 +1091,41 @@ test("goal batch package proof preparation writes concrete GTA VI preorder scrip
   assert.doesNotMatch(prepared.full_script, /source-backed update|this story finally has something specific/i);
 });
 
+test("goal batch package fallback scripts avoid generic player-test templates", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "guilty-gear-robo-ky-fallback",
+      title: "GUILTY GEAR -STRIVE- Robo-Ky Official Trailer",
+      source_title: "GUILTY GEAR -STRIVE- Robo-Ky Official Trailer",
+      primary_source: "GameSpot",
+      source_name: "GameSpot",
+      source_type: "rss",
+      article_url: "https://www.gamespot.com/videos/guilty-gear-strive-robo-ky-official-trailer/",
+      full_script: "source-backed update clean read",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: prepared.id,
+      title: prepared.public_title,
+      source_name: "GameSpot",
+    },
+    script: prepared.full_script,
+  });
+
+  assert.equal(prepared.canonical_subject, "GUILTY GEAR -STRIVE- Robo-Ky");
+  assert.doesNotMatch(prepared.full_script, /\bRobo-Ky Official\b/i);
+  assert.doesNotMatch(prepared.public_title, /^why\s+.+\s+could\s+split\s+players/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /one clear detail players can check|the player test is simple|background noise|this story finally has something specific|has shown enough footage/i,
+  );
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+  assert.deepEqual(scorecard.blockers, []);
+});
+
 test("goal batch package proof preparation promotes named game over generic platform source labels", () => {
   const prepared = prepareStoryForGoalProof(
     {

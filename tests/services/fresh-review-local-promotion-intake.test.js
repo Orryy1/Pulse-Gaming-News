@@ -164,6 +164,57 @@ test("fresh review local promotion intake attaches known official GTA VI direct 
   assert.equal(story.primary_source.name, "GameSpot");
 });
 
+test("fresh review local promotion intake does not promote GTA context as the canonical game", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [
+      sourceBackedReviewRow({
+        id: "rss_lords_delay",
+        story_id: "rss_lords_delay",
+        title: "Lords Of The Fallen 2 Delayed To Avoid GTA 6 And Get More Enhancements",
+        description:
+          "GameSpot reports Lords of the Fallen 2 was delayed to avoid GTA 6 and get more enhancement time.",
+        article_url:
+          "https://www.gamespot.com/articles/lords-of-the-fallen-2-delayed-to-avoid-gta-6-and-get-more-enhancements/",
+        source_name: "GameSpot",
+        source_published_at: "2026-06-23T20:05:34.000Z",
+      }),
+    ],
+    plan: {
+      summary: { selected_count: 1 },
+      source_bound_rewrite_work_orders: [{ story_id: "rss_lords_delay" }],
+    },
+    now: new Date("2026-06-23T21:00:00.000Z"),
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_lords_delay",
+        title: "Lords Of The Fallen 2 Dodges GTA 6",
+        suggested_title: "Lords Of The Fallen 2 Dodges GTA 6",
+        suggested_thumbnail_text: "GTA 6 TRAFFIC",
+        source_name: "GameSpot",
+        article_url:
+          "https://www.gamespot.com/articles/lords-of-the-fallen-2-delayed-to-avoid-gta-6-and-get-more-enhancements/",
+        source_type: "rss",
+        source_published_at: "2026-06-23T20:05:34.000Z",
+        source_confidence_score: 90,
+        confirmed_claims: [
+          "GameSpot reports Lords of the Fallen 2 was delayed to avoid GTA 6 and get more enhancement time.",
+        ],
+        full_script:
+          "Lords of the Fallen 2 just blinked first in the GTA 6 traffic jam. GameSpot reports the sequel was delayed to avoid GTA 6 and give the team more enhancement time before launch. That matters because avoiding Rockstar is not ordinary scheduling; it tells players this calendar is dangerous enough to reshape a game's rollout before marketing even starts. If the enhancements are real, this looks disciplined. If not, players will remember it as a retreat. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
+  });
+
+  const story = report.fresh_source_intake_stories[0];
+  assert.equal(report.summary.local_promotion_story_count, 1);
+  assert.equal(story.canonical_subject, "Lords of the Fallen 2");
+  assert.equal(story.canonical_game, "Lords of the Fallen 2");
+  assert.equal(story.direct_media_candidates, undefined);
+  assert.match(story.suggested_thumbnail_text, /LORDS/i);
+  assert.doesNotMatch(story.suggested_thumbnail_text, /^GTA\b/i);
+});
+
 test("fresh review local promotion intake rejects generic source-bound scaffolds", async () => {
   const report = await buildFreshReviewLocalPromotionIntake({
     rows: [

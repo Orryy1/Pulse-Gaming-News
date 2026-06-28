@@ -116,6 +116,35 @@ test("fresh review script repair excludes Prime Day shopping deal rows", () => {
   assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
 });
 
+test("fresh review script repair excludes motion-poor retail and platform-service rows", () => {
+  const selected = selectFreshReviewScriptRepairRows([
+    row({ story_id: "fresh_good" }),
+    row({
+      story_id: "xbox_price_rise",
+      title: "Microsoft Announces Significant Price Rises for Xbox Series X and S, 2TB Model Discontinued",
+      url: "https://www.ign.com/articles/microsoft-announces-significant-price-rises-for-xbox-series-x-and-s",
+      article_url: "https://www.ign.com/articles/microsoft-announces-significant-price-rises-for-xbox-series-x-and-s",
+      total: 77,
+    }),
+    row({
+      story_id: "gta_physical_release",
+      title: "GTA 6 has no plans for a post-launch physical release, not at launch and not months later, insists new report",
+      url: "https://www.gamesradar.com/games/grand-theft-auto/gta-6-has-no-plans-for-a-post-launch-physical-release/",
+      article_url: "https://www.gamesradar.com/games/grand-theft-auto/gta-6-has-no-plans-for-a-post-launch-physical-release/",
+      total: 76,
+    }),
+    row({
+      story_id: "metroid_lowest_price",
+      title: "Metroid Prime 4 Hits Its Lowest Price Ever for Switch 2, But Use This Simple Trick to Save Even More",
+      url: "https://www.ign.com/articles/metroid-prime-4-lowest-price-switch-2",
+      article_url: "https://www.ign.com/articles/metroid-prime-4-lowest-price-switch-2",
+      total: 75,
+    }),
+  ], { now: NOW, limit: 10 });
+
+  assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
+});
+
 test("fresh review script repair excludes stale, non-script, published and reddit-only rows", () => {
   const selected = selectFreshReviewScriptRepairRows([
     row({ story_id: "fresh_good" }),

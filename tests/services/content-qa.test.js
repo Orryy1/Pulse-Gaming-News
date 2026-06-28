@@ -1031,6 +1031,71 @@ test("runContentQa: production auto-publish blocks malformed GTA VI narration st
   }
 });
 
+test("runContentQa: production auto-publish blocks GTA VI word-level stutters even when metadata transcript is clean", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-production-word-stutter-"));
+  const artifactDir = path.join(tmp, "story");
+  const audioDir = path.join(artifactDir, "audio");
+  const mp4 = path.join(artifactDir, "visual_v4_render.mp4");
+  const audio = path.join(audioDir, "narration.mp3");
+  const timestamps = path.join(audioDir, "word_timestamps.json");
+  const cleanTranscript =
+    "Rockstar's next Grand Theft Auto starts the preorder fight. Follow Pulse Gaming so you never miss a beat.";
+  await fs.ensureDir(audioDir);
+  await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
+  await fs.writeFile(audio, Buffer.from("fake elevenlabs audio"));
+  await fs.writeJson(timestamps, {
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      transcript: cleanTranscript,
+      spoken_text: cleanTranscript,
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+    words: [
+      { word: "GTA", start: 0, end: 0.2 },
+      { word: "si-six", start: 0.2, end: 0.42 },
+      { word: "starts", start: 0.42, end: 0.7 },
+      { word: "the", start: 0.7, end: 0.82 },
+      { word: "preorder", start: 0.82, end: 1.16 },
+      { word: "fight", start: 1.16, end: 1.45 },
+      { word: "Follow", start: 1.45, end: 1.74 },
+      { word: "Pulse", start: 1.74, end: 2.02 },
+      { word: "Gaming", start: 2.02, end: 2.34 },
+      { word: "so", start: 2.34, end: 2.48 },
+      { word: "you", start: 2.48, end: 2.62 },
+      { word: "never", start: 2.62, end: 2.9 },
+      { word: "miss", start: 2.9, end: 3.1 },
+      { word: "a", start: 3.1, end: 3.18 },
+      { word: "beat", start: 3.18, end: 3.5 },
+    ],
+  });
+
+  try {
+    const qa = await runContentQa(
+      goodStory({
+        exported_path: mp4,
+        audio_path: audio,
+        word_timestamps_path: timestamps,
+        full_script: goodStory().full_script.replace("A dead franchise", "GTA VI"),
+      }),
+      {
+        env: {
+          DEPLOYMENT_MODE: "production",
+          AUTO_PUBLISH: "true",
+        },
+      },
+    );
+
+    assert.strictEqual(qa.result, "fail", JSON.stringify(qa));
+    assert.ok(qa.failures.includes("approved_voice:gta_vi_spoken_stutter"));
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("runContentQa: production auto-publish blocks split GTA VI roman narration", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-production-roman-split-"));
   const artifactDir = path.join(tmp, "story");

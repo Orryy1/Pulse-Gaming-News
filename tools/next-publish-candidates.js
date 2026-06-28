@@ -2993,7 +2993,11 @@ function gtaViOpeningVoiceRiskEvidence(...texts) {
   for (const [label, text] of texts) {
     if (hasGtaViSpokenSixInOpening(text)) openingRiskSources.push(label);
     if (
-      (label === "recorded_spoken_text" || label === "expected_spoken_text") &&
+      (
+        label === "recorded_spoken_text" ||
+        label === "recorded_word_text" ||
+        label === "expected_spoken_text"
+      ) &&
       hasGtaViSpokenSix(text)
     ) {
       spokenSixSources.push(label);
@@ -3019,6 +3023,12 @@ function gtaViOpeningVoiceRiskEvidence(...texts) {
       gta_vi_spoken_roman_split_sources: romanSplitSources,
     },
   };
+}
+
+function timestampWordTextForVoicePronunciation(payload = {}) {
+  const words = timestampWordsForPayload(payload);
+  if (!words.length) return "";
+  return cleanText(words.map((word) => word.text).filter(Boolean).join(" "));
 }
 
 function expectedSpokenTextForVoicePreflight(story = {}) {
@@ -3050,9 +3060,16 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
   );
   const actualProfile = cleanText(meta.ttsPronunciationProfileVersion);
   const recordedSpoken = cleanText(meta.spoken_text || meta.transcript || meta.text);
+  const rawRecordedWordText = timestampWordTextForVoicePronunciation(timestampPayload);
+  const recordedWordText =
+    rawRecordedWordText &&
+    comparableVoiceText(rawRecordedWordText) !== comparableVoiceText(recordedSpoken)
+      ? rawRecordedWordText
+      : "";
   const openingRisk = gtaViOpeningVoiceRiskEvidence(
     ["expected_spoken_text", expectedSpoken],
     ["recorded_spoken_text", recordedSpoken],
+    ["recorded_word_text", recordedWordText],
     ["raw_spoken_text", rawSpoken],
   );
   const profileSensitive =
@@ -3108,6 +3125,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       gta_vi_pronunciation_sensitive: gtaViPronunciationSensitive,
       expected_spoken_text: expectedSpoken,
       recorded_spoken_text: recordedSpoken || null,
+      recorded_word_text: recordedWordText || null,
       ...openingRisk.evidence,
     },
   };

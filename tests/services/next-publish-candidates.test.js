@@ -3775,6 +3775,85 @@ test("attachPreflightQa blocks exact GTA VI si-six stutters in recorded opening 
   );
 });
 
+test("attachPreflightQa blocks GTA VI word-level stutters even when timestamp metadata is clean", async () => {
+  const cleanSpoken =
+    "Rockstar's next Grand Theft Auto just turned pre orders into a buy, wait or skip argument. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const actualWords =
+    "GTA si-six just turned pre orders into a buy wait or skip argument Follow Pulse Gaming so you never miss a beat"
+      .split(/\s+/)
+      .map((word, index) => ({
+        word,
+        start: Number((index * 0.45).toFixed(2)),
+        end: Number((index * 0.45 + 0.22).toFixed(2)),
+      }));
+  actualWords[actualWords.length - 1].end = Number((actualWords.length * 0.45).toFixed(2));
+  const stories = [
+    baseStory({
+      id: "current_gta_vi_word_level_si_six_stutter",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      narration_script:
+        "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      tts_script: cleanSpoken,
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 151.2,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      word_timestamps_payload: {
+        words: actualWords,
+        meta: {
+          transcript: cleanSpoken,
+          spoken_text: cleanSpoken,
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v7",
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-28T16:55:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes("voice_quality:gta_vi_spoken_stutter"),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.deepEqual(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_spoken_stutter_sources,
+    ["recorded_word_text"],
+  );
+});
+
 test("attachPreflightQa blocks stale spaced GTA six timestamp speech even without a voice report", async () => {
   const spoken =
     "G T A six now has a date players can plan around. " +

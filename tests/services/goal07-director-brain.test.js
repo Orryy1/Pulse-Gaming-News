@@ -205,6 +205,45 @@ test("Goal 07 director brain blocks source and proof cards that are too quick to
   assert.equal(report.stories[0].metrics.too_short_readable_card_count, 2);
 });
 
+test("Goal 07 director brain does not count readable source overlays as card-only beats over live motion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-overlay-card-motion-"));
+  const overlayPlan = readyDirectorPlan("story-overlay-card-motion");
+  overlayPlan.sound_transition_plan.duration_s = 36;
+  overlayPlan.shot_budget.max_static_card_ratio = 0.28;
+  overlayPlan.shot_budget.max_static_card_seconds = 14;
+  overlayPlan.shot_plan = [
+    { id: "hook_slam", kind: "hook_slam", startS: 0, durationS: 2.4, label: "THE HEADLINE", visual_treatment: "instant motion hit, no text stack" },
+    { id: "motion_clip_01", kind: "motion_clip", startS: 0.35, durationS: 3.6, source_family: "clip_1", media_path: "output/video/clip-1.mp4" },
+    { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 12, source: "IGN", visual_treatment: "large readable source bug" },
+    { id: "proof_card", kind: "proof_card", startS: 4.45, durationS: 12, label: "PROOF", visual_treatment: "large readable source card" },
+    { id: "motion_clip_02", kind: "motion_clip", startS: 5.2, durationS: 3.6, source_family: "clip_2", media_path: "output/video/clip-2.mp4" },
+    { id: "motion_clip_03", kind: "motion_clip", startS: 10.8, durationS: 3.6, source_family: "clip_3", media_path: "output/video/clip-3.mp4" },
+    { id: "motion_clip_04", kind: "motion_clip", startS: 16.6, durationS: 3.6, source_family: "clip_4", media_path: "output/video/clip-4.mp4" },
+    { id: "motion_clip_05", kind: "motion_clip", startS: 23.4, durationS: 3.6, source_family: "clip_5", media_path: "output/video/clip-5.mp4" },
+  ];
+  overlayPlan.sfx_plan.cues = overlayPlan.shot_plan.map((shot, index) => ({
+    id: `sfx_${index + 1}`,
+    target: shot.id,
+    target_kind: shot.kind,
+    atS: shot.startS,
+    family: index % 2 ? "whoosh" : "transition_hit",
+  }));
+  overlayPlan.sfx_plan.cue_count = overlayPlan.sfx_plan.cues.length;
+  const storyPackage = await makePackage(root, "story-overlay-card-motion", overlayPlan);
+
+  const report = await buildGoal07DirectorBrain({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-07"),
+    generatedAt: "2026-06-28T05:30:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.stories[0].metrics.card_seconds, 5.3);
+  assert.equal(report.stories[0].metrics.card_ratio, 0.147);
+  assert.ok(!report.stories[0].blockers.includes("director:too_many_card_only_beats"));
+});
+
 test("Goal 07 director brain blocks repeated timestamp windows from the same base video", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-base-source-repeat-"));
   const repeatedBasePlan = readyDirectorPlan("story-base-source-repeat");
@@ -233,6 +272,35 @@ test("Goal 07 director brain blocks repeated timestamp windows from the same bas
   assert.equal(report.stories[0].metrics.motion_shot_count, 5);
   assert.equal(report.stories[0].metrics.distinct_motion_family_count, 5);
   assert.equal(report.stories[0].metrics.distinct_motion_source_asset_count, 2);
+});
+
+test("Goal 07 director brain blocks repeated exact motion clip assets even when labels look diverse", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-repeated-clip-asset-"));
+  const repeatedClipPlan = readyDirectorPlan("story-repeated-clip-asset");
+  let index = 0;
+  for (const shot of repeatedClipPlan.shot_plan) {
+    if (shot.kind !== "motion_clip") continue;
+    index += 1;
+    shot.source_family = `unique_family_${index}`;
+    shot.media_path = index <= 3
+      ? "output/video/reused-hook-loop.mp4"
+      : `output/video/unique-clip-${index}.mp4`;
+    shot.media_start_s = 0;
+    shot.media_end_s = 3;
+  }
+  const storyPackage = await makePackage(root, "story-repeated-clip-asset", repeatedClipPlan);
+
+  const report = await buildGoal07DirectorBrain({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-07"),
+    generatedAt: "2026-06-28T05:15:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].blockers.includes("director:repeated_motion_clip_asset"));
+  assert.equal(report.stories[0].metrics.repeated_motion_clip_asset_count, 1);
+  assert.equal(report.stories[0].metrics.repeated_motion_clip_instance_count, 3);
 });
 
 test("Goal 07 director brain blocks upstream director holds without pretending the plan is ready", async () => {

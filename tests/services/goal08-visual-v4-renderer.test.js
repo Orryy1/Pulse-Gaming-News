@@ -170,6 +170,43 @@ test("Goal 08 reports hard visual renderer failures without weakening production
   assert.equal(report.safety.no_publish_triggered, true);
 });
 
+test("Goal 08 does not block readable source overlays as dense overlays when live motion remains underneath", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal08-overlay-card-motion-"));
+  const story = await makeStory(root, "story-overlay-card-motion", {
+    shots: [
+      { id: "hook", kind: "hook_slam", startS: 0, durationS: 2.4 },
+      { id: "clip-a", kind: "motion_clip", startS: 0.35, durationS: 3.6, source_family: "a", media_path: "clip-a.mp4" },
+      { id: "source", kind: "source_lock", startS: 2.75, durationS: 12, source: "IGN", visual_treatment: "large readable source bug" },
+      { id: "proof", kind: "proof_card", startS: 4.45, durationS: 12, label: "PROOF", visual_treatment: "large readable source card" },
+      { id: "clip-b", kind: "motion_clip", startS: 5.2, durationS: 3.6, source_family: "b", media_path: "clip-b.mp4" },
+      { id: "clip-c", kind: "motion_clip", startS: 10.8, durationS: 3.6, source_family: "c", media_path: "clip-c.mp4" },
+      { id: "clip-d", kind: "motion_clip", startS: 16.6, durationS: 3.6, source_family: "d", media_path: "clip-d.mp4" },
+      { id: "clip-e", kind: "motion_clip", startS: 23.4, durationS: 3.6, source_family: "e", media_path: "clip-e.mp4" },
+    ],
+    transitions: [
+      { into: "clip-a", family: "speed_ramp" },
+      { into: "source", family: "source_wipe" },
+      { into: "proof", family: "hard_cut" },
+      { into: "clip-b", family: "whip_pan" },
+    ],
+  });
+
+  const report = await buildGoal08VisualV4Renderer({
+    storyPackages: [story],
+    upstreamDirectorReport: {
+      stories: [{ story_id: "story-overlay-card-motion", status: "ready", blockers: [] }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-06-28T05:45:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.summary.visual_ready_story_count, 1);
+  assert.equal(report.mobile_readability_report.stories[0].card_ratio, 0.196);
+  assert.ok(!report.stories[0].blockers.includes("visual:dense_overlays"));
+});
+
 test("Goal 08 writes the required renderer artefacts as JSON and Markdown", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal08-write-"));
   const story = await makeStory(root, "story-ready");

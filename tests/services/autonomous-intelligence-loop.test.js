@@ -511,6 +511,120 @@ test("fresh refill repair filter skips already scheduler-ready stories", async (
   }
 });
 
+test("fresh refill repair filter quarantines motion-poor service stories without direct video runway", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-motion-runway-"));
+  const packagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+  const priceDir = path.join(tmp, "xbox_price_story");
+  const directDir = path.join(tmp, "direct_motion_story");
+
+  try {
+    await fs.mkdir(priceDir, { recursive: true });
+    await fs.mkdir(directDir, { recursive: true });
+    await fs.writeFile(
+      path.join(priceDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "xbox_price_story",
+        selected_title: "Xbox Console Prices Just Became The Trust Test",
+        canonical_subject: "Xbox console prices",
+        narration_script:
+          "Xbox console prices just became the trust test. Xbox Wire says hardware prices changed again, and that matters because players now have to decide whether buying in still makes sense. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(priceDir, "source_manifest.json"),
+      JSON.stringify({
+        story_id: "xbox_price_story",
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/06/25/xbox-console-price-update/",
+        },
+        direct_media_candidates: [],
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(priceDir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: "xbox_price_story",
+        verdict: "viral_ready",
+        blockers: [],
+        failures: [],
+      }),
+    );
+
+    await fs.writeFile(
+      path.join(directDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "direct_motion_story",
+        selected_title: "MARVEL Tokon Finally Shows Real Gameplay",
+        canonical_subject: "MARVEL Tokon",
+        narration_script:
+          "MARVEL Tokon finally has real gameplay on screen. The new trailer gives players something concrete to judge: team pace, tag chaos and whether the roster can carry a serious fighter. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(directDir, "source_manifest.json"),
+      JSON.stringify({
+        story_id: "direct_motion_story",
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        direct_media_candidates: [
+          {
+            direct_media_url: "https://example.com/marvel-tokon-gameplay.mp4",
+            source_type: "official_game_website_media_page",
+            source_owner: "Arc System Works",
+          },
+        ],
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(directDir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: "direct_motion_story",
+        verdict: "viral_ready",
+        blockers: [],
+        failures: [],
+      }),
+    );
+
+    await fs.writeFile(
+      packagesPath,
+      JSON.stringify([
+        {
+          story_id: "xbox_price_story",
+          title: "Xbox Console Prices Just Became The Trust Test",
+          artifact_dir: priceDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+        {
+          story_id: "direct_motion_story",
+          title: "MARVEL Tokon Finally Shows Real Gameplay",
+          artifact_dir: directDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+      ]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath: packagesPath,
+      outputDir,
+    });
+
+    assert.deepEqual(result.eligibleRows.map((row) => row.story_id), ["direct_motion_story"]);
+    assert.deepEqual(result.quarantinedRows.map((row) => row.story_id), ["xbox_price_story"]);
+    assert.deepEqual(result.quarantinedRows[0].reasons, ["motion_runway_unfit_for_automatic_refill"]);
+    const quarantineReport = JSON.parse(await fs.readFile(result.quarantineReportPath, "utf8"));
+    assert.equal(quarantineReport.summary.motion_runway_quarantined_story_package_count, 1);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh production refill handler builds live-RSS local proof packages", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

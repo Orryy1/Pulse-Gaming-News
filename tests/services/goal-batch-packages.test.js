@@ -1773,6 +1773,23 @@ test("goal batch package proof preparation writes concrete scripts for fresh ref
       required: [/Black Ops/i, /price|nostalgia/i, /PlayStation listings|ports/i],
       expectedTitle: "Black Ops Classics Have A Price Problem",
     },
+    {
+      story: {
+        id: "rss_age_of_empires_mobile_pc",
+        title: "Why Age of Empires Mobile Could Split Players",
+        canonical_subject: "Age of Empires Mobile",
+        canonical_game: "Age of Empires Mobile",
+        source_type: "rss",
+        source_name: "Xbox Wire",
+        article_url:
+          "https://www.ageofempires.com/news/age-of-empires-mobile-pc-edition-available-now/",
+        confirmed_claims: ["Age of Empires Mobile PC Edition is available now"],
+        full_script:
+          "Age of Empires Mobile just crossed into a dangerous comparison. Xbox Wire says the PC Edition is available now. Moving a mobile strategy game onto PC means players will judge it beside the mainline series, not just phone-game expectations. Follow Pulse Gaming so you never miss a beat.",
+      },
+      required: [/Age of Empires Mobile/i, /PC Edition|PC/i, /mouse|keyboard|mainline|mobile roots/i],
+      expectedTitle: "Age of Empires Mobile Has A PC Edition Test",
+    },
   ];
 
   for (const item of cases) {
@@ -1784,9 +1801,11 @@ test("goal batch package proof preparation writes concrete scripts for fresh ref
     for (const required of item.required) assert.match(prepared.full_script, required);
     assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
     assert.doesNotMatch(prepared.public_title, /Could Split Players/i);
+    assert.doesNotMatch(prepared.public_title, /Player-Return Problem/i);
     if (item.expectedTitle) assert.equal(prepared.public_title, item.expectedTitle);
     const pack = buildGoalProofPackage({ story: prepared });
     assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players/i);
+    assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Player-Return Problem/i);
     if (item.expectedTitle) assert.equal(pack.canonical_story_manifest.public_title, item.expectedTitle);
     assert.equal(evaluateGoalPublicCopy({
       ...prepared,

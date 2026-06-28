@@ -3133,14 +3133,35 @@ async function voiceQualityPreflightForStory(story = {}) {
       report = null;
     }
   }
-  if (!report) return null;
+  const timestampEvidence = await readTimestampPayloadForStory(story);
+  const pronunciationProfile = voicePronunciationProfileEvidence(
+    story,
+    timestampEvidence.payload || {},
+  );
+  if (!report) {
+    const hardPronunciationFailures = pronunciationProfile.failures.filter((failure) =>
+      /^gta_vi_/.test(failure),
+    );
+    if (!hardPronunciationFailures.length) {
+      return null;
+    }
+    return {
+      result: "fail",
+      failures: [...new Set(hardPronunciationFailures)],
+      warnings: [],
+      evidence: {
+        voice_quality_report_path: reportPath || null,
+        word_timestamps_path: timestampEvidence.path || null,
+        ...pronunciationProfile.evidence,
+      },
+    };
+  }
 
   const audioManifest = firstObjectValue(
     story.audio_manifest,
     story.final_audio_manifest,
     await readArtifactJsonObjectForStory(story, "audio_manifest.json"),
   );
-  const timestampEvidence = await readTimestampPayloadForStory(story);
   const segmentationEvidence = localTtsSegmentationEvidence({
     story,
     report,
@@ -3151,10 +3172,6 @@ async function voiceQualityPreflightForStory(story = {}) {
   const currentCadence = timestampCadenceEvidence(timestampEvidence.payload || {});
   const currentCadenceFailures = timestampCadenceFailures(currentCadence, report);
   const currentCadenceWarnings = timestampCadenceWarnings(currentCadence, report);
-  const pronunciationProfile = voicePronunciationProfileEvidence(
-    story,
-    timestampEvidence.payload || {},
-  );
   const verdict = cleanText(report.verdict || report.status || report.result).toLowerCase();
   const blockers = [
     ...asArray(report.blockers || report.failures),

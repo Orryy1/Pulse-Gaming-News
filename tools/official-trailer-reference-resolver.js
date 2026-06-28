@@ -148,19 +148,54 @@ async function readAdjacentJsonIfPresent(baseDir, basename, fallback = null) {
   return fallback;
 }
 
+async function resolveArtifactDir(row, storyJsonPath) {
+  const artifactDir = String(row?.artifact_dir || row?.artifactDir || "").trim();
+  if (!artifactDir) return null;
+  if (path.isAbsolute(artifactDir)) {
+    return (await fs.pathExists(artifactDir)) ? artifactDir : null;
+  }
+  const baseDir = path.dirname(storyJsonPath);
+  const candidates = [
+    path.resolve(baseDir, artifactDir),
+    path.resolve(ROOT, artifactDir),
+  ];
+  for (const candidate of candidates) {
+    if (await fs.pathExists(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+
+async function readFirstJsonIfPresent(baseDirs, basename, fallback = null) {
+  for (const baseDir of baseDirs.filter(Boolean)) {
+    const value = await readAdjacentJsonIfPresent(baseDir, basename, null);
+    if (value) return value;
+  }
+  return fallback;
+}
+
 async function enrichStoryJsonRowFromAdjacent(row, storyJsonPath) {
   if (!row || typeof row !== "object") return row;
   const baseDir = path.dirname(storyJsonPath);
-  const enriched = { ...row };
+  const artifactDir = await resolveArtifactDir(row, storyJsonPath);
+  const sourceDirs = Array.from(new Set([baseDir, artifactDir].filter(Boolean)));
+  const canonicalManifest = await readFirstJsonIfPresent(
+    sourceDirs,
+    "canonical_story_manifest.json",
+    null,
+  );
+  const enriched =
+    canonicalManifest && typeof canonicalManifest === "object"
+      ? { ...canonicalManifest, ...row }
+      : { ...row };
   if (!enriched.rights_ledger && !enriched.rights_records) {
-    const rightsLedger = await readAdjacentJsonIfPresent(baseDir, "rights_ledger.json", null);
+    const rightsLedger = await readFirstJsonIfPresent(sourceDirs, "rights_ledger.json", null);
     if (rightsLedger) enriched.rights_ledger = rightsLedger;
   }
   if (!enriched.footage_inventory) {
-    const footageInventory = await readAdjacentJsonIfPresent(baseDir, "footage_inventory.json", null);
+    const footageInventory = await readFirstJsonIfPresent(sourceDirs, "footage_inventory.json", null);
     if (footageInventory) enriched.footage_inventory = footageInventory;
   }
-  const renderStory = await readAdjacentJsonIfPresent(baseDir, "visual_v4_render_story.json", null);
+  const renderStory = await readFirstJsonIfPresent(sourceDirs, "visual_v4_render_story.json", null);
   if (renderStory && typeof renderStory === "object") {
     for (const key of [
       "downloaded_images",

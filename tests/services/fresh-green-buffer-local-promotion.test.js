@@ -429,10 +429,62 @@ test("fresh buffer local render work order emits context-aware auto repair comma
   assert.ok(realMotionCommand.includes("--min-clips 8 --min-families 5 --max-clips 8"));
   assert.ok(audioCommand?.includes(`--work-order ${cmdPath(renderInputWorkOrderPath)}`));
   assert.ok(audioCommand?.includes(`--out-dir ${cmdPath(continuationDir)}`));
-  assert.ok(renderCommand?.includes(`--work-order ${cmdPath(renderInputWorkOrderPath)}`));
-  assert.ok(renderCommand?.includes(`--out-dir ${cmdPath(continuationDir)}`));
+  assert.equal(renderCommand, undefined);
   assert.doesNotMatch(joined, /output\/goal-contract\/render_input_work_order\.json/);
   assert.doesNotMatch(joined, /output\/goal-contract\/production_cutover_story_packages\.json/);
+});
+
+test("fresh buffer local render work order holds motion and render auto-repair without segment validation", () => {
+  const generatedAt = "2026-06-28T04:45:00.000Z";
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-motion-validation-required-"));
+  const contractDir = path.join(root, "goal-contract", "motion-hydrated");
+  const proofRoot = path.join(root, "goal-proof-batch", "motion-hydrated");
+  const artifactDir = path.join(proofRoot, "story-needs-segment-validation");
+  const continuationDir = path.join(contractDir, "materialization-continuation");
+  fs.mkdirSync(artifactDir, { recursive: true });
+
+  const workOrder = buildLocalPromotionRenderInputWorkOrder({
+    generatedAt,
+    storyPackagesPath: path.join(contractDir, "story-packages.json"),
+    outputDir: continuationDir,
+    renderInputWorkOrderPath: path.join(continuationDir, "render_input_work_order.json"),
+    packages: [
+      {
+        story_id: "story-needs-segment-validation",
+        title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+        artifact_dir: artifactDir,
+        canonical_subject: "GUILTY GEAR -STRIVE- Robo-Ky Official",
+        primary_source: "GameSpot",
+        primary_source_url: "https://www.gamespot.com/articles/example/1100-6532801/",
+        source_published_at: "2026-06-27T12:00:00.000Z",
+        status: "needs_media_house_render_proof",
+        verdict: "local_proof_pending",
+      },
+    ],
+  });
+
+  const job = workOrder.jobs[0];
+  const motionAction = job.actions.find((action) => action.action_id === "materialise_validated_real_motion_clips");
+  const renderAction = job.actions.find((action) => action.action_id === "repair_render_manifest");
+  const autoCommands = workOrder.auto_repair_plan.items
+    .map((item) => item.recommended_command)
+    .filter(Boolean)
+    .join("\n");
+
+  assert.equal(motionAction.repair_lane, "official_motion_segment_validation_required");
+  assert.equal(motionAction.auto_repairable, false);
+  assert.equal(motionAction.operator_approval_required, true);
+  assert.equal(renderAction.auto_repairable, false);
+  assert.ok(renderAction.evidence.prerequisite_blockers.includes("materialised_motion_clips_missing"));
+  assert.doesNotMatch(autoCommands, /ops:goal-real-motion/);
+  assert.doesNotMatch(autoCommands, /ops:goal-production-render/);
+  assert.equal(
+    workOrder.auto_repair_plan.items.some((item) =>
+      item.blocker_type === "materialise_validated_real_motion_clips" ||
+      item.blocker_type === "repair_render_manifest"
+    ),
+    false,
+  );
 });
 
 test("fresh buffer local render work order consumes current materialised motion package evidence", async () => {

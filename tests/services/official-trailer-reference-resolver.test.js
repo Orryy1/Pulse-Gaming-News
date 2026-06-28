@@ -151,6 +151,61 @@ test("official trailer resolver story-json mode accepts governed story_id manife
   assert.equal(result.stories[0].rights_ledger.length, 1);
 });
 
+test("official trailer resolver hydrates sparse repair rows from artifact_dir manifests", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-trailer-repair-row-"));
+  const artifactDir = path.join(dir, "goal-proof-batch", "rss_sparse");
+  await fs.ensureDir(artifactDir);
+  const storyListPath = path.join(dir, "story-packages-motion-repair-eligible.json");
+  await fs.writeJson(storyListPath, [
+    {
+      story_id: "rss_sparse",
+      verdict: "red",
+      blockers: ["direct_video_motion_missing"],
+      artifact_dir: artifactDir,
+    },
+  ]);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_sparse",
+    canonical_subject: "GUILTY GEAR -STRIVE-",
+    canonical_game: "GUILTY GEAR -STRIVE-",
+    canonical_title:
+      "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+    selected_title: "Robo-Ky Just Dodged A Release-Date Fight",
+    narration_script:
+      "GUILTY GEAR -STRIVE- Robo-Ky now has a sharper release-date question.",
+  });
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    assets: [
+      {
+        asset_id: "steam-ggst",
+        source_type: "steam_header",
+        source_url: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1384160/header.jpg",
+        licence_basis: "source_documented_transformative_editorial_use",
+        approval_status: "approved",
+      },
+    ],
+  });
+
+  const result = await loadStories({
+    storyJsonPath: storyListPath,
+    storyId: "rss_sparse",
+  });
+
+  assert.equal(result.mode, "story_json");
+  assert.equal(result.stories.length, 1);
+  assert.equal(result.stories[0].id, "rss_sparse");
+  assert.equal(
+    result.stories[0].title,
+    "Robo-Ky Just Dodged A Release-Date Fight",
+  );
+  assert.equal(result.stories[0].game_title, "GUILTY GEAR -STRIVE-");
+  assert.equal(
+    result.stories[0].full_script,
+    "GUILTY GEAR -STRIVE- Robo-Ky now has a sharper release-date question.",
+  );
+  assert.equal(result.stories[0].rights_ledger.length, 1);
+});
+
 test("official trailer resolver CLI reads current asset acquisition reports first", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "official-trailer-reference-resolver.js"),

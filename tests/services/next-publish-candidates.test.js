@@ -3605,9 +3605,9 @@ test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener eve
   );
 });
 
-test("attachPreflightQa blocks malformed GTA VI stutters in recorded opening speech", async () => {
+test("attachPreflightQa blocks malformed GTA VI see-six stutters in recorded opening speech", async () => {
   const spoken =
-    "GTA si-six just turned pre orders into a buy, wait or skip argument. " +
+    "GTA see-six just turned pre orders into a buy, wait or skip argument. " +
     "Follow Pulse Gaming so you never miss a beat.";
   const words = spoken
     .replace(/[,.]/g, "")

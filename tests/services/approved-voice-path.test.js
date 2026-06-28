@@ -334,6 +334,26 @@ test("approved voice path rejects malformed GTA VI spoken stutters", () => {
   assert.equal(result.transcript.gta_vi_spoken_stutter, true);
 });
 
+test("approved voice path rejects GTA VI see-six ASR variants", () => {
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "local",
+      source: "local-production-voxcpm-path",
+      audioPath: audioFile("gta-vi-see-six.mp3"),
+      transcript:
+        "GTA see-six starts the preorder fight. Follow Pulse Gaming so you never miss a beat.",
+      acoustic: { medianPitchHz: 118 },
+      acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+      voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+    },
+    env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+  });
+
+  assert.equal(result.verdict, "rejected");
+  assert.ok(result.blockers.includes("gta_vi_spoken_stutter"));
+  assert.equal(result.transcript.gta_vi_spoken_stutter, true);
+});
+
 test("approved voice path rejects split GTA VI roman narration", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

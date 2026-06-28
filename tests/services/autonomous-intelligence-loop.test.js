@@ -1797,6 +1797,10 @@ test("fresh production refill continues motion-hydrated stories through audio an
     assert.equal(result.materialization_continuation.final_green_count, 1);
     assert.equal(result.materialization_continuation.narration_provider_preference, "elevenlabs");
     assert.ok(
+      !childCalls.some((call) => call.args[0] === "tools/local-tts-doctor.js"),
+      "explicit ElevenLabs refill must not start or prewarm local TTS",
+    );
+    assert.ok(
       childCalls.some((call) => call.args[0] === "tools/auto-repair-runner.js"),
       "expected continuation to execute its context-aware safe auto-repair plan before final readiness",
     );

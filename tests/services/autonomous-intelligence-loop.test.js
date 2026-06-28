@@ -29,6 +29,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_review_script_repair_limit, 6);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_production_refill_limit, 12);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_production_refill_rss_per_feed, 4);
+  assert.equal(schedule("candidate_supply_monitor_2h")?.payload.fresh_production_refill_tts_provider, "elevenlabs");
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.local_tts_retry_limit, 6);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.local_tts_retry_apply_limit, 3);
   assert.equal(schedule("candidate_supply_monitor_2h")?.payload.repair_limit, 10);
@@ -318,6 +319,7 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
           fresh_review_script_repair_limit: 6,
           fresh_production_refill_limit: 12,
           fresh_production_refill_rss_per_feed: 4,
+          fresh_production_refill_tts_provider: "elevenlabs",
           local_tts_retry_limit: 6,
           local_tts_retry_apply_limit: 3,
           repair_limit: 10,
@@ -359,10 +361,11 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(enqueued[3].payload.reason, "candidate_supply_monitor_fresh_production_refill");
     assert.equal(enqueued[3].payload.limit, 18);
     assert.equal(enqueued[3].payload.rss_per_feed, 6);
+    assert.equal(enqueued[3].payload.tts_provider_preference, "elevenlabs");
     assert.equal(enqueued[3].payload.source_minimum_new_green_candidates, 9);
     assert.equal(
       enqueued[3].payload.source_refill_command,
-      "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6",
+      "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6 --tts-provider elevenlabs",
     );
     assert.equal(
       enqueued[3].payload.out_dir,

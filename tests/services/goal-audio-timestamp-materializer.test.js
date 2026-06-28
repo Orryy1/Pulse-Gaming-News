@@ -531,6 +531,87 @@ test("goal audio materializer regenerates title-colon audio without the current 
   assert.equal(timestamps.meta.spoken_text, "Halo Campaign Evolved just gave Xbox a real remake test.");
 });
 
+test("goal audio materializer regenerates GTA audio without the current pronunciation profile", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-profile-"));
+  const artifactDir = await makePackage(root, "story-gta-profile", {
+    selected_title: "GTA VI Cover Art Turns Into A Buying Argument",
+    narration_script: "GTA VI just turned cover art into a buying argument.",
+    tts_script: "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.",
+  });
+  const audioPath = path.join(root, "output", "audio", "story-gta-profile.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-gta-profile_timestamps.json");
+  const oldTranscript =
+    "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.";
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(oldTranscript),
+    meta: {
+      transcript: oldTranscript,
+      spoken_text: oldTranscript,
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      jobs: [
+        {
+          ...workbenchJob("story-gta-profile", artifactDir),
+          status: "ready_audio_timestamp_pair",
+          missing: [],
+          audio: { path: audioPath, exists: true, usable: true },
+          timestamps: {
+            path: timestampPath,
+            exists: true,
+            usable: true,
+            word_count: oldTranscript.split(/\s+/).length,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-28T00:25:00.000Z",
+    generateTtsForStory: async ({ text, outputPath, provider }) => {
+      calls.push({ text, outputPath, provider });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(scriptText),
+      transcript: scriptText,
+      language: "en",
+      segments: 1,
+    }),
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].text,
+    "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.",
+  );
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].reason, "existing_pair_stale_after_current_pronunciation_profile");
+  const timestamps = await fs.readJson(timestampPath);
+  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-safe-next-title-v7");
+  assert.doesNotMatch(timestamps.meta.transcript, /\b(?:GTA|Grand Theft Auto)\s+si[-\s]*six\b/i);
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";

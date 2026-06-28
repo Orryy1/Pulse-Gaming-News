@@ -183,6 +183,39 @@ test("runContentQa: malformed GTA VI tts_script stutter fails before audio gener
   assert.ok(qa.failures.includes("risky_gta_vi_tts_script:tts_script"));
 });
 
+test("runContentQa: malformed GTA VI timestamp transcript fails before publish", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-content-qa-gta-timestamps-"));
+  const videoPath = path.join(root, "story.mp4");
+  const timestampPath = path.join(root, "story_timestamps.json");
+  await fs.outputFile(videoPath, Buffer.alloc(5 * 1024 * 1024, 1));
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "G", start: 0, end: 0.08 },
+      { word: "T", start: 0.09, end: 0.17 },
+      { word: "A", start: 0.18, end: 0.26 },
+      { word: "si-six", start: 0.27, end: 0.58 },
+      { word: "starts", start: 0.6, end: 0.82 },
+    ],
+    meta: {
+      transcript: "G T A si-six starts the preorder fight.",
+      wordTimestampSource: "local_whisper_word_alignment",
+    },
+  });
+  const story = goodStory({
+    exported_path: videoPath,
+    word_timestamps_path: timestampPath,
+    tts_script: "Rockstar's next Grand Theft Auto starts the preorder fight.",
+  });
+
+  const qa = await runContentQa(story);
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("risky_gta_vi_timestamp_transcript:meta.transcript"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: damaged protected brand name in TTS script → fail", async () => {
   const story = goodStory({
     full_script: goodStory().full_script + " Pok\u00e9mon returns this month.",

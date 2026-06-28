@@ -612,6 +612,93 @@ test("goal audio materializer regenerates GTA audio without the current pronunci
   assert.doesNotMatch(timestamps.meta.transcript, /\b(?:GTA|Grand Theft Auto)\s+si[-\s]*six\b/i);
 });
 
+test("goal audio materializer regenerates current-profile GTA audio when ASR words contain a six stutter", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-asr-stutter-"));
+  const artifactDir = await makePackage(root, "story-gta-asr-stutter", {
+    selected_title: "GTA VI Cover Art Turns Into A Buying Argument",
+    narration_script: "GTA VI just turned cover art into a buying argument.",
+    tts_script: "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.",
+  });
+  const audioPath = path.join(root, "output", "audio", "story-gta-asr-stutter.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-gta-asr-stutter_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "G", start: 0, end: 0.08 },
+      { word: "T", start: 0.09, end: 0.17 },
+      { word: "A", start: 0.18, end: 0.26 },
+      { word: "si-six", start: 0.27, end: 0.58 },
+      { word: "just", start: 0.6, end: 0.74 },
+      { word: "turned", start: 0.76, end: 1 },
+      { word: "cover", start: 1.02, end: 1.22 },
+      { word: "art", start: 1.24, end: 1.4 },
+      { word: "into", start: 1.42, end: 1.58 },
+      { word: "a", start: 1.6, end: 1.66 },
+      { word: "buying", start: 1.68, end: 1.92 },
+      { word: "argument.", start: 1.94, end: 2.2 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v7",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "local",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [
+        {
+          ...workbenchJob("story-gta-asr-stutter", artifactDir),
+          status: "ready_audio_timestamp_pair",
+          missing: [],
+          audio: { path: audioPath, exists: true, usable: true },
+          timestamps: {
+            path: timestampPath,
+            exists: true,
+            usable: true,
+            word_count: 12,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-28T12:20:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(scriptText),
+      transcript: scriptText,
+      language: "en",
+      segments: 1,
+    }),
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].text,
+    "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.",
+  );
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].reason, "existing_pair_stale_after_risky_gta_vi_asr");
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";

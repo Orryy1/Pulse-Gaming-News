@@ -194,6 +194,51 @@ test("official search autofill falls back from character trailer phrasing to the
   assert.match(report.output_template.entries[0].entity_match_notes, /Street Fighter 6 Yasmine Character Gameplay/);
 });
 
+test("official search autofill falls back from official character wording to stylised Steam titles", async () => {
+  const calls = [];
+  const report = await buildOfficialSearchIntakeAutofillReport({
+    entries: [
+      {
+        story_id: "robo-ky-gap",
+        entity: "GUILTY GEAR -STRIVE- Robo-Ky Official",
+        query: "GUILTY GEAR -STRIVE- Robo-Ky Official official gameplay trailer",
+        accepted_sources: ["Steam", "official publisher channel", "platform storefront"],
+      },
+    ],
+    fetchJson: async (url) => {
+      calls.push(url);
+      if (url === steamApiSearchUrl("GUILTY GEAR -STRIVE- Robo-Ky Official")) {
+        return { ok: true, status: 200, json: { items: [] } };
+      }
+      if (url === steamApiSearchUrl("GUILTY GEAR -STRIVE- Robo-Ky")) {
+        return { ok: true, status: 200, json: { items: [] } };
+      }
+      assert.equal(url, steamApiSearchUrl("GUILTY GEAR -STRIVE-"));
+      return {
+        ok: true,
+        status: 200,
+        json: {
+          items: [
+            { id: 1384160, name: "GUILTY GEAR -STRIVE-" },
+            { id: 9999, name: "GUILTY GEAR Xrd REV 2" },
+          ],
+        },
+      };
+    },
+  });
+
+  assert.deepEqual(calls, [
+    steamApiSearchUrl("GUILTY GEAR -STRIVE- Robo-Ky Official"),
+    steamApiSearchUrl("GUILTY GEAR -STRIVE- Robo-Ky"),
+    steamApiSearchUrl("GUILTY GEAR -STRIVE-"),
+  ]);
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.no_confident_match, 0);
+  assert.equal(report.rows[0].matched_app_name, "GUILTY GEAR -STRIVE-");
+  assert.equal(report.output_template.entries[0].source_family, "steam_1384160_guilty_gear_strive");
+  assert.match(report.output_template.entries[0].entity_match_notes, /Robo-Ky Official/);
+});
+
 test("official search autofill rejects derivative store products as game matches", async () => {
   const report = await buildOfficialSearchIntakeAutofillReport({
     entries: [

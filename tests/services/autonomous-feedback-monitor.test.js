@@ -9,6 +9,7 @@ const test = require("node:test");
 const {
   buildAutonomousFeedbackReport,
   formatAutonomousFeedbackDiscord,
+  loadCurrentCandidateReport,
 } = require("../../lib/ops/autonomous-feedback-monitor");
 const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
 
@@ -103,6 +104,39 @@ function currentCandidate(overrides = {}) {
     ...overrides,
   };
 }
+
+test("autonomous feedback loads goal-contract candidates before stale test-output candidates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "autonomous-feedback-candidates-"));
+  const goalPath = path.join(root, "goal", "next_publish_candidates.json");
+  const stalePath = path.join(root, "test", "next_publish_candidates.json");
+  await fs.ensureDir(path.dirname(goalPath));
+  await fs.ensureDir(path.dirname(stalePath));
+  await fs.writeJson(stalePath, {
+    generated_at: "2026-06-27T04:17:21.749Z",
+    candidates: [
+      {
+        id: "old_candidate",
+        title: "Old Candidate",
+      },
+    ],
+  });
+  await fs.writeJson(goalPath, {
+    generated_at: "2026-06-28T02:47:58.772Z",
+    candidates: [
+      {
+        id: "rss_336678f89aaf64b2",
+        title: "Invincible VS Turns Its Roster Into A Meta Fight",
+      },
+    ],
+  });
+
+  const report = await loadCurrentCandidateReport({
+    paths: [goalPath, stalePath],
+  });
+
+  assert.equal(report.generated_at, "2026-06-28T02:47:58.772Z");
+  assert.equal(report.candidates[0].id, "rss_336678f89aaf64b2");
+});
 
 test("autonomous feedback treats stale Discord direct-motion warnings as superseded by current preflight", () => {
   const report = buildAutonomousFeedbackReport({
@@ -236,6 +270,63 @@ test("autonomous feedback holds selected candidate when transcript audience audi
     report.blockers.join(", "),
   );
   assert.match(formatAutonomousFeedbackDiscord(report), /Transcripts: 1 rewrite required \| 1 current blockers/);
+});
+
+test("autonomous feedback supersedes stale transcript audit debt when current package preflight passes", () => {
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-06-28T03:10:00.000Z",
+    normalOperationsReport: normalOps({
+      guarded_selection: {
+        action_id: "fresh_xbox_beastro_20260611:youtube_shorts",
+        exhausted: false,
+      },
+    }),
+    candidateReport: {
+      candidates: [
+        currentCandidate({
+          preflight_qa: {
+            status: "pass",
+            blockers: [],
+            checks: {
+              content: { result: "pass" },
+              public_copy: { result: "pass" },
+              script_scorecard: { result: "pass" },
+              media_house: { result: "pass" },
+              visual_entity_match: {
+                result: "pass",
+                evidence: { direct_motion_asset_count: 7 },
+              },
+              timestamp_alignment: { result: "pass" },
+              voice_quality: { result: "pass" },
+            },
+          },
+        }),
+      ],
+    },
+    transcriptAudienceReport: {
+      summary: { total: 2605, pass: 591, rewrite_required: 2014 },
+      stories: [
+        {
+          story_id: "fresh_xbox_beastro_20260611",
+          title: "Why Beastro Could Split Players",
+          verdict: "rewrite_required",
+          blockers: ["generic_could_split_title_template"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.current_action, "observe_next_scheduler_window");
+  assert.equal(report.transcript_audience_feedback.summary.current_blocking_count, 0);
+  assert.equal(report.transcript_audience_feedback.summary.superseded_by_current_preflight_count, 1);
+  assert.equal(report.transcript_audience_feedback.items[0].state, "superseded_by_current_transcript_preflight");
+  assert.ok(
+    !report.blockers.includes(
+      "transcript_audience:fresh_xbox_beastro_20260611:generic_could_split_title_template",
+    ),
+  );
+  assert.match(formatAutonomousFeedbackDiscord(report), /Transcripts: 2014 rewrite required \| 0 current blockers/);
 });
 
 test("autonomous feedback does not hold the selected publish window for non-selected repair-lane motion gaps", () => {

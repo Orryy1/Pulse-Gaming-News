@@ -201,3 +201,97 @@ test("reapStaleClaims recycles retryable stale claims and closes the stale run",
     db.close();
   }
 });
+
+test("complete closes superseded open runs for the same job", () => {
+  const db = createJobsDb();
+  try {
+    const jobs = bind(db);
+    const queued = jobs.enqueue({
+      kind: "publish",
+      priority: 1,
+      max_attempts: 3,
+    });
+    const first = jobs.claim("worker-complete-superseded-1", {
+      leaseMs: 60_000,
+    });
+    assert.equal(first.id, queued.id);
+    db.prepare(
+      `UPDATE jobs
+       SET status = 'pending',
+           claimed_by = NULL,
+           claimed_at = NULL,
+           lease_until = NULL
+       WHERE id = ?`,
+    ).run(first.id);
+    const second = jobs.claim("worker-complete-superseded-2", {
+      leaseMs: 60_000,
+    });
+    assert.equal(second.id, queued.id);
+
+    jobs.complete(second.id, { log: "ok" });
+
+    const runs = db
+      .prepare(`SELECT * FROM job_runs WHERE job_id = ? ORDER BY id`)
+      .all(second.id);
+    assert.equal(runs.length, 2);
+    assert.equal(runs[0].status, "failed");
+    assert.match(runs[0].error_message, /superseded.*completed/);
+    assert.ok(runs[0].finished_at);
+    assert.equal(runs[1].status, "done");
+    assert.equal(runs[1].error_message, null);
+    assert.ok(runs[1].finished_at);
+  } finally {
+    db.close();
+  }
+});
+
+test("fail closes all open runs for the same job", () => {
+  const db = createJobsDb();
+  try {
+    const jobs = bind(db);
+    const queued = jobs.enqueue({
+      kind: "publish",
+      priority: 1,
+      max_attempts: 3,
+    });
+    const first = jobs.claim("worker-fail-superseded-1", {
+      leaseMs: 60_000,
+    });
+    assert.equal(first.id, queued.id);
+    db.prepare(
+      `UPDATE jobs
+       SET status = 'pending',
+           claimed_by = NULL,
+           claimed_at = NULL,
+           lease_until = NULL
+       WHERE id = ?`,
+    ).run(first.id);
+    const second = jobs.claim("worker-fail-superseded-2", {
+      leaseMs: 60_000,
+    });
+    assert.equal(second.id, queued.id);
+
+    jobs.fail(second.id, new Error("publish exploded"), { log: "stack" });
+
+    const runs = db
+      .prepare(`SELECT * FROM job_runs WHERE job_id = ? ORDER BY id`)
+      .all(second.id);
+    assert.equal(runs.length, 2);
+    assert.equal(runs[0].status, "failed");
+    assert.match(runs[0].error_message, /superseded.*failed/);
+    assert.ok(runs[0].finished_at);
+    assert.equal(runs[1].status, "failed");
+    assert.match(runs[1].error_message, /publish exploded/);
+    assert.ok(runs[1].finished_at);
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM job_runs WHERE job_id = ? AND finished_at IS NULL`,
+        )
+        .get(second.id).count,
+      0,
+    );
+  } finally {
+    db.close();
+  }
+});

@@ -1367,9 +1367,20 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "fresh refill segment validation must have its own bounded timeout so one motion-heavy candidate cannot stall scheduler refill",
     );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
+    assert.ok(
+      segmentValidationCall.args.includes("--checkpoint-report"),
+      "fresh refill must checkpoint segment validation so a timeout cannot leave only stale global evidence",
+    );
     assert.ok(segmentValidationCall.args.includes("--deep-scan"));
     assert.equal(segmentValidationCall.args.includes("--include-frame-anchored-windows"), true);
     assert.ok(segmentValidationCall.args.includes("--no-reference-duration-probe"));
+    const reportJsonIndex = segmentValidationCall.args.indexOf("--report-json");
+    assert.notEqual(reportJsonIndex, -1, "expected fresh refill to request a run-scoped segment report");
+    assert.match(
+      segmentValidationCall.args[reportJsonIndex + 1],
+      /fresh-refill-segment-validation-.+official_trailer_segment_validation_apply_local\.json$/,
+      "expected fresh refill segment validation to write a unique report under the run output root",
+    );
     const segmentMaxIndex = segmentValidationCall.args.indexOf("--max-segments");
     assert.equal(
       Number(segmentValidationCall.args[segmentMaxIndex + 1]),
@@ -1423,14 +1434,18 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const materializerSegmentIndex = materializerCall.args.indexOf("--segment-report");
     assert.match(
       materializerCall.args[materializerSegmentIndex + 1],
-      /official_trailer_segment_validation_apply_local\.json$/,
-      "expected real-motion materializer to consume validated segment windows",
+      /fresh-refill-segment-validation-.+official_trailer_segment_validation_apply_local\.json$/,
+      "expected real-motion materializer to consume the run-scoped validated segment windows, not stale global state",
     );
     const materializerArtifactRootIndex = materializerCall.args.indexOf("--artifact-root");
     assert.equal(materializerCall.args[materializerArtifactRootIndex + 1], outDir);
     assert.ok(materializerCall.args.includes("--story-id"));
     assert.equal(materializerCall.args[materializerCall.args.indexOf("--story-id") + 1], "fresh_xbox_story");
-    assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-clips") + 1], "8");
+    assert.equal(
+      materializerCall.args[materializerCall.args.indexOf("--min-clips") + 1],
+      "6",
+      "fresh refill should accept six distinct direct-motion clips so motion-rich candidates do not miss windows solely because two extra clips timed out",
+    );
     assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-families") + 1], "5");
     assert.equal(materializerCall.args[materializerCall.args.indexOf("--max-clips") + 1], "8");
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
@@ -1470,7 +1485,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.match(repairReport.outputs.direct_media_intake_report, /official_direct_media_intake_report\.json$/);
     assert.match(repairReport.outputs.licensed_direct_media_report, /studio_v4_licensed_direct_media_acquisition\.json$/);
-    assert.match(repairReport.outputs.segment_validation_report, /official_trailer_segment_validation_apply_local\.json$/);
+    assert.match(
+      repairReport.outputs.segment_validation_report,
+      /fresh-refill-segment-validation-.+official_trailer_segment_validation_apply_local\.json$/,
+    );
     assert.match(repairReport.outputs.real_motion_materialization_report, /real_motion_materialization_report\.json$/);
     assert.match(repairReport.outputs.hyperframes_card_evidence_report, /fresh_refill_hyperframes_card_evidence\.json$/);
     assert.match(repairReport.outputs.materialized_motion_pack_dir, /output[\\/]studio-v4[\\/]motion-packs$/);

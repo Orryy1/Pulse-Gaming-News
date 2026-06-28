@@ -539,6 +539,43 @@ test("segment validator CLI writes story-scoped report aliases for one-story run
   );
 });
 
+test("segment validator CLI can write a run-scoped checkpoint report path", () => {
+  const targets = reportOutputTargets({
+    applyLocal: true,
+    reportJson: path.join(process.cwd(), "test", "output", "fresh-refill-run", "segment_report.json"),
+    reportMd: path.join(process.cwd(), "test", "output", "fresh-refill-run", "segment_report.md"),
+  });
+  const relativeJsonPaths = targets.map((target) => path.relative(process.cwd(), target.json));
+
+  assert.ok(
+    relativeJsonPaths.includes(path.join("test", "output", "fresh-refill-run", "segment_report.json")),
+  );
+});
+
+test("segment validation checkpoints partial reports after each processed segment", async () => {
+  const checkpoints = [];
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({ mediaStartS: 36, path: "https://video.example/official-trailer-a.m3u8" }),
+      clip({ mediaStartS: 42, path: "https://video.example/official-trailer-b.m3u8" }),
+    ],
+    {
+      applyLocal: false,
+      outputRoot: tempOutputRoot("checkpoint-progress"),
+      maxSegments: 2,
+      onProgress: (partial) => checkpoints.push(partial),
+    },
+  );
+
+  assert.equal(report.status, "completed");
+  assert.equal(report.summary.segments, 2);
+  assert.equal(checkpoints.length, 2);
+  assert.equal(checkpoints[0].status, "partial");
+  assert.equal(checkpoints[0].segments.length, 1);
+  assert.equal(checkpoints[1].segments.length, 2);
+  assert.equal(checkpoints[1].completed, false);
+});
+
 test("segment validator duration-probes reference reports before default deep scan", async () => {
   const referenceReport = {
     plans: [

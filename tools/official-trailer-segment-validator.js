@@ -73,6 +73,9 @@ function parseArgs(argv) {
     includeFrameAnchoredWindows: false,
     includeExploratoryWindows: false,
     exploratoryStartSeconds: null,
+    reportJson: null,
+    reportMd: null,
+    checkpointReport: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -134,6 +137,12 @@ function parseArgs(argv) {
         .split(",")
         .map((item) => Number(item.trim()))
         .filter((item) => Number.isFinite(item));
+    } else if (arg === "--report-json") {
+      args.reportJson = argv[++i] || null;
+    } else if (arg === "--report-md") {
+      args.reportMd = argv[++i] || null;
+    } else if (arg === "--checkpoint-report") {
+      args.checkpointReport = true;
     }
   }
   return args;
@@ -200,11 +209,45 @@ function reportOutputTargets(args = {}) {
   if (safeStoryId) {
     targets.push(`official_trailer_segment_validation_story_${safeStoryId}_${modeStem}`);
   }
-  return [...new Set(targets)].map((stem) => ({
+  const reportTargets = [...new Set(targets)].map((stem) => ({
     stem,
     json: path.join(OUT, `${stem}.json`),
     md: path.join(OUT, `${stem}.md`),
   }));
+  if (args.reportJson) {
+    const json = path.resolve(ROOT, args.reportJson);
+    const md = path.resolve(ROOT, args.reportMd || args.reportJson.replace(/\.json$/i, ".md"));
+    reportTargets.push({
+      stem: safeReportStemPart(path.basename(json, ".json")) || "custom_report",
+      json,
+      md,
+    });
+  }
+  return reportTargets;
+}
+
+function assertReportTargetSafe(target = {}) {
+  const allowedRoots = [OUT, path.join(ROOT, "output")];
+  for (const filePath of [target.json, target.md]) {
+    const resolved = path.resolve(filePath);
+    const insideAllowedRoot = allowedRoots.some((root) => {
+      const rel = path.relative(root, resolved);
+      return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+    });
+    if (!insideAllowedRoot) {
+      throw new Error(`segment validation report output must stay under test/output or output: ${resolved}`);
+    }
+  }
+}
+
+async function writeSegmentValidationReports(report, targets) {
+  const markdown = renderOfficialTrailerSegmentValidationMarkdown(report);
+  for (const target of targets) {
+    assertReportTargetSafe(target);
+    await fs.ensureDir(path.dirname(target.json));
+    await fs.writeJson(target.json, report, { spaces: 2 });
+    await fs.writeFile(target.md, markdown, "utf8");
+  }
 }
 
 function clipSourceUrl(clip = {}) {
@@ -727,10 +770,39 @@ async function main() {
   const validationClipRefs = args.storyId
     ? exhaustedFilter.clipRefs
     : balanceClipRefsAcrossStories(exhaustedFilter.clipRefs);
+  const outputTargets = reportOutputTargets(args);
   let report = await runOfficialTrailerSegmentValidation(validationClipRefs, {
     applyLocal: args.applyLocal,
     outputRoot: args.outputRoot,
     maxSegments: args.maxSegments,
+    onProgress: args.checkpointReport
+      ? async (partialReport) => {
+          const checkpoint = {
+            ...partialReport,
+            checkpoint_report: true,
+            frame_report_source: loaded.filePath,
+            reference_report_source: loadedReference.filePath,
+            reference_duration_probe: enrichedReference.summary,
+            acquisition_plan_source: loadedAcquisition.filePath,
+            clip_refs_source: loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report",
+            clip_refs_input_count: clipRefs.length,
+            previous_validation_source: loadedPrevious.filePath,
+          };
+          const reportForWrite = args.mergePrevious && loadedPrevious.report
+            ? {
+                ...mergeOfficialTrailerSegmentReports(scopedPreviousReport, checkpoint, {
+                  preserveUnscopedPrevious: true,
+                  storyIds: args.storyId ? [args.storyId] : [],
+                  currentReferenceSourceUrls: currentReferenceSourceUrls(clipRefs),
+                }),
+                status: "partial",
+                completed: false,
+                checkpoint_report: true,
+              }
+            : checkpoint;
+          await writeSegmentValidationReports(reportForWrite, outputTargets);
+        }
+      : null,
   });
   const currentRun = {
     mode: report.mode,
@@ -782,13 +854,8 @@ async function main() {
     report.previous_validation_source = loadedPrevious.filePath;
   }
 
-  const markdown = renderOfficialTrailerSegmentValidationMarkdown(report);
   await fs.ensureDir(OUT);
-  const outputTargets = reportOutputTargets(args);
-  for (const target of outputTargets) {
-    await fs.writeJson(target.json, report, { spaces: 2 });
-    await fs.writeFile(target.md, markdown, "utf8");
-  }
+  await writeSegmentValidationReports(report, outputTargets);
 
   process.stdout.write(args.json ? JSON.stringify(report, null, 2) + "\n" : markdown);
   const writtenStems = outputTargets.map((target) => `test/output/${target.stem}.{json,md}`).join(", ");

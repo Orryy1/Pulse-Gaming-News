@@ -1022,6 +1022,115 @@ test("incident guard blocks too-fast or repeated HyperFrames card evidence", () 
   assert.ok(report.disaster_upload_blockers.includes("incident:hyperframes_repeated_card_family"));
 });
 
+test("incident guard blocks under-readable HyperFrames estimated card dwell", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "hyperframes-estimated-too-fast",
+    canonical_story_manifest: {
+      story_id: "hyperframes-estimated-too-fast",
+      canonical_subject: "MARVEL Tokon",
+      selected_title: "MARVEL Tokon Finally Shows Real Gameplay",
+      thumbnail_headline: "MARVEL TOKON GAMEPLAY",
+      first_spoken_line: "MARVEL Tokon finally has real gameplay to judge.",
+      narration_script:
+        "MARVEL Tokon finally has real gameplay to judge. GameSpot shows the useful part: players can now compare the tag-team combat to what Arc System Works usually does best.",
+      description: "MARVEL Tokon finally has real gameplay footage. Source: GameSpot.",
+      primary_source: "GameSpot",
+      discovery_source: "GameSpot",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("MARVEL Tokon"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: { title: "MARVEL Tokon Finally Shows Real Gameplay" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+      hyperframes_card_count: 1,
+      hyperframes_estimated_card_visible_duration_s: 5.581,
+      rendered_too_fast_card_windows: [],
+      hyperframes_too_fast_card_clips: [],
+      hyperframes_repeated_card_families: [],
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, false);
+  assert.ok(report.disaster_upload_blockers.includes("incident:hyperframes_card_dwell_too_short"));
+});
+
+test("incident guard trusts explicit readable rendered HyperFrames card windows over average dwell estimates", () => {
+  const report = evaluateIncidentGuard({
+    story_id: "hyperframes-rendered-window-readable",
+    canonical_story_manifest: {
+      story_id: "hyperframes-rendered-window-readable",
+      canonical_subject: "Invincible VS",
+      selected_title: "Invincible VS Turns Its Roster Into A Meta Fight",
+      thumbnail_headline: "INVINCIBLE VS ROSTER",
+      first_spoken_line: "Invincible VS just turned its roster into the real player test.",
+      narration_script:
+        "Invincible VS just turned its roster into the real player test. Xbox Wire shows the useful point: the fighter has to make every assist readable before roster hype matters.",
+      description: "Invincible VS has a roster readability test. Source: Xbox Wire.",
+      primary_source: "Xbox Wire",
+      discovery_source: "Xbox Wire",
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Invincible VS"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: { title: "Invincible VS Turns Its Roster Into A Meta Fight" },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+      rights_ledger_ready: true,
+      hyperframes_card_count: 1,
+      hyperframes_estimated_card_visible_duration_s: 5.359,
+      rendered_card_windows: [
+        {
+          id: "scene_4_source",
+          duration_s: 12,
+          minimum_required_duration_s: 12,
+        },
+      ],
+      rendered_too_fast_card_windows: [],
+      hyperframes_too_fast_card_clips: [],
+      hyperframes_repeated_card_families: [],
+    },
+  });
+
+  assert.equal(report.safe_to_publish_boolean, true);
+  assert.ok(!report.disaster_upload_blockers.includes("incident:hyperframes_card_dwell_too_short"));
+});
+
 test("incident guard blocks repeated direct-motion segment evidence", () => {
   const report = evaluateIncidentGuard({
     story_id: "repeated-direct-motion",

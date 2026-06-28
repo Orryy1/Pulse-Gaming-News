@@ -1,6 +1,6 @@
 # Local TTS Overnight Report
 
-Generated: 2026-06-28T13:51:15.324Z
+Generated: 2026-06-28T14:13:06.984Z
 Verdict: RED
 Expected local voice: pulse-sleepy-liam-20260502
 Local proof preferred duration: 64-70s preferred, 61-75s accepted
@@ -8,7 +8,7 @@ Local proof preferred duration: 64-70s preferred, 61-75s accepted
 ## Doctor
 - verdict=amber action=wait_for_gpu ready=false voice=liam loaded=true ref=true
 - failure=gpu_saturated
-- reason=GPU free memory 2994MB is below 3072MB
+- reason=GPU free memory 1162MB is below 3072MB
 
 ## Proof Batch
 - applied=32 voice_ready=18 rejected=9 skipped=6 superseded=10

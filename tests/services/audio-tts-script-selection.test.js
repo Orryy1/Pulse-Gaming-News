@@ -22,11 +22,40 @@ test("selectRawTtsScript: uses clean full_script when cached tts_script damaged 
 
 test("selectRawTtsScript: keeps clean cached tts_script", () => {
   const story = {
-    full_script: "GTA 6 has a new report.",
-    tts_script: "G T A six has a new report.",
+    full_script: "Game Pass has a new report.",
+    tts_script: "Xbox Game Pass has a new report.",
   };
 
   assert.equal(selectRawTtsScript(story), ensureSpokenOutro(story.tts_script));
+});
+
+test("selectRawTtsScript: normalises cached GTA VI spoken-risk before selection", () => {
+  const story = {
+    full_script: "Grand Theft Auto VI now has one real preorder catch.",
+    tts_script: "GTA si-six starts the preorder fight.",
+  };
+
+  const selected = selectRawTtsScript(story);
+
+  assert.equal(
+    selected,
+    "Rockstar's next Grand Theft Auto starts the preorder fight. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+(?:VI|six|si[- ]?six)\b/i);
+});
+
+test("selectRawTtsScript: normalises fallback GTA VI text when no cached script exists", () => {
+  const story = {
+    full_script: "GTA VI pre-orders just turned the cover art reveal into a buying argument.",
+  };
+
+  const selected = selectRawTtsScript(story);
+
+  assert.equal(
+    selected,
+    "Rockstar's next Grand Theft Auto pre orders just turned the cover art reveal into a buying argument. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+(?:VI|six|si[- ]?six)\b/i);
 });
 
 test("selectRawTtsScript: prefers canonical full_script over non-canonical cached spelling", () => {

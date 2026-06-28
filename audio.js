@@ -530,6 +530,21 @@ function cleanForTTS(raw) {
   return collapseAdjacentDuplicateSentences(normalisePulseBrandCtaForTts(cleaned));
 }
 
+const GTA_TTS_SELECTION_RISK_RE =
+  /\b(?:G\.?\s*T\.?\s*A\.?|Grand\s+Theft\s+Auto)\s+(?:V\s*I|VI|6|six|s(?:i|y|igh)?[-\s]*six|six[-\s]+six)\b/i;
+
+function hasRiskyGtaSixTtsSelectionText(text) {
+  return GTA_TTS_SELECTION_RISK_RE.test(String(text || ""));
+}
+
+function ensureSafeSelectedTtsScript(text) {
+  const withOutro = ensureSpokenOutro(text);
+  if (hasRiskyGtaSixTtsSelectionText(withOutro)) {
+    return cleanForTTS(withOutro);
+  }
+  return withOutro;
+}
+
 function assertBrandNameQaForTts(story, fields) {
   const qa = runBrandNameQa({
     title: story?.title,
@@ -551,11 +566,11 @@ function selectRawTtsScript(story) {
     typeof story?.tts_script === "string" ? story.tts_script.trim() : "";
   const fallback =
     typeof story?.full_script === "string" ? story.full_script.trim() : "";
-  if (!preferred) return ensureSpokenOutro(fallback);
+  if (!preferred) return ensureSafeSelectedTtsScript(fallback);
 
   const preferredQa = runBrandNameQa({ tts_script: preferred });
   if (preferredQa.failures.length === 0 && preferredQa.warnings.length === 0) {
-    return ensureSpokenOutro(preferred);
+    return ensureSafeSelectedTtsScript(preferred);
   }
 
   if (fallback && fallback !== preferred) {
@@ -564,7 +579,7 @@ function selectRawTtsScript(story) {
       console.log(
         `[audio] ${story?.id || "story"}: cached tts_script failed brand-name QA; using clean full_script`,
       );
-      return ensureSpokenOutro(fallback);
+      return ensureSafeSelectedTtsScript(fallback);
     }
 
     if (
@@ -574,11 +589,11 @@ function selectRawTtsScript(story) {
       console.log(
         `[audio] ${story?.id || "story"}: cached tts_script has protected-name damage; using safer full_script`,
       );
-      return ensureSpokenOutro(fallback);
+      return ensureSafeSelectedTtsScript(fallback);
     }
   }
 
-  return ensureSpokenOutro(preferred);
+  return ensureSafeSelectedTtsScript(preferred);
 }
 
 const SPOKEN_OUTRO = `${SPOKEN_OUTRO_TEXT}.`;

@@ -1343,6 +1343,45 @@ test("public copy repair rewrites Quake update recaps into retention-stakes scri
   assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
 });
 
+test("public copy repair rewrites Robo-Ky release moves into player-stakes scripts", () => {
+  const repaired = repairGoalPublicCopyManifest(
+    {
+      story_id: "robo-ky-release-move",
+      canonical_subject: "GUILTY GEAR -STRIVE- Robo-Ky Official",
+      canonical_game: "GUILTY GEAR -STRIVE-",
+      canonical_title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+      selected_title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+      primary_source: "GameSpot",
+      confirmed_claims: [
+        "GameSpot is carrying new GUILTY GEAR -STRIVE- Robo-Ky footage after the character moved away from the crowded release calendar.",
+      ],
+    },
+    { generatedAt: "2026-06-28T18:40:00.000Z", forceNarrationRewrite: true },
+  );
+
+  const script = repaired.manifest.narration_script;
+  assert.equal(repaired.manifest.canonical_subject, "Robo-Ky");
+  assert.equal(repaired.manifest.selected_title, "Robo-Ky Delay Puts Guilty Gear On Trial");
+  assert.equal(repaired.manifest.thumbnail_headline, "ROBO-KY DELAY TEST");
+  assert.match(script, /^Robo-Ky just turned Guilty Gear Strive into a release-date argument\./);
+  assert.match(script, /lab time, matchup practice and a clean first weekend/i);
+  assert.match(script, /whether the delay means polish/i);
+  assert.match(script, /balanced, readable and ridiculous/i);
+  assert.doesNotMatch(script, /mood instead of play|part players can actually judge|source-backed update/i);
+  assert.equal(evaluateGoalPublicCopy(repaired.manifest).verdict, "pass");
+  const scorecard = buildViralScriptIntelligence({
+    story: {
+      id: "robo-ky-release-move",
+      title: repaired.manifest.selected_title,
+      source_name: "GameSpot",
+    },
+    script,
+  });
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+  assert.ok(scorecard.viral_score >= 85, JSON.stringify(scorecard.scores));
+  assert.ok(scorecard.scores.curiosity_gap >= 70, JSON.stringify(scorecard.scores));
+});
+
 test("public copy package repair rewrites canonical entity mismatches before platform sync", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-canonical-mismatch-"));
   const artifactDir = path.join(root, "story");

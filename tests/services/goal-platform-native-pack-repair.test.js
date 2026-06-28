@@ -1143,6 +1143,169 @@ test("platform-native repair keeps update stories specific enough for Shorts com
   assert.ok(!verdictOnlyRefreshed.reason_codes.includes("media_house:platform_copy_too_plain"));
 });
 
+test("platform-native repair keeps Robo-Ky delay copy story-specific instead of generic fallback", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-native-roboky-copy-"));
+  const artifactDir = path.join(tmp, "story");
+  await fs.ensureDir(artifactDir);
+
+  const script =
+    "Robo-Ky just turned Guilty Gear Strive into a release-date argument. GameSpot is carrying the new Robo-Ky footage after the character moved away from the crowded release calendar. That sounds small, but fighting game players know why it matters. A weird DLC character needs lab time, matchup practice and a clean first weekend, not a launch buried under bigger releases. The catch is whether the delay means polish, or whether Robo-Ky was not ready to stand beside the current roster. If he arrives balanced, readable and ridiculous, the wait becomes smart scheduling. If he feels half-finished, the delay becomes the first warning sign. Follow Pulse Gaming so you never miss a beat.";
+
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_42c92208a8c02a65",
+    canonical_subject: "Robo-Ky",
+    canonical_game: "Guilty Gear Strive",
+    canonical_angle: "Robo-Ky moved away from a crowded release calendar",
+    selected_title: "Robo-Ky Delay Puts Guilty Gear On Trial",
+    canonical_title: "Robo-Ky Delay Puts Guilty Gear On Trial",
+    title: "Robo-Ky Delay Puts Guilty Gear On Trial",
+    first_spoken_line: "Robo-Ky just turned Guilty Gear Strive into a release-date argument.",
+    narration_script: script,
+    description:
+      "Robo-Ky moved away from the crowded release calendar, making the useful question whether the delay means polish or warning signs for Guilty Gear Strive players. Source: GameSpot.",
+    thumbnail_headline: "ROBO-KY DELAY TEST",
+    primary_source: { name: "GameSpot" },
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 44.63,
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "RED",
+    outputs: {
+      youtube_shorts: {
+        platform: "youtube_shorts",
+        title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+        description:
+          "Robo-Ky has a player-facing question now: gUILTY GEAR -STRIVE- Robo-Ky Official Trailer. Source: GameSpot.",
+        cover_frame: { headline: "ROBO-KY DELAY TEST" },
+      },
+      instagram_reels: {
+        platform: "instagram_reels",
+        caption:
+          "Robo-Ky has a player-facing question now: gUILTY GEAR -STRIVE- Robo-Ky Official Trailer. Source: GameSpot.",
+        cover_frame: { headline: "ROBO-KY DELAY TEST" },
+      },
+      facebook_reels: {
+        platform: "facebook_reels",
+        page_caption:
+          "Robo-Ky has a player-facing question now: gUILTY GEAR -STRIVE- Robo-Ky Official Trailer. Source: GameSpot.",
+        cover_frame: { headline: "ROBO-KY DELAY TEST" },
+      },
+    },
+    platform_native_evidence: { verdict: "fail" },
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_variant_scorecard.json"), {});
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    status: "pass",
+    viral_score: 93,
+    blockers: [],
+    warnings: [],
+    scores: { hook_strength: 92, specificity: 91, payoff: 90 },
+  });
+  await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 96,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 92,
+      transition_energy_score: 94,
+      sfx_impact_score: 96,
+      rights_risk_score: 100,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
+    shot_plan: [{ id: "hook", kind: "motion_clip", start_s: 0.1 }],
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    voice_status: "materialized",
+    word_timestamp_count: 116,
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), { status: "pass", failures: [] });
+  await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 96,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      transition_energy_score: 94,
+      sfx_impact_score: 96,
+      rights_risk_score: 100,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "affiliate_link_manifest.json"), {});
+  await fs.writeJson(path.join(artifactDir, "landing_page_manifest.json"), {
+    landing_page_slug: "robo-ky-delay-guilty-gear",
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    status: "fail",
+    hard_failures: ["media_house:platform_copy_too_plain"],
+  });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: [
+      "platform_native:youtube_shorts:plain_platform_description",
+      "platform_native:instagram_reels:plain_platform_description",
+      "platform_native:facebook_reels:plain_platform_description",
+      "media_house:platform_copy_too_plain",
+    ],
+    blockers: [
+      "platform_native:youtube_shorts:plain_platform_description",
+      "platform_native:instagram_reels:plain_platform_description",
+      "platform_native:facebook_reels:plain_platform_description",
+      "media_house:platform_copy_too_plain",
+    ],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages: [{
+      story_id: "rss_42c92208a8c02a65",
+      verdict: "GREEN",
+      blockers: [],
+      artifact_dir: artifactDir,
+    }],
+    generatedAt: "2026-06-28T17:45:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.match(dryRun.items[0].target_youtube_description, /timing and balance argument/i);
+  assert.match(dryRun.items[0].target_youtube_description, /readable, lab-worthy and weird/i);
+  assert.match(dryRun.items[0].target_instagram_caption, /timing and balance argument/i);
+  assert.match(dryRun.items[0].target_facebook_page_caption, /timing and balance argument/i);
+  assert.doesNotMatch(dryRun.items[0].target_youtube_description, /player-facing question|gUILTY GEAR -STRIVE-/);
+  assert.doesNotMatch(dryRun.items[0].target_instagram_caption, /player-facing question|gUILTY GEAR -STRIVE-/);
+  assert.doesNotMatch(dryRun.items[0].target_facebook_page_caption, /player-facing question|gUILTY GEAR -STRIVE-/);
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:platform_copy_too_plain"));
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages: [{
+      story_id: "rss_42c92208a8c02a65",
+      verdict: "GREEN",
+      blockers: [],
+      artifact_dir: artifactDir,
+    }],
+    generatedAt: "2026-06-28T17:46:00.000Z",
+    apply: true,
+    backupRoot: path.join(tmp, "backups"),
+  });
+  assert.equal(applied.summary.repaired_count, 1);
+  const repairedVerdict = await fs.readJson(path.join(artifactDir, "publish_verdict.json"));
+  assert.ok(!repairedVerdict.reason_codes.includes("media_house:platform_copy_too_plain"));
+});
+
 test("platform-native repair derives Facebook Reels duration from render manifest", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-native-repair-"));
   const artifactDir = path.join(tmp, "story");

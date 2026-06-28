@@ -3327,6 +3327,67 @@ test("goal audio materializer skips existing ready pairs unless forced", async (
   assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
 });
 
+test("goal audio materializer regenerates existing pairs that current voice cadence QA rejects", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-stale-voice-cadence-"));
+  const script =
+    "Robo-Ky finally has a real Guilty Gear Strive release signal. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-voice-cadence", {
+    selected_title: "GUILTY GEAR -STRIVE- Robo-Ky Official Just Dodged A Release-Date Fight",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", "story-voice-cadence.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-voice-cadence_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: script.split(/\s+/).map((word, index) => ({
+      word,
+      start: Number((index * 0.08).toFixed(2)),
+      end: Number((index * 0.08 + 0.05).toFixed(2)),
+    })),
+    meta: { transcript: script },
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "FAIL",
+    blockers: ["voice_cadence:wpm_too_fast"],
+    cadence: {
+      status: "fail",
+      spoken_wpm: 206.3,
+      blockers: ["voice_cadence:wpm_too_fast"],
+    },
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [
+        {
+          ...workbenchJob("story-voice-cadence", artifactDir),
+          tts_provider: "elevenlabs",
+        },
+      ],
+    },
+    generatedAt: "2026-06-28T18:10:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignmentWithStep(text, 0.12),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.skipped_existing_count, 0);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].reason, "existing_pair_failed_voice_cadence_regenerated");
+  assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
+});
+
 test("goal audio materializer regenerates when existing ASR alignment repair is not clean", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-asr-regenerate-"));
   const script = "The Expanse Osiris Reborn finally showed real gameplay. Follow Pulse Gaming so you never miss a beat.";

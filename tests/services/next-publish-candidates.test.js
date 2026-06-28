@@ -6678,6 +6678,137 @@ test("runPreflightQaForStory blocks source-concentrated direct-motion plans", as
   );
 });
 
+test("runPreflightQaForStory blocks stale bridge proof when the current V4 motion pack is blocked", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-motion-pack-blocked-"));
+  t.after(() => fs.remove(tmp));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "current-motion-pack-blocked", videoPath);
+  const motionPackPath = path.join(tmp, "current_motion_pack_manifest.json");
+  await fs.writeJson(motionPackPath, {
+    schema_version: 1,
+    generated_at: "2026-06-28T12:45:00.000Z",
+    story_id: "current-motion-pack-blocked",
+    readiness: {
+      status: "v4_motion_blocked",
+      blockers: [
+        "actual_motion_clip_minimum_not_met",
+        "distinct_motion_source_assets_minimum_not_met",
+      ],
+    },
+    clips: [],
+    motion_budget: {
+      required_motion_scenes: 5,
+      required_distinct_families: 4,
+    },
+  }, { spaces: 2 });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "current-motion-pack-blocked",
+      title: "Marvel Tokon Needs Real Gameplay Motion",
+      selected_title: "Marvel Tokon Needs Real Gameplay Motion",
+      canonical_subject: "MARVEL Tokon",
+      source_type: "rss",
+      timestamp: "2026-06-24T18:00:00.000Z",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      visual_v4_motion_pack_manifest_path: motionPackPath,
+      exported_path: videoPath,
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "Marvel Tokon Needs Real Gameplay Motion" },
+        },
+      },
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("current_motion_pack:v4_motion_pack_blocked"),
+    JSON.stringify(preflight.blockers),
+  );
+  assert.ok(
+    preflight.blockers.includes("current_motion_pack:motion_pack_actual_motion_clip_minimum_not_met"),
+    JSON.stringify(preflight.blockers),
+  );
+  assert.equal(preflight.checks.current_motion_pack.evidence.clip_count, 0);
+}
+);
+
+test("attachPreflightQa holds current motion-pack failures for repair instead of normal review", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-motion-pack-quarantine-"));
+  t.after(() => fs.remove(tmp));
+  const motionPackPath = path.join(tmp, "current_motion_pack_manifest.json");
+  await fs.writeJson(motionPackPath, {
+    readiness: {
+      status: "v4_motion_blocked",
+      blockers: ["actual_motion_clip_minimum_not_met"],
+    },
+    clips: [],
+    motion_budget: {
+      required_motion_scenes: 5,
+      required_distinct_families: 4,
+    },
+  });
+  const story = baseStory({
+    id: "motion-pack-quarantine",
+    title: "Marvel Tokon Needs Better Clips",
+    selected_title: "Marvel Tokon Needs Better Clips",
+    canonical_subject: "MARVEL Tokon",
+    scheduler_bridge_source: "goal_production_cutover",
+    visual_v4_motion_pack_manifest_path: motionPackPath,
+  });
+  const report = buildNextPublishCandidatesReport([story], {
+    generatedAt: "2026-06-28T13:05:00.000Z",
+  });
+
+  await attachPreflightQa(report, [story], {
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.equal(report.candidates[0].scheduler_quarantine.status, "held");
+  assert.equal(report.candidates[0].scheduler_quarantine.reason, "current_motion_pack_blocked");
+  assert.equal(report.preflight_qa.scheduler_quarantined, 1);
+});
+
 test("runPreflightQaForStory blocks repeated direct clips from final render story even when materialised clips are refreshed", async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-final-render-repeat-"));
   t.after(() => fs.remove(tmp));

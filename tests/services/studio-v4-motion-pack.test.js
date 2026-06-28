@@ -864,6 +864,60 @@ test("Visual V4 motion pack refuses same-source asset padding even with distinct
   assert.equal(pack.readiness.status, "v4_motion_blocked");
 });
 
+test("Visual V4 motion pack refuses repeat windows from the same base source family", () => {
+  const sharedBase = "steamstatic:/store_trailers/3787240/789082905/trailer_asset";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory(),
+    trustedFootageReport: trustedReport("forza-v4-pack", [
+      "steam_window_a",
+      "steam_window_b",
+      "xbox",
+      "forza",
+      "ign",
+    ]),
+    segmentValidationReport: segmentReport([
+      {
+        ...segment({
+          family: "steam_window_a",
+          index: 1,
+          sourceUrl: "C:\\clips\\marvel-window-36.mp4",
+          start: 36,
+        }),
+        base_source_family: sharedBase,
+      },
+      {
+        ...segment({
+          family: "steam_window_b",
+          index: 2,
+          sourceUrl: "C:\\clips\\marvel-window-42.mp4",
+          start: 42,
+        }),
+        base_source_family: sharedBase,
+      },
+      segment({ family: "xbox", index: 3 }),
+      segment({ family: "forza", index: 4 }),
+      segment({ family: "ign", index: 5 }),
+    ]),
+    generatedAt: "2026-06-28T12:40:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 4);
+  assert.equal(
+    pack.clips.filter((clip) => clip.base_source_family === sharedBase).length,
+    1,
+  );
+  assert.equal(
+    pack.clips.filter((clip) => clip.provenance?.base_source_family === sharedBase).length,
+    1,
+  );
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_already_used" &&
+        candidate.base_source_family === sharedBase,
+    ),
+  );
+});
+
 test("Visual V4 motion pack does not pad repeat slots with short trimmed montage cuts", () => {
   const families = ["steam", "xbox", "forza", "twistedvoxel", "gamesradar", "ign"];
   const pack = buildVisualV4MotionPack({

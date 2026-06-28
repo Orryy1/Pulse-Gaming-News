@@ -50,6 +50,12 @@ const DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH = path.join(
   "goal-contract",
   "studio_v4_source_family_acquisition_remaining.json",
 );
+const DEFAULT_STUDIO_V4_MOTION_PACK_DIR = path.join(
+  ROOT,
+  "output",
+  "studio-v4",
+  "motion-packs",
+);
 const DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH = path.join(
   ROOT,
   "output",
@@ -1145,6 +1151,7 @@ function combinePreflightQa({
   audioSegment,
   timestampAlignment,
   visualEntityMatch,
+  currentMotionPack,
   bridgeArtifactFreshness,
   bridgeMotionGovernance,
   aggregateBenchmark,
@@ -1165,6 +1172,7 @@ function combinePreflightQa({
   if (audioSegment) checks.audio_segment_loudness = summariseQaResult(audioSegment);
   if (timestampAlignment) checks.timestamp_alignment = summariseQaResult(timestampAlignment);
   if (visualEntityMatch) checks.visual_entity_match = summariseQaResult(visualEntityMatch);
+  if (currentMotionPack) checks.current_motion_pack = summariseQaResult(currentMotionPack);
   if (bridgeArtifactFreshness) checks.bridge_artifact_freshness = summariseQaResult(bridgeArtifactFreshness);
   if (bridgeMotionGovernance) checks.bridge_motion_governance = summariseQaResult(bridgeMotionGovernance);
   if (aggregateBenchmark) checks.aggregate_benchmark = summariseQaResult(aggregateBenchmark);
@@ -2120,6 +2128,83 @@ async function readCurrentRenderManifestForStory(story = {}) {
     }
   }
   return {};
+}
+
+function currentMotionPackManifestPathForStory(story = {}) {
+  const explicit = cleanText(
+    story.visual_v4_motion_pack_manifest_path ||
+      story.v4_motion_pack_manifest_path ||
+      story.motion_pack_manifest_path ||
+      story.motionPackManifestPath,
+  );
+  if (explicit) {
+    return path.isAbsolute(explicit) ? explicit : path.resolve(ROOT, explicit);
+  }
+  const id = normaliseStoryId(story.id || story.story_id || story.storyId);
+  if (!id) return null;
+  return path.join(DEFAULT_STUDIO_V4_MOTION_PACK_DIR, `${id}_motion_pack_manifest.json`);
+}
+
+async function currentMotionPackPreflightForStory(story = {}) {
+  const manifestPath = currentMotionPackManifestPathForStory(story);
+  if (!manifestPath) return null;
+  let pack = null;
+  try {
+    if (!(await fs.pathExists(manifestPath))) return null;
+    pack = await fs.readJson(manifestPath);
+  } catch {
+    return {
+      result: "fail",
+      failures: ["current_motion_pack_unreadable"],
+      warnings: [],
+      evidence: {
+        manifest_path: manifestPath,
+      },
+    };
+  }
+  if (!pack || typeof pack !== "object" || Array.isArray(pack)) return null;
+  const readinessStatus = cleanText(pack.readiness?.status || pack.readiness_status || pack.status);
+  const blockers = asArray(pack.readiness?.blockers || pack.blockers).map(cleanText).filter(Boolean);
+  const clipCount = asArray(pack.clips).length;
+  const motionBudget = objectValue(pack.motion_budget, {});
+  const requiredMotionScenes = Number(motionBudget.required_motion_scenes || 0);
+  const requiredDistinctFamilies = Number(motionBudget.required_distinct_families || 0);
+  const baseFamilies = new Set(
+    asArray(pack.clips)
+      .map((clip) =>
+        cleanText(
+          clip.base_source_family ||
+            clip.provenance?.base_source_family ||
+            clip.source_asset_key ||
+            clip.source_family,
+        ),
+      )
+      .filter(Boolean),
+  );
+  const failures = [];
+  if (/blocked|red|fail/i.test(readinessStatus)) failures.push("v4_motion_pack_blocked");
+  failures.push(...blockers.map((blocker) => `motion_pack_${blocker}`));
+  if (requiredMotionScenes && clipCount < requiredMotionScenes) {
+    failures.push("motion_pack_actual_motion_clip_minimum_not_met");
+  }
+  if (requiredDistinctFamilies && baseFamilies.size < requiredDistinctFamilies) {
+    failures.push("motion_pack_distinct_base_source_minimum_not_met");
+  }
+  return {
+    result: failures.length ? "fail" : "pass",
+    failures: [...new Set(failures)],
+    warnings: [],
+    evidence: {
+      manifest_path: manifestPath,
+      generated_at: pack.generated_at || null,
+      readiness_status: readinessStatus || null,
+      blocker_count: blockers.length,
+      clip_count: clipCount,
+      distinct_base_source_family_count: baseFamilies.size,
+      required_motion_scenes: requiredMotionScenes || null,
+      required_distinct_families: requiredDistinctFamilies || null,
+    },
+  };
 }
 
 async function visualEntityPreflightForStory(story = {}) {
@@ -4082,6 +4167,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     runAudioSegmentQa = audioSegmentPreflightForStory,
     runTimestampAlignmentQa = timestampAlignmentPreflightForStory,
     runVisualEntityQa = visualEntityPreflightForStory,
+    runCurrentMotionPackQa = currentMotionPackPreflightForStory,
     runBridgeArtifactFreshnessQa = bridgeArtifactFreshnessPreflightForStory,
     runBridgeMotionGovernanceQa = bridgeMotionGovernancePreflightForStory,
     runAggregateBenchmarkQa = aggregateBenchmarkPreflightForStory,
@@ -4130,6 +4216,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
     const timestampAlignment = await runTimestampAlignmentQa(cloneStoryForPreflight(story));
     const visualEntityMatch = await runVisualEntityQa(cloneStoryForPreflight(story));
+    const currentMotionPack = await runCurrentMotionPackQa(cloneStoryForPreflight(story), opts);
     const bridgeArtifactFreshness = story.scheduler_bridge_source
       ? await runBridgeArtifactFreshnessQa(cloneStoryForPreflight(story))
       : null;
@@ -4157,6 +4244,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       audioSegment,
       timestampAlignment,
       visualEntityMatch,
+      currentMotionPack,
       bridgeArtifactFreshness,
       bridgeMotionGovernance,
       aggregateBenchmark,
@@ -4186,6 +4274,12 @@ function preflightBlockerIsNonSupersedableVisualLoop(blocker = "") {
 
 function preflightBlockerIsNonSupersedableVoiceQuality(blocker = "") {
   return /(?:^|:)voice_quality:|(?:^|:)voice_cadence:|local_tts_|word_timestamps_not_strict_whisper_aligned/i.test(
+    cleanText(blocker),
+  );
+}
+
+function preflightBlockerIsCurrentMotionPack(blocker = "") {
+  return /(?:^|:)current_motion_pack:|(?:^|:)v4_motion_pack_blocked|motion_pack_/i.test(
     cleanText(blocker),
   );
 }
@@ -4263,6 +4357,14 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
           safe_next_action: "replace_with_fresh_source_or_operator_approve_evergreen",
         };
         candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_stale_source"])];
+      } else if (asArray(preflight.blockers).some(preflightBlockerIsCurrentMotionPack)) {
+        candidate.scheduler_quarantine = {
+          status: "held",
+          reason: "current_motion_pack_blocked",
+          lane: "visual_motion_repair",
+          safe_next_action: "rebuild_v4_motion_pack_with_distinct_base_sources",
+        };
+        candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_current_motion_pack"])];
       }
     } else {
       candidate.reasons = [...new Set([...(candidate.reasons || []), `preflight_qa_${preflight.status}`])];

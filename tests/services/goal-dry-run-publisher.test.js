@@ -2724,6 +2724,52 @@ test("goal dry-run publisher requires scheduler preflight pass when a candidate 
   );
 });
 
+test("goal dry-run publisher holds scheduler-quarantined motion-pack candidates without blocking ready stories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-motion-hold-"));
+  const passPackage = await makeStoryPackage(root, "motion-pass", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
+  const heldPackage = await makeStoryPackage(root, "motion-held", "GREEN", "Marvel Tokon Finally Shows Real Gameplay");
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [passPackage, heldPackage],
+    generatedAt: "2026-05-24T21:15:00.000Z",
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "motion-pass",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+        {
+          id: "motion-held",
+          status: "review",
+          preflight_qa: {
+            status: "blocked",
+            blockers: ["current_motion_pack:v4_motion_pack_blocked"],
+            warnings: [],
+          },
+          scheduler_quarantine: {
+            status: "held",
+            reason: "current_motion_pack_blocked",
+            lane: "visual_motion_repair",
+            safe_next_action: "rebuild_v4_motion_pack_with_distinct_base_sources",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.held_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.preflight_checked_story_count, 2);
+  assert.ok(plan.ready_stories.some((story) => story.story_id === "motion-pass"));
+  const heldStory = plan.held_stories.find((story) => story.story_id === "motion-held");
+  assert.ok(heldStory);
+  assert.equal(heldStory.scheduler_quarantine.reason, "current_motion_pack_blocked");
+  assert.equal(heldStory.scheduler_quarantine.lane, "visual_motion_repair");
+  assert.equal(plan.blocked_stories.some((story) => story.story_id === "motion-held"), false);
+});
+
 test("goal dry-run publisher counts story preflight evidence for already-public bridge stories", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-preflight-story-"));
   const storyPackage = await makeStoryPackage(root, "already-public", "GREEN", "Granblue Fantasy Relink Demo Is Proof");

@@ -12,6 +12,9 @@ const {
   GLUED_SENTENCE_RE,
   AMERICAN_TIME_RE,
 } = require("../../lib/services/content-qa");
+const {
+  TTS_PRONUNCIATION_PROFILE_VERSION,
+} = require("../../lib/tts-pronunciation");
 
 // Helpers to produce a known-good / known-bad fixture. All tests
 // pass a fake `fs` so we don't touch the real filesystem unless
@@ -212,6 +215,44 @@ test("runContentQa: malformed GTA VI timestamp transcript fails before publish",
   assert.strictEqual(qa.result, "fail");
   assert.ok(
     qa.failures.includes("risky_gta_vi_timestamp_transcript:meta.transcript"),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
+test("runContentQa: GTA VI timestamp evidence without current pronunciation profile fails before publish", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-content-qa-gta-profile-"));
+  const videoPath = path.join(root, "story.mp4");
+  const timestampPath = path.join(root, "story_timestamps.json");
+  await fs.outputFile(videoPath, Buffer.alloc(5 * 1024 * 1024, 1));
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "Rockstar's", start: 0, end: 0.24 },
+      { word: "next", start: 0.25, end: 0.42 },
+      { word: "Grand", start: 0.43, end: 0.62 },
+      { word: "Theft", start: 0.63, end: 0.82 },
+      { word: "Auto", start: 0.83, end: 1.02 },
+    ],
+    meta: {
+      transcript: "Rockstar's next Grand Theft Auto starts the preorder fight.",
+      spoken_text: "Rockstar's next Grand Theft Auto starts the preorder fight.",
+      wordTimestampSource: "local_whisper_word_alignment",
+    },
+  });
+  const story = goodStory({
+    title: "GTA VI Starts The Preorder Fight",
+    canonical_subject: "Grand Theft Auto VI",
+    exported_path: videoPath,
+    word_timestamps_path: timestampPath,
+    full_script:
+      "GTA VI starts the preorder fight because Rockstar has turned store pages into the first real test. Players are not just watching another reveal now; they are choosing whether price, editions and bonuses justify buying early. That matters because the safest blockbuster in games can still lose trust if the first purchase screen arrives before fresh gameplay proof. The smart move is simple: wait for the edition details unless the bonuses are genuinely useful. Follow Pulse Gaming so you never miss a beat.",
+    tts_script: "Rockstar's next Grand Theft Auto starts the preorder fight.",
+  });
+
+  const qa = await runContentQa(story);
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("risky_gta_vi_timestamp_profile_stale"),
     `got: ${qa.failures.join(", ")}`,
   );
 });
@@ -839,6 +880,7 @@ test("runContentQa: ElevenLabs production narration passes without local pitch d
     meta: {
       provider: "elevenlabs",
       source: "elevenlabs-production-path",
+      ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
       transcript,
       elevenlabs: {
         voiceId: "TX3LPaxmHKxFdv7VOQHJ",
@@ -888,6 +930,7 @@ test("runContentQa: strict local publish accepts explicit V4 word timestamp meta
     meta: {
       provider: "elevenlabs",
       source: "elevenlabs-production-path",
+      ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
       transcript,
       elevenlabs: {
         voiceId: "TX3LPaxmHKxFdv7VOQHJ",

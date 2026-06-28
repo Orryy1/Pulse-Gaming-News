@@ -3440,6 +3440,84 @@ test("attachPreflightQa blocks GTA VI pronunciation-sensitive packages without r
   );
 });
 
+test("attachPreflightQa blocks GTA VI timestamp evidence without the current pronunciation profile", async () => {
+  const safeSpoken =
+    "Rockstar's next Grand Theft Auto just made pre orders a trust test. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const words = safeSpoken
+    .replace(/[,.]/g, "")
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: Number((index * 0.45).toFixed(2)),
+      end: Number((index * 0.45 + 0.2).toFixed(2)),
+    }));
+  words[words.length - 1].end = Number((words.length * 0.45).toFixed(2));
+  const stories = [
+    baseStory({
+      id: "current_gta_vi_missing_pronunciation_profile",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      narration_script: safeSpoken,
+      tts_script: safeSpoken,
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 146.5,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      word_timestamps_payload: {
+        words,
+        meta: {
+          transcript: safeSpoken,
+          spoken_text: safeSpoken,
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-28T19:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:voice_pronunciation_profile_stale",
+    ),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_pronunciation_sensitive,
+    true,
+  );
+});
+
 test("attachPreflightQa does not block non-GTA pronunciation aliases when recorded speech matches current text", async () => {
   const rawScript =
     "MARVEL Tokon finally showed real gameplay. GameSpot's footage shows Magneto and Black Panther in two-on-two combat. Follow Pulse Gaming so you never miss a beat.";

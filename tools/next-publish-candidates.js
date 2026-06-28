@@ -2985,6 +2985,18 @@ function hasGtaViTitleAlias(value = "") {
   );
 }
 
+function hasGtaViStoryContext(story = {}) {
+  return [
+    story.title,
+    story.public_title,
+    story.upload_title,
+    story.selected_title,
+    story.canonical_subject,
+    story.canonical_game,
+    story.game_title,
+  ].some(hasGtaViTitleAlias);
+}
+
 function gtaViOpeningVoiceRiskEvidence(...texts) {
   const openingRiskSources = [];
   const spokenSixSources = [];
@@ -3066,27 +3078,46 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
     comparableVoiceText(rawRecordedWordText) !== comparableVoiceText(recordedSpoken)
       ? rawRecordedWordText
       : "";
+  const hasTimestampPayload =
+    Boolean(timestampPayload) &&
+    typeof timestampPayload === "object" &&
+    Object.keys(timestampPayload).length > 0;
   const openingRisk = gtaViOpeningVoiceRiskEvidence(
     ["expected_spoken_text", expectedSpoken],
     ["recorded_spoken_text", recordedSpoken],
     ["recorded_word_text", recordedWordText],
     ["raw_spoken_text", rawSpoken],
   );
+  const gtaViPronunciationContext =
+    hasGtaViStoryContext(story) ||
+    hasGtaViTitleAlias(rawSpoken) ||
+    hasGtaViTitleAlias(expectedSpoken) ||
+    hasGtaViTitleAlias(recordedSpoken) ||
+    hasGtaViTitleAlias(recordedWordText);
+  const gtaViProfileStale =
+    hasTimestampPayload &&
+    gtaViPronunciationContext &&
+    actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION;
   const profileSensitive =
     Boolean(expectedSpoken) &&
     Boolean(rawSpoken) &&
     comparableVoiceText(expectedSpoken) !== comparableVoiceText(rawSpoken);
   const gtaViPronunciationSensitive =
-    profileSensitive &&
-    (hasGtaViTitleAlias(rawSpoken) || hasGtaViTitleAlias(expectedSpoken));
+    gtaViPronunciationContext || (
+      profileSensitive &&
+      (hasGtaViTitleAlias(rawSpoken) || hasGtaViTitleAlias(expectedSpoken))
+    );
   if (!profileSensitive) {
+    const failures = [...openingRisk.failures];
+    if (gtaViProfileStale) failures.push("voice_pronunciation_profile_stale");
     return {
-      failures: [...openingRisk.failures],
+      failures,
       warnings: [],
       evidence: {
         expected_tts_pronunciation_profile_version: TTS_PRONUNCIATION_PROFILE_VERSION,
+        actual_tts_pronunciation_profile_version: actualProfile || null,
         profile_sensitive: false,
-        gta_vi_pronunciation_sensitive: false,
+        gta_vi_pronunciation_sensitive: gtaViPronunciationSensitive,
         ...openingRisk.evidence,
       },
     };
@@ -3098,6 +3129,8 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
     Boolean(recordedSpoken) &&
     comparableVoiceText(recordedSpoken) === comparableVoiceText(expectedSpoken);
   if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION && !recordedMatchesExpected) {
+    failures.push("voice_pronunciation_profile_stale");
+  } else if (gtaViProfileStale) {
     failures.push("voice_pronunciation_profile_stale");
   } else if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION) {
     warnings.push("voice_pronunciation_profile_metadata_stale");

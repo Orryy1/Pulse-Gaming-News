@@ -1267,13 +1267,13 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(
       segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--max-segments") + 1],
-      "48",
-      "fresh refill should use a bounded breadth-first budget so motion-rich official sources cannot stall runway repair",
+      "96",
+      "fresh refill should use a bounded wider scan so motion-rich official sources can satisfy no-repeat gates",
     );
     assert.equal(
       segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--candidate-windows-per-source") + 1],
-      "2",
-      "fresh refill should inspect fewer windows per source so it samples more official source families before timeout",
+      "4",
+      "fresh refill should inspect enough windows per source to find usable non-repeating motion before timeout",
     );
     assert.equal(
       segmentValidatorCall.args.includes("--include-frame-anchored-windows"),
@@ -1376,7 +1376,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(
       segmentValidationCall.timeoutMs,
-      480000,
+      720000,
       "fresh refill segment validation must have enough bounded time to finish official/direct-motion repair for the actual repair lane",
     );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
@@ -1397,14 +1397,14 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const segmentMaxIndex = segmentValidationCall.args.indexOf("--max-segments");
     assert.equal(
       Number(segmentValidationCall.args[segmentMaxIndex + 1]),
-      48,
+      96,
       "expected fresh refill to keep segment validation bounded while still sampling enough official/direct-motion windows",
     );
     const candidateWindowsIndex = segmentValidationCall.args.indexOf("--candidate-windows-per-source");
     assert.equal(
       Number(segmentValidationCall.args[candidateWindowsIndex + 1]),
-      2,
-      "expected fresh refill to prioritise breadth across official source families before requiring better source material",
+      4,
+      "expected fresh refill to sample enough windows from official source families before requiring better source material",
     );
     const segmentReferenceArgs = segmentValidationCall.args
       .map((arg, index) => (arg === "--reference-report" ? segmentValidationCall.args[index + 1] : null))

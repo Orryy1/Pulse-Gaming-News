@@ -625,6 +625,167 @@ test("fresh refill repair filter quarantines motion-poor service stories without
   }
 });
 
+test("fresh refill repair filter quarantines retro and collector stories without direct motion runway", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-retro-motion-runway-"));
+  const packagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+  const collectorDir = path.join(tmp, "mario_64_collectible_story");
+  const retrospectiveDir = path.join(tmp, "mario_kart_64_retrospective_story");
+  const directDir = path.join(tmp, "retro_direct_motion_story");
+
+  async function writePackage(dir, story) {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: story.story_id,
+        selected_title: story.title,
+        canonical_subject: story.subject,
+        narration_script: story.script,
+        direct_media_candidates: story.direct_media_candidates || [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(dir, "source_manifest.json"),
+      JSON.stringify({
+        story_id: story.story_id,
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        primary_source: {
+          name: story.source_name || "Nintendo Life",
+          url: story.source_url || "https://www.nintendolife.com/news/2026/06/story",
+        },
+        direct_media_candidates: story.direct_media_candidates || [],
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(dir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: story.story_id,
+        verdict: "viral_ready",
+        blockers: [],
+        failures: [],
+      }),
+    );
+  }
+
+  try {
+    await writePackage(collectorDir, {
+      story_id: "mario_64_collectible_story",
+      title: "Super Mario 64 Film Slides Are A Collector Test",
+      subject: "Super Mario 64 film slides",
+      script:
+        "Super Mario 64 just turned a collector listing into a nostalgia test. The useful question is whether this is gaming history worth owning or scarcity hype. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await writePackage(retrospectiveDir, {
+      story_id: "mario_kart_64_retrospective_story",
+      title: "Mario Kart 64 Made The Blueprint",
+      subject: "Mario Kart 64",
+      script:
+        "Mario Kart 64 still matters because it changed the series blueprint. Players still debate whether it defined the formula or whether nostalgia is doing too much work. Follow Pulse Gaming so you never miss a beat.",
+    });
+    await writePackage(directDir, {
+      story_id: "retro_direct_motion_story",
+      title: "DOOM The Dark Ages Just Got New Gameplay",
+      subject: "DOOM: The Dark Ages",
+      source_name: "Bethesda",
+      source_url: "https://bethesda.net/en/game/doom-the-dark-ages",
+      direct_media_candidates: [
+        {
+          direct_media_url: "https://videos.example.com/doom-dark-ages-gameplay.mp4",
+          source_type: "official_game_website_media_page",
+          source_owner: "Bethesda",
+        },
+      ],
+      script:
+        "DOOM: The Dark Ages just put more combat on screen. That matters because players can judge shield saw pace, enemy density and whether the medieval turn still feels like DOOM. Follow Pulse Gaming so you never miss a beat.",
+    });
+
+    await fs.writeFile(
+      packagesPath,
+      JSON.stringify([
+        {
+          story_id: "mario_64_collectible_story",
+          title: "Super Mario 64 Film Slides Are A Collector Test",
+          artifact_dir: collectorDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+        {
+          story_id: "mario_kart_64_retrospective_story",
+          title: "Mario Kart 64 Made The Blueprint",
+          artifact_dir: retrospectiveDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+        {
+          story_id: "retro_direct_motion_story",
+          title: "DOOM The Dark Ages Just Got New Gameplay",
+          artifact_dir: directDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+      ]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath: packagesPath,
+      outputDir,
+    });
+
+    assert.deepEqual(result.eligibleRows.map((row) => row.story_id), ["retro_direct_motion_story"]);
+    assert.deepEqual(
+      result.quarantinedRows.map((row) => row.story_id),
+      ["mario_64_collectible_story", "mario_kart_64_retrospective_story"],
+    );
+    assert.deepEqual(
+      result.quarantinedRows.flatMap((row) => row.reasons),
+      [
+        "motion_runway_unfit_for_automatic_refill",
+        "motion_runway_unfit_for_automatic_refill",
+      ],
+    );
+    const quarantineReport = JSON.parse(await fs.readFile(result.quarantineReportPath, "utf8"));
+    assert.equal(quarantineReport.summary.motion_runway_quarantined_story_package_count, 2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill official discovery runs from source-family search rows even without accepted source entries", () => {
+  const { freshRefillShouldRunOfficialDiscovery } = require("../../lib/job-handlers");
+
+  assert.equal(
+    freshRefillShouldRunOfficialDiscovery({
+      sourceEvidence: { official_source_entries_count: 0 },
+      supplementalOfficialSearchEvidence: {
+        existing_entry_count: 0,
+        supplemental_entry_count: 0,
+        total_entry_count: 0,
+      },
+      officialSearchTemplate: {
+        entries: [
+          {
+            story_id: "rss_42c92208a8c02a65",
+            entity: "GUILTY GEAR -STRIVE-",
+            query: "GUILTY GEAR -STRIVE- official gameplay trailer",
+            status: "official_search_required",
+          },
+        ],
+      },
+    }),
+    true,
+  );
+
+  assert.equal(
+    freshRefillShouldRunOfficialDiscovery({
+      sourceEvidence: { official_source_entries_count: 0 },
+      supplementalOfficialSearchEvidence: { total_entry_count: 0 },
+      officialSearchTemplate: { entries: [] },
+    }),
+    false,
+  );
+});
+
 test("fresh production refill handler builds live-RSS local proof packages", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
@@ -1106,13 +1267,13 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(
       segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--max-segments") + 1],
-      "72",
-      "fresh refill should use a bounded deep-scan budget so motion-rich official sources can build runway",
+      "48",
+      "fresh refill should use a bounded breadth-first budget so motion-rich official sources cannot stall runway repair",
     );
     assert.equal(
       segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--candidate-windows-per-source") + 1],
-      "6",
-      "fresh refill should inspect enough windows per source to avoid underfilling motion-rich official sources",
+      "2",
+      "fresh refill should inspect fewer windows per source so it samples more official source families before timeout",
     );
     assert.equal(
       segmentValidatorCall.args.includes("--include-frame-anchored-windows"),
@@ -1200,6 +1361,11 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const segmentValidationCall = childCalls.find(
       (call) => call.args[0] === "tools/official-trailer-segment-validator.js",
     );
+    assert.equal(
+      segmentValidationCall.timeoutMs,
+      180000,
+      "fresh refill segment validation must have its own bounded timeout so one motion-heavy candidate cannot stall scheduler refill",
+    );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
     assert.ok(segmentValidationCall.args.includes("--deep-scan"));
     assert.equal(segmentValidationCall.args.includes("--include-frame-anchored-windows"), true);
@@ -1207,14 +1373,14 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const segmentMaxIndex = segmentValidationCall.args.indexOf("--max-segments");
     assert.equal(
       Number(segmentValidationCall.args[segmentMaxIndex + 1]),
-      72,
-      "expected fresh refill to deep-scan enough official/direct-motion windows to fill publish runway",
+      48,
+      "expected fresh refill to keep segment validation bounded while still sampling enough official/direct-motion windows",
     );
     const candidateWindowsIndex = segmentValidationCall.args.indexOf("--candidate-windows-per-source");
     assert.equal(
       Number(segmentValidationCall.args[candidateWindowsIndex + 1]),
-      6,
-      "expected fresh refill to inspect enough windows per source before requiring better source material",
+      2,
+      "expected fresh refill to prioritise breadth across official source families before requiring better source material",
     );
     const segmentReferenceArgs = segmentValidationCall.args
       .map((arg, index) => (arg === "--reference-report" ? segmentValidationCall.args[index + 1] : null))

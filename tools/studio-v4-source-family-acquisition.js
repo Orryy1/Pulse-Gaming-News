@@ -208,6 +208,15 @@ function commandPathsFromArgs(args = {}) {
   const officialDirectMediaDiscoveryMd = intakeTemplate
     ? path.join(path.dirname(intakeTemplate), "official_direct_media_discovery.md")
     : null;
+  const officialSearchAutofillJson = intakeTemplate
+    ? path.join(path.dirname(intakeTemplate), "official_search_intake_autofill.json")
+    : null;
+  const officialSearchAutofillMd = intakeTemplate
+    ? path.join(path.dirname(intakeTemplate), "official_search_intake_autofill.md")
+    : null;
+  const officialSearchAutofillTemplate = intakeTemplate
+    ? path.join(path.dirname(intakeTemplate), "visual_v4_source_family_intake_template_autofill.json")
+    : null;
   const licensedDirectMediaReport = intakeTemplate
     ? path.join(path.dirname(intakeTemplate), "studio_v4_licensed_direct_media_acquisition.json")
     : null;
@@ -218,12 +227,17 @@ function commandPathsFromArgs(args = {}) {
     ? path.join(path.dirname(intakeTemplate), "official_trailer_segment_validation_apply_local.json")
     : null;
   return {
+    sourceFamilyReport: commandPathFromRoot(args.outputJson),
     sourceFamilyIntakeTemplate: commandPathFromRoot(args.intakeTemplate),
     officialSearchTemplate: commandPathFromRoot(args.searchTemplate),
     governedVisualPlanTemplate: commandPathFromRoot(args.governedVisualPlanTemplate),
     officialDirectMediaIntakeTemplate: commandPathFromRoot(officialDirectMediaIntakeTemplate),
     officialDirectMediaDiscoveryJson: commandPathFromRoot(officialDirectMediaDiscoveryJson),
     officialDirectMediaDiscoveryMd: commandPathFromRoot(officialDirectMediaDiscoveryMd),
+    officialSearchAutofillJson: commandPathFromRoot(officialSearchAutofillJson),
+    officialSearchAutofillMd: commandPathFromRoot(officialSearchAutofillMd),
+    officialSearchAutofillTemplate: commandPathFromRoot(officialSearchAutofillTemplate),
+    storyJsonPath: commandPathFromRoot(args.storyPackages),
     licensedDirectMediaReport: commandPathFromRoot(licensedDirectMediaReport),
     trustedFootageRegistryReport: commandPathFromRoot(trustedFootageRegistryReport),
     segmentValidationReport: commandPathFromRoot(segmentValidationReport),

@@ -122,6 +122,42 @@ function normaliseStory(row) {
   };
 }
 
+async function readAdjacentJsonIfPresent(baseDir, basename, fallback = null) {
+  const filePath = path.join(baseDir, basename);
+  try {
+    if (await fs.pathExists(filePath)) return await fs.readJson(filePath);
+  } catch {}
+  return fallback;
+}
+
+async function resolveArtifactDir(row, storyJsonPath) {
+  const artifactDir = String(row?.artifact_dir || row?.artifactDir || "").trim();
+  if (!artifactDir) return null;
+  if (path.isAbsolute(artifactDir)) {
+    return (await fs.pathExists(artifactDir)) ? artifactDir : null;
+  }
+  const baseDir = path.dirname(storyJsonPath);
+  const candidates = [path.resolve(baseDir, artifactDir), path.resolve(ROOT, artifactDir)];
+  for (const candidate of candidates) {
+    if (await fs.pathExists(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+
+async function enrichStoryJsonRowFromAdjacent(row, storyJsonPath) {
+  if (!row || typeof row !== "object") return row;
+  const artifactDir = await resolveArtifactDir(row, storyJsonPath);
+  if (!artifactDir) return row;
+  const canonicalManifest = await readAdjacentJsonIfPresent(
+    artifactDir,
+    "canonical_story_manifest.json",
+    null,
+  );
+  return canonicalManifest && typeof canonicalManifest === "object"
+    ? { ...canonicalManifest, ...row }
+    : row;
+}
+
 function storyTime(story) {
   return Date.parse(story?.timestamp || story?.created_at || story?.updated_at || 0) || 0;
 }
@@ -132,7 +168,11 @@ async function loadStories(args) {
   if (args.storyJsonPath) {
     const storyJsonPath = path.resolve(ROOT, args.storyJsonPath);
     const parsed = await fs.readJson(storyJsonPath);
-    const rows = (Array.isArray(parsed) ? parsed : [parsed]).map(normaliseStory);
+    const enrichedRows = [];
+    for (const row of Array.isArray(parsed) ? parsed : [parsed]) {
+      enrichedRows.push(normaliseStory(await enrichStoryJsonRowFromAdjacent(row, storyJsonPath)));
+    }
+    const rows = enrichedRows;
     const selected = args.storyId ? rows.filter((story) => story.id === args.storyId) : rows;
     if (selected.length === 0) {
       throw new Error(`story JSON did not contain requested story id: ${args.storyId}`);

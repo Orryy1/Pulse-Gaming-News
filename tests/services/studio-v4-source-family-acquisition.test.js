@@ -1701,20 +1701,40 @@ test("Studio V4 source-family acquisition surfaces official search actions witho
   assert.equal(report.source_intake_template.entries.length, 0);
   assert.equal(
     row.safe_next_commands[0].step,
-    "fill_official_source_intake_from_search_template",
+    "autofill_official_source_intake_from_search_template",
+  );
+  assert.match(
+    row.safe_next_commands[0].command,
+    /media:autofill-official-source-intake/,
   );
   assert.match(
     row.safe_next_commands[0].command,
     /visual_v4_official_search_template\.json/,
   );
-  assert.doesNotMatch(
+  assert.match(
     row.safe_next_commands[0].command,
-    /media:discover-direct-media/,
+    /visual_v4_source_family_intake_template_autofill\.json/,
   );
-  assert.equal(row.safe_next_commands[1].step, "validate_operator_supplied_official_sources");
+  assert.equal(
+    row.safe_next_commands[1].step,
+    "discover_direct_media_from_autofilled_official_sources",
+  );
   assert.match(
     row.safe_next_commands[1].command,
-    /--input test\/output\/visual_v4_source_family_intake_template\.json/,
+    /media:discover-direct-media/,
+  );
+  assert.match(
+    row.safe_next_commands[1].command,
+    /--input test\/output\/visual_v4_source_family_intake_template_autofill\.json/,
+  );
+  assert.equal(row.safe_next_commands[2].step, "validate_operator_supplied_official_sources");
+  assert.match(
+    row.safe_next_commands[2].command,
+    /--input test\/output\/official_direct_media_intake_template\.json/,
+  );
+  assert.equal(
+    row.safe_next_commands[3].step,
+    "fill_official_source_intake_from_search_template",
   );
   assert.deepEqual(report.official_search_template.entries, [
     {
@@ -1730,6 +1750,26 @@ test("Studio V4 source-family acquisition surfaces official search actions witho
         "Find an official, storefront, publisher or platform-holder page, then rerun trusted footage/direct media intake.",
     },
   ]);
+});
+
+test("Studio V4 source-family acquisition passes local story packages to official source intake", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [motionPack()],
+    trustedFootageReport: trustedReport(),
+    referenceReport: referenceReport(),
+    commandPaths: {
+      storyJsonPath: "output/fresh-green-refill/run/goal-contract/story-packages.json",
+    },
+    generatedAt: "2026-06-28T22:30:00.000Z",
+  });
+
+  const validateCommand = report.rows[0].safe_next_commands.find(
+    (item) => item.step === "validate_operator_supplied_official_sources",
+  ).command;
+  assert.match(
+    validateCommand,
+    /--story-json output\/fresh-green-refill\/run\/goal-contract\/story-packages\.json/,
+  );
 });
 
 test("Studio V4 source-family acquisition carries dead-end work-order blockers", () => {
@@ -2560,6 +2600,12 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
     const officialDirectMediaIntakePath = path
       .join(tempDir, "official_direct_media_intake_template.json")
       .replace(/\\/g, "/");
+    const officialDirectMediaDiscoveryPath = path
+      .join(tempDir, "official_direct_media_discovery.json")
+      .replace(/\\/g, "/");
+    const officialSearchAutofillTemplatePath = path
+      .join(tempDir, "visual_v4_source_family_intake_template_autofill.json")
+      .replace(/\\/g, "/");
     const licensedDirectMediaReportPath = path
       .join(tempDir, "studio_v4_licensed_direct_media_acquisition.json")
       .replace(/\\/g, "/");
@@ -2572,7 +2618,10 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
 
     assert.match(rows["pokemon-go"].safe_next_commands[0].command, new RegExp(searchPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.match(rows["pokemon-go"].safe_next_commands[0].command, new RegExp(intakePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(rows["pokemon-go"].safe_next_commands[1].command, new RegExp(intakePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(
+      rows["pokemon-go"].safe_next_commands[1].command,
+      new RegExp(officialSearchAutofillTemplatePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
     assert.match(
       rows["kadokawa-stake"].safe_next_commands[0].command,
       new RegExp(governedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
@@ -2582,8 +2631,11 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
       trustedFootageReport: trustedReport(),
       referenceReport: referenceReport(),
       commandPaths: {
+        sourceFamilyReport: outputJson.replace(/\\/g, "/"),
         sourceFamilyIntakeTemplate: intakePath,
         officialDirectMediaIntakeTemplate: officialDirectMediaIntakePath,
+        officialDirectMediaDiscoveryJson: officialDirectMediaDiscoveryPath,
+        storyJsonPath: path.join(tempDir, "story-packages.json").replace(/\\/g, "/"),
         licensedDirectMediaReport: licensedDirectMediaReportPath,
         trustedFootageRegistryReport: trustedFootageRegistryReportPath,
         segmentValidationReport: segmentValidationReportPath,
@@ -2601,12 +2653,40 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
       directMediaStory.safe_next_commands[1].command,
       new RegExp(officialDirectMediaIntakePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
+    const classifyCommand = directMediaStory.safe_next_commands.find(
+      (item) => item.step === "classify_licensed_direct_media_readiness",
+    ).command;
+    assert.match(
+      classifyCommand,
+      new RegExp(outputJson.replace(/\\/g, "/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.match(
+      classifyCommand,
+      new RegExp(officialDirectMediaDiscoveryPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.match(
+      classifyCommand,
+      new RegExp(officialDirectMediaIntakePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.match(
+      classifyCommand,
+      new RegExp(licensedDirectMediaReportPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.doesNotMatch(classifyCommand, /test\/output/);
     const resolveCommand = directMediaStory.safe_next_commands.find(
       (item) => item.step === "resolve_trailer_references",
     ).command;
     assert.match(
       resolveCommand,
       new RegExp(licensedDirectMediaReportPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.match(
+      resolveCommand,
+      /--story-json /,
+    );
+    assert.match(
+      resolveCommand,
+      new RegExp(path.join(tempDir, "story-packages.json").replace(/\\/g, "/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
     assert.match(
       resolveCommand,

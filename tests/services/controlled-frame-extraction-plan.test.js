@@ -209,6 +209,43 @@ test("Controlled Frame Extraction Plan caps repeated same-entity references", ()
   assert.equal(plan.selected_references.filter((item) => item.entity === "GTA").length, 1);
 });
 
+test("Controlled Frame Extraction Plan hydrates package rows from canonical story manifests", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-frame-plan-package-"));
+  try {
+    const artifactDir = path.join(tempDir, "story-a");
+    await fs.ensureDir(artifactDir);
+    await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+      story_id: "story-a",
+      selected_title: "Star Wars Podracing Has A Roguelite Risk",
+      canonical_subject: "Star Wars: Galactic Racer",
+      canonical_game: "Star Wars: Galactic Racer",
+      primary_source_url: "https://news.xbox.com/en-us/example",
+      narration_script: "Star Wars: Galactic Racer is turning podracing into a roguelite risk.",
+    });
+    const storyJsonPath = path.join(tempDir, "story-packages.json");
+    await fs.writeJson(storyJsonPath, [
+      {
+        story_id: "story-a",
+        artifact_dir: artifactDir,
+        verdict: "RED",
+      },
+    ]);
+
+    const loaded = await loadStories({ storyJsonPath, storyId: "story-a" });
+
+    assert.equal(loaded.mode, "story_json");
+    assert.equal(loaded.stories.length, 1);
+    assert.equal(loaded.stories[0].title, "Star Wars Podracing Has A Roguelite Risk");
+    assert.equal(loaded.stories[0].game_title, "Star Wars: Galactic Racer");
+    assert.equal(
+      loaded.stories[0].full_script,
+      "Star Wars: Galactic Racer is turning podracing into a roguelite risk.",
+    );
+  } finally {
+    await fs.remove(tempDir);
+  }
+});
+
 test("Controlled Frame Extraction Plan de-prioritises PEGI and rating-board trailer references", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

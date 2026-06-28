@@ -346,6 +346,63 @@ test("auto repair runner does not count no-effect local repairs as successful re
   assert.equal(report.results[0].status, "executed_no_effect");
 });
 
+test("auto repair runner treats structured child report failures as failed repair work", async () => {
+  const runPlan = buildAutoRepairRunPlan(planFixture(), {
+    lane: "script_runtime_rewrite",
+    generatedAt: "2026-05-31T01:00:00.000Z",
+  });
+  runPlan.items = [
+    {
+      story_id: "script-fetch-fail",
+      repair_lane: "source_bound_script_rewrite",
+      command: "npm run ops:reprocess-script-failures -- --story-id script-fetch-fail --dry-run --json",
+      command_safety: { safe: true, reason: "safe_local_repair_command" },
+      execute_command: {
+        executable: "npm",
+        script: "ops:reprocess-script-failures",
+        args: ["run", "ops:reprocess-script-failures", "--", "--story-id", "script-fetch-fail", "--dry-run", "--json"],
+      },
+    },
+  ];
+
+  const report = await executeAutoRepairRunPlan(runPlan, {
+    execute: true,
+    runCommand: async () => ({
+      code: 0,
+      stdout: JSON.stringify({
+        mode: "dry_run",
+        safety: {
+          db_mutation: false,
+          targeted_failure: "script_generation_error:Local LLM request failed: fetch failed",
+        },
+        summary: {
+          candidates: 1,
+          processed: 1,
+          script_ready: 0,
+          still_review: 0,
+          failed: 1,
+        },
+        rows: [
+          {
+            story_id: "script-fetch-fail",
+            status: "failed",
+            reason: "script_generation_error:Local LLM request failed: fetch failed",
+          },
+        ],
+      }),
+      stderr: "",
+    }),
+  });
+
+  assert.equal(report.summary.executed, 0);
+  assert.equal(report.summary.failed, 1);
+  assert.equal(report.results[0].status, "failed");
+  assert.equal(
+    report.results[0].reason,
+    "child_report_failed:1",
+  );
+});
+
 test("auto repair runner treats runtime-blocked local media dry runs as no-effect", async () => {
   const runPlan = buildAutoRepairRunPlan(planFixture(), {
     lane: "platform_media_repair",

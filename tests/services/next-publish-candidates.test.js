@@ -3690,6 +3690,90 @@ test("attachPreflightQa blocks malformed GTA VI stutters in recorded opening spe
   );
 });
 
+test("attachPreflightQa blocks split GTA VI roman narration even when script text is safe", async () => {
+  const spoken =
+    "Grand Theft Auto V I now has one real preorder catch. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const words = spoken
+    .replace(/[,.]/g, "")
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: Number((index * 0.45).toFixed(2)),
+      end: Number((index * 0.45 + 0.2).toFixed(2)),
+    }));
+  words[words.length - 1].end = Number((words.length * 0.45).toFixed(2));
+  const safeScript =
+    "Rockstar's next Grand Theft Auto now has one real preorder catch. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const stories = [
+    baseStory({
+      id: "current_gta_vi_roman_split_recording",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      narration_script: safeScript,
+      tts_script: safeScript,
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 148.4,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      word_timestamps_payload: {
+        words,
+        meta: {
+          transcript: spoken,
+          spoken_text: spoken,
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v7",
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-28T01:20:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes("voice_quality:gta_vi_spoken_roman_split"),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_spoken_roman_split,
+    true,
+  );
+  assert.deepEqual(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_spoken_roman_split_sources,
+    ["recorded_spoken_text"],
+  );
+});
+
 test("attachPreflightQa blocks recorded GTA VI spoken-six phrases outside the opener", async () => {
   const spoken =
     "Rockstar made the store page the real test. " +

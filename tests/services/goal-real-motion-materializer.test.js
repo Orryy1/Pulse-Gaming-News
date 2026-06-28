@@ -783,6 +783,94 @@ test("real motion materializer blocks instead of padding with repeated official 
   assert.equal(new Set(partial.clips.map((clip) => clip.base_source_family)).size, 3);
 });
 
+test("real motion materializer treats Steam extras mp4 and webm encodes as one base source", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-steam-extra-encodes-"));
+  const storyId = "age-of-empires-mobile-extra-encode";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const steamExtra =
+    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2783360/extras/eae21c9cf6b089af182287247493f59d";
+  const segmentValidationReport = {
+    segments: Array.from({ length: 5 }, (_, index) => {
+      const extension = index % 2 === 0 ? "webm" : "mp4";
+      return {
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+        source_url: `${steamExtra}.${extension}?t=1782262815`,
+        source_type: "official_game_site_news_page",
+        source_url_kind: "direct_video",
+        provider: "licensed_direct_media_acquisition",
+        entity: "Age of Empires Mobile",
+        source_family: `age_of_empires_mobile_extra_${extension}_${index + 1}`,
+        media_start_s: 2.58 + index,
+        duration_s: 5,
+        source_duration_s: 12,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+      };
+    }),
+  };
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["visual_evidence:direct_video_motion_missing"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["visual_evidence:direct_video_motion_missing"],
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    generatedAt: "2026-06-28T22:15:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].materialized_count, 1);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
+  assert.equal(calls.length, 1);
+
+  const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
+  assert.equal(partial.clip_count, 1);
+  assert.equal(partial.direct_video_motion_family_count, 1);
+  assert.match(
+    partial.clips[0].base_source_family,
+    /^steamstatic:\/store_item_assets\/steam\/apps\/2783360\/extras\/eae21c9cf6b089af182287247493f59d$/,
+  );
+});
+
 test("real motion materializer blocks eight-clip floors when only three official base sources exist", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-eight-official-windows-"));
   const storyId = "gta-vi-official-window-floor";

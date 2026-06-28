@@ -865,6 +865,51 @@ test("Visual V4 motion pack refuses same-source asset padding even with distinct
   assert.equal(pack.readiness.status, "v4_motion_blocked");
 });
 
+test("Visual V4 motion pack refuses alternate encodes of the same Steam extras clip", () => {
+  const steamExtra =
+    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2783360/extras/eae21c9cf6b089af182287247493f59d";
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory(),
+    trustedFootageReport: trustedReport("forza-v4-pack", [
+      "steam_extra_webm",
+      "steam_extra_mp4",
+      "xbox",
+      "forza",
+      "ign",
+    ]),
+    segmentValidationReport: segmentReport([
+      segment({
+        family: "steam_extra_webm",
+        index: 1,
+        sourceUrl: `${steamExtra}.webm?t=1782262815`,
+        sourceType: "official_game_site_news_page",
+      }),
+      segment({
+        family: "steam_extra_mp4",
+        index: 2,
+        sourceUrl: `${steamExtra}.mp4?t=1782262815`,
+        sourceType: "official_game_site_news_page",
+      }),
+      segment({ family: "xbox", index: 3 }),
+      segment({ family: "forza", index: 4 }),
+      segment({ family: "ign", index: 5 }),
+    ]),
+    generatedAt: "2026-06-28T22:25:00.000Z",
+  });
+
+  assert.equal(
+    pack.clips.filter((clip) => clip.source_url.startsWith(steamExtra)).length,
+    1,
+  );
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) => candidate.reason === "source_asset_already_used" &&
+        candidate.source_url.startsWith(steamExtra),
+    ),
+  );
+  assert.equal(pack.readiness.status, "v4_motion_blocked");
+});
+
 test("Visual V4 motion pack refuses repeat windows from the same base source family", () => {
   const sharedBase = "steamstatic:/store_trailers/3787240/789082905/trailer_asset";
   const pack = buildVisualV4MotionPack({

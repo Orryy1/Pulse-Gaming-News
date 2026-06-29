@@ -248,6 +248,107 @@ test("bootstrap-queue: critical maintenance schedules are reconciled without bro
   }
 });
 
+test("bootstrap-queue: primary runtime starts a dedicated stale-claim maintenance runner", async () => {
+  const bootstrapPath = path.resolve(__dirname, "..", "..", "lib", "bootstrap-queue.js");
+  const schedulerPath = path.resolve(__dirname, "..", "..", "lib", "scheduler.js");
+  const reposPath = path.resolve(__dirname, "..", "..", "lib", "repositories", "index.js");
+  const jobsRunnerPath = path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "lib",
+    "services",
+    "jobs-runner.js",
+  );
+  const originalCache = new Map([
+    [bootstrapPath, require.cache[bootstrapPath]],
+    [schedulerPath, require.cache[schedulerPath]],
+    [reposPath, require.cache[reposPath]],
+    [jobsRunnerPath, require.cache[jobsRunnerPath]],
+  ]);
+  const runnerStarts = [];
+
+  class FakeJobsRunner {
+    constructor(options) {
+      this.options = options;
+    }
+    async start() {
+      runnerStarts.push(this.options);
+    }
+    async stop() {}
+  }
+
+  try {
+    require.cache[schedulerPath] = {
+      id: schedulerPath,
+      filename: schedulerPath,
+      loaded: true,
+      exports: {
+        DEFAULT_SCHEDULES: [],
+        seed() {},
+        start() {
+          return { stop() {} };
+        },
+      },
+    };
+    require.cache[reposPath] = {
+      id: reposPath,
+      filename: reposPath,
+      loaded: true,
+      exports: {
+        getRepos() {
+          return {};
+        },
+      },
+    };
+    require.cache[jobsRunnerPath] = {
+      id: jobsRunnerPath,
+      filename: jobsRunnerPath,
+      loaded: true,
+      exports: {
+        JobsRunner: FakeJobsRunner,
+      },
+    };
+
+    await withEnv(
+      {
+        USE_SQLITE: "true",
+        PULSE_PRIMARY_INSTANCE: "true",
+        PULSE_PUBLISH_CRITICAL_RUNNER: "true",
+        PULSE_MAINTENANCE_RUNNER: "true",
+      },
+      async () => {
+        const bootstrap = loadFreshBootstrap();
+        try {
+          const state = await bootstrap.start({
+            workerId: "server-test-123",
+            autoSeed: true,
+            log() {},
+          });
+
+          assert.ok(state.runner, "expected general queue runner");
+          assert.ok(state.publishCriticalRunner, "expected publish-critical runner");
+          assert.ok(state.maintenanceRunner, "expected dedicated maintenance runner");
+          assert.equal(runnerStarts.length, 3);
+          assert.deepEqual(runnerStarts.map((runner) => runner.kinds), [
+            null,
+            ["jobs_reap"],
+            ["publish_window_watchdog", "publish"],
+          ]);
+          assert.equal(runnerStarts[1].workerId, "server-test-123-maintenance");
+        } finally {
+          await bootstrap.stop().catch(() => {});
+        }
+      },
+    );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+  }
+});
+
 test("bootstrap-queue: PULSE_PRIMARY_INSTANCE=false refuses to start scheduler+runner", async () => {
   await withEnv(
     {

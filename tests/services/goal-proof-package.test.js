@@ -756,6 +756,33 @@ test("goal proof package gives Sea of Thieves Custom Seas a concrete split-risk 
   assert.equal(mediaHousePrivate.platformCopyTooPlain(pack.platform_publish_manifest), false);
 });
 
+test("goal proof package replaces Could Split Players fallback for official gameplay reveal footage", () => {
+  const story = greenStory();
+  story.id = "tekken-gameplay-reveal-copy-pack";
+  story.canonical_subject = "TEKKEN 8";
+  story.canonical_game = "TEKKEN 8";
+  story.public_title = "Why TEKKEN 8 Could Split Players";
+  story.title = "TEKKEN 8 - Bob Gameplay Reveal Trailer";
+  story.suggested_thumbnail_text = "BOB GAMEPLAY";
+  story.primary_source = "Bandai Namco";
+  story.source_name = "Bandai Namco";
+  story.description =
+    "Bandai Namco shows Bob in a new TEKKEN 8 gameplay reveal trailer with fresh combat footage and matchup pressure.";
+  story.full_script =
+    "TEKKEN 8 just made Bob the next character test. Bandai Namco shows fresh gameplay footage built around movement, pressure and matchup reads. The real question is whether Bob looks fun to fight or exhausting to defend against. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-29T12:40:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  assert.equal(youtube.title, "TEKKEN 8 Finally Shows Real Gameplay");
+  assert.doesNotMatch(youtube.title, /Could Split Players/i);
+  assert.equal(mediaHousePrivate.platformTitlesTooPlain(pack.platform_publish_manifest, pack.canonical_story_manifest), false);
+});
+
 test("goal proof package gives Free Play Days roundups a free-access risk description", () => {
   const story = greenStory();
   story.id = "free-play-days-copy-pack";

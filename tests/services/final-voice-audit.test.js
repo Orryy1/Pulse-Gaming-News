@@ -111,7 +111,8 @@ test("final voice audit headline verdict follows active manifest rows while keep
           source: "elevenlabs-production-path",
           audioPath: "D:/pulse-data/media/output/audio/fresh_gta6.mp3",
           acoustic: { medianPitchHz: 118 },
-          transcript: "Rockstar just made GTA 6 feel real again. Follow Pulse Gaming so you never miss a beat.",
+          transcript:
+            "Rockstar just made its next Grand Theft Auto feel real again. Follow Pulse Gaming so you never miss a beat.",
         },
       },
       rss_old_bad: {

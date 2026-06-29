@@ -807,6 +807,55 @@ test("goal audio materializer rejects fresh Whisper transcript when it still con
   assert.match(report.jobs[0].error, /whisper|asr|coverage|insert/i);
 });
 
+test("goal audio materializer rejects fresh Whisper transcript with GTA VI spoken six", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-fresh-spoken-six-"));
+  const artifactDir = await makePackage(root, "story-gta-fresh-spoken-six", {
+    selected_title: "GTA VI Starts The Preorder Fight",
+    narration_script: "GTA VI just made pre orders a trust test.",
+    tts_script:
+      "Rockstar's next Grand Theft Auto just made pre orders a trust test. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "local",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-gta-fresh-spoken-six", artifactDir)],
+    },
+    generatedAt: "2026-06-29T12:30:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => {
+      const alignedText = scriptText;
+      const badTranscript = alignedText.replace(
+        "Rockstar's next Grand Theft Auto",
+        "Grand Theft Auto six",
+      );
+      return {
+        ok: true,
+        source: "local_whisper_word_alignment",
+        model: "fixture",
+        words: whisperWordsFromScript(alignedText),
+        transcript: badTranscript,
+        language: "en",
+        segments: 1,
+      };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.equal(report.jobs[0].status, "failed");
+  assert.match(report.jobs[0].error, /gta_vi_spoken_six/);
+});
+
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-sync-"));
   const repairedScript = "The Expanse finally showed real gameplay.";

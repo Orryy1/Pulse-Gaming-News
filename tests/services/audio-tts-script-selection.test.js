@@ -257,14 +257,24 @@ test("cleanForTTS: removes old spaced GTA acronym forms before local narration",
 
 test("cleanForTTS: repairs malformed GTA VI stutters before local narration", () => {
   const spoken = cleanForTTS(
-    "GTA si-six starts the preorder fight. Grand Theft Auto si-six is still months away.",
+    [
+      "GTA si-six starts the preorder fight.",
+      "Grand Theft Auto see-six is still months away.",
+      "GTA sea six should not reach local narration.",
+      "Grand Theft Auto c-six should not reach the hook.",
+    ].join(" "),
   );
 
   assert.equal(
     spoken,
-    "Rockstar's next Grand Theft Auto starts the preorder fight. Rockstar's next Grand Theft Auto is still months away.",
+    [
+      "Rockstar's next Grand Theft Auto starts the preorder fight.",
+      "Rockstar's next Grand Theft Auto is still months away.",
+      "Rockstar's next Grand Theft Auto should not reach local narration.",
+      "Rockstar's next Grand Theft Auto should not reach the hook.",
+    ].join(" "),
   );
-  assert.doesNotMatch(spoken, /\b(?:si|sigh|s)\s*[- ]?\s*six\b/i);
+  assert.doesNotMatch(spoken, /\b(?:si|sigh|s|see|sea|c)\s*[- ]?\s*six\b/i);
 });
 
 test("cleanForTTS: never leaves standalone GTA as spaced letters for local narration", () => {

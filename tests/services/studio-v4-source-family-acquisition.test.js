@@ -280,6 +280,78 @@ test("Studio V4 source-family acquisition uses story package official motion ref
   assert.match(trailerEntry.evidence_of_officialness, /Xbox Wire listed/);
 });
 
+test("Studio V4 source-family acquisition keeps official product motion gaps even when V4 family counts look met", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "fresh-gta-vi",
+        title: "GTA VI Just Made PS5 The Version To Watch",
+        canonical_subject: "Grand Theft Auto VI",
+        canonical_game: "Grand Theft Auto VI",
+        readiness: {
+          status: "v4_motion_blocked",
+          blockers: [
+            "official_product_motion_clip_minimum_not_met",
+            "official_product_motion_family_minimum_not_met",
+          ],
+        },
+        motion_budget: {
+          required_motion_scenes: 4,
+          available_motion_clips: 4,
+          required_distinct_families: 4,
+          available_distinct_families: 4,
+        },
+        clips: Array.from({ length: 4 }, (_, index) => ({
+          id: `gta-official-${index + 1}`,
+          source_family: `rockstar_gta_vi_official_video_${index + 1}`,
+          source_url: `https://media.rockstargames.com/VI/downloads/videos/clip_${index + 1}.mp4`,
+          source_url_kind: "direct_video",
+          validated: true,
+        })),
+        trusted_source_pipeline: { references_found: 0, intake_queue: [] },
+      }),
+    ],
+    referenceReport: {
+      plans: [
+        {
+          story_id: "fresh-gta-vi",
+          title: "GTA VI Just Made PS5 The Version To Watch",
+          target_entities: ["Grand Theft Auto VI"],
+          source_proof_covered_target_entities: ["Grand Theft Auto VI"],
+          covered_target_entities: ["Grand Theft Auto VI"],
+          planned_searches: [
+            {
+              query: "Grand Theft Auto VI official gameplay trailer",
+              entity: "Grand Theft Auto VI",
+              accepted_sources: ["Rockstar Games", "PlayStation Blog", "official publisher channel"],
+              will_download: false,
+            },
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-06-29T00:10:00.000Z",
+  });
+
+  assert.equal(report.summary.stories_needing_acquisition, 1);
+  assert.equal(report.summary.direct_video_enrichment_stories, 1);
+  assert.equal(report.summary.official_search_actions, 1);
+
+  const row = report.rows[0];
+  assert.equal(row.story_id, "fresh-gta-vi");
+  assert.equal(row.current_motion_families, 4);
+  assert.equal(row.required_motion_families, 5);
+  assert.equal(row.missing_motion_families, 1);
+  assert.equal(row.current_motion_clips, 4);
+  assert.equal(row.required_motion_clips, 5);
+  assert.equal(row.missing_motion_clips, 1);
+  assert.equal(row.direct_video_enrichment_requested, true);
+  assert.ok(row.blockers.includes("visual_evidence:official_product_motion_gap"));
+  assert.deepEqual(row.official_search_actions.map((action) => action.query), [
+    "Grand Theft Auto VI official gameplay trailer",
+  ]);
+});
+
 test("Studio V4 source-family acquisition uses accepted trusted references as source-family candidates", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [

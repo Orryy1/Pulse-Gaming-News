@@ -138,6 +138,14 @@ test("GTA V and GTA VI title variants use stable spoken names", () => {
     "Rockstar's next Grand Theft Auto now has one real preorder catch.",
   );
   assert.equal(
+    applyGamingPronunciation("Grand Theft Auto V. I. now has one real preorder catch."),
+    "Rockstar's next Grand Theft Auto now has one real preorder catch.",
+  );
+  assert.equal(
+    applyGamingPronunciation("GTA V. I. now has one real preorder catch."),
+    "Rockstar's next Grand Theft Auto now has one real preorder catch.",
+  );
+  assert.equal(
     applyGamingPronunciation("GTA 6 is not the same traffic story as G T A five."),
     "Rockstar's next Grand Theft Auto is not the same traffic story as Grand Theft Auto five.",
   );

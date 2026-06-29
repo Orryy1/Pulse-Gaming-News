@@ -1628,6 +1628,7 @@ test("guarded live dispatch executor blocks GTA VI split ASR stutter evidence be
   assert.equal(uploadCalls, 0);
   assert.deepEqual(report.blocked_actions[0].blockers, [
     "last_second_gta_vi_pronunciation_failed",
+    "gta_vi_timestamp_profile_stale",
     "gta_vi_spoken_stutter",
     "gta_vi_opening_spoken_six_risk",
   ]);

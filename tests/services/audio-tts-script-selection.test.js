@@ -44,6 +44,21 @@ test("selectRawTtsScript: normalises cached GTA VI spoken-risk before selection"
   assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+(?:VI|six|si[- ]?six)\b/i);
 });
 
+test("selectRawTtsScript: normalises stale dotted GTA VI roman cached narration", () => {
+  const story = {
+    full_script: "Grand Theft Auto VI now has one real preorder catch.",
+    tts_script: "Grand Theft Auto V. I. now has one real preorder catch.",
+  };
+
+  const selected = selectRawTtsScript(story);
+
+  assert.equal(
+    selected,
+    "Rockstar's next Grand Theft Auto now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+V\.?\s*I\.?\b/i);
+});
+
 test("selectRawTtsScript: normalises fallback GTA VI text when no cached script exists", () => {
   const story = {
     full_script: "GTA VI pre-orders just turned the cover art reveal into a buying argument.",

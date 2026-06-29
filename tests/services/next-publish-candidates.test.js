@@ -3357,7 +3357,7 @@ test("attachPreflightQa blocks stale GTA roman-numeral voice pronunciation metad
   );
   assert.equal(
     candidate.preflight_qa.checks.voice_quality.evidence.expected_tts_pronunciation_profile_version,
-    "gta-safe-next-title-v9",
+    "gta-safe-next-title-v10",
   );
 });
 

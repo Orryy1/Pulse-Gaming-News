@@ -185,6 +185,10 @@ test("GTA V and GTA VI title variants use stable spoken names", () => {
     applyGamingPronunciation("Grand Theft Auto sir six should not survive the hook."),
     "Rockstar's next Grand Theft Auto should not survive the hook.",
   );
+  assert.equal(
+    applyGamingPronunciation("GTA C6 should not survive the hook."),
+    "Rockstar's next Grand Theft Auto should not survive the hook.",
+  );
 });
 
 test("Stranger Than Heaven Five Eras avoids Eris/heiress ASR drift in local narration", () => {

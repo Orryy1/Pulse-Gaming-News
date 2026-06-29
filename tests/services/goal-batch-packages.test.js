@@ -1966,10 +1966,32 @@ test("goal batch package proof preparation does not invert GTA VI screenshot ana
   assert.doesNotMatch(prepared.public_title, /finally shows real gameplay/i);
   assert.doesNotMatch(prepared.full_script, /real gameplay|shown enough footage|promise to proof/i);
   assert.match(prepared.full_script, /screenshots/i);
+  assert.match(prepared.full_script, /^GTA VI's new screenshots look incredible/i);
+  assert.equal(
+    prepared.first_spoken_line,
+    "GTA VI's new screenshots look incredible, but they are not gameplay proof yet.",
+  );
+  assert.equal(
+    prepared.spoken_first_line,
+    "Rockstar's next Grand Theft Auto new screenshots look incredible, but they are not gameplay proof yet.",
+  );
+  assert.equal(
+    prepared.tts_script,
+    "Rockstar's next Grand Theft Auto new screenshots look incredible, but they are not gameplay proof yet. " +
+      "IGN says tech experts believe the 63 new screenshots probably do not represent gameplay. " +
+      "That matters because still images can prove art direction, density and atmosphere, but not driving feel, mission pacing or how the world behaves when players control it. " +
+      "That means the smart debate is restraint: get excited by the image quality, but wait for Rockstar to show the game moving before calling it proof. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.equal(prepared.spoken_narration_script, prepared.tts_script);
+  assert.doesNotMatch(prepared.tts_script, /\b(?:GTA|Grand Theft Auto)\s+(?:VI|six|6|C6|si[-\s]*six)\b/i);
 
   const pack = buildGoalProofPackage({ story: prepared });
   assert.equal(pack.canonical_story_manifest.public_title, "GTA VI Screenshots Are Not Gameplay Proof");
   assert.equal(pack.canonical_story_manifest.thumbnail_headline, "GTA VI NOT GAMEPLAY");
+  assert.equal(pack.canonical_story_manifest.tts_script, prepared.tts_script);
+  assert.equal(pack.canonical_story_manifest.spoken_narration_script, prepared.tts_script);
+  assert.equal(pack.canonical_story_manifest.first_spoken_line, prepared.spoken_first_line);
   assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players/i);
   assert.equal(pack.script_scorecard.verdict, "viral_ready", JSON.stringify(pack.script_scorecard, null, 2));
 });

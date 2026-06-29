@@ -379,6 +379,7 @@ test("approved voice path rejects split and repeated GTA VI ASR stutter variants
     ["split-s-i", "GTA s i six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
     ["repeated-see", "Grand Theft Auto see see six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
     ["collapsed-siix", "GTA siix starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
+    ["compact-c6", "GTA C6 starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
   ]) {
     const result = evaluateApprovedVoicePath({
       narration: {

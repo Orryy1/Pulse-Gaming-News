@@ -535,7 +535,7 @@ function cleanForTTS(raw) {
 }
 
 const GTA_TTS_SELECTION_RISK_RE =
-  /\b(?:(?:G\.?\s*T\.?\s*A\.?|Grand\s+Theft\s+Auto)\s+(?:V\.?\s*I\.?|VI|6|six|s(?:i|y|igh)?[-\s]*six|six[-\s]+six)|GTA[-\s]*V\.?\s*I\.?)\b/i;
+  /\b(?:(?:G\.?\s*T\.?\s*A\.?|Grand\s+Theft\s+Auto)\s+(?:V\.?\s*I\.?|VI|6|six|(?:s|si|sy|sigh|see|sea|c)[-\s]*(?:six|6)|six[-\s]+six)|GTA[-\s]*V\.?\s*I\.?)\b/i;
 
 function hasRiskyGtaSixTtsSelectionText(text) {
   return GTA_TTS_SELECTION_RISK_RE.test(String(text || ""));

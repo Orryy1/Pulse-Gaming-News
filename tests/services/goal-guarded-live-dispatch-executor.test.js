@@ -1037,6 +1037,9 @@ test("selectNextGuardedLiveAction restores normal-production duration metadata f
       ],
     }),
     stories: [],
+    actionQualityGateOptions: {
+      now: "2026-06-23T12:00:00.000Z",
+    },
     runActionQualityGate: async ({ story: qualityStory }) => {
       capturedStory = qualityStory;
       const valid =
@@ -1164,6 +1167,7 @@ test("selectNextGuardedLiveAction uses current package caption and thumbnail pro
       }),
     ],
     actionQualityGateOptions: {
+      now: "2026-06-23T12:00:00.000Z",
       runContentQa: async (qualityStory) => {
         capturedStory = qualityStory;
         const valid =

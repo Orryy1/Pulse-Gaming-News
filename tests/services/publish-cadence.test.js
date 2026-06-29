@@ -420,6 +420,26 @@ test("computeNextSafePublishWindow: omits cap blockers that already cleared", ()
   assert.deepEqual(next.blockers, []);
 });
 
+test("computeNextSafePublishWindow: keeps the next canonical window when the previous scheduled publish completed seconds late", () => {
+  const next = computeNextSafePublishWindow({
+    nowDate: "2026-06-29T15:10:00.000Z",
+    expectedHoursUtc: [9, 11, 14, 16, 19],
+    minRecommendedGapMinutes: 120,
+    maxRecommendedPostsPer24h: 5,
+    publishEvents: [
+      {
+        id: "invincible-vs",
+        published_at: "2026-06-29T14:00:38.804Z",
+        classification: "scheduled_window",
+      },
+    ],
+  });
+
+  assert.equal(next.earliest_possible_at_utc, "2026-06-29T16:00:00.000Z");
+  assert.equal(next.next_safe_publish_at_utc, "2026-06-29T16:00:00.000Z");
+  assert.deepEqual(next.blockers, []);
+});
+
 test("formatPublishCadenceMarkdown: renders operator-readable warnings", () => {
   const md = formatPublishCadenceMarkdown({
     verdict: "amber",

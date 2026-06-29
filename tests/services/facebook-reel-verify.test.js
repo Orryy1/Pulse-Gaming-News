@@ -14,6 +14,7 @@ const assert = require("node:assert");
 
 const { interpretReelStatusSnapshot } = require("../../upload_facebook");
 const { renderPublishSummary } = require("../../lib/job-handlers");
+const { isRetriable } = require("../../lib/retry");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -239,4 +240,12 @@ test("upload_facebook: Reel finish uses video_state=PUBLISHED, not published=tru
     assert.match(body, /video_state:\s*"PUBLISHED"/);
     assert.doesNotMatch(body, /published:\s*true/);
   }
+});
+
+test("retry policy treats Facebook Reel verification timeout as terminal", () => {
+  const err = new Error(
+    "Facebook Reel did not go live within 2 min - videoId=abc last video_status=ready publish=complete published=false permalink=(none)",
+  );
+
+  assert.strictEqual(isRetriable(err), false);
 });

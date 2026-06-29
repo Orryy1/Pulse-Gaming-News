@@ -128,28 +128,24 @@ test("Epidemic implementation CLI can apply a complete pass intake in a temp wor
   });
   await fs.outputJson(intakeReportPath, report);
 
-  const previousCwd = process.cwd();
-  process.chdir(root);
-  try {
-    const { plan } = await main([
-      "node",
-      "tools/epidemic-audio-pack-materialize.js",
-      "--intake-report",
-      intakeReportPath,
-      "--out-dir",
-      path.join(root, "out"),
-      "--generated-at",
-      "2026-05-27T19:11:00.000Z",
-      "--apply",
-      "--channel",
-      "pulse-gaming",
-    ]);
+  const { plan } = await main([
+    "node",
+    "tools/epidemic-audio-pack-materialize.js",
+    "--workspace-root",
+    root,
+    "--intake-report",
+    intakeReportPath,
+    "--out-dir",
+    path.join(root, "out"),
+    "--generated-at",
+    "2026-05-27T19:11:00.000Z",
+    "--apply",
+    "--channel",
+    "pulse-gaming",
+  ]);
 
-    assert.equal(plan.readiness.status, "applied");
-    assert.equal(plan.summary.channel_packs_written, 1);
-    assert.equal(await fs.pathExists(path.join(root, "channels", "pulse-gaming", "audio", "pack.json")), true);
-    assert.equal(await fs.pathExists(path.join(root, "channels", "stacked", "audio", "pack.json")), false);
-  } finally {
-    process.chdir(previousCwd);
-  }
+  assert.equal(plan.readiness.status, "applied");
+  assert.equal(plan.summary.channel_packs_written, 1);
+  assert.equal(await fs.pathExists(path.join(root, "channels", "pulse-gaming", "audio", "pack.json")), true);
+  assert.equal(await fs.pathExists(path.join(root, "channels", "stacked", "audio", "pack.json")), false);
 });

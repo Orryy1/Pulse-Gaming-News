@@ -14,6 +14,7 @@ function parseArgs(argv = process.argv) {
   const args = {
     intakeReportPath: path.join("output", "epidemic-sound-intake", "epidemic_sound_intake_report.json"),
     outputDir: path.join("output", "epidemic-implementation"),
+    workspaceRoot: process.cwd(),
     generatedAt: new Date().toISOString(),
     channelIds: [],
     apply: false,
@@ -24,6 +25,7 @@ function parseArgs(argv = process.argv) {
     const arg = argv[index];
     if (arg === "--intake-report") args.intakeReportPath = argv[++index] || args.intakeReportPath;
     else if (arg === "--out-dir") args.outputDir = argv[++index] || args.outputDir;
+    else if (arg === "--workspace-root") args.workspaceRoot = argv[++index] || args.workspaceRoot;
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || args.generatedAt;
     else if (arg === "--channel" || arg === "--channels") {
       args.channelIds = normaliseChannelIds([...args.channelIds, argv[++index] || ""]);
@@ -45,6 +47,7 @@ function usage() {
     "Options:",
     "  --intake-report <path>  Intake report JSON. Default: output/epidemic-sound-intake/epidemic_sound_intake_report.json",
     "  --out-dir <dir>         Proof output dir. Default: output/epidemic-implementation",
+    "  --workspace-root <dir>  Workspace to write channel audio packs into. Default: current working directory",
     "  --generated-at <iso>    Deterministic proof timestamp",
     "  --channel <id>[,<id>]   Channel(s) covered by retained safelist evidence. Required with --apply",
     "  --apply                 Write channels/<channel>/audio/pack.json only when the intake is PASS",
@@ -74,7 +77,7 @@ async function main(argv = process.argv) {
   }
   const report = await readIntakeReport(args.intakeReportPath);
   const result = await executeEpidemicSoundImplementation({
-    workspaceRoot: process.cwd(),
+    workspaceRoot: args.workspaceRoot,
     report,
     outputDir: args.outputDir,
     generatedAt: args.generatedAt,

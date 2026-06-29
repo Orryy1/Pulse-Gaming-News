@@ -969,7 +969,7 @@ test("selectNextGuardedLiveAction carries normal-production duration metadata in
         }),
       ],
     }),
-    stories: [story({ id: "gta-story", title: "GTA 6 Preorders Have A Price Risk" })],
+    stories: [story({ id: "gta-story", title: "Fable Demo Has A Runtime Risk" })],
     runActionQualityGate: async ({ story: qualityStory }) => {
       capturedStory = qualityStory;
       const valid =
@@ -1004,11 +1004,11 @@ test("selectNextGuardedLiveAction restores normal-production duration metadata f
   const canonicalManifestPath = path.join(packageDir, "canonical_story_manifest.json");
   await fs.writeJson(canonicalManifestPath, {
     story_id: "gta-story",
-    selected_title: "GTA 6 Preorders Have A Price Risk",
-    canonical_subject: "GTA 6",
-    narration_script: "GTA 6 preorders have a price risk.",
+    selected_title: "Fable Demo Has A Runtime Risk",
+    canonical_subject: "Fable",
+    narration_script: "Fable's demo has a runtime risk.",
     primary_source: "GameSpot",
-    primary_source_url: "https://example.test/gta-6",
+    primary_source_url: "https://example.test/fable-demo",
     source_published_at: "2026-06-22T14:04:25.000Z",
     duration_variant_repair_strategy: "normal_production_safe_script_expansion",
     duration_variant_target_duration_seconds: {
@@ -1471,7 +1471,7 @@ test("guarded live dispatch executor blocks explicit slowed local TTS actions be
         }),
       ],
     }),
-    stories: [story({ title: "GTA 5 Became Rockstar's GTA 6 Warm-Up" })],
+    stories: [story({ title: "Forza Horizon Became Xbox's Steam Warm-Up" })],
     actionIds: ["story-one:facebook_reels"],
     apply: true,
     env: {
@@ -1524,7 +1524,7 @@ test("guarded live dispatch executor blocks non-native managed TTS rates before 
         }),
       ],
     }),
-    stories: [story({ title: "GTA VI Starts The Preorder Fight" })],
+    stories: [story({ title: "Forza Horizon Starts The Preorder Fight" })],
     actionIds: ["story-one:youtube_shorts"],
     apply: true,
     env: {
@@ -1626,6 +1626,127 @@ test("guarded live dispatch executor blocks GTA VI split ASR stutter evidence be
     "last_second_gta_vi_pronunciation_failed",
     "gta_vi_spoken_stutter",
     "gta_vi_opening_spoken_six_risk",
+  ]);
+});
+
+test("guarded live dispatch executor blocks GTA VI actions without recorded pronunciation proof", async () => {
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          title: "GTA VI Starts The Preorder Fight",
+          video_path: "output/final/story-one/youtube.mp4",
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "GTA VI Starts The Preorder Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        tts_script:
+          "Rockstar's next Grand Theft Auto just turned pre orders into a buy wait or skip argument. " +
+          "Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.deepEqual(report.blocked_actions[0].blockers, [
+    "last_second_gta_vi_pronunciation_failed",
+    "gta_vi_pronunciation_evidence_missing",
+  ]);
+});
+
+test("guarded live dispatch executor blocks GTA VI timestamp evidence without current pronunciation profile", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-gta-missing-profile-"));
+  t.after(() => fs.remove(tmp));
+  const timestampsPath = path.join(tmp, "story-one_timestamps.json");
+  const spoken =
+    "Rockstar's next Grand Theft Auto just turned pre orders into a buy wait or skip argument. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(timestampsPath, {
+    meta: {
+      source: "elevenlabs-production-path",
+      transcript: spoken,
+      spoken_text: spoken,
+    },
+    words: spoken
+      .replace(/[.]/g, "")
+      .split(/\s+/)
+      .map((word, index) => ({
+        word,
+        start: Number((index * 0.35).toFixed(2)),
+        end: Number((index * 0.35 + 0.18).toFixed(2)),
+      })),
+  });
+
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          title: "GTA VI Starts The Preorder Fight",
+          word_timestamps_path: timestampsPath,
+          video_path: path.join(tmp, "youtube.mp4"),
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "GTA VI Starts The Preorder Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        tts_script: spoken,
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.deepEqual(report.blocked_actions[0].blockers, [
+    "last_second_gta_vi_pronunciation_failed",
+    "gta_vi_timestamp_profile_stale",
   ]);
 });
 

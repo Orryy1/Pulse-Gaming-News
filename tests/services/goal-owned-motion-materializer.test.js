@@ -742,6 +742,117 @@ test("owned motion materializer preserves existing official direct-video clips w
   assert.equal(ownedManifest.assets.every((asset) => asset.source_type === "internally_generated_motion_graphic"), true);
 });
 
+test("owned motion materializer preserves stale-count validated official game website direct clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-explainer-stale-direct-video-"));
+  const artifactDir = path.join(root, "gta-package");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "gta-package",
+    canonical_subject: "Grand Theft Auto VI",
+    selected_title: "GTA VI Just Made PS5 The Version To Watch",
+    thumbnail_headline: "GTA VI PS5 TEST",
+    first_spoken_line: "PlayStation just made the GTA VI argument simple.",
+    confirmed_claims: ["Grand Theft Auto VI plays best on PS5."],
+    primary_source: "PlayStation Blog",
+    source_card_label: "PlayStation Blog",
+    primary_source_url: "https://blog.playstation.com/2026/06/24/grand-theft-auto-vi-plays-best-on-ps5-november-19/",
+  });
+
+  const directClips = Array.from({ length: 4 }, (_, index) => {
+    const clipPath = path.join(root, "video-cache", `gta-official-${index + 1}.mp4`);
+    return {
+      id: `gta-direct-${index + 1}`,
+      source_family: `rockstar_gta_vi_official_window_${index + 1}`,
+      motion_family: `rockstar_gta_vi_official_window_${index + 1}`,
+      visual_family: `rockstar_gta_vi_official_window_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_${index + 1}/GTAVI_Trailer_${index + 1}.mp4`,
+      source_type: "official_game_website_media_page",
+      media_kind: "direct_video",
+      rights_basis: "official_direct_media",
+      counts_towards_motion_readiness: false,
+      durationS: 5,
+      materialized: true,
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "official_storefront_cinematic_motion_samples_passed",
+        segment_validated: true,
+      },
+    };
+  });
+  await Promise.all(directClips.map((clip, index) =>
+    fs.outputFile(clip.path, Buffer.alloc(4096, index + 1)),
+  ));
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "gta-package",
+    motion_inventory: {
+      accepted_local_clips: directClips,
+      production_motion_clips: directClips,
+      direct_video_motion_asset_count: 0,
+      direct_video_motion_family_count: 0,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: "gta-package",
+    status: "ready",
+    clips: directClips,
+    materialised_clips: directClips,
+    clip_count: directClips.length,
+    distinct_motion_family_count: directClips.length,
+    direct_video_motion_asset_count: 0,
+    direct_video_motion_family_count: 0,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { records: [] });
+
+  const calls = [];
+  const report = await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: "gta-package",
+          title: "GTA VI Just Made PS5 The Version To Watch",
+          artifact_dir: artifactDir,
+          actions: [
+            {
+              action_id: "materialise_owned_generated_motion_clips",
+              repair_lane: "owned_generated_explainer_motion_materialisation",
+            },
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-06-29T10:00:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: () => 2.8,
+  });
+
+  assert.equal(report.summary.materialized_clip_count, 13);
+  assert.equal(calls.length, 13);
+
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.direct_video_motion_asset_count, 4);
+  assert.equal(materialised.direct_video_motion_family_count, 4);
+  assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 4);
+  assert.equal(
+    materialised.clips
+      .filter((clip) => clip.media_kind === "direct_video")
+      .every((clip) => clip.counts_towards_motion_readiness === true),
+    true,
+  );
+  assert.equal(
+    materialised.clips.filter((clip) => clip.source_type === "internally_generated_motion_graphic").length,
+    13,
+  );
+  assert.ok(materialised.clips.some((clip) => clip.id === "gta-direct-1"));
+  assert.ok(materialised.clips.some((clip) => clip.asset_class === "motion_background"));
+});
+
 test("owned motion materializer refresh expands thin owned explainer decks to the full motion pack", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-refresh-expand-"));
   const artifactDir = path.join(root, "thin-owned");

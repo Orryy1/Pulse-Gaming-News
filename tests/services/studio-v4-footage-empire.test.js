@@ -852,6 +852,74 @@ test("Footage Empire uses a narrower product-motion budget for hardware accessor
   assert.ok(plan.readiness.warnings.includes("product_story_limited_motion_budget_requires_premium_owned_motion"));
 });
 
+test("Footage Empire counts validated official game website direct video as product motion", () => {
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "gta-vi-ps5-version",
+      title: "GTA VI PS5 Edition Upgrade",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      full_script:
+        "Rockstar's next Grand Theft Auto has a PS5 upgrade angle, so the proof needs official game footage instead of recycled stills.",
+    },
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          source_id: "rockstar-gta-vi-media",
+          display_name: "Rockstar GTA VI official videos",
+          source_tier: "official",
+          source_family: "rockstar_gta_vi_official_videos",
+          reference_url: "https://www.rockstargames.com/VI",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          entities: ["Grand Theft Auto VI"],
+          allowed_render_use: "reference_only_by_default",
+          rights_risk_class: "official_reference_only",
+        },
+      ],
+    },
+    localMotionClips: [
+      {
+        id: "rockstar-official-window-1",
+        source_family: "rockstar_gta_vi_official_videos_trailer_1_window_36",
+        source_url: "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_1/GTAVI_Trailer_1.mp4",
+        path: "C:/cache/gta-vi-trailer-1-window-36.mp4",
+        durationS: 5,
+        mediaStartS: 36,
+        validated: true,
+        source_type: "official_game_website_media_page",
+        allowed_render_use: "reference_only_by_default",
+        rights_risk_class: "official_reference_only",
+        provenance: {
+          validation_reason: "official_storefront_cinematic_motion_samples_passed",
+        },
+      },
+      {
+        id: "rockstar-official-window-2",
+        source_family: "rockstar_gta_vi_official_videos_trailer_2_window_48",
+        source_url: "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+        path: "C:/cache/gta-vi-trailer-2-window-48.mp4",
+        durationS: 5,
+        mediaStartS: 48,
+        validated: true,
+        source_type: "official_game_website_media_page",
+        allowed_render_use: "reference_only_by_default",
+        rights_risk_class: "official_reference_only",
+        provenance: {
+          validation_reason: "trimmed_segment_samples_passed",
+        },
+      },
+    ],
+  });
+
+  assert.equal(plan.readiness.status, "v4_motion_ready");
+  assert.equal(plan.motion_budget.product_motion_story, true);
+  assert.equal(plan.motion_budget.available_official_product_motion_clips, 2);
+  assert.equal(plan.motion_budget.available_official_product_motion_families, 2);
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"));
+});
+
 test("Footage Empire does not treat platform account friction as product motion just because PS5 and buy appear", () => {
   const story = {
     id: "halo-ps5-account-catch",

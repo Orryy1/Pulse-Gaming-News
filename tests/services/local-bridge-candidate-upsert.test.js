@@ -244,6 +244,40 @@ test("buildLocalBridgeCandidate keeps concise platform cover headlines instead o
   assert.doesNotMatch(candidate.suggested_thumbnail_text, /Call of Duty/i);
 });
 
+test("buildLocalBridgeCandidate preserves safe spoken TTS script separately from display narration", async () => {
+  const files = await fixture();
+  const canonicalPath = path.join(files.artifactDir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  await fs.writeJson(canonicalPath, {
+    ...canonical,
+    story_id: "story_gta_vi",
+    selected_title: "GTA VI Just Made PS5 The Version To Watch",
+    public_title: "GTA VI Just Made PS5 The Version To Watch",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    narration_script:
+      "Sony just made GTA VI's console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
+    spoken_narration_script:
+      "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "GTA VI PS5 TEST",
+  });
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-06-29T10:05:00.000Z",
+  });
+
+  assert.match(candidate.narration_script, /\bGTA VI\b/);
+  assert.equal(
+    candidate.tts_script,
+    "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.equal(candidate.spoken_narration_script, candidate.tts_script);
+  assert.doesNotMatch(candidate.tts_script, /\bGTA\b|\bVI\b|\bsix\b/i);
+});
+
 test("upsertLocalBridgeCandidate rewrites only bridge JSON with backup and no side effects", async () => {
   const files = await fixture();
   const report = await upsertLocalBridgeCandidate({

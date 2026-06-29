@@ -180,6 +180,8 @@ function applyReadableDurationToTemplate(html, durationS) {
 
 function sourceLabel(story) {
   const raw =
+    story?.source_card_label ||
+    story?.sourceCardLabel ||
     story?.subreddit ||
     story?.source ||
     story?.publisher ||
@@ -194,6 +196,7 @@ function sourceLabel(story) {
     .replace(/\bVideoGamesChronicle\b/gi, "VGC")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\bPlay\s+Station\b/gi, "PlayStation")
     .replace(/\s+/g, " ")
     .trim();
   return clean ? clean.toUpperCase() : "VERIFIED SOURCE";

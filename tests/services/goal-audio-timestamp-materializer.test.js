@@ -702,6 +702,69 @@ test("goal audio materializer regenerates current-profile GTA audio when ASR wor
   assert.equal(voiceQuality.transcript.gta_vi_opening_spoken_six_risk, false);
 });
 
+test("goal audio materializer does not treat display-safe GTA VI text as risky spoken ASR", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-display-safe-"));
+  const artifactDir = await makePackage(root, "story-gta-display-safe", {
+    selected_title: "GTA VI Cover Art Turns Into A Buying Argument",
+    narration_script: "GTA VI just turned cover art into a buying argument.",
+    tts_script: "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.",
+  });
+  const audioPath = path.join(root, "output", "audio", "story-gta-display-safe.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-gta-display-safe_timestamps.json");
+  const spokenTranscript =
+    "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.";
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(spokenTranscript),
+    meta: {
+      text: "GTA VI just turned cover art into a buying argument.",
+      transcript: spokenTranscript,
+      spoken_text: spokenTranscript,
+      wordTimestampSource: "local_whisper_word_alignment",
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "local",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [
+        {
+          ...workbenchJob("story-gta-display-safe", artifactDir),
+          status: "ready_audio_timestamp_pair",
+          missing: [],
+          audio: { path: audioPath, exists: true, usable: true },
+          timestamps: {
+            path: timestampPath,
+            exists: true,
+            usable: true,
+            word_count: spokenTranscript.split(/\s+/).length,
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-06-28T12:45:00.000Z",
+    generateTtsForStory: async () => {
+      throw new Error("display-safe GTA VI text should not force TTS regeneration");
+    },
+    alignWordsWithAudio: async () => {
+      throw new Error("display-safe GTA VI text should not force Whisper realignment");
+    },
+  });
+
+  assert.equal(report.summary.skipped_existing_count, 1);
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
+});
+
 test("goal audio materializer rejects fresh Whisper transcript when it still contains GTA si-six", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-fresh-asr-stutter-"));
   const artifactDir = await makePackage(root, "story-gta-fresh-asr-stutter", {

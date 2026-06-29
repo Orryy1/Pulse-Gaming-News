@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  buildStoryCardSpecs,
   countTimelineAnimationSteps,
   applySpecToTemplate,
   hyperframesCardReadabilityContractForSpec,
@@ -90,4 +91,20 @@ test("story-specific HyperFrames cards keep short copy on screen long enough for
   assert.equal(contract.evidence.minimum_visible_duration_s, 12);
   assert.equal(contract.evidence.planned_visible_duration_s, 12);
   assert.equal(contract.evidence.min_readable_card_duration_s, 12);
+});
+
+test("story-specific HyperFrames source card preserves PlayStation source labels", () => {
+  const specs = buildStoryCardSpecs({
+    id: "playstation-source",
+    title: "GTA VI Just Made PS5 The Version To Watch",
+    source: "PlayStationBlog",
+    source_card_label: "PlayStation Blog",
+    source_type: "rss",
+  });
+
+  assert.equal(specs.source.label, "PLAYSTATION BLOG");
+  assert.equal(
+    hyperframesCardReadabilityContractForSpec("source", specs.source).evidence.readable_text,
+    "PLAYSTATION BLOG NEWS SOURCE",
+  );
 });

@@ -2046,6 +2046,67 @@ test("production cutover marks queued proof item ready for a final render job wh
   assert.equal(plan.queue[0].render_input_evidence.materialised_motion_clip_count, 5);
 });
 
+test("production cutover queues RED packages when the only blocker is a missing final render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-final-render-only-red-"));
+  const storyPackage = await makeCutoverPackage(root, "final-render-only-red");
+  const artifactDir = storyPackage.artifact_dir;
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "narration_timestamps.json");
+  const motionDir = path.join(artifactDir, "motion");
+  await fs.outputFile(audioPath, Buffer.alloc(4000, 2));
+  await fs.outputJson(timestampsPath, {
+    words: [
+      { word: "GTA", start: 0, end: 0.3 },
+      { word: "changes", start: 0.3, end: 0.7 },
+    ],
+  });
+  const acceptedLocalClips = [];
+  for (let index = 1; index <= 5; index += 1) {
+    const clipPath = path.join(motionDir, `clip-${index}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(3000, index));
+    acceptedLocalClips.push({
+      id: `motion-${index}`,
+      path: clipPath,
+      validated: true,
+      materialized: true,
+      source_family: `final-render-only-red_family_${index}`,
+      source_url: `https://cdn.example.test/final-render-only-red/${index}.mp4`,
+      source_type: "official_trailer_segment",
+      rights_risk_class: "official_reference_only",
+      durationS: 2.8,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: "final-render-only-red",
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    voice_status: "materialized",
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "final-render-only-red",
+    motion_inventory: { accepted_local_clips: acceptedLocalClips },
+  });
+  Object.assign(storyPackage, {
+    verdict: "RED",
+    blockers: ["render:final_publish_render_missing"],
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-29T08:30:00.000Z",
+  });
+
+  assert.equal(plan.summary.blocked_count, 0, JSON.stringify(plan.blocked, null, 2));
+  assert.equal(plan.summary.queued_final_render_count, 1);
+  assert.equal(plan.summary.final_render_input_ready_count, 1);
+  assert.equal(plan.queue[0].status, "needs_final_render");
+  assert.equal(plan.queue[0].render_input_status, "ready_for_final_render_job");
+  assert.deepEqual(plan.queue[0].render_input_blockers, []);
+  assert.ok(!plan.queue[0].blockers.includes("story_package_verdict:red"));
+  assert.ok(!plan.queue[0].blockers.includes("story_package:render:final_publish_render_missing"));
+});
+
 test("production cutover prefers fresh MEDIA_ROOT audio over stale workspace legacy paths", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-media-root-audio-"));
   const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-media-root-"));

@@ -323,6 +323,80 @@ test("applyEnabledPlatformAutoPublishReadinessScope: autonomous handoff requires
   assert.equal(scoped.pillars.strict_dry_run_control.verdict, "amber");
 });
 
+test("applyEnabledPlatformAutoPublishReadinessScope: autonomous executor handoff holds non-selected dry-run blockers", () => {
+  const pillars = {
+    strict_dry_run_control: {
+      verdict: "red",
+      reason: "strict_dry_run_blocked",
+      raw: {
+        safety_intact: true,
+        ready_for_unattended_publish: false,
+        ready_story_count: 2,
+        blocked_story_count: 1,
+        held_story_count: 1,
+        platform_publish_now_action_count: 4,
+        platform_enabled_dry_run_action_count: 4,
+        platform_deferred_action_count: 8,
+        blocked_action_count: 0,
+        warning_action_count: 2,
+        publish_now_warning_action_count: 0,
+        human_review_required_action_count: 0,
+        live_publish_allowed_action_count: 0,
+        reviewable_enabled_action_count: 0,
+        guarded_dispatch_ready_action_count: 4,
+      },
+    },
+    human_review_approval_gate: {
+      verdict: "amber",
+      reason: "human_review_approval_gate_stale:148.8h",
+      raw: {
+        approved_action_count: 0,
+        invalid_decision_count: 0,
+        guarded_dispatch_eligible: false,
+      },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "green",
+      raw: {
+        autonomous_dry_run_action_count: 4,
+        dispatch_ready_action_count: 4,
+        blocked_action_count: 0,
+        held_action_count: 1,
+        safety_blocker_count: 0,
+        ready_for_guarded_dispatch: true,
+      },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "green",
+      raw: {
+        dispatch_ready_action_count: 4,
+        selected_action_count: 4,
+        handoff_ready_action_count: 4,
+        blocked_selected_action_count: 0,
+        ready_for_live_executor_handoff: true,
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.scope.name, "enabled_platform_guarded_handoff");
+  assert.equal(scoped.scope.guard_ready, true);
+  assert.ok(scoped.scope.overridden_pillars.includes("strict_dry_run_control"));
+  assert.ok(scoped.scope.overridden_pillars.includes("human_review_approval_gate"));
+  assert.equal(scoped.pillars.strict_dry_run_control.verdict, "amber");
+  assert.equal(
+    scoped.pillars.strict_dry_run_control.reason,
+    "non_selected_candidate_blockers_held_by_guarded_scheduler_scope",
+  );
+  assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_story_count_still_visible, 1);
+  assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_action_count_still_visible, 0);
+  assert.equal(
+    scoped.pillars.human_review_approval_gate.raw.enabled_platform_scope_override,
+    "autonomous_green_dry_run_actions_supersede_human_review_approval_gate",
+  );
+});
+
 test("applyEnabledPlatformAutoPublishReadinessScope: scheduler-ready approvals downgrade non-selected strict dry-run RED", () => {
   const pillars = {
     publish_cadence: {

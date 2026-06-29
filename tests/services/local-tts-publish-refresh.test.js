@@ -340,9 +340,44 @@ test("local TTS publish refresh clears only render state, not platform IDs", () 
   assert.equal(next.exported_path, null);
   assert.equal(next.teaser_path, null);
   assert.equal(next.qa_failed, false);
-  assert.equal(next.publish_status, null);
+  assert.equal(next.publish_status, "partial");
   assert.equal(next.audio_duration, 64.32);
   assert.equal(next.local_tts_publish_refresh.reason, "local_tts_caption_timing_refresh");
+});
+
+test("local TTS publish refresh preserves published status for enabled-platform complete rows", () => {
+  const story = {
+    id: "story_live",
+    approved: true,
+    audio_path: "output/audio/story_live.mp3",
+    exported_path: "output/final/story_live.mp4",
+    youtube_post_id: "yt123",
+    instagram_media_id: "ig123",
+    facebook_post_id: "fb123",
+    publish_status: "failed",
+    publish_error: "audio_generation_failed: server_down",
+    qa_failed: true,
+  };
+
+  const previousTikTok = process.env.TIKTOK_ENABLED;
+  process.env.TIKTOK_ENABLED = "false";
+  try {
+    const next = clearStoryForLocalRerender(story, {
+      audioPath: story.audio_path,
+      audioDuration: 65.1,
+      reason: "local_tts_caption_timing_refresh",
+    });
+
+    assert.equal(next.publish_status, "published");
+    assert.equal(next.publish_error, null);
+    assert.equal(next.qa_failed, false);
+    assert.equal(next.youtube_post_id, "yt123");
+    assert.equal(next.instagram_media_id, "ig123");
+    assert.equal(next.facebook_post_id, "fb123");
+  } finally {
+    if (previousTikTok === undefined) delete process.env.TIKTOK_ENABLED;
+    else process.env.TIKTOK_ENABLED = previousTikTok;
+  }
 });
 
 test("timestamp payload inspection distinguishes repaired stale timing from clean alignment", () => {

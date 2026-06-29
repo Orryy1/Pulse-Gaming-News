@@ -546,6 +546,38 @@ test("markAudioGenerationFailure: records local TTS voice failures on the story"
   assert.equal(story.qa_failed_at, "2026-05-13T00:00:00.000Z");
 });
 
+test("markAudioGenerationFailure: published platform evidence is not downgraded by later local TTS repair failure", () => {
+  const story = {
+    id: "rss_live_story",
+    title: "Already live story",
+    publish_status: "published",
+    published_at: "2026-06-29T14:00:38.804Z",
+    youtube_post_id: "yt_real",
+    instagram_media_id: "ig_real",
+    facebook_post_id: "fb_real",
+    qa_failed: false,
+    publish_error: null,
+  };
+
+  const failure = markAudioGenerationFailure(
+    story,
+    new Error("local TTS server is not reachable"),
+    { provider: "local", now: () => new Date("2026-06-29T15:00:00.000Z") },
+  );
+
+  assert.equal(failure.code, "server_down");
+  assert.equal(story.publish_status, "published");
+  assert.equal(story.publish_error, null);
+  assert.equal(story.qa_failed, false);
+  assert.equal(story.qa_failed_at, null);
+  assert.equal(story.youtube_post_id, "yt_real");
+  assert.equal(story.instagram_media_id, "ig_real");
+  assert.equal(story.facebook_post_id, "fb_real");
+  assert.equal(story.audio_generation_failure.code, "server_down");
+  assert.equal(story.audio_generation_failure.preserved_public_platform_state, true);
+  assert.equal(story.local_tts_failure.requires_server_reset, true);
+});
+
 test("markAudioGenerationFailure: GPU saturation is pending audio, not hard QA failure", () => {
   const story = {
     id: "gpu-busy",
@@ -569,6 +601,35 @@ test("markAudioGenerationFailure: GPU saturation is pending audio, not hard QA f
   assert.match(story.publish_error, /audio_generation_pending: gpu_saturated/);
   assert.equal(story.audio_generation_failure.pending, true);
   assert.equal(story.local_tts_failure.requires_server_reset, false);
+});
+
+test("clearAudioGenerationState restores platform-derived status for polluted live rows", () => {
+  const story = {
+    id: "polluted-live-row",
+    publish_status: "failed",
+    publish_error: "audio_generation_failed: server_down: local TTS server is not reachable",
+    published_at: "2026-06-29T14:00:38.804Z",
+    youtube_post_id: "yt_real",
+    instagram_media_id: "ig_real",
+    facebook_post_id: "fb_real",
+    qa_failed: true,
+    qa_failures: ["audio_generation_failed:server_down"],
+    qa_warnings: ["approved_voice:pitch_profile_unverified"],
+    qa_failed_at: "2026-06-29T13:49:00.362Z",
+    audio_generation_failure: { provider: "local", code: "server_down" },
+    local_tts_failure: { code: "server_down" },
+  };
+
+  clearAudioGenerationState(story);
+
+  assert.equal(story.publish_status, "published");
+  assert.equal(story.publish_error, null);
+  assert.equal(story.qa_failed, false);
+  assert.equal(story.qa_failed_at, null);
+  assert.deepEqual(story.qa_failures, []);
+  assert.deepEqual(story.qa_warnings, ["approved_voice:pitch_profile_unverified"]);
+  assert.equal(story.audio_generation_failure, null);
+  assert.equal(story.local_tts_failure, null);
 });
 
 test("clearAudioGenerationState removes stale pending audio after a later success", () => {

@@ -43,6 +43,10 @@ const {
   classifyLocalTtsFailure,
 } = require("./lib/studio/local-tts-failures");
 const {
+  derivePublishStatusFromPlatformEvidence,
+  hasPublicPlatformEvidence,
+} = require("./lib/services/platform-evidence-status");
+const {
   createLocalTtsBatchRecovery,
   generateLocalTtsWithOptionalRecovery,
 } = require("./lib/ops/local-tts-batch-recovery");
@@ -964,6 +968,22 @@ function safeAudioErrorMessage(err) {
     .slice(0, 240);
 }
 
+function removeAudioGenerationQaState(story = {}) {
+  const failures = Array.isArray(story.qa_failures) ? story.qa_failures : [];
+  story.qa_failures = failures.filter(
+    (failure) => !/^audio_generation_failed:/i.test(String(failure || "")),
+  );
+  const warnings = Array.isArray(story.qa_warnings) ? story.qa_warnings : [];
+  story.qa_warnings = warnings.filter(
+    (warning) => !/^audio_generation_pending:/i.test(String(warning || "")),
+  );
+  if (story.qa_failures.length === 0) {
+    story.qa_failed = false;
+    story.qa_failed_at = null;
+  }
+  return story;
+}
+
 function markAudioGenerationFailure(
   story,
   err,
@@ -988,7 +1008,18 @@ function markAudioGenerationFailure(
     normalisedProvider === "local" && code === "gpu_saturated";
 
   if (story && typeof story === "object") {
-    if (pendingLocalResource) {
+    const preservedPublicPlatformState = hasPublicPlatformEvidence(story);
+    if (preservedPublicPlatformState) {
+      removeAudioGenerationQaState(story);
+      const derivedStatus = derivePublishStatusFromPlatformEvidence(story);
+      if (derivedStatus) story.publish_status = derivedStatus;
+      else if (!/^(published|partial)$/i.test(String(story.publish_status || ""))) {
+        story.publish_status = null;
+      }
+      if (/^audio_generation_(?:pending|failed):/i.test(String(story.publish_error || ""))) {
+        story.publish_error = null;
+      }
+    } else if (pendingLocalResource) {
       story.qa_failed = false;
       story.qa_failures = [];
       story.qa_warnings = [`audio_generation_pending:${code}`];
@@ -1008,6 +1039,7 @@ function markAudioGenerationFailure(
       code,
       message,
       pending: pendingLocalResource,
+      preserved_public_platform_state: preservedPublicPlatformState,
       at: failedAt,
     };
     if (normalisedProvider === "local") {
@@ -1050,7 +1082,7 @@ function clearAudioGenerationState(story) {
     /^audio_generation_(?:pending|failed):/i.test(publishError) ||
     /^qa_blocked:\s*audio_duration_too_long\b/i.test(publishError)
   ) {
-    story.publish_status = null;
+    story.publish_status = derivePublishStatusFromPlatformEvidence(story) || null;
     story.publish_error = null;
   }
 

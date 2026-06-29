@@ -1504,3 +1504,55 @@ test("apply stale audio QA reset clears only stale failure fields before rerende
   assert.equal(persisted[0].custom_extra_field, "keep me");
   assert.equal(result.safety.posts_to_platforms, false);
 });
+
+test("apply stale audio QA reset preserves published platform truth", async () => {
+  const story = {
+    id: "rss_live_reset",
+    title: "Sea of Thieves Custom Seas Could Split Crews",
+    approved: true,
+    full_script: "Sea of Thieves has a fresh custom seas update. ".repeat(26),
+    audio_path: "output/audio/rss_live_reset.mp3",
+    youtube_post_id: "yt_real",
+    instagram_media_id: "ig_real",
+    facebook_post_id: "fb_real",
+    qa_failed: true,
+    qa_failures: ["audio_generation_failed:server_down"],
+    qa_failed_at: "2026-06-29T13:49:45.747Z",
+    publish_status: "failed",
+    publish_error: "audio_generation_failed: server_down: local TTS server is not reachable",
+  };
+  const previousTikTok = process.env.TIKTOK_ENABLED;
+  process.env.TIKTOK_ENABLED = "false";
+  try {
+    const plan = {
+      resettable: [
+        {
+          story_id: "rss_live_reset",
+          action: "reset_stale_audio_qa_failure",
+          reason: "recovered_local_audio_after_tts_outage",
+          next_action: "publish_candidate_recheck",
+        },
+      ],
+    };
+    const persisted = [];
+
+    const result = await applyStaleAudioQaFailureReset({
+      plan,
+      storiesById: { rss_live_reset: story },
+      persistStory: async (nextStory) => {
+        persisted.push(nextStory);
+      },
+    });
+
+    assert.equal(result.applied.length, 1);
+    assert.equal(persisted[0].publish_status, "published");
+    assert.equal(persisted[0].publish_error, null);
+    assert.equal(persisted[0].qa_failed, false);
+    assert.equal(persisted[0].youtube_post_id, "yt_real");
+    assert.equal(persisted[0].instagram_media_id, "ig_real");
+    assert.equal(persisted[0].facebook_post_id, "fb_real");
+  } finally {
+    if (previousTikTok === undefined) delete process.env.TIKTOK_ENABLED;
+    else process.env.TIKTOK_ENABLED = previousTikTok;
+  }
+});

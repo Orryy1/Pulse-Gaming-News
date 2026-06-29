@@ -1753,7 +1753,7 @@ test("goal dry-run publisher blocks even two final cuts from the same trailer ba
   );
 });
 
-test("goal dry-run publisher treats validated official trailer windows as distinct motion sources", async () => {
+test("goal dry-run publisher blocks overused official trailer windows from the same source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-official-window-sources-"));
   const storyPackage = await makeStoryPackage(
     root,
@@ -1776,7 +1776,10 @@ test("goal dry-run publisher treats validated official trailer windows as distin
       durationS: 5,
     }),
   );
-  assert.deepEqual(directMotionBaseSourceOveruseEvidence(officialWindowClips).blockers, []);
+  assert.deepEqual(
+    directMotionBaseSourceOveruseEvidence(officialWindowClips).blockers,
+    ["visual_evidence:direct_motion_base_source_overused"],
+  );
   await writeDirectMotionFixturePack(artifactDir, officialWindowClips);
 
   const plan = await buildGoalDryRunPublishPlan({
@@ -1785,8 +1788,13 @@ test("goal dry-run publisher treats validated official trailer windows as distin
     platformOperationalConfig: enabledCorePlatformsOnly(),
   });
 
-  assert.equal(plan.summary.ready_story_count, 1);
-  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse[0].count,
+    8,
+  );
 });
 
 test("goal dry-run publisher checks final render-story clips for base-source loops even when materialised manifest is cleaner", async () => {

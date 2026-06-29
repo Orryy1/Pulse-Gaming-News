@@ -392,6 +392,52 @@ test("official trailer resolver keeps explicit canonical game ahead of editorial
   assert.ok(!plan.search_queries.includes("Sea of Thieves Custom Seas Could Split Crews official trailer"));
 });
 
+test("official trailer resolver consumes direct-media discovery intake templates", async () => {
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "avatar-legends-stage",
+      title: "Avatar Legends: The Fighting Game Spirit Wilds stage revealed",
+      canonical_subject: "Avatar Legends",
+      canonical_game: "Avatar Legends",
+      full_script:
+        "Avatar Legends finally showed the Spirit Wilds stage, and the useful part is whether the arena reads clearly in a real fight.",
+    }),
+    {
+      officialSourceIntakeReport: [
+        {
+          story_id: "avatar-legends-stage",
+          entity: "Avatar Legends",
+          source_type: "platform_storefront",
+          source_owner: "Steam storefront for Avatar Legends: The Fighting Game",
+          source_title: "Avatar Legends: The Fighting Game",
+          official_source_url:
+            "https://store.steampowered.com/app/2424420/Avatar_Legends%3A_The_Fighting_Game/",
+          direct_media_url_if_available:
+            "https://video.fastly.steamstatic.com/store_trailers/2424420/1420437155/hash/hls_264_master.m3u8",
+          source_url_kind: "hls_manifest",
+          segment_validation_eligible: true,
+          source_verified: true,
+          downloads_allowed: false,
+        },
+      ],
+      steamLookup: async () => {
+        throw new Error("direct-media intake should not require Steam appdetails lookup");
+      },
+    },
+  );
+
+  assert.deepEqual(plan.target_entities, ["Avatar Legends"]);
+  assert.deepEqual(plan.source_proof_missing_target_entities, []);
+  assert.deepEqual(plan.missing_target_entities, []);
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].entity, "Avatar Legends");
+  assert.equal(plan.references[0].source_type, "platform_storefront");
+  assert.equal(plan.references[0].source_url_kind, "hls_manifest");
+  assert.equal(plan.references[0].segment_validation_eligible, true);
+  assert.match(plan.references[0].source_url, /hls_264_master\.m3u8/);
+  assert.equal(plan.segment_validation_reference_counts.eligible, 1);
+});
+
 test("official trailer resolver does not use broad context games as canonical-story footage", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

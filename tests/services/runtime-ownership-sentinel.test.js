@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildRuntimeOwnershipSentinel,
+  fetchRuntimeHealthJson,
   formatRuntimeOwnershipSentinelMarkdown,
   normaliseProcessSnapshot,
   queryRuntimeProcessSnapshot,
@@ -379,4 +380,25 @@ test("runtime process query uses configurable timeout to avoid false RED probes"
 
   assert.equal(timeoutSeen, 30000);
   assert.equal(snapshot.port_owner_pid, 88768);
+});
+
+test("runtime health fetch retries transient public health timeouts before declaring unreachable", async () => {
+  let calls = 0;
+  const result = await fetchRuntimeHealthJson("https://pulse.example.test/api/health", {
+    attempts: 3,
+    retryDelayMs: 0,
+    timeoutMs: 15000,
+    fetchJsonImpl: async (_url, options) => {
+      calls += 1;
+      assert.equal(options.timeoutMs, 15000);
+      return calls === 1
+        ? { ok: false, status: null, json: null, error: "timeout" }
+        : health();
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(result.ok, true);
+  assert.equal(result.attempts, 2);
+  assert.deepEqual(result.previous_errors, ["timeout"]);
 });

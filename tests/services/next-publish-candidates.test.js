@@ -7384,6 +7384,200 @@ test("runPreflightQaForStory blocks repeated direct clips from final render stor
   );
 });
 
+test("runPreflightQaForStory trusts clean final scene-plan motion over stale embedded clip arrays", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-scene-plan-authority-"));
+  t.after(() => fs.remove(tmp));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "scene-plan-authority-package", videoPath);
+  const renderManifestPath = path.join(tmp, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(path.join(tmp, "visual_v4_render_story.json"), {
+    video_clips: [
+      {
+        id: "stale-tokon-direct-1",
+        path: "output/video_cache/tokon-stale-1.mp4",
+        source_url: "https://video.example.test/marvel-tokon/repeated-trailer.mp4",
+        media_kind: "direct_video",
+        source_family: "tokon_repeated_trailer_window_unknown_a",
+        duration_s: 5,
+      },
+      {
+        id: "stale-tokon-direct-2",
+        path: "output/video_cache/tokon-stale-2.mp4",
+        source_url: "https://video.example.test/marvel-tokon/repeated-trailer.mp4",
+        media_kind: "direct_video",
+        source_family: "tokon_repeated_trailer_window_unknown_b",
+        duration_s: 5,
+      },
+      {
+        id: "stale-tokon-direct-3",
+        path: "output/video_cache/tokon-stale-3.mp4",
+        source_url: "https://video.example.test/marvel-tokon/repeated-trailer.mp4",
+        media_kind: "direct_video",
+        source_family: "tokon_repeated_trailer_window_unknown_c",
+        duration_s: 5,
+      },
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    final_publish_render: true,
+    rendered_duration_s: 39,
+    clips: 6,
+    clip_scene_plan: {
+      repeat_free: true,
+      blockers: [],
+      repeated_base_sources: [],
+      repeated_readable_card_kinds: [],
+      direct_motion_source_concentration_metrics: {
+        direct_motion_scene_count: 5,
+        max_scenes_per_source_root: 1,
+        max_source_concentration_ratio: 0.2,
+        concentrated_sources: [],
+      },
+      scenes: Array.from({ length: 5 }, (_, index) => ({
+        id: `current-tokon-direct-${index + 1}`,
+        path: `output/video_cache/tokon-current-${index + 1}.mp4`,
+        source_url: `https://video.example.test/marvel-tokon/current-official-${index + 1}.mp4`,
+        media_kind: "direct_video",
+        duration_s: 5,
+        base_source_key: `tokon_current_official_${index + 1}_window_${10 + index * 6}_5`,
+        source_root_key: `video.example.test/marvel-tokon/current-official-${index + 1}`,
+      })),
+    },
+  }, { spaces: 2 });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "scene-plan-authority-package",
+      title: "MARVEL Tokon Finally Shows Real Gameplay",
+      selected_title: "MARVEL Tokon Finally Shows Real Gameplay",
+      canonical_subject: "MARVEL Tokon",
+      first_spoken_line: "MARVEL Tokon finally looks less like a pitch and more like a real fighting game.",
+      description: "IGN showed MARVEL Tokon's latest gameplay systems. Source: IGN.",
+      full_script:
+        "MARVEL Tokon finally looks less like a pitch and more like a real fighting game. IGN showed the tag systems, team pressure and screen control that could make this the Marvel fighter people actually argue about.",
+      source_type: "rss",
+      timestamp: "2026-06-24T18:00:00.000Z",
+      duration_seconds: 39,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 8,
+      primary_source: "IGN",
+      discovery_source: "IGN",
+      audio_path: "D:/pulse-data/media/output/audio/scene-plan-authority-package.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/scene-plan-authority-package_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/scene-plan-authority-package.srt",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      visual_quality_report: {
+        result: "pass",
+        scores: {
+          motion_density_score: 92,
+          first_3_seconds_hook_score: 90,
+          source_lock_quality_score: 88,
+          caption_legibility_score: 94,
+          card_hierarchy_score: 86,
+          media_house_polish_score: 91,
+        },
+        frame_rules: {
+          first_frame_subject: "MARVEL Tokon",
+          first_frame_text: "MARVEL TOKON GAMEPLAY",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: {
+        result: "pass",
+        scores: {
+          motion_density_score: 92,
+          first_3_seconds_hook_score: 90,
+          source_lock_quality_score: 88,
+          caption_legibility_score: 94,
+          card_hierarchy_score: 86,
+          media_house_polish_score: 91,
+        },
+        failures: [],
+      },
+      sfx_manifest: bridgeSfxEvidence(),
+      platform_policy_report: {
+        disclosure_requirements: { affiliate: false, commercial: false },
+        platform_disclosure_status: "resolved",
+      },
+      affiliate_link_manifest: {
+        disclosure_required: false,
+      },
+      landing_page_manifest: {},
+      rights_ledger: Array.from({ length: 5 }, (_, index) => ({
+        asset_id: `tokon-current-official-${index + 1}`,
+        path: `output/video_cache/tokon-current-${index + 1}.mp4`,
+        source_url: `https://video.example.test/marvel-tokon/current-official-${index + 1}.mp4`,
+        source_type: "official_trailer_segment",
+        rights_risk_class: "official_reference_only",
+        source_family: `tokon_current_official_${index + 1}`,
+      })),
+      visual_v4_bridge_video_clips: Array.from({ length: 5 }, (_, index) => ({
+        id: `current-tokon-direct-${index + 1}`,
+        path: `output/video_cache/tokon-current-${index + 1}.mp4`,
+        source_url: `https://video.example.test/marvel-tokon/current-official-${index + 1}.mp4`,
+        media_kind: "direct_video",
+        source_family: `tokon_current_official_${index + 1}_window_${10 + index * 6}_5`,
+        mediaStartS: 10 + index * 6,
+        durationS: 5,
+      })),
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "MARVEL Tokon Finally Shows Real Gameplay" },
+          instagram_reels: { caption: "MARVEL Tokon finally looks like a real fighting game." },
+          facebook_reels: { page_caption: "MARVEL Tokon finally looks like a real fighting game." },
+        },
+      },
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.direct_motion_loop_evidence_source,
+    "final_clip_scene_plan",
+  );
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.repeated_direct_motion_segment_count,
+    0,
+  );
+  assert.deepEqual(
+    preflight.checks.incident_guard.evidence.file_evidence.direct_motion_base_source_overuse,
+    [],
+  );
+});
+
 test("attachPreflightQa keeps read-only preflight mutations off source stories", async () => {
   const stories = [
     baseStory({

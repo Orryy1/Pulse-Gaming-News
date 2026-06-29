@@ -1942,6 +1942,106 @@ test("goal dry-run publisher checks final render-story clips for base-source loo
   );
 });
 
+test("goal dry-run publisher trusts clean final scene-plan motion over stale embedded clip arrays", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-scene-plan-authority-"));
+  const cleanScenePlan = {
+    repeat_free: true,
+    blockers: [],
+    repeated_base_sources: [],
+    repeated_readable_card_kinds: [],
+    direct_motion_source_concentration_metrics: {
+      direct_motion_scene_count: 5,
+      max_scenes_per_source_root: 1,
+      max_source_concentration_ratio: 0.2,
+      concentrated_sources: [],
+    },
+    scenes: Array.from({ length: 5 }, (_, index) => ({
+      id: `tokon-current-${index + 1}`,
+      path: `motion/tokon-current-${index + 1}.mp4`,
+      source_url: `https://cdn.example.com/marvel-tokon/current-official-${index + 1}.mp4`,
+      media_kind: "direct_video",
+      base_source_key: `tokon_current_official_${index + 1}_window_${10 + index * 6}_5`,
+      source_root_key: `cdn.example.com/marvel-tokon/current-official-${index + 1}`,
+      mediaStartS: 10 + index * 6,
+      durationS: 5,
+    })),
+  };
+  const storyPackage = await makeStoryPackage(
+    root,
+    "scene-plan-authority-story",
+    "GREEN",
+    "MARVEL Tokon Finally Shows Real Gameplay",
+    {
+      canonicalSubject: "MARVEL Tokon",
+      canonicalPatch: {
+        first_spoken_line: "IGN's MARVEL Tokon combat gameplay finally shows the tag system players needed to judge.",
+        narration_script:
+          "IGN's MARVEL Tokon combat gameplay finally shows the tag system players needed to judge. " +
+          "The key detail is team pressure: assists are not just background noise, they look like the tool that decides whether this becomes a messy Marvel party or a serious competitive fighter. " +
+          "That means players can judge whether Tokon creates readable chaos or another screen-filling scramble. " +
+          "Follow Pulse Gaming so you never miss a beat.",
+        description: "IGN showed MARVEL Tokon's latest gameplay systems. Source: IGN.",
+        primary_source: { name: "IGN", url: "https://www.ign.com/videos/marvel-tokon-gameplay" },
+        discovery_source: { name: "RSS", url: "https://www.ign.com/feed" },
+      },
+      renderManifestPatch: {
+        rendered_duration_s: 39,
+        clips: 6,
+        clip_scene_plan: cleanScenePlan,
+      },
+      coherenceMatchesCanonical: true,
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const cleanMaterialisedClips = cleanScenePlan.scenes.map((scene) =>
+    directMotionClipFixture({
+      id: scene.id,
+      path: scene.path,
+      sourceUrl: scene.source_url,
+      sourceFamily: scene.base_source_key,
+      startS: scene.mediaStartS,
+      durationS: scene.durationS,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, cleanMaterialisedClips);
+  const staleRenderClips = [36, 42].map((startS, index) =>
+    directMotionClipFixture({
+      id: `tokon-stale-render-${index + 1}`,
+      path: `motion/tokon-stale-render-${index + 1}.mp4`,
+      sourceUrl:
+        "https://video.akamai.steamstatic.com/store_trailers/3787240/1666904613/hash/hls_264_master.m3u8?t=1778210882",
+      sourceFamily: `steamstatic_store_trailers_3787240_1666904613_window_${startS}_5`,
+      startS,
+      durationS: 5,
+    }),
+  );
+  await Promise.all(
+    staleRenderClips.map((clip) => fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 3))),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "scene-plan-authority-story",
+    video_clips: staleRenderClips,
+    visual_v4_bridge_video_clips: staleRenderClips,
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T10:30:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1, JSON.stringify(plan.blocked_stories));
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(
+    plan.ready_stories[0].file_evidence.direct_motion_loop_evidence_source,
+    "final_clip_scene_plan",
+  );
+  assert.deepEqual(
+    plan.ready_stories[0].file_evidence.direct_motion_base_source_overuse,
+    [],
+  );
+});
+
 test("goal dry-run publisher defers externally blocked or operator-disabled platforms without blocking the story", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-state-"));
   const storyPackage = await makeStoryPackage(root);

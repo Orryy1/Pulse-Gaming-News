@@ -3966,6 +3966,118 @@ function materialisedMotionEvidenceClipsForStory({
   ];
 }
 
+function firstCleanText(...values) {
+  for (const value of values) {
+    const text = cleanText(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    if (value == null || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+function clipSceneLooksReadableCard(scene = {}) {
+  const text = [
+    scene.id,
+    scene.path,
+    scene.media_path,
+    scene.media_kind,
+    scene.source_kind,
+    scene.source_type,
+    scene.kind,
+    scene.type,
+    scene.readable_card_kind,
+    scene.readableCardKind,
+    scene.card_kind,
+    scene.cardKind,
+  ].map(cleanText).join(" ").toLowerCase();
+  return /hyperframes|proof[_-]?card|source[_-]?card|context[_-]?card|timeline[_-]?card|quote[_-]?card|takeaway[_-]?card|\bcard\b/.test(text);
+}
+
+function finalClipScenePlanMotionEvidence(renderManifest = {}, clipScenePlanVisualCadence = {}) {
+  const plan = renderManifest?.clip_scene_plan || renderManifest?.clipScenePlan || {};
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) return null;
+  if (renderManifest.final_publish_render !== true) return null;
+  if ((plan.repeat_free ?? plan.repeatFree) !== true) return null;
+  if (asArray(clipScenePlanVisualCadence.blockers).length) return null;
+  const scenes = asArray(plan.scenes);
+  if (scenes.length < 3) return null;
+  const clips = scenes.map((scene, index) => {
+    const isCard = clipSceneLooksReadableCard(scene);
+    const sourceFamily = firstCleanText(
+      scene.source_family,
+      scene.motion_family,
+      scene.visual_family,
+      scene.base_source_family,
+      scene.base_source_key,
+      scene.baseSourceKey,
+      scene.source_root_key,
+      scene.sourceRootKey,
+      scene.id,
+      `clip_scene_${index + 1}`,
+    );
+    const mediaStart = firstFiniteNumber(
+      scene.mediaStartS,
+      scene.media_start_s,
+      scene.sourceStartS,
+      scene.source_start_s,
+      scene.clipStartS,
+      scene.clip_start_s,
+      scene.provenance?.media_start_s,
+      scene.provenance?.segment_original_start_s,
+    );
+    return {
+      id: firstCleanText(scene.id, scene.path, `clip_scene_${index + 1}`),
+      path: firstCleanText(scene.path, scene.media_path, scene.local_path, scene.output_path),
+      source_url: firstCleanText(
+        scene.source_url,
+        scene.url,
+        scene.original_source_url,
+        scene.reference_url,
+        scene.source,
+      ),
+      media_kind: firstCleanText(
+        scene.media_kind,
+        scene.source_kind,
+        scene.source_type,
+        isCard ? "source_card" : "direct_video",
+      ),
+      source_family: sourceFamily,
+      base_source_family: firstCleanText(
+        scene.base_source_family,
+        scene.base_source_key,
+        scene.baseSourceKey,
+        sourceFamily,
+      ),
+      duration_s: firstFiniteNumber(scene.duration_s, scene.durationS, scene.duration, scene.visible_duration_s),
+      ...(mediaStart != null ? { media_start_s: mediaStart } : {}),
+    };
+  });
+  const directMotionClipCount = clips.filter((clip) => {
+    if (clipSceneLooksReadableCard(clip)) return false;
+    const text = [
+      clip.media_kind,
+      clip.source_url,
+      clip.path,
+      clip.source_family,
+    ].map(cleanText).join(" ").toLowerCase();
+    return /direct_video|hls_manifest|dash_manifest|official_platform_product_page|licensed_direct_media|\.mp4(?:$|[?#])|\.mov(?:$|[?#])|\.webm(?:$|[?#])|\.mkv(?:$|[?#])/.test(text);
+  }).length;
+  if (directMotionClipCount < 3) return null;
+  return {
+    source: "final_clip_scene_plan",
+    clips,
+    directMotionClipCount,
+  };
+}
+
 async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
   const [
     renderStoryArtifact,
@@ -4005,12 +4117,6 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     ...asArray(renderStory.visual_v4_bridge_video_clips),
     ...asArray(renderStory.video_clips),
   ];
-  const directMotionSegmentEvidenceSource = finalRenderMotionEvidence.length >= 3
-    ? finalRenderMotionEvidence
-    : [
-        ...materialisedMotion,
-        ...finalRenderMotionEvidence,
-      ];
   const finalRenderVisualReuse = finalRenderVisualReuseEvidence({ renderManifest, renderStory });
   const hyperframesReadableDwell = hyperframesReadableDwellEvidence({
     renderManifest,
@@ -4018,6 +4124,18 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     directorBeatMap,
   });
   const clipScenePlanVisualCadence = clipScenePlanVisualCadenceEvidence(renderManifest);
+  const scenePlanMotionEvidence = finalClipScenePlanMotionEvidence(
+    renderManifest,
+    clipScenePlanVisualCadence,
+  );
+  const directMotionSegmentEvidenceSource = scenePlanMotionEvidence?.clips?.length
+    ? scenePlanMotionEvidence.clips
+    : finalRenderMotionEvidence.length >= 3
+      ? finalRenderMotionEvidence
+      : [
+          ...materialisedMotion,
+          ...finalRenderMotionEvidence,
+        ];
   const repeatedDirectMotionSegments = repeatedDirectMotionSegmentEvidence(directMotionSegmentEvidenceSource);
   const repeatedDirectMotionBlockers = repeatedDirectMotionSegmentBlockers(directMotionSegmentEvidenceSource);
   const directMotionBaseSourceOveruse = directMotionBaseSourceOveruseEvidence(directMotionSegmentEvidenceSource);
@@ -4037,6 +4155,8 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
         ...finalRenderVisualReuse.evidence,
         ...hyperframesReadableDwell.evidence,
         ...clipScenePlanVisualCadence.evidence,
+        direct_motion_loop_evidence_source: scenePlanMotionEvidence?.source ||
+          (finalRenderMotionEvidence.length >= 3 ? "final_render_story_clips" : "materialised_motion_fallback"),
         repeated_direct_motion_segment_count: repeatedDirectMotionSegments.length,
         repeated_direct_motion_segments: repeatedDirectMotionSegments,
         ...directMotionBaseSourceOveruse.evidence,

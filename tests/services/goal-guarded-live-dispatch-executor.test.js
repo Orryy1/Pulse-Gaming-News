@@ -1555,6 +1555,80 @@ test("guarded live dispatch executor blocks non-native managed TTS rates before 
   ]);
 });
 
+test("guarded live dispatch executor blocks GTA VI si-six timestamp evidence before upload", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-gta-si-six-"));
+  t.after(() => fs.remove(tmp));
+  const timestampsPath = path.join(tmp, "story-one_timestamps.json");
+  const spoken =
+    "GTA si-six just turned pre orders into a buy wait or skip argument. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(timestampsPath, {
+    meta: {
+      source: "elevenlabs-production-path",
+      transcript: spoken,
+      spoken_text: spoken,
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+    },
+    words: spoken
+      .replace(/[.]/g, "")
+      .split(/\s+/)
+      .map((word, index) => ({
+        word,
+        start: Number((index * 0.35).toFixed(2)),
+        end: Number((index * 0.35 + 0.18).toFixed(2)),
+      })),
+  });
+
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          word_timestamps_path: timestampsPath,
+          video_path: path.join(tmp, "youtube.mp4"),
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "GTA VI Starts The Preorder Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        tts_script:
+          "Rockstar's next Grand Theft Auto just turned pre orders into a buy wait or skip argument. " +
+          "Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.deepEqual(report.blocked_actions[0].blockers, [
+    "last_second_gta_vi_pronunciation_failed",
+    "gta_vi_spoken_stutter",
+    "gta_vi_opening_spoken_six_risk",
+  ]);
+});
+
 test("guarded live dispatch executor blocks public metadata QA failures before upload", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;

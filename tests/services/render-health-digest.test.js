@@ -541,6 +541,124 @@ test("buildRenderHealthSummary: direct-media source owner can satisfy subject ma
   assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
 });
 
+test("buildRenderHealthSummary: trusted direct-media entities satisfy subject match despite generic sidecar text", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "render-health-entity-array-subject",
+    "rss_42c92208a8c02a65_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    render_signature: "studio_v4_clip_materializer_accurate_seek_v2",
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/1384160/376090707/hash/hls_264_master.m3u8",
+    source_family: "steamstatic:/store_trailers/1384160/376090707/hash/1774420460_window_36_5",
+  });
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "rss_42c92208a8c02a65",
+        title: "Robo-Ky Delay Puts Guilty Gear On Trial",
+        canonical_subject: "Robo-Ky",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url: "https://video.akamai.steamstatic.com/store_trailers/1384160/376090707/hash/hls_264_master.m3u8",
+            source_type: "steam_movie",
+            source_url_kind: "hls_manifest",
+            source_kind: "hls_manifest",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+            approval_status: "approved_for_transformative_editorial_use",
+            counts_towards_motion_readiness: true,
+            source_family: "steamstatic:/store_trailers/1384160/376090707/hash/1774420460_window_36_5",
+            entities: ["GUILTY GEAR -STRIVE- Robo-Ky Official"],
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.equal(r.bridge.visual_evidence.direct_video_subject_mismatch_count, 0);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
+test("buildRenderHealthSummary: exact character subject satisfies motion match when title has wider game context", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "render-health-character-subject-match",
+    "rss_42c92208a8c02a65_v4_clip_1_segment_direct_motion_1.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    render_signature: "studio_v4_clip_materializer_accurate_seek_v2",
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/1384160/376090707/hash/hls_264_master.m3u8",
+    source_family: "steamstatic:/store_trailers/1384160/376090707/hash/1774420460_window_36_5",
+  });
+
+  const r = digest.buildRenderHealthSummary([], {
+    bridgeCandidates: [
+      {
+        id: "rss_42c92208a8c02a65",
+        title: "Robo-Ky Delay Puts Guilty Gear On Trial",
+        canonical_subject: "Robo-Ky",
+        canonical_game: "Robo-Ky",
+        primary_source_url: "https://www.gamespot.com/videos/guilty-gear-strive-robo-ky-official-trailer/",
+        approved_at: new Date().toISOString(),
+        render_quality_class: "premium",
+        render_lane: "visual_v4_production",
+        qa_visual_count: 8,
+        visual_v4_bridge_video_clips: [
+          {
+            id: "segment_direct_motion_1",
+            path: clipPath,
+            source_url: "https://video.akamai.steamstatic.com/store_trailers/1384160/376090707/hash/hls_264_master.m3u8",
+            source_type: "steam_movie",
+            source_url_kind: "hls_manifest",
+            source_kind: "video_file",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+            approval_status: "approved_for_transformative_editorial_use",
+            counts_towards_motion_readiness: true,
+            source_family: "steamstatic:/store_trailers/1384160/376090707/hash/1774420460_window_36_5",
+            source_title: "Robo-Ky",
+            entity: "Robo-Ky",
+            entities: ["Robo-Ky"],
+          },
+        ],
+        rights_ledger: [
+          {
+            id: "segment_direct_motion_1_rights",
+            path: clipPath,
+            source_url: "https://video.akamai.steamstatic.com/store_trailers/1384160/376090707/hash/hls_264_master.m3u8",
+            source_type: "steam_movie",
+            source_url_kind: "hls_manifest",
+            source_kind: "video_file",
+            media_kind: "direct_video",
+            rights_basis: "official_direct_media",
+            approval_status: "approved_for_transformative_editorial_use",
+            source_family: "steamstatic:/store_trailers/1384160/376090707/hash/1774420460_window_36_5",
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(r.bridge.visual_evidence.direct_video_motion_count, 1);
+  assert.equal(r.bridge.visual_evidence.direct_video_subject_mismatch_count, 0);
+  assert.deepEqual(r.bridge.visual_evidence.direct_video_gap_story_ids, []);
+});
+
 test("buildRenderHealthSummary: sidecar subject mismatches do not count as healthy direct video", async () => {
   const clipPath = path.join(
     "test",

@@ -752,7 +752,7 @@ test("fresh buffer local render work order trusts current final render and capti
   assert.equal(workOrder.jobs[0].evidence.render_manifest_ready, true);
 });
 
-test("fresh buffer promotion compacts headline-style subjects into the named game", async () => {
+test("fresh buffer promotion compacts GTA VI headline subjects into the display title", async () => {
   const generatedAt = "2026-06-19T04:00:00.000Z";
   const report = buildFreshGreenBufferLocalPromotionReport({
     stories: [
@@ -787,13 +787,62 @@ test("fresh buffer promotion compacts headline-style subjects into the named gam
   const canonical = JSON.parse(
     fs.readFileSync(path.join(packageDir, "canonical_story_manifest.json"), "utf8"),
   );
-  assert.equal(canonical.canonical_subject, "GTA 6");
-  assert.equal(canonical.canonical_game, "GTA 6");
-  assert.match(canonical.first_spoken_line, /^GTA 6\b/);
+  assert.equal(canonical.canonical_subject, "GTA VI");
+  assert.equal(canonical.canonical_game, "GTA VI");
+  assert.equal(canonical.selected_title, "GTA VI May Finally Be In Launch Countdown Mode");
+  assert.equal(canonical.thumbnail_headline, "GTA VI COUNTDOWN");
+  assert.match(canonical.first_spoken_line, /^GTA VI\b/);
+  assert.match(canonical.narration_script, /^GTA VI\b/);
+  assert.doesNotMatch(canonical.tts_script, /\bGTA\s+(?:6|six)\b/i);
+  assert.match(canonical.tts_script, /Rockstar's next Grand Theft Auto/i);
 
   const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
-  assert.equal(storyPackages[0].canonical_subject, "GTA 6");
-  assert.equal(storyPackages[0].canonical_game, "GTA 6");
+  assert.equal(storyPackages[0].canonical_subject, "GTA VI");
+  assert.equal(storyPackages[0].canonical_game, "GTA VI");
+});
+
+test("fresh buffer promotion preserves GTA VI display when source uses full official title", async () => {
+  const generatedAt = "2026-06-29T08:00:00.000Z";
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [
+      draftStory({
+        id: "rss_gta_vi_ps5_pitch",
+        title: "Grand Theft Auto VI PS5-exclusive features detailed, PS5 Pro enhanced confirmed",
+        canonical_subject: "Grand Theft Auto VI",
+        canonical_game: "Grand Theft Auto VI",
+        selected_title: "GTA 6 PS5 Features Put Xbox On The Back Foot",
+        primary_source: {
+          name: "PlayStation Blog",
+          url: "https://blog.playstation.com/gta-vi-ps5-features",
+          type: "official_source",
+        },
+        primary_source_url: "https://blog.playstation.com/gta-vi-ps5-features",
+        source_published_at: "2026-06-29T07:00:00.000Z",
+        confirmed_claims: [
+          "PlayStation says Grand Theft Auto VI has PS5-specific controller and PS5 Pro enhancements.",
+        ],
+        narration_script:
+          "Grand Theft Auto VI just made the PS5 version harder to ignore. PlayStation says the game has platform-specific controller and PS5 Pro enhancements. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    generatedAt,
+  });
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-gta-vi-display-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const canonical = JSON.parse(
+    fs.readFileSync(path.join(outDir, "packages", "rss_gta_vi_ps5_pitch", "canonical_story_manifest.json"), "utf8"),
+  );
+
+  assert.equal(canonical.canonical_subject, "GTA VI");
+  assert.equal(canonical.canonical_game, "GTA VI");
+  assert.equal(canonical.selected_title, "GTA VI PS5 Features Put Xbox On The Back Foot");
+  assert.match(canonical.narration_script, /^GTA VI\b/);
+  assert.doesNotMatch(canonical.narration_script, /\bGTA\s+6\b/i);
+  assert.doesNotMatch(canonical.tts_script, /\bGTA\s+(?:6|six)\b/i);
+
+  const storyPackages = JSON.parse(fs.readFileSync(written.storyPackages, "utf8"));
+  assert.equal(storyPackages[0].title, "GTA VI PS5 Features Put Xbox On The Back Foot");
 });
 
 test("fresh buffer promotion maps current-news title subjects to source-search entities", async () => {

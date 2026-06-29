@@ -96,7 +96,16 @@ async function readMotionCapacityReports(reportPaths = []) {
 }
 
 function isMotionCapacityReportName(filePath = "") {
-  return MOTION_CAPACITY_REPORT_NAMES.has(path.basename(String(filePath || "")));
+  const basename = path.basename(String(filePath || ""));
+  return MOTION_CAPACITY_REPORT_NAMES.has(basename) || /_motion_pack_manifest\.json$/i.test(basename);
+}
+
+function isCanonicalMotionPackPath(filePath = "") {
+  const normalised = path.normalize(String(filePath || "")).toLowerCase();
+  return (
+    /_motion_pack_manifest\.json$/i.test(path.basename(normalised)) &&
+    normalised.includes(`${path.sep}output${path.sep}studio-v4${path.sep}motion-packs${path.sep}`.toLowerCase())
+  );
 }
 
 async function walkMotionCapacityReports(dir, options = {}) {
@@ -135,6 +144,7 @@ async function discoverMotionCapacityReportPaths(options = {}) {
     : [
         path.join(root, "output", "fresh-green-refill"),
         path.join(root, "output", "candidate-supply", "fresh-production-refill"),
+        path.join(root, "output", "studio-v4", "motion-packs"),
       ];
 
   const found = [];
@@ -149,8 +159,15 @@ async function discoverMotionCapacityReportPaths(options = {}) {
     if (!previous || item.mtimeMs > previous.mtimeMs) unique.set(normalised, { ...item, path: normalised });
   }
 
-  return Array.from(unique.values())
-    .sort((a, b) => (b.mtimeMs - a.mtimeMs) || a.path.localeCompare(b.path))
+  const allReports = Array.from(unique.values());
+  const canonical = allReports
+    .filter((item) => isCanonicalMotionPackPath(item.path))
+    .sort((a, b) => (b.mtimeMs - a.mtimeMs) || a.path.localeCompare(b.path));
+  const supplemental = allReports
+    .filter((item) => !isCanonicalMotionPackPath(item.path))
+    .sort((a, b) => (b.mtimeMs - a.mtimeMs) || a.path.localeCompare(b.path));
+
+  return [...canonical, ...supplemental]
     .slice(0, limit)
     .map((item) => item.path);
 }

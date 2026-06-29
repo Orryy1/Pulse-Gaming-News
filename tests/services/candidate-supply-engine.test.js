@@ -135,6 +135,82 @@ test("candidate supply CLI auto-discovers fresh refill motion-capacity reports",
   assert.equal(discovered.includes(ignored), false);
 });
 
+test("candidate supply CLI auto-discovers canonical ready motion-pack manifests", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-canonical-motion-"));
+  const canonicalMotionPack = path.join(
+    root,
+    "output",
+    "studio-v4",
+    "motion-packs",
+    "rss_star_wars_motion_pack_manifest.json",
+  );
+  const staleRepairReport = path.join(
+    root,
+    "output",
+    "candidate-supply",
+    "fresh-production-refill",
+    "2026-06-29-0105",
+    "goal-contract",
+    "fresh_production_refill_repair",
+    "motion-packs",
+    "visual_v4_motion_packs.json",
+  );
+
+  await fs.outputJson(canonicalMotionPack, {
+    story_id: "rss_star_wars",
+    status: "ready",
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips: [{ source_family: "steam_trailer_window_1", media_kind: "direct_video" }],
+  });
+  await fs.outputJson(staleRepairReport, {
+    packs: [{ story_id: "stale_repair_story", readiness_status: "v4_motion_blocked" }],
+  });
+
+  const discovered = await discoverMotionCapacityReportPaths({ root, limit: 10 });
+
+  assert.ok(discovered.includes(canonicalMotionPack));
+  assert.ok(discovered.includes(staleRepairReport));
+});
+
+test("candidate supply CLI keeps canonical motion packs when refill reports fill the discovery limit", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-canonical-priority-"));
+  const canonicalMotionPack = path.join(
+    root,
+    "output",
+    "studio-v4",
+    "motion-packs",
+    "rss_priority_motion_pack_manifest.json",
+  );
+  await fs.outputJson(canonicalMotionPack, {
+    story_id: "rss_priority",
+    status: "ready",
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips: [{ source_family: "steam_trailer_window_1", media_kind: "direct_video" }],
+  });
+
+  for (let i = 0; i < 8; i += 1) {
+    const reportPath = path.join(
+      root,
+      "output",
+      "candidate-supply",
+      "fresh-production-refill",
+      `2026-06-29-0${i}`,
+      "goal-contract",
+      "fresh_production_refill_repair",
+      "motion-packs",
+      "visual_v4_motion_packs.json",
+    );
+    await fs.outputJson(reportPath, {
+      packs: [{ story_id: `refill_${i}`, readiness_status: "v4_motion_blocked" }],
+    });
+  }
+
+  const discovered = await discoverMotionCapacityReportPaths({ root, limit: 5 });
+
+  assert.ok(discovered.includes(canonicalMotionPack));
+  assert.equal(discovered.length, 5);
+});
+
 test("fresh candidate report enables media-house preflight for supply monitor truth", async (t) => {
   const original = {
     getStories: db.getStories,
@@ -1845,6 +1921,74 @@ test("motion-capacity merge keeps latest blocking validation evidence authoritat
   assert.equal(capacity.repairable, false);
   assert.equal(capacity.direct_media_ready, 1);
   assert.equal(capacity.actionable_direct_media_ready, 0);
+});
+
+test("motion-capacity merge lets canonical ready packs override stale non-terminal blockers", () => {
+  const index = buildMotionCapacityIndex([
+    {
+      rows: [
+        {
+          story_id: "star-wars-racer",
+          title: "Star Wars Podracing Has A Roguelite Risk",
+          readiness_status: "v4_motion_blocked",
+          blockers: [
+            "actual_motion_clip_minimum_not_met",
+            "distinct_motion_families_minimum_not_met",
+            "visual_evidence:direct_video_motion_missing",
+          ],
+          current_motion_clips: 16,
+          current_motion_families: 8,
+          required_motion_clips: 16,
+          required_motion_families: 8,
+          source_family_candidates: [{ source_family: "steam_official_reference" }],
+        },
+      ],
+    },
+    {
+      story_id: "star-wars-racer",
+      title: "Star Wars Podracing Has A Roguelite Risk",
+      status: "ready",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      clips: [
+        {
+          source_family: "steam_official_window_1",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+          counts_towards_motion_readiness: true,
+        },
+        {
+          source_family: "steam_official_window_2",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+          counts_towards_motion_readiness: true,
+        },
+        {
+          source_family: "steam_official_window_3",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+          counts_towards_motion_readiness: true,
+        },
+        {
+          source_family: "steam_official_window_4",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+          counts_towards_motion_readiness: true,
+        },
+        {
+          source_family: "steam_official_window_5",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+          counts_towards_motion_readiness: true,
+        },
+      ],
+    },
+  ]);
+
+  const capacity = index.get("star-wars-racer");
+  assert.equal(capacity.motion_ready, true);
+  assert.equal(capacity.repair_priority, "ready");
+  assert.equal(capacity.repairable, false);
+  assert.deepEqual(capacity.blockers, []);
 });
 
 test("motion-capacity rows with blocking status do not become ready from counts alone", () => {

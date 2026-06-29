@@ -1555,12 +1555,12 @@ test("guarded live dispatch executor blocks non-native managed TTS rates before 
   ]);
 });
 
-test("guarded live dispatch executor blocks GTA VI si-six timestamp evidence before upload", async (t) => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-gta-si-six-"));
+test("guarded live dispatch executor blocks GTA VI split ASR stutter evidence before upload", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-gta-s-i-six-"));
   t.after(() => fs.remove(tmp));
   const timestampsPath = path.join(tmp, "story-one_timestamps.json");
   const spoken =
-    "GTA si-six just turned pre orders into a buy wait or skip argument. " +
+    "GTA s i six just turned pre orders into a buy wait or skip argument. " +
     "Follow Pulse Gaming so you never miss a beat.";
   await fs.writeJson(timestampsPath, {
     meta: {

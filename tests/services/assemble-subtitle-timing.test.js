@@ -210,6 +210,28 @@ test("subtitle display merge hides one-token GTA VI ASR stutters", () => {
   assert.deepEqual(merged, ["GTA VI", "starts", "GTA VI."]);
 });
 
+test("subtitle display merge hides split and repeated GTA VI ASR stutters", () => {
+  const words = [
+    { text: "GTA", start: 0, end: 0.18 },
+    { text: "s", start: 0.18, end: 0.24 },
+    { text: "i", start: 0.24, end: 0.3 },
+    { text: "six", start: 0.3, end: 0.48 },
+    { text: "starts", start: 0.5, end: 0.7 },
+    { text: "Grand", start: 0.72, end: 0.9 },
+    { text: "Theft", start: 0.9, end: 1.08 },
+    { text: "Auto", start: 1.08, end: 1.24 },
+    { text: "see", start: 1.24, end: 1.32 },
+    { text: "see", start: 1.32, end: 1.4 },
+    { text: "six.", start: 1.4, end: 1.58 },
+    { text: "GTA", start: 1.6, end: 1.78 },
+    { text: "siix.", start: 1.78, end: 1.98 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA VI", "starts", "GTA VI.", "GTA VI."]);
+});
+
 test("subtitle display merge renders PS five spellings as PlayStation 5", () => {
   const words = [
     { text: "P", start: 0, end: 0.1 },

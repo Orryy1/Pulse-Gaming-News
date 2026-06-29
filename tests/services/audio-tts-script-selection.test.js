@@ -262,6 +262,9 @@ test("cleanForTTS: repairs malformed GTA VI stutters before local narration", ()
       "Grand Theft Auto see-six is still months away.",
       "GTA sea six should not reach local narration.",
       "Grand Theft Auto c-six should not reach the hook.",
+      "GTA s i six should not survive ASR spelling.",
+      "Grand Theft Auto see see six should not survive repeated ASR spelling.",
+      "GTA siix should not survive collapsed ASR spelling.",
     ].join(" "),
   );
 
@@ -272,9 +275,12 @@ test("cleanForTTS: repairs malformed GTA VI stutters before local narration", ()
       "Rockstar's next Grand Theft Auto is still months away.",
       "Rockstar's next Grand Theft Auto should not reach local narration.",
       "Rockstar's next Grand Theft Auto should not reach the hook.",
+      "Rockstar's next Grand Theft Auto should not survive ASR spelling.",
+      "Rockstar's next Grand Theft Auto should not survive repeated ASR spelling.",
+      "Rockstar's next Grand Theft Auto should not survive collapsed ASR spelling.",
     ].join(" "),
   );
-  assert.doesNotMatch(spoken, /\b(?:si|sigh|s|see|sea|c)\s*[- ]?\s*six\b/i);
+  assert.doesNotMatch(spoken, /\b(?:s\s+i|si|sigh|s|see(?:\s+see)?|sea|c)\s*[- ]?\s*six\b|\bsiix\b/i);
 });
 
 test("cleanForTTS: never leaves standalone GTA as spaced letters for local narration", () => {

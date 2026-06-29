@@ -3858,7 +3858,7 @@ test("attachPreflightQa blocks GTA VI word-level stutters even when timestamp me
     "Rockstar's next Grand Theft Auto just turned pre orders into a buy, wait or skip argument. " +
     "Follow Pulse Gaming so you never miss a beat.";
   const actualWords =
-    "GTA si-six just turned pre orders into a buy wait or skip argument Follow Pulse Gaming so you never miss a beat"
+    "GTA s i six just turned pre orders into a buy wait or skip argument Follow Pulse Gaming so you never miss a beat"
       .split(/\s+/)
       .map((word, index) => ({
         word,

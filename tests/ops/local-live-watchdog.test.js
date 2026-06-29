@@ -13,3 +13,14 @@ test("local live watchdog checks runtime health and polls quickly enough for pub
   assert.match(source, /runtime_unhealthy starting_primary_runtime/);
   assert.match(source, /"-Restart"/);
 });
+
+test("local live watchdog does not restart an existing runtime on a transient publish-window health timeout", () => {
+  const source = fs.readFileSync(watchdogPath, "utf8");
+
+  assert.match(source, /\[int\]\$UnhealthyRestartThreshold\s*=\s*3\b/);
+  assert.match(source, /\[int\]\$PublishWindowGuardBeforeMinutes\s*=\s*10\b/);
+  assert.match(source, /\[int\]\$PublishWindowGuardAfterMinutes\s*=\s*35\b/);
+  assert.match(source, /function Test-InCriticalPublishWindow/);
+  assert.match(source, /runtime_unhealthy_publish_window_guard skip_restart/);
+  assert.match(source, /\$consecutiveUnhealthy\s+-lt\s+\$UnhealthyRestartThreshold/);
+});

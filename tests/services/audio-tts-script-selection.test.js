@@ -283,6 +283,25 @@ test("cleanForTTS: repairs malformed GTA VI stutters before local narration", ()
   assert.doesNotMatch(spoken, /\b(?:s\s+i|si|sigh|s|see(?:\s+see)?|sea|c)\s*[- ]?\s*six\b|\bsiix\b/i);
 });
 
+test("cleanForTTS: repairs vowel-inserted GTA VI ASR stutters before local narration", () => {
+  const spoken = cleanForTTS(
+    [
+      "GTA see a six starts the preorder fight.",
+      "GTA suh six starts the preorder fight.",
+      "Grand Theft Auto sir six should not survive the hook.",
+    ].join(" "),
+  );
+
+  assert.equal(
+    spoken,
+    [
+      "Rockstar's next Grand Theft Auto starts the preorder fight.",
+      "Rockstar's next Grand Theft Auto should not survive the hook.",
+    ].join(" "),
+  );
+  assert.doesNotMatch(spoken, /\b(?:see\s+a|suh|sir)\s+six\b/i);
+});
+
 test("cleanForTTS: never leaves standalone GTA as spaced letters for local narration", () => {
   const spoken = cleanForTTS("GTA Online is the argument after GTA VI pre-orders.");
 

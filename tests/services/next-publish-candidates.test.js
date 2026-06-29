@@ -3357,7 +3357,7 @@ test("attachPreflightQa blocks stale GTA roman-numeral voice pronunciation metad
   );
   assert.equal(
     candidate.preflight_qa.checks.voice_quality.evidence.expected_tts_pronunciation_profile_version,
-    "gta-safe-next-title-v8",
+    "gta-safe-next-title-v9",
   );
 });
 
@@ -3397,7 +3397,7 @@ test("attachPreflightQa blocks GTA VI pronunciation-sensitive packages without r
       word_timestamps_payload: {
         words,
         meta: {
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3639,7 +3639,7 @@ test("attachPreflightQa blocks risky GTA VI spoken-six phrases in the opener eve
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3722,7 +3722,7 @@ test("attachPreflightQa blocks malformed GTA VI see-six stutters in recorded ope
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3807,7 +3807,7 @@ test("attachPreflightQa blocks exact GTA VI si-six stutters in recorded opening 
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -3890,7 +3890,7 @@ test("attachPreflightQa blocks GTA VI word-level stutters even when timestamp me
         meta: {
           transcript: cleanSpoken,
           spoken_text: cleanSpoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -4045,7 +4045,7 @@ test("attachPreflightQa blocks split GTA VI roman narration even when script tex
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -4136,7 +4136,7 @@ test("attachPreflightQa blocks recorded GTA VI spoken-six phrases outside the op
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,
@@ -4224,7 +4224,7 @@ test("attachPreflightQa blocks early GTA VI spoken-six after a safe preface", as
         meta: {
           transcript: spoken,
           spoken_text: spoken,
-          ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
           wordTimestampSource: "local_whisper_word_alignment",
           timestampWhisperAlignment: {
             repaired: true,

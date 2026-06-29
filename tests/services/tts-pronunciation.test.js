@@ -161,6 +161,14 @@ test("GTA V and GTA VI title variants use stable spoken names", () => {
     applyGamingPronunciation("Grand Theft Auto VI's PS5 pitch moved early."),
     "Rockstar's next Grand Theft Auto's PlayStation five pitch moved early.",
   );
+  assert.equal(
+    applyGamingPronunciation("GTA see a six starts the preorder fight."),
+    "Rockstar's next Grand Theft Auto starts the preorder fight.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Grand Theft Auto sir six should not survive the hook."),
+    "Rockstar's next Grand Theft Auto should not survive the hook.",
+  );
 });
 
 test("Stranger Than Heaven Five Eras avoids Eris/heiress ASR drift in local narration", () => {

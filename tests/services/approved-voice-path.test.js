@@ -379,6 +379,31 @@ test("approved voice path rejects split and repeated GTA VI ASR stutter variants
   }
 });
 
+test("approved voice path rejects vowel-inserted GTA VI ASR stutter variants", () => {
+  for (const [name, transcript] of [
+    ["see-a-six", "GTA see a six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
+    ["suh-six", "GTA suh six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
+    ["sir-six", "Grand Theft Auto sir six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
+  ]) {
+    const result = evaluateApprovedVoicePath({
+      narration: {
+        provider: "local",
+        source: "local-production-voxcpm-path",
+        audioPath: audioFile(`gta-vi-${name}.mp3`),
+        transcript,
+        acoustic: { medianPitchHz: 118 },
+        acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+        voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      },
+      env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+    });
+
+    assert.equal(result.verdict, "rejected", name);
+    assert.ok(result.blockers.includes("gta_vi_spoken_stutter"), name);
+    assert.equal(result.transcript.gta_vi_spoken_stutter, true, name);
+  }
+});
+
 test("approved voice path rejects split GTA VI roman narration", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

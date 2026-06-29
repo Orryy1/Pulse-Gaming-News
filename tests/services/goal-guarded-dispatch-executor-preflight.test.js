@@ -29,6 +29,39 @@ async function evidenceFiles(root) {
   return { video, captions, canonical, platform };
 }
 
+async function gtaPronunciationEvidenceFiles(root) {
+  const dir = path.join(root, "proof", "gta-vi-story");
+  const audioDir = path.join(dir, "audio");
+  await fs.ensureDir(audioDir);
+  const video = path.join(dir, "visual_v4_render.mp4");
+  const captions = path.join(dir, "captions.srt");
+  const canonical = path.join(dir, "canonical_story_manifest.json");
+  const platform = path.join(dir, "platform_publish_manifest.json");
+  const timestamps = path.join(audioDir, "word_timestamps.json");
+  await fs.writeFile(video, Buffer.alloc(2048, 1));
+  await fs.writeFile(captions, "1\n00:00:00,000 --> 00:00:01,000\nGTA VI.\n");
+  await fs.writeJson(canonical, {
+    story_id: "gta-vi-story",
+    selected_title: "GTA VI Just Made PS5 The Version To Watch",
+    canonical_game: "GTA VI",
+    word_timestamps_path: "audio/word_timestamps.json",
+  });
+  await fs.writeJson(platform, { outputs: { youtube_shorts: {} } });
+  await fs.writeJson(timestamps, {
+    meta: {
+      transcript: "GTA see a six just made the PlayStation version the one to watch.",
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+    },
+    words: [
+      { word: "GTA" },
+      { word: "see" },
+      { word: "a" },
+      { word: "six" },
+    ],
+  });
+  return { video, captions, canonical, platform, timestamps };
+}
+
 function guardedDispatchPlan(files = {}) {
   return {
     schema_version: 1,
@@ -64,6 +97,23 @@ function guardedDispatchPlan(files = {}) {
       no_oauth_or_token_change: true,
     },
   };
+}
+
+function gtaGuardedDispatchPlan(files = {}) {
+  const base = guardedDispatchPlan(files);
+  base.dispatch_ready_actions = [
+    {
+      ...base.dispatch_ready_actions[0],
+      story_id: "gta-vi-story",
+      title: "GTA VI Just Made PS5 The Version To Watch",
+      video_path: files.video,
+      captions_path: files.captions,
+      first_frame_source: files.video,
+      canonical_manifest_path: files.canonical,
+      platform_publish_manifest_path: files.platform,
+    },
+  ];
+  return base;
 }
 
 function emptyGuardedDispatchPlan() {
@@ -173,7 +223,7 @@ test("executor preflight can explicitly hand off the full dispatch-ready runway"
     ...plan.dispatch_ready_actions[0],
     story_id: "story-two",
     platform: "instagram_reels",
-    title: "GTA 6 Delay Becomes The First Argument",
+    title: "Phantom Blade Zero Turns Its Delay Into A Bigger Test",
   });
   const matrix = platformStatusMatrix({
     youtube_shorts: {
@@ -211,6 +261,30 @@ test("executor preflight can explicitly hand off the full dispatch-ready runway"
   assert.ok(report.advisory.includes("selected_all_dispatch_ready_actions"));
   assert.equal(report.executor_plan.ready_for_live_executor_handoff, true);
   assert.equal(report.safe_to_publish_boolean, false);
+});
+
+test("executor preflight blocks stale GTA VI timestamp pronunciation evidence before handoff", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-gta-profile-"));
+  const files = await gtaPronunciationEvidenceFiles(root);
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: gtaGuardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix({
+      youtube_shorts: {
+        planned_story_ids: ["gta-vi-story"],
+      },
+    }),
+    selectedActionIds: ["gta-vi-story:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.handoff_ready_action_count, 0);
+  assert.equal(report.summary.blocked_selected_action_count, 1);
+  assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_timestamp_profile_stale"));
+  assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_spoken_stutter"));
 });
 
 test("executor preflight accepts runtime sentinel kill-switch clear flag", async () => {

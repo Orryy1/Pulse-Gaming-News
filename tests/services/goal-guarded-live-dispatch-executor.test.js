@@ -1567,7 +1567,7 @@ test("guarded live dispatch executor blocks GTA VI split ASR stutter evidence be
       source: "elevenlabs-production-path",
       transcript: spoken,
       spoken_text: spoken,
-      ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
     },
     words: spoken
       .replace(/[.]/g, "")

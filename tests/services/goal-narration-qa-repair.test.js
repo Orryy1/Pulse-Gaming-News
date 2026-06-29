@@ -346,6 +346,45 @@ test("narration voice QA accepts natural spoken cadence", async () => {
   assert.deepEqual(built.voiceQualityReport.blockers, []);
 });
 
+test("narration voice QA blocks GTA VI si-six evidence from current ASR transcript", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-gta-asr-stutter-"));
+  const fixture = await makeNarrationQaFixture(root, {
+    storyId: "gta-asr-stutter-story",
+    audioWordCount: 105,
+    audioDurationSeconds: 42,
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "canonical_story_manifest.json"), {
+    story_id: fixture.storyId,
+    selected_title: "GTA VI Starts The Preorder Fight",
+    canonical_subject: "Grand Theft Auto VI",
+    narration_script: "Rockstar's next Grand Theft Auto just made pre-orders a trust test.",
+    tts_script: "Rockstar's next Grand Theft Auto just made pre-orders a trust test.",
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "audio_manifest.json"), {
+    story_id: fixture.storyId,
+    status: "ready",
+    voice_status: "materialized",
+    narration_audio_path: "narration.mp3",
+    word_timestamps_path: "word_timestamps.json",
+    word_timestamp_count: 105,
+    audio_duration_seconds: 42,
+    materialized_at: "2026-06-29T01:00:00.000Z",
+    timestamp_whisper_alignment: {
+      repaired: true,
+      transcript: "GTA si-six just made pre orders a trust test. Follow Pulse Gaming so you never miss a beat.",
+    },
+  });
+
+  const built = await buildCurrentVoiceQualityReport({
+    artifactDir: fixture.artifactDir,
+    generatedAt: "2026-06-29T01:01:00.000Z",
+  });
+
+  assert.equal(built.voiceQualityReport.verdict, "FAIL");
+  assert.ok(built.voiceQualityReport.blockers.includes("gta_vi_spoken_stutter"));
+  assert.equal(built.voiceQualityReport.transcript.gta_vi_spoken_stutter, true);
+});
+
 test("narration cadence QA prefers probed audio duration over compressed timestamp spans", async () => {
   const cadence = await analyseNarrationCadence({
     audioManifest: { word_timestamp_count: 130 },

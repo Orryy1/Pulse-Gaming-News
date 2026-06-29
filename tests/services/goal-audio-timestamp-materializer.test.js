@@ -697,6 +697,51 @@ test("goal audio materializer regenerates current-profile GTA audio when ASR wor
   );
   assert.equal(report.summary.materialized_count, 1);
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_risky_gta_vi_asr");
+  const voiceQuality = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+  assert.equal(voiceQuality.transcript.gta_vi_spoken_stutter, false);
+  assert.equal(voiceQuality.transcript.gta_vi_opening_spoken_six_risk, false);
+});
+
+test("goal audio materializer rejects fresh Whisper transcript when it still contains GTA si-six", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-fresh-asr-stutter-"));
+  const artifactDir = await makePackage(root, "story-gta-fresh-asr-stutter", {
+    selected_title: "GTA VI Cover Art Turns Into A Buying Argument",
+    narration_script: "GTA VI just turned cover art into a buying argument.",
+    tts_script: "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.",
+  });
+  const badTranscript = "GTA si-six just turned cover art into a buying argument. Follow Pulse Gaming so you never miss a beat.";
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "local",
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-gta-fresh-asr-stutter", artifactDir)],
+    },
+    generatedAt: "2026-06-28T12:30:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async () => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(badTranscript),
+      transcript: badTranscript,
+      language: "en",
+      segments: 1,
+    }),
+  });
+
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.equal(report.jobs[0].status, "failed");
+  assert.match(report.jobs[0].error, /whisper|asr|coverage|insert/i);
 });
 
 test("goal audio materializer syncs canonical narration metadata after public-copy repair", async () => {

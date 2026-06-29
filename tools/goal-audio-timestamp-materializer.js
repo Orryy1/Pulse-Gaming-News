@@ -183,11 +183,21 @@ async function main(argv = process.argv.slice(2)) {
   return { report, written };
 }
 
+async function runCli(argv = process.argv.slice(2), {
+  exit = process.exit,
+  stderr = console.error,
+} = {}) {
+  try {
+    await main(argv);
+    exit(0);
+  } catch (error) {
+    stderr(`[goal-audio-timestamp-materializer] FAILED: ${error.stack || error.message}`);
+    exit(1);
+  }
+}
+
 if (require.main === module) {
-  main().catch((error) => {
-    console.error(`[goal-audio-timestamp-materializer] FAILED: ${error.stack || error.message}`);
-    process.exit(1);
-  });
+  runCli();
 }
 
 module.exports = {
@@ -195,5 +205,6 @@ module.exports = {
   configureLocalTtsBatchEnv,
   main,
   parseArgs,
+  runCli,
   usage,
 };

@@ -757,6 +757,31 @@ test("script coherence blocks source-bound filler that invents generic player st
   );
 });
 
+test("script coherence blocks generic source-detail fallback narration", () => {
+  const qa = runScriptCoherenceQa(
+    {
+      title: "Blue Meadow Gets A Studio Note",
+      source_type: "rss",
+      source_name: "PC Gamer",
+      cta: "Follow Pulse Gaming so you never miss a beat",
+      full_script:
+        "Blue Meadow has a new source detail, but the real question is still what players can do with it. " +
+        "PC Gamer says Blue Meadow has a new controller note. " +
+        "If it changes when people buy, download, wishlist or return, the update matters. " +
+        "If it only repeats a headline, it needs stronger proof before it deserves attention. " +
+        "The next official detail has to make that choice clear: play now, wait, skip or watch for gameplay. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    { requireCtaField: true, requireFullScriptCta: true },
+  );
+
+  assert.equal(qa.result, "fail");
+  assert.ok(
+    qa.failures.includes("script_coherence:vague_filler:generic_source_bound_padding"),
+    qa.failures.join(", "),
+  );
+});
+
 test("script coherence does not block named game scripts when no source context exists", () => {
   const qa = runScriptCoherenceQa(
     {

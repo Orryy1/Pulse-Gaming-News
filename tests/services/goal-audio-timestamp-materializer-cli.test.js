@@ -11,6 +11,7 @@ const {
   configureLocalTtsBatchEnv,
   main,
   parseArgs,
+  runCli,
 } = require("../../tools/goal-audio-timestamp-materializer");
 
 test("goal audio timestamp materializer CLI parses local batch arguments", () => {
@@ -105,6 +106,38 @@ test("goal audio timestamp materializer CLI scopes inspect-only runs to requeste
 
   assert.equal(result.report.summary.candidate_count, 1);
   assert.deepEqual(result.report.jobs.map((job) => job.story_id), ["ready-audio"]);
+});
+
+test("goal audio timestamp materializer CLI exits after successful completion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-cli-exit-"));
+  const workbenchPath = path.join(root, "audio_timestamp_workbench.json");
+  await fs.outputJson(workbenchPath, {
+    local_tts: { verdict: "green", ready: true },
+    jobs: [],
+  });
+  const exitCodes = [];
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await runCli([
+      "--workbench",
+      workbenchPath,
+      "--out-dir",
+      path.join(root, "out"),
+      "--workspace",
+      root,
+      "--inspect-only",
+      "--json",
+    ], {
+      exit: (code) => exitCodes.push(code),
+      stderr: () => {},
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.deepEqual(exitCodes, [0]);
+  assert.equal(await fs.pathExists(path.join(root, "out", "audio_timestamp_materialization_report.json")), true);
 });
 
 test("goal audio timestamp materializer CLI can run in inspect-only mode without TTS side effects", async () => {

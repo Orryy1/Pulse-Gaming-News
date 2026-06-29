@@ -1645,6 +1645,72 @@ test("real motion materializer blocks repeated validated official segments when 
   assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
 });
 
+test("real motion materializer can use second validated windows across a diverse official source pool", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-diverse-segments-"));
+  const job = await makePackage(root, "diverse-segment-motion");
+  await fs.remove(path.join(job.artifact_dir, "rights_ledger.json"));
+  const sourceUrls = [
+    "https://cdn.example.com/official/trailer-a.mp4",
+    "https://cdn.example.com/official/trailer-b.mp4",
+    "https://cdn.example.com/official/trailer-c.mp4",
+    "https://cdn.example.com/official/trailer-d.mp4",
+  ];
+  const starts = [12, 28, 14, 31, 16, 18];
+  const segmentValidationReport = {
+    segments: starts.map((start, index) => ({
+      story_id: job.story_id,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_url: sourceUrls[index % sourceUrls.length],
+      source_url_kind: "direct_video",
+      source_type: "licensed_direct_media_url",
+      source_family: `official_source_${(index % sourceUrls.length) + 1}`,
+      provider: "official_intake",
+      entity: "Diverse Official Trailer Pool",
+      media_start_s: start,
+      duration_s: 5,
+      source_duration_s: 90,
+      validation_reason: "segment_samples_passed",
+    })),
+  };
+  const calls = [];
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-06-29T04:15:00.000Z",
+    minClips: 6,
+    minFamilies: 5,
+    maxClips: 8,
+    segmentValidationReport,
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 9));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.materialized_clip_count, 6);
+  assert.equal(calls.length, 6);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_direct_window_count, 0);
+  assert.ok(report.jobs[0].direct_motion_base_source_clip_counts.every((row) => row.count <= 2));
+
+  const materialised = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 6);
+  assert.equal(materialised.distinct_motion_family_count, 6);
+  const windowKeys = new Set(
+    materialised.clips.map((clip) =>
+      `${clip.source_url}|${Number(clip.mediaStartS || 0).toFixed(2)}|${Number(clip.durationS || 0).toFixed(2)}`,
+    ),
+  );
+  assert.equal(windowKeys.size, 6);
+});
+
 test("real motion materializer turns rights-recorded screenshots into motion clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-stills-"));
   const storyId = "steam-still-motion";

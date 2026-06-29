@@ -1906,6 +1906,44 @@ test("goal batch package proof preparation rewrites generic collectible and retr
   }
 });
 
+test("goal batch package generic fallback does not emit internal scaffold narration", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_blue_meadow_studio_note",
+      title: "Blue Meadow Gets A Studio Note",
+      canonical_subject: "Blue Meadow",
+      canonical_game: "Blue Meadow",
+      source_type: "rss",
+      source_name: "PC Gamer",
+      primary_source: "PC Gamer",
+      article_url: "https://www.pcgamer.com/blue-meadow-studio-note/",
+      freshness_gate: "pass",
+      confirmed_claims: ["Blue Meadow has a new controller note"],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.doesNotMatch(
+    prepared.full_script,
+    /feed update|real player decision|practical part is what changes now|timing, access, price, performance|worth a short|stay below the line/i,
+  );
+  assert.match(prepared.full_script, /Blue Meadow/i);
+  assert.match(prepared.full_script, /PC Gamer says Blue Meadow has a new controller note/i);
+  assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+
+  const qa = buildViralScriptIntelligence({
+    story: { ...prepared, title: prepared.public_title },
+    script: prepared.full_script,
+  });
+  assert.notEqual(qa.verdict, "viral_ready");
+  assert.ok(
+    qa.blockers.includes("producer_scaffold_language") ||
+      qa.blockers.includes("internal_audience_scaffold"),
+    JSON.stringify(qa),
+  );
+});
+
 test("goal batch package proof preparation does not invert GTA VI screenshot analysis into gameplay proof", () => {
   const prepared = prepareStoryForGoalProof({
     id: "rss_gta_vi_screenshot_analysis",

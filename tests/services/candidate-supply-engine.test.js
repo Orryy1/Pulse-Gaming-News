@@ -20,6 +20,7 @@ const {
 } = require("../../lib/ops/candidate-supply");
 const {
   buildFreshCandidateReport,
+  discoverMotionCapacityReportPaths,
   main,
   parseArgs,
 } = require("../../tools/candidate-supply-engine");
@@ -98,6 +99,40 @@ test("candidate supply CLI accepts repeatable motion-capacity reports", () => {
   assert.ok(args.motionCapacityReports[0].endsWith("output\\source-family.json"));
   assert.ok(args.motionCapacityReports[1].endsWith("output\\motion-packs.json"));
   assert.ok(args.motionCapacityReports[2].endsWith("output\\source-deficit.json"));
+});
+
+test("candidate supply CLI auto-discovers fresh refill motion-capacity reports", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-motion-"));
+  const manualRun = path.join(
+    root,
+    "output",
+    "fresh-green-refill",
+    "2026-06-29-0041",
+    "goal-contract",
+    "fresh_production_refill_repair",
+  );
+  const monitorRun = path.join(
+    root,
+    "output",
+    "candidate-supply",
+    "fresh-production-refill",
+    "2026-06-29-0105",
+    "goal-contract",
+    "fresh_production_refill_repair",
+  );
+  const manualSourceFamily = path.join(manualRun, "studio_v4_source_family_acquisition.json");
+  const monitorMotionPacks = path.join(monitorRun, "motion-packs", "visual_v4_motion_packs.json");
+  const ignored = path.join(manualRun, "not_motion_capacity.json");
+
+  await fs.outputJson(manualSourceFamily, { rows: [{ story_id: "manual_story" }] });
+  await fs.outputJson(monitorMotionPacks, { packs: [{ story_id: "monitor_story" }] });
+  await fs.outputJson(ignored, { rows: [{ story_id: "ignored_story" }] });
+
+  const discovered = await discoverMotionCapacityReportPaths({ root, limit: 10 });
+
+  assert.ok(discovered.includes(manualSourceFamily));
+  assert.ok(discovered.includes(monitorMotionPacks));
+  assert.equal(discovered.includes(ignored), false);
 });
 
 test("fresh candidate report enables media-house preflight for supply monitor truth", async (t) => {
@@ -1810,4 +1845,30 @@ test("motion-capacity merge keeps latest blocking validation evidence authoritat
   assert.equal(capacity.repairable, false);
   assert.equal(capacity.direct_media_ready, 1);
   assert.equal(capacity.actionable_direct_media_ready, 0);
+});
+
+test("motion-capacity rows with blocking status do not become ready from counts alone", () => {
+  const index = buildMotionCapacityIndex([
+    {
+      rows: [
+        {
+          story_id: "blocked-but-counted",
+          readiness_status: "v4_motion_blocked",
+          blockers: ["actual_motion_clip_minimum_not_met"],
+          current_motion_clips: 16,
+          current_motion_families: 8,
+          required_motion_clips: 5,
+          required_motion_families: 4,
+          missing_motion_clips: 0,
+          missing_motion_families: 0,
+          source_family_candidates: [{ source_family: "official_source_candidate" }],
+        },
+      ],
+    },
+  ]);
+
+  const capacity = index.get("blocked-but-counted");
+  assert.equal(capacity.motion_ready, false);
+  assert.equal(capacity.repairable, true);
+  assert.equal(capacity.repair_priority, "high");
 });

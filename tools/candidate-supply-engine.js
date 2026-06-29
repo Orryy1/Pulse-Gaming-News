@@ -14,6 +14,13 @@ const nextCandidates = require("./next-publish-candidates");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "candidate-supply");
+const MOTION_CAPACITY_REPORT_NAMES = new Set([
+  "studio_v4_source_family_acquisition.json",
+  "visual_v4_motion_packs.json",
+  "story-packages-motion-repair-eligible.json",
+  "real_motion_source_acquisition_work_order.json",
+  "fresh_production_refill_repair_report.json",
+]);
 
 function parseArgs(argv = process.argv) {
   const args = {
@@ -86,6 +93,66 @@ async function readMotionCapacityReports(reportPaths = []) {
     }
   }
   return reports;
+}
+
+function isMotionCapacityReportName(filePath = "") {
+  return MOTION_CAPACITY_REPORT_NAMES.has(path.basename(String(filePath || "")));
+}
+
+async function walkMotionCapacityReports(dir, options = {}) {
+  const maxDepth = Number.isFinite(options.maxDepth) ? options.maxDepth : 8;
+  const depth = Number.isFinite(options.depth) ? options.depth : 0;
+  if (!dir || depth > maxDepth || !(await fs.pathExists(dir))) return [];
+  let entries = [];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const found = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...(await walkMotionCapacityReports(fullPath, { maxDepth, depth: depth + 1 })));
+    } else if (entry.isFile() && isMotionCapacityReportName(fullPath)) {
+      try {
+        const stat = await fs.stat(fullPath);
+        found.push({ path: fullPath, mtimeMs: stat.mtimeMs || 0 });
+      } catch {
+        found.push({ path: fullPath, mtimeMs: 0 });
+      }
+    }
+  }
+  return found;
+}
+
+async function discoverMotionCapacityReportPaths(options = {}) {
+  const root = path.resolve(options.root || ROOT);
+  const limit = Math.max(1, Math.min(30, Number(options.limit || 12) || 12));
+  const searchRoots = Array.isArray(options.searchRoots) && options.searchRoots.length
+    ? options.searchRoots.map((item) => path.resolve(root, item))
+    : [
+        path.join(root, "output", "fresh-green-refill"),
+        path.join(root, "output", "candidate-supply", "fresh-production-refill"),
+      ];
+
+  const found = [];
+  for (const searchRoot of searchRoots) {
+    found.push(...(await walkMotionCapacityReports(searchRoot, { maxDepth: options.maxDepth })));
+  }
+
+  const unique = new Map();
+  for (const item of found) {
+    const normalised = path.normalize(item.path);
+    const previous = unique.get(normalised);
+    if (!previous || item.mtimeMs > previous.mtimeMs) unique.set(normalised, { ...item, path: normalised });
+  }
+
+  return Array.from(unique.values())
+    .sort((a, b) => (b.mtimeMs - a.mtimeMs) || a.path.localeCompare(b.path))
+    .slice(0, limit)
+    .map((item) => item.path);
 }
 
 async function buildFreshCandidateReport({ limit = 30 } = {}) {
@@ -162,7 +229,10 @@ async function main(argv = process.argv) {
       error: err.message || "transcript_audience_audit_failed",
     };
   }
-  const motionCapacityReports = await readMotionCapacityReports(args.motionCapacityReports);
+  const motionCapacityReportPaths = args.motionCapacityReports.length
+    ? args.motionCapacityReports
+    : await discoverMotionCapacityReportPaths({ root: ROOT });
+  const motionCapacityReports = await readMotionCapacityReports(motionCapacityReportPaths);
   const guardedLiveDispatchExecutorReport = await nextCandidates.readOptionalJson(
     args.guardedLiveDispatchExecutorReportPath,
   );
@@ -206,6 +276,7 @@ if (require.main === module) {
 
 module.exports = {
   buildFreshCandidateReport,
+  discoverMotionCapacityReportPaths,
   main,
   parseArgs,
   readMotionCapacityReports,

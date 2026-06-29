@@ -214,6 +214,7 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     [fsExtraPath, require.cache[fsExtraPath]],
   ]);
   const enqueued = [];
+  let receivedMotionCapacityReports = null;
   const fakeReport = {
     generated_at: "2026-06-17T08:05:00.000Z",
     verdict: "amber",
@@ -273,6 +274,13 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
         async buildFreshCandidateReport() {
           return { report: { totals: { returned: 5 }, candidates: [] }, stories: [] };
         },
+        async discoverMotionCapacityReportPaths() {
+          return ["C:\\motion-capacity\\studio_v4_source_family_acquisition.json"];
+        },
+        async readMotionCapacityReports(paths) {
+          assert.deepEqual(paths, ["C:\\motion-capacity\\studio_v4_source_family_acquisition.json"]);
+          return [{ rows: [{ story_id: "motion-close", readiness_status: "v4_motion_blocked" }] }];
+        },
       },
     };
     require.cache[candidateSupplyPath] = {
@@ -280,7 +288,8 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
       filename: candidateSupplyPath,
       loaded: true,
       exports: {
-        buildCandidateSupplyReport() {
+        buildCandidateSupplyReport(options = {}) {
+          receivedMotionCapacityReports = options.motionCapacityReports;
           return fakeReport;
         },
         candidateSupplyMonitorNeedsRepair() {
@@ -344,6 +353,8 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(result.fresh_review_script_repair_enqueued, true);
     assert.equal(result.fresh_production_refill_enqueued, true);
     assert.equal(result.local_tts_retry_recovery_enqueued, true);
+    assert.equal(Array.isArray(receivedMotionCapacityReports), true);
+    assert.equal(receivedMotionCapacityReports.length, 1);
     assert.equal(enqueued.length, 5);
     assert.equal(enqueued[0].kind, "hunt");
     assert.equal(enqueued[0].payload.reason, "candidate_supply_monitor_fresh_intake");

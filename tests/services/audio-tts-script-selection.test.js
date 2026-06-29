@@ -73,6 +73,21 @@ test("selectRawTtsScript: normalises fallback GTA VI text when no cached script 
   assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+(?:VI|six|si[- ]?six)\b/i);
 });
 
+test("selectRawTtsScript: normalises compact GTAVI text before local narration", () => {
+  const story = {
+    full_script: "GTAVI starts the preorder fight.",
+    tts_script: "GTAVI starts the preorder fight.",
+  };
+
+  const selected = selectRawTtsScript(story);
+
+  assert.equal(
+    selected,
+    "Rockstar's next Grand Theft Auto starts the preorder fight. Follow Pulse Gaming so you never miss a beat.",
+  );
+  assert.doesNotMatch(selected, /\bGTAVI\b|\bGTA[- ]?VI\b/i);
+});
+
 test("selectRawTtsScript: prefers canonical full_script over non-canonical cached spelling", () => {
   const story = {
     full_script: "Pok\u00e9mon Go Fest is free for all players.",

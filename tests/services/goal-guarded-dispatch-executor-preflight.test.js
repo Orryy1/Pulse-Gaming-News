@@ -266,8 +266,10 @@ test("executor preflight can explicitly hand off the full dispatch-ready runway"
 test("executor preflight blocks stale GTA VI timestamp pronunciation evidence before handoff", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-gta-profile-"));
   const files = await gtaPronunciationEvidenceFiles(root);
+  const plan = gtaGuardedDispatchPlan(files);
+  plan.dispatch_ready_actions[0].title = "GTAVI Starts The Preorder Fight";
   const report = buildGuardedDispatchExecutorPreflight({
-    guardedDispatchPlan: gtaGuardedDispatchPlan(files),
+    guardedDispatchPlan: plan,
     platformStatusMatrix: platformStatusMatrix({
       youtube_shorts: {
         planned_story_ids: ["gta-vi-story"],
@@ -285,6 +287,46 @@ test("executor preflight blocks stale GTA VI timestamp pronunciation evidence be
   assert.equal(report.summary.blocked_selected_action_count, 1);
   assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_timestamp_profile_stale"));
   assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_spoken_stutter"));
+});
+
+test("executor preflight treats compact GTAVI titles as pronunciation-sensitive", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-gtavi-title-"));
+  const files = await gtaPronunciationEvidenceFiles(root);
+  await fs.writeJson(files.canonical, {
+    story_id: "gta-vi-story",
+    selected_title: "GTAVI Starts The Preorder Fight",
+    canonical_game: "GTAVI",
+    word_timestamps_path: "audio/word_timestamps.json",
+  });
+  await fs.writeJson(files.timestamps, {
+    meta: {
+      transcript: "Cover art starts the preorder fight.",
+      spoken_text: "Cover art starts the preorder fight.",
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v8",
+    },
+    words: [
+      { word: "Cover" },
+      { word: "art" },
+      { word: "starts" },
+    ],
+  });
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: gtaGuardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix({
+      youtube_shorts: {
+        planned_story_ids: ["gta-vi-story"],
+      },
+    }),
+    selectedActionIds: ["gta-vi-story:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_timestamp_profile_stale"));
 });
 
 test("executor preflight accepts runtime sentinel kill-switch clear flag", async () => {

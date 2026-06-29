@@ -13,6 +13,9 @@ const {
   _testables,
   writeGoalAudioTimestampMaterializationReport,
 } = require("../../lib/goal-audio-timestamp-materializer");
+const {
+  TTS_PRONUNCIATION_PROFILE_VERSION,
+} = require("../../lib/tts-pronunciation");
 
 const ACCEPTED_SLEEPY_LIAM = {
   id: "pulse-sleepy-liam-20260502",
@@ -527,7 +530,7 @@ test("goal audio materializer regenerates title-colon audio without the current 
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_title_colon_pronunciation_profile");
   const timestamps = await fs.readJson(timestampPath);
-  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-safe-next-title-v10");
+  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, TTS_PRONUNCIATION_PROFILE_VERSION);
   assert.equal(timestamps.meta.spoken_text, "Halo Campaign Evolved just gave Xbox a real remake test.");
 });
 
@@ -608,7 +611,7 @@ test("goal audio materializer regenerates GTA audio without the current pronunci
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_stale_after_current_pronunciation_profile");
   const timestamps = await fs.readJson(timestampPath);
-  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, "gta-safe-next-title-v10");
+  assert.equal(timestamps.meta.ttsPronunciationProfileVersion, TTS_PRONUNCIATION_PROFILE_VERSION);
   assert.doesNotMatch(timestamps.meta.transcript, /\b(?:GTA|Grand Theft Auto)\s+si[-\s]*six\b/i);
 });
 
@@ -639,7 +642,7 @@ test("goal audio materializer regenerates current-profile GTA audio when ASR wor
     ],
     meta: {
       wordTimestampSource: "local_whisper_word_alignment",
-      ttsPronunciationProfileVersion: "gta-safe-next-title-v10",
+      ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
       timestampWhisperAlignment: {
         repaired: true,
         script_inserted_actual_word_count: 0,
@@ -721,7 +724,7 @@ test("goal audio materializer does not treat display-safe GTA VI text as risky s
       transcript: spokenTranscript,
       spoken_text: spokenTranscript,
       wordTimestampSource: "local_whisper_word_alignment",
-      ttsPronunciationProfileVersion: "gta-safe-next-title-v10",
+      ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
       timestampWhisperAlignment: {
         repaired: true,
         script_inserted_actual_word_count: 0,

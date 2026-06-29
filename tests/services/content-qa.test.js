@@ -186,6 +186,22 @@ test("runContentQa: malformed GTA VI tts_script stutter fails before audio gener
   assert.ok(qa.failures.includes("risky_gta_vi_tts_script:tts_script"));
 });
 
+test("runContentQa: compact GTAVI tts_script fails before audio generation", async () => {
+  const story = goodStory({
+    title: "GTAVI Starts The Preorder Fight",
+    full_script:
+      "GTA VI now has one real preorder catch. Xbox Wire says pre-orders open on June 25 after Rockstar put Jason and Lucia on the official cover art. The cover is hype. The store page is the test. It has to show price, editions, bonuses and which version is actually worth buying early. That is where fans split. Wait for value, or lock in because this is the safest blockbuster in games. If the first store page lands cleanly, the reveal becomes the first real fight over which version is worth buying. Follow Pulse Gaming so you never miss a beat.",
+    tts_script:
+      "GTAVI now has one real preorder catch. Xbox Wire says pre orders open on June 25 after Rockstar put Jason and Lucia on the official cover art. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.strictEqual(qa.result, "fail");
+  assert.ok(qa.failures.includes("risky_gta_vi_tts_script:tts_script"));
+});
+
 test("runContentQa: malformed GTA VI timestamp transcript fails before publish", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-content-qa-gta-timestamps-"));
   const videoPath = path.join(root, "story.mp4");

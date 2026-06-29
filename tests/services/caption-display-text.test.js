@@ -14,6 +14,14 @@ test("caption display normalises GTA VI see-six ASR text variants", () => {
     "GTA VI starts the preorder fight.",
   );
   assert.equal(
+    normaliseCaptionDisplayText("GTAVI starts the preorder fight."),
+    "GTA VI starts the preorder fight.",
+  );
+  assert.equal(
+    normaliseCaptionDisplayText("GTA-VI starts the preorder fight."),
+    "GTA VI starts the preorder fight.",
+  );
+  assert.equal(
     normaliseCaptionDisplayText("Grand Theft Auto sea six finally moved."),
     "GTA VI finally moved.",
   );
@@ -34,5 +42,19 @@ test("caption display merges GTA VI see-six ASR word variants", () => {
   assert.equal(normalised[0].word, "GTA VI");
   assert.equal(normalised[0].start, 0);
   assert.equal(normalised[0].end, 0.7);
+  assert.equal(normalised[1].word, "starts");
+});
+
+test("caption display merges compact GTAVI ASR word variants", () => {
+  const words = [
+    { word: "GTAVI", start: 0, end: 0.3 },
+    { word: "starts", start: 0.35, end: 0.6 },
+  ];
+
+  const normalised = normaliseCaptionDisplayWords(words);
+
+  assert.equal(normalised[0].word, "GTA VI");
+  assert.equal(normalised[0].start, 0);
+  assert.equal(normalised[0].end, 0.3);
   assert.equal(normalised[1].word, "starts");
 });

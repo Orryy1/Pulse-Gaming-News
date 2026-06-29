@@ -2948,6 +2948,7 @@ function hasGtaViSpokenSixInOpening(value = "") {
   if (!opening) return false;
   return (
     /\b(?:g\s+t\s+a|gta)\s+six\b/.test(opening) ||
+    /\bgtavi\b/.test(opening) ||
     /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(opening)
   );
 }
@@ -2970,13 +2971,17 @@ function hasGtaViSpokenStutter(value = "") {
 function hasGtaViRomanSplit(value = "") {
   const text = comparableVoiceText(value);
   if (!text) return false;
-  return /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+v\s+i\s+(?:now|just|has|is|starts?|turns?|looks|pre|preorders?|cover|delay|launch|release)\b/.test(text);
+  return (
+    /\bgtavi\s+(?:now|just|has|is|starts?|turns?|looks|pre|preorders?|cover|delay|launch|release)\b/.test(text) ||
+    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+v\s+i\s+(?:now|just|has|is|starts?|turns?|looks|pre|preorders?|cover|delay|launch|release)\b/.test(text)
+  );
 }
 
 function hasGtaViTitleAlias(value = "") {
   const text = comparableVoiceText(value);
   if (!text) return false;
   return (
+    /\bgtavi\b/.test(text) ||
     /\bg\s+t\s+a\s+(?:6|six|v\s+i|vi)\b/.test(text) ||
     /\bgta\s+(?:6|six|v\s+i|vi)\b/.test(text) ||
     /\bgrand\s+theft\s+auto\s+(?:6|six|v\s+i|vi)\b/.test(text) ||

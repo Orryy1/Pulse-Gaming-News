@@ -1753,6 +1753,60 @@ test("goal dry-run publisher blocks even two final cuts from the same trailer ba
   );
 });
 
+test("goal dry-run publisher treats Steam CDN trailer aliases as the same visual base source", () => {
+  const clips = [
+    directMotionClipFixture({
+      id: "marvel-fastly-dash",
+      path: "motion/marvel-fastly-dash.mp4",
+      sourceUrl:
+        "https://video.fastly.steamstatic.com/store_trailers/3787240/1666904613/1ab8822e4232a92aff4f6b7099ded70aaa66147f/1778131450/dash_av1.mpd?t=1778210882",
+      sourceFamily: "steam_3787240_marvel_tokon_fighting_souls__media_08_dash_av1_window_36_5",
+      sourceType: "platform_storefront",
+      startS: 36,
+      durationS: 5,
+    }),
+    directMotionClipFixture({
+      id: "marvel-akamai-hls",
+      path: "motion/marvel-akamai-hls.mp4",
+      sourceUrl:
+        "https://video.akamai.steamstatic.com/store_trailers/3787240/1666904613/1ab8822e4232a92aff4f6b7099ded70aaa66147f/1778131450/hls_264_master.m3u8?t=1778210882",
+      sourceFamily:
+        "steamstatic:/store_trailers/3787240/1666904613/1ab8822e4232a92aff4f6b7099ded70aaa66147f/1778131450_window_42_5",
+      sourceType: "steam_movie",
+      startS: 42,
+      durationS: 5,
+    }),
+    ...Array.from({ length: 6 }, (_, index) =>
+      directMotionClipFixture({
+        id: `marvel-distinct-${index + 1}`,
+        path: `motion/marvel-distinct-${index + 1}.mp4`,
+        sourceUrl: `https://cdn.example.com/marvel-tokon/distinct-${index + 1}.mp4`,
+        sourceFamily: `marvel_tokon_distinct_source_${index + 1}`,
+        startS: index * 8,
+        durationS: 5,
+      }),
+    ),
+  ];
+
+  const evidence = directMotionBaseSourceOveruseEvidence(clips);
+
+  assert.deepEqual(evidence.blockers, ["visual_evidence:direct_motion_base_source_overused"]);
+  assert.deepEqual(
+    evidence.evidence.direct_motion_base_source_overuse.map((entry) => ({
+      key: entry.key,
+      count: entry.count,
+      share: entry.share,
+    })),
+    [
+      {
+        key: "steam-trailer:3787240/1666904613/1ab8822e4232a92aff4f6b7099ded70aaa66147f/1778131450",
+        count: 2,
+        share: 0.25,
+      },
+    ],
+  );
+});
+
 test("goal dry-run publisher blocks overused official trailer windows from the same source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-official-window-sources-"));
   const storyPackage = await makeStoryPackage(

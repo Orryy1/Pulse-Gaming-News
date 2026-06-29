@@ -174,6 +174,14 @@ test("GTA V and GTA VI title variants use stable spoken names", () => {
     "Rockstar's next Grand Theft Auto starts the preorder fight.",
   );
   assert.equal(
+    applyGamingPronunciation("GTAVI starts the preorder fight."),
+    "Rockstar's next Grand Theft Auto starts the preorder fight.",
+  );
+  assert.equal(
+    applyGamingPronunciation("GTA-VI starts the preorder fight."),
+    "Rockstar's next Grand Theft Auto starts the preorder fight.",
+  );
+  assert.equal(
     applyGamingPronunciation("Grand Theft Auto sir six should not survive the hook."),
     "Rockstar's next Grand Theft Auto should not survive the hook.",
   );

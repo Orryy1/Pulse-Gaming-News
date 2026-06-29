@@ -24,6 +24,9 @@ const {
   selectCandidateSourceStories,
   visualEntityPreflightForStory,
 } = require("../../tools/next-publish-candidates");
+const {
+  TTS_PRONUNCIATION_PROFILE_VERSION,
+} = require("../../lib/tts-pronunciation");
 const db = require("../../lib/db");
 
 const analyticsText = [
@@ -3357,7 +3360,7 @@ test("attachPreflightQa blocks stale GTA roman-numeral voice pronunciation metad
   );
   assert.equal(
     candidate.preflight_qa.checks.voice_quality.evidence.expected_tts_pronunciation_profile_version,
-    "gta-safe-next-title-v10",
+    TTS_PRONUNCIATION_PROFILE_VERSION,
   );
 });
 
@@ -3458,6 +3461,84 @@ test("attachPreflightQa blocks GTA VI timestamp evidence without the current pro
       id: "current_gta_vi_missing_pronunciation_profile",
       title: "GTA VI Starts The Preorder Fight",
       canonical_subject: "Grand Theft Auto VI",
+      narration_script: safeSpoken,
+      tts_script: safeSpoken,
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 146.5,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      word_timestamps_payload: {
+        words,
+        meta: {
+          transcript: safeSpoken,
+          spoken_text: safeSpoken,
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-28T19:45:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:voice_pronunciation_profile_stale",
+    ),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_pronunciation_sensitive,
+    true,
+  );
+});
+
+test("attachPreflightQa blocks compact GTAVI timestamp evidence without the current pronunciation profile", async () => {
+  const safeSpoken =
+    "Cover art just made pre orders a trust test. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const words = safeSpoken
+    .replace(/[,.]/g, "")
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: Number((index * 0.45).toFixed(2)),
+      end: Number((index * 0.45 + 0.2).toFixed(2)),
+    }));
+  words[words.length - 1].end = Number((words.length * 0.45).toFixed(2));
+  const stories = [
+    baseStory({
+      id: "current_gtavi_missing_pronunciation_profile",
+      title: "GTAVI Starts The Preorder Fight",
+      canonical_subject: "GTAVI",
       narration_script: safeSpoken,
       tts_script: safeSpoken,
       voice_quality_report: {

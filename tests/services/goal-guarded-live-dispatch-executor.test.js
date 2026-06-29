@@ -2020,6 +2020,81 @@ test("default action quality gate hydrates render-manifest proof before content 
   assert.equal(seenStories[0].suggested_thumbnail_text, "FORZA HORIZON 6 SCORES 84");
 });
 
+test("default action quality gate blocks repeated direct motion package evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-quality-repeat-motion-"));
+  const manifestPath = path.join(root, "canonical_story_manifest.json");
+  const mp4Path = path.join(root, "visual_v4_render.mp4");
+  await fs.writeFile(mp4Path, "fake mp4");
+  await fs.writeJson(manifestPath, {
+    story_id: "story-one",
+    selected_title: "Halo Campaign Evolved Shows The Remake Test",
+    canonical_subject: "Halo: Campaign Evolved",
+    narration_script:
+      "Halo Campaign Evolved finally has a real remake test. Xbox Wire's footage shows the level in motion. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "HALO REMAKE TEST",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/halo-campaign-evolved",
+  });
+  await fs.writeJson(path.join(root, "render_manifest.json"), {
+    story_id: "story-one",
+    render_lane: "visual_v4_production",
+    render_quality_class: "premium",
+    final_publish_render: true,
+    rendered_duration_s: 42,
+    clips: 6,
+  });
+  const repeatedClip = {
+    id: "halo-window-a",
+    path: "motion/halo-window-a.mp4",
+    source_url: "https://cdn.example.com/halo-campaign-evolved/trailer.mp4",
+    media_kind: "official_trailer_segment",
+    source_type: "official_trailer_segment",
+    source_family: "halo_campaign_evolved_trailer_window_1",
+    media_start_s: 12,
+    duration_s: 4,
+  };
+  await fs.writeJson(path.join(root, "visual_v4_render_story.json"), {
+    id: "story-one",
+    video_clips: [
+      repeatedClip,
+      {
+        ...repeatedClip,
+        id: "halo-window-a-repeat",
+        path: "motion/halo-window-a-repeat.mp4",
+      },
+    ],
+    visual_v4_bridge_video_clips: [],
+  });
+
+  const result = await defaultActionQualityGate({
+    story: story({
+      id: "story-one",
+      title: "Halo Campaign Evolved Shows The Remake Test",
+    }),
+    action: action("youtube_shorts", {
+      canonical_manifest_path: manifestPath,
+      video_path: mp4Path,
+    }),
+    config: { publicName: "youtube", mediaKind: "video" },
+    options: {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      buildVideoQaOptionsForStory: () => ({}),
+    },
+  });
+
+  assert.equal(result.result, "fail");
+  assert.ok(
+    result.blockers.includes("visual_evidence:repeated_direct_motion_segment"),
+    JSON.stringify(result.blockers),
+  );
+  assert.equal(
+    result.checks.visual_cadence.evidence.repeated_direct_motion_segment_count,
+    1,
+  );
+});
+
 test("guarded live dispatch executor CLI writes dry-run reports and package script is registered", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-cli-"));
   const planPath = path.join(root, "guarded_dispatch_executor_plan.json");

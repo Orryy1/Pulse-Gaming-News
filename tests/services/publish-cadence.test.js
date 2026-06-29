@@ -214,6 +214,39 @@ test("buildPublishCadenceReport: failed rows with platform IDs are not counted a
   assert.equal(report.summary.failed_rows_with_platform_ids_recent, 1);
 });
 
+test("buildPublishCadenceReport: local TTS repair failures on fully published rows do not become cadence advisories", () => {
+  const report = buildPublishCadenceReport({
+    now: "2026-06-29T15:00:00.000Z",
+    windowHours: 24,
+    stories: [
+      {
+        id: "published_then_tts_failed",
+        title: "Sea Of Thieves Custom Seas Could Split Crews",
+        publish_status: "failed",
+        publish_error: "audio_generation_failed: server_down: local TTS server is not reachable",
+        qa_failed: true,
+        qa_failures: ["audio_generation_failed:server_down"],
+        qa_failed_at: "2026-06-29T13:49:45.747Z",
+        published_at: "2026-06-21T14:00:00.000Z",
+        youtube_post_id: "yt_real",
+        instagram_media_id: "ig_real",
+        facebook_post_id: "fb_real",
+      },
+    ],
+    jobs: [],
+    env: {
+      TIKTOK_ENABLED: "false",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "false",
+    },
+  });
+
+  assert.equal(report.summary.failed_rows_with_platform_ids, 0);
+  assert.equal(report.summary.failed_rows_with_platform_ids_recent, 0);
+  assert.equal(report.summary.tts_repair_polluted_public_rows_with_platform_ids, 1);
+  assert.equal(report.tts_repair_polluted_public_rows_with_platform_ids[0].id, "published_then_tts_failed");
+  assert.equal(report.advisory.some((line) => /failed row\(s\).*platform IDs/i.test(line)), false);
+});
+
 test("buildPublishCadenceReport: DUPE sentinels do not count as real platform IDs", () => {
   const report = buildPublishCadenceReport({
     now: "2026-05-15T00:00:00.000Z",

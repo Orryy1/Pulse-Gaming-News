@@ -835,6 +835,99 @@ test("guarded publish handler blocks before upload when watchdog is RED", async 
   }
 });
 
+test("guarded publish handler holds AMBER watchdog windows without failing the job", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const watchdogPath = require.resolve("../../lib/ops/publish-window-watchdog");
+  const executorPath = require.resolve("../../lib/goal-guarded-live-dispatch-executor");
+  const publisherPath = require.resolve("../../publisher");
+  const notifyPath = require.resolve("../../notify");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [watchdogPath, require.cache[watchdogPath]],
+    [executorPath, require.cache[executorPath]],
+    [publisherPath, require.cache[publisherPath]],
+    [notifyPath, require.cache[notifyPath]],
+  ]);
+  const originalEnv = {
+    AUTO_PUBLISH: process.env.AUTO_PUBLISH,
+    PULSE_GUARDED_LIVE_DISPATCH_ENABLED: process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
+    PULSE_EMERGENCY_KILL_SWITCH: process.env.PULSE_EMERGENCY_KILL_SWITCH,
+  };
+  const sent = [];
+  try {
+    process.env.AUTO_PUBLISH = "true";
+    process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true";
+    process.env.PULSE_EMERGENCY_KILL_SWITCH = "clear";
+    require.cache[watchdogPath] = {
+      id: watchdogPath,
+      filename: watchdogPath,
+      loaded: true,
+      exports: {
+        async runPublishWindowWatchdog(options) {
+          assert.equal(options.windowLabel, "live_publish_job");
+          return {
+            verdict: "amber",
+            safe_to_publish_window: false,
+            hold_scheduler_or_dispatch: true,
+            blockers: [],
+            advisory: ["scheduler_runway: executor_action_runway_short:3/5"],
+            next_action: "observe_next_scheduler_window_after_refill",
+          };
+        },
+      },
+    };
+    require.cache[executorPath] = {
+      id: executorPath,
+      filename: executorPath,
+      loaded: true,
+      exports: {
+        async selectNextGuardedLiveAction() {
+          throw new Error("executor selector must not run while watchdog is holding");
+        },
+      },
+    };
+    require.cache[publisherPath] = {
+      id: publisherPath,
+      filename: publisherPath,
+      loaded: true,
+      exports: {
+        async publishNextStory() {
+          throw new Error("legacy publisher must not run while guarded watchdog is holding");
+        },
+      },
+    };
+    require.cache[notifyPath] = {
+      id: notifyPath,
+      filename: notifyPath,
+      loaded: true,
+      exports: async (message) => sent.push(message),
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.publish({ id: 78 }, { log() {} });
+
+    assert.equal(result.publish_window_blocked, true);
+    assert.equal(result.status, "held");
+    assert.equal(result.top_reason, "publish_window_watchdog_amber");
+    assert.equal(result.safe_to_publish_window, false);
+    assert.deepEqual(result.blockers, []);
+    assert.equal(result.next_action, "observe_next_scheduler_window_after_refill");
+    assert.equal(sent.length, 1);
+    assert.match(sent[0], /Publish held before upload/);
+    assert.match(sent[0], /publish_window_watchdog_amber/);
+  } finally {
+    for (const [id, entry] of originalCache.entries()) {
+      if (entry) require.cache[id] = entry;
+      else delete require.cache[id];
+    }
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("guarded publish handler reports exhausted selector blockers", async () => {
   const os = require("node:os");
   const fs = require("fs-extra");

@@ -152,6 +152,14 @@ test("buildStoryManifest keeps GTA VI display copy but writes safe spoken TTS fi
   assert.equal(manifest.selected_title, "GTA VI Just Made PS5 The Version To Watch");
   assert.equal(manifest.narration_script, script);
   assert.equal(
+    manifest.first_spoken_line,
+    "Sony just made Rockstar's next Grand Theft Auto console pitch very direct.",
+  );
+  assert.equal(
+    manifest.narration_hook,
+    "Sony just made Rockstar's next Grand Theft Auto console pitch very direct.",
+  );
+  assert.equal(
     manifest.tts_script,
     "Sony just made Rockstar's next Grand Theft Auto console pitch very direct. " +
       "PlayStation Blog says Rockstar's next Grand Theft Auto plays best on PlayStation five on November 19. " +

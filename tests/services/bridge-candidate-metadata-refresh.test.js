@@ -162,7 +162,9 @@ test("bridge candidate metadata refresh updates stale copy and narration QA from
     full_script:
       "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
     tts_script:
-      "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+      "Rockstar just turned Rockstar's next Grand Theft Auto pre-orders into a buy, wait or skip argument.",
+    spoken_narration_script:
+      "Rockstar just turned Rockstar's next Grand Theft Auto pre-orders into a buy, wait or skip argument.",
     first_spoken_line:
       "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
     thumbnail_headline: "GTA VI PREORDER FIGHT",
@@ -205,7 +207,11 @@ test("bridge candidate metadata refresh updates stale copy and narration QA from
   const story = updated.scheduler_bridge_candidates[0];
   assert.equal(
     story.tts_script,
-    "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.",
+    "Rockstar just turned Rockstar's next Grand Theft Auto pre-orders into a buy, wait or skip argument.",
+  );
+  assert.equal(
+    story.first_spoken_line,
+    "Rockstar just turned Rockstar's next Grand Theft Auto pre-orders into a buy, wait or skip argument.",
   );
   assert.equal(story.voice_quality_report.cadence.duration_seconds, 39.102);
   assert.equal(story.caption_manifest.display_text, "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument.");

@@ -636,6 +636,63 @@ test("audio timestamp workbench accepts repaired scripts when acronym speech exp
   assert.equal(report.jobs[0].timestamps.usable, true);
 });
 
+test("audio timestamp workbench compares Whisper evidence against safe spoken GTA VI script", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-gta-safe-spoken-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");
+  const audioDir = path.join(root, "output", "audio");
+  const safeSpoken =
+    "PlayStation just made Rockstar's next Grand Theft Auto argument simple. Sony says it plays best on PlayStation five. Follow Pulse Gaming so you never miss a beat.";
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-audio",
+    narration_script:
+      "PlayStation just made the GTA VI argument simple. Sony says it plays best on PS5. Follow Pulse Gaming so you never miss a beat.",
+    first_spoken_line: "PlayStation just made the GTA VI argument simple.",
+    tts_script: safeSpoken,
+    spoken_narration_script: safeSpoken,
+  });
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: [
+      { word: "PlayStation", start: 0, end: 0.2 },
+      { word: "beat.", start: 7.1, end: 7.4 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        model: "small.en",
+        transcript: safeSpoken,
+        script_expected_word_count: 23,
+        script_actual_word_count: 23,
+        script_matched_word_count: 23,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        audioJob({
+          artifact_dir: artifactDir,
+          blockers: [],
+        }),
+      ],
+    },
+    localTtsDoctorReport: { verdict: "green" },
+    providerPreference: "local",
+    generatedAt: "2026-06-29T11:45:00.000Z",
+  });
+
+  assert.equal(report.summary.ready_audio_timestamp_pair_count, 1);
+  assert.equal(report.summary.requires_generation_count, 0);
+  assert.equal(report.jobs[0].status, "ready_audio_timestamp_pair");
+  assert.equal(report.jobs[0].audio.usable, true);
+  assert.equal(report.jobs[0].timestamps.usable, true);
+});
+
 test("audio timestamp workbench blocks old ASR-clean audio when the current canonical script changed", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-current-script-mismatch-"));
   const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");

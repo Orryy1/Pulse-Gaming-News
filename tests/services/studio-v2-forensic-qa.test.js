@@ -672,6 +672,45 @@ test("sceneBreakdown reports exact repeated motion windows", () => {
   ]);
 });
 
+test("sceneBreakdown reads production render manifest clip and card windows", () => {
+  const scene = sceneBreakdown({
+    clip_scene_plan: [
+      { source: "official-trailer.mp4", mediaStartS: 18.2, duration_s: 2.6 },
+      { source: "official-trailer.mp4", mediaStartS: 18.2, duration_s: 2.4 },
+      { source: "official-trailer.mp4", mediaStartS: 42.8, duration_s: 3.1 },
+    ],
+    overlay_card_windows: [
+      {
+        source: "studio_v4_overlay_chain",
+        start_s: 7.1,
+        end_s: 8.6,
+        label: "source_lock",
+      },
+    ],
+  });
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene,
+  });
+
+  assert.equal(scene.sceneCount, 4);
+  assert.deepEqual(scene.repeatedMotionWindows, [
+    { source: "official-trailer.mp4 @18.2s", count: 2 },
+  ]);
+  assert.equal(scene.unreadableCardScenes.length, 1);
+  assert.equal(scene.unreadableCardScenes[0].durationS, 1.5);
+  assert.equal(scene.repeatedCardAssets.length, 0);
+  assert.deepEqual(
+    issues.filter((issue) =>
+      ["scene_motion_window_reuse", "unreadable_card_duration"].includes(issue.code),
+    ).map((issue) => issue.code),
+    ["scene_motion_window_reuse", "unreadable_card_duration"],
+  );
+});
+
 test("buildIssues flags exact repeated motion windows as hard quality failures", () => {
   const scene = sceneBreakdown({
     sceneList: [

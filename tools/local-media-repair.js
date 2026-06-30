@@ -41,6 +41,10 @@ const {
   DEFAULT_LOCAL_TTS_URL,
   fetchLocalTtsHealth,
 } = require("../lib/studio/local-tts-readiness");
+const {
+  mergeSegmentAlignments,
+  splitLongVoiceSegments,
+} = require("../lib/studio/sound-layer");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
@@ -595,6 +599,9 @@ async function main() {
       generateTts: audio.generateTTS,
       cleanText: audio.cleanForTTS,
       acousticProbe: probeLocalAudioAcoustics,
+      concatAudioFiles: audio.concatAudioFiles,
+      mergeSegmentAlignments,
+      segmentLongText: splitLongVoiceSegments,
       recoverLocalTts: createLocalTtsBatchRecovery({
         root: ROOT,
         voiceId,

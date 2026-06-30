@@ -170,3 +170,29 @@ test("local TTS generation does not recover/retry after a timeout", async () => 
   assert.equal(result.failure.code, "tts_timeout");
   assert.equal(result.recovery, null);
 });
+
+test("local TTS generation can recover once after a timeout when repair opts in", async () => {
+  const recoveries = [];
+  let attempts = 0;
+  const result = await generateLocalTtsWithOptionalRecovery({
+    storyId: "rss_timeout_repair",
+    text: "A local Liam repair script",
+    outputRel: "test/output/audio/rss_timeout_repair.mp3",
+    recoverTimeouts: true,
+    generateTts: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("local TTS timeout after 120000ms");
+    },
+    recoverLocalTts: async (context) => {
+      recoveries.push(context);
+      return { ok: true, action: "restart" };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.attempts, 2);
+  assert.equal(attempts, 2);
+  assert.equal(recoveries.length, 1);
+  assert.equal(recoveries[0].failure.code, "tts_timeout");
+  assert.equal(result.recovery.action, "restart");
+});

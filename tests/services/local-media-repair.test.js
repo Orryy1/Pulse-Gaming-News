@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const {
@@ -268,6 +269,84 @@ test("local media repair does not resurrect approved off-brand entertainment row
   assert.equal(report.items[0].action, "skip_topicality_reject");
   assert.ok(report.items[0].blockers.includes("off_topic_entertainment"));
   assert.equal(report.counts.skipped, 1);
+});
+
+test("local media repair blocks cross-story subject contamination before audio repair", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_cross_story_voice",
+        title: "Silent Hill f DLC adds a costume from Fatal Frame",
+        approved: true,
+        full_script: [
+          "Rockstar's next Grand Theft Auto just gave lapsed players a reason to come back today.",
+          "Polygon reports Rockstar's next Grand Theft Auto has a new jungle expansion and fresh reasons to reinstall.",
+          "That matters because this downloadable content has to prove it is more than a checklist.",
+          "The value test is whether returning players get new creatures, new surprises and a loop worth repeating.",
+        ].join(" ").repeat(8),
+        audio_path: "output/audio/rss_cross_story_voice.mp3",
+        exported_path: "output/final/rss_cross_story_voice.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_cross_story_voice: {
+        audioExists: false,
+        finalExists: false,
+        finalDurationSeconds: 0,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_cross_story_voice: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "rewrite_or_route_before_render");
+  assert.equal(report.items[0].failure_code, "script_coherence:cross_story_subject_mismatch");
+  assert.ok(report.items[0].blockers.includes("script_coherence:orphan_subject:gta_6"));
+  assert.ok(report.items[0].needs.includes("rewrite_script_before_local_repair"));
+});
+
+test("local media repair blocks wrong-genre fighting game contamination", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_splatoon_cross_genre",
+        title: "Nintendo reveals more about the Splatoon Raiders Direct",
+        approved: true,
+        full_script: [
+          "The new fighter just made Nintendo's next roster argument very direct.",
+          "Eurogamer carries the new fighter trailer and the useful part is what the character might do to matchups.",
+          "That matters because fighting game reveals change lab time, mains, counter picks and frame data homework.",
+          "If the trailer shows strange movement or pressure, the character becomes homework instead of a cameo.",
+        ].join(" ").repeat(8),
+        audio_path: "output/audio/rss_splatoon_cross_genre.mp3",
+        exported_path: "output/final/rss_splatoon_cross_genre.mp4",
+      },
+    ],
+    mediaByStoryId: {
+      rss_splatoon_cross_genre: {
+        audioExists: false,
+        finalExists: false,
+        finalDurationSeconds: 0,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_splatoon_cross_genre: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.items[0].action, "rewrite_or_route_before_render");
+  assert.equal(report.items[0].failure_code, "script_coherence:wrong_genre_contamination");
+  assert.ok(report.items[0].blockers.includes("script_coherence:splatoon_fighting_game_contamination"));
+  assert.ok(report.items[0].needs.includes("rewrite_script_before_local_repair"));
 });
 
 test("local media repair refuses apply recommendations when local Liam is not healthy", () => {
@@ -932,6 +1011,136 @@ test("apply-local audio repair writes only queued Liam audio proofs", async () =
   assert.equal(result.safety.posts_to_platforms, false);
 });
 
+test("apply-local audio repair segments long local TTS scripts before generating proof audio", async () => {
+  const previousApproval = process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+  const previousReferenceFile = process.env.STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "local-media-repair-segmented-"));
+  const referenceFile = path.join(dir, "pulse_liam_sleepy.wav");
+  fs.writeFileSync(referenceFile, "accepted sleepy liam reference");
+  process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = "true";
+  process.env.STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE = referenceFile;
+  const acceptedReference = resolveAcceptedLocalVoiceReference();
+  const readyTts = {
+    ...READY_TTS,
+    voice: {
+      ...READY_TTS.voice,
+      refResolved: true,
+      acceptedReferenceId: acceptedReference.id,
+      acceptedReferenceFile: acceptedReference.fileName,
+      referenceHash: acceptedReference.referenceHash,
+      reference: {
+        id: acceptedReference.id,
+        fileName: acceptedReference.fileName,
+        referenceHash: acceptedReference.referenceHash,
+        referencePresent: true,
+      },
+    },
+  };
+
+  const story = {
+    id: "rss_segmented_voice",
+    title: "GTA 6 trailer evidence is stacking up",
+    approved: true,
+    full_script: [
+      "GTA 6 has a confirmed clue today and it changes the whole preorder argument for console players.",
+      "Microsoft says Xbox demand is not being represented fairly by the early platform chatter online.",
+      "That matters because the console split is becoming the first real platform war around the game.",
+      "Players are not just arguing about a trailer now, they are arguing about audience momentum.",
+      "The useful part is simple: watch who can prove demand with hard numbers before launch.",
+      "If Xbox has stronger demand than the rumours suggest, the story becomes very different.",
+      "If PlayStation keeps looking dominant, then marketing pressure moves even harder toward Sony.",
+      "That is why one comment from Microsoft now carries more weight than it normally would.",
+      "This is not about declaring a winner today, because preorder chatter is still incomplete.",
+      "It is about spotting which platform holder is trying hardest to control the public narrative.",
+      "For players, the practical question is not which logo gets louder on social feeds.",
+      "It is which version gets the cleanest upgrades, the biggest community and the most stable launch.",
+      "That makes every platform signal worth watching, because it can shape where friends choose to play.",
+      "If Rockstar reveals timed features, bundled hardware or early performance details, this argument gets even hotter.",
+      "If it stays silent, the demand numbers become the closest thing to proof.",
+      "The payoff is that GTA 6 may turn into the clearest console loyalty test in years.",
+      "Follow Pulse Gaming so you never miss a beat.",
+    ].join(" "),
+    audio_path: "output/audio/rss_segmented_voice.mp3",
+    exported_path: "output/final/rss_segmented_voice.mp4",
+  };
+  const report = buildLocalMediaRepairQueue({
+    stories: [story],
+    mediaByStoryId: {
+      rss_segmented_voice: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 66,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_segmented_voice: {
+        verdict: "review",
+        blockers: ["approved_voice_metadata_missing"],
+      },
+    },
+    localTts: readyTts,
+  });
+  const generated = [];
+  const outputDir = "test/output/local-media-repair/audio";
+
+  try {
+    const result = await applyLocalAudioRepairs({
+      report,
+      storiesById: { rss_segmented_voice: story },
+      outputRelDir: outputDir,
+      segmentLongText: (segments) =>
+        segments.flatMap((segment) => [
+          { ...segment, label: "repair_1", text: "First chunk has a short safe sentence." },
+          { ...segment, label: "repair_2", text: "Second chunk keeps the story moving." },
+          { ...segment, label: "repair_3", text: "Follow Pulse Gaming so you never miss a beat." },
+        ]),
+      generateTts: async (text, outputRel, rate) => {
+        generated.push({ text, outputRel, rate });
+        const out = path.resolve(outputRel);
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.writeFileSync(out, "fake mp3 bytes");
+        fs.writeFileSync(
+          out.replace(/\.mp3$/, "_timestamps.json"),
+          JSON.stringify({
+            characters: Array.from(text),
+            character_start_times_seconds: Array.from(text, (_, i) => i * 0.03),
+            character_end_times_seconds: Array.from(text, (_, i) => i * 0.03 + 0.02),
+          }),
+        );
+      },
+      concatAudioFiles: async (segmentPaths, outputRel) => {
+        const out = path.resolve(outputRel);
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        fs.writeFileSync(out, segmentPaths.join("\n"));
+      },
+      mergeSegmentAlignments: async () => ({
+        characters: Array.from(story.full_script),
+        character_start_times_seconds: Array.from(story.full_script, (_, i) => i * 0.03),
+        character_end_times_seconds: Array.from(story.full_script, (_, i) => i * 0.03 + 0.02),
+      }),
+      measureDuration: async () => 70.2,
+      acousticProbe: async () => ({ medianPitchHz: 130 }),
+      resolveOutputPath: async (outputRel) => path.resolve(outputRel),
+    });
+
+    assert.equal(generated.length, 3);
+    assert.ok(generated.every((call) => call.outputRel.includes("rss_segmented_voice_liam_repair_")));
+    assert.equal(result.applied.length, 1);
+    assert.equal(result.skipped.length, 0);
+    assert.equal(result.applied[0].tts_segmented, true);
+    assert.equal(result.applied[0].tts_segment_count, 3);
+    assert.equal(result.applied[0].duration_verdict, "pass");
+    assert.equal(result.applied[0].failure_code, null);
+    assert.match(renderLocalMediaRepairApplyMarkdown(result), /segmented=3/);
+  } finally {
+    if (previousApproval === undefined) delete process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
+    else process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = previousApproval;
+    if (previousReferenceFile === undefined) delete process.env.STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE;
+    else process.env.STUDIO_V2_LOCAL_VOICE_REFERENCE_FILE = previousReferenceFile;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("apply-local audio repair stamps accepted Sleepy Liam metadata", async () => {
   const previousApproval = process.env.STUDIO_V2_LOCAL_VOICE_APPROVED;
   process.env.STUDIO_V2_LOCAL_VOICE_APPROVED = "true";
@@ -1184,7 +1393,7 @@ test("apply-local audio repair records TTS failures without aborting the batch",
   assert.equal(result.applied[0].story_id, "rss_second");
 });
 
-test("apply-local audio repair restarts local TTS once on recoverable failures", async () => {
+test("apply-local audio repair restarts local TTS once on timeout failures", async () => {
   const story = {
     id: "rss_recovers",
     title: "Xbox confirms a new update",
@@ -1211,7 +1420,7 @@ test("apply-local audio repair restarts local TTS once on recoverable failures",
     storiesById: { rss_recovers: story },
     generateTts: async (_text, outputRel) => {
       generated.push(outputRel);
-      if (generated.length === 1) throw new Error("read ECONNRESET");
+      if (generated.length === 1) throw new Error("timeout of 120000ms exceeded");
     },
     recoverLocalTts: async (context) => {
       recoveries.push(context);
@@ -1223,7 +1432,7 @@ test("apply-local audio repair restarts local TTS once on recoverable failures",
   assert.equal(generated.length, 2);
   assert.equal(recoveries.length, 1);
   assert.equal(recoveries[0].storyId, "rss_recovers");
-  assert.equal(recoveries[0].failure.code, "connection_reset");
+  assert.equal(recoveries[0].failure.code, "tts_timeout");
   assert.equal(result.skipped.length, 0);
   assert.equal(result.applied.length, 1);
   assert.equal(result.applied[0].story_id, "rss_recovers");

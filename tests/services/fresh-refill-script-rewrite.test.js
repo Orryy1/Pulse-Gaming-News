@@ -10,6 +10,7 @@ const {
   buildFreshRefillViewerScript,
   runFreshRefillScriptRewrite,
 } = require("../../lib/ops/fresh-refill-script-rewrite");
+const { auditMassAudienceClarity } = require("../../lib/ops/transcript-audience-audit");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const TEST_ROOT = path.join(ROOT, "test", "output", "fresh-refill-script-rewrite");
@@ -260,15 +261,24 @@ test("fresh refill viewer script keeps Fatal Fury City Of The Wolves in the publ
   assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
   assert.equal(script.suggested_title, "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight");
   assert.ok(
-    script.word_count >= 100 && script.word_count <= 104,
+    script.word_count >= 106 && script.word_count <= 110,
     `expected a duration-safe short script, got ${script.word_count} words`,
   );
-  assert.match(script.full_script, /City of the Wolves|Kenshiro|Fatal Fury/i);
-  assert.match(script.full_script, /players will notice after one match/i);
+  assert.match(script.full_script, /^Fatal Fury City of the Wolves just turned Kenshiro into a ranked-mode problem\./);
+  assert.match(script.full_script, /reach, pressure, counters, combat rhythm/i);
+  assert.match(script.full_script, /players will call it out fast/i);
   assert.doesNotMatch(script.full_script, /crossover becomes noise|crossover is a huge/i);
   assert.doesNotMatch(script.suggested_title, /:/, "avoid title punctuation that creates TTS title pauses");
   assert.deepEqual(script.quality.blockers, []);
   assert.equal(script.coherence.result, "pass");
+  const massAudience = auditMassAudienceClarity({
+    script: script.full_script,
+    title: script.suggested_title,
+    sourceName: "Xbox Wire",
+    canonicalSubject: "Fatal Fury: City Of The Wolves",
+  });
+  assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
+  assert.equal(massAudience.concrete_detail_count >= 3, true);
 });
 
 test("fresh refill script rewrite dry-run leaves local proof files unchanged", async () => {

@@ -101,6 +101,48 @@ test("local media repair queues approved stale voice renders for local Liam rege
   assert.equal(report.safety.mutates_production_db, false);
 });
 
+test("local media repair skips already-published stories instead of spending local TTS recovery", () => {
+  const report = buildLocalMediaRepairQueue({
+    stories: [
+      {
+        id: "rss_already_live",
+        title: "Already Live Story Should Not Consume Recovery",
+        approved: true,
+        publish_status: "published",
+        youtube_post_id: "yt_123",
+        instagram_media_id: "ig_123",
+        facebook_post_id: "fb_123",
+        full_script: "This story already has public platform evidence. ".repeat(22),
+        audio_path: "output/audio/rss_already_live.mp3",
+        exported_path: "output/final/rss_already_live.mp4",
+        breaking_score: 90,
+      },
+    ],
+    mediaByStoryId: {
+      rss_already_live: {
+        audioExists: true,
+        finalExists: true,
+        finalDurationSeconds: 64,
+      },
+    },
+    voiceAuditByStoryId: {
+      rss_already_live: {
+        verdict: "reject",
+        blockers: ["approved_voice_metadata_missing"],
+        warnings: [],
+      },
+    },
+    localTts: READY_TTS,
+  });
+
+  assert.equal(report.counts.ready_local_repair, 0);
+  assert.equal(report.counts.no_action, 1);
+  assert.equal(report.items[0].action, "skip_already_published");
+  assert.deepEqual(report.items[0].needs, []);
+  assert.deepEqual(report.items[0].blockers, ["already_has_public_platform_evidence"]);
+  assert.equal(report.items[0].repair_work_order.repair_lane, "none");
+});
+
 test("local media repair blocks overlong scripts before spending local TTS time", () => {
   const report = buildLocalMediaRepairQueue({
     stories: [

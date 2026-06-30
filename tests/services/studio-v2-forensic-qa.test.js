@@ -731,6 +731,47 @@ test("buildIssues rejects card scenes that are too fast to read", () => {
   assert.equal(issues[0].evidence[0].durationS, 1.45);
 });
 
+test("buildIssues rejects repeated HyperFrames card assets", () => {
+  const scene = sceneBreakdown({
+    sceneList: [
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 18.2, duration: 3.2 },
+      {
+        type: "card.source",
+        label: "source_card",
+        prerenderedMp4: "hf_source_card_story.mp4",
+        premiumLane: "hyperframes",
+        duration: 2.75,
+      },
+      {
+        type: "card.quote",
+        label: "quote_card",
+        prerenderedMp4: "hf_source_card_story.mp4",
+        premiumLane: "hyperframes",
+        duration: 2.9,
+      },
+    ],
+    auto: {
+      sourceDiversity: { value: 0.9, grade: "green" },
+      maxStillRepeat: { value: 1, grade: "green" },
+      stockFillerCount: { value: 0, grade: "green" },
+    },
+  });
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene,
+  });
+
+  assert.deepEqual(scene.repeatedCardAssets, [
+    { source: "hf_source_card_story.mp4", count: 2 },
+  ]);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, "scene_card_asset_reuse");
+  assert.equal(issues[0].severity, "fail");
+});
+
 test("buildIssues accepts readable card scenes and distinct clip windows", () => {
   const scene = sceneBreakdown({
     sceneList: [
@@ -743,6 +784,14 @@ test("buildIssues accepts readable card scenes and distinct clip windows", () =>
         prerenderedMp4: "hf_source_card_story.mp4",
         premiumLane: "hyperframes",
         duration: 2.75,
+      },
+      {
+        type: "card.quote",
+        label: "quote_card",
+        source: "hf_quote_card_story.mp4",
+        prerenderedMp4: "hf_quote_card_story.mp4",
+        premiumLane: "hyperframes",
+        duration: 2.8,
       },
     ],
     auto: {

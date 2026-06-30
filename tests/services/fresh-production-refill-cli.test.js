@@ -30,6 +30,10 @@ test("fresh production refill CLI is registered and parses safe local-only optio
     "output/manual-seeds/gta-vi.json",
     "--tts-provider",
     "elevenlabs",
+    "--repair-story-limit",
+    "4",
+    "--repair-evidence-mode",
+    "full",
     "--no-repair-evidence",
   ], { now: new Date("2026-06-24T13:40:00.000Z") });
 
@@ -40,6 +44,8 @@ test("fresh production refill CLI is registered and parses safe local-only optio
   assert.match(args.contractOutDir, /output[\\/]refill-contract$/);
   assert.match(args.storiesFile, /output[\\/]manual-seeds[\\/]gta-vi\.json$/);
   assert.equal(args.ttsProvider, "elevenlabs");
+  assert.equal(args.repairStoryLimit, 4);
+  assert.equal(args.repairEvidenceMode, "full");
   assert.equal(args.repairEvidence, false);
 });
 
@@ -101,6 +107,8 @@ test("fresh production refill CLI delegates to the scheduler refill handler with
       path.join(tmp, "seed-stories.json"),
       "--tts-provider",
       "elevenlabs",
+      "--repair-story-limit",
+      "3",
     ], {
       stdout: { write: (value) => stdout.push(String(value)) },
       stderr: { write: (value) => stderr.push(String(value)) },
@@ -114,6 +122,8 @@ test("fresh production refill CLI delegates to the scheduler refill handler with
     assert.equal(calls[0].job.payload.contract_out_dir, contractOutDir);
     assert.equal(calls[0].job.payload.seed_stories_file, path.join(tmp, "seed-stories.json"));
     assert.equal(calls[0].job.payload.repair_evidence, true);
+    assert.equal(calls[0].job.payload.repair_evidence_mode, "plan");
+    assert.equal(calls[0].job.payload.repair_story_limit, 3);
     assert.equal(calls[0].job.payload.tts_provider_preference, "elevenlabs");
     assert.equal(calls[0].job.payload.reason, "operator_safe_fresh_production_refill");
     assert.equal(result.status, "completed");

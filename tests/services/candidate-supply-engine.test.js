@@ -617,7 +617,7 @@ test("candidate supply report creates an actionable refill plan when YouTube run
   assert.equal(report.refill_action_plan.recommended_rss_per_feed, 10);
   assert.match(
     report.refill_action_plan.safe_refill_command,
-    /npm run ops:fresh-production-refill -- --json --limit 16 --rss-per-feed 10/,
+    /npm run ops:fresh-production-refill -- --json --limit 16 --rss-per-feed 10 --repair-evidence-mode plan --repair-story-limit 3/,
   );
   assert.match(formatCandidateSupplyMarkdown(report), /Refill Action Plan/);
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Refill: need 8 GREEN/);

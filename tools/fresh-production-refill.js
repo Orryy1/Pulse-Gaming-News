@@ -29,6 +29,8 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     outDir: path.join(ROOT, "output", "fresh-green-refill", stamp, "goal-proof-batch"),
     contractOutDir: path.join(ROOT, "output", "fresh-green-refill", stamp, "goal-contract"),
     repairEvidence: true,
+    repairEvidenceMode: "plan",
+    repairStoryLimit: 3,
     storiesFile: "",
     ttsProvider: "",
   };
@@ -50,12 +52,20 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     else if (arg.startsWith("--stories-file=")) args.storiesFile = resolveRepoPath(arg.slice("--stories-file=".length));
     else if (arg === "--tts-provider") args.ttsProvider = String(argv[++i] || "").trim().toLowerCase();
     else if (arg.startsWith("--tts-provider=")) args.ttsProvider = String(arg.slice("--tts-provider=".length) || "").trim().toLowerCase();
+    else if (arg === "--repair-story-limit") args.repairStoryLimit = Number(argv[++i] || args.repairStoryLimit);
+    else if (arg.startsWith("--repair-story-limit=")) args.repairStoryLimit = Number(arg.slice("--repair-story-limit=".length));
+    else if (arg === "--repair-evidence-mode") args.repairEvidenceMode = String(argv[++i] || args.repairEvidenceMode).trim().toLowerCase();
+    else if (arg.startsWith("--repair-evidence-mode=")) args.repairEvidenceMode = String(arg.slice("--repair-evidence-mode=".length) || "").trim().toLowerCase();
+    else if (arg === "--full-repair-evidence") args.repairEvidenceMode = "full";
     else if (arg === "--no-repair-evidence") args.repairEvidence = false;
   }
   if (!Number.isFinite(args.limit) || args.limit <= 0) args.limit = 12;
   if (!Number.isFinite(args.rssPerFeed) || args.rssPerFeed <= 0) args.rssPerFeed = 4;
   args.limit = Math.max(1, Math.min(30, Math.round(args.limit)));
   args.rssPerFeed = Math.max(1, Math.min(10, Math.round(args.rssPerFeed)));
+  if (!Number.isFinite(args.repairStoryLimit) || args.repairStoryLimit < 0) args.repairStoryLimit = 3;
+  args.repairStoryLimit = Math.max(0, Math.min(30, Math.round(args.repairStoryLimit)));
+  if (!["plan", "full"].includes(args.repairEvidenceMode)) args.repairEvidenceMode = "plan";
   args.channelId = String(args.channelId || "pulse-gaming").trim() || "pulse-gaming";
   if (!["", "local", "elevenlabs"].includes(args.ttsProvider)) args.ttsProvider = "";
   return args;
@@ -75,6 +85,9 @@ function usage() {
     "  --contract-out-dir <p>   Contract/report output directory",
     "  --stories-file <path>    Optional local fresh official/direct-media story seed file",
     "  --tts-provider <name>     Optional narration provider for repair continuation: local or elevenlabs",
+    "  --repair-evidence-mode    plan (default) writes fast work orders; full runs deep local repair",
+    "  --full-repair-evidence    Alias for --repair-evidence-mode full",
+    "  --repair-story-limit <n>  Limit heavy repair evidence to first n eligible RED packages, default 3; 0 = no limit",
     "  --no-repair-evidence     Skip local repair-evidence child commands",
     "  --json                   Print machine-readable result",
   ].join("\n");
@@ -98,6 +111,8 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
         contract_out_dir: args.contractOutDir,
         seed_stories_file: args.storiesFile,
         repair_evidence: args.repairEvidence,
+        repair_evidence_mode: args.repairEvidenceMode,
+        repair_story_limit: args.repairStoryLimit,
         tts_provider_preference: args.ttsProvider || undefined,
         reason: "operator_safe_fresh_production_refill",
       },

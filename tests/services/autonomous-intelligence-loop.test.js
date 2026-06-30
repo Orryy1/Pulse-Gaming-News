@@ -373,10 +373,11 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(enqueued[3].payload.limit, 18);
     assert.equal(enqueued[3].payload.rss_per_feed, 6);
     assert.equal(enqueued[3].payload.tts_provider_preference, "elevenlabs");
+    assert.equal(enqueued[3].payload.repair_story_limit, 3);
     assert.equal(enqueued[3].payload.source_minimum_new_green_candidates, 9);
     assert.equal(
       enqueued[3].payload.source_refill_command,
-      "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6 --tts-provider elevenlabs",
+      "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6 --repair-evidence-mode plan --repair-story-limit 3 --tts-provider elevenlabs",
     );
     assert.equal(
       enqueued[3].payload.out_dir,
@@ -1955,6 +1956,340 @@ test("fresh production refill handler can run from a seeded official story file"
     assert.equal(result.green_count, 1);
     assert.equal(result.repair_evidence.status, "not_needed");
     assert.equal(result.safety.no_publish, true);
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill plan mode writes repair work orders without heavy child repair", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-plan-mode-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const artifactDir = path.join(outDir, "fresh_plan_story");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const childCalls = [];
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "fresh_plan_story",
+        canonical_title: "Fresh Plan Story Gets Official Gameplay",
+        selected_title: "Fresh Plan Story Gets Official Gameplay",
+        canonical_game: "Fresh Plan Game",
+        primary_source: "PlayStation Blog",
+        primary_source_url: "https://blog.playstation.com/fresh-plan-story",
+        narration_script: "Fresh Plan Game just got official gameplay with one concrete thing players can judge.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "PlayStation Blog",
+          url: "https://blog.playstation.com/fresh-plan-story",
+          type: "official_platform_newsroom",
+          published_at: "2026-06-30T09:30:00.000Z",
+          direct_media_candidates: [
+            {
+              direct_media_url: "https://gmedia.playstation.com/fresh-plan-story/gameplay.mp4",
+              source_type: "official_game_website_media_page",
+              source_family: "fresh_plan_gameplay",
+              source_title: "Fresh Plan Game Gameplay",
+              source_owner: "PlayStation",
+              official_source_url: "https://blog.playstation.com/fresh-plan-story",
+            },
+          ],
+        },
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({ story_id: "fresh_plan_story", verdict: "viral_ready", blockers: [] }),
+    );
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main() {
+          await fs.mkdir(contractOutDir, { recursive: true });
+          const storyPackagesPath = path.join(contractOutDir, "story-packages.json");
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: "fresh_plan_story",
+                title: "Fresh Plan Story Gets Official Gameplay",
+                artifact_dir: artifactDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+            ]),
+          );
+          return {
+            batch: { summary: { story_count: 1, green_count: 0, red_count: 1 } },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+          repair_evidence_mode: "plan",
+          repair_story_limit: 1,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          throw new Error("plan mode must not run heavy child repair");
+        },
+      },
+    );
+
+    assert.equal(result.repair_evidence.status, "planned");
+    assert.equal(result.repair_evidence.summary.child_process_count, 0);
+    assert.equal(result.repair_evidence.summary.repair_attempt_story_package_count, 1);
+    assert.equal(result.motion_hydrated_refill.status, "not_attempted");
+    assert.equal(childCalls.length, 0);
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    assert.match(repairReport.outputs.script_rewrite_work_order, /fresh_refill_script_rewrite_work_order\.json$/);
+    assert.match(repairReport.outputs.candidate_stories, /official_source_candidate_stories\.json$/);
+    assert.equal(repairReport.summary.official_source_entries_count, 1);
+    assert.equal(repairReport.safety.no_publish, true);
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill bounds heavy repair evidence to the requested story limit", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-repair-limit-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const childCalls = [];
+  const capturedArgCalls = [];
+
+  async function writeStoryPackage(storyId, index) {
+    const artifactDir = path.join(outDir, storyId);
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_title: `Fresh Limit Story ${index}`,
+        selected_title: `Fresh Limit Story ${index}`,
+        canonical_game: `Fresh Limit Game ${index}`,
+        primary_source: "Xbox Wire",
+        primary_source_url: `https://news.xbox.com/en-us/fresh-limit-${index}`,
+        narration_script: `Fresh Limit Game ${index} just got a real update with a concrete player impact.`,
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Xbox Wire",
+          url: `https://news.xbox.com/en-us/fresh-limit-${index}`,
+          type: "official_platform_newsroom",
+          published_at: "2026-06-30T09:00:00.000Z",
+          direct_media_candidates: [
+            {
+              direct_media_url: `https://assets.xbox.com/fresh-limit-${index}/gameplay.mp4`,
+              source_type: "official_game_website_media_page",
+              source_family: `fresh_limit_gameplay_${index}`,
+              source_title: `Fresh Limit Game ${index} Gameplay`,
+              source_owner: "Xbox",
+              official_source_url: `https://news.xbox.com/en-us/fresh-limit-${index}`,
+            },
+          ],
+        },
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: storyId,
+        verdict: "viral_ready",
+        blockers: [],
+      }),
+    );
+    return {
+      story_id: storyId,
+      title: `Fresh Limit Story ${index}`,
+      artifact_dir: artifactDir,
+      verdict: "RED",
+      blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+    };
+  }
+
+  try {
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          capturedArgCalls.push(args);
+          const effectiveContractOutDir = args[args.indexOf("--contract-out-dir") + 1] || contractOutDir;
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          if (args.includes("--stories-file")) {
+            const selectedStoryIds = [];
+            for (let i = 0; i < args.length; i += 1) {
+              if (args[i] === "--story-id") {
+                selectedStoryIds.push(...String(args[i + 1] || "").split(",").filter(Boolean));
+              }
+            }
+            await fs.writeFile(
+              storyPackagesPath,
+              JSON.stringify(selectedStoryIds.map((storyId) => ({
+                story_id: storyId,
+                verdict: "GREEN",
+                blockers: [],
+                artifact_dir: path.join(outDir, storyId),
+              }))),
+            );
+            return {
+              batch: {
+                summary: {
+                  story_count: selectedStoryIds.length,
+                  green_count: selectedStoryIds.length,
+                  red_count: 0,
+                },
+              },
+              outputs: { storyPackagesPath },
+            };
+          }
+          const rows = [];
+          for (let i = 1; i <= 5; i += 1) {
+            rows.push(await writeStoryPackage(`fresh_limit_story_${i}`, i));
+          }
+          await fs.writeFile(storyPackagesPath, JSON.stringify(rows));
+          return {
+            batch: {
+              summary: {
+                story_count: rows.length,
+                green_count: 0,
+                red_count: rows.length,
+              },
+            },
+            outputs: {
+              storyPackagesPath,
+              batchReportPath: path.join(effectiveContractOutDir, "story-packages-report.json"),
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 5,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+          repair_story_limit: 2,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          if (options.args[0] === "tools/official-search-intake-autofill.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          if (options.args[0] === "tools/official-direct-media-discovery.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          if (options.args[0] === "tools/goal-real-motion-materializer.js") {
+            const outDirIndex = options.args.indexOf("--out-dir");
+            const repairDir = outDirIndex >= 0 ? options.args[outDirIndex + 1] : null;
+            if (repairDir) {
+              await fs.writeFile(
+                path.join(repairDir, "real_motion_materialization_report.json"),
+                JSON.stringify({
+                  summary: { materialized_story_count: 2, materialized_clip_count: 12 },
+                  jobs: [
+                    { story_id: "fresh_limit_story_1", status: "materialized" },
+                    { story_id: "fresh_limit_story_2", status: "materialized" },
+                  ],
+                }),
+              );
+            }
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    assert.equal(result.repair_evidence.summary.repair_eligible_story_package_count, 5);
+    assert.equal(result.repair_evidence.summary.repair_attempt_story_package_count, 2);
+    assert.equal(result.repair_evidence.summary.repair_deferred_by_limit_count, 3);
+    assert.equal(result.repair_evidence.summary.repair_story_limit, 2);
+    assert.deepEqual(result.repair_evidence.summary.repair_deferred_by_limit_story_ids, [
+      "fresh_limit_story_3",
+      "fresh_limit_story_4",
+      "fresh_limit_story_5",
+    ]);
+    assert.match(
+      repairReport.outputs.repair_attempt_story_packages,
+      /story-packages-motion-repair-attempt-limit-2\.json$/,
+    );
+    const candidateStories = JSON.parse(await fs.readFile(repairReport.outputs.candidate_stories, "utf8"));
+    assert.deepEqual(candidateStories.map((story) => story.story_id), [
+      "fresh_limit_story_1",
+      "fresh_limit_story_2",
+    ]);
+    const motionPackCall = childCalls.find((call) => call.args[0] === "tools/studio-v4-motion-pack.js");
+    assert.equal(
+      motionPackCall.args[motionPackCall.args.indexOf("--stories") + 1],
+      repairReport.outputs.repair_attempt_story_packages,
+    );
+    assert.deepEqual(
+      capturedArgCalls[1]
+        .filter((arg, index, args) => args[index - 1] === "--story-id")
+        .flatMap((value) => String(value).split(",").filter(Boolean)),
+      ["fresh_limit_story_1", "fresh_limit_story_2"],
+    );
+    assert.equal(result.motion_hydrated_refill.green_count, 2);
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

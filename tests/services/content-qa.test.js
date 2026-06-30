@@ -1155,6 +1155,59 @@ test("runContentQa: production auto-publish blocks GTA VI word-level stutters ev
   }
 });
 
+test("runContentQa: production auto-publish blocks size-six GTA VI ASR stutters", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-production-size-six-"));
+  const artifactDir = path.join(tmp, "story");
+  const audioDir = path.join(artifactDir, "audio");
+  const mp4 = path.join(artifactDir, "visual_v4_render.mp4");
+  const audio = path.join(audioDir, "narration.mp3");
+  const timestamps = path.join(audioDir, "word_timestamps.json");
+  const transcript =
+    "GTA size six starts the preorder fight. Follow Pulse Gaming so you never miss a beat.";
+  await fs.ensureDir(audioDir);
+  await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
+  await fs.writeFile(audio, Buffer.from("fake elevenlabs audio"));
+  await fs.writeJson(timestamps, {
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      transcript,
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+    words: [
+      { word: "GTA", start: 0, end: 0.2 },
+      { word: "size", start: 0.2, end: 0.34 },
+      { word: "six", start: 0.34, end: 0.52 },
+    ],
+  });
+
+  try {
+    const qa = await runContentQa(
+      goodStory({
+        exported_path: mp4,
+        audio_path: audio,
+        word_timestamps_path: timestamps,
+        full_script: goodStory().full_script.replace("A dead franchise", "GTA VI"),
+      }),
+      {
+        env: {
+          DEPLOYMENT_MODE: "production",
+          AUTO_PUBLISH: "true",
+        },
+      },
+    );
+
+    assert.strictEqual(qa.result, "fail", JSON.stringify(qa));
+    assert.ok(qa.failures.includes("approved_voice:gta_vi_spoken_stutter"));
+    assert.ok(qa.failures.includes("risky_gta_vi_timestamp_transcript:meta.transcript"));
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("runContentQa: production auto-publish blocks split GTA VI roman narration", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-production-roman-split-"));
   const artifactDir = path.join(tmp, "story");

@@ -186,6 +186,10 @@ test("GTA V and GTA VI title variants use stable spoken names", () => {
     "Rockstar's next Grand Theft Auto should not survive the hook.",
   );
   assert.equal(
+    applyGamingPronunciation("GTA size six should not survive the hook."),
+    "Rockstar's next Grand Theft Auto should not survive the hook.",
+  );
+  assert.equal(
     applyGamingPronunciation("GTA C6 should not survive the hook."),
     "Rockstar's next Grand Theft Auto should not survive the hook.",
   );

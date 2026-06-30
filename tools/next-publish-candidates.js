@@ -2949,7 +2949,7 @@ function hasGtaViSpokenSixInOpening(value = "") {
   return (
     /\b(?:g\s+t\s+a|gta)\s+six\b/.test(opening) ||
     /\bgtavi\b/.test(opening) ||
-    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(opening)
+    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c|size|sice|sic|sick|sig|sixty)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(opening)
   );
 }
 
@@ -2958,14 +2958,14 @@ function hasGtaViSpokenSix(value = "") {
   if (!text) return false;
   return (
     /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:6|six)\b/.test(text) ||
-    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(text)
+    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c|size|sice|sic|sick|sig|sixty)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(text)
   );
 }
 
 function hasGtaViSpokenStutter(value = "") {
   const text = comparableVoiceText(value);
   if (!text) return false;
-  return /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(text);
+  return /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c|size|sice|sic|sick|sig|sixty)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(text);
 }
 
 function hasGtaViRomanSplit(value = "") {

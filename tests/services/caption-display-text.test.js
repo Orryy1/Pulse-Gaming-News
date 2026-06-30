@@ -25,6 +25,10 @@ test("caption display normalises GTA VI see-six ASR text variants", () => {
     normaliseCaptionDisplayText("Grand Theft Auto sea six finally moved."),
     "GTA VI finally moved.",
   );
+  assert.equal(
+    normaliseCaptionDisplayText("GTA size six starts the preorder fight."),
+    "GTA VI starts the preorder fight.",
+  );
 });
 
 test("caption display merges GTA VI see-six ASR word variants", () => {

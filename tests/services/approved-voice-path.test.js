@@ -405,6 +405,7 @@ test("approved voice path rejects vowel-inserted GTA VI ASR stutter variants", (
     ["see-a-six", "GTA see a six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
     ["suh-six", "GTA suh six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
     ["sir-six", "Grand Theft Auto sir six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
+    ["size-six", "GTA size six starts the preorder fight. Follow Pulse Gaming so you never miss a beat."],
   ]) {
     const result = evaluateApprovedVoicePath({
       narration: {

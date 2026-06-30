@@ -4010,6 +4010,87 @@ test("attachPreflightQa blocks exact GTA VI si-six stutters in recorded opening 
   );
 });
 
+test("attachPreflightQa blocks GTA VI size-six ASR stutters in recorded opening speech", async () => {
+  const spoken =
+    "GTA size six just turned pre orders into a buy, wait or skip argument. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const words = spoken
+    .replace(/[,.]/g, "")
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: Number((index * 0.5).toFixed(2)),
+      end: Number((index * 0.5 + 0.22).toFixed(2)),
+    }));
+  words[words.length - 1].end = Number((words.length * 0.5).toFixed(2));
+  const stories = [
+    baseStory({
+      id: "current_gta_vi_size_six_stutter_opener",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      narration_script:
+        "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      tts_script:
+        "Rockstar just turned GTA VI pre-orders into a buy, wait or skip argument. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 167.3,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      word_timestamps_payload: {
+        words,
+        meta: {
+          transcript: spoken,
+          spoken_text: spoken,
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v9",
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            script_inserted_actual_word_count: 0,
+            script_trailing_actual_word_count: 0,
+          },
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-27T07:25:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes("voice_quality:gta_vi_spoken_stutter"),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.deepEqual(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_spoken_stutter_sources,
+    ["recorded_spoken_text"],
+  );
+});
+
 test("attachPreflightQa blocks GTA VI word-level stutters even when timestamp metadata is clean", async () => {
   const cleanSpoken =
     "Rockstar's next Grand Theft Auto just turned pre orders into a buy, wait or skip argument. " +
@@ -6637,12 +6718,12 @@ test("attachPreflightQa trusts a current full GREEN proof package over stale pre
       selected_title: "Street Fighter 6 Just Revealed A Rushdown Problem",
       canonical_subject: "Street Fighter 6",
       source_type: "rss",
-      timestamp: "2026-06-23T09:30:00.000Z",
+      timestamp: "2026-06-30T09:30:00.000Z",
       source_manifest: {
         primary_source: {
           name: "GameSpot",
           url: "https://www.gamespot.com/videos/street-fighter-6-yasmine-character-gameplay-reveal-trailer/",
-          published_at: "2026-06-23T09:30:00.000Z",
+          published_at: "2026-06-30T09:30:00.000Z",
         },
         source_age_policy_hours: 168,
       },
@@ -6688,7 +6769,7 @@ test("attachPreflightQa trusts a current full GREEN proof package over stale pre
   ];
   const report = buildNextPublishCandidatesReport(stories, {
     analyticsText,
-    generatedAt: "2026-06-23T22:30:00.000Z",
+    generatedAt: "2026-06-30T10:30:00.000Z",
   });
 
   await attachPreflightQa(report, stories, {

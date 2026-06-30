@@ -1212,6 +1212,111 @@ test("selectNextGuardedLiveAction uses current package caption and thumbnail pro
   assert.equal(capturedVideoOptions.maxDuration, 60);
 });
 
+test("selectNextGuardedLiveAction keeps compact thumbnail when subject prefix would exceed mobile limit", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-compact-thumbnail-proof-"));
+  t.after(() => fs.remove(tmp));
+  const packageDir = path.join(tmp, "fatal-fury-story");
+  await fs.ensureDir(packageDir);
+  const videoPath = path.join(packageDir, "visual_v4_render.mp4");
+  const captionsPath = path.join(packageDir, "captions.srt");
+  const canonicalManifestPath = path.join(packageDir, "canonical_story_manifest.json");
+  const platformPublishManifestPath = path.join(packageDir, "platform_publish_manifest.json");
+
+  await fs.writeFile(videoPath, "fake mp4 bytes");
+  await fs.writeFile(captionsPath, "1\n00:00:00,000 --> 00:00:01,000\nFatal Fury\n");
+  await fs.writeJson(canonicalManifestPath, {
+    story_id: "fatal-fury-story",
+    selected_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    canonical_subject: "Fatal Fury: City Of The Wolves",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/06/29/fatal-fury-fist-of-the-north-star-kenshiro/",
+    source_published_at: "2026-06-29T15:00:00.000Z",
+    narration_script:
+      "Fatal Fury City of the Wolves just turned Kenshiro into a ranked-mode problem. Xbox Wire says the Fist of the North Star icon is joining the roster. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "KENSHIRO ROSTER FIGHT",
+    suggested_thumbnail_text: "KENSHIRO ROSTER FIGHT",
+  });
+  await fs.writeJson(path.join(packageDir, "render_manifest.json"), {
+    rendered_duration_s: 40.6,
+    final_publish_render: true,
+    post_render_forensic_result: "pass",
+    input_evidence: {
+      word_timestamps_path: path.join(packageDir, "timestamps.json"),
+    },
+    input_fingerprint: {
+      canonical_snapshot: {
+        canonical_subject: "Fatal Fury: City Of The Wolves",
+        narration_script:
+          "Fatal Fury City of the Wolves just turned Kenshiro into a ranked-mode problem. Xbox Wire says the Fist of the North Star icon is joining the roster. Follow Pulse Gaming so you never miss a beat.",
+        thumbnail_headline: "KENSHIRO ROSTER FIGHT",
+      },
+    },
+  });
+  await fs.writeJson(path.join(packageDir, "caption_manifest.json"), {
+    status: "ready",
+    caption_srt_path: captionsPath,
+    resolved_caption_srt_path: captionsPath,
+    word_count: 105,
+    captions_source: "word_timestamps",
+    blockers: [],
+    checks: {
+      caption_file_present: true,
+      captions_well_formed: true,
+      caption_word_count_available: true,
+    },
+    timestamp_whisper_alignment: {
+      script_inserted_actual_word_count: 0,
+      script_trailing_actual_word_count: 0,
+    },
+  });
+  await fs.writeJson(platformPublishManifestPath, {
+    outputs: {
+      youtube_shorts: {
+        duration_seconds: 40.6,
+        cover_frame: {
+          headline: "KENSHIRO ROSTER FIGHT",
+          subject: "Fatal Fury: City Of The Wolves",
+          source_label: "Xbox Wire",
+        },
+      },
+    },
+  });
+
+  let capturedStory = null;
+  const selection = await selectNextGuardedLiveAction({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          action_id: "fatal-fury-story:youtube_shorts",
+          story_id: "fatal-fury-story",
+          video_path: videoPath,
+          captions_path: captionsPath,
+          canonical_manifest_path: canonicalManifestPath,
+          platform_publish_manifest_path: platformPublishManifestPath,
+        }),
+      ],
+    }),
+    stories: [],
+    actionQualityGateOptions: {
+      now: "2026-06-30T18:00:00.000Z",
+    },
+    runActionQualityGate: async ({ story: qualityStory }) => {
+      capturedStory = qualityStory;
+      return qualityStory.suggested_thumbnail_text === "KENSHIRO ROSTER FIGHT"
+        ? passActionQualityGate()
+        : {
+            result: "fail",
+            blockers: ["compact_thumbnail_overwritten_by_long_subject_prefix"],
+            checks: { qualityStory },
+          };
+    },
+  });
+
+  assert.equal(selection.exhausted, false);
+  assert.equal(selection.action_id, "fatal-fury-story:youtube_shorts");
+  assert.equal(capturedStory.suggested_thumbnail_text, "KENSHIRO ROSTER FIGHT");
+});
+
 test("selectNextGuardedLiveAction skips pre-fix local TTS packages with slowed narration", async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-slow-local-tts-"));
   t.after(() => fs.remove(tmp));

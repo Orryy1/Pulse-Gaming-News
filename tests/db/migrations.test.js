@@ -13,6 +13,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const Database = require("better-sqlite3");
 
 const { runMigrations, status } = require("../../lib/migrate");
@@ -39,6 +42,30 @@ test("runMigrations: second run is a no-op (all skipped)", () => {
   const second = runMigrations(db, { log: () => {} });
   assert.equal(second.applied.length, 0);
   assert.ok(second.skipped.length >= 13);
+});
+
+test("runMigrations: accepts applied checksums that differ only by line endings", () => {
+  const db = new Database(":memory:");
+  runMigrations(db, { log: () => {} });
+
+  const migrationPath = path.join(
+    __dirname,
+    "..",
+    "..",
+    "db",
+    "migrations",
+    "011_stories_source_url_hash.sql",
+  );
+  const body = fs.readFileSync(migrationPath, "utf8");
+  const crlfChecksum = crypto
+    .createHash("sha256")
+    .update(body.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"))
+    .digest("hex");
+  db.prepare("UPDATE schema_migrations SET checksum = ? WHERE version = '011'").run(crlfChecksum);
+
+  const second = runMigrations(db, { log: () => {} });
+  assert.equal(second.applied.length, 0);
+  assert.ok(second.skipped.includes("011_stories_source_url_hash.sql"));
 });
 
 test("migration 011: stories.source_url_hash column + index exist", () => {

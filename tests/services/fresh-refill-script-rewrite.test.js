@@ -109,6 +109,47 @@ async function writeFixture(name = "case") {
     result: "fail",
     failures: ["script_coherence:vague_filler:internal_audience_scaffold"],
   }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: [
+      "script:rewrite_required",
+      "platform_native:youtube_shorts:weak_platform_title",
+      "platform_native:youtube_shorts:weak_cover_headline",
+      "platform_native:instagram_reels:weak_cover_headline",
+      "media_house:title_lacks_curiosity_gap",
+      "media_house:platform_title_too_plain",
+      "media_house:first_frame_or_thumbnail_not_attention_led",
+      "render:final_publish_render_missing",
+      "audio:narration_audio_missing",
+      "captions:word_timestamps_missing",
+    ],
+    blockers: [
+      "script:rewrite_required",
+      "platform_native:youtube_shorts:weak_platform_title",
+      "media_house:title_lacks_curiosity_gap",
+      "render:final_publish_render_missing",
+    ],
+    package_quality_gate: {
+      verdict: "script_blocked",
+      blockers: [
+        "script:rewrite_required",
+        "platform_native:youtube_shorts:weak_cover_headline",
+        "media_house:first_frame_or_thumbnail_not_attention_led",
+        "audio:narration_audio_missing",
+      ],
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "goal_package_summary.json"), {
+    story_id: "rss_4a07e21d3192fd7c",
+    verdict: "RED",
+    blockers: [
+      "script:rewrite_required",
+      "media_house:title_lacks_curiosity_gap",
+      "platform_native:youtube_shorts:weak_cover_headline",
+      "render:final_publish_render_missing",
+    ],
+  }, { spaces: 2 });
 
   const workOrderPath = path.join(TEST_ROOT, name, "work_order.json");
   await fs.writeJson(workOrderPath, {
@@ -220,6 +261,31 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
   const platform = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
   assert.match(platform.outputs.youtube_shorts.description, /Bob|Eurogamer/i);
   assert.doesNotMatch(platform.outputs.instagram_reels.caption, /new source detail|real question/i);
+});
+
+test("fresh refill script rewrite clears stale public-copy blockers but keeps real media blockers", async () => {
+  const { artifactDir, workOrderPath } = await writeFixture("stale-copy-blockers");
+
+  await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(TEST_ROOT, "stale-copy-blockers", "report"),
+    applyLocal: true,
+  });
+
+  const verdict = await fs.readJson(path.join(artifactDir, "publish_verdict.json"));
+  const allVerdictBlockers = [
+    ...verdict.reason_codes,
+    ...verdict.blockers,
+    ...verdict.package_quality_gate.blockers,
+  ];
+  assert.ok(!allVerdictBlockers.some((blocker) => /script:|weak_platform_title|weak_cover_headline|title_lacks_curiosity_gap|platform_title_too_plain|first_frame_or_thumbnail_not_attention_led/.test(blocker)));
+  assert.ok(allVerdictBlockers.includes("render:final_publish_render_missing"));
+  assert.ok(allVerdictBlockers.includes("audio:narration_audio_missing"));
+  assert.ok(allVerdictBlockers.includes("captions:word_timestamps_missing"));
+
+  const summary = await fs.readJson(path.join(artifactDir, "goal_package_summary.json"));
+  assert.deepEqual(summary.blockers, ["render:final_publish_render_missing"]);
 });
 
 test("fresh refill script rewrite refuses artifact directories outside local output roots", () => {

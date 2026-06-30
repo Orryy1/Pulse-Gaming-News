@@ -1194,6 +1194,104 @@ test("runContentQa: production auto-publish blocks GTA VI word-level stutters ev
   }
 });
 
+test("runContentQa: package-only GTA VI renders cannot bypass stale pronunciation profile checks", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-package-profile-"));
+  const artifactDir = path.join(tmp, "story");
+  const audioDir = path.join(artifactDir, "audio");
+  const mp4 = path.join(artifactDir, "visual_v4_render.mp4");
+  const audio = path.join(audioDir, "narration.mp3");
+  const timestamps = path.join(audioDir, "word_timestamps.json");
+  const canonicalManifest = path.join(artifactDir, "canonical_story_manifest.json");
+  const platformManifest = path.join(artifactDir, "platform_publish_manifest.json");
+  const displayScript =
+    "PlayStation just made the GTA VI argument simple: Sony says it plays best on PS5. " +
+    "That sounds massive, but it also sets a trap. If the PS5 version is genuinely smoother, Xbox and PC players have to wait for proof before choosing their version. " +
+    "If the claim is mostly marketing, fans will call it out instantly. The real story is not the slogan. " +
+    "It is whether Rockstar shows performance, image quality and comparison footage before launch. That is the footage that turns hype into trust. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const spokenScript =
+    "PlayStation just made Rockstar's next Grand Theft Auto argument simple: Sony says it plays best on PlayStation five. " +
+    "That sounds massive, but it also sets a trap. If the PlayStation five version is genuinely smoother, Xbox and PC players have to wait for proof before choosing their version. " +
+    "If the claim is mostly marketing, fans will call it out instantly. The real story is not the slogan. " +
+    "It is whether Rockstar shows performance, image quality and comparison footage before launch. That is the footage that turns hype into trust. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  await fs.ensureDir(audioDir);
+  await fs.writeFile(mp4, Buffer.alloc(5 * 1024 * 1024));
+  await fs.writeFile(audio, Buffer.from("fake elevenlabs audio"));
+  await fs.writeJson(canonicalManifest, {
+    id: "rss_gta_vi_package_only",
+    canonical_subject: "Grand Theft Auto VI",
+  });
+  await fs.writeJson(platformManifest, {
+    story_id: "rss_gta_vi_package_only",
+    video_path: mp4,
+  });
+  await fs.writeJson(timestamps, {
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      text: displayScript,
+      transcript: spokenScript,
+      spoken_text: spokenScript,
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v11",
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+      },
+    },
+    words: [
+      { word: "PlayStation", start: 0, end: 0.4 },
+      { word: "just", start: 0.4, end: 0.6 },
+      { word: "made", start: 0.6, end: 0.82 },
+      { word: "Rockstar's", start: 0.82, end: 1.2 },
+      { word: "next", start: 1.2, end: 1.38 },
+      { word: "Grand", start: 1.38, end: 1.62 },
+      { word: "Theft", start: 1.62, end: 1.86 },
+      { word: "Auto", start: 1.86, end: 2.1 },
+    ],
+  });
+
+  try {
+    const qa = await runContentQa(
+      goodStory({
+        id: "rss_gta_vi_package_only",
+        title: "GTA VI Just Made PS5 The Version To Watch",
+        exported_path: mp4,
+        audio_path: null,
+        word_timestamps_path: null,
+        canonical_subject: "Grand Theft Auto VI",
+        full_script: displayScript,
+        tts_script: spokenScript,
+        _extra: JSON.stringify({
+          canonical_manifest_path: canonicalManifest,
+          platform_publish_manifest_path: platformManifest,
+        }),
+      }),
+      {
+        env: {
+          DEPLOYMENT_MODE: "production",
+          AUTO_PUBLISH: "true",
+        },
+      },
+    );
+
+    assert.strictEqual(qa.result, "fail", JSON.stringify(qa));
+    assert.ok(
+      qa.failures.includes("risky_gta_vi_timestamp_profile_stale"),
+      qa.failures.join(", "),
+    );
+  } finally {
+    await fs.remove(tmp).catch(() => {});
+  }
+});
+
 test("runContentQa: production auto-publish blocks size-six GTA VI ASR stutters", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-gta-production-size-six-"));
   const artifactDir = path.join(tmp, "story");

@@ -297,6 +297,55 @@ test("goal batch packages preserve newer repaired canonical public copy from exi
   }
 });
 
+test("goal batch packages preserve current repaired cover text over stale hydrated canonical manifests", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-stale-cover-hydration-"));
+  try {
+    const story = {
+      ...greenStory("fatal-fury-stale-cover-hydration"),
+      canonical_subject: "Fatal Fury City Of The Wolves",
+      canonical_game: "Fatal Fury City Of The Wolves",
+      title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+      suggested_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+      public_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/06/29/fatal-fury-fist-of-the-north-star-kenshiro/",
+      thumbnail_text: "FATAL FURY CITY",
+      thumbnail_headline: "FATAL FURY CITY",
+      suggested_thumbnail_text: "KENSHIRO ROSTER FIGHT",
+      first_frame_text: "KENSHIRO ROSTER FIGHT",
+      full_script:
+        "City of the Wolves just pulled in Kenshiro. Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have one real question. Does this feel like a fighter, or a trailer stunt? Guest characters work when they change range, pressure and rhythm. They fail when they look wild but play like a costume. Kenshiro needs manga weight inside SNK's clean flow. That matters in ranked. If he lands, City of the Wolves gets a new audience fight. If he feels pasted in, players will notice after one match. Follow Pulse Gaming so you never miss a beat.",
+    };
+
+    const storyDir = path.join(tempDir, story.id);
+    fs.ensureDirSync(storyDir);
+    fs.writeJsonSync(path.join(storyDir, "canonical_story_manifest.json"), {
+      ...story,
+      story_id: story.id,
+      thumbnail_text: "FATAL FURY CITY PLAYER TEST",
+      thumbnail_headline: "FATAL FURY CITY PLAYER TEST",
+      first_frame_text: "FATAL FURY CITY PLAYER TEST",
+      public_copy_repaired_at: "2026-06-29T22:00:00.000Z",
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-06-30T12:45:00.000Z",
+    });
+    const pack = batch.packages[0];
+
+    assert.equal(pack.canonical_story_manifest.thumbnail_headline, "KENSHIRO ROSTER FIGHT");
+    assert.equal(pack.canonical_story_manifest.first_frame_text, "KENSHIRO ROSTER FIGHT");
+    assert.equal(pack.youtube_publish_pack.cover_frame.headline, "KENSHIRO ROSTER FIGHT");
+    assert.ok(!pack.publish_verdict.reason_codes.includes("platform_native:youtube_shorts:weak_cover_headline"));
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages preserve viral-ready generated canonical copy through refill hydration", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-viral-canonical-"));
   try {
@@ -1590,6 +1639,40 @@ test("goal batch package proof keeps evidence-backed named-character cover headl
   assert.ok(!native.platformNativeEvidence.failures.some(
     (failure) => failure.reason === "weak_cover_headline",
   ));
+});
+
+test("goal batch packages prefer repaired first-frame cover text over stale thumbnail cache", () => {
+  const story = {
+    ...greenStory("fatal-fury-kenshiro-cover-repair"),
+    canonical_subject: "Fatal Fury City Of The Wolves",
+    canonical_game: "Fatal Fury City Of The Wolves",
+    title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    suggested_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    public_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    primary_source: "Xbox Wire",
+    source_name: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/06/29/fatal-fury-city-of-the-wolves-ken-fist-of-the-north-star/",
+    thumbnail_text: "FATAL FURY CITY",
+    thumbnail_headline: "FATAL FURY CITY",
+    suggested_thumbnail_text: "KENSHIRO ROSTER FIGHT",
+    first_frame_text: "KENSHIRO ROSTER FIGHT",
+    full_script:
+      "City of the Wolves just pulled in Kenshiro. Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have one real question. Does this feel like a fighter, or a trailer stunt? Guest characters work when they change range, pressure and rhythm. They fail when they look wild but play like a costume. Kenshiro needs manga weight inside SNK's clean flow. That matters in ranked. If he lands, City of the Wolves gets a new audience fight. If he feels pasted in, players will notice after one match. Follow Pulse Gaming so you never miss a beat.",
+  };
+
+  const batch = buildGoalBatchPackages({
+    stories: [story],
+    rightsLedgerByStory: { [story.id]: rightsFor(story) },
+    generatedAt: "2026-06-30T12:30:00.000Z",
+  });
+  const pack = batch.packages[0];
+
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "KENSHIRO ROSTER FIGHT");
+  assert.equal(pack.canonical_story_manifest.first_frame_text, "KENSHIRO ROSTER FIGHT");
+  assert.equal(pack.youtube_publish_pack.cover_frame.headline, "KENSHIRO ROSTER FIGHT");
+  assert.ok(!pack.publish_verdict.reason_codes.includes("platform_native:youtube_shorts:weak_cover_headline"));
+  assert.ok(!pack.publish_verdict.reason_codes.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
 });
 
 test("goal batch package proof preparation rewrites thin fresh RSS scripts into specific viewer copy", () => {

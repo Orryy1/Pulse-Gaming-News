@@ -763,6 +763,125 @@ test("fresh refill repair filter quarantines retro and collector stories without
   }
 });
 
+test("fresh refill repair attempt scope prioritises direct and official motion runway", async () => {
+  const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-priority-"));
+  const repairDir = path.join(tmp, "repair");
+
+  async function artifact(storyId, manifest) {
+    const dir = path.join(tmp, storyId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_subject: manifest.subject,
+        selected_title: manifest.title,
+        narration_script: `${manifest.subject} has a fresh official update. Follow Pulse Gaming so you never miss a beat.`,
+      }),
+    );
+    await fs.writeFile(
+      path.join(dir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: manifest.primary_source,
+        direct_media_candidates: manifest.direct_media_candidates || [],
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    return dir;
+  }
+
+  try {
+    const mediaOnlyDir = await artifact("media_only_story", {
+      subject: "Example Fighter",
+      title: "Example Fighter Gets A Media Preview",
+      primary_source: {
+        name: "IGN",
+        url: "https://www.ign.com/articles/example-fighter-preview",
+        type: "rss",
+      },
+    });
+    const officialDir = await artifact("official_story", {
+      subject: "Example Racer",
+      title: "Example Racer Gets An Xbox Wire Update",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/30/example-racer-gameplay/",
+        type: "rss",
+      },
+    });
+    const directDir = await artifact("direct_motion_story", {
+      subject: "Example Adventure",
+      title: "Example Adventure Has Direct Footage",
+      primary_source: {
+        name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/06/30/example-adventure-gameplay/",
+        type: "rss",
+      },
+      direct_media_candidates: [
+        {
+          direct_media_url: "https://video.fastly.steamstatic.com/store_trailers/123/456/hls_264_master.m3u8",
+          source_type: "official_game_site_news_page",
+          source_title: "Example Adventure official gameplay",
+        },
+      ],
+    });
+    const governanceDir = await artifact("governance_red_story", {
+      subject: "Example Console",
+      title: "Example Console Deal Has A Governance Block",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/30/example-console-deal/",
+        type: "rss",
+      },
+    });
+
+    const result = await freshRefillRepairAttemptScope({
+      packageFilter: {
+        eligibleRows: [
+          {
+            story_id: "media_only_story",
+            artifact_dir: mediaOnlyDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+          {
+            story_id: "governance_red_story",
+            artifact_dir: governanceDir,
+            blockers: ["governance:RED", "footage:v4_motion_blocked"],
+          },
+          {
+            story_id: "official_story",
+            artifact_dir: officialDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+          {
+            story_id: "direct_motion_story",
+            artifact_dir: directDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+        ],
+        eligibleStoryPackagesPath: path.join(tmp, "eligible.json"),
+      },
+      repairStoryLimit: 2,
+      repairDir,
+    });
+
+    assert.deepEqual(
+      result.storyPackageRows.map((row) => row.story_id),
+      ["direct_motion_story", "official_story"],
+    );
+    assert.deepEqual(
+      result.repairDeferredByLimitRows.map((row) => row.story_id),
+      ["media_only_story", "governance_red_story"],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill official discovery runs from source-family search rows even without accepted source entries", () => {
   const { freshRefillShouldRunOfficialDiscovery } = require("../../lib/job-handlers");
 
@@ -2446,6 +2565,18 @@ test("fresh production refill full repair auto-applies safe source-bound script 
     assert.equal(result.repair_evidence.summary.script_rewrite_apply_status, "completed");
     assert.equal(result.repair_evidence.summary.script_rewrite_applied_count, 1);
     assert.equal(result.repair_evidence.summary.script_rewrite_blocked_count, 0);
+    assert.equal(
+      result.repair_evidence.summary.repair_eligible_story_package_count,
+      1,
+      "a source-bound script rewrite that clears the scorecard must be re-filtered into motion repair",
+    );
+    assert.equal(result.repair_evidence.summary.repair_attempt_story_package_count, 1);
+    assert.equal(result.repair_evidence.summary.script_blocked_package_count, 0);
+    assert.equal(result.repair_evidence.summary.script_rewrite_promoted_count, 1);
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/studio-v4-motion-pack.js"),
+      "repaired scripts must continue into the same refill run's motion evidence path",
+    );
     assert.match(
       result.repair_evidence.outputs.script_rewrite_apply_report,
       /fresh_refill_script_rewrite_report\.json$/,

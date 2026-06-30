@@ -259,6 +259,38 @@ test("public output gate blocks thumbnail/title/script subject drift", () => {
   assert.ok(gate.failures.includes("public_output:thumbnail_missing_canonical_subject"));
 });
 
+test("public output gate accepts concrete character cover text when title keeps canonical subject", () => {
+  const story = {
+    id: "fatal-fury-kenshiro",
+    canonical_subject: "Fatal Fury City Of The Wolves",
+    canonical_game: "Fatal Fury City Of The Wolves",
+    selected_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    suggested_thumbnail_text: "KENSHIRO ROSTER FIGHT",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    description:
+      "Fatal Fury City Of The Wolves just turned a crossover into a real roster argument. Players will judge whether Kenshiro feels like a proper moveset. Source: Xbox Wire.",
+    full_script:
+      "City of the Wolves just pulled in Kenshiro. Xbox Wire says the Fist of the North Star icon is joining Fatal Fury. Follow Pulse Gaming so you never miss a beat.",
+    manual_caption_generated: true,
+  };
+
+  const gate = runPublicOutputCoherenceGate({
+    story,
+    publicTitle: story.selected_title,
+    script: story.full_script,
+    thumbnailText: story.suggested_thumbnail_text,
+    sourceCardLabel: story.source_card_label,
+    captionFileExists: true,
+  });
+
+  assert.equal(gate.result, "pass", gate.failures.join(", "));
+  assert.equal(
+    gate.failures.includes("public_output:thumbnail_missing_canonical_subject"),
+    false,
+  );
+});
+
 test("public output gate treats GTA VI as Grand Theft Auto VI subject parity", () => {
   const story = {
     id: "gta-vi-alias",

@@ -9,6 +9,7 @@ const test = require("node:test");
 const {
   NORMAL_PRODUCTION_REPAIR_STRATEGY,
   durationRepairLocalTtsSegmentationOptions,
+  durationRepairPreferredThumbnailHeadline,
   durationRepairThumbnailHeadline,
   extendScriptToTarget,
   materializeDurationVariantRepairs,
@@ -340,6 +341,76 @@ test("duration variant repair extends script, regenerates local audio and rerend
   assert.equal(scriptScorecard.repair_basis, "duration_variant_repair");
   assert.equal(scriptScorecard.fact_lock.source_name, "IGN");
   assert.equal(scriptScorecard.safety.no_publishing_side_effects, true);
+});
+
+test("normal duration repair preserves a clean longer spoken script over stale compact narration", () => {
+  const shortFallback =
+    "City of the Wolves just pulled in Kenshiro. Xbox Wire reports From North Star to South Town - Kenshiro Is Coming to FATAL FURY: City of the Wolves. Fatal Fury City Of The Wolves finally has footage players can judge. Follow Pulse Gaming so you never miss a beat.";
+  const cleanLongScript =
+    "City of the Wolves just pulled in Kenshiro. Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have one real question. Does this feel like a fighter, or a trailer stunt? Guest characters work when they change range, pressure and rhythm. They fail when they look wild but play like a costume. Kenshiro needs manga weight inside SNK's clean flow. That matters in ranked. If he lands, City of the Wolves gets a new audience fight. If he feels pasted in, players will notice after one match. Follow Pulse Gaming so you never miss a beat.";
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "Fatal Fury City Of The Wolves",
+      canonical_game: "Fatal Fury City Of The Wolves",
+      selected_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+      thumbnail_headline: "KENSHIRO ROSTER FIGHT",
+      first_spoken_line: "City of the Wolves just pulled in Kenshiro.",
+      narration_script: shortFallback,
+      full_script: shortFallback,
+      tts_script: cleanLongScript,
+      spoken_narration_script: cleanLongScript,
+      primary_source: "Xbox Wire",
+      confirmed_claims: [
+        "From North Star to South Town - Kenshiro Is Coming to FATAL FURY: City of the Wolves!",
+      ],
+      description:
+        "City of the Wolves just pulled in Kenshiro. Xbox Wire says Kenshiro is joining Fatal Fury. Source: Xbox Wire.",
+    },
+    {
+      current_duration_s: 34.83,
+      target_duration_seconds: { min: 35, max: 59 },
+      source_blockers: ["normal_production_duration_below_quality_floor:34.83"],
+    },
+  );
+
+  assert.equal(repair.script, cleanLongScript);
+  assert.equal(repair.repaired_word_count, simpleWordCount(cleanLongScript));
+  assert.doesNotMatch(repair.script, /finally has footage players can judge/i);
+});
+
+test("normal duration repair does not pad a clean primary script just to chase target words", () => {
+  const cleanScript =
+    "City of the Wolves just pulled in Kenshiro. Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have one real question. Does this feel like a fighter, or a trailer stunt? Guest characters work when they change range, pressure and rhythm. They fail when they look wild but play like a costume. Kenshiro needs manga weight inside SNK's clean flow. That matters in ranked. If he lands, City of the Wolves gets a new audience fight. If he feels pasted in, players will notice after one match. Follow Pulse Gaming so you never miss a beat.";
+  const repair = extendScriptToTarget(
+    {
+      canonical_subject: "Fatal Fury City Of The Wolves",
+      canonical_game: "Fatal Fury City Of The Wolves",
+      selected_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+      thumbnail_headline: "KENSHIRO ROSTER FIGHT",
+      first_spoken_line: "City of the Wolves just pulled in Kenshiro.",
+      narration_script: cleanScript,
+      full_script: cleanScript,
+      tts_script: cleanScript,
+      spoken_narration_script: cleanScript,
+      primary_source: "Xbox Wire",
+      confirmed_claims: [
+        "From North Star to South Town - Kenshiro Is Coming to FATAL FURY: City of the Wolves!",
+      ],
+      description:
+        "City of the Wolves just pulled in Kenshiro. Xbox Wire says Kenshiro is joining Fatal Fury. Source: Xbox Wire.",
+    },
+    {
+      current_duration_s: 36.548,
+      target_duration_seconds: { min: 35, max: 59 },
+      provider: "elevenlabs",
+      source_blockers: ["normal_production_duration_below_quality_floor:34.83"],
+    },
+  );
+
+  assert.equal(repair.script, cleanScript);
+  assert.equal(repair.repaired_word_count, simpleWordCount(cleanScript));
+  assert.equal(repair.appended_word_count, 0);
+  assert.doesNotMatch(repair.script, /finally has footage players can judge/i);
 });
 
 test("duration variant repair restores canonical script when audio regeneration fails", async () => {
@@ -2994,6 +3065,35 @@ test("duration variant repair thumbnail headline keeps the subject inside the mo
   assert.equal(
     durationRepairThumbnailHeadline("Mega Mewtwo Is Finally Coming To Pokemon Go", "Pokemon Go"),
     "POKÉMON GO MEGA MEWTWO",
+  );
+});
+
+test("duration variant repair preserves explicit first-frame thumbnail repairs over stale cover fields", () => {
+  assert.equal(
+    durationRepairPreferredThumbnailHeadline({
+      thumbnail_headline: "FATAL FURY CITY",
+      thumbnail_text: "FATAL FURY CITY",
+      suggested_thumbnail_text: "KENSHIRO ROSTER FIGHT",
+      first_frame_text: "KENSHIRO ROSTER FIGHT",
+    }),
+    "KENSHIRO ROSTER FIGHT",
+  );
+  assert.equal(
+    durationRepairPreferredThumbnailHeadline({
+      thumbnail_headline: "KENSHIRO ROSTER FIGHT",
+      thumbnail_text: "KENSHIRO ROSTER FIGHT",
+      suggested_thumbnail_text: "KENSHIRO ROSTER FIGHT",
+      first_frame_text: "KENSHIRO ROSTER FIGHT",
+    }),
+    "KENSHIRO ROSTER FIGHT",
+  );
+  assert.equal(
+    durationRepairPreferredThumbnailHeadline({
+      thumbnail_headline: "VALORANT VANGUARD PANIC",
+      thumbnail_text: "VALORANT VANGUARD PANIC",
+      suggested_thumbnail_text: "VANGUARD PANIC",
+    }),
+    "",
   );
 });
 

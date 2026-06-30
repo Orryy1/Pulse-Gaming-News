@@ -1765,6 +1765,65 @@ test("goal proof package keeps roguelite podracing hooks instead of generic spli
   assert.match(pack.youtube_publish_pack.description, /repeat runs, wipeout pressure and handling/i);
 });
 
+test("goal proof package keeps Fatal Fury Kenshiro roster copy instead of generic platform fallbacks", () => {
+  const fatalFuryStory = greenStory();
+  fatalFuryStory.id = "fatal-fury-kenshiro-roster-proof";
+  fatalFuryStory.canonical_subject = "Fatal Fury City Of The Wolves";
+  fatalFuryStory.canonical_game = "Fatal Fury City Of The Wolves";
+  fatalFuryStory.title = "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight";
+  fatalFuryStory.canonical_angle =
+    "Kenshiro joining Fatal Fury City Of The Wolves turns the crossover into a real roster fight";
+  fatalFuryStory.suggested_title = fatalFuryStory.title;
+  fatalFuryStory.public_title = fatalFuryStory.title;
+  fatalFuryStory.selected_title = fatalFuryStory.title;
+  fatalFuryStory.suggested_thumbnail_text = "KENSHIRO ROSTER FIGHT";
+  fatalFuryStory.thumbnail_headline = "KENSHIRO ROSTER FIGHT";
+  fatalFuryStory.source_name = "Xbox Wire";
+  fatalFuryStory.primary_source = "Xbox Wire";
+  fatalFuryStory.source_card_label = "Xbox Wire";
+  fatalFuryStory.thumbnail_source_label = "Xbox Wire";
+  fatalFuryStory.article_url = "https://news.xbox.com/en-us/2026/06/30/fatal-fury-city-of-the-wolves-kenshiro/";
+  fatalFuryStory.description =
+    "Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have a choice: jump back in for a wilder roster or wait until the moveset proves it belongs. If he feels pasted in, the crossover becomes noise. Source: Xbox Wire.";
+  fatalFuryStory.full_script = [
+    "City of the Wolves just pulled in Kenshiro.",
+    "Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have a choice: jump back in for a wilder roster or wait until the moveset proves it belongs.",
+    "Guest fighters work when they change range, pressure and rhythm.",
+    "They fail when they look wild in a trailer and play like a costume.",
+    "Kenshiro has to bring manga weight into SNK's clean flow without making the roster feel desperate.",
+    "If he lands, City of the Wolves gets a new audience fight.",
+    "If he feels pasted in, the crossover becomes noise.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+
+  const pack = buildGoalProofPackage({
+    story: fatalFuryStory,
+    rightsLedger: rightsForGreenStory(fatalFuryStory),
+    generatedAt: "2026-06-30T13:30:00.000Z",
+  });
+
+  assert.equal(pack.youtube_publish_pack.title, "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight");
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "KENSHIRO ROSTER FIGHT");
+  assert.equal(pack.canonical_story_manifest.first_frame_text, "KENSHIRO ROSTER FIGHT");
+  assert.doesNotMatch(pack.youtube_publish_pack.title, /Could Split Players/i);
+  assert.match(pack.youtube_publish_pack.description, /Kenshiro/i);
+  assert.match(pack.youtube_publish_pack.description, /roster argument|moveset|guest/i);
+  assert.match(pack.instagram_publish_pack.caption, /Kenshiro/i);
+  assert.match(pack.facebook_publish_pack.page_caption, /Kenshiro/i);
+  assert.ok(
+    !pack.publish_verdict.reason_codes.some((reason) =>
+      /public_output:thumbnail_missing_canonical_subject|public_copy:platform_copy_missing_canonical_subject/.test(reason),
+    ),
+    JSON.stringify(pack.publish_verdict.reason_codes, null, 2),
+  );
+  assert.ok(
+    !pack.platform_publish_manifest.platform_native_evidence.failures.some((failure) =>
+      /weak_platform_title|plain_platform_description/.test(failure.reason),
+    ),
+    JSON.stringify(pack.platform_publish_manifest.platform_native_evidence.failures),
+  );
+});
+
 test("goal proof package writes goal-named artefacts", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-"));
   const pack = buildGoalProofPackage({

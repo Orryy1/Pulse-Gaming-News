@@ -1070,6 +1070,46 @@ test("goal public copy QA treats GTA VI platform copy as Grand Theft Auto VI sub
   assert.equal(report.failures.includes("public_copy:platform_copy_missing_canonical_subject"), false);
 });
 
+test("goal public copy QA allows concrete cover-frame story entities when platform copy carries the subject", () => {
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Fatal Fury City Of The Wolves",
+    selected_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    first_spoken_line: "City of the Wolves just pulled in Kenshiro.",
+    narration_script:
+      "City of the Wolves just pulled in Kenshiro. Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have one real question. If he feels pasted in, players will notice after one match. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Fatal Fury City Of The Wolves just turned a crossover into a real roster argument. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    confirmed_claims: [
+      "From North Star to South Town - Kenshiro Is Coming to FATAL FURY: City of the Wolves!",
+    ],
+    platform_publish_manifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+          description:
+            "Fatal Fury City Of The Wolves just turned a crossover into a real roster argument. Source: Xbox Wire.",
+          cover_frame: {
+            headline: "KENSHIRO ROSTER FIGHT",
+            subject: "Fatal Fury City Of The Wolves",
+          },
+        },
+        instagram_reels: {
+          caption:
+            "Fatal Fury City Of The Wolves just turned a crossover into a real roster argument. Source: Xbox Wire.",
+          cover_frame: {
+            headline: "KENSHIRO ROSTER FIGHT",
+            subject: "Fatal Fury City Of The Wolves",
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(report.failures.includes("public_copy:platform_copy_missing_canonical_subject"), false);
+});
+
 test("goal public copy QA blocks stale platform source labels", () => {
   const report = evaluateGoalPublicCopy({
     canonical_subject: "The Expanse: Osiris Reborn",

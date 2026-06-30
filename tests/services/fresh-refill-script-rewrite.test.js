@@ -81,12 +81,33 @@ function platformManifest() {
         cover_frame: { headline: "TEKKEN 8 FINALLY SHOWS REAL GAMEPLAY" },
       },
       facebook_reels: {
+        duration_seconds: { min: 35, max: 60 },
         page_caption: "Generic page caption.",
       },
       x: {
         hot_take_post: "Generic X post.",
         thread_posts: ["Generic thread."],
       },
+    },
+    platform_native_evidence: {
+      schema_version: 1,
+      verdict: "fail",
+      platforms: [
+        {
+          platform: "youtube_shorts",
+          status: "pass",
+          copy_fingerprint: "generic description old weak title",
+        },
+        {
+          platform: "instagram_reels",
+          status: "pass",
+          copy_fingerprint: "generic caption old weak cover",
+        },
+      ],
+      failures: [
+        { platform: "youtube_shorts", reason: "weak_cover_headline" },
+        { platform: "instagram_reels", reason: "weak_cover_headline" },
+      ],
     },
   };
 }
@@ -213,6 +234,43 @@ test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concret
   assert.equal(script.coherence.result, "pass");
 });
 
+test("fresh refill viewer script keeps Fatal Fury City Of The Wolves in the public title", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_f2f7097c7ad52e30",
+      title: "City of the Wolves Just Got Kenshiro",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/29/fatal-fury-fist-of-the-north-star-kenshiro/",
+        type: "rss",
+      },
+      current_script:
+        "Xbox Wire says Kenshiro from Fist of the North Star is coming to Fatal Fury: City of the Wolves.",
+    },
+    manifest: {
+      story_id: "rss_f2f7097c7ad52e30",
+      canonical_subject: "City of the Wolves",
+      confirmed_claims: [
+        "Kenshiro from Fist of the North Star is coming to FATAL FURY: City of the Wolves",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.suggested_title, "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight");
+  assert.ok(
+    script.word_count >= 100 && script.word_count <= 104,
+    `expected a duration-safe short script, got ${script.word_count} words`,
+  );
+  assert.match(script.full_script, /City of the Wolves|Kenshiro|Fatal Fury/i);
+  assert.match(script.full_script, /players will notice after one match/i);
+  assert.doesNotMatch(script.full_script, /crossover becomes noise|crossover is a huge/i);
+  assert.doesNotMatch(script.suggested_title, /:/, "avoid title punctuation that creates TTS title pauses");
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass");
+});
+
 test("fresh refill script rewrite dry-run leaves local proof files unchanged", async () => {
   const { artifactDir, workOrderPath } = await writeFixture("dry-run");
   const manifestPath = path.join(artifactDir, "canonical_story_manifest.json");
@@ -248,6 +306,10 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
   const manifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
   assert.match(manifest.narration_script, /^Tekken 8 bringing Bob back\b/);
   assert.doesNotMatch(manifest.narration_script, /new source detail|real question|play now, wait, skip/i);
+  assert.equal(manifest.title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
+  assert.equal(manifest.canonical_title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
+  assert.equal(manifest.selected_title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
+  assert.equal(manifest.public_title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
   assert.equal(manifest.script_repair.local_only, true);
   assert.equal(manifest.script_repair.no_db_mutation, true);
 
@@ -259,8 +321,17 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
   assert.equal(coherence.result, "pass", JSON.stringify(coherence, null, 2));
 
   const platform = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.equal(platform.outputs.youtube_shorts.title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
   assert.match(platform.outputs.youtube_shorts.description, /Bob|Eurogamer/i);
   assert.doesNotMatch(platform.outputs.instagram_reels.caption, /new source detail|real question/i);
+  assert.equal(platform.platform_native_evidence.verdict, "pass", JSON.stringify(platform.platform_native_evidence, null, 2));
+  assert.ok(
+    !platform.platform_native_evidence.failures.some((failure) => /weak_cover_headline|weak_platform_title/.test(failure.reason)),
+    JSON.stringify(platform.platform_native_evidence.failures),
+  );
+  const youtubeEvidence = platform.platform_native_evidence.platforms.find((item) => item.platform === "youtube_shorts");
+  assert.match(youtubeEvidence.copy_fingerprint, /bob|eurogamer/i);
+  assert.doesNotMatch(youtubeEvidence.copy_fingerprint, /generic description old weak title/i);
 });
 
 test("fresh refill script rewrite clears stale public-copy blockers but keeps real media blockers", async () => {

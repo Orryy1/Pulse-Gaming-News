@@ -299,6 +299,47 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
+test("goal production render materializer passes repaired first-frame cover text to renderer", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-repaired-cover-"));
+  const artifactDir = await makePackage(root, "fatal-fury-cover-render", {
+    canonical_subject: "Fatal Fury City Of The Wolves",
+    canonical_game: "Fatal Fury City Of The Wolves",
+    selected_title: "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    thumbnail_headline: "FATAL FURY CITY",
+    thumbnail_text: "FATAL FURY CITY",
+    suggested_thumbnail_text: "KENSHIRO ROSTER FIGHT",
+    first_frame_text: "KENSHIRO ROSTER FIGHT",
+    primary_source: "Xbox Wire",
+    narration_script:
+      "City of the Wolves just pulled in Kenshiro. Xbox Wire says the Fist of the North Star icon is joining Fatal Fury, so players have one real question. Follow Pulse Gaming so you never miss a beat.",
+    first_spoken_line: "City of the Wolves just pulled in Kenshiro.",
+    description: "Fatal Fury City Of The Wolves just turned a crossover into a real roster argument. Source: Xbox Wire.",
+  });
+  const calls = [];
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("fatal-fury-cover-render", artifactDir)] },
+    generatedAt: "2026-06-30T14:30:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 40,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(calls[0].first_frame_text, "KENSHIRO ROSTER FIGHT");
+  assert.equal(calls[0].thumbnail_headline, "KENSHIRO ROSTER FIGHT");
+});
+
 test("goal production render materializer passes safe GTA VI TTS script to renderer", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-gta-tts-"));
   const publicScript =

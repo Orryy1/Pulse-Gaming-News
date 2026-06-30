@@ -330,6 +330,45 @@ test("goal audio materializer force-regenerates a workbench ready pair", async (
   assert.equal(report.jobs[0].provider, "elevenlabs");
 });
 
+test("goal audio materializer stores safe spoken text as primary timestamp text", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-safe-primary-text-"));
+  const displayScript = "GTA VI just turned cover art into a buying argument.";
+  const spokenScript = "Rockstar's next Grand Theft Auto just turned cover art into a buying argument.";
+  const artifactDir = await makePackage(root, "story-safe-primary-text", {
+    selected_title: "GTA VI Cover Art Turns Into A Buying Argument",
+    narration_script: displayScript,
+    tts_script: spokenScript,
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-safe-primary-text", artifactDir)],
+    },
+    generatedAt: "2026-06-30T08:05:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      assert.equal(text, spokenScript);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  const timestamps = await fs.readJson(
+    path.join(root, "output", "audio", "story-safe-primary-text_timestamps.json"),
+  );
+  assert.equal(timestamps.meta.text, spokenScript);
+  assert.equal(timestamps.meta.transcript, spokenScript);
+  assert.equal(timestamps.meta.spoken_text, spokenScript);
+  assert.equal(timestamps.meta.display_text, displayScript);
+  assert.doesNotMatch(timestamps.meta.text, /\bGTA\s+VI\b/);
+});
+
 test("goal audio materializer promotes workbench ready pairs without forced TTS regeneration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-ready-promote-"));
   const script = "Star Fox just got a sharper Switch 2 camera deal.";
@@ -1080,8 +1119,10 @@ test("goal audio materializer sends spoken pronunciation text while preserving d
   assert.equal(report.summary.materialized_count, 1);
   assert.equal(calls[0].text, "Hades two finally has a PlayStation and Xbox date.");
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-hades-spoken_timestamps.json"));
-  assert.equal(timestamps.meta.text, script);
+  assert.equal(timestamps.meta.text, "Hades two finally has a PlayStation and Xbox date.");
   assert.equal(timestamps.meta.transcript, "Hades two finally has a PlayStation and Xbox date.");
+  assert.equal(timestamps.meta.spoken_text, "Hades two finally has a PlayStation and Xbox date.");
+  assert.equal(timestamps.meta.display_text, script);
   assert.equal(timestamps.words.filter((word) => /^Hades/i.test(word.word) || word.word === "two").length, 2);
   assert.ok(timestamps.words.some((word) => word.word === "two"));
 });
@@ -1897,8 +1938,10 @@ test("goal audio materializer aligns GTA sequel numbers in spoken form while pre
   assert.equal(calls[0].text, "Grand Theft Auto five just became the next Grand Theft Auto waiting room.");
   assert.equal(report.summary.materialized_count, 1);
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-gta-spoken_timestamps.json"));
-  assert.equal(timestamps.meta.text, script);
+  assert.equal(timestamps.meta.text, "Grand Theft Auto five just became the next Grand Theft Auto waiting room.");
   assert.equal(timestamps.meta.transcript, "Grand Theft Auto five just became the next Grand Theft Auto waiting room.");
+  assert.equal(timestamps.meta.spoken_text, "Grand Theft Auto five just became the next Grand Theft Auto waiting room.");
+  assert.equal(timestamps.meta.display_text, script);
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
   assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
 });

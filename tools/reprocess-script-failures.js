@@ -24,7 +24,10 @@ const {
 const {
   buildScriptFailureReprocessReport,
   formatScriptFailureReprocessMarkdown,
+  isAdvertiserSafeRepairCandidate,
+  isReprocessableScriptFailureStory,
   selectReprocessableScriptFailureStories,
+  storyHasPlatformPost,
 } = require("../lib/ops/script-failure-reprocess");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -49,6 +52,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     sourceBoundOnly: false,
     forceStory: false,
     storyIds: [],
+    outDir: OUT,
+    queue: null,
     help: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -97,6 +102,18 @@ function parseArgs(argv = process.argv.slice(2)) {
       args.sourceBoundOnly = true;
     } else if (arg === "--force-story") {
       args.forceStory = true;
+    } else if (arg === "--out-dir") {
+      const value = String(argv[++i] || "").trim();
+      if (value) args.outDir = path.resolve(value);
+    } else if (arg.startsWith("--out-dir=")) {
+      const value = String(arg.slice("--out-dir=".length) || "").trim();
+      if (value) args.outDir = path.resolve(value);
+    } else if (arg === "--queue") {
+      const value = String(argv[++i] || "").trim();
+      if (value) args.queue = path.resolve(value);
+    } else if (arg.startsWith("--queue=")) {
+      const value = String(arg.slice("--queue=".length) || "").trim();
+      if (value) args.queue = path.resolve(value);
     } else if (arg === "--help" || arg === "-?") {
       args.help = true;
     }
@@ -110,10 +127,185 @@ function printHelp() {
       "  Default is dry-run: generates scripts and reports, but does not write DB rows.\n" +
       "  --force-story with --story ID regenerates an explicit unpublished story even if it was not already marked as a script failure.\n" +
       "  --source-bound-only skips the LLM and uses the deterministic source-bound fallback writer for suitable source-backed stories.\n" +
+      "  --queue PATH hydrates forced story IDs from local repair queue package manifests when they are not in the DB.\n" +
       `  Local LLM calls are bounded by --llm-timeout-ms (default ${DEFAULT_REPROCESS_LLM_TIMEOUT_MS}ms).\n` +
       `  Repair mode uses --max-attempts ${DEFAULT_REPROCESS_MAX_ATTEMPTS} and --skip-editor by default so one bad story cannot stall the queue.\n` +
       "  --apply-local persists only selected script-review failure rows and never posts to Discord/social.\n",
   );
+}
+
+async function readJsonIfExists(filePath) {
+  if (!filePath || !(await fs.pathExists(filePath))) return null;
+  return fs.readJson(filePath);
+}
+
+function storyIdFromManifest(manifest = {}, fallbackId = "") {
+  return String(
+    manifest.id ||
+      manifest.story_id ||
+      manifest.storyId ||
+      manifest.canonical_story?.id ||
+      manifest.canonical_story?.story_id ||
+      fallbackId ||
+      "",
+  ).trim();
+}
+
+function packageDirFromQueueItem(item = {}) {
+  const finalPath =
+    item.media?.finalPath ||
+    item.media?.final_path ||
+    item.final_path ||
+    item.exported_path ||
+    item.render_path;
+  if (!finalPath) return null;
+  return path.dirname(path.resolve(finalPath));
+}
+
+function normalisePackageManifestStory(manifest = {}, item = {}) {
+  const nested = manifest.story || manifest.canonical_story || {};
+  const source = { ...nested, ...manifest };
+  const id = storyIdFromManifest(source, item.story_id);
+  if (!id) return null;
+  const primarySource =
+    source.primary_source ||
+    source.discovery_source ||
+    source.source_name ||
+    source.publisher ||
+    item.source ||
+    item.source_name ||
+    item.subreddit ||
+    "";
+  const primaryUrl =
+    source.primary_source_url ||
+    source.source_url ||
+    source.article_url ||
+    source.url ||
+    item.article_url ||
+    item.url ||
+    "";
+  const fullScript =
+    source.full_script ||
+    source.narration_script ||
+    source.tts_script ||
+    item.full_script ||
+    item.tts_script ||
+    "";
+  return {
+    ...item,
+    ...source,
+    id,
+    story_id: id,
+    title:
+      source.title ||
+      source.public_title ||
+      source.selected_title ||
+      source.canonical_title ||
+      item.title ||
+      id,
+    source_type: source.source_type || item.source_type || (id.startsWith("rss_") ? "rss" : "reddit"),
+    subreddit: source.subreddit || primarySource || item.subreddit || item.source || "",
+    source_name: source.source_name || primarySource || item.source_name || "",
+    publisher: source.publisher || primarySource || item.publisher || "",
+    article_url: primaryUrl,
+    source_url: source.source_url || primaryUrl,
+    url: source.url || primaryUrl,
+    source_published_at:
+      source.source_published_at ||
+      source.published_at ||
+      source.timestamp ||
+      item.source_published_at ||
+      item.timestamp ||
+      "",
+    timestamp:
+      source.timestamp ||
+      source.source_published_at ||
+      source.published_at ||
+      item.timestamp ||
+      item.source_published_at ||
+      "",
+    full_script: fullScript,
+    tts_script: source.tts_script || fullScript,
+    description: source.description || item.description || "",
+    db_story_present: false,
+    package_manifest_hydrated: true,
+  };
+}
+
+async function loadForcedStoryManifestsFromLocalQueue({
+  storyIds = [],
+  queuePath,
+  outDir = OUT,
+} = {}) {
+  const wanted = new Set((storyIds || []).map(String).filter(Boolean));
+  if (wanted.size === 0) return [];
+  const resolvedQueuePath = path.resolve(
+    queuePath || path.join(outDir || OUT, "local_media_repair_queue.json"),
+  );
+  const queue = await readJsonIfExists(resolvedQueuePath);
+  if (!queue || !Array.isArray(queue.items)) return [];
+  const out = [];
+  for (const item of queue.items) {
+    const itemId = String(item?.story_id || item?.id || "").trim();
+    if (!itemId || !wanted.has(itemId)) continue;
+    const packageDir = packageDirFromQueueItem(item);
+    if (!packageDir) continue;
+    const manifest =
+      (await readJsonIfExists(path.join(packageDir, "canonical_story_manifest.json"))) ||
+      (await readJsonIfExists(path.join(packageDir, "visual_v4_render_story.json")));
+    if (!manifest) continue;
+    const story = normalisePackageManifestStory(manifest, item);
+    if (story?.id) out.push(story);
+  }
+  return out;
+}
+
+async function buildStoryPoolForReprocess({ stories = [], args = {} } = {}) {
+  const pool = [...(stories || [])];
+  if (args.forceStory === true && Array.isArray(args.storyIds) && args.storyIds.length > 0) {
+    const existing = new Set(pool.map((story) => story?.id).filter(Boolean));
+    const missingStoryIds = args.storyIds.filter((id) => id && !existing.has(id));
+    if (missingStoryIds.length > 0) {
+      const hydrated = await loadForcedStoryManifestsFromLocalQueue({
+        storyIds: missingStoryIds,
+        queuePath: args.queue,
+        outDir: args.outDir || OUT,
+      });
+      for (const story of hydrated) {
+        if (!story?.id || existing.has(story.id)) continue;
+        existing.add(story.id);
+        pool.push(story);
+      }
+    }
+  }
+  return pool;
+}
+
+function buildReprocessExclusions({ stories = [], candidates = [], args = {} } = {}) {
+  const requested = new Set((args.storyIds || []).map(String).filter(Boolean));
+  if (requested.size === 0) return [];
+  const candidateIds = new Set((candidates || []).map((candidate) => candidate?.id).filter(Boolean));
+  const storiesById = new Map((stories || []).filter((story) => story?.id).map((story) => [story.id, story]));
+  const excluded = [];
+  for (const storyId of requested) {
+    if (candidateIds.has(storyId)) continue;
+    const story = storiesById.get(storyId);
+    let reason = "not_selected";
+    if (!story) reason = "missing_from_db_or_queue_package";
+    else if (storyHasPlatformPost(story)) reason = "already_public_platform_post";
+    else if (!isAdvertiserSafeRepairCandidate(story)) reason = "advertiser_unsafe";
+    else if (args.forceStory !== true && !isReprocessableScriptFailureStory(story)) {
+      reason = "not_reprocessable_script_failure";
+    }
+    excluded.push({
+      story_id: storyId,
+      title: story?.title || "",
+      reason,
+      db_story_present: story ? story.db_story_present !== false : false,
+      package_manifest_hydrated: story?.package_manifest_hydrated === true,
+    });
+  }
+  return excluded;
 }
 
 function sourceMaterialForFallback(story = {}) {
@@ -311,16 +503,21 @@ async function main() {
     process.env.LLM_PROVIDER = args.llmProvider;
   }
 
-  const stories =
+  const dbStories =
     typeof db.getStoriesSync === "function"
       ? db.getStoriesSync()
       : await db.getStories();
+  const stories = await buildStoryPoolForReprocess({
+    stories: dbStories,
+    args,
+  });
   const candidates = selectReprocessableScriptFailureStories({
     stories,
     limit: args.limit,
     storyIds: args.storyIds,
     forceStoryIds: args.forceStory,
   });
+  const excluded = buildReprocessExclusions({ stories, candidates, args });
 
   let results = [];
   let backupPath = null;
@@ -342,6 +539,7 @@ async function main() {
     mode: args.applyLocal ? "apply_local" : "dry_run",
     candidates,
     results,
+    excluded,
   });
   if (backupPath) {
     report.backup_path = backupPath;
@@ -371,7 +569,10 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_REPROCESS_LLM_TIMEOUT_MS,
   DEFAULT_REPROCESS_MAX_ATTEMPTS,
+  buildReprocessExclusions,
+  buildStoryPoolForReprocess,
   isPersistableScriptReady,
+  loadForcedStoryManifestsFromLocalQueue,
   parseArgs,
   prepareScriptRepairRow,
   reprocessCandidate,

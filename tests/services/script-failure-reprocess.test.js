@@ -515,6 +515,63 @@ test("buildScriptFailureReprocessReport is safe by default", () => {
   assert.equal(report.rows[1].reason, "format_route_not_short:review_or_briefing");
 });
 
+test("buildScriptFailureReprocessReport includes excluded forced work orders", () => {
+  const report = buildScriptFailureReprocessReport({
+    candidates: [],
+    results: [],
+    excluded: [
+      {
+        story_id: "already_public",
+        title: "Already public story",
+        reason: "already_public_platform_post",
+      },
+    ],
+  });
+
+  assert.equal(report.summary.excluded, 1);
+  assert.deepEqual(report.excluded[0], {
+    story_id: "already_public",
+    title: "Already public story",
+    reason: "already_public_platform_post",
+  });
+  assert.match(formatScriptFailureReprocessMarkdown(report), /already_public_platform_post/);
+});
+
+test("forced reprocess reports already-public rows instead of silently no-oping", () => {
+  const {
+    buildReprocessExclusions,
+    parseArgs,
+  } = require("../../tools/reprocess-script-failures");
+  const args = parseArgs([
+    "--story-id",
+    "public_story",
+    "--force-story",
+    "--source-bound-only",
+    "--dry-run",
+  ]);
+  const excluded = buildReprocessExclusions({
+    args,
+    stories: [
+      {
+        id: "public_story",
+        title: "Public row should not be reprocessed",
+        youtube_post_id: "yt_123",
+      },
+    ],
+    candidates: [],
+  });
+
+  assert.deepEqual(excluded, [
+    {
+      story_id: "public_story",
+      title: "Public row should not be reprocessed",
+      reason: "already_public_platform_post",
+      db_story_present: true,
+      package_manifest_hydrated: false,
+    },
+  ]);
+});
+
 test("formatScriptFailureReprocessMarkdown is operator-readable", () => {
   const md = formatScriptFailureReprocessMarkdown(
     buildScriptFailureReprocessReport({
@@ -715,6 +772,79 @@ test("source-bound-only reprocess repairs Bungie active-development narration wi
   assert.match(rows[0].full_script, /Destiny 2/i);
   assert.match(rows[0].full_script, /The Game Post reports/i);
   assert.doesNotMatch(rows[0].full_script, /review score|critic badge|Metacritic|store-banner/i);
+});
+
+test("forced story reprocess hydrates queue-only package manifests", async () => {
+  const {
+    buildStoryPoolForReprocess,
+    parseArgs,
+  } = require("../../tools/reprocess-script-failures");
+  const tmp = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "pulse-reprocess-package-"));
+  const packageDir = path.join(tmp, "package", "queue_only_story");
+  fs.mkdirSync(packageDir, { recursive: true });
+  fs.writeFileSync(path.join(packageDir, "visual_v4_render.mp4"), "fake mp4");
+  fs.writeFileSync(
+    path.join(packageDir, "canonical_story_manifest.json"),
+    JSON.stringify(
+      {
+        story_id: "queue_only_story",
+        title: "Robo-Ky Delay Puts Guilty Gear On Trial",
+        source_type: "rss",
+        primary_source: "GameSpot",
+        primary_source_url: "https://www.gamespot.com/videos/guilty-gear-strive-robo-ky-official-trailer/",
+        source_published_at: "Sat, 27 Jun 2026 21:36:49 +0000",
+        full_script:
+          "Robo-Ky just made Guilty Gear players wait longer. GameSpot reports the trailer now points to a later arrival window for the character. Follow Pulse Gaming so you never miss a beat.",
+      },
+      null,
+      2,
+    ),
+  );
+  const queuePath = path.join(tmp, "local_media_repair_queue.json");
+  fs.writeFileSync(
+    queuePath,
+    JSON.stringify(
+      {
+        items: [
+          {
+            story_id: "queue_only_story",
+            title: "Robo-Ky Delay Puts Guilty Gear On Trial",
+            action: "extend_script_before_local_repair",
+            media: {
+              finalPath: path.join(packageDir, "visual_v4_render.mp4"),
+            },
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+
+  try {
+    const args = parseArgs([
+      "--story-id",
+      "queue_only_story",
+      "--force-story",
+      "--source-bound-only",
+      "--dry-run",
+      "--queue",
+      queuePath,
+      "--out-dir",
+      tmp,
+    ]);
+    const pool = await buildStoryPoolForReprocess({ stories: [], args });
+
+    assert.equal(pool.length, 1);
+    assert.equal(pool[0].id, "queue_only_story");
+    assert.equal(pool[0].source_type, "rss");
+    assert.equal(pool[0].subreddit, "GameSpot");
+    assert.equal(pool[0].article_url, "https://www.gamespot.com/videos/guilty-gear-strive-robo-ky-official-trailer/");
+    assert.match(pool[0].full_script, /Robo-Ky just made Guilty Gear players wait longer/);
+    assert.equal(pool[0].db_story_present, false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("processor clears stale review metadata after a successful reprocess", () => {

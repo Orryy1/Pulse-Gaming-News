@@ -130,6 +130,35 @@ test("ElevenLabs local TTS training corpus accepts consented production narratio
   assert.equal(report.safety.no_external_uploads, true);
 });
 
+test("ElevenLabs local TTS training corpus blocks risky GTA VI supervision text", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-elevenlabs-corpus-gta-risk-"));
+  await writeStory(root, "gta6_cover_art", {
+    transcript:
+      "Rockstar Games just made Grand Theft Auto Six feel real in one image.",
+  });
+  await writeStory(root, "gta_vi_raw", {
+    transcript:
+      "Grand Theft Auto VI starts the preorder fight with one messy store page.",
+  });
+
+  const report = await buildElevenLabsLocalTtsTrainingCorpus({
+    workspaceRoot: root,
+    roots: [path.join(root, "output")],
+    operatorTrainingPermission: true,
+    generatedAt: "2026-06-18T17:00:00.000Z",
+    minAcceptedSamples: 1,
+    minWords: 5,
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.summary.accepted_sample_count, 0);
+  assert.equal(report.summary.blocked_sample_count, 2);
+  assert.equal(
+    report.blocker_counts["elevenlabs_tts_corpus:risky_gta_vi_training_text"],
+    2,
+  );
+});
+
 test("ElevenLabs local TTS training corpus fails closed without operator permission", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-elevenlabs-corpus-permission-"));
   await writeStory(root, "gta6_cover_art");

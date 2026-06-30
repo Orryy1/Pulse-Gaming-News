@@ -3078,6 +3078,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
   const actualProfile = cleanText(meta.ttsPronunciationProfileVersion);
   const recordedSpoken = cleanText(meta.spoken_text || meta.transcript || meta.text);
   const rawRecordedWordText = timestampWordTextForVoicePronunciation(timestampPayload);
+  const recordedWordTimestampsPresent = Boolean(rawRecordedWordText);
   const recordedWordText =
     rawRecordedWordText &&
     comparableVoiceText(rawRecordedWordText) !== comparableVoiceText(recordedSpoken)
@@ -3098,6 +3099,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
     hasGtaViTitleAlias(rawSpoken) ||
     hasGtaViTitleAlias(expectedSpoken) ||
     hasGtaViTitleAlias(recordedSpoken) ||
+    hasGtaViTitleAlias(rawRecordedWordText) ||
     hasGtaViTitleAlias(recordedWordText);
   const gtaViProfileStale =
     hasTimestampPayload &&
@@ -3115,6 +3117,9 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
   if (!profileSensitive) {
     const failures = [...openingRisk.failures];
     if (gtaViProfileStale) failures.push("voice_pronunciation_profile_stale");
+    if (hasTimestampPayload && gtaViPronunciationSensitive && !recordedWordTimestampsPresent) {
+      failures.push("voice_pronunciation_word_timestamps_missing");
+    }
     return {
       failures,
       warnings: [],
@@ -3123,6 +3128,8 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
         actual_tts_pronunciation_profile_version: actualProfile || null,
         profile_sensitive: false,
         gta_vi_pronunciation_sensitive: gtaViPronunciationSensitive,
+        recorded_word_timestamps_present: recordedWordTimestampsPresent,
+        recorded_word_text: rawRecordedWordText || null,
         ...openingRisk.evidence,
       },
     };
@@ -3152,6 +3159,9 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       warnings.push("voice_pronunciation_recorded_text_missing");
     }
   }
+  if (hasTimestampPayload && gtaViPronunciationSensitive && !recordedWordTimestampsPresent) {
+    failures.push("voice_pronunciation_word_timestamps_missing");
+  }
 
   return {
     failures,
@@ -3161,9 +3171,10 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       actual_tts_pronunciation_profile_version: actualProfile || null,
       profile_sensitive: true,
       gta_vi_pronunciation_sensitive: gtaViPronunciationSensitive,
+      recorded_word_timestamps_present: recordedWordTimestampsPresent,
       expected_spoken_text: expectedSpoken,
       recorded_spoken_text: recordedSpoken || null,
-      recorded_word_text: recordedWordText || null,
+      recorded_word_text: rawRecordedWordText || recordedWordText || null,
       ...openingRisk.evidence,
     },
   };
@@ -3196,7 +3207,7 @@ async function voiceQualityPreflightForStory(story = {}) {
   );
   if (!report) {
     const hardPronunciationFailures = pronunciationProfile.failures.filter((failure) =>
-      /^gta_vi_/.test(failure),
+      /^gta_vi_/.test(failure) || failure === "voice_pronunciation_word_timestamps_missing",
     );
     if (!hardPronunciationFailures.length) {
       return null;

@@ -3443,6 +3443,82 @@ test("attachPreflightQa blocks GTA VI pronunciation-sensitive packages without r
   );
 });
 
+test("attachPreflightQa blocks GTA VI pronunciation-sensitive packages without word timestamp proof", async () => {
+  const rawScript =
+    "GTA 6 just made preorders a trust test. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const expectedSpoken =
+    "Rockstar's next Grand Theft Auto just made preorders a trust test. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const stories = [
+    baseStory({
+      id: "gta_vi_current_profile_missing_word_proof",
+      title: "GTA VI Starts The Preorder Fight",
+      canonical_subject: "Grand Theft Auto VI",
+      narration_script: rawScript,
+      tts_script: rawScript,
+      voice_quality_report: {
+        verdict: "PASS",
+        blockers: [],
+        warnings: [],
+        cadence: {
+          spoken_wpm: 149.2,
+          blockers: [],
+          warnings: [],
+        },
+      },
+      audio_manifest: {
+        voice_provider: "local_tts",
+      },
+      word_timestamps_payload: {
+        words: [],
+        meta: {
+          transcript: expectedSpoken,
+          spoken_text: expectedSpoken,
+          text: expectedSpoken,
+          ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
+          wordTimestampSource: "synthetic_character_alignment",
+        },
+      },
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-30T08:05:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:voice_pronunciation_word_timestamps_missing",
+    ),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_pronunciation_sensitive,
+    true,
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.recorded_word_timestamps_present,
+    false,
+  );
+});
+
 test("attachPreflightQa blocks GTA VI timestamp evidence without the current pronunciation profile", async () => {
   const safeSpoken =
     "Rockstar's next Grand Theft Auto just made pre orders a trust test. " +

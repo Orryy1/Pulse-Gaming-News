@@ -329,6 +329,48 @@ test("executor preflight treats compact GTAVI titles as pronunciation-sensitive"
   assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_timestamp_profile_stale"));
 });
 
+test("executor preflight blocks GTA VI timestamp payloads without word-level proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-gta-no-words-"));
+  const files = await gtaPronunciationEvidenceFiles(root);
+  await fs.writeJson(files.timestamps, {
+    meta: {
+      transcript:
+        "Rockstar's next Grand Theft Auto just made the PlayStation version the one to watch.",
+      spoken_text:
+        "Rockstar's next Grand Theft Auto just made the PlayStation version the one to watch.",
+      text:
+        "Rockstar's next Grand Theft Auto just made the PlayStation version the one to watch.",
+      ttsPronunciationProfileVersion: require("../../lib/tts-pronunciation")
+        .TTS_PRONUNCIATION_PROFILE_VERSION,
+      wordTimestampSource: "synthetic_character_alignment",
+    },
+    words: [],
+  });
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: gtaGuardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix({
+      youtube_shorts: {
+        planned_story_ids: ["gta-vi-story"],
+      },
+    }),
+    selectedActionIds: ["gta-vi-story:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.handoff_ready_action_count, 0);
+  assert.ok(
+    report.blocked_selected_actions[0].blockers.includes(
+      "gta_vi_word_timestamp_evidence_missing",
+    ),
+    JSON.stringify(report.blocked_selected_actions[0].blockers),
+  );
+});
+
 test("executor preflight accepts runtime sentinel kill-switch clear flag", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-clear-flag-"));
   const files = await evidenceFiles(root);

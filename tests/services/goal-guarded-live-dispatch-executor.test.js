@@ -1830,7 +1830,7 @@ test("guarded live dispatch executor blocks stale GTA VI DB tts_script even with
         canonical_subject: "Grand Theft Auto VI",
         full_script: "Grand Theft Auto VI now has one real preorder catch.",
         tts_script:
-          "Grand Theft Auto V I now has one real preorder catch. " +
+          "Grand Theft Auto VI now has one real preorder catch. " +
           "Follow Pulse Gaming so you never miss a beat.",
       }),
     ],

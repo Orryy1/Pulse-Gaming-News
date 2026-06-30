@@ -472,6 +472,30 @@ test("approved voice path rejects split GTA VI roman narration", () => {
   assert.equal(result.transcript.gta_vi_spoken_roman_split, true);
 });
 
+test("approved voice path rejects literal GTA VI roman narration before TTS", () => {
+  for (const [name, transcript] of [
+    ["abbreviated-roman", "GTA VI just made PS5 the version to watch. Follow Pulse Gaming so you never miss a beat."],
+    ["full-title-roman", "Grand Theft Auto VI just made PS5 the version to watch. Follow Pulse Gaming so you never miss a beat."],
+  ]) {
+    const result = evaluateApprovedVoicePath({
+      narration: {
+        provider: "local",
+        source: "local-production-voxcpm-path",
+        audioPath: audioFile(`gta-vi-${name}.mp3`),
+        transcript,
+        acoustic: { medianPitchHz: 118 },
+        acceptedLocalVoice: ACCEPTED_SLEEPY_LIAM,
+        voiceMastering: { ok: true, code: "voice_mastered", targetLufs: -16 },
+      },
+      env: { STUDIO_V2_LOCAL_VOICE_APPROVED: "true" },
+    });
+
+    assert.equal(result.verdict, "rejected", name);
+    assert.ok(result.blockers.includes("gta_vi_spoken_roman_split"), name);
+    assert.equal(result.transcript.gta_vi_spoken_roman_split, true, name);
+  }
+});
+
 test("approved voice path rejects Grand Theft Auto Six opening narration risk", () => {
   const result = evaluateApprovedVoicePath({
     narration: {

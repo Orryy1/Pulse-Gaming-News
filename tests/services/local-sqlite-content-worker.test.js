@@ -17,6 +17,19 @@ test("local sqlite content worker defaults to non-publish content job kinds", ()
   assert.deepEqual(args.kinds, DEFAULT_CONTENT_KINDS);
 });
 
+test("local sqlite content worker covers scheduled learning and quality loops", () => {
+  const args = parseArgs([], {});
+  for (const kind of [
+    "live_performance_analyst",
+    "studio_analytics_loop",
+    "commercial_learning_loop",
+    "competitor_forensics_lab",
+    "competitor_quality_gate",
+  ]) {
+    assert.ok(args.kinds.includes(kind), `expected default content worker to claim ${kind}`);
+  }
+});
+
 test("local sqlite content worker parses explicit kind and worker options", () => {
   const args = parseArgs(
     ["--worker-id", "content-test", "--kinds", "fresh_production_refill,local_tts_doctor", "--gpu"],

@@ -3207,7 +3207,12 @@ async function voiceQualityPreflightForStory(story = {}) {
   );
   if (!report) {
     const hardPronunciationFailures = pronunciationProfile.failures.filter((failure) =>
-      /^gta_vi_/.test(failure) || failure === "voice_pronunciation_word_timestamps_missing",
+      /^gta_vi_/.test(failure) ||
+      failure === "voice_pronunciation_word_timestamps_missing" ||
+      (
+        pronunciationProfile.evidence?.gta_vi_pronunciation_sensitive === true &&
+        /^voice_pronunciation_/.test(failure)
+      ),
     );
     if (!hardPronunciationFailures.length) {
       return null;

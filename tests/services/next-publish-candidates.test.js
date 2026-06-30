@@ -4164,6 +4164,61 @@ test("attachPreflightQa blocks stale spaced GTA six timestamp speech even withou
   );
 });
 
+test("attachPreflightQa blocks GTA VI packages with no voice report or recorded speech proof", async () => {
+  const rawScript =
+    "Grand Theft Auto VI plays best on PS5 on November 19. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const stories = [
+    baseStory({
+      id: "gta_vi_no_voice_report_no_timestamp_proof",
+      title: "GTA VI Just Made PS5 The Version To Watch",
+      canonical_subject: "Grand Theft Auto VI",
+      canonical_game: "Grand Theft Auto VI",
+      narration_script: rawScript,
+      tts_script: rawScript,
+      voice_quality_report: null,
+      word_timestamps_payload: null,
+    }),
+  ];
+  const report = buildNextPublishCandidatesReport(stories, {
+    analyticsText,
+    generatedAt: "2026-06-30T08:55:00.000Z",
+  });
+
+  await attachPreflightQa(report, stories, {
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runAggregateBenchmarkQa: async () => null,
+  });
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:voice_pronunciation_profile_stale",
+    ),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.ok(
+    candidate.preflight_qa.blockers.includes(
+      "voice_quality:voice_pronunciation_recorded_text_missing",
+    ),
+    JSON.stringify(candidate.preflight_qa.blockers),
+  );
+  assert.equal(
+    candidate.preflight_qa.checks.voice_quality.evidence.gta_vi_pronunciation_sensitive,
+    true,
+  );
+});
+
 test("attachPreflightQa blocks split GTA VI roman narration even when script text is safe", async () => {
   const spoken =
     "Grand Theft Auto V I now has one real preorder catch. " +

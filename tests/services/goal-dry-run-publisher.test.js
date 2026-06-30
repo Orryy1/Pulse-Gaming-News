@@ -1118,6 +1118,84 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
   );
 });
 
+test("goal dry-run publisher checks overlay card dwell even when actual scene card windows pass", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-overlay-card-dwell-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "overlay-card-dwell-story",
+    "GREEN",
+    "Fatal Fury City Of The Wolves Gets A Kenshiro Roster Fight",
+    {
+      canonicalSubject: "Fatal Fury City Of The Wolves",
+      durationSeconds: 41,
+      renderManifestPatch: {
+        final_publish_render: true,
+        rendered_duration_s: 41,
+        clips: 8,
+        hyperframes_card_count: 1,
+        hyperframes_premium_shell_required: true,
+        hyperframes_premium_shell_gate: {
+          verdict: "pass",
+          passCount: 4,
+          requiredPassCount: 4,
+          blockers: [],
+        },
+        card_visible_windows: [
+          {
+            id: "scene_4_source",
+            kind: "source",
+            text: "XBOX WIRE NEWS SOURCE",
+            start_s: 14,
+            end_s: 26,
+            duration_s: 12,
+            source: "visual_v4_scene_plan",
+          },
+        ],
+        overlay_card_windows: [
+          {
+            id: "headline_card",
+            kind: "proof_card",
+            text: "KENSHIRO ROSTER FIGHT",
+            start_s: 2,
+            end_s: 6.2,
+            duration_s: 4.2,
+            source: "studio_v4_overlay_chain",
+          },
+        ],
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const directClips = Array.from({ length: 7 }, (_, index) =>
+    directMotionClipFixture({
+      id: `fatal-fury-overlay-direct-${index + 1}`,
+      path: `motion/fatal-fury-overlay-direct-${index + 1}.mp4`,
+      sourceUrl: `https://cdn.example.com/fatal-fury/overlay-${index + 1}.mp4`,
+      sourceFamily: `fatal_fury_overlay_direct_${index + 1}`,
+      startS: index * 7,
+      durationS: 5,
+    }),
+  );
+  await writeDirectMotionFixturePack(artifactDir, directClips);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-30T21:10:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
+      (window) => window.id,
+    ),
+    ["headline_card"],
+  );
+});
+
 test("goal dry-run publisher blocks unreadable rendered source cards without HyperFrames clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-render-source-window-dwell-"));
   const storyPackage = await makeStoryPackage(

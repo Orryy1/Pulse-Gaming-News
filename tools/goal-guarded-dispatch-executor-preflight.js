@@ -19,6 +19,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     root: process.cwd(),
     guardedDispatchPlanPath: null,
     platformStatusMatrixPath: null,
+    runtimeHealthUrl: process.env.PULSE_RUNTIME_HEALTH_URL || "http://127.0.0.1:3001/api/health",
+    runtimeHealthTimeoutMs: Number(process.env.PULSE_RUNTIME_HEALTH_TIMEOUT_MS || 1500),
+    useRuntimeHealth: true,
     actionIds: [],
     selectAllDispatchReady: false,
     allowNonGreenPlanOverwrite: false,
@@ -32,6 +35,12 @@ function parseArgs(argv = process.argv.slice(2)) {
     if (arg === "--root") args.root = argv[++i] || args.root;
     else if (arg === "--guarded-dispatch-plan") args.guardedDispatchPlanPath = argv[++i] || "";
     else if (arg === "--platform-status-matrix") args.platformStatusMatrixPath = argv[++i] || "";
+    else if (arg === "--runtime-health-url") args.runtimeHealthUrl = argv[++i] || "";
+    else if (arg === "--runtime-health-timeout-ms") {
+      args.runtimeHealthTimeoutMs = Number(argv[++i] || args.runtimeHealthTimeoutMs);
+    } else if (arg === "--no-runtime-health") {
+      args.useRuntimeHealth = false;
+    }
     else if (arg === "--action-id") args.actionIds.push(argv[++i] || "");
     else if (arg === "--action-ids") {
       args.actionIds.push(...String(argv[++i] || "").split(","));
@@ -57,6 +66,9 @@ function usage() {
     "  --root <dir>                    Workspace root",
     "  --guarded-dispatch-plan <path>   guarded_dispatch_plan.json",
     "  --platform-status-matrix <path>  platform_status_matrix.json",
+    "  --runtime-health-url <url>        Optional local /api/health source for diagnostic executor state",
+    "  --runtime-health-timeout-ms <ms>  Runtime health timeout (default 1500)",
+    "  --no-runtime-health               Do not use live runtime health as a diagnostic fallback",
     "  --action-id <story:platform>     Explicit action to hand off; repeatable",
     "  --action-ids <csv>               Explicit action IDs as comma-separated values",
     "  --select-all-dispatch-ready      Explicitly hand off every dispatch-ready action",
@@ -75,6 +87,25 @@ async function readJson(filePath, label) {
   return fs.readJson(filePath);
 }
 
+async function readRuntimeHealth({ url, timeoutMs = 1500, enabled = true } = {}) {
+  if (!enabled || !url || typeof fetch !== "function") return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(timeoutMs) || 1500);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -89,12 +120,18 @@ async function main(argv = process.argv.slice(2)) {
     ? path.resolve(root, args.platformStatusMatrixPath)
     : path.join(root, "output", "goal-contract", "platform_status_matrix.json");
 
+  const runtimeHealth = await readRuntimeHealth({
+    url: args.runtimeHealthUrl,
+    timeoutMs: args.runtimeHealthTimeoutMs,
+    enabled: args.useRuntimeHealth,
+  });
   const report = buildGuardedDispatchExecutorPreflight({
     guardedDispatchPlan: await readJson(guardedDispatchPlanPath, "guarded dispatch plan"),
     platformStatusMatrix: await readJson(platformStatusMatrixPath, "platform status matrix"),
     selectedActionIds: args.actionIds,
     selectAllDispatchReady: args.selectAllDispatchReady,
     env: process.env,
+    runtimeHealth,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const artefacts = await writeGuardedDispatchExecutorPreflight(report, {
@@ -116,4 +153,5 @@ if (require.main === module) {
 module.exports = {
   main,
   parseArgs,
+  readRuntimeHealth,
 };

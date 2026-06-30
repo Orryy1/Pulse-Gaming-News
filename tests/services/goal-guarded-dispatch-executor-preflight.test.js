@@ -390,6 +390,65 @@ test("executor preflight accepts runtime sentinel kill-switch clear flag", async
   assert.equal(report.executor_state.emergency_kill_switch_state, "clear");
 });
 
+test("executor diagnostic preflight can use live runtime health when shell env is unset", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-runtime-health-"));
+  const files = await evidenceFiles(root);
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {},
+    runtimeHealth: {
+      status: "ok",
+      schedulerActive: true,
+      runtime: {
+        auto_publish: true,
+        guarded_live_dispatch_enabled: true,
+        emergency_kill_switch_clear: true,
+        dispatch: { mode: "queue", strict: true },
+      },
+      deployment: { primary: true },
+    },
+    generatedAt: "2026-06-30T21:20:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.handoff_ready_action_count, 1);
+  assert.equal(report.executor_state.guarded_live_dispatch_enabled, true);
+  assert.equal(report.executor_state.emergency_kill_switch_state, "clear");
+  assert.equal(report.executor_state.source, "runtime_health");
+});
+
+test("executor diagnostic preflight does not let runtime health override an explicit local hold", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-env-wins-"));
+  const files = await evidenceFiles(root);
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "false",
+      PULSE_EMERGENCY_KILL_SWITCH: "engaged",
+    },
+    runtimeHealth: {
+      status: "ok",
+      schedulerActive: true,
+      runtime: {
+        auto_publish: true,
+        guarded_live_dispatch_enabled: true,
+        emergency_kill_switch_clear: true,
+        dispatch: { mode: "queue", strict: true },
+      },
+      deployment: { primary: true },
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.executor_state.source, "env");
+  assert.ok(report.blocked_selected_actions[0].blockers.includes("guarded_live_dispatch_not_armed"));
+  assert.ok(report.blocked_selected_actions[0].blockers.includes("emergency_kill_switch_not_clear"));
+});
+
 test("executor preflight rejects selected actions when executor is not armed or kill switch is not clear", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-unarmed-"));
   const files = await evidenceFiles(root);

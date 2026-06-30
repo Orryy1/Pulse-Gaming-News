@@ -1,7 +1,10 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
+  generalRunnerEnabled,
   PUBLISH_CRITICAL_JOB_KINDS,
   publishCriticalRunnerEnabled,
 } = require("../../lib/bootstrap-queue");
@@ -65,4 +68,46 @@ test("bootstrap queue lets operators disable the protected publish lane explicit
       value,
     );
   }
+});
+
+test("bootstrap queue can disable the general all-jobs runner while keeping protected lanes available", () => {
+  assert.equal(
+    generalRunnerEnabled({
+      runRunner: true,
+      runGeneralRunner: false,
+      kinds: null,
+      gpu: false,
+      env: {},
+    }),
+    false,
+  );
+  assert.equal(
+    publishCriticalRunnerEnabled({
+      runRunner: true,
+      kinds: null,
+      gpu: false,
+      env: {},
+    }),
+    true,
+  );
+});
+
+test("bootstrap queue keeps restricted worker processes on the general runner path", () => {
+  assert.equal(
+    generalRunnerEnabled({
+      runRunner: true,
+      runGeneralRunner: false,
+      kinds: ["fresh_production_refill"],
+      gpu: false,
+      env: {},
+    }),
+    true,
+  );
+});
+
+test("server starts queue mode without the unrestricted all-jobs runner by default", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "..", "server.js"), "utf8");
+  assert.match(source, /function serverGeneralQueueRunnerEnabled/);
+  assert.match(source, /runGeneralRunner:\s*serverGeneralQueueRunnerEnabled\(process\.env\)/);
+  assert.match(source, /PULSE_SERVER_GENERAL_QUEUE_RUNNER/);
 });

@@ -1798,6 +1798,12 @@ app.post(
 );
 
 // --- Autonomous scheduler (built into server) ---
+function serverGeneralQueueRunnerEnabled(env = process.env) {
+  return /^(true|1|yes|on)$/i.test(
+    String(env.PULSE_SERVER_GENERAL_QUEUE_RUNNER || "").trim(),
+  );
+}
+
 async function startAutonomousScheduler() {
   const llmState = describeLlmState();
   if (!llmState.ok) {
@@ -1827,6 +1833,7 @@ async function startAutonomousScheduler() {
         workerId: `server-${require("os").hostname()}-${process.pid}`,
         runScheduler: true,
         runRunner: true,
+        runGeneralRunner: serverGeneralQueueRunnerEnabled(process.env),
         autoSeed: true,
       });
       schedulerRunning = !!(

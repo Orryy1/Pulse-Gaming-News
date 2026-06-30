@@ -658,6 +658,110 @@ test("sceneBreakdown treats distinct official clip offsets as different visual b
   assert.deepEqual(result.repeatedSources, [{ source: "same-frame.jpg", count: 2 }]);
 });
 
+test("sceneBreakdown reports exact repeated motion windows", () => {
+  const result = sceneBreakdown({
+    sceneList: [
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 18.2, duration: 2.6 },
+      { type: "speed-ramp", source: "official-trailer.mp4", mediaStartS: 18.2, duration: 2.2 },
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 42.8, duration: 2.6 },
+    ],
+  });
+
+  assert.deepEqual(result.repeatedMotionWindows, [
+    { source: "official-trailer.mp4 @18.2s", count: 2 },
+  ]);
+});
+
+test("buildIssues flags exact repeated motion windows as hard quality failures", () => {
+  const scene = sceneBreakdown({
+    sceneList: [
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 18.2, duration: 2.6 },
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 18.2, duration: 2.6 },
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 42.8, duration: 2.6 },
+    ],
+    auto: {
+      sourceDiversity: { value: 0.9, grade: "green" },
+      maxStillRepeat: { value: 1, grade: "green" },
+      stockFillerCount: { value: 0, grade: "green" },
+    },
+  });
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene,
+  });
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, "scene_motion_window_reuse");
+  assert.equal(issues[0].severity, "fail");
+});
+
+test("buildIssues rejects card scenes that are too fast to read", () => {
+  const scene = sceneBreakdown({
+    sceneList: [
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 18.2, duration: 3.2 },
+      {
+        type: "card.source",
+        label: "source_card",
+        source: "hf_source_card_story.mp4",
+        prerenderedMp4: "hf_source_card_story.mp4",
+        premiumLane: "hyperframes",
+        duration: 1.45,
+      },
+    ],
+    auto: {
+      sourceDiversity: { value: 0.9, grade: "green" },
+      maxStillRepeat: { value: 1, grade: "green" },
+      stockFillerCount: { value: 0, grade: "green" },
+    },
+  });
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene,
+  });
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, "unreadable_card_duration");
+  assert.equal(issues[0].severity, "fail");
+  assert.equal(issues[0].evidence[0].durationS, 1.45);
+});
+
+test("buildIssues accepts readable card scenes and distinct clip windows", () => {
+  const scene = sceneBreakdown({
+    sceneList: [
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 18.2, duration: 3.2 },
+      { type: "clip", source: "official-trailer.mp4", mediaStartS: 24.8, duration: 3.2 },
+      {
+        type: "card.source",
+        label: "source_card",
+        source: "hf_source_card_story.mp4",
+        prerenderedMp4: "hf_source_card_story.mp4",
+        premiumLane: "hyperframes",
+        duration: 2.75,
+      },
+    ],
+    auto: {
+      sourceDiversity: { value: 0.9, grade: "green" },
+      maxStillRepeat: { value: 1, grade: "green" },
+      stockFillerCount: { value: 0, grade: "green" },
+    },
+  });
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene,
+  });
+
+  assert.equal(issues.length, 0);
+});
+
 test("buildIssues flags duration and audio defects", () => {
   const issues = buildIssues({
     runtime: { durationDeltaS: 1 },

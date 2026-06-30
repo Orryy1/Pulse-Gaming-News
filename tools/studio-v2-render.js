@@ -1987,6 +1987,23 @@ async function main() {
     type: scene.type || scene.sceneType,
     label: scene.label,
     duration: scene.duration,
+    mediaStartS: Number.isFinite(Number(scene.mediaStartS ?? scene.media_start_s))
+      ? Number(Number(scene.mediaStartS ?? scene.media_start_s).toFixed(3))
+      : null,
+    mediaEndS: Number.isFinite(Number(scene.mediaEndS ?? scene.media_end_s))
+      ? Number(Number(scene.mediaEndS ?? scene.media_end_s).toFixed(3))
+      : Number.isFinite(Number(scene.mediaStartS ?? scene.media_start_s)) &&
+          Number.isFinite(Number(scene.clipDurationS ?? scene.clip_duration_s ?? scene.duration))
+        ? Number(
+            (
+              Number(scene.mediaStartS ?? scene.media_start_s) +
+              Number(scene.clipDurationS ?? scene.clip_duration_s ?? scene.duration)
+            ).toFixed(3),
+          )
+        : null,
+    clipDurationS: Number.isFinite(Number(scene.clipDurationS ?? scene.clip_duration_s))
+      ? Number(Number(scene.clipDurationS ?? scene.clip_duration_s).toFixed(3))
+      : null,
     source:
       scene.source ||
       scene.backgroundSource ||
@@ -1994,6 +2011,9 @@ async function main() {
       scene.statLabel ||
       scene.dateLabel ||
       null,
+    backgroundSource: scene.backgroundSource || null,
+    prerenderedMp4: scene.prerenderedMp4 || null,
+    sourceFamily: scene.sourceFamily || scene.source_family || null,
     premiumLane: scene.premiumLane || null,
     grammarV2: scene.sceneType
       ? scene.sceneType.startsWith("punch") ||

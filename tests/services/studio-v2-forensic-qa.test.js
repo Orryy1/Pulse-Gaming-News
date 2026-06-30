@@ -711,6 +711,62 @@ test("sceneBreakdown reads production render manifest clip and card windows", ()
   );
 });
 
+test("sceneBreakdown reads object-shaped clip scene plans from production manifests", () => {
+  const scene = sceneBreakdown({
+    clip_scene_plan: {
+      repeat_free: false,
+      repeated_base_sources: ["official-trailer_window_18_5"],
+      scenes: [
+        {
+          baseSourceKey: "official-trailer_window_18_5",
+          sourceRootKey: "official-trailer",
+          durationS: 2.6,
+          sourceDurationS: 5,
+          readableCardKind: null,
+        },
+        {
+          baseSourceKey: "official-trailer_window_18_5",
+          sourceRootKey: "official-trailer",
+          durationS: 2.4,
+          sourceDurationS: 5,
+          readableCardKind: null,
+        },
+        {
+          baseSourceKey: "hyperframes_source_card",
+          sourceRootKey: "hyperframes/story/source",
+          path: "hf_source_card_story.mp4",
+          durationS: 1.4,
+          sourceDurationS: 1.4,
+          minimumReadableDurationS: 2.2,
+          readableCardKind: "source",
+          readableText: "Official source",
+        },
+      ],
+    },
+  });
+  const issues = buildIssues({
+    runtime: { durationDeltaS: 0 },
+    subtitles: { verdict: "pass" },
+    audio: { verdict: "pass" },
+    visual: { verdict: "pass" },
+    scene,
+  });
+
+  assert.equal(scene.sceneCount, 3);
+  assert.deepEqual(scene.repeatedMotionWindows, [
+    { source: "official-trailer_window_18_5 @unknown-start", count: 2 },
+  ]);
+  assert.equal(scene.unreadableCardScenes.length, 1);
+  assert.equal(scene.unreadableCardScenes[0].source, "hyperframes_source_card");
+  assert.equal(scene.cardReadability.verdict, "fail");
+  assert.deepEqual(
+    issues.filter((issue) =>
+      ["scene_motion_window_reuse", "unreadable_card_duration"].includes(issue.code),
+    ).map((issue) => issue.code),
+    ["scene_motion_window_reuse", "unreadable_card_duration"],
+  );
+});
+
 test("buildIssues flags exact repeated motion windows as hard quality failures", () => {
   const scene = sceneBreakdown({
     sceneList: [

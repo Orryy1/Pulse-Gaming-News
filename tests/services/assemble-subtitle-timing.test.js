@@ -12,6 +12,7 @@ const {
   planLegacySegmentDuration,
   selectSubtitleScriptText,
 } = require("../../assemble");
+const { normaliseCaptionDisplayText } = require("../../lib/caption-display-text");
 
 function alignmentFromWords(words) {
   const characters = [];
@@ -208,6 +209,30 @@ test("subtitle display merge hides one-token GTA VI ASR stutters", () => {
   const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
 
   assert.deepEqual(merged, ["GTA VI", "starts", "GTA VI."]);
+});
+
+test("subtitle display merge hides punctuation-separated GTA VI ASR stutters", () => {
+  const words = [
+    { text: "GTA", start: 0, end: 0.18 },
+    { text: "si,", start: 0.18, end: 0.26 },
+    { text: "six", start: 0.26, end: 0.44 },
+    { text: "starts", start: 0.46, end: 0.7 },
+    { text: "Grand", start: 0.72, end: 0.9 },
+    { text: "Theft", start: 0.9, end: 1.08 },
+    { text: "Auto", start: 1.08, end: 1.24 },
+    { text: "see/six.", start: 1.24, end: 1.52 },
+  ];
+
+  const merged = mergeSubtitleWordsForDisplay(words).map((word) => word.text);
+
+  assert.deepEqual(merged, ["GTA VI", "starts", "GTA VI."]);
+});
+
+test("caption display text hides punctuation-separated GTA VI ASR stutters in phrase chunks", () => {
+  assert.equal(normaliseCaptionDisplayText("GTA si, six starts"), "GTA VI starts");
+  assert.equal(normaliseCaptionDisplayText("GTA si... six starts"), "GTA VI starts");
+  assert.equal(normaliseCaptionDisplayText("Grand Theft Auto see/six starts"), "GTA VI starts");
+  assert.equal(normaliseCaptionDisplayText("GTA six-six starts"), "GTA VI starts");
 });
 
 test("subtitle display merge hides split and repeated GTA VI ASR stutters", () => {

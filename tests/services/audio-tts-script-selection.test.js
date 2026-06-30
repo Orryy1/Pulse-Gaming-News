@@ -313,6 +313,28 @@ test("cleanForTTS: repairs malformed GTA VI stutters before local narration", ()
   assert.doesNotMatch(spoken, /\b(?:s\s+i|si|sigh|s|see(?:\s+see)?|sea|c)\s*[- ]?\s*six\b|\bsiix\b/i);
 });
 
+test("cleanForTTS: repairs punctuation-separated GTA VI stutters before local narration", () => {
+  const spoken = cleanForTTS(
+    [
+      "GTA si, six starts the preorder fight.",
+      "GTA si... six should not reach the hook.",
+      "Grand Theft Auto see/six should not reach local narration.",
+      "GTA six-six should not leave a repeated six behind.",
+    ].join(" "),
+  );
+
+  assert.equal(
+    spoken,
+    [
+      "Rockstar's next Grand Theft Auto starts the preorder fight.",
+      "Rockstar's next Grand Theft Auto should not reach the hook.",
+      "Rockstar's next Grand Theft Auto should not reach local narration.",
+      "Rockstar's next Grand Theft Auto should not leave a repeated six behind.",
+    ].join(" "),
+  );
+  assert.doesNotMatch(spoken, /\b(?:GTA|Grand Theft Auto)\s+(?:si|see|six)[,./\s-]+six\b/i);
+});
+
 test("cleanForTTS: repairs vowel-inserted GTA VI ASR stutters before local narration", () => {
   const spoken = cleanForTTS(
     [

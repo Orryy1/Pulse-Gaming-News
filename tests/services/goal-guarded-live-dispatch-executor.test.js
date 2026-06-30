@@ -1696,7 +1696,7 @@ test("guarded live dispatch executor blocks stale GTA VI DB tts_script even with
       source: "elevenlabs-production-path",
       transcript: spoken,
       spoken_text: spoken,
-      ttsPronunciationProfileVersion: "gta-safe-next-title-v11",
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v12",
     },
     words: spoken
       .replace(/[.]/g, "")

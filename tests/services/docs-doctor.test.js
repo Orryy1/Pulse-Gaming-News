@@ -96,12 +96,18 @@ test("buildDocsDoctorReport: empty tree returns zero signals", async () => {
   }
 });
 
-test("buildDocsDoctorReport: skips node_modules / dist / test/output", async () => {
+test("buildDocsDoctorReport: skips node_modules / dist / output / test/output", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-docs-excl-"));
   try {
     await fs.ensureDir(path.join(tmp, "node_modules"));
     await fs.writeFile(
       path.join(tmp, "node_modules", "DIRTY.md"),
+      "ready + complete\n",
+      "utf-8",
+    );
+    await fs.ensureDir(path.join(tmp, "output"));
+    await fs.writeFile(
+      path.join(tmp, "output", "DIRTY.md"),
       "ready + complete\n",
       "utf-8",
     );

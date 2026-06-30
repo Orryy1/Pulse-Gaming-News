@@ -1684,6 +1684,81 @@ test("guarded live dispatch executor blocks GTA VI actions without recorded pron
   ]);
 });
 
+test("guarded live dispatch executor blocks stale GTA VI DB tts_script even with clean timestamp proof", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-stale-gta-db-tts-script-"));
+  t.after(() => fs.remove(tmp));
+  const timestampsPath = path.join(tmp, "story-one_timestamps.json");
+  const spoken =
+    "Rockstar's next Grand Theft Auto just turned pre orders into a buy wait or skip argument. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(timestampsPath, {
+    meta: {
+      source: "elevenlabs-production-path",
+      transcript: spoken,
+      spoken_text: spoken,
+      ttsPronunciationProfileVersion: "gta-safe-next-title-v11",
+    },
+    words: spoken
+      .replace(/[.]/g, "")
+      .split(/\s+/)
+      .map((word, index) => ({
+        word,
+        start: Number((index * 0.35).toFixed(2)),
+        end: Number((index * 0.35 + 0.18).toFixed(2)),
+      })),
+  });
+
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          title: "GTA VI Starts The Preorder Fight",
+          word_timestamps_path: timestampsPath,
+          video_path: path.join(tmp, "youtube.mp4"),
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "GTA VI Starts The Preorder Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        full_script: "Grand Theft Auto VI now has one real preorder catch.",
+        tts_script:
+          "Grand Theft Auto V I now has one real preorder catch. " +
+          "Follow Pulse Gaming so you never miss a beat.",
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.ok(
+    report.blocked_actions[0].blockers.includes("gta_vi_stale_tts_script"),
+    JSON.stringify(report.blocked_actions[0].blockers),
+  );
+});
+
 test("guarded live dispatch executor blocks GTA VI timestamp evidence without current pronunciation profile", async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-gta-missing-profile-"));
   t.after(() => fs.remove(tmp));

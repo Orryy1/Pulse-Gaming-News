@@ -367,6 +367,36 @@ test("goal proof package uses repaired attention copy for visual quality first-f
   assert.doesNotMatch(pack.visual_quality_report.frame_rules.first_frame_text, /GTA 6 LOOKS/);
 });
 
+test("goal proof package preserves concrete closure-risk titles in downstream platform copy", () => {
+  const story = greenStory();
+  story.id = "state-of-decay-closure-risk";
+  story.canonical_subject = "State of Decay";
+  story.canonical_game = "State of Decay";
+  story.title =
+    "State of Decay studio Undead Labs potentially up for closure, sources claim, with Bethesda and Blizzard also facing layoffs";
+  story.public_title = "State Of Decay Studio Has A Closure Risk";
+  story.selected_title = "State Of Decay Studio Has A Closure Risk";
+  story.suggested_title = "State Of Decay Studio Has A Closure Risk";
+  story.primary_source = "Rock Paper Shotgun";
+  story.source_name = "Rock Paper Shotgun";
+  story.article_url = "https://www.rockpapershotgun.com/state-of-decay-undead-labs-closure-risk";
+  story.description =
+    "Rock Paper Shotgun says sources claim Undead Labs could be affected as Microsoft cuts spread across gaming teams.";
+  story.full_script =
+    "State of Decay fans just got the kind of studio risk story that changes the mood fast. Rock Paper Shotgun says sources claim Undead Labs could be affected as wider Microsoft gaming cuts hit teams including Bethesda and Blizzard. That does not prove what happens to the next game, but it does change the question players are asking: is the project protected, delayed or suddenly less certain? The payoff is uncomfortable. A survival game can survive a long wait; it is much harder when players start worrying about the studio behind it. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-06-30T16:35:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.public_title, "State Of Decay Studio Has A Closure Risk");
+  assert.equal(pack.canonical_story_manifest.selected_title, "State Of Decay Studio Has A Closure Risk");
+  assert.equal(pack.canonical_story_manifest.canonical_title, "State Of Decay Studio Has A Closure Risk");
+  assert.equal(pack.platform_publish_manifest.outputs.youtube_shorts.title, "State Of Decay Studio Has A Closure Risk");
+});
+
 test("goal proof package keeps hyphenated game titles clean in cover headlines", () => {
   const story = greenStory();
   story.id = "gears-e-day-attention-pack";

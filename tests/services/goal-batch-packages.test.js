@@ -3219,6 +3219,141 @@ test("goal batch packages map common RSS angles to varied title structures", () 
   }
 });
 
+test("goal batch packages do not fabricate gameplay titles for non-gameplay RSS angles", () => {
+  const cases = [
+    {
+      title: "Nintendo Direct June 30: watch here as Switch 2 fans wait for Splatoon Raiders",
+      subject: "Nintendo Direct",
+      script:
+        "Nintendo Direct has a showcase timing problem. Polygon says Switch 2 fans are waiting for the June 30 broadcast and Splatoon Raiders news. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      title: "State of Decay studio Undead Labs could face cuts as Microsoft layoffs spread",
+      subject: "State of Decay",
+      script:
+        "State of Decay has a studio-risk story now. Rock Paper Shotgun says Undead Labs could be affected as Microsoft cuts spread across gaming teams. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      title: "Avatar Legends: The Fighting Game Spirit Wilds stage revealed",
+      subject: "Avatar Legends",
+      script:
+        "Avatar Legends just showed the Spirit Wilds stage. PlayStation Blog says the reveal focuses on stage design and visual clarity for the fighting game. Follow Pulse Gaming so you never miss a beat.",
+    },
+  ];
+
+  for (const item of cases) {
+    const prepared = prepareStoryForGoalProof({
+      id: item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      title: item.title,
+      suggested_title: `${item.subject} Finally Shows Real Gameplay`,
+      canonical_subject: item.subject,
+      source_name: item.title.includes("State of Decay") ? "Rock Paper Shotgun" : "PlayStation Blog",
+      source_type: "rss",
+      article_url: "https://example.com/source",
+      full_script: item.script,
+    });
+
+    assert.doesNotMatch(prepared.public_title, /Finally Shows Real Gameplay/i, item.title);
+    assert.doesNotMatch(prepared.selected_title, /Finally Shows Real Gameplay/i, item.title);
+    assert.doesNotMatch(prepared.suggested_title, /Finally Shows Real Gameplay/i, item.title);
+  }
+});
+
+test("goal batch packages propagate repaired non-gameplay titles into canonical manifests", () => {
+  const story = greenStory("avatar-stage-repair");
+  story.title = "Avatar Legends: The Fighting Game Spirit Wilds stage revealed";
+  story.suggested_title = "Avatar Legends Finally Shows Real Gameplay";
+  story.selected_title = "Avatar Legends Finally Shows Real Gameplay";
+  story.public_title = "Avatar Legends Finally Shows Real Gameplay";
+  story.canonical_title = "Avatar Legends Finally Shows Real Gameplay";
+  story.canonical_subject = "Avatar Legends";
+  story.canonical_game = "Avatar Legends";
+  story.source_name = "PlayStation Blog";
+  story.primary_source = "PlayStation Blog";
+  story.source_type = "rss";
+  story.article_url =
+    "https://blog.playstation.com/2026/06/29/avatar-legends-the-fighting-game-spirit-wilds-stage-revealed/";
+  story.confirmed_claims = ["Avatar Legends: The Fighting Game Spirit Wilds stage revealed"];
+  story.full_script =
+    "Avatar Legends just showed the Spirit Wilds stage. PlayStation Blog says the reveal focuses on stage design and visual clarity for the fighting game. Players need to see spacing, attacks and momentum instantly, not squint through a gorgeous blur. Follow Pulse Gaming so you never miss a beat.";
+
+  const batch = buildGoalBatchPackages({
+    stories: [story],
+    rightsLedgerByStory: { [story.id]: rightsFor(story) },
+    generatedAt: "2026-06-30T15:30:00.000Z",
+  });
+
+  const manifest = batch.packages[0].canonical_story_manifest;
+  assert.equal(manifest.public_title, "Avatar Legends Has A Stage Clarity Test");
+  assert.equal(manifest.selected_title, "Avatar Legends Has A Stage Clarity Test");
+  assert.equal(manifest.canonical_title, "Avatar Legends Has A Stage Clarity Test");
+  assert.doesNotMatch(manifest.thumbnail_headline, /Finally Shows Real Gameplay/i);
+  assert.doesNotMatch(manifest.first_frame_text, /Finally Shows Real Gameplay/i);
+});
+
+test("goal batch package proof preparation writes concrete scripts for current refill quarantine stories", () => {
+  const cases = [
+    {
+      id: "nintendo-direct-watchlist",
+      title: "Nintendo Direct June 30: watch here as Switch 2 fans wait for Splatoon Raiders",
+      source: "Polygon",
+      expectedTitle: "Nintendo Direct Has A Showcase Watchlist",
+      required: [/Switch 2/i, /Splatoon Raiders/i, /broadcast|showcase/i],
+    },
+    {
+      id: "avatar-stage-clarity",
+      title: "Avatar Legends: The Fighting Game Spirit Wilds stage revealed",
+      source: "PlayStation Blog",
+      expectedTitle: "Avatar Legends Has A Stage Clarity Test",
+      required: [/Spirit Wilds/i, /stage/i, /spacing|clarity|readability/i],
+    },
+    {
+      id: "undead-labs-studio-risk",
+      title:
+        "State of Decay studio Undead Labs potentially up for closure, sources claim, with Bethesda and Blizzard also facing layoffs",
+      source: "RockPaperShotgun",
+      expectedTitle: "State Of Decay Studio Has A Closure Risk",
+      required: [/Undead Labs/i, /State of Decay/i, /closure|layoffs|studio risk/i],
+    },
+    {
+      id: "delta-force-map",
+      title: "Reinventing Extraction: Inside Delta Force's Most Ambitious Map Yet",
+      source: "Xbox Wire",
+      expectedTitle: "Delta Force Has An Extraction Map Test",
+      required: [/Delta Force/i, /extraction/i, /map/i],
+    },
+    {
+      id: "switch-2-screen",
+      title:
+        "An Updated Nintendo Switch 2 Screen Has Reportedly Surfaced Online as Fans Hope for Ghosting Issue Fix — But This Isn't the OLED Upgrade We've Been Waiting For",
+      source: "IGN",
+      expectedTitle: "Switch 2 Screen Rumour Has A Ghosting Test",
+      required: [/Switch 2/i, /ghosting/i, /OLED/i],
+    },
+  ];
+
+  for (const item of cases) {
+    const prepared = prepareStoryForGoalProof({
+      id: item.id,
+      title: item.title,
+      source_name: item.source,
+      source_type: "rss",
+      article_url: `https://example.com/${item.id}`,
+      full_script: `${item.title}. ${item.source} says ${item.title}.`,
+    });
+
+    assert.equal(prepared.public_title, item.expectedTitle, item.id);
+    assert.doesNotMatch(
+      prepared.full_script,
+      /new source detail|what players can do with it|if it only repeats a headline|next official detail has to make that choice clear/i,
+      item.id,
+    );
+    for (const required of item.required) {
+      assert.match(prepared.full_script, required, item.id);
+    }
+  }
+});
+
 test("goal batch proof scripts paraphrase advertiser-unfriendly source titles", () => {
   const prepared = prepareStoryForGoalProof({
     id: "xbox-leadership-risk",

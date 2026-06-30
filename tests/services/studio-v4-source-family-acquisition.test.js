@@ -2937,6 +2937,38 @@ test("Studio V4 source-family acquisition avoids fake gameplay searches for non-
           available_distinct_families: 0,
         },
       }),
+      motionPack({
+        story_id: "cyberpunk-edgerunners",
+        title: "Cyberpunk Edgerunners Season 2 Is Netflix's Next Test",
+        canonical_subject: "Cyberpunk Edgerunners Season 2",
+        canonical_game: "",
+        canonical_angle:
+          "Netflix confirmed a second season of the Cyberpunk Edgerunners anime series.",
+        trusted_source_pipeline: { intake_queue: [] },
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 7,
+          available_motion_clips: 0,
+          required_distinct_families: 6,
+          available_distinct_families: 0,
+        },
+      }),
+      motionPack({
+        story_id: "persona-netflix",
+        title: "Netflix Persona Has One Huge Trap",
+        canonical_subject: "Persona live-action Netflix series",
+        canonical_game: "",
+        canonical_angle:
+          "Polygon reports Netflix is adapting Atlus Persona as a live-action TV series.",
+        trusted_source_pipeline: { intake_queue: [] },
+        clips: [],
+        motion_budget: {
+          required_motion_scenes: 7,
+          available_motion_clips: 0,
+          required_distinct_families: 6,
+          available_distinct_families: 0,
+        },
+      }),
     ],
     generatedAt: "2026-05-24T01:45:00.000Z",
   });
@@ -3010,10 +3042,42 @@ test("Studio V4 source-family acquisition avoids fake gameplay searches for non-
   );
   assert.match(rows["pokemon-go"].official_search_actions[0].query, /official trailer/i);
   assert.doesNotMatch(rows["pokemon-go"].official_search_actions[0].query, /official gameplay trailer/i);
+  assert.deepEqual(rows["cyberpunk-edgerunners"].official_search_actions, []);
+  assert.ok(
+    rows["cyberpunk-edgerunners"].source_search_blockers.includes(
+      "adaptation_story_requires_source_card_or_approved_media",
+    ),
+  );
+  assert.equal(
+    rows["cyberpunk-edgerunners"].governed_visual_plan.plan_type,
+    "adaptation_owned_or_approved_media_plan",
+  );
+  assert.equal(rows["cyberpunk-edgerunners"].governed_visual_plan.counts_towards_motion_readiness, false);
+  assert.ok(
+    rows["cyberpunk-edgerunners"].governed_visual_plan.allowed_source_classes.includes(
+      "official streamer or studio source",
+    ),
+  );
+  assert.deepEqual(rows["persona-netflix"].official_search_actions, []);
+  assert.ok(
+    rows["persona-netflix"].source_search_blockers.includes(
+      "adaptation_story_requires_source_card_or_approved_media",
+    ),
+  );
+  assert.equal(
+    rows["persona-netflix"].governed_visual_plan.plan_type,
+    "adaptation_owned_or_approved_media_plan",
+  );
+  assert.ok(
+    rows["persona-netflix"].governed_visual_plan.prohibited_asset_classes.includes(
+      "unrelated gameplay footage",
+    ),
+  );
 
   const markdown = renderStudioV4SourceFamilyAcquisitionMarkdown(report);
   assert.match(markdown, /kadokawa-stake .*approve_governed_visual_plan/);
   assert.match(markdown, /pokemon-go .*fill_official_source_intake_from_search_template/);
+  assert.match(markdown, /cyberpunk-edgerunners .*approve_governed_visual_plan/);
 });
 
 test("Studio V4 source-family acquisition surfaces accepted secondary hardware references", () => {

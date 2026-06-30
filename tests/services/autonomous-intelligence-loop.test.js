@@ -2299,6 +2299,178 @@ test("fresh production refill bounds heavy repair evidence to the requested stor
   }
 });
 
+test("fresh production refill full repair auto-applies safe source-bound script rewrites", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-script-auto-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyId = "persona-netflix-story";
+  const artifactDir = path.join(outDir, storyId);
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const childCalls = [];
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_subject: "Netflix",
+        canonical_game: "Netflix",
+        canonical_title: "Netflix Finally Shows Real Gameplay",
+        selected_title: "Netflix Finally Shows Real Gameplay",
+        primary_source: "Polygon",
+        primary_source_url: "https://www.polygon.com/persona-tv-series-netflix-atlus-sega/",
+        source_published_at: "Mon, 29 Jun 2026 22:34:57 GMT",
+        confirmed_claims: [
+          "Netflix is adapting Atlus Persona for new live-action TV series",
+        ],
+        narration_script:
+          "Netflix has a new source detail, but the real question is still what players can do with it. Polygon says Netflix is adapting Persona. The next official detail has to make that choice clear: play now, wait, skip or watch for gameplay. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Polygon",
+          url: "https://www.polygon.com/persona-tv-series-netflix-atlus-sega/",
+          type: "rss",
+          published_at: "Mon, 29 Jun 2026 22:34:57 GMT",
+        },
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: storyId,
+        verdict: "rewrite_required",
+        blockers: [
+          "generic_title_template",
+          "persuasive_authority_trope",
+          "internal_audience_scaffold",
+        ],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "coherence_report.json"),
+      JSON.stringify({
+        result: "fail",
+        failures: ["script_coherence:vague_filler:internal_audience_scaffold"],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "platform_publish_manifest.json"),
+      JSON.stringify({
+        schema_version: 1,
+        story_id: storyId,
+        outputs: {
+          youtube_shorts: {
+            title: "Netflix Finally Shows Real Gameplay",
+            description: "Generic description.",
+            cover_frame: { headline: "NETFLIX FINALLY SHOWS REAL GAMEPLAY" },
+          },
+          instagram_reels: {
+            caption: "Generic caption.",
+            cover_frame: { headline: "NETFLIX FINALLY SHOWS REAL GAMEPLAY" },
+          },
+          facebook_reels: {
+            page_caption: "Generic page caption.",
+          },
+        },
+      }),
+    );
+
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          const effectiveContractOutDir =
+            args[args.indexOf("--contract-out-dir") + 1] || contractOutDir;
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: storyId,
+                title: "Netflix Finally Shows Real Gameplay",
+                artifact_dir: artifactDir,
+                verdict: "RED",
+                blockers: [
+                  "script_scorecard:script_verdict_rewrite_required",
+                  "script_scorecard:generic_title_template",
+                  "media_house:script_sounds_ai_generic",
+                ],
+              },
+            ]),
+          );
+          return {
+            batch: {
+              summary: { story_count: 1, green_count: 0, red_count: 1 },
+            },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+          repair_story_limit: 1,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    assert.equal(result.repair_evidence.summary.script_rewrite_apply_status, "completed");
+    assert.equal(result.repair_evidence.summary.script_rewrite_applied_count, 1);
+    assert.equal(result.repair_evidence.summary.script_rewrite_blocked_count, 0);
+    assert.match(
+      result.repair_evidence.outputs.script_rewrite_apply_report,
+      /fresh_refill_script_rewrite_report\.json$/,
+    );
+
+    const manifest = JSON.parse(
+      await fs.readFile(path.join(artifactDir, "canonical_story_manifest.json"), "utf8"),
+    );
+    assert.equal(manifest.public_title, "Netflix Persona Has One Huge Trap");
+    assert.match(manifest.narration_script, /^Persona going live-action on Netflix\b/);
+    assert.doesNotMatch(manifest.narration_script, /Finally Shows Real Gameplay|new source detail|play now, wait, skip/i);
+    assert.equal(manifest.script_repair.no_db_mutation, true);
+
+    const scorecard = JSON.parse(await fs.readFile(path.join(artifactDir, "script_scorecard.json"), "utf8"));
+    assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+    assert.deepEqual(scorecard.blockers, []);
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill HyperFrames card generation targets only real-motion materialized stories", async () => {
   const { freshRefillHyperframesStoryIdsAfterMotion } = require("../../lib/job-handlers");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-hyperframes-motion-"));

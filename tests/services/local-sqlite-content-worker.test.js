@@ -30,6 +30,22 @@ test("local sqlite content worker covers scheduled learning and quality loops", 
   }
 });
 
+test("local sqlite content worker covers safe scheduled operations that keep Discord and evidence current", () => {
+  const args = parseArgs([], {});
+  for (const kind of [
+    "scoring_digest",
+    "blog_rebuild",
+    "db_backup",
+    "instagram_pending_verify",
+    "overnight_produce_sweep",
+    "overnight_analytics_backfill",
+    "overnight_claude_analyst",
+    "overnight_morning_digest",
+  ]) {
+    assert.ok(args.kinds.includes(kind), `expected default content worker to claim ${kind}`);
+  }
+});
+
 test("local sqlite content worker parses explicit kind and worker options", () => {
   const args = parseArgs(
     ["--worker-id", "content-test", "--kinds", "fresh_production_refill,local_tts_doctor", "--gpu"],
@@ -40,14 +56,22 @@ test("local sqlite content worker parses explicit kind and worker options", () =
   assert.equal(args.gpu, true);
 });
 
-test("local sqlite content worker rejects publish-related explicit kinds", () => {
+test("local sqlite content worker rejects live publish and credential explicit kinds", () => {
   assert.throws(
     () => parseArgs(["--kinds", "fresh_production_refill,publish"], {}),
-    /forbidden publish-related job kind: publish/i,
+    /forbidden live publish or credential job kind: publish/i,
   );
   assert.throws(
     () => parseArgs(["--kinds", "publish_window_watchdog"], {}),
-    /forbidden publish-related job kind: publish_window_watchdog/i,
+    /forbidden live publish or credential job kind: publish_window_watchdog/i,
+  );
+  assert.throws(
+    () => parseArgs(["--kinds", "instagram_token_refresh"], {}),
+    /forbidden live publish or credential job kind: instagram_token_refresh/i,
+  );
+  assert.throws(
+    () => parseArgs(["--kinds", "tiktok_auth_check"], {}),
+    /forbidden live publish or credential job kind: tiktok_auth_check/i,
   );
 });
 

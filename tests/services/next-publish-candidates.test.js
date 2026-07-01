@@ -3,6 +3,7 @@ const assert = require("node:assert");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const {
   DEFAULT_BRIDGE_CANDIDATES_PATH,
@@ -2048,6 +2049,71 @@ test("bridge preflight blocks stale bridge duration metadata against current ren
     preflight.blockers.includes(
       "bridge_artifact_freshness:bridge_metadata_stale:duration_seconds",
     ),
+  );
+});
+
+test("bridge preflight blocks stale final render audio and timestamp fingerprints", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-stale-audio-"));
+  t.after(() => fs.remove(tmpDir));
+  const audioDir = path.join(tmpDir, "audio");
+  const audioPath = path.join(audioDir, "narration.mp3");
+  const timestampsPath = path.join(audioDir, "word_timestamps.json");
+  await fs.outputFile(audioPath, "fresh repaired narration");
+  await fs.outputFile(timestampsPath, JSON.stringify({ words: [{ word: "fresh" }] }));
+
+  const oldAudio = Buffer.from("old gta si-six narration");
+  const oldTimestamps = Buffer.from(JSON.stringify({ words: [{ word: "stale" }] }));
+  const renderManifestPath = path.join(tmpDir, "render_manifest.json");
+  await fs.writeJson(renderManifestPath, {
+    rendered_duration_s: 44.333,
+    output_path: "D:/pulse-data/media/output/final/bridge_stale_audio.mp4",
+    input_fingerprint: {
+      audio_sha256: crypto.createHash("sha256").update(oldAudio).digest("hex"),
+      audio_size_bytes: oldAudio.length,
+      word_timestamps_sha256: crypto.createHash("sha256").update(oldTimestamps).digest("hex"),
+      word_timestamps_size_bytes: oldTimestamps.length,
+    },
+    input_evidence: {
+      narration_audio_path: audioPath,
+      word_timestamps_path: timestampsPath,
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_stale_audio",
+      title: "GTA VI Just Made PS5 The Version To Watch",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_manifest_path: renderManifestPath,
+      scheduler_bridge_artifact_dir: tmpDir,
+      exported_path: "D:/pulse-data/media/output/final/bridge_stale_audio.mp4",
+      duration_seconds: 44.333,
+      runtime_seconds: 44.333,
+      audio_duration: 44.333,
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("bridge_artifact_freshness:bridge_metadata_stale:render_audio_sha256"),
+    JSON.stringify(preflight, null, 2),
+  );
+  assert.ok(
+    preflight.blockers.includes(
+      "bridge_artifact_freshness:bridge_metadata_stale:render_word_timestamps_sha256",
+    ),
+    JSON.stringify(preflight, null, 2),
   );
 });
 

@@ -99,6 +99,34 @@ test("local TTS doctor handler restarts and prewarms through a safe child proces
   assert.equal(result.gpu_ok, true);
 });
 
+test("local TTS doctor skips instead of stacking a smoke request while another local TTS job holds the lease", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-busy-doctor-"));
+  const lockPath = path.join(tmp, "local_tts_job_lease.json");
+  await fs.writeFile(lockPath, JSON.stringify({
+    owner: "fresh_production_refill:active",
+    expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+  }));
+
+  let childCalled = false;
+  const result = await handlers.local_tts_doctor(
+    { id: 123, payload: { local_tts_lock_path: lockPath } },
+    {
+      log() {},
+      async runNodeJobChildProcess() {
+        childCalled = true;
+        return { ok: true };
+      },
+    },
+  );
+
+  assert.equal(childCalled, false);
+  assert.equal(result.status, "skipped");
+  assert.equal(result.reason, "local_tts_busy");
+  assert.equal(result.local_tts_busy, true);
+  assert.equal(result.no_publish, true);
+  assert.equal(result.no_db_mutation, true);
+});
+
 test("local TTS retry recovery handler runs bounded local-only preflight and apply", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-retry-recovery-"));
   const queuePath = path.join(tmp, "local_media_repair_queue.json");
@@ -203,6 +231,42 @@ test("local TTS retry recovery handler runs bounded local-only preflight and app
   assert.equal(result.applied_count, 1);
   assert.equal(result.skipped_count, 1);
   assert.equal(result.overnight_verdict, "AMBER");
+});
+
+test("local TTS retry recovery skips instead of competing with an active local TTS generation", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-busy-retry-"));
+  const lockPath = path.join(tmp, "local_tts_job_lease.json");
+  await fs.writeFile(lockPath, JSON.stringify({
+    owner: "local_tts_doctor:active",
+    expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+  }));
+
+  const childCalls = [];
+  const result = await handlers.local_tts_retry_recovery(
+    {
+      id: 456,
+      payload: {
+        limit: 6,
+        apply_limit: 1,
+        out_dir: tmp,
+        local_tts_lock_path: lockPath,
+      },
+    },
+    {
+      log() {},
+      async runNodeJobChildProcess(options) {
+        childCalls.push(options);
+        return { ok: true };
+      },
+    },
+  );
+
+  assert.deepEqual(childCalls, []);
+  assert.equal(result.status, "skipped");
+  assert.equal(result.reason, "local_tts_busy");
+  assert.equal(result.local_tts_busy, true);
+  assert.equal(result.no_publish, true);
+  assert.equal(result.no_db_mutation, true);
 });
 
 test("candidate supply monitor enqueues fresh intake and repair when runway has no reserve", async () => {

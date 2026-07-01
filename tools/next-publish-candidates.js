@@ -3,6 +3,7 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const {
   DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS,
   DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS,
@@ -426,6 +427,103 @@ function renderOutputPathFromManifest(manifest = {}) {
     manifest.output?.file ||
     ""
   );
+}
+
+async function fileDigestForFreshness(filePath) {
+  const resolved = cleanText(filePath) ? path.resolve(filePath) : "";
+  if (!resolved) return { readable: false, path: null };
+  try {
+    const buffer = await fs.readFile(resolved);
+    return {
+      readable: true,
+      path: resolved,
+      sha256: crypto.createHash("sha256").update(buffer).digest("hex"),
+      size_bytes: buffer.length,
+    };
+  } catch {
+    return { readable: false, path: resolved };
+  }
+}
+
+function renderInputEvidencePaths(manifest = {}, artifactDir = "") {
+  const inputEvidence = objectValue(manifest.input_evidence, {});
+  return {
+    narration_audio_path:
+      cleanText(
+        inputEvidence.resolved_narration_audio_path ||
+          inputEvidence.narration_audio_path ||
+          inputEvidence.audio_path ||
+          manifest.input_fingerprint?.narration_audio_path ||
+          manifest.input_fingerprint?.audio_path,
+      ) || (artifactDir ? path.join(artifactDir, "audio", "narration.mp3") : ""),
+    word_timestamps_path:
+      cleanText(
+        inputEvidence.resolved_word_timestamps_path ||
+          inputEvidence.word_timestamps_path ||
+          inputEvidence.timestamps_path ||
+          manifest.input_fingerprint?.word_timestamps_path ||
+          manifest.input_fingerprint?.timestamps_path,
+      ) || (artifactDir ? path.join(artifactDir, "audio", "word_timestamps.json") : ""),
+  };
+}
+
+async function renderInputFingerprintFreshness(manifest = {}, artifactDir = "") {
+  const fingerprint = objectValue(manifest.input_fingerprint, {});
+  const paths = renderInputEvidencePaths(manifest, artifactDir);
+  const failures = [];
+  const evidence = {
+    render_audio_sha256: cleanText(fingerprint.audio_sha256) || null,
+    render_word_timestamps_sha256: cleanText(fingerprint.word_timestamps_sha256) || null,
+    render_audio_size_bytes: numberOrNull(fingerprint.audio_size_bytes),
+    render_word_timestamps_size_bytes: numberOrNull(fingerprint.word_timestamps_size_bytes),
+    current_audio_path: paths.narration_audio_path || null,
+    current_word_timestamps_path: paths.word_timestamps_path || null,
+  };
+
+  if (evidence.render_audio_sha256 || evidence.render_audio_size_bytes != null) {
+    const currentAudio = await fileDigestForFreshness(paths.narration_audio_path);
+    evidence.current_audio_readable = currentAudio.readable;
+    evidence.current_audio_sha256 = currentAudio.sha256 || null;
+    evidence.current_audio_size_bytes = currentAudio.size_bytes ?? null;
+    if (!currentAudio.readable) {
+      failures.push("bridge_metadata_stale:render_audio_unreadable");
+    } else {
+      if (evidence.render_audio_sha256 && evidence.render_audio_sha256 !== currentAudio.sha256) {
+        failures.push("bridge_metadata_stale:render_audio_sha256");
+      }
+      if (
+        evidence.render_audio_size_bytes != null &&
+        evidence.render_audio_size_bytes !== currentAudio.size_bytes
+      ) {
+        failures.push("bridge_metadata_stale:render_audio_size_bytes");
+      }
+    }
+  }
+
+  if (evidence.render_word_timestamps_sha256 || evidence.render_word_timestamps_size_bytes != null) {
+    const currentTimestamps = await fileDigestForFreshness(paths.word_timestamps_path);
+    evidence.current_word_timestamps_readable = currentTimestamps.readable;
+    evidence.current_word_timestamps_sha256 = currentTimestamps.sha256 || null;
+    evidence.current_word_timestamps_size_bytes = currentTimestamps.size_bytes ?? null;
+    if (!currentTimestamps.readable) {
+      failures.push("bridge_metadata_stale:render_word_timestamps_unreadable");
+    } else {
+      if (
+        evidence.render_word_timestamps_sha256 &&
+        evidence.render_word_timestamps_sha256 !== currentTimestamps.sha256
+      ) {
+        failures.push("bridge_metadata_stale:render_word_timestamps_sha256");
+      }
+      if (
+        evidence.render_word_timestamps_size_bytes != null &&
+        evidence.render_word_timestamps_size_bytes !== currentTimestamps.size_bytes
+      ) {
+        failures.push("bridge_metadata_stale:render_word_timestamps_size_bytes");
+      }
+    }
+  }
+
+  return { failures, evidence };
 }
 
 function isLongformLane(story = {}) {
@@ -2701,6 +2799,9 @@ async function bridgeArtifactFreshnessPreflightForStory(story = {}) {
     failures.push("bridge_metadata_stale:exported_path");
   }
 
+  const inputFreshness = await renderInputFingerprintFreshness(manifest, artifactDir);
+  failures.push(...inputFreshness.failures);
+
   let currentSfxSignature = "";
   let bridgeSfxSignature = selectedSfxAssetSignature(story.sfx_manifest || story.sound_transition_plan?.sfx || {});
   const sfxManifestPath = artifactDir ? path.join(artifactDir, "sfx_manifest.json") : "";
@@ -2728,6 +2829,7 @@ async function bridgeArtifactFreshnessPreflightForStory(story = {}) {
       render_manifest_duration_seconds: manifestDuration,
       bridge_sfx_signature: bridgeSfxSignature || null,
       current_sfx_signature: currentSfxSignature || null,
+      ...inputFreshness.evidence,
     },
   };
 }

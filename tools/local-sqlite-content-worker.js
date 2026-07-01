@@ -11,8 +11,16 @@ const DEFAULT_CONTENT_KINDS = Object.freeze([
   "hunt",
   "produce",
   "analytics",
+  "scoring_digest",
   "engage",
   "engage_first_hour",
+  "blog_rebuild",
+  "db_backup",
+  "instagram_pending_verify",
+  "overnight_produce_sweep",
+  "overnight_analytics_backfill",
+  "overnight_claude_analyst",
+  "overnight_morning_digest",
   "live_performance_analyst",
   "studio_analytics_loop",
   "commercial_learning_loop",
@@ -30,6 +38,8 @@ const DEFAULT_CONTENT_KINDS = Object.freeze([
 const FORBIDDEN_CONTENT_WORKER_KINDS = Object.freeze([
   "publish",
   "publish_window_watchdog",
+  "instagram_token_refresh",
+  "tiktok_auth_check",
 ]);
 
 function parseCsv(value) {
@@ -42,7 +52,7 @@ function parseCsv(value) {
 function assertContentOnlyKinds(kinds) {
   for (const kind of kinds || []) {
     if (FORBIDDEN_CONTENT_WORKER_KINDS.includes(kind)) {
-      throw new Error(`Forbidden publish-related job kind: ${kind}`);
+      throw new Error(`Forbidden live publish or credential job kind: ${kind}`);
     }
   }
 }

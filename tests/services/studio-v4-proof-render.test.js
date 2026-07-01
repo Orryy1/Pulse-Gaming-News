@@ -86,7 +86,7 @@ test("Studio V4 proof renderer blocks 50s renders that would need looped direct 
   assert.ok(plan.requiredUniqueClipCount > 24);
 });
 
-test("Studio V4 proof renderer treats distinct official trailer windows as non-repeating direct motion", () => {
+test("Studio V4 proof renderer refuses repeated direct-video windows from one base source", () => {
   const clips = [36, 42, 48, 54, 60, 66, 72, 78].map((windowStart) => ({
     path: `gta-trailer-window-${windowStart}.mp4`,
     source_url: "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
@@ -104,10 +104,14 @@ test("Studio V4 proof renderer treats distinct official trailer windows as non-r
     maxSceneDurationS: 7,
   });
 
-  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
-  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
-  assert.equal(plan.scenes.length, 8);
-  assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 8);
+  assert.equal(plan.scenes.length, 1);
+  assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
+  assert.ok(plan.blockers.includes("approved_scene_duration_below_audio_duration"));
+  assert.equal(plan.skippedDuplicateBaseSources.length, 7);
+  assert.deepEqual(
+    [...new Set(plan.skippedDuplicateBaseSources.map((entry) => entry.key))],
+    ["media.rockstargames.com/vi/downloads/videos/gtavi_trailer_2/gtavi_trailer_2"],
+  );
 });
 
 test("Studio V4 proof renderer blocks premium shorts dominated by one direct-video source", () => {
@@ -127,15 +131,10 @@ test("Studio V4 proof renderer blocks premium shorts dominated by one direct-vid
     maxSceneDurationS: 7,
   });
 
-  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
-  assert.ok(plan.blockers.includes("direct_motion_source_concentration_above_premium_floor"));
-  assert.deepEqual(plan.directMotionSourceConcentrationMetrics.concentrated_sources, [
-    {
-      key: "cdn.example.com/sea-of-thieves/official-gameplay-trailer",
-      count: 7,
-      ratio: 1,
-    },
-  ]);
+  assert.equal(plan.scenes.length, 1);
+  assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
+  assert.ok(plan.blockers.includes("approved_scene_duration_below_audio_duration"));
+  assert.equal(plan.skippedDuplicateBaseSources.length, 6);
 });
 
 test("Studio V4 proof renderer defaults to readable non-repeating direct-motion cuts", () => {
@@ -185,7 +184,7 @@ test("Studio V4 proof renderer can explicitly plan legacy repeated clips for dia
   );
 });
 
-test("Studio V4 proof renderer accepts distinct base-source windows before render", () => {
+test("Studio V4 proof renderer skips repeated base-source windows before render", () => {
   const plan = buildClipScenePlan({
     clips: [
       {
@@ -207,10 +206,13 @@ test("Studio V4 proof renderer accepts distinct base-source windows before rende
 
   assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
   assert.deepEqual(plan.repeatedBaseSources, []);
-  assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 3);
+  assert.equal(plan.scenes.length, 2);
+  assert.deepEqual(plan.skippedDuplicateBaseSources.map((entry) => entry.key), [
+    "steam_1172620_movie_418022350",
+  ]);
 });
 
-test("Studio V4 proof renderer accepts distinct base-source windows from string clip paths", () => {
+test("Studio V4 proof renderer skips repeated base-source windows from string clip paths", () => {
   const plan = buildClipScenePlan({
     clips: [
       "motion/sea-of-thieves-trailer-window-36-5.mp4",
@@ -223,7 +225,10 @@ test("Studio V4 proof renderer accepts distinct base-source windows from string 
 
   assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
   assert.deepEqual(plan.repeatedBaseSources, []);
-  assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 3);
+  assert.equal(plan.scenes.length, 2);
+  assert.deepEqual(plan.skippedDuplicateBaseSources.map((entry) => entry.key), [
+    "motion/sea-of-thieves-trailer",
+  ]);
 });
 
 test("Studio V4 proof renderer blocks generated direct-motion segment variants from the same source clip", () => {
@@ -237,19 +242,16 @@ test("Studio V4 proof renderer blocks generated direct-motion segment variants f
     xfadeS: 0.25,
   });
 
-  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.equal(plan.scenes.length, 2);
+  assert.deepEqual(plan.repeatedBaseSources, []);
   assert.deepEqual(
-    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
-    [
-      {
-        key: "output/fresh-green-refill-20260619/goal-proof-batch/rss_story/rss_story_v4_clip_1",
-        count: 2,
-      },
-    ],
+    plan.skippedDuplicateBaseSources.map((entry) => entry.key),
+    ["output/fresh-green-refill-20260619/goal-proof-batch/rss_story/rss_story_v4_clip_1"],
   );
 });
 
-test("Studio V4 proof renderer uses materialized sidecars to accept distinct source windows", () => {
+test("Studio V4 proof renderer uses materialized sidecars to skip repeated source windows", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-sidecar-repeat-"));
   try {
     const first = path.join(root, "halo_window_12.mp4");
@@ -282,7 +284,10 @@ test("Studio V4 proof renderer uses materialized sidecars to accept distinct sou
 
     assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
     assert.deepEqual(plan.repeatedBaseSources, []);
-    assert.equal(new Set(plan.scenes.map((scene) => scene.baseSourceKey)).size, 3);
+    assert.equal(plan.scenes.length, 2);
+    assert.deepEqual(plan.skippedDuplicateBaseSources.map((entry) => entry.key), [
+      "halo_campaign_evolved_official_trailer",
+    ]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -324,10 +329,12 @@ test("Studio V4 proof renderer blocks repeated Steam trailer delivery variants",
     xfadeS: 0.25,
   });
 
-  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.deepEqual(plan.repeatedBaseSources, []);
+  assert.equal(plan.scenes.length, 2);
   assert.deepEqual(
-    plan.repeatedBaseSources.map((entry) => ({ key: entry.key, count: entry.count })),
-    [{ key: sameTrailerRoot, count: 3 }],
+    [...new Set(plan.skippedDuplicateBaseSources.map((entry) => entry.key))],
+    ["video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626"],
   );
 });
 

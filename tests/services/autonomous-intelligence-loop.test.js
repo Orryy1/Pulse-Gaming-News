@@ -269,6 +269,52 @@ test("local TTS retry recovery skips instead of competing with an active local T
   assert.equal(result.no_db_mutation, true);
 });
 
+test("local TTS retry recovery skips crash-quarantined smoke failures", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-crash-retry-"));
+  const doctorPath = path.join(tmp, "local_tts_doctor.json");
+  await fs.writeFile(doctorPath, JSON.stringify({
+    verdict: "red",
+    action: "manual_start_required",
+    failure_code: "server_down",
+    reason: "local TTS HTTP health is unreachable",
+    generation_smoke: {
+      ok: false,
+      provider: "local",
+      error: "local_tts_generation_failed:connection_reset:local TTS connection reset during generation",
+    },
+  }));
+
+  const childCalls = [];
+  const result = await handlers.local_tts_retry_recovery(
+    {
+      id: 789,
+      payload: {
+        limit: 6,
+        apply_limit: 1,
+        out_dir: tmp,
+        local_tts_doctor_report_path: doctorPath,
+      },
+    },
+    {
+      log() {},
+      async runNodeJobChildProcess(options) {
+        childCalls.push(options);
+        return { ok: true };
+      },
+    },
+  );
+
+  assert.deepEqual(childCalls, []);
+  assert.equal(result.status, "skipped");
+  assert.equal(result.reason, "local_tts_crash_quarantined");
+  assert.equal(result.local_tts_crash_quarantined, true);
+  assert.equal(result.recommended_provider, "elevenlabs");
+  assert.equal(result.local_tts_failure_code, "server_down");
+  assert.match(result.local_tts_smoke_error, /connection_reset/);
+  assert.equal(result.no_publish, true);
+  assert.equal(result.no_db_mutation, true);
+});
+
 test("candidate supply monitor enqueues fresh intake and repair when runway has no reserve", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const candidateSupplyPath = require.resolve("../../lib/ops/candidate-supply");

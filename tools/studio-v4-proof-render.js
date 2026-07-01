@@ -606,6 +606,21 @@ function stripWindowFromSceneSourceKey(value = "") {
   return normaliseSceneSourceKey(value).replace(/(?:[_/-]window[_/-]?\d+(?:[_/-]\d+)?)$/i, "");
 }
 
+function sceneClipRepeatSourceKey(clip = {}, entry = {}) {
+  if (entry.readableCardKind) return "";
+  const explicit = clip && typeof clip === "object"
+    ? firstText(
+        clip.source_root_family,
+        clip.base_source_family,
+        clip.original_source_family,
+        clip.provenance?.base_source_family,
+        clip.source_family,
+        clip.motion_family,
+      )
+    : clip;
+  return stripWindowFromSceneSourceKey(entry.sourceRootKey || entry.baseSourceKey || explicit);
+}
+
 function readSceneClipSidecar(clip = {}) {
   const clipPath = sceneClipPath(clip);
   if (!clipPath) return null;
@@ -868,6 +883,8 @@ function buildClipScenePlan({
   const maxSceneLimit = Math.max(1, Math.round(Number(maxScenes) || DEFAULT_DIRECT_CLIP_MAX_SCENES));
   const cleanEntries = [];
   const seen = new Set();
+  const seenDirectBaseSources = new Set();
+  const skippedDuplicateBaseSources = [];
   for (const clip of clips.filter(Boolean)) {
     const clipPath = sceneClipPath(clip);
     const key = String(clipPath).trim().toLowerCase();
@@ -876,7 +893,7 @@ function buildClipScenePlan({
     const readableCardKind = sceneClipReadableCardKind(clip);
     const readableText = sceneClipReadableText(clip, readableCardKind);
     const explicitReadableMinimum = sceneClipMinimumReadableDurationS(clip);
-    cleanEntries.push({
+    const entry = {
       path: clipPath,
       baseSourceKey: sceneClipBaseSourceKey(clip),
       sourceRootKey: sceneClipSourceRootKey(clip),
@@ -889,7 +906,19 @@ function buildClipScenePlan({
         : explicitReadableMinimum,
       readableCardKind,
       readableText,
-    });
+    };
+    const repeatSourceKey = allowClipReuse === true ? "" : sceneClipRepeatSourceKey(clip, entry);
+    if (repeatSourceKey && seenDirectBaseSources.has(repeatSourceKey)) {
+      skippedDuplicateBaseSources.push({
+        key: repeatSourceKey,
+        path: clipPath,
+        baseSourceKey: entry.baseSourceKey || null,
+        sourceRootKey: entry.sourceRootKey || null,
+      });
+      continue;
+    }
+    if (repeatSourceKey) seenDirectBaseSources.add(repeatSourceKey);
+    cleanEntries.push(entry);
     if (cleanEntries.length >= maxSceneLimit) break;
   }
   if (!cleanEntries.length) {
@@ -902,6 +931,7 @@ function buildClipScenePlan({
       requiredUniqueClipCount: 0,
       availableUniqueClipCount: 0,
       sourceDurationOverruns: [],
+      skippedDuplicateBaseSources,
     };
   }
   const duration = Math.max(1, Number(durationS) || 1);
@@ -1146,6 +1176,7 @@ function buildClipScenePlan({
     requiredUniqueClipCount: requiredCount,
     availableUniqueClipCount: cleanEntries.length,
     repeatedBaseSources,
+    skippedDuplicateBaseSources,
     repeatedReadableCardKinds: repeatedReadableCards,
     directMotionSourceConcentrationMetrics,
     sourceDurationOverruns,
@@ -1988,6 +2019,7 @@ async function renderProof({ storyJson, output }) {
       covered_duration_s: scenePlan.coveredDurationS,
       transition_offsets: scenePlan.transitionOffsets,
       repeated_base_sources: scenePlan.repeatedBaseSources,
+      skipped_duplicate_base_sources: scenePlan.skippedDuplicateBaseSources,
       source_duration_overruns: scenePlan.sourceDurationOverruns,
       scenes: scenePlan.scenes,
     },

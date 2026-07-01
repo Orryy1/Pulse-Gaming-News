@@ -96,6 +96,24 @@ test("Pulse topicality gate accepts mainstream game franchise release-date stori
   );
 });
 
+test("Pulse topicality gate accepts MARVEL Tokon roster and gameplay stories", () => {
+  const s = story({
+    title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    body: "PlayStation Blog details Blade, Loki, Deadpool, assists, screen control and team matchups for the fighting game.",
+    full_script:
+      "MARVEL Tokon is turning Blade, Loki and Deadpool into a team-building test, with assists and screen control deciding the matchups.",
+    subreddit: "PlayStation Blog",
+  });
+  const topicality = evaluatePulseGamingTopicality(s);
+  assert.equal(topicality.decision, "accept");
+  assert.equal(topicality.reason, "gaming_topic_match");
+
+  const scored = scoreStory(s, { channelId: "pulse-gaming" });
+  assert.ok(
+    !scored.hard_stops.includes("pulse_gaming_off_topic_entertainment"),
+  );
+});
+
 test("Pulse topicality gate routes Elden Ring movie casting to review", () => {
   const s = story({
     title: "Elden Ring movie casting report names a major actor",

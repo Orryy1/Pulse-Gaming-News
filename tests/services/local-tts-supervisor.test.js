@@ -125,6 +125,18 @@ test("classifyLocalTtsDoctorAction chooses safe local recovery actions", () => {
     "prewarm",
   );
   assert.equal(
+    classifyLocalTtsDoctorAction(
+      {
+        status: "ok",
+        ready: false,
+        phase: "warming",
+        voice: { present: true, refResolved: true, loaded: true },
+      },
+      { allowRestart: true, allowPrewarm: true },
+    ).action,
+    "restart",
+  );
+  assert.equal(
     classifyLocalTtsDoctorAction({ ok: true }).verdict,
     "green",
   );

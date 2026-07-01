@@ -14,6 +14,7 @@ const {
   writeGoalBatchPackages,
 } = require("../../lib/goal-batch-packages");
 const { buildGoalProofPackage, buildPlatformNativePublishPacks } = require("../../lib/goal-proof-package");
+const { buildPulseMediaHouseScore } = require("../../lib/pulse-media-house-score");
 const {
   parseArgs: parseGoalBatchArgs,
   filterLiveRssStoriesForMotion,
@@ -1639,6 +1640,87 @@ test("goal batch package proof keeps evidence-backed named-character cover headl
   assert.ok(!native.platformNativeEvidence.failures.some(
     (failure) => failure.reason === "weak_cover_headline",
   ));
+});
+
+test("platform-native packs turn roster reveals into concrete team-fighter stakes", () => {
+  const native = buildPlatformNativePublishPacks({
+    story: {
+      id: "rss_228f6f28b62f8426",
+      canonical_subject: "MARVEL Tokon",
+      canonical_game: "MARVEL Tokon",
+      primary_source: "PlayStation Blog",
+      source_name: "PlayStation Blog",
+      suggested_thumbnail_text: "MARVEL TOKON ROSTER FIGHT",
+      hook: "MARVEL Tokon just turned Blade, Loki and Deadpool into a team-building test.",
+      full_script:
+        "MARVEL Tokon just turned Blade, Loki and Deadpool into a team-building test. PlayStation Blog says all three are joining Fighting Souls, and that is bigger than a famous-names roster drop. Tag fighters live or die on readable teams: assists, screen control and matchups that make every slot matter.",
+    },
+    canonical: {
+      canonical_subject: "MARVEL Tokon",
+      canonical_game: "MARVEL Tokon",
+      selected_title: "MARVEL Tokon Has A Studio Risk",
+      title: "MARVEL Tokon Has A Studio Risk",
+      primary_source: "PlayStation Blog",
+      first_spoken_line: "MARVEL Tokon just turned Blade, Loki and Deadpool into a team-building test.",
+      description:
+        "PlayStation Blog says Blade, Loki and Deadpool are joining MARVEL Tokon: Fighting Souls.",
+      thumbnail_headline: "MARVEL TOKON ROSTER FIGHT",
+    },
+    platformOutputs: {
+      youtube_shorts: { duration_seconds: { min: 35, max: 60 } },
+      tiktok: { duration_seconds: { min: 25, max: 45 } },
+      instagram_reels: { duration_seconds: { min: 25, max: 45 } },
+      facebook_reels: { duration_seconds: { min: 35, max: 60 } },
+    },
+  });
+  const platformManifest = {
+    outputs: native.outputs,
+    platform_native_evidence: native.platformNativeEvidence,
+  };
+  const score = buildPulseMediaHouseScore({
+    story_id: "rss_228f6f28b62f8426",
+    canonical: {
+      canonical_subject: "MARVEL Tokon",
+      selected_title: native.outputs.youtube_shorts.title,
+      thumbnail_headline: native.outputs.youtube_shorts.cover_frame.headline,
+      first_frame_text: native.outputs.youtube_shorts.cover_frame.headline,
+      description: native.outputs.youtube_shorts.description,
+    },
+    scriptScorecard: { status: "pass", scores: { hook_strength: 95, specificity: 92 } },
+    visualQuality: { scores: { first_3_seconds_hook_score: 100, source_lock_quality_score: 100 } },
+    director: {
+      readiness: { status: "director_ready", blockers: [] },
+      shot_plan: [{ id: "hook", kind: "motion_clip", start_s: 0.1 }],
+      sound_transition_plan: {
+        sfx: {
+          cue_count: 3,
+          cues: [{ family: "impact" }, { family: "whoosh" }, { family: "hit" }],
+          mastering: { duck_under_narration: true, narration_priority: true },
+        },
+      },
+    },
+    audio: { voice_status: "materialized", word_timestamp_count: 130 },
+    loudness: { verdict: "pass", failures: [] },
+    platformManifest,
+    benchmark: {
+      result: "pass",
+      failures: [],
+      scores: {
+        motion_density_score: 100,
+        transition_energy_score: 96,
+        sfx_impact_score: 96,
+        media_house_polish_score: 96,
+        caption_legibility_score: 100,
+      },
+    },
+  });
+
+  assert.equal(native.outputs.youtube_shorts.title, "MARVEL Tokon Turns Its Roster Into A Meta Fight");
+  assert.match(native.outputs.youtube_shorts.description, /Blade, Loki and Deadpool/i);
+  assert.match(native.outputs.youtube_shorts.description, /assists, screen control and matchups/i);
+  assert.equal(native.platformNativeEvidence.verdict, "pass");
+  assert.ok(!score.hard_failures.includes("media_house:platform_copy_too_plain"), score.hard_failures);
+  assert.ok(!score.hard_failures.includes("media_house:shorts_feed_competition_weak"), score.hard_failures);
 });
 
 test("goal batch packages prefer repaired first-frame cover text over stale thumbnail cache", () => {

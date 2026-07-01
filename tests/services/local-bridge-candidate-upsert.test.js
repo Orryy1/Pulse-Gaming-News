@@ -397,6 +397,40 @@ test("upsertLocalBridgeCandidate blocks packages with stale blocked director evi
   assert.equal(updated.scheduler_bridge_candidates[0].id, "existing");
 });
 
+test("upsertLocalBridgeCandidate ignores stale director motion-minimum flags when current shot budget proves coverage", async () => {
+  const files = await fixture();
+  await fs.writeJson(path.join(files.artifactDir, "director_beat_map.json"), {
+    readiness: {
+      status: "director_blocked",
+      blockers: ["actual_motion_clip_minimum_not_met"],
+    },
+    shot_budget: {
+      min_actual_motion_clips: 5,
+      available_motion_clips: 8,
+      min_distinct_motion_families: 4,
+      available_distinct_motion_families: 8,
+      min_distinct_motion_source_assets: 4,
+      available_distinct_motion_source_assets: 4,
+    },
+    shot_plan: [{ kind: "motion", label: "Custom Seas", path: "clip-a.mp4" }],
+  });
+
+  const report = await upsertLocalBridgeCandidate({
+    bridgePath: files.bridgePath,
+    artifactDir: files.artifactDir,
+    backupDir: path.join(files.root, "backups"),
+    generatedAt: "2026-06-21T18:40:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.summary.upserted_story_id, "story_custom_seas");
+  assert.equal(report.candidate.local_bridge_validation.verdict, "pass");
+  assert.ok(report.candidate.local_bridge_validation.warnings.includes("stale_director_motion_minimum_ignored_after_current_budget_proof"));
+  const updated = await fs.readJson(files.bridgePath);
+  assert.equal(updated.scheduler_bridge_candidates.length, 2);
+  assert.ok(updated.scheduler_bridge_candidates.some((item) => item.id === "story_custom_seas"));
+});
+
 test("local bridge candidate upsert command is registered for operator runs", async () => {
   const pkg = await fs.readJson(path.join(__dirname, "..", "..", "package.json"));
   assert.equal(

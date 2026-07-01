@@ -396,6 +396,133 @@ test("queue inspect warns when content runway jobs are saturated behind busy fre
   }
 });
 
+test("queue inspect treats SQLite UTC heartbeat timestamps as fresh worker evidence", () => {
+  const db = createQueueInspectDb(`
+    CREATE TABLE schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+    INSERT INTO schedules (name, kind, cron_expr, enabled)
+      VALUES ('candidate_supply_monitor', 'candidate_supply_monitor', '5 * * * *', 1);
+  `);
+
+  try {
+    db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, run_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "candidate_supply_monitor",
+      "pending",
+      64,
+      0,
+      3,
+      "2026-07-01 08:05:00",
+      "2026-07-01 08:05:00",
+    );
+    db.prepare(
+      `INSERT INTO workers
+        (id, status, last_seen_at, last_job_id, tags, version)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "content-worker-utc",
+      "idle",
+      "2026-07-01 08:16:59",
+      null,
+      JSON.stringify(["cpu", "produce", "candidate_supply_monitor", "fresh_production_refill"]),
+      "dev",
+    );
+
+    const report = inspectQueue({
+      db,
+      now: Date.parse("2026-07-01T08:17:06.000Z"),
+    });
+
+    assert.equal(report.contentRunway.pending_count, 1);
+    assert.equal(report.contentRunway.active_fresh_worker_count, 1);
+    assert.equal(report.contentRunway.no_active_worker, false);
+    assert.ok(!report.warnings.includes("content_runway_jobs_pending_without_active_worker"));
+    assert.ok(report.green.includes("content_runway_worker_available"));
+  } finally {
+    db.close();
+  }
+});
+
+test("queue inspect reports pending runway jobs behind a busy content worker as saturated", () => {
+  const db = createQueueInspectDb(`
+    CREATE TABLE schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+    INSERT INTO schedules (name, kind, cron_expr, enabled)
+      VALUES ('candidate_supply_monitor', 'candidate_supply_monitor', '5 * * * *', 1);
+  `);
+
+  try {
+    db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, run_at, claimed_by, claimed_at, lease_until, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "produce",
+      "running",
+      30,
+      1,
+      3,
+      "2026-07-01 08:00:00",
+      "content-worker-busy",
+      "2026-07-01 08:00:01",
+      "2026-07-01 08:25:01",
+      "2026-07-01 08:15:00",
+    );
+    db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, run_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "candidate_supply_monitor",
+      "pending",
+      64,
+      0,
+      3,
+      "2026-07-01 08:05:00",
+      "2026-07-01 08:05:00",
+    );
+    db.prepare(
+      `INSERT INTO workers
+        (id, status, last_seen_at, last_job_id, tags, version)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "content-worker-busy",
+      "busy",
+      "2026-07-01 08:16:59",
+      null,
+      JSON.stringify(["cpu", "produce", "candidate_supply_monitor", "fresh_production_refill"]),
+      "dev",
+    );
+
+    const report = inspectQueue({
+      db,
+      now: Date.parse("2026-07-01T08:17:06.000Z"),
+    });
+
+    assert.equal(report.contentRunway.pending_count, 1);
+    assert.equal(report.contentRunway.active_fresh_worker_count, 1);
+    assert.equal(report.contentRunway.occupied_fresh_worker_count, 1);
+    assert.equal(report.contentRunway.saturated, true);
+    assert.ok(report.warnings.includes("content_runway_worker_capacity_saturated"));
+    assert.ok(!report.green.includes("content_runway_worker_available"));
+  } finally {
+    db.close();
+  }
+});
+
 test("redactJobError tolerates missing and malformed job rows", () => {
   assert.equal(redactJobError(null), null);
   assert.deepEqual(redactJobError({ id: 1 }), { id: 1, last_error: "" });

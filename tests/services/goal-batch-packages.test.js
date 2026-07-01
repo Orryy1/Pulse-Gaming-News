@@ -1643,6 +1643,29 @@ test("goal batch package proof keeps evidence-backed named-character cover headl
 });
 
 test("platform-native packs turn roster reveals into concrete team-fighter stakes", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_228f6f28b62f8426",
+    canonical_subject: "MARVEL Tokon",
+    canonical_game: "MARVEL Tokon",
+    title: "MARVEL Tokon Adds Blade, Loki And Deadpool",
+    primary_source: "GameSpot",
+    source_name: "GameSpot",
+    article_url: "https://www.gamespot.com/articles/marvel-tokon-blade-loki-deadpool/",
+    full_script:
+      "source-backed update clean read",
+  });
+  const preparedWordCount = prepared.full_script.split(/\s+/).filter(Boolean).length;
+
+  assert.equal(prepared.public_title, "MARVEL Tokon Turns Its Roster Into A Meta Fight");
+  assert.ok(preparedWordCount >= 140, prepared.full_script);
+  assert.doesNotMatch(prepared.full_script, /roster reveal into a pressure test/i);
+  assert.doesNotMatch(prepared.full_script, /the debate is simple|the useful part/i);
+  assert.doesNotMatch(prepared.full_script, /labbing/i);
+  assert.match(prepared.full_script, /three reasons to argue before launch/i);
+  assert.match(prepared.full_script, /Watch the assists, not just the faces/i);
+  assert.match(prepared.full_script, /whole game look deeper/i);
+  assert.match(prepared.full_script, /famous skins with health bars/i);
+
   const native = buildPlatformNativePublishPacks({
     story: {
       id: "rss_228f6f28b62f8426",

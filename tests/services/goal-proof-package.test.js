@@ -1605,6 +1605,39 @@ test("goal proof package keeps subject parity and grammar for mascot kart deriva
   assert.doesNotMatch(outputs.pinterest.pin_description, /:\s+is\s+/i);
 });
 
+test("goal proof package preserves proper game-name casing in Facebook framing", () => {
+  const story = greenStory();
+  story.id = "marvel-tokon-proof";
+  story.canonical_subject = "MARVEL Tokon: Fighting Souls";
+  story.canonical_game = "MARVEL Tokon: Fighting Souls";
+  story.title = "MARVEL Tokon Just Started A Roster Fight";
+  story.suggested_title = story.title;
+  story.public_title = story.title;
+  story.suggested_thumbnail_text = "TOKON ROSTER FIGHT";
+  story.description =
+    "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch. Watch the assists, not just the faces: this reveal either makes the whole game look deeper, or exposes the exact thing it still has to prove. Source: GameSpot.";
+  story.full_script =
+    "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch. GameSpot shows Blade, Loki and Deadpool in new gameplay for Arc System Works' 4v4 tag fighter, and the roster reveal is really a team-building test. Follow Pulse Gaming so you never miss a beat.";
+  story.source_name = "GameSpot";
+  story.primary_source = "GameSpot";
+  story.source_card_label = "GameSpot";
+  story.thumbnail_source_label = "GameSpot";
+  story.article_url =
+    "https://www.gamespot.com/videos/marvel-tokon-fighting-souls-blade-loki-and-deadpool-gameplay-reveal-trailer-team-samurai-outriders/";
+  story.primary_source_url = story.article_url;
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-01T22:15:00.000Z",
+  });
+
+  const framing = pack.platform_publish_manifest.outputs.facebook_reels.explanatory_framing;
+  assert.match(framing, /MARVEL Tokon/);
+  assert.doesNotMatch(framing, /\bmARVEL\b/);
+  assert.doesNotMatch(framing, /\bfacebook_reels\b|source_locked_update/i);
+});
+
 test("goal proof package does not rewrite unrelated nostalgia copy into Diddy framing", () => {
   const story = greenStory();
   story.id = "halo-ps5-account-proof";

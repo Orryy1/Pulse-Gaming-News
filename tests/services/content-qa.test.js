@@ -381,6 +381,29 @@ test("runContentQa: deliberate extended Short can pass above Flash Lane ceiling"
   );
 });
 
+test("runContentQa: scheduler-effective normal production ceiling can pass above the lane default", async () => {
+  const story = goodStory({
+    audio_duration: 63.633,
+    duration_seconds: 63.633,
+    duration_lane: "normal_production",
+    target_video_duration_seconds_max: 75,
+    max_video_duration_seconds: 75,
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({ [story.exported_path]: { size: 5 * 1024 * 1024 } }),
+  });
+
+  assert.notStrictEqual(qa.result, "fail", JSON.stringify(qa));
+  assert.ok(
+    !qa.failures.some((f) => f.startsWith("audio_duration_too_long")),
+    `got: ${qa.failures.join(", ")}`,
+  );
+  assert.ok(
+    !qa.failures.some((f) => f.startsWith("video_duration_too_long")),
+    `got: ${qa.failures.join(", ")}`,
+  );
+});
+
 test("runContentQa: general Reddit posts cannot invent insider/source attribution", async () => {
   const story = goodStory({
     source_type: "reddit",

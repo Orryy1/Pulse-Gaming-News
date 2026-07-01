@@ -104,6 +104,12 @@ function activeStoryPackageOverridesFromDryRunPlan(plan = null, root = process.c
   return overrides;
 }
 
+function defaultDryRunPlanPathForArgs(args = {}, root = process.cwd()) {
+  if (args.dryRunPlanPath) return path.resolve(root, args.dryRunPlanPath);
+  if (args.storyPackagesPath) return null;
+  return path.join(root, "output", "goal-contract", "dry_run_publish_plan.json");
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -112,9 +118,7 @@ async function main(argv = process.argv.slice(2)) {
   }
   const root = path.resolve(args.root);
   const storyPackages = await readStoryPackages(root, args.storyPackagesPath);
-  const dryRunPlanPath = args.dryRunPlanPath
-    ? path.resolve(root, args.dryRunPlanPath)
-    : path.join(root, "output", "goal-contract", "dry_run_publish_plan.json");
+  const dryRunPlanPath = defaultDryRunPlanPathForArgs(args, root);
   const dryRunPlan = await readJsonIfExists(dryRunPlanPath);
   const report = await repairGoalPlatformDurationContracts({
     storyPackages,
@@ -140,6 +144,7 @@ if (require.main === module) {
 module.exports = {
   activeStoryIdsFromDryRunPlan,
   activeStoryPackageOverridesFromDryRunPlan,
+  defaultDryRunPlanPathForArgs,
   parseArgs,
   readStoryPackages,
   main,

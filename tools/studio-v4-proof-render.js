@@ -621,6 +621,54 @@ function sceneClipRepeatSourceKey(clip = {}, entry = {}) {
   return stripWindowFromSceneSourceKey(entry.sourceRootKey || entry.baseSourceKey || explicit);
 }
 
+function clipHasWindowedSourceKey(clip = {}, entry = {}) {
+  const value = firstText(
+    entry.baseSourceKey,
+    entry.sourceRootKey,
+    clip && typeof clip === "object" ? clip.source_family : "",
+    clip && typeof clip === "object" ? clip.motion_family : "",
+    clip && typeof clip === "object" ? clip.base_source_family : "",
+    clip && typeof clip === "object" ? clip.source_url : "",
+  );
+  return /(?:^|[_/-])window[_/-]?\d+/i.test(value);
+}
+
+function balancedWindowRepeatAllowances(clips = []) {
+  const uniquePaths = new Set();
+  const windowedEntries = [];
+  for (const clip of clips.filter(Boolean)) {
+    const clipPath = sceneClipPath(clip);
+    const pathKey = String(clipPath || "").trim().toLowerCase();
+    if (!pathKey || uniquePaths.has(pathKey)) continue;
+    uniquePaths.add(pathKey);
+    const readableCardKind = sceneClipReadableCardKind(clip);
+    const entry = {
+      baseSourceKey: sceneClipBaseSourceKey(clip),
+      sourceRootKey: sceneClipSourceRootKey(clip),
+      readableCardKind,
+    };
+    const repeatKey = sceneClipRepeatSourceKey(clip, entry);
+    if (!repeatKey || readableCardKind || !clipHasWindowedSourceKey(clip, entry)) continue;
+    windowedEntries.push({ repeatKey });
+  }
+  const total = windowedEntries.length;
+  if (!total) return new Map();
+  const counts = new Map();
+  for (const entry of windowedEntries) {
+    counts.set(entry.repeatKey, (counts.get(entry.repeatKey) || 0) + 1);
+  }
+  const allowances = new Map();
+  const distinctRoots = counts.size;
+  if (distinctRoots < 4) return allowances;
+  for (const [key, count] of counts.entries()) {
+    const share = count / total;
+    if (count <= 2 && share <= 0.2) {
+      allowances.set(key, count);
+    }
+  }
+  return allowances;
+}
+
 function readSceneClipSidecar(clip = {}) {
   const clipPath = sceneClipPath(clip);
   if (!clipPath) return null;
@@ -883,7 +931,8 @@ function buildClipScenePlan({
   const maxSceneLimit = Math.max(1, Math.round(Number(maxScenes) || DEFAULT_DIRECT_CLIP_MAX_SCENES));
   const cleanEntries = [];
   const seen = new Set();
-  const seenDirectBaseSources = new Set();
+  const seenDirectBaseSources = new Map();
+  const windowRepeatAllowances = allowClipReuse === true ? new Map() : balancedWindowRepeatAllowances(clips);
   const skippedDuplicateBaseSources = [];
   for (const clip of clips.filter(Boolean)) {
     const clipPath = sceneClipPath(clip);
@@ -908,7 +957,9 @@ function buildClipScenePlan({
       readableText,
     };
     const repeatSourceKey = allowClipReuse === true ? "" : sceneClipRepeatSourceKey(clip, entry);
-    if (repeatSourceKey && seenDirectBaseSources.has(repeatSourceKey)) {
+    const allowedRepeatCount = Math.max(1, Number(windowRepeatAllowances.get(repeatSourceKey) || 1));
+    const seenRepeatCount = repeatSourceKey ? Number(seenDirectBaseSources.get(repeatSourceKey) || 0) : 0;
+    if (repeatSourceKey && seenRepeatCount >= allowedRepeatCount) {
       skippedDuplicateBaseSources.push({
         key: repeatSourceKey,
         path: clipPath,
@@ -917,7 +968,7 @@ function buildClipScenePlan({
       });
       continue;
     }
-    if (repeatSourceKey) seenDirectBaseSources.add(repeatSourceKey);
+    if (repeatSourceKey) seenDirectBaseSources.set(repeatSourceKey, seenRepeatCount + 1);
     cleanEntries.push(entry);
     if (cleanEntries.length >= maxSceneLimit) break;
   }

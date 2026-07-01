@@ -1606,7 +1606,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const maxDirectMediaCandidatesIndex = directMediaCall.args.indexOf("--max-candidates-per-entry");
     assert.equal(
       directMediaCall.args[maxDirectMediaCandidatesIndex + 1],
-      "8",
+      "12",
       "expected direct media discovery to carry enough official variants forward for no-repeat motion readiness",
     );
     const intakeArgIndex = trailerReferenceCall.args.indexOf("--official-source-intake-report");
@@ -1704,7 +1704,11 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "fresh refill should accept six distinct direct-motion clips so motion-rich candidates do not miss windows solely because two extra clips timed out",
     );
     assert.equal(materializerCall.args[materializerCall.args.indexOf("--min-families") + 1], "5");
-    assert.equal(materializerCall.args[materializerCall.args.indexOf("--max-clips") + 1], "8");
+    assert.equal(
+      materializerCall.args[materializerCall.args.indexOf("--max-clips") + 1],
+      "10",
+      "fresh refill should retain enough unique direct-motion clips for longer no-repeat Shorts renders",
+    );
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
     assert.equal(repairReport.summary.official_source_entries_count, 1);
     assert.equal(repairReport.summary.script_blocked_package_count, 1);

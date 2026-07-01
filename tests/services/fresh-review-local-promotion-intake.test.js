@@ -165,6 +165,88 @@ test("fresh review local promotion intake attaches known official GTA VI direct 
   assert.equal(story.primary_source.name, "GameSpot");
 });
 
+test("fresh review local promotion intake canonicalises MARVEL Tokon trailer headlines", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [
+      sourceBackedReviewRow({
+        id: "rss_marvel_tokon_roster",
+        story_id: "rss_marvel_tokon_roster",
+        title: "MARVEL Tōkon Fighting Souls – Blade, Loki, and Deadpool Gameplay Reveal Trailer | Team Samurai Outriders",
+        description:
+          "PlayStation Blog shows Blade, Loki and Deadpool gameplay for MARVEL Tōkon: Fighting Souls.",
+        article_url:
+          "https://blog.playstation.com/2026/06/29/blade-loki-deadpool-announced-for-marvel-tokon-fighting-souls/",
+        source_name: "PlayStation Blog",
+        source_published_at: "2026-06-29T01:38:56.000Z",
+      }),
+    ],
+    plan: {
+      summary: { selected_count: 1 },
+      source_bound_rewrite_work_orders: [{ story_id: "rss_marvel_tokon_roster" }],
+    },
+    now: new Date("2026-06-29T02:00:00.000Z"),
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_marvel_tokon_roster",
+        title: "MARVEL Tokon Just Started A Roster Fight",
+        suggested_title: "MARVEL Tokon Just Started A Roster Fight",
+        source_name: "PlayStation Blog",
+        article_url:
+          "https://blog.playstation.com/2026/06/29/blade-loki-deadpool-announced-for-marvel-tokon-fighting-souls/",
+        source_type: "rss",
+        source_published_at: "2026-06-29T01:38:56.000Z",
+        source_confidence_score: 90,
+        confirmed_claims: [
+          "PlayStation Blog shows Blade, Loki and Deadpool gameplay for MARVEL Tōkon: Fighting Souls.",
+        ],
+        full_script:
+          "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch. PlayStation Blog shows Blade, Loki and Deadpool in new gameplay for Arc System Works' 4v4 tag fighter, and the roster reveal is really a team-building test. Blade has to bring pressure. Loki has to bend reads. Deadpool has to create chaos without turning every match into visual noise. That matters on PlayStation 5 and PC because tag fighters rise or die on what the assists do after the trailer ends. If these clips show real combo paths, players will be testing team plans before release. If they only show expensive super moves, the hype becomes famous skins with health bars. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
+  });
+
+  const story = report.fresh_source_intake_stories[0];
+  assert.equal(report.summary.local_promotion_story_count, 1);
+  assert.equal(story.canonical_subject, "MARVEL Tokon: Fighting Souls");
+  assert.equal(story.canonical_game, "MARVEL Tokon: Fighting Souls");
+  assert.equal(report.repair_results[0].output_story_ready, true);
+});
+
+test("fresh review local promotion intake repairs malformed MARVEL Tokon trailer copy", () => {
+  const draft = storyDraftFromReprocessedRow({
+    id: "rss_marvel_tokon_bad_copy",
+    title: "MARVEL Tōkon Fighting Souls , Blade, Loki, and Deadpool Gam",
+    suggested_title: "MARVEL Tōkon Fighting Souls , Blade, Loki, and Deadpool Gam",
+    source_name: "GameSpot",
+    article_url:
+      "https://www.gamespot.com/videos/marvel-tokon-fighting-souls-blade-loki-and-deadpool-gameplay-reveal-trailer-team-samurai-outriders/",
+    source_type: "rss",
+    source_published_at: "2026-06-29T03:30:54.000Z",
+    confirmed_claims: [
+      "GameSpot reports MARVEL Tōkon Fighting Souls – Blade, Loki, and Deadpool Gameplay Reveal Trailer.",
+    ],
+    full_script:
+      "MARVEL Tōkon Fighting Souls , Blade, Loki, and Deadpool Gameplay just showed the part trailers usually hide: how it plays. GameSpot reports the new MARVEL Tōkon Fighting Souls , Blade, Loki, and Deadpool Gameplay trailer shows real gameplay, not just another logo beat. Follow Pulse Gaming so you never miss a beat.",
+    script_generation_status: "script_ready",
+  });
+
+  assert.equal(draft.selected_title, "MARVEL Tokon Just Started A Roster Fight");
+  assert.equal(draft.canonical_subject, "MARVEL Tokon: Fighting Souls");
+  assert.match(draft.full_script, /^MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch\./);
+  assert.match(draft.full_script, /Arc System Works' 4v4 tag fighter/i);
+  assert.match(draft.full_script, /PlayStation 5 and PC/i);
+  assert.ok(draft.full_script.split(/\s+/).length >= 140);
+  assert.match(draft.full_script, /Watch the assists, not just the faces/i);
+  assert.match(draft.full_script, /whole game look deeper/i);
+  assert.match(draft.description, /famous skins/i);
+  assert.doesNotMatch(draft.full_script, /Fighting Souls\s*,\s*Blade/i);
+  assert.doesNotMatch(draft.full_script, /labbing/i);
+  assert.doesNotMatch(draft.full_script, /trailers usually hide: how it plays/i);
+  assert.doesNotMatch(draft.full_script, /the debate is simple|the useful part/i);
+  assert.deepEqual(qualityFailuresForDraft(draft), []);
+});
+
 test("fresh review local promotion intake does not promote GTA context as the canonical game", async () => {
   const report = await buildFreshReviewLocalPromotionIntake({
     rows: [

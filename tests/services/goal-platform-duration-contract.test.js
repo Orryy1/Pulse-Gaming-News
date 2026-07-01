@@ -113,6 +113,10 @@ test("platform duration contract repair overwrites stale Instagram legacy durati
       },
     },
   });
+  await fs.writeJson(path.join(storyPackage.artifact_dir, "instagram_publish_pack.json"), {
+    duration_seconds: { min: 25, max: 45 },
+    strategic_duration_seconds: { min: 25, max: 45 },
+  });
 
   const report = await repairGoalPlatformDurationContracts({
     storyPackages: [storyPackage],
@@ -126,6 +130,11 @@ test("platform duration contract repair overwrites stale Instagram legacy durati
   assert.equal(updated.outputs.instagram_reels.publish_duration_seconds.max, 60);
   assert.equal(updated.outputs.instagram_reels.duration_seconds.max, 60);
   assert.equal(updated.outputs.instagram_reels.strategic_duration_seconds.max, 30);
+  const pack = await fs.readJson(path.join(storyPackage.artifact_dir, "instagram_publish_pack.json"));
+  assert.equal(pack.publish_duration_seconds.max, 60);
+  assert.equal(pack.duration_seconds.max, 60);
+  assert.equal(pack.strategic_duration_seconds.max, 30);
+  assert.ok(report.updated[0].synced_platform_pack_files.some((file) => file.endsWith("instagram_publish_pack.json")));
 });
 
 test("platform duration contract repair emits rerender work orders for sub-target cuts", async () => {

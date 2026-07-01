@@ -547,6 +547,46 @@ test("transcript audience audit accepts canonical game aliases in viewer narrati
   });
 });
 
+test("transcript audience audit accepts MARVEL Tokon Fighting Souls spoken without colon pause", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "marvel-tokon-roster");
+    await fs.ensureDir(dir);
+    const script =
+      "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch. " +
+      "GameSpot shows Blade, Loki and Deadpool in new gameplay for Arc System Works' 4v4 tag fighter, and the roster reveal is really a team-building test. " +
+      "Blade has to bring pressure. Loki has to bend reads. Deadpool has to create chaos without turning every match into visual noise. " +
+      "That matters on PlayStation 5 and PC because tag fighters rise or die on what the assists do after the trailer ends. " +
+      "If these clips show real combo paths, players will be testing team plans before release. " +
+      "If they only show expensive super moves, the hype becomes famous skins with health bars. " +
+      "Watch the assists, not just the faces: this reveal either makes the whole game look deeper, or exposes the exact thing it still has to prove. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "marvel-tokon-roster",
+      canonical_subject: "MARVEL Tokon: Fighting Souls",
+      selected_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+      primary_source: "GameSpot",
+      narration_script: script,
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: {
+        name: "GameSpot",
+        url: "https://www.gamespot.com/videos/marvel-tokon-fighting-souls-blade-loki-and-deadpool-gameplay-reveal-trailer-team-samurai-outriders/",
+      },
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript: script,
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+    assert.equal(row.mass_audience.concrete_detail_count >= 3, true);
+  });
+});
+
 test("transcript audience audit accepts GTA VI caption and spoken-title aliases", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "gta-vi-preorder");

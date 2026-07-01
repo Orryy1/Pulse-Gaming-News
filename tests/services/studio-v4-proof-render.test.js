@@ -759,6 +759,58 @@ test("Studio V4 proof renderer accepts equal source and planned scene durations"
   assert.ok(plan.scenes.every((scene) => scene.durationS === 6));
 });
 
+test("Studio V4 proof renderer keeps distinct official trailer windows when readable cards are present", () => {
+  const directClips = Array.from({ length: 10 }, (_, index) => {
+    const sourceIndex = Math.floor(index / 2) + 1;
+    const windowStart = index % 2 === 0 ? 36 : 42;
+    return {
+      path: `tokon-direct-${index + 1}.mp4`,
+      source_url: `https://video.akamai.steamstatic.com/store_trailers/3787240/source-${sourceIndex}/hls_264_master.m3u8`,
+      source_type: "steam_movie",
+      source_kind: "video_file",
+      media_kind: "direct_video",
+      source_family: `steamstatic:/store_trailers/3787240/source-${sourceIndex}_window_${windowStart}_5`,
+      motion_family: `steamstatic:/store_trailers/3787240/source-${sourceIndex}_window_${windowStart}_5`,
+      durationS: 5,
+    };
+  });
+  const plan = buildClipScenePlan({
+    clips: [
+      ...directClips.slice(0, 4),
+      {
+        path: "hf-source-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_source_card",
+        text: "GAME SPOT NEWS SOURCE",
+        durationS: 12,
+        minimum_readable_duration_s: 12,
+      },
+      ...directClips.slice(4, 5),
+      {
+        path: "hf-quote-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_quote_card",
+        text: "MARVEL GAME SPOT",
+        durationS: 12.4,
+        minimum_readable_duration_s: 12,
+      },
+      ...directClips.slice(5),
+    ],
+    durationS: 58.514,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.skippedDuplicateBaseSources.length, 0);
+  assert.equal(plan.scenes.filter((scene) => !scene.readableCardKind).length, 10);
+  assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length, 2);
+  assert.equal(plan.readableCardSceneMetrics.readable_card_duration_ratio <= 0.42, true);
+  assert.equal(plan.coveredDurationS >= 58.514 - 0.01, true);
+});
+
 test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {
   assert.equal(typeof buildSceneCompositeFilterParts, "function");
 

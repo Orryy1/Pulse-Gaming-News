@@ -20,6 +20,7 @@ const {
   resolveUpstreamBenchmarkReportPath,
   runCli,
   runPreflightQaForStory,
+  schedulerEffectivePreflightStory,
   scoreAnalyticsFit,
   mergeBridgeCandidates,
   selectCandidateSourceStories,
@@ -237,6 +238,10 @@ function baseStory(overrides = {}) {
 }
 
 async function passBridgeArtifactFreshnessQa() {
+  return { result: "pass", failures: [], warnings: [] };
+}
+
+async function passPreflightQa() {
   return { result: "pass", failures: [], warnings: [] };
 }
 
@@ -1315,6 +1320,93 @@ test("bridge candidate overlay preserves live terminal publish state over stale 
   );
 });
 
+test("bridge candidate overlay lets fresh bridge proof supersede stale live script review debt", () => {
+  const live = [
+    baseStory({
+      id: "same_story",
+      title: "MARVEL Tokon Old Failed Script Review",
+      script_generation_status: "review_required",
+      script_review_reason: "Actual spoken word count 196 outside 204-250 Flash Lane range",
+      qa_failed: true,
+      qa_failures: ["script_generation_review:Actual spoken word count 196 outside 204-250 Flash Lane range"],
+    }),
+  ];
+  const bridged = [
+    baseStory({
+      id: "same_story",
+      title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      auto_approved: true,
+      duration_seconds: 58.514,
+      duration_lane: "normal_production",
+      script_generation_status: "approved",
+      script_review_reason: "",
+      qa_failed: false,
+      qa_failures: [],
+      video_qa_failures: [],
+      content_qa_failures: [],
+      publish_error: null,
+      publish_verdict: {
+        verdict: "GREEN",
+        can_auto_publish: true,
+        reason_codes: [],
+      },
+      local_bridge_validation: {
+        verdict: "pass",
+        blockers: [],
+      },
+    }),
+  ];
+
+  const merged = mergeBridgeCandidates(live, bridged);
+
+  assert.equal(merged[0].script_generation_status, "approved");
+  assert.equal(merged[0].script_review_reason, "");
+  assert.equal(merged[0].qa_failed, false);
+  assert.deepEqual(merged[0].qa_failures, []);
+  assert.equal(merged[0].scheduler_bridge_superseded_live_governance, true);
+  assert.equal(
+    merged[0].scheduler_bridge_superseded_live_governance_reason,
+    "fresh_bridge_validation_over_stale_local_qa",
+  );
+});
+
+test("bridge candidate overlay does not supersede terminal rows with public platform evidence", () => {
+  const live = [
+    baseStory({
+      id: "same_story",
+      title: "MARVEL Tokon Already Has YouTube Evidence",
+      script_generation_status: "review_required",
+      script_review_reason: "Actual spoken word count 196 outside 204-250 Flash Lane range",
+      youtube_post_id: "yt-existing",
+    }),
+  ];
+  const bridged = [
+    baseStory({
+      id: "same_story",
+      title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      script_generation_status: "approved",
+      script_review_reason: "",
+      qa_failed: false,
+      publish_verdict: {
+        verdict: "GREEN",
+        can_auto_publish: true,
+      },
+      local_bridge_validation: {
+        verdict: "pass",
+      },
+    }),
+  ];
+
+  const merged = mergeBridgeCandidates(live, bridged);
+
+  assert.equal(merged[0].script_generation_status, "review_required");
+  assert.equal(merged[0].script_review_reason, "Actual spoken word count 196 outside 204-250 Flash Lane range");
+  assert.equal(merged[0].youtube_post_id, "yt-existing");
+  assert.notEqual(merged[0].scheduler_bridge_superseded_live_governance, true);
+});
+
 test("current bridge manifest excludes stale live bridge rows that are not present", () => {
   const live = [
     baseStory({
@@ -1715,6 +1807,7 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2257,6 +2350,7 @@ test("bridge preflight blocks generated-only orange-card motion decks", async ()
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2331,6 +2425,7 @@ test("bridge preflight accepts human-reviewed source-locked owned explainer brid
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2407,6 +2502,7 @@ test("bridge preflight blocks direct-video enrichment work-order gaps before sch
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2497,6 +2593,7 @@ test("bridge preflight does not hard-block non-blocking direct-video quality-gap
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2586,6 +2683,7 @@ test("bridge preflight ignores stale source-family motion blockers when current 
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2668,6 +2766,7 @@ test("bridge preflight allows human-reviewed source-locked owned explainer excep
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2755,6 +2854,7 @@ test("bridge preflight blocks automatic owned explainer exceptions without sourc
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2844,6 +2944,7 @@ test("bridge preflight accepts automatic owned explainer exceptions for source-f
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2916,6 +3017,7 @@ test("bridge preflight blocks owned explainer decks without a human review or ve
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2979,6 +3081,7 @@ test("bridge preflight blocks owned explainer decks without a human review or ve
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -6133,6 +6236,233 @@ test("media-house preflight scores current artifact platform manifest over stale
 
   assert.equal(preflight.checks.media_house.result, "pass");
   assert.equal(preflight.status, "pass");
+});
+
+test("scheduler effective preflight story uses platform variants when enabled platform media is in-window", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-effective-platform-media-"));
+  const baseVideo = path.join(root, "visual_v4_render.mp4");
+  const youtubeVariant = path.join(root, "platform_variants", "youtube_shorts", "visual_v4_render_youtube.mp4");
+  const instagramVariant = path.join(root, "platform_variants", "instagram_reels", "visual_v4_render_instagram.mp4");
+  await fs.outputFile(baseVideo, Buffer.alloc(2048));
+  await fs.outputFile(youtubeVariant, Buffer.alloc(2048));
+  await fs.outputFile(instagramVariant, Buffer.alloc(2048));
+
+  const story = baseStory({
+    id: "marvel_tokon_duration_variant",
+    exported_path: baseVideo,
+    scheduler_bridge_artifact_dir: root,
+    duration_seconds: 63.633,
+    runtime_seconds: 63.633,
+    audio_duration: 63.633,
+    max_video_duration_seconds: 60,
+    platform_publish_manifest: {
+      outputs: {
+        youtube_shorts: {
+          publish_duration_seconds: { min: 15, max: 60 },
+          technical_duration_seconds: 59.8,
+          variant_video_path: youtubeVariant,
+        },
+        instagram_reels: {
+          publish_duration_seconds: { min: 15, max: 60 },
+          technical_duration_seconds: 59.8,
+          variant_video_path: instagramVariant,
+        },
+        facebook_reels: {
+          publish_duration_seconds: { min: 15, max: 75 },
+        },
+      },
+    },
+  });
+
+  const effective = schedulerEffectivePreflightStory(story, { env: {} });
+
+  assert.equal(effective.scheduler_effective_platform_media_applied, true);
+  assert.equal(effective.max_video_duration_seconds, 75);
+  assert.equal(effective.target_video_duration_seconds_max, 75);
+  assert.equal(effective.duration_seconds, 63.633);
+  assert.deepEqual(
+    effective.scheduler_effective_platform_media.map((item) => [
+      item.platform,
+      item.source,
+      item.duration_seconds,
+    ]),
+    [
+      ["youtube_shorts", "platform_variant", 59.8],
+      ["instagram_reels", "platform_variant", 59.8],
+      ["facebook_reels", "base_render", 63.633],
+    ],
+  );
+});
+
+test("scheduler effective preflight story refuses variant relief when an enabled platform lacks valid media", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-effective-platform-media-blocked-"));
+  const baseVideo = path.join(root, "visual_v4_render.mp4");
+  const youtubeVariant = path.join(root, "platform_variants", "youtube_shorts", "visual_v4_render_youtube.mp4");
+  await fs.outputFile(baseVideo, Buffer.alloc(2048));
+  await fs.outputFile(youtubeVariant, Buffer.alloc(2048));
+
+  const story = baseStory({
+    id: "marvel_tokon_missing_instagram_variant",
+    exported_path: baseVideo,
+    scheduler_bridge_artifact_dir: root,
+    duration_seconds: 63.633,
+    runtime_seconds: 63.633,
+    audio_duration: 63.633,
+    max_video_duration_seconds: 60,
+    platform_publish_manifest: {
+      outputs: {
+        youtube_shorts: {
+          publish_duration_seconds: { min: 15, max: 60 },
+          technical_duration_seconds: 59.8,
+          variant_video_path: youtubeVariant,
+        },
+        instagram_reels: {
+          publish_duration_seconds: { min: 15, max: 60 },
+        },
+        facebook_reels: {
+          publish_duration_seconds: { min: 15, max: 75 },
+        },
+      },
+    },
+  });
+
+  const effective = schedulerEffectivePreflightStory(story, { env: {} });
+
+  assert.notEqual(effective.scheduler_effective_platform_media_applied, true);
+  assert.equal(effective.max_video_duration_seconds, 60);
+  assert.equal(effective.duration_seconds, 63.633);
+});
+
+test("next publish report ranks scheduler-effective variant media as publish-ready", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-effective-platform-media-ranking-"));
+  const baseVideo = path.join(root, "visual_v4_render.mp4");
+  const youtubeVariant = path.join(root, "platform_variants", "youtube_shorts", "visual_v4_render_youtube.mp4");
+  const instagramVariant = path.join(root, "platform_variants", "instagram_reels", "visual_v4_render_instagram.mp4");
+  await fs.outputFile(baseVideo, Buffer.alloc(2048));
+  await fs.outputFile(youtubeVariant, Buffer.alloc(2048));
+  await fs.outputFile(instagramVariant, Buffer.alloc(2048));
+
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "marvel_tokon_ranked_ready",
+        title: "MARVEL Tokon Fighting Souls Gives Fans Three Arguments",
+        approved: true,
+        auto_approved: true,
+        exported_path: baseVideo,
+        scheduler_bridge_artifact_dir: root,
+        scheduler_bridge_source: "local_bridge_candidate_upsert",
+        duration_lane: "normal_production",
+        duration_seconds: 63.633,
+        runtime_seconds: 63.633,
+        audio_duration: 63.633,
+        max_video_duration_seconds: 60,
+        platform_publish_manifest: {
+          outputs: {
+            youtube_shorts: {
+              publish_duration_seconds: { min: 15, max: 60 },
+              technical_duration_seconds: 59.8,
+              variant_video_path: youtubeVariant,
+            },
+            instagram_reels: {
+              publish_duration_seconds: { min: 15, max: 60 },
+              technical_duration_seconds: 59.8,
+              variant_video_path: instagramVariant,
+            },
+            facebook_reels: {
+              publish_duration_seconds: { min: 15, max: 75 },
+            },
+          },
+        },
+      }),
+    ],
+    { generatedAt: "2026-07-01T23:40:00.000Z", env: {} },
+  );
+
+  assert.equal(report.candidates.length, 1);
+  assert.equal(report.candidates[0].status, "publish_ready");
+  assert.ok(report.candidates[0].reasons.includes("normal_production_duration_window"));
+});
+
+test("runPreflightQaForStory passes scheduler-effective platform media to content and video QA", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-effective-platform-media-qa-"));
+  const baseVideo = path.join(root, "visual_v4_render.mp4");
+  const youtubeVariant = path.join(root, "platform_variants", "youtube_shorts", "visual_v4_render_youtube.mp4");
+  const instagramVariant = path.join(root, "platform_variants", "instagram_reels", "visual_v4_render_instagram.mp4");
+  await fs.outputFile(baseVideo, Buffer.alloc(2048));
+  await fs.outputFile(youtubeVariant, Buffer.alloc(2048));
+  await fs.outputFile(instagramVariant, Buffer.alloc(2048));
+  const seen = { content: null, videoStory: null, videoPath: null, platformPath: null };
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "marvel_tokon_effective_preflight",
+      title: "MARVEL Tokon Fighting Souls Gives Fans Three Arguments",
+      canonical_subject: "MARVEL Tokon: Fighting Souls",
+      exported_path: baseVideo,
+      scheduler_bridge_artifact_dir: root,
+      duration_seconds: 63.633,
+      runtime_seconds: 63.633,
+      audio_duration: 63.633,
+      max_video_duration_seconds: 60,
+      full_script:
+        "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch. GameSpot's footage shows Arc System Works building a 4v4 tag fighter around assists, team routing and comic-book chaos. That matters because the roster is not just fan service. It decides whether this becomes a PlayStation 5 and PC party fighter or a serious lab monster. Follow Pulse Gaming so you never miss a beat.",
+      platform_publish_manifest: {
+        outputs: {
+          youtube_shorts: {
+            publish_duration_seconds: { min: 15, max: 60 },
+            technical_duration_seconds: 59.8,
+            variant_video_path: youtubeVariant,
+          },
+          instagram_reels: {
+            publish_duration_seconds: { min: 15, max: 60 },
+            technical_duration_seconds: 59.8,
+            variant_video_path: instagramVariant,
+          },
+          facebook_reels: {
+            publish_duration_seconds: { min: 15, max: 75 },
+          },
+        },
+      },
+    }),
+    {
+      runContentQa: async (story) => {
+        seen.content = story;
+        return { result: "pass", failures: [], warnings: [] };
+      },
+      buildVideoQaOptionsForStory: (story, options) => {
+        seen.videoStory = story;
+        return options || {};
+      },
+      runVideoQa: async (videoPath) => {
+        seen.videoPath = videoPath;
+        return { result: "pass", failures: [], warnings: [] };
+      },
+      runPlatformVideoQa: async (videoPath) => {
+        seen.platformPath = videoPath;
+        return { result: "pass", failures: [], warnings: [] };
+      },
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "pass");
+  assert.equal(seen.content.scheduler_effective_platform_media_applied, true);
+  assert.equal(seen.videoStory.max_video_duration_seconds, 75);
+  assert.equal(seen.videoStory.target_video_duration_seconds_max, 75);
+  assert.equal(seen.videoPath, baseVideo);
+  assert.equal(seen.platformPath, baseVideo);
 });
 
 test("runPreflightQaForStory blocks final renders with repeated visual-unit expansion", async () => {

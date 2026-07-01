@@ -80,6 +80,11 @@ const DEFAULT_LIMIT = 12;
 const DEFAULT_SCRIPT_SCORE_THRESHOLD = 75;
 const DEFAULT_SOURCE_AGE_POLICY_HOURS = 168;
 const DEFAULT_ENABLED_SCHEDULER_GOVERNANCE_PLATFORMS = ["youtube", "instagram", "facebook"];
+const DEFAULT_PUBLISH_PLATFORM_MAX_SECONDS = {
+  youtube_shorts: 60,
+  instagram_reels: 60,
+  facebook_reels: 75,
+};
 
 const PUBLIC_PLATFORM_FIELDS = [
   "youtube_post_id",
@@ -171,6 +176,10 @@ function isTruthyFlag(value) {
   return value === true || value === 1 || String(value || "").toLowerCase() === "true";
 }
 
+function statusText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toUpperCase();
+}
+
 function hasLiveTerminalGovernanceState(story = {}) {
   const status = String(story.publish_status || "").toLowerCase();
   const publishError = String(story.publish_error || "");
@@ -184,6 +193,72 @@ function hasLiveTerminalGovernanceState(story = {}) {
     parseFailureList(story.qa_failures).length > 0 ||
     parseFailureList(story.video_qa_failures).length > 0 ||
     parseFailureList(story.content_qa_failures).length > 0
+  );
+}
+
+const LIVE_TERMINAL_ERROR_REQUIRES_OPERATOR_OR_PLATFORM_REPAIR =
+  /\b(?:public_row_repair|platform_posts?|youtube|instagram|facebook|upload|duplicate|oauth|token|graph|api|post[_-]?id|media[_-]?id)\b/i;
+
+const LIVE_TERMINAL_GOVERNANCE_HARD_VISUAL_BLOCKER_RE =
+  /\b(?:hyperframes|card[_-]?visible|readable[_-]?card|repeated[_-]?card|clip[_-]?scene|direct[_-]?motion[_-]?base|source[_-]?overuse|visual[_-]?evidence|motion[_-]?source|freeze|black|choppy)\b/i;
+
+function hasPublicPlatformEvidence(story = {}) {
+  return PUBLIC_PLATFORM_FIELDS.some((field) => realPlatformId(story[field]));
+}
+
+function liveTerminalGovernanceHasHardVisualBlocker(story = {}) {
+  const evidence = [
+    story.publish_error,
+    ...parseFailureList(story.qa_failures),
+    ...parseFailureList(story.video_qa_failures),
+    ...parseFailureList(story.content_qa_failures),
+    story.script_review_reason,
+  ].join(" ");
+  return LIVE_TERMINAL_GOVERNANCE_HARD_VISUAL_BLOCKER_RE.test(evidence);
+}
+
+function bridgeHasFreshGovernanceApproval(bridge = {}) {
+  const bridgeVerdict = statusText(
+    bridge.publish_verdict?.verdict ||
+      bridge.publish_verdict?.status ||
+      bridge.publish_status ||
+      bridge.local_bridge_validation?.verdict ||
+      bridge.local_bridge_validation?.status,
+  );
+  const bridgeValidation = statusText(
+    bridge.local_bridge_validation?.verdict || bridge.local_bridge_validation?.status,
+  );
+  const qaClean =
+    !isTruthyFlag(bridge.qa_failed) &&
+    bridge.script_generation_status !== "review_required" &&
+    parseFailureList(bridge.qa_failures).length === 0 &&
+    parseFailureList(bridge.video_qa_failures).length === 0 &&
+    parseFailureList(bridge.content_qa_failures).length === 0;
+  const noPublishError = !String(bridge.publish_error || "").trim();
+  return (
+    qaClean &&
+    noPublishError &&
+    (bridge.publish_verdict?.can_auto_publish === true ||
+      bridge.can_auto_publish === true ||
+      bridgeVerdict === "GREEN" ||
+      bridgeValidation === "PASS")
+  );
+}
+
+function liveTerminalGovernanceCanBeSupersededByBridge(live = {}, bridge = {}) {
+  if (!hasLiveTerminalGovernanceState(live)) return false;
+  if (!bridgeHasFreshGovernanceApproval(bridge)) return false;
+  if (hasPublicPlatformEvidence(live)) return false;
+  const publishError = String(live.publish_error || "");
+  if (LIVE_TERMINAL_ERROR_REQUIRES_OPERATOR_OR_PLATFORM_REPAIR.test(publishError)) return false;
+  if (liveTerminalGovernanceHasHardVisualBlocker(live)) return false;
+  return (
+    live.script_generation_status === "review_required" ||
+    isTruthyFlag(live.qa_failed) ||
+    parseFailureList(live.qa_failures).length > 0 ||
+    parseFailureList(live.video_qa_failures).length > 0 ||
+    parseFailureList(live.content_qa_failures).length > 0 ||
+    /(content_qa|video_qa|script validation failed|script_validation_review_required)/i.test(publishError)
   );
 }
 
@@ -971,14 +1046,14 @@ function exclusionReason(story = {}, options = {}) {
   ) {
     return "stale_unpublished_backlog";
   }
-  const duration = durationVerdict(story);
+  const duration = durationVerdict(schedulerEffectivePreflightStory(story, options));
   if (duration.status === "exclude") return duration.reason;
   return null;
 }
 
 function scoreCandidate(story = {}, options = {}) {
   const analytics = scoreAnalyticsFit(story, options.analyticsText || "");
-  const duration = durationVerdict(story);
+  const duration = durationVerdict(schedulerEffectivePreflightStory(story, options));
   const approval = approvalScore(story);
   const platform = platformReadiness(story);
   const tiktok = tiktokInboxReadiness(story);
@@ -1075,12 +1150,17 @@ function mergeBridgeCandidates(stories = [], bridgeCandidates = []) {
       scheduler_bridge_source: bridge.scheduler_bridge_source || "scheduler_bridge_candidates",
       scheduler_bridge_overlay_live_row: true,
     };
-    if (hasLiveTerminalGovernanceState(live)) {
+    const bridgeSupersedesLiveGovernance = liveTerminalGovernanceCanBeSupersededByBridge(live, bridge);
+    if (hasLiveTerminalGovernanceState(live) && !bridgeSupersedesLiveGovernance) {
       for (const field of LIVE_TERMINAL_GOVERNANCE_FIELDS) {
         if (Object.prototype.hasOwnProperty.call(live, field)) {
           overlay[field] = live[field];
         }
       }
+    }
+    if (bridgeSupersedesLiveGovernance) {
+      overlay.scheduler_bridge_superseded_live_governance = true;
+      overlay.scheduler_bridge_superseded_live_governance_reason = "fresh_bridge_validation_over_stale_local_qa";
     }
     for (const field of BRIDGE_REPLACED_MEDIA_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(bridge, field)) continue;
@@ -3696,6 +3776,139 @@ function cloneStoryForPreflight(story = {}) {
   }
 }
 
+function resolveArtifactMediaReference(artifactDir = "", reference = "") {
+  const cleaned = cleanText(reference);
+  if (!cleaned) return "";
+  return path.resolve(path.isAbsolute(cleaned) ? cleaned : path.join(artifactDir, cleaned));
+}
+
+function artifactDirForStory(story = {}) {
+  const direct = cleanText(
+    story.scheduler_bridge_artifact_dir ||
+      story.artifact_dir ||
+      story.output_dir ||
+      story.package_dir,
+  );
+  if (direct) return path.resolve(direct);
+  const exported = cleanText(story.exported_path || story.video_path);
+  return exported ? path.dirname(path.resolve(exported)) : "";
+}
+
+function platformDurationWindowMax(platform = "", output = {}, story = {}) {
+  return (
+    numberOrNull(output.publish_duration_seconds?.max) ??
+    numberOrNull(output.duration_seconds?.max) ??
+    numberOrNull(output.max_duration_s) ??
+    numberOrNull(output.platform_variant_render?.max_duration_s) ??
+    numberOrNull(story.max_video_duration_seconds) ??
+    DEFAULT_PUBLISH_PLATFORM_MAX_SECONDS[platform] ??
+    60
+  );
+}
+
+function platformVariantDurationSeconds(output = {}) {
+  return (
+    numberOrNull(output.technical_duration_seconds) ??
+    numberOrNull(output.variant_duration_seconds) ??
+    numberOrNull(output.platform_variant_render?.duration_s) ??
+    numberOrNull(output.platform_variant_render?.duration_seconds) ??
+    numberOrNull(output.platform_variant_render?.rendered_duration_s)
+  );
+}
+
+function platformVariantReference(output = {}) {
+  return cleanText(
+    output.variant_video_path ||
+      output.platform_video_path ||
+      output.video_path ||
+      output.platform_variant_render?.output_path ||
+      output.platform_variant_render?.video_path,
+  );
+}
+
+function platformEffectiveMediaForStory(story = {}, platform = "", { fsImpl = fs } = {}) {
+  const manifest = objectValue(story.platform_publish_manifest || story.platformManifest, {});
+  const outputs = objectValue(manifest.outputs, {});
+  const output = objectValue(outputs[platform], {});
+  const artifactDir = artifactDirForStory(story);
+  const max = platformDurationWindowMax(platform, output, story);
+  const variantRef = platformVariantReference(output);
+  const variantDuration = platformVariantDurationSeconds(output);
+  if (variantRef && variantDuration != null && variantDuration <= max) {
+    const variantPath = resolveArtifactMediaReference(artifactDir, variantRef);
+    if (variantPath && (!fsImpl?.existsSync || fsImpl.existsSync(variantPath))) {
+      return {
+        platform,
+        source: "platform_variant",
+        path: variantPath,
+        duration_seconds: variantDuration,
+        max_duration_seconds: max,
+      };
+    }
+  }
+
+  const baseDuration = storyDurationSeconds(story);
+  const basePath = cleanText(story.exported_path || story.video_path);
+  if (basePath && baseDuration != null && baseDuration <= max) {
+    return {
+      platform,
+      source: "base_render",
+      path: basePath,
+      duration_seconds: baseDuration,
+      max_duration_seconds: max,
+    };
+  }
+  return {
+    platform,
+    source: "missing_or_out_of_window",
+    path: "",
+    duration_seconds: baseDuration,
+    max_duration_seconds: max,
+    blocker:
+      baseDuration == null
+        ? `platform_duration_unknown:${platform}`
+        : `platform_duration_out_of_window:${platform}:${baseDuration.toFixed(2)}>${max.toFixed(2)}`,
+  };
+}
+
+function schedulerEffectivePreflightStory(story = {}, opts = {}) {
+  const cloned = cloneStoryForPreflight(story);
+  const platforms = missingEnabledPublishPlatformNames(story, opts);
+  if (!platforms.length) return cloned;
+  const manifest = objectValue(story.platform_publish_manifest || story.platformManifest, {});
+  if (!Object.keys(objectValue(manifest.outputs, {})).length) return cloned;
+  const media = platforms.map((platform) =>
+    platformEffectiveMediaForStory(story, platform, { fsImpl: opts.fs || fs }),
+  );
+  if (media.some((item) => item.blocker)) return cloned;
+  if (!media.some((item) => item.source === "platform_variant")) return cloned;
+
+  const representative =
+    media.find((item) => item.source === "base_render") ||
+    [...media].sort((a, b) => (b.duration_seconds || 0) - (a.duration_seconds || 0))[0];
+  const effectiveDuration = Math.max(
+    ...media.map((item) => numberOrNull(item.duration_seconds)).filter((value) => value != null),
+  );
+  const effectiveMax = Math.max(
+    ...media.map((item) => numberOrNull(item.max_duration_seconds)).filter((value) => value != null),
+  );
+  if (!representative || effectiveDuration == null || effectiveMax == null) return cloned;
+
+  return {
+    ...cloned,
+    exported_path: representative.path,
+    video_path: representative.path,
+    duration_seconds: effectiveDuration,
+    runtime_seconds: effectiveDuration,
+    video_duration_seconds: effectiveDuration,
+    audio_duration: effectiveDuration,
+    target_video_duration_seconds_max: effectiveMax,
+    max_video_duration_seconds: effectiveMax,
+    scheduler_effective_platform_media: media,
+    scheduler_effective_platform_media_applied: true,
+  };
+}
+
 async function readBridgeArtifactJson(story = {}, fileName = "") {
   const artifactDir = cleanText(
     story.scheduler_bridge_artifact_dir || story.artifact_dir || story.output_dir || story.package_dir,
@@ -4475,9 +4688,10 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
   } = opts;
 
   try {
-    const contentStory = cloneStoryForPreflight(story);
-    const videoStory = cloneStoryForPreflight(story);
-    const platformStory = cloneStoryForPreflight(story);
+    const effectiveMediaStory = schedulerEffectivePreflightStory(story, opts);
+    const contentStory = cloneStoryForPreflight(effectiveMediaStory);
+    const videoStory = cloneStoryForPreflight(effectiveMediaStory);
+    const platformStory = cloneStoryForPreflight(effectiveMediaStory);
     const governanceStory = cloneStoryForPreflight(story);
     const publicCopyStory = cloneStoryForPreflight(story);
     const publicMetadataStory = cloneStoryForPreflight(story);
@@ -4742,6 +4956,15 @@ async function attachStoryPreflight(report = {}, stories = [], storyId = null, o
 
 function buildNextPublishCandidatesReport(stories, options = {}) {
   const generatedAt = options.generatedAt || new Date().toISOString();
+  const generatedAtMs = Date.parse(generatedAt);
+  const evaluationOptions = {
+    ...options,
+    nowMs: Number.isFinite(Number(options.nowMs))
+      ? Number(options.nowMs)
+      : Number.isFinite(generatedAtMs)
+        ? generatedAtMs
+        : Date.now(),
+  };
   const requestedStoryId = normaliseStoryId(options.storyId);
   const inputRows = Array.isArray(stories) ? stories : [];
   const rows = filterStoriesByStoryId(inputRows, requestedStoryId);
@@ -4763,7 +4986,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
 
   for (const story of rows) {
     if (!story || typeof story !== "object") continue;
-    const reason = exclusionReason(story, options);
+    const reason = exclusionReason(story, evaluationOptions);
     if (reason) {
       if (reason.startsWith("pending_audio")) pendingAudioCount += 1;
       excluded.push({
@@ -4774,7 +4997,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
       });
       continue;
     }
-    candidates.push(scoreCandidate(story, options));
+    candidates.push(scoreCandidate(story, evaluationOptions));
   }
 
   candidates.sort((a, b) => {
@@ -5297,6 +5520,7 @@ module.exports = {
   scriptScorecardPreflightForStory,
   sourceAgePreflightForStory,
   selectCandidateSourceStories,
+  schedulerEffectivePreflightStory,
   timestampAlignmentPreflightForStory,
   visualEntityPreflightForStory,
   voiceQualityPreflightForStory,

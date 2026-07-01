@@ -1885,6 +1885,50 @@ test("goal dry-run publisher treats Steam CDN trailer aliases as the same visual
   );
 });
 
+test("goal dry-run publisher allows balanced official trailer windows at the source-share ceiling", () => {
+  const clips = [
+    ...Array.from({ length: 2 }, (_, index) =>
+      directMotionClipFixture({
+        id: `marvel-steam-a-${index + 1}`,
+        path: `motion/marvel-steam-a-${index + 1}.mp4`,
+        sourceUrl:
+          "https://video.akamai.steamstatic.com/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008/hls_264_master.m3u8",
+        sourceFamily: `steamstatic:/store_trailers/3787240/1293753200/38427149fdf9b062556b9fbcb472f93178694068/1780544008_window_${36 + index * 6}_5`,
+        sourceType: "steam_movie",
+        startS: 36 + index * 6,
+        durationS: 5,
+      }),
+    ),
+    ...Array.from({ length: 2 }, (_, index) =>
+      directMotionClipFixture({
+        id: `marvel-steam-b-${index + 1}`,
+        path: `motion/marvel-steam-b-${index + 1}.mp4`,
+        sourceUrl:
+          "https://video.akamai.steamstatic.com/store_trailers/3787240/789082905/69f1acafc09d9963fa0fc3cf72a968d073544421/1774495522/hls_264_master.m3u8",
+        sourceFamily: `steamstatic:/store_trailers/3787240/789082905/69f1acafc09d9963fa0fc3cf72a968d073544421/1774495522_window_${36 + index * 6}_5`,
+        sourceType: "steam_movie",
+        startS: 36 + index * 6,
+        durationS: 5,
+      }),
+    ),
+    ...Array.from({ length: 6 }, (_, index) =>
+      directMotionClipFixture({
+        id: `marvel-balanced-distinct-${index + 1}`,
+        path: `motion/marvel-balanced-distinct-${index + 1}.mp4`,
+        sourceUrl: `https://cdn.example.com/marvel-tokon/balanced-distinct-${index + 1}.mp4`,
+        sourceFamily: `marvel_tokon_balanced_distinct_${index + 1}`,
+        startS: index * 5,
+        durationS: 5,
+      }),
+    ),
+  ];
+
+  const evidence = directMotionBaseSourceOveruseEvidence(clips);
+
+  assert.deepEqual(evidence.blockers, []);
+  assert.deepEqual(evidence.evidence.direct_motion_base_source_overuse, []);
+});
+
 test("goal dry-run publisher blocks overused official trailer windows from the same source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-official-window-sources-"));
   const storyPackage = await makeStoryPackage(
@@ -4546,6 +4590,59 @@ test("goal dry-run publisher uses separate candidate report before stale verdict
     plan.incident_guard_report.stories[0].disaster_upload_blockers.includes("incident:control_tower_verdict_not_green"),
     false,
   );
+});
+
+test("goal dry-run publisher quarantines stale duplicate when a publish-ready replacement exists", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-duplicate-replacement-"));
+  const title = "MARVEL Tokon Turns Its Roster Into A Meta Fight";
+  const stalePackage = await makeStoryPackage(
+    root,
+    "stale-marvel-tokon",
+    "RED",
+    title,
+    { canonicalSubject: "MARVEL Tokon: Fighting Souls" },
+  );
+  const replacementPackage = await makeStoryPackage(
+    root,
+    "fresh-marvel-tokon",
+    "GREEN",
+    title,
+    { canonicalSubject: "MARVEL Tokon: Fighting Souls" },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [stalePackage, replacementPackage],
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "stale-marvel-tokon",
+          title,
+          status: "review",
+          preflight_qa: {
+            status: "blocked",
+            blockers: ["incident_guard:visual_evidence:direct_motion_base_source_overused"],
+            warnings: [],
+          },
+        },
+        {
+          id: "fresh-marvel-tokon",
+          title,
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    generatedAt: "2026-07-01T22:30:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.held_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.ready_stories[0].story_id, "fresh-marvel-tokon");
+  assert.equal(plan.held_stories[0].story_id, "stale-marvel-tokon");
+  assert.equal(plan.held_stories[0].status, "quarantined_by_publish_ready_replacement");
+  assert.ok(plan.held_stories[0].hold_reasons.includes("replacement_story:fresh-marvel-tokon"));
 });
 
 test("goal dry-run publisher does not override stale publish verdict without current media-house proof", async () => {

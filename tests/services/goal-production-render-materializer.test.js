@@ -1135,6 +1135,95 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
 });
 
+test("goal production render materializer preserves premium direct runway when HyperFrames cards are added", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-direct-runway-"));
+  const artifactDir = await makePackage(root, "story-hf-direct-runway");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-direct-runway", kind),
+  ));
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 58.514,
+      spoken_wpm: 154.8,
+    },
+  });
+  const directClips = Array.from({ length: 10 }, (_, index) => {
+    const strictBaseIndex = index < 6 ? Math.floor(index / 2) + 1 : index - 2;
+    const windowStart = index % 2 === 0 ? 36 : 42;
+    const clipPath = path.join(artifactDir, `tokon-direct-${index + 1}.mp4`);
+    return {
+      id: `segment_direct_motion_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://video.steamstatic.example.com/store_trailers/3787240/${strictBaseIndex}/clip-${windowStart}.mp4`,
+      source_type: "steam_movie",
+      source_kind: "video_file",
+      source_family: `steamstatic:/store_trailers/3787240/base_${strictBaseIndex}_window_${windowStart}_5`,
+      motion_family: `steamstatic:/store_trailers/3787240/base_${strictBaseIndex}_window_${windowStart}_5`,
+      media_kind: "direct_video",
+      source_url_kind: "hls_manifest",
+      counts_towards_motion_readiness: true,
+      validated: true,
+      durationS: 5,
+    };
+  });
+  await Promise.all(directClips.map((clip, index) =>
+    fs.outputFile(clip.path, Buffer.alloc(2048, 90 + index)),
+  ));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: directClips.length,
+    distinct_motion_family_count: directClips.length,
+    direct_video_motion_asset_count: directClips.length,
+    direct_video_motion_family_count: directClips.length,
+    clips: directClips,
+    materialised_clips: directClips,
+  });
+  const job = readyJob("story-hf-direct-runway", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: directClips.length,
+      distinct_motion_family_count: directClips.length,
+      materialised_motion_clip_paths: directClips.map((clip) => clip.path),
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-01T22:30:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 58.514,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const selectedDirectClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.media_kind === "direct_video",
+  );
+  const selectedCardClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+  assert.equal(selectedDirectClips.length, 10);
+  assert.equal(selectedCardClips.length, 2);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 24);
+  assert.ok(
+    selectedDirectClips.every((clip) => /window_(?:36|42)_5/.test(clip.source_family)),
+  );
+});
+
 test("goal production render materializer does not stack legacy owned cards on premium HyperFrames cards", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-no-stack-"));
   const artifactDir = await makePackage(root, "story-hf-no-stack");

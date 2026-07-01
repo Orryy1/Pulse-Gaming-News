@@ -463,6 +463,64 @@ test("platform-native pack repair fixes placeholder social copy even when old ev
   assert.match(repaired.outputs.x.concise_news_post, /paid early access/i);
 });
 
+test("platform-native pack repair refreshes stale Facebook explanatory framing", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
+  const manifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  await fs.writeJson(
+    canonicalPath,
+    {
+      ...canonical,
+      canonical_subject: "MARVEL Tokon: Fighting Souls",
+      canonical_game: "MARVEL Tokon: Fighting Souls",
+      canonical_angle:
+        "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch",
+      selected_title: "MARVEL Tokon Just Started A Roster Fight",
+      thumbnail_headline: "TOKON ROSTER FIGHT",
+      first_spoken_line: "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch.",
+      primary_source: "GameSpot",
+      description:
+        "MARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch. Source: GameSpot.",
+    },
+    { spaces: 2 },
+  );
+
+  const firstPass = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-01T22:20:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-first-pass"),
+  });
+  assert.equal(firstPass.summary.repaired_count, 1);
+
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.facebook_reels.explanatory_framing =
+    "MARVEL Tokon: Fighting Souls matters because mARVEL Tokon Fighting Souls just gave fighting-game fans three reasons to argue before launch.";
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-01T22:21:00.000Z",
+    apply: false,
+  });
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].affiliate_output_stale, true);
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-01T22:22:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-framing"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const repaired = await fs.readJson(manifestPath);
+  assert.match(repaired.outputs.facebook_reels.explanatory_framing, /MARVEL Tokon/);
+  assert.doesNotMatch(repaired.outputs.facebook_reels.explanatory_framing, /\bmARVEL\b/);
+});
+
 test("platform-native pack repair fixes stale subject/source drift even when old native evidence passed", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;

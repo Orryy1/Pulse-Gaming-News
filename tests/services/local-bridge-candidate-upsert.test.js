@@ -245,7 +245,7 @@ test("buildLocalBridgeCandidate keeps concise platform cover headlines instead o
   assert.doesNotMatch(candidate.suggested_thumbnail_text, /Call of Duty/i);
 });
 
-test("buildLocalBridgeCandidate preserves safe spoken TTS script separately from display narration", async () => {
+test("buildLocalBridgeCandidate routes GTA VI narration through the safe spoken script", async () => {
   const files = await fixture();
   const canonicalPath = path.join(files.artifactDir, "canonical_story_manifest.json");
   const canonical = await fs.readJson(canonicalPath);
@@ -270,13 +270,52 @@ test("buildLocalBridgeCandidate preserves safe spoken TTS script separately from
     generatedAt: "2026-06-29T10:05:00.000Z",
   });
 
-  assert.match(candidate.narration_script, /\bGTA VI\b/);
-  assert.equal(
-    candidate.tts_script,
-    "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
-  );
+  const safeSpoken =
+    "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.";
+  assert.equal(candidate.full_script, safeSpoken);
+  assert.equal(candidate.narration_script, safeSpoken);
+  assert.equal(candidate.body, safeSpoken);
+  assert.equal(candidate.tts_script, safeSpoken);
   assert.equal(candidate.spoken_narration_script, candidate.tts_script);
-  assert.doesNotMatch(candidate.tts_script, /\bGTA\b|\bVI\b|\bsix\b/i);
+  assert.equal(candidate.display_narration_script, "Sony just made GTA VI's console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.");
+  assert.doesNotMatch(candidate.narration_script, /\bGTA\b|\bVI\b|\bsix\b/i);
+  assert.doesNotMatch(candidate.hook, /\bGTA\b|\bVI\b|\bsix\b/i);
+});
+
+test("buildLocalBridgeCandidate blocks GTA VI packages without safe spoken narration", async () => {
+  const files = await fixture();
+  const canonicalPath = path.join(files.artifactDir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  await fs.writeJson(canonicalPath, {
+    ...canonical,
+    story_id: "story_gta_vi_no_safe_spoken",
+    selected_title: "GTA VI Just Made PS5 The Version To Watch",
+    public_title: "GTA VI Just Made PS5 The Version To Watch",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    narration_script:
+      "Sony just made GTA VI's console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
+    full_script:
+      "Sony just made GTA VI's console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
+    tts_script: "",
+    spoken_narration_script: "",
+    thumbnail_headline: "GTA VI PS5 TEST",
+  });
+
+  await assert.rejects(
+    () =>
+      buildLocalBridgeCandidate({
+        artifactDir: files.artifactDir,
+        generatedAt: "2026-06-29T10:05:00.000Z",
+      }),
+    (error) => {
+      assert.match(error.message, /local bridge candidate package is not GREEN/);
+      assert.ok(
+        error.validation.blockers.includes("gta_vi_safe_spoken_narration_missing"),
+      );
+      return true;
+    },
+  );
 });
 
 test("upsertLocalBridgeCandidate rewrites only bridge JSON with backup and no side effects", async () => {

@@ -9,6 +9,9 @@ const test = require("node:test");
 const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
 const { handlers } = require("../../lib/job-handlers");
 const {
+  TTS_PRONUNCIATION_PROFILE_VERSION,
+} = require("../../lib/tts-pronunciation");
+const {
   buildAutonomousFeedbackReport,
   formatAutonomousFeedbackDiscord,
 } = require("../../lib/ops/autonomous-feedback-monitor");
@@ -1882,6 +1885,38 @@ test("fresh production refill continues motion-hydrated stories through audio an
         async runNodeJobChildProcess(options) {
           childCalls.push(options);
           if (options.args[0] === "tools/goal-audio-timestamp-materializer.js") {
+            const timestampPath = path.join(tmp, "output", "audio", "fresh_gta_vi_story_timestamps.json");
+            const words = strongGtaScript.split(/\s+/).map((word, index) => ({
+              word,
+              text: word,
+              start: Number((index * 0.18).toFixed(2)),
+              end: Number((index * 0.18 + 0.12).toFixed(2)),
+            }));
+            await fs.writeFile(
+              timestampPath,
+              JSON.stringify({
+                words,
+                meta: {
+                  text: strongGtaScript,
+                  transcript: strongGtaScript,
+                  wordTimestampSource: "local_whisper_word_alignment",
+                  timestampWhisperAlignment: {
+                    repaired: true,
+                    strategy: "local_whisper_word_alignment",
+                    transcript: strongGtaScript,
+                  },
+                  ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
+                },
+              }),
+            );
+            await fs.writeFile(
+              path.join(hydratedArtifactDir, "audio_manifest.json"),
+              JSON.stringify({
+                narration_audio_path: path.join(tmp, "output", "audio", "fresh_gta_vi_story.mp3"),
+                word_timestamps_path: timestampPath,
+                word_timestamp_source: "local_whisper_word_alignment",
+              }),
+            );
             await fs.writeFile(
               path.join(hydratedArtifactDir, "captions.srt"),
               "1\n00:00:00,000 --> 00:00:01,000\nGTA VI\n",
@@ -1979,6 +2014,335 @@ test("fresh production refill continues motion-hydrated stories through audio an
       if (entry) require.cache[cachePath] = entry;
       else delete require.cache[cachePath];
     }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill can resume stale motion-hydrated packages after audio materialisation", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-resume-"));
+  const artifactDir = path.join(tmp, "goal-proof-batch", "motion-hydrated", "resume-story");
+  const contractDir = path.join(tmp, "goal-contract", "motion-hydrated");
+  const storyPackagesPath = path.join(contractDir, "story-packages.json");
+  const audioDir = path.join(tmp, "audio");
+  const childCalls = [];
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.mkdir(contractDir, { recursive: true });
+    await fs.mkdir(audioDir, { recursive: true });
+    const audioPath = path.join(audioDir, "resume-story.mp3");
+    const timestampsPath = path.join(audioDir, "resume-story_timestamps.json");
+    await fs.writeFile(audioPath, Buffer.alloc(4096, 2));
+    await fs.writeFile(timestampsPath, JSON.stringify({ words: [{ word: "Marvel", start: 0, end: 0.2 }] }));
+    await fs.writeFile(
+      path.join(artifactDir, "audio_manifest.json"),
+      JSON.stringify({
+        status: "ready",
+        narration_audio_path: audioPath,
+        word_timestamps_path: timestampsPath,
+        word_timestamp_source: "local_whisper_word_alignment",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "captions.srt"),
+      "1\n00:00:00,000 --> 00:00:01,000\nMARVEL Tokon\n",
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "caption_manifest.json"),
+      JSON.stringify({
+        status: "ready",
+        blockers: [],
+        checks: {
+          caption_file_present: true,
+          captions_well_formed: true,
+        },
+      }),
+    );
+    const clips = Array.from({ length: 8 }, (_, index) => ({
+      path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+      source_family: `steam_marvel_tokon_${index + 1}`,
+      base_source_family: `steam_marvel_tokon_${index + 1}`,
+      media_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+    }));
+    for (const clip of clips) await fs.writeFile(clip.path, Buffer.alloc(2048, 7));
+    await fs.writeFile(
+      path.join(artifactDir, "materialised_motion_clips.json"),
+      JSON.stringify({
+        status: "ready",
+        clip_count: clips.length,
+        distinct_motion_family_count: clips.length,
+        direct_video_motion_asset_count: clips.length,
+        direct_video_motion_family_count: clips.length,
+        clips,
+        materialised_clips: clips,
+      }),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([
+        {
+          story_id: "resume-story",
+          artifact_dir: artifactDir,
+          title: "MARVEL Tokon Finally Shows Real Gameplay",
+          public_title: "MARVEL Tokon Finally Shows Real Gameplay",
+          canonical_subject: "MARVEL Tokon",
+          primary_source: "Steam",
+          primary_source_url: "https://store.steampowered.com/app/3787240/MARVEL_Tokon_Fighting_Souls/",
+          source_published_at: "Mon, 29 Jun 2026 15:00:00 +0000",
+          full_script:
+            "MARVEL Tokon finally has real gameplay to judge. The important part is not the logo. It is whether the four on four tag chaos stays readable when Magneto, Storm and Black Panther start filling the screen. Follow Pulse Gaming so you never miss a beat.",
+          tts_script:
+            "MARVEL Tokon finally has real gameplay to judge. The important part is not the logo. It is whether the four on four tag chaos stays readable when Magneto, Storm and Black Panther start filling the screen. Follow Pulse Gaming so you never miss a beat.",
+          verdict: "RED",
+          blockers: [
+            "render:final_publish_render_missing",
+            "audio:narration_audio_missing",
+            "captions:word_timestamps_missing",
+          ],
+        },
+      ]),
+    );
+
+    const result = await handlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          resume_story_packages_path: storyPackagesPath,
+          tts_provider_preference: "elevenlabs",
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          if (options.args[0] === "tools/goal-production-render-materializer.js") {
+            await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 5));
+            await fs.writeFile(
+              path.join(artifactDir, "render_manifest.json"),
+              JSON.stringify({
+                renderer: "visual_v4_production",
+                final_publish_render: true,
+                output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+                quality_gate_status: "post_render_forensics_passed",
+                post_render_forensic_result: "pass",
+                post_render_forensic_blockers: [],
+              }),
+            );
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.resume_mode, true);
+    assert.equal(result.materialization_continuation.status, "completed");
+    assert.equal(result.materialization_continuation.summary.audio_story_count, 0);
+    assert.equal(result.materialization_continuation.summary.render_ready_story_count, 1);
+    assert.deepEqual(result.materialization_continuation.render_story_ids, ["resume-story"]);
+    assert.ok(
+      !childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-materializer.js"),
+      "resume must not regenerate narration when audio and timestamps are already present",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-production-render-materializer.js"),
+      "resume should render the final Visual V4 MP4 from existing audio and motion evidence",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-platform-native-pack-repair.js"),
+      "resume should refresh enabled-platform native package evidence once render proof exists",
+    );
+    assert.equal(result.safety.no_publish, true);
+    assert.equal(result.safety.no_db_mutation, true);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill resume regenerates stale GTA pronunciation-profile audio", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-resume-gta-profile-"));
+  const artifactDir = path.join(tmp, "goal-proof-batch", "motion-hydrated", "gta-profile-story");
+  const contractDir = path.join(tmp, "goal-contract", "motion-hydrated");
+  const storyPackagesPath = path.join(contractDir, "story-packages.json");
+  const childCalls = [];
+  const displayScript =
+    "PlayStation just made the GTA VI argument simple: Sony says it plays best on PS5. Follow Pulse Gaming so you never miss a beat.";
+  const spokenScript =
+    "PlayStation just made Rockstar's next Grand Theft Auto argument simple: Sony says it plays best on PlayStation five. Follow Pulse Gaming so you never miss a beat.";
+
+  try {
+    await fs.mkdir(path.join(artifactDir, "audio"), { recursive: true });
+    await fs.mkdir(contractDir, { recursive: true });
+    const audioPath = path.join(artifactDir, "audio", "narration.mp3");
+    const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+    const words = spokenScript.split(/\s+/).map((word, index) => ({
+      word,
+      text: word,
+      start: Number((index * 0.18).toFixed(2)),
+      end: Number((index * 0.18 + 0.12).toFixed(2)),
+    }));
+    await fs.writeFile(audioPath, Buffer.alloc(4096, 3));
+    await fs.writeFile(
+      timestampsPath,
+      JSON.stringify({
+        words,
+        meta: {
+          text: spokenScript,
+          transcript: spokenScript,
+          spoken_text: spokenScript,
+          display_text: displayScript,
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            strategy: "local_whisper_word_alignment",
+            transcript: spokenScript,
+          },
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v11",
+        },
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "audio_manifest.json"),
+      JSON.stringify({
+        status: "ready",
+        narration_audio_path: "audio/narration.mp3",
+        word_timestamps_path: "audio/word_timestamps.json",
+        resolved_narration_audio_path: audioPath,
+        resolved_word_timestamps_path: timestampsPath,
+        word_timestamp_source: "local_whisper_word_alignment",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "captions.srt"),
+      "1\n00:00:00,000 --> 00:00:01,000\nGTA VI\n",
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "caption_manifest.json"),
+      JSON.stringify({
+        status: "ready",
+        blockers: [],
+        transcript: spokenScript,
+        display_text: displayScript,
+        word_timestamps_path: "audio/word_timestamps.json",
+      }),
+    );
+    const clips = Array.from({ length: 8 }, (_, index) => ({
+      path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+      source_family: `rockstar_gta_vi_${index + 1}`,
+      base_source_family: `rockstar_gta_vi_${index + 1}`,
+      media_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+    }));
+    for (const clip of clips) await fs.writeFile(clip.path, Buffer.alloc(2048, 8));
+    await fs.writeFile(
+      path.join(artifactDir, "materialised_motion_clips.json"),
+      JSON.stringify({
+        status: "ready",
+        clip_count: clips.length,
+        distinct_motion_family_count: clips.length,
+        direct_video_motion_asset_count: clips.length,
+        direct_video_motion_family_count: clips.length,
+        clips,
+        materialised_clips: clips,
+      }),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([
+        {
+          story_id: "gta-profile-story",
+          artifact_dir: artifactDir,
+          title: "GTA VI Just Made PS5 The Version To Watch",
+          public_title: "GTA VI Just Made PS5 The Version To Watch",
+          canonical_subject: "GTA VI",
+          canonical_game: "GTA VI",
+          primary_source: "PlayStation Blog",
+          primary_source_url: "https://blog.playstation.com/example/gta-vi",
+          source_published_at: "Mon, 29 Jun 2026 15:00:00 +0000",
+          full_script: displayScript,
+          narration_script: displayScript,
+          tts_script: spokenScript,
+          spoken_narration_script: spokenScript,
+          verdict: "RED",
+          blockers: ["render:final_publish_render_missing"],
+        },
+      ]),
+    );
+
+    const result = await handlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          resume_story_packages_path: storyPackagesPath,
+          tts_provider_preference: "elevenlabs",
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          if (options.args[0] === "tools/goal-audio-timestamp-materializer.js") {
+            const freshPayload = {
+              words,
+              meta: {
+                text: spokenScript,
+                transcript: spokenScript,
+                spoken_text: spokenScript,
+                display_text: displayScript,
+                wordTimestampSource: "local_whisper_word_alignment",
+                timestampWhisperAlignment: {
+                  repaired: true,
+                  strategy: "local_whisper_word_alignment",
+                  transcript: spokenScript,
+                },
+                ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
+              },
+            };
+            await fs.writeFile(timestampsPath, JSON.stringify(freshPayload));
+            await fs.writeFile(
+              path.join(artifactDir, "audio_manifest.json"),
+              JSON.stringify({
+                status: "ready",
+                narration_audio_path: "audio/narration.mp3",
+                word_timestamps_path: "audio/word_timestamps.json",
+                resolved_narration_audio_path: audioPath,
+                resolved_word_timestamps_path: timestampsPath,
+                word_timestamp_source: "local_whisper_word_alignment",
+                timestamp_whisper_alignment: freshPayload.meta.timestampWhisperAlignment,
+              }),
+            );
+          }
+          if (options.args[0] === "tools/goal-production-render-materializer.js") {
+            await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 6));
+            await fs.writeFile(
+              path.join(artifactDir, "render_manifest.json"),
+              JSON.stringify({
+                renderer: "visual_v4_production",
+                final_publish_render: true,
+                output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+                quality_gate_status: "post_render_forensics_passed",
+                post_render_forensic_result: "pass",
+                post_render_forensic_blockers: [],
+              }),
+            );
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.resume_mode, true);
+    assert.deepEqual(result.materialization_continuation.audio_story_ids, ["gta-profile-story"]);
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-materializer.js"),
+      "stale GTA pronunciation profile must force audio/timestamp regeneration",
+    );
+    assert.equal(result.materialization_continuation.summary.scheduler_ready_story_count, 1);
+    const refreshedTimestamps = JSON.parse(await fs.readFile(timestampsPath, "utf8"));
+    assert.equal(refreshedTimestamps.meta.ttsPronunciationProfileVersion, TTS_PRONUNCIATION_PROFILE_VERSION);
+  } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });

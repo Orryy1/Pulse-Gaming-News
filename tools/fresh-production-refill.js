@@ -32,6 +32,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     repairEvidenceMode: "plan",
     repairStoryLimit: 3,
     storiesFile: "",
+    resumeStoryPackagesPath: "",
     ttsProvider: "",
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -50,6 +51,8 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     else if (arg.startsWith("--contract-out-dir=")) args.contractOutDir = resolveRepoPath(arg.slice("--contract-out-dir=".length));
     else if (arg === "--stories-file") args.storiesFile = resolveRepoPath(argv[++i] || "");
     else if (arg.startsWith("--stories-file=")) args.storiesFile = resolveRepoPath(arg.slice("--stories-file=".length));
+    else if (arg === "--resume-story-packages") args.resumeStoryPackagesPath = resolveRepoPath(argv[++i] || "");
+    else if (arg.startsWith("--resume-story-packages=")) args.resumeStoryPackagesPath = resolveRepoPath(arg.slice("--resume-story-packages=".length));
     else if (arg === "--tts-provider") args.ttsProvider = String(argv[++i] || "").trim().toLowerCase();
     else if (arg.startsWith("--tts-provider=")) args.ttsProvider = String(arg.slice("--tts-provider=".length) || "").trim().toLowerCase();
     else if (arg === "--repair-story-limit") args.repairStoryLimit = Number(argv[++i] || args.repairStoryLimit);
@@ -84,6 +87,7 @@ function usage() {
     "  --out-dir <path>         Proof-package output directory",
     "  --contract-out-dir <p>   Contract/report output directory",
     "  --stories-file <path>    Optional local fresh official/direct-media story seed file",
+    "  --resume-story-packages <p> Resume materialisation from an existing motion-hydrated story-packages.json",
     "  --tts-provider <name>     Optional narration provider for repair continuation: local or elevenlabs",
     "  --repair-evidence-mode    plan (default) writes fast work orders; full runs deep local repair",
     "  --full-repair-evidence    Alias for --repair-evidence-mode full",
@@ -110,6 +114,7 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
         out_dir: args.outDir,
         contract_out_dir: args.contractOutDir,
         seed_stories_file: args.storiesFile,
+        resume_story_packages_path: args.resumeStoryPackagesPath,
         repair_evidence: args.repairEvidence,
         repair_evidence_mode: args.repairEvidenceMode,
         repair_story_limit: args.repairStoryLimit,

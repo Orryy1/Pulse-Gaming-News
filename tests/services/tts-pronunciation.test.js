@@ -193,6 +193,18 @@ test("GTA V and GTA VI title variants use stable spoken names", () => {
     applyGamingPronunciation("GTA C6 should not survive the hook."),
     "Rockstar's next Grand Theft Auto should not survive the hook.",
   );
+  assert.equal(
+    applyGamingPronunciation("The next G T A six trailer is slated for Tuesday."),
+    "The next Grand Theft Auto trailer is slated for Tuesday.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Grand Theft Auto V I now has one real preorder catch."),
+    "Rockstar's next Grand Theft Auto now has one real preorder catch.",
+  );
+  assert.equal(
+    applyGamingPronunciation("GTA si-six starts the preorder fight."),
+    "Rockstar's next Grand Theft Auto starts the preorder fight.",
+  );
 });
 
 test("Stranger Than Heaven Five Eras avoids Eris/heiress ASR drift in local narration", () => {

@@ -1980,6 +1980,7 @@ test("guarded live dispatch executor blocks public metadata QA failures before u
     },
     runActionQualityGate: defaultActionQualityGate,
     actionQualityGateOptions: {
+      now: "2026-06-25T12:00:00.000Z",
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       buildVideoQaOptionsForStory: () => ({}),
@@ -2071,6 +2072,7 @@ test("guarded live dispatch executor hydrates canonical claim evidence before pu
     },
     runActionQualityGate: defaultActionQualityGate,
     actionQualityGateOptions: {
+      now: "2026-06-25T12:00:00.000Z",
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       buildVideoQaOptionsForStory: () => ({}),

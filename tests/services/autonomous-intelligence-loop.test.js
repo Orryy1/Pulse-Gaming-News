@@ -2670,6 +2670,48 @@ test("fresh refill HyperFrames card generation targets only real-motion material
       [],
     );
 
+    const motionPackDir = path.join(tmp, "motion-packs");
+    await fs.mkdir(motionPackDir, { recursive: true });
+    await fs.writeFile(
+      path.join(motionPackDir, "motion-blocked-story_motion_pack_manifest.json"),
+      JSON.stringify({
+        story_id: "motion-blocked-story",
+        status: "ready",
+        readiness: {
+          status: "v4_motion_ready",
+          blockers: [],
+        },
+        clip_count: 6,
+        distinct_base_source_family_count: 5,
+        clips: Array.from({ length: 6 }, (_, index) => ({
+          source_family: `official_trailer_family_${index + 1}`,
+          base_source_family: `official_trailer_family_${index + 1}`,
+        })),
+      }),
+    );
+    await fs.writeFile(
+      path.join(motionPackDir, "still-blocked-story_motion_pack_manifest.json"),
+      JSON.stringify({
+        story_id: "still-blocked-story",
+        status: "ready",
+        readiness: {
+          status: "v4_motion_blocked",
+          blockers: ["distinct_motion_families_minimum_not_met"],
+        },
+        clip_count: 3,
+        distinct_base_source_family_count: 2,
+      }),
+    );
+
+    assert.deepEqual(
+      await freshRefillHyperframesStoryIdsAfterMotion({
+        candidateStoryIds: ["motion-blocked-story", "still-blocked-story"],
+        realMotionReportPath: reportPath,
+        motionPackDir,
+      }),
+      ["motion-blocked-story"],
+    );
+
     assert.deepEqual(
       await freshRefillHyperframesStoryIdsAfterMotion({
         candidateStoryIds: ["legacy-mock-story"],

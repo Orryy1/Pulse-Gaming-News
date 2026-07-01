@@ -29,6 +29,12 @@ const {
   applyGamingPronunciation,
   TTS_PRONUNCIATION_PROFILE_VERSION,
 } = require("../lib/tts-pronunciation");
+const {
+  hasGtaViSpokenSix: approvedVoiceHasGtaViSpokenSix,
+  hasMalformedGtaViSpokenStutter: approvedVoiceHasMalformedGtaViSpokenStutter,
+  hasRiskyGtaViOpening: approvedVoiceHasRiskyGtaViOpening,
+  hasSplitGtaViRomanNarration: approvedVoiceHasSplitGtaViRomanNarration,
+} = require("../lib/studio/v2/approved-voice-path");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "goal-contract");
@@ -2944,37 +2950,19 @@ function openingVoiceText(value = "", maxWords = 24) {
 }
 
 function hasGtaViSpokenSixInOpening(value = "") {
-  const opening = openingVoiceText(value);
-  if (!opening) return false;
-  return (
-    /\b(?:g\s+t\s+a|gta)\s+six\b/.test(opening) ||
-    /\bgtavi\b/.test(opening) ||
-    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c|size|sice|sic|sick|sig|sixty)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(opening)
-  );
+  return approvedVoiceHasRiskyGtaViOpening(openingVoiceText(value));
 }
 
 function hasGtaViSpokenSix(value = "") {
-  const text = comparableVoiceText(value);
-  if (!text) return false;
-  return (
-    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:6|six)\b/.test(text) ||
-    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c|size|sice|sic|sick|sig|sixty)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(text)
-  );
+  return approvedVoiceHasGtaViSpokenSix(comparableVoiceText(value));
 }
 
 function hasGtaViSpokenStutter(value = "") {
-  const text = comparableVoiceText(value);
-  if (!text) return false;
-  return /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+(?:s\s+i\s+(?:six|6)|(?:s|si|sy|sigh|see|sea|c|size|sice|sic|sick|sig|sixty)\s+(?:six|6)|see\s+see\s+(?:six|6)|siix|six\s+(?:six|6))\b/.test(text);
+  return approvedVoiceHasMalformedGtaViSpokenStutter(comparableVoiceText(value));
 }
 
 function hasGtaViRomanSplit(value = "") {
-  const text = comparableVoiceText(value);
-  if (!text) return false;
-  return (
-    /\bgtavi\s+(?:now|just|has|is|starts?|turns?|looks|pre|preorders?|cover|delay|launch|release)\b/.test(text) ||
-    /\b(?:g\s+t\s+a|gta|grand\s+theft\s+auto)\s+v\s+i\s+(?:now|just|has|is|starts?|turns?|looks|pre|preorders?|cover|delay|launch|release)\b/.test(text)
-  );
+  return approvedVoiceHasSplitGtaViRomanNarration(comparableVoiceText(value));
 }
 
 function hasGtaViTitleAlias(value = "") {

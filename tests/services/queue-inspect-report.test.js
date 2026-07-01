@@ -320,6 +320,82 @@ test("queue inspect treats old failed jobs as historical audit noise, not active
   }
 });
 
+test("queue inspect warns when content runway jobs are saturated behind busy fresh workers", () => {
+  const db = createQueueInspectDb(`
+    CREATE TABLE schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+    INSERT INTO schedules (name, kind, cron_expr, enabled)
+      VALUES ('candidate_supply_monitor', 'candidate_supply_monitor', '5 * * * *', 1);
+  `);
+
+  try {
+    db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, run_at, claimed_by, claimed_at, lease_until, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "candidate_supply_monitor",
+      "running",
+      64,
+      1,
+      3,
+      "2026-07-01T03:00:00.000Z",
+      "content-worker-1",
+      "2026-07-01T03:20:00.000Z",
+      "2026-07-01T03:50:00.000Z",
+      "2026-07-01T03:20:00.000Z",
+    );
+    db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, run_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "fresh_production_refill",
+      "pending",
+      67,
+      0,
+      3,
+      "2026-07-01T03:05:00.000Z",
+      "2026-07-01T03:05:00.000Z",
+    );
+    db.prepare(
+      `INSERT INTO workers
+        (id, status, last_seen_at, last_job_id, tags, version)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "content-worker-1",
+      "busy",
+      "2026-07-01T03:24:00.000Z",
+      1,
+      JSON.stringify(["cpu", "candidate_supply_monitor", "fresh_production_refill"]),
+      "dev",
+    );
+
+    const report = inspectQueue({
+      db,
+      now: Date.parse("2026-07-01T03:25:00.000Z"),
+    });
+
+    assert.equal(report.verdict, "review");
+    assert.equal(report.contentRunway.pending_count, 1);
+    assert.equal(report.contentRunway.running_count, 1);
+    assert.equal(report.contentRunway.active_fresh_worker_count, 1);
+    assert.equal(report.contentRunway.saturated, true);
+    assert.ok(report.warnings.includes("content_runway_worker_capacity_saturated"));
+
+    const md = renderQueueInspectMarkdown(report);
+    assert.match(md, /Content Runway/);
+    assert.match(md, /Saturated: yes/);
+  } finally {
+    db.close();
+  }
+});
+
 test("redactJobError tolerates missing and malformed job rows", () => {
   assert.equal(redactJobError(null), null);
   assert.deepEqual(redactJobError({ id: 1 }), { id: 1, last_error: "" });

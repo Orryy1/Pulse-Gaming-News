@@ -728,6 +728,141 @@ test("public copy repair can force a quality rewrite for Doom PS5 Pro PSSR packa
   assert.match(srt, /expensive blur/);
 });
 
+test("public copy repair promotes Marvel Tokon roster packages from character-list subjects", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-marvel-tokon-quality-rewrite-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_228f6f28b62f8426",
+    canonical_subject: "Blade Loki Deadpool",
+    canonical_game: "Blade Loki Deadpool",
+    canonical_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    selected_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    short_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    thumbnail_headline: "BLADE LOKI DEADPOOL PLAYER TEST",
+    first_spoken_line: "MARVEL Tokon just turned its roster reveal into a pressure test.",
+    narration_script:
+      "MARVEL Tokon just turned its roster reveal into a pressure test. PlayStation Blog says Blade, Loki and Deadpool are joining Fighting Souls. That matters because tag fighters live on team chemistry, not famous names. Players need matchups, assists and screen control that make each character feel dangerous for a different reason. If these three change how teams are built, Tokon gets a real meta argument. If they only look good in a trailer, the roster reveal fades fast. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "PlayStation Blog says Blade, Loki and Deadpool are joining Fighting Souls. If they only look good in a trailer, the roster reveal fades fast. Source: PlayStation Blog.",
+    primary_source: "PlayStation Blog",
+    source_card_label: "PlayStation Blog",
+    primary_source_url:
+      "https://blog.playstation.com/2026/06/28/blade-loki-deadpool-announced-for-marvel-tokon-fighting-souls/",
+    confirmed_claims: [
+      "Blade, Loki, Deadpool announced for MARVEL Tokon: Fighting Souls",
+    ],
+  }, { spaces: 2 });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    video_clips: ["clip-a.mp4", "clip-b.mp4", "clip-c.mp4"],
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+        description:
+          "PlayStation Blog says Blade, Loki and Deadpool are joining Fighting Souls. If they only look good in a trailer, the roster reveal fades fast. Source: PlayStation Blog.",
+        cover_frame: { headline: "BLADE LOKI DEADPOOL PLAYER TEST" },
+      },
+      instagram_reels: {
+        caption:
+          "PlayStation Blog says Blade, Loki and Deadpool are joining Fighting Souls. If they only look good in a trailer, the roster reveal fades fast. Source: PlayStation Blog.",
+        cover_frame: { headline: "BLADE LOKI DEADPOOL PLAYER TEST" },
+        story_poll_idea: "Does Blade Loki Deadpool change your watchlist?",
+      },
+      x: {
+        hot_take_post:
+          "Blade Loki Deadpool just turned the roster reveal into a pressure test.",
+        source_safe_post:
+          "MARVEL Tokon Turns Its Roster Into A Meta Fight\n\nSource: PlayStation Blog.",
+        poll_candidate: "Is Blade Loki Deadpool a buy-now story or a wait-for-reviews story?",
+      },
+    },
+    platform_native_evidence: {
+      schema_version: 1,
+      verdict: "fail",
+      platforms: [
+        { platform: "youtube_shorts", status: "pass", copy_fingerprint: "old youtube" },
+        { platform: "instagram_reels", status: "pass", copy_fingerprint: "old instagram" },
+      ],
+      failures: [
+        { platform: "youtube_shorts", reason: "weak_cover_headline" },
+        { platform: "instagram_reels", reason: "weak_cover_headline" },
+      ],
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_228f6f28b62f8426", artifact_dir: artifactDir }],
+    generatedAt: "2026-07-01T04:55:00.000Z",
+    forceQualityRewriteStoryIds: ["rss_228f6f28b62f8426"],
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const srt = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
+  const mediaHouseScore = buildPulseMediaHouseScore({
+    story_id: "rss_228f6f28b62f8426",
+    canonical: updated,
+    platformManifest,
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
+  assert.equal(updated.canonical_subject, "MARVEL Tokon");
+  assert.equal(updated.canonical_game, "MARVEL Tokon");
+  assert.equal(updated.selected_title, "MARVEL Tokon Just Started A Roster Fight");
+  assert.equal(updated.thumbnail_headline, "MARVEL TOKON ROSTER FIGHT");
+  assert.match(updated.first_spoken_line, /^MARVEL Tokon just turned Blade, Loki and Deadpool into a team-building test\./);
+  assert.match(updated.narration_script, /tag fighters live or die on readable teams/i);
+  assert.match(updated.narration_script, /assist chains/);
+  assert.match(updated.narration_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.equal(updated.spoken_narration_script, updated.tts_script);
+  assert.match(updated.spoken_narration_script, /changes team plans/);
+  assert.doesNotMatch(updated.spoken_narration_script, /roster reveal into a pressure test/i);
+  assert.equal(savedScorecard.verdict, "viral_ready", JSON.stringify(savedScorecard, null, 2));
+  assert.deepEqual(savedScorecard.blockers, [], JSON.stringify(savedScorecard, null, 2));
+  assert.match(platformManifest.outputs.youtube_shorts.description, /readable tag-fighter matchups/i);
+  assert.equal(platformManifest.outputs.instagram_reels.cover_frame.headline, "MARVEL TOKON ROSTER FIGHT");
+  assert.equal(
+    platformManifest.outputs.instagram_reels.story_poll_idea,
+    "Does MARVEL Tokon now look like a real roster fight?",
+  );
+  assert.equal(
+    platformManifest.outputs.x.poll_candidate,
+    "Does MARVEL Tokon now look like a real roster fight?",
+  );
+  assert.equal(
+    platformManifest.platform_native_evidence.failures.some(
+      (failure) => failure.reason === "weak_cover_headline",
+    ),
+    false,
+    JSON.stringify(platformManifest.platform_native_evidence.failures),
+  );
+  assert.equal(
+    platformManifest.platform_native_evidence.platform_native_evidence_refreshed_from_outputs,
+    true,
+  );
+  assert.equal(
+    evaluateGoalPublicCopy({ ...updated, platform_publish_manifest: platformManifest }).verdict,
+    "pass",
+  );
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:source_title_mismatch"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:platform_copy_too_plain"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.ok(
+    !mediaHouseScore.hard_failures.includes("media_house:shorts_feed_competition_weak"),
+    mediaHouseScore.hard_failures.join(", "),
+  );
+  assert.match(srt, /MARVEL Tokon/);
+  assert.doesNotMatch(srt, /Blade Loki Deadpool Player Test/i);
+});
+
 test("public copy repair can force a quality rewrite for Cyberpunk trust-debt packages", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-cyberpunk-quality-rewrite-"));
   const artifactDir = path.join(root, "story");

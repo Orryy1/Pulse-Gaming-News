@@ -885,6 +885,74 @@ test("goal production render materializer preserves validated official trailer w
   ));
 });
 
+test("goal production render materializer preserves PlayStation Blog news-page direct video windows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-ps-blog-window-dedupe-"));
+  const artifactDir = await makePackage(root, "story-ps-blog-window-dedupe");
+  const clipPaths = [];
+  const clips = [];
+  for (let index = 0; index < 8; index += 1) {
+    const windowStart = 36 + index * 6;
+    const clipPath = path.join(artifactDir, `ps-blog-window-${windowStart}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, 80 + index));
+    clipPaths.push(clipPath);
+    clips.push({
+      id: `segment_direct_motion_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: "https://vulcan.dl.playstation.net/img/rnd/202606/0505/marvel-tokon-roster.mp4",
+      source_type: "official_game_site_news_page",
+      source_kind: "video_file",
+      source_family: `playstation_blog_marvel_tokon_roster_window_${windowStart}_5`,
+      motion_family: `playstation_blog_marvel_tokon_roster_window_${windowStart}_5`,
+      media_kind: "direct_video",
+      source_url_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+      validated: true,
+      durationS: 5,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  const job = readyJob("story-ps-blog-window-dedupe", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: 8,
+      distinct_motion_family_count: 8,
+      materialised_motion_clip_paths: clipPaths,
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-01T04:45:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 6));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 37,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const directClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.media_kind === "direct_video",
+  );
+  assert.equal(directClips.length, 8);
+  assert.equal(new Set(directClips.map((clip) => clip.source_url)).size, 1);
+  assert.equal(new Set(directClips.map((clip) => clip.source_family)).size, 8);
+});
+
 test("goal production render materializer preserves validated Steam trailer windows from the same source", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-window-dedupe-"));
   const artifactDir = await makePackage(root, "story-steam-window-dedupe");

@@ -728,6 +728,85 @@ test("official trailer segment validator apply-local marks clean sampled windows
   assert.ok(report.segments[0].samples.every((sample) => sample.local_path.startsWith(outputRoot)));
 });
 
+test("official trailer segment validator rejects duplicate source windows before extraction", async () => {
+  const outputRoot = tempOutputRoot("duplicate-source-window");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        mediaStartS: 42,
+        path: "https://video.akamai.steamstatic.com/store_trailers/111/222/hash/hls_264_master.m3u8",
+      }),
+      clip({
+        mediaStartS: 42,
+        path: "https://video.akamai.steamstatic.com/store_trailers/111/222/hash/hls_264_master.m3u8",
+        sourceFamily: "same-window-alt-label",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async (args) => {
+        extractorCalls += 1;
+        return fakeExtractor(args);
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 3);
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.equal(report.segments[1].status, "rejected");
+  assert.equal(report.segments[1].validation_reason, "duplicate_source_window");
+  assert.equal(report.segments[1].segment_validated, false);
+  assert.equal(report.segments[1].allowed_for_flash_lane, false);
+  assert.deepEqual(report.segments[1].samples, []);
+});
+
+test("official trailer segment validator rejects overlapping source windows before extraction", async () => {
+  const outputRoot = tempOutputRoot("overlapping-source-window");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        mediaStartS: 48.4,
+        durationS: 5,
+        path: "https://video.akamai.steamstatic.com/store_trailers/111/222/hash/hls_264_master.m3u8?t=123",
+      }),
+      clip({
+        mediaStartS: 50.8,
+        durationS: 5,
+        path: "https://video.akamai.steamstatic.com/store_trailers/111/222/hash/hls_264_master.m3u8?t=456",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async (args) => {
+        extractorCalls += 1;
+        return fakeExtractor(args);
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 3);
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.equal(report.segments[1].status, "rejected");
+  assert.equal(report.segments[1].validation_reason, "overlapping_source_window");
+  assert.equal(report.segments[1].segment_validated, false);
+  assert.equal(report.segments[1].allowed_for_flash_lane, false);
+  assert.deepEqual(report.segments[1].samples, []);
+});
+
 test("official trailer segment validator rejects PEGI/ESRB/title-card-like windows", async () => {
   const outputRoot = tempOutputRoot("rating-card");
   await cleanTempRoot(outputRoot);

@@ -88,6 +88,7 @@ async function fixture() {
     scores: { media_house_polish_score: 91 },
   });
   await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
     shot_plan: [{ kind: "motion", label: "Custom Seas", path: "clip-a.mp4" }],
   });
   await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), {
@@ -319,6 +320,37 @@ test("upsertLocalBridgeCandidate blocks non-GREEN packages before rewriting the 
         apply: true,
       }),
     /final_render_file_missing_or_too_small/,
+  );
+
+  const updated = await fs.readJson(files.bridgePath);
+  assert.equal(updated.scheduler_bridge_candidates.length, 1);
+  assert.equal(updated.scheduler_bridge_candidates[0].id, "existing");
+});
+
+test("upsertLocalBridgeCandidate blocks packages with stale blocked director evidence", async () => {
+  const files = await fixture();
+  await fs.writeJson(path.join(files.artifactDir, "director_beat_map.json"), {
+    readiness: {
+      status: "director_blocked",
+      blockers: ["actual_motion_clip_minimum_not_met"],
+    },
+    shot_budget: {
+      min_actual_motion_clips: 5,
+      available_motion_clips: 8,
+    },
+    shot_plan: [{ kind: "motion", label: "Custom Seas", path: "clip-a.mp4" }],
+  });
+
+  await assert.rejects(
+    () =>
+      upsertLocalBridgeCandidate({
+        bridgePath: files.bridgePath,
+        artifactDir: files.artifactDir,
+        backupDir: path.join(files.root, "backups"),
+        generatedAt: "2026-06-21T18:40:00.000Z",
+        apply: true,
+      }),
+    /director_beat_map_blocked/,
   );
 
   const updated = await fs.readJson(files.bridgePath);

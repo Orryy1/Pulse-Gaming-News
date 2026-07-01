@@ -685,7 +685,7 @@ test("real motion materializer blocks one official trailer from masquerading as 
   assert.equal(partial.clips[0].counts_towards_motion_readiness, false);
 });
 
-test("real motion materializer blocks instead of padding with repeated official base-source windows", async () => {
+test("real motion materializer fills five-clip floors with balanced non-overlapping official windows", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-multi-source-windows-"));
   const storyId = "multi-official-window-story";
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -763,24 +763,32 @@ test("real motion materializer blocks instead of padding with repeated official 
     ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
   });
 
-  assert.equal(report.summary.materialized_story_count, 0);
-  assert.equal(report.summary.blocked_story_count, 1);
-  assert.equal(report.jobs[0].materialized_count, 3);
-  assert.equal(report.jobs[0].distinct_motion_family_count, 3);
-  assert.equal(report.jobs[0].direct_video_motion_clip_count, 3);
-  assert.equal(report.jobs[0].direct_video_motion_family_count, 3);
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.blocked_story_count, 0);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].materialized_count, 5);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 5);
+  assert.equal(report.jobs[0].direct_video_motion_clip_count, 5);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 5);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 2);
   assert.deepEqual(
     report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
-    [1, 1, 1],
+    [2, 2, 1],
   );
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
-  assert.equal(calls.length, 3);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 0);
+  assert.equal(calls.length, 5);
 
-  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
-  const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
-  assert.equal(partial.clip_count, 3);
-  assert.equal(partial.direct_video_motion_family_count, 3);
-  assert.equal(new Set(partial.clips.map((clip) => clip.base_source_family)).size, 3);
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 5);
+  assert.equal(materialised.direct_video_motion_family_count, 5);
+  assert.equal(new Set(materialised.clips.map((clip) => clip.base_source_family)).size, 3);
+  const windowKeys = new Set(
+    materialised.clips.map((clip) =>
+      `${clip.source_url}|${Number(clip.mediaStartS || 0).toFixed(2)}|${Number(clip.durationS || 0).toFixed(2)}`,
+    ),
+  );
+  assert.equal(windowKeys.size, 5);
 });
 
 test("real motion materializer treats Steam extras mp4 and webm encodes as one base source", async () => {

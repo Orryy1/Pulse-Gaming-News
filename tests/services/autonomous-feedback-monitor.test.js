@@ -168,6 +168,96 @@ test("autonomous feedback treats stale Discord direct-motion warnings as superse
   assert.match(formatAutonomousFeedbackDiscord(report), /Discord feedback: 0 current blockers/);
 });
 
+test("autonomous feedback supersedes stale normal-ops RED when current enabled runway is clean", () => {
+  const staleOps = normalOps();
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-07-01T01:15:00.000Z",
+    normalOperationsReport: {
+      ...staleOps,
+      generated_at: "2026-06-29T15:22:07.758Z",
+      overall_verdict: "red",
+      layers: {
+        ...staleOps.layers,
+        publish_readiness: {
+          verdict: "red",
+          blockers: ["strict_dry_run_control: strict_dry_run_blocked"],
+          advisory: ["old_strict_dry_run_control"],
+        },
+        post_window_verification: {
+          ...staleOps.layers.post_window_verification,
+          next_safe_publish_at_utc: "2026-06-29T16:00:00.000Z",
+        },
+      },
+      guarded_selection: {
+        action_id: "stale_story:youtube_shorts",
+        exhausted: false,
+      },
+    },
+    schedulerWindowReadiness: {
+      generated_at: "2026-06-29T15:22:07.758Z",
+      verdict: "red",
+      ready_for_next_window_boolean: false,
+      next_publish_window_utc: "2026-06-29T16:00:00.000Z",
+      selected_action: {
+        action_id: "stale_story:youtube_shorts",
+        story_id: "stale_story",
+        platform: "youtube_shorts",
+      },
+      blockers: ["publish_readiness_blocked"],
+    },
+    guardedDispatchPreflightReport: {
+      generated_at: "2026-07-01T00:45:00.000Z",
+      verdict: "GREEN",
+      summary: {
+        dispatch_ready_action_count: 1,
+        blocked_action_count: 0,
+      },
+      dispatch_ready_actions: [
+        {
+          story_id: "fresh_xbox_beastro_20260611",
+          platform: "youtube_shorts",
+          title: "Beastro Has A Cozy Deckbuilding Test",
+        },
+      ],
+    },
+    dryRunPublishPlan: {
+      generated_at: "2026-07-01T00:44:00.000Z",
+      summary: {
+        platform_enabled_dry_run_action_count: 3,
+        blocked_action_count: 0,
+      },
+    },
+    publishCadenceReport: {
+      generated_at: "2026-07-01T00:50:00.000Z",
+      next_safe_publish: {
+        next_safe_publish_at_utc: "2026-07-01T09:00:00.000Z",
+      },
+    },
+    candidateReport: {
+      generated_at: "2026-07-01T00:46:00.000Z",
+      candidates: [currentCandidate()],
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.current_action, "observe_next_scheduler_window");
+  assert.equal(report.scheduler.selected_action, "fresh_xbox_beastro_20260611:youtube_shorts");
+  assert.equal(report.scheduler.next_safe_publish_at_utc, "2026-07-01T09:00:00.000Z");
+  assert.equal(report.publish_readiness.verdict, "amber");
+  assert.deepEqual(report.publish_readiness.blockers, []);
+  assert.deepEqual(report.scheduler.blockers, []);
+  assert.equal(report.stale_evidence.normal_operations_superseded, true);
+  assert.equal(report.stale_evidence.scheduler_window_superseded, true);
+  assert.ok(
+    !report.blockers.some((blocker) => blocker.startsWith("publish_readiness:")),
+    report.blockers.join(", "),
+  );
+  assert.ok(
+    !report.blockers.some((blocker) => blocker.startsWith("scheduler_window:")),
+    report.blockers.join(", "),
+  );
+});
+
 test("autonomous feedback holds scheduler when Discord wrong-motion feedback is still current", () => {
   const report = buildAutonomousFeedbackReport({
     generatedAt: "2026-06-16T15:20:00.000Z",

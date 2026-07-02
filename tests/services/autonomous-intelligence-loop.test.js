@@ -63,6 +63,7 @@ test("scheduler registers the full autonomous intelligence loop", () => {
 test("local TTS doctor handler restarts and prewarms through a safe child process", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-doctor-"));
   const reportPath = path.join(tmp, "local_tts_doctor.json");
+  const lockPath = path.join(tmp, "local_tts_job_lease.json");
   await fs.writeFile(reportPath, JSON.stringify({
     verdict: "green",
     action: "restart_and_prewarm",
@@ -74,7 +75,14 @@ test("local TTS doctor handler restarts and prewarms through a safe child proces
 
   let captured = null;
   const result = await handlers.local_tts_doctor(
-    { payload: { restart: true, prewarm: true, result_path: reportPath } },
+    {
+      payload: {
+        restart: true,
+        prewarm: true,
+        result_path: reportPath,
+        local_tts_lock_path: lockPath,
+      },
+    },
     {
       log() {},
       async runNodeJobChildProcess(options) {
@@ -129,6 +137,7 @@ test("local TTS doctor skips instead of stacking a smoke request while another l
 
 test("local TTS retry recovery handler runs bounded local-only preflight and apply", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-retry-recovery-"));
+  const lockPath = path.join(tmp, "local_tts_job_lease.json");
   const queuePath = path.join(tmp, "local_media_repair_queue.json");
   const planPath = path.join(tmp, "local_script_extension_plan.json");
   const applyPath = path.join(tmp, "local_script_extension_audio_apply.json");
@@ -170,6 +179,7 @@ test("local TTS retry recovery handler runs bounded local-only preflight and app
         limit: 6,
         apply_limit: 1,
         out_dir: tmp,
+        local_tts_lock_path: lockPath,
       },
     },
     {

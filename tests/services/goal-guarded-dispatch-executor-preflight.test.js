@@ -22,10 +22,41 @@ async function evidenceFiles(root) {
   const captions = path.join(dir, "captions.srt");
   const canonical = path.join(dir, "canonical_story_manifest.json");
   const platform = path.join(dir, "platform_publish_manifest.json");
+  const render = path.join(dir, "render_manifest.json");
   await fs.writeFile(video, Buffer.alloc(2048, 1));
   await fs.writeFile(captions, "1\n00:00:00,000 --> 00:00:01,000\nForza.\n");
   await fs.writeJson(canonical, { story_id: "story-one", selected_title: "Forza Horizon 6 Exposes Xbox's Steam Bet" });
-  await fs.writeJson(platform, { outputs: { youtube_shorts: {} } });
+  await fs.writeJson(platform, {
+    outputs: {
+      youtube_shorts: {},
+      instagram_reels: {
+        variant_video_path: video,
+        variant_captions_path: captions,
+        platform_variant_render: {
+          encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
+        },
+      },
+    },
+  });
+  await fs.writeJson(render, {
+    story_id: "story-one",
+    premium_shell_verdict: "pass",
+    hyperframes_card_count: 4,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      selectedCardCount: 4,
+      passCount: 4,
+      blockers: [],
+    },
+    clip_scene_plan: {
+      scenes: [
+        { sourceRootKey: "forza-trailer-a" },
+        { sourceRootKey: "forza-trailer-b" },
+        { sourceRootKey: "forza-card-source", readableCardKind: "source" },
+        { sourceRootKey: "forza-card-takeaway", readableCardKind: "takeaway" },
+      ],
+    },
+  });
   return { video, captions, canonical, platform };
 }
 
@@ -38,6 +69,7 @@ async function gtaPronunciationEvidenceFiles(root) {
   const canonical = path.join(dir, "canonical_story_manifest.json");
   const platform = path.join(dir, "platform_publish_manifest.json");
   const timestamps = path.join(audioDir, "word_timestamps.json");
+  const render = path.join(dir, "render_manifest.json");
   await fs.writeFile(video, Buffer.alloc(2048, 1));
   await fs.writeFile(captions, "1\n00:00:00,000 --> 00:00:01,000\nGTA VI.\n");
   await fs.writeJson(canonical, {
@@ -47,6 +79,25 @@ async function gtaPronunciationEvidenceFiles(root) {
     word_timestamps_path: "audio/word_timestamps.json",
   });
   await fs.writeJson(platform, { outputs: { youtube_shorts: {} } });
+  await fs.writeJson(render, {
+    story_id: "gta-vi-story",
+    premium_shell_verdict: "pass",
+    hyperframes_card_count: 4,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      selectedCardCount: 4,
+      passCount: 4,
+      blockers: [],
+    },
+    clip_scene_plan: {
+      scenes: [
+        { sourceRootKey: "gta-vi-trailer-a" },
+        { sourceRootKey: "gta-vi-trailer-b" },
+        { sourceRootKey: "gta-vi-card-source", readableCardKind: "source" },
+        { sourceRootKey: "gta-vi-card-takeaway", readableCardKind: "takeaway" },
+      ],
+    },
+  });
   await fs.writeJson(timestamps, {
     meta: {
       transcript: "GTA see a six just made the PlayStation version the one to watch.",
@@ -261,6 +312,46 @@ test("executor preflight can explicitly hand off the full dispatch-ready runway"
   assert.ok(report.advisory.includes("selected_all_dispatch_ready_actions"));
   assert.equal(report.executor_plan.ready_for_live_executor_handoff, true);
   assert.equal(report.safe_to_publish_boolean, false);
+});
+
+test("executor preflight blocks thin premium HyperFrames handoff", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-thin-hf-"));
+  const files = await evidenceFiles(root);
+  await fs.writeJson(path.join(path.dirname(files.canonical), "render_manifest.json"), {
+    story_id: "story-one",
+    premium_shell_verdict: "pass",
+    hyperframes_card_count: 1,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      selectedCardCount: 1,
+      passCount: 5,
+      blockers: [],
+    },
+    clip_scene_plan: {
+      scenes: [
+        { sourceRootKey: "clip-a" },
+        { sourceRootKey: "clip-b" },
+        { sourceRootKey: "hyperframes-source", readableCardKind: "source" },
+      ],
+    },
+  });
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.handoff_ready_action_count, 0);
+  assert.ok(
+    report.blocked_selected_actions[0].blockers.includes("hyperframes_card_count_below_target:1/4"),
+    JSON.stringify(report.blocked_selected_actions[0].blockers),
+  );
 });
 
 test("executor preflight blocks stale GTA VI timestamp pronunciation evidence before handoff", async () => {

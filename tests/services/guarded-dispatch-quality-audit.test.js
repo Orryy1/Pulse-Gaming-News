@@ -67,7 +67,7 @@ async function makeStory(root, id, {
   return artifactDir;
 }
 
-test("guarded dispatch quality audit warns on thin HyperFrames handoff videos", async () => {
+test("guarded dispatch quality audit blocks thin HyperFrames handoff videos", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-dispatch-quality-thin-"));
   const artifactDir = await makeStory(root, "thin-story", {
     hyperframesCardCount: 1,
@@ -89,12 +89,13 @@ test("guarded dispatch quality audit warns on thin HyperFrames handoff videos", 
     generatedAt: "2026-07-02T10:20:00.000Z",
   });
 
-  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.verdict, "RED");
   assert.equal(report.summary.story_count, 1);
-  assert.equal(report.summary.warning_count, 1);
-  assert.deepEqual(report.stories[0].warnings, [
+  assert.equal(report.summary.blocker_count, 1);
+  assert.deepEqual(report.stories[0].blockers, [
     "hyperframes_card_count_below_target:1/4",
   ]);
+  assert.deepEqual(report.stories[0].warnings, []);
 });
 
 test("guarded dispatch quality audit blocks repeated visual source roots", async () => {
@@ -148,6 +149,28 @@ test("guarded dispatch quality audit blocks Instagram actions without native saf
 
   assert.equal(report.verdict, "RED");
   assert.ok(report.stories[0].blockers.includes("instagram_reels_native_variant_missing"));
+});
+
+test("guarded dispatch quality audit keeps executor-blocked actions visible", async () => {
+  const report = await buildGuardedDispatchQualityAudit({
+    guardedDispatchExecutorPreflight: {
+      handoff_ready_actions: [],
+      blocked_selected_actions: [
+        {
+          story_id: "thin-story",
+          platform: "youtube_shorts",
+          title: "Thin Story",
+          blockers: ["hyperframes_card_count_below_target:1/4"],
+        },
+      ],
+    },
+    generatedAt: "2026-07-02T10:45:00.000Z",
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.action_count, 1);
+  assert.equal(report.summary.blocker_count, 1);
+  assert.deepEqual(report.stories[0].blockers, ["hyperframes_card_count_below_target:1/4"]);
 });
 
 test("guarded dispatch quality audit command is registered as read-only ops proof", () => {

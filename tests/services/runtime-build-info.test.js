@@ -26,6 +26,7 @@ test("cleanPublicLabel strips unsafe labels from health metadata", () => {
 test("resolveRuntimeBuildInfo prefers Railway env commit and avoids git fallback", () => {
   const info = resolveRuntimeBuildInfo({
     env: {
+      DEPLOYMENT_MODE: "railway",
       RAILWAY_GIT_COMMIT_SHA: "abcdef1234567890",
       RAILWAY_GIT_BRANCH: "main",
       RAILWAY_GIT_COMMIT_MESSAGE: "Do not expose this text",
@@ -43,6 +44,34 @@ test("resolveRuntimeBuildInfo prefers Railway env commit and avoids git fallback
   assert.equal(info.branch_source, "railway_env");
   assert.equal(info.commit_message_present, true);
   assert.equal(info.commit_message, undefined);
+});
+
+test("resolveRuntimeBuildInfo prefers local git over injected Railway metadata in local mode", () => {
+  const calls = [];
+  const info = resolveRuntimeBuildInfo({
+    cwd: "C:/repo",
+    env: {
+      DEPLOYMENT_MODE: "local",
+      RAILWAY_GIT_COMMIT_SHA: "abcdef1234567890",
+      RAILWAY_GIT_BRANCH: "main",
+    },
+    execFileSyncImpl(cmd, args) {
+      calls.push([cmd, args.join(" ")]);
+      if (args.join(" ") === "rev-parse HEAD") return "fedcba9876543210\n";
+      if (args.join(" ") === "rev-parse --abbrev-ref HEAD") return "codex/live-local\n";
+      throw new Error("unexpected git call");
+    },
+  });
+
+  assert.equal(info.commit_sha, "fedcba9876543210");
+  assert.equal(info.commit_short, "fedcba9");
+  assert.equal(info.commit_source, "local_git");
+  assert.equal(info.branch, "codex/live-local");
+  assert.equal(info.branch_source, "local_git");
+  assert.deepEqual(
+    calls.map((call) => call[1]),
+    ["rev-parse HEAD", "rev-parse --abbrev-ref HEAD"],
+  );
 });
 
 test("resolveRuntimeBuildInfo falls back to local git for local primary health", () => {

@@ -137,6 +137,49 @@ test("Studio V4 proof renderer blocks premium shorts dominated by one direct-vid
   assert.equal(plan.skippedDuplicateBaseSources.length, 6);
 });
 
+test("Studio V4 proof renderer allows balanced second windows when coverage needs them", () => {
+  const roots = ["a", "b", "c", "d", "e", "f"];
+  const directClips = [
+    ...roots.map((root) => [root, 36]),
+    ["b", 42],
+    ["c", 42],
+  ].map(([root, windowStart]) => ({
+    path: `star-wars-${root}-window-${windowStart}.mp4`,
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3936610/${root}/trailer/hls_264_master.m3u8`,
+    source_type: "steam_movie",
+    source_kind: "video_file",
+    source_family: `steamstatic:/store_trailers/3936610/${root}/trailer_window_${windowStart}_5`,
+    motion_family: `steamstatic:/store_trailers/3936610/${root}/trailer_window_${windowStart}_5`,
+    media_kind: "direct_video",
+    durationS: 5,
+  }));
+  const plan = buildClipScenePlan({
+    clips: [
+      ...directClips.slice(0, 4),
+      {
+        path: "output/generated-motion/star-wars/source-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_source_card",
+        text: "SOURCE LOCKED",
+        durationS: 12,
+        minimum_readable_duration_s: 12,
+      },
+      ...directClips.slice(4),
+    ],
+    durationS: 42.028,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.equal(plan.blockers.includes("direct_motion_source_concentration_above_premium_floor"), false);
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.skippedDuplicateBaseSources.length, 0);
+  assert.equal(plan.scenes.filter((scene) => !scene.readableCardKind).length, 8);
+  assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length, 1);
+});
+
 test("Studio V4 proof renderer defaults to readable non-repeating direct-motion cuts", () => {
   const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
   const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;

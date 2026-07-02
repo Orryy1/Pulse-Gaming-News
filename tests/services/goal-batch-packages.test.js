@@ -1851,7 +1851,7 @@ test("goal batch package proof turns Star Wars Monopoly ability stories into att
   });
   const wordCount = prepared.full_script.split(/\s+/).filter(Boolean).length;
 
-  assert.equal(prepared.public_title, "Star Wars Monopoly Turns Force Powers Into Family Drama");
+  assert.equal(prepared.public_title, "Star Wars Monopoly Could Ruin Game Night");
   assert.equal(prepared.suggested_thumbnail_text, "FORCE POWERS FIGHT");
   assert.ok(wordCount >= 110, prepared.full_script);
   assert.match(prepared.full_script, /Heroes versus Villains gives each character abilities/i);
@@ -1874,7 +1874,7 @@ test("goal batch package proof turns Star Wars Monopoly ability stories into att
     },
   });
 
-  assert.equal(native.outputs.youtube_shorts.title, "Star Wars Monopoly Turns Force Powers Into Family Drama");
+  assert.equal(native.outputs.youtube_shorts.title, "Star Wars Monopoly Could Ruin Game Night");
   assert.equal(native.outputs.youtube_shorts.cover_frame.headline, "FORCE POWERS FIGHT");
   assert.ok(
     !native.platformNativeEvidence.failures.some((failure) => failure.reason === "weak_cover_headline"),

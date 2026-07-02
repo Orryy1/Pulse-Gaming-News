@@ -1819,7 +1819,7 @@ test("goal dry-run publisher blocks neighbouring windows overused from the same 
   );
 });
 
-test("goal dry-run publisher blocks even two final cuts from the same trailer base", async () => {
+test("goal dry-run publisher allows two balanced final cuts from the same trailer base", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-two-window-base-source-"));
   const storyPackage = await makeStoryPackage(
     root,
@@ -1860,14 +1860,12 @@ test("goal dry-run publisher blocks even two final cuts from the same trailer ba
     platformOperationalConfig: enabledCorePlatformsOnly(),
   });
 
-  assert.equal(plan.summary.ready_story_count, 0);
-  assert.equal(plan.summary.blocked_story_count, 1);
-  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.ready_stories[0].story_id, "two-window-base-source-story");
   assert.deepEqual(
-    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse.map(
-      (entry) => ({ count: entry.count, share: entry.share }),
-    ),
-    [{ count: 2, share: 0.25 }],
+    plan.ready_stories[0].file_evidence.direct_motion_base_source_overuse,
+    [],
   );
 });
 
@@ -1894,6 +1892,17 @@ test("goal dry-run publisher treats Steam CDN trailer aliases as the same visual
       startS: 42,
       durationS: 5,
     }),
+    directMotionClipFixture({
+      id: "marvel-akamai-dash",
+      path: "motion/marvel-akamai-dash.mp4",
+      sourceUrl:
+        "https://video.akamai.steamstatic.com/store_trailers/3787240/1666904613/1ab8822e4232a92aff4f6b7099ded70aaa66147f/1778131450/dash_av1.mpd?t=1778210882",
+      sourceFamily:
+        "steamstatic:/store_trailers/3787240/1666904613/1ab8822e4232a92aff4f6b7099ded70aaa66147f/1778131450_window_48_5",
+      sourceType: "steam_movie",
+      startS: 48,
+      durationS: 5,
+    }),
     ...Array.from({ length: 6 }, (_, index) =>
       directMotionClipFixture({
         id: `marvel-distinct-${index + 1}`,
@@ -1918,8 +1927,8 @@ test("goal dry-run publisher treats Steam CDN trailer aliases as the same visual
     [
       {
         key: "steam-trailer:3787240/1666904613/1ab8822e4232a92aff4f6b7099ded70aaa66147f/1778131450",
-        count: 2,
-        share: 0.25,
+        count: 3,
+        share: 0.333,
       },
     ],
   );
@@ -1951,7 +1960,7 @@ test("goal dry-run publisher allows balanced official trailer windows at the sou
         durationS: 5,
       }),
     ),
-    ...Array.from({ length: 6 }, (_, index) =>
+    ...Array.from({ length: 4 }, (_, index) =>
       directMotionClipFixture({
         id: `marvel-balanced-distinct-${index + 1}`,
         path: `motion/marvel-balanced-distinct-${index + 1}.mp4`,
@@ -2026,7 +2035,7 @@ test("goal dry-run publisher checks final render-story clips for base-source loo
   const sameBaseUrl =
     "https://video.akamai.steamstatic.com/store_trailers/1364780/164062000/source/hls_264_master.m3u8?t=1782095041";
   const actualRenderClips = [
-    ...[36, 42].map((startS, index) =>
+    ...[36, 42, 48].map((startS, index) =>
       directMotionClipFixture({
         id: `sf6-final-render-window-${index + 1}`,
         path: `motion/sf6-final-render-window-${index + 1}.mp4`,
@@ -2100,7 +2109,7 @@ test("goal dry-run publisher checks final render-story clips for base-source loo
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse.map(
       (entry) => ({ count: entry.count, share: entry.share }),
     ),
-    [{ count: 2, share: 0.25 }],
+    [{ count: 3, share: 0.333 }],
   );
 });
 

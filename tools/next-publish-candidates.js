@@ -616,6 +616,32 @@ function isLongformLane(story = {}) {
   return /\b(longform|weekly|monthly|roundup|briefing|release radar|documentary|trailer breakdown)\b/.test(fields);
 }
 
+function hasExplicitNormalProductionDurationContract(story = {}) {
+  const min =
+    numberOrNull(story.min_video_duration_seconds) ??
+    numberOrNull(story.target_video_duration_seconds_min);
+  const max =
+    numberOrNull(story.target_video_duration_seconds_max) ??
+    numberOrNull(story.max_video_duration_seconds);
+  if (min == null || max == null) return false;
+  if (min < 30 || min > DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS) return false;
+  if (max < DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS || max > DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS) {
+    return false;
+  }
+  const productionEvidence = [
+    story.render_lane,
+    story.render_quality_class,
+    story.visual_tier,
+    story.render_quality,
+    story.final_render_kind,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return /\b(?:visual[_-]?v4|production[_-]?v4|premium|final[_-]?publish|normal[_-]?production)\b/i.test(
+    productionEvidence,
+  );
+}
+
 function durationVerdict(story = {}) {
   const duration = storyDurationSeconds(story);
   if (duration == null) {
@@ -626,7 +652,14 @@ function durationVerdict(story = {}) {
       duration_seconds: null,
     };
   }
-  const durationLane = resolveDurationLane({ story });
+  let durationLane = resolveDurationLane({ story });
+  if (
+    durationLane !== NORMAL_PRODUCTION_DURATION_LANE &&
+    durationLane !== RETENTION_DURATION_LANE &&
+    hasExplicitNormalProductionDurationContract(story)
+  ) {
+    durationLane = NORMAL_PRODUCTION_DURATION_LANE;
+  }
   if (durationLane === RETENTION_DURATION_LANE || story.allow_retention_short_video === true) {
     const hardMin = numberOrNull(story.min_video_duration_seconds) ?? 15;
     const targetMin = numberOrNull(story.target_video_duration_seconds_min) ?? 22;

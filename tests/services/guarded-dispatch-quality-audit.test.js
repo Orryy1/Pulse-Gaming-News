@@ -14,6 +14,8 @@ const packageJson = require("../../package.json");
 async function makeStory(root, id, {
   title = "Test Story",
   hyperframesCardCount = 4,
+  hyperframesPassCount = hyperframesCardCount,
+  renderedDurationS = 42,
   sceneRoots = ["clip-a", "clip-b", "clip-c"],
   instagramVariant = true,
 } = {}) {
@@ -25,12 +27,12 @@ async function makeStory(root, id, {
   });
   await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
     story_id: id,
-    rendered_duration_s: 42,
+    rendered_duration_s: renderedDurationS,
     renderer: "visual_v4_production",
     hyperframesCardCount,
     hyperframesPremiumShellGate: {
       verdict: "pass",
-      passCount: hyperframesCardCount,
+      passCount: hyperframesPassCount,
       blockers: [],
     },
     clip_scene_plan: {
@@ -98,6 +100,36 @@ test("guarded dispatch quality audit blocks thin HyperFrames handoff videos", as
   assert.deepEqual(report.stories[0].warnings, []);
 });
 
+test("guarded dispatch quality audit accepts duration-feasible one-card HyperFrames shorts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-dispatch-quality-duration-hf-"));
+  const artifactDir = await makeStory(root, "duration-story", {
+    hyperframesCardCount: 1,
+    hyperframesPassCount: 5,
+    renderedDurationS: 35.341,
+    sceneRoots: ["source-a-window-1", "source-b-window-1", "source-c-window-1", "source-d-window-1"],
+  });
+
+  const report = await buildGuardedDispatchQualityAudit({
+    guardedDispatchExecutorPreflight: {
+      handoff_ready_actions: [
+        {
+          story_id: "duration-story",
+          platform: "youtube_shorts",
+          title: "Duration Story",
+          canonical_manifest_path: path.join(artifactDir, "canonical_story_manifest.json"),
+          video_path: path.join(artifactDir, "visual_v4_render.mp4"),
+        },
+      ],
+    },
+    generatedAt: "2026-07-02T10:25:00.000Z",
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.blocker_count, 0);
+  assert.equal(report.stories[0].hyperframes_required_card_count, 1);
+  assert.deepEqual(report.stories[0].blockers, []);
+});
+
 test("guarded dispatch quality audit blocks repeated visual source roots", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-dispatch-quality-repeat-"));
   const artifactDir = await makeStory(root, "repeat-story", {
@@ -125,6 +157,40 @@ test("guarded dispatch quality audit blocks repeated visual source roots", async
   assert.equal(report.verdict, "RED");
   assert.equal(report.summary.blocker_count, 1);
   assert.match(report.stories[0].blockers[0], /^repeated_visual_source_root:steam_trailer_123/);
+});
+
+test("guarded dispatch quality audit accepts two balanced windows from the same visual source root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-dispatch-quality-balanced-repeat-"));
+  const artifactDir = await makeStory(root, "balanced-repeat-story", {
+    sceneRoots: [
+      "steam_trailer_123_window_12_5",
+      "steam_trailer_123_window_42_5",
+      "steam_trailer_456_window_20_5",
+      "steam_trailer_789_window_26_5",
+      "steam_trailer_abc_window_32_5",
+      "steam_trailer_def_window_38_5",
+      "source-card-window",
+      "proof-card-window",
+    ],
+  });
+
+  const report = await buildGuardedDispatchQualityAudit({
+    guardedDispatchExecutorPreflight: {
+      handoff_ready_actions: [
+        {
+          story_id: "balanced-repeat-story",
+          platform: "youtube_shorts",
+          title: "Balanced Repeat Story",
+          canonical_manifest_path: path.join(artifactDir, "canonical_story_manifest.json"),
+          video_path: path.join(artifactDir, "visual_v4_render.mp4"),
+        },
+      ],
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.blocker_count, 0);
+  assert.deepEqual(report.stories[0].blockers, []);
 });
 
 test("guarded dispatch quality audit blocks Instagram actions without native safe variants", async () => {

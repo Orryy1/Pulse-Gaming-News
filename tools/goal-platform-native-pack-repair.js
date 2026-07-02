@@ -6,6 +6,7 @@ const fs = require("fs-extra");
 
 const {
   repairPlatformNativePacks,
+  refreshStoryPackageEntriesFromArtifacts,
 } = require("../lib/goal-platform-native-pack-repair");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -63,10 +64,11 @@ async function main(argv = process.argv.slice(2)) {
     return { help: true };
   }
   const storyPackagesPath = path.resolve(args.storyPackagesPath);
-  let storyPackages = await fs.readJson(storyPackagesPath);
-  if (!Array.isArray(storyPackages)) {
+  const originalStoryPackages = await fs.readJson(storyPackagesPath);
+  if (!Array.isArray(originalStoryPackages)) {
     throw new Error(`story package file is not an array: ${storyPackagesPath}`);
   }
+  let storyPackages = originalStoryPackages;
   const requestedStoryIds = new Set(args.storyIds.map((id) => String(id || "").trim()).filter(Boolean));
   if (requestedStoryIds.size) {
     storyPackages = storyPackages.filter((entry) =>
@@ -83,6 +85,19 @@ async function main(argv = process.argv.slice(2)) {
     apply: args.apply,
     backupRoot: args.backupRoot,
   });
+  let storyPackageRefresh = null;
+  if (args.apply) {
+    storyPackageRefresh = await refreshStoryPackageEntriesFromArtifacts(originalStoryPackages, {
+      storyIds: Array.from(requestedStoryIds),
+    });
+    await fs.writeJson(storyPackagesPath, storyPackageRefresh.story_packages, { spaces: 2 });
+    report.story_package_refresh = {
+      story_packages_path: storyPackagesPath,
+      summary: storyPackageRefresh.summary,
+      rows: storyPackageRefresh.rows,
+      safety: storyPackageRefresh.safety,
+    };
+  }
   const outDir = path.resolve(args.outDir);
   await fs.ensureDir(outDir);
   const reportPath = path.join(outDir, args.apply

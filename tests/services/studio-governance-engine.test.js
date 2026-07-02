@@ -444,6 +444,86 @@ test("Studio Governance Engine uses V4 bridge provenance instead of rights-less 
   assert.equal(report.publish_manifest.publish_status, "GREEN");
 });
 
+test("Studio Governance Engine prefers enriched rights records over raw ledger asset rows", () => {
+  const sourceUrl = "https://video.twimg.com/amplify_video/star-wars-monopoly/vid/avc1/1280x720/gameplay.mp4";
+  const clipPath = "C:/render-cache/star-wars-monopoly-official-motion.mp4";
+  const story = cleanStory({
+    id: "rights-precedence",
+    canonical_subject: "Star Wars Monopoly",
+    canonical_angle: "character powers can change family game night",
+    public_title: "Star Wars Monopoly Could Ruin Game Night",
+    suggested_title: "Star Wars Monopoly Could Ruin Game Night",
+    suggested_thumbnail_text: "STAR WARS MONOPOLY CHAOS",
+    thumbnail_source_label: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    primary_source: "Xbox Wire",
+    discovery_source: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/example-star-wars-monopoly",
+    description:
+      "Star Wars Monopoly adds Heroes versus Villains powers to family game night. Source: Xbox Wire.",
+    full_script:
+      "Star Wars Monopoly sounds silly until the powers start deciding who ruins family night. " +
+      "Xbox Wire says Heroes versus Villains gives characters unique abilities, so the player choice is simple. " +
+      "Is this a safe gift, or another box that gets one bored match? " +
+      "If powers twist deals, rent and comebacks, Star Wars Monopoly becomes the rare licensed board people argue to replay. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+    downloaded_images: [],
+    video_clips: [
+      {
+        id: "segment_direct_motion_1",
+        path: clipPath,
+        source_url: sourceUrl,
+        source_type: "official_direct_media_reference",
+        source_family: "xbox_wire_star_wars_monopoly",
+        rights_risk_class: "official_reference_only",
+      },
+    ],
+  });
+
+  const report = buildStudioGovernanceReport({
+    story,
+    rightsLedger: {
+      assets: [
+        {
+          asset_id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: sourceUrl,
+          source_type: "official_direct_media_reference",
+        },
+      ],
+      records: [
+        {
+          asset_id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: sourceUrl,
+          source_type: "official_direct_media_reference",
+          licence_basis: "reference_only_by_default",
+          allowed_platforms: ["youtube", "instagram", "facebook"],
+          commercial_use_allowed: true,
+          risk_score: 0.18,
+          evidence_file: "rights/star-wars-monopoly-motion.json",
+        },
+        {
+          asset_id: "rights-precedence_audio_path",
+          path: story.audio_path,
+          source_type: "local_tts_voice",
+          licence_basis: "owned_local_voice_model",
+          allowed_platforms: ["youtube", "instagram", "facebook"],
+          commercial_use_allowed: true,
+          risk_score: 0.05,
+          evidence_file: "rights/local-tts.json",
+        },
+      ],
+    },
+    platforms: ["youtube", "instagram", "facebook"],
+    generatedAt: "2026-07-02T09:15:00.000Z",
+  });
+
+  assert.equal(report.rights_ledger.verdict, "pass");
+  assert.ok(!report.rejection_reasons.reason_codes.includes("rights:licence_basis_missing"));
+  assert.equal(report.publish_manifest.publish_status, "GREEN");
+});
+
 test("Studio Governance Engine scopes final V4 rights checks to director-selected render assets", () => {
   const selectedPath = "C:/render-cache/valorant-selected-official-motion.mp4";
   const sameIdUnusedPath = "C:/render-cache/valorant-unused-same-id-motion.mp4";

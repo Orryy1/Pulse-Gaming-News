@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   repairPlatformNativePacks,
+  refreshStoryPackageEntriesFromArtifacts,
 } = require("../../lib/goal-platform-native-pack-repair");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 
@@ -1362,6 +1363,186 @@ test("platform-native repair keeps Robo-Ky delay copy story-specific instead of 
   assert.equal(applied.summary.repaired_count, 1);
   const repairedVerdict = await fs.readJson(path.join(artifactDir, "publish_verdict.json"));
   assert.ok(!repairedVerdict.reason_codes.includes("media_house:platform_copy_too_plain"));
+});
+
+test("platform-native repair turns Star Wars Monopoly family stakes into attention-led copy", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  const script =
+    "Star Wars Monopoly sounds silly until the powers start deciding who ruins family night. Xbox Wire says Heroes versus Villains gives characters unique abilities, so player choice becomes the whole pitch. If Darth Vader flips momentum, kids get chaos and parents get stories. If powers barely matter, it is one bored match. Follow Pulse Gaming so you never miss a beat.";
+
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_e622e340996cda19",
+    canonical_subject: "Monopoly Star Wars",
+    canonical_game: "Monopoly Star Wars",
+    canonical_angle: "Force powers decide whether family night becomes replayable chaos or one bored match",
+    selected_title: "Star Wars Monopoly Turns Force Powers Into Family Drama",
+    canonical_title: "Star Wars Monopoly Turns Force Powers Into Family Drama",
+    title: "Star Wars Monopoly Turns Force Powers Into Family Drama",
+    first_spoken_line: "Star Wars Monopoly sounds silly until the powers start deciding who ruins family night.",
+    narration_script: script,
+    description:
+      "Star Wars Monopoly sounds silly until the powers start deciding who ruins family night. Source: Xbox Wire.",
+    thumbnail_headline: "FORCE POWERS FIGHT",
+    primary_source: { name: "Xbox Wire" },
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 42.028,
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "RED",
+    outputs: {
+      youtube_shorts: {
+        platform: "youtube_shorts",
+        title: "Star Wars Monopoly Turns Force Powers Into Family Drama",
+        description:
+          "Monopoly Star Wars has a player-facing question now: Star Wars Monopoly sounds silly until the powers start deciding who ruins family night. Source: Xbox Wire.",
+        cover_frame: { headline: "FORCE POWERS FIGHT" },
+      },
+      instagram_reels: {
+        platform: "instagram_reels",
+        caption:
+          "Monopoly Star Wars has a player-facing question now: Star Wars Monopoly sounds silly until the powers start deciding who ruins family night. Source: Xbox Wire.",
+        cover_frame: { headline: "FORCE POWERS FIGHT" },
+      },
+      facebook_reels: {
+        platform: "facebook_reels",
+        page_caption:
+          "Monopoly Star Wars has a player-facing question now: Star Wars Monopoly sounds silly until the powers start deciding who ruins family night. Source: Xbox Wire.",
+        cover_frame: { headline: "FORCE POWERS FIGHT" },
+      },
+    },
+    platform_native_evidence: { verdict: "fail" },
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    status: "pass",
+    viral_score: 91,
+    blockers: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 92,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      card_hierarchy_score: 90,
+      transition_energy_score: 92,
+      sfx_impact_score: 96,
+      rights_risk_score: 100,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
+    shot_plan: [{ id: "hook", kind: "motion_clip", start_s: 0.1 }],
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    voice_status: "materialized",
+    word_timestamp_count: 61,
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), { status: "pass", failures: [] });
+  await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), {
+    result: "pass",
+    failures: [],
+    scores: {
+      motion_density_score: 100,
+      first_3_seconds_hook_score: 92,
+      source_lock_quality_score: 100,
+      caption_legibility_score: 100,
+      transition_energy_score: 92,
+      sfx_impact_score: 96,
+      rights_risk_score: 100,
+      media_house_polish_score: 95,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    status: "fail",
+    hard_failures: [
+      "media_house:title_lacks_curiosity_gap",
+      "media_house:platform_title_too_plain",
+      "media_house:platform_copy_too_plain",
+      "media_house:shorts_feed_competition_weak",
+    ],
+  });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: [
+      "media_house:title_lacks_curiosity_gap",
+      "media_house:platform_title_too_plain",
+      "media_house:platform_copy_too_plain",
+      "media_house:shorts_feed_competition_weak",
+    ],
+    blockers: [
+      "media_house:title_lacks_curiosity_gap",
+      "media_house:platform_title_too_plain",
+      "media_house:platform_copy_too_plain",
+      "media_house:shorts_feed_competition_weak",
+    ],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages: [{
+      story_id: "rss_e622e340996cda19",
+      verdict: "GREEN",
+      blockers: [],
+      artifact_dir: artifactDir,
+    }],
+    generatedAt: "2026-07-02T12:00:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].target_youtube_title, "Star Wars Monopoly Could Ruin Game Night");
+  assert.match(dryRun.items[0].target_youtube_description, /replayable chaos/i);
+  assert.match(dryRun.items[0].target_instagram_caption, /replayable chaos/i);
+  assert.doesNotMatch(dryRun.items[0].target_youtube_description, /player-facing question/i);
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:title_lacks_curiosity_gap"));
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:platform_title_too_plain"));
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:platform_copy_too_plain"));
+  assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:shorts_feed_competition_weak"));
+});
+
+test("platform-native repair refreshes stale story-package RED summary from GREEN artefacts", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "GREEN",
+    can_auto_publish: true,
+    reason_codes: [],
+    blockers: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "GREEN",
+    platform_native_evidence: { verdict: "pass", failures: [] },
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "GREEN",
+    hard_failures: [],
+  });
+
+  const refreshed = await refreshStoryPackageEntriesFromArtifacts([
+    {
+      story_id: "story-native",
+      verdict: "RED",
+      blockers: ["media_house:platform_copy_too_plain"],
+      artifact_dir: artifactDir,
+    },
+  ], {
+    storyIds: ["story-native"],
+  });
+
+  assert.equal(refreshed.summary.updated_count, 1);
+  assert.equal(refreshed.story_packages[0].verdict, "GREEN");
+  assert.deepEqual(refreshed.story_packages[0].blockers, []);
+  assert.equal(refreshed.rows[0].updated, true);
+  assert.equal(refreshed.safety.no_db_mutation, true);
 });
 
 test("platform-native repair derives Facebook Reels duration from render manifest", async () => {

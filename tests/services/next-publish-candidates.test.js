@@ -22,6 +22,7 @@ const {
   runPreflightQaForStory,
   schedulerEffectivePreflightStory,
   scoreAnalyticsFit,
+  durationVerdict,
   mergeBridgeCandidates,
   selectCandidateSourceStories,
   visualEntityPreflightForStory,
@@ -1061,6 +1062,34 @@ test("next publish report treats normal production V4 bridge rows as publish-rea
   assert.equal(report.candidates[0].id, "v4_normal_production");
   assert.equal(report.candidates[0].status, "publish_ready");
   assert.ok(report.candidates[0].reasons.includes("normal_production_duration_window"));
+});
+
+test("next publish report honours explicit normal-production duration bounds when bridge lane is missing", () => {
+  const story = baseStory({
+    id: "v4_missing_lane_bounded_short",
+    title: "Star Wars Monopoly Could Ruin Game Night",
+    auto_approved: true,
+    duration_seconds: 42.03,
+    render_lane: "visual_v4",
+    render_quality_class: "production_v4_motion",
+    min_video_duration_seconds: 35,
+    target_video_duration_seconds_min: 35,
+    target_video_duration_seconds_max: 60,
+    max_video_duration_seconds: 60,
+  });
+  const report = buildNextPublishCandidatesReport(
+    [story],
+    { analyticsText, generatedAt: "2026-07-02T12:10:00.000Z" },
+  );
+
+  assert.equal(report.excluded.length, 0);
+  assert.equal(report.candidates[0].id, "v4_missing_lane_bounded_short");
+  assert.equal(report.candidates[0].status, "publish_ready");
+  assert.ok(report.candidates[0].reasons.includes("normal_production_duration_window"));
+  assert.equal(
+    durationVerdict(story).reason,
+    "normal_production_duration_window",
+  );
 });
 
 test("next publish report keeps sub-target V4 retention shorts visible for review", () => {

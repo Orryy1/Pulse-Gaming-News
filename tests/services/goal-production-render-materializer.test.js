@@ -1131,14 +1131,107 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(cardClips.length, 1);
   assert.equal(renderStory.hyperframes_card_count, 1);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.equal(renderStory.premium_shell_verdict, "partial");
-  assert.ok(
-    renderStory.premium_shell_blockers.includes(
-      "selected_hyperframes_card_count_below_required:1/4",
-    ),
-  );
+  assert.equal(renderStory.premium_shell_required_selected_card_count, 1);
+  assert.equal(renderStory.premium_shell_verdict, "pass");
+  assert.deepEqual(renderStory.premium_shell_blockers, []);
   assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 12);
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 1);
+});
+
+test("goal production render materializer tops up balanced direct windows when HyperFrames duration would under-cover narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-coverage-topup-"));
+  const artifactDir = await makePackage(root, "story-hf-coverage-topup");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-coverage-topup", kind),
+  ));
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 42.028,
+      spoken_wpm: 158,
+    },
+  });
+  const clipRows = [
+    ["clip-a-36.mp4", "a", 36],
+    ["clip-b-36.mp4", "b", 36],
+    ["clip-c-36.mp4", "c", 36],
+    ["clip-d-36.mp4", "d", 36],
+    ["clip-e-36.mp4", "e", 36],
+    ["clip-f-36.mp4", "f", 36],
+    ["clip-b-42.mp4", "b", 42],
+    ["clip-c-42.mp4", "c", 42],
+  ];
+  const clips = [];
+  for (const [fileName, rootKey, windowStart] of clipRows) {
+    const clipPath = path.join(artifactDir, fileName);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, clips.length + 30));
+    clips.push({
+      id: fileName.replace(/\.mp4$/i, ""),
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://video.akamai.steamstatic.com/store_trailers/3936610/${rootKey}/trailer/hls_264_master.m3u8`,
+      source_type: "steam_movie",
+      source_kind: "video_file",
+      source_family: `steamstatic:/store_trailers/3936610/${rootKey}/trailer_window_${windowStart}_5`,
+      motion_family: `steamstatic:/store_trailers/3936610/${rootKey}/trailer_window_${windowStart}_5`,
+      media_kind: "direct_video",
+      source_url_kind: "hls_manifest",
+      counts_towards_motion_readiness: true,
+      validated: true,
+      durationS: 5,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+    materialised_clips: clips,
+  });
+  const job = readyJob("story-hf-coverage-topup", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: clips.length,
+      distinct_motion_family_count: clips.length,
+      materialised_motion_clip_paths: clips.map((clip) => clip.path),
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-02T11:45:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 42.028,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const directClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.media_kind === "direct_video",
+  );
+  const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+  const coverage = [...directClips, ...cardClips].reduce(
+    (sum, clip) => sum + Number(clip.durationS || 0),
+    0,
+  ) - 0.25 * Math.max(0, directClips.length + cardClips.length - 1);
+  assert.equal(directClips.length, 8);
+  assert.equal(cardClips.length, 1);
+  assert.ok(directClips.some((clip) => /clip-b-42\.mp4$/.test(clip.path)));
+  assert.ok(directClips.some((clip) => /clip-c-42\.mp4$/.test(clip.path)));
+  assert.ok(coverage + 0.12 >= 42.028);
 });
 
 test("goal production render materializer preserves premium direct runway when HyperFrames cards are added", async () => {

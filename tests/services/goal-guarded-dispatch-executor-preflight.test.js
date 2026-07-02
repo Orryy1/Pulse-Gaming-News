@@ -354,6 +354,89 @@ test("executor preflight blocks thin premium HyperFrames handoff", async () => {
   );
 });
 
+test("executor preflight accepts duration-feasible one-card HyperFrames shorts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-duration-hf-"));
+  const files = await evidenceFiles(root);
+  await fs.writeJson(path.join(path.dirname(files.canonical), "render_manifest.json"), {
+    story_id: "story-one",
+    rendered_duration_s: 35.341,
+    premium_shell_verdict: "pass",
+    hyperframes_card_count: 1,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      selectedCardCount: 1,
+      passCount: 5,
+      blockers: [],
+    },
+    clip_scene_plan: {
+      scenes: [
+        { sourceRootKey: "clip-a" },
+        { sourceRootKey: "clip-b" },
+        { sourceRootKey: "clip-c" },
+        { sourceRootKey: "hyperframes-source", readableCardKind: "source" },
+      ],
+    },
+  });
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.handoff_ready_action_count, 1);
+  assert.equal(report.summary.blocked_selected_action_count, 0);
+  assert.deepEqual(report.blocked_selected_actions, []);
+});
+
+test("executor preflight accepts two balanced windows from the same visual source root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-balanced-repeat-"));
+  const files = await evidenceFiles(root);
+  await fs.writeJson(path.join(path.dirname(files.canonical), "render_manifest.json"), {
+    story_id: "story-one",
+    rendered_duration_s: 42.028,
+    premium_shell_verdict: "pass",
+    hyperframes_card_count: 4,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      selectedCardCount: 4,
+      passCount: 4,
+      blockers: [],
+    },
+    clip_scene_plan: {
+      scenes: [
+        { sourceRootKey: "steam_trailer_alpha_window_12_5" },
+        { sourceRootKey: "steam_trailer_alpha_window_42_5" },
+        { sourceRootKey: "steam_trailer_beta_window_10_5" },
+        { sourceRootKey: "steam_trailer_gamma_window_18_5" },
+        { sourceRootKey: "steam_trailer_delta_window_24_5" },
+        { sourceRootKey: "steam_trailer_epsilon_window_30_5" },
+        { sourceRootKey: "source-card-window" },
+        { sourceRootKey: "proof-card-window" },
+      ],
+    },
+  });
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.handoff_ready_action_count, 1);
+  assert.deepEqual(report.blocked_selected_actions, []);
+});
+
 test("executor preflight blocks stale GTA VI timestamp pronunciation evidence before handoff", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-gta-profile-"));
   const files = await gtaPronunciationEvidenceFiles(root);

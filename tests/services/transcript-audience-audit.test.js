@@ -708,6 +708,37 @@ test("transcript audience audit accepts Call of Duty Black Ops 7 spoken in separ
   });
 });
 
+test("transcript audience audit accepts Star Wars Monopoly as a reordered public alias with concrete board-game stakes", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "star-wars-monopoly-reordered");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "star-wars-monopoly-reordered",
+      canonical_subject: "Monopoly Star Wars",
+      selected_title: "Star Wars Monopoly Could Ruin Game Night",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Star Wars Monopoly sounds silly until the powers start deciding who ruins family night. " +
+        "Xbox Wire says Heroes versus Villains gives characters unique abilities, so every turn becomes a choice about rent, revenge and who gets the comeback. " +
+        "That is the real player test: do the powers make families replay the board, or does it become one bored match after dinner? " +
+        "If Darth Vader can flip momentum and heroes can save a doomed turn, this is a licensed board game people will actually argue to replay. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "Xbox Wire", url: "https://example.test/star-wars-monopoly" },
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+    assert.equal(row.blockers.includes("mass_audience:low_concrete_detail"), false);
+    assert.equal(row.mass_audience.concrete_detail_count >= 3, true);
+  });
+});
+
 test("transcript audience audit still fails unrecoverable subject drift", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "beastro-wrong-subject");

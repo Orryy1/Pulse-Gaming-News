@@ -61,6 +61,9 @@ const {
   canonicalLocalTtsVoiceId,
 } = require("./lib/studio/local-tts-voice-id");
 const {
+  fetchLocalTtsHealth,
+} = require("./lib/studio/local-tts-readiness");
+const {
   buildSyntheticCharacterAlignment,
   repairTimestampAlignment,
 } = require("./lib/subtitle-timing");
@@ -1405,9 +1408,15 @@ async function generateTTS(text, outputPath, rateOverride, providerOverride = nu
   }
 
   if (provider === "local") {
+    const localTtsHealth = await fetchLocalTtsHealth({
+      baseUrl,
+      voiceId,
+      timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
+    });
     await assertLocalTtsGpuReady({
       env: process.env,
       execFileImpl: execFile,
+      localTtsHealth,
     });
   }
 

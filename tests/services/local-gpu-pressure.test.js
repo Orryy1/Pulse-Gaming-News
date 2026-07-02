@@ -43,6 +43,41 @@ test("inspectLocalGpuPressure blocks saturated local GPU", async () => {
   assert.match(formatLocalGpuPressure(report), /failure=gpu_saturated/);
 });
 
+test("inspectLocalGpuPressure uses a resident-server threshold when local TTS is already loaded", async () => {
+  const report = await inspectLocalGpuPressure({
+    env: {
+      LOCAL_TTS_MIN_GPU_FREE_MB: "3072",
+      LOCAL_TTS_RESIDENT_MIN_GPU_FREE_MB: "2048",
+      LOCAL_TTS_MAX_GPU_UTIL_PERCENT: "95",
+    },
+    localTtsResidentReady: true,
+    execFileImpl: mockExecFile({ stdout: "21914, 24564, 6\n" }),
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.status, "ok");
+  assert.equal(report.thresholds.minFreeMb, 2048);
+  assert.equal(report.thresholds.coldMinFreeMb, 3072);
+  assert.equal(report.thresholds.localTtsResidentReady, true);
+});
+
+test("inspectLocalGpuPressure still blocks resident local TTS when free memory drops below the resident floor", async () => {
+  const report = await inspectLocalGpuPressure({
+    env: {
+      LOCAL_TTS_MIN_GPU_FREE_MB: "3072",
+      LOCAL_TTS_RESIDENT_MIN_GPU_FREE_MB: "2048",
+      LOCAL_TTS_MAX_GPU_UTIL_PERCENT: "95",
+    },
+    localTtsResidentReady: true,
+    execFileImpl: mockExecFile({ stdout: "23000, 24564, 7\n" }),
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.status, "busy");
+  assert.equal(report.failure_code, "gpu_saturated");
+  assert.match(report.reason, /below 2048MB/);
+});
+
 test("inspectLocalGpuPressure allows a GPU with enough headroom", async () => {
   const report = await inspectLocalGpuPressure({
     env: {

@@ -73,6 +73,66 @@ test("local TTS doctor downgrades green health when generation smoke fails", asy
   assert.match(report.reason, /generation smoke failed/i);
 });
 
+test("local TTS doctor passes resident health into the GPU pressure check", async () => {
+  let inspectedHealth = null;
+  const health = {
+    ok: true,
+    status: "ok",
+    phase: "ready",
+    ready: true,
+    engineCount: 1,
+    voice: {
+      alias: "Sleepy Liam",
+      loaded: true,
+      refResolved: true,
+      reference: { id: "accepted", referenceHash: "hash" },
+    },
+    reasons: [],
+  };
+
+  const report = await runDoctor({
+    restart: false,
+    prewarm: false,
+    smoke: false,
+    setExitCode: false,
+    writeReport: false,
+    deps: {
+      async fetchLocalTtsHealth() {
+        return health;
+      },
+      classifyLocalTtsDoctorAction(summary) {
+        return summary.ok
+          ? {
+              action: "none",
+              verdict: "green",
+              reason: "local TTS is ready with the accepted voice loaded",
+            }
+          : {
+              action: "manual_restart_required",
+              verdict: "red",
+              reason: "not ready",
+            };
+      },
+      classifyLocalTtsHealthFailure() {
+        return { code: null };
+      },
+      async inspectLocalGpuPressure(options) {
+        inspectedHealth = options.localTtsHealth;
+        return {
+          ok: true,
+          status: "ok",
+          reason: "resident server threshold passed",
+          thresholds: { localTtsResidentReady: true },
+        };
+      },
+    },
+  });
+
+  assert.equal(inspectedHealth, health);
+  assert.equal(report.verdict, "green");
+  assert.equal(report.gpu.thresholds.localTtsResidentReady, true);
+});
+
 test("local TTS doctor retries generation smoke after an allowed restart", async () => {
   let startCount = 0;
   let smokeCount = 0;

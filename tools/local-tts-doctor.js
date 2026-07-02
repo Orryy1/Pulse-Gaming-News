@@ -189,7 +189,7 @@ async function runDoctor(options = {}) {
   report.failure_code = finalFailure.code;
   report.reason = finalPlan.reason;
 
-  report.gpu = await inspectGpu({ env: process.env });
+  report.gpu = await inspectGpu({ env: process.env, localTtsHealth: finalSummary });
   console.log(`[tts-doctor] gpu ${formatLocalGpuPressure(report.gpu)}`);
   if (report.verdict === "green" && report.gpu?.ok === false) {
     report.verdict = "amber";

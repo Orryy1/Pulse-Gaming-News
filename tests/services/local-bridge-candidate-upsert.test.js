@@ -11,6 +11,15 @@ const {
   upsertLocalBridgeCandidate,
 } = require("../../lib/local-bridge-candidate-upsert");
 
+const FIXTURE_SCRIPT =
+  "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Custom Seas lets crews set private rules, tune danger and decide whether the shared-world chaos still matters. That is the real split: safer sessions help busy friends return, but they can also drain the stories that make the seas feel alive. If Rare balances rewards carefully, this becomes a social reset. If not, it becomes empty water with prettier waves. Follow Pulse Gaming so you never miss a beat.";
+
+const GTA_VI_DISPLAY_SCRIPT =
+  "Rockstar just made GTA VI's console pitch unusually direct. The useful point is not brand hype. It is what players can actually test: footage clarity, launch timing and whether the PlayStation 5 version looks like the default social feed clip. If the reveal keeps those details clean, PlayStation gets the easy conversation. If it dodges them, every rumour returns and the platform-war noise gets louder. That makes the first clean comparison matter more than any logo. Follow Pulse Gaming so you never miss a beat.";
+
+const GTA_VI_SAFE_SPOKEN_SCRIPT =
+  "Rockstar just made its next Grand Theft Auto console pitch unusually direct. The useful point is not brand hype. It is what players can actually test: footage clarity, launch timing and whether the PlayStation 5 version looks like the default social feed clip. If the reveal keeps those details clean, PlayStation gets the easy conversation. If it dodges them, every rumour returns and the platform-war noise gets louder. That makes the first clean comparison matter more than any logo. Follow Pulse Gaming so you never miss a beat.";
+
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-bridge-upsert-"));
   const artifactDir = path.join(root, "story");
@@ -25,8 +34,7 @@ async function fixture() {
     primary_source_url: "https://news.xbox.com/example",
     source_published_at: "Fri, 19 Jun 2026 16:00:00 +0000",
     first_spoken_line: "Sea of Thieves just made its biggest social gamble in years.",
-    narration_script:
-      "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Custom Seas lets players set their own rules. Follow Pulse Gaming so you never miss a beat.",
+    narration_script: FIXTURE_SCRIPT,
     description:
       "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.",
     thumbnail_headline: "SEA THIEVES CUSTOM SEAS",
@@ -55,7 +63,7 @@ async function fixture() {
     resolved_word_timestamps_path: path.join(root, "output", "audio", "story_custom_seas_timestamps.json"),
     voice_status: "materialized",
     word_timestamp_source: "local_whisper_word_alignment",
-    word_timestamp_count: 22,
+    word_timestamp_count: 81,
   });
   await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), [
     { asset_id: "clip", asset_type: "motion", path: "clip.mp4" },
@@ -185,6 +193,8 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.platform_publish_manifest.outputs.youtube_shorts.title, "Sea of Thieves Custom Seas Could Split Crews");
   assert.equal(candidate.platform_publish_manifest.outputs.instagram_reels.title, "Sea of Thieves Custom Seas Could Split Crews");
   assert.equal(candidate.platform_publish_manifest.outputs.facebook_reels.description, "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.");
+  assert.equal(candidate.platform_publish_manifest.publish_status, "GREEN");
+  assert.equal(candidate.platform_publish_manifest.can_auto_publish, true);
   assert.equal(candidate.rights_ledger.length, 2);
   assert.equal(candidate.rights_records.length, 2);
   assert.equal(candidate.provenance_ledger.length, 2);
@@ -256,12 +266,9 @@ test("buildLocalBridgeCandidate routes GTA VI narration through the safe spoken 
     public_title: "GTA VI Just Made PS5 The Version To Watch",
     canonical_subject: "Grand Theft Auto VI",
     canonical_game: "Grand Theft Auto VI",
-    narration_script:
-      "Sony just made GTA VI's console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
-    tts_script:
-      "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
-    spoken_narration_script:
-      "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.",
+    narration_script: GTA_VI_DISPLAY_SCRIPT,
+    tts_script: GTA_VI_SAFE_SPOKEN_SCRIPT,
+    spoken_narration_script: GTA_VI_SAFE_SPOKEN_SCRIPT,
     thumbnail_headline: "GTA VI PS5 TEST",
   });
 
@@ -270,16 +277,68 @@ test("buildLocalBridgeCandidate routes GTA VI narration through the safe spoken 
     generatedAt: "2026-06-29T10:05:00.000Z",
   });
 
-  const safeSpoken =
-    "Sony just made Rockstar's next Grand Theft Auto console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.";
-  assert.equal(candidate.full_script, safeSpoken);
-  assert.equal(candidate.narration_script, safeSpoken);
-  assert.equal(candidate.body, safeSpoken);
-  assert.equal(candidate.tts_script, safeSpoken);
+  assert.equal(candidate.full_script, GTA_VI_SAFE_SPOKEN_SCRIPT);
+  assert.equal(candidate.narration_script, GTA_VI_SAFE_SPOKEN_SCRIPT);
+  assert.equal(candidate.body, GTA_VI_SAFE_SPOKEN_SCRIPT);
+  assert.equal(candidate.tts_script, GTA_VI_SAFE_SPOKEN_SCRIPT);
   assert.equal(candidate.spoken_narration_script, candidate.tts_script);
-  assert.equal(candidate.display_narration_script, "Sony just made GTA VI's console pitch unusually direct. Follow Pulse Gaming so you never miss a beat.");
+  assert.equal(candidate.display_narration_script, GTA_VI_DISPLAY_SCRIPT);
   assert.doesNotMatch(candidate.narration_script, /\bGTA\b|\bVI\b|\bsix\b/i);
   assert.doesNotMatch(candidate.hook, /\bGTA\b|\bVI\b|\bsix\b/i);
+});
+
+test("buildLocalBridgeCandidate blocks packages below scheduler preflight minimum word count", async () => {
+  const files = await fixture();
+  const canonicalPath = path.join(files.artifactDir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  const shortScript = Array.from({ length: 79 }, (_, index) => `word${index + 1}`).join(" ");
+  await fs.writeJson(canonicalPath, {
+    ...canonical,
+    narration_script: shortScript,
+    full_script: shortScript,
+    tts_script: shortScript,
+    spoken_narration_script: shortScript,
+  });
+
+  await assert.rejects(
+    () =>
+      buildLocalBridgeCandidate({
+        artifactDir: files.artifactDir,
+        generatedAt: "2026-07-02T04:20:00.000Z",
+      }),
+    (error) => {
+      assert.match(error.message, /local bridge candidate package is not GREEN/);
+      assert.ok(
+        error.validation.blockers.includes("script_too_short (79 words, min 80)"),
+      );
+      return true;
+    },
+  );
+});
+
+test("buildLocalBridgeCandidate blocks packages below normal production duration floor", async () => {
+  const files = await fixture();
+  const renderPath = path.join(files.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderPath);
+  await fs.writeJson(renderPath, {
+    ...renderManifest,
+    duration_seconds: 34.737,
+  });
+
+  await assert.rejects(
+    () =>
+      buildLocalBridgeCandidate({
+        artifactDir: files.artifactDir,
+        generatedAt: "2026-07-02T04:35:00.000Z",
+      }),
+    (error) => {
+      assert.match(error.message, /local bridge candidate package is not GREEN/);
+      assert.ok(
+        error.validation.blockers.includes("duration_too_short (34.74s, min 35.00s)"),
+      );
+      return true;
+    },
+  );
 });
 
 test("buildLocalBridgeCandidate blocks GTA VI packages without safe spoken narration", async () => {
@@ -318,7 +377,7 @@ test("buildLocalBridgeCandidate blocks GTA VI packages without safe spoken narra
   );
 });
 
-test("upsertLocalBridgeCandidate rewrites only bridge JSON with backup and no side effects", async () => {
+test("upsertLocalBridgeCandidate rewrites bridge and repaired platform manifest with backups", async () => {
   const files = await fixture();
   const report = await upsertLocalBridgeCandidate({
     bridgePath: files.bridgePath,
@@ -335,10 +394,19 @@ test("upsertLocalBridgeCandidate rewrites only bridge JSON with backup and no si
   assert.equal(report.safety.no_db_mutation, true);
   assert.equal(report.safety.no_oauth_or_token_change, true);
   assert.equal(await fs.pathExists(report.backup_path), true);
+  assert.equal(report.package_manifest_repair.updated, true);
+  assert.equal(report.package_manifest_repair.publish_status, "GREEN");
+  assert.equal(report.package_manifest_repair.can_auto_publish, true);
+  assert.equal(await fs.pathExists(report.package_manifest_repair.backup_path), true);
 
   const updated = await fs.readJson(files.bridgePath);
   assert.equal(updated.scheduler_bridge_candidates.length, 2);
   assert.ok(updated.scheduler_bridge_candidates.some((item) => item.id === "story_custom_seas"));
+
+  const platformManifest = await fs.readJson(path.join(files.artifactDir, "platform_publish_manifest.json"));
+  assert.equal(platformManifest.publish_status, "GREEN");
+  assert.equal(platformManifest.can_auto_publish, true);
+  assert.equal(platformManifest.outputs.instagram_reels.title, "Sea of Thieves Custom Seas Could Split Crews");
 });
 
 test("upsertLocalBridgeCandidate blocks non-GREEN packages before rewriting the bridge", async () => {

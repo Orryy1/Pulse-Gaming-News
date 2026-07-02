@@ -346,7 +346,7 @@ test("fresh refill viewer script writes Black Flag Resynced narration that is AS
   assert.equal(script.suggested_title, "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof");
   assert.equal(script.suggested_thumbnail_text, "BLACK FLAG PS5 PRO TEST");
   assert.ok(
-    script.word_count >= 76 && script.word_count <= 80,
+    script.word_count >= 82 && script.word_count <= 86,
     `expected a motion-dwell-safe short script, got ${script.word_count} words`,
   );
   assert.match(script.full_script, /^Assassin's Creed Black Flag Resynced has one job\. Make the pirate loop feel dangerous again\./);

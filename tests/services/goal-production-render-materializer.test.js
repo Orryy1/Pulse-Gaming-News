@@ -1131,6 +1131,12 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(cardClips.length, 1);
   assert.equal(renderStory.hyperframes_card_count, 1);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
+  assert.equal(renderStory.premium_shell_verdict, "partial");
+  assert.ok(
+    renderStory.premium_shell_blockers.includes(
+      "selected_hyperframes_card_count_below_required:1/4",
+    ),
+  );
   assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 12);
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
 });

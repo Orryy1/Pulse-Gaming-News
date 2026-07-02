@@ -108,6 +108,32 @@ test("classifyPlatformVideoQa rejects high-rate AAC that can transcode poorly on
   assert.ok(result.failures.includes("audio_sample_rate_too_high_for_social (96000)"));
 });
 
+test("classifyPlatformVideoQa rejects Instagram Reels encodes outside Meta processing-safe limits", () => {
+  const result = classifyPlatformVideoQa(
+    {
+      ...probe({
+        video: {
+          bit_rate: "26000000",
+          avg_frame_rate: "30/1",
+        },
+        audio: {
+          bit_rate: "170316",
+        },
+      }),
+      format: {
+        size: String(301 * 1024 * 1024),
+        bit_rate: "27000000",
+      },
+    },
+    { platform: "instagram" },
+  );
+
+  assert.strictEqual(result.result, "fail");
+  assert.ok(result.failures.includes("instagram_video_bitrate_above_25mbps (26000000)"));
+  assert.ok(result.failures.includes("instagram_audio_bitrate_above_128kbps (170316)"));
+  assert.ok(result.failures.some((failure) => failure.startsWith("instagram_file_size_above_300mb")));
+});
+
 test("runPlatformVideoQa resolves an existing file and classifies ffprobe JSON", async () => {
   const result = await runPlatformVideoQa("/tmp/video.mp4", {
     fs: {

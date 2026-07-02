@@ -169,6 +169,37 @@ async function makeStoryPackage(
       x: { duration_seconds: { min: 25, max: 60 } },
     },
   });
+  if (options.instagramVariant !== false) {
+    const variantDir = path.join(artifactDir, "platform_variants", "instagram_reels");
+    const variantVideoPath = path.join(variantDir, "visual_v4_render_instagram_reels.mp4");
+    const variantCaptionsPath = path.join(variantDir, "captions_instagram_reels.srt");
+    const variantDurationS = options.instagramVariantDurationS || options.renderedDurationS || 45;
+    await fs.outputFile(variantVideoPath, Buffer.alloc(1600, 3));
+    await fs.outputFile(
+      variantCaptionsPath,
+      "1\n00:00:00,000 --> 00:00:01,000\nVariant caption.\n",
+    );
+    const platformManifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+    const platformManifest = await fs.readJson(platformManifestPath);
+    platformManifest.outputs.instagram_reels = {
+      ...platformManifest.outputs.instagram_reels,
+      variant_video_path: variantVideoPath,
+      variant_captions_path: variantCaptionsPath,
+      technical_duration_seconds: variantDurationS,
+      platform_variant_render: {
+        status: "ready",
+        platform: "instagram_reels",
+        encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
+        source_video_path: path.join(artifactDir, "visual_v4_render.mp4"),
+        output_path: variantVideoPath,
+        captions_path: variantCaptionsPath,
+        duration_s: variantDurationS,
+        source_duration_s: options.renderedDurationS || variantDurationS,
+        generated_at: options.instagramVariantGeneratedAt || renderGeneratedAt,
+      },
+    };
+    await fs.writeJson(platformManifestPath, platformManifest, { spaces: 2 });
+  }
   await fs.outputJson(path.join(artifactDir, "pulse_media_house_score.json"), {
     schema_version: 1,
     story_id: id,
@@ -480,7 +511,16 @@ test("goal dry-run publisher emits exact platform actions without publishing", a
   );
   assert.equal(plan.actions[0].title, "Forza Horizon 6 Exposes Xbox's Steam Bet");
   assert.ok(plan.actions.every((action) => action.action === "would_queue_when_enabled"));
-  assert.ok(plan.actions.every((action) => action.video_path.endsWith("visual_v4_render.mp4")));
+  assert.ok(
+    plan.actions
+      .filter((action) => action.platform !== "instagram_reels")
+      .every((action) => action.video_path.endsWith("visual_v4_render.mp4")),
+  );
+  assert.ok(
+    plan.actions
+      .find((action) => action.platform === "instagram_reels")
+      .video_path.endsWith("visual_v4_render_instagram_reels.mp4"),
+  );
 });
 
 test("goal dry-run publisher treats assumed-enabled platform status as not publishable", async () => {
@@ -2750,6 +2790,7 @@ test("goal dry-run publisher uses a platform-specific variant render when durati
     technical_duration_seconds: 44.8,
     platform_variant_render: {
       status: "ready",
+      encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
       source_video_path: path.join(storyPackage.artifact_dir, "visual_v4_render.mp4"),
       captions_path: variantCaptionsPath,
       duration_s: 44.8,
@@ -2777,6 +2818,37 @@ test("goal dry-run publisher uses a platform-specific variant render when durati
   assert.equal(instagram.captions_path, variantCaptionsPath);
   assert.deepEqual(instagram.blockers, []);
   assert.equal(plan.blocked_actions.some((action) => action.platform === "instagram_reels"), false);
+});
+
+test("goal dry-run publisher blocks enabled Instagram Reels without a native platform variant", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-instagram-variant-required-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "instagram-missing-native-variant",
+    "GREEN",
+    "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof",
+    {
+      renderedDurationS: 40.333,
+      canonicalSubject: "Assassin's Creed Black Flag Resynced",
+      instagramVariant: false,
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-02T09:55:00.000Z",
+    platformOperationalConfig: {
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+    },
+  });
+
+  const instagram = plan.blocked_actions.find((action) => action.platform === "instagram_reels");
+
+  assert.ok(instagram);
+  assert.ok(instagram.blockers.includes("instagram_reels_native_variant_missing"));
+  assert.equal(plan.summary.ready_story_count, 1);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.ok(plan.summary.blocked_action_count >= 1);
 });
 
 test("goal dry-run publisher blocks stale platform-specific variants after the final render changes", async () => {
@@ -2864,6 +2936,7 @@ test("goal dry-run publisher blocks platform-specific variant renders that lack 
   manifest.outputs.instagram_reels = {
     ...manifest.outputs.instagram_reels,
     variant_video_path: variantPath,
+    variant_captions_path: "",
     technical_duration_seconds: 44.8,
     platform_variant_render: {
       status: "ready",

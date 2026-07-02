@@ -24,3 +24,13 @@ test("local live watchdog does not restart an existing runtime on a transient pu
   assert.match(source, /runtime_unhealthy_publish_window_guard skip_restart/);
   assert.match(source, /\$consecutiveUnhealthy\s+-lt\s+\$UnhealthyRestartThreshold/);
 });
+
+test("local live watchdog keeps non-publish content workers alive", () => {
+  const source = fs.readFileSync(watchdogPath, "utf8");
+
+  assert.match(source, /local-live-content-workers\.ps1/);
+  assert.match(source, /\$contentWorkersScript/);
+  assert.match(source, /content_workers_check ensuring_content_workers/);
+  assert.match(source, /-File",\s*\$contentWorkersScript/);
+  assert.doesNotMatch(source, /content_workers_check[\s\S]{0,400}"-Restart"/);
+});

@@ -523,6 +523,61 @@ test("queue inspect reports pending runway jobs behind a busy content worker as 
   }
 });
 
+test("queue inspect counts content runway jobs even when they are outside the generic pending sample", () => {
+  const db = createQueueInspectDb(`
+    CREATE TABLE schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+    INSERT INTO schedules (name, kind, cron_expr, enabled)
+      VALUES ('candidate_supply_monitor', 'candidate_supply_monitor', '5 * * * *', 1);
+  `);
+
+  try {
+    const insert = db.prepare(
+      `INSERT INTO jobs
+        (kind, status, priority, attempt_count, max_attempts, run_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (let i = 0; i < 25; i += 1) {
+      insert.run(
+        "engage_first_hour",
+        "pending",
+        60,
+        0,
+        3,
+        `2026-07-01 08:${String(i).padStart(2, "0")}:00`,
+        `2026-07-01 08:${String(i).padStart(2, "0")}:00`,
+      );
+    }
+    insert.run(
+      "candidate_supply_monitor",
+      "pending",
+      64,
+      0,
+      3,
+      "2026-07-01 08:30:00",
+      "2026-07-01 08:30:00",
+    );
+
+    const report = inspectQueue({
+      db,
+      now: Date.parse("2026-07-01T08:35:00.000Z"),
+    });
+
+    assert.equal(report.pendingJobs.length, 20);
+    assert.equal(report.pendingJobs.some((job) => job.kind === "candidate_supply_monitor"), false);
+    assert.equal(report.contentRunway.pending_count, 1);
+    assert.equal(report.contentRunway.no_active_worker, true);
+    assert.ok(report.warnings.includes("content_runway_jobs_pending_without_active_worker"));
+  } finally {
+    db.close();
+  }
+});
+
 test("redactJobError tolerates missing and malformed job rows", () => {
   assert.equal(redactJobError(null), null);
   assert.deepEqual(redactJobError({ id: 1 }), { id: 1, last_error: "" });

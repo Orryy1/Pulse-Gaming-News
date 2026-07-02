@@ -239,6 +239,80 @@ test("runtime sentinel does not hold publishing for report-only commit drift", (
   assert.deepEqual(report.health.local.facts.commit_drift.runtime_relevant_files, []);
 });
 
+test("runtime sentinel warns when content runway jobs are pending without a worker", () => {
+  const report = buildRuntimeOwnershipSentinel({
+    now: new Date("2026-07-02T06:00:00Z"),
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: health(),
+    publicHealth: health(),
+    processSnapshot: goodProcessSnapshot,
+    queueInspection: {
+      verdict: "review",
+      contentRunway: {
+        pending_count: 7,
+        running_count: 0,
+        active_fresh_worker_count: 0,
+        occupied_fresh_worker_count: 0,
+        saturated: false,
+        no_active_worker: true,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.ok(report.warnings.some((line) => /content runway jobs pending without active worker/i.test(line)));
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, true);
+  assert.equal(report.scheduler_window_readiness.content_runway.pending_count, 7);
+  assert.equal(report.scheduler_window_readiness.next_action, "restore_content_worker_lane_before_buffer_runs_dry");
+});
+
+test("runtime sentinel reports active saturated content runway as drain backlog", () => {
+  const report = buildRuntimeOwnershipSentinel({
+    now: new Date("2026-07-02T06:05:00Z"),
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: health(),
+    publicHealth: health(),
+    processSnapshot: goodProcessSnapshot,
+    queueInspection: {
+      verdict: "review",
+      contentRunway: {
+        pending_count: 18,
+        running_count: 4,
+        active_fresh_worker_count: 5,
+        occupied_fresh_worker_count: 5,
+        saturated: true,
+        no_active_worker: false,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.ok(report.warnings.some((line) => /content runway worker capacity saturated/i.test(line)));
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, true);
+  assert.equal(report.scheduler_window_readiness.next_action, "let_content_workers_drain_backlog");
+  assert.equal(report.recommendation, "let_content_workers_drain_backlog");
+});
+
 test("runtime sentinel still blocks commit drift when runtime files changed", () => {
   const staleRuntimeHealth = health();
   staleRuntimeHealth.json.build = {

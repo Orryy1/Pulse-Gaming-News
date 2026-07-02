@@ -20,6 +20,7 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "pulse-live-watchdog.log"
 $runtimeScript = Join-Path $RepoRoot "tools/local-live-primary-runtime.ps1"
 $tunnelScript = Join-Path $RepoRoot "tools/local-live-cloudflared-tunnel.ps1"
+$contentWorkersScript = Join-Path $RepoRoot "tools/local-live-content-workers.ps1"
 
 function Write-WatchdogLog {
   param([string]$Message)
@@ -104,6 +105,12 @@ while ($true) {
         -WorkingDirectory $RepoRoot `
         -WindowStyle Hidden | Out-Null
     }
+
+    Write-WatchdogLog "content_workers_check ensuring_content_workers"
+    Start-Process -FilePath "powershell.exe" `
+      -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $contentWorkersScript, "-RepoRoot", $RepoRoot) `
+      -WorkingDirectory $RepoRoot `
+      -WindowStyle Hidden | Out-Null
   } catch {
     Write-WatchdogLog ("watchdog_error " + $_.Exception.Message)
   }

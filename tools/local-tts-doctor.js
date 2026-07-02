@@ -143,7 +143,9 @@ async function runDoctor(options = {}) {
   console.log(`[tts-doctor] action=${plan.action} verdict=${plan.verdict}`);
 
   if (plan.action === "start" || plan.action === "restart") {
-    report.started = await startServer();
+    report.started = await startServer({
+      allowRecentBootBypassWhenNoListener: true,
+    });
     console.log(
       `[tts-doctor] started pid=${report.started.pid || "unknown"} stdout=${report.started.spec.stdoutPath}`,
     );
@@ -216,8 +218,10 @@ async function runDoctor(options = {}) {
       report.failure_code = "generation_smoke_failed";
       report.reason = `local TTS generation smoke failed: ${message}`;
       console.log(`[tts-doctor] smoke failed ${message}`);
-      if (options.restart === true) {
-        report.started = await startServer();
+        if (options.restart === true) {
+        report.started = await startServer({
+          allowRecentBootBypassWhenNoListener: true,
+        });
         console.log(
           `[tts-doctor] smoke-restart pid=${report.started.pid || "unknown"} stdout=${report.started.spec.stdoutPath}`,
         );

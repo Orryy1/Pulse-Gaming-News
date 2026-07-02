@@ -135,6 +135,7 @@ test("local TTS doctor passes resident health into the GPU pressure check", asyn
 
 test("local TTS doctor retries generation smoke after an allowed restart", async () => {
   let startCount = 0;
+  let startOptions = null;
   let smokeCount = 0;
   const report = await runDoctor({
     restart: true,
@@ -175,8 +176,9 @@ test("local TTS doctor retries generation smoke after an allowed restart", async
       classifyLocalTtsHealthFailure() {
         return { code: null };
       },
-      async startLocalTtsServer() {
+      async startLocalTtsServer(options) {
         startCount += 1;
+        startOptions = options;
         return { pid: 24680, spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" } };
       },
       async waitForLocalTtsHealth() {
@@ -211,6 +213,7 @@ test("local TTS doctor retries generation smoke after an allowed restart", async
   assert.equal(report.verdict, "green");
   assert.equal(report.failure_code, null);
   assert.equal(report.started.pid, 24680);
+  assert.equal(startOptions.allowRecentBootBypassWhenNoListener, true);
   assert.equal(report.generation_smoke.ok, true);
 });
 

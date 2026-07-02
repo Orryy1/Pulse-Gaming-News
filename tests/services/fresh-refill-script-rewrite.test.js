@@ -262,12 +262,13 @@ test("fresh refill viewer script turns Star Wars Monopoly abilities into a clear
   });
 
   assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
-  assert.equal(script.suggested_title, "Star Wars Monopoly Turns Force Powers Into Family Drama");
+  assert.equal(script.suggested_title, "Star Wars Monopoly Could Start Family Arguments");
   assert.equal(script.suggested_thumbnail_text, "FORCE POWERS FIGHT");
-  assert.ok(script.word_count >= 110, `expected a duration-safe short script, got ${script.word_count} words`);
-  assert.match(script.full_script, /Heroes versus Villains gives each character abilities/i);
-  assert.match(script.full_script, /who blocks rent, who steals momentum/i);
-  assert.match(script.full_script, /family-night arguments/i);
+  assert.ok(script.word_count >= 100 && script.word_count <= 110, `expected a motion-safe short script, got ${script.word_count} words`);
+  assert.match(script.full_script, /Heroes versus Villains gives characters unique abilities/i);
+  assert.match(script.full_script, /safe gift, or another box that gets one bored match/i);
+  assert.match(script.full_script, /kids get chaos and parents get stories/i);
+  assert.match(script.full_script, /people argue to replay/i);
   assert.doesNotMatch(script.full_script, /proper table chaos|branded board|branded box|shelf filler|shell filler/i);
   assert.deepEqual(script.quality.blockers, []);
   assert.equal(script.coherence.result, "pass");

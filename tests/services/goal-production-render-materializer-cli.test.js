@@ -92,3 +92,60 @@ test("goal production render materializer CLI writes inspect-only reports withou
     true,
   );
 });
+
+test("goal production render materializer CLI limits normal work order by story id", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-story-id-"));
+  const workOrderPath = path.join(root, "render_input_work_order.json");
+  const makeJob = (storyId) => {
+    const artifactDir = path.join(root, storyId);
+    return {
+      story_id: storyId,
+      title: `${storyId} Title`,
+      artifact_dir: artifactDir,
+      status: "ready_for_final_render_job",
+      evidence: {
+        narration_audio_path: path.join(artifactDir, "audio.mp3"),
+        word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+        materialised_motion_clip_paths: [path.join(artifactDir, "clip.mp4")],
+      },
+      actions: [
+        {
+          action_id: "run_visual_v4_production_render",
+          target_render_manifest: {
+            output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+            manifest_path: path.join(artifactDir, "render_manifest.json"),
+          },
+        },
+      ],
+    };
+  };
+  await fs.outputJson(workOrderPath, {
+    jobs: [makeJob("skip-me"), makeJob("keep-me")],
+  });
+
+  const originalLog = console.log;
+  console.log = () => {};
+  let result;
+  try {
+    result = await main([
+      "--work-order",
+      workOrderPath,
+      "--out-dir",
+      path.join(root, "out"),
+      "--workspace",
+      root,
+      "--generated-at",
+      "2026-05-22T07:12:00.000Z",
+      "--story-id",
+      "keep-me",
+      "--inspect-only",
+      "--json",
+    ]);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(result.report.summary.candidate_count, 1);
+  assert.equal(result.report.summary.inspect_only_count, 1);
+  assert.equal(result.report.jobs[0].story_id, "keep-me");
+});

@@ -119,6 +119,7 @@ async function main(argv = process.argv.slice(2)) {
     workspaceRoot: path.resolve(args.workspaceRoot),
     generatedAt: args.generatedAt,
     limit: args.limit,
+    storyIds: args.storyId ? [args.storyId] : [],
     force: args.force,
     inspectOnly: args.inspectOnly,
   });

@@ -496,11 +496,11 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(enqueued[3].payload.limit, 18);
     assert.equal(enqueued[3].payload.rss_per_feed, 6);
     assert.equal(enqueued[3].payload.tts_provider_preference, "elevenlabs");
-    assert.equal(enqueued[3].payload.repair_story_limit, 3);
+    assert.equal(enqueued[3].payload.repair_story_limit, 9);
     assert.equal(enqueued[3].payload.source_minimum_new_green_candidates, 9);
     assert.equal(
       enqueued[3].payload.source_refill_command,
-      "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6 --repair-evidence-mode plan --repair-story-limit 3 --tts-provider elevenlabs",
+      "npm run ops:fresh-production-refill -- --json --limit 18 --rss-per-feed 6 --repair-evidence-mode plan --repair-story-limit 9 --tts-provider elevenlabs",
     );
     assert.equal(
       enqueued[3].payload.out_dir,

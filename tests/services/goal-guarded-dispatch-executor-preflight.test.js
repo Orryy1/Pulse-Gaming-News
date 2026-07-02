@@ -60,6 +60,48 @@ async function evidenceFiles(root) {
   return { video, captions, canonical, platform };
 }
 
+async function staleCaptionTimelineEvidenceFiles(root) {
+  const files = await evidenceFiles(root);
+  const audioDir = path.join(path.dirname(files.canonical), "audio");
+  const timestamps = path.join(audioDir, "word_timestamps.json");
+  await fs.ensureDir(audioDir);
+  await fs.writeFile(
+    files.captions,
+    [
+      "1",
+      "00:00:00,000 --> 00:00:04,000",
+      "Star Wars Monopoly sounds silly.",
+      "",
+      "2",
+      "00:00:04,000 --> 00:00:08,000",
+      "Xbox Wire says the powers matter.",
+      "",
+      "3",
+      "00:00:08,000 --> 00:00:12,000",
+      "Follow Pulse Gaming so you never miss a beat.",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await fs.writeJson(files.canonical, {
+    story_id: "story-one",
+    selected_title: "Star Wars Monopoly Could Ruin Game Night",
+    word_timestamps_path: "audio/word_timestamps.json",
+  });
+  await fs.writeJson(timestamps, {
+    words: [
+      { word: "Star", start: 0, end: 0.3 },
+      { word: "Wars", start: 0.31, end: 0.6 },
+      { word: "Monopoly", start: 0.62, end: 1.1 },
+      { word: "Follow", start: 39.4, end: 39.8 },
+      { word: "Pulse", start: 39.82, end: 40.2 },
+      { word: "Gaming", start: 40.22, end: 40.62 },
+      { word: "beat.", start: 41.2, end: 41.58 },
+    ],
+  });
+  return { ...files, timestamps };
+}
+
 async function gtaPronunciationEvidenceFiles(root) {
   const dir = path.join(root, "proof", "gta-vi-story");
   const audioDir = path.join(dir, "audio");
@@ -350,6 +392,28 @@ test("executor preflight blocks thin premium HyperFrames handoff", async () => {
   assert.equal(report.summary.handoff_ready_action_count, 0);
   assert.ok(
     report.blocked_selected_actions[0].blockers.includes("hyperframes_card_count_below_target:1/4"),
+    JSON.stringify(report.blocked_selected_actions[0].blockers),
+  );
+});
+
+test("executor preflight blocks stale caption SRTs that end before word timestamps", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-stale-captions-"));
+  const files = await staleCaptionTimelineEvidenceFiles(root);
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.handoff_ready_action_count, 0);
+  assert.ok(
+    report.blocked_selected_actions[0].blockers.includes("captions_srt_timeline_truncated_vs_word_timestamps"),
     JSON.stringify(report.blocked_selected_actions[0].blockers),
   );
 });

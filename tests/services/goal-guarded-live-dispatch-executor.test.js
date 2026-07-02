@@ -268,6 +268,77 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   ]);
 });
 
+test("guarded live dispatch executor falls back to Instagram URL upload after eligible binary upload failure", async () => {
+  let binaryCalls = 0;
+  let fallbackCalls = 0;
+  let persisted = null;
+  const platformPostCalls = [];
+  const generatedAt = "2026-07-02T16:00:00.000Z";
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("instagram_reels")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:instagram_reels"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      instagram_reels: {
+        shouldAttemptInstagramUrlFallback: (err) =>
+          /Instagram binary upload failed/.test(String(err?.message || "")),
+        uploadShort: async () => {
+          binaryCalls += 1;
+          const err = new Error(
+            'Instagram binary upload failed (400): {"debug_info":{"retriable":false,"type":"ProcessingFailedError","message":"Request processing failed"}}',
+          );
+          err.nonRetriable = true;
+          throw err;
+        },
+        uploadReelViaUrl: async (uploadedStory) => {
+          fallbackCalls += 1;
+          assert.equal(uploadedStory.exported_path, "output/final/story-one/instagram_reels.mp4");
+          return { platform: "instagram", mediaId: "ig_url_ok_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persisted = nextStory;
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push(["ensurePending", storyId, platform, options.idempotencyKey]);
+        return { id: 23 };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+    generatedAt,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.selected_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 1);
+  assert.equal(report.summary.failed_action_count, 0);
+  assert.equal(report.actions[0].outcome, "new_upload");
+  assert.equal(report.actions[0].external_id, "ig_url_ok_1");
+  assert.equal(binaryCalls, 1);
+  assert.equal(fallbackCalls, 1);
+  assert.equal(persisted.instagram_media_id, "ig_url_ok_1");
+  assert.equal(persisted.instagram_error, null);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "instagram_reel", "story-one:instagram_reels"],
+    ["markPublished", 23, "ig_url_ok_1", null],
+  ]);
+});
+
 test("guarded live dispatch executor does not report GREEN when one selected enabled platform duplicate-blocks", async () => {
   const persistedStories = [];
   const generatedAt = "2026-06-22T14:00:00.000Z";

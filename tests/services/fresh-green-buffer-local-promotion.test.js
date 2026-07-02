@@ -1187,6 +1187,40 @@ test("fresh buffer promotion rewrites weak coherent demo copy before packaging",
   assert.match(canonical.full_script, /PlayStation Blog/i);
 });
 
+test("fresh buffer promotion rewrites motion-proof public title language before packaging", () => {
+  const canonical = buildCanonicalStoryManifest(
+    draftStory({
+      id: "rss_black_flag_motion_proof_title",
+      title: "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof",
+      selected_title: "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      canonical_game: "Assassin's Creed Black Flag Resynced",
+      primary_source: {
+        name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/06/29/assassins-creed-black-flag-resynced-ps5-pro-enhancements-detailed/",
+        type: "official_platform_news",
+      },
+      primary_source_url:
+        "https://blog.playstation.com/2026/06/29/assassins-creed-black-flag-resynced-ps5-pro-enhancements-detailed/",
+      source_published_at: "2026-06-29T15:00:27.000Z",
+      confirmed_claims: [
+        "PlayStation Blog says Assassin's Creed Black Flag Resynced is getting PS5 Pro upgrades.",
+      ],
+      thumbnail_headline: "BLACK FLAG TEST",
+      narration_script:
+        "Assassin's Creed Black Flag Resynced has one job. Make the pirate loop feel dangerous again. PlayStation Blog says PlayStation 5 Pro upgrades are coming, but the real test is motion, not screenshots. Follow Pulse Gaming so you never miss a beat.",
+    }),
+    "2026-07-02T15:30:00.000Z",
+  );
+
+  assert.equal(canonical.script_coherence_result, "pass");
+  assert.equal(canonical.public_copy_repaired_at, "2026-07-02T15:30:00.000Z");
+  assert.equal(canonical.public_copy_repair_reason, "weak_public_copy_pattern:motion_proof_public_title");
+  assert.doesNotMatch(canonical.public_title, /\bmotion\s+proof\b/i);
+  assert.doesNotMatch(canonical.full_script, /\bmotion\s+proof\b/i);
+  assert.match(canonical.full_script, /PlayStation Blog/i);
+});
+
 test("fresh buffer promotion lightly repairs repeated phrasing without replacing a strong sourced script", () => {
   const canonical = buildCanonicalStoryManifest(
     draftStory({

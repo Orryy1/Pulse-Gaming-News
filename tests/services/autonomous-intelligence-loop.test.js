@@ -2461,6 +2461,235 @@ test("fresh production refill resume regenerates stale GTA pronunciation-profile
   }
 });
 
+test("fresh production refill resume rerenders existing MP4s after audio is regenerated", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-rerender-after-audio-"));
+  const artifactDir = path.join(tmp, "goal-proof-batch", "motion-hydrated", "gta-existing-render");
+  const contractDir = path.join(tmp, "goal-contract", "motion-hydrated");
+  const storyPackagesPath = path.join(contractDir, "story-packages.json");
+  const childCalls = [];
+  const displayScript =
+    "GTA VI just gave players one more reason to argue about the launch build. Follow Pulse Gaming so you never miss a beat.";
+  const spokenScript =
+    "Grand Theft Auto six just gave players one more reason to argue about the launch build. Follow Pulse Gaming so you never miss a beat.";
+
+  try {
+    await fs.mkdir(path.join(artifactDir, "audio"), { recursive: true });
+    await fs.mkdir(contractDir, { recursive: true });
+    const audioPath = path.join(artifactDir, "audio", "narration.mp3");
+    const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+    const renderPath = path.join(artifactDir, "visual_v4_render.mp4");
+    const words = spokenScript.split(/\s+/).map((word, index) => ({
+      word,
+      text: word,
+      start: Number((index * 0.18).toFixed(2)),
+      end: Number((index * 0.18 + 0.12).toFixed(2)),
+    }));
+    await fs.writeFile(audioPath, Buffer.alloc(4096, 3));
+    await fs.writeFile(
+      timestampsPath,
+      JSON.stringify({
+        words,
+        meta: {
+          text: spokenScript,
+          transcript: spokenScript,
+          spoken_text: spokenScript,
+          display_text: displayScript,
+          wordTimestampSource: "local_whisper_word_alignment",
+          timestampWhisperAlignment: {
+            repaired: true,
+            strategy: "local_whisper_word_alignment",
+            transcript: spokenScript,
+          },
+          ttsPronunciationProfileVersion: "gta-safe-next-title-v11",
+        },
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "audio_manifest.json"),
+      JSON.stringify({
+        status: "ready",
+        narration_audio_path: "audio/narration.mp3",
+        word_timestamps_path: "audio/word_timestamps.json",
+        resolved_narration_audio_path: audioPath,
+        resolved_word_timestamps_path: timestampsPath,
+        word_timestamp_source: "local_whisper_word_alignment",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "captions.srt"),
+      "1\n00:00:00,000 --> 00:00:01,000\nGTA VI\n",
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "caption_manifest.json"),
+      JSON.stringify({
+        status: "ready",
+        blockers: [],
+        transcript: spokenScript,
+        display_text: displayScript,
+        word_timestamps_path: "audio/word_timestamps.json",
+      }),
+    );
+    const clips = Array.from({ length: 8 }, (_, index) => ({
+      path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+      source_family: `rockstar_gta_vi_${index + 1}`,
+      base_source_family: `rockstar_gta_vi_${index + 1}`,
+      media_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+    }));
+    for (const clip of clips) await fs.writeFile(clip.path, Buffer.alloc(2048, 8));
+    await fs.writeFile(
+      path.join(artifactDir, "materialised_motion_clips.json"),
+      JSON.stringify({
+        status: "ready",
+        clip_count: clips.length,
+        distinct_motion_family_count: clips.length,
+        direct_video_motion_asset_count: clips.length,
+        direct_video_motion_family_count: clips.length,
+        clips,
+        materialised_clips: clips,
+      }),
+    );
+    await fs.writeFile(renderPath, Buffer.alloc(4096, 4));
+    await fs.writeFile(
+      path.join(artifactDir, "render_manifest.json"),
+      JSON.stringify({
+        renderer: "visual_v4_production",
+        final_publish_render: true,
+        output_path: renderPath,
+        rendered_at: "2026-06-01T10:00:00.000Z",
+        duration_seconds: 34.04,
+        quality_gate_status: "post_render_forensics_passed",
+        post_render_forensic_result: "pass",
+        post_render_forensic_blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([
+        {
+          story_id: "gta-existing-render",
+          artifact_dir: artifactDir,
+          title: "GTA VI Just Made PS5 The Version To Watch",
+          public_title: "GTA VI Just Made PS5 The Version To Watch",
+          canonical_subject: "GTA VI",
+          canonical_game: "GTA VI",
+          primary_source: "PlayStation Blog",
+          primary_source_url: "https://blog.playstation.com/example/gta-vi",
+          source_published_at: "Mon, 29 Jun 2026 15:00:00 +0000",
+          full_script: displayScript,
+          narration_script: displayScript,
+          tts_script: spokenScript,
+          spoken_narration_script: spokenScript,
+          verdict: "RED",
+          blockers: ["audio:stale_tts_pronunciation_profile"],
+        },
+      ]),
+    );
+
+    const result = await handlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          resume_story_packages_path: storyPackagesPath,
+          tts_provider_preference: "elevenlabs",
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          if (options.args[0] === "tools/goal-audio-timestamp-materializer.js") {
+            const outDir = options.args[options.args.indexOf("--out-dir") + 1];
+            const freshPayload = {
+              words,
+              meta: {
+                text: spokenScript,
+                transcript: spokenScript,
+                spoken_text: spokenScript,
+                display_text: displayScript,
+                wordTimestampSource: "local_whisper_word_alignment",
+                timestampWhisperAlignment: {
+                  repaired: true,
+                  strategy: "local_whisper_word_alignment",
+                  transcript: spokenScript,
+                },
+                ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
+              },
+            };
+            await fs.writeFile(timestampsPath, JSON.stringify(freshPayload));
+            await fs.writeFile(
+              path.join(artifactDir, "audio_manifest.json"),
+              JSON.stringify({
+                status: "ready",
+                narration_audio_path: "audio/narration.mp3",
+                word_timestamps_path: "audio/word_timestamps.json",
+                resolved_narration_audio_path: audioPath,
+                resolved_word_timestamps_path: timestampsPath,
+                word_timestamp_source: "local_whisper_word_alignment",
+                timestamp_whisper_alignment: freshPayload.meta.timestampWhisperAlignment,
+              }),
+            );
+            await fs.writeFile(
+              path.join(outDir, "audio_timestamp_materialization_report.json"),
+              JSON.stringify({
+                summary: { candidate_count: 2, materialized_count: 1, failed_count: 1 },
+                jobs: [
+                  {
+                    story_id: "gta-existing-render",
+                    status: "materialized",
+                    provider: "elevenlabs",
+                  },
+                  {
+                    story_id: "other-story",
+                    status: "failed",
+                    error: "whisper_inserted_asr_words_above_threshold",
+                  },
+                ],
+              }),
+            );
+            return {
+              ok: false,
+              stdout_tail: "materialized=1 failed=1",
+              stderr_tail: "partial audio materialization",
+            };
+          }
+          if (options.args[0] === "tools/goal-production-render-materializer.js") {
+            await fs.writeFile(renderPath, Buffer.alloc(8192, 9));
+            await fs.writeFile(
+              path.join(artifactDir, "render_manifest.json"),
+              JSON.stringify({
+                renderer: "visual_v4_production",
+                final_publish_render: true,
+                output_path: renderPath,
+                rendered_at: new Date().toISOString(),
+                duration_seconds: 45.88,
+                quality_gate_status: "post_render_forensics_passed",
+                post_render_forensic_result: "pass",
+                post_render_forensic_blockers: [],
+              }),
+            );
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    assert.equal(result.status, "partial");
+    assert.deepEqual(result.materialization_continuation.audio_story_ids, ["gta-existing-render"]);
+    assert.deepEqual(result.materialization_continuation.render_story_ids, ["gta-existing-render"]);
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-audio-timestamp-materializer.js"),
+      "stale pronunciation profile must regenerate audio before render proof is trusted",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-production-render-materializer.js"),
+      "existing Visual V4 render must be regenerated after fresh audio/timestamps",
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh production refill handler can run from a seeded official story file", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

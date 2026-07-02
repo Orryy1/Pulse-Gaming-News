@@ -1746,6 +1746,53 @@ test("platform-native packs turn roster reveals into concrete team-fighter stake
   assert.ok(!score.hard_failures.includes("media_house:shorts_feed_competition_weak"), score.hard_failures);
 });
 
+test("goal batch package proof turns Star Wars Monopoly ability stories into attention-led shorts", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_e622e340996cda19",
+    canonical_subject: "Monopoly Star Wars",
+    canonical_game: "Monopoly Star Wars",
+    title: "Monopoly Star Wars Heroes Vs Villains Character Abilities",
+    primary_source: "Xbox Wire",
+    source_name: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/06/29/monopoly-star-wars-heroes-vs-villains-character-abilities/",
+    full_script: "source-backed update clean read",
+    confirmed_claims: [
+      "Xbox Wire says Monopoly Star Wars Heroes versus Villains gives characters their own abilities.",
+    ],
+  });
+  const wordCount = prepared.full_script.split(/\s+/).filter(Boolean).length;
+
+  assert.equal(prepared.public_title, "Star Wars Monopoly Turns Force Powers Into Family Drama");
+  assert.equal(prepared.suggested_thumbnail_text, "FORCE POWERS FIGHT");
+  assert.ok(wordCount >= 110, prepared.full_script);
+  assert.match(prepared.full_script, /Heroes versus Villains gives each character abilities/i);
+  assert.match(prepared.full_script, /who blocks rent, who steals momentum/i);
+  assert.match(prepared.full_script, /family-night arguments/i);
+  assert.doesNotMatch(prepared.full_script, /shelf filler|shell filler/i);
+  assert.doesNotMatch(prepared.full_script, /familiar board game feel less automatic/i);
+
+  const native = buildPlatformNativePublishPacks({
+    story: prepared,
+    canonical: {
+      canonical_subject: "Monopoly Star Wars",
+      canonical_game: "Monopoly Star Wars",
+      selected_title: prepared.public_title,
+      title: prepared.public_title,
+      primary_source: "Xbox Wire",
+      first_spoken_line: prepared.first_spoken_line,
+      description: prepared.description,
+      thumbnail_headline: prepared.suggested_thumbnail_text,
+    },
+  });
+
+  assert.equal(native.outputs.youtube_shorts.title, "Star Wars Monopoly Turns Force Powers Into Family Drama");
+  assert.equal(native.outputs.youtube_shorts.cover_frame.headline, "FORCE POWERS FIGHT");
+  assert.ok(
+    !native.platformNativeEvidence.failures.some((failure) => failure.reason === "weak_cover_headline"),
+    JSON.stringify(native.platformNativeEvidence.failures, null, 2),
+  );
+});
+
 test("goal batch packages prefer repaired first-frame cover text over stale thumbnail cache", () => {
   const story = {
     ...greenStory("fatal-fury-kenshiro-cover-repair"),

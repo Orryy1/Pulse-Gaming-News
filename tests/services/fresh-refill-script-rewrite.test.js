@@ -231,6 +231,44 @@ test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concret
 
   assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
   assert.match(script.full_script, /combat styles|movement problem/i);
+  assert.match(script.full_script, /Each hero needs to create a different movement problem/i);
+  assert.doesNotMatch(script.full_script, /It is about whether|players have to whether|The real question is/i);
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass");
+});
+
+test("fresh refill viewer script turns Star Wars Monopoly abilities into a clear family-drama hook", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_e622e340996cda19",
+      title: "Star Wars Monopoly Heroes Vs Villains Character Abilities",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/29/monopoly-star-wars-heroes-villains-character-abilities/",
+        type: "rss",
+      },
+      current_script:
+        "Xbox Wire says Monopoly Star Wars Heroes versus Villains gives characters their own abilities.",
+    },
+    manifest: {
+      story_id: "rss_e622e340996cda19",
+      canonical_subject: "Monopoly Star Wars",
+      canonical_game: "Monopoly Star Wars",
+      confirmed_claims: [
+        "Heroes versus Villains gives each character abilities in Monopoly Star Wars",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.suggested_title, "Star Wars Monopoly Turns Force Powers Into Family Drama");
+  assert.equal(script.suggested_thumbnail_text, "FORCE POWERS FIGHT");
+  assert.ok(script.word_count >= 110, `expected a duration-safe short script, got ${script.word_count} words`);
+  assert.match(script.full_script, /Heroes versus Villains gives each character abilities/i);
+  assert.match(script.full_script, /who blocks rent, who steals momentum/i);
+  assert.match(script.full_script, /family-night arguments/i);
+  assert.doesNotMatch(script.full_script, /proper table chaos|branded board|branded box|shelf filler|shell filler/i);
   assert.deepEqual(script.quality.blockers, []);
   assert.equal(script.coherence.result, "pass");
 });

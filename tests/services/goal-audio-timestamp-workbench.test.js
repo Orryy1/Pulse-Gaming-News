@@ -253,6 +253,38 @@ test("audio timestamp workbench forces regeneration for stale repaired-copy audi
   assert.equal(report.jobs[0].timestamps.reason, "stale_after_public_copy_repair");
 });
 
+test("audio timestamp workbench forces regeneration for script-rewritten stale audio even when files exist", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-stale-script-rewrite-"));
+  const audioDir = path.join(root, "output", "audio");
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: [{ word: "Black", start: 0, end: 0.2 }],
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        audioJob({
+          blockers: [
+            "final_narration_audio_stale_after_script_rewrite",
+            "word_timestamps_stale_after_script_rewrite",
+          ],
+        }),
+      ],
+    },
+    localTtsDoctorReport: { verdict: "green" },
+    generatedAt: "2026-07-02T03:45:00.000Z",
+  });
+
+  assert.equal(report.summary.ready_audio_timestamp_pair_count, 0);
+  assert.equal(report.summary.requires_generation_count, 1);
+  assert.equal(report.jobs[0].status, "requires_audio_timestamp_generation");
+  assert.deepEqual(report.jobs[0].missing, ["narration_audio", "word_timestamps"]);
+  assert.equal(report.jobs[0].audio.reason, "stale_after_script_rewrite");
+  assert.equal(report.jobs[0].timestamps.reason, "stale_after_script_rewrite");
+});
+
 test("audio timestamp workbench forces regeneration for stale pronunciation-policy audio even when files exist", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-stale-pronunciation-"));
   const audioDir = path.join(root, "output", "audio");

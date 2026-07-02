@@ -7,6 +7,7 @@ const {
   handleGuardedLiveDispatchPublish,
   buildFreshRefillOfficialSourceEvidence,
   freshRefillHyperframesStoryIdsAfterMotion,
+  freshRefillMaterializedAudioStoryIdsFromReport,
   freshRefillNarrationProviderPreference,
   guardedPublishFailureMessage,
   guardedPublishResultShouldFailJob,
@@ -101,6 +102,29 @@ test("fresh refill narration provider stays local unless ElevenLabs is explicitl
     }),
     "elevenlabs",
   );
+});
+
+test("fresh refill audio materialization report does not fallback after failed jobs", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-audio-failed-"));
+  const reportPath = path.join(tmp, "audio_timestamp_materialization_report.json");
+  await fs.writeJson(reportPath, {
+    summary: { candidate_count: 1, materialized_count: 0, failed_count: 1 },
+    jobs: [
+      {
+        story_id: "rss_black_flag",
+        status: "failed",
+        error: "local_whisper_word_alignment_failed:whisper_inserted_asr_words_above_threshold",
+      },
+    ],
+  }, { spaces: 2 });
+
+  const ids = await freshRefillMaterializedAudioStoryIdsFromReport({
+    reportPath,
+    candidateStoryIds: ["rss_black_flag"],
+    fallbackStoryIds: ["rss_black_flag"],
+  });
+
+  assert.deepEqual(ids, []);
 });
 
 test("fresh refill source evidence preserves official YouTube watch references as reference-only sources", async () => {

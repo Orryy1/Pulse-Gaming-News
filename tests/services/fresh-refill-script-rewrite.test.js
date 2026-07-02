@@ -319,6 +319,54 @@ test("fresh refill viewer script keeps Fatal Fury City Of The Wolves in the publ
   assert.equal(massAudience.concrete_detail_count >= 3, true);
 });
 
+test("fresh refill viewer script writes Black Flag Resynced narration that is ASR-safe and audience clear", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_476510b5f312fbec",
+      title: "Assassin's Creed Black Flag Resynced PS5 Pro enhancements detailed",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/06/30/assassins-creed-black-flag-resynced-ps5-pro-enhancements/",
+        type: "rss",
+      },
+      current_script:
+        "PlayStation Blog says Assassin's Creed Black Flag Resynced has PS5 Pro enhancements.",
+    },
+    manifest: {
+      story_id: "rss_476510b5f312fbec",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      confirmed_claims: [
+        "PlayStation Blog details PS5 Pro enhancements for Assassin's Creed Black Flag Resynced",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.suggested_title, "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof");
+  assert.equal(script.suggested_thumbnail_text, "BLACK FLAG PS5 PRO TEST");
+  assert.ok(
+    script.word_count >= 76 && script.word_count <= 80,
+    `expected a motion-dwell-safe short script, got ${script.word_count} words`,
+  );
+  assert.match(script.full_script, /^Assassin's Creed Black Flag Resynced has one job\. Make the pirate loop feel dangerous again\./);
+  assert.match(script.full_script, /the real test is motion, not screenshots/i);
+  assert.match(script.full_script, /If this restores that rhythm, lapsed players get a reason to reinstall/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(script.full_script, /open-sea|gets ugly fast|\bNext\b|source-backed update|the player impact is|ocean still feels alive|wallpaper|fans will notice/i);
+  assert.doesNotMatch(script.suggested_title, /:/, "avoid title punctuation that creates TTS title pauses");
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass");
+  const massAudience = auditMassAudienceClarity({
+    script: script.full_script,
+    title: script.suggested_title,
+    sourceName: "PlayStation Blog",
+    canonicalSubject: "Assassin's Creed Black Flag Resynced",
+  });
+  assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
+  assert.equal(massAudience.concrete_detail_count >= 3, true);
+});
+
 test("fresh refill script rewrite dry-run leaves local proof files unchanged", async () => {
   const { artifactDir, workOrderPath } = await writeFixture("dry-run");
   const manifestPath = path.join(artifactDir, "canonical_story_manifest.json");

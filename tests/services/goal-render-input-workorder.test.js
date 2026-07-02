@@ -81,6 +81,40 @@ test("render input work order maps queued blockers to exact local actions", () =
   assert.equal(workOrder.safety.no_publish_triggered, true);
 });
 
+test("render input work order keeps already-rendered packages in scheduler preflight", () => {
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-02T04:05:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "story-scheduler-ready",
+          title: "MARVEL Tokon Finally Shows Real Gameplay",
+          render_input_status: "ready_for_scheduler_preflight",
+          render_input_blockers: [],
+          render_input_evidence: {
+            narration_ready: true,
+            word_timestamps_ready: true,
+            materialised_motion_ready: true,
+            distinct_motion_family_count: 8,
+            direct_video_motion_clip_count: 8,
+            direct_video_motion_family_count: 8,
+            readable_hyperframes_ready: true,
+            final_render_ready: true,
+            caption_file_ready: true,
+            render_manifest_ready: true,
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-07-02T04:06:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_scheduler_preflight_count, 1);
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 0);
+  assert.equal(workOrder.jobs[0].status, "ready_for_scheduler_preflight");
+  assert.deepEqual(workOrder.jobs[0].actions, []);
+});
+
 test("render input work order accepts story-package arrays after audio and motion repair", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-story-package-render-input-"));
   const artifactDir = path.join(root, "packages", "story-package-ready");
@@ -243,6 +277,92 @@ test("render input work order respects fresh distinct-motion family proof for wi
   assert.deepEqual(
     job.actions.map((action) => action.action_id),
     ["run_visual_v4_production_render"],
+  );
+});
+
+test("render input work order clears stale real-motion blockers from current direct clip manifests", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-stale-real-motion-blockers-"));
+  const artifactDir = path.join(root, "packages", "black-flag-motion-ready");
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  const clips = Array.from({ length: 7 }, (_, index) => ({
+    id: `black-flag-direct-${index + 1}`,
+    path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `clip-${index + 1}.mp4`),
+    source_url: `https://official.example.com/black-flag/trailer-${index + 1}.mp4`,
+    source_family: `black_flag_direct_family_${index + 1}`,
+    motion_family: `black_flag_direct_family_${index + 1}`,
+    media_kind: "direct_video",
+    source_type: "official_direct_video",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+
+  await fs.ensureDir(artifactDir);
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "Black", start: 0, end: 0.3 }],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "black-flag-motion-ready",
+    canonical_subject: "Assassin's Creed Black Flag Resynced",
+    selected_title: "Black Flag Resynced Has A Trust Problem",
+    thumbnail_headline: "BLACK FLAG TRUST TEST",
+    first_spoken_line: "Assassin's Creed Black Flag Resynced has to sell more than prettier water.",
+    narration_script:
+      "Assassin's Creed Black Flag Resynced has to sell more than prettier water. PlayStation Blog says PlayStation 5 Pro enhancements are coming.",
+    description:
+      "Black Flag Resynced has to prove the pirate loop still feels sharp when the remake is finally in motion.",
+    primary_source: "PlayStation Blog",
+  });
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    schema_version: 1,
+    story_id: "black-flag-motion-ready",
+    status: "ready",
+    clip_count: clips.length,
+    distinct_motion_family_count: clips.length,
+    direct_video_motion_clip_count: clips.length,
+    direct_video_motion_family_count: clips.length,
+    clips,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-02T03:10:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "black-flag-motion-ready",
+          title: "Black Flag Resynced Has A Trust Problem",
+          artifact_dir: artifactDir,
+          render_input_blockers: [
+            "render_manifest_missing",
+            "real_visual_motion_clips_missing",
+            "real_visual_motion_families_insufficient",
+          ],
+        }),
+      ],
+    },
+    generatedAt: "2026-07-02T03:11:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(workOrder.summary.real_motion_materialisation_jobs, 0);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.equal(job.blockers.includes("real_visual_motion_clips_missing"), false);
+  assert.equal(job.blockers.includes("real_visual_motion_families_insufficient"), false);
+  assert.equal(job.evidence.materialised_motion_clip_count, 7);
+  assert.equal(job.evidence.direct_video_motion_clip_count, 7);
+  assert.equal(job.evidence.direct_video_motion_family_count, 7);
+  assert.equal(job.evidence.distinct_motion_family_count, 7);
+  assert.ok(
+    job.actions.some((action) => action.action_id === "run_visual_v4_production_render"),
   );
 });
 
@@ -769,6 +889,80 @@ test("render input work order lets newer blocked real-motion evidence override s
   );
 });
 
+test("render input work order lets refreshed materialised motion retire older failed partial proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-refreshed-real-motion-"));
+  const artifactDir = path.join(root, "artifact");
+  await fs.ensureDir(artifactDir);
+
+  const directClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `direct-${index + 1}`,
+    asset_class: "gameplay_motion",
+    durationS: 5,
+    path: path.join(artifactDir, `direct-${index + 1}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3751950/${760353540 + index}/hash/hls_264_master.m3u8?t=1782753568`,
+    source_family: `steam_3751950_${760353540 + index}_window_${index + 1}`,
+    source_kind: "official_direct_video_motion",
+    media_kind: "direct_video",
+    owned_explainer_visual_plan: false,
+  }));
+  for (const clip of directClips) {
+    await fs.outputFile(clip.path, Buffer.alloc(2048, 3));
+  }
+
+  const manifestPath = path.join(artifactDir, "materialised_motion_clips.json");
+  await fs.outputJson(manifestPath, {
+    status: "ready",
+    generated_at: "2026-07-02T02:30:00.000Z",
+    clip_count: directClips.length,
+    direct_video_motion_asset_count: directClips.length,
+    direct_video_motion_family_count: directClips.length,
+    distinct_motion_family_count: directClips.length,
+    clips: directClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "partial_real_motion_evidence.json"), {
+    status: "blocked",
+    generated_at: "2026-07-02T03:00:00.000Z",
+    not_publishable: true,
+    counts_towards_final_render_readiness: false,
+    clip_count: 2,
+    direct_video_motion_asset_count: 2,
+    direct_video_motion_family_count: 2,
+    distinct_motion_family_count: 2,
+    blockers: ["real_motion_clip_minimum_not_met"],
+    clips: directClips.slice(0, 2),
+  });
+  await fs.utimes(manifestPath, new Date("2026-07-02T03:30:00.000Z"), new Date("2026-07-02T03:30:00.000Z"));
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-02T03:31:00.000Z",
+      queue: [
+        {
+          story_id: "refreshed-real-motion",
+          title: "Black Flag Resynced Has A Trust Problem",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          render_input_blockers: [
+            "materialised_motion_clips_missing",
+            "materialised_motion_families_insufficient",
+            "real_visual_motion_clips_missing",
+            "real_visual_motion_families_insufficient",
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-07-02T03:32:00.000Z",
+  });
+
+  const job = workOrder.jobs[0];
+  assert.equal(job.evidence.partial_real_motion_override, false);
+  assert.equal(job.evidence.materialised_motion_ready, true);
+  assert.equal(job.evidence.direct_video_motion_clip_count, 6);
+  assert.equal(job.evidence.direct_video_motion_family_count, 6);
+  assert.ok(!job.blockers.includes("materialised_motion_clips_missing"));
+  assert.ok(!job.blockers.includes("real_visual_motion_clips_missing"));
+});
+
 test("render input work order preserves publish-blocker repair backlog when render queue is empty", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {
@@ -920,6 +1114,61 @@ test("render input work order routes stale pronunciation-policy audio through th
     "final_narration_audio_stale_after_pronunciation_repair",
     "word_timestamps_stale_after_pronunciation_repair",
   ]);
+});
+
+test("render input work order routes script-rewritten stale audio through regeneration", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-script-rewrite-stale-audio-"));
+  const artifactDir = path.join(tmpDir, "story");
+  await fs.ensureDir(path.join(artifactDir, "audio"));
+  await fs.outputFile(path.join(artifactDir, "audio", "narration.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(artifactDir, "audio", "word_timestamps.json"), {
+    words: [{ word: "Black", start: 0, end: 0.2 }],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: "audio/narration.mp3",
+    word_timestamps_path: "audio/word_timestamps.json",
+    word_timestamp_count: 119,
+    timestamp_whisper_alignment: {
+      script_expected_word_count: 119,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "black-flag-stale-audio",
+    selected_title: "Black Flag Resynced Has A Trust Problem",
+    narration_script: Array.from({ length: 108 }, (_, index) => `word${index + 1}`).join(" "),
+    word_count: 108,
+    tts_word_count: 119,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-02T03:40:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "black-flag-stale-audio",
+          title: "Black Flag Resynced Has A Trust Problem",
+          artifact_dir: artifactDir,
+          force_final_render: true,
+          render_input_blockers: [
+            "final_narration_audio_missing",
+            "word_timestamps_missing",
+          ],
+        }),
+      ],
+    },
+    generatedAt: "2026-07-02T03:41:00.000Z",
+  });
+
+  const job = workOrder.jobs[0];
+  assert.equal(workOrder.summary.audio_timestamp_jobs, 1);
+  assert.ok(job.blockers.includes("final_narration_audio_stale_after_script_rewrite"));
+  assert.ok(job.blockers.includes("word_timestamps_stale_after_script_rewrite"));
+  assert.equal(job.evidence.stale_after_script_rewrite, true);
+  assert.equal(job.evidence.canonical_script_word_count, 108);
+  assert.equal(job.evidence.timestamp_expected_word_count, 119);
+  assert.equal(job.actions[0].action_id, "generate_final_narration_audio_and_word_timestamps");
+  assert.ok(job.actions[0].reason_codes.includes("final_narration_audio_stale_after_script_rewrite"));
+  assert.ok(job.actions[0].reason_codes.includes("word_timestamps_stale_after_script_rewrite"));
 });
 
 test("render input work order forces rerender when repaired package inputs supersede failed render QA", async () => {

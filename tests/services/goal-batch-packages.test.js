@@ -694,6 +694,52 @@ test("goal batch packages hydrate shared licensed SFX evidence before director s
   assert.equal(batch.packages[0].publish_verdict.verdict, "GREEN");
 });
 
+test("goal batch packages hydrate repaired SFX evidence from existing artefacts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-existing-sfx-"));
+  const storyId = "existing-sfx-one";
+  const artifactDir = path.join(root, storyId);
+  await fs.ensureDir(artifactDir);
+  const ready = greenStory(storyId);
+  delete ready.sfx_asset_inventory;
+  delete ready.sfx_assets;
+  delete ready.sfx_rights_ledger;
+  const selectedAssets = licensedSfxAssets().filter((asset) =>
+    ["impact", "transition", "ui_tick", "sub_hit"].includes(asset.role),
+  );
+  const sourcePlan = {
+    required_roles: ["impact", "transition", "ui_tick", "sub_hit"],
+    covered_roles: ["impact", "sub_hit", "transition", "ui_tick"],
+    selected_assets: selectedAssets,
+    readiness: { status: "pass", blockers: [], warnings: [] },
+  };
+  await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: sourcePlan,
+    selected_assets: selectedAssets,
+    readiness: { status: "pass", blockers: [] },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "sfx_source_plan.json"), sourcePlan, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: selectedAssets.map((asset) => ({
+      ...asset,
+      asset_type: "sfx",
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+      risk_score: 0.08,
+    })),
+  }, { spaces: 2 });
+
+  const batch = buildGoalBatchPackages({
+    stories: [ready],
+    rightsLedgerByStory: { [ready.id]: rightsFor({ ...ready, sfx_asset_inventory: [] }) },
+    existingArtifactRoot: root,
+    generatedAt: "2026-05-21T20:05:00.000Z",
+  });
+
+  assert.equal(batch.packages[0].sfx_source_plan.readiness.status, "pass");
+  assert.deepEqual(batch.packages[0].sfx_source_plan.covered_roles, ["impact", "sub_hit", "transition", "ui_tick"]);
+  assert.equal(batch.packages[0].director_beat_map.readiness.status, "director_ready");
+  assert.doesNotMatch(batch.packages[0].publish_verdict.reason_codes.join("\n"), /sfx_source:missing_role/);
+});
+
 test("goal proof package publish verdict turns RED when transcript scorecard blocks", () => {
   const story = {
     ...greenStory("weak-transcript"),
@@ -1370,6 +1416,49 @@ test("goal batch package proof preparation writes specific PS5 Pro tech scripts"
   assert.match(prepared.full_script, /upgraded PSSR is coming to Doom: The Dark Ages on PS5 Pro/i);
   assert.match(prepared.full_script, /If the upgrade keeps Doom sharp in motion/i);
   assert.doesNotMatch(prepared.full_script, /one clear detail|player test|background noise/i);
+  assert.equal(
+    buildViralScriptIntelligence({
+      story: { ...prepared, title: prepared.public_title },
+      script: prepared.full_script,
+    }).verdict,
+    "viral_ready",
+  );
+});
+
+test("goal batch package proof preparation writes ASR-safe Black Flag Resynced trust scripts", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_black_flag_resynced_ps5_pro",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      canonical_game: "Assassin's Creed Black Flag Resynced",
+      title: "Assassin's Creed Black Flag Resynced PS5 Pro enhancements detailed",
+      primary_source: "PlayStation Blog",
+      source_name: "PlayStation Blog",
+      source_type: "official_platform",
+      article_url:
+        "https://blog.playstation.com/2026/06/30/assassins-creed-black-flag-resynced-ps5-pro-enhancements/",
+      confirmed_claims: [
+        "PlayStation Blog details PS5 Pro enhancements for Assassin's Creed Black Flag Resynced.",
+      ],
+      full_script:
+        "Assassin's Creed Black Flag Resynced has one clear detail players can check before the hype gets ahead of it. PlayStation Blog says the new version has PS5 Pro enhancements. The player test is simple: does this change what people install, wishlist, finish or ignore? Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.public_title, "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof");
+  assert.equal(prepared.canonical_subject, "Assassin's Creed Black Flag Resynced");
+  assert.equal(prepared.canonical_game, "Assassin's Creed Black Flag Resynced");
+  assert.equal(prepared.suggested_thumbnail_text, "BLACK FLAG PS5 PRO TEST");
+  assert.ok(
+    prepared.full_script.split(/\s+/).length >= 76 && prepared.full_script.split(/\s+/).length <= 80,
+    prepared.full_script,
+  );
+  assert.match(prepared.full_script, /^Assassin's Creed Black Flag Resynced has one job\. Make the pirate loop feel dangerous again\./i);
+  assert.match(prepared.full_script, /the real test is motion, not screenshots/i);
+  assert.match(prepared.full_script, /If this restores that rhythm, lapsed players get a reason to reinstall/i);
+  assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(prepared.full_script, /one clear detail|player test|open-sea|gets ugly fast|\bNext\b|ocean still feels alive|wallpaper|fans will notice/i);
   assert.equal(
     buildViralScriptIntelligence({
       story: { ...prepared, title: prepared.public_title },

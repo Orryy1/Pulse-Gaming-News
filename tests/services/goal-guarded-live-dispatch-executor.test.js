@@ -2282,6 +2282,99 @@ test("default action quality gate blocks repeated direct motion package evidence
   );
 });
 
+test("default action quality gate allows distinct source-family windows from the same trailer", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-quality-distinct-windows-"));
+  const manifestPath = path.join(root, "canonical_story_manifest.json");
+  const mp4Path = path.join(root, "visual_v4_render.mp4");
+  await fs.writeFile(mp4Path, "fake mp4");
+  await fs.writeJson(manifestPath, {
+    story_id: "story-one",
+    selected_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    canonical_subject: "MARVEL Tokon: Fighting Souls",
+    narration_script:
+      "MARVEL Tokon Fighting Souls just gave fighting-game fans a real roster test. GameSpot shows Blade, Loki and Deadpool in motion. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "TOKON ROSTER FIGHT",
+    primary_source: "GameSpot",
+    primary_source_url: "https://www.gamespot.com/videos/marvel-tokon-fighting-souls-trailer/",
+  });
+  await fs.writeJson(path.join(root, "render_manifest.json"), {
+    story_id: "story-one",
+    render_lane: "visual_v4_production",
+    render_quality_class: "premium",
+    final_publish_render: true,
+    rendered_duration_s: 58,
+    clips: 10,
+  });
+
+  const sameTrailerUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/3787240/789082905/69f1acafc09d9963fa0fc3cf72a968d073544421/1774495522/hls_264_master.m3u8?t=1774600481";
+  const clips = [
+    {
+      id: "tokon-window-36",
+      path: "motion/tokon-window-36.mp4",
+      source_url: sameTrailerUrl,
+      media_kind: "direct_video",
+      source_type: "steam_movie",
+      source_family:
+        "steamstatic:/store_trailers/3787240/789082905/69f1acafc09d9963fa0fc3cf72a968d073544421/1774495522_window_36_5",
+      motion_family:
+        "steamstatic:/store_trailers/3787240/789082905/69f1acafc09d9963fa0fc3cf72a968d073544421/1774495522_window_36_5",
+      duration_s: 5,
+    },
+    {
+      id: "tokon-window-42",
+      path: "motion/tokon-window-42.mp4",
+      source_url: sameTrailerUrl,
+      media_kind: "direct_video",
+      source_type: "steam_movie",
+      source_family:
+        "steamstatic:/store_trailers/3787240/789082905/69f1acafc09d9963fa0fc3cf72a968d073544421/1774495522_window_42_5",
+      motion_family:
+        "steamstatic:/store_trailers/3787240/789082905/69f1acafc09d9963fa0fc3cf72a968d073544421/1774495522_window_42_5",
+      duration_s: 5,
+    },
+    ...Array.from({ length: 8 }, (_, index) => ({
+      id: `tokon-distinct-${index + 1}`,
+      path: `motion/tokon-distinct-${index + 1}.mp4`,
+      source_url: `https://cdn.example.com/tokon/distinct-${index + 1}.mp4`,
+      media_kind: "direct_video",
+      source_type: "official_trailer_segment",
+      source_family: `tokon_distinct_official_source_${index + 1}`,
+      motion_family: `tokon_distinct_official_source_${index + 1}`,
+      duration_s: 5,
+    })),
+  ];
+  await fs.writeJson(path.join(root, "visual_v4_render_story.json"), {
+    id: "story-one",
+    video_clips: clips,
+    visual_v4_bridge_video_clips: clips,
+  });
+
+  const result = await defaultActionQualityGate({
+    story: story({
+      id: "story-one",
+      title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    }),
+    action: action("youtube_shorts", {
+      canonical_manifest_path: manifestPath,
+      video_path: mp4Path,
+    }),
+    config: { publicName: "youtube", mediaKind: "video" },
+    options: {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      buildVideoQaOptionsForStory: () => ({}),
+    },
+  });
+
+  assert.equal(result.result, "pass", JSON.stringify(result.blockers));
+  assert.equal(
+    result.checks.visual_cadence.evidence.repeated_direct_motion_segment_count,
+    0,
+  );
+});
+
 test("guarded live dispatch executor CLI writes dry-run reports and package script is registered", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-cli-"));
   const planPath = path.join(root, "guarded_dispatch_executor_plan.json");

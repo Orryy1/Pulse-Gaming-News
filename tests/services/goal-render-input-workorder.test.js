@@ -963,6 +963,118 @@ test("render input work order lets refreshed materialised motion retire older fa
   assert.ok(!job.blockers.includes("real_visual_motion_clips_missing"));
 });
 
+test("render input work order carries current materialised motion paths into forced rerender jobs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-motion-paths-"));
+  const artifactDir = path.join(root, "artifact");
+  await fs.ensureDir(artifactDir);
+
+  const audioPath = path.join(artifactDir, "audio", "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(timestampsPath, {
+    words: [{ word: "Doom", start: 0, end: 0.3 }],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    generated_at: "2026-07-02T07:15:00.000Z",
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    generated_at: "2026-07-02T07:16:00.000Z",
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    generated_at: "2026-07-02T07:14:00.000Z",
+    canonical_subject: "Doom The Dark Ages",
+    title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    selected_title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    description:
+      "Bethesda's Doom The Dark Ages update turns the Chain Spear into the real combat test because the DLC has to feel faster, not just bigger.",
+    narration_script: "Doom The Dark Ages just made its next DLC about speed, not size.",
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    generated_at: "2026-07-02T07:00:00.000Z",
+    quality_gate_status: "failed",
+    input_fingerprint: {
+      canonical_snapshot: {
+        narration_script: "Old script that should force a rerender.",
+      },
+    },
+  });
+
+  const directClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `direct-${index + 1}`,
+    path: path.join(artifactDir, `direct-${index + 1}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3017860/${1887810588 + index}/clip.mp4`,
+    source_family: `steam_3017860_${index + 1}`,
+    media_kind: "direct_video",
+    source_kind: "official_direct_video_motion",
+    durationS: 5,
+  }));
+  for (const clip of directClips) {
+    await fs.outputFile(clip.path, Buffer.alloc(2048, 2));
+  }
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    generated_at: "2026-07-02T07:13:00.000Z",
+    clip_count: directClips.length,
+    distinct_motion_family_count: directClips.length,
+    direct_video_motion_asset_count: directClips.length,
+    direct_video_motion_family_count: directClips.length,
+    clips: directClips,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-02T07:17:00.000Z",
+      blocked: [
+        {
+          story_id: "current-motion-paths",
+          title: "Doom The Dark Ages Chain Spear Changes The Fight",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          blockers: ["benchmark_not_pass"],
+          render_manifest: {
+            renderer: "visual_v4_production",
+            visual_tier: "production_v4_motion",
+            final_publish_render: true,
+            generated_at: "2026-07-02T07:00:00.000Z",
+            output: "visual_v4_render.mp4",
+            output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+            quality_gate_status: "post_render_forensics_failed",
+          },
+          visual_evidence_profile: {
+            direct_video_motion_asset_count: 6,
+            direct_video_motion_family_count: 6,
+            generated_only_motion_deck: false,
+            blockers: [],
+          },
+          selected_render_evidence: {
+            direct_video_motion_asset_count: 6,
+            direct_video_motion_family_count: 6,
+            generated_only_motion_deck: false,
+            blockers: [],
+          },
+          render_input_evidence: {
+            materialised_motion_clip_paths: [],
+          },
+        },
+      ],
+    },
+    generatedAt: "2026-07-02T07:18:00.000Z",
+  });
+
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job", JSON.stringify({
+    blockers: job.blockers,
+    evidence: job.evidence,
+    actions: job.actions?.map((action) => action.action_id),
+  }, null, 2));
+  assert.deepEqual(job.evidence.materialised_motion_clip_paths, directClips.map((clip) => clip.path));
+  assert.equal(job.evidence.materialised_motion_clip_count, 6);
+  assert.equal(job.evidence.materialised_motion_ready, true);
+});
+
 test("render input work order preserves publish-blocker repair backlog when render queue is empty", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

@@ -1969,6 +1969,38 @@ test("goal audio materializer coverage treats compact and split outlet/game phra
   assert.equal(coverage.unmatched_expected_word_count, 0);
 });
 
+test("goal audio materializer coverage treats safe compound game terms as one spoken token", () => {
+  const scriptText =
+    "The Chain Spear sharpens the push-forward combat. Follow Pulse Gaming so you never miss a beat.";
+  const words = [
+    { word: "The", start: 0, end: 0.12 },
+    { word: "Chainspear", start: 0.14, end: 0.5 },
+    { word: "sharpens", start: 0.52, end: 0.8 },
+    { word: "the", start: 0.82, end: 0.92 },
+    { word: "push", start: 0.94, end: 1.08 },
+    { word: "forward", start: 1.1, end: 1.34 },
+    { word: "combat.", start: 1.36, end: 1.66 },
+    { word: "Follow", start: 1.68, end: 1.88 },
+    { word: "Pulse", start: 1.9, end: 2.08 },
+    { word: "Gaming", start: 2.1, end: 2.3 },
+    { word: "so", start: 2.32, end: 2.42 },
+    { word: "you", start: 2.44, end: 2.56 },
+    { word: "never", start: 2.58, end: 2.78 },
+    { word: "miss", start: 2.8, end: 2.94 },
+    { word: "a", start: 2.96, end: 3.02 },
+    { word: "beat.", start: 3.04, end: 3.24 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[1].word, "Chain Spear");
+});
+
 test("goal audio materializer coverage accepts GTA VI roman numeral ASR variants without allowing inserted words", () => {
   const scriptText =
     "Grand Theft Auto VI now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.";

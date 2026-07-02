@@ -2115,6 +2115,94 @@ function visualAssetProvenanceText(asset = {}) {
   return cleanText(values.filter(Boolean).join(" ")).toLowerCase();
 }
 
+function steamAppIdFromValue(value = "") {
+  const text = cleanText(value).replace(/\\/g, "/");
+  if (!text) return "";
+  const match =
+    text.match(/\/store_trailers\/(\d+)(?:\/|$)/i) ||
+    text.match(/\bsteam:(\d+):/i) ||
+    text.match(/\bsteam[_-](\d+)(?:[_-]|\b)/i) ||
+    text.match(/\/app\/(\d+)(?:\/|$)/i) ||
+    text.match(/\/apps\/(\d+)(?:\/|$)/i);
+  return match ? cleanText(match[1]) : "";
+}
+
+function steamAppIdsForVisualAsset(asset = {}) {
+  const values = [
+    asset.store_app_id,
+    asset.steam_app_id,
+    asset.steam_appid,
+    asset.app_id,
+    asset.appid,
+    asset.source_asset_key,
+    asset.sidecar_source_family,
+    asset.sidecar_source_url,
+    asset.source_family,
+    asset.motion_family,
+    asset.family,
+    asset.base_source_family,
+    asset.original_source_family,
+    asset.source_url,
+    asset.url,
+    asset.reference_url,
+    asset.original_source_url,
+    asset.path,
+    asset.local_path,
+    asset.media_path,
+  ];
+  return [...new Set(values.map(steamAppIdFromValue).filter(Boolean))];
+}
+
+function steamAppIdentityForDirectMotionAssets(assets = []) {
+  const counts = new Map();
+  const assetIds = new Map();
+  for (const asset of asArray(assets)) {
+    const ids = steamAppIdsForVisualAsset(asset);
+    if (!ids.length) continue;
+    assetIds.set(asset, ids);
+    for (const id of ids) counts.set(id, (counts.get(id) || 0) + 1);
+  }
+  if (counts.size < 2) {
+    return {
+      checked: counts.size > 0,
+      app_counts: Object.fromEntries(counts),
+      dominant_app_ids: [],
+      outlier_assets: [],
+    };
+  }
+  const maxCount = Math.max(...counts.values());
+  const dominantAppIds = [...counts.entries()]
+    .filter(([, count]) => count === maxCount && count >= 2)
+    .map(([id]) => id)
+    .sort();
+  if (dominantAppIds.length !== 1) {
+    return {
+      checked: true,
+      app_counts: Object.fromEntries([...counts.entries()].sort()),
+      dominant_app_ids: [],
+      outlier_assets: [],
+    };
+  }
+  const dominant = dominantAppIds[0];
+  const outlierAssets = [];
+  for (const [asset, ids] of assetIds.entries()) {
+    if (!ids.includes(dominant)) {
+      outlierAssets.push({
+        asset,
+        steam_app_ids: ids,
+        steam_app_id: ids[0] || "",
+        expected_steam_app_id: dominant,
+      });
+    }
+  }
+  return {
+    checked: true,
+    app_counts: Object.fromEntries([...counts.entries()].sort()),
+    dominant_app_ids: dominantAppIds,
+    outlier_assets: outlierAssets,
+  };
+}
+
 function visualAssetSidecarProvenanceText(asset = {}) {
   if (!asset.source_sidecar_path) return "";
   const values = [
@@ -2430,16 +2518,21 @@ async function visualEntityPreflightForStory(story = {}) {
   const { isDirectVideoMotionAsset } = require("../lib/visual-evidence-classifier");
   const directMotionAssets = assets.filter(isDirectVideoMotionAsset);
   if (!directMotionAssets.length) return null;
+  const steamAppIdentity = steamAppIdentityForDirectMotionAssets(directMotionAssets);
+  const steamOutlierAssets = new Map(
+    asArray(steamAppIdentity.outlier_assets).map((entry) => [entry.asset, entry]),
+  );
 
   const mismatched = directMotionAssets
-    .filter((asset) =>
-      !visualAssetSubjectLocked(
+    .filter((asset) => {
+      if (steamOutlierAssets.has(asset)) return true;
+      return !visualAssetSubjectLocked(
         asset,
         asset.source_sidecar_path && !requiredSpecificSourceLockTokens.length
           ? subjectTokens
           : lockTokens,
-      )
-    )
+      );
+    })
     .map((asset) => ({
       id: cleanText(asset.id || asset.asset_id),
       entity: cleanText(asset.entity),
@@ -2447,6 +2540,9 @@ async function visualEntityPreflightForStory(story = {}) {
       source_family: cleanText(asset.source_family || asset.motion_family || asset.family),
       source_url: cleanText(asset.source_url || asset.url),
       path: cleanText(asset.path || asset.local_path || asset.media_path),
+      steam_app_id: steamOutlierAssets.get(asset)?.steam_app_id || steamAppIdsForVisualAsset(asset)[0] || "",
+      expected_steam_app_id: steamOutlierAssets.get(asset)?.expected_steam_app_id || "",
+      steam_app_identity_mismatch: steamOutlierAssets.has(asset),
       provenance_text: visualAssetProvenanceText(asset).slice(0, 240),
     }));
 
@@ -2460,6 +2556,12 @@ async function visualEntityPreflightForStory(story = {}) {
         source_lock_tokens: sourceLockTokens,
         required_specific_source_lock_tokens: requiredSpecificSourceLockTokens,
         direct_motion_asset_count: directMotionAssets.length,
+        steam_app_identity: {
+          checked: steamAppIdentity.checked,
+          app_counts: steamAppIdentity.app_counts,
+          dominant_app_ids: steamAppIdentity.dominant_app_ids,
+          outlier_count: asArray(steamAppIdentity.outlier_assets).length,
+        },
         mismatched_motion_assets: mismatched.slice(0, 8),
       },
     };
@@ -2474,6 +2576,12 @@ async function visualEntityPreflightForStory(story = {}) {
       source_lock_tokens: sourceLockTokens,
       required_specific_source_lock_tokens: requiredSpecificSourceLockTokens,
       direct_motion_asset_count: directMotionAssets.length,
+      steam_app_identity: {
+        checked: steamAppIdentity.checked,
+        app_counts: steamAppIdentity.app_counts,
+        dominant_app_ids: steamAppIdentity.dominant_app_ids,
+        outlier_count: asArray(steamAppIdentity.outlier_assets).length,
+      },
         direct_motion_assets: directMotionAssets.slice(0, 8).map((asset) => ({
           id: cleanText(asset.id || asset.asset_id),
           entity: cleanText(asset.entity),

@@ -5677,6 +5677,69 @@ test("visual entity preflight blocks Steam direct motion when rights ledger owne
   assert.match(result.evidence.mismatched_motion_assets[0].provenance_text, /witcher 4/);
 });
 
+test("visual entity preflight blocks outlier Steam app direct motion in a specific game package", async () => {
+  const clips = [
+    ["dark-ages-a", "3017860", "1887810588"],
+    ["dark-ages-b", "3017860", "1777709634"],
+    ["dark-ages-c", "3017860", "1768853770"],
+    ["dark-ages-d", "3017860", "817483"],
+    ["dark-ages-e", "3017860", "1719368325"],
+    ["old-doom", "379720", "51646"],
+  ].map(([id, appId, trailerId], index) => ({
+    id,
+    path: path.join(
+      "test",
+      "output",
+      "next-publish-candidates-steam-app-outlier",
+      `${id}.mp4`,
+    ),
+    source_url:
+      `https://video.akamai.steamstatic.com/store_trailers/${appId}/${trailerId}/hash/hls_264_master.m3u8?t=1`,
+    source_family:
+      appId === "379720"
+        ? "steam_379720_doom_media_11_dash_av1_window_42_5"
+        : `steamstatic:/store_trailers/${appId}/${trailerId}/hash_window_${36 + index}_5`,
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    rights_basis: "official_direct_media",
+    entity: "Doom: The Dark Ages",
+    entities: ["Doom: The Dark Ages"],
+  }));
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "rss_e2914175f30e0777",
+      title: "Doom The Dark Ages Chain Spear Changes The Fight",
+      canonical_subject: "Doom: The Dark Ages",
+      canonical_game: "Doom: The Dark Ages",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
+      scheduler_bridge_source: "goal_production_cutover",
+      visual_v4_bridge_video_clips: clips,
+      video_clips: clips,
+      rights_ledger: {
+        verdict: "pass",
+        assets: clips.map((clip) => ({
+          ...clip,
+          source_owner: "Doom: The Dark Ages",
+          source_title: "Doom: The Dark Ages official Steam trailer segment",
+          licence_basis: "official_direct_media",
+          approval_status: "approved_for_transformative_editorial_use",
+        })),
+      },
+    }),
+  );
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("direct_motion_subject_mismatch"));
+  assert.deepEqual(result.evidence.steam_app_identity?.dominant_app_ids, ["3017860"]);
+  assert.deepEqual(
+    result.evidence.mismatched_motion_assets.map((asset) => asset.steam_app_id),
+    ["379720"],
+  );
+  assert.match(result.evidence.mismatched_motion_assets[0].source_url, /store_trailers\/379720\//);
+});
+
 test("visual entity preflight blocks same-game wrong-character direct motion", async () => {
   const alexTrailer =
     "https://video.akamai.steamstatic.com/store_trailers/1364780/1659974978/e2cc6b24bc61a2692becfadca7a5687f36d6324b/1769127372/hls_264_master.m3u8?t=1769142439";

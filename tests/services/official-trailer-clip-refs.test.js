@@ -847,6 +847,111 @@ test("official clip refs deep-scan alternate official sources from a resolver re
   assert.equal(refs[1].provenance.movie_name, "Gameplay Update Trailer");
 });
 
+test("official clip refs drop outlier Steam app references for the same entity", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "doom-story", frames: [] }] },
+    "doom-story",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [42],
+      maxClips: 20,
+      referenceReport: {
+        plans: [
+          {
+            story_id: "doom-story",
+            references: [
+              ...[1, 2, 3, 4, 5].map((index) => ({
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url: `https://video.akamai.steamstatic.com/store_trailers/3017860/900${index}/hash/hls_264_master.m3u8`,
+                source_family: `steam_3017860_doom_the_dark_ages_${index}`,
+                entity: "Doom: The Dark Ages",
+                movie_name: `Doom The Dark Ages gameplay ${index}`,
+                store_app_id: "3017860",
+                downloads_allowed: false,
+              })),
+              {
+                source_type: "steam_movie",
+                provider: "steam",
+                source_url:
+                  "https://video.akamai.steamstatic.com/store_trailers/379720/9999/hash/hls_264_master.m3u8",
+                source_family: "steam_379720_doom_2016_old_trailer",
+                entity: "Doom: The Dark Ages",
+                movie_name: "Doom 2016 Launch Trailer",
+                store_app_id: "379720",
+                downloads_allowed: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(refs.length, 5);
+  assert.ok(refs.every((ref) => ref.path.includes("/store_trailers/3017860/")));
+  assert.ok(refs.every((ref) => ref.provenance.store_app_id === "3017860"));
+});
+
+test("official clip refs drop validated segment outliers from the wrong Steam app", () => {
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "doom-story", frames: [] }] },
+    "doom-story",
+    {
+      maxClips: 20,
+      requireValidatedSegments: true,
+      segmentValidationReport: {
+        generated_at: "2026-07-02T08:00:00.000Z",
+        segments: [
+          ...[42, 48, 54, 60, 66].map((start, index) => ({
+            clip_key: `https://video.akamai.steamstatic.com/store_trailers/3017860/900${index}/hash/hls_264_master.m3u8|doom_the_dark_ages|${start.toFixed(2)}`,
+            source_url: `https://video.akamai.steamstatic.com/store_trailers/3017860/900${index}/hash/hls_264_master.m3u8`,
+            source_family: `steam_3017860_doom_the_dark_ages_${index}`,
+            source_type: "steam_movie",
+            entity: "Doom: The Dark Ages",
+            media_start_s: start,
+            duration_s: 5,
+            status: "validated",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 88 - index,
+            action_sample_count: 3,
+            samples: [
+              { local_path: `test/output/official-trailer-segment-validation-v1/assets/doom-story/${start}.jpg` },
+            ],
+          })),
+          {
+            clip_key:
+              "https://video.akamai.steamstatic.com/store_trailers/379720/9999/hash/hls_264_master.m3u8|doom_the_dark_ages|72.00",
+            source_url:
+              "https://video.akamai.steamstatic.com/store_trailers/379720/9999/hash/hls_264_master.m3u8",
+            source_family: "steam_379720_doom_2016_old_trailer",
+            source_type: "steam_movie",
+            entity: "Doom: The Dark Ages",
+            media_start_s: 72,
+            duration_s: 5,
+            status: "validated",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "segment_samples_passed",
+            segment_motion_class: "gameplay_action",
+            action_score: 91,
+            action_sample_count: 3,
+            samples: [
+              { local_path: "test/output/official-trailer-segment-validation-v1/assets/doom-story/wrong.jpg" },
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(refs.length, 5);
+  assert.ok(refs.every((ref) => ref.path.includes("/store_trailers/3017860/")));
+});
+
 test("official clip refs preserve resolver metadata when frame reports have the same bare source URL", () => {
   const sourceUrl = "https://video.akamai.steamstatic.com/store_trailers/3727390/2016455987/hash/hls_264_master.m3u8";
   const refs = buildOfficialTrailerClipsFromFrameReport(

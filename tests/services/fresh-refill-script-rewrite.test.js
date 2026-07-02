@@ -368,6 +368,86 @@ test("fresh refill viewer script writes Black Flag Resynced narration that is AS
   assert.equal(massAudience.concrete_detail_count >= 3, true);
 });
 
+test("fresh refill viewer script repairs current official-source extraction and DLC stories without generic filler", () => {
+  const cases = [
+    {
+      title: "Delta Force Has An Extraction Map Test",
+      sourceUrl:
+        "https://news.xbox.com/en-us/2026/06/30/reinventing-extraction-inside-delta-forces-most-ambitious-map-yet/",
+      confirmed:
+        "Reinventing Extraction: Inside Delta Force's Most Ambitious Map Yet",
+      expectedTitle: "Delta Force New Extraction Map Has One Real Test",
+      expectedHook: /^Delta Force is making one promise extraction shooters cannot fake\./,
+      expectedDetail: /routes, risk, loot pressure and whether squads can read danger quickly/i,
+      canonicalSubject: "Delta Force",
+    },
+    {
+      title: "Why Doom: The Dark Ages Could Split Players",
+      sourceUrl:
+        "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
+      confirmed: "DOOM: The Dark Ages Goes Supersonic With New DLC Chain Spear",
+      expectedTitle: "Doom The Dark Ages Chain Spear Changes The Fight",
+      expectedHook: /^Doom The Dark Ages just made its next DLC about speed, not size\./,
+      expectedDetail: /Chain Spear|Revelations|push-forward combat/i,
+      canonicalSubject: "Doom: The Dark Ages",
+    },
+    {
+      title: "Why Hunt Death Cult in Diablo Could Split Players",
+      sourceUrl:
+        "https://news.blizzard.com/en-us/article/24268702/hunt-the-death-cult-in-season-of-death-awakening#new_tab",
+      confirmed: "Hunt the Death Cult in Diablo IV Season 14",
+      expectedTitle: "Diablo IV Season 14 Needs A Real Chase",
+      expectedHook: /^Diablo IV Season 14 has one job: make the hunt feel worth repeating\./,
+      expectedDetail: /Death Cult|Season of Death Awakening|loot/i,
+      canonicalSubject: "Diablo IV Season 14",
+    },
+  ];
+
+  for (const item of cases) {
+    const script = buildFreshRefillViewerScript({
+      job: {
+        story_id: `test_${item.expectedTitle.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}`,
+        title: item.title,
+        artifact_dir: path.join(TEST_ROOT, "unused"),
+        source: {
+          name: item.sourceUrl.includes("blizzard.com") ? "Blizzard" : "Xbox Wire",
+          url: item.sourceUrl,
+          type: "rss",
+        },
+        current_script: `${item.title} has a new source detail, but the real question is still what players can do with it.`,
+      },
+      manifest: {
+        canonical_subject: item.canonicalSubject,
+        canonical_title: item.title,
+        primary_source: item.sourceUrl.includes("blizzard.com") ? "Blizzard" : "Xbox Wire",
+        primary_source_url: item.sourceUrl,
+        confirmed_claims: [item.confirmed],
+      },
+    });
+
+    assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+    assert.equal(script.suggested_title, item.expectedTitle);
+    assert.match(script.full_script, item.expectedHook);
+    assert.match(script.full_script, item.expectedDetail);
+    assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+    assert.doesNotMatch(
+      `${script.suggested_title} ${script.full_script}`,
+      /Could Split Players|Player Impact|new source detail|real question|play now, wait, skip|source-backed update|the player impact is/i,
+    );
+    assert.doesNotMatch(script.suggested_title, /:/, "avoid title punctuation that creates TTS title pauses");
+    assert.deepEqual(script.quality.blockers, []);
+    assert.equal(script.coherence.result, "pass");
+    const massAudience = auditMassAudienceClarity({
+      script: script.full_script,
+      title: script.suggested_title,
+      sourceName: item.sourceUrl.includes("blizzard.com") ? "Blizzard" : "Xbox Wire",
+      canonicalSubject: item.canonicalSubject,
+    });
+    assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
+    assert.equal(massAudience.concrete_detail_count >= 3, true);
+  }
+});
+
 test("fresh refill script rewrite dry-run leaves local proof files unchanged", async () => {
   const { artifactDir, workOrderPath } = await writeFixture("dry-run");
   const manifestPath = path.join(artifactDir, "canonical_story_manifest.json");

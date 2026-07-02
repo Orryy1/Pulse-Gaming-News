@@ -392,9 +392,18 @@ async function uploadReel(story) {
         console.log(
           `[instagram] Step 2 FAILED (${uploadErr.response?.status}): ${JSON.stringify(errBody)}`,
         );
-        throw new Error(
+        const err = new Error(
           `Instagram binary upload failed (${uploadErr.response?.status}): ${JSON.stringify(errBody)}`,
         );
+        if (uploadErr.response?.status >= 400 && uploadErr.response?.status < 500) {
+          err.response = uploadErr.response;
+        }
+        const debugInfo = errBody?.debug_info || errBody?.error?.debug_info;
+        if (debugInfo?.retriable === false) {
+          err.nonRetriable = true;
+          err.instagram_error_type = debugInfo.type || "non_retriable_media_processing_error";
+        }
+        throw err;
       }
 
       // Step 3: Wait for processing

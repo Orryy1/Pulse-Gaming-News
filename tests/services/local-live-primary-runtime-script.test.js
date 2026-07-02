@@ -32,6 +32,17 @@ test("local live primary runtime launcher auto-recovers stale matching server ru
   assert.match(script, /branch/);
 });
 
+test("local live primary runtime launcher defers restarts while publish jobs are actively claimed", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /Get-ActivePublishJobs/);
+  assert.match(script, /kind IN \('publish','publish_window_watchdog'\)/);
+  assert.match(script, /lease_until/);
+  assert.match(script, /restart_deferred_active_publish_jobs/);
+  assert.match(script, /PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH/);
+  assert.match(script, /exit 0/);
+});
+
 test("local live primary runtime launcher preserves guarded queue runtime env", () => {
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 

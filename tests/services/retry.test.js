@@ -25,6 +25,14 @@ test("isRetriable treats Instagram media-processing rejects as terminal", () => 
   );
 });
 
+test("isRetriable honours explicit non-retriable Meta processing errors", () => {
+  const err = new Error(
+    'Instagram binary upload failed (400): {"debug_info":{"retriable":false,"type":"ProcessingFailedError","message":"Request processing failed"}}',
+  );
+
+  assert.equal(isRetriable(err), false);
+});
+
 test("isRetriable still retries transient transport failures", () => {
   assert.equal(
     isRetriable(new Error("Instagram binary upload failed (500): upstream timeout")),

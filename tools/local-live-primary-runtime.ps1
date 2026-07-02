@@ -62,6 +62,45 @@ function Get-RuntimeBranchName {
   return ""
 }
 
+function Get-ActivePublishJobs {
+  $guardDbPath = $env:SQLITE_DB_PATH
+  if (-not $guardDbPath) { $guardDbPath = "D:/pulse-data/pulse.db" }
+  if (-not (Test-Path -LiteralPath $guardDbPath)) { return @() }
+
+  $previousGuardDbPath = $env:PULSE_RUNTIME_RESTART_GUARD_DB_PATH
+  $env:PULSE_RUNTIME_RESTART_GUARD_DB_PATH = $guardDbPath
+  try {
+    $nodeScript = @'
+const Database = require("better-sqlite3");
+const dbPath = process.env.PULSE_RUNTIME_RESTART_GUARD_DB_PATH || process.env.SQLITE_DB_PATH || "D:/pulse-data/pulse.db";
+const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+const rows = db.prepare(`
+  SELECT id, kind, claimed_by, lease_until, updated_at
+  FROM jobs
+  WHERE kind IN ('publish','publish_window_watchdog')
+    AND status = 'running'
+    AND lease_until IS NOT NULL
+    AND datetime(lease_until) > datetime('now')
+  ORDER BY id DESC
+  LIMIT 10
+`).all();
+console.log(JSON.stringify(rows));
+'@
+    $raw = $nodeScript | node - 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $raw) { return @() }
+    return @($raw | ConvertFrom-Json)
+  } catch {
+    Write-RuntimeLog ("active_publish_restart_guard_unavailable db={0} error={1}" -f $guardDbPath, $_.Exception.Message)
+    return @()
+  } finally {
+    if ($previousGuardDbPath) {
+      $env:PULSE_RUNTIME_RESTART_GUARD_DB_PATH = $previousGuardDbPath
+    } else {
+      Remove-Item Env:\PULSE_RUNTIME_RESTART_GUARD_DB_PATH -ErrorAction SilentlyContinue
+    }
+  }
+}
+
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
   Where-Object { $_.OwningProcess -and $_.OwningProcess -ne 0 } |
   Select-Object -ExpandProperty OwningProcess -Unique
@@ -86,6 +125,13 @@ if ($existing -and -not $Restart) {
 }
 
 if ($existing -and $Restart) {
+  $activePublishJobs = @(Get-ActivePublishJobs)
+  $allowRestartDuringPublish = [string]$env:PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH -eq "true"
+  if ($activePublishJobs.Count -gt 0 -and -not $allowRestartDuringPublish) {
+    Write-RuntimeLog ("restart_deferred_active_publish_jobs port={0} pid={1} jobs={2}" -f $Port, ($existing -join ","), (($activePublishJobs | ConvertTo-Json -Compress) -replace "`r?`n", ""))
+    exit 0
+  }
+
   foreach ($pidToStop in $existing) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$pidToStop"
     if (-not $process.CommandLine -or $process.CommandLine -notmatch "server\.js") {

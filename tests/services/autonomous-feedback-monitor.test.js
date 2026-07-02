@@ -10,6 +10,7 @@ const {
   buildAutonomousFeedbackReport,
   formatAutonomousFeedbackDiscord,
   loadCurrentCandidateReport,
+  mergeTranscriptAudienceReports,
 } = require("../../lib/ops/autonomous-feedback-monitor");
 const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
 
@@ -480,6 +481,73 @@ test("autonomous feedback does not hold selected window for stale same-story tra
       "transcript_audience:fresh_star_wars_monopoly_20260702:mass_audience:low_concrete_detail",
     ),
   );
+});
+
+test("autonomous feedback merges selected artefact transcript audit before classifying stale same-story debt", () => {
+  const currentDir = path.join(os.tmpdir(), "pulse-current-selected-artifact-merge");
+  const staleDir = path.join(os.tmpdir(), "pulse-stale-selected-artifact-merge");
+  const transcriptAudienceReport = mergeTranscriptAudienceReports(
+    {
+      summary: { total: 1, pass: 0, rewrite_required: 1 },
+      stories: [
+        {
+          story_id: "fresh_star_wars_monopoly_20260702",
+          title: "Old Star Wars Monopoly Script",
+          artifact_dir: staleDir,
+          verdict: "rewrite_required",
+          blockers: ["mass_audience:low_concrete_detail"],
+        },
+      ],
+    },
+    {
+      generated_at: "2026-07-02T13:51:00.000Z",
+      summary: { total: 1, pass: 1, rewrite_required: 0 },
+      stories: [
+        {
+          story_id: "fresh_star_wars_monopoly_20260702",
+          title: "Star Wars Monopoly Could Ruin Game Night",
+          artifact_dir: currentDir,
+          verdict: "pass",
+          blockers: [],
+        },
+      ],
+    },
+  );
+
+  const report = buildAutonomousFeedbackReport({
+    generatedAt: "2026-07-02T13:52:00.000Z",
+    normalOperationsReport: normalOps(),
+    guardedDispatchPreflightReport: {
+      generated_at: "2026-07-02T13:39:55.976Z",
+      verdict: "GREEN",
+      summary: {
+        dispatch_ready_action_count: 1,
+        blocked_action_count: 0,
+      },
+      dispatch_ready_actions: [
+        {
+          story_id: "fresh_star_wars_monopoly_20260702",
+          platform: "youtube_shorts",
+          title: "Star Wars Monopoly Could Ruin Game Night",
+          canonical_manifest_path: path.join(currentDir, "canonical_story_manifest.json"),
+          platform_publish_manifest_path: path.join(currentDir, "platform_publish_manifest.json"),
+          video_path: path.join(currentDir, "visual_v4_render.mp4"),
+          captions_path: path.join(currentDir, "captions.srt"),
+          first_frame_source: path.join(currentDir, "visual_v4_render.mp4"),
+        },
+      ],
+    },
+    candidateReport: {
+      candidates: [],
+    },
+    transcriptAudienceReport,
+  });
+
+  assert.equal(transcriptAudienceReport.selected_artifact_audit.story_count, 1);
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.current_action, "observe_next_scheduler_window");
+  assert.equal(report.transcript_audience_feedback.summary.current_blocking_count, 0);
+  assert.equal(report.transcript_audience_feedback.items[0].state, "superseded_by_current_transcript_preflight");
 });
 
 test("autonomous feedback holds selected window when selected artefact transcript row fails", () => {

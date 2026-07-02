@@ -337,6 +337,103 @@ test("guarded live dispatch executor does not report GREEN when one selected ena
   assert.equal(persistedStories.length, 3);
 });
 
+test("guarded live dispatch executor records failed platform evidence and continues other selected platforms", async () => {
+  const persistedStories = [];
+  const platformPostCalls = [];
+  const generatedAt = "2026-07-02T14:00:00.000Z";
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts"),
+        action("instagram_reels"),
+        action("facebook_reels"),
+      ],
+    }),
+    stories: [story()],
+    actionIds: [
+      "story-one:youtube_shorts",
+      "story-one:instagram_reels",
+      "story-one:facebook_reels",
+    ],
+    apply: true,
+    maxActions: 3,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => ({
+          platform: "youtube",
+          videoId: "yt_ok_1",
+          url: "https://youtube.com/shorts/yt_ok_1",
+        }),
+      },
+      instagram_reels: {
+        uploadShort: async () => {
+          const err = new Error(
+            'Instagram binary upload failed (400): {"debug_info":{"retriable":false,"type":"ProcessingFailedError","message":"Request processing failed"}}',
+          );
+          err.nonRetriable = true;
+          throw err;
+        },
+      },
+      facebook_reels: {
+        uploadShort: async () => ({ platform: "facebook", videoId: "fb_ok_1" }),
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persistedStories.push({ ...nextStory });
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push(["ensurePending", storyId, platform, options.idempotencyKey]);
+        return { id: `${storyId}:${platform}` };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push(["markPublished", id, result.externalId, result.externalUrl || null]);
+      },
+      markFailed(id, err) {
+        platformPostCalls.push(["markFailed", id, err.message]);
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+    generatedAt,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.selected_action_count, 3);
+  assert.equal(report.summary.completed_action_count, 3);
+  assert.equal(report.summary.failed_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 2);
+  assert.deepEqual(
+    report.actions.map((item) => `${item.platform}:${item.outcome}`),
+    [
+      "youtube_shorts:new_upload",
+      "instagram_reels:failed",
+      "facebook_reels:new_upload",
+    ],
+  );
+  assert.match(report.actions[1].error, /ProcessingFailedError/);
+  assert.equal(persistedStories.length, 3);
+  assert.equal(persistedStories[1].instagram_error, report.actions[1].error);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "youtube", "story-one:youtube_shorts"],
+    ["markPublished", "story-one:youtube", "yt_ok_1", "https://youtube.com/shorts/yt_ok_1"],
+    ["ensurePending", "story-one", "instagram_reel", "story-one:instagram_reels"],
+    [
+      "markFailed",
+      "story-one:instagram_reel",
+      'Instagram binary upload failed (400): {"debug_info":{"retriable":false,"type":"ProcessingFailedError","message":"Request processing failed"}}',
+    ],
+    ["ensurePending", "story-one", "facebook_reel", "story-one:facebook_reels"],
+    ["markPublished", "story-one:facebook_reel", "fb_ok_1", null],
+  ]);
+});
+
 test("guarded live dispatch executor posts Discord handoff alerts after a new guarded upload", async () => {
   const persistedSnapshots = [];
   const discordCalls = [];

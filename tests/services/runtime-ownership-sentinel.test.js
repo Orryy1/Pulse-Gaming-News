@@ -416,6 +416,76 @@ test("runtime sentinel fails red when guarded executor handoff is stale against 
   assert.equal(report.scheduler_window_readiness.next_action, "refresh_guarded_dispatch_handoff_before_window");
 });
 
+test("runtime sentinel allows scheduler window when current guarded dispatch plan covers stale manual handoff", () => {
+  const currentDryRunActions = [
+    {
+      story_id: "fresh-story",
+      platform: "youtube_shorts",
+      action: "would_publish",
+      platform_enabled: true,
+      blockers: [],
+    },
+    {
+      story_id: "fresh-story",
+      platform: "instagram_reels",
+      action: "would_publish",
+      platform_enabled: true,
+      blockers: [],
+    },
+  ];
+  const report = buildRuntimeOwnershipSentinel({
+    now: new Date("2026-06-14T13:55:00Z"),
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      LOCAL_PUBLIC_URL: "https://pulse.example.test",
+    },
+    localHealth: health(),
+    publicHealth: health(),
+    processSnapshot: goodProcessSnapshot,
+    schedulerProof: {
+      dryRunPlan: {
+        generated_at: "2026-06-14T12:51:40.487Z",
+        safety: {
+          dry_run_only: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+        },
+        actions: currentDryRunActions,
+      },
+      guardedDispatchPlan: {
+        generated_at: "2026-06-14T13:00:00.000Z",
+        ready_for_guarded_dispatch: true,
+        dispatch_ready_actions: currentDryRunActions,
+      },
+      executorPlan: {
+        generated_at: "2026-06-13T12:53:13.916Z",
+        handoff_ready_actions: [
+          {
+            story_id: "old-story",
+            platform: "youtube_shorts",
+            action_id: "old-story:youtube_shorts",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.deepEqual(report.blockers, []);
+  assert.ok(report.advisory.some((line) => /manual executor handoff stale/i.test(line)));
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, true);
+  assert.equal(report.scheduler_window_readiness.next_action, "observe_guarded_scheduler_window");
+});
+
 test("process snapshots normalise PID, server ownership and tunnel evidence", () => {
   const snapshot = normaliseProcessSnapshot({
     port: "3001",

@@ -194,6 +194,50 @@ function normalise(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+test("goal proof package gives DOOM Chain Spear a concrete combat title instead of reinstall fallback", () => {
+  const story = greenStory();
+  story.id = "doom-chain-spear-combat-pack";
+  story.canonical_subject = "DOOM: The Dark Ages";
+  story.canonical_game = "DOOM: The Dark Ages";
+  story.canonical_angle = "Chain Spear movement changes arena combat";
+  story.public_title = "DOOM The Dark Ages Chain Spear Has A Fight Risk";
+  story.title = "DOOM The Dark Ages Chain Spear Has A Fight Risk";
+  story.suggested_thumbnail_text = "CHAIN SPEAR RISK";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.description =
+    "Xbox Wire says Revelations adds the Chain Spear to DOOM: The Dark Ages, changing how players pull enemies, close distance and keep arena fights moving.";
+  story.full_script =
+    "One new DOOM weapon can expose whether this DLC has more than spectacle. Xbox Wire says Revelations adds the Chain Spear to The Dark Ages. The useful test is whether a pull tool changes movement, distance and arena rhythm, or turns fights into noisy clutter. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-03T13:20:00.000Z",
+  });
+
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+  const instagram = pack.platform_publish_manifest.outputs.instagram_reels;
+  const facebook = pack.platform_publish_manifest.outputs.facebook_reels;
+  const evidence = pack.platform_publish_manifest.platform_native_evidence;
+  assert.equal(youtube.title, "DOOM The Dark Ages Chain Spear Changes Combat Flow");
+  assert.equal(instagram.title, "DOOM The Dark Ages Chain Spear Changes Combat Flow");
+  assert.equal(facebook.title, "DOOM The Dark Ages Chain Spear Changes Combat Flow");
+  assert.match(youtube.description, /^DOOM: The Dark Ages is turning Chain Spear movement/i);
+  assert.match(instagram.caption, /^DOOM: The Dark Ages is turning Chain Spear movement/i);
+  assert.match(facebook.page_caption, /^DOOM: The Dark Ages is turning Chain Spear movement/i);
+  assert.doesNotMatch(youtube.title, /reinstall/i);
+  assert.equal(
+    evidence.failures.some(
+      (failure) =>
+        ["youtube_shorts", "instagram_reels", "facebook_reels"].includes(failure.platform) &&
+        failure.reason === "weak_platform_title",
+    ),
+    false,
+    JSON.stringify(evidence.failures),
+  );
+});
+
 test("goal proof package builds the remaining creative and commercial artefacts", () => {
   const pack = buildGoalProofPackage({
     story,

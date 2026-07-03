@@ -3279,6 +3279,135 @@ function timestampCadenceWarnings(cadence = {}, report = {}) {
   return warnings;
 }
 
+const PROTECTED_VOICE_PHRASE_MAX_GAP_SECONDS = 0.35;
+const COLON_TITLE_TAIL_STOP_WORDS = new Set([
+  "shows",
+  "show",
+  "gets",
+  "get",
+  "has",
+  "have",
+  "turns",
+  "turn",
+  "makes",
+  "make",
+  "needs",
+  "need",
+  "proves",
+  "prove",
+  "reveals",
+  "reveal",
+  "is",
+  "are",
+  "could",
+  "can",
+  "just",
+]);
+
+function voicePhraseToken(value = "") {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/['\u2019]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function voicePhraseTokens(value = "") {
+  return cleanText(value)
+    .split(/\s+/)
+    .map(voicePhraseToken)
+    .filter(Boolean);
+}
+
+function protectedPhraseSlug(tokens = []) {
+  return tokens.join("_").replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "phrase";
+}
+
+function colonTitleProtectedPhrase(value = "") {
+  const text = cleanText(value);
+  if (!text.includes(":")) return "";
+  const [head, ...tailParts] = text.split(":");
+  const headTokens = voicePhraseTokens(head).slice(0, 4);
+  const tailTokens = [];
+  for (const token of voicePhraseTokens(tailParts.join(":"))) {
+    if (COLON_TITLE_TAIL_STOP_WORDS.has(token)) break;
+    tailTokens.push(token);
+    if (tailTokens.length >= 3) break;
+  }
+  const tokens = [...headTokens, ...tailTokens];
+  return tokens.length >= 2 ? tokens.join(" ") : "";
+}
+
+function protectedVoicePhrasesForStory(story = {}) {
+  const phrases = new Map();
+  const add = (value = "", source = "story") => {
+    const tokens = voicePhraseTokens(value);
+    if (tokens.length < 2 || tokens.length > 7) return;
+    const slug = protectedPhraseSlug(tokens);
+    if (!phrases.has(slug)) phrases.set(slug, { slug, text: tokens.join(" "), tokens, source });
+  };
+
+  add("Pulse Gaming", "brand_cta");
+  for (const [source, value] of [
+    ["canonical_game", story.canonical_game],
+    ["canonical_subject", story.canonical_subject],
+    ["game_title", story.game_title],
+    ["title_colon_phrase", colonTitleProtectedPhrase(story.title || story.public_title || story.selected_title || story.upload_title)],
+    ["selected_title_colon_phrase", colonTitleProtectedPhrase(story.selected_title || story.public_title || story.upload_title)],
+  ]) {
+    add(value, source);
+  }
+
+  return [...phrases.values()];
+}
+
+function protectedVoicePhrasePauseAudit(story = {}, timestampPayload = {}) {
+  const words = timestampWordsForPayload(timestampPayload).map((word) => ({
+    ...word,
+    token: voicePhraseToken(word.text),
+  })).filter((word) => word.token);
+  const phrases = protectedVoicePhrasesForStory(story);
+  const failures = [];
+  const warnings = [];
+  const phraseChecks = [];
+
+  for (const phrase of phrases) {
+    for (let i = 0; i <= words.length - phrase.tokens.length; i += 1) {
+      const window = words.slice(i, i + phrase.tokens.length);
+      if (!phrase.tokens.every((token, index) => window[index]?.token === token)) continue;
+      const gaps = [];
+      for (let j = 1; j < window.length; j += 1) {
+        const gap = Number(window[j].start) - Number(window[j - 1].end);
+        if (Number.isFinite(gap)) gaps.push(Number(gap.toFixed(3)));
+      }
+      const maxGap = gaps.length ? Math.max(...gaps) : 0;
+      const check = {
+        phrase: phrase.text,
+        source: phrase.source,
+        max_gap_seconds: Number(maxGap.toFixed(3)),
+        threshold_seconds: PROTECTED_VOICE_PHRASE_MAX_GAP_SECONDS,
+      };
+      phraseChecks.push(check);
+      if (maxGap > PROTECTED_VOICE_PHRASE_MAX_GAP_SECONDS) {
+        failures.push(`protected_phrase_pause:${phrase.slug}`);
+      }
+      break;
+    }
+  }
+
+  if (!phraseChecks.length && phrases.length && words.length) {
+    warnings.push("protected_phrase_pause:no_protected_phrase_observed");
+  }
+
+  return {
+    failures: [...new Set(failures)],
+    warnings,
+    evidence: {
+      max_allowed_protected_phrase_gap_seconds: PROTECTED_VOICE_PHRASE_MAX_GAP_SECONDS,
+      protected_phrase_checks: phraseChecks,
+    },
+  };
+}
+
 function comparableVoiceText(value = "") {
   return cleanText(value)
     .toLowerCase()
@@ -3539,6 +3668,10 @@ async function voiceQualityPreflightForStory(story = {}) {
     story,
     timestampEvidence.payload || {},
   );
+  const protectedPhrasePause = protectedVoicePhrasePauseAudit(
+    story,
+    timestampEvidence.payload || {},
+  );
   if (!report) {
     const hardPronunciationFailures = pronunciationProfile.failures.filter((failure) =>
       /^gta_vi_/.test(failure) ||
@@ -3548,17 +3681,29 @@ async function voiceQualityPreflightForStory(story = {}) {
         /^voice_pronunciation_/.test(failure)
       ),
     );
+    const hardVoicePhraseFailures = protectedPhrasePause.failures;
     if (!hardPronunciationFailures.length) {
-      return null;
+      if (!hardVoicePhraseFailures.length) return null;
+      return {
+        result: "fail",
+        failures: [...new Set(hardVoicePhraseFailures)],
+        warnings: protectedPhrasePause.warnings,
+        evidence: {
+          voice_quality_report_path: reportPath || null,
+          word_timestamps_path: timestampEvidence.path || null,
+          ...protectedPhrasePause.evidence,
+        },
+      };
     }
     return {
       result: "fail",
-      failures: [...new Set(hardPronunciationFailures)],
-      warnings: [],
+      failures: [...new Set([...hardPronunciationFailures, ...hardVoicePhraseFailures])],
+      warnings: protectedPhrasePause.warnings,
       evidence: {
         voice_quality_report_path: reportPath || null,
         word_timestamps_path: timestampEvidence.path || null,
         ...pronunciationProfile.evidence,
+        ...protectedPhrasePause.evidence,
       },
     };
   }
@@ -3585,12 +3730,14 @@ async function voiceQualityPreflightForStory(story = {}) {
     ...segmentationFailures,
     ...currentCadenceFailures,
     ...pronunciationProfile.failures,
+    ...protectedPhrasePause.failures,
   ].map(cleanText).filter(Boolean);
   const warnings = [
     ...asArray(report.warnings),
     ...asArray(report.cadence?.warnings),
     ...currentCadenceWarnings,
     ...pronunciationProfile.warnings,
+    ...protectedPhrasePause.warnings,
   ].map(cleanText).filter(Boolean);
   const failed =
     blockers.length > 0 ||
@@ -3619,6 +3766,7 @@ async function voiceQualityPreflightForStory(story = {}) {
             local_tts_segment_gap_s: segmentationEvidence.segment_gap_s,
           }
         : {}),
+      ...protectedPhrasePause.evidence,
       ...pronunciationProfile.evidence,
     },
   };

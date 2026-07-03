@@ -26,6 +26,7 @@ const {
   mergeBridgeCandidates,
   selectCandidateSourceStories,
   visualEntityPreflightForStory,
+  voiceQualityPreflightForStory,
 } = require("../../tools/next-publish-candidates");
 const {
   TTS_PRONUNCIATION_PROFILE_VERSION,
@@ -8622,4 +8623,66 @@ test("attachPreflightQa keeps read-only preflight mutations off source stories",
   assert.equal(stories[0].publish_status, null);
   assert.equal(stories[0].publish_error, undefined);
   assert.equal(stories[0].content_qa_failures, undefined);
+});
+
+test("voice quality preflight blocks protected game-title pauses from colon titles", async () => {
+  const result = await voiceQualityPreflightForStory({
+    id: "halo-title-pause",
+    title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    canonical_game: "Halo: Campaign Evolved",
+    voice_quality_report: {
+      verdict: "PASS",
+      blockers: [],
+      warnings: [],
+      cadence: { spoken_wpm: 145, blockers: [], warnings: [] },
+    },
+    word_timestamps_payload: {
+      words: [
+        { word: "Halo", start: 0, end: 0.32 },
+        { word: "Campaign", start: 0.92, end: 1.2 },
+        { word: "Evolved", start: 1.2, end: 1.58 },
+        { word: "is", start: 1.58, end: 1.7 },
+        { word: "back", start: 1.7, end: 2.0 },
+      ],
+    },
+  });
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("protected_phrase_pause:halo_campaign_evolved"));
+  assert.equal(
+    result.evidence.protected_phrase_checks.find((check) => check.phrase === "halo campaign evolved")
+      .max_gap_seconds,
+    0.6,
+  );
+});
+
+test("voice quality preflight accepts protected brand phrase without internal pause", async () => {
+  const result = await voiceQualityPreflightForStory({
+    id: "pulse-cta-clean",
+    title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    canonical_game: "MARVEL Tokon",
+    voice_quality_report: {
+      verdict: "PASS",
+      blockers: [],
+      warnings: [],
+      cadence: { spoken_wpm: 150, blockers: [], warnings: [] },
+    },
+    word_timestamps_payload: {
+      words: [
+        { word: "MARVEL", start: 0, end: 0.36 },
+        { word: "Tokon", start: 0.36, end: 0.78 },
+        { word: "Follow", start: 2.0, end: 2.3 },
+        { word: "Pulse", start: 2.3, end: 2.62 },
+        { word: "Gaming", start: 2.62, end: 3.04 },
+      ],
+    },
+  });
+
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.failures, []);
+  assert.equal(
+    result.evidence.protected_phrase_checks.find((check) => check.phrase === "pulse gaming")
+      .max_gap_seconds,
+    0,
+  );
 });

@@ -88,7 +88,13 @@ console.log(JSON.stringify(rows));
 '@
     $raw = $nodeScript | node - 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $raw) { return @() }
-    return @($raw | ConvertFrom-Json)
+    $parsed = $raw | ConvertFrom-Json
+    if ($null -eq $parsed) { return @() }
+    foreach ($job in @($parsed)) {
+      if ($job -and $job.PSObject.Properties["id"]) {
+        Write-Output $job
+      }
+    }
   } catch {
     Write-RuntimeLog ("active_publish_restart_guard_unavailable db={0} error={1}" -f $guardDbPath, $_.Exception.Message)
     return @()

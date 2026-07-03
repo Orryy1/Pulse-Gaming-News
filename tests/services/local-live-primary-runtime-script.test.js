@@ -38,6 +38,9 @@ test("local live primary runtime launcher defers restarts while publish jobs are
   assert.match(script, /Get-ActivePublishJobs/);
   assert.match(script, /kind IN \('publish','publish_window_watchdog'\)/);
   assert.match(script, /lease_until/);
+  assert.match(script, /ConvertFrom-Json/);
+  assert.match(script, /PSObject\.Properties\["id"\]/);
+  assert.doesNotMatch(script, /return @\(\$raw \| ConvertFrom-Json\)/);
   assert.match(script, /restart_deferred_active_publish_jobs/);
   assert.match(script, /PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH/);
   assert.match(script, /exit 0/);

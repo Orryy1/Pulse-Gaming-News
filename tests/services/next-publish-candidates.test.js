@@ -6633,6 +6633,80 @@ test("runPreflightQaForStory passes scheduler-effective platform media to conten
   assert.equal(seen.platformPath, baseVideo);
 });
 
+test("runPreflightQaForStory resolves artifact-relative voice paths before content QA", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-effective-voice-path-"));
+  const baseVideo = path.join(root, "visual_v4_render.mp4");
+  const youtubeVariant = path.join(root, "platform_variants", "youtube_shorts", "visual_v4_render_youtube.mp4");
+  const audio = path.join(root, "audio", "narration.mp3");
+  const timestamps = path.join(root, "audio", "word_timestamps.json");
+  await fs.outputFile(baseVideo, Buffer.alloc(2048));
+  await fs.outputFile(youtubeVariant, Buffer.alloc(2048));
+  await fs.outputFile(audio, Buffer.from("fake audio"));
+  await fs.writeJson(timestamps, {
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      transcript: "MARVEL Tokon is a clean proof.",
+      ttsPronunciationProfileVersion: TTS_PRONUNCIATION_PROFILE_VERSION,
+    },
+    words: [{ word: "MARVEL", start: 0, end: 0.25 }],
+  });
+  const seen = { content: null };
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "marvel_tokon_artifact_relative_voice",
+      title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+      canonical_subject: "MARVEL Tokon: Fighting Souls",
+      exported_path: baseVideo,
+      scheduler_bridge_artifact_dir: root,
+      audio_path: "audio/narration.mp3",
+      narration_audio_path: "audio/narration.mp3",
+      word_timestamps_path: "audio/word_timestamps.json",
+      duration_seconds: 46,
+      runtime_seconds: 46,
+      audio_duration: 46,
+      full_script:
+        "MARVEL Tokon just turned Blade, Loki and Deadpool into a team building test. Follow Pulse Gaming so you never miss a beat.",
+      platform_publish_manifest: {
+        outputs: {
+          youtube_shorts: {
+            publish_duration_seconds: { min: 15, max: 60 },
+            technical_duration_seconds: 44,
+            variant_video_path: youtubeVariant,
+          },
+        },
+      },
+    }),
+    {
+      runContentQa: async (story) => {
+        seen.content = story;
+        return { result: "pass", failures: [], warnings: [] };
+      },
+      buildVideoQaOptionsForStory: (story, options) => options || {},
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "pass");
+  assert.equal(seen.content.audio_path, audio);
+  assert.equal(seen.content.narration_audio_path, audio);
+  assert.equal(seen.content.word_timestamps_path, timestamps);
+});
+
 test("runPreflightQaForStory blocks final renders with repeated visual-unit expansion", async () => {
   const clips = Array.from({ length: 6 }, (_, index) => ({
     id: `halo-motion-${index + 1}`,

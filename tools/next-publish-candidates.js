@@ -3958,6 +3958,38 @@ function artifactDirForStory(story = {}) {
   return exported ? path.dirname(path.resolve(exported)) : "";
 }
 
+function artifactRelativeExistingPath(artifactDir = "", reference = "", { fsImpl = fs } = {}) {
+  const cleaned = cleanText(reference);
+  if (!cleaned || !artifactDir || path.isAbsolute(cleaned)) return cleaned;
+  const resolved = path.resolve(artifactDir, cleaned);
+  try {
+    if (!fsImpl?.existsSync || fsImpl.existsSync(resolved)) return resolved;
+  } catch {
+    return cleaned;
+  }
+  return cleaned;
+}
+
+function normaliseArtifactRelativePreflightMedia(story = {}, opts = {}) {
+  const cloned = cloneStoryForPreflight(story);
+  const artifactDir = artifactDirForStory(cloned);
+  if (!artifactDir) return cloned;
+  const fsImpl = opts.fs || fs;
+  for (const field of [
+    "audio_path",
+    "audioPath",
+    "narration_audio_path",
+    "resolved_narration_audio_path",
+    "word_timestamps_path",
+    "timestamps_path",
+    "timestamp_path",
+  ]) {
+    if (!cleanText(cloned[field])) continue;
+    cloned[field] = artifactRelativeExistingPath(artifactDir, cloned[field], { fsImpl });
+  }
+  return cloned;
+}
+
 function platformDurationWindowMax(platform = "", output = {}, story = {}) {
   return (
     numberOrNull(output.publish_duration_seconds?.max) ??
@@ -4036,7 +4068,7 @@ function platformEffectiveMediaForStory(story = {}, platform = "", { fsImpl = fs
 }
 
 function schedulerEffectivePreflightStory(story = {}, opts = {}) {
-  const cloned = cloneStoryForPreflight(story);
+  const cloned = normaliseArtifactRelativePreflightMedia(story, opts);
   const platforms = missingEnabledPublishPlatformNames(story, opts);
   if (!platforms.length) return cloned;
   const manifest = objectValue(story.platform_publish_manifest || story.platformManifest, {});

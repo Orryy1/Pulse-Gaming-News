@@ -73,6 +73,25 @@ function localClips(count = 8) {
   }));
 }
 
+function officialWindowClipsFromFourAssets() {
+  return Array.from({ length: 8 }, (_, index) => {
+    const asset = index % 4;
+    return {
+      id: `playstation-window-${index + 1}`,
+      source_family: `playstation_blog_marvel_tokon_asset_${asset + 1}_window_${index + 1}_5`,
+      path: `C:\\media\\marvel-tokon-window-${index + 1}.mp4`,
+      source_url: `https://vulcan.playstation.test/marvel-tokon-asset-${asset + 1}.mp4`,
+      durationS: 3.1,
+      media_kind: "direct_video",
+      source_type: "official_game_site_news_page",
+      validation_reason: "trimmed_segment_samples_passed",
+      trust_evidence_source: "validated_official_local_motion",
+      counts_towards_motion_readiness: true,
+      validated: true,
+    };
+  });
+}
+
 function staleBlockedFootagePlan() {
   return {
     readiness: {
@@ -310,6 +329,55 @@ test("Visual V4 Director turns Steam, score, price and retention signals into a 
       "media_house_polish_score",
     ),
   );
+});
+
+test("Visual V4 Director uses distinct official clip windows when source assets are limited", () => {
+  const clips = officialWindowClipsFromFourAssets();
+  const footagePlan = {
+    readiness: {
+      status: "v4_motion_ready",
+      blockers: [],
+      warnings: [],
+    },
+    motion_budget: {
+      required_motion_scenes: 5,
+      available_motion_clips: clips.length,
+      required_distinct_families: 4,
+      available_distinct_motion_families: 4,
+      required_distinct_source_assets: 4,
+      available_distinct_source_assets: 4,
+      max_static_card_ratio: 0.28,
+      max_static_card_seconds: 14,
+      target_motion_ratio: 0.64,
+    },
+    motion_inventory: {
+      accepted_local_clips: clips,
+    },
+  };
+
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "marvel-tokon-window-selection",
+      title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+      canonical_subject: "MARVEL Tokon",
+      full_script:
+        "MARVEL Tokon just turned Blade, Loki and Deadpool into a real team-building argument. The useful question is whether these characters create readable assist chains or just crowd the screen. Follow Pulse Gaming so you never miss a beat.",
+    },
+    footagePlan,
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+  const clipIds = motionShots.map((shot) => shot.motion_pack_clip_id);
+
+  assert.equal(plan.readiness.status, "director_ready");
+  assert.equal(motionShots.length >= 5, true);
+  assert.equal(new Set(clipIds).size, clipIds.length, "motion shots must not repeat the exact same clip window");
+  assert.equal(plan.shot_budget.available_motion_clips, 8);
+  assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 8);
+  assert.ok(!plan.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
 });
 
 test("Visual V4 Director gives every card-like beat readable dwell time", () => {

@@ -249,10 +249,12 @@ function previousMotionPackFromStoryMotionClips(story = {}) {
       validated: true,
       segmentValidationPassed: true,
       allowed_for_flash_lane: true,
+      story_selected_motion_clip: true,
       provenance: {
         ...(clip.provenance || {}),
         source_report: "story_validated_motion_clips",
         story_id: storyId || clip.provenance?.story_id || null,
+        story_selected_motion_clip: true,
         segment_validated: true,
         allowed_for_flash_lane: true,
         validation_reason:
@@ -367,13 +369,13 @@ function safeName(value) {
 }
 
 async function loadPreviousMotionPack(args, story, outDir) {
-  if (args.preserveExisting === false) return {};
+  const storyMotionPack = previousMotionPackFromStoryMotionClips(story);
+  if (args.preserveExisting === false) return storyMotionPack;
   const artifactDir = storyArtifactDir(story);
   const footageInventory = artifactDir
     ? await readJsonIfExists(path.join(artifactDir, "footage_inventory.json"), {})
     : {};
   const inventoryMotionPack = previousMotionPackFromFootageInventory(story, footageInventory);
-  const storyMotionPack = previousMotionPackFromStoryMotionClips(story);
   if (args.previousMotionPack) {
     return mergePreviousMotionPacks(
       await readJsonIfExists(args.previousMotionPack, {}),
@@ -496,6 +498,7 @@ module.exports = {
   mergePreviousMotionPacks,
   normaliseStory,
   ownedMotionClipsFromFootageInventory,
+  loadPreviousMotionPack,
   parseArgs,
   previousMotionPackFromFootageInventory,
   previousMotionPackFromStoryMotionClips,

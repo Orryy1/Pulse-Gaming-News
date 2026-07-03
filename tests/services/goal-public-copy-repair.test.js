@@ -728,6 +728,72 @@ test("public copy repair can force a quality rewrite for Doom PS5 Pro PSSR packa
   assert.match(srt, /expensive blur/);
 });
 
+test("public copy repair syncs broad Doom game aliases without rewriting passing narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-doom-canonical-sync-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  const script =
+    "Doom The Dark Ages just made its next DLC about speed, not size. Xbox Wire says the Revelations update adds a Chain Spear built around fast movement. The risk is obvious: Doom gets worse when speed turns into unreadable effects spam. The question is whether this weapon pulls you into danger with control, or just throws more noise across the arena. If the Chain Spear sharpens that push-forward combat, lapsed players get a real reason to come back. If it is only a flashy tool, the novelty dies after the first fight. Follow Pulse Gaming so you never miss a beat.";
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_e2914175f30e0777",
+    canonical_subject: "Doom: The Dark Ages",
+    canonical_game: "DOOM",
+    canonical_title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    selected_title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    short_title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    thumbnail_headline: "CHAIN SPEAR TEST",
+    first_spoken_line: "Doom The Dark Ages just made its next DLC about speed, not size.",
+    narration_hook: "Doom The Dark Ages just made its next DLC about speed, not size.",
+    narration_script: script,
+    tts_script: script,
+    spoken_narration_script: script,
+    description:
+      "Doom The Dark Ages just made its next DLC about speed, not size. Xbox Wire says the Revelations update adds a Chain Spear built around fast movement. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    confirmed_claims: ["DOOM: The Dark Ages Goes Supersonic With New DLC Chain Spear"],
+  }, { spaces: 2 });
+  await fs.outputJson(path.join(artifactDir, "script_scorecard.json"), buildViralScriptIntelligence({
+    story: {
+      id: "rss_e2914175f30e0777",
+      title: "Doom The Dark Ages Chain Spear Changes The Fight",
+      source_name: "Xbox Wire",
+    },
+    script,
+  }), { spaces: 2 });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Doom The Dark Ages Chain Spear Changes The Fight",
+        description:
+          "Doom The Dark Ages just made its next DLC about speed, not size. Xbox Wire says the Revelations update adds a Chain Spear built around fast movement. Source: Xbox Wire.",
+        cover_frame: { headline: "CHAIN SPEAR TEST" },
+      },
+      instagram_reels: {
+        caption:
+          "Doom The Dark Ages just made its next DLC about speed, not size. Xbox Wire says the Revelations update adds a Chain Spear built around fast movement. Source: Xbox Wire.",
+        cover_frame: { headline: "CHAIN SPEAR TEST" },
+      },
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_e2914175f30e0777", artifact_dir: artifactDir }],
+    generatedAt: "2026-07-02T17:15:00.000Z",
+  });
+
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "canonical_entity_synced");
+  assert.equal(updated.canonical_subject, "Doom: The Dark Ages");
+  assert.equal(updated.canonical_game, "Doom: The Dark Ages");
+  assert.equal(updated.narration_script, script);
+  assert.equal(platformManifest.outputs.youtube_shorts.title, "Doom The Dark Ages Chain Spear Changes The Fight");
+  assert.match(platformManifest.outputs.instagram_reels.caption, /Chain Spear/i);
+});
+
 test("public copy repair promotes Marvel Tokon roster packages from character-list subjects", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-marvel-tokon-quality-rewrite-"));
   const artifactDir = path.join(root, "story");

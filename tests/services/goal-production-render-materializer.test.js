@@ -164,6 +164,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
   const minimumDurationS = Number(overrides.minimumDurationS || 12);
+  const maxDurationS = Number(overrides.maxDurationS || Math.max(14, minimumDurationS));
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -205,6 +206,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
           word_count: readableText.split(/\s+/).filter(Boolean).length,
           planned_visible_duration_s: minimumDurationS,
           minimum_visible_duration_s: minimumDurationS,
+          max_readable_card_duration_s: maxDurationS,
         },
       },
       blockers: [],
@@ -607,6 +609,101 @@ test("goal production render materializer prefers unique direct motion bases for
   assert.equal(calls[0].visual_v4_bridge_video_clips.length, 6);
   assert.deepEqual(directMotionBaseSourceOveruseEvidence(calls[0].visual_v4_bridge_video_clips).blockers, []);
   assert.equal(calls[0].visual_v4_bridge_video_clips.some((clip) => /clip-b-42|clip-c-42/.test(clip.path)), false);
+});
+
+test("goal production render materializer drops minority Steam app outlier clips before render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-app-outlier-"));
+  const artifactDir = await makePackage(root, "story-steam-app-outlier");
+  const clips = [];
+  const appRows = [
+    ["dark-ages-a.mp4", "3017860", "a"],
+    ["dark-ages-b.mp4", "3017860", "b"],
+    ["dark-ages-c.mp4", "3017860", "c"],
+    ["dark-ages-d.mp4", "3017860", "d"],
+    ["dark-ages-e.mp4", "3017860", "e"],
+    ["old-doom.mp4", "379720", "old"],
+  ];
+  for (const [fileName, appId, key] of appRows) {
+    const clipPath = path.join(artifactDir, fileName);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, clips.length + 33));
+    clips.push({
+      id: fileName.replace(/\.mp4$/i, ""),
+      path: clipPath,
+      source_family: `steam_${appId}_doom_media_${key}_window_36_5`,
+      motion_family: `steam_${appId}_doom_media_${key}_window_36_5`,
+      source_url: `https://video.akamai.steamstatic.com/store_trailers/${appId}/${key}/hash/video/hls_264_master.m3u8?t=1`,
+      source_asset_key: `steam:${appId}:${key}`,
+      source_type: "steam_movie",
+      media_kind: "direct_video",
+      durationS: 5,
+      validated: true,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+      distinct_source_families: clips.map((clip) => clip.source_family),
+      trusted_local_source_families: clips.map((clip) => clip.source_family),
+    },
+    motion_budget: {
+      required_motion_scenes: 5,
+      available_motion_clips: clips.length,
+      required_distinct_families: 4,
+      available_distinct_motion_families: clips.length,
+    },
+    readiness: {
+      status: "ready",
+      blockers: [],
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 29,
+      spoken_wpm: 150,
+    },
+  });
+
+  const calls = [];
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob("story-steam-app-outlier", artifactDir, {
+          title: "Doom The Dark Ages Chain Spear Changes The Fight",
+          canonical_subject: "Doom: The Dark Ages",
+          canonical_game: "Doom: The Dark Ages",
+        }),
+      ],
+    },
+    generatedAt: "2026-07-02T17:25:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      calls.push(story);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: "story-steam-app-outlier",
+        output,
+        clips: story.visual_v4_bridge_video_clips.length,
+        rendered_duration_s: 38,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].visual_v4_bridge_video_clips.length, 5);
+  assert.ok(
+    calls[0].visual_v4_bridge_video_clips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0) < 29,
+  );
+  assert.equal(calls[0].visual_v4_bridge_video_clips.some((clip) => /379720|old-doom/i.test(JSON.stringify(clip))), false);
+  assert.equal(calls[0].visual_v4_director_plan.shot_plan.some((shot) => /379720|old-doom/i.test(JSON.stringify(shot))), false);
 });
 
 test("goal production render materializer preserves nested actual card-visible windows over overlay fallback", async () => {
@@ -1095,6 +1192,26 @@ test("goal production render materializer limits HyperFrames cards by narration 
   await Promise.all(clipPaths.map((clipPath, index) =>
     fs.outputFile(clipPath, Buffer.alloc(2048, 50 + index)),
   ));
+  const durationBudgetClips = clipPaths.map((clipPath, index) => ({
+    id: `duration-budget-clip-${index + 1}`,
+    path: clipPath,
+    local_materialized_path: clipPath,
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3017860/${index + 1}/duration-budget/hls_264_master.m3u8`,
+    source_type: "steam_movie",
+    source_kind: "video_file",
+    source_family: `steamstatic:/store_trailers/3017860/${index + 1}/duration_budget_window_${36 + index * 6}_5`,
+    motion_family: `steamstatic:/store_trailers/3017860/${index + 1}/duration_budget_window_${36 + index * 6}_5`,
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    counts_towards_motion_readiness: true,
+    validated: true,
+    durationS: 5,
+  }));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: durationBudgetClips,
+    materialised_clips: durationBudgetClips,
+  });
   const job = readyJob("story-hf-duration-budget", artifactDir, {
     evidence: {
       narration_audio_path: path.join(artifactDir, "audio.mp3"),
@@ -1139,6 +1256,99 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 1);
 });
 
+test("goal production render materializer stretches selected HyperFrames card within proven dwell to cover narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-dwell-extension-"));
+  const artifactDir = await makePackage(root, "story-hf-dwell-extension");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-dwell-extension", kind, {
+      minimumDurationS: 12,
+      maxDurationS: 14,
+    }),
+  ));
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 42.028,
+      spoken_wpm: 154,
+    },
+  });
+  const directClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `direct-motion-${index + 1}`,
+    path: path.join(artifactDir, `direct-${index + 1}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3017860/${index + 1}/official/hls_264_master.m3u8`,
+    source_type: "steam_movie",
+    source_kind: "video_file",
+    source_family: `steamstatic:/store_trailers/3017860/${index + 1}/official_window_${36 + index * 6}_5`,
+    motion_family: `steamstatic:/store_trailers/3017860/${index + 1}/official_window_${36 + index * 6}_5`,
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    counts_towards_motion_readiness: true,
+    validated: true,
+    durationS: 5,
+  }));
+  await Promise.all(directClips.map((clip, index) =>
+    fs.outputFile(clip.path, Buffer.alloc(2048, 90 + index)),
+  ));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: directClips.length,
+    distinct_motion_family_count: directClips.length,
+    direct_video_motion_asset_count: directClips.length,
+    direct_video_motion_family_count: directClips.length,
+    clips: directClips,
+    materialised_clips: directClips,
+  });
+  const job = readyJob("story-hf-dwell-extension", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: directClips.length,
+      distinct_motion_family_count: directClips.length,
+      materialised_motion_clip_paths: directClips.map((clip) => clip.path),
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-02T17:05:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 42.028,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const directClipCount = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.media_kind === "direct_video",
+  ).length;
+  const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+  const coverage = renderStory.visual_v4_bridge_video_clips.reduce(
+    (sum, clip) => sum + Number(clip.durationS || 0),
+    0,
+  ) - 0.25 * Math.max(0, renderStory.visual_v4_bridge_video_clips.length - 1);
+
+  assert.equal(directClipCount, 6);
+  assert.equal(cardClips.length, 1);
+  assert.ok(cardClips[0].durationS > 12);
+  assert.ok(cardClips[0].durationS <= 14);
+  assert.ok(cardClips[0].readable_card_duration_extension_s > 0);
+  assert.ok(coverage + 0.12 >= 42.028);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, cardClips[0].durationS);
+  assert.ok(renderStory.hyperframes_premium_shell_gate.readableCardDurationExtensionS > 0);
+});
+
 test("goal production render materializer tops up balanced direct windows when HyperFrames duration would under-cover narration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-coverage-topup-"));
   const artifactDir = await makePackage(root, "story-hf-coverage-topup");
@@ -1148,7 +1358,7 @@ test("goal production render materializer tops up balanced direct windows when H
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
     cadence: {
-      duration_seconds: 42.028,
+      duration_seconds: 44.8,
       spoken_wpm: 158,
     },
   });
@@ -1210,7 +1420,7 @@ test("goal production render materializer tops up balanced direct windows when H
         story_id: renderStory.story_id,
         output,
         clips: renderStory.video_clips.length,
-        rendered_duration_s: 42.028,
+        rendered_duration_s: 44.8,
         size_bytes: 4096,
       };
     },
@@ -1229,9 +1439,10 @@ test("goal production render materializer tops up balanced direct windows when H
   ) - 0.25 * Math.max(0, directClips.length + cardClips.length - 1);
   assert.equal(directClips.length, 8);
   assert.equal(cardClips.length, 1);
+  assert.equal(cardClips[0].durationS, 14);
   assert.ok(directClips.some((clip) => /clip-b-42\.mp4$/.test(clip.path)));
   assert.ok(directClips.some((clip) => /clip-c-42\.mp4$/.test(clip.path)));
-  assert.ok(coverage + 0.12 >= 42.028);
+  assert.ok(coverage + 0.12 >= 44.8);
 });
 
 test("goal production render materializer preserves premium direct runway when HyperFrames cards are added", async () => {

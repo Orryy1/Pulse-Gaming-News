@@ -5769,6 +5769,82 @@ test("visual entity preflight blocks outlier Steam app direct motion in a specif
   assert.match(result.evidence.mismatched_motion_assets[0].source_url, /store_trailers\/379720\//);
 });
 
+test("visual entity preflight ignores stale artifact motion when current render story has selected clean clips", async () => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-render-selected-motion-"));
+  const cleanClips = [
+    ["dark-ages-a", "3017860", "1887810588"],
+    ["dark-ages-b", "3017860", "1777709634"],
+    ["dark-ages-c", "3017860", "1768853770"],
+    ["dark-ages-d", "3017860", "817483"],
+    ["dark-ages-e", "3017860", "1719368325"],
+  ].map(([id, appId, trailerId], index) => ({
+    id,
+    path: path.join(artifactDir, `${id}.mp4`),
+    source_url:
+      `https://video.akamai.steamstatic.com/store_trailers/${appId}/${trailerId}/hash/hls_264_master.m3u8?t=1`,
+    source_family:
+      `steamstatic:/store_trailers/${appId}/${trailerId}/hash_window_${36 + index}_5`,
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    rights_basis: "official_direct_media",
+    entity: "Doom: The Dark Ages",
+    entities: ["Doom: The Dark Ages"],
+  }));
+  const staleOldDoom = {
+    id: "old-doom",
+    path: path.join(artifactDir, "old-doom.mp4"),
+    source_url:
+      "https://video.akamai.steamstatic.com/store_trailers/379720/51646/hash/hls_264_master.m3u8?t=1",
+    source_family: "steam_379720_doom_media_11_dash_av1_window_42_5",
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    rights_basis: "official_direct_media",
+  };
+  await fs.writeJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    visual_v4_bridge_video_clips: cleanClips,
+    video_clips: cleanClips,
+  });
+  await fs.writeJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      accepted_local_clips: [...cleanClips, staleOldDoom],
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    assets: [...cleanClips, staleOldDoom].map((clip) => ({
+      ...clip,
+      source_owner: "Doom: The Dark Ages",
+      source_title: "Doom: The Dark Ages official Steam trailer segment",
+      licence_basis: "official_direct_media",
+      approval_status: "approved_for_transformative_editorial_use",
+    })),
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "rss_e2914175f30e0777",
+      title: "Doom The Dark Ages Chain Spear Changes The Fight",
+      canonical_subject: "Doom: The Dark Ages",
+      canonical_game: "Doom: The Dark Ages",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      artifact_dir: artifactDir,
+      visual_v4_bridge_video_clips: cleanClips,
+      video_clips: cleanClips,
+      rights_ledger: {
+        verdict: "pass",
+        assets: [],
+      },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+  assert.equal(JSON.stringify(result.evidence).includes("379720"), false);
+  assert.equal(result.evidence.direct_motion_assets.length, 5);
+});
+
 test("visual entity preflight blocks same-game wrong-character direct motion", async () => {
   const alexTrailer =
     "https://video.akamai.steamstatic.com/store_trailers/1364780/1659974978/e2cc6b24bc61a2692becfadca7a5687f36d6324b/1769127372/hls_264_master.m3u8?t=1769142439";
@@ -8089,6 +8165,68 @@ test("attachPreflightQa holds current motion-pack failures for repair instead of
   assert.equal(report.candidates[0].scheduler_quarantine.status, "held");
   assert.equal(report.candidates[0].scheduler_quarantine.reason, "current_motion_pack_blocked");
   assert.equal(report.preflight_qa.scheduler_quarantined, 1);
+});
+
+test("attachPreflightQa quarantines duration plus subject-mismatch candidates as repair work", async () => {
+  const story = baseStory({
+    id: "duration-subject-mismatch-quarantine",
+    title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    selected_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    canonical_subject: "MARVEL Tokon",
+    scheduler_bridge_source: "goal_production_cutover",
+  });
+  const report = buildNextPublishCandidatesReport([story], {
+    generatedAt: "2026-07-03T08:15:00.000Z",
+  });
+
+  await attachPreflightQa(report, [story], {
+    runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runContentQa: async () => ({
+      result: "fail",
+      failures: ["audio_duration_too_long (59.80s, max 59.00s)"],
+      warnings: [],
+    }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVisualEntityQa: async () => ({
+      result: "fail",
+      failures: ["direct_motion_subject_mismatch"],
+      warnings: [],
+    }),
+    runCurrentMotionPackQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].status, "review");
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.deepEqual(report.candidates[0].scheduler_quarantine, {
+    status: "held",
+    reason: "duration_and_visual_motion_repair_required",
+    lane: "platform_variant_and_visual_motion_repair",
+    safe_next_action: "rerender_subject_matched_motion_and_regenerate_duration_valid_platform_variant",
+    blockers: [
+      "content:audio_duration_too_long (59.80s, max 59.00s)",
+      "visual_entity_match:direct_motion_subject_mismatch",
+    ],
+  });
+  assert.ok(
+    report.candidates[0].reasons.includes("scheduler_quarantine_duration_and_visual_motion_repair_required"),
+  );
+  assert.equal(report.preflight_qa.scheduler_quarantined, 1);
+  assert.deepEqual(report.preflight_qa.scheduler_quarantine_reasons, {
+    duration_and_visual_motion_repair_required: 1,
+  });
 });
 
 test("runPreflightQaForStory blocks repeated direct clips from final render story even when materialised clips are refreshed", async (t) => {

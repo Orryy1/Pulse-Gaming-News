@@ -1731,6 +1731,88 @@ test("goal batch package proof keeps evidence-backed named-character cover headl
   ));
 });
 
+test("platform-native packs keep Doom Chain Spear DLC copy specific", () => {
+  const script =
+    "Doom The Dark Ages just made its next DLC about speed, not size. Xbox Wire says the Revelations update adds a Chain Spear built around fast movement. The risk is obvious: Doom gets worse when speed turns into unreadable effects spam. The question is whether this weapon pulls you into danger with control, or just throws more noise across the arena. If the Chain Spear sharpens that push-forward combat, lapsed players get a real reason to come back. If it is only a flashy tool, the novelty dies after the first fight. Follow Pulse Gaming so you never miss a beat.";
+  const native = buildPlatformNativePublishPacks({
+    story: {
+      id: "rss_e2914175f30e0777",
+      canonical_subject: "Doom: The Dark Ages",
+      canonical_game: "Doom: The Dark Ages",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      suggested_thumbnail_text: "CHAIN SPEAR RISK",
+      hook: "Doom The Dark Ages just made its next DLC about speed, not size.",
+      full_script: script,
+      duration_seconds: 38,
+    },
+    canonical: {
+      canonical_subject: "Doom: The Dark Ages",
+      canonical_game: "Doom: The Dark Ages",
+      selected_title: "Doom The Dark Ages Chain Spear Changes The Fight",
+      title: "Doom The Dark Ages Chain Spear Changes The Fight",
+      primary_source: "Xbox Wire",
+      first_spoken_line: "Doom The Dark Ages just made its next DLC about speed, not size.",
+      narration_script: script,
+      description:
+        "Doom The Dark Ages just made its next DLC about speed, not size. Xbox Wire says the Revelations update adds a Chain Spear built around fast movement.",
+      confirmed_claims: ["DOOM: The Dark Ages Goes Supersonic With New DLC Chain Spear"],
+      thumbnail_headline: "CHAIN SPEAR RISK",
+      duration_seconds: 38,
+    },
+  });
+  const platformManifest = {
+    outputs: native.outputs,
+    platform_native_evidence: native.platformNativeEvidence,
+  };
+  const score = buildPulseMediaHouseScore({
+    story_id: "rss_e2914175f30e0777",
+    canonical: {
+      canonical_subject: "Doom: The Dark Ages",
+      selected_title: native.outputs.youtube_shorts.title,
+      thumbnail_headline: native.outputs.youtube_shorts.cover_frame.headline,
+      first_frame_text: native.outputs.youtube_shorts.cover_frame.headline,
+      description: native.outputs.youtube_shorts.description,
+    },
+    scriptScorecard: { verdict: "viral_ready", viral_score: 90, blockers: [], warnings: [] },
+    visualQuality: { scores: { first_3_seconds_hook_score: 100, source_lock_quality_score: 100 } },
+    director: {
+      readiness: { status: "director_ready", blockers: [] },
+      shot_plan: [{ id: "hook", kind: "motion_clip", start_s: 0.1 }],
+      sound_transition_plan: {
+        sfx: {
+          cue_count: 3,
+          cues: [{ family: "impact" }, { family: "whoosh" }, { family: "hit" }],
+          mastering: { duck_under_narration: true, narration_priority: true },
+        },
+      },
+    },
+    audio: { voice_status: "materialized", word_timestamp_count: 101 },
+    loudness: { verdict: "pass", failures: [] },
+    platformManifest,
+    benchmark: {
+      result: "pass",
+      failures: [],
+      scores: {
+        motion_density_score: 88,
+        transition_energy_score: 89,
+        sfx_impact_score: 100,
+        media_house_polish_score: 95,
+        caption_legibility_score: 100,
+      },
+    },
+  });
+
+  assert.equal(native.outputs.youtube_shorts.title, "Doom The Dark Ages Chain Spear Changes The Fight");
+  assert.match(native.outputs.youtube_shorts.description, /Chain Spear movement/i);
+  assert.match(native.outputs.youtube_shorts.description, /player risk/i);
+  assert.match(native.outputs.youtube_shorts.description, /unreadable effects spam/i);
+  assert.match(native.outputs.instagram_reels.caption, /Chain Spear movement/i);
+  assert.equal(native.outputs.youtube_shorts.cover_frame.headline, "CHAIN SPEAR RISK");
+  assert.equal(native.platformNativeEvidence.verdict, "pass");
+  assert.ok(!score.hard_failures.includes("media_house:shorts_feed_competition_weak"), score.hard_failures);
+});
+
 test("platform-native packs turn roster reveals into concrete team-fighter stakes", () => {
   const prepared = prepareStoryForGoalProof({
     id: "rss_228f6f28b62f8426",

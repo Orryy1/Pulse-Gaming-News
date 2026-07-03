@@ -323,6 +323,72 @@ test("applyEnabledPlatformAutoPublishReadinessScope: autonomous handoff requires
   assert.equal(scoped.pillars.strict_dry_run_control.verdict, "amber");
 });
 
+test("applyEnabledPlatformAutoPublishReadinessScope: guarded scheduler holds broad repair backlog outside current window", () => {
+  const pillars = {
+    strict_dry_run_control: {
+      verdict: "amber",
+      reason: "human_review_required_or_platforms_deferred",
+      raw: {
+        safety_intact: true,
+        ready_for_unattended_publish: false,
+        ready_story_count: 2,
+        blocked_story_count: 0,
+        platform_publish_now_action_count: 4,
+        platform_enabled_dry_run_action_count: 4,
+        blocked_action_count: 0,
+        human_review_required_action_count: 0,
+        live_publish_allowed_action_count: 0,
+        guarded_dispatch_ready_action_count: 4,
+        publish_now_warning_action_count: 0,
+        reviewable_enabled_action_count: 0,
+      },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "green",
+      raw: {
+        autonomous_dry_run_action_count: 4,
+        dispatch_ready_action_count: 4,
+        blocked_action_count: 0,
+        safety_blocker_count: 0,
+        ready_for_guarded_dispatch: true,
+      },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "amber",
+      reason: "explicit_action_ids_required",
+      raw: {
+        dispatch_ready_action_count: 4,
+        selected_action_count: 0,
+        blocked_selected_action_count: 0,
+      },
+    },
+    repair_backlog: {
+      verdict: "red",
+      reason: "160_open_repair_items: 118_auto, 42_operator, 2_dead_end",
+      raw: {
+        total_items: 160,
+        auto_repairable_items: 118,
+        operator_required_items: 42,
+        dead_end_items: 2,
+        active_publish_blocker_items: 160,
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.scope.name, "enabled_platform_guarded_scheduler_window");
+  assert.equal(scoped.scope.guard_ready, true);
+  assert.ok(scoped.scope.overridden_pillars.includes("repair_backlog"));
+  assert.equal(scoped.pillars.repair_backlog.verdict, "amber");
+  assert.equal(scoped.pillars.repair_backlog.raw.previous_verdict, "red");
+  assert.equal(scoped.pillars.repair_backlog.raw.scoped_repair_items_visible, 160);
+  assert.equal(
+    scoped.pillars.repair_backlog.raw.enabled_platform_scope_override,
+    "repair_backlog_held_outside_current_enabled_platform_scope",
+  );
+});
+
 test("applyEnabledPlatformAutoPublishReadinessScope: autonomous executor handoff holds non-selected dry-run blockers", () => {
   const pillars = {
     strict_dry_run_control: {
@@ -2835,6 +2901,65 @@ test("resolvePublishReadinessNextAction: scheduler-scoped approval does not requ
   assert.match(nextAction, /normal guarded scheduler/);
   assert.match(nextAction, /manual executor handoff/);
   assert.doesNotMatch(nextAction, /Select explicit guarded dispatch action IDs before any live executor handoff/);
+});
+
+test("resolvePublishReadinessNextAction: autonomous scheduler actions take priority over broad repair backlog", () => {
+  const nextAction = pr.resolvePublishReadinessNextAction({
+    overall: "amber",
+    pillars: {
+      publish_cadence: { verdict: "green" },
+      final_voice_audit: { verdict: "green" },
+      strict_dry_run_control: {
+        verdict: "amber",
+        reason: "human_review_required_or_platforms_deferred",
+        raw: {
+          safety_intact: true,
+          ready_for_unattended_publish: false,
+          ready_story_count: 2,
+          blocked_story_count: 0,
+          platform_publish_now_action_count: 4,
+          platform_enabled_dry_run_action_count: 4,
+          blocked_action_count: 0,
+          human_review_required_action_count: 0,
+          live_publish_allowed_action_count: 0,
+          guarded_dispatch_ready_action_count: 4,
+          publish_now_warning_action_count: 0,
+          reviewable_enabled_action_count: 0,
+        },
+      },
+      guarded_dispatch_preflight: {
+        verdict: "green",
+        raw: {
+          autonomous_dry_run_action_count: 4,
+          dispatch_ready_action_count: 4,
+          blocked_action_count: 0,
+          safety_blocker_count: 0,
+          ready_for_guarded_dispatch: true,
+        },
+      },
+      guarded_dispatch_executor_preflight: {
+        verdict: "amber",
+        reason: "explicit_action_ids_required",
+        raw: {
+          dispatch_ready_action_count: 4,
+          selected_action_count: 0,
+          blocked_selected_action_count: 0,
+        },
+      },
+      repair_backlog: {
+        verdict: "amber",
+        raw: {
+          total_items: 160,
+          auto_repairable_items: 118,
+        },
+      },
+    },
+  });
+
+  assert.match(nextAction, /normal guarded scheduler/);
+  assert.match(nextAction, /disabled or deferred platforms stay excluded/);
+  assert.doesNotMatch(nextAction, /auto-repair backlog/);
+  assert.doesNotMatch(nextAction, /Do not publish unattended/);
 });
 
 test("pillarStrictDryRunControl: red when strict dry-run has active blockers", () => {

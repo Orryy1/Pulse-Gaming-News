@@ -218,6 +218,131 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.local_bridge_validation.evidence.render_bytes, 600_000);
 });
 
+test("buildLocalBridgeCandidate prefers selected render-story clips over stale materialised inventory", async () => {
+  const files = await fixture();
+  const motionPath = path.join(files.artifactDir, "materialised_motion_clips.json");
+  const motion = await fs.readJson(motionPath);
+  await fs.writeJson(motionPath, {
+    ...motion,
+    clips: [
+      ...motion.clips,
+      {
+        id: "old-doom",
+        path: "old-doom.mp4",
+        source_family: "steam_379720_doom_media_old_window_42_5",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/379720/old/hash/video.mpd",
+        media_kind: "direct_video",
+        source_type: "platform_storefront",
+      },
+    ],
+  });
+  await fs.writeJson(path.join(files.artifactDir, "visual_v4_render_story.json"), {
+    story_id: "story_custom_seas",
+    visual_v4_bridge_video_clips: [
+      { id: "selected-a", path: "selected-a.mp4", source_url: "https://media.sea.example/a.mp4", source_family: "sea_family_a", media_kind: "direct_video" },
+      { id: "selected-b", path: "selected-b.mp4", source_url: "https://media.sea.example/b.mp4", source_family: "sea_family_b", media_kind: "direct_video" },
+      { id: "selected-c", path: "selected-c.mp4", source_url: "https://media.sea.example/c.mp4", source_family: "sea_family_c", media_kind: "direct_video" },
+    ],
+    visual_v4_director_plan: {
+      readiness: { status: "director_ready", blockers: [] },
+      shot_plan: [
+        { id: "selected-a", source_family: "sea_family_a" },
+        { id: "selected-b", source_family: "sea_family_b" },
+        { id: "selected-c", source_family: "sea_family_c" },
+      ],
+    },
+  });
+  await fs.writeJson(path.join(files.artifactDir, "rights_ledger.json"), [
+    { asset_id: "selected-a", asset_type: "motion", path: "selected-a.mp4", source_url: "https://media.sea.example/a.mp4", licence_basis: "official_reference_only", allowed_platforms: ["youtube", "instagram", "facebook"] },
+    { asset_id: "selected-b", asset_type: "motion", path: "selected-b.mp4", source_url: "https://media.sea.example/b.mp4", licence_basis: "official_reference_only", allowed_platforms: ["youtube", "instagram", "facebook"] },
+    { asset_id: "selected-c", asset_type: "motion", path: "selected-c.mp4", source_url: "https://media.sea.example/c.mp4", licence_basis: "official_reference_only", allowed_platforms: ["youtube", "instagram", "facebook"] },
+    { asset_id: "audio", asset_type: "audio", path: "voice.mp3", licence_basis: "local_tts_generation" },
+  ]);
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-07-03T07:30:00.000Z",
+  });
+
+  assert.equal(candidate.video_clips.length, 3);
+  assert.equal(candidate.video_clips.some((clip) => /379720|old-doom/i.test(JSON.stringify(clip))), false);
+  assert.equal(/379720|old-doom/i.test(JSON.stringify(candidate)), false);
+  assert.deepEqual(
+    candidate.video_clips.map((clip) => clip.id),
+    ["selected-a", "selected-b", "selected-c"],
+  );
+});
+
+test("buildLocalBridgeCandidate adds owned rights for selected HyperFrames source cards", async () => {
+  const files = await fixture();
+  const selectedClips = [
+    {
+      id: "selected-a",
+      path: "selected-a.mp4",
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+      source_family: "steam_3017860_1887810588_window_36_5",
+      media_kind: "direct_video",
+      source_type: "steam_movie",
+    },
+    {
+      id: "selected-b",
+      path: "selected-b.mp4",
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/3017860/1777709634/hash/hls_264_master.m3u8",
+      source_family: "steam_3017860_1777709634_window_36_5",
+      media_kind: "direct_video",
+      source_type: "steam_movie",
+    },
+    {
+      id: "selected-c",
+      path: "selected-c.mp4",
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/3017860/1768853770/hash/hls_264_master.m3u8",
+      source_family: "steam_3017860_1768853770_window_36_5",
+      media_kind: "direct_video",
+      source_type: "steam_movie",
+    },
+    {
+      id: "hyperframes_premium_shell_source_1",
+      path: path.join(files.root, "test", "output", "hf_source_card_story_custom_seas.mp4"),
+      source_url: "local://hyperframes/story_custom_seas/source",
+      source_family: "hyperframes_source_card",
+      media_kind: "direct_video",
+      source_type: "hyperframes_premium_shell_card",
+    },
+  ];
+  await fs.writeJson(path.join(files.artifactDir, "visual_v4_render_story.json"), {
+    story_id: "story_custom_seas",
+    visual_v4_bridge_video_clips: selectedClips,
+    video_clips: selectedClips,
+  });
+  await fs.writeJson(path.join(files.artifactDir, "rights_ledger.json"), [
+    ...selectedClips.slice(0, 3).map((clip) => ({
+      asset_id: clip.id,
+      path: clip.path,
+      source_url: clip.source_url,
+      source_family: clip.source_family,
+      source_type: clip.source_type,
+      licence_basis: "reference_only_by_default",
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+      commercial_use_allowed: true,
+    })),
+    { asset_id: "audio", asset_type: "audio", path: "voice.mp3" },
+  ]);
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-07-03T08:05:00.000Z",
+  });
+  const hyperframesRights = candidate.rights_ledger.find(
+    (record) => record.asset_id === "hyperframes_premium_shell_source_1",
+  );
+
+  assert.ok(hyperframesRights);
+  assert.equal(hyperframesRights.licence_basis, "owned_generated_editorial_motion_graphic");
+  assert.equal(hyperframesRights.rights_risk_class, "owned_generated_motion");
+  assert.equal(hyperframesRights.commercial_use_allowed, true);
+  assert.deepEqual(hyperframesRights.allowed_platforms, ["youtube", "instagram", "facebook"]);
+});
+
 test("buildLocalBridgeCandidate keeps concise platform cover headlines instead of prepending full subject", async () => {
   const files = await fixture();
   const canonicalPath = path.join(files.artifactDir, "canonical_story_manifest.json");
@@ -407,6 +532,121 @@ test("upsertLocalBridgeCandidate rewrites bridge and repaired platform manifest 
   assert.equal(platformManifest.publish_status, "GREEN");
   assert.equal(platformManifest.can_auto_publish, true);
   assert.equal(platformManifest.outputs.instagram_reels.title, "Sea of Thieves Custom Seas Could Split Crews");
+});
+
+test("upsertLocalBridgeCandidate persists sanitized selected package evidence with backups", async () => {
+  const files = await fixture();
+  await fs.writeJson(path.join(files.artifactDir, "visual_v4_render_story.json"), {
+    story_id: "story_custom_seas",
+    visual_v4_bridge_video_clips: [
+      { id: "selected-a", path: "selected-a.mp4", source_url: "https://media.sea.example/a.mp4", source_family: "sea_family_a", media_kind: "direct_video" },
+      { id: "selected-b", path: "selected-b.mp4", source_url: "https://media.sea.example/b.mp4", source_family: "sea_family_b", media_kind: "direct_video" },
+      { id: "selected-c", path: "selected-c.mp4", source_url: "https://media.sea.example/c.mp4", source_family: "sea_family_c", media_kind: "direct_video" },
+    ],
+    visual_v4_director_plan: {
+      readiness: { status: "director_ready", blockers: [] },
+      shot_plan: [
+        { id: "selected-a", source_family: "sea_family_a", path: "selected-a.mp4" },
+        { id: "selected-b", source_family: "sea_family_b", path: "selected-b.mp4" },
+        { id: "selected-c", source_family: "sea_family_c", path: "selected-c.mp4" },
+      ],
+    },
+  });
+  await fs.writeJson(path.join(files.artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: 4,
+    distinct_motion_family_count: 4,
+    clips: [
+      { id: "selected-a", path: "selected-a.mp4", source_url: "https://media.sea.example/a.mp4", source_family: "sea_family_a", media_kind: "direct_video" },
+      {
+        id: "old-doom",
+        path: "old-doom.mp4",
+        source_family: "steam_379720_doom_media_old_window_42_5",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/379720/old/hash/video.mpd",
+        media_kind: "direct_video",
+      },
+    ],
+    materialised_clips: [
+      {
+        id: "old-doom",
+        path: "old-doom.mp4",
+        source_family: "steam_379720_doom_media_old_window_42_5",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/379720/old/hash/video.mpd",
+        media_kind: "direct_video",
+      },
+    ],
+  });
+  await fs.writeJson(path.join(files.artifactDir, "footage_inventory.json"), {
+    trusted_source_pipeline: {
+      distinct_reference_families: ["steam_379720_doom_media_old_window_42_5"],
+      intake_queue: [
+        {
+          id: "old-doom",
+          source_family: "steam_379720_doom_media_old_window_42_5",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/379720/old/hash/video.mpd",
+        },
+      ],
+    },
+    motion_inventory: {
+      accepted_local_clips: [
+        {
+          id: "old-doom",
+          source_family: "steam_379720_doom_media_old_window_42_5",
+          source_url: "https://video.akamai.steamstatic.com/store_trailers/379720/old/hash/video.mpd",
+        },
+      ],
+    },
+  });
+  await fs.writeJson(path.join(files.artifactDir, "rights_ledger.json"), [
+    { asset_id: "selected-a", asset_type: "motion", path: "selected-a.mp4", source_url: "https://media.sea.example/a.mp4", licence_basis: "official_reference_only", allowed_platforms: ["youtube", "instagram", "facebook"] },
+    { asset_id: "selected-b", asset_type: "motion", path: "selected-b.mp4", source_url: "https://media.sea.example/b.mp4", licence_basis: "official_reference_only", allowed_platforms: ["youtube", "instagram", "facebook"] },
+    { asset_id: "selected-c", asset_type: "motion", path: "selected-c.mp4", source_url: "https://media.sea.example/c.mp4", licence_basis: "official_reference_only", allowed_platforms: ["youtube", "instagram", "facebook"] },
+    {
+      asset_id: "old-doom",
+      asset_type: "motion",
+      path: "old-doom.mp4",
+      source_family: "steam_379720_doom_media_old_window_42_5",
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/379720/old/hash/video.mpd",
+    },
+    { asset_id: "audio", asset_type: "audio", path: "voice.mp3", licence_basis: "local_tts_generation" },
+  ]);
+  await fs.writeJson(path.join(files.artifactDir, "director_beat_map.json"), {
+    readiness: { status: "director_ready", blockers: [] },
+    shot_plan: [
+      {
+        id: "old-doom",
+        path: "old-doom.mp4",
+        source_family: "steam_379720_doom_media_old_window_42_5",
+      },
+    ],
+  });
+
+  const report = await upsertLocalBridgeCandidate({
+    bridgePath: files.bridgePath,
+    artifactDir: files.artifactDir,
+    backupDir: path.join(files.root, "backups"),
+    generatedAt: "2026-07-03T08:15:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.package_evidence_repair.updated_files.length, 4);
+  for (const item of report.package_evidence_repair.updated_files) {
+    assert.equal(await fs.pathExists(item.backup_path), true);
+  }
+  for (const fileName of [
+    "materialised_motion_clips.json",
+    "footage_inventory.json",
+    "rights_ledger.json",
+    "director_beat_map.json",
+  ]) {
+    const current = await fs.readJson(path.join(files.artifactDir, fileName));
+    assert.equal(/379720|old-doom/i.test(JSON.stringify(current)), false, fileName);
+  }
+  const materialised = await fs.readJson(path.join(files.artifactDir, "materialised_motion_clips.json"));
+  assert.deepEqual(
+    materialised.clips.map((clip) => clip.id),
+    ["selected-a", "selected-b", "selected-c"],
+  );
 });
 
 test("upsertLocalBridgeCandidate blocks non-GREEN packages before rewriting the bridge", async () => {

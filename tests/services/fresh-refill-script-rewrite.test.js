@@ -467,6 +467,104 @@ test("fresh refill script rewrite dry-run leaves local proof files unchanged", a
   assert.equal(await fs.readFile(manifestPath, "utf8"), before);
 });
 
+test("fresh refill script rewrite story filter applies only the requested story", async () => {
+  const caseRoot = path.join(TEST_ROOT, "story-filter");
+  await fs.remove(caseRoot);
+
+  const skippedArtifactDir = path.join(caseRoot, "skipped", "artifact");
+  const selectedArtifactDir = path.join(caseRoot, "selected", "artifact");
+  await fs.ensureDir(skippedArtifactDir);
+  await fs.ensureDir(selectedArtifactDir);
+
+  await fs.writeJson(path.join(skippedArtifactDir, "canonical_story_manifest.json"), canonicalManifest(), {
+    spaces: 2,
+  });
+  await fs.writeJson(path.join(skippedArtifactDir, "platform_publish_manifest.json"), platformManifest(), {
+    spaces: 2,
+  });
+
+  await fs.writeJson(
+    path.join(selectedArtifactDir, "canonical_story_manifest.json"),
+    {
+      ...canonicalManifest(),
+      story_id: "rss_e2914175f30e0777",
+      canonical_subject: "Doom: The Dark Ages",
+      canonical_game: "Doom: The Dark Ages",
+      canonical_title: "Why Doom: The Dark Ages Could Split Players",
+      title: "Why Doom: The Dark Ages Could Split Players",
+      primary_source: "Xbox Wire",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
+      confirmed_claims: ["DOOM: The Dark Ages Goes Supersonic With New DLC Chain Spear"],
+      narration_script:
+        "Doom: The Dark Ages has a new source detail, but the real question is still what players can do with it.",
+      tts_script:
+        "Doom: The Dark Ages has a new source detail, but the real question is still what players can do with it.",
+      spoken_narration_script:
+        "Doom: The Dark Ages has a new source detail, but the real question is still what players can do with it.",
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(path.join(selectedArtifactDir, "platform_publish_manifest.json"), platformManifest(), {
+    spaces: 2,
+  });
+
+  const skippedBefore = await fs.readFile(
+    path.join(skippedArtifactDir, "canonical_story_manifest.json"),
+    "utf8",
+  );
+  const workOrderPath = path.join(caseRoot, "work_order.json");
+  await fs.writeJson(
+    workOrderPath,
+    {
+      schema_version: 1,
+      source: "test",
+      jobs: [
+        tekkenBobJob(skippedArtifactDir),
+        {
+          story_id: "rss_e2914175f30e0777",
+          title: "Why Doom: The Dark Ages Could Split Players",
+          artifact_dir: selectedArtifactDir,
+          source: {
+            name: "Xbox Wire",
+            url:
+              "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
+            type: "rss",
+          },
+          current_script:
+            "Doom: The Dark Ages has a new source detail, but the real question is still what players can do with it.",
+          scorecard_verdict: "rewrite_required",
+          scorecard_blockers: ["generic_title_template"],
+        },
+      ],
+    },
+    { spaces: 2 },
+  );
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(caseRoot, "report"),
+    applyLocal: true,
+    storyIds: ["rss_e2914175f30e0777"],
+  });
+
+  assert.deepEqual(report.requested_story_ids, ["rss_e2914175f30e0777"]);
+  assert.equal(report.summary.job_count, 1);
+  assert.equal(report.summary.applied_count, 1);
+  assert.equal(report.items[0].story_id, "rss_e2914175f30e0777");
+  assert.equal(
+    await fs.readFile(path.join(skippedArtifactDir, "canonical_story_manifest.json"), "utf8"),
+    skippedBefore,
+  );
+
+  const selectedManifest = await fs.readJson(
+    path.join(selectedArtifactDir, "canonical_story_manifest.json"),
+  );
+  assert.equal(selectedManifest.title, "Doom The Dark Ages Chain Spear Changes The Fight");
+  assert.match(selectedManifest.narration_script, /^Doom The Dark Ages just made its next DLC about speed/i);
+});
+
 test("fresh refill script rewrite apply updates only local proof artefacts", async () => {
   const { artifactDir, workOrderPath } = await writeFixture("apply");
 

@@ -26,6 +26,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     workOrderPath: DEFAULT_WORK_ORDER,
     outDir: null,
     limit: Infinity,
+    storyIds: [],
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -38,6 +39,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg.startsWith("--out-dir=")) args.outDir = path.resolve(ROOT, arg.slice("--out-dir=".length));
     else if (arg === "--limit") args.limit = Number(argv[++index] || args.limit);
     else if (arg.startsWith("--limit=")) args.limit = Number(arg.slice("--limit=".length));
+    else if (arg === "--story-id") args.storyIds.push(argv[++index] || "");
+    else if (arg.startsWith("--story-id=")) args.storyIds.push(arg.slice("--story-id=".length));
   }
   if (!Number.isFinite(args.limit) || args.limit <= 0) args.limit = Infinity;
   return args;
@@ -51,6 +54,7 @@ async function main(argv = process.argv) {
     outDir: args.outDir,
     applyLocal: args.applyLocal,
     limit: args.limit,
+    storyIds: args.storyIds,
   });
   if (args.json) {
     process.stdout.write(`${JSON.stringify({

@@ -2532,7 +2532,34 @@ async function visualEntityPreflightForStory(story = {}) {
   const rightsLedger = objectValue(story.rights_ledger || story.rights_records, rightsLedgerArtifact);
   const directorPlan = objectValue(story.visual_v4_director_plan || story.director_plan, directorArtifact);
   const trustedIntakeAssets = trustedSourceIntakeAssets(footageInventory);
-  const assets = enrichVisualAssetsWithTrustedSourceIntake(dedupeVisualAssetsByPath([
+  const directorShotAssets = asArray(directorPlan.shot_plan).map((shot) => ({
+    ...shot,
+    path: shot.path || shot.media_path || shot.file_path,
+    source_url: shot.source_url || shot.url,
+  }));
+  const selectedVisualAssets = dedupeVisualAssetsByPath([
+    ...asArray(story.visual_v4_bridge_video_clips),
+    ...asArray(story.video_clips),
+    ...asArray(renderStory.visual_v4_bridge_video_clips),
+    ...asArray(renderStory.video_clips),
+    ...directorShotAssets,
+  ]);
+  const { isDirectVideoMotionAsset } = require("../lib/visual-evidence-classifier");
+  const selectedDirectMotionAssets = selectedVisualAssets.filter(isDirectVideoMotionAsset);
+  const hasCurrentSelectedMotionEvidence = selectedDirectMotionAssets.length > 0;
+  const rightsRecords = rightsLedgerRecords(rightsLedger);
+  const selectedRightsRecords = hasCurrentSelectedMotionEvidence
+    ? rightsRecords.filter((record) =>
+        selectedVisualAssets.some((asset) => recordCoversClip(record, asset)),
+      )
+    : [];
+  const assets = enrichVisualAssetsWithTrustedSourceIntake(dedupeVisualAssetsByPath(
+    hasCurrentSelectedMotionEvidence
+      ? [
+          ...selectedVisualAssets,
+          ...selectedRightsRecords,
+        ]
+      : [
     ...asArray(story.visual_v4_bridge_video_clips),
     ...asArray(story.video_clips),
     ...asArray(renderStory.visual_v4_bridge_video_clips),
@@ -2541,14 +2568,10 @@ async function visualEntityPreflightForStory(story = {}) {
     ...asArray(footageInventory.motion_inventory?.production_motion_clips),
     ...asArray(footageInventory.accepted_local_clips),
     ...asArray(footageInventory.production_motion_clips),
-    ...rightsLedgerRecords(rightsLedger),
-    ...asArray(directorPlan.shot_plan).map((shot) => ({
-      ...shot,
-      path: shot.path || shot.media_path || shot.file_path,
-      source_url: shot.source_url || shot.url,
-    })),
-  ]), trustedIntakeAssets);
-  const { isDirectVideoMotionAsset } = require("../lib/visual-evidence-classifier");
+    ...rightsRecords,
+    ...directorShotAssets,
+  ],
+  ), trustedIntakeAssets);
   const directMotionAssets = assets.filter(isDirectVideoMotionAsset);
   if (!directMotionAssets.length) return null;
   const steamAppIdentity = steamAppIdentityForDirectMotionAssets(directMotionAssets);
@@ -4939,6 +4962,66 @@ function preflightBlockerIsCurrentMotionPack(blocker = "") {
   );
 }
 
+function preflightBlockerIsDirectMotionSubjectMismatch(blocker = "") {
+  return /(?:^|:)visual_entity_match:direct_motion_subject_mismatch/i.test(cleanText(blocker));
+}
+
+function preflightBlockerIsDurationVariantOutOfBounds(blocker = "") {
+  return /(?:^|:)(?:content|platform|video):.*(?:audio_duration_too_long|duration_too_long|exceeds_.*duration|max\s+\d+(?:\.\d+)?s?)/i.test(
+    cleanText(blocker),
+  );
+}
+
+function schedulerQuarantineForPreflightBlockers(blockers = []) {
+  const blockerList = asArray(blockers).map(cleanText).filter(Boolean);
+  if (blockerList.includes("source_age:source_age_exceeds_policy")) {
+    return {
+      status: "held",
+      reason: "source_age_exceeds_policy",
+      lane: "stale_source_backlog",
+      safe_next_action: "replace_with_fresh_source_or_operator_approve_evergreen",
+    };
+  }
+  if (blockerList.some(preflightBlockerIsCurrentMotionPack)) {
+    return {
+      status: "held",
+      reason: "current_motion_pack_blocked",
+      lane: "visual_motion_repair",
+      safe_next_action: "rebuild_v4_motion_pack_with_distinct_base_sources",
+    };
+  }
+  const durationBlocked = blockerList.some(preflightBlockerIsDurationVariantOutOfBounds);
+  const visualSubjectBlocked = blockerList.some(preflightBlockerIsDirectMotionSubjectMismatch);
+  if (durationBlocked && visualSubjectBlocked) {
+    return {
+      status: "held",
+      reason: "duration_and_visual_motion_repair_required",
+      lane: "platform_variant_and_visual_motion_repair",
+      safe_next_action: "rerender_subject_matched_motion_and_regenerate_duration_valid_platform_variant",
+      blockers: blockerList,
+    };
+  }
+  if (visualSubjectBlocked) {
+    return {
+      status: "held",
+      reason: "direct_motion_subject_mismatch",
+      lane: "visual_motion_repair",
+      safe_next_action: "replace_or_rerender_with_subject_matched_official_direct_motion",
+      blockers: blockerList.filter(preflightBlockerIsDirectMotionSubjectMismatch),
+    };
+  }
+  if (durationBlocked) {
+    return {
+      status: "held",
+      reason: "duration_variant_out_of_bounds",
+      lane: "duration_variant_repair",
+      safe_next_action: "regenerate_platform_native_duration_variant_before_scheduler_selection",
+      blockers: blockerList.filter(preflightBlockerIsDurationVariantOutOfBounds),
+    };
+  }
+  return null;
+}
+
 async function attachPreflightQa(report = {}, stories = [], opts = {}) {
   const byId = new Map(
     (Array.isArray(stories) ? stories : [])
@@ -5004,21 +5087,25 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
       candidate.status = "review";
       candidate.penalties = [...new Set([...(candidate.penalties || []), "preflight_qa_blocked"])];
       candidate.reasons = [...new Set([...(candidate.reasons || []), "preflight_qa_blocked"])];
+      const schedulerQuarantine = schedulerQuarantineForPreflightBlockers(preflight.blockers);
+      if (schedulerQuarantine) {
+        candidate.scheduler_quarantine = schedulerQuarantine;
+        if (schedulerQuarantine.reason === "source_age_exceeds_policy") {
+          candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_stale_source"])];
+        } else if (schedulerQuarantine.reason === "current_motion_pack_blocked") {
+          candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_current_motion_pack"])];
+        } else {
+          candidate.reasons = [
+            ...new Set([
+              ...(candidate.reasons || []),
+              `scheduler_quarantine_${schedulerQuarantine.reason}`,
+            ]),
+          ];
+        }
+      }
       if (Array.isArray(preflight.blockers) && preflight.blockers.includes("source_age:source_age_exceeds_policy")) {
-        candidate.scheduler_quarantine = {
-          status: "held",
-          reason: "source_age_exceeds_policy",
-          lane: "stale_source_backlog",
-          safe_next_action: "replace_with_fresh_source_or_operator_approve_evergreen",
-        };
         candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_stale_source"])];
       } else if (asArray(preflight.blockers).some(preflightBlockerIsCurrentMotionPack)) {
-        candidate.scheduler_quarantine = {
-          status: "held",
-          reason: "current_motion_pack_blocked",
-          lane: "visual_motion_repair",
-          safe_next_action: "rebuild_v4_motion_pack_with_distinct_base_sources",
-        };
         candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_current_motion_pack"])];
       }
     } else {

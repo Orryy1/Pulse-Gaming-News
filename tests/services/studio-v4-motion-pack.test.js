@@ -15,6 +15,7 @@ const {
 } = require("../../lib/studio/v4/canonical-policy");
 const {
   mergePreviousMotionPacks,
+  loadPreviousMotionPack,
   normaliseStory,
   parseArgs,
   previousMotionPackFromFootageInventory,
@@ -2687,4 +2688,103 @@ test("Visual V4 motion pack seeds bridge-hydrated validated story clips when seg
     ),
     false,
   );
+});
+
+test("studio-v4 motion pack no-preserve still seeds explicit story-selected clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-motion-pack-no-preserve-story-clips-"));
+  const story = {
+    id: "doom-chain-spear",
+    title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    video_clips: [
+      {
+        id: "segment_direct_motion_1",
+        source_family: "steamstatic:/store_trailers/3017860/1887810588/hash/window_36_5",
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/3017860/1887810588/hash/hls_264_master.m3u8",
+        path: "C:/media/doom-dark-ages-1.mp4",
+        mediaStartS: 36,
+        durationS: 5,
+        validated: true,
+        counts_towards_motion_readiness: true,
+        source_type: "steam_movie",
+        rights_risk_class: "official_reference_only",
+      },
+    ],
+  };
+
+  const pack = await loadPreviousMotionPack(
+    { preserveExisting: false, previousMotionPack: null },
+    story,
+    root,
+  );
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].id, "segment_direct_motion_1");
+  assert.equal(pack.clips[0].source_family, story.video_clips[0].source_family);
+});
+
+test("Visual V4 motion pack does not pad render-selected clips with stale discovery footage", () => {
+  const storyId = "doom-dark-ages-pack";
+  const selectedClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `segment_direct_motion_${index + 1}`,
+    source_family: `steamstatic:/store_trailers/3017860/${1887810588 + index}/hash/window_${36 + index * 6}_5`,
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/3017860/${1887810588 + index}/hash/hls_264_master.m3u8`,
+    path: `C:/media/doom-dark-ages-${index + 1}.mp4`,
+    entity: "DOOM: The Dark Ages",
+    mediaStartS: 36 + index * 6,
+    durationS: 5,
+    validated: true,
+    counts_towards_motion_readiness: true,
+    source_type: "steam_movie",
+    provider: "steam",
+    rights_risk_class: "official_reference_only",
+    allowed_render_use: "reference_only_by_default",
+    provenance: {
+      sample_paths: [
+        `test/output/${storyId}/selected-${index + 1}-a.jpg`,
+        `test/output/${storyId}/selected-${index + 1}-b.jpg`,
+      ],
+    },
+  }));
+  const staleOldDoomSegments = Array.from({ length: 4 }, (_, index) =>
+    segment({
+      storyId,
+      family: `steam_379720_${53998 + index}`,
+      entity: "DOOM",
+      sourceUrl: `https://video.akamai.steamstatic.com/store_trailers/379720/${53998 + index}/hash/hls_264_master.m3u8`,
+      index: index + 1,
+      actionScore: 96 - index,
+      start: 20 + index * 7,
+      referenceTitle: "DOOM launch trailer",
+    }),
+  );
+
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: storyId,
+      title: "Doom The Dark Ages Gets New Chain Spear Pressure",
+      canonical_subject: "DOOM: The Dark Ages",
+      canonical_game: "DOOM: The Dark Ages",
+      full_script: "DOOM: The Dark Ages just changed how close-range pressure works.",
+      video_clips: selectedClips,
+    },
+    trustedFootageReport: trustedReport(storyId, [
+      "steam_3017860_1887810588",
+      "steam_3017860_1887810589",
+      "steam_3017860_1887810590",
+      "steam_3017860_1887810591",
+      "steam_3017860_1887810592",
+      "steam_3017860_1887810593",
+    ]),
+    previousMotionPack: previousMotionPackFromStoryMotionClips({
+      id: storyId,
+      video_clips: selectedClips,
+    }),
+    segmentValidationReport: segmentReport(staleOldDoomSegments),
+    generatedAt: "2026-07-03T07:45:00.000Z",
+  });
+
+  assert.equal(pack.readiness.status, "v4_motion_ready");
+  assert.equal(pack.clips.length, 6);
+  assert.equal(JSON.stringify(pack.clips).includes("379720"), false);
+  assert.ok(pack.clips.every((clip) => clip.source_url.includes("/3017860/")));
 });

@@ -364,6 +364,7 @@ test("publish window watchdog rechecks after stale executor handoff refresh", as
       windowLabel: "publish_mid_afternoon",
       postDiscord: false,
       notifyGreen: false,
+      persistReport: false,
       buildRuntimeSentinel: async () => {
         runtimeChecks += 1;
         if (runtimeChecks === 1) {
@@ -418,6 +419,64 @@ test("publish window watchdog rechecks after stale executor handoff refresh", as
     assert.equal(report.safe_to_publish_window, true);
     assert.equal(report.handoff_refresh.refreshed, true);
     assert.equal(report.executor_handoff_action_count, 1);
+  } finally {
+    await fs.remove(tmp);
+  }
+});
+
+test("publish window watchdog persists its decision report for post-window diagnosis", async () => {
+  const os = require("node:os");
+  const fs = require("fs-extra");
+  const path = require("node:path");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-watchdog-report-"));
+  const reportOutputPath = path.join(tmp, "publish_window_watchdog.json");
+  try {
+    const report = await runPublishWindowWatchdog({
+      generatedAt: "2026-07-03T10:55:00.000Z",
+      windowLabel: "publish_late_morning",
+      postDiscord: false,
+      notifyGreen: false,
+      reportOutputPath,
+      buildRuntimeSentinel: async () => ({
+        verdict: "green",
+        blockers: [],
+        scheduler_window_readiness: {
+          safe_to_observe_next_window: true,
+          hold_scheduler_or_dispatch: false,
+          next_action: "observe_guarded_scheduler_window",
+        },
+        scheduler_proof: {
+          enabled_dry_run_action_count: 3,
+          executor_handoff_action_count: 3,
+          enabled_dry_run_story_count: 1,
+          executor_handoff_story_count: 1,
+          enabled_dry_run_youtube_action_count: 1,
+          executor_handoff_youtube_action_count: 1,
+          enabled_dry_run_youtube_story_count: 1,
+          executor_handoff_youtube_story_count: 1,
+          missing_from_executor_count: 0,
+          missing_from_executor_story_count: 0,
+        },
+      }),
+      buildReadiness: () => ({
+        overall_verdict: "amber",
+        blockers: [],
+        advisory: ["queue_health: recent_failed_jobs_present"],
+        readiness_scope: { name: "enabled_platform_guarded_handoff", guard_ready: true },
+      }),
+      buildQueue: () => ({
+        verdict: "review",
+        blockers: [],
+        advisory: ["recent_failed_jobs_present"],
+      }),
+    });
+    const saved = await fs.readJson(reportOutputPath);
+
+    assert.equal(report.safe_to_publish_window, true);
+    assert.equal(saved.window_label, "publish_late_morning");
+    assert.equal(saved.safe_to_publish_window, true);
+    assert.equal(saved.publish_readiness_verdict, "amber");
+    assert.deepEqual(saved.safety, report.safety);
   } finally {
     await fs.remove(tmp);
   }

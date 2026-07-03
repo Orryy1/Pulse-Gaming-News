@@ -10,6 +10,9 @@ const {
   buildLocalBridgeCandidate,
   upsertLocalBridgeCandidate,
 } = require("../../lib/local-bridge-candidate-upsert");
+const {
+  runStudioGovernancePreflight,
+} = require("../../lib/services/studio-governance-preflight");
 
 const FIXTURE_SCRIPT =
   "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Custom Seas lets crews set private rules, tune danger and decide whether the shared-world chaos still matters. That is the real split: safer sessions help busy friends return, but they can also drain the stories that make the seas feel alive. If Rare balances rewards carefully, this becomes a social reset. If not, it becomes empty water with prettier waves. Follow Pulse Gaming so you never miss a beat.";
@@ -66,8 +69,30 @@ async function fixture() {
     word_timestamp_count: 81,
   });
   await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), [
-    { asset_id: "clip", asset_type: "motion", path: "clip.mp4" },
-    { asset_id: "audio", asset_type: "audio", path: "voice.mp3" },
+    {
+      asset_id: "clip_a",
+      asset_type: "motion",
+      path: "clip-a.mp4",
+      licence_basis: "official_reference_only",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+    },
+    {
+      asset_id: "clip_b",
+      asset_type: "motion",
+      path: "clip-b.mp4",
+      licence_basis: "official_reference_only",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+    },
+    {
+      asset_id: "clip_c",
+      asset_type: "motion",
+      path: "clip-c.mp4",
+      licence_basis: "official_reference_only",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+    },
   ]);
   await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
     status: "ready",
@@ -195,9 +220,9 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.platform_publish_manifest.outputs.facebook_reels.description, "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.");
   assert.equal(candidate.platform_publish_manifest.publish_status, "GREEN");
   assert.equal(candidate.platform_publish_manifest.can_auto_publish, true);
-  assert.equal(candidate.rights_ledger.length, 2);
-  assert.equal(candidate.rights_records.length, 2);
-  assert.equal(candidate.provenance_ledger.length, 2);
+  assert.equal(candidate.rights_ledger.length, 4);
+  assert.equal(candidate.rights_records.length, 4);
+  assert.equal(candidate.provenance_ledger.length, 4);
   assert.equal(candidate.visual_v4_render_bridge_clip_count, 3);
   assert.equal(candidate.distinct_motion_family_count, 3);
   assert.equal(candidate.video_clips.length, 3);
@@ -216,6 +241,31 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.ok(candidate.local_bridge_validation.warnings.includes("stale_publish_verdict_ignored_after_current_package_repair"));
   assert.equal(candidate.local_bridge_validation.verdict, "pass");
   assert.equal(candidate.local_bridge_validation.evidence.render_bytes, 600_000);
+});
+
+test("buildLocalBridgeCandidate carries narration audio rights into governance preflight", async () => {
+  const files = await fixture();
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-06-21T18:40:00.000Z",
+  });
+
+  const narrationRights = candidate.rights_ledger.find(
+    (record) =>
+      record.asset_id === "story_custom_seas_audio_path" &&
+      record.path === candidate.audio_path &&
+      record.source_type === "narration_audio",
+  );
+  assert.ok(narrationRights);
+  assert.equal(narrationRights.commercial_use_allowed, true);
+  assert.ok(narrationRights.licence_basis);
+
+  const gate = await runStudioGovernancePreflight(candidate, {
+    platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    generatedAt: "2026-06-21T18:40:00.000Z",
+  });
+  assert.equal(gate.result, "pass");
+  assert.equal(gate.report.rights_ledger.metrics.missing_asset_count, 0);
 });
 
 test("buildLocalBridgeCandidate prefers selected render-story clips over stale materialised inventory", async () => {

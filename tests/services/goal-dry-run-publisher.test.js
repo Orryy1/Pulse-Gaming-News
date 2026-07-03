@@ -6211,6 +6211,10 @@ test("goal dry-run publisher writes JSON and CLI args stay dry-run by default", 
   assert.equal(args.json, true);
   assert.equal(args.requireSchedulerPreflight, true);
 
+  const defaultArgs = parseArgs([]);
+  assert.match(defaultArgs.candidateReportPath, /output[\\/]goal-contract[\\/]next_publish_candidates\.json$/);
+  assert.equal(defaultArgs.requireSchedulerPreflight, true);
+
   const diagnosticArgs = parseArgs(["--no-scheduler-preflight"]);
   assert.equal(diagnosticArgs.requireSchedulerPreflight, false);
 });

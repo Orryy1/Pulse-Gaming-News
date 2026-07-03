@@ -115,6 +115,7 @@
     "ops:goal-audio-timestamps": "node tools/goal-audio-timestamp-workbench.js",
     "ops:goal-audio-materialize": "node tools/goal-audio-timestamp-materializer.js",
     "ops:goal-audio-voice-metadata-repair": "node tools/goal-audio-voice-metadata-repair.js",
+    "ops:caption-timeline-repair": "node tools/caption-timeline-repair.js",
     "ops:goal05-narration-readiness": "node tools/goal05-narration-readiness.js",
     "ops:goal06-rights-ledger": "node tools/goal06-rights-ledger.js",
     "ops:goal07-director-brain": "node tools/goal07-director-brain.js",

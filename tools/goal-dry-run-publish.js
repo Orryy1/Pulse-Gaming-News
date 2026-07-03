@@ -39,7 +39,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     root: process.cwd(),
     storyPackagesPath: null,
-    candidateReportPath: null,
+    candidateReportPath: path.join(process.cwd(), "output", "goal-contract", "next_publish_candidates.json"),
     platformStatusPath: null,
     repairWorkOrderPath: null,
     antiSpamReportPath: null,

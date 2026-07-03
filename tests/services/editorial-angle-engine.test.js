@@ -152,6 +152,31 @@ test("angle-first script does not read like a public copy instruction sheet", ()
   assert.doesNotMatch(script.full_script, INSTRUCTION_LIKE_PUBLIC_SCRIPT_RE);
 });
 
+test("generic angle-first scripts avoid player-impact filler and html-entity titles", () => {
+  const story = {
+    id: "rss_players_choice_signal",
+    title: "Players& 8217 Choice Just Got A New Signal",
+    source_type: "rss",
+    article_url: "https://blog.playstation.com/2026/07/03/players-choice-june-2026-vote/",
+  };
+
+  const script = buildAngleFirstScript(story, {
+    sourceName: "PlayStation Blog",
+    sourceMaterial:
+      "PlayStation Blog reports the Players' Choice vote is open for June 2026, asking players to pick from recent PlayStation Store releases.",
+    runtimeProfile: LOCAL_PROFILE,
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /PlayStation Blog/i);
+  assert.match(script.full_script, /Players' Choice|vote|voting|pick/i);
+  assert.doesNotMatch(
+    `${script.suggested_title} ${script.full_script}`,
+    /Player Impact|just got an update that changes the player decision|new .{0,80} detail around access,\s*timing,\s*performance or expectations|&\s*8217/i,
+  );
+  assert.doesNotMatch(script.suggested_title, /Could Split Players/i);
+});
+
 test("hands-on demo angle uses a concrete player-facing title and plain narration", () => {
   const story = {
     id: "rss_granblue_demo",

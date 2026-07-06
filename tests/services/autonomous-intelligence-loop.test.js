@@ -760,6 +760,82 @@ test("fresh refill repair filter quarantines motion-poor service stories without
   }
 });
 
+test("fresh refill repair filter recognises scalar approved direct media URLs as motion runway", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-scalar-motion-runway-"));
+  const packagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+  const artifactDir = path.join(tmp, "echoes_of_aincrad");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "steam_echoes_of_aincrad_system_trailer_20260706",
+        selected_title: "Echoes Of Aincrad Has A Launch Week Trust Test",
+        canonical_subject: "Echoes of Aincrad",
+        approved_direct_media_url:
+          "https://video.akamai.steamstatic.com/store_trailers/2244210/169832134/hls_264_master.m3u8?t=1781687345",
+        narration_script:
+          "Echoes of Aincrad is walking into launch week with one awkward question. Steam's trailer shows a clean anime RPG loop, but licensed games live or die on the bit players cannot see in a store page: whether combat still feels good after the first hour. That means Steam's 10 July listing turns this trailer into a trust test: buy into the launch, or wait until players prove it is not just another licensed RPG. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        story_id: "steam_echoes_of_aincrad_system_trailer_20260706",
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        approved_direct_media_url:
+          "https://video.akamai.steamstatic.com/store_trailers/2244210/169832134/hls_264_master.m3u8?t=1781687345",
+        direct_media_url_if_available:
+          "https://video.akamai.steamstatic.com/store_trailers/2244210/169832134/hls_264_master.m3u8?t=1781687345",
+        primary_source: {
+          name: "Steam",
+          url: "https://store.steampowered.com/app/2244210/Echoes_of_Aincrad/",
+          direct_media_url_if_available:
+            "https://video.akamai.steamstatic.com/store_trailers/2244210/169832134/hls_264_master.m3u8?t=1781687345",
+        },
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: "steam_echoes_of_aincrad_system_trailer_20260706",
+        verdict: "viral_ready",
+        blockers: [],
+        failures: [],
+      }),
+    );
+    await fs.writeFile(
+      packagesPath,
+      JSON.stringify([
+        {
+          story_id: "steam_echoes_of_aincrad_system_trailer_20260706",
+          title: "Echoes Of Aincrad Has A Launch Week Trust Test",
+          artifact_dir: artifactDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+      ]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath: packagesPath,
+      outputDir,
+    });
+
+    assert.deepEqual(
+      result.eligibleRows.map((row) => row.story_id),
+      ["steam_echoes_of_aincrad_system_trailer_20260706"],
+    );
+    assert.deepEqual(result.quarantinedRows, []);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill repair filter quarantines retro and collector stories without direct motion runway", async () => {
   const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-retro-motion-runway-"));

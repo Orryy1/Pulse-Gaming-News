@@ -274,6 +274,45 @@ test("fresh refill viewer script turns Star Wars Monopoly abilities into a clear
   assert.equal(script.coherence.result, "pass");
 });
 
+test("fresh refill viewer script rewrites Echoes of Aincrad without repeating the title", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "steam_echoes_of_aincrad_system_trailer_20260706",
+      title: "Echoes of Aincrad Just Dodged A Release-Date Fight",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Steam Store",
+        url: "https://store.steampowered.com/app/2244210/Echoes_of_Aincrad/",
+        type: "official_storefront",
+        published_at: "2026-07-06T20:45:00.000Z",
+      },
+      current_script:
+        "Echoes of Aincrad just blinked in one of the year's most crowded release windows.",
+    },
+    manifest: {
+      story_id: "steam_echoes_of_aincrad_system_trailer_20260706",
+      canonical_subject: "Echoes of Aincrad",
+      canonical_game: "Echoes of Aincrad",
+      confirmed_claims: [
+        "Echoes of Aincrad is listed on Steam with a 10 July 2026 release date.",
+        "The official Steam listing includes system, demo and pre-order trailer footage.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.match(script.full_script, /^Echoes of Aincrad is walking into launch week\b/);
+  assert.match(script.full_script, /movement, hits, menus and enemy pressure/i);
+  assert.match(script.full_script, /That means Steam's 10 July listing turns this trailer into a trust test/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(
+    script.full_script,
+    /Echoes of Aincrad Has A Launch Week Trust Test.*Echoes of Aincrad Has A Launch Week Trust Test|just showed the part trailers usually hide|source-backed update|The argument is no longer only quality/i,
+  );
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass");
+});
+
 test("fresh refill viewer script keeps Fatal Fury City Of The Wolves in the public title", () => {
   const script = buildFreshRefillViewerScript({
     job: {

@@ -345,6 +345,54 @@ test("goal batch packages preserve newer repaired canonical public copy from exi
   }
 });
 
+test("goal batch packages replace generic hydrated titles with stronger canonical title candidates", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-generic-title-hydration-"));
+  try {
+    const story = greenStory("oblivion-hydrated-title");
+    story.title =
+      "The Elder Scrolls IV: Oblivion Remastered's Physical Switch 2 Release Comes on a Cartridge - Here's Where You Can Preorder It";
+    story.canonical_subject = "The Elder Scrolls IV";
+    story.canonical_game = "The Elder Scrolls IV";
+    story.source_name = "IGN";
+    story.article_url = "https://www.ign.com/articles/elder-scrolls-iv-oblivion-remastered-nintendo-switch-2-where-to-buy";
+    story.confirmed_claims = [
+      "The Elder Scrolls IV: Oblivion Remastered's Physical Switch 2 Release Comes on a Cartridge - Here's Where You Can Preorder It",
+    ];
+
+    const storyDir = path.join(tempDir, story.id);
+    fs.ensureDirSync(storyDir);
+    fs.writeJsonSync(path.join(storyDir, "canonical_story_manifest.json"), {
+      ...story,
+      story_id: story.id,
+      title: "Why The Elder Scrolls IV Could Split Players",
+      public_title: "Why The Elder Scrolls IV Could Split Players",
+      selected_title: "Why The Elder Scrolls IV Could Split Players",
+      canonical_title: "Why The Elder Scrolls IV Could Split Players",
+      short_title: "Oblivion Switch 2 Has A Cartridge Test",
+      title_candidates: [
+        "Oblivion Switch 2 Has A Cartridge Test",
+        "The Elder Scrolls IV: Oblivion Remastered's Physical Switch 2 Release Comes on a Cartridge - Here's Where You Can Preorder It",
+      ],
+      public_copy_repaired_at: "2026-07-06T20:30:00.000Z",
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-07-06T20:35:00.000Z",
+    });
+
+    const manifest = batch.packages[0].canonical_story_manifest;
+    assert.equal(manifest.public_title, "Oblivion Switch 2 Has A Cartridge Test");
+    assert.equal(manifest.selected_title, "Oblivion Switch 2 Has A Cartridge Test");
+    assert.doesNotMatch(manifest.public_title, /Could Split Players/i);
+    assert.equal(batch.packages[0].youtube_publish_pack.title, "Oblivion Switch 2 Has A Cartridge Test");
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages preserve current repaired cover text over stale hydrated canonical manifests", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-stale-cover-hydration-"));
   try {
@@ -3722,6 +3770,28 @@ test("goal batch package proof preparation writes concrete scripts for current r
       assert.match(prepared.full_script, required, item.id);
     }
   }
+});
+
+test("goal batch proof preparation does not turn Oblivion cartridge stories into Switch screen rumours", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_oblivion_switch_cartridge",
+    title:
+      "The Elder Scrolls IV: Oblivion Remastered's Physical Switch 2 Release Comes on a Cartridge - Here's Where You Can Preorder It",
+    source_name: "IGN",
+    source_type: "rss",
+    article_url: "https://www.ign.com/articles/elder-scrolls-iv-oblivion-remastered-nintendo-switch-2-where-to-buy",
+    canonical_subject: "The Elder Scrolls IV",
+    canonical_game: "The Elder Scrolls IV",
+    seo_description:
+      "Preorders are live for The Elder Scrolls IV: Oblivion Remastered Physical Deluxe Edition on Nintendo Switch 2, which comes with the full base game on a cartridge.",
+    full_script:
+      "The Elder Scrolls IV just picked up a player-facing detail worth watching. IGN says the physical Switch 2 release comes on a cartridge. The important bit is whether this changes what people buy, play, wait for or skip. That is the gap to watch now: hype is easy, but the player consequence has to show up on screen. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.doesNotMatch(prepared.public_title, /Screen Rumour|Ghosting/i);
+  assert.doesNotMatch(prepared.full_script, /ghosting|OLED|LCD panel|screen rumour/i);
+  assert.equal(prepared.public_title, "Oblivion Switch 2 Has A Cartridge Test");
+  assert.match(prepared.full_script, /cartridge|physical|preorder|pre-order/i);
 });
 
 test("goal batch proof scripts paraphrase advertiser-unfriendly source titles", () => {

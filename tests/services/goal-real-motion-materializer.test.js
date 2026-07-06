@@ -1653,6 +1653,84 @@ test("real motion materializer blocks repeated validated official segments when 
   assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
 });
 
+test("real motion materializer keeps two validated rights-backed windows from one official trailer without making a looped candidate ready", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-two-official-windows-"));
+  const job = await makePackage(root, "avatar-legends-two-official-windows");
+  await fs.outputJson(path.join(job.artifact_dir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/2424420/1420437155/hash/1780517930/hls_264_master.m3u8?t=1780519515";
+  const segmentValidationReport = {
+    segments: [36, 48, 54, 60, 66].map((start, index) => ({
+      story_id: job.story_id,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_url: sourceUrl,
+      source_url_kind: "hls_manifest",
+      source_type: "licensed_direct_media_url",
+      source_family: `steam_avatar_legends_window_${index + 1}`,
+      provider: "licensed_direct_media_acquisition",
+      entity: "Avatar Legends",
+      media_start_s: start,
+      duration_s: 5,
+      source_duration_s: 55,
+      rights_risk_class: "official_direct_media",
+      allowed_render_use: "official_direct_media_segment_candidate",
+      validation_reason: index < 2
+        ? "official_storefront_trailer_motion_samples_passed"
+        : "official_storefront_cinematic_motion_samples_passed",
+    })),
+  };
+  const calls = [];
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          ...job,
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["validated_segment_report_artifact_root_repair"],
+            },
+          ],
+        },
+      ],
+    },
+    generatedAt: "2026-07-06T22:45:00.000Z",
+    minClips: 6,
+    minFamilies: 5,
+    maxClips: 8,
+    segmentValidationReport,
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].materialized_count, 2);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 2);
+  assert.equal(report.jobs[0].direct_video_motion_family_count, 2);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 2);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
+  assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
+  assert.equal(calls.length, 2);
+
+  const partial = await fs.readJson(path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
+  assert.equal(partial.clip_count, 2);
+  assert.equal(partial.counts_towards_final_render_readiness, false);
+  assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
+});
+
 test("real motion materializer can use second validated windows across a diverse official source pool", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-diverse-segments-"));
   const job = await makePackage(root, "diverse-segment-motion");

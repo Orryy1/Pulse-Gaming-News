@@ -42,6 +42,19 @@ function createQueueInspectDb(scheduleSql) {
       tags TEXT,
       version TEXT
     );
+
+    CREATE TABLE job_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id INTEGER,
+      worker_id TEXT,
+      attempt INTEGER,
+      status TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      duration_ms INTEGER,
+      error_message TEXT,
+      log_excerpt TEXT
+    );
   `);
   return db;
 }
@@ -573,6 +586,51 @@ test("queue inspect counts content runway jobs even when they are outside the ge
     assert.equal(report.contentRunway.pending_count, 1);
     assert.equal(report.contentRunway.no_active_worker, true);
     assert.ok(report.warnings.includes("content_runway_jobs_pending_without_active_worker"));
+  } finally {
+    db.close();
+  }
+});
+
+test("queue inspect reports stale running job_runs as operational noise", () => {
+  const db = createQueueInspectDb(`
+    CREATE TABLE schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1
+    );
+    INSERT INTO schedules (name, kind, cron_expr, enabled)
+      VALUES ('publish_youtube', 'publish', '0 19 * * *', 1);
+  `);
+
+  try {
+    db.prepare(
+      `INSERT INTO job_runs
+        (job_id, worker_id, attempt, status, started_at, finished_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      42,
+      "server-old",
+      1,
+      "running",
+      "2026-06-11 08:00:00",
+      null,
+    );
+
+    const report = inspectQueue({
+      db,
+      now: Date.parse("2026-07-06T18:15:00.000Z"),
+    });
+
+    assert.equal(report.verdict, "review");
+    assert.equal(report.staleJobRuns.length, 1);
+    assert.equal(report.staleJobRuns[0].job_id, 42);
+    assert.ok(report.warnings.includes("stale_job_runs_present"));
+
+    const md = renderQueueInspectMarkdown(report);
+    assert.match(md, /Stale Job Runs/);
+    assert.match(md, /#42/);
   } finally {
     db.close();
   }

@@ -302,6 +302,71 @@ test("official source intake accepts official social direct video only with stri
   );
 });
 
+test("official source intake rejects social direct video when only entity notes match the story", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "bethesda-layoffs-gap",
+        title: "Bethesda Game Studios and ZeniMax Needs One Real Proof Point",
+        canonical_subject: "Bethesda Game Studios and ZeniMax",
+        full_script: "Bethesda Game Studios and ZeniMax layoffs are the story, not a racing game.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "bethesda-layoffs-gap",
+        entity: "Bethesda Game Studios and ZeniMax",
+        official_source_url: "https://x.com/ForzaHorizon/status/2021227288788947178",
+        direct_media_url_if_available:
+          "https://video-s.twimg.com/amplify_video/2021227162603339776/vid/avc1/1280x720/IbJGc42nnQTptud_.mp4?tag=14",
+        source_title: "",
+        source_owner: "Forza Horizon official X - FH6 Lowlands video",
+        source_type: "official_social_media_video",
+        source_family: "forza_horizon_official_x_fh6_lowlands_video",
+        evidence_of_officialness: "Forza Horizon official X - FH6 Lowlands video",
+        entity_match_notes:
+          "Must visibly match Bethesda Game Studios and ZeniMax and the story bethesda-layoffs-gap.",
+        source_duration_s: 27.71,
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 0);
+  assert.equal(report.summary.rejected, 1);
+  assert.ok(report.rejected_entries[0].reasons.includes("entity_evidence_missing_or_wrong"));
+});
+
+test("official source intake rejects page references when only entity notes match the story", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "bethesda-layoffs-gap",
+        title: "Bethesda Game Studios and ZeniMax Needs One Real Proof Point",
+        canonical_subject: "Bethesda Game Studios and ZeniMax",
+        full_script: "Bethesda Game Studios and ZeniMax layoffs are the story, not Forza Horizon.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "bethesda-layoffs-gap",
+        entity: "Bethesda Game Studios and ZeniMax",
+        official_source_url: "https://forums.forza.net/t/fh6-calendar-and-announcements/797922",
+        source_title: "",
+        source_owner: "Forza official forums - FH6 resources calendar",
+        source_type: "official_publisher_or_developer_trailer_page",
+        source_family: "forza_official_forum_fh6_resources_calendar",
+        evidence_of_officialness: "Forza official forums - FH6 resources calendar",
+        entity_match_notes:
+          "Must visibly match Bethesda Game Studios and ZeniMax and the story bethesda-layoffs-gap.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 0);
+  assert.equal(report.summary.rejected, 1);
+  assert.ok(report.rejected_entries[0].reasons.includes("entity_evidence_missing_or_wrong"));
+});
+
 test("official source intake rejects official social video without direct twimg media and evidence", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [

@@ -10,6 +10,7 @@ const {
   augmentStoriesWithRevenuePaths,
   buildGoalBatchPackages,
   clipsFromVisualV4MotionPack,
+  hydrateStoryWithMotionPack,
   prepareStoryForGoalProof,
   writeGoalBatchPackages,
 } = require("../../lib/goal-batch-packages");
@@ -90,6 +91,52 @@ function licensedSfxAssets() {
     },
   ];
 }
+
+test("hydrateStoryWithMotionPack refuses stale motion evidence from a different story subject", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-motion-subject-guard-"));
+  try {
+    const clipPath = path.join(tmp, "forza_clip.mp4");
+    await fs.writeFile(clipPath, Buffer.alloc(2048, 7));
+
+    const hydrated = hydrateStoryWithMotionPack(
+      {
+        id: "rss_collision",
+        title: "Bethesda Game Studios and ZeniMax hit hard by Xbox layoffs, says union",
+        canonical_subject: "Bethesda Game Studios and ZeniMax",
+        canonical_game: "Bethesda Game Studios and ZeniMax",
+        source_name: "PCGamer",
+        url: "https://www.pcgamer.com/gaming-industry/bethesda-game-studios-and-zenimax-hit-hard-by-xbox-layoffs-says-union/",
+      },
+      {
+        readiness: { status: "v4_motion_ready" },
+        handoff: {
+          visual_v4_local_motion_clips: [
+            {
+              id: "segment_direct_motion_1",
+              path: clipPath,
+              source_url: "https://cdn.forza.net/strapi-uploads/assets/Forza_Horizon_6_Primary_Animated_Keyart.mp4",
+              source_family: "forza_horizon_official_x_fh6_maserati_mc20_video_window_4_5",
+              source_type: "official_social_media_video",
+              rights_risk_class: "official_reference_only",
+              validated: true,
+            },
+          ],
+        },
+      },
+      { videoCacheDir: tmp },
+    );
+
+    assert.deepEqual(hydrated.video_clips || [], []);
+    assert.deepEqual(hydrated.visual_v4_local_motion_clips || [], []);
+    assert.equal(hydrated.visual_v4_motion_pack_status, "subject_mismatch_rejected");
+    assert.match(
+      hydrated.visual_v4_motion_pack_rejected_reason,
+      /motion_subject_mismatch/,
+    );
+  } finally {
+    await fs.remove(tmp);
+  }
+});
 
 function greenStory(id = "green-one") {
   const clips = Array.from({ length: 7 }, (_, index) => ({

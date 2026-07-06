@@ -368,6 +368,27 @@ test("fresh review local promotion intake rejects source-angle drift from GTA tr
   );
 });
 
+test("fresh review local promotion intake rejects Oblivion preorder source drift into Rockstar date-confidence copy", () => {
+  const failures = qualityFailuresForDraft({
+    selected_title: "Nintendo Switch 2's Date Trust Check",
+    canonical_subject: "Nintendo Switch 2's Date Trust Check",
+    source_title:
+      "The Elder Scrolls IV: Oblivion Remastered's Physical Switch 2 Release Comes on a Cartridge - Here's Where You Can Preorder It",
+    article_title:
+      "The Elder Scrolls IV: Oblivion Remastered's Physical Switch 2 Release Comes on a Cartridge - Here's Where You Can Preorder It",
+    description:
+      "IGN reports The Elder Scrolls IV: Oblivion Remastered's Physical Switch 2 physical release comes on a cartridge.",
+    full_script:
+      "Nintendo Switch 2's release date just became a trust check, not a new reveal. IGN reports Nintendo Switch 2's release timing has been reiterated without new footage, price or edition detail. The pressure now shifts back to proof: gameplay, platform wording, editions and whether Rockstar's next official beat makes the schedule feel solid. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.ok(
+    failures.includes(
+      "local_intake:source_script_mismatch_oblivion_preorder_vs_rockstar_date",
+    ),
+  );
+});
+
 test("fresh review local promotion intake rejects GTA context-only source drift into GTA lead story", async () => {
   const report = await buildFreshReviewLocalPromotionIntake({
     rows: [

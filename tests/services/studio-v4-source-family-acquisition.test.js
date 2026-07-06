@@ -696,7 +696,34 @@ test("Studio V4 source-family acquisition reopens ready packs that repeat one di
         },
       ],
     },
-    referenceReport: { plans: [] },
+    referenceReport: {
+      plans: [
+        {
+          story_id: "bethesda-layoffs-gap",
+          title: "Bethesda Game Studios and ZeniMax Needs One Real Proof Point",
+          target_entities: ["Forza Horizon 6"],
+          references: [
+            {
+              provider: "trusted_footage_registry",
+              entity: "Forza Horizon 6",
+              source_family: "forza_horizon_official_x_fh6_lowlands_video",
+              source_url:
+                "https://video.twimg.com/amplify_video/2021227162603339776/vid/avc1/1280x720/IbJGc42nnQTptud_.mp4?tag=14",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+            },
+          ],
+          planned_searches: [
+            {
+              query: "Forza Horizon 6 official gameplay trailer",
+              entity: "Forza Horizon 6",
+              accepted_sources: ["Steam", "official publisher channel", "platform storefront"],
+              will_download: false,
+            },
+          ],
+        },
+      ],
+    },
   });
 
   const row = report.rows[0];
@@ -2059,6 +2086,80 @@ test("Studio V4 source-family acquisition does not inherit title-decoy source fa
   assert.equal(row.primary_story_entity, "Subnautica 2");
   assert.deepEqual(row.source_family_candidates, []);
   assert.equal(row.official_search_actions[0].query, "Subnautica 2 official gameplay trailer");
+  assert.equal(report.source_intake_template.entries.length, 0);
+});
+
+test("Studio V4 source-family acquisition rejects stale clip-backed entities when title names a different story", () => {
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "bethesda-layoffs-gap",
+        title: "Bethesda Game Studios and ZeniMax Needs One Real Proof Point",
+        canonical_subject: "Bethesda Game Studios and ZeniMax",
+        canonical_angle: "Bethesda Game Studios and ZeniMax layoffs after Xbox cuts",
+        clips: [
+          {
+            id: "stale-forza-clip",
+            entity: "Forza Horizon 6",
+            source_family: "forza_horizon_official_x_fh6_coast_video",
+            path: "https://video.twimg.com/amplify_video/2020858232789487616/vid/avc1/1280x720/h2mPH2YV-GPuJ6Q9.mp4?tag=14",
+            source_url_kind: "direct_video",
+          },
+        ],
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 1,
+          required_distinct_families: 4,
+          available_distinct_families: 1,
+        },
+        trusted_source_pipeline: {
+          references_found: 1,
+          intake_queue: [
+            {
+              source_id: "forza-official-x-fh6-coast-video",
+              display_name: "Forza Horizon official X - FH6 Coast video",
+              entity: "Forza Horizon 6",
+              entities: ["Forza Horizon 6", "Forza", "Playground Games"],
+              source_family: "forza_horizon_official_x_fh6_coast_video",
+              source_tier: "official",
+              source_url:
+                "https://video.twimg.com/amplify_video/2020858232789487616/vid/avc1/1280x720/h2mPH2YV-GPuJ6Q9.mp4?tag=14",
+              reference_url: "https://x.com/ForzaHorizon/status/2020858359071617098",
+              source_url_kind: "direct_video",
+              segment_validation_eligible: true,
+              allowed_render_use: "reference_only_by_default",
+              rights_risk_class: "official_reference_only",
+            },
+          ],
+        },
+      }),
+    ],
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          source_id: "forza-official-x-fh6-lowlands-video",
+          display_name: "Forza Horizon official X - FH6 Lowlands video",
+          entity: "Forza Horizon 6",
+          entities: ["Forza Horizon 6", "Forza", "Playground Games"],
+          source_family: "forza_horizon_official_x_fh6_lowlands_video",
+          source_tier: "official",
+          source_url:
+            "https://video.twimg.com/amplify_video/2021227162603339776/vid/avc1/1280x720/IbJGc42nnQTptud_.mp4?tag=14",
+          reference_url: "https://x.com/ForzaHorizon/status/2021227288788947178",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+        },
+      ],
+      story_candidates: [],
+    },
+    referenceReport: { plans: [] },
+  });
+
+  const row = report.rows[0];
+  assert.equal(row.primary_story_entity, "Bethesda Game Studios and ZeniMax");
+  assert.deepEqual(row.source_family_candidates, []);
+  assert.deepEqual(row.official_search_actions, []);
+  assert.equal(row.governed_visual_plan.plan_type, "broad_platform_owned_explainer_plan");
   assert.equal(report.source_intake_template.entries.length, 0);
 });
 

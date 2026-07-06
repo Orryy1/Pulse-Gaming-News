@@ -38,7 +38,7 @@ function sourceFamilyReport(candidateOverrides = {}) {
       {
         story_id: "forza-gap",
         title: "Forza Horizon 6 Steam Peak Exposes Xbox's Early-Access Bet",
-        primary_story_entity: "Forza Horizon 6",
+        primary_story_entity: candidate.primary_story_entity || candidate.entity || "Forza Horizon 6",
         source_family_candidates: [candidate],
       },
     ],
@@ -171,6 +171,88 @@ test("licensed direct media lane preserves duration metadata from implicit offic
   assert.equal(report.rows[0].media_height, 720);
   assert.equal(report.accepted_references[0].source_duration_s, 27.71);
   assert.equal(report.accepted_references[0].source_family, "forza_horizon_official_x_fh6_lowlands_video");
+});
+
+test("licensed direct media lane blocks source candidates that contradict the primary story entity", () => {
+  const report = buildLicensedDirectMediaAcquisitionReport({
+    sourceFamilyReport: {
+      schema_version: 1,
+      execution_mode: "studio_v4_source_family_acquisition",
+      generated_at: GENERATED_AT,
+      rows: [
+        {
+          story_id: "bethesda-layoffs-gap",
+          title: "Bethesda Game Studios and ZeniMax Needs One Real Proof Point",
+          primary_story_entity: "Bethesda Game Studios and ZeniMax",
+          source_family_candidates: [
+            {
+              story_id: "bethesda-layoffs-gap",
+              entity: "Forza Horizon 6",
+              source_family: "forza_horizon_official_x_fh6_lowlands_video",
+              source_type: "official_social_media_video",
+              source_owner: "Forza Horizon official X - FH6 Lowlands video",
+              official_source_url: "https://x.com/ForzaHorizon/status/2021227288788947178",
+              source_url:
+                "https://video-s.twimg.com/amplify_video/2021227162603339776/vid/avc1/1280x720/IbJGc42nnQTptud_.mp4?tag=14",
+              source_url_kind: "direct_video",
+              source_duration_s: 27.71,
+              segment_validation_eligible: true,
+            },
+          ],
+        },
+      ],
+    },
+    generatedAt: GENERATED_AT,
+  });
+
+  assert.equal(report.summary.render_ready_sources, 0);
+  assert.equal(report.summary.blocked_sources, 1);
+  assert.equal(report.accepted_references.length, 0);
+  assert.equal(report.rows[0].status, "blocked");
+  assert.equal(report.rows[0].blocking_reason, "source_entity_mismatch_with_story");
+});
+
+test("licensed direct media lane blocks expanded direct-media-only rows that contradict the primary story entity", () => {
+  const report = buildLicensedDirectMediaAcquisitionReport({
+    sourceFamilyReport: {
+      schema_version: 1,
+      execution_mode: "studio_v4_source_family_acquisition",
+      generated_at: GENERATED_AT,
+      rows: [
+        {
+          story_id: "bethesda-layoffs-gap",
+          title: "Bethesda Game Studios and ZeniMax Needs One Real Proof Point",
+          primary_story_entity: "Bethesda Game Studios and ZeniMax",
+          source_family_candidates: [],
+        },
+      ],
+    },
+    directMediaReport: {
+      schema_version: 1,
+      execution_mode: "official_direct_media_discovery",
+      output_template: {
+        entries: [
+          {
+            story_id: "bethesda-layoffs-gap",
+            entity: "Forza Horizon 6",
+            source_family: "forza_official_site_forza_horizon_6_media_02_forza_horizon_6_primary",
+            source_type: "official_publisher_or_developer_trailer_page",
+            source_owner: "Forza official site - Forza Horizon 6",
+            official_source_url: "https://forza.net/forzahorizon6/",
+            direct_media_url_if_available:
+              "https://cdn.forza.net/strapi-uploads/assets/Forza_Horizon_6_Primary_Animated_Keyart_5732f17209.mp4",
+            source_url_kind: "direct_video",
+          },
+        ],
+      },
+    },
+    generatedAt: GENERATED_AT,
+  });
+
+  assert.equal(report.summary.render_ready_sources, 0);
+  assert.equal(report.summary.blocked_sources, 1);
+  assert.equal(report.rows[0].status, "blocked");
+  assert.equal(report.rows[0].blocking_reason, "source_entity_mismatch_with_story");
 });
 
 test("licensed direct media lane preserves metadata from operator direct-media intake URLs", () => {

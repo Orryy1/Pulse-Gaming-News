@@ -308,6 +308,28 @@ function liveRssWeakUnattendedPattern(story = {}) {
   );
 }
 
+function liveRssWeakMetaMotionPattern(story = {}) {
+  const text = liveRssStorySearchText(story);
+  const title = cleanSearchText(story.title);
+  const url = cleanSearchText(story.url || story.article_url || story.source_url);
+  if (/\bplayers?[â€™']?\s+choice\b/i.test(text) && /\b(?:vote|poll|best new game|awards?)\b/i.test(text)) {
+    return true;
+  }
+  if (/\b(?:top downloads?|most downloaded|download charts?|indie selects?|playstation plus|ps plus|game catalog|leaving soon|monthly games|backlog deadline|support article|resetting xbox|reset your xbox|today[â€™']?s top deals|nintendo switch consoles?)\b/i.test(text)) {
+    return true;
+  }
+  if (/\b(?:and more|more games?|roundup|collection|consoles?)\b/i.test(title) && !liveRssDirectMotionEvidence(story)) {
+    return true;
+  }
+  if (/\b(?:vote for|poll|survey|readers?[â€™']?\s+choice|community vote|best new game)\b/i.test(title)) {
+    return true;
+  }
+  if (/\/players?-choice[-/]|\/poll[-/]|\/vote[-/]/i.test(url)) {
+    return true;
+  }
+  return false;
+}
+
 function genericLiveRssSubject(value = "") {
   const clean = cleanSearchText(value);
   if (!clean) return true;
@@ -383,6 +405,9 @@ function liveRssMotionPotentialScore(story = {}) {
   if (/\b(?:best games|roundup|everything we know|what to play|guide|wishlist)\b/i.test(text)) {
     score -= 35;
   }
+  if (liveRssWeakMetaMotionPattern(story)) {
+    score -= 80;
+  }
   return score;
 }
 
@@ -394,6 +419,7 @@ function liveRssMotionGate(story = {}) {
   const hasSpecificSubject = liveRssHasSpecificSubject(story);
   const hasDirectMotion = liveRssDirectMotionEvidence(story);
   if (liveRssWeakUnattendedPattern(story)) reasons.push("weak_unattended_live_rss_pattern");
+  if (liveRssWeakMetaMotionPattern(story)) reasons.push("weak_meta_motion_pattern");
   if (!hasSpecificSubject) reasons.push("specific_subject_missing");
   if (!hasDirectMotion) reasons.push("direct_motion_signal_missing");
   if (score < MIN_LIVE_RSS_MOTION_SCORE) reasons.push("motion_potential_below_threshold");
@@ -413,6 +439,7 @@ function liveRssRepairIntakeGate(story = {}, motionGate = liveRssMotionGate(stor
     motionGate.has_specific_subject === true || liveRssHasSpecificSubject(story);
   const score = Number(motionGate.score || liveRssMotionPotentialScore(story));
   if (liveRssWeakUnattendedPattern(story)) reasons.push("weak_unattended_live_rss_pattern");
+  if (liveRssWeakMetaMotionPattern(story)) reasons.push("weak_meta_motion_pattern");
   if (!officialPlatformSource) reasons.push("official_or_platform_source_missing");
   if (!hasSpecificSubject) reasons.push("specific_subject_missing");
   if (score < 30) reasons.push("repair_intake_score_below_threshold");
@@ -619,6 +646,7 @@ module.exports = {
   loadMotionPackByStory,
   filterLiveRssStoriesForMotion,
   loadPublishedStoryIdsForGoalBatch,
+  liveRssWeakMetaMotionPattern,
   liveRssMotionGate,
   liveRssMotionPotentialScore,
   liveRssRepairIntakeGate,

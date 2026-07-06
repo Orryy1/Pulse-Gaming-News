@@ -21,6 +21,8 @@ const {
   filterLiveRssStoriesForMotion,
   loadPublishedStoryIdsForGoalBatch,
   liveRssMotionGate,
+  liveRssRepairIntakeGate,
+  liveRssWeakMetaMotionPattern,
   selectStoriesForGoalBatch,
   shouldFillRevenuePathsForGoalBatch,
 } = require("../../tools/goal-batch-packages");
@@ -1143,6 +1145,48 @@ test("goal batch live RSS selection keeps official-source stories for motion rep
     selected.map((story) => story.id),
     ["official-gta", "official-doom"],
   );
+});
+
+test("goal batch live RSS repair intake rejects official meta vote stories without game motion", () => {
+  const weakStories = [
+    {
+      id: "players-choice-vote",
+      title: "Players' Choice: Vote for June 2026's best new game",
+      canonical_subject: "Players' Choice",
+      source_name: "PlayStation Blog",
+      source_type: "rss",
+      url: "https://blog.playstation.com/2026/07/02/players-choice-vote-for-june-2026s-best-new-game/",
+      description: "Vote in the latest Players' Choice poll for June 2026's best new game.",
+      breaking_score: 85,
+    },
+    {
+      id: "top-downloads",
+      title: "June 2026's top downloads on PlayStation Store",
+      source_name: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/07/02/june-2026-top-downloads/",
+      breaking_score: 80,
+    },
+    {
+      id: "support-reset",
+      title: "Resetting Xbox consoles just got easier",
+      source_name: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/07/02/resetting-xbox/",
+      breaking_score: 75,
+    },
+  ];
+
+  for (const story of weakStories) {
+    const motionGate = liveRssMotionGate(story);
+    const repairGate = liveRssRepairIntakeGate(story, motionGate);
+
+    assert.equal(liveRssWeakMetaMotionPattern(story), true, story.id);
+    assert.equal(motionGate.pass, false, story.id);
+    assert.ok(motionGate.reasons.includes("weak_meta_motion_pattern"), story.id);
+    assert.equal(repairGate.pass, false, story.id);
+    assert.ok(repairGate.reasons.includes("weak_meta_motion_pattern"), story.id);
+  }
+
+  assert.deepEqual(filterLiveRssStoriesForMotion(weakStories).map((row) => row.id), []);
 });
 
 test("goal batch live RSS selection keeps repairable official-source backups behind direct-motion stories", () => {

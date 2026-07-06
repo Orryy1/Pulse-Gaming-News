@@ -500,6 +500,42 @@ test("next publish report keeps non-terminal missing platforms while exposing du
   );
 });
 
+test("next publish report excludes near-repeat stories from the same game and claim family", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "doom-chain-spear-public",
+        title: "Doom The Dark Ages Chain Spear Changes The Fight",
+        canonical_subject: "DOOM: The Dark Ages",
+        first_spoken_line: "DOOM The Dark Ages just changed the Chain Spear fight.",
+        full_script:
+          "DOOM The Dark Ages just changed the Chain Spear fight. The update changes how players approach the weapon.",
+        youtube_post_id: "yt-live",
+        youtube_url: "https://youtube.com/shorts/yt-live",
+        instagram_media_id: "ig-live",
+        facebook_post_id: "fb-live",
+      }),
+      baseStory({
+        id: "doom-chain-spear-repeat",
+        title: "DOOM The Dark Ages Chain Spear Has A Fight Risk",
+        canonical_subject: "DOOM: The Dark Ages",
+        first_spoken_line: "DOOM The Dark Ages has a Chain Spear fight risk.",
+        full_script:
+          "DOOM The Dark Ages has a Chain Spear fight risk. The Chain Spear change makes the same combat debate matter again.",
+        youtube_post_id: "yt-second",
+        youtube_url: "https://youtube.com/shorts/yt-second",
+      }),
+    ],
+    { analyticsText, generatedAt: "2026-07-06T22:15:00.000Z" },
+  );
+
+  assert.equal(report.candidates.length, 0);
+  assert.equal(report.excluded.length, 2);
+  assert.equal(report.excluded[1].id, "doom-chain-spear-repeat");
+  assert.match(report.excluded[1].reason, /^near_repeat_story_cluster:/);
+  assert.match(report.excluded[1].reason, /doom-chain-spear-public/);
+});
+
 test("next publish report excludes upstream anti-spam deferred bridge candidates", () => {
   const report = buildNextPublishCandidatesReport(
     [

@@ -1036,6 +1036,121 @@ function tiktokInboxReadiness(story = {}) {
   return { score, reasons };
 }
 
+const NEAR_REPEAT_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "into",
+  "that",
+  "this",
+  "just",
+  "gets",
+  "got",
+  "has",
+  "have",
+  "had",
+  "says",
+  "said",
+  "saying",
+  "shows",
+  "show",
+  "shown",
+  "new",
+  "news",
+  "update",
+  "updates",
+  "game",
+  "games",
+  "gaming",
+  "players",
+  "player",
+  "pulse",
+  "follow",
+  "never",
+  "miss",
+  "beat",
+]);
+
+function normaliseNearRepeatSubject(story = {}) {
+  return cleanText(story.canonical_subject || story.canonical_game || story.game_title || story.primary_entity || story.title)
+    .toLowerCase()
+    .replace(/\b(?:doom)\b/g, "doom")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(?:the|a|an|of|and)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function nearRepeatAngleTokens(story = {}) {
+  const subject = normaliseNearRepeatSubject(story);
+  const subjectTokens = new Set(subject.split(/\s+/).filter(Boolean));
+  const text = [
+    story.title,
+    story.short_title,
+    story.first_spoken_line,
+    story.hook,
+    story.description,
+    story.full_script,
+  ]
+    .map(cleanText)
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const tokens = text
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => {
+      if (token.length < 4) return false;
+      if (NEAR_REPEAT_STOPWORDS.has(token)) return false;
+      if (subjectTokens.has(token)) return false;
+      return true;
+    });
+  return [...new Set(tokens)].slice(0, 30);
+}
+
+function nearRepeatFingerprint(story = {}) {
+  return {
+    story_id: cleanText(story.id || "unknown"),
+    subject: normaliseNearRepeatSubject(story),
+    angle_tokens: nearRepeatAngleTokens(story),
+  };
+}
+
+function hasAnyPublicPlatformEvidence(story = {}) {
+  return existingPublicPlatformFields(story).length > 0;
+}
+
+function nearRepeatStoryClusterReason(story = {}, options = {}) {
+  const referenceStories = Array.isArray(options.nearRepeatPublishedStories)
+    ? options.nearRepeatPublishedStories
+    : [];
+  if (!referenceStories.length) return null;
+  if (!missingEnabledPublishPlatformNames(story, options).length) return null;
+  const current = nearRepeatFingerprint(story);
+  if (current.subject.split(/\s+/).filter(Boolean).length < 2) return null;
+  if (!current.subject || current.angle_tokens.length < 2) return null;
+  const currentTokens = new Set(current.angle_tokens);
+
+  for (const referenceStory of referenceStories) {
+    if (!referenceStory || referenceStory === story) continue;
+    if (cleanText(referenceStory.id) && cleanText(referenceStory.id) === cleanText(story.id)) {
+      continue;
+    }
+    if (!hasAnyPublicPlatformEvidence(referenceStory)) continue;
+    const reference = nearRepeatFingerprint(referenceStory);
+    if (!reference.subject || reference.subject !== current.subject) continue;
+    const sharedTokens = reference.angle_tokens.filter((token) => currentTokens.has(token));
+    if (sharedTokens.length < 2) continue;
+    return `near_repeat_story_cluster:${reference.story_id || "published_story"}:${sharedTokens
+      .slice(0, 4)
+      .join("+")}`;
+  }
+  return null;
+}
+
 function approvalScore(story = {}) {
   if (story.auto_approved === true || story.auto_approved === 1) {
     return { score: 24, reason: "auto_approved" };
@@ -1058,6 +1173,8 @@ function exclusionReason(story = {}, options = {}) {
     }
     return `already_has_public_platform_id:${publicFields.join(",")}`;
   }
+  const nearRepeatReason = nearRepeatStoryClusterReason(story, options);
+  if (nearRepeatReason) return nearRepeatReason;
   const upstreamSkip = upstreamSkippedReason(story, options.upstreamAntiSpamReport || {});
   if (upstreamSkip) return upstreamSkip;
   if (story.stale_scheduler_bridge_candidate === true) {
@@ -5376,6 +5493,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   const requestedStoryId = normaliseStoryId(options.storyId);
   const inputRows = Array.isArray(stories) ? stories : [];
   const rows = filterStoriesByStoryId(inputRows, requestedStoryId);
+  const nearRepeatPublishedStories = rows.filter(hasAnyPublicPlatformEvidence);
   const bridgeCount = bridgeCandidateCount(rows);
   const bridgeManifest = options.bridgeManifest
     ? normaliseBridgeManifest(options.bridgeManifest)
@@ -5394,7 +5512,10 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
 
   for (const story of rows) {
     if (!story || typeof story !== "object") continue;
-    const reason = exclusionReason(story, evaluationOptions);
+    const reason = exclusionReason(story, {
+      ...evaluationOptions,
+      nearRepeatPublishedStories,
+    });
     if (reason) {
       if (reason.startsWith("pending_audio")) pendingAudioCount += 1;
       excluded.push({

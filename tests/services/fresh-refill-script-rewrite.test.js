@@ -557,6 +557,76 @@ test("fresh refill viewer script repairs current access and hardware-rumour stor
   }
 });
 
+test("fresh refill viewer script repairs current subscription and layoffs stories into clear public narration", () => {
+  const cases = [
+    {
+      title: "Why Step Into Modern Era in Could Split Players",
+      sourceUrl: "https://news.xbox.com/en-us/2026/07/02/ea-play-july/",
+      sourceName: "Xbox Wire",
+      confirmed: "Step Into the Modern Era in EA SPORTS College Football 27 with EA Play",
+      expectedTitle: "College Football 27 Has An EA Play Trust Test",
+      expectedHook: /^College Football 27 has a subscription problem before kickoff\./,
+      expectedDetail: /EA Play|sports games live on habit|sample first|roster refresh/i,
+      canonicalSubject: "EA SPORTS College Football 27",
+    },
+    {
+      title: "Bethesda Game Studios and ZeniMax Has A Studio Risk",
+      sourceUrl:
+        "https://www.pcgamer.com/gaming-industry/bethesda-game-studios-and-zenimax-hit-hard-by-xbox-layoffs-says-union/",
+      sourceName: "PCGamer",
+      confirmed: "Bethesda Game Studios and ZeniMax hit hard by Xbox layoffs, says union",
+      expectedTitle: "Bethesda Layoffs Turn Into An Xbox Trust Test",
+      expectedHook: /^Bethesda layoffs put Xbox's RPG promises under pressure\./,
+      expectedDetail: /patches, DLC, support teams and the next big RPG pipeline|long-tail games|teams behind it/i,
+      canonicalSubject: "Bethesda Game Studios and ZeniMax",
+    },
+  ];
+
+  for (const item of cases) {
+    const script = buildFreshRefillViewerScript({
+      job: {
+        story_id: `test_${item.expectedTitle.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}`,
+        title: item.title,
+        artifact_dir: path.join(TEST_ROOT, "unused"),
+        source: {
+          name: item.sourceName,
+          url: item.sourceUrl,
+          type: "rss",
+        },
+        current_script: `${item.title} has one detail worth checking before it becomes background noise.`,
+      },
+      manifest: {
+        canonical_subject: item.canonicalSubject,
+        canonical_title: item.title,
+        primary_source: item.sourceName,
+        primary_source_url: item.sourceUrl,
+        confirmed_claims: [item.confirmed],
+      },
+    });
+
+    assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+    assert.equal(script.suggested_title, item.expectedTitle);
+    assert.match(script.full_script, item.expectedHook);
+    assert.match(script.full_script, item.expectedDetail);
+    assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+    assert.doesNotMatch(
+      `${script.suggested_title} ${script.full_script}`,
+      /Could Split Players|Needs One Real Proof|new source detail|real question|background noise|play now, wait, skip|source-backed update|the player impact is|watch signal|not a verdict/i,
+    );
+    assert.doesNotMatch(script.suggested_title, /:/, "avoid title punctuation that creates TTS title pauses");
+    assert.deepEqual(script.quality.blockers, []);
+    assert.equal(script.coherence.result, "pass");
+    const massAudience = auditMassAudienceClarity({
+      script: script.full_script,
+      title: script.suggested_title,
+      sourceName: item.sourceName,
+      canonicalSubject: item.canonicalSubject,
+    });
+    assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
+    assert.equal(massAudience.concrete_detail_count >= 3, true);
+  }
+});
+
 test("fresh refill script rewrite dry-run leaves local proof files unchanged", async () => {
   const { artifactDir, workOrderPath } = await writeFixture("dry-run");
   const manifestPath = path.join(artifactDir, "canonical_story_manifest.json");

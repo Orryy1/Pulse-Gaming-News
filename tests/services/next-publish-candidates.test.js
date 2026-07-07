@@ -31,6 +31,7 @@ const {
 const {
   TTS_PRONUNCIATION_PROFILE_VERSION,
 } = require("../../lib/tts-pronunciation");
+const { canonicalHash } = require("../../lib/services/url-canonical");
 const db = require("../../lib/db");
 
 const analyticsText = [
@@ -534,6 +535,54 @@ test("next publish report excludes near-repeat stories from the same game and cl
   assert.equal(report.excluded[1].id, "doom-chain-spear-repeat");
   assert.match(report.excluded[1].reason, /^near_repeat_story_cluster:/);
   assert.match(report.excluded[1].reason, /doom-chain-spear-public/);
+});
+
+test("next publish report excludes regenerated stories whose source URL was already published", () => {
+  const sourceUrl =
+    "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/";
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "fresh-doom-regenerated",
+        title: "DOOM The Dark Ages Chain Spear Has A Fight Risk",
+        url: sourceUrl,
+        canonical_subject: "DOOM: The Dark Ages",
+        first_spoken_line: "DOOM The Dark Ages has a Chain Spear fight risk.",
+        full_script:
+          "DOOM The Dark Ages has a Chain Spear fight risk. The new Chain Spear test changes the combat loop.",
+      }),
+    ],
+    {
+      analyticsText,
+      generatedAt: "2026-07-07T04:45:00.000Z",
+      publishedPlatformEvidence: {
+        by_source_url_hash: {
+          [canonicalHash(sourceUrl)]: {
+            already_published_platforms: [
+              "youtube_shorts",
+              "instagram_reels",
+              "facebook_reels",
+            ],
+            rows: [
+              {
+                story_id: "rss_e2914175f30e0777",
+                platform: "youtube_shorts",
+                external_id: "gQ_l2gNLKWc",
+              },
+            ],
+          },
+        },
+      },
+    },
+  );
+
+  assert.equal(report.candidates.length, 0);
+  assert.equal(report.excluded.length, 1);
+  assert.equal(report.excluded[0].id, "fresh-doom-regenerated");
+  assert.match(report.excluded[0].reason, /^already_has_public_platform_id:/);
+  assert.match(report.excluded[0].reason, /youtube_post_id/);
+  assert.match(report.excluded[0].reason, /instagram_media_id/);
+  assert.match(report.excluded[0].reason, /facebook_post_id/);
 });
 
 test("next publish report excludes upstream anti-spam deferred bridge candidates", () => {

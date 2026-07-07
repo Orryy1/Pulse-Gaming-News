@@ -36,6 +36,7 @@ const {
   hasRiskyGtaViOpening: approvedVoiceHasRiskyGtaViOpening,
   hasSplitGtaViRomanNarration: approvedVoiceHasSplitGtaViRomanNarration,
 } = require("../lib/studio/v2/approved-voice-path");
+const { canonicalHash } = require("../lib/services/url-canonical");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "goal-contract");
@@ -394,6 +395,167 @@ function publishedPlatformNames(story = {}) {
   return Object.entries(PUBLIC_PLATFORM_FIELD_GROUPS)
     .filter(([, fields]) => fields.some((field) => realPlatformId(story[field])))
     .map(([platform]) => platform);
+}
+
+function cleanPlatformName(value = "") {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text === "youtube" || text === "youtube_shorts") return "youtube_shorts";
+  if (text === "instagram" || text === "instagram_reel" || text === "instagram_reels") {
+    return "instagram_reels";
+  }
+  if (text === "facebook" || text === "facebook_reel" || text === "facebook_reels") {
+    return "facebook_reels";
+  }
+  if (text === "twitter" || text === "x") return "x";
+  if (["tiktok", "threads", "pinterest"].includes(text)) return text;
+  return "";
+}
+
+function uniqueCleanPlatformNames(values = []) {
+  return [...new Set((Array.isArray(values) ? values : []).map(cleanPlatformName).filter(Boolean))];
+}
+
+function storySourceUrls(story = {}) {
+  return [
+    story.url,
+    story.source_url,
+    story.article_url,
+    story.primary_source_url,
+    story.canonical?.url,
+    story.canonical?.source_url,
+    story.canonical?.article_url,
+    story.canonical?.primary_source_url,
+    story.canonical?.primary_source?.url,
+    story.canonical?.official_source?.url,
+    story.platform_publish_manifest?.source_url,
+    story.platform_publish_manifest?.primary_source_url,
+    story.platform_publish_manifest?.primary_source?.url,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function storySourceUrlHashes(story = {}) {
+  return [
+    story.source_url_hash,
+    story.canonical?.source_url_hash,
+    ...storySourceUrls(story).map((url) => canonicalHash(url)),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter((hash, index, hashes) => hash && hash !== "invalid-url" && hashes.indexOf(hash) === index);
+}
+
+function platformEvidenceFromRow(row = {}) {
+  return uniqueCleanPlatformNames([
+    row.platform,
+    ...(Array.isArray(row.already_published_platforms) ? row.already_published_platforms : []),
+    ...(Array.isArray(row.published_platforms) ? row.published_platforms : []),
+    ...(Array.isArray(row.platforms) ? row.platforms : []),
+  ]);
+}
+
+function publishedEvidencePlatformsForStory(evidence = null, storyId = "") {
+  const id = String(storyId || "").trim();
+  if (!id || !evidence || typeof evidence !== "object") return [];
+  if (Array.isArray(evidence)) {
+    return uniqueCleanPlatformNames(
+      evidence
+        .filter((row) => String(row?.story_id || row?.id || "").trim() === id)
+        .flatMap(platformEvidenceFromRow),
+    );
+  }
+  const direct =
+    evidence[id] ||
+    evidence.by_story_id?.[id] ||
+    evidence.byStoryId?.[id] ||
+    evidence.stories?.[id];
+  if (!direct) return [];
+  if (Array.isArray(direct)) return uniqueCleanPlatformNames(direct.flatMap(platformEvidenceFromRow));
+  return platformEvidenceFromRow(direct);
+}
+
+function publishedEvidencePlatformsForSourceHash(evidence = null, sourceHash = "") {
+  const hash = String(sourceHash || "").trim();
+  if (!hash || !evidence || typeof evidence !== "object") return [];
+  const direct =
+    evidence.by_source_url_hash?.[hash] ||
+    evidence.bySourceUrlHash?.[hash] ||
+    evidence.source_url_hashes?.[hash];
+  if (!direct) return [];
+  if (Array.isArray(direct)) return uniqueCleanPlatformNames(direct.flatMap(platformEvidenceFromRow));
+  return platformEvidenceFromRow(direct);
+}
+
+function applyPublishedPlatformEvidence(stories = [], evidence = null) {
+  if (!evidence) return stories;
+  for (const story of Array.isArray(stories) ? stories : []) {
+    if (!story || typeof story !== "object") continue;
+    const platforms = uniqueCleanPlatformNames([
+      ...publishedEvidencePlatformsForStory(evidence, story.id),
+      ...storySourceUrlHashes(story).flatMap((hash) =>
+        publishedEvidencePlatformsForSourceHash(evidence, hash),
+      ),
+    ]);
+    if (!platforms.length) continue;
+    story.already_published_platforms = uniqueCleanPlatformNames([
+      ...(Array.isArray(story.already_published_platforms) ? story.already_published_platforms : []),
+      ...platforms,
+    ]);
+    for (const platform of platforms) {
+      if (platform === "youtube_shorts" && !realPlatformId(story.youtube_post_id)) {
+        story.youtube_post_id = `SOURCE_URL_ALREADY_PUBLISHED_${story.id || "story"}`;
+      }
+      if (platform === "instagram_reels" && !realPlatformId(story.instagram_media_id)) {
+        story.instagram_media_id = `SOURCE_URL_ALREADY_PUBLISHED_${story.id || "story"}`;
+      }
+      if (platform === "facebook_reels" && !realPlatformId(story.facebook_post_id)) {
+        story.facebook_post_id = `SOURCE_URL_ALREADY_PUBLISHED_${story.id || "story"}`;
+      }
+    }
+  }
+  return stories;
+}
+
+function addPublishedEvidenceEntry(map, key, platforms = [], row = {}) {
+  const id = String(key || "").trim();
+  const cleanPlatforms = uniqueCleanPlatformNames(platforms);
+  if (!id || !cleanPlatforms.length) return;
+  if (!map[id]) map[id] = { already_published_platforms: [], rows: [] };
+  map[id].already_published_platforms = uniqueCleanPlatformNames([
+    ...map[id].already_published_platforms,
+    ...cleanPlatforms,
+  ]);
+  map[id].rows.push(row);
+}
+
+function buildPublishedPlatformEvidenceFromStories(stories = []) {
+  const byStoryId = {};
+  const bySourceUrlHash = {};
+  for (const story of Array.isArray(stories) ? stories : []) {
+    if (!story || typeof story !== "object") continue;
+    const platforms = publishedPlatformNames(story);
+    if (!platforms.length) continue;
+    const row = {
+      story_id: story.id || null,
+      title: story.title || null,
+      url: story.url || story.source_url || story.article_url || null,
+      already_published_platforms: platforms,
+    };
+    addPublishedEvidenceEntry(byStoryId, story.id, platforms, row);
+    for (const hash of storySourceUrlHashes(story)) {
+      addPublishedEvidenceEntry(bySourceUrlHash, hash, platforms, {
+        ...row,
+        source_url_hash: hash,
+      });
+    }
+  }
+  return {
+    by_story_id: byStoryId,
+    by_source_url_hash: bySourceUrlHash,
+    story_count: Object.keys(byStoryId).length,
+    source_url_hash_count: Object.keys(bySourceUrlHash).length,
+  };
 }
 
 function errorTextIsDuplicateBlocked(value) {
@@ -5492,7 +5654,10 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   };
   const requestedStoryId = normaliseStoryId(options.storyId);
   const inputRows = Array.isArray(stories) ? stories : [];
-  const rows = filterStoriesByStoryId(inputRows, requestedStoryId);
+  const rows = applyPublishedPlatformEvidence(
+    filterStoriesByStoryId(inputRows, requestedStoryId).map((story) => ({ ...story })),
+    options.publishedPlatformEvidence,
+  );
   const nearRepeatPublishedStories = rows.filter(hasAnyPublicPlatformEvidence);
   const bridgeCount = bridgeCandidateCount(rows);
   const bridgeManifest = options.bridgeManifest
@@ -5979,6 +6144,7 @@ async function runCli(argv = process.argv) {
     storyId: args.storyId,
     bridgeManifest: selected.bridge_manifest,
     upstreamAntiSpamReport,
+    publishedPlatformEvidence: buildPublishedPlatformEvidenceFromStories(stories),
   });
   if (args.preflightQa) {
     await attachPreflightQa(report, mergedStories, {
@@ -6024,6 +6190,7 @@ module.exports = {
   DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
   DEFAULT_SCRIPT_SCORE_THRESHOLD,
   buildNextPublishCandidatesReport,
+  buildPublishedPlatformEvidenceFromStories,
   formatNextPublishCandidatesMarkdown,
   scoreCandidate,
   scoreAnalyticsFit,

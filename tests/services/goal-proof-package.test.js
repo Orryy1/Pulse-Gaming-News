@@ -270,6 +270,26 @@ test("goal proof package produces a GREEN acceptance entry only when every core 
   assert.equal(pack.sfx_manifest.source_plan.readiness.status, "pass");
   assert.ok(pack.acceptance_entry.artefacts.includes("script_scorecard.json"));
   assert.ok(pack.acceptance_entry.artefacts.includes("platform_publish_manifest.json"));
+  assert.equal(pack.acceptance_entry.video_clips.length, story.video_clips.length);
+  assert.equal(pack.acceptance_entry.video_clips[0].path, story.video_clips[0].path);
+});
+
+test("goal proof package preserves local video clip path strings in acceptance entries", () => {
+  const story = greenStory();
+  const originalPaths = story.video_clips.map((clip) => clip.path);
+  story.video_clips = originalPaths;
+  story.visual_v4_local_motion_clips = [];
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-05-21T19:46:00.000Z",
+  });
+
+  assert.equal(pack.acceptance_entry.video_clips.length, originalPaths.length);
+  assert.deepEqual(
+    pack.acceptance_entry.video_clips.map((clip) => clip.path),
+    originalPaths,
+  );
 });
 
 test("goal proof package does not keep stale footage blocker after materialised direct-motion proof", () => {

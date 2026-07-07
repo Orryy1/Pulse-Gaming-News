@@ -145,6 +145,26 @@ test("fresh review script repair excludes motion-poor retail and platform-servic
   assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
 });
 
+test("fresh review script repair keeps footage-backed rows even when their subject looks motion-poor", () => {
+  const selected = selectFreshReviewScriptRepairRows([
+    row({
+      story_id: "switch_memory_card_with_clip",
+      title: "Switch 2 MicroSD Cards Just Got A Storage Warning",
+      url: "https://www.ign.com/articles/best-microsd-express-cards-for-switch-2",
+      article_url: "https://www.ign.com/articles/best-microsd-express-cards-for-switch-2",
+      video_clips: JSON.stringify([
+        {
+          path: "C:\\pulse\\output\\video_cache\\switch_2_storage_clip.mp4",
+          source_type: "youtube_official_trailer",
+        },
+      ]),
+      total: 76,
+    }),
+  ], { now: NOW, limit: 10 });
+
+  assert.deepEqual(selected.map((item) => item.story_id), ["switch_memory_card_with_clip"]);
+});
+
 test("fresh review script repair excludes stale, non-script, published and reddit-only rows", () => {
   const selected = selectFreshReviewScriptRepairRows([
     row({ story_id: "fresh_good" }),

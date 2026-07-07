@@ -1288,6 +1288,58 @@ test("fresh refill repair attempt scope can select official source stories for d
   }
 });
 
+test("fresh refill repair attempt scope treats local video clips as direct motion runway", async () => {
+  const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-local-clip-runway-"));
+  const repairDir = path.join(tmp, "repair");
+
+  try {
+    const result = await freshRefillRepairAttemptScope({
+      packageFilter: {
+        eligibleRows: [
+          {
+            story_id: "local_clip_story",
+            title: "Switch 2 Storage Has A Real Player Problem",
+            blockers: ["footage:v4_motion_blocked"],
+            video_clips: JSON.stringify([
+              {
+                path: "C:\\pulse\\output\\video_cache\\switch_2_storage_clip.mp4",
+                source_type: "youtube_official_trailer",
+              },
+            ]),
+          },
+          {
+            story_id: "article_only_story",
+            title: "Switch 2 Storage Has A Retail Problem",
+            blockers: ["footage:v4_motion_blocked"],
+          },
+        ],
+        eligibleStoryPackagesPath: path.join(tmp, "eligible.json"),
+      },
+      repairStoryLimit: 2,
+      requireDirectMotionRunway: true,
+      repairDir,
+    });
+
+    assert.deepEqual(
+      result.storyPackageRows.map((row) => row.story_id),
+      ["local_clip_story"],
+    );
+    assert.deepEqual(
+      result.repairDeferredByLimitRows.map((row) => row.story_id),
+      ["article_only_story"],
+    );
+    const priorityReport = JSON.parse(await fs.readFile(result.repairPriorityReportPath, "utf8"));
+    const selected = priorityReport.ranked.find((row) => row.story_id === "local_clip_story");
+    assert.equal(selected.has_direct_motion_runway, true);
+    assert.equal(selected.direct_media_candidate_count, 1);
+    assert.equal(selected.selected_for_attempt, true);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill under-supported motion summary marks one-family stories as deferred", async () => {
   const { summarizeFreshRefillUnderSupportedMotion } = require("../../lib/job-handlers");
 

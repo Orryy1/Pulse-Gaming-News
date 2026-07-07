@@ -1081,6 +1081,120 @@ test("fresh refill repair attempt scope prioritises direct and official motion r
   }
 });
 
+test("fresh refill repair attempt scope defers article-only stories when direct motion runway exists", async () => {
+  const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-motion-first-"));
+  const repairDir = path.join(tmp, "repair");
+
+  async function artifact(storyId, manifest) {
+    const dir = path.join(tmp, storyId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_subject: manifest.subject,
+        selected_title: manifest.title,
+        narration_script: `${manifest.subject} has a fresh official update. Follow Pulse Gaming so you never miss a beat.`,
+      }),
+    );
+    await fs.writeFile(
+      path.join(dir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: manifest.primary_source,
+        direct_media_candidates: manifest.direct_media_candidates || [],
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    return dir;
+  }
+
+  try {
+    const directDir = await artifact("direct_motion_story", {
+      subject: "Example Adventure",
+      title: "Example Adventure Has Direct Footage",
+      primary_source: {
+        name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/07/07/example-adventure-gameplay/",
+        type: "rss",
+      },
+      direct_media_candidates: [
+        {
+          direct_media_url: "https://video.fastly.steamstatic.com/store_trailers/123/456/hls_264_master.m3u8",
+          source_type: "official_game_site_news_page",
+          source_title: "Example Adventure official gameplay",
+        },
+      ],
+    });
+    const articleOnlyDir = await artifact("article_only_story", {
+      subject: "Example Racer",
+      title: "Example Racer Gets An Article Update",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/07/example-racer-update/",
+        type: "rss",
+      },
+    });
+
+    const result = await freshRefillRepairAttemptScope({
+      packageFilter: {
+        eligibleRows: [
+          {
+            story_id: "article_only_story",
+            artifact_dir: articleOnlyDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+          {
+            story_id: "direct_motion_story",
+            artifact_dir: directDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+        ],
+        eligibleStoryPackagesPath: path.join(tmp, "eligible.json"),
+      },
+      repairStoryLimit: 2,
+      requireDirectMotionRunway: true,
+      repairDir,
+    });
+
+    assert.deepEqual(
+      result.storyPackageRows.map((row) => row.story_id),
+      ["direct_motion_story"],
+    );
+    assert.deepEqual(
+      result.repairDeferredByLimitRows.map((row) => row.story_id),
+      ["article_only_story"],
+    );
+    const priorityReport = JSON.parse(await fs.readFile(result.repairPriorityReportPath, "utf8"));
+    assert.equal(priorityReport.summary.motion_runway_required_for_attempt, true);
+    assert.equal(priorityReport.summary.motion_runway_deferred_count, 1);
+    assert.deepEqual(
+      priorityReport.ranked.map((row) => ({
+        story_id: row.story_id,
+        selected_for_attempt: row.selected_for_attempt,
+        defer_reason: row.defer_reason,
+      })),
+      [
+        {
+          story_id: "direct_motion_story",
+          selected_for_attempt: true,
+          defer_reason: null,
+        },
+        {
+          story_id: "article_only_story",
+          selected_for_attempt: false,
+          defer_reason: "source_motion_first_required",
+        },
+      ],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill official discovery runs from source-family search rows even without accepted source entries", () => {
   const { freshRefillShouldRunOfficialDiscovery } = require("../../lib/job-handlers");
 
@@ -1583,7 +1697,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       path.join(__dirname, "..", "..", "output", "studio-v4", "motion-packs"),
       "--allow-owned-motion-fallback",
       "--story-id",
-      "fresh_xbox_story,fresh_gamespot_story",
+      "fresh_xbox_story",
     ]);
     assert.equal(result.status, "completed");
     assert.equal(result.story_count, 1);
@@ -1597,7 +1711,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
-    assert.equal(result.repair_evidence.child_processes.length, 11);
+    assert.equal(result.repair_evidence.child_processes.length, 10);
     assert.equal(result.motion_hydrated_refill.status, "completed");
     assert.equal(result.motion_hydrated_refill.green_count, 1);
     assert.match(result.motion_hydrated_refill.outputs.storyPackagesPath, /motion-hydrated[\\/]story-packages\.json$/);
@@ -1867,10 +1981,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       ),
       "expected fresh refill to keep newly discovered storefront direct media rows",
     );
-    assert.equal(repairReport.summary.child_process_count, 11);
+    assert.equal(repairReport.summary.child_process_count, 10);
     assert.equal(repairReport.summary.real_motion_materialization_status, "materialized");
     assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");
-    assert.equal(repairReport.summary.hyperframes_card_sets_completed, 2);
+    assert.equal(repairReport.summary.hyperframes_card_sets_completed, 1);
     assert.equal(repairReport.summary.hyperframes_card_sets_failed, 0);
     assert.equal(repairReport.summary.hyperframes_card_evidence_blocked_count, 0);
     assert.match(repairReport.outputs.official_search_autofill_report, /official_search_intake_autofill\.json$/);
@@ -1902,8 +2016,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const hyperframesCardEvidence = JSON.parse(
       await fs.readFile(repairReport.outputs.hyperframes_card_evidence_report, "utf8"),
     );
-    assert.equal(hyperframesCardEvidence.summary.card_count, 12);
-    assert.equal(hyperframesCardEvidence.summary.passing_card_count, 12);
+    assert.equal(hyperframesCardEvidence.summary.card_count, 6);
+    assert.equal(hyperframesCardEvidence.summary.passing_card_count, 6);
     assert.equal(hyperframesCardEvidence.summary.failing_card_count, 0);
     assert.equal(hyperframesCardEvidence.summary.shortest_planned_visible_duration_s, 12);
     assert.equal(hyperframesCardEvidence.summary.longest_required_visible_duration_s, 12);
@@ -1922,8 +2036,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.deepEqual(
       candidateStories.map((story) => story.story_id),
-      ["fresh_xbox_story", "fresh_gamespot_story"],
-      "non-script-blocked stories may enter supplemental official search; script-blocked generic packages must not",
+      ["fresh_xbox_story"],
+      "only direct-motion attempt stories enter full supplemental motion repair; script-blocked and article-only packages must not",
     );
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
@@ -1999,7 +2113,23 @@ test("fresh production refill continues motion-hydrated stories through audio an
                 type: "official_platform_news",
                 published_at: "Fri, 26 Jun 2026 09:00:00 +0000",
                 age_hours: 1,
+                direct_media_candidates: [
+                  {
+                    direct_media_url: "https://videos.rockstargames.com/gta-vi/cover-art-reveal.mp4",
+                    source_type: "official_game_website_media_page",
+                    source_title: "Grand Theft Auto VI official cover art reveal",
+                    source_owner: "Rockstar Games",
+                  },
+                ],
               },
+              direct_media_candidates: [
+                {
+                  direct_media_url: "https://videos.rockstargames.com/gta-vi/cover-art-reveal.mp4",
+                  source_type: "official_game_website_media_page",
+                  source_title: "Grand Theft Auto VI official cover art reveal",
+                  source_owner: "Rockstar Games",
+                },
+              ],
               freshness_gate: "pass",
               coherence_gate: "pass",
               blockers: [],
@@ -3408,15 +3538,16 @@ test("fresh production refill full repair auto-applies safe source-bound script 
     assert.equal(result.repair_evidence.summary.script_rewrite_blocked_count, 0);
     assert.equal(
       result.repair_evidence.summary.repair_eligible_story_package_count,
-      1,
-      "a source-bound script rewrite that clears the scorecard must be re-filtered into motion repair",
+      0,
+      "a source-bound script rewrite without direct motion must not enter heavy motion repair",
     );
-    assert.equal(result.repair_evidence.summary.repair_attempt_story_package_count, 1);
+    assert.equal(result.repair_evidence.summary.repair_attempt_story_package_count, 0);
+    assert.equal(result.repair_evidence.summary.motion_runway_deferred_count, 1);
     assert.equal(result.repair_evidence.summary.script_blocked_package_count, 0);
     assert.equal(result.repair_evidence.summary.script_rewrite_promoted_count, 1);
     assert.ok(
-      childCalls.some((call) => call.args[0] === "tools/studio-v4-motion-pack.js"),
-      "repaired scripts must continue into the same refill run's motion evidence path",
+      !childCalls.some((call) => call.args[0] === "tools/studio-v4-motion-pack.js"),
+      "repaired scripts without direct media must wait for source-motion-first intake",
     );
     assert.match(
       result.repair_evidence.outputs.script_rewrite_apply_report,

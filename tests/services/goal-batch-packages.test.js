@@ -1252,6 +1252,34 @@ test("goal batch live RSS selection keeps repairable official-source backups beh
   );
 });
 
+test("goal batch live RSS source-motion-first mode reserves production slots for materialisable direct media", () => {
+  const selected = selectStoriesForGoalBatch({
+    requireMaterializableDirectMedia: true,
+    liveRssStories: [
+      {
+        id: "official-article-only",
+        title: "Xbox Wire Says A New RPG Update Adds A Gameplay Trailer",
+        canonical_subject: "Clockwork Revolution",
+        source_name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/07/clockwork-revolution-update/",
+      },
+      {
+        id: "official-direct-media",
+        title: "GTA VI Cover Art Reveal Sets Up The Pre-Order Fight",
+        canonical_subject: "Grand Theft Auto VI",
+        source_name: "Rockstar Newswire",
+        source_type: "official",
+        url: "https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25",
+        approved_direct_media_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Official_Cover_Art_Landscape/GTAVI_Official_Cover_Art_Landscape.mp4",
+      },
+    ],
+    baseStories: [],
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["official-direct-media"]);
+});
+
 test("goal batch live RSS motion gate preserves official direct-media stories", () => {
   const story = {
     id: "rockstar-gta-vi-cover",

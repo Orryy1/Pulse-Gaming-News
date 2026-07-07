@@ -337,6 +337,36 @@ function liveRssDirectMotionEvidence(story = {}) {
   return false;
 }
 
+function liveRssMaterializableDirectMediaEvidence(story = {}) {
+  const candidates = [
+    story.approved_direct_media_url,
+    story.direct_media_url,
+    story.direct_media_url_if_available,
+    story.media_url,
+    story.video_url,
+    story.trailer_url,
+    story.primary_source?.approved_direct_media_url,
+    story.primary_source?.direct_media_url,
+    story.primary_source?.direct_media_url_if_available,
+    story.source_manifest?.primary_source?.approved_direct_media_url,
+    story.source_manifest?.primary_source?.direct_media_url,
+    story.source_manifest?.primary_source?.direct_media_url_if_available,
+    story.direct_media_candidates,
+    story.official_direct_media_candidates,
+    story.trusted_footage_references,
+    story.footage_references,
+    story.media_candidates,
+    story.trailer_references,
+    story.source_manifest?.direct_media_candidates,
+    story.source_manifest?.official_direct_media_candidates,
+    story.source_manifest?.trusted_footage_references,
+    story.source_manifest?.footage_references,
+  ];
+  return candidates
+    .map(cleanSearchText)
+    .some((url) => /\.(?:mp4|mov|m4v|webm|m3u8|mpd)(?:[?#]|$)/i.test(url));
+}
+
 function liveRssOfficialPlatformSource(story = {}) {
   const text = [
     story.source_name,
@@ -517,6 +547,7 @@ function prioritiseLiveRssStoriesForMotion(stories = []) {
 }
 
 function filterLiveRssStoriesForMotion(stories = [], options = {}) {
+  const requireMaterializableDirectMedia = options.requireMaterializableDirectMedia === true;
   const entries = asStoryArray(stories)
     .map((story, index) => ({
       story,
@@ -525,7 +556,19 @@ function filterLiveRssStoriesForMotion(stories = [], options = {}) {
       gate: liveRssMotionGate(story),
     }))
     .filter((entry) => entry.freshness.pass);
-  const directMotionEntries = entries.filter((entry) => entry.gate.pass);
+  const directMotionEntries = entries.filter(
+    (entry) =>
+      entry.gate.pass &&
+      (!requireMaterializableDirectMedia || liveRssMaterializableDirectMediaEvidence(entry.story)),
+  );
+  if (requireMaterializableDirectMedia) {
+    return directMotionEntries
+      .sort((a, b) => {
+        const delta = Number(b.gate?.score || 0) - Number(a.gate?.score || 0);
+        return Math.abs(delta) > 0.001 ? delta : a.index - b.index;
+      })
+      .map((entry) => entry.story);
+  }
   const directIds = new Set(directMotionEntries.map((entry) => storyIdFor(entry.story)).filter(Boolean));
   const repairEntries = entries
     .filter((entry) => !directIds.has(storyIdFor(entry.story)))
@@ -554,13 +597,18 @@ function selectStoriesForGoalBatch({
   excludedStoryIds = [],
   now = new Date(),
   sourceAgePolicyHours = 168,
+  requireMaterializableDirectMedia = false,
 } = {}) {
   const wanted = new Set(normaliseStoryIds(storyIds));
   const excluded = new Set(normaliseStoryIds(excludedStoryIds));
   const sourceStories = useDbStories ? asStoryArray(dbStories) : asStoryArray(baseStories);
   const liveRssSelection = wanted.size
     ? prioritiseLiveRssStoriesForMotion(liveRssStories)
-    : filterLiveRssStoriesForMotion(liveRssStories, { now, policyHours: sourceAgePolicyHours });
+    : filterLiveRssStoriesForMotion(liveRssStories, {
+        now,
+        policyHours: sourceAgePolicyHours,
+        requireMaterializableDirectMedia,
+      });
   const merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]).filter((story) => {
     if (wanted.size) return true;
     const id = storyIdFor(story);
@@ -660,6 +708,7 @@ async function main(argv = process.argv.slice(2)) {
     useDbStories: args.dbStories,
     storyIds: args.storyIds,
     excludedStoryIds,
+    requireMaterializableDirectMedia: args.liveRssOnly === true,
   });
   const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit, {
     fillRevenuePaths: shouldFillRevenuePathsForGoalBatch(args),
@@ -702,6 +751,7 @@ module.exports = {
   loadPublishedStoryIdsForGoalBatch,
   liveRssWeakMetaMotionPattern,
   liveRssMotionGate,
+  liveRssMaterializableDirectMediaEvidence,
   liveRssMotionPotentialScore,
   liveRssRepairIntakeGate,
   normaliseStoryIds,

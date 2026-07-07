@@ -162,6 +162,58 @@ test("counts licensed direct media local MP4s as direct-video motion evidence", 
   assert.equal(profile.direct_video_motion_family_count, 2);
 });
 
+test("blocks direct-video motion when source family names a different game than the story", () => {
+  const profile = visualEvidenceProfile({
+    story: {
+      canonical_subject: "Bethesda Game Studios and ZeniMax",
+      selected_title: "Bethesda Game Studios and ZeniMax Needs One Real Proof Point",
+    },
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            id: "segment_direct_motion_1",
+            source_url:
+              "https://video.twimg.com/amplify_video/2023438994873221120/vid/avc1/720x1280/example.mp4",
+            source_type: "official_social_media_video",
+            source_family: "forza_horizon_official_x_fh6_maserati_mc20_video_window_4_5",
+            media_kind: "direct_video",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.ok(profile.blockers.includes("visual_evidence:subject_motion_mismatch"));
+  assert.equal(profile.subject_motion_mismatch_count, 1);
+  assert.equal(profile.subject_motion_mismatches[0].matched_foreign_topic, "forza_horizon");
+});
+
+test("allows direct-video motion whose franchise token matches the story", () => {
+  const profile = visualEvidenceProfile({
+    story: {
+      canonical_subject: "Forza Horizon 6",
+      selected_title: "Forza Horizon 6 Needs A Real Reveal",
+    },
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            id: "segment_direct_motion_1",
+            source_url:
+              "https://video.twimg.com/amplify_video/2023438994873221120/vid/avc1/720x1280/example.mp4",
+            source_type: "official_social_media_video",
+            source_family: "forza_horizon_official_x_fh6_maserati_mc20_video_window_4_5",
+            media_kind: "direct_video",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.ok(!profile.blockers.includes("visual_evidence:subject_motion_mismatch"));
+});
+
 test("deduplicates the same direct-video clip across inventory and rights evidence", () => {
   const clip = {
     id: "steam-controller-window-1",

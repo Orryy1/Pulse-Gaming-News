@@ -2714,6 +2714,79 @@ test("goal production render materializer prefers real materialised clips over s
   assert.equal(refreshedBenchmark.visual_evidence_profile.generated_only_motion_deck, false);
 });
 
+test("goal production render materializer normalises Steam storefront rights basis during refresh", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-rights-"));
+  const artifactDir = await makePackage(root, "steam-rights-normalise", {
+    canonical_subject: "Game Pass",
+    selected_title: "Game Pass July Wave Turns Into An Install Fight",
+    narration_script:
+      "Xbox Game Pass just made July feel like a download queue problem. Xbox Wire lists the first wave, and players now have to pick what earns the install.",
+    first_spoken_line: "Xbox Game Pass just made July feel like a download queue problem.",
+    description: "Xbox Wire lists the first July Game Pass wave. Source: Xbox Wire.",
+  });
+  const clips = Array.from({ length: 4 }, (_, index) => ({
+    id: `steam-storefront-${index + 1}`,
+    asset_id: `steam-storefront-${index + 1}`,
+    path: path.join(artifactDir, `steam-storefront-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `steam-storefront-${index + 1}.mp4`),
+    source_url: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1623730/shot-${index + 1}.jpg`,
+    source_type: "steam_screenshot",
+    source_family: `steam_screenshot_game_pass_${index + 1}`,
+    media_kind: "visual_still",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 4));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+    materialised_clips: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_inventory: {
+      production_motion_clips: clips,
+      distinct_source_families: clips.map((clip) => clip.source_family),
+      trusted_local_source_families: clips.map((clip) => clip.source_family),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "fail",
+    failures: ["rights:licence_basis_missing"],
+    assets: clips.map((clip) => ({
+      asset_id: clip.asset_id,
+      kind: "visual",
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      source_family: clip.source_family,
+    })),
+  });
+
+  await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("steam-rights-normalise", artifactDir)] },
+    generatedAt: "2026-07-07T14:30:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 8));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 40,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  const repairedRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(repairedRights.verdict, "pass");
+  assert.equal(repairedRights.failures.includes("rights:licence_basis_missing"), false);
+  assert.equal(
+    repairedRights.assets.every((asset) => asset.licence_basis === "steam_storefront_promotional_editorial_use"),
+    true,
+  );
+});
+
 test("goal production render materializer puts direct video before still-derived motion for first-frame repairs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-direct-first-"));
   const artifactDir = await makePackage(root, "direct-video-first-frame");

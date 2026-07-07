@@ -1775,6 +1775,67 @@ test("goal audio materializer retries local TTS server_down during strict Whispe
   assert.ok(calls.length > 1);
 });
 
+test("goal audio materializer runs local TTS recovery before retrying server_down", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-server-down-recovery-"));
+  const script = Array.from({ length: 7 }, (_, index) =>
+    `Game Pass proof beat ${index + 1} keeps the queue moving with clean local narration.`
+  ).join(" ");
+  const artifactDir = await makePackage(root, "story-server-down-recovery", {
+    selected_title: "Game Pass Needs A Clean Queue",
+    narration_script: script,
+  });
+  const calls = [];
+  const recoveries = [];
+  let failedOnce = false;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-server-down-recovery", artifactDir)],
+    },
+    generatedAt: "2026-07-07T14:20:00.000Z",
+    alignmentMode: "whisper",
+    localTtsSegmentedWordThreshold: 20,
+    localTtsSegmentMaxWords: 30,
+    getAudioDuration: async () => 1.2,
+    concatAudioFiles: async (files, outputPath) => {
+      assert.ok(files.length > 1);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "tiny.en",
+      transcript: scriptText,
+      words: whisperWordsFromScript(scriptText),
+    }),
+    recoverLocalTtsAfterFailure: async (context) => {
+      recoveries.push(context);
+      return { ok: true, recovered: true };
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      calls.push({ text, outputPath });
+      if (!failedOnce) {
+        failedOnce = true;
+        throw new Error("local_tts_generation_failed:server_down:local TTS server is not reachable");
+      }
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(2048, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].generation_attempts, 2);
+  assert.equal(recoveries.length, 1);
+  assert.equal(recoveries[0].story_id, "story-server-down-recovery");
+  assert.match(recoveries[0].error, /server_down/);
+  assert.ok(calls.length > 1);
+});
+
 test("goal audio materializer retries local TTS connection resets during strict Whisper generation", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-connection-reset-retry-"));
   const script = Array.from({ length: 7 }, (_, index) =>

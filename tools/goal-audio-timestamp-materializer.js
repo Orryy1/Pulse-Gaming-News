@@ -2,6 +2,7 @@
 "use strict";
 
 const path = require("node:path");
+const { spawn } = require("node:child_process");
 const fs = require("fs-extra");
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
@@ -147,6 +148,46 @@ function configureGoalTtsBatchEnv(env = process.env, { provider = "auto", localT
   return configureLocalTtsBatchEnv(env, localOptions);
 }
 
+function runLocalTtsRecovery({ cwd = ROOT } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [
+        path.join(ROOT, "tools", "local-tts-doctor.js"),
+        "--json",
+        "--restart",
+        "--prewarm",
+        "--smoke",
+      ],
+      {
+        cwd,
+        env: process.env,
+        windowsHide: true,
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += String(chunk || "");
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk || "");
+    });
+    child.on("error", (error) => {
+      resolve({ ok: false, error: error.message, stdout_tail: stdout.slice(-2000), stderr_tail: stderr.slice(-2000) });
+    });
+    child.on("close", (code, signal) => {
+      resolve({
+        ok: code === 0,
+        exit_code: code,
+        signal,
+        stdout_tail: stdout.slice(-2000),
+        stderr_tail: stderr.slice(-2000),
+      });
+    });
+  });
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -174,6 +215,9 @@ async function main(argv = process.argv.slice(2)) {
     localTtsSegmentedWordThreshold: args.localTtsSegmentedWordThreshold,
     localTtsSegmentMaxWords: args.localTtsSegmentMaxWords,
     localTtsSegmentGapS: args.localTtsSegmentGapS,
+    recoverLocalTtsAfterFailure: args.provider === "local" || args.provider === "auto"
+      ? async () => runLocalTtsRecovery({ cwd: path.resolve(args.workspaceRoot) })
+      : null,
   });
   const written = await writeGoalAudioTimestampMaterializationReport(report, {
     outputDir: path.resolve(args.outDir),
@@ -205,6 +249,7 @@ module.exports = {
   configureLocalTtsBatchEnv,
   main,
   parseArgs,
+  runLocalTtsRecovery,
   runCli,
   usage,
 };

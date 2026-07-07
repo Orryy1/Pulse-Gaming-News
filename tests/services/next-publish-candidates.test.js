@@ -26,6 +26,7 @@ const {
   mergeBridgeCandidates,
   selectCandidateSourceStories,
   visualEntityPreflightForStory,
+  visualLoopPreflightForStory,
   voiceQualityPreflightForStory,
 } = require("../../tools/next-publish-candidates");
 const {
@@ -8950,5 +8951,67 @@ test("voice quality preflight accepts protected brand phrase without internal pa
     result.evidence.protected_phrase_checks.find((check) => check.phrase === "pulse gaming")
       .max_gap_seconds,
     0,
+  );
+});
+
+test("visual loop preflight blocks final render source overuse even when scene plan is clean", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-final-render-overuse-"));
+  const storyDir = path.join(root, "story-one");
+  await fs.ensureDir(storyDir);
+
+  await fs.writeJson(path.join(storyDir, "visual_v4_render_story.json"), {
+    video_clips: [
+      {
+        id: "clip-a1",
+        source_url: "https://video.fastly.steamstatic.com/store_trailers/1/a/hls_264_master.m3u8",
+        path: "output/video_cache/story-one-a-window-1.mp4",
+        source_family: "steam_1_a_window_0_5",
+        media_kind: "direct_video",
+      },
+      {
+        id: "clip-a2",
+        source_url: "https://video.fastly.steamstatic.com/store_trailers/1/a/hls_264_master.m3u8",
+        path: "output/video_cache/story-one-a-window-2.mp4",
+        source_family: "steam_1_a_window_10_5",
+        media_kind: "direct_video",
+      },
+      ...["b", "c", "d", "e", "f"].map((key) => ({
+        id: `clip-${key}`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/1/${key}/hls_264_master.m3u8`,
+        path: `output/video_cache/story-one-${key}-window-1.mp4`,
+        source_family: `steam-trailer:${key}`,
+        media_kind: "direct_video",
+      })),
+    ],
+  });
+
+  const result = await visualLoopPreflightForStory(
+    {
+      id: "story-one",
+      artifact_dir: storyDir,
+    },
+    {
+      final_publish_render: true,
+      clip_scene_plan: {
+        repeat_free: true,
+        scenes: ["a", "b", "c", "d", "e", "f", "g"].map((key, index) => ({
+          id: `scene-${key}`,
+          kind: "direct_motion",
+          source_family: `scene-family-${key}`,
+          base_source_family: `scene-family-${key}`,
+          source_url: `https://cdn.example.com/${key}.mp4`,
+          start_s: index * 5,
+          end_s: index * 5 + 5,
+          duration_s: 5,
+        })),
+      },
+    },
+  );
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.equal(
+    result.evidence.file_evidence.final_render_direct_motion_base_source_overuse[0].count,
+    2,
   );
 });

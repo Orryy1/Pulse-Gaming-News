@@ -5151,10 +5151,6 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     ownedMotionManifest: objectValue(story.owned_motion_manifest, ownedMotionArtifact),
     materialisedMotionClips: objectValue(story.materialised_motion_clips_manifest, materialisedMotionArtifact),
   });
-  const finalRenderMotionEvidence = [
-    ...asArray(renderStory.visual_v4_bridge_video_clips),
-    ...asArray(renderStory.video_clips),
-  ];
   const finalRenderVisualReuse = finalRenderVisualReuseEvidence({ renderManifest, renderStory });
   const hyperframesReadableDwell = hyperframesReadableDwellEvidence({
     renderManifest,
@@ -5166,6 +5162,18 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
     renderManifest,
     clipScenePlanVisualCadence,
   );
+  const scenePlanClipCount = scenePlanMotionEvidence?.clips?.length || 0;
+  const finalRenderMotionEvidence = [
+    ...asArray(renderStory.visual_v4_bridge_video_clips),
+    ...(
+      scenePlanClipCount > 0 &&
+      artifactVideoClips.length > 0 &&
+      artifactVideoClips.length < scenePlanClipCount &&
+      storyBridgeVideoClips.length >= scenePlanClipCount
+        ? []
+        : asArray(renderStory.video_clips)
+    ),
+  ];
   const directMotionSegmentEvidenceSource = scenePlanMotionEvidence?.clips?.length
     ? scenePlanMotionEvidence.clips
     : finalRenderMotionEvidence.length >= 3
@@ -5177,16 +5185,30 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
   const repeatedDirectMotionSegments = repeatedDirectMotionSegmentEvidence(directMotionSegmentEvidenceSource);
   const repeatedDirectMotionBlockers = repeatedDirectMotionSegmentBlockers(directMotionSegmentEvidenceSource);
   const directMotionBaseSourceOveruse = directMotionBaseSourceOveruseEvidence(directMotionSegmentEvidenceSource);
+  const finalRenderMotionEvidenceLooksCurrent = finalRenderMotionEvidence.length >= 3 &&
+    (
+      !scenePlanMotionEvidence?.clips?.length ||
+      finalRenderMotionEvidence.length >= scenePlanMotionEvidence.clips.length
+    );
+  const finalRenderDirectMotionBaseSourceOveruse = finalRenderMotionEvidenceLooksCurrent
+    ? directMotionBaseSourceOveruseEvidence(finalRenderMotionEvidence)
+    : { blockers: [], evidence: {} };
+  const finalRenderRepeatedDirectMotionBlockers = finalRenderMotionEvidenceLooksCurrent
+    ? repeatedDirectMotionSegmentBlockers(finalRenderMotionEvidence)
+    : [];
   const blockers = [
     ...finalRenderVisualReuse.blockers,
     ...hyperframesReadableDwell.blockers,
     ...clipScenePlanVisualCadence.blockers,
     ...repeatedDirectMotionBlockers,
     ...directMotionBaseSourceOveruse.blockers,
+    ...finalRenderRepeatedDirectMotionBlockers,
+    ...finalRenderDirectMotionBaseSourceOveruse.blockers,
   ];
+  const uniqueBlockers = [...new Set(blockers)];
   return {
-    result: blockers.length ? "fail" : "pass",
-    failures: blockers,
+    result: uniqueBlockers.length ? "fail" : "pass",
+    failures: uniqueBlockers,
     warnings: [],
     evidence: {
       file_evidence: {
@@ -5198,6 +5220,9 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
         repeated_direct_motion_segment_count: repeatedDirectMotionSegments.length,
         repeated_direct_motion_segments: repeatedDirectMotionSegments,
         ...directMotionBaseSourceOveruse.evidence,
+        final_render_direct_motion_base_source_overuse:
+          finalRenderDirectMotionBaseSourceOveruse.evidence?.direct_motion_base_source_overuse || [],
+        final_render_repeated_direct_motion_blockers: finalRenderRepeatedDirectMotionBlockers,
       },
     },
   };
@@ -5543,6 +5568,16 @@ function schedulerQuarantineForPreflightBlockers(blockers = []) {
       reason: "current_motion_pack_blocked",
       lane: "visual_motion_repair",
       safe_next_action: "rebuild_v4_motion_pack_with_distinct_base_sources",
+    };
+  }
+  const visualLoopBlocked = blockerList.some(preflightBlockerIsNonSupersedableVisualLoop);
+  if (visualLoopBlocked) {
+    return {
+      status: "held",
+      reason: "visual_motion_loop_or_overuse",
+      lane: "visual_motion_repair",
+      safe_next_action: "rerender_with_distinct_direct_motion_sources_and_readable_hyperframes",
+      blockers: blockerList.filter(preflightBlockerIsNonSupersedableVisualLoop),
     };
   }
   const durationBlocked = blockerList.some(preflightBlockerIsDurationVariantOutOfBounds);
@@ -6347,6 +6382,7 @@ module.exports = {
   schedulerEffectivePreflightStory,
   timestampAlignmentPreflightForStory,
   visualEntityPreflightForStory,
+  visualLoopPreflightForStory,
   voiceQualityPreflightForStory,
   normaliseBridgeMotionGovernanceEvidence,
   summariseQaResult,

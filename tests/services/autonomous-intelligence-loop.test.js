@@ -1287,6 +1287,47 @@ test("fresh refill repair attempt scope can select official source stories for d
   }
 });
 
+test("fresh refill under-supported motion summary marks one-family stories as deferred", async () => {
+  const { summarizeFreshRefillUnderSupportedMotion } = require("../../lib/job-handlers");
+
+  const report = {
+    summary: {
+      materialized_story_count: 0,
+      blocked_story_count: 1,
+    },
+    jobs: [
+      {
+        story_id: "flight_sim_story",
+        title: "Microsoft Flight Simulator World Update Needs More Motion",
+        status: "blocked",
+        blockers: [
+          "real_motion_family_minimum_not_met",
+        ],
+        materialized_count: 2,
+        distinct_motion_family_count: 2,
+        direct_video_motion_family_count: 2,
+        partial_evidence_counts_towards_final_render_readiness: false,
+      },
+      {
+        story_id: "ready_story",
+        title: "Ready Story",
+        status: "materialized",
+        blockers: [],
+        materialized_count: 6,
+        distinct_motion_family_count: 5,
+        partial_evidence_counts_towards_final_render_readiness: true,
+      },
+    ],
+  };
+
+  const summary = summarizeFreshRefillUnderSupportedMotion(report);
+
+  assert.equal(summary.under_supported_motion_story_count, 1);
+  assert.deepEqual(summary.under_supported_motion_story_ids, ["flight_sim_story"]);
+  assert.equal(summary.under_supported_motion_needs_official_family_count, 1);
+  assert.equal(summary.under_supported_motion_defer_reason, "insufficient_distinct_official_motion_families");
+});
+
 test("fresh refill official source evidence normalises article headlines to game search entities", async () => {
   const { buildFreshRefillOfficialSourceEvidence } = require("../../lib/job-handlers");
   const repoRoot = path.resolve(__dirname, "..", "..");

@@ -562,9 +562,19 @@ function filterLiveRssStoriesForMotion(stories = [], options = {}) {
       (!requireMaterializableDirectMedia || liveRssMaterializableDirectMediaEvidence(entry.story)),
   );
   if (requireMaterializableDirectMedia) {
-    return directMotionEntries
+    const selectedEntries = directMotionEntries.length
+      ? directMotionEntries
+      : entries
+          .map((entry) => ({
+            ...entry,
+            repairGate: liveRssRepairIntakeGate(entry.story, entry.gate),
+          }))
+          .filter((entry) => entry.repairGate.pass);
+    return selectedEntries
       .sort((a, b) => {
-        const delta = Number(b.gate?.score || 0) - Number(a.gate?.score || 0);
+        const aScore = Number(a.gate?.score ?? a.repairGate?.score ?? 0);
+        const bScore = Number(b.gate?.score ?? b.repairGate?.score ?? 0);
+        const delta = bScore - aScore;
         return Math.abs(delta) > 0.001 ? delta : a.index - b.index;
       })
       .map((entry) => entry.story);
@@ -609,11 +619,22 @@ function selectStoriesForGoalBatch({
         policyHours: sourceAgePolicyHours,
         requireMaterializableDirectMedia,
       });
-  const merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]).filter((story) => {
+  let merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]).filter((story) => {
     if (wanted.size) return true;
     const id = storyIdFor(story);
     return !id || !excluded.has(id);
   });
+  if (!wanted.size && requireMaterializableDirectMedia && merged.length === 0) {
+    const repairFallbackSelection = filterLiveRssStoriesForMotion(liveRssStories, {
+      now,
+      policyHours: sourceAgePolicyHours,
+      requireMaterializableDirectMedia: false,
+    });
+    merged = dedupeStoriesById([...repairFallbackSelection, ...sourceStories]).filter((story) => {
+      const id = storyIdFor(story);
+      return !id || !excluded.has(id);
+    });
+  }
   if (!wanted.size) return merged;
   return merged.filter((story) => wanted.has(storyIdFor(story)));
 }

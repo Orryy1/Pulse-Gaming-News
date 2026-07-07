@@ -1280,6 +1280,63 @@ test("goal batch live RSS source-motion-first mode reserves production slots for
   assert.deepEqual(selected.map((story) => story.id), ["official-direct-media"]);
 });
 
+test("goal batch live RSS source-motion-first mode falls back to official repair intake when no direct media exists", () => {
+  const selected = selectStoriesForGoalBatch({
+    requireMaterializableDirectMedia: true,
+    liveRssStories: [
+      {
+        id: "official-repairable",
+        title: "Upgraded PSSR comes to Doom: The Dark Ages on PS5 Pro",
+        canonical_subject: "Doom: The Dark Ages",
+        source_name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/07/07/upgraded-pssr-comes-to-doom-the-dark-ages-on-ps5-pro/",
+        published_at: "2026-07-07T09:00:00.000Z",
+      },
+      {
+        id: "weak-deals",
+        title: "Today's Top Deals: Switch 2 Memory Cards And Controller Discounts",
+        source_name: "IGN Deals",
+        published_at: "2026-07-07T09:00:00.000Z",
+      },
+    ],
+    baseStories: [],
+    now: new Date("2026-07-07T10:00:00.000Z"),
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["official-repairable"]);
+});
+
+test("goal batch live RSS source-motion-first mode falls back after excluding an already-published direct story", () => {
+  const selected = selectStoriesForGoalBatch({
+    requireMaterializableDirectMedia: true,
+    excludedStoryIds: ["already-published-direct"],
+    liveRssStories: [
+      {
+        id: "already-published-direct",
+        title: "DOOM The Dark Ages Chain Spear Changes The Fight",
+        canonical_subject: "Doom: The Dark Ages",
+        source_name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
+        approved_direct_media_url:
+          "https://xboxwire.thesourcemediaassets.com/sites/2/2026/06/Dark-Ages-Revelation-Gameplay-Sound.mp4",
+        published_at: "2026-07-07T09:00:00.000Z",
+      },
+      {
+        id: "official-repair-backup",
+        title: "What Dune: Awakening brings to PlayStation 5 Sept 22",
+        canonical_subject: "Dune: Awakening",
+        source_name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/07/02/what-dune-awakening-brings-to-playstation-5-sept-22/",
+        published_at: "2026-07-07T09:00:00.000Z",
+      },
+    ],
+    baseStories: [],
+    now: new Date("2026-07-07T10:00:00.000Z"),
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["official-repair-backup"]);
+});
+
 test("goal batch live RSS motion gate preserves official direct-media stories", () => {
   const story = {
     id: "rockstar-gta-vi-cover",

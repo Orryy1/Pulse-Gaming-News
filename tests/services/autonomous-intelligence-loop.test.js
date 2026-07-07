@@ -1195,6 +1195,198 @@ test("fresh refill repair attempt scope defers article-only stories when direct 
   }
 });
 
+test("fresh refill repair attempt scope can select official source stories for discovery when no direct runway exists", async () => {
+  const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-discovery-first-"));
+  const repairDir = path.join(tmp, "repair");
+
+  async function artifact(storyId, manifest) {
+    const dir = path.join(tmp, storyId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_subject: manifest.subject,
+        selected_title: manifest.title,
+        narration_script: `${manifest.subject} has a fresh official update. Follow Pulse Gaming so you never miss a beat.`,
+      }),
+    );
+    await fs.writeFile(
+      path.join(dir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: manifest.primary_source,
+        direct_media_candidates: [],
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    return dir;
+  }
+
+  try {
+    const xboxDir = await artifact("xbox_article_story", {
+      subject: "Pit of Goblin",
+      title: "Pit Of Goblin Lets Xbox Insiders Test The Pitch",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/07/pit-of-goblin-xbox-insiders/",
+        type: "rss",
+      },
+    });
+    const pcgamerDir = await artifact("pcgamer_article_story", {
+      subject: "Bethesda",
+      title: "Bethesda Layoffs Put Xbox RPG Trust Under Pressure",
+      primary_source: {
+        name: "PCGamer",
+        url: "https://www.pcgamer.com/gaming-industry/bethesda-game-studios-and-zenimax-hit-hard-by-xbox-layoffs-says-union/",
+        type: "rss",
+      },
+    });
+
+    const result = await freshRefillRepairAttemptScope({
+      packageFilter: {
+        eligibleRows: [
+          {
+            story_id: "pcgamer_article_story",
+            artifact_dir: pcgamerDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+          {
+            story_id: "xbox_article_story",
+            artifact_dir: xboxDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+        ],
+        eligibleStoryPackagesPath: path.join(tmp, "eligible.json"),
+      },
+      repairStoryLimit: 9,
+      requireDirectMotionRunway: true,
+      allowOfficialSourceDiscoveryWithoutRunway: true,
+      repairDir,
+    });
+
+    assert.deepEqual(
+      result.storyPackageRows.map((row) => row.story_id),
+      ["xbox_article_story"],
+    );
+    assert.deepEqual(
+      result.repairDeferredByLimitRows.map((row) => row.story_id),
+      ["pcgamer_article_story"],
+    );
+    const priorityReport = JSON.parse(await fs.readFile(result.repairPriorityReportPath, "utf8"));
+    assert.equal(priorityReport.summary.motion_runway_required_for_attempt, true);
+    assert.equal(priorityReport.summary.motion_runway_deferred_count, 1);
+    const selected = priorityReport.ranked.find((row) => row.story_id === "xbox_article_story");
+    assert.equal(selected.selected_for_attempt, true);
+    assert.equal(selected.defer_reason, "official_source_discovery_required");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill official source evidence normalises article headlines to game search entities", async () => {
+  const { buildFreshRefillOfficialSourceEvidence } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-entity-normalise-"));
+  const outputDir = path.join(tmp, "repair");
+
+  async function artifact(storyId, canonical) {
+    const dir = path.join(tmp, storyId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "canonical_story_manifest.json"), JSON.stringify(canonical));
+    await fs.writeFile(
+      path.join(dir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Xbox Wire",
+          url: canonical.primary_source_url,
+          type: "rss",
+          published_at: "Tue, 07 Jul 2026 09:00:00 +0000",
+        },
+        direct_media_candidates: [],
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+      }),
+    );
+    return dir;
+  }
+
+  try {
+    const pitDir = await artifact("pit-story", {
+      story_id: "pit-story",
+      canonical_subject: "Enter The Pit",
+      canonical_game: "Enter The Pit",
+      selected_title: "Enter The Pit Lets Xbox Test Pit Of Goblin",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://news.xbox.com/en-us/2026/07/02/enter-the-pit-xbox-insiders-can-play-pit-of-goblin-today/",
+      confirmed_claims: ["Enter The Pit: XBOX Insiders Can Play Pit of Goblin Today!"],
+      narration_script: "Pit of Goblin just became something Xbox players can test. Follow Pulse Gaming so you never miss a beat.",
+    });
+    const flightDir = await artifact("flight-story", {
+      story_id: "flight-story",
+      canonical_subject: "Microsoft Flight Simulator Releases World Update 22",
+      canonical_game: "Microsoft Flight Simulator Releases World",
+      selected_title: "Flight Simulator Turns Parks Into A Reinstall Test",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://www.flightsimulator.com/world-update-22#new_tab",
+      confirmed_claims: ["Microsoft Flight Simulator Releases World Update 22: United States National Parks"],
+      narration_script: "Microsoft Flight Simulator just turned scenery into a reinstall test. Follow Pulse Gaming so you never miss a beat.",
+    });
+    const storyPackagesPath = path.join(tmp, "story-packages.json");
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([
+        { story_id: "pit-story", artifact_dir: pitDir },
+        { story_id: "flight-story", artifact_dir: flightDir },
+      ]),
+    );
+
+    const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+    const stories = JSON.parse(await fs.readFile(result.candidateStoriesPath, "utf8"));
+    assert.deepEqual(
+      stories.map((story) => [story.story_id, story.canonical_subject]),
+      [
+        ["pit-story", "Pit of Goblin"],
+        ["flight-story", "Microsoft Flight Simulator"],
+      ],
+    );
+    const entries = JSON.parse(await fs.readFile(result.officialSourceEntriesPath, "utf8"));
+    assert.deepEqual(
+      entries.map((entry) => [entry.story_id, entry.entity]),
+      [
+        ["pit-story", "Pit of Goblin"],
+        ["flight-story", "Microsoft Flight Simulator"],
+      ],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill supplemental search prefers corrected canonical subject over stale canonical game", () => {
+  const { freshRefillSupplementalSearchEntity } = require("../../lib/job-handlers");
+
+  assert.equal(
+    freshRefillSupplementalSearchEntity({
+      canonical_subject: "Pit of Goblin",
+      canonical_game: "Enter The Pit",
+      selected_title: "Enter The Pit Lets Xbox Test Pit Of Goblin",
+    }),
+    "Pit of Goblin",
+  );
+  assert.equal(
+    freshRefillSupplementalSearchEntity({
+      canonical_subject: "Microsoft Flight Simulator",
+      canonical_game: "Microsoft Flight Simulator Releases World",
+      selected_title: "Flight Simulator Turns Parks Into A Reinstall Test",
+    }),
+    "Microsoft Flight Simulator",
+  );
+});
+
 test("fresh refill official discovery runs from source-family search rows even without accepted source entries", () => {
   const { freshRefillShouldRunOfficialDiscovery } = require("../../lib/job-handlers");
 

@@ -4234,3 +4234,94 @@ test("buildPublishReadinessReport: local TTS smoke doctor red overrides stale re
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("buildPublishReadinessReport: local TTS green doctor overrides stale blocked retry status", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-publish-readiness-tts-doctor-green-"));
+  const outputDir = path.join(dir, "test", "output");
+  fs.mkdirSync(outputDir, { recursive: true });
+  const ttsPath = path.join(outputDir, "local_tts_overnight_report.json");
+  const doctorPath = path.join(outputDir, "local_tts_doctor.json");
+  try {
+    fs.writeFileSync(
+      ttsPath,
+      JSON.stringify({
+        verdict: "RED",
+        autonomous_recovery: {
+          status: "blocked_tts_not_ready",
+          current_local_tts_ready: false,
+          safe_to_run_local_tts_retry: false,
+          safe_to_run_local_tts_retry_preflight: false,
+          safe_retry_work_order_count: 2,
+          retry_preflight_work_order_count: 2,
+          retry_apply_ready_work_order_count: 0,
+          operator_required_work_order_count: 0,
+          safe_retry_story_ids: ["tts-one", "tts-two"],
+        },
+        recovery_plan: {
+          retry_tts_story_ids: ["tts-one", "tts-two"],
+          work_orders: [
+            {
+              story_id: "tts-one",
+              repair_lane: "local_tts_retry",
+              preflight_required: true,
+              operator_approval_required: false,
+            },
+            {
+              story_id: "tts-two",
+              repair_lane: "local_tts_retry",
+              preflight_required: true,
+              operator_approval_required: false,
+            },
+          ],
+        },
+      }),
+      "utf8",
+    );
+    fs.writeFileSync(
+      doctorPath,
+      JSON.stringify({
+        verdict: "green",
+        action: "none",
+        failure_code: null,
+        reason: "local TTS is ready with the accepted voice loaded",
+        after: {
+          status: {
+            ready: true,
+            voice_loaded: true,
+            ref_resolved: true,
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    const report = await pr.buildPublishReadinessReport({
+      skipOperationalPillars: true,
+      cwd: dir,
+      now: Date.parse("2026-06-18T12:00:00.000Z"),
+      localTtsReportPath: ttsPath,
+      localTtsDoctorPath: doctorPath,
+      db: {
+        async getStories() {
+          return ["tts-one", "tts-two"].map((id, index) => ({
+            id,
+            title: `TTS recovery candidate ${index + 1}`,
+            qa_failed: true,
+            qa_failures: ["audio_generation_failed:server_down"],
+            qa_failed_at: "2026-06-18T11:00:00.000Z",
+          }));
+        },
+      },
+      env: {},
+    });
+
+    const recovery = report.pillars.recent_failed_candidates.raw.local_tts_recovery;
+    assert.equal(recovery.status, "ready_for_local_tts_retry_preflight");
+    assert.equal(recovery.current_local_tts_ready, true);
+    assert.equal(recovery.safe_to_run_local_tts_retry, false);
+    assert.equal(recovery.safe_to_run_local_tts_retry_preflight, true);
+    assert.equal(recovery.doctor_verdict, "green");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

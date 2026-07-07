@@ -229,6 +229,10 @@ test("cleanForTTS: removes title-colon pauses inside canonical game names", () =
     cleanForTTS("Halo: Campaign Evolved just gave Xbox a real remake test."),
     "Halo Campaign Evolved just gave Xbox a real remake test.",
   );
+  assert.equal(
+    cleanForTTS("Dune: Awakening is about to test whether a survival MMO can survive the move to console."),
+    "Dune Awakening is about to test whether a survival MMO can survive the move to console.",
+  );
 });
 
 test("cleanForTTS: removes hyphen pause from Gears of War E-Day while keeping the title together", () => {

@@ -140,6 +140,45 @@ test("hydrateStoryWithMotionPack refuses stale motion evidence from a different 
   }
 });
 
+test("goal batch title rules avoid fatigued Has A Test template for Dune PS5 stories", () => {
+  const batch = buildGoalBatchPackages({
+    stories: [
+      {
+        id: "rss_dune_ps5",
+        title: "Dune: Awakening brings its survival MMO to PS5 in September",
+        source_title: "Dune: Awakening launches on PS5 September 22",
+        article_title: "Dune: Awakening launches on PS5 September 22",
+        canonical_subject: "Dune: Awakening",
+        canonical_game: "Dune: Awakening",
+        canonical_angle: "the console launch tests whether survival MMO pressure works away from PC",
+        source_name: "PlayStation Blog",
+        source_type: "rss",
+        confirmed_claims: [
+          "PlayStation Blog says Dune: Awakening launches on PS5 on September 22.",
+          "The PS5 version brings the survival MMO beyond PC.",
+        ],
+        video_clips: Array.from({ length: 6 }, (_, index) => ({
+          id: `clip-${index + 1}`,
+          path: `output/video/dune-${index + 1}.mp4`,
+          source_url: `https://cdn.example.com/dune-${index + 1}.mp4`,
+          source_family: `dune_family_${index + 1}`,
+          source_type: "official_trailer",
+          rights_risk_class: "official_reference_only",
+          durationS: 4,
+          validated: true,
+        })),
+      },
+    ],
+    generatedAt: "2026-07-07T09:30:00.000Z",
+  });
+
+  const pack = batch.packages[0];
+  const manifest = pack.canonical_story_manifest;
+  assert.equal(pack.youtube_publish_pack.title, "Dune Awakening Brings Survival Pressure To PS5");
+  assert.doesNotMatch(pack.youtube_publish_pack.title, /\bHas\s+(?:A|An|One)\b/i);
+  assert.equal(manifest.short_title, "Dune Awakening Brings Survival Pressure To PS5");
+});
+
 function greenStory(id = "green-one") {
   const clips = Array.from({ length: 7 }, (_, index) => ({
     id: `${id}-clip-${index + 1}`,
@@ -3370,7 +3409,7 @@ test("goal batch packages generate viewer-facing scripts for current official RS
   const dune = batch.packages.find((pack) => pack.canonical_story_manifest.story_id === "rss_dune_awakening_ps5");
   assert.equal(dune.script_scorecard.verdict, "viral_ready", dune.script_scorecard.blockers.join(", "));
   assert.equal(dune.canonical_story_manifest.canonical_subject, "Dune: Awakening");
-  assert.equal(dune.youtube_publish_pack.title, "Dune Awakening Has A PS5 Survival Test");
+  assert.equal(dune.youtube_publish_pack.title, "Dune Awakening Brings Survival Pressure To PS5");
   assert.match(dune.canonical_story_manifest.narration_script, /Dune: Awakening/i);
   assert.match(dune.canonical_story_manifest.narration_script, /PlayStation 5/i);
   assert.match(dune.canonical_story_manifest.narration_script, /September 22/i);

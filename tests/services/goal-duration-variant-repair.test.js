@@ -2799,6 +2799,85 @@ test("duration variant repair accepts official reference transformative motion r
   assert.deepEqual(renderedStories[0].video_clips, [clipPath]);
 });
 
+test("duration variant repair accepts array-form rights ledgers with matching materialised motion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-array-rights-"));
+  const artifactDir = await makePackage(root, "array-rights-normal-floor");
+  const clipPath = path.join(artifactDir, "array-rights-motion.mp4");
+  await fs.outputFile(clipPath, Buffer.alloc(4096, 22));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), [
+    {
+      asset_id: "array-rights-motion-1",
+      path: clipPath,
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/1172710/test/hls_264_master.m3u8",
+      source_type: "steam_movie",
+      source_family: "steamstatic:/store_trailers/1172710/test_window_36_5",
+      rights_risk_class: "official_reference_only",
+      licence_basis: "reference_only_by_default",
+      allowed_use: "reference_only_by_default",
+      commercial_use_allowed: true,
+      risk_score: 0.28,
+      approval_status: "approved_for_transformative_editorial_use",
+    },
+  ]);
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    schema_version: 1,
+    story_id: "array-rights-normal-floor",
+    status: "ready",
+    clips: [
+      {
+        id: "array-rights-motion-1",
+        path: clipPath,
+        source_url: "https://video.akamai.steamstatic.com/store_trailers/1172710/test/hls_264_master.m3u8",
+        source_type: "steam_movie",
+        source_family: "steamstatic:/store_trailers/1172710/test_window_36_5",
+        media_kind: "direct_video",
+        rights_basis: "official_direct_media",
+        counts_towards_motion_readiness: true,
+        materialized: true,
+      },
+    ],
+    distinct_motion_families: ["steamstatic:/store_trailers/1172710/test_window_36_5"],
+  });
+
+  const renderedStories = [];
+  const report = await materializeDurationVariantRepairs({
+    workspaceRoot: root,
+    generatedAt: "2026-05-23T08:35:00.000Z",
+    provider: "elevenlabs",
+    workOrder: {
+      jobs: [
+        {
+          ...workOrderJob("array-rights-normal-floor", artifactDir),
+          current_duration_s: 34.1,
+          target_duration_seconds: { min: 35, max: 59 },
+        },
+      ],
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 23));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+    },
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      renderedStories.push(story);
+      await fs.outputFile(output, Buffer.alloc(8192, 24));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 37.2,
+        size_bytes: 8192,
+      };
+    },
+  });
+
+  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(report.summary.blocked_count, 0);
+  assert.deepEqual(renderedStories[0].video_clips, [clipPath]);
+});
+
 test("duration variant repair can add a second normal-production pass to already extended scripts", async () => {
   const base = [
     "Star Fox has a Switch 2 camera deal.",

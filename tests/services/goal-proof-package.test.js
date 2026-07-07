@@ -1205,7 +1205,7 @@ test("goal proof package gives current platform and content stories concrete sto
       subject: "Dune: Awakening",
       source: "PlayStation Blog",
       description: "Dune: Awakening arrives on PlayStation 5 on September 22, bringing its survival MMO loop to console players.",
-      expectedTitle: "Dune Awakening Has A PS5 Survival Test",
+      expectedTitle: "Dune Awakening Brings Survival Pressure To PS5",
       expectedCover: "DUNE PS5 TEST",
     },
     {

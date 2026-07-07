@@ -590,6 +590,17 @@ function normaliseSceneSourceKey(value = "") {
     .replace(/(?:[_/-]segment[_/-]?\d+)$/i, "");
 }
 
+function steamTrailerSceneAssetKey(value = "") {
+  const text = firstText(value)
+    .toLowerCase()
+    .replace(/\\/g, "/")
+    .replace(/[?#].*$/, "");
+  const match = text.match(
+    /(?:^|[/:\s])store_trailers\/(\d+)\/(\d+)\/([a-f0-9]{16,})\/(\d+)(?:\/|$)/i,
+  );
+  return match ? `steam-trailer:${match[1]}/${match[2]}/${match[3]}/${match[4]}` : "";
+}
+
 function windowedSceneSourceKey(clip = {}) {
   if (!clip || typeof clip !== "object") return "";
   const value = firstText(
@@ -692,6 +703,11 @@ function sceneClipBaseSourceKey(clip = {}) {
   const isObject = typeof clip === "object";
   const windowed = isObject ? windowedSceneSourceKey(clip) : "";
   if (windowed) return windowed;
+  const rawSourceUrl = isObject
+    ? firstText(clip.source_url, clip.url, clip.original_source_url, clip.reference_url)
+    : "";
+  const sourceSteamKey = steamTrailerSceneAssetKey(rawSourceUrl);
+  if (sourceSteamKey) return sourceSteamKey;
   const explicit = isObject
     ? normaliseSceneSourceKey(
         clip.base_source_family ||
@@ -702,6 +718,8 @@ function sceneClipBaseSourceKey(clip = {}) {
           clip.motion_family,
       )
     : "";
+  const explicitSteamKey = steamTrailerSceneAssetKey(explicit);
+  if (explicitSteamKey) return explicitSteamKey;
   if (explicit) return explicit;
   const sidecar = readSceneClipSidecar(clip);
   const sidecarExplicit = normaliseSceneSourceKey(
@@ -710,8 +728,12 @@ function sceneClipBaseSourceKey(clip = {}) {
       sidecar?.source_family ||
       sidecar?.motion_family,
   );
+  const sidecarExplicitSteamKey = steamTrailerSceneAssetKey(sidecarExplicit);
+  if (sidecarExplicitSteamKey) return sidecarExplicitSteamKey;
   if (sidecarExplicit) return sidecarExplicit;
   const sidecarUrl = firstText(sidecar?.source_url, sidecar?.url, sidecar?.original_source_url);
+  const sidecarSteamKey = steamTrailerSceneAssetKey(sidecarUrl);
+  if (sidecarSteamKey) return sidecarSteamKey;
   if (sidecarUrl) {
     try {
       const parsed = new URL(sidecarUrl);
@@ -720,9 +742,7 @@ function sceneClipBaseSourceKey(clip = {}) {
       return normaliseSceneSourceKey(sidecarUrl);
     }
   }
-  const url = isObject
-    ? firstText(clip.source_url, clip.url, clip.original_source_url, clip.reference_url)
-    : "";
+  const url = rawSourceUrl;
   if (!url) return isObject ? "" : normaliseSceneSourceKey(clip);
   try {
     const parsed = new URL(url);
@@ -748,6 +768,8 @@ function sceneClipSourceRootKey(clip = {}) {
       )
     : "";
   if (url) {
+    const steamKey = steamTrailerSceneAssetKey(url);
+    if (steamKey) return steamKey;
     try {
       const parsed = new URL(url);
       return stripWindowFromSceneSourceKey(`${parsed.hostname}${parsed.pathname}`);
@@ -766,6 +788,8 @@ function sceneClipSourceRootKey(clip = {}) {
         sidecar?.original_source_family,
       )
     : "";
+  const explicitSteamKey = steamTrailerSceneAssetKey(explicit);
+  if (explicitSteamKey) return explicitSteamKey;
   if (explicit) return stripWindowFromSceneSourceKey(explicit);
   return stripWindowFromSceneSourceKey(sceneClipBaseSourceKey(clip));
 }

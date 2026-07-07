@@ -377,7 +377,49 @@ test("Studio V4 proof renderer blocks repeated Steam trailer delivery variants",
   assert.equal(plan.scenes.length, 2);
   assert.deepEqual(
     [...new Set(plan.skippedDuplicateBaseSources.map((entry) => entry.key))],
-    ["video.fastly.steamstatic.com/store_trailers/3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626"],
+    ["steam-trailer:3483510/632943268/ab5efa5d538a2c90f09927047b2df6199cf5e9d6/1780277626"],
+  );
+});
+
+test("Studio V4 proof renderer blocks repeated Steam trailer variants across CDN hosts", () => {
+  const appId = "2698940";
+  const movieId = "1082526063";
+  const assetHash = "a5bd121f2233915df96c4477cfac7a560042c4c6";
+  const buildId = "1771353384";
+  const secondMovieId = "280380145";
+  const secondAssetHash = "e3bf535e04ad081b2e6503f5cb47c00240d6a5e0";
+  const secondBuildId = "1772831298";
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        path: "crew-fastly-dash.mp4",
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/${appId}/${movieId}/${assetHash}/${buildId}/dash_av1.mpd?t=1772640311`,
+        source_family: `steam_2698940_the_crew_motorfest__media_03_dash_av1_window_36_5`,
+        durationS: 5,
+      },
+      {
+        path: "crew-akamai-hls.mp4",
+        source_url: `https://video.akamai.steamstatic.com/store_trailers/${appId}/${movieId}/${assetHash}/${buildId}/hls_264_master.m3u8?t=1772640311`,
+        source_family: `steamstatic:/store_trailers/${appId}/${movieId}/${assetHash}/${buildId}_window_48_5`,
+        durationS: 5,
+      },
+      {
+        path: "crew-second-trailer.mp4",
+        source_url: `https://video.akamai.steamstatic.com/store_trailers/${appId}/${secondMovieId}/${secondAssetHash}/${secondBuildId}/hls_264_master.m3u8?t=1772833995`,
+        source_family: `steamstatic:/store_trailers/${appId}/${secondMovieId}/${secondAssetHash}/${secondBuildId}_window_48_5`,
+        durationS: 5,
+      },
+    ],
+    durationS: 15,
+    xfadeS: 0.25,
+  });
+
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.deepEqual(plan.repeatedBaseSources, []);
+  assert.equal(plan.scenes.length, 2);
+  assert.deepEqual(
+    [...new Set(plan.skippedDuplicateBaseSources.map((entry) => entry.key))],
+    [`steam-trailer:${appId}/${movieId}/${assetHash}/${buildId}`],
   );
 });
 

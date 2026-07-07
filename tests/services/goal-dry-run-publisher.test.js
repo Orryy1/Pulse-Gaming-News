@@ -2738,6 +2738,34 @@ test("goal dry-run publisher blocks near-duplicate public titles while allowing 
   );
 });
 
+test("goal dry-run publisher blocks same-game story-family repeats with different wording", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-story-family-dupe-"));
+  const storyPackages = [
+    await makeStoryPackage(root, "doom-chain-spear", "GREEN", "DOOM The Dark Ages Chain Spear Changes The Fight", {
+      canonicalSubject: "DOOM: The Dark Ages",
+    }),
+    await makeStoryPackage(root, "doom-revelations", "GREEN", "DOOM Revelations Turns Dark Ages Into A Game Loop", {
+      canonicalSubject: "DOOM: The Dark Ages",
+    }),
+    await makeStoryPackage(root, "doom-movie", "GREEN", "DOOM Film Rights Get A New Update", {
+      canonicalSubject: "DOOM",
+    }),
+  ];
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages,
+    generatedAt: "2026-07-07T08:40:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_story_count, 2);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(
+    plan.blocked_stories[0].blockers.some((blocker) =>
+      blocker.startsWith("story_family_too_similar:DOOM The Dark Ages Chain Spear Changes The Fight"),
+    ),
+  );
+});
+
 test("goal dry-run publisher blocks platform actions when final render duration misses the platform window", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-duration-"));
   const storyPackage = await makeStoryPackage(

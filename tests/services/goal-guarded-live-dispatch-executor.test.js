@@ -2543,6 +2543,77 @@ test("default action quality gate allows distinct source-family windows from the
   );
 });
 
+test("default action quality gate blocks direct motion from a different game subject", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-quality-subject-mismatch-"));
+  const manifestPath = path.join(root, "canonical_story_manifest.json");
+  const mp4Path = path.join(root, "visual_v4_render.mp4");
+  await fs.writeFile(mp4Path, "fake mp4");
+  await fs.writeJson(manifestPath, {
+    story_id: "story-one",
+    selected_title: "Bethesda Game Studios And ZeniMax Hit By Xbox Layoffs",
+    canonical_subject: "Bethesda Game Studios and ZeniMax",
+    narration_script:
+      "Bethesda Game Studios and ZeniMax just became the clearest test of Xbox's studio strategy. PC Gamer cites the union response to layoffs. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "XBOX STUDIO CUTS",
+    primary_source: "PC Gamer",
+    primary_source_url:
+      "https://www.pcgamer.com/gaming-industry/bethesda-game-studios-and-zenimax-hit-hard-by-xbox-layoffs-says-union/",
+  });
+  await fs.writeJson(path.join(root, "render_manifest.json"), {
+    story_id: "story-one",
+    render_lane: "visual_v4_production",
+    render_quality_class: "premium",
+    final_publish_render: true,
+    rendered_duration_s: 52,
+    clips: 6,
+  });
+  const clips = Array.from({ length: 6 }, (_, index) => ({
+    id: `forza-horizon-window-${index + 1}`,
+    path: `motion/forza-horizon-window-${index + 1}.mp4`,
+    source_url: `https://video.twimg.com/ext_tw_video/fh6-window-${index + 1}.mp4`,
+    media_kind: "direct_video",
+    source_type: "official_social_media_video",
+    source_family: `forza_horizon_official_x_fh6_clip_window_${index + 1}`,
+    motion_family: `forza_horizon_official_x_fh6_clip_window_${index + 1}`,
+    duration_s: 5,
+  }));
+  await fs.writeJson(path.join(root, "visual_v4_render_story.json"), {
+    id: "story-one",
+    video_clips: clips,
+    visual_v4_bridge_video_clips: clips,
+  });
+
+  const result = await defaultActionQualityGate({
+    story: story({
+      id: "story-one",
+      title: "Bethesda Game Studios And ZeniMax Hit By Xbox Layoffs",
+    }),
+    action: action("youtube_shorts", {
+      title: "Bethesda Game Studios And ZeniMax Hit By Xbox Layoffs",
+      canonical_manifest_path: manifestPath,
+      video_path: mp4Path,
+    }),
+    config: { publicName: "youtube", mediaKind: "video" },
+    options: {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      buildVideoQaOptionsForStory: () => ({}),
+    },
+  });
+
+  assert.equal(result.result, "fail");
+  assert.ok(
+    result.blockers.includes("visual_evidence:direct_motion_subject_mismatch"),
+    JSON.stringify(result.blockers),
+  );
+  assert.equal(result.checks.visual_cadence.evidence.direct_motion_subject_mismatch_count, 6);
+  assert.deepEqual(
+    result.checks.visual_cadence.evidence.direct_motion_subject_mismatches[0].detected_entities,
+    ["Forza Horizon"],
+  );
+});
+
 test("guarded live dispatch executor CLI writes dry-run reports and package script is registered", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-live-cli-"));
   const planPath = path.join(root, "guarded_dispatch_executor_plan.json");

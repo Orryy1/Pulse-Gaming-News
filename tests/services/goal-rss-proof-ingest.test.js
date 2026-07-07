@@ -48,6 +48,43 @@ test("RSS proof ingest parses source-backed feed entries into goal-proof stories
   assert.equal(stories.some((story) => /Dashcam/i.test(story.title)), false);
 });
 
+test("RSS proof ingest preserves materialisable video enclosures for source-motion-first refill", () => {
+  const xml = `
+    <rss><channel>
+      <item>
+        <title><![CDATA[Halo Campaign Evolved Shows New Gameplay In Official Xbox Deep Dive]]></title>
+        <link>https://news.xbox.com/en-us/2026/07/07/halo-campaign-evolved-gameplay/</link>
+        <pubDate>Tue, 07 Jul 2026 09:00:00 GMT</pubDate>
+        <description><![CDATA[Xbox shows a playable campaign demo.]]></description>
+        <enclosure url="https://assets.xbox.com/halo-campaign-evolved/gameplay-deep-dive.mp4" type="video/mp4" />
+      </item>
+    </channel></rss>
+  `;
+
+  const stories = buildRssProofStories(
+    parseRssProofItems(xml, {
+      feed: { name: "Xbox Wire", url: "https://news.xbox.com/feed" },
+      maxItems: 10,
+    }),
+  );
+
+  assert.equal(stories.length, 1);
+  assert.equal(
+    stories[0].approved_direct_media_url,
+    "https://assets.xbox.com/halo-campaign-evolved/gameplay-deep-dive.mp4",
+  );
+  assert.deepEqual(stories[0].direct_media_candidates, [
+    {
+      direct_media_url: "https://assets.xbox.com/halo-campaign-evolved/gameplay-deep-dive.mp4",
+      direct_media_url_if_available:
+        "https://assets.xbox.com/halo-campaign-evolved/gameplay-deep-dive.mp4",
+      source_type: "rss_video_enclosure",
+      source_family: "rss_video_enclosure_xbox_wire",
+      source_url: "https://news.xbox.com/en-us/2026/07/07/halo-campaign-evolved-gameplay/",
+    },
+  ]);
+});
+
 test("RSS proof ingest rejects broad roundups and avoids bad fallback subjects", () => {
   assert.equal(
     _private.isGamingProofItem({ title: "Everything Announced at Warhammer Skulls 2026" }),

@@ -895,6 +895,26 @@ test("studio production voice keeps colon game titles in one generated segment",
   );
 });
 
+test("studio production voice sends cleaned title punctuation to local TTS", () => {
+  const segments = buildProductionVoiceSegments(
+    {
+      hook: "The Expanse: Osiris Reborn finally showed real gameplay.",
+      body: "Halo: Campaign Evolved is the remake test Xbox cannot fake.",
+      loop: "Gears of War: E-Day finally has footage players can judge.",
+    },
+    { STUDIO_V2_DISABLE_SPOKEN_OUTRO: "true" },
+  );
+
+  const spokenText = segments.map((segment) => segment.text).join(" ");
+
+  assert.equal(
+    spokenText,
+    "The Expanse Osiris Reborn finally showed real gameplay. Halo Campaign Evolved is the remake test Xbox cannot fake. Gears of War E Day finally has footage players can judge.",
+  );
+  assert.doesNotMatch(spokenText, /\b(?:Expanse|Halo|War):/);
+  assert.doesNotMatch(spokenText, /\bE-Day\b/);
+});
+
 test("v2 quality report does not penalise SFX when explicitly disabled", () => {
   const oldMode = process.env.STUDIO_V2_SFX_MODE;
   process.env.STUDIO_V2_SFX_MODE = "off";

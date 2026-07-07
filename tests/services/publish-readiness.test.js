@@ -4309,6 +4309,7 @@ test("buildPublishReadinessReport: local TTS green doctor overrides stale blocke
             qa_failed: true,
             qa_failures: ["audio_generation_failed:server_down"],
             qa_failed_at: "2026-06-18T11:00:00.000Z",
+            ...(id === "tts-one" ? { youtube_post_id: "already-public-video" } : {}),
           }));
         },
       },
@@ -4320,6 +4321,10 @@ test("buildPublishReadinessReport: local TTS green doctor overrides stale blocke
     assert.equal(recovery.current_local_tts_ready, true);
     assert.equal(recovery.safe_to_run_local_tts_retry, false);
     assert.equal(recovery.safe_to_run_local_tts_retry_preflight, true);
+    assert.equal(recovery.safe_retry_work_order_count, 1);
+    assert.deepEqual(recovery.safe_retry_story_ids, ["tts-two"]);
+    assert.equal(recovery.excluded_already_public_retry_count, 1);
+    assert.deepEqual(recovery.excluded_already_public_retry_story_ids, ["tts-one"]);
     assert.equal(recovery.doctor_verdict, "green");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

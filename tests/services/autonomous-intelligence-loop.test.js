@@ -1196,6 +1196,78 @@ test("fresh refill repair attempt scope defers article-only stories when direct 
   }
 });
 
+test("fresh refill repair attempt scope treats official YouTube references as source proof, not motion runway", async () => {
+  const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-youtube-proof-"));
+  const repairDir = path.join(tmp, "repair");
+  const artifactDir = path.join(tmp, "youtube_reference_story");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "youtube_reference_story",
+        canonical_subject: "Example Direct",
+        selected_title: "Example Direct Has Official Footage Proof",
+        narration_script:
+          "Example Direct has an official trailer reference, but the scheduler still needs materialised motion. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Nintendo",
+          url: "https://www.nintendo.com/us/whatsnew/example-direct/",
+          type: "official_game_site_news_page",
+        },
+        direct_media_candidates: [
+          {
+            direct_media_url: "https://www.youtube.com/watch?v=OfficialExample",
+            source_type: "official_youtube_reference",
+            source_title: "Example Direct official trailer",
+            segment_validation_eligible: false,
+            segment_validation_ineligible_reason: "segment_source_is_youtube_reference",
+          },
+        ],
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+
+    const result = await freshRefillRepairAttemptScope({
+      packageFilter: {
+        eligibleRows: [
+          {
+            story_id: "youtube_reference_story",
+            artifact_dir: artifactDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+        ],
+        eligibleStoryPackagesPath: path.join(tmp, "eligible.json"),
+      },
+      repairStoryLimit: 1,
+      requireDirectMotionRunway: true,
+      allowOfficialSourceDiscoveryWithoutRunway: false,
+      repairDir,
+    });
+
+    assert.deepEqual(result.storyPackageRows.map((row) => row.story_id), []);
+    assert.deepEqual(result.repairDeferredByLimitRows.map((row) => row.story_id), [
+      "youtube_reference_story",
+    ]);
+    const priorityReport = JSON.parse(await fs.readFile(result.repairPriorityReportPath, "utf8"));
+    const row = priorityReport.ranked.find((entry) => entry.story_id === "youtube_reference_story");
+    assert.equal(row.has_direct_motion_runway, false);
+    assert.equal(row.defer_reason, "source_motion_first_required");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill repair attempt scope can select official source stories for discovery when no direct runway exists", async () => {
   const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
   const repoRoot = path.resolve(__dirname, "..", "..");

@@ -1872,6 +1872,50 @@ test("goal proof package keeps roguelite podracing hooks instead of generic spli
   assert.match(pack.youtube_publish_pack.description, /repeat runs, wipeout pressure and handling/i);
 });
 
+test("goal proof package keeps one-hour Grand Tour hooks instead of weak update templates", () => {
+  const pack = buildGoalProofPackage({
+    story: {
+      id: "crew-motorfest-grand-tour-proof",
+      title: "The Crew Motorfest Grand Tour Has A Filler Problem",
+      public_title: "The Crew Motorfest Grand Tour Has A Filler Problem",
+      selected_title: "The Crew Motorfest Grand Tour Has A Filler Problem",
+      canonical_subject: "The Crew Motorfest",
+      canonical_game: "The Crew Motorfest",
+      source_name: "Ubisoft News",
+      article_url:
+        "https://news.ubisoft.com/en-us/article/6nQCa9HlI8Boe1fZMzKB92/the-crew-motorfest-season-10-a-late-night-talk-show-a-hawaii-grand-tour-and-more-trackforge",
+      suggested_thumbnail_text: "ONE-HOUR FILLER TEST",
+      thumbnail_headline: "ONE-HOUR FILLER TEST",
+      confirmed_claims: [
+        "Ubisoft says Season 10 adds the Hawaii Grand Tour.",
+        "Ubisoft says the Hawaii Grand Tour is a one-hour challenge with the Ferrari 250 GTO as the target reward.",
+      ],
+      full_script: [
+        "The Crew Motorfest made its longest challenge the Season 10 hook.",
+        "Ubisoft says Season 10 is live now, with expanded Trackforge tools, The Motorfest Late Show and a Hawaii Grand Tour built as a one-hour open-world drive.",
+        "If a one-hour route feels like a proper road trip, Motorfest gets an identity.",
+        "If it feels like filler with a prize at the end, players will know fast.",
+        "Follow Pulse Gaming so you never miss a beat.",
+      ].join(" "),
+    },
+    rightsLedger: [],
+  });
+
+  assert.equal(pack.canonical_story_manifest.public_title, "The Crew Motorfest Grand Tour Has A Filler Problem");
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "ONE-HOUR FILLER TEST");
+  assert.doesNotMatch(pack.youtube_publish_pack.title, /Week-Two Test/i);
+  assert.ok(
+    !pack.platform_publish_manifest.platform_native_evidence.failures.some((failure) =>
+      /weak_platform_title|weak_cover_headline/.test(failure.reason),
+    ),
+    JSON.stringify(pack.platform_publish_manifest.platform_native_evidence.failures),
+  );
+  assert.ok(
+    !pack.pulse_media_house_score.hard_failures.includes("media_house:shorts_feed_competition_weak"),
+    JSON.stringify(pack.pulse_media_house_score.shorts_feed_competition_report, null, 2),
+  );
+});
+
 test("goal proof package keeps Fatal Fury Kenshiro roster copy instead of generic platform fallbacks", () => {
   const fatalFuryStory = greenStory();
   fatalFuryStory.id = "fatal-fury-kenshiro-roster-proof";

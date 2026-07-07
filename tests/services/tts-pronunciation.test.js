@@ -246,6 +246,22 @@ test("colon-separated game titles lose the TTS pause but keep the title words", 
     applyGamingPronunciation("Halo: Campaign Evolved has a demo."),
     "Halo Campaign Evolved has a demo.",
   );
+  assert.equal(
+    applyGamingPronunciation("Halo. Campaign Evolved has a demo."),
+    "Halo Campaign Evolved has a demo.",
+  );
+  assert.equal(
+    applyGamingPronunciation("The Expanse - Osiris Reborn shows real gameplay."),
+    "The Expanse Osiris Reborn shows real gameplay.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Doom: The Dark Ages Revelations should not sound split."),
+    "Doom The Dark Ages Revelations should not sound split.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Marvel Tokon: Fighting Souls needs one clean title read."),
+    "Marvel Tokon Fighting Souls needs one clean title read.",
+  );
 });
 
 test("PlayStation hardware acronyms expand for local narration clarity", () => {
@@ -256,6 +272,17 @@ test("PlayStation hardware acronyms expand for local narration clarity", () => {
   assert.equal(
     applyGamingPronunciation("PS4 support stays visible."),
     "PlayStation four support stays visible.",
+  );
+});
+
+test("title pause repair preserves ordinary sentence boundaries", () => {
+  assert.equal(
+    applyGamingPronunciation("PS5 prices went up across Europe and the UK. PS5 Pro moved too."),
+    "PlayStation five prices went up across Europe and the UK. PlayStation five Pro moved too.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Body. Follow Pulse Gaming for the next read."),
+    "Body. Follow Pulse Gaming for the next read.",
   );
 });
 

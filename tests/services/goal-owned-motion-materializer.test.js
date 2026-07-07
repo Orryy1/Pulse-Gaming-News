@@ -12,6 +12,7 @@ const {
   materializeGoalOwnedMotionClips,
   writeGoalOwnedMotionMaterializationReport,
 } = require("../../lib/goal-owned-motion-materializer");
+const { buildClipScenePlan } = require("../../tools/studio-v4-proof-render");
 
 async function makeOwnedMotionPackage(root, id = "story-owned-motion") {
   const artifactDir = path.join(root, "package");
@@ -362,15 +363,19 @@ test("owned motion materializer creates a source-locked explainer deck when foot
   assert.equal(report.summary.story_count, 1);
   const requiredAssetClasses = [
     "kinetic_title_card",
+    "motion_background",
+    "signal_scan_surface",
+    "data_pulse_surface",
+    "source_lock_lower_third",
+    "kinetic_broll_surface",
+    "lower_third",
+    "branded_wipe",
     "animated_source_card",
     "animated_quote_card",
     "stat_card",
     "chart_slam",
-    "lower_third",
     "platform_proof_card",
     "safe_article_screenshot_transform",
-    "motion_background",
-    "branded_wipe",
     "x_image_card",
     "instagram_carousel_slide",
     "breaking_news_fast_card",
@@ -421,6 +426,65 @@ test("owned motion materializer creates a source-locked explainer deck when foot
   assert.ok(rights.records.every((record) => record.commercial_use_allowed === true));
 });
 
+test("owned motion materializer creates renderer-compatible motion-heavy decks", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-scene-plan-"));
+  const artifactDir = path.join(root, "switch-screen-package");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "switch-screen-package",
+    canonical_subject: "Switch 2",
+    selected_title: "Switch 2 Screen Rumour Has A Ghosting Test",
+    thumbnail_headline: "GHOSTING TEST",
+    first_spoken_line: "Switch 2 just picked up a screen rumour players can actually check.",
+    confirmed_claims: [
+      "GameSpot says the original Nintendo Switch will be discontinued in Europe.",
+    ],
+    primary_source: "GameSpot",
+    source_card_label: "GameSpot",
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "switch-screen-package",
+    motion_inventory: { accepted_local_clips: [] },
+  });
+
+  const report = await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: "switch-screen-package",
+          title: "Switch 2 Screen Rumour Has A Ghosting Test",
+          artifact_dir: artifactDir,
+          actions: [
+            {
+              action_id: "materialise_owned_generated_motion_clips",
+              repair_lane: "owned_generated_explainer_motion_materialisation",
+            },
+          ],
+        },
+      ],
+    },
+    execFileSync: (bin, args) => fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, 3)),
+    ffprobeDuration: () => 12,
+  });
+
+  assert.equal(report.summary.story_count, 1);
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  const plan = buildClipScenePlan({
+    clips: materialised.clips,
+    durationS: 42,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+    maxScenes: 8,
+  });
+
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.scenes.length >= 7, true);
+  assert.equal(plan.readableCardSceneMetrics.direct_motion_scene_count >= 4, true);
+  assert.equal(plan.readableCardSceneMetrics.readable_card_duration_ratio <= 0.42, true);
+  assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length <= 1, true);
+});
+
 test("owned motion materializer executes readable HyperFrames rematerialisation lane", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-readable-lane-"));
   const artifactDir = path.join(root, "readable-package");
@@ -466,13 +530,13 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
     ffprobeDuration: () => 12,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 13);
-  assert.equal(calls.length, 13);
+  assert.equal(report.summary.materialized_clip_count, 17);
+  assert.equal(calls.length, 17);
   const durations = calls.map((call) => call.args[call.args.indexOf("-t") + 1]);
   assert.equal(durations.every((duration) => duration === "12.00"), true);
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
-  assert.equal(materialised.clip_count, 13);
+  assert.equal(materialised.clip_count, 17);
   assert.ok(materialised.clips.every((clip) => clip.durationS >= 12));
   const readableCards = materialised.clips.filter((clip) => clip.readable_card_kind);
   assert.ok(readableCards.length >= 8);
@@ -528,9 +592,9 @@ test("owned motion materializer blocks source-card generation for Reddit-only di
     ffprobeDuration: () => 2.8,
   });
 
-  assert.equal(calls.length, 13);
+  assert.equal(calls.length, 17);
   assert.equal(report.stories[0].status, "blocked");
-  assert.equal(report.summary.materialized_clip_count, 13);
+  assert.equal(report.summary.materialized_clip_count, 17);
   assert.equal(report.stories[0].failed[0].reason, "owned_explainer_requires_non_discovery_primary_source");
   assert.deepEqual(report.stories[0].rejection_reasons, [
     "owned_explainer_requires_non_discovery_primary_source",
@@ -541,7 +605,7 @@ test("owned motion materializer blocks source-card generation for Reddit-only di
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "blocked");
-  assert.equal(materialised.clip_count, 13);
+  assert.equal(materialised.clip_count, 17);
   assert.equal(materialised.clips.every((clip) => clip.counts_towards_motion_readiness === false), true);
   assert.equal(materialised.clips.every((clip) => clip.source_relationship === "discovery_source_only_not_primary"), true);
 
@@ -551,7 +615,7 @@ test("owned motion materializer blocks source-card generation for Reddit-only di
 
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
   assert.equal(footage.motion_inventory.accepted_local_clips.length, 0);
-  assert.equal(footage.motion_inventory.source_safety_blocked_owned_motion_count, 13);
+  assert.equal(footage.motion_inventory.source_safety_blocked_owned_motion_count, 17);
 
   const written = await writeGoalOwnedMotionMaterializationReport(report, {
     outputDir: path.join(root, "out"),
@@ -630,11 +694,11 @@ test("owned motion materializer synthesises support deck when existing inventory
   });
 
   assert.equal(report.stories[0].status, "materialized");
-  assert.equal(report.summary.materialized_clip_count, 13);
-  assert.equal(calls.length, 13);
+  assert.equal(report.summary.materialized_clip_count, 17);
+  assert.equal(calls.length, 17);
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
-  assert.equal(materialised.clip_count, 13);
-  assert.equal(materialised.distinct_motion_family_count, 13);
+  assert.equal(materialised.clip_count, 17);
+  assert.equal(materialised.distinct_motion_family_count, 17);
   assert.equal(materialised.clips.every((clip) => clip.source_type === "internally_generated_motion_graphic"), true);
 });
 
@@ -716,29 +780,29 @@ test("owned motion materializer preserves existing official direct-video clips w
     ffprobeDuration: () => 2.8,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 13);
-  assert.equal(calls.length, 13);
+  assert.equal(report.summary.materialized_clip_count, 17);
+  assert.equal(calls.length, 17);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
-  assert.equal(materialised.clip_count, 18);
+  assert.equal(materialised.clip_count, 22);
   assert.equal(materialised.direct_video_motion_asset_count, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
   assert.equal(
     materialised.clips.filter((clip) => clip.source_type === "internally_generated_motion_graphic").length,
-    13,
+    17,
   );
   assert.ok(materialised.clips.some((clip) => clip.id === "ghost-direct-1"));
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "branded_wipe"));
 
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
-  assert.equal(footage.motion_inventory.accepted_local_clips.length, 18);
-  assert.equal(footage.motion_inventory.production_motion_clips.length, 18);
+  assert.equal(footage.motion_inventory.accepted_local_clips.length, 22);
+  assert.equal(footage.motion_inventory.production_motion_clips.length, 22);
   assert.equal(footage.motion_inventory.direct_video_motion_asset_count, 5);
-  assert.equal(footage.motion_budget.required_motion_scenes, 18);
+  assert.equal(footage.motion_budget.required_motion_scenes, 22);
 
   const ownedManifest = await fs.readJson(path.join(artifactDir, "owned_motion_manifest.json"));
-  assert.equal(ownedManifest.summary.asset_count, 13);
+  assert.equal(ownedManifest.summary.asset_count, 17);
   assert.equal(ownedManifest.assets.every((asset) => asset.source_type === "internally_generated_motion_graphic"), true);
 });
 
@@ -831,8 +895,8 @@ test("owned motion materializer preserves stale-count validated official game we
     ffprobeDuration: () => 2.8,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 13);
-  assert.equal(calls.length, 13);
+  assert.equal(report.summary.materialized_clip_count, 17);
+  assert.equal(calls.length, 17);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
@@ -847,7 +911,7 @@ test("owned motion materializer preserves stale-count validated official game we
   );
   assert.equal(
     materialised.clips.filter((clip) => clip.source_type === "internally_generated_motion_graphic").length,
-    13,
+    17,
   );
   assert.ok(materialised.clips.some((clip) => clip.id === "gta-direct-1"));
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "motion_background"));
@@ -923,17 +987,17 @@ test("owned motion materializer refresh expands thin owned explainer decks to th
     ffprobeDuration: () => 2.8,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 13);
-  assert.equal(calls.length, 13);
+  assert.equal(report.summary.materialized_clip_count, 17);
+  assert.equal(calls.length, 17);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
-  assert.equal(materialised.clip_count, 13);
-  assert.equal(materialised.distinct_motion_family_count, 13);
+  assert.equal(materialised.clip_count, 17);
+  assert.equal(materialised.distinct_motion_family_count, 17);
   assert.equal(materialised.clips.every((clip) => clip.durationS >= 4), true);
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "branded_wipe"));
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "instagram_carousel_slide"));
 
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
-  assert.equal(footage.motion_budget.required_motion_scenes, 13);
-  assert.equal(footage.motion_inventory.accepted_local_clips.length, 13);
+  assert.equal(footage.motion_budget.required_motion_scenes, 17);
+  assert.equal(footage.motion_inventory.accepted_local_clips.length, 17);
 });

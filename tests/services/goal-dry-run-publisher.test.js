@@ -2158,6 +2158,120 @@ test("goal dry-run publisher checks final render-story clips for base-source loo
   );
 });
 
+test("goal dry-run publisher blocks repeat-free scene plans that reuse source roots", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-scene-plan-source-root-loop-"));
+  const sourceRootA =
+    "video.fastly.steamstatic.com/store_trailers/2698940/1082526063/a5bdc0582ab328f5e874b8ac72984f16a1585ce9/1771353384";
+  const sourceRootB =
+    "video.akamai.steamstatic.com/store_trailers/2698940/280380145/e3bfa494782418c803af67d3869a7a6e292178b8/1772831298";
+  const scenePlan = {
+    repeat_free: true,
+    blockers: [],
+    repeated_base_sources: [],
+    repeated_readable_card_kinds: [],
+    direct_motion_source_concentration_metrics: {
+      direct_motion_scene_count: 5,
+      max_scenes_per_source_root: 1,
+      max_source_concentration_ratio: 0.2,
+      concentrated_sources: [],
+    },
+    scenes: [
+      {
+        id: "crew-window-1",
+        path: "motion/crew-window-1.mp4",
+        media_kind: "direct_video",
+        baseSourceKey: `${sourceRootA}_window_12_5`,
+        sourceRootKey: sourceRootA,
+        mediaStartS: 12,
+        durationS: 5,
+      },
+      {
+        id: "crew-window-2",
+        path: "motion/crew-window-2.mp4",
+        media_kind: "direct_video",
+        baseSourceKey: `${sourceRootB}_window_20_5`,
+        sourceRootKey: sourceRootB,
+        mediaStartS: 20,
+        durationS: 5,
+      },
+      {
+        id: "crew-source-card",
+        path: "cards/crew-source-card.png",
+        media_kind: "source_card",
+        baseSourceKey: "pulse_card_crew_context",
+        sourceRootKey: "pulse_card_crew_context",
+        durationS: 3,
+      },
+      {
+        id: "crew-window-3",
+        path: "motion/crew-window-3.mp4",
+        media_kind: "direct_video",
+        baseSourceKey: `${sourceRootA}_window_34_5`,
+        sourceRootKey: sourceRootA,
+        mediaStartS: 34,
+        durationS: 5,
+      },
+      {
+        id: "crew-window-4",
+        path: "motion/crew-window-4.mp4",
+        media_kind: "direct_video",
+        baseSourceKey: `${sourceRootB}_window_42_5`,
+        sourceRootKey: sourceRootB,
+        mediaStartS: 42,
+        durationS: 5,
+      },
+      {
+        id: "crew-window-5",
+        path: "motion/crew-window-5.mp4",
+        media_kind: "direct_video",
+        baseSourceKey: "shared.akamai.steamstatic.com/store_item_assets/steam/apps/2698940/crew_distinct_window_50_5",
+        sourceRootKey: "shared.akamai.steamstatic.com/store_item_assets/steam/apps/2698940/crew_distinct",
+        mediaStartS: 50,
+        durationS: 5,
+      },
+    ],
+  };
+  const storyPackage = await makeStoryPackage(
+    root,
+    "scene-plan-source-root-loop",
+    "GREEN",
+    "The Crew Motorfest Grand Tour Has A Filler Problem",
+    {
+      canonicalSubject: "The Crew Motorfest",
+      renderManifestPatch: {
+        rendered_duration_s: 44,
+        clips: 6,
+        clip_scene_plan: scenePlan,
+      },
+      coherenceMatchesCanonical: true,
+    },
+  );
+  await Promise.all(
+    scenePlan.scenes.map((scene) =>
+      fs.outputFile(path.join(storyPackage.artifact_dir, scene.path), Buffer.alloc(1600, 7)),
+    ),
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-06-24T11:22:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_base_source_overuse
+      .map((entry) => ({ count: entry.count, share: entry.share }))
+      .sort((a, b) => b.count - a.count || b.share - a.share),
+    [
+      { count: 2, share: 0.4 },
+      { count: 2, share: 0.4 },
+    ],
+  );
+});
+
 test("goal dry-run publisher trusts clean final scene-plan motion over stale embedded clip arrays", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-scene-plan-authority-"));
   const cleanScenePlan = {

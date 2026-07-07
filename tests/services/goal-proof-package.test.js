@@ -292,6 +292,32 @@ test("goal proof package preserves local video clip path strings in acceptance e
   );
 });
 
+test("goal proof package deduplicates repeated local clip paths in acceptance entries", () => {
+  const story = greenStory();
+  const originalPaths = story.video_clips.map((clip) => clip.path);
+  story.video_clips = [
+    originalPaths[0],
+    originalPaths[0],
+    { path: originalPaths[1], id: "same-file-with-new-id-a" },
+    { path: originalPaths[1], id: "same-file-with-new-id-b" },
+    ...originalPaths.slice(2),
+  ];
+  story.visual_v4_local_motion_clips = [
+    { path: originalPaths[0], id: "local-motion-duplicate" },
+  ];
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-05-21T19:46:00.000Z",
+  });
+
+  assert.equal(pack.acceptance_entry.video_clips.length, originalPaths.length);
+  assert.deepEqual(
+    pack.acceptance_entry.video_clips.map((clip) => clip.path),
+    originalPaths,
+  );
+});
+
 test("goal proof package does not keep stale footage blocker after materialised direct-motion proof", () => {
   const story = greenStory();
   story.id = "gta-windowed-motion-proof";

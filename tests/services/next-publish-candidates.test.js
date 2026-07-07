@@ -8954,7 +8954,7 @@ test("voice quality preflight accepts protected brand phrase without internal pa
   );
 });
 
-test("visual loop preflight blocks final render source overuse even when scene plan is clean", async () => {
+test("visual loop preflight trusts clean final scene plan over stale final render overuse arrays", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-final-render-overuse-"));
   const storyDir = path.join(root, "story-one");
   await fs.ensureDir(storyDir);
@@ -9008,10 +9008,14 @@ test("visual loop preflight blocks final render source overuse even when scene p
     },
   );
 
-  assert.equal(result.result, "fail");
-  assert.ok(result.failures.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(
+    result.evidence.file_evidence.final_render_direct_motion_base_source_overuse,
+    [],
+  );
   assert.equal(
-    result.evidence.file_evidence.final_render_direct_motion_base_source_overuse[0].count,
-    2,
+    result.evidence.file_evidence.direct_motion_loop_evidence_source,
+    "final_clip_scene_plan",
   );
 });

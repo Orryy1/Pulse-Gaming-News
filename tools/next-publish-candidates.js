@@ -5185,11 +5185,9 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
   const repeatedDirectMotionSegments = repeatedDirectMotionSegmentEvidence(directMotionSegmentEvidenceSource);
   const repeatedDirectMotionBlockers = repeatedDirectMotionSegmentBlockers(directMotionSegmentEvidenceSource);
   const directMotionBaseSourceOveruse = directMotionBaseSourceOveruseEvidence(directMotionSegmentEvidenceSource);
-  const finalRenderMotionEvidenceLooksCurrent = finalRenderMotionEvidence.length >= 3 &&
-    (
-      !scenePlanMotionEvidence?.clips?.length ||
-      finalRenderMotionEvidence.length >= scenePlanMotionEvidence.clips.length
-    );
+  const finalRenderMotionEvidenceLooksCurrent =
+    !scenePlanMotionEvidence?.clips?.length &&
+    finalRenderMotionEvidence.length >= 3;
   const finalRenderDirectMotionBaseSourceOveruse = finalRenderMotionEvidenceLooksCurrent
     ? directMotionBaseSourceOveruseEvidence(finalRenderMotionEvidence)
     : { blockers: [], evidence: {} };

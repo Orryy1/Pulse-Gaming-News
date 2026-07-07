@@ -1114,6 +1114,7 @@ test("candidate supply trusts a current full GREEN proof package over stale bloc
     "GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. " +
     "That matters because zoner mains may have to spend meter just to breathe, while rushdown players may get a new bully when she arrives. " +
     "The catch is her space control. Defenders may not get time to reset, and that is where the fairness argument starts. " +
+    "That is the player-impact question, because one flashy reveal can become weeks of ranked frustration if the counters are too expensive. " +
     "If that pressure survives release, ranked mode becomes a fairness argument for every match, not just a new-character celebration. " +
     "Follow Pulse Gaming so you never miss a beat.";
   const videoPath = path.join(artifactDir, "visual_v4_render.mp4");
@@ -1216,7 +1217,7 @@ test("candidate supply trusts a current full GREEN proof package over stale bloc
     {
       story_id: "current-green-package",
       voice_status: "materialized",
-      word_timestamp_count: 107,
+      word_timestamp_count: 127,
       word_timestamp_source: "local_whisper_word_alignment",
       timestamp_whisper_alignment: {
         script_coverage_ratio: 1,

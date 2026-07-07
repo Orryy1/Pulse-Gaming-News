@@ -352,7 +352,7 @@ test("premium card lane v2 rejects shell sidecars without readable hold proof", 
   }
 });
 
-test("premium card lane v2 rejects legacy 6.5s readable-card sidecars", async () => {
+test("premium card lane v2 accepts short proof-card sidecars without reimposing old 12s dwell", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-legacy-dwell-"));
   try {
     const outDir = path.join(root, "test", "output");
@@ -374,14 +374,9 @@ test("premium card lane v2 rejects legacy 6.5s readable-card sidecars", async ()
       channelId: "pulse-gaming",
     });
 
-    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 12);
-    assert.equal(result.premiumLane.verdict, "partial");
-    assert.ok(
-      result.premiumLane.hyperframesPremiumShellGate.blockers.some((blocker) =>
-        blocker.endsWith("hyperframes_readable_hold_below_internal_floor"),
-      ),
-      result.premiumLane.hyperframesPremiumShellGate.blockers.join(", "),
-    );
+    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 5.2);
+    assert.equal(result.premiumLane.verdict, "pass");
+    assert.deepEqual(result.premiumLane.hyperframesPremiumShellGate.blockers, []);
   } finally {
     await fs.remove(root).catch(() => {});
   }

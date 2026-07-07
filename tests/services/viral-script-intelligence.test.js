@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildViralScriptIntelligence,
+  MIN_MARKET_READY_SHORT_SCRIPT_WORDS,
 } = require("../../lib/viral-script-intelligence");
 
 const STORY = {
@@ -48,6 +49,8 @@ test("viral script intelligence approves a source-safe angle with concrete numbe
     "But the number has a catch: that spike came during Premium Edition early access, around $120 before the standard launch. " +
     "That means critics are not the only early audience reacting, but it still is not full demand yet. " +
     "If the wider launch holds, this becomes Xbox's cleanest first-party win of the year. " +
+    "If the wider audience bounces after the paid window, the victory becomes a smaller premium bubble. " +
+    "That tension is why the next public player count matters more than the headline score. " +
     "Follow Pulse Gaming so you never miss a beat.";
 
   const result = buildViralScriptIntelligence({
@@ -65,7 +68,7 @@ test("viral script intelligence approves a source-safe angle with concrete numbe
   assert.equal(result.cta.count, 1);
 });
 
-test("viral script intelligence accepts sharp non-numeric gameplay stories with proof and player impact", () => {
+test("viral script intelligence allows concise non-numeric scripts unless a specific compression risk is present", () => {
   const script =
     "The Expanse: Osiris Reborn finally has the thing licensed games usually hide: real gameplay. " +
     "Xbox showed a narrative sci-fi action game built around The Expanse universe, not just a logo and a promise. " +
@@ -82,11 +85,34 @@ test("viral script intelligence accepts sharp non-numeric gameplay stories with 
     script,
   });
 
-  assert.notEqual(result.verdict, "rewrite_required");
+  assert.equal(result.verdict, "viral_ready");
   assert.ok(result.viral_score >= 75);
   assert.ok(result.scores.insight_density >= 70);
-  assert.deepEqual(result.blockers, []);
+  assert.equal(result.blockers.includes("script_runtime:too_short_for_natural_pacing"), false);
   assert.equal(result.cta.count, 1);
+});
+
+test("viral script intelligence blocks 93-word footage scripts that would force fast narration", () => {
+  const script =
+    "Marvel Rivals Adds X-Men's Jubilee In Season 9 finally has footage that puts the pitch under pressure. " +
+    "Polygon is carrying the new footage, so the important read is not the logo; it is whether the play looks clear when the screen gets busy. " +
+    "Camera distance, hit timing, enemy pressure and readable effects now matter more than the reveal edit. " +
+    "If the action still reads when busy, the game earns real wishlist attention. " +
+    "If the edit hides it, players should wait for uncut gameplay. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "marvel-rivals-jubilee-fast-script",
+      title: "Marvel Rivals Adds X-Men's Jubilee Has A Footage Readability Test",
+      source_name: "Polygon",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("script_runtime:too_short_for_natural_pacing"));
+  assert.ok(result.scores.retention_pacing < 55);
 });
 
 test("viral script intelligence rejects gameplay-proof claims when source says screenshots are not gameplay", () => {
@@ -173,6 +199,7 @@ test("viral script intelligence accepts concrete horror gameplay stakes", () => 
     "That is the whole trick. " +
     "Better lighting means nothing if the creature feels scripted. " +
     "Fans need to believe it heard them, changed route and ruined a plan they thought was safe. " +
+    "That is why one preview matters: it is testing fear as a system, not nostalgia as a logo. " +
     "If the sequel keeps that doubt alive, Creative Assembly has a horror comeback. " +
     "If players spot the pattern, the nightmare turns into a route guide. " +
     "Follow Pulse Gaming so you never miss a beat.";
@@ -223,7 +250,9 @@ test("viral script intelligence scores review-spread curiosity beats above the p
     "That matters because review scores do not sell a racing game alone; they give hesitant players permission to care. " +
     "The catch is that an 84 still has to beat real player fatigue once the first weekend lands. " +
     "The debate is whether an 84 proves Horizon is still elite or just comfortably familiar. " +
+    "That makes the next review spread more important than the first number. " +
     "If more outlets line up behind that score, Xbox gets a cleaner launch argument than another trailer could buy. " +
+    "If players call it safe, the score becomes protection, not momentum. " +
     "Follow Pulse Gaming so you never miss a beat.";
 
   const result = buildViralScriptIntelligence({
@@ -561,7 +590,7 @@ test("viral script intelligence treats source names as present despite casing di
       source_name: "Gamestop",
     },
     script:
-      "Super Mario RPG just dropped to $15 at GameStop. GameStop lists Super Mario RPG at $15, 70% off its listed price. The trade-off is timing: physical Switch copies can vanish fast when a price cut turns into a rush. The debate is whether this is finally cheap enough to buy again, or still too late for players waiting on Switch 2. If the listing holds, GameStop has turned an old RPG into a real impulse-buy test. Follow Pulse Gaming so you never miss a beat.",
+      "Super Mario RPG just dropped to $15 at GameStop. GameStop lists Super Mario RPG at $15, 70% off its listed price. The trade-off is timing: physical Switch copies can vanish fast when a price cut turns into a rush. The debate is whether this is finally cheap enough to buy again, or still too late for players waiting on Switch 2. That matters because physical deals are becoming less predictable as the platform moves on. If the listing holds, GameStop has turned an old RPG into a real impulse-buy test. If it sells out fast, the lesson is clear: nostalgia still moves when the price finally feels disposable. Follow Pulse Gaming so you never miss a beat.",
   });
 
   assert.equal(result.scores.source_safety, 86);
@@ -854,6 +883,8 @@ test("viral script intelligence approves save-loss patch scripts with concrete p
     "That is bigger than a normal hotfix because progress loss attacks the one thing racing games ask for most: time. " +
     "The useful test is simple. If the patch stops the wipe, this becomes a scary week. " +
     "If it does not, every garage, tune and rare unlock feels less safe. " +
+    "That changes how players treat the next session: update first, check saves second, race later. " +
+    "If Eurogamer's warning keeps players patching before racing, the save wipe risk becomes a live-service trust fight. " +
     "Follow Pulse Gaming so you never miss a beat.";
 
   const result = buildViralScriptIntelligence({

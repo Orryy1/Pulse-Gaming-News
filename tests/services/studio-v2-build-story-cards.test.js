@@ -77,7 +77,7 @@ test("story-specific HyperFrames cards stretch long copy to readable dwell", () 
   assert.match(html, /data-duration="14\.0"/);
 });
 
-test("story-specific HyperFrames cards keep short copy on screen long enough for mobile", () => {
+test("story-specific HyperFrames cards keep short source cards momentum-friendly", () => {
   const spec = {
     kicker: "SOURCE",
     label: "ROCKSTAR",
@@ -88,9 +88,9 @@ test("story-specific HyperFrames cards keep short copy on screen long enough for
 
   assert.equal(contract.status, "pass");
   assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 12);
-  assert.equal(contract.evidence.planned_visible_duration_s, 12);
-  assert.equal(contract.evidence.min_readable_card_duration_s, 12);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 5.2);
+  assert.equal(contract.evidence.planned_visible_duration_s, 5.2);
+  assert.equal(contract.evidence.min_readable_card_duration_s, 5.2);
 });
 
 test("story-specific HyperFrames source card preserves PlayStation source labels", () => {

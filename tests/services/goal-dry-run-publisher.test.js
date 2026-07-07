@@ -3357,6 +3357,9 @@ test("goal dry-run publisher counts story preflight evidence for already-public 
   assert.equal(plan.summary.skipped_story_count, 1);
   assert.equal(plan.summary.preflight_checked_story_count, 1);
   assert.equal(plan.skipped_stories[0].status, "already_public");
+  assert.equal(plan.skipped_stories[0].safe_to_publish_boolean, false);
+  assert.equal(plan.skipped_stories[0].readiness_scope, "skipped");
+  assert.deepEqual(plan.skipped_stories[0].publishable_platforms, []);
 });
 
 test("goal dry-run publisher accepts statusless cutover bridge candidates only with complete publish-ready evidence", async () => {

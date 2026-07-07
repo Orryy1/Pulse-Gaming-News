@@ -4627,6 +4627,13 @@ test("autonomous feedback monitor enqueues safe follow-ups for operational feedb
       "safe_auto_repair_runner",
     ]);
     assert.equal(enqueued[0].payload.reason, "autonomous_feedback_monitor_candidate_supply_refill");
+    assert.equal(enqueued[0].payload.enqueue_fresh_production_refill, true);
+    assert.equal(enqueued[0].payload.enqueue_local_tts_retry_recovery, true);
+    assert.equal(enqueued[0].payload.fresh_production_refill_tts_provider, "elevenlabs");
+    assert.equal(enqueued[0].payload.fresh_production_refill_limit, 12);
+    assert.equal(enqueued[0].payload.fresh_production_refill_rss_per_feed, 4);
+    assert.equal(enqueued[0].payload.local_tts_retry_limit, 6);
+    assert.equal(enqueued[0].payload.local_tts_retry_apply_limit, 3);
     assert.equal(enqueued[1].payload.reason, "autonomous_feedback_monitor_transcript_feedback");
     assert.equal(enqueued[2].payload.reason, "autonomous_feedback_monitor_safe_repair");
     assert.equal(enqueued[2].idempotency_key, "autonomous_feedback_safe_repair:2026-06-18:12");

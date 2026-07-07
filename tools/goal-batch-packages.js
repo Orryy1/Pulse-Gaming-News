@@ -260,6 +260,46 @@ async function loadPublishedStoryIdsForGoalBatch({ dbModule = null } = {}) {
   return ids;
 }
 
+async function loadPublishedStoriesForGoalBatch({ dbModule = null } = {}) {
+  const rows = [];
+  let dbApi = dbModule;
+  if (!dbApi) {
+    try {
+      dbApi = require("../lib/db");
+    } catch {
+      dbApi = null;
+    }
+  }
+
+  if (!dbApi) return rows;
+
+  try {
+    const published = typeof dbApi.getPublished === "function" ? await dbApi.getPublished() : [];
+    rows.push(...asStoryArray(published));
+  } catch {}
+
+  try {
+    const stories =
+      typeof dbApi.getStoriesSync === "function"
+        ? dbApi.getStoriesSync()
+        : typeof dbApi.getStories === "function"
+          ? await dbApi.getStories()
+          : [];
+    rows.push(...asStoryArray(stories).filter((story) => storyHasLegacyPublishEvidence(story)));
+  } catch {}
+
+  try {
+    const bridgePath = path.join(ROOT, "output", "goal-contract", "scheduler_bridge_candidates.json");
+    const bridgeDocument = await fs.readJson(bridgePath);
+    const bridgeRows = Array.isArray(bridgeDocument)
+      ? bridgeDocument
+      : asStoryArray(bridgeDocument.scheduler_bridge_candidates || bridgeDocument.candidates || bridgeDocument.stories);
+    rows.push(...bridgeRows);
+  } catch {}
+
+  return dedupeStoriesById(rows);
+}
+
 function cleanSearchText(value) {
   if (value == null) return "";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -288,6 +328,116 @@ function cleanSearchText(value) {
     ].map(cleanSearchText).filter(Boolean).join(" ");
   }
   return "";
+}
+
+const REPEAT_TOKEN_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "into",
+  "this",
+  "that",
+  "just",
+  "gets",
+  "got",
+  "has",
+  "have",
+  "had",
+  "new",
+  "now",
+  "says",
+  "shows",
+  "show",
+  "reveals",
+  "revealed",
+  "changes",
+  "change",
+  "fight",
+  "risk",
+  "problem",
+  "update",
+  "news",
+  "game",
+  "games",
+  "gaming",
+  "players",
+  "fans",
+]);
+
+function repeatTokens(value = "") {
+  return cleanSearchText(value)
+    .toLowerCase()
+    .replace(/&(?:amp|#124);/gi, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !REPEAT_TOKEN_STOPWORDS.has(token));
+}
+
+function storyRepeatText(story = {}) {
+  return [
+    story.title,
+    story.public_title,
+    story.suggested_title,
+    story.upload_title,
+    story.canonical_subject,
+    story.canonical_game,
+    story.game_title,
+    story.description,
+  ].map(cleanSearchText).filter(Boolean).join(" ");
+}
+
+function storyRepeatSubjectTokens(story = {}) {
+  const explicit = [
+    story.canonical_subject,
+    story.canonical_game,
+    story.game_title,
+    story.primary_entity,
+    leadingSubjectFromTitle(story.title),
+  ].map(cleanSearchText).find((value) => value && !genericLiveRssSubject(value));
+  return repeatTokens(explicit || story.title);
+}
+
+function nearRepeatStory(candidate = {}, published = {}) {
+  const candidateId = storyIdFor(candidate);
+  const publishedId = storyIdFor(published);
+  if (candidateId && publishedId && candidateId === publishedId) return true;
+
+  const candidateUrl = cleanSearchText(storyUrlForRepeat(candidate)).toLowerCase();
+  const publishedUrl = cleanSearchText(storyUrlForRepeat(published)).toLowerCase();
+  if (candidateUrl && publishedUrl && candidateUrl === publishedUrl) return true;
+
+  const candidateSubject = new Set(storyRepeatSubjectTokens(candidate));
+  const publishedSubject = new Set(storyRepeatSubjectTokens(published));
+  const subjectOverlap = [...candidateSubject].filter((token) => publishedSubject.has(token)).length;
+
+  const candidateTokens = new Set(repeatTokens(storyRepeatText(candidate)));
+  const publishedTokens = new Set(repeatTokens(storyRepeatText(published)));
+  const overlap = [...candidateTokens].filter((token) => publishedTokens.has(token)).length;
+  const union = new Set([...candidateTokens, ...publishedTokens]).size || 1;
+  const jaccard = overlap / union;
+
+  if (subjectOverlap >= 2 && overlap >= 4) return true;
+  if (subjectOverlap >= 1 && overlap >= 5 && jaccard >= 0.35) return true;
+  if (overlap >= 7 && jaccard >= 0.5) return true;
+  return false;
+}
+
+function storyUrlForRepeat(story = {}) {
+  return story.article_url ||
+    story.primary_source_url ||
+    story.source_url ||
+    story.url ||
+    story.linked_url ||
+    story.source_manifest?.primary_source?.url ||
+    "";
+}
+
+function filterNearRepeatPublishedStories(stories = [], publishedStories = []) {
+  const published = asStoryArray(publishedStories);
+  if (!published.length) return asStoryArray(stories);
+  return asStoryArray(stories).filter((story) => !published.some((row) => nearRepeatStory(story, row)));
 }
 
 function liveRssStorySearchText(story = {}) {
@@ -609,6 +759,7 @@ function selectStoriesForGoalBatch({
   useDbStories = false,
   storyIds = [],
   excludedStoryIds = [],
+  excludedPublishedStories = [],
   now = new Date(),
   sourceAgePolicyHours = 168,
   requireMaterializableDirectMedia = false,
@@ -623,17 +774,20 @@ function selectStoriesForGoalBatch({
         policyHours: sourceAgePolicyHours,
         requireMaterializableDirectMedia,
       });
-  let merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]).filter((story) => {
+  const repeatFilteredLiveRssSelection = wanted.size
+    ? liveRssSelection
+    : filterNearRepeatPublishedStories(liveRssSelection, excludedPublishedStories);
+  let merged = dedupeStoriesById([...repeatFilteredLiveRssSelection, ...sourceStories]).filter((story) => {
     if (wanted.size) return true;
     const id = storyIdFor(story);
     return !id || !excluded.has(id);
   });
   if (!wanted.size && requireMaterializableDirectMedia && merged.length === 0) {
-    const repairFallbackSelection = filterLiveRssStoriesForMotion(liveRssStories, {
+    const repairFallbackSelection = filterNearRepeatPublishedStories(filterLiveRssStoriesForMotion(liveRssStories, {
       now,
       policyHours: sourceAgePolicyHours,
       requireMaterializableDirectMedia: false,
-    });
+    }), excludedPublishedStories);
     merged = dedupeStoriesById([...repairFallbackSelection, ...sourceStories]).filter((story) => {
       const id = storyIdFor(story);
       return !id || !excluded.has(id);
@@ -726,6 +880,10 @@ async function main(argv = process.argv.slice(2)) {
     args.liveRssOnly && !args.includePublished
       ? Array.from(await loadPublishedStoryIdsForGoalBatch())
       : [];
+  const excludedPublishedStories =
+    args.liveRssOnly && !args.includePublished
+      ? await loadPublishedStoriesForGoalBatch()
+      : [];
   const selectedStories = selectStoriesForGoalBatch({
     baseStories,
     dbStories,
@@ -733,6 +891,7 @@ async function main(argv = process.argv.slice(2)) {
     useDbStories: args.dbStories,
     storyIds: args.storyIds,
     excludedStoryIds,
+    excludedPublishedStories,
     requireMaterializableDirectMedia: args.liveRssOnly === true,
   });
   const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit, {
@@ -773,7 +932,9 @@ module.exports = {
   loadRevenueManifestByStory,
   loadMotionPackByStory,
   filterLiveRssStoriesForMotion,
+  filterNearRepeatPublishedStories,
   loadPublishedStoryIdsForGoalBatch,
+  loadPublishedStoriesForGoalBatch,
   liveRssWeakMetaMotionPattern,
   liveRssMotionGate,
   liveRssMaterializableDirectMediaEvidence,

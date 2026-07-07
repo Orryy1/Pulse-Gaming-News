@@ -1029,6 +1029,48 @@ test("goal batch live RSS selection excludes already-published story IDs from fr
   assert.deepEqual(selected.map((story) => story.id), ["fresh-halo-demo"]);
 });
 
+test("goal batch live RSS selection skips near-repeat published story clusters before heavy repair", () => {
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        id: "rss_new_doom_chain_spear",
+        title: "Doom The Dark Ages Chain Spear Changes The Fight",
+        canonical_subject: "Doom: The Dark Ages",
+        source_name: "Xbox Wire",
+        source_type: "official",
+        url: "https://slayersclub.bethesda.net/en-US/article/doom-the-dark-ages-revelations-available-now",
+        published_at: "2026-07-07T17:30:00.000Z",
+        description:
+          "Xbox Wire says the Revelations update adds a Chain Spear built around fast movement and combat pressure.",
+      },
+      {
+        id: "fresh-phantom-blade-demo",
+        title: "Phantom Blade Zero Shows New Combat Gameplay",
+        canonical_subject: "Phantom Blade Zero",
+        source_name: "PlayStation Blog",
+        source_type: "official",
+        url: "https://blog.playstation.com/en-us/2026/07/07/phantom-blade-zero-combat-gameplay/",
+        published_at: "2026-07-07T17:45:00.000Z",
+        approved_direct_media_url: "https://cdn.example.com/phantom-blade-zero-combat.mp4",
+        description: "PlayStation Blog says new gameplay footage shows boss pressure, parries and weapon timing.",
+      },
+    ],
+    excludedPublishedStories: [
+      {
+        id: "fresh_doom_chain_spear_dlc_20260703",
+        title: "DOOM The Dark Ages Chain Spear Has A Fight Risk",
+        canonical_subject: "Doom: The Dark Ages",
+        youtube_post_id: "yt_existing",
+        instagram_media_id: "ig_existing",
+        facebook_post_id: "fb_existing",
+      },
+    ],
+    now: new Date("2026-07-07T19:00:00.000Z"),
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["fresh-phantom-blade-demo"]);
+});
+
 test("goal batch explicit story selection can still package already-published IDs for repair", () => {
   const selected = selectStoriesForGoalBatch({
     liveRssStories: [
@@ -1948,7 +1990,7 @@ test("goal batch package proof preparation gives Invincible VS roster stories en
   );
 });
 
-test("goal batch owned fallback motion clips use readable card dwell", () => {
+test("goal batch owned fallback motion clips avoid twelve-second source card dwell", () => {
   const prepared = prepareStoryForGoalProof(
     {
       id: "owned-card-dwell",
@@ -1965,7 +2007,7 @@ test("goal batch owned fallback motion clips use readable card dwell", () => {
 
   assert.ok(prepared.video_clips.length >= 6);
   assert.equal(
-    prepared.video_clips.every((clip) => Number(clip.durationS) >= 10.5),
+    prepared.video_clips.every((clip) => Number(clip.durationS) === 7),
     true,
     JSON.stringify(prepared.video_clips.map((clip) => ({ id: clip.id, durationS: clip.durationS }))),
   );
@@ -2728,12 +2770,9 @@ test("goal batch package generic fallback does not emit internal scaffold narrat
     story: { ...prepared, title: prepared.public_title },
     script: prepared.full_script,
   });
-  assert.notEqual(qa.verdict, "viral_ready");
-  assert.ok(
-    qa.blockers.includes("producer_scaffold_language") ||
-      qa.blockers.includes("internal_audience_scaffold"),
-    JSON.stringify(qa),
-  );
+  assert.ok(!qa.blockers.includes("producer_scaffold_language"), JSON.stringify(qa));
+  assert.ok(!qa.blockers.includes("internal_audience_scaffold"), JSON.stringify(qa));
+  assert.ok(!qa.blockers.includes("generic_player_test_template"), JSON.stringify(qa));
 });
 
 test("goal batch package proof preparation does not invert GTA VI screenshot analysis into gameplay proof", () => {
@@ -3171,6 +3210,32 @@ test("goal batch package keeps version numbers in public hooks and descriptions"
     prepared.public_title,
     prepared.first_spoken_line,
   ]);
+});
+
+test("goal batch package fallback scripts avoid source-detail scaffolds and split-player titles", () => {
+  const story = {
+    id: "rss_blood_dawnwalker_preview_20260707",
+    title: "The Blood of Dawnwalker Hands-On Preview",
+    canonical_subject: "The Blood of Dawnwalker",
+    canonical_game: "The Blood of Dawnwalker",
+    source_type: "rss",
+    source_name: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/07/07/the-blood-of-dawnwalker-hands-on-preview/",
+    source_title: "The Blood of Dawnwalker: Dead and Loving It",
+    description:
+      "Xbox Wire says the hands-on preview shows combat, romance, intrigue and a vampire RPG structure.",
+  };
+
+  const prepared = prepareStoryForGoalProof(story, { allowOwnedMotionFallback: true });
+  const script = prepared.full_script;
+
+  assert.doesNotMatch(prepared.public_title, /Could Split Players|Just Got A New Signal/i);
+  assert.doesNotMatch(
+    script,
+    /new source detail|what players can do with it|play now, wait, skip|part players can actually judge|wishlist argument|selling mood instead of play/i,
+  );
+  assert.match(script, /The Blood of Dawnwalker/i);
+  assert.match(script, /Follow Pulse Gaming so you never miss a beat\./);
 });
 
 test("goal batch packages preserve fresh intake source objects and selected titles", () => {

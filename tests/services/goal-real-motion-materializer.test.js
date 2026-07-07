@@ -146,6 +146,15 @@ test("real motion materializer CLI accepts repeatable story-id filters", () => {
   assert.equal(args.refreshReady, true);
 });
 
+test("real motion materializer CLI accepts explicit direct base-source clip cap", () => {
+  const args = parseArgs([
+    "--max-direct-clips-per-base-source",
+    "1",
+  ]);
+
+  assert.equal(args.maxDirectClipsPerBaseSource, 1);
+});
+
 test("real motion materializer can refresh a requested ready story from its motion pack", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-refresh-ready-"));
   const storyId = "ps5-refresh-ready";
@@ -789,6 +798,96 @@ test("real motion materializer fills five-clip floors with balanced non-overlapp
     ),
   );
   assert.equal(windowKeys.size, 5);
+});
+
+test("real motion materializer honours explicit direct base-source clip cap", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-explicit-base-cap-"));
+  const storyId = "explicit-base-cap-story";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+  const sourceUrls = [
+    "https://video.fastly.steamstatic.com/store_trailers/100/111/hash-a/hls_264_master.m3u8?t=1780000001",
+    "https://video.fastly.steamstatic.com/store_trailers/100/222/hash-b/hls_264_master.m3u8?t=1780000002",
+    "https://video.fastly.steamstatic.com/store_trailers/100/333/hash-c/hls_264_master.m3u8?t=1780000003",
+  ];
+  const segmentValidationReport = {
+    segments: sourceUrls.flatMap((sourceUrl, sourceIndex) =>
+      [0, 1].map((windowIndex) => ({
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        action_score: 88,
+        source_url: sourceUrl,
+        source_type: "official_platform_product_page",
+        source_url_kind: "hls_manifest",
+        provider: "licensed_direct_media_acquisition",
+        entity: "The Crew Motorfest",
+        source_family: `crew_official_source_${sourceIndex + 1}`,
+        media_start_s: 12 + sourceIndex * 18 + windowIndex * 6,
+        duration_s: 5,
+        source_duration_s: 90,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+      })),
+    ),
+  };
+
+  const calls = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [
+        {
+          story_id: storyId,
+          artifact_dir: artifactDir,
+          blockers: ["visual_motion_repeat_repair_required"],
+          actions: [
+            {
+              action_id: "materialise_validated_real_motion_clips",
+              reason_codes: ["visual_motion_repeat_repair_required"],
+            },
+          ],
+        },
+      ],
+    },
+    segmentValidationReport,
+    minClips: 3,
+    minFamilies: 3,
+    maxClips: 5,
+    maxDirectClipsPerBaseSource: 1,
+    generatedAt: "2026-07-07T15:20:00.000Z",
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].materialized_count, 3);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 1);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
+    [1, 1, 1],
+  );
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
+  assert.equal(calls.length, 3);
 });
 
 test("real motion materializer treats Steam extras mp4 and webm encodes as one base source", async () => {

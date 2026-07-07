@@ -857,6 +857,7 @@ async function main() {
   await fs.ensureDir(OUT);
   await writeSegmentValidationReports(report, outputTargets);
 
+  const markdown = renderOfficialTrailerSegmentValidationMarkdown(report);
   process.stdout.write(args.json ? JSON.stringify(report, null, 2) + "\n" : markdown);
   const writtenStems = outputTargets.map((target) => `test/output/${target.stem}.{json,md}`).join(", ");
   process.stderr.write(`[segment-validator] wrote ${writtenStems}\n`);

@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("fs-extra");
 const path = require("node:path");
 const os = require("node:os");
@@ -3382,4 +3383,35 @@ test("segment validator CLI can consume Flash Lane acquisition plans without liv
   assert.match(tool, /flash_lane_footage_acquisition_v1\.json/);
   assert.doesNotMatch(tool, /publishAll|uploadShort|postShort|autonomous\/publish/);
   assert.doesNotMatch(tool, /UPDATE\s+stories|INSERT\s+INTO\s+stories|DELETE\s+FROM/i);
+});
+
+test("segment validator CLI prints markdown reports without referencing stale local variables", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "segment-validator-cli-markdown-"));
+  const frameReportPath = path.join(root, "frame-report.json");
+  await fs.writeJson(frameReportPath, {
+    schema_version: 1,
+    generated_at: "2026-07-07T15:00:00.000Z",
+    plans: [],
+  });
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(process.cwd(), "tools", "official-trailer-segment-validator.js"),
+      "--frame-report",
+      frameReportPath,
+      "--no-reference-report",
+      "--no-reference-duration-probe",
+      "--dry-run",
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, PULSE_SKIP_DOTENV: "1" },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Official Trailer Segment Validator v1/i);
+  assert.doesNotMatch(result.stderr, /ReferenceError: markdown is not defined/);
 });

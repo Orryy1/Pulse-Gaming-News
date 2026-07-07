@@ -25,6 +25,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     minClips: 5,
     minFamilies: 4,
     maxClips: 8,
+    maxDirectClipsPerBaseSource: null,
     refreshReady: false,
     json: false,
     help: false,
@@ -44,6 +45,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--min-clips") args.minClips = Number(argv[++i] || args.minClips);
     else if (arg === "--min-families") args.minFamilies = Number(argv[++i] || args.minFamilies);
     else if (arg === "--max-clips") args.maxClips = Number(argv[++i] || args.maxClips);
+    else if (arg === "--max-direct-clips-per-base-source") {
+      args.maxDirectClipsPerBaseSource = Number(argv[++i] || 0) || null;
+    }
     else if (arg === "--refresh-ready") args.refreshReady = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -70,6 +74,7 @@ function usage() {
     "  --min-clips <n>         Required successful clips per story",
     "  --min-families <n>      Required distinct source families",
     "  --max-clips <n>         Maximum clips to materialise per story",
+    "  --max-direct-clips-per-base-source <n>  Maximum clips from the same direct-video base source",
     "  --refresh-ready         Refresh requested ready stories from the current motion pack",
     "  --json                  Print JSON",
   ].join("\n");
@@ -94,6 +99,7 @@ async function main(argv = process.argv.slice(2)) {
     minClips: args.minClips,
     minFamilies: args.minFamilies,
     maxClips: args.maxClips,
+    maxDirectClipsPerBaseSource: args.maxDirectClipsPerBaseSource,
     segmentValidationReport,
     artifactRoot: args.artifactRoot,
     includeReadyStories: args.refreshReady,

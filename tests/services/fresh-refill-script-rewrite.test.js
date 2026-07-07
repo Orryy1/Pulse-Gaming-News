@@ -487,6 +487,76 @@ test("fresh refill viewer script repairs current official-source extraction and 
   }
 });
 
+test("fresh refill viewer script repairs current access and hardware-rumour stories without fallback filler", () => {
+  const cases = [
+    {
+      title: "Why Enter The Pit Could Split Players",
+      sourceUrl: "https://news.xbox.com/en-us/2026/07/02/enter-the-pit-xbox-insiders-can-play-pit-of-goblin-today/",
+      sourceName: "Xbox Wire",
+      confirmed: "Enter The Pit: XBOX Insiders Can Play Pit of Goblin Today!",
+      expectedTitle: "Pit Of Goblin Insider Test Needs Real Runs",
+      expectedHook: /^Pit of Goblin just became something Xbox players can actually test\./,
+      expectedDetail: /Xbox Insiders|hands-on|wishlist|demo/i,
+      canonicalSubject: "Pit of Goblin",
+    },
+    {
+      title: "Switch 2 Screen Rumour Has A Ghosting Test",
+      sourceUrl: "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
+      sourceName: "GameSpot",
+      confirmed:
+        "The original Nintendo Switch will be discontinued in Europe while players compare Switch 2 screen reports.",
+      expectedTitle: "Switch 2 Screen Talk Has A Trust Problem",
+      expectedHook: /^Switch 2 screen talk is becoming a trust problem, not just a spec argument\./,
+      expectedDetail: /ghosting|OLED|buy now|wait/i,
+      canonicalSubject: "Nintendo Switch 2",
+    },
+  ];
+
+  for (const item of cases) {
+    const script = buildFreshRefillViewerScript({
+      job: {
+        story_id: `test_${item.expectedTitle.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}`,
+        title: item.title,
+        artifact_dir: path.join(TEST_ROOT, "unused"),
+        source: {
+          name: item.sourceName,
+          url: item.sourceUrl,
+          type: "rss",
+        },
+        current_script: `${item.title} has one detail worth checking before it becomes background noise.`,
+      },
+      manifest: {
+        canonical_subject: item.canonicalSubject,
+        canonical_title: item.title,
+        primary_source: item.sourceName,
+        primary_source_url: item.sourceUrl,
+        confirmed_claims: [item.confirmed],
+      },
+    });
+
+    assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+    assert.equal(script.suggested_title, item.expectedTitle);
+    assert.match(script.full_script, item.expectedHook);
+    assert.match(script.full_script, item.expectedDetail);
+    assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+    assert.doesNotMatch(
+      `${script.suggested_title} ${script.full_script}`,
+      /Could Split Players|Needs One Real Proof|new source detail|real question|background noise|play now, wait, skip|source-backed update|the player impact is/i,
+    );
+    assert.doesNotMatch(script.suggested_title, /:/, "avoid title punctuation that creates TTS title pauses");
+    assert.deepEqual(script.quality.blockers, []);
+    assert.equal(script.coherence.result, "pass");
+    const massAudience = auditMassAudienceClarity({
+      script: script.full_script,
+      title: script.suggested_title,
+      sourceName: item.sourceName,
+      canonicalSubject: item.canonicalSubject,
+    });
+    assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
+    assert.equal(massAudience.concrete_detail_count >= 3, true);
+  }
+});
+
 test("fresh refill script rewrite dry-run leaves local proof files unchanged", async () => {
   const { artifactDir, workOrderPath } = await writeFixture("dry-run");
   const manifestPath = path.join(artifactDir, "canonical_story_manifest.json");

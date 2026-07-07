@@ -799,6 +799,70 @@ test("candidate supply excludes preflight terminal duplicate platforms from gree
   assert.deepEqual(scorecard.terminal_duplicate_blocked_platforms, ["youtube_shorts"]);
 });
 
+test("candidate supply demotes motion-only repeat-risk prospects with unknown source age", () => {
+  const now = new Date("2026-07-07T09:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [
+      candidate("fresh-official-story", {
+        title: "Nintendo Confirms Switch 2 Gameplay Test",
+        source_manifest: {
+          primary_source: {
+            name: "Nintendo",
+            url: "https://www.nintendo.com/us/whatsnew/switch-2-gameplay-test/",
+            published_at: "2026-07-07T08:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    motionCapacityReports: [
+      {
+        packs: [
+          {
+            story_id: "fresh_doom_chain_spear_dlc_20260703",
+            title: "Doom The Dark Ages Chain Spear Changes The Fight",
+            readiness_status: "v4_motion_ready",
+            motion_ready: true,
+            current_motion_clips: 9,
+            required_motion_clips: 5,
+            current_motion_families: 9,
+            required_motion_families: 4,
+            direct_media_ready: 9,
+            actionable_direct_media_ready: 9,
+            blockers: [],
+          },
+        ],
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  const doom = report.priority_scorecards.find((item) => item.story_id === "fresh_doom_chain_spear_dlc_20260703");
+  const official = report.priority_scorecards.find((item) => item.story_id === "fresh-official-story");
+
+  assert.equal(doom.repeat_or_stale_risk, true);
+  assert.ok(doom.repeat_or_stale_risk_reasons.includes("not_scheduler_candidate"));
+  assert.ok(doom.repeat_or_stale_risk_reasons.includes("source_age_unknown"));
+  assert.ok(doom.repeat_or_stale_risk_reasons.includes("source_safe_false"));
+  assert.ok(doom.score < official.score);
+  assert.match(formatCandidateSupplyMarkdown(report), /repeat\/stale risk/);
+});
+
 test("candidate supply report treats current transcript backlog as refill pressure", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

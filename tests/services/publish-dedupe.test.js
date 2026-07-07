@@ -194,6 +194,52 @@ test("recent topic-key branch: different source URL but same DOOM Chain Spear to
   assert.equal(r.existing.external_id, "yt-doom-original");
 });
 
+test("recent topic-overlap branch: shifted DOOM DLC headline still blocks as same topic", () => {
+  const db = makeDb();
+  insertStory(db, {
+    id: "doom-revelations-v1",
+    title: "DOOM The Dark Ages expanding with Revelations DLC in July, plus a free update",
+    url: "https://example.com/doom-revelations-dlc-original",
+  });
+  insertPublished(db, {
+    storyId: "doom-revelations-v1",
+    platform: "youtube",
+    externalId: "yt-doom-revelations",
+  });
+
+  const regenerated = {
+    id: "fresh-doom-chain-spear-dlc",
+    title: "DOOM The Dark Ages Revelations DLC Has A Chain Spear Risk",
+    url: "https://different.example.com/doom-chain-spear-risk",
+  };
+  const r = decidePublish(regenerated, "youtube", makeRepos(db));
+  assert.equal(r.decision, "block_dupe");
+  assert.equal(r.reason, "topic-overlap");
+  assert.equal(r.existing.external_id, "yt-doom-revelations");
+});
+
+test("recent topic-overlap branch: same game with different concrete topic still publishes", () => {
+  const db = makeDb();
+  insertStory(db, {
+    id: "doom-chain-spear-v1",
+    title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    url: "https://example.com/doom-chain-spear-original",
+  });
+  insertPublished(db, {
+    storyId: "doom-chain-spear-v1",
+    platform: "youtube",
+    externalId: "yt-doom-chain",
+  });
+
+  const separateUpdate = {
+    id: "doom-pssr-pro",
+    title: "Upgraded PSSR comes to Doom: The Dark Ages on PS5 Pro",
+    url: "https://different.example.com/doom-pssr-ps5-pro",
+  };
+  const r = decidePublish(separateUpdate, "youtube", makeRepos(db));
+  assert.equal(r.decision, "publish");
+});
+
 test("titleTopicKey removes house verbs but keeps game and event tokens", () => {
   assert.equal(
     titleTopicKey("DOOM The Dark Ages Chain Spear Has A Fight Risk"),

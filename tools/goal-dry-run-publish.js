@@ -759,6 +759,42 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
       `).all(...storyIds);
     }
     try {
+      const recentRows = db.prepare(`
+        SELECT p.story_id, p.platform, p.external_id, p.external_url, p.status, p.published_at,
+               s.source_url_hash,
+               s.title AS story_title
+        FROM platform_posts p
+        LEFT JOIN stories s ON s.id = p.story_id
+        WHERE p.status = 'published'
+          AND p.external_id IS NOT NULL
+          AND s.title IS NOT NULL
+          AND COALESCE(p.published_at, p.updated_at, p.created_at) >= datetime('now', '-14 days')
+        ORDER BY COALESCE(p.published_at, p.updated_at, p.created_at) DESC
+        LIMIT 500
+      `).all();
+      platformPostRows.push(...recentRows);
+    } catch (err) {
+      if (!/no such table|no such column/i.test(err.message)) throw err;
+      try {
+        const recentRows = db.prepare(`
+          SELECT p.story_id, p.platform, p.external_id, p.external_url, p.status, p.published_at,
+                 s.source_url_hash,
+                 s.title AS story_title
+          FROM platform_posts p
+          LEFT JOIN stories s ON s.id = p.story_id
+          WHERE p.status = 'published'
+            AND p.external_id IS NOT NULL
+            AND s.title IS NOT NULL
+            AND p.published_at >= datetime('now', '-14 days')
+          ORDER BY p.published_at DESC
+          LIMIT 500
+        `).all();
+        platformPostRows.push(...recentRows);
+      } catch (fallbackErr) {
+        if (!/no such table|no such column/i.test(fallbackErr.message)) throw fallbackErr;
+      }
+    }
+    try {
       legacyStoryRows = db.prepare(`
         SELECT id AS story_id,
                title,

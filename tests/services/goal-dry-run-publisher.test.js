@@ -4464,6 +4464,70 @@ test("goal dry-run publisher skips regenerated candidates whose recent topic was
   ]);
 });
 
+test("goal dry-run publisher skips shifted headlines whose recent topic overlaps a published story", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-topic-overlap-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "fresh-doom-chain-spear-dlc",
+    "GREEN",
+    "DOOM The Dark Ages Revelations DLC Has A Chain Spear Risk",
+    {
+      canonicalSubject: "DOOM The Dark Ages",
+      canonicalPatch: {
+        primary_source: {
+          name: "Example Source",
+          url: "https://different.example.com/doom-chain-spear-risk",
+        },
+        primary_source_url: "https://different.example.com/doom-chain-spear-risk",
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-07T00:25:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "fresh-doom-chain-spear-dlc",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    publishedPlatformEvidence: {
+      by_topic_key: {
+        ages_dark_dlc_doom_expanding_free_in_july_plus_revelations_update: {
+          already_published_platforms: [
+            "youtube_shorts",
+            "instagram_reels",
+            "facebook_reels",
+          ],
+          rows: [
+            {
+              story_id: "doom-revelations-v1",
+              title: "DOOM The Dark Ages expanding with Revelations DLC in July, plus a free update",
+              platform: "youtube_shorts",
+              external_id: "yt-doom-revelations",
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.platform_publish_now_action_count, 0);
+  assert.equal(plan.skipped_stories[0].status, "enabled_platforms_already_public");
+  assert.deepEqual(plan.skipped_stories[0].already_published_platforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
+});
+
 test("goal dry-run publisher skips enabled platforms terminal duplicate-blocked by prior guarded execution", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-terminal-duplicate-"));
   const storyPackage = await makeStoryPackage(
@@ -4680,6 +4744,60 @@ test("goal dry-run CLI reads published platform evidence from local SQLite in re
     evidence.by_story_id["posted-story"].already_published_platforms,
     ["youtube_shorts", "instagram_reels", "facebook_reels"],
   );
+});
+
+test("goal dry-run CLI loads recent published titles for near-topic repeat evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-published-topic-db-"));
+  await fs.ensureDir(path.join(root, "data"));
+  const Database = require("better-sqlite3");
+  const db = new Database(path.join(root, "data", "pulse.db"));
+  db.exec(`
+    CREATE TABLE stories (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      source_url_hash TEXT
+    );
+    CREATE TABLE platform_posts (
+      story_id TEXT,
+      platform TEXT,
+      external_id TEXT,
+      external_url TEXT,
+      status TEXT,
+      published_at TEXT
+    );
+  `);
+  db.prepare("INSERT INTO stories (id, title, source_url_hash) VALUES (?, ?, ?)").run(
+    "doom-revelations-v1",
+    "DOOM The Dark Ages expanding with Revelations DLC in July, plus a free update",
+    "hash-original",
+  );
+  const insert = db.prepare(`
+    INSERT INTO platform_posts (story_id, platform, external_id, external_url, status, published_at)
+    VALUES (?, ?, ?, ?, 'published', ?)
+  `);
+  insert.run("doom-revelations-v1", "youtube", "yt-doom-revelations", null, "2026-07-06T19:00:00.000Z");
+  insert.run("doom-revelations-v1", "instagram_reel", "ig-doom-revelations", null, "2026-07-06T19:02:00.000Z");
+  insert.run("doom-revelations-v1", "facebook_reel", "fb-doom-revelations", null, "2026-07-06T19:04:00.000Z");
+  db.close();
+
+  const previousSqliteDbPath = process.env.SQLITE_DB_PATH;
+  delete process.env.SQLITE_DB_PATH;
+  let evidence;
+  try {
+    evidence = await readPublishedPlatformEvidence(root, [
+      {
+        story_id: "fresh-doom-chain-spear-dlc",
+        title: "DOOM The Dark Ages Revelations DLC Has A Chain Spear Risk",
+      },
+    ]);
+  } finally {
+    if (previousSqliteDbPath == null) delete process.env.SQLITE_DB_PATH;
+    else process.env.SQLITE_DB_PATH = previousSqliteDbPath;
+  }
+
+  const evidenceText = JSON.stringify(evidence);
+  assert.match(evidenceText, /yt-doom-revelations/);
+  assert.match(evidenceText, /DOOM The Dark Ages expanding with Revelations DLC/);
 });
 
 test("goal dry-run publisher ignores stale visual-source defers after newer rights-backed final render evidence", async () => {

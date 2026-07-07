@@ -5950,6 +5950,75 @@ test("goal dry-run publisher blocks formulaic hooks even when a stale script sco
   assert.ok(plan.blocked_stories[0].blockers.includes("script_scorecard:script_verdict_rewrite_required"));
 });
 
+test("goal dry-run publisher promotes repaired local proof past stale package-summary blockers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-summary-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "repaired-current-proof",
+    "GREEN",
+    "The Crew Motorfest Grand Tour Has A Filler Problem",
+    {
+      canonicalSubject: "The Crew Motorfest",
+      canonicalPatch: {
+        first_spoken_line: "The Crew Motorfest just made a one-hour drive the real Season 10 test.",
+        narration_script:
+          "The Crew Motorfest just made a one-hour drive the real Season 10 test. Ubisoft says the update is live now, with Trackforge upgrades and a Hawaii Grand Tour built around a long open-world route. That matters because racing live services cannot survive on car drops alone. Players decide whether to come back for the Ferrari 250 GTO reward, but the route is the gamble. If it feels like a proper road trip, Motorfest finally gets a sharper identity. If it feels like filler, players will call it out fast. Follow Pulse Gaming so you never miss a beat.",
+        description:
+          "The Crew Motorfest has a fresh Season 10 route test with a real player consequence. Source: Ubisoft News.",
+        source_card_label: "Ubisoft News",
+        primary_source: { name: "Ubisoft News", url: "https://news.ubisoft.com/example" },
+      },
+      coherenceMatchesCanonical: true,
+    },
+  );
+  const coherencePath = path.join(storyPackage.artifact_dir, "coherence_report.json");
+  const coherence = await fs.readJson(coherencePath);
+  coherence.manifest.source_card_label = "Ubisoft News";
+  await fs.writeJson(coherencePath, coherence, { spaces: 2 });
+  storyPackage.blockers = [
+    "footage:v4_motion_blocked",
+    "director:director_blocked",
+    "benchmark:warn",
+    "media_house:title_lacks_curiosity_gap",
+    "media_house:platform_title_too_plain",
+    "media_house:shorts_feed_competition_weak",
+    "media_house:overall_score_below_threshold",
+    "media_house:competitor_parity_below_threshold",
+    "media_house:visuals_look_templated",
+    "media_house:source_lock_not_verified",
+    "render:final_publish_render_missing",
+    "audio:narration_audio_missing",
+    "captions:word_timestamps_missing",
+  ];
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-07T17:20:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "repaired-current-proof",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1, JSON.stringify({
+    summary: plan.summary,
+    blocked: plan.blocked_stories,
+    held: plan.held_stories,
+    ready: plan.ready_stories,
+  }, null, 2));
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.held_story_count, 0);
+  assert.equal(plan.summary.platform_enabled_dry_run_action_count, 3);
+  assert.ok(!JSON.stringify(plan.ready_stories[0]).includes("story_package:render:final_publish_render_missing"));
+  assert.ok(!JSON.stringify(plan.ready_stories[0]).includes("story_package:audio:narration_audio_missing"));
+});
+
 test("goal dry-run publisher blocks scripts still marked tighten before TTS", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-tighten-script-"));
   const storyPackage = await makeStoryPackage(root, "tighten-script-story", "GREEN", "Hades II Just Broke PlayStation's Silence", {

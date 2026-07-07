@@ -683,6 +683,40 @@ test("transcript audience audit accepts GTA VI V I spoken form as the same subje
   });
 });
 
+test("transcript audience audit accepts Xbox Game Pass wave aliases without forcing dated metadata aloud", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "game-pass-wave");
+    await fs.ensureDir(dir);
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "game-pass-wave",
+      canonical_subject: "Xbox Game Pass July 2026 Wave 1",
+      selected_title: "Game Pass Just Created An Install Fight",
+      primary_source: "Xbox Wire",
+      narration_script:
+        "Xbox Game Pass just made July feel like a download queue problem. " +
+        "Xbox Wire says Tony Hawk Pro Skater 1 plus 2, The Planet Crafter, Palworld one point zero and more are coming in the first wave. " +
+        "That lineup is not about one blockbuster. It is a time management trap: skating nostalgia, survival crafting and creature chaos all fighting for the same evening. " +
+        "The smart question is which game actually earns the install before the library rotates again. " +
+        "If Game Pass turns curiosity into one more habit, Xbox wins the month. " +
+        "If players sample everything and stick with nothing, the wave looks bigger than it feels. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/07/xbox-game-pass-july-2026-wave-1/",
+      },
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
 test("transcript audience audit accepts Call of Duty Black Ops 7 spoken in separated natural phrases", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "black-ops-7-separated-subject");

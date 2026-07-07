@@ -5818,6 +5818,7 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
     },
     candidates: candidates.slice(0, limit),
     excluded: excludedRowsForReport(excluded, { limit }),
+    repeat_quarantine: repeatQuarantineSummary(excluded),
   };
 
   if (bridgeCount > 0 || bridgeManifest) {
@@ -5848,6 +5849,34 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
   }
 
   return report;
+}
+
+function repeatQuarantineSummary(excluded = []) {
+  const alreadyPublic = [];
+  const nearRepeat = [];
+  const ids = [];
+  const seenIds = new Set();
+
+  for (const row of Array.isArray(excluded) ? excluded : []) {
+    const reason = String(row?.reason || "");
+    const id = String(row?.id || "").trim();
+    const isAlreadyPublic = /^already_has_public_platform_id:/i.test(reason);
+    const isNearRepeat = /^near_repeat_story_cluster:/i.test(reason);
+    if (!isAlreadyPublic && !isNearRepeat) continue;
+    if (id && !seenIds.has(id)) {
+      ids.push(id);
+      seenIds.add(id);
+    }
+    if (isAlreadyPublic) alreadyPublic.push(row);
+    if (isNearRepeat) nearRepeat.push(row);
+  }
+
+  return {
+    already_public_bridge_candidates: alreadyPublic.length,
+    near_repeat_bridge_candidates: nearRepeat.length,
+    total_quarantined_repeat_candidates: alreadyPublic.length + nearRepeat.length,
+    story_ids: ids,
+  };
 }
 
 function excludedRowsForReport(excluded = [], { limit = DEFAULT_LIMIT } = {}) {

@@ -579,6 +579,9 @@ test("next publish report excludes regenerated stories whose source URL was alre
   assert.equal(report.candidates.length, 0);
   assert.equal(report.excluded.length, 1);
   assert.equal(report.excluded[0].id, "fresh-doom-regenerated");
+  assert.equal(report.repeat_quarantine.already_public_bridge_candidates, 1);
+  assert.equal(report.repeat_quarantine.near_repeat_bridge_candidates, 0);
+  assert.deepEqual(report.repeat_quarantine.story_ids, ["fresh-doom-regenerated"]);
   assert.match(report.excluded[0].reason, /^already_has_public_platform_id:/);
   assert.match(report.excluded[0].reason, /youtube_post_id/);
   assert.match(report.excluded[0].reason, /instagram_media_id/);
@@ -627,6 +630,9 @@ test("next publish report excludes bridge candidates near published evidence row
   assert.equal(report.candidates.length, 0);
   assert.equal(report.excluded.length, 1);
   assert.equal(report.excluded[0].id, "fresh-doom-repeat");
+  assert.equal(report.repeat_quarantine.already_public_bridge_candidates, 0);
+  assert.equal(report.repeat_quarantine.near_repeat_bridge_candidates, 1);
+  assert.deepEqual(report.repeat_quarantine.story_ids, ["fresh-doom-repeat"]);
   assert.match(report.excluded[0].reason, /^near_repeat_story_cluster:/);
   assert.match(report.excluded[0].reason, /older-doom-live/);
 });

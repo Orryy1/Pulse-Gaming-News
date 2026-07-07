@@ -1116,6 +1116,46 @@ test("fresh refill official discovery runs from source-family search rows even w
   );
 });
 
+test("fresh refill direct-media intake keeps official YouTube references as source proof only", () => {
+  const { mergeFreshRefillDirectMediaIntakeEntries } = require("../../lib/job-handlers");
+
+  const rows = mergeFreshRefillDirectMediaIntakeEntries({
+    sourceManifestEntries: [],
+    discoveredEntries: [
+      {
+        story_id: "fresh_flight_sim_story",
+        source_family: "flight_sim_update",
+        source_type: "official_game_site_news_page",
+        official_source_url: "https://www.flightsimulator.com/world-update-22",
+        direct_media_url_if_available: "",
+      },
+      {
+        story_id: "fresh_flight_sim_story",
+        source_family: "flight_sim_update__youtube_reference",
+        source_type: "official_youtube_channel_url",
+        official_source_url: "https://www.youtube.com/watch?v=yG-CHF7VHMI",
+        direct_media_url_if_available: "",
+        segment_validation_eligible: false,
+        segment_validation_ineligible_reason: "segment_source_is_youtube_reference",
+        evidence_of_officialness: "Embedded by the official Microsoft Flight Simulator source page.",
+      },
+      {
+        story_id: "fresh_flight_sim_story",
+        source_family: "flight_sim_update__direct_media",
+        source_type: "official_game_site_direct_video",
+        official_source_url: "https://www.flightsimulator.com/world-update-22",
+        direct_media_url_if_available: "https://cdn.example.com/world-update-22.mp4",
+      },
+    ],
+  });
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].source_type, "official_youtube_channel_url");
+  assert.equal(rows[0].segment_validation_eligible, false);
+  assert.equal(rows[0].direct_media_url_if_available, "");
+  assert.equal(rows[1].direct_media_url_if_available, "https://cdn.example.com/world-update-22.mp4");
+});
+
 test("fresh production refill handler builds live-RSS local proof packages", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

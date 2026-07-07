@@ -3939,6 +3939,64 @@ test("fresh refill HyperFrames card generation targets only real-motion material
   }
 });
 
+test("fresh refill writes visual-source reject reviews for zero-validated segment stories", async () => {
+  const {
+    writeFreshRefillVisualSourceReviewsForRejectedSegments,
+  } = require("../../lib/job-handlers");
+  const { REJECT_DECISION } = require("../../lib/goal-visual-source-review");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-segment-review-"));
+  try {
+    const artifactDir = path.join(tmp, "story");
+    await fs.mkdir(artifactDir, { recursive: true });
+    const segmentReportPath = path.join(tmp, "official_trailer_segment_validation_apply_local.json");
+    await fs.writeFile(
+      segmentReportPath,
+      JSON.stringify({
+        schema_version: 1,
+        summary: {
+          segments: 4,
+          segments_validated: 0,
+          segments_rejected: 4,
+        },
+        segments: [
+          { story_id: "visual-dead-end", status: "rejected", source_family: "official_trailer_a" },
+          { story_id: "visual-dead-end", status: "rejected", source_family: "official_trailer_b" },
+          { story_id: "other-story", status: "validated", source_family: "official_trailer_c" },
+        ],
+        safety: {
+          no_publish_triggered: true,
+          no_db_mutation: true,
+        },
+      }),
+    );
+
+    const result = await writeFreshRefillVisualSourceReviewsForRejectedSegments({
+      segmentReportPath,
+      storyPackageRows: [
+        {
+          story_id: "visual-dead-end",
+          title: "Visual Dead End",
+          artifact_dir: artifactDir,
+        },
+      ],
+      outputDir: tmp,
+      generatedAt: "2026-07-07T08:40:00.000Z",
+    });
+
+    assert.equal(result.summary.visual_source_review_count, 1);
+    assert.equal(result.summary.reject_count, 1);
+    assert.equal(result.summary.rejected_segment_story_count, 1);
+    const review = JSON.parse(await fs.readFile(path.join(artifactDir, "visual_source_review.json"), "utf8"));
+    assert.equal(review.decision, REJECT_DECISION);
+    assert.equal(review.story_id, "visual-dead-end");
+    assert.ok(review.visual_source_blockers.includes("actual_motion_clip_minimum_not_met"));
+    assert.equal(review.safety.no_publish_triggered, true);
+    assert.equal(review.safety.no_db_mutation, true);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh production refill repair preserves Rockstar direct media candidates", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

@@ -3146,6 +3146,33 @@ test("goal batch package platform packs do not revive stale identity CTAs", () =
   assert.doesNotMatch(JSON.stringify(youtubePack), /gaming stories behind the headline/i);
 });
 
+test("goal batch package keeps version numbers in public hooks and descriptions", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "official_palworld_10_gamepass_20260707",
+    title: "Palworld 1.0 Turns Game Pass Into A Reinstall Test",
+    canonical_subject: "Palworld 1.0",
+    canonical_game: "Palworld",
+    source_type: "official",
+    source_name: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/07/07/xbox-game-pass-july-2026-wave-1/",
+    primary_source_url: "https://news.xbox.com/en-us/2026/07/07/xbox-game-pass-july-2026-wave-1/",
+    full_script:
+      "Palworld 1. 0 just moved from hype to the part players can actually judge. Xbox Wire says the full launch is joining Game Pass on July 10, which gives lapsed players a clean reason to reinstall. Watch the practical tells: camera distance, hit timing, enemy pressure and whether the action stays readable when effects stack up. If those basics hold, it earns a wishlist argument; if the edit hides them, the reveal is still selling mood instead of play. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(
+    prepared.first_spoken_line,
+    "Palworld 1.0 just moved from hype to the part players can actually judge.",
+  );
+  assert.equal(prepared.narration_hook, prepared.first_spoken_line);
+  assert.match(prepared.description, /^Palworld 1\.0 just moved/i);
+  assert.doesNotMatch(prepared.description, /^Palworld 1\. /i);
+  assert.deepEqual(prepared.allowed_public_wording, [
+    prepared.public_title,
+    prepared.first_spoken_line,
+  ]);
+});
+
 test("goal batch packages preserve fresh intake source objects and selected titles", () => {
   const story = {
     id: "fresh_xbox_halo_campaign_evolved_demo_20260610",

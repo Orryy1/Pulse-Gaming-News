@@ -277,6 +277,28 @@ test("fresh buffer promotion preserves official direct media references in local
   assert.equal(footageInventory.official_motion_references[0].source_family, "rockstar_gta_vi_trailer_2");
 });
 
+test("fresh buffer canonical manifest keeps version numbers inside the first spoken line", () => {
+  const canonical = buildCanonicalStoryManifest(
+    draftStory({
+      id: "official_palworld_10_gamepass_20260707",
+      title: "Palworld 1.0 Turns Game Pass Into A Reinstall Test",
+      canonical_subject: "Palworld",
+      canonical_game: "Palworld",
+      selected_title: "Palworld 1.0 Turns Game Pass Into A Reinstall Test",
+      narration_script:
+        "Palworld 1. 0 just moved from hype to a real reinstall test. Xbox Wire says the full launch is joining Game Pass on July 10, which gives lapsed players a clean reason to reinstall instead of just remembering the old launch noise. The useful question is whether the full release feels sharper, fairer and less like a survival game still explaining itself. If the update lands, Game Pass turns curiosity into a second chance. If it does not, Palworld starts 1.0 with a trust problem. Follow Pulse Gaming so you never miss a beat.",
+    }),
+    "2026-07-07T17:00:00.000Z",
+  );
+
+  assert.equal(
+    canonical.first_spoken_line,
+    "Palworld 1.0 just moved from hype to a real reinstall test.",
+  );
+  assert.equal(canonical.hook, canonical.first_spoken_line);
+  assert.doesNotMatch(canonical.first_spoken_line, /^Palworld 1\.$/);
+});
+
 test("fresh buffer local render work order consumes current audio package evidence", async () => {
   const generatedAt = "2026-06-23T11:45:00.000Z";
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-promotion-audio-evidence-"));

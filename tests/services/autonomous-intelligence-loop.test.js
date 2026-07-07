@@ -1847,6 +1847,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(repairReport.summary.script_rewrite_work_order_count, 1);
     assert.deepEqual(repairReport.summary.quarantined_package_ids, ["fresh_generic_story"]);
     assert.equal(repairReport.summary.direct_media_intake_accepted_count, 2);
+    assert.equal(repairReport.summary.direct_media_intake_materializable_accepted_count, 2);
+    assert.equal(repairReport.summary.direct_media_intake_reference_only_accepted_count, 0);
     const directMediaIntakeReport = JSON.parse(
       await fs.readFile(repairReport.outputs.direct_media_intake_report, "utf8"),
     );
@@ -3923,6 +3925,172 @@ test("fresh production refill repair uses official direct media from article-sou
       entries.every((entry) => entry.direct_media_provided === true && entry.downloads_allowed === false),
       true,
     );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill repair does not count accepted reference-only URLs as materializable motion", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-reference-only-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyId = "fresh_halo_campaign_evolved_demo_reference_only";
+  const artifactDir = path.join(outDir, storyId);
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+
+  try {
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          const effectiveOutDir = args[args.indexOf("--out-dir") + 1] || outDir;
+          const effectiveContractOutDir =
+            args[args.indexOf("--contract-out-dir") + 1] || contractOutDir;
+          const effectiveArtifactDir = path.join(effectiveOutDir, storyId);
+          await fs.mkdir(effectiveArtifactDir, { recursive: true });
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: storyId,
+              canonical_subject: "Halo Campaign Evolved",
+              canonical_game: "Halo Campaign Evolved",
+              canonical_title: "Halo Campaign Evolved Demo Has One Trust Test",
+              selected_title: "Halo Campaign Evolved Demo Has One Trust Test",
+              primary_source: "Xbox YouTube",
+              primary_source_url: "https://www.youtube.com/watch?v=HaloCampaignEvolvedDemo",
+              narration_script:
+                "Halo Campaign Evolved has a demo problem Xbox can actually prove. The official Xbox channel shows the campaign demo, but the real question is whether this remake feels modern without sanding off the original. Follow Pulse Gaming so you never miss a beat.",
+            }),
+          );
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "source_manifest.json"),
+            JSON.stringify({
+              story_id: storyId,
+              primary_source: {
+                name: "Xbox YouTube",
+                url: "https://www.youtube.com/watch?v=HaloCampaignEvolvedDemo",
+                type: "official",
+                published_at: "2026-07-06T12:00:00.000Z",
+                age_hours: 4,
+              },
+              direct_media_candidates: [
+                {
+                  direct_media_url: "https://www.youtube.com/watch?v=HaloCampaignEvolvedDemo",
+                  source_type: "official_youtube_reference",
+                  source_owner: "Xbox",
+                  source_title: "Halo Campaign Evolved Official Campaign Demo",
+                  source_family: "xbox_halo_campaign_evolved_official_youtube_demo",
+                },
+              ],
+              freshness_gate: "pass",
+              coherence_gate: "pass",
+              blockers: [],
+            }),
+          );
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "script_scorecard.json"),
+            JSON.stringify({
+              story_id: storyId,
+              verdict: "viral_ready",
+              blockers: [],
+            }),
+          );
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: storyId,
+                artifact_dir: effectiveArtifactDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+            ]),
+          );
+          return {
+            batch: { summary: { story_count: 1, green_count: 0, red_count: 1 } },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+          repair_story_limit: 1,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          if (options.args[0] === "tools/official-search-intake-autofill.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          if (options.args[0] === "tools/official-direct-media-discovery.js") {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) {
+              await fs.writeFile(
+                templatePath,
+                JSON.stringify({
+                  schema_version: 1,
+                  entries: [
+                    {
+                      story_id: storyId,
+                      entity: "Halo Campaign Evolved",
+                      official_source_url: "https://www.youtube.com/watch?v=HaloCampaignEvolvedDemo",
+                      source_type: "official_youtube_channel_url",
+                      source_owner: "Xbox official YouTube channel",
+                      source_title: "Halo Campaign Evolved Official Campaign Demo",
+                      source_family: "xbox_halo_campaign_evolved_official_youtube_demo",
+                      evidence_of_officialness: "official Xbox YouTube channel reference",
+                      entity_match_notes: "Halo Campaign Evolved named in the official title",
+                      downloads_allowed: false,
+                    },
+                  ],
+                }),
+              );
+            }
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    assert.equal(repairReport.summary.direct_media_intake_accepted_count, 1);
+    assert.equal(repairReport.summary.direct_media_intake_materializable_accepted_count, 0);
+    assert.equal(repairReport.summary.direct_media_intake_reference_only_accepted_count, 1);
+    assert.equal(repairReport.summary.real_motion_materialized_clip_count, 0);
+    const directMediaIntakeReport = JSON.parse(
+      await fs.readFile(repairReport.outputs.direct_media_intake_report, "utf8"),
+    );
+    assert.equal(directMediaIntakeReport.summary.accepted, 1);
+    assert.equal(directMediaIntakeReport.summary.materializable_accepted, 0);
+    assert.equal(directMediaIntakeReport.summary.reference_only_accepted, 1);
+    assert.equal(directMediaIntakeReport.accepted_entries[0].segment_validation_eligible, false);
+    assert.equal(directMediaIntakeReport.accepted_entries[0].accepted_for, "reference_validation_only");
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

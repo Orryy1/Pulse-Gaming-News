@@ -2397,6 +2397,63 @@ test("goal batch package proof preparation writes concrete scripts for fresh ref
   }
 });
 
+test("goal batch package proof preparation writes concrete scripts for current live RSS refill stories", () => {
+  const stories = [
+    {
+      id: "pit-of-goblin",
+      title: "Enter The Pit: XBOX Insiders Can Play Pit of Goblin Today!",
+      canonical_subject: "Pit of Goblin",
+      source_name: "Xbox Wire",
+      source_type: "rss",
+      url: "https://news.xbox.com/en-us/2026/07/02/enter-the-pit-xbox-insiders-can-play-pit-of-goblin-today/",
+      description: "Xbox Insiders can play Pit of Goblin today through Enter The Pit.",
+    },
+    {
+      id: "flight-sim-parks",
+      title: "Microsoft Flight Simulator Releases World Update 22: United States National Parks",
+      canonical_subject: "Microsoft Flight Simulator",
+      source_name: "Xbox Wire",
+      source_type: "rss",
+      url: "https://www.flightsimulator.com/world-update-22/",
+      description: "World Update 22 adds United States National Parks to Microsoft Flight Simulator.",
+    },
+    {
+      id: "college-football-ea-play",
+      title: "Step Into the Modern Era in EA SPORTS College Football 27 with EA Play",
+      canonical_subject: "EA Sports College Football 27",
+      source_name: "Xbox Wire",
+      source_type: "rss",
+      url: "https://news.xbox.com/en-us/2026/07/02/step-into-modern-era-ea-sports-college-football-27-ea-play/",
+      description: "EA Play gives players a route into EA SPORTS College Football 27.",
+    },
+    {
+      id: "bethesda-layoffs",
+      title: "Bethesda Game Studios and ZeniMax hit hard by Xbox layoffs, says union",
+      canonical_subject: "Bethesda Game Studios and ZeniMax",
+      source_name: "PCGamer",
+      source_type: "rss",
+      url: "https://www.pcgamer.com/gaming-industry/bethesda-game-studios-and-zenimax-hit-hard-by-xbox-layoffs-says-union/",
+      description: "A union says Bethesda Game Studios and ZeniMax were hit hard by Xbox layoffs.",
+    },
+  ];
+
+  for (const story of stories) {
+    const prepared = prepareStoryForGoalProof(story);
+    const pack = buildGoalProofPackage({ story: prepared });
+    const packagedScript = pack.canonical_story_manifest.full_script || pack.canonical_story_manifest.narration_script || "";
+
+    assert.doesNotMatch(prepared.public_title, /Could Split Players|New Signal|This Game/i, story.id);
+    assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players|New Signal|This Game/i, story.id);
+    assert.doesNotMatch(
+      packagedScript,
+      /new source detail|what players can do with it|play now, wait, skip|stronger proof before it deserves attention|caution flag/i,
+      story.id,
+    );
+    assert.match(packagedScript, new RegExp(story.source_name, "i"), story.id);
+    assert.match(packagedScript, /Follow Pulse Gaming so you never miss a beat\.$/, story.id);
+  }
+});
+
 test("goal batch package proof preparation quarantines malformed generated refill titles", () => {
   const prepared = prepareStoryForGoalProof({
     id: "rss_bad_refill_title",

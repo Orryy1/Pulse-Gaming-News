@@ -585,6 +585,52 @@ test("next publish report excludes regenerated stories whose source URL was alre
   assert.match(report.excluded[0].reason, /facebook_post_id/);
 });
 
+test("next publish report excludes bridge candidates near published evidence rows outside the active set", () => {
+  const report = buildNextPublishCandidatesReport(
+    [
+      baseStory({
+        id: "fresh-doom-repeat",
+        title: "DOOM The Dark Ages Chain Spear Has A Fight Risk",
+        canonical_subject: "DOOM: The Dark Ages",
+        first_spoken_line: "DOOM The Dark Ages has a Chain Spear fight risk.",
+        full_script:
+          "DOOM The Dark Ages has a Chain Spear fight risk. The Chain Spear change makes the same combat debate matter again.",
+        scheduler_bridge_source: "local_bridge_candidate_upsert",
+      }),
+    ],
+    {
+      analyticsText,
+      generatedAt: "2026-07-07T04:45:00.000Z",
+      publishedPlatformEvidence: {
+        by_story_id: {
+          "older-doom-live": {
+            already_published_platforms: [
+              "youtube_shorts",
+              "instagram_reels",
+              "facebook_reels",
+            ],
+            rows: [
+              {
+                story_id: "older-doom-live",
+                title: "Doom The Dark Ages Chain Spear Changes The Fight",
+                canonical_subject: "DOOM: The Dark Ages",
+                full_script:
+                  "DOOM The Dark Ages just changed the Chain Spear fight. The update changes how players approach the weapon.",
+              },
+            ],
+          },
+        },
+      },
+    },
+  );
+
+  assert.equal(report.candidates.length, 0);
+  assert.equal(report.excluded.length, 1);
+  assert.equal(report.excluded[0].id, "fresh-doom-repeat");
+  assert.match(report.excluded[0].reason, /^near_repeat_story_cluster:/);
+  assert.match(report.excluded[0].reason, /older-doom-live/);
+});
+
 test("next publish report excludes upstream anti-spam deferred bridge candidates", () => {
   const report = buildNextPublishCandidatesReport(
     [
@@ -8665,6 +8711,135 @@ test("runPreflightQaForStory trusts clean final scene-plan motion over stale emb
   assert.deepEqual(
     preflight.checks.incident_guard.evidence.file_evidence.direct_motion_base_source_overuse,
     [],
+  );
+});
+
+test("runPreflightQaForStory blocks final scene plans that reuse source roots through different windows", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-source-root-overuse-"));
+  t.after(() => fs.remove(tmp));
+  const videoPath = path.join(tmp, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(tmp, "source-root-overuse-package", videoPath);
+  const renderManifestPath = path.join(tmp, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    final_publish_render: true,
+    rendered_duration_s: 39,
+    clips: 5,
+    clip_scene_plan: {
+      repeat_free: true,
+      blockers: [],
+      repeated_base_sources: [],
+      repeated_readable_card_kinds: [],
+      scenes: [
+        ["steam_2698940_media_03_dash_av1_window_36_5", "video.fastly.steamstatic.com/store_trailers/2698940/root-a/1771353384"],
+        ["steamstatic:/store_trailers/2698940/root-a/1771353384_window_48_5", "video.fastly.steamstatic.com/store_trailers/2698940/root-a/1771353384"],
+        ["steam_2698940_media_05_dash_av1_window_36_5", "video.fastly.steamstatic.com/store_trailers/2698940/root-b/1772831298"],
+        ["steamstatic:/store_trailers/2698940/root-b/1772831298_window_48_5", "video.fastly.steamstatic.com/store_trailers/2698940/root-b/1772831298"],
+        ["steam_2698940_media_07_window_4_5", "shared.fastly.steamstatic.com/store_item_assets/steam/apps/2698940/extras/root-c"],
+      ].map(([baseSourceKey, sourceRootKey], index) => ({
+        id: `current-crew-direct-${index + 1}`,
+        path: `output/video_cache/crew-current-${index + 1}.mp4`,
+        media_kind: "direct_video",
+        duration_s: 5,
+        base_source_key: baseSourceKey,
+        source_root_key: sourceRootKey,
+      })),
+    },
+  }, { spaces: 2 });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "source-root-overuse-package",
+      title: "The Crew Motorfest Grand Tour Has A Filler Problem",
+      canonical_subject: "The Crew Motorfest",
+      first_spoken_line: "The Crew Motorfest just made its next season look bigger than a normal update.",
+      description: "Ubisoft detailed The Crew Motorfest's new season. Source: Ubisoft.",
+      full_script:
+        "The Crew Motorfest just made its next season look bigger than a normal update. Ubisoft detailed the race format, route pressure and reward chase players will judge first.",
+      source_type: "rss",
+      timestamp: "2026-07-01T18:00:00.000Z",
+      duration_seconds: 39,
+      duration_lane: "normal_production",
+      min_video_duration_seconds: 35,
+      target_video_duration_seconds_min: 35,
+      target_video_duration_seconds_max: 60,
+      max_video_duration_seconds: 60,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      primary_source: "Ubisoft",
+      discovery_source: "Ubisoft",
+      audio_path: "D:/pulse-data/media/output/audio/source-root-overuse-package.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/source-root-overuse-package_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/source-root-overuse-package.srt",
+      scheduler_bridge_source: "goal_production_cutover",
+      scheduler_bridge_artifact_dir: tmp,
+      exported_path: videoPath,
+      visual_quality_report: bridgeVisualEvidence("The Crew Motorfest"),
+      media_house_benchmark: bridgeVisualEvidence("The Crew Motorfest").media_house_benchmark,
+      sfx_manifest: bridgeSfxEvidence(),
+      platform_policy_report: {
+        disclosure_requirements: { affiliate: false, commercial: false },
+        platform_disclosure_status: "resolved",
+      },
+      affiliate_link_manifest: { disclosure_required: false },
+      landing_page_manifest: {},
+      rights_ledger: Array.from({ length: 5 }, (_, index) => ({
+        asset_id: `crew-current-official-${index + 1}`,
+        path: `output/video_cache/crew-current-${index + 1}.mp4`,
+        source_type: "official_trailer_segment",
+        rights_risk_class: "official_reference_only",
+        source_family: `crew_current_official_${index + 1}`,
+      })),
+      visual_v4_bridge_video_clips: Array.from({ length: 5 }, (_, index) => ({
+        id: `crew-current-direct-${index + 1}`,
+        path: `output/video_cache/crew-current-${index + 1}.mp4`,
+        source_url: `https://video.example.test/crew/current-official-${index + 1}.mp4`,
+        media_kind: "direct_video",
+        source_family: `crew_current_official_${index + 1}_window_${10 + index * 6}_5`,
+        mediaStartS: 10 + index * 6,
+        durationS: 5,
+      })),
+      publish_verdict: { verdict: "GREEN", can_auto_publish: true },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        can_auto_publish: true,
+        outputs: {
+          youtube_shorts: { title: "The Crew Motorfest Grand Tour Has A Filler Problem" },
+          instagram_reels: { caption: "The Crew Motorfest's next season has a big promise." },
+          facebook_reels: { page_caption: "The Crew Motorfest's next season has a big promise." },
+        },
+      },
+    }),
+    {
+      runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVisualEntityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+      runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runMediaHouseQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("incident_guard:visual_evidence:direct_motion_base_source_overused"),
+    JSON.stringify(preflight.blockers),
+  );
+  assert.equal(
+    preflight.checks.incident_guard.evidence.file_evidence.direct_motion_base_source_overuse.length,
+    2,
   );
 });
 

@@ -455,6 +455,92 @@ function platformEvidenceFromRow(row = {}) {
   ]);
 }
 
+function markPublishedReferencePlatformFields(story = {}, platforms = []) {
+  const marked = { ...story };
+  for (const platform of uniqueCleanPlatformNames(platforms)) {
+    if (platform === "youtube_shorts" && !realPlatformId(marked.youtube_post_id)) {
+      marked.youtube_post_id = `PUBLISHED_REFERENCE_${marked.id || "story"}`;
+    }
+    if (platform === "instagram_reels" && !realPlatformId(marked.instagram_media_id)) {
+      marked.instagram_media_id = `PUBLISHED_REFERENCE_${marked.id || "story"}`;
+    }
+    if (platform === "facebook_reels" && !realPlatformId(marked.facebook_post_id)) {
+      marked.facebook_post_id = `PUBLISHED_REFERENCE_${marked.id || "story"}`;
+    }
+    if (platform === "tiktok" && !realPlatformId(marked.tiktok_post_id)) {
+      marked.tiktok_post_id = `PUBLISHED_REFERENCE_${marked.id || "story"}`;
+    }
+    if (platform === "x" && !realPlatformId(marked.x_post_id) && !realPlatformId(marked.twitter_post_id)) {
+      marked.x_post_id = `PUBLISHED_REFERENCE_${marked.id || "story"}`;
+    }
+  }
+  return marked;
+}
+
+function publishedEvidenceRows(evidence = null) {
+  if (!evidence || typeof evidence !== "object") return [];
+  if (Array.isArray(evidence)) return evidence.filter(Boolean);
+  const rows = [];
+  for (const section of [
+    evidence.by_story_id,
+    evidence.byStoryId,
+    evidence.stories,
+    evidence.by_source_url_hash,
+    evidence.bySourceUrlHash,
+    evidence.source_url_hashes,
+  ]) {
+    if (!section || typeof section !== "object") continue;
+    for (const [key, value] of Object.entries(section)) {
+      const entries = Array.isArray(value) ? value : asArray(value?.rows).length ? value.rows : [value];
+      for (const entry of entries.filter(Boolean)) {
+        rows.push({
+          ...entry,
+          story_id: entry.story_id || entry.id || (section === evidence.by_story_id ? key : null),
+          already_published_platforms: uniqueCleanPlatformNames([
+            ...platformEvidenceFromRow(value),
+            ...platformEvidenceFromRow(entry),
+          ]),
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function nearRepeatPublishedStoriesFromEvidence(evidence = null) {
+  const seen = new Set();
+  return publishedEvidenceRows(evidence)
+    .map((row) => {
+      const platforms = platformEvidenceFromRow(row);
+      if (!platforms.length) return null;
+      const id = cleanText(row.story_id || row.id || row.story_id_ref || row.external_id);
+      const title = cleanText(row.title || row.story_title || row.headline);
+      if (!id || !title) return null;
+      const reference = markPublishedReferencePlatformFields(
+        {
+          id,
+          title,
+          canonical_subject: cleanText(
+            row.canonical_subject ||
+              row.canonical_game ||
+              row.game_title ||
+              row.primary_entity ||
+              row.subject,
+          ),
+          first_spoken_line: row.first_spoken_line || row.hook || "",
+          description: row.description || "",
+          full_script: row.full_script || row.tts_script || row.script || "",
+        },
+        platforms,
+      );
+      const key = `${reference.id}:${reference.title}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return reference;
+    })
+    .filter(Boolean);
+}
+
 function publishedEvidencePlatformsForStory(evidence = null, storyId = "") {
   const id = String(storyId || "").trim();
   if (!id || !evidence || typeof evidence !== "object") return [];
@@ -540,6 +626,14 @@ function buildPublishedPlatformEvidenceFromStories(stories = []) {
       story_id: story.id || null,
       title: story.title || null,
       url: story.url || story.source_url || story.article_url || null,
+      canonical_subject:
+        story.canonical_subject ||
+        story.canonical_game ||
+        story.game_title ||
+        story.primary_entity ||
+        null,
+      first_spoken_line: story.first_spoken_line || story.hook || null,
+      full_script: story.full_script || story.tts_script || null,
       already_published_platforms: platforms,
     };
     addPublishedEvidenceEntry(byStoryId, story.id, platforms, row);
@@ -4993,6 +5087,8 @@ function finalClipScenePlanMotionEvidence(renderManifest = {}, clipScenePlanVisu
       ),
       source_family: sourceFamily,
       base_source_family: firstCleanText(
+        scene.source_root_key,
+        scene.sourceRootKey,
         scene.base_source_family,
         scene.base_source_key,
         scene.baseSourceKey,
@@ -5658,7 +5754,10 @@ function buildNextPublishCandidatesReport(stories, options = {}) {
     filterStoriesByStoryId(inputRows, requestedStoryId).map((story) => ({ ...story })),
     options.publishedPlatformEvidence,
   );
-  const nearRepeatPublishedStories = rows.filter(hasAnyPublicPlatformEvidence);
+  const nearRepeatPublishedStories = [
+    ...rows.filter(hasAnyPublicPlatformEvidence),
+    ...nearRepeatPublishedStoriesFromEvidence(options.publishedPlatformEvidence),
+  ];
   const bridgeCount = bridgeCandidateCount(rows);
   const bridgeManifest = options.bridgeManifest
     ? normaliseBridgeManifest(options.bridgeManifest)

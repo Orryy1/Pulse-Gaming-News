@@ -5463,6 +5463,93 @@ test("goal dry-run publisher blocks repeated direct-video windows from one sourc
   );
 });
 
+test("goal dry-run publisher blocks materialised official social clips from a different game", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-wrong-social-motion-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "wrong-social-motion-story",
+    "GREEN",
+    "Bethesda Layoffs Put Xbox RPG Trust Under Pressure",
+    { canonicalSubject: "Bethesda Game Studios and Xbox RPGs" },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const cleanRenderClips = Array.from({ length: 3 }, (_, index) => directMotionClipFixture({
+    id: `bethesda-neutral-clip-${index + 1}`,
+    path: `motion/bethesda-neutral-${index + 1}.mp4`,
+    sourceUrl: `https://cdn.example.com/bethesda-rpg-neutral-${index + 1}.mp4`,
+    sourceFamily: `bethesda_xbox_rpg_neutral_window_${index + 1}`,
+    sourceType: "official_platform_product_page",
+    startS: index * 5,
+  }));
+  const pollutedMaterialisedClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `segment_direct_motion_${index + 1}`,
+    source_family: `forza_horizon_official_x_fh6_window_${index + 1}`,
+    motion_family: `forza_horizon_official_x_fh6_window_${index + 1}`,
+    path: `motion/forza-horizon-fh6-window-${index + 1}.mp4`,
+    local_materialized_path: `motion/forza-horizon-fh6-window-${index + 1}.mp4`,
+    source_url: `https://video.twimg.com/amplify_video/204${index}/vid/avc1/1280x720/forza${index}.mp4?tag=14`,
+    source_asset_key: `https://video.twimg.com/amplify_video/204${index}/vid/avc1/1280x720/forza${index}.mp4`,
+    source_type: "official_social_media_video",
+    source_kind: "video_file",
+    media_kind: "direct_video",
+    mediaStartS: 4 + index,
+    durationS: 5,
+    validated: true,
+    trusted_source_evidence: true,
+    trust_evidence_source: "validated_official_local_motion",
+    allowed_render_use: "reference_only_by_default",
+    rights_risk_class: "official_reference_only",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+  }));
+  await Promise.all(
+    [...cleanRenderClips, ...pollutedMaterialisedClips].map((clip) =>
+      fs.outputFile(path.join(artifactDir, clip.path), Buffer.alloc(1600, 4)),
+    ),
+  );
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    id: "wrong-social-motion-story",
+    video_clips: cleanRenderClips,
+    visual_v4_bridge_video_clips: cleanRenderClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    materialised_clips: pollutedMaterialisedClips,
+    distinct_motion_families: pollutedMaterialisedClips.map((clip) => clip.motion_family),
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: pollutedMaterialisedClips,
+    distinct_motion_family_count: pollutedMaterialisedClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: pollutedMaterialisedClips.map((clip) => ({
+      ...clip,
+      asset_type: "direct_video_motion_clip",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+    })),
+  });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-07T11:55:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:direct_motion_subject_mismatch"));
+  assert.equal(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_subject_mismatch_count,
+    6,
+  );
+  assert.deepEqual(
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.direct_motion_subject_mismatches[0]
+      .detected_entities,
+    ["Forza Horizon"],
+  );
+});
+
 test("goal dry-run publisher blocks repeated direct-motion segments even when enough unique sources exist", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-repeated-segment-"));
   const storyPackage = await makeStoryPackage(

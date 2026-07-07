@@ -57,6 +57,56 @@ test("direct-media discovery extracts validation-eligible video URLs from offici
   assert.equal(urls[1].source_url_kind, "hls_manifest");
 });
 
+test("direct-media discovery preserves official YouTube embeds as reference-only intake rows", async () => {
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [
+      {
+        story_id: "avatar-legends-stage",
+        entity: "Avatar Legends",
+        source_family: "playstation_blog_avatar_legends_stage",
+        source_type: "official_game_site_news_page",
+        source_owner: "PlayStation Blog official source",
+        official_source_url: "https://blog.playstation.example/avatar-legends-stage",
+        direct_media_url_if_available: "",
+        downloads_allowed: false,
+      },
+    ],
+    fetchText: async () => ({
+      ok: true,
+      status: 200,
+      text: `
+        <iframe src="https://www.youtube.com/embed/NFVg25hd-hw"></iframe>
+        <a href="https://www.youtube.com/watch?v=OqyDKxVAIIc">Avatar Legends match video</a>
+      `,
+    }),
+  });
+
+  assert.equal(report.summary.discovered, 0);
+  assert.equal(report.summary.reference_only_youtube_embeds, 2);
+  assert.equal(report.summary.expanded_template_entries, 3);
+  assert.equal(report.rows[0].status, "no_direct_media_found");
+  assert.equal(report.rows[0].reference_only_candidates.length, 2);
+
+  const youtubeRows = report.output_template.entries.filter(
+    (entry) => entry.source_type === "official_youtube_channel_url",
+  );
+  assert.deepEqual(
+    youtubeRows.map((entry) => entry.official_source_url),
+    [
+      "https://www.youtube.com/watch?v=NFVg25hd-hw",
+      "https://www.youtube.com/watch?v=OqyDKxVAIIc",
+    ],
+  );
+  assert.ok(youtubeRows.every((entry) => entry.direct_media_url_if_available === ""));
+  assert.ok(youtubeRows.every((entry) => entry.downloads_allowed === false));
+  assert.ok(youtubeRows.every((entry) => entry.segment_validation_eligible === false));
+  assert.ok(
+    youtubeRows.every(
+      (entry) => entry.segment_validation_ineligible_reason === "segment_source_is_youtube_reference",
+    ),
+  );
+});
+
 test("direct-media discovery extracts unicode-escaped official HLS URLs", () => {
   const urls = discoverDirectMediaUrlsFromText({
     baseUrl: "https://news.xbox.com/en-us/2026/06/19/end-of-abyss-combat-exploration-hands-on/",

@@ -4400,6 +4400,70 @@ test("goal dry-run publisher skips regenerated candidates whose source URL was a
   ]);
 });
 
+test("goal dry-run publisher skips regenerated candidates whose recent topic was already published", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-topic-published-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "fresh-doom-chain-spear",
+    "GREEN",
+    "DOOM The Dark Ages Chain Spear Has A Fight Risk",
+    {
+      canonicalSubject: "DOOM The Dark Ages",
+      canonicalPatch: {
+        primary_source: {
+          name: "Example Source",
+          url: "https://different.example.com/doom-dark-ages-revelations-dlc",
+        },
+        primary_source_url: "https://different.example.com/doom-dark-ages-revelations-dlc",
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-07T00:25:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "fresh-doom-chain-spear",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    publishedPlatformEvidence: {
+      by_topic_key: {
+        ages_chain_dark_doom_spear: {
+          already_published_platforms: [
+            "youtube_shorts",
+            "instagram_reels",
+            "facebook_reels",
+          ],
+          rows: [
+            {
+              story_id: "doom-chain-spear-v1",
+              title: "Doom The Dark Ages Chain Spear Changes The Fight",
+              platform: "youtube_shorts",
+              external_id: "yt-doom-original",
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.platform_publish_now_action_count, 0);
+  assert.equal(plan.skipped_stories[0].status, "enabled_platforms_already_public");
+  assert.deepEqual(plan.skipped_stories[0].already_published_platforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
+});
+
 test("goal dry-run publisher skips enabled platforms terminal duplicate-blocked by prior guarded execution", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-terminal-duplicate-"));
   const storyPackage = await makeStoryPackage(

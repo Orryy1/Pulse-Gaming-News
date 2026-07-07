@@ -27,6 +27,7 @@ const {
   decidePublish,
   storyUrlHash,
   titleJaccard,
+  titleTopicKey,
 } = require("../../lib/services/publish-dedupe");
 const {
   bind: bindPlatformPosts,
@@ -167,6 +168,37 @@ test("Pragmata regression: re-hunted story with tweaked title -> block_dupe url-
   assert.equal(r.decision, "block_dupe");
   assert.equal(r.reason, "url-hash");
   assert.equal(r.existing.external_id, "ig-original-id");
+});
+
+test("recent topic-key branch: different source URL but same DOOM Chain Spear topic is blocked", () => {
+  const db = makeDb();
+  insertStory(db, {
+    id: "doom-chain-spear-v1",
+    title: "Doom The Dark Ages Chain Spear Changes The Fight",
+    url: "https://example.com/doom-chain-spear-original",
+  });
+  insertPublished(db, {
+    storyId: "doom-chain-spear-v1",
+    platform: "youtube",
+    externalId: "yt-doom-original",
+  });
+
+  const regenerated = {
+    id: "fresh-doom-chain-spear",
+    title: "DOOM The Dark Ages Chain Spear Has A Fight Risk",
+    url: "https://different.example.com/doom-dark-ages-revelations-dlc",
+  };
+  const r = decidePublish(regenerated, "youtube", makeRepos(db));
+  assert.equal(r.decision, "block_dupe");
+  assert.equal(r.reason, "topic-key");
+  assert.equal(r.existing.external_id, "yt-doom-original");
+});
+
+test("titleTopicKey removes house verbs but keeps game and event tokens", () => {
+  assert.equal(
+    titleTopicKey("DOOM The Dark Ages Chain Spear Has A Fight Risk"),
+    titleTopicKey("Doom The Dark Ages Chain Spear Changes The Fight"),
+  );
 });
 
 test("url-hash branch: different platform doesn't block (asymmetry preserved)", () => {

@@ -16,6 +16,7 @@ const {
 } = require("../lib/goal-dry-run-publisher");
 const { buildPlatformOperationalConfig } = require("../lib/ops/platform-status");
 const { canonicalHash } = require("../lib/services/url-canonical");
+const { titleTopicKey } = require("../lib/services/publish-dedupe");
 
 const CANDIDATE_REPORT_BRIDGE_WRITE_SKEW_MS = 10_000;
 const DEFAULT_STORY_PACKAGE_SOURCES = [
@@ -609,9 +610,37 @@ function addPublishedSourceHashEvidence(bySourceUrlHash, sourceUrlHash, platform
   });
 }
 
+function addPublishedTopicKeyEvidence(byTopicKey, title, platform, evidence = {}) {
+  const topicKey = titleTopicKey(title);
+  const key = normalizePlatformKey(platform);
+  if (!topicKey || !key) return;
+  if (!byTopicKey[topicKey]) {
+    byTopicKey[topicKey] = {
+      topic_key: topicKey,
+      already_published_platforms: [],
+      rows: [],
+    };
+  }
+  byTopicKey[topicKey].already_published_platforms = uniqueCleanStrings([
+    ...asArray(byTopicKey[topicKey].already_published_platforms),
+    key,
+  ]);
+  byTopicKey[topicKey].rows.push({
+    platform: key,
+    story_id: cleanText(evidence.story_id),
+    title: cleanText(title),
+    source_platform: cleanText(platform),
+    external_id: cleanText(evidence.external_id),
+    external_url: cleanText(evidence.external_url),
+    published_at: cleanText(evidence.published_at),
+    source: cleanText(evidence.source || "platform_posts.topic_key"),
+  });
+}
+
 function buildPublishedPlatformEvidence({ platformPostRows = [], legacyStoryRows = [], source = "" } = {}) {
   const byStoryId = {};
   const bySourceUrlHash = {};
+  const byTopicKey = {};
   for (const row of asArray(platformPostRows)) {
     addPublishedPlatformEvidence(byStoryId, row.story_id, row.platform, {
       external_id: row.external_id,
@@ -625,6 +654,13 @@ function buildPublishedPlatformEvidence({ platformPostRows = [], legacyStoryRows
       external_url: row.external_url,
       published_at: row.published_at,
       source: "platform_posts.source_url_hash",
+    });
+    addPublishedTopicKeyEvidence(byTopicKey, row.story_title || row.title, row.platform, {
+      story_id: row.story_id,
+      external_id: row.external_id,
+      external_url: row.external_url,
+      published_at: row.published_at,
+      source: "platform_posts.topic_key",
     });
   }
   const legacyFieldMap = {
@@ -647,6 +683,11 @@ function buildPublishedPlatformEvidence({ platformPostRows = [], legacyStoryRows
         external_id: row[field],
         source: `stories.${field}.source_url_hash`,
       });
+      addPublishedTopicKeyEvidence(byTopicKey, row.title, platform, {
+        story_id: row.story_id || row.id,
+        external_id: row[field],
+        source: `stories.${field}.topic_key`,
+      });
     }
   }
   return {
@@ -654,8 +695,10 @@ function buildPublishedPlatformEvidence({ platformPostRows = [], legacyStoryRows
     source: source || "read_only_platform_publication_evidence",
     by_story_id: byStoryId,
     by_source_url_hash: bySourceUrlHash,
+    by_topic_key: byTopicKey,
     story_count: Object.keys(byStoryId).length,
     source_url_hash_count: Object.keys(bySourceUrlHash).length,
+    topic_key_count: Object.keys(byTopicKey).length,
   };
 }
 
@@ -697,7 +740,8 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
       }
       platformPostRows = db.prepare(`
         SELECT p.story_id, p.platform, p.external_id, p.external_url, p.status, p.published_at,
-               s.source_url_hash
+               s.source_url_hash,
+               s.title AS story_title
         FROM platform_posts p
         LEFT JOIN stories s ON s.id = p.story_id
         WHERE p.status = 'published'
@@ -717,6 +761,7 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
     try {
       legacyStoryRows = db.prepare(`
         SELECT id AS story_id,
+               title,
                youtube_post_id,
                youtube_url,
                instagram_media_id,

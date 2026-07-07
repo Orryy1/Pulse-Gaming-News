@@ -3932,6 +3932,147 @@ test("fresh production refill full repair auto-applies safe source-bound script 
   }
 });
 
+test("fresh production refill full repair reports source-drift script blockers as replace-story work", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-source-drift-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyId = "rss_456229ed9244c942";
+  const artifactDir = path.join(outDir, storyId);
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const childCalls = [];
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_subject: "Nintendo Switch",
+        canonical_title: "Original Nintendo Switch Will Be Discontinued In Europe",
+        selected_title: "Switch 2 Screen Rumour Has A Ghosting Test",
+        primary_source: "GameSpot",
+        primary_source_url:
+          "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
+        source_title: "Original Nintendo Switch Will Be Discontinued In Europe",
+        article_title: "Original Nintendo Switch Will Be Discontinued In Europe",
+        description: "Nintendo is discontinuing the original Switch model in Europe.",
+        source_published_at: "Tue, 07 Jul 2026 00:18:17 +0000",
+        confirmed_claims: [
+          "Nintendo is discontinuing the original Switch model in Europe.",
+        ],
+        narration_script:
+          "Switch 2's screen rumour is about the flaw players can actually see. GameSpot says an updated LCD panel may have surfaced online as fans keep pushing for a ghosting fix.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "GameSpot",
+          url: "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
+          type: "rss",
+          published_at: "Tue, 07 Jul 2026 00:18:17 +0000",
+          title: "Original Nintendo Switch Will Be Discontinued In Europe",
+          description: "Nintendo is discontinuing the original Switch model in Europe.",
+        },
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: storyId,
+        verdict: "rewrite_required",
+        blockers: ["missing_relatable_stakes", "media_house:script_sounds_ai_generic"],
+      }),
+    );
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          const effectiveContractOutDir =
+            args[args.indexOf("--contract-out-dir") + 1] || contractOutDir;
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: storyId,
+                title: "Switch 2 Screen Rumour Has A Ghosting Test",
+                artifact_dir: artifactDir,
+                verdict: "RED",
+                blockers: [
+                  "script_scorecard:script_verdict_rewrite_required",
+                  "media_house:script_sounds_ai_generic",
+                ],
+              },
+            ]),
+          );
+          return {
+            batch: { summary: { story_count: 1, green_count: 0, red_count: 1 } },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+          repair_story_limit: 1,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          childCalls.push(options);
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    assert.equal(result.repair_evidence.summary.script_rewrite_blocked_count, 1);
+    assert.deepEqual(result.repair_evidence.summary.script_rewrite_blocked_reasons, [
+      "switch_2_screen_angle_missing_source_support",
+      "ghosting_claim_missing_source_support",
+      "oled_claim_missing_source_support",
+    ]);
+    assert.equal(
+      result.repair_evidence.outputs.next_action,
+      "replace_source_drift_story_with_fresh_supported_story",
+    );
+    assert.equal(childCalls.length, 0, "source-drift candidates should not enter heavy media repair");
+
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    assert.deepEqual(
+      repairReport.summary.script_rewrite_blocked_reasons,
+      result.repair_evidence.summary.script_rewrite_blocked_reasons,
+    );
+    const markdown = await fs.readFile(result.repair_evidence.markdown_path, "utf8");
+    assert.match(markdown, /script rewrite blocked reasons: switch_2_screen_angle_missing_source_support/);
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill HyperFrames card generation targets only real-motion materialized stories", async () => {
   const { freshRefillHyperframesStoryIdsAfterMotion } = require("../../lib/job-handlers");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-hyperframes-motion-"));

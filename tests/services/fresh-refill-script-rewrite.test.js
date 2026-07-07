@@ -359,6 +359,48 @@ test("fresh refill viewer script keeps Fatal Fury City Of The Wolves in the publ
   assert.equal(massAudience.concrete_detail_count >= 3, true);
 });
 
+test("fresh refill viewer script blocks Switch 2 screen angles when the source only supports original Switch discontinuation", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_456229ed9244c942",
+      title: "Switch 2 Screen Rumour Has A Ghosting Test",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "GameSpot",
+        url: "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
+        type: "rss",
+        published_at: "Tue, 07 Jul 2026 00:18:17 +0000",
+        title: "Original Nintendo Switch Will Be Discontinued In Europe",
+        description: "Nintendo is discontinuing the original Switch model in Europe.",
+      },
+      current_script:
+        "Switch 2's screen rumour is about the flaw players can actually see.",
+    },
+    manifest: {
+      story_id: "rss_456229ed9244c942",
+      canonical_subject: "Nintendo Switch",
+      canonical_title: "Original Nintendo Switch Will Be Discontinued In Europe",
+      primary_source: "GameSpot",
+      primary_source_url:
+        "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
+      source_title: "Original Nintendo Switch Will Be Discontinued In Europe",
+      article_title: "Original Nintendo Switch Will Be Discontinued In Europe",
+      description: "Nintendo is discontinuing the original Switch model in Europe.",
+      confirmed_claims: [
+        "Nintendo is discontinuing the original Switch model in Europe.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "blocked");
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.deepEqual(script.quality.blockers, [
+    "switch_2_screen_angle_missing_source_support",
+    "ghosting_claim_missing_source_support",
+    "oled_claim_missing_source_support",
+  ]);
+});
+
 test("fresh refill viewer script writes Black Flag Resynced narration that is ASR-safe and audience clear", () => {
   const script = buildFreshRefillViewerScript({
     job: {

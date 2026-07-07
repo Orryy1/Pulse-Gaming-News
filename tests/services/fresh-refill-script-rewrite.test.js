@@ -487,7 +487,7 @@ test("fresh refill viewer script repairs current official-source extraction and 
   }
 });
 
-test("fresh refill viewer script repairs current access and hardware-rumour stories without fallback filler", () => {
+test("fresh refill viewer script repairs current access stories without fallback filler", () => {
   const cases = [
     {
       title: "Why Enter The Pit Could Split Players",
@@ -498,17 +498,6 @@ test("fresh refill viewer script repairs current access and hardware-rumour stor
       expectedHook: /^Pit of Goblin just became something Xbox players can actually test\./,
       expectedDetail: /Xbox Insiders|hands-on|wishlist|demo/i,
       canonicalSubject: "Pit of Goblin",
-    },
-    {
-      title: "Switch 2 Screen Rumour Has A Ghosting Test",
-      sourceUrl: "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
-      sourceName: "GameSpot",
-      confirmed:
-        "The original Nintendo Switch will be discontinued in Europe while players compare Switch 2 screen reports.",
-      expectedTitle: "Switch 2 Screen Talk Has A Trust Problem",
-      expectedHook: /^Switch 2 screen talk is becoming a trust problem, not just a spec argument\./,
-      expectedDetail: /ghosting|OLED|buy now|wait/i,
-      canonicalSubject: "Nintendo Switch 2",
     },
   ];
 
@@ -555,6 +544,37 @@ test("fresh refill viewer script repairs current access and hardware-rumour stor
     assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
     assert.equal(massAudience.concrete_detail_count >= 3, true);
   }
+});
+
+test("fresh refill viewer script blocks rewritten angles that are not grounded in source claims", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_456229ed9244c942",
+      title: "Switch 2 Screen Rumour Has A Ghosting Test",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "GameSpot",
+        url: "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
+        type: "rss",
+      },
+      current_script: "Switch 2 Screen Rumour Has A Ghosting Test has one detail worth checking before it becomes background noise.",
+    },
+    manifest: {
+      canonical_subject: "Nintendo Switch 2",
+      canonical_title: "Switch 2 Screen Rumour Has A Ghosting Test",
+      primary_source: "GameSpot",
+      primary_source_url: "https://www.gamespot.com/articles/original-nintendo-switch-will-be-discontinued-in-europe/",
+      confirmed_claims: [
+        "The original Nintendo Switch will be discontinued in Europe.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "blocked");
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.match(script.grounding?.reason || "", /switch_2_screen_angle_missing_source_support/);
+  assert.equal(script.safety.no_publish, true);
+  assert.equal(script.safety.no_db_mutation, true);
 });
 
 test("fresh refill viewer script repairs current subscription and layoffs stories into clear public narration", () => {

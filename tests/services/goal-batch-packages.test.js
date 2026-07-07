@@ -1147,6 +1147,34 @@ test("goal batch live RSS selection keeps official-source stories for motion rep
   );
 });
 
+test("goal batch live RSS selection rejects stale source-age repair candidates", () => {
+  const selected = selectStoriesForGoalBatch({
+    now: new Date("2026-07-07T09:00:00.000Z"),
+    liveRssStories: [
+      {
+        id: "stale-avatar-repair",
+        title: "Avatar Legends Gets A Steam Trailer",
+        canonical_subject: "Avatar Legends",
+        source_name: "Steam",
+        url: "https://store.steampowered.com/app/2424420/Avatar_Legends_The_Fighting_Game/",
+        timestamp: "2026-06-29T08:00:00.000Z",
+      },
+      {
+        id: "fresh-halo-demo",
+        title: "Halo Campaign Evolved Shows New Gameplay In Official Xbox Deep Dive",
+        canonical_subject: "Halo: Campaign Evolved",
+        source_name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/07/halo-campaign-evolved-gameplay/",
+        timestamp: "2026-07-07T07:30:00.000Z",
+        approved_direct_media_url: "https://cdn.example.com/halo-campaign-evolved-demo.mp4",
+      },
+    ],
+    baseStories: [],
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["fresh-halo-demo"]);
+});
+
 test("goal batch live RSS repair intake rejects official meta vote stories without game motion", () => {
   const weakStories = [
     {

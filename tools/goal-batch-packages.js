@@ -115,6 +115,51 @@ function storyIdFor(story) {
   return String(story?.id || story?.story_id || "").trim();
 }
 
+function storySourceTimestampMs(story = {}) {
+  const candidates = [
+    story.source_published_at,
+    story.published_at,
+    story.timestamp,
+    story.pubDate,
+    story.isoDate,
+    story.date,
+    story.source_manifest?.source_published_at,
+    story.source_manifest?.primary_source?.published_at,
+    story.primary_source?.published_at,
+  ];
+  for (const candidate of candidates) {
+    const text = String(candidate || "").trim();
+    if (!text) continue;
+    const ms = new Date(text).getTime();
+    if (Number.isFinite(ms)) return ms;
+  }
+  return null;
+}
+
+function liveRssSourceFreshnessGate(story = {}, { now = new Date(), policyHours = 168 } = {}) {
+  const timestamp = storySourceTimestampMs(story);
+  const policy = Number.isFinite(Number(policyHours)) && Number(policyHours) > 0 ? Number(policyHours) : 168;
+  if (!timestamp) {
+    return {
+      pass: true,
+      state: "unknown",
+      age_hours: null,
+      policy_hours: policy,
+      reasons: [],
+    };
+  }
+  const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  const ageHours = Number.isFinite(nowMs) ? Math.max(0, (nowMs - timestamp) / 36e5) : 0;
+  const expired = ageHours > policy;
+  return {
+    pass: !expired,
+    state: expired ? "expired" : "fresh",
+    age_hours: Math.round(ageHours * 10) / 10,
+    policy_hours: policy,
+    reasons: expired ? ["source_age_expired"] : [],
+  };
+}
+
 function normaliseStoryIds(value) {
   if (Array.isArray(value)) return value.flatMap((item) => normaliseStoryIds(item));
   return String(value || "")
@@ -467,13 +512,15 @@ function prioritiseLiveRssStoriesForMotion(stories = []) {
     .map((entry) => entry.story);
 }
 
-function filterLiveRssStoriesForMotion(stories = []) {
+function filterLiveRssStoriesForMotion(stories = [], options = {}) {
   const entries = asStoryArray(stories)
     .map((story, index) => ({
       story,
       index,
+      freshness: liveRssSourceFreshnessGate(story, options),
       gate: liveRssMotionGate(story),
-    }));
+    }))
+    .filter((entry) => entry.freshness.pass);
   const directMotionEntries = entries.filter((entry) => entry.gate.pass);
   const directIds = new Set(directMotionEntries.map((entry) => storyIdFor(entry.story)).filter(Boolean));
   const repairEntries = entries
@@ -501,13 +548,15 @@ function selectStoriesForGoalBatch({
   useDbStories = false,
   storyIds = [],
   excludedStoryIds = [],
+  now = new Date(),
+  sourceAgePolicyHours = 168,
 } = {}) {
   const wanted = new Set(normaliseStoryIds(storyIds));
   const excluded = new Set(normaliseStoryIds(excludedStoryIds));
   const sourceStories = useDbStories ? asStoryArray(dbStories) : asStoryArray(baseStories);
   const liveRssSelection = wanted.size
     ? prioritiseLiveRssStoriesForMotion(liveRssStories)
-    : filterLiveRssStoriesForMotion(liveRssStories);
+    : filterLiveRssStoriesForMotion(liveRssStories, { now, policyHours: sourceAgePolicyHours });
   const merged = dedupeStoriesById([...liveRssSelection, ...sourceStories]).filter((story) => {
     if (wanted.size) return true;
     const id = storyIdFor(story);

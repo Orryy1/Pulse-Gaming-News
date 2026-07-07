@@ -5656,6 +5656,95 @@ test("public copy package repair refreshes stale Forza revenue thumbnails before
   assert.equal(publicCopyRegenerationPending(updated), true);
 });
 
+test("public copy package repair hydrates stale package metadata from fresher coherence artefacts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-repair-fresh-coherence-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  const staleScript =
+    "Palworld 1.0 has a low-risk trial. Xbox Wire says Palworld 1.0 lands on Game Pass on July 10. Follow Pulse Gaming so you never miss a beat.";
+  const freshScript =
+    "Palworld 1.0 just got the cleanest comeback button Xbox can give it. Game Pass. Xbox Wire says the full release lands on July 10 across Cloud, Console and PC, so lapsed players do not have to buy back in to check what changed. That is powerful, but it also makes the verdict harsher. People remember the launch chaos, the huge numbers and the rough edges. Now the question is simple: does the full version feel like a better game, or just a louder return to the same loop? If it lands, Palworld gets a second wave. Follow Pulse Gaming so you never miss a beat.";
+  const staleManifest = {
+    story_id: "official_palworld_10_gamepass_20260707_repair",
+    canonical_subject: "Palworld 1.0",
+    canonical_game: "Palworld",
+    canonical_title: "Palworld 1.0 Has A Low-Risk Trial",
+    selected_title: "Palworld 1.0 Has A Low-Risk Trial",
+    short_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    thumbnail_headline: "PALWORLD 1 0 PLAYER TEST",
+    thumbnail_text: "PALWORLD 1 0 PLAYER TEST",
+    first_spoken_line: "Palworld 1.0 has a low-risk trial.",
+    narration_script: staleScript,
+    full_script: staleScript,
+    tts_script: staleScript,
+    description: "Palworld 1.0 has a low-risk trial. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/07/07/xbox-game-pass-july-2026-wave-1/",
+    confirmed_claims: [
+      "Xbox Wire lists Palworld 1.0 for Game Pass on July 10 across Cloud, Console and PC.",
+    ],
+    allowed_public_wording: [
+      "Palworld 1.0 Makes Game Pass The Comeback Button",
+      "Palworld 1.0 just got the cleanest comeback button Xbox can give it.",
+    ],
+    title_candidates: ["Palworld 1.0 Makes Game Pass The Comeback Button"],
+  };
+  const freshManifest = {
+    ...staleManifest,
+    canonical_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    selected_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    short_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    first_spoken_line: "Palworld 1.0 just got the cleanest comeback button Xbox can give it.",
+    narration_hook: "Palworld 1.0 just got the cleanest comeback button Xbox can give it.",
+    narration_script: freshScript,
+    full_script: freshScript,
+    tts_script: freshScript,
+    spoken_narration_script: freshScript,
+    description:
+      "Palworld 1.0 just got the cleanest comeback button Xbox can give it. If it lands, Palworld gets a second wave. Source: Xbox Wire.",
+  };
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), staleManifest);
+  await fs.writeJson(path.join(artifactDir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    warnings: [],
+    manifest: freshManifest,
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), buildViralScriptIntelligence({
+    title: freshManifest.selected_title,
+    full_script: freshManifest.narration_script,
+    canonical_subject: freshManifest.canonical_subject,
+    primary_source: freshManifest.primary_source,
+    confirmed_claims: freshManifest.confirmed_claims,
+  }));
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: staleManifest.selected_title,
+        description: staleManifest.description,
+        cover: { headline: staleManifest.thumbnail_headline },
+      },
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "official_palworld_10_gamepass_20260707_repair", artifact_dir: artifactDir }],
+    generatedAt: "2026-07-07T20:15:00.000Z",
+  });
+  const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+
+  assert.equal(report.summary.changed_count, 1);
+  assert.equal(report.summary.blocked_count, 0);
+  assert.equal(updated.selected_title, "Palworld 1.0 Makes Game Pass The Comeback Button");
+  assert.equal(updated.thumbnail_headline, "PALWORLD COMEBACK BUTTON");
+  assert.equal(updated.narration_script, freshScript);
+  assert.equal(platformManifest.outputs.youtube_shorts.title, updated.selected_title);
+  assert.match(JSON.stringify(platformManifest), /PALWORLD COMEBACK BUTTON/);
+  assert.equal(evaluateGoalPublicCopy(updated).verdict, "pass");
+});
+
 test("public copy repair does not generate source-process Threads copy", () => {
   const repaired = repairGoalPublicCopyManifest(
     {

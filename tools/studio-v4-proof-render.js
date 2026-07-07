@@ -36,8 +36,11 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
-const MIN_OVERLAY_CARD_DURATION_S = 12;
-const MAX_OVERLAY_CARD_DURATION_S = 14;
+const SOURCE_LOCK_OVERLAY_CARD_DURATION_S = 3.2;
+const MIN_OVERLAY_CARD_DURATION_S = 4.2;
+const HEADLINE_OVERLAY_CARD_DURATION_S = 4.6;
+const MAX_OVERLAY_CARD_DURATION_S = 5.8;
+const MIN_GENERATED_CARD_SCENE_DURATION_S = 7;
 const MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS = 4;
 const MAX_READABLE_CARD_DURATION_RATIO = 0.42;
 const MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO = 0.55;
@@ -821,7 +824,7 @@ function sceneClipMinimumReadableDurationS(clip = {}) {
       sidecar?.minimum_visible_duration_s,
   );
   return Number.isFinite(duration) && duration > 0
-    ? Number(Math.max(MIN_OVERLAY_CARD_DURATION_S, duration).toFixed(2))
+    ? Number(Math.max(MIN_GENERATED_CARD_SCENE_DURATION_S, duration).toFixed(2))
     : null;
 }
 
@@ -875,10 +878,13 @@ function sceneClipReadableText(clip = {}, fallbackKind = "") {
 function readableCardMinimumDurationS({ readableText = "", explicitMinimumS = null } = {}) {
   const explicit = Number(explicitMinimumS);
   const text = cleanCardText(readableText);
-  const textMinimum = readableOverlayCardDurationS(text, { minS: MIN_OVERLAY_CARD_DURATION_S });
+  const textMinimum = readableOverlayCardDurationS(text, {
+    minS: MIN_GENERATED_CARD_SCENE_DURATION_S,
+    maxS: 12,
+  });
   return Number(
     Math.max(
-      MIN_OVERLAY_CARD_DURATION_S,
+      MIN_GENERATED_CARD_SCENE_DURATION_S,
       Number.isFinite(explicit) && explicit > 0 ? explicit : 0,
       textMinimum,
     ).toFixed(2),
@@ -1660,16 +1666,19 @@ function drawtextLinesForBlock(block, { fontOpt, fontcolor, enable, shadow = tru
   return filters;
 }
 
-function readableOverlayCardDurationS(value = "", { minS = MIN_OVERLAY_CARD_DURATION_S } = {}) {
+function readableOverlayCardDurationS(
+  value = "",
+  { minS = MIN_OVERLAY_CARD_DURATION_S, maxS = MAX_OVERLAY_CARD_DURATION_S } = {},
+) {
   const text = firstText(value);
   if (!text) return minS;
   const words = text.split(/\s+/).filter(Boolean).length;
-  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(text) ? 0.7 : 0;
-  const computed = Math.max(minS, 0.95 * words + 1.4 + longTokenPenalty);
+  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(text) ? 0.25 : 0;
+  const computed = Math.max(minS, 0.34 * words + 2.8 + longTokenPenalty);
   return Number(
     Math.min(
-      MAX_OVERLAY_CARD_DURATION_S,
-      Math.ceil(Math.max(computed, 1.15 * words + 1.5 + longTokenPenalty) * 10) / 10,
+      maxS,
+      Math.ceil(Math.max(computed, minS) * 10) / 10,
     ).toFixed(1),
   );
 }
@@ -1715,7 +1724,10 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
       kind: "source_lock",
       text: openingText,
       startS: 0,
-      durationS: readableOverlayCardDurationS(openingText),
+      durationS: readableOverlayCardDurationS(openingText, {
+        minS: SOURCE_LOCK_OVERLAY_CARD_DURATION_S,
+        maxS: SOURCE_LOCK_OVERLAY_CARD_DURATION_S,
+      }),
     });
     windows.push(openingWindow);
   }
@@ -1726,7 +1738,9 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
       kind: "proof_card",
       text: headlineText,
       startS: headlineStartS,
-      durationS: readableOverlayCardDurationS(headlineText, { minS: MIN_OVERLAY_CARD_DURATION_S + 0.3 }),
+      durationS: readableOverlayCardDurationS(headlineText, {
+        minS: HEADLINE_OVERLAY_CARD_DURATION_S,
+      }),
     });
     const proofPrimaryWindow = overlayWindow({
       id: "proof_primary",

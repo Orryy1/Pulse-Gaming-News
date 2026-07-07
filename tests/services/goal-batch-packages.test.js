@@ -3672,7 +3672,7 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
     full_script:
       "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports a major Steam peak during Premium Edition early access. The catch is whether that paid-access crowd turns into wider demand once the cheaper route opens. That split matters because a premium spike proves attention, but not long-term retention. If the standard launch holds, this becomes a real Xbox momentum story instead of a one-week Steam screenshot. Follow Pulse Gaming so you never miss a beat.",
   };
-  const clips = Array.from({ length: 5 }, (_, index) => ({
+  const clips = Array.from({ length: 8 }, (_, index) => ({
     id: `v4-motion-${index + 1}`,
     type: "motion_clip",
     source_family: `forza_official_gameplay_${index + 1}`,
@@ -3699,7 +3699,7 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
 
   const pack = batch.packages[0];
   assert.equal(pack.footage_inventory.readiness.status, "v4_motion_ready");
-  assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips.length, 5);
+  assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips.length, 8);
   assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips[0].source_type, "official_trailer_segment");
   assert.equal(pack.acceptance_entry.verdict, "GREEN");
   assert.equal(batch.summary.green_count, 1);
@@ -3855,7 +3855,7 @@ test("goal batch packages create rights records for restored official V4 motion 
     full_script:
       "Granblue Fantasy Relink has one proof point players can judge immediately: the demo. PlayStation Blog says Endless Ragnarok adds a new story arc, playable characters and a solo endgame mode. The useful question is whether that demo makes lapsed players reinstall before launch. If it feels generous, this becomes a smart comeback. If it feels thin, the expansion has a trust problem before day one. Follow Pulse Gaming so you never miss a beat.",
   };
-  const clips = Array.from({ length: 5 }, (_, index) => ({
+  const clips = Array.from({ length: 8 }, (_, index) => ({
     id: `granblue-official-window-${index + 1}`,
     type: "motion_clip",
     source_family: `playstation_blog_granblue_window_${index + 1}`,
@@ -3888,7 +3888,7 @@ test("goal batch packages create rights records for restored official V4 motion 
   const restoredRights = pack.rights_ledger.records.filter(
     (record) => record.source_type === "official_game_site_news_page",
   );
-  assert.equal(new Set(restoredRights.map((record) => record.asset_id)).size, 5);
+  assert.equal(new Set(restoredRights.map((record) => record.asset_id)).size, 8);
   assert.equal(pack.acceptance_entry.verdict, "GREEN");
 });
 

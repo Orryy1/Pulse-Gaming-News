@@ -233,6 +233,14 @@ test("cleanForTTS: removes title-colon pauses inside canonical game names", () =
     cleanForTTS("Dune: Awakening is about to test whether a survival MMO can survive the move to console."),
     "Dune Awakening is about to test whether a survival MMO can survive the move to console.",
   );
+  assert.equal(
+    cleanForTTS("DOOM: The Dark Ages: Revelations just made the DLC pitch louder."),
+    "DOOM The Dark Ages Revelations just made the DLC pitch louder.",
+  );
+  assert.equal(
+    cleanForTTS("Ninja Gaiden 4: Launch Trailer gives Xbox one more action test."),
+    "Ninja Gaiden 4 Launch Trailer gives Xbox one more action test.",
+  );
 });
 
 test("cleanForTTS: removes hyphen pause from Gears of War E-Day while keeping the title together", () => {

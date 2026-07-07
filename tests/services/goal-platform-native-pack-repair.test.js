@@ -94,6 +94,88 @@ test("platform-native pack repair upgrades legacy candidate artefacts with backu
   assert.equal(await fs.pathExists(path.join(storyPackages[0].artifact_dir, "threads_publish_pack.json")), true);
 });
 
+test("platform-native pack repair preserves fresh Palworld comeback title and cover", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  storyPackages[0] = {
+    story_id: "official_palworld_10_gamepass_20260707_repair",
+    verdict: "local_proof_pending",
+    blockers: [],
+    artifact_dir: artifactDir,
+  };
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "official_palworld_10_gamepass_20260707_repair",
+    canonical_subject: "Palworld 1.0",
+    canonical_game: "Palworld 1.0",
+    canonical_angle: "Game Pass gives lapsed players a low-friction comeback route",
+    selected_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    canonical_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    public_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+    thumbnail_headline: "PALWORLD COMEBACK BUTTON",
+    thumbnail_text: "PALWORLD COMEBACK BUTTON",
+    suggested_thumbnail_text: "PALWORLD COMEBACK BUTTON",
+    first_frame_text: "PALWORLD COMEBACK BUTTON",
+    first_spoken_line: "Palworld 1.0 just got the cleanest comeback button Xbox can give it.",
+    narration_script:
+      "Palworld 1.0 just got the cleanest comeback button Xbox can give it. Game Pass. Xbox Wire says the full release lands on July 10 across Cloud, Console and PC, so lapsed players do not have to buy back in to check what changed. That is powerful, but it also makes the verdict harsher. People remember the launch chaos, the huge numbers and the rough edges. Now the question is simple: does the full version feel like a better game, or just a louder return to the same loop? If it lands, Palworld gets a second wave. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Palworld 1.0 just got the cleanest comeback button Xbox can give it. If it lands, Palworld gets a second wave. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/07/07/xbox-game-pass-july-2026-wave-1/",
+    confirmed_claims: [
+      "Xbox Wire lists Palworld 1.0 for Game Pass on July 10 across Cloud, Console and PC.",
+    ],
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: "Palworld 1.0 Has A Low-Risk Trial",
+        cover_frame: { headline: "PALWORLD 1 0 PLAYER TEST" },
+      },
+    },
+    platform_native_evidence: { verdict: "fail" },
+  });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 38.2,
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 90,
+    blockers: [],
+    warnings: [],
+  });
+
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-07T20:20:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].target_youtube_title, "Palworld 1.0 Makes Game Pass The Comeback Button");
+  assert.equal(dryRun.items[0].target_youtube_cover_headline, "PALWORLD COMEBACK BUTTON");
+  assert.doesNotMatch(dryRun.items[0].target_youtube_title, /Low-Risk Trial/i);
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-07T20:21:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-palworld-comeback"),
+  });
+  const repairedCanonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const repairedManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+
+  assert.equal(applied.summary.repaired_count, 1);
+  assert.equal(repairedCanonical.selected_title, "Palworld 1.0 Makes Game Pass The Comeback Button");
+  assert.equal(repairedCanonical.thumbnail_headline, "PALWORLD COMEBACK BUTTON");
+  assert.equal(repairedManifest.outputs.youtube_shorts.title, "Palworld 1.0 Makes Game Pass The Comeback Button");
+  assert.equal(repairedManifest.outputs.youtube_shorts.cover_frame.headline, "PALWORLD COMEBACK BUTTON");
+  assert.equal(evaluateGoalPublicCopy(repairedCanonical).verdict, "pass");
+});
+
 test("platform-native pack repair clears stale RED publish status after GREEN governance", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;

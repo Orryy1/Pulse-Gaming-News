@@ -27,12 +27,12 @@ test("Epidemic intake CLI writes machine-readable and human-readable proof artef
   await touchAudio(path.join(epidemicRoot, "stings", "sting_verified", "Verified Sting.wav"));
   await touchAudio(path.join(epidemicRoot, "stings", "sting_rumour", "Rumour Sting.wav"));
   await touchAudio(path.join(epidemicRoot, "stings", "sting_breaking", "Breaking Sting.wav"));
-  await touchAudio(path.join(epidemicRoot, "sfx", "Cinematic Impact Hit.wav"));
-  await touchAudio(path.join(epidemicRoot, "sfx", "Fast Whoosh Transition.wav"));
-  await touchAudio(path.join(epidemicRoot, "sfx", "Clean UI Tick Click.wav"));
-  await touchAudio(path.join(epidemicRoot, "sfx", "Tension Riser.wav"));
-  await touchAudio(path.join(epidemicRoot, "sfx", "Sub Boom.wav"));
-  await touchAudio(path.join(epidemicRoot, "sfx", "Digital Glitch Static.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_impact_cinematic-hit.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_transition_fast-whoosh.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_ui_tick_clean-click.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_riser_tension-swell.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_sub_hit_low-boom.wav"));
+  await touchAudio(path.join(epidemicRoot, "sfx", "epidemic_glitch_digital-static.wav"));
 
   const { report, outputs } = await main([
     "node",

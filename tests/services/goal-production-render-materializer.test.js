@@ -297,7 +297,14 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
   assert.equal(manifest.overlay_card_windows.length >= 4, true);
   assert.deepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
-  assert.ok(manifest.overlay_card_windows.every((window) => Number(window.duration_s) >= 12));
+  assert.ok(
+    manifest.overlay_card_windows.every((window) => {
+      const kind = String(window.kind || window.id || "").toLowerCase();
+      const duration = Number(window.duration_s);
+      if (/source/.test(kind)) return duration >= 3.2 && duration <= 3.2;
+      return duration >= 4.2 && duration <= 5.8;
+    }),
+  );
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
@@ -1166,7 +1173,7 @@ test("goal production render materializer limits HyperFrames cards to a readable
   assert.equal(cardClips.length, 3);
   assert.equal(renderStory.hyperframes_card_count, 3);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.ok(cardClips.every((clip) => clip.durationS >= 12 && clip.minimum_readable_duration_s >= 12));
+  assert.ok(cardClips.every((clip) => clip.durationS >= 7 && clip.minimum_readable_duration_s >= 7));
   assert.deepEqual(
     [...new Set(cardClips.map((clip) => clip.source_family))],
     cardClips.map((clip) => clip.source_family),
@@ -1248,12 +1255,14 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(cardClips.length, 1);
   assert.equal(renderStory.hyperframes_card_count, 1);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.equal(renderStory.premium_shell_required_selected_card_count, 1);
-  assert.equal(renderStory.premium_shell_verdict, "pass");
-  assert.deepEqual(renderStory.premium_shell_blockers, []);
+  assert.equal(renderStory.premium_shell_required_selected_card_count, 2);
+  assert.equal(renderStory.premium_shell_verdict, "partial");
+  assert.deepEqual(renderStory.premium_shell_blockers, [
+    "selected_hyperframes_card_count_below_required:1/2",
+  ]);
   assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 12);
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 1);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 2);
 });
 
 test("goal production render materializer stretches selected HyperFrames card within proven dwell to cover narration", async () => {

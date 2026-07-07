@@ -318,6 +318,35 @@ test("stakes-led Shorts titles and covers pass the attention gate", () => {
   assert.ok(!report.hard_failures.includes("media_house:platform_title_too_plain"));
 });
 
+test("comeback-led Game Pass stories pass the attention gate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+      canonical_subject: "Palworld 1.0",
+      first_spoken_line: "Palworld 1.0 just got the cleanest comeback button Xbox can give it.",
+      thumbnail_headline: "PALWORLD COMEBACK BUTTON",
+      narration_script:
+        "Palworld 1.0 just got the cleanest comeback button Xbox can give it. Game Pass gives lapsed players a low-friction route back in before the full launch verdict lands. If it works, Palworld gets a second wave. Follow Pulse Gaming so you never miss a beat.",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Palworld 1.0 Makes Game Pass The Comeback Button",
+          description:
+            "Palworld 1.0 just got the cleanest comeback button Xbox can give it. Game Pass gives lapsed players a low-friction route back in, but the full launch now has to prove the loop feels better. Source: Xbox Wire.",
+          cover_frame: { headline: "PALWORLD COMEBACK BUTTON" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.shorts_attention_report.status, "pass");
+  assert.ok(!report.hard_failures.includes("media_house:title_lacks_curiosity_gap"));
+  assert.ok(!report.hard_failures.includes("media_house:platform_title_too_plain"));
+  assert.ok(!report.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
+});
+
 test("feed-stop Shorts descriptions with concrete viewer stakes pass the attention gate", () => {
   for (const story of [
     {

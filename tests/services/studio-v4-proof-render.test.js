@@ -496,8 +496,8 @@ test("Studio V4 proof renderer reports readable owned-card scene windows", () =>
       {
         kind: "quote",
         text: "THIS QUOTE CHANGES THE STORY",
-        duration_s: 12,
-        minimum_readable_duration_s: 12,
+        duration_s: 10.5,
+        minimum_readable_duration_s: 7,
       },
       {
         kind: "proof",
@@ -634,17 +634,16 @@ test("Studio V4 proof renderer blocks generated cards that would be squeezed bel
         source_type: "internally_generated_motion_graphic",
         media_kind: "owned_explainer_motion",
         source_family: "elliot_stat_card",
-        durationS: 8,
+        durationS: 5,
       },
     ],
-    durationS: 39.706,
+    durationS: 30,
     xfadeS: 0.25,
-    maxSceneDurationS: 7,
+    maxSceneDurationS: 5,
   });
 
-  assert.ok(plan.blockers.includes("approved_scene_duration_exceeds_audio_duration"));
   assert.ok(plan.blockers.includes("readable_card_scene_duration_below_minimum"));
-  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 12));
+  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 7));
   assert.ok(
     plan.readableDurationUnderruns.some((entry) =>
       entry.path.endsWith("04_stat_card.mp4"),
@@ -972,16 +971,17 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 12],
-      ["headline_card", "proof_card", 12.3],
-      ["proof_primary", "proof_card", 12],
-      ["proof_secondary", "proof_card", 12],
+      ["opening_source_lock", "source_lock", 3.2],
+      ["headline_card", "proof_card", 4.6],
+      ["proof_primary", "proof_card", 4.2],
+      ["proof_secondary", "proof_card", 4.2],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= 12));
+  assert.ok(windows.every((window) => window.duration_s >= 3.2));
+  assert.ok(windows.every((window) => window.duration_s <= 5.8));
 });
 
-test("Studio V4 proof renderer keeps long HyperFrames cards visible long enough to read", () => {
+test("Studio V4 proof renderer trims long HyperFrames card copy instead of holding momentum", () => {
   const windows = overlayCardWindowsForStory({
     canonical_subject: "GTA VI",
     primary_source: "Rockstar Games",
@@ -993,9 +993,9 @@ test("Studio V4 proof renderer keeps long HyperFrames cards visible long enough 
   const byId = Object.fromEntries(windows.map((window) => [window.id, window]));
 
   assert.match(byId.headline_card.text, /PREORDERS STILL NEED PRICE/);
-  assert.equal(byId.headline_card.duration_s >= 12, true);
-  assert.equal(byId.proof_primary.duration_s >= 12, true);
-  assert.equal(byId.proof_secondary.duration_s >= 12, true);
+  assert.equal(byId.headline_card.duration_s <= 5.8, true);
+  assert.equal(byId.proof_primary.duration_s <= 5.8, true);
+  assert.equal(byId.proof_secondary.duration_s <= 5.8, true);
   assert.equal(byId.headline_card.start_s >= byId.opening_source_lock.end_s + 0.1, true);
   assert.equal(byId.proof_primary.start_s >= byId.headline_card.end_s + 0.6, true);
   assert.equal(byId.proof_secondary.start_s >= byId.proof_primary.end_s + 0.6, true);
@@ -1017,8 +1017,10 @@ test("Studio V4 proof renderer omits unreadable overlay card windows that do not
   assert.deepEqual(windows.map((window) => window.id), [
     "opening_source_lock",
     "headline_card",
+    "proof_primary",
+    "proof_secondary",
   ]);
-  assert.equal(windows.every((window) => window.duration_s >= 12), true);
+  assert.equal(windows.every((window) => window.duration_s >= 3.2), true);
   assert.equal(windows.every((window) => window.end_s <= 34.6), true);
 });
 
@@ -2054,7 +2056,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,12\.0\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,3\.2\)'/);
   assert.match(chain, /0x38BDF8@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });
@@ -2141,7 +2143,7 @@ test("Studio V4 overlay chain suppresses only the opening card during first-fram
   assert.doesNotMatch(chain, /drawtext=text='SOURCE LOCK\s+ROCKSTAR'.*between\(t,0,3\.3\)/);
   assert.doesNotMatch(chain, /color=0x111827@0\.58:t=fill:enable='between\(t,0,3\.3\)'/);
   assert.doesNotMatch(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,0,3\.3\)/);
-  assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,16\.3\)/);
+  assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,8\.6\)/);
   assert.match(chain, /PROOF BEAT/);
   assert.match(chain, /PLAYER READ/);
   assert.match(chain, /PULSE GAMING/);

@@ -91,6 +91,50 @@ test("goal dry-run CLI prefers scheduler bridge over newer all-red generic story
   assert.equal(packages[0].id, "bridge-ready");
 });
 
+test("goal dry-run publisher resolves scheduler bridge packages from id and exported_path", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-dry-run-bridge-id-exported-"));
+  const storyPackage = await makeStoryPackage(
+    root,
+    "bridge-id-only",
+    "GREEN",
+    "Resident Evil Requiem Turns Its Demo Into A Trust Test",
+  );
+  const bridgePackage = {
+    ...storyPackage,
+    id: storyPackage.story_id,
+    title: "Resident Evil Requiem Turns Its Demo Into A Trust Test",
+    exported_path: path.join(storyPackage.artifact_dir, "visual_v4_render.mp4"),
+  };
+  delete bridgePackage.story_id;
+  delete bridgePackage.artifact_dir;
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [bridgePackage],
+    generatedAt: "2026-07-07T08:10:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "bridge-id-only",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+  });
+
+  const storyRows = [
+    ...plan.ready_stories,
+    ...plan.blocked_stories,
+    ...plan.held_stories,
+    ...plan.skipped_stories,
+  ];
+  const inspected = storyRows.find((story) => story.story_id === "bridge-id-only");
+  assert.ok(inspected);
+  assert.notEqual(inspected.story_id, "unknown");
+  assert.ok(!JSON.stringify(plan).includes("missing_artifact_dir"));
+});
+
 async function makeStoryPackage(
   root,
   id = "story-one",

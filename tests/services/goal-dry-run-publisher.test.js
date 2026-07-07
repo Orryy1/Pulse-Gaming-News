@@ -3717,6 +3717,44 @@ test("goal dry-run publisher treats upstream anti-spam preflight exclusions as s
   assert.equal(plan.skipped_stories[0].reason, "deferred_by_goal20_duplicate_cluster");
 });
 
+test("goal dry-run publisher treats terminal scheduler preflight exclusions as skipped", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-terminal-preflight-skip-"));
+  const nearRepeat = await makeStoryPackage(root, "near-repeat-story", "GREEN", "MARVEL Tokon Finally Shows Real Gameplay");
+  const failedQa = await makeStoryPackage(root, "failed-qa-story", "GREEN", "Assassin's Creed Black Flag Needs PS5 Pro Motion Proof");
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [nearRepeat, failedQa],
+    generatedAt: "2026-07-07T08:20:00.000Z",
+    platformOperationalConfig: allPlatformsEnabled(),
+    candidatePreflightReport: {
+      candidates: [],
+      excluded: [
+        {
+          id: "near-repeat-story",
+          reason: "near_repeat_story_cluster:rss_228f6f28b62f8426:fight+fans+assists+screen",
+        },
+        {
+          id: "failed-qa-story",
+          reason: "qa_failure:publish_status=failed",
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 2);
+  assert.equal(plan.summary.planned_action_count, 0);
+  assert.deepEqual(
+    plan.skipped_stories.map((story) => [story.story_id, story.status, story.reason]),
+    [
+      ["near-repeat-story", "scheduler_excluded_near_repeat", "near_repeat_story_cluster:rss_228f6f28b62f8426:fight+fans+assists+screen"],
+      ["failed-qa-story", "scheduler_excluded_qa_failure", "qa_failure:publish_status=failed"],
+    ],
+  );
+  assert.ok(!JSON.stringify(plan).includes("preflight_candidate_missing"));
+});
+
 test("goal dry-run publisher honours Goal20 skipped rows when scheduler only lists active bridge candidates", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-goal20-report-skip-"));
   const activeStory = await makeStoryPackage(root, "active-story", "GREEN", "Hades II Just Broke PlayStation's Silence");

@@ -1201,6 +1201,14 @@ test("goal proof package repairs sentence-style cover headlines into compact sto
 test("goal proof package gives current platform and content stories concrete stop-scroll titles", () => {
   const cases = [
     {
+      id: "dune-awakening-ps5-pack",
+      subject: "Dune: Awakening",
+      source: "PlayStation Blog",
+      description: "Dune: Awakening arrives on PlayStation 5 on September 22, bringing its survival MMO loop to console players.",
+      expectedTitle: "Dune Awakening Has A PS5 Survival Test",
+      expectedCover: "DUNE PS5 TEST",
+    },
+    {
       id: "planet-crafter-ps5-pack",
       subject: "The Planet Crafter",
       source: "PlayStation Blog",

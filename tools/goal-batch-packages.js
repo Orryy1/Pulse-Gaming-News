@@ -309,6 +309,8 @@ function liveRssStorySearchText(story = {}) {
     story.trailer_url,
     cleanSearchText(story.primary_source),
     cleanSearchText(story.official_source),
+    cleanSearchText(story.direct_media_candidates),
+    cleanSearchText(story.official_direct_media_candidates),
     cleanSearchText(story.media_candidates),
     cleanSearchText(story.trailer_references),
     cleanSearchText(story.official_source_entries),
@@ -325,6 +327,8 @@ function liveRssDirectMotionEvidence(story = {}) {
     story.video_url,
     story.trailer_url,
     story.media_url,
+    story.direct_media_candidates,
+    story.official_direct_media_candidates,
   ].map(cleanSearchText);
   if (directFields.some((url) => /\.(?:mp4|mov|m4v|webm)(?:[?#]|$)/i.test(url))) return true;
   if (
@@ -442,7 +446,7 @@ function liveRssHasSpecificSubject(story = {}) {
 
   const title = cleanSearchText(story.title);
   if (
-    /\b(?:Grand Theft Auto\s+VI|GTA\s*(?:6|VI)|Halo:?\s*Campaign Evolved|Gears of War:?\s*E[- ]Day|Resident Evil:?\s*Requiem|Resident Evil|Forza Horizon\s+6|Fable|Sea of Thieves|Ninja Gaiden\s+4|Phantom Blade Zero|Doom:?\s*The Dark Ages|Quake Champions|Granblue Fantasy:?\s*Relink|RuneScape:?\s*Dragonwilds|Yooka[- ]Laylee|007 First Light|Hell Is Us|Hades\s+II|Star Fox|Metroid Prime|Mario Kart World|Final Fantasy|Dragon Quest|Monster Hunter|Silent Hill|Persona\s+\d|Like a Dragon)\b/i.test(
+    /\b(?:Grand Theft Auto\s+VI|GTA\s*(?:6|VI)|Halo:?\s*Campaign Evolved|Gears of War:?\s*E[- ]Day|Resident Evil:?\s*Requiem|Resident Evil|Forza Horizon\s+6|Fable|Sea of Thieves|Ninja Gaiden\s+4|Phantom Blade Zero|Dune:?\s*Awakening|Doom:?\s*The Dark Ages|Quake Champions|Granblue Fantasy:?\s*Relink|RuneScape:?\s*Dragonwilds|Yooka[- ]Laylee|007 First Light|Hell Is Us|Hades\s+II|Star Fox|Metroid Prime|Mario Kart World|Final Fantasy|Dragon Quest|Monster Hunter|Silent Hill|Persona\s+\d|Like a Dragon)\b/i.test(
       title,
     )
   ) {

@@ -1280,6 +1280,33 @@ test("goal batch live RSS source-motion-first mode reserves production slots for
   assert.deepEqual(selected.map((story) => story.id), ["official-direct-media"]);
 });
 
+test("goal batch live RSS motion gate recognises Dune Awakening direct-media stories", () => {
+  const story = {
+    id: "dune-awakening-ps5",
+    title: "What Dune: Awakening brings to PlayStation 5 Sept 22",
+    source_name: "PlayStation Blog",
+    url: "https://blog.playstation.com/2026/07/02/what-dune-awakening-brings-to-playstation-5-sept-22/",
+    direct_media_candidates: [
+      {
+        direct_media_url: "https://example.com/dune-awakening-official-trailer.mp4",
+        source_type: "rss_video_enclosure",
+      },
+    ],
+    published_at: "2026-07-02T13:00:18.000Z",
+  };
+
+  assert.equal(liveRssMotionGate(story).pass, true);
+  assert.deepEqual(
+    selectStoriesForGoalBatch({
+      requireMaterializableDirectMedia: true,
+      liveRssStories: [story],
+      baseStories: [],
+      now: new Date("2026-07-07T10:00:00.000Z"),
+    }).map((row) => row.id),
+    ["dune-awakening-ps5"],
+  );
+});
+
 test("goal batch live RSS source-motion-first mode falls back to official repair intake when no direct media exists", () => {
   const selected = selectStoriesForGoalBatch({
     requireMaterializableDirectMedia: true,
@@ -3232,6 +3259,18 @@ test("goal batch packages generate viewer-facing scripts for current official RS
   const batch = buildGoalBatchPackages({
     stories: [
       {
+        id: "rss_dune_awakening_ps5",
+        title: "What Dune: Awakening brings to PlayStation 5 Sept 22",
+        source_type: "rss",
+        freshness_gate: "pass",
+        primary_source: {
+          name: "PlayStation Blog",
+          url: "https://blog.playstation.com/2026/07/02/what-dune-awakening-brings-to-playstation-5-sept-22/",
+          type: "official_platform",
+        },
+        source_published_at: "2026-07-02T13:00:18.000Z",
+      },
+      {
         id: "rss_granblue_demo",
         title: "Granblue Fantasy: Relink - Endless Ragnarok hands-on report, demo available today",
         source_type: "rss",
@@ -3327,6 +3366,19 @@ test("goal batch packages generate viewer-facing scripts for current official RS
   ));
   assert.ok(!yooka.pulse_media_house_score.hard_failures.includes("media_house:platform_copy_too_plain"));
   assert.ok(!yooka.pulse_media_house_score.hard_failures.includes("media_house:shorts_feed_competition_weak"));
+
+  const dune = batch.packages.find((pack) => pack.canonical_story_manifest.story_id === "rss_dune_awakening_ps5");
+  assert.equal(dune.script_scorecard.verdict, "viral_ready", dune.script_scorecard.blockers.join(", "));
+  assert.equal(dune.canonical_story_manifest.canonical_subject, "Dune: Awakening");
+  assert.equal(dune.youtube_publish_pack.title, "Dune Awakening Has A PS5 Survival Test");
+  assert.match(dune.canonical_story_manifest.narration_script, /Dune: Awakening/i);
+  assert.match(dune.canonical_story_manifest.narration_script, /PlayStation 5/i);
+  assert.match(dune.canonical_story_manifest.narration_script, /September 22/i);
+  assert.match(dune.canonical_story_manifest.narration_script, /survival/i);
+  assert.doesNotMatch(
+    dune.canonical_story_manifest.narration_script,
+    /new source detail|real question|play now, wait, skip|PlayStation has/i,
+  );
 });
 
 test("goal batch package proof preparation replaces article excerpt descriptions with Shorts payoff copy", () => {

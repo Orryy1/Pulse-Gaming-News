@@ -221,6 +221,55 @@ test("Studio V4 source-family acquisition turns a blocked motion pack into exact
   );
 });
 
+test("Studio V4 source-family acquisition reopens ready packs with repeated base source roots", () => {
+  const roots = [
+    "crew_trailer_root_one",
+    "crew_trailer_root_two",
+    "crew_trailer_root_three",
+    "crew_trailer_root_four",
+    "crew_trailer_root_four",
+  ];
+  const clips = Array.from({ length: 6 }, (_, index) => ({
+    id: `crew-clip-${index + 1}`,
+    source_family: `crew_window_${index + 1}`,
+    base_source_family: roots[index] || "crew_trailer_root_five",
+    source_url: `https://video.fastly.steamstatic.com/store_trailers/2698940/${roots[index] || "root-five"}/window-${index + 1}.mp4`,
+    validated: true,
+    segmentValidationPassed: true,
+  }));
+  const report = buildStudioV4SourceFamilyAcquisitionReport({
+    motionPackReports: [
+      motionPack({
+        story_id: "crew-root-overuse",
+        title: "The Crew Motorfest Grand Tour Has A Filler Problem",
+        readiness: { status: "v4_motion_ready", blockers: [], warnings: [] },
+        motion_budget: {
+          required_motion_scenes: 5,
+          available_motion_clips: 6,
+          required_distinct_families: 4,
+          available_distinct_families: 6,
+        },
+        clips,
+      }),
+    ],
+    trustedFootageReport: { story_candidates: [] },
+    referenceReport: { plans: [] },
+    generatedAt: "2026-07-07T11:45:00.000Z",
+  });
+
+  assert.equal(report.summary.stories_blocked, 1);
+  const row = report.rows[0];
+  assert.equal(row.story_id, "crew-root-overuse");
+  assert.equal(row.readiness_status, "v4_motion_ready");
+  assert.equal(row.blocking_current_motion_readiness, true);
+  assert.equal(row.current_motion_families, 5);
+  assert.equal(row.required_motion_families, 4);
+  assert.equal(row.missing_motion_families, 0);
+  assert.equal(row.base_source_root_overuse_count, 1);
+  assert.ok(row.blockers.includes("visual_evidence:direct_motion_base_source_overused"));
+  assert.ok(row.overused_base_source_roots.some((item) => item.root === "crew_trailer_root_four" && item.count === 2));
+});
+
 test("Studio V4 source-family acquisition uses story package official motion references as intake candidates", () => {
   const report = buildStudioV4SourceFamilyAcquisitionReport({
     motionPackReports: [

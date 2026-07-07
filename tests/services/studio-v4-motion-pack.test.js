@@ -103,6 +103,8 @@ function segment({
   recommendedDuration = null,
   validationReason = null,
   samples = null,
+  baseSourceFamily = null,
+  base_source_family = null,
 } = {}) {
   return {
     story_id: storyId,
@@ -111,6 +113,7 @@ function segment({
       sourceUrl ||
       `https://video.fastly.steamstatic.com/store_trailers/2483190/${1000 + index}/${family}/clip.mp4`,
     source_family: family,
+    base_source_family: baseSourceFamily || base_source_family || null,
     source_type: sourceType,
     provider: family === "steam" ? "steam" : family,
     entity,

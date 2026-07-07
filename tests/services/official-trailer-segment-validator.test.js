@@ -1577,6 +1577,128 @@ test("official trailer segment validator accepts entity-matched licensed Steam c
   assert.equal(report.segments[0].action_sample_count, 0);
 });
 
+test("official trailer segment validator accepts entity-matched platform storefront Steam motion", async () => {
+  const outputRoot = tempOutputRoot("official-platform-storefront-steam-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.fastly.steamstatic.com/store_trailers/1250410/513209/hash/hls_264_master.m3u8",
+        sourceType: "platform_storefront",
+        sourceFamily: "steam_1250410_microsoft_flight_simulator_2020_40th_anniversary_edition",
+        source_family: "steam_1250410_microsoft_flight_simulator_2020_40th_anniversary_edition",
+        reference_title: "Microsoft Flight Simulator (2020) 40th Anniversary Edition",
+        sourceDurationS: 95.6,
+        mediaStartS: 54,
+        entity: "Microsoft Flight Simulator",
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          source_owner: "Steam storefront for Microsoft Flight Simulator (2020) 40th Anniversary Edition",
+          reference_url:
+            "https://store.steampowered.com/app/1250410/Microsoft_Flight_Simulator_(2020)_40th_Anniversary_Edition/",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.193, saturation_mean: 0.226, dark_pixel_ratio: 0.23, bright_pixel_ratio: 0.112, score: 86 },
+          { edge_density: 0.153, saturation_mean: 0.221, dark_pixel_ratio: 0.244, bright_pixel_ratio: 0.028, score: 81 },
+          { edge_density: 0.188, saturation_mean: 0.278, dark_pixel_ratio: 0.235, bright_pixel_ratio: 0.09, score: 87.9 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `flight-sim-platform-storefront-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: sample.dark_pixel_ratio,
+            bright_pixel_ratio: sample.bright_pixel_ratio,
+            letterbox_bar_ratio: 0.21,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["detail_rich"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+  assert.equal(report.segments[0].action_sample_count, 0);
+});
+
+test("official trailer segment validator rejects mismatched platform storefront Steam motion", async () => {
+  const outputRoot = tempOutputRoot("official-platform-storefront-steam-mismatch");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.fastly.steamstatic.com/store_trailers/1250410/513209/hash/hls_264_master.m3u8",
+        sourceType: "platform_storefront",
+        sourceFamily: "steam_1250410_microsoft_flight_simulator_2020_40th_anniversary_edition",
+        source_family: "steam_1250410_microsoft_flight_simulator_2020_40th_anniversary_edition",
+        reference_title: "Microsoft Flight Simulator (2020) 40th Anniversary Edition",
+        sourceDurationS: 95.6,
+        mediaStartS: 54,
+        entity: "Fable",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        return {
+          ...passingQa(outputPath),
+          content_hash: `flight-sim-platform-storefront-mismatch-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.19,
+            saturation_mean: 0.26,
+            dark_pixel_ratio: 0.23,
+            bright_pixel_ratio: 0.09,
+            letterbox_bar_ratio: 0.21,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: 86,
+            tags: ["detail_rich"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_lacks_gameplay_action_samples");
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator accepts entity-matched official publisher direct cinematic motion", async () => {
   const outputRoot = tempOutputRoot("official-publisher-direct-cinematic-motion");
   await cleanTempRoot(outputRoot);

@@ -863,6 +863,69 @@ test("candidate supply demotes motion-only repeat-risk prospects with unknown so
   assert.match(formatCandidateSupplyMarkdown(report), /repeat\/stale risk/);
 });
 
+test("candidate supply does not recommend motion promotion when only motion-only repeat-risk prospects are repairable", () => {
+  const now = new Date("2026-07-07T09:00:00.000Z");
+  const candidateReport = {
+    generated_at: now.toISOString(),
+    totals: { stories_seen: 1, returned: 1, pending_audio: 0 },
+    candidates: [
+      candidate("fresh-official-story", {
+        title: "Nintendo Confirms Switch 2 Gameplay Test",
+        source_manifest: {
+          primary_source: {
+            name: "Nintendo",
+            url: "https://www.nintendo.com/us/whatsnew/switch-2-gameplay-test/",
+            published_at: "2026-07-07T08:00:00.000Z",
+          },
+          source_age_policy_hours: 168,
+        },
+      }),
+    ],
+  };
+
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport,
+    motionCapacityReports: [
+      {
+        packs: [
+          {
+            story_id: "stale-avatar-motion-only",
+            title: "Avatar Legends: The Fighting Game Spirit Wilds stage revealed",
+            readiness_status: "v4_motion_blocked",
+            motion_ready: false,
+            current_motion_clips: 1,
+            required_motion_clips: 5,
+            current_motion_families: 1,
+            required_motion_families: 4,
+            direct_media_ready: 1,
+            actionable_direct_media_ready: 1,
+            blockers: ["actual_motion_clip_minimum_not_met", "distinct_motion_families_minimum_not_met"],
+          },
+        ],
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 5,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 5,
+    },
+  });
+
+  const avatar = report.priority_scorecards.find((item) => item.story_id === "stale-avatar-motion-only");
+  assert.equal(avatar.repeat_or_stale_risk, true);
+  assert.equal(report.summary.motion_capacity_repairable_candidates, 1);
+  assert.equal(report.summary.motion_capacity_actionable_repairable_candidates, 0);
+  assert.ok(report.warnings.includes("motion_repairable_repeat_or_stale_candidates_ignored:1"));
+  assert.equal(report.warnings.includes("motion_repairable_candidates_available:1"), false);
+  assert.notEqual(report.next_action, "promote_motion_repairable_candidates_with_official_direct_media");
+  assert.equal(report.next_action, "refresh_fresh_source_intake_and_promote_new_green_candidates_before_expiring_backlog");
+});
+
 test("candidate supply report treats current transcript backlog as refill pressure", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

@@ -15,6 +15,7 @@ const {
   writeGoalDryRunPublishPlan,
 } = require("../lib/goal-dry-run-publisher");
 const { buildPlatformOperationalConfig } = require("../lib/ops/platform-status");
+const { canonicalHash } = require("../lib/services/url-canonical");
 
 const CANDIDATE_REPORT_BRIDGE_WRITE_SKEW_MS = 10_000;
 const DEFAULT_STORY_PACKAGE_SOURCES = [
@@ -517,6 +518,46 @@ function storyIdsFromPackages(storyPackages = []) {
   );
 }
 
+async function sourceUrlHashesFromPackages(storyPackages = []) {
+  const hashes = [];
+  for (const story of asArray(storyPackages)) {
+    const values = [
+      story?.url,
+      story?.source_url,
+      story?.primary_source_url,
+      story?.primary_source?.url,
+      story?.source?.url,
+      story?.source?.source_url,
+    ];
+    const artifactDir = cleanText(story?.artifact_dir || story?.artifactDir);
+    if (artifactDir) {
+      const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
+      const platformPath = path.join(artifactDir, "platform_publish_manifest.json");
+      for (const filePath of [canonicalPath, platformPath]) {
+        try {
+          if (!(await fs.pathExists(filePath))) continue;
+          const manifest = await fs.readJson(filePath);
+          values.push(
+            manifest?.url,
+            manifest?.source_url,
+            manifest?.primary_source_url,
+            manifest?.primary_source?.url,
+            manifest?.official_source?.url,
+          );
+        } catch {
+          // Ignore malformed optional evidence here; strict dry-run will
+          // report malformed artefacts through the normal package gates.
+        }
+      }
+    }
+    for (const value of values) {
+      const hash = canonicalHash(cleanText(value));
+      if (hash && hash !== "invalid-url") hashes.push(hash);
+    }
+  }
+  return uniqueCleanStrings(hashes);
+}
+
 function addPublishedPlatformEvidence(byStoryId, storyId, platform, evidence = {}) {
   const id = cleanText(storyId);
   const key = normalizePlatformKey(platform);
@@ -542,14 +583,48 @@ function addPublishedPlatformEvidence(byStoryId, storyId, platform, evidence = {
   });
 }
 
+function addPublishedSourceHashEvidence(bySourceUrlHash, sourceUrlHash, platform, evidence = {}) {
+  const hash = cleanText(sourceUrlHash);
+  const key = normalizePlatformKey(platform);
+  if (!hash || !key) return;
+  if (!bySourceUrlHash[hash]) {
+    bySourceUrlHash[hash] = {
+      source_url_hash: hash,
+      already_published_platforms: [],
+      rows: [],
+    };
+  }
+  bySourceUrlHash[hash].already_published_platforms = uniqueCleanStrings([
+    ...asArray(bySourceUrlHash[hash].already_published_platforms),
+    key,
+  ]);
+  bySourceUrlHash[hash].rows.push({
+    platform: key,
+    story_id: cleanText(evidence.story_id),
+    source_platform: cleanText(platform),
+    external_id: cleanText(evidence.external_id),
+    external_url: cleanText(evidence.external_url),
+    published_at: cleanText(evidence.published_at),
+    source: cleanText(evidence.source || "platform_posts.source_url_hash"),
+  });
+}
+
 function buildPublishedPlatformEvidence({ platformPostRows = [], legacyStoryRows = [], source = "" } = {}) {
   const byStoryId = {};
+  const bySourceUrlHash = {};
   for (const row of asArray(platformPostRows)) {
     addPublishedPlatformEvidence(byStoryId, row.story_id, row.platform, {
       external_id: row.external_id,
       external_url: row.external_url,
       published_at: row.published_at,
       source: "platform_posts",
+    });
+    addPublishedSourceHashEvidence(bySourceUrlHash, row.source_url_hash, row.platform, {
+      story_id: row.story_id,
+      external_id: row.external_id,
+      external_url: row.external_url,
+      published_at: row.published_at,
+      source: "platform_posts.source_url_hash",
     });
   }
   const legacyFieldMap = {
@@ -567,13 +642,20 @@ function buildPublishedPlatformEvidence({ platformPostRows = [], legacyStoryRows
         external_id: row[field],
         source: `stories.${field}`,
       });
+      addPublishedSourceHashEvidence(bySourceUrlHash, row.source_url_hash, platform, {
+        story_id: row.story_id || row.id,
+        external_id: row[field],
+        source: `stories.${field}.source_url_hash`,
+      });
     }
   }
   return {
     schema_version: 1,
     source: source || "read_only_platform_publication_evidence",
     by_story_id: byStoryId,
+    by_source_url_hash: bySourceUrlHash,
     story_count: Object.keys(byStoryId).length,
+    source_url_hash_count: Object.keys(bySourceUrlHash).length,
   };
 }
 
@@ -591,6 +673,7 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
   }
   const storyIds = storyIdsFromPackages(storyPackages);
   if (!storyIds.length) return null;
+  const sourceUrlHashes = await sourceUrlHashesFromPackages(storyPackages);
   const dbPath = resolveLocalSqlitePath(root);
   if (!(await fs.pathExists(dbPath))) return null;
   let Database = null;
@@ -600,11 +683,29 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
     return null;
   }
   const placeholders = storyIds.map(() => "?").join(",");
+  const hashPlaceholders = sourceUrlHashes.map(() => "?").join(",");
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
     let platformPostRows = [];
     let legacyStoryRows = [];
     try {
+      const clauses = [`p.story_id IN (${placeholders})`];
+      const values = [...storyIds];
+      if (sourceUrlHashes.length) {
+        clauses.push(`s.source_url_hash IN (${hashPlaceholders})`);
+        values.push(...sourceUrlHashes);
+      }
+      platformPostRows = db.prepare(`
+        SELECT p.story_id, p.platform, p.external_id, p.external_url, p.status, p.published_at,
+               s.source_url_hash
+        FROM platform_posts p
+        LEFT JOIN stories s ON s.id = p.story_id
+        WHERE p.status = 'published'
+          AND p.external_id IS NOT NULL
+          AND (${clauses.join(" OR ")})
+      `).all(...values);
+    } catch (err) {
+      if (!/no such table|no such column/i.test(err.message)) throw err;
       platformPostRows = db.prepare(`
         SELECT story_id, platform, external_id, external_url, status, published_at
         FROM platform_posts
@@ -612,8 +713,6 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
           AND external_id IS NOT NULL
           AND story_id IN (${placeholders})
       `).all(...storyIds);
-    } catch (err) {
-      if (!/no such table|no such column/i.test(err.message)) throw err;
     }
     try {
       legacyStoryRows = db.prepare(`
@@ -623,10 +722,11 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
                instagram_media_id,
                facebook_post_id,
                tiktok_post_id,
-               twitter_post_id
+               twitter_post_id,
+               source_url_hash
         FROM stories
-        WHERE id IN (${placeholders})
-      `).all(...storyIds);
+        WHERE id IN (${placeholders})${sourceUrlHashes.length ? ` OR source_url_hash IN (${hashPlaceholders})` : ""}
+      `).all(...storyIds, ...sourceUrlHashes);
     } catch (err) {
       if (!/no such table|no such column/i.test(err.message)) throw err;
     }

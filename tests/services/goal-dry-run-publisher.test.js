@@ -14,6 +14,7 @@ const {
   directMotionBaseSourceOveruseEvidence,
   writeGoalDryRunPublishPlan,
 } = require("../../lib/goal-dry-run-publisher");
+const { canonicalHash } = require("../../lib/services/url-canonical");
 const {
   parseArgs,
   readCandidateReport,
@@ -4308,6 +4309,67 @@ test("goal dry-run publisher skips stale bridge candidates whose enabled platfor
     "facebook_reels",
   ]);
   assert.ok(plan.readiness_reasons.includes("no_enabled_platform_publish_actions"));
+});
+
+test("goal dry-run publisher skips regenerated candidates whose source URL was already published", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-source-url-published-"));
+  const sourceUrl = "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/";
+  const storyPackage = await makeStoryPackage(
+    root,
+    "fresh-doom-regenerated-story",
+    "GREEN",
+    "DOOM The Dark Ages Chain Spear Has A Fight Risk",
+    {
+      canonicalSubject: "DOOM The Dark Ages",
+      canonicalPatch: {
+        primary_source: { name: "Xbox Wire", url: sourceUrl },
+        primary_source_url: sourceUrl,
+      },
+    },
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-07T00:25:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+    candidatePreflightReport: {
+      candidates: [
+        {
+          id: "fresh-doom-regenerated-story",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+    publishedPlatformEvidence: {
+      by_source_url_hash: {
+        [canonicalHash(sourceUrl)]: {
+          already_published_platforms: [
+            "youtube_shorts",
+            "instagram_reels",
+            "facebook_reels",
+          ],
+          rows: [
+            {
+              story_id: "rss-e2914175-original",
+              platform: "youtube_shorts",
+              external_id: "gQ_l2gNLKWc",
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.skipped_story_count, 1);
+  assert.equal(plan.summary.platform_publish_now_action_count, 0);
+  assert.equal(plan.skipped_stories[0].status, "enabled_platforms_already_public");
+  assert.deepEqual(plan.skipped_stories[0].already_published_platforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
 });
 
 test("goal dry-run publisher skips enabled platforms terminal duplicate-blocked by prior guarded execution", async () => {

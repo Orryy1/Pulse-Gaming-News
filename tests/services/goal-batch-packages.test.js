@@ -1300,6 +1300,13 @@ test("goal batch CLI defaults to retained licensed SFX evidence", () => {
     args.sfxRightsLedgerPath,
     path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"),
   );
+  assert.equal(args.allowOwnedMotionFallback, false);
+});
+
+test("goal batch CLI can opt into owned motion fallback for source-card repair", () => {
+  const args = parseGoalBatchArgs(["--allow-owned-motion-fallback"]);
+
+  assert.equal(args.allowOwnedMotionFallback, true);
 });
 
 test("goal batch package proof preparation rewrites source-backed fallback narration before QA", () => {
@@ -2451,6 +2458,10 @@ test("goal batch package proof preparation writes concrete scripts for current l
     );
     assert.match(packagedScript, new RegExp(story.source_name, "i"), story.id);
     assert.match(packagedScript, /Follow Pulse Gaming so you never miss a beat\.$/, story.id);
+    if (story.id === "pit-of-goblin") {
+      assert.match(prepared.public_title, /Enter The Pit/i);
+      assert.match(pack.canonical_story_manifest.first_spoken_line, /^Enter The Pit/i);
+    }
   }
 });
 

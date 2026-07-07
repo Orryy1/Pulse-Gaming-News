@@ -43,6 +43,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     dbStories: false,
     storyIds: [],
     includePublished: false,
+    allowOwnedMotionFallback: false,
     json: false,
     help: false,
   };
@@ -66,6 +67,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--rss-per-feed") args.rssPerFeed = Number(argv[++i] || args.rssPerFeed);
     else if (arg === "--db-stories") args.dbStories = true;
     else if (arg === "--include-published") args.includePublished = true;
+    else if (arg === "--allow-owned-motion-fallback") args.allowOwnedMotionFallback = true;
     else if (arg === "--story-id" || arg === "--story" || arg === "--story-ids") {
       args.storyIds.push(...normaliseStoryIds(argv[++i] || ""));
     }
@@ -100,6 +102,8 @@ function usage() {
     "  --db-stories               Read story rows from the configured local DB instead of daily_news.json",
     "  --include-published        Allow live-RSS packaging of stories that already have public publish evidence",
     "  --story-id <id[,id]>        Package only the named story IDs; may be repeated",
+    "  --allow-owned-motion-fallback",
+    "                              Use governed owned source-card motion when direct footage is unavailable",
     "  --json",
   ].join("\n");
 }
@@ -668,6 +672,7 @@ async function main(argv = process.argv.slice(2)) {
     sfxRightsLedger,
     videoCacheDir: path.resolve(args.videoCacheDir),
     existingArtifactRoot: path.resolve(args.outDir),
+    allowOwnedMotionFallback: args.allowOwnedMotionFallback,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const outputs = await writeGoalBatchPackages(batch, {

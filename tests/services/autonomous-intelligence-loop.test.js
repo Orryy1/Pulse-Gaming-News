@@ -1581,8 +1581,9 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       path.join(contractOutDir, "motion-hydrated"),
       "--v4-motion-pack-dir",
       path.join(__dirname, "..", "..", "output", "studio-v4", "motion-packs"),
+      "--allow-owned-motion-fallback",
       "--story-id",
-      "fresh_xbox_story",
+      "fresh_xbox_story,fresh_gamespot_story",
     ]);
     assert.equal(result.status, "completed");
     assert.equal(result.story_count, 1);
@@ -1596,7 +1597,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
-    assert.equal(result.repair_evidence.child_processes.length, 10);
+    assert.equal(result.repair_evidence.child_processes.length, 11);
     assert.equal(result.motion_hydrated_refill.status, "completed");
     assert.equal(result.motion_hydrated_refill.green_count, 1);
     assert.match(result.motion_hydrated_refill.outputs.storyPackagesPath, /motion-hydrated[\\/]story-packages\.json$/);
@@ -1859,10 +1860,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       ),
       "expected fresh refill to keep newly discovered storefront direct media rows",
     );
-    assert.equal(repairReport.summary.child_process_count, 10);
+    assert.equal(repairReport.summary.child_process_count, 11);
     assert.equal(repairReport.summary.real_motion_materialization_status, "materialized");
     assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");
-    assert.equal(repairReport.summary.hyperframes_card_sets_completed, 1);
+    assert.equal(repairReport.summary.hyperframes_card_sets_completed, 2);
     assert.equal(repairReport.summary.hyperframes_card_sets_failed, 0);
     assert.equal(repairReport.summary.hyperframes_card_evidence_blocked_count, 0);
     assert.match(repairReport.outputs.official_search_autofill_report, /official_search_intake_autofill\.json$/);
@@ -1894,8 +1895,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const hyperframesCardEvidence = JSON.parse(
       await fs.readFile(repairReport.outputs.hyperframes_card_evidence_report, "utf8"),
     );
-    assert.equal(hyperframesCardEvidence.summary.card_count, 6);
-    assert.equal(hyperframesCardEvidence.summary.passing_card_count, 6);
+    assert.equal(hyperframesCardEvidence.summary.card_count, 12);
+    assert.equal(hyperframesCardEvidence.summary.passing_card_count, 12);
     assert.equal(hyperframesCardEvidence.summary.failing_card_count, 0);
     assert.equal(hyperframesCardEvidence.summary.shortest_planned_visible_duration_s, 12);
     assert.equal(hyperframesCardEvidence.summary.longest_required_visible_duration_s, 12);
@@ -3501,6 +3502,15 @@ test("fresh refill HyperFrames card generation targets only real-motion material
         realMotionReportPath: reportPath,
       }),
       [],
+    );
+
+    assert.deepEqual(
+      await freshRefillHyperframesStoryIdsAfterMotion({
+        candidateStoryIds: ["motion-blocked-story", "unsafe-story"],
+        realMotionReportPath: reportPath,
+        sourceCardFallbackStoryIds: ["motion-blocked-story", "not-in-candidate-list"],
+      }),
+      ["motion-blocked-story"],
     );
 
     const motionPackDir = path.join(tmp, "motion-packs");

@@ -701,7 +701,7 @@ test("candidate supply excludes terminal duplicate-blocked enabled actions from 
     channelConfig: {},
     now,
     targets: {
-      greenReadyCandidates: 1,
+      greenReadyCandidates: 2,
       sourceSafeCandidates: 1,
       v4ReadyCandidates: 1,
       freshSourceBackedStories: 0,
@@ -859,8 +859,12 @@ test("candidate supply demotes motion-only repeat-risk prospects with unknown so
   assert.ok(doom.repeat_or_stale_risk_reasons.includes("not_scheduler_candidate"));
   assert.ok(doom.repeat_or_stale_risk_reasons.includes("source_age_unknown"));
   assert.ok(doom.repeat_or_stale_risk_reasons.includes("source_safe_false"));
+  assert.equal(report.summary.motion_capacity_source_metadata_repairable_candidates, 1);
+  assert.ok(report.warnings.includes("motion_ready_source_metadata_repair_required:1"));
+  assert.equal(report.next_action, "repair_source_metadata_for_motion_ready_candidates");
   assert.ok(doom.score < official.score);
   assert.match(formatCandidateSupplyMarkdown(report), /repeat\/stale risk/);
+  assert.match(formatCandidateSupplyMonitorDiscord(report), /Source metadata repair: 1/);
 });
 
 test("candidate supply does not recommend motion promotion when only motion-only repeat-risk prospects are repairable", () => {

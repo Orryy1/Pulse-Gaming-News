@@ -22,6 +22,7 @@ const {
   buildProductionVoiceSegments,
   ACCEPTED_LOCAL_VOICE_ID,
   evaluateLocalVoicePace,
+  normaliseFreshLocalLiamEditorialText,
   resolveAcceptedLocalVoiceReference,
   resolveLocalInterSegmentPauseS,
   resolveLocalInterSegmentPausePlan,
@@ -913,6 +914,23 @@ test("studio production voice sends cleaned title punctuation to local TTS", () 
   );
   assert.doesNotMatch(spokenText, /\b(?:Expanse|Halo|War):/);
   assert.doesNotMatch(spokenText, /\bE-Day\b/);
+});
+
+test("fresh local Liam narration also strips title punctuation before TTS", () => {
+  const result = normaliseFreshLocalLiamEditorialText({
+    scriptForTTS:
+      "Halo: Campaign Evolved has the cleanest remake test. The Expanse: Osiris Reborn shows real gameplay. Gears of War: E-Day finally has footage.",
+    scriptForCaption:
+      "Halo: Campaign Evolved has the cleanest remake test. The Expanse: Osiris Reborn shows real gameplay. Gears of War: E-Day finally has footage.",
+  });
+
+  assert.equal(
+    result.text,
+    "Halo Campaign Evolved has the cleanest remake test. The Expanse Osiris Reborn shows real gameplay. Gears of War E Day finally has footage.",
+  );
+  assert.doesNotMatch(result.text, /\b(?:Halo|Expanse|War):/);
+  assert.doesNotMatch(result.text, /\bE-Day\b/);
+  assert.match(result.displayText, /Halo: Campaign Evolved/);
 });
 
 test("v2 quality report does not penalise SFX when explicitly disabled", () => {

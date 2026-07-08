@@ -279,6 +279,18 @@ test("colon-separated game titles lose the TTS pause but keep the title words", 
     "Halo Campaign Evolved has a demo.",
   );
   assert.equal(
+    applyGamingPronunciation("Halo:Campaign Evolved has a demo."),
+    "Halo Campaign Evolved has a demo.",
+  );
+  assert.equal(
+    applyGamingPronunciation('"Halo: Campaign Evolved" has a demo.'),
+    '"Halo Campaign Evolved" has a demo.',
+  );
+  assert.equal(
+    applyGamingPronunciation("(The Expanse:Osiris Reborn) shows real gameplay."),
+    "(The Expanse Osiris Reborn) shows real gameplay.",
+  );
+  assert.equal(
     applyGamingPronunciation("Halo, Campaign Evolved has a demo."),
     "Halo Campaign Evolved has a demo.",
   );

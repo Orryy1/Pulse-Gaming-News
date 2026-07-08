@@ -2775,6 +2775,38 @@ test("goal batch package generic fallback does not emit internal scaffold narrat
   assert.ok(!qa.blockers.includes("generic_player_test_template"), JSON.stringify(qa));
 });
 
+test("goal batch package rewrites generated source-proof fallback titles before narration", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_dawnwalker_source_proof_fallback",
+      title: "The Blood of Dawnwalker Has A Source-Proof Risk",
+      source_type: "rss",
+      source_name: "Xbox Wire",
+      primary_source: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/the-blood-of-dawnwalker-dead-and-loving-it/",
+      freshness_gate: "pass",
+      confirmed_claims: ["The Blood of Dawnwalker Dead and Loving It"],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.doesNotMatch(prepared.public_title, /Source-Proof Risk|Footage Readability Test/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /one practical question players can answer|what changes on screen|what changes in the library|what makes someone care today|safely ignore the noise/i,
+  );
+  assert.match(prepared.full_script, /The Blood of Dawnwalker/i);
+  assert.match(prepared.full_script, /Xbox Wire/i);
+  assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+
+  const qa = buildViralScriptIntelligence({
+    story: { ...prepared, title: prepared.public_title },
+    script: prepared.full_script,
+  });
+  assert.notEqual(qa.verdict, "rewrite_required", JSON.stringify(qa, null, 2));
+});
+
 test("goal batch package proof preparation does not invert GTA VI screenshot analysis into gameplay proof", () => {
   const prepared = prepareStoryForGoalProof({
     id: "rss_gta_vi_screenshot_analysis",

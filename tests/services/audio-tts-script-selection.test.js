@@ -226,12 +226,32 @@ test("cleanForTTS: removes title-colon pauses inside canonical game names", () =
     "The Expanse Osiris Reborn finally showed real gameplay.",
   );
   assert.equal(
+    cleanForTTS("The Expanse: Osiris Reborn's combat finally has a proper test."),
+    "The Expanse Osiris Reborn's combat finally has a proper test.",
+  );
+  assert.equal(
     cleanForTTS("Halo: Campaign Evolved just gave Xbox a real remake test."),
     "Halo Campaign Evolved just gave Xbox a real remake test.",
   );
   assert.equal(
+    cleanForTTS("Halo: Campaign Evolved's remake pitch depends on movement, not lighting."),
+    "Halo Campaign Evolved's remake pitch depends on movement, not lighting.",
+  );
+  assert.equal(
     cleanForTTS("Dune: Awakening is about to test whether a survival MMO can survive the move to console."),
     "Dune Awakening is about to test whether a survival MMO can survive the move to console.",
+  );
+  assert.equal(
+    cleanForTTS("Resident Evil Code: Veronica finally answered the camera question."),
+    "Resident Evil Code Veronica finally answered the camera question.",
+  );
+  assert.equal(
+    cleanForTTS("MARVEL Tokon: Fighting Souls turns the roster into a meta fight."),
+    "MARVEL Tokon Fighting Souls turns the roster into a meta fight.",
+  );
+  assert.equal(
+    cleanForTTS("Dragon's Dogma 2: Dark Arisen has to fix everyday friction."),
+    "Dragon's Dogma 2 Dark Arisen has to fix everyday friction.",
   );
   assert.equal(
     cleanForTTS("DOOM: The Dark Ages: Revelations just made the DLC pitch louder."),

@@ -2807,6 +2807,99 @@ test("goal batch package rewrites generated source-proof fallback titles before 
   assert.notEqual(qa.verdict, "rewrite_required", JSON.stringify(qa, null, 2));
 });
 
+test("goal batch package writes story-specific Albion Online scripts instead of generic openers", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_albion_online_keepers",
+      title: "In Albion Online the Keepers Has A Source-Proof Risk",
+      source_type: "rss",
+      source_name: "Xbox Wire",
+      primary_source: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/07/07/in-albion-online/",
+      freshness_gate: "pass",
+      confirmed_claims: ["In Albion Online, the Keepers are Rising Up"],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.doesNotMatch(prepared.public_title, /Source-Proof Risk|Footage Readability Test/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /has to answer one simple thing|why should players care now|named source is only useful|gives that choice teeth|watch pile/i,
+  );
+  assert.match(prepared.full_script, /Albion Online/i);
+  assert.match(prepared.full_script, /Keepers/i);
+  assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+
+  const qa = buildViralScriptIntelligence({
+    story: { ...prepared, title: prepared.public_title },
+    script: prepared.full_script,
+  });
+  assert.notEqual(qa.verdict, "rewrite_required", JSON.stringify(qa, null, 2));
+  assert.ok(!qa.blockers.includes("generic_opener"), JSON.stringify(qa, null, 2));
+});
+
+test("goal batch package compacts Marvel Rivals Jubilee subjects before public render QA", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_marvel_rivals_jubilee_gameplay",
+      title: "Marvel Rivals adds X-Men's Jubilee in season 9: first look at gameplay",
+      source_type: "rss",
+      source_name: "Polygon",
+      primary_source: "Polygon",
+      article_url: "https://www.polygon.com/gaming/marvel-rivals-jubilee-season-9-gameplay",
+      freshness_gate: "pass",
+      confirmed_claims: ["Marvel Rivals adds X-Men's Jubilee in season 9: first look at gameplay"],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "Marvel Rivals");
+  assert.equal(prepared.canonical_game, "Marvel Rivals");
+  assert.equal(prepared.public_title, "Marvel Rivals Jubilee Gameplay Has One Problem");
+  assert.ok(prepared.public_title.split(/\s+/).length <= 12);
+  assert.doesNotMatch(prepared.public_title, /Season 9's Update Has A Week-Two Test|first look at gameplay/i);
+
+  assert.equal(evaluateGoalPublicCopy({
+    ...prepared,
+    selected_title: prepared.public_title,
+    thumbnail_headline: prepared.thumbnail_headline,
+    narration_script: prepared.full_script,
+    first_spoken_line: prepared.first_spoken_line,
+  }).verdict, "pass");
+});
+
+test("goal batch package writes story-specific Blood of Dawnwalker scripts instead of source-proof fallback", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "rss_blood_of_dawnwalker_preview",
+      title: "The Blood of Dawnwalker: Dead and Loving It",
+      source_type: "rss",
+      source_name: "Xbox Wire",
+      primary_source: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/07/07/the-blood-of-dawnwalker-hands-on-preview/",
+      freshness_gate: "pass",
+      confirmed_claims: ["The Blood of Dawnwalker: Dead and Loving It"],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "The Blood of Dawnwalker");
+  assert.equal(prepared.canonical_game, "The Blood of Dawnwalker");
+  assert.equal(prepared.public_title, "The Blood Of Dawnwalker Has A Vampire Time Limit");
+  assert.doesNotMatch(prepared.public_title, /Source-Proof Risk|Clearer Reason To Care|Footage Readability Test/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /has to answer one simple thing|why should players care now|named source is only useful|watch pile/i,
+  );
+  assert.match(prepared.full_script, /vampire/i);
+  assert.match(prepared.full_script, /time/i);
+  assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+});
+
 test("goal batch package proof preparation does not invert GTA VI screenshot analysis into gameplay proof", () => {
   const prepared = prepareStoryForGoalProof({
     id: "rss_gta_vi_screenshot_analysis",

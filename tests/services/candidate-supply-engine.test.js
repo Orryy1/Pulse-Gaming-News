@@ -826,8 +826,8 @@ test("candidate supply demotes motion-only repeat-risk prospects with unknown so
       {
         packs: [
           {
-            story_id: "fresh_doom_chain_spear_dlc_20260703",
-            title: "Doom The Dark Ages Chain Spear Changes The Fight",
+            story_id: "unit_unknown_source_motion_only_story",
+            title: "Unknown Source Motion Only Story",
             readiness_status: "v4_motion_ready",
             motion_ready: true,
             current_motion_clips: 9,
@@ -852,7 +852,7 @@ test("candidate supply demotes motion-only repeat-risk prospects with unknown so
     },
   });
 
-  const doom = report.priority_scorecards.find((item) => item.story_id === "fresh_doom_chain_spear_dlc_20260703");
+  const doom = report.priority_scorecards.find((item) => item.story_id === "unit_unknown_source_motion_only_story");
   const official = report.priority_scorecards.find((item) => item.story_id === "fresh-official-story");
 
   assert.equal(doom.repeat_or_stale_risk, true);
@@ -993,6 +993,148 @@ test("candidate supply hydrates motion-ready prospects from proof-package source
 
   const scorecard = report.priority_scorecards.find((item) => item.story_id === storyId);
   assert.equal(scorecard.title, "Proof Source Motion Ready Story");
+  assert.equal(scorecard.source_age_state, "fresh");
+  assert.equal(scorecard.source_safe, true);
+  assert.equal(scorecard.repeat_or_stale_risk_reasons.includes("source_age_unknown"), false);
+  assert.equal(scorecard.repeat_or_stale_risk_reasons.includes("source_safe_false"), false);
+  assert.equal(report.summary.motion_capacity_source_metadata_repairable_candidates, 0);
+});
+
+test("candidate supply hydrates motion-ready prospects from candidate-supply refill proof packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-alt-proof-source-"));
+  const storyId = "rss_candidate_supply_refill_motion_ready";
+  const proofDir = path.join(
+    root,
+    "output",
+    "candidate-supply",
+    "fresh-production-refill",
+    "2026-07-06-17",
+    "goal-proof-batch",
+    "motion-hydrated",
+    storyId,
+  );
+  const motionPackPath = path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`);
+  await fs.ensureDir(proofDir);
+  await fs.ensureDir(path.dirname(motionPackPath));
+  await fs.writeJson(path.join(proofDir, "source_manifest.json"), {
+    story_id: storyId,
+    primary_source: {
+      name: "GameSpot",
+      url: "https://www.gamespot.com/articles/candidate-supply-refill-motion-ready/",
+      published_at: "2026-07-07T07:30:00.000Z",
+    },
+    source_age_policy_hours: 168,
+  });
+  await fs.writeJson(path.join(proofDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_title: "Candidate Supply Refill Motion Ready Story",
+    source_published_at: "2026-07-07T07:30:00.000Z",
+  });
+
+  const now = new Date("2026-07-07T09:00:00.000Z");
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 0, returned: 0, pending_audio: 0 },
+      candidates: [],
+    },
+    motionCapacityReports: [
+      {
+        path: motionPackPath,
+        story_id: storyId,
+        status: "ready",
+        readiness: { status: "v4_motion_ready", blockers: [] },
+        clips: Array.from({ length: 5 }, (_, index) => ({
+          source_family: `official-family-${index}`,
+          media_kind: "direct_video",
+          counts_towards_motion_readiness: true,
+        })),
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  const scorecard = report.priority_scorecards.find((item) => item.story_id === storyId);
+  assert.equal(scorecard.title, "Candidate Supply Refill Motion Ready Story");
+  assert.equal(scorecard.source_age_state, "fresh");
+  assert.equal(scorecard.source_safe, true);
+  assert.equal(scorecard.repeat_or_stale_risk_reasons.includes("source_age_unknown"), false);
+  assert.equal(scorecard.repeat_or_stale_risk_reasons.includes("source_safe_false"), false);
+  assert.equal(report.summary.motion_capacity_source_metadata_repairable_candidates, 0);
+});
+
+test("candidate supply does not let unrelated newer proof runs crowd out matching source proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-proof-crowdout-"));
+  const storyId = "rss_candidate_supply_older_matching_proof";
+  const refillRoot = path.join(root, "output", "candidate-supply", "fresh-production-refill");
+  for (let index = 0; index < 36; index += 1) {
+    await fs.ensureDir(path.join(refillRoot, `manual-newer-${String(index).padStart(2, "0")}`, "goal-proof-batch", "unrelated_story"));
+  }
+  const proofDir = path.join(refillRoot, "2026-07-06-17", "goal-proof-batch", "motion-hydrated", storyId);
+  const motionPackPath = path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`);
+  await fs.ensureDir(proofDir);
+  await fs.ensureDir(path.dirname(motionPackPath));
+  await fs.writeJson(path.join(proofDir, "source_manifest.json"), {
+    story_id: storyId,
+    primary_source: {
+      name: "Official Source",
+      url: "https://example.com/older-proof",
+      published_at: "2026-07-08T09:00:00.000Z",
+    },
+    source_age_policy_hours: 168,
+  });
+  await fs.writeJson(path.join(proofDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_title: "Older Matching Proof Story",
+    primary_source: "Official Source",
+    primary_source_url: "https://example.com/older-proof",
+    source_published_at: "2026-07-08T09:00:00.000Z",
+  });
+  await fs.writeJson(motionPackPath, {});
+
+  const now = new Date("2026-07-08T10:00:00.000Z");
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 0, returned: 0, pending_audio: 0 },
+      candidates: [],
+    },
+    motionCapacityReports: [
+      {
+        path: motionPackPath,
+        story_id: storyId,
+        status: "ready",
+        readiness: { status: "v4_motion_ready", blockers: [] },
+        clips: Array.from({ length: 6 }, (_, index) => ({
+          source_family: `official-family-${index}`,
+          media_kind: "direct_video",
+          counts_towards_motion_readiness: true,
+        })),
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  const scorecard = report.priority_scorecards.find((item) => item.story_id === storyId);
+  assert.equal(scorecard.title, "Older Matching Proof Story");
   assert.equal(scorecard.source_age_state, "fresh");
   assert.equal(scorecard.source_safe, true);
   assert.equal(scorecard.repeat_or_stale_risk_reasons.includes("source_age_unknown"), false);

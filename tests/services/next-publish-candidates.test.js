@@ -8923,6 +8923,39 @@ test("voice quality preflight blocks protected game-title pauses from colon titl
   );
 });
 
+test("voice quality preflight blocks protected game-title pauses from dash/slash title separators", async () => {
+  const result = await voiceQualityPreflightForStory({
+    id: "gears-title-pause",
+    title: "Gears of War - E-Day Finally Shows The Real Test",
+    selected_title: "Gears of War / E-Day Finally Shows The Real Test",
+    voice_quality_report: {
+      verdict: "PASS",
+      blockers: [],
+      warnings: [],
+      cadence: { spoken_wpm: 145, blockers: [], warnings: [] },
+    },
+    word_timestamps_payload: {
+      words: [
+        { word: "Gears", start: 0, end: 0.24 },
+        { word: "of", start: 0.25, end: 0.34 },
+        { word: "War", start: 0.35, end: 0.55 },
+        { word: "E", start: 1.05, end: 1.18 },
+        { word: "Day", start: 1.19, end: 1.42 },
+        { word: "is", start: 1.43, end: 1.55 },
+        { word: "back", start: 1.56, end: 1.84 },
+      ],
+    },
+  });
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("protected_phrase_pause:gears_of_war_e_day"));
+  assert.equal(
+    result.evidence.protected_phrase_checks.find((check) => check.phrase === "gears of war e day")
+      .max_gap_seconds,
+    0.5,
+  );
+});
+
 test("voice quality preflight blocks stale pronunciation profiles for colon game titles even when text matches", async () => {
   const result = await voiceQualityPreflightForStory({
     id: "halo-title-profile-stale",

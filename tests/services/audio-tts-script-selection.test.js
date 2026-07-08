@@ -29,6 +29,18 @@ test("selectRawTtsScript: keeps clean cached tts_script", () => {
   assert.equal(selectRawTtsScript(story), ensureSpokenOutro(story.tts_script));
 });
 
+test("selectRawTtsScript: removes stale title separators from cached tts_script", () => {
+  const story = {
+    full_script: "Halo Campaign Evolved just gave Xbox a real remake test.",
+    tts_script: "Halo: Campaign Evolved just gave Xbox a real remake test.",
+  };
+
+  assert.equal(
+    selectRawTtsScript(story),
+    "Halo Campaign Evolved just gave Xbox a real remake test. Follow Pulse Gaming so you never miss a beat.",
+  );
+});
+
 test("selectRawTtsScript: normalises cached GTA VI spoken-risk before selection", () => {
   const story = {
     full_script: "Grand Theft Auto VI now has one real preorder catch.",

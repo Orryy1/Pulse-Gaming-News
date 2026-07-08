@@ -3671,6 +3671,7 @@ const COLON_TITLE_TAIL_STOP_WORDS = new Set([
   "prove",
   "reveals",
   "reveal",
+  "finally",
   "is",
   "are",
   "could",
@@ -3692,17 +3693,31 @@ function voicePhraseTokens(value = "") {
     .filter(Boolean);
 }
 
+function titleSeparatorPhraseTokens(value = "") {
+  return cleanText(value)
+    .replace(/([A-Za-z0-9])[-\u2013\u2014\/]([A-Za-z0-9])/g, "$1 $2")
+    .split(/\s+/)
+    .map(voicePhraseToken)
+    .filter(Boolean);
+}
+
 function protectedPhraseSlug(tokens = []) {
   return tokens.join("_").replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "phrase";
 }
 
-function colonTitleProtectedPhrase(value = "") {
+function titleSeparatorProtectedPhrase(value = "") {
   const text = cleanText(value);
-  if (!text.includes(":")) return "";
-  const [head, ...tailParts] = text.split(":");
-  const headTokens = voicePhraseTokens(head).slice(0, 4);
+  const separatorMatch = text.match(/\s*(?::|\uFF1A|\uFE55|\/|[-\u2013\u2014])\s*/u);
+  if (!separatorMatch) return "";
+  const separator = separatorMatch[0];
+  const separatorIndex = text.indexOf(separator);
+  const head = separatorIndex >= 0 ? text.slice(0, separatorIndex) : text.split(separatorMatch[0])[0];
+  const tailText = separatorIndex >= 0
+    ? text.slice(separatorIndex + separator.length)
+    : text.split(separatorMatch[0]).slice(1).join(" ");
+  const headTokens = titleSeparatorPhraseTokens(head).slice(0, 4);
   const tailTokens = [];
-  for (const token of voicePhraseTokens(tailParts.join(":"))) {
+  for (const token of titleSeparatorPhraseTokens(tailText)) {
     if (COLON_TITLE_TAIL_STOP_WORDS.has(token)) break;
     tailTokens.push(token);
     if (tailTokens.length >= 3) break;
@@ -3725,8 +3740,11 @@ function protectedVoicePhrasesForStory(story = {}) {
     ["canonical_game", story.canonical_game],
     ["canonical_subject", story.canonical_subject],
     ["game_title", story.game_title],
-    ["title_colon_phrase", colonTitleProtectedPhrase(story.title || story.public_title || story.selected_title || story.upload_title)],
-    ["selected_title_colon_phrase", colonTitleProtectedPhrase(story.selected_title || story.public_title || story.upload_title)],
+    ["canonical_game_separator_phrase", titleSeparatorProtectedPhrase(story.canonical_game)],
+    ["canonical_subject_separator_phrase", titleSeparatorProtectedPhrase(story.canonical_subject)],
+    ["game_title_separator_phrase", titleSeparatorProtectedPhrase(story.game_title)],
+    ["title_separator_phrase", titleSeparatorProtectedPhrase(story.title || story.public_title || story.selected_title || story.upload_title)],
+    ["selected_title_separator_phrase", titleSeparatorProtectedPhrase(story.selected_title || story.public_title || story.upload_title)],
   ]) {
     add(value, source);
   }

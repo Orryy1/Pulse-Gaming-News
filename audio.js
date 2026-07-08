@@ -30,6 +30,7 @@ const PHONETIC_MAP = {
 
 const {
   applyGamingPronunciation,
+  requiresTitleColonPauseProfile,
   TTS_PRONUNCIATION_PROFILE_VERSION,
 } = require("./lib/tts-pronunciation");
 const { normaliseText } = require("./lib/text-hygiene");
@@ -551,7 +552,7 @@ function hasRiskyGtaSixTtsSelectionText(text) {
 
 function ensureSafeSelectedTtsScript(text) {
   const withOutro = ensureSpokenOutro(text);
-  if (hasRiskyGtaSixTtsSelectionText(withOutro)) {
+  if (hasRiskyGtaSixTtsSelectionText(withOutro) || requiresTitleColonPauseProfile(withOutro)) {
     return cleanForTTS(withOutro);
   }
   return withOutro;

@@ -28,6 +28,7 @@ const {
 } = require("../lib/goal-dry-run-publisher");
 const {
   applyGamingPronunciation,
+  requiresTitleColonPauseProfile,
   TTS_PRONUNCIATION_PROFILE_VERSION,
 } = require("../lib/tts-pronunciation");
 const {
@@ -3937,9 +3938,24 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
     hasGtaViTitleAlias(recordedSpoken) ||
     hasGtaViTitleAlias(rawRecordedWordText) ||
     hasGtaViTitleAlias(recordedWordText);
+  const titleColonPronunciationSensitive = [
+    story.title,
+    story.public_title,
+    story.upload_title,
+    story.selected_title,
+    story.short_title,
+    story.canonical_subject,
+    story.canonical_game,
+    story.game_title,
+    rawSpoken,
+  ].some(requiresTitleColonPauseProfile);
   const gtaViProfileStale =
     hasTimestampPayload &&
     gtaViPronunciationContext &&
+    actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION;
+  const titleColonProfileStale =
+    hasTimestampPayload &&
+    titleColonPronunciationSensitive &&
     actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION;
   const profileSensitive =
     Boolean(expectedSpoken) &&
@@ -3953,6 +3969,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
   if (!profileSensitive) {
     const failures = [...openingRisk.failures];
     if (gtaViProfileStale) failures.push("voice_pronunciation_profile_stale");
+    if (titleColonProfileStale) failures.push("voice_pronunciation_profile_stale");
     if (hasTimestampPayload && gtaViPronunciationSensitive && !recordedWordTimestampsPresent) {
       failures.push("voice_pronunciation_word_timestamps_missing");
     }
@@ -3964,6 +3981,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
         actual_tts_pronunciation_profile_version: actualProfile || null,
         profile_sensitive: false,
         gta_vi_pronunciation_sensitive: gtaViPronunciationSensitive,
+        title_colon_pronunciation_sensitive: titleColonPronunciationSensitive,
         recorded_word_timestamps_present: recordedWordTimestampsPresent,
         recorded_word_text: rawRecordedWordText || null,
         ...openingRisk.evidence,
@@ -3979,6 +3997,8 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
   if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION && !recordedMatchesExpected) {
     failures.push("voice_pronunciation_profile_stale");
   } else if (gtaViProfileStale) {
+    failures.push("voice_pronunciation_profile_stale");
+  } else if (titleColonProfileStale) {
     failures.push("voice_pronunciation_profile_stale");
   } else if (actualProfile !== TTS_PRONUNCIATION_PROFILE_VERSION) {
     warnings.push("voice_pronunciation_profile_metadata_stale");
@@ -4007,6 +4027,7 @@ function voicePronunciationProfileEvidence(story = {}, timestampPayload = {}) {
       actual_tts_pronunciation_profile_version: actualProfile || null,
       profile_sensitive: true,
       gta_vi_pronunciation_sensitive: gtaViPronunciationSensitive,
+      title_colon_pronunciation_sensitive: titleColonPronunciationSensitive,
       recorded_word_timestamps_present: recordedWordTimestampsPresent,
       expected_spoken_text: expectedSpoken,
       recorded_spoken_text: recordedSpoken || null,

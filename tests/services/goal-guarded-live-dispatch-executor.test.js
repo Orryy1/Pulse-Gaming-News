@@ -2103,6 +2103,79 @@ test("guarded live dispatch executor blocks GTA VI timestamp evidence without cu
   ]);
 });
 
+test("guarded live dispatch executor blocks colon-title timestamp evidence without current pronunciation profile", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-explicit-title-colon-missing-profile-"));
+  t.after(() => fs.remove(tmp));
+  const timestampsPath = path.join(tmp, "story-one_timestamps.json");
+  const spoken =
+    "Halo Campaign Evolved just gave Xbox a real remake test. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  await fs.writeJson(timestampsPath, {
+    meta: {
+      source: "local-tts-server",
+      transcript: spoken,
+      spoken_text: spoken,
+      ttsPronunciationProfileVersion: "gta-safe-next-title-comma-v17",
+    },
+    words: spoken
+      .replace(/[.]/g, "")
+      .split(/\s+/)
+      .map((word, index) => ({
+        word,
+        start: Number((index * 0.35).toFixed(2)),
+        end: Number((index * 0.35 + 0.18).toFixed(2)),
+      })),
+  });
+
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          title: "Halo: Campaign Evolved Shows The Real Remake Test",
+          word_timestamps_path: timestampsPath,
+          video_path: path.join(tmp, "youtube.mp4"),
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "Halo: Campaign Evolved Shows The Real Remake Test",
+        canonical_subject: "Halo: Campaign Evolved",
+        canonical_game: "Halo: Campaign Evolved",
+        tts_script: "Halo: Campaign Evolved just gave Xbox a real remake test.",
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 1);
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.ok(
+    report.blocked_actions[0].blockers.includes("title_colon_timestamp_profile_stale"),
+    JSON.stringify(report.blocked_actions[0].blockers),
+  );
+});
+
 test("guarded live dispatch executor blocks public metadata QA failures before upload", async () => {
   let uploadCalls = 0;
   let upsertCalls = 0;

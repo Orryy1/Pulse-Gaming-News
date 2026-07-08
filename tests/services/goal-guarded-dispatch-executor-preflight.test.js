@@ -155,6 +155,60 @@ async function gtaPronunciationEvidenceFiles(root) {
   return { video, captions, canonical, platform, timestamps };
 }
 
+async function titleColonPronunciationEvidenceFiles(root) {
+  const dir = path.join(root, "proof", "halo-campaign-evolved");
+  const audioDir = path.join(dir, "audio");
+  await fs.ensureDir(audioDir);
+  const video = path.join(dir, "visual_v4_render.mp4");
+  const captions = path.join(dir, "captions.srt");
+  const canonical = path.join(dir, "canonical_story_manifest.json");
+  const platform = path.join(dir, "platform_publish_manifest.json");
+  const timestamps = path.join(audioDir, "word_timestamps.json");
+  const render = path.join(dir, "render_manifest.json");
+  await fs.writeFile(video, Buffer.alloc(2048, 1));
+  await fs.writeFile(captions, "1\n00:00:00,000 --> 00:00:01,000\nHalo Campaign Evolved.\n");
+  await fs.writeJson(canonical, {
+    story_id: "halo-campaign-evolved",
+    selected_title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    canonical_game: "Halo: Campaign Evolved",
+    tts_script: "Halo: Campaign Evolved just gave Xbox a real remake test.",
+    word_timestamps_path: "audio/word_timestamps.json",
+  });
+  await fs.writeJson(platform, { outputs: { youtube_shorts: {} } });
+  await fs.writeJson(render, {
+    story_id: "halo-campaign-evolved",
+    premium_shell_verdict: "pass",
+    hyperframes_card_count: 4,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      selectedCardCount: 4,
+      passCount: 4,
+      blockers: [],
+    },
+    clip_scene_plan: {
+      scenes: [
+        { sourceRootKey: "halo-trailer-a" },
+        { sourceRootKey: "halo-trailer-b" },
+        { sourceRootKey: "halo-card-source", readableCardKind: "source" },
+        { sourceRootKey: "halo-card-takeaway", readableCardKind: "takeaway" },
+      ],
+    },
+  });
+  await fs.writeJson(timestamps, {
+    meta: {
+      transcript: "Halo Campaign Evolved just gave Xbox a real remake test.",
+      spoken_text: "Halo Campaign Evolved just gave Xbox a real remake test.",
+      ttsPronunciationProfileVersion: "gta-safe-next-title-comma-v17",
+    },
+    words: [
+      { word: "Halo" },
+      { word: "Campaign" },
+      { word: "Evolved" },
+    ],
+  });
+  return { video, captions, canonical, platform, timestamps };
+}
+
 function guardedDispatchPlan(files = {}) {
   return {
     schema_version: 1,
@@ -199,6 +253,23 @@ function gtaGuardedDispatchPlan(files = {}) {
       ...base.dispatch_ready_actions[0],
       story_id: "gta-vi-story",
       title: "GTA VI Just Made PS5 The Version To Watch",
+      video_path: files.video,
+      captions_path: files.captions,
+      first_frame_source: files.video,
+      canonical_manifest_path: files.canonical,
+      platform_publish_manifest_path: files.platform,
+    },
+  ];
+  return base;
+}
+
+function titleColonGuardedDispatchPlan(files = {}) {
+  const base = guardedDispatchPlan(files);
+  base.dispatch_ready_actions = [
+    {
+      ...base.dispatch_ready_actions[0],
+      story_id: "halo-campaign-evolved",
+      title: "Halo: Campaign Evolved Shows The Real Remake Test",
       video_path: files.video,
       captions_path: files.captions,
       first_frame_source: files.video,
@@ -525,6 +596,33 @@ test("executor preflight blocks stale GTA VI timestamp pronunciation evidence be
   assert.equal(report.summary.blocked_selected_action_count, 1);
   assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_timestamp_profile_stale"));
   assert.ok(report.blocked_selected_actions[0].blockers.includes("gta_vi_spoken_stutter"));
+});
+
+test("executor preflight blocks stale colon-title timestamp pronunciation evidence before handoff", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-title-colon-profile-"));
+  const files = await titleColonPronunciationEvidenceFiles(root);
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: titleColonGuardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix({
+      youtube_shorts: {
+        planned_story_ids: ["halo-campaign-evolved"],
+      },
+    }),
+    selectedActionIds: ["halo-campaign-evolved:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.handoff_ready_action_count, 0);
+  assert.equal(report.summary.blocked_selected_action_count, 1);
+  assert.ok(
+    report.blocked_selected_actions[0].blockers.includes(
+      "title_colon_timestamp_profile_stale",
+    ),
+  );
 });
 
 test("executor preflight treats compact GTAVI titles as pronunciation-sensitive", async () => {

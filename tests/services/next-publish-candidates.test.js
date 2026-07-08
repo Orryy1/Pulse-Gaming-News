@@ -8923,6 +8923,41 @@ test("voice quality preflight blocks protected game-title pauses from colon titl
   );
 });
 
+test("voice quality preflight blocks stale pronunciation profiles for colon game titles even when text matches", async () => {
+  const result = await voiceQualityPreflightForStory({
+    id: "halo-title-profile-stale",
+    title: "Halo: Campaign Evolved Shows The Real Remake Test",
+    canonical_game: "Halo: Campaign Evolved",
+    tts_script: "Halo: Campaign Evolved just gave Xbox a real remake test.",
+    voice_quality_report: {
+      verdict: "PASS",
+      blockers: [],
+      warnings: [],
+      cadence: { spoken_wpm: 145, blockers: [], warnings: [] },
+    },
+    word_timestamps_payload: {
+      words: [
+        { word: "Halo", start: 0, end: 0.32 },
+        { word: "Campaign", start: 0.34, end: 0.62 },
+        { word: "Evolved", start: 0.63, end: 1.02 },
+      ],
+      meta: {
+        spoken_text: "Halo Campaign Evolved just gave Xbox a real remake test.",
+        transcript: "Halo Campaign Evolved just gave Xbox a real remake test.",
+        ttsPronunciationProfileVersion: "gta-safe-next-title-comma-v17",
+      },
+    },
+  });
+
+  assert.equal(result.result, "fail");
+  assert.ok(result.failures.includes("voice_pronunciation_profile_stale"));
+  assert.equal(result.evidence.title_colon_pronunciation_sensitive, true);
+  assert.equal(
+    result.evidence.expected_tts_pronunciation_profile_version,
+    TTS_PRONUNCIATION_PROFILE_VERSION,
+  );
+});
+
 test("voice quality preflight accepts protected brand phrase without internal pause", async () => {
   const result = await voiceQualityPreflightForStory({
     id: "pulse-cta-clean",

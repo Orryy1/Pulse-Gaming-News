@@ -971,13 +971,13 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 3.2],
+      ["opening_source_lock", "source_lock", 2.4],
       ["headline_card", "proof_card", 4.6],
       ["proof_primary", "proof_card", 4.2],
       ["proof_secondary", "proof_card", 4.2],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= 3.2));
+  assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 2.4 : 4.2)));
   assert.ok(windows.every((window) => window.duration_s <= 5.8));
 });
 
@@ -1020,7 +1020,7 @@ test("Studio V4 proof renderer omits unreadable overlay card windows that do not
     "proof_primary",
     "proof_secondary",
   ]);
-  assert.equal(windows.every((window) => window.duration_s >= 3.2), true);
+  assert.equal(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 2.4 : 4.2)), true);
   assert.equal(windows.every((window) => window.end_s <= 34.6), true);
 });
 
@@ -2056,7 +2056,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,3\.2\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,2\.4\)'/);
   assert.match(chain, /0x38BDF8@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });

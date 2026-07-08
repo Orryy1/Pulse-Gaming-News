@@ -929,6 +929,62 @@ test("goal dry-run publisher blocks HyperFrames cards that are too fast to read"
   );
 });
 
+test("goal dry-run publisher blocks source cards that overstay and kill pacing", () => {
+  const { blockers, evidence } = require("../../lib/goal-dry-run-publisher").hyperframesReadableDwellEvidence({
+    renderManifest: {
+      final_publish_render: true,
+      rendered_duration_s: 48,
+      clips: 8,
+      hyperframes_premium_shell_required: true,
+      hyperframes_card_count: 4,
+      overlay_card_windows: [
+        {
+          id: "opening_source_lock",
+          kind: "source_lock",
+          text: "SOURCE: ROCKSTAR GAMES",
+          start_s: 0.5,
+          end_s: 6.5,
+          duration_s: 6,
+        },
+        {
+          id: "argument_card",
+          kind: "proof_card",
+          text: "THE PRICE DEBATE JUST GOT LOUDER",
+          start_s: 8,
+          end_s: 20,
+          duration_s: 12,
+        },
+      ],
+    },
+    renderStory: {
+      video_clips: [
+        {
+          id: "source-card-render",
+          media_kind: "source_card",
+          source_family: "rockstar_games_source_card",
+          duration_s: 6,
+        },
+      ],
+    },
+  });
+
+  assert.ok(blockers.includes("hyperframes:source_card_dwell_too_long"));
+  assert.ok(blockers.includes("visual_evidence:source_card_dwell_too_long"));
+  assert.deepEqual(evidence.hyperframes_too_slow_source_card_windows, [
+    {
+      id: "opening_source_lock",
+      kind: "source_lock",
+      start_s: 0.5,
+      end_s: 6.5,
+      duration_s: 6,
+      text: "SOURCE: ROCKSTAR GAMES opening_source_lock",
+      minimum_required_duration_s: 1.2,
+      maximum_allowed_duration_s: 2.8,
+      source: "",
+    },
+  ]);
+});
+
 test("goal dry-run publisher blocks HyperFrames cards that omit readable dwell evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-missing-dwell-"));
   const storyPackage = await makeStoryPackage(
@@ -1088,7 +1144,7 @@ test("goal dry-run publisher blocks unreadable source and proof cards even witho
   assert.equal(plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_card_count, 0);
   assert.equal(
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_too_fast_card_shots.length,
-    2,
+    1,
   );
 });
 
@@ -1116,7 +1172,7 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         },
         overlay_card_windows: [],
         card_visible_windows: [
-          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 12, duration_s: 12 },
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.4, duration_s: 2.4 },
           { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 24.3, duration_s: 12 },
           { id: "proof_primary", kind: "proof_card", start_s: 24.6, end_s: 36.6, duration_s: 12 },
         ],
@@ -1325,9 +1381,10 @@ test("goal dry-run publisher blocks unreadable rendered source cards without Hyp
   assert.equal(plan.summary.blocked_story_count, 1);
   assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:source_card_dwell_too_long"));
   assert.equal(
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.length,
-    2,
+    1,
   );
 });
 
@@ -1496,11 +1553,12 @@ test("goal dry-run publisher blocks legacy 6.5s rendered HyperFrames card window
   assert.equal(plan.summary.blocked_story_count, 1);
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
   assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:source_card_dwell_too_long"));
   assert.deepEqual(
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
       (window) => window.duration_s,
     ),
-    [6.5, 6.5, 6.5],
+    [6.5, 6.5],
   );
 });
 

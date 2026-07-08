@@ -1481,7 +1481,7 @@ test("candidate supply trusts a current full GREEN proof package over stale bloc
         },
       },
       overlay_card_windows: [
-        { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 12, duration_s: 12 },
+        { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.4, duration_s: 2.4 },
         { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 24.3, duration_s: 12 },
       ],
     },
@@ -1661,6 +1661,99 @@ test("current proof package evidence rejects too-fast visible card windows", asy
       repeat_guard: { status: "pass" },
       overlay_card_windows: [
         { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 6.1, duration_s: 2.1 },
+      ],
+    });
+    await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+      story_id: storyId,
+      voice_status: "materialized",
+      word_timestamp_count: 80,
+      word_timestamp_source: "local_whisper_word_alignment",
+      timestamp_whisper_alignment: {
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    });
+    await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+      story_id: storyId,
+      status: "ready",
+      repeat_guard: { status: "pass" },
+      clips: Array.from({ length: 5 }, (_, index) => ({
+        id: `clip-${index + 1}`,
+        source_family: `official_${index + 1}_window_12_5`,
+        base_source_family: `official_${index + 1}`,
+        materialized: true,
+        counts_towards_motion_readiness: true,
+      })),
+    });
+    await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+      story_id: storyId,
+      verdict: "GREEN",
+      status: "pass",
+      hard_failures: [],
+      scores: {
+        overall_media_house_score: 95,
+        first_3_seconds_score: 95,
+        competitor_parity_score: 95,
+      },
+    });
+
+    const proof = currentProofPackageEvidence({
+      id: storyId,
+      source: {
+        artifact_dir: artifactDir,
+        exported_path: videoPath,
+      },
+    });
+    assert.equal(proof, null);
+  } finally {
+    await fs.remove(artifactDir);
+  }
+});
+
+test("current proof package evidence rejects overlong source-lock windows", async () => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-proof-long-source-card-"));
+  const storyId = "long-source-card-proof";
+  const videoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const now = "2026-06-24T12:00:00.000Z";
+  try {
+    await fs.outputFile(videoPath, "fake mp4 bytes");
+    await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+      story_id: storyId,
+      verdict: "GREEN",
+      status: "GREEN",
+      can_auto_publish: true,
+      enabled_platform_outputs: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      reason_codes: [],
+      generated_at: now,
+    });
+    await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+      publish_status: "GREEN",
+      can_auto_publish: true,
+      outputs: {
+        youtube_shorts: {},
+        instagram_reels: {},
+        facebook_reels: {},
+      },
+    });
+    await fs.writeJson(path.join(artifactDir, "coherence_report.json"), {
+      result: "pass",
+      verdict: "pass",
+      failures: [],
+      blockers: [],
+    });
+    await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+      story_id: storyId,
+      final_publish_render: true,
+      output_path: videoPath,
+      generated_at: now,
+      quality_gate_status: "post_render_forensics_passed",
+      post_render_forensic_result: "pass",
+      post_render_forensic_blockers: [],
+      clips: 7,
+      repeat_guard: { status: "pass", min_card_duration_s: 12 },
+      overlay_card_windows: [
+        { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 6, duration_s: 6 },
+        { id: "headline_card", kind: "proof_card", start_s: 7, end_s: 19, duration_s: 12 },
       ],
     });
     await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {

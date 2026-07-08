@@ -301,7 +301,7 @@ test("goal production render materializer renders ready jobs and writes a final 
     manifest.overlay_card_windows.every((window) => {
       const kind = String(window.kind || window.id || "").toLowerCase();
       const duration = Number(window.duration_s);
-      if (/source/.test(kind)) return duration >= 3.2 && duration <= 3.2;
+      if (/source/.test(kind)) return duration >= 2.4 && duration <= 2.4;
       return duration >= 4.2 && duration <= 5.8;
     }),
   );
@@ -747,7 +747,7 @@ test("goal production render materializer preserves nested actual card-visible w
           card_visible_windows: actualWindows,
           scenes: [
             { index: 0, path: "direct-a.mp4", baseSourceKey: "direct_a", durationS: 5 },
-            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 12 },
+            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 2.4 },
           ],
         },
       };
@@ -3311,8 +3311,8 @@ test("goal production render materializer recovers direct footage when materiali
       counts_towards_motion_readiness: true,
       owned_explainer_visual_plan: true,
       materialized: true,
-      durationS: 12,
-      ...(kind === "source_card" ? { minimum_readable_duration_s: 12 } : {}),
+      durationS: kind === "source_card" ? 2.4 : 12,
+      ...(kind === "source_card" ? { minimum_readable_duration_s: 1.2 } : {}),
     };
   });
   await Promise.all(ownedClips.map((clip, index) => fs.outputFile(clip.path, Buffer.alloc(2048, 90 + index))));

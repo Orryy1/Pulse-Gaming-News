@@ -22,6 +22,7 @@ const { runScriptCoherenceQa } = require("./lib/script-coherence-qa");
 const {
   buildSourceBoundFallbackScript,
 } = require("./lib/source-bound-script-writer");
+const { applyGamingPronunciation } = require("./lib/tts-pronunciation");
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");
@@ -1011,7 +1012,7 @@ function trySourceBoundFallbackScript(story = {}, channel = {}, options = {}) {
 function cleanForTTS(text) {
   if (!text) return "";
   return (
-    text
+    applyGamingPronunciation(text)
       .replace(/\[PAUSE\]/gi, ", ")
       .replace(/\[VISUAL:[^\]]*\]/gi, "")
       .replace(/\.{2,}/g, ".") // collapse ellipses to single period
@@ -1031,6 +1032,7 @@ function cleanForTTS(text) {
       .replace(/\bIP\b/g, "I P")
       .replace(/\bPS6\b/g, "P S 6")
       .replace(/\bPS5\b/g, "P S 5")
+      .replace(/(\w)-(\w)/g, "$1 $2")
       .replace(/\s+/g, " ")
       .trim()
   );

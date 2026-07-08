@@ -255,7 +255,15 @@ test("colon-separated game titles lose the TTS pause but keep the title words", 
     "The Expanse Osiris Reborn shows real gameplay.",
   );
   assert.equal(
+    applyGamingPronunciation("The Expanse / Osiris Reborn shows real gameplay."),
+    "The Expanse Osiris Reborn shows real gameplay.",
+  );
+  assert.equal(
     applyGamingPronunciation("Doom: The Dark Ages Revelations should not sound split."),
+    "Doom The Dark Ages Revelations should not sound split.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Doom: The Dark Ages - Revelations should not sound split."),
     "Doom The Dark Ages Revelations should not sound split.",
   );
   assert.equal(

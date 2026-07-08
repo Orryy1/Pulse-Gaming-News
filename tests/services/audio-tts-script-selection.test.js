@@ -241,6 +241,18 @@ test("cleanForTTS: removes title-colon pauses inside canonical game names", () =
     cleanForTTS("Ninja Gaiden 4: Launch Trailer gives Xbox one more action test."),
     "Ninja Gaiden 4 Launch Trailer gives Xbox one more action test.",
   );
+  assert.equal(
+    cleanForTTS("Halo / Campaign Evolved just gave Xbox a real remake test."),
+    "Halo Campaign Evolved just gave Xbox a real remake test.",
+  );
+  assert.equal(
+    cleanForTTS("The Expanse / Osiris Reborn finally showed real gameplay."),
+    "The Expanse Osiris Reborn finally showed real gameplay.",
+  );
+  assert.equal(
+    cleanForTTS("DOOM: The Dark Ages - Revelations just made the DLC pitch louder."),
+    "DOOM The Dark Ages Revelations just made the DLC pitch louder.",
+  );
 });
 
 test("cleanForTTS: removes hyphen pause from Gears of War E-Day while keeping the title together", () => {

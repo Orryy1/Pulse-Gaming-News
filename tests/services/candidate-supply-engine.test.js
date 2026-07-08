@@ -867,6 +867,139 @@ test("candidate supply demotes motion-only repeat-risk prospects with unknown so
   assert.match(formatCandidateSupplyMonitorDiscord(report), /Source metadata repair: 1/);
 });
 
+test("candidate supply joins matching story source metadata onto motion-ready prospects", () => {
+  const now = new Date("2026-07-07T09:00:00.000Z");
+  const report = buildCandidateSupplyReport({
+    stories: [
+      {
+        id: "fresh-doom-motion-ready",
+        title: "Doom The Dark Ages Chain Spear Changes The Fight",
+        source_type: "rss",
+        source: "Bethesda",
+        url: "https://bethesda.net/news/doom-the-dark-ages-chain-spear",
+        source_published_at: "2026-07-07T07:30:00.000Z",
+        source_age_policy_hours: 168,
+      },
+    ],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 0, returned: 0, pending_audio: 0 },
+      candidates: [],
+    },
+    motionCapacityReports: [
+      {
+        packs: [
+          {
+            story_id: "fresh-doom-motion-ready",
+            title: "Doom The Dark Ages Chain Spear Changes The Fight",
+            readiness_status: "v4_motion_ready",
+            motion_ready: true,
+            current_motion_clips: 9,
+            required_motion_clips: 5,
+            current_motion_families: 9,
+            required_motion_families: 4,
+            direct_media_ready: 9,
+            actionable_direct_media_ready: 9,
+            blockers: [],
+          },
+        ],
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  const doom = report.priority_scorecards.find((item) => item.story_id === "fresh-doom-motion-ready");
+
+  assert.equal(doom.source_age_state, "fresh");
+  assert.equal(doom.source_safe, true);
+  assert.equal(doom.repeat_or_stale_risk, true);
+  assert.ok(doom.repeat_or_stale_risk_reasons.includes("not_scheduler_candidate"));
+  assert.ok(doom.repeat_or_stale_risk_reasons.includes("publish_ready_false"));
+  assert.equal(doom.repeat_or_stale_risk_reasons.includes("source_age_unknown"), false);
+  assert.equal(doom.repeat_or_stale_risk_reasons.includes("source_safe_false"), false);
+  assert.equal(report.summary.motion_capacity_source_metadata_repairable_candidates, 0);
+  assert.equal(report.warnings.some((warning) => /^motion_ready_source_metadata_repair_required/.test(warning)), false);
+});
+
+test("candidate supply hydrates motion-ready prospects from proof-package source manifests", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-proof-source-"));
+  const storyId = "rss_proof_source_motion_ready";
+  const proofDir = path.join(
+    root,
+    "output",
+    "fresh-green-refill",
+    "2026-07-07-2048",
+    "goal-proof-batch",
+    "motion-hydrated",
+    storyId,
+  );
+  const motionPackPath = path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`);
+  await fs.ensureDir(proofDir);
+  await fs.ensureDir(path.dirname(motionPackPath));
+  await fs.writeJson(path.join(proofDir, "source_manifest.json"), {
+    story_id: storyId,
+    primary_source: {
+      name: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/07/07/proof-source-motion-ready/",
+      published_at: "2026-07-07T07:30:00.000Z",
+    },
+    source_age_policy_hours: 168,
+  });
+  await fs.writeJson(path.join(proofDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_title: "Proof Source Motion Ready Story",
+    source_published_at: "2026-07-07T07:30:00.000Z",
+  });
+
+  const now = new Date("2026-07-07T09:00:00.000Z");
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 0, returned: 0, pending_audio: 0 },
+      candidates: [],
+    },
+    motionCapacityReports: [
+      {
+        path: motionPackPath,
+        story_id: storyId,
+        status: "ready",
+        readiness: { status: "v4_motion_ready", blockers: [] },
+        clips: Array.from({ length: 5 }, (_, index) => ({
+          source_family: `official-family-${index}`,
+          media_kind: "direct_video",
+          counts_towards_motion_readiness: true,
+        })),
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  const scorecard = report.priority_scorecards.find((item) => item.story_id === storyId);
+  assert.equal(scorecard.title, "Proof Source Motion Ready Story");
+  assert.equal(scorecard.source_age_state, "fresh");
+  assert.equal(scorecard.source_safe, true);
+  assert.equal(scorecard.repeat_or_stale_risk_reasons.includes("source_age_unknown"), false);
+  assert.equal(scorecard.repeat_or_stale_risk_reasons.includes("source_safe_false"), false);
+  assert.equal(report.summary.motion_capacity_source_metadata_repairable_candidates, 0);
+});
+
 test("candidate supply does not recommend motion promotion when only motion-only repeat-risk prospects are repairable", () => {
   const now = new Date("2026-07-07T09:00:00.000Z");
   const candidateReport = {

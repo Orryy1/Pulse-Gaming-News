@@ -266,6 +266,18 @@ test("colon-separated game titles lose the TTS pause but keep the title words", 
     applyGamingPronunciation("S.T.A.L.K.E.R. 2: Heart of Chornobyl needs one clean title read."),
     "Stalker 2 Heart of Chornobyl needs one clean title read.",
   );
+  assert.equal(
+    applyGamingPronunciation("Halo\uFF1A Campaign Evolved has a demo."),
+    "Halo Campaign Evolved has a demo.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Pok\u00E9mon Legends: Z-A just got dated."),
+    "Pok\u00E9mon Legends Z-A just got dated.",
+  );
+  assert.equal(
+    applyGamingPronunciation("MARVEL T\u014Dkon: Fighting Souls needs one clean title read."),
+    "MARVEL T\u014Dkon Fighting Souls needs one clean title read.",
+  );
 });
 
 test("PlayStation hardware acronyms expand for local narration clarity", () => {

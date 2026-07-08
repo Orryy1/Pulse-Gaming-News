@@ -1072,6 +1072,90 @@ test("candidate supply hydrates motion-ready prospects from candidate-supply ref
   assert.equal(report.summary.motion_capacity_source_metadata_repairable_candidates, 0);
 });
 
+test("candidate supply carries hydrated source metadata on motion-only scorecards for local promotion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-motion-source-fields-"));
+  const storyId = "rss_motion_source_fields";
+  const proofDir = path.join(
+    root,
+    "output",
+    "candidate-supply",
+    "fresh-production-refill",
+    "2026-07-08-11",
+    "goal-proof-batch",
+    "motion-hydrated",
+    storyId,
+  );
+  const motionPackPath = path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`);
+  await fs.ensureDir(proofDir);
+  await fs.ensureDir(path.dirname(motionPackPath));
+  await fs.writeJson(path.join(proofDir, "source_manifest.json"), {
+    story_id: storyId,
+    title: "Motion Source Fields Story",
+    primary_source: {
+      name: "source_manifest",
+      type: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/07/08/motion-source-fields/",
+      published_at: "2026-07-08T10:00:00.000Z",
+    },
+    source_age_policy_hours: 168,
+    confirmed_claims: [
+      "Xbox Wire reports Motion Source Fields Story has official gameplay evidence.",
+    ],
+  });
+  await fs.writeJson(path.join(proofDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_title: "Motion Source Fields Story",
+    canonical_subject: "Motion Source Fields",
+    primary_source: "source_manifest",
+    primary_source_url: "https://news.xbox.com/en-us/2026/07/08/motion-source-fields/",
+    source_published_at: "2026-07-08T10:00:00.000Z",
+  });
+
+  const now = new Date("2026-07-08T11:00:00.000Z");
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 0, returned: 0, pending_audio: 0 },
+      candidates: [],
+    },
+    motionCapacityReports: [
+      {
+        path: motionPackPath,
+        story_id: storyId,
+        status: "ready",
+        readiness: { status: "v4_motion_ready", blockers: [] },
+        clips: Array.from({ length: 6 }, (_, index) => ({
+          source_family: `official-family-${index}`,
+          source_url: `https://example.com/motion-${index}.mp4`,
+          media_kind: "direct_video",
+          counts_towards_motion_readiness: true,
+        })),
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 1,
+      sourceSafeCandidates: 1,
+      v4ReadyCandidates: 1,
+      freshSourceBackedStories: 0,
+      publishWindows24h: 1,
+    },
+  });
+
+  const scorecard = report.priority_scorecards.find((item) => item.story_id === storyId);
+  assert.equal(scorecard.source_safe, true);
+  assert.equal(scorecard.source_name, "Xbox Wire");
+  assert.equal(scorecard.source_url, "https://news.xbox.com/en-us/2026/07/08/motion-source-fields/");
+  assert.equal(scorecard.source_published_at, "2026-07-08T10:00:00.000Z");
+  assert.equal(scorecard.primary_source.name, "Xbox Wire");
+  assert.equal(scorecard.primary_source.url, "https://news.xbox.com/en-us/2026/07/08/motion-source-fields/");
+  assert.equal(scorecard.canonical_subject, "Motion Source Fields");
+  assert.ok(scorecard.confirmed_claims.includes("Xbox Wire reports Motion Source Fields Story has official gameplay evidence."));
+  assert.equal(scorecard.direct_media_candidates.length, 6);
+});
+
 test("candidate supply does not let unrelated newer proof runs crowd out matching source proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-proof-crowdout-"));
   const storyId = "rss_candidate_supply_older_matching_proof";

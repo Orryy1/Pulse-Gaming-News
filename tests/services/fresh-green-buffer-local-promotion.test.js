@@ -224,6 +224,39 @@ test("fresh buffer promotion CLI is registered and defaults to overnight output"
   assert.match(args.outDir, /overnight-fresh-green-buffer$/);
 });
 
+test("fresh buffer promotion writes specific scripts for motion scorecard stories with colon titles", () => {
+  const canonical = buildCanonicalStoryManifest(
+    draftStory({
+      id: "rss_doom_chain_spear",
+      title: "Doom The Dark Ages Chain Spear Changes The Fight",
+      canonical_subject: "Doom: The Dark Ages",
+      canonical_game: "Doom: The Dark Ages",
+      selected_title: "Doom The Dark Ages Chain Spear Changes The Fight",
+      primary_source: {
+        name: "Slayers Club",
+        url: "https://slayersclub.bethesda.net/en-US/article/doom-the-dark-ages-revelations-available-now",
+        type: "official_publisher_news",
+      },
+      primary_source_url: "https://slayersclub.bethesda.net/en-US/article/doom-the-dark-ages-revelations-available-now",
+      source_published_at: "2026-07-08T08:00:00.000Z",
+      confirmed_claims: ["Slayers Club says DOOM: The Dark Ages Revelations is available now with Chain Spear combat."],
+      narration_script: "",
+      full_script: "",
+      tts_script: "",
+      script_source: "motion_capacity_source_hydrated",
+    }),
+    "2026-07-08T10:00:00.000Z",
+  );
+
+  assert.equal(canonical.canonical_subject, "DOOM: The Dark Ages");
+  assert.equal(canonical.script_source, "specific_motion_scorecard_script");
+  assert.match(canonical.full_script, /^DOOM: The Dark Ages just turned the Chain Spear/);
+  assert.match(canonical.full_script, /Watch the movement, not the finisher\./);
+  assert.match(canonical.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(canonical.full_script, /background noise|not every update deserves|watch signal/i);
+  assert.equal(canonical.script_coherence_result, "pass");
+});
+
 test("fresh buffer promotion preserves official direct media references in local artefacts", async () => {
   const story = draftStory({
     id: "rss_gta_vi_article_story",

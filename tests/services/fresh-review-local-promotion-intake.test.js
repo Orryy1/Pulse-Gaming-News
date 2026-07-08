@@ -321,6 +321,213 @@ test("fresh review local promotion intake rejects generic source-bound scaffolds
   assert.ok(report.repair_results[0].quality_failures.includes("local_intake:generic_player_question_script"));
 });
 
+test("fresh review local promotion intake falls back to hydrated motion-ready source scorecards", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [],
+    plan: {
+      summary: { selected_count: 0 },
+      source_bound_rewrite_work_orders: [],
+    },
+    motionScorecards: [
+      {
+        story_id: "rss_motion_ready_source_story",
+        title: "Marvel Rivals Jubilee Gameplay Has One Problem",
+        source: "motion_capacity_report",
+        source_safe: true,
+        source_age_state: "fresh",
+        age_hours: 6,
+        source_name: "GameSpot",
+        source_url: "https://www.gamespot.com/articles/marvel-rivals-jubilee-gameplay/",
+        source_published_at: "2026-07-08T08:00:00.000Z",
+        canonical_subject: "Marvel Rivals",
+        canonical_game: "Marvel Rivals",
+        confirmed_claims: [
+          "GameSpot reports Jubilee gameplay is now visible for Marvel Rivals.",
+        ],
+        motion_capacity: {
+          motion_ready: true,
+          operator_required: false,
+          current_motion_clips: 8,
+          current_motion_families: 8,
+        },
+        direct_media_candidates: [
+          {
+            direct_media_url: "https://cdn.example.com/jubilee-gameplay.mp4",
+            label: "Marvel Rivals Jubilee Gameplay",
+            source_family: "official_marvel_rivals_jubilee_gameplay",
+            source_type: "official_direct_media",
+          },
+        ],
+        repeat_or_stale_risk_reasons: ["not_scheduler_candidate", "publish_ready_false"],
+      },
+      {
+        story_id: "rss_motion_ready_source_story_duplicate",
+        title: "Marvel Rivals Jubilee Gameplay Has One Problem",
+        source: "motion_capacity_report",
+        source_safe: true,
+        source_age_state: "fresh",
+        age_hours: 6,
+        source_name: "GameSpot",
+        source_url: "https://www.gamespot.com/articles/marvel-rivals-jubilee-gameplay/",
+        source_published_at: "2026-07-08T08:00:00.000Z",
+        canonical_subject: "Marvel Rivals",
+        canonical_game: "Marvel Rivals",
+        motion_capacity: {
+          motion_ready: true,
+          operator_required: false,
+          current_motion_clips: 8,
+          current_motion_families: 8,
+        },
+        repeat_or_stale_risk_reasons: ["not_scheduler_candidate", "publish_ready_false"],
+      },
+      {
+        story_id: "rss_motion_ready_source_story_same_topic",
+        title: "Marvel Rivals Jubilee Gameplay Shows A Combat Problem",
+        source: "motion_capacity_report",
+        source_safe: true,
+        source_age_state: "fresh",
+        age_hours: 5,
+        source_name: "Polygon",
+        source_url: "https://www.polygon.com/gaming/marvel-rivals-jubilee-gameplay/",
+        source_published_at: "2026-07-08T09:00:00.000Z",
+        canonical_subject: "Marvel Rivals",
+        canonical_game: "Marvel Rivals",
+        motion_capacity: {
+          motion_ready: true,
+          operator_required: false,
+          current_motion_clips: 8,
+          current_motion_families: 8,
+        },
+        repeat_or_stale_risk_reasons: ["not_scheduler_candidate", "publish_ready_false"],
+      },
+      {
+        story_id: "rss_motion_ready_same_article_different_angle",
+        title: "Jubilee Could Change Marvel Rivals Team Fights",
+        source: "motion_capacity_report",
+        source_safe: true,
+        source_age_state: "fresh",
+        age_hours: 5,
+        source_name: "Polygon",
+        source_url: "https://www.gamespot.com/articles/marvel-rivals-jubilee-gameplay/",
+        source_published_at: "2026-07-08T09:00:00.000Z",
+        canonical_subject: "Jubilee",
+        canonical_game: "Marvel Rivals",
+        motion_capacity: {
+          motion_ready: true,
+          operator_required: false,
+          current_motion_clips: 8,
+          current_motion_families: 8,
+        },
+        repeat_or_stale_risk_reasons: ["not_scheduler_candidate", "publish_ready_false"],
+      },
+    ],
+    now: new Date("2026-07-08T14:00:00.000Z"),
+  });
+
+  assert.equal(report.summary.rows_seen, 0);
+  assert.equal(report.summary.motion_scorecards_seen, 4);
+  assert.equal(report.summary.motion_scorecard_promotion_count, 1);
+  assert.equal(report.summary.local_promotion_story_count, 1);
+  assert.equal(report.fresh_source_intake_stories[0].id, "rss_motion_ready_source_story");
+  assert.equal(report.fresh_source_intake_stories[0].primary_source.name, "GameSpot");
+  assert.equal(report.fresh_source_intake_stories[0].primary_source.url, "https://www.gamespot.com/articles/marvel-rivals-jubilee-gameplay/");
+  assert.equal(report.fresh_source_intake_stories[0].canonical_subject, "Marvel Rivals");
+  assert.equal(report.fresh_source_intake_stories[0].script_source, "motion_capacity_source_hydrated");
+  assert.equal(report.fresh_source_intake_stories[0].motion_capacity_intake_only, true);
+  assert.equal(report.fresh_source_intake_stories[0].direct_media_candidates.length, 1);
+  assert.equal(report.repair_results[0].output_story_ready, true);
+  assert.equal(report.repair_results[0].source, "motion_capacity_scorecard");
+  assert.equal(report.safety.no_db_mutation, true);
+  assert.equal(report.safety.no_publish_triggered, true);
+});
+
+test("fresh review local promotion intake replaces generic source manifest labels with publisher names", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [],
+    plan: {
+      summary: { selected_count: 0 },
+      source_bound_rewrite_work_orders: [],
+    },
+    motionScorecards: [
+      {
+        story_id: "fresh_xbox_game_pass_story",
+        title: "Game Pass Just Created An Install Fight",
+        source: "motion_capacity_report",
+        source_safe: true,
+        source_age_state: "fresh",
+        age_hours: 10,
+        source_name: "source_manifest",
+        source_url: "https://news.xbox.com/en-us/2026/07/08/game-pass-install-fight/",
+        source_published_at: "2026-07-08T07:00:00.000Z",
+        canonical_subject: "Xbox Game Pass",
+        canonical_game: "Xbox Game Pass",
+        primary_source: {
+          name: "source_manifest",
+          type: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/07/08/game-pass-install-fight/",
+          published_at: "2026-07-08T07:00:00.000Z",
+        },
+        confirmed_claims: [
+          "Xbox Wire reports the latest Game Pass wave includes large installs and player choice pressure.",
+        ],
+        motion_capacity: {
+          motion_ready: true,
+          operator_required: false,
+          current_motion_clips: 6,
+          current_motion_families: 6,
+        },
+        repeat_or_stale_risk_reasons: ["not_scheduler_candidate", "publish_ready_false"],
+      },
+    ],
+    now: new Date("2026-07-08T14:00:00.000Z"),
+  });
+
+  const story = report.fresh_source_intake_stories[0];
+  assert.equal(report.summary.local_promotion_story_count, 1);
+  assert.equal(story.primary_source.name, "Xbox Wire");
+  assert.equal(story.source_name, "Xbox Wire");
+  assert.equal(story.pinned_comment, "Source: Xbox Wire.");
+  assert.doesNotMatch(story.pinned_comment, /source_manifest/i);
+});
+
+test("fresh review local promotion intake prefers the actual source URL publisher over stale carried labels", async () => {
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [],
+    plan: {
+      summary: { selected_count: 0 },
+      source_bound_rewrite_work_orders: [],
+    },
+    motionScorecards: [
+      {
+        story_id: "rss_doom_slayersclub_story",
+        title: "Doom The Dark Ages Chain Spear Changes The Fight",
+        source: "motion_capacity_report",
+        source_safe: true,
+        source_age_state: "fresh",
+        age_hours: 8,
+        source_name: "Xbox Wire",
+        source_url: "https://slayersclub.bethesda.net/en-US/article/doom-the-dark-ages-revelations-available-now",
+        source_published_at: "2026-07-08T07:00:00.000Z",
+        canonical_subject: "Doom: The Dark Ages",
+        canonical_game: "Doom: The Dark Ages",
+        motion_capacity: {
+          motion_ready: true,
+          operator_required: false,
+          current_motion_clips: 6,
+          current_motion_families: 6,
+        },
+        repeat_or_stale_risk_reasons: ["not_scheduler_candidate", "publish_ready_false"],
+      },
+    ],
+    now: new Date("2026-07-08T14:00:00.000Z"),
+  });
+
+  const story = report.fresh_source_intake_stories[0];
+  assert.equal(report.summary.local_promotion_story_count, 1);
+  assert.equal(story.primary_source.name, "Slayers Club");
+  assert.equal(story.pinned_comment, "Source: Slayers Club.");
+});
+
 test("fresh review local promotion intake rejects source-angle drift from GTA trailer timing into preorder claims", async () => {
   const report = await buildFreshReviewLocalPromotionIntake({
     rows: [

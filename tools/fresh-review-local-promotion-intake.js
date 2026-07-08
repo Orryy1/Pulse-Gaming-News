@@ -2,6 +2,7 @@
 "use strict";
 
 const path = require("node:path");
+const fs = require("fs-extra");
 require("dotenv").config({ quiet: true, override: true });
 
 const {
@@ -11,6 +12,7 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "goal-contract", "fresh-review-local-promotion-intake");
+const DEFAULT_MOTION_SCORECARDS = path.join(ROOT, "output", "candidate-supply", "story_priority_scorecard.json");
 
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
@@ -19,6 +21,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     maxAgeHours: 7 * 24,
     minScore: 65,
     outDir: OUT,
+    motionScorecardsPath: DEFAULT_MOTION_SCORECARDS,
     help: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -33,6 +36,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg.startsWith("--min-score=")) args.minScore = Number(arg.slice("--min-score=".length));
     else if (arg === "--out-dir") args.outDir = path.resolve(ROOT, argv[++i] || args.outDir);
     else if (arg.startsWith("--out-dir=")) args.outDir = path.resolve(ROOT, arg.slice("--out-dir=".length));
+    else if (arg === "--motion-scorecards") args.motionScorecardsPath = path.resolve(ROOT, argv[++i] || args.motionScorecardsPath);
+    else if (arg.startsWith("--motion-scorecards=")) args.motionScorecardsPath = path.resolve(ROOT, arg.slice("--motion-scorecards=".length));
+    else if (arg === "--no-motion-scorecards") args.motionScorecardsPath = "";
   }
   if (!Number.isFinite(args.limit) || args.limit <= 0) args.limit = 6;
   if (!Number.isFinite(args.maxAgeHours) || args.maxAgeHours <= 0) args.maxAgeHours = 7 * 24;
@@ -52,8 +58,17 @@ function usage() {
     "  --max-age-hours <n>",
     "  --min-score <n>",
     "  --out-dir <path>",
+    "  --motion-scorecards <path>  Defaults to output/candidate-supply/story_priority_scorecard.json",
+    "  --no-motion-scorecards",
     "  --json",
   ].join("\n");
+}
+
+async function loadMotionScorecards(scorecardsPath) {
+  if (!scorecardsPath || !(await fs.pathExists(scorecardsPath))) return [];
+  const raw = await fs.readJson(scorecardsPath);
+  if (Array.isArray(raw)) return raw;
+  return raw.scorecards || raw.priority_scorecards || raw.rows || raw.candidates || [];
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -62,7 +77,8 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write(`${usage()}\n`);
     return { args, report: null, written: null };
   }
-  const report = await buildFreshReviewLocalPromotionIntake(args);
+  const motionScorecards = await loadMotionScorecards(args.motionScorecardsPath);
+  const report = await buildFreshReviewLocalPromotionIntake({ ...args, motionScorecards });
   const written = await writeFreshReviewLocalPromotionIntake(report, { outputDir: args.outDir });
   if (args.json) process.stdout.write(`${JSON.stringify({ report, written }, null, 2)}\n`);
   else {
@@ -90,5 +106,6 @@ if (require.main === module) {
 module.exports = {
   main,
   parseArgs,
+  loadMotionScorecards,
   usage,
 };

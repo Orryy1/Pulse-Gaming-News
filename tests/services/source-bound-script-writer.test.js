@@ -1357,6 +1357,7 @@ test("sourceNameFromUrl gives readable publisher names", () => {
   assert.equal(sourceNameFromUrl("https://www.gamespot.com/articles/example/"), "GameSpot");
   assert.equal(sourceNameFromUrl("https://blog.playstation.com/example"), "PlayStation Blog");
   assert.equal(sourceNameFromUrl("https://news.xbox.com/en-us/example"), "Xbox Wire");
+  assert.equal(sourceNameFromUrl("https://slayersclub.bethesda.net/en-US/article/example"), "Slayers Club");
   assert.equal(sourceNameFromUrl("https://youtu.be/PGqkjDoyI8o"), "YouTube");
   assert.equal(sourceNameFromUrl("https://www.youtube.com/watch?v=LBxjH-lZjEo"), "YouTube");
 });

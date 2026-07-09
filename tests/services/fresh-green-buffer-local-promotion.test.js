@@ -10,6 +10,7 @@ const {
   buildLocalPromotionRenderInputWorkOrder,
   buildCanonicalStoryManifest,
   buildFreshGreenBufferLocalPromotionReport,
+  buildLocalPromotionSegmentReferenceReport,
   buildSourceManifest,
   writeFreshGreenBufferLocalPromotionArtifacts,
 } = require("../../lib/fresh-green-buffer-local-promotion");
@@ -257,6 +258,41 @@ test("fresh buffer promotion writes specific scripts for motion scorecard storie
   assert.equal(canonical.script_coherence_result, "pass");
 });
 
+test("fresh buffer promotion preserves official storefront pages for motion discovery", () => {
+  const canonical = buildCanonicalStoryManifest(
+    draftStory({
+      id: "seed_buckshot_game_pass_20260708",
+      title: "Buckshot Roulette Just Turned Game Pass Into A Dare",
+      canonical_subject: "Buckshot Roulette",
+      approved_direct_media_url: "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/08/buckshot-roulette-xbox-game-pass/",
+        type: "official_platform_news",
+      },
+    }),
+    "2026-07-08T10:00:00.000Z",
+  );
+  const sourceManifest = buildSourceManifest(
+    draftStory({
+      id: "seed_buckshot_game_pass_20260708",
+      title: "Buckshot Roulette Just Turned Game Pass Into A Dare",
+      canonical_subject: "Buckshot Roulette",
+      approved_direct_media_url: "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/08/buckshot-roulette-xbox-game-pass/",
+        type: "official_platform_news",
+      },
+    }),
+    new Date("2026-07-08T10:00:00.000Z"),
+  );
+
+  assert.equal(canonical.official_source_pages[0].url, "https://store.steampowered.com/app/2835570/Buckshot_Roulette/");
+  assert.equal(sourceManifest.official_source_pages[0].official_source_url, "https://store.steampowered.com/app/2835570/Buckshot_Roulette/");
+  assert.equal(sourceManifest.direct_media_candidates.length, 0);
+});
+
 test("fresh buffer promotion preserves official direct media references in local artefacts", async () => {
   const story = draftStory({
     id: "rss_gta_vi_article_story",
@@ -308,6 +344,59 @@ test("fresh buffer promotion preserves official direct media references in local
   assert.equal(canonical.official_motion_references[0].source_family, "rockstar_gta_vi_trailer_2");
   assert.equal(rightsLedger.official_motion_references[0].source_family, "rockstar_gta_vi_trailer_2");
   assert.equal(footageInventory.official_motion_references[0].source_family, "rockstar_gta_vi_trailer_2");
+});
+
+test("fresh buffer promotion writes validator-ready official motion reference report", async () => {
+  const story = draftStory({
+    id: "rss_gta_vi_reference_report_story",
+    title: "GTA VI Launch Details Turn Into A Trust Test",
+    canonical_subject: "Grand Theft Auto VI",
+    canonical_game: "Grand Theft Auto VI",
+    selected_title: "GTA VI Launch Details Turn Into A Trust Test",
+    primary_source: {
+      name: "GameSpot",
+      url: "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+      type: "rss",
+    },
+    primary_source_url:
+      "https://www.gamespot.com/articles/gta-6-features-a-single-player-experience-at-least-at-launch/",
+    source_published_at: "2026-06-24T15:41:17.000Z",
+    direct_media_candidates: [
+      {
+        direct_media_url:
+          "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+        label: "Grand Theft Auto VI Trailer 2",
+        source_family: "rockstar_gta_vi_trailer_2",
+        source_type: "official_game_website_media_page",
+      },
+    ],
+    narration_script:
+      "GTA VI just turned launch wording into a trust test. GameSpot reports the game is being described around its single-player experience at launch. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [story],
+    generatedAt: "2026-06-24T16:00:00.000Z",
+  });
+  const referenceReport = buildLocalPromotionSegmentReferenceReport(report);
+
+  assert.equal(referenceReport.summary.stories, 1);
+  assert.equal(referenceReport.summary.total_references, 1);
+  assert.equal(referenceReport.summary.segment_validation_eligible_references, 1);
+  assert.equal(referenceReport.plans[0].story_id, "rss_gta_vi_reference_report_story");
+  assert.equal(
+    referenceReport.plans[0].references[0].source_url,
+    "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4",
+  );
+  assert.equal(referenceReport.plans[0].references[0].source_url_kind, "direct_video");
+  assert.equal(referenceReport.plans[0].references[0].segment_validation_eligible, true);
+  assert.equal(referenceReport.plans[0].references[0].downloads_allowed, false);
+  assert.equal(referenceReport.plans[0].references[0].allowed_render_use, "reference_only_by_default");
+
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-segment-ref-report-"));
+  const written = await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
+  const writtenReferenceReport = JSON.parse(fs.readFileSync(written.segmentReferenceReport, "utf8"));
+  assert.equal(writtenReferenceReport.plans[0].references[0].source_family, "rockstar_gta_vi_trailer_2");
 });
 
 test("fresh buffer canonical manifest keeps version numbers inside the first spoken line", () => {
@@ -912,6 +1001,7 @@ test("fresh buffer promotion maps current-news title subjects to source-search e
     ["rss_onimusha", "Onimusha's September Gamble Just Got Real", "Onimusha Way of the Sword just gave players the trailer that matters more than the nostalgia.", "Onimusha: Way of the Sword", "Capcom released a game overview trailer for Onimusha: Way of the Sword."],
     ["rss_diablo", "Diablo 4's New Season Has One Real Test", "Diablo 4's next season has a problem trailers alone cannot solve.", "Diablo IV", "Blizzard released official trailer material for Diablo IV Season of Death Awakening."],
     ["rss_dead_by_daylight", "Dead By Daylight Just Took A Weird Detour", "Dead by Daylight just took the kind of detour that either refreshes a live game or annoys its most loyal players.", "Dead by Daylight", "Behaviour Interactive released official trailer material for Dead by Daylight: The Life Road."],
+    ["rss_dune_awakening", "Dune Awakening Console Trailer Has A Footage Readability Test", "Dune Awakening finally has footage that puts the pitch under pressure.", "Dune: Awakening", "Funcom reports Dune Awakening console footage has a clear survival focus."],
   ];
   const report = buildFreshGreenBufferLocalPromotionReport({
     stories: cases.map(([id, title, script, , claim]) =>

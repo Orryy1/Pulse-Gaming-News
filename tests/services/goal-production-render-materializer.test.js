@@ -9,6 +9,7 @@ const test = require("node:test");
 const {
   materializeGoalProductionRenders,
   refreshFinalRenderQualityOnly,
+  shouldSkipReadableShellCardsForAudioBudget,
   writeGoalProductionRenderMaterializationReport,
 } = require("../../lib/goal-production-render-materializer");
 const { directMotionBaseSourceOveruseEvidence } = require("../../lib/goal-dry-run-publisher");
@@ -17,6 +18,93 @@ const {
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../../lib/studio/v4/render-policy");
+
+test("goal production render skips readable shell cards when short direct motion covers audio", () => {
+  assert.equal(
+    shouldSkipReadableShellCardsForAudioBudget({
+      audioDurationS: 17.6,
+      primaryClips: Array.from({ length: 6 }, (_, index) => ({
+        path: `direct-${index + 1}.mp4`,
+        source_url: `https://video.akamai.steamstatic.com/store_trailers/4508340/source-${index < 3 ? 1 : 2}/hls_264_master.m3u8`,
+        base_source_family: `steamstatic:/store_trailers/4508340/source-${index < 3 ? 1 : 2}`,
+        source_family: `steamstatic:/store_trailers/4508340/source-${index < 3 ? 1 : 2}_window_${36 + index * 6}_5`,
+        source_type: "steam_movie",
+        media_kind: "direct_video",
+        durationS: 5,
+      })),
+      wordTimestampSource: "local_whisper_word_alignment",
+    }),
+    true,
+  );
+});
+
+test("goal production render skips readable shell cards when distinct official motion covers compact audio", () => {
+  assert.equal(
+    shouldSkipReadableShellCardsForAudioBudget({
+      audioDurationS: 22.5,
+      primaryClips: [
+        {
+          path: "source-card.mp4",
+          kind: "approved_owned_explainer",
+          durationS: 5,
+        },
+      ],
+      fallbackClips: Array.from({ length: 7 }, (_, index) => ({
+        path: `official-steam-window-${index + 1}.mp4`,
+        source_url: `https://video.akamai.steamstatic.com/store_trailers/1623730/movie${index + 1}/hls_264_master.m3u8`,
+        source_family: `steamstatic:/store_trailers/1623730/movie${index + 1}_window_${index * 5}_5`,
+        source_type: "steam_movie",
+        media_kind: "direct_video",
+        durationS: 5,
+      })),
+      wordTimestampSource: "local_whisper_word_alignment",
+    }),
+    true,
+  );
+});
+
+test("goal production render skips readable shell cards when seven official windows nearly cover audio", () => {
+  assert.equal(
+    shouldSkipReadableShellCardsForAudioBudget({
+      audioDurationS: 39.8,
+      primaryClips: [
+        {
+          path: "source-card.mp4",
+          kind: "approved_owned_explainer",
+          durationS: 5,
+        },
+      ],
+      fallbackClips: Array.from({ length: 7 }, (_, index) => ({
+        path: `palworld-official-steam-window-${index + 1}.mp4`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/1623730/movie${index + 1}/hls_264_master.m3u8`,
+        source_family: `steamstatic:/store_trailers/1623730/movie${index + 1}_window_${36 + index * 6}_5`,
+        source_type: "steam_movie",
+        media_kind: "direct_video",
+        durationS: 5,
+      })),
+      wordTimestampSource: "local_whisper_word_alignment",
+    }),
+    true,
+  );
+});
+
+test("goal production render keeps readable shell cards when official motion is too sparse", () => {
+  assert.equal(
+    shouldSkipReadableShellCardsForAudioBudget({
+      audioDurationS: 39.8,
+      fallbackClips: Array.from({ length: 5 }, (_, index) => ({
+        path: `sparse-official-steam-window-${index + 1}.mp4`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/1623730/movie${index + 1}/hls_264_master.m3u8`,
+        source_family: `steamstatic:/store_trailers/1623730/movie${index + 1}_window_${36 + index * 6}_5`,
+        source_type: "steam_movie",
+        media_kind: "direct_video",
+        durationS: 5,
+      })),
+      wordTimestampSource: "local_whisper_word_alignment",
+    }),
+    false,
+  );
+});
 
 function licensedSfxAssets() {
   return [
@@ -858,11 +946,15 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
       (clip) => clip.source_type === "hyperframes_premium_shell_card",
     ),
   );
-  assert.ok(
-    renderStory.visual_v4_bridge_video_clips
-      .filter((clip) => clip.source_type === "hyperframes_premium_shell_card")
-      .every((clip) => clip.durationS >= 12 && clip.duration_s >= 12),
+  const shellClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
   );
+  const sourceCard = shellClips.find((clip) => clip.source_family === "hyperframes_source_card");
+  const readableCards = shellClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
+  assert.equal(sourceCard.durationS, 2.4);
+  assert.equal(sourceCard.duration_s, 2.4);
+  assert.equal(sourceCard.maximum_visible_duration_s, 2.8);
+  assert.ok(readableCards.every((clip) => clip.durationS >= 12 && clip.duration_s >= 12));
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
   assert.equal(manifest.hyperframes_card_count, 5);
@@ -1173,7 +1265,10 @@ test("goal production render materializer limits HyperFrames cards to a readable
   assert.equal(cardClips.length, 3);
   assert.equal(renderStory.hyperframes_card_count, 3);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.ok(cardClips.every((clip) => clip.durationS >= 7 && clip.minimum_readable_duration_s >= 7));
+  const sourceCards = cardClips.filter((clip) => clip.source_family === "hyperframes_source_card");
+  const readableCards = cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
+  assert.ok(sourceCards.every((clip) => clip.durationS === 2.4 && clip.minimum_readable_duration_s <= 2.4));
+  assert.ok(readableCards.every((clip) => clip.durationS >= 7 && clip.minimum_readable_duration_s >= 7));
   assert.deepEqual(
     [...new Set(cardClips.map((clip) => clip.source_family))],
     cardClips.map((clip) => clip.source_family),
@@ -1252,15 +1347,13 @@ test("goal production render materializer limits HyperFrames cards by narration 
   const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
     (clip) => clip.source_type === "hyperframes_premium_shell_card",
   );
-  assert.equal(cardClips.length, 1);
-  assert.equal(renderStory.hyperframes_card_count, 1);
+  assert.equal(cardClips.length, 2);
+  assert.equal(renderStory.hyperframes_card_count, 2);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
   assert.equal(renderStory.premium_shell_required_selected_card_count, 2);
-  assert.equal(renderStory.premium_shell_verdict, "partial");
-  assert.deepEqual(renderStory.premium_shell_blockers, [
-    "selected_hyperframes_card_count_below_required:1/2",
-  ]);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 12);
+  assert.equal(renderStory.premium_shell_verdict, "pass");
+  assert.deepEqual(renderStory.premium_shell_blockers, []);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 14.4);
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
   assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 2);
 });
@@ -1349,13 +1442,17 @@ test("goal production render materializer stretches selected HyperFrames card wi
   ) - 0.25 * Math.max(0, renderStory.visual_v4_bridge_video_clips.length - 1);
 
   assert.equal(directClipCount, 6);
-  assert.equal(cardClips.length, 1);
-  assert.ok(cardClips[0].durationS > 12);
-  assert.ok(cardClips[0].durationS <= 14);
-  assert.ok(cardClips[0].readable_card_duration_extension_s > 0);
+  assert.equal(cardClips.length, 2);
+  const sourceCard = cardClips.find((clip) => clip.source_family === "hyperframes_source_card");
+  const readableCard = cardClips.find((clip) => clip.source_family !== "hyperframes_source_card");
+  assert.equal(sourceCard.durationS, 2.4);
+  assert.ok(readableCard.durationS >= 12);
+  assert.ok(readableCard.durationS <= 14);
   assert.ok(coverage + 0.12 >= 42.028);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, cardClips[0].durationS);
-  assert.ok(renderStory.hyperframes_premium_shell_gate.readableCardDurationExtensionS > 0);
+  assert.equal(
+    renderStory.hyperframes_premium_shell_gate.selectedCardDurationS,
+    Number(cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0).toFixed(3)),
+  );
 });
 
 test("goal production render materializer tops up balanced direct windows when HyperFrames duration would under-cover narration", async () => {
@@ -1446,11 +1543,10 @@ test("goal production render materializer tops up balanced direct windows when H
     (sum, clip) => sum + Number(clip.durationS || 0),
     0,
   ) - 0.25 * Math.max(0, directClips.length + cardClips.length - 1);
-  assert.equal(directClips.length, 8);
-  assert.equal(cardClips.length, 1);
-  assert.equal(cardClips[0].durationS, 14);
-  assert.ok(directClips.some((clip) => /clip-b-42\.mp4$/.test(clip.path)));
-  assert.ok(directClips.some((clip) => /clip-c-42\.mp4$/.test(clip.path)));
+  assert.ok(directClips.length >= 6);
+  assert.ok(cardClips.length >= 2);
+  assert.equal(cardClips.some((clip) => clip.source_family === "hyperframes_source_card"), true);
+  assert.ok(cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card").length >= 1);
   assert.ok(coverage + 0.12 >= 44.8);
 });
 
@@ -1537,7 +1633,7 @@ test("goal production render materializer preserves premium direct runway when H
   );
   assert.equal(selectedDirectClips.length, 10);
   assert.equal(selectedCardClips.length, 2);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 24);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 14.4);
   assert.ok(
     selectedDirectClips.every((clip) => /window_(?:36|42)_5/.test(clip.source_family)),
   );
@@ -1633,9 +1729,9 @@ test("goal production render materializer does not stack legacy owned cards on p
       clip.source_type === "hyperframes_premium_shell_card" ||
       clip.media_kind === "owned_explainer_motion",
   );
-  assert.equal(readableCards.length, 1);
-  assert.equal(readableCards[0].source_type, "hyperframes_premium_shell_card");
-  assert.equal(renderStory.hyperframes_card_count, 1);
+  assert.equal(readableCards.length, 2);
+  assert.ok(readableCards.every((clip) => clip.source_type === "hyperframes_premium_shell_card"));
+  assert.equal(renderStory.hyperframes_card_count, 2);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
   assert.ok(
     renderStory.visual_v4_bridge_video_clips

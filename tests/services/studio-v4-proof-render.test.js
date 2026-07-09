@@ -843,6 +843,110 @@ test("Studio V4 proof renderer accepts equal source and planned scene durations"
   assert.ok(plan.scenes.every((scene) => scene.durationS === 6));
 });
 
+test("Studio V4 proof renderer reduces crossfade for exact-fit short direct clips", () => {
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    path: `doom-direct-clip-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_family: `doom_family_${index + 1}`,
+    durationS: 5,
+  }));
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 38.82,
+    xfadeS: 0.25,
+    maxSceneDurationS: 8,
+  });
+
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.blockers.includes("motion_scene_duration_exceeds_source_duration"), false);
+  assert.equal(plan.repeatFree, true);
+  assert.equal(plan.scenes.length, 8);
+  assert.equal(plan.xfadeS < 0.25, true);
+  assert.equal(plan.coveredDurationS + 0.12 >= 38.82, true);
+});
+
+test("Studio V4 proof renderer can use two windows per official trailer when needed for audio coverage", () => {
+  const clips = [
+    ...Array.from({ length: 2 }, (_, index) => ({
+      path: `palworld-trailer-a-window-${index + 1}.mp4`,
+      source_url: "https://video.fastly.steamstatic.com/store_trailers/1623730/1468980435/a9fa32ad1a1c432d89b07ac9da9bee6de0bb0054/1765943351/hls_264_master.m3u8",
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_family: `steamstatic:/store_trailers/1623730/1468980435_window_${36 + index * 12}_5`,
+      motion_family: `steamstatic:/store_trailers/1623730/1468980435_window_${36 + index * 12}_5`,
+      durationS: 5,
+    })),
+    ...Array.from({ length: 2 }, (_, index) => ({
+      path: `palworld-trailer-b-window-${index + 1}.mp4`,
+      source_url: "https://video.fastly.steamstatic.com/store_trailers/1623730/1650163623/c2756f6081e07a1b01e2b6ee3ebcc50e4f220512/1765944104/hls_264_master.m3u8",
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_family: `steamstatic:/store_trailers/1623730/1650163623_window_${36 + index * 12}_5`,
+      motion_family: `steamstatic:/store_trailers/1623730/1650163623_window_${36 + index * 12}_5`,
+      durationS: 5,
+    })),
+    ...Array.from({ length: 3 }, (_, index) => ({
+      path: `palworld-single-trailer-${index + 1}.mp4`,
+      source_url: `https://video.fastly.steamstatic.com/store_trailers/1623730/${2000000000 + index}/abcdefabcdefabcdefabcdefabcdefabcdefabcd/1765944${index}04/hls_264_master.m3u8`,
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_family: `steamstatic:/store_trailers/1623730/${2000000000 + index}_window_${42 + index * 6}_5`,
+      motion_family: `steamstatic:/store_trailers/1623730/${2000000000 + index}_window_${42 + index * 6}_5`,
+      durationS: 5,
+    })),
+  ];
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 22.5,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.equal(plan.scenes.length >= 5, true);
+});
+
+test("Studio V4 proof renderer uses extra short direct clips when source duration caps would under-cover audio", () => {
+  const sourceIds = [
+    "1468980435",
+    "1650163623",
+    "1835768144",
+    "768837",
+    "1468980435",
+    "1650163623",
+    "768837",
+    "1650163623",
+  ];
+  const clips = sourceIds.map((sourceId, index) => {
+    const windowStart = [36, 36, 48, 54, 48, 42, 60, 48][index];
+    return {
+      path: `palworld-window-${index + 1}.mp4`,
+      source_url: `https://video.fastly.steamstatic.com/store_trailers/1623730/${sourceId}/hash/hls_264_master.m3u8`,
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_family: `steamstatic:/store_trailers/1623730/${sourceId}_window_${windowStart}_5`,
+      motion_family: `steamstatic:/store_trailers/1623730/${sourceId}_window_${windowStart}_5`,
+      durationS: 5,
+    };
+  });
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 34.4,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.blockers.includes("motion_scene_duration_exceeds_source_duration"), false);
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.equal(plan.scenes.length, 8);
+});
+
 test("Studio V4 proof renderer keeps distinct official trailer windows when readable cards are present", () => {
   const directClips = Array.from({ length: 10 }, (_, index) => {
     const sourceIndex = Math.floor(index / 2) + 1;

@@ -2840,6 +2840,54 @@ test("goal batch package writes story-specific Albion Online scripts instead of 
   assert.ok(!qa.blockers.includes("generic_opener"), JSON.stringify(qa, null, 2));
 });
 
+test("goal batch package writes mass-audience scripts for fresh Steam launch stories", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "seed_nte_steam_launch_20260708",
+      title: "NTE: Neverness to Everness launches on Steam with a new open-world city trailer",
+      canonical_subject: "NTE: Neverness to Everness",
+      canonical_game: "NTE: Neverness to Everness",
+      source_type: "official",
+      source_name: "Steam",
+      primary_source: "Steam",
+      article_url: "https://store.steampowered.com/app/4508340/NTE_Neverness_to_Everness/",
+      source_published_at: "2026-07-07T00:00:00.000Z",
+      freshness_gate: "pass",
+      confirmed_claims: ["Steam lists NTE: Neverness to Everness as live on July 7, 2026"],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.canonical_subject, "NTE: Neverness to Everness");
+  assert.equal(prepared.public_title, "NTE: Neverness to Everness Has A Live City Test");
+  assert.equal(prepared.suggested_thumbnail_text, "NTE LIVE CITY TEST");
+  assert.doesNotMatch(prepared.public_title, /Source-Proof Risk|Footage Readability Test|source-proof/i);
+  assert.doesNotMatch(prepared.public_title, /Release-Date Fight|Dodged/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /has to answer one simple thing|why should players care now|Steam says Steam|named source is only useful|gives that choice teeth|watch pile|source-backed update/i,
+  );
+  assert.match(prepared.full_script, /^NTE: Neverness to Everness/i);
+  assert.match(prepared.full_script, /Steam lists it as live on July 7, 2026/i);
+  assert.match(prepared.full_script, /open-world|city|live/i);
+  assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+
+  const qa = buildViralScriptIntelligence({
+    story: { ...prepared, title: prepared.public_title },
+    script: prepared.full_script,
+  });
+  assert.notEqual(qa.verdict, "rewrite_required", JSON.stringify(qa, null, 2));
+  assert.ok(!qa.blockers.includes("producer_scaffold_language"), JSON.stringify(qa, null, 2));
+  assert.ok(!qa.blockers.includes("generic_player_test_template"), JSON.stringify(qa, null, 2));
+
+  const pack = buildGoalProofPackage({ story: prepared, generatedAt: "2026-07-08T12:00:00.000Z" });
+  assert.equal(pack.canonical_story_manifest.public_title, "NTE: Neverness to Everness Has A Live City Test");
+  assert.equal(pack.canonical_story_manifest.selected_title, "NTE: Neverness to Everness Has A Live City Test");
+  assert.equal(pack.canonical_story_manifest.suggested_thumbnail_text, "NTE LIVE CITY TEST");
+  assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Release-Date Fight|Dodged/i);
+});
+
 test("goal batch package compacts Marvel Rivals Jubilee subjects before public render QA", () => {
   const prepared = prepareStoryForGoalProof(
     {

@@ -308,6 +308,25 @@ test("colon-separated game titles lose the TTS pause but keep the title words", 
   );
 });
 
+test("two-part colon game titles lose the TTS pause without flattening source labels", () => {
+  assert.equal(
+    applyGamingPronunciation("Marathon: Durandal needs one clean title read."),
+    "Marathon Durandal needs one clean title read.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Fable: Albion finally has footage players can judge."),
+    "Fable Albion finally has footage players can judge.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Source: Xbox Wire says the demo is live."),
+    "Source: Xbox Wire says the demo is live.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Platform: PlayStation 5 is listed on the store page."),
+    "Platform: PlayStation 5 is listed on the store page.",
+  );
+});
+
 test("PlayStation hardware acronyms expand for local narration clarity", () => {
   assert.equal(
     applyGamingPronunciation("PS5 prices changed and PS5 Pro moved too."),

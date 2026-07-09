@@ -829,6 +829,30 @@ test("source-bound fallback treats system patch notes as concrete player-impact 
   assert.ok(quality.viral_score >= 75, JSON.stringify(quality, null, 2));
 });
 
+test("source-bound fallback treats Game Pass version updates as access stories, not patch notes", () => {
+  const story = {
+    id: "seed_palworld_10_game_pass_20260708",
+    title: "Palworld 1.0 Is About To Test Its Whole Comeback",
+    source_type: "rss",
+    subreddit: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/07/07/xbox-game-pass-july-2026-wave-1/",
+    source_name: "Xbox Wire",
+  };
+
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "Xbox Wire",
+    runtimeProfile: SHORT_LOCAL_PROFILE,
+    sourceMaterial:
+      "Xbox Wire says Palworld 1.0 is a Game Pass update on July 10, 2026. Pocketpair says Palworld is exiting Early Access with Version 1.0 on July 10, 2026.",
+  });
+
+  assert.ok(script);
+  assert.match(script.full_script, /^Palworld 1\.0\b/);
+  assert.match(script.full_script, /Game Pass|July 10, 2026|comeback|reinstall|second launch/i);
+  assert.doesNotMatch(script.full_script, /system update|patch notes|available now|is live|housekeeping/i);
+  assert.doesNotMatch(script.full_script, /Palworld 1\.0 1\.0/i);
+});
+
 test("source-bound fallback source does not carry internal analyst-note phrases", () => {
   assert.doesNotMatch(
     SOURCE,

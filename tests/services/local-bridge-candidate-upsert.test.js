@@ -166,10 +166,29 @@ async function fixture() {
     warnings: ["package_quality_blocks_publish"],
   });
   await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
-    verdict: "GREEN",
-    status: "pass",
+    verdict: "RED",
+    status: "fail",
     hard_failures: [],
-    scores: { overall_media_house_score: 91 },
+    scores: {
+      overall_media_house_score: 91,
+      competitor_parity_score: 84,
+      first_3_seconds_score: 88,
+      title_strength_score: 90,
+      script_punch_score: 87,
+      motion_density_score: 86,
+      mobile_readability_score: 92,
+      source_lock_score: 100,
+    },
+    thresholds: {
+      overall_media_house_score: 78,
+      competitor_parity_score: 72,
+      first_3_seconds_score: 70,
+      title_strength_score: 70,
+      script_punch_score: 70,
+      motion_density_score: 70,
+      mobile_readability_score: 70,
+      source_lock_score: 70,
+    },
   });
   await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
     verdict: "viral_ready",
@@ -238,7 +257,11 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.publish_verdict.can_auto_publish, true);
   assert.equal(candidate.publish_verdict.local_bridge_repaired_from_stale_verdict, true);
   assert.equal(candidate.publish_verdict.original_publish_verdict.verdict, "RED");
+  assert.equal(candidate.pulse_media_house_score.verdict, "GREEN");
+  assert.equal(candidate.pulse_media_house_score.status, "pass");
+  assert.equal(candidate.pulse_media_house_score.local_bridge_repaired_from_stale_media_house_score, true);
   assert.ok(candidate.local_bridge_validation.warnings.includes("stale_publish_verdict_ignored_after_current_package_repair"));
+  assert.ok(candidate.local_bridge_validation.warnings.includes("stale_media_house_score_ignored_after_current_package_repair"));
   assert.equal(candidate.local_bridge_validation.verdict, "pass");
   assert.equal(candidate.local_bridge_validation.evidence.render_bytes, 600_000);
 });

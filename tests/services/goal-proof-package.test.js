@@ -1451,6 +1451,37 @@ test("goal proof package falls back to story source evidence when governance evi
   assert.deepEqual(pack.claim_inventory.confirmed, story.confirmed_claims);
 });
 
+test("goal proof package preserves official storefront pages for later motion discovery", () => {
+  const story = greenStory();
+  story.id = "buckshot-storefront-source-proof";
+  story.title = "Buckshot Roulette Just Turned Game Pass Into A Dare";
+  story.canonical_subject = "Buckshot Roulette";
+  story.canonical_game = "Buckshot Roulette";
+  story.primary_source = "Xbox Wire";
+  story.source_name = "Xbox Wire";
+  story.primary_source_url = "https://news.xbox.com/en-us/2026/07/08/buckshot-roulette-xbox-game-pass/";
+  story.source_published_at = "2026-07-08T00:00:00.000Z";
+  story.approved_direct_media_url = "https://store.steampowered.com/app/2835570/Buckshot_Roulette/";
+  story.direct_media_candidates = [];
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-08T10:00:00.000Z",
+  });
+
+  assert.equal(pack.source_manifest.direct_media_url_if_available, null);
+  assert.equal(pack.source_manifest.direct_media_candidates.length, 0);
+  assert.equal(
+    pack.source_manifest.official_source_pages[0].official_source_url,
+    "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
+  );
+  assert.equal(
+    pack.source_manifest.primary_source.official_source_pages[0].official_source_url,
+    "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
+  );
+});
+
 test("goal proof package turns official direct media into trusted footage intake references", () => {
   const story = {
     id: "halo-direct-media-only-proof",

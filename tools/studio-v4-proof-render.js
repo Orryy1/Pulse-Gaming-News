@@ -673,10 +673,23 @@ function balancedWindowRepeatAllowances(clips = []) {
   }
   const allowances = new Map();
   const distinctRoots = counts.size;
+  if (distinctRoots === 2 && total >= 6) {
+    const balancedTwoRootPool = [...counts.values()].every((count) => count >= 3);
+    if (balancedTwoRootPool) {
+      for (const [key] of counts.entries()) {
+        allowances.set(key, 3);
+      }
+    }
+    return allowances;
+  }
   if (distinctRoots < 4) return allowances;
   for (const [key, count] of counts.entries()) {
     const share = count / total;
-    if (count <= 2 && share <= 0.25) {
+    if (count === 3 && total >= 8 && share <= 0.38) {
+      allowances.set(key, count);
+      continue;
+    }
+    if (count <= 2 && share <= 0.34) {
       allowances.set(key, count);
     }
   }
@@ -958,12 +971,38 @@ function buildClipScenePlan({
   maxScenes = DEFAULT_DIRECT_CLIP_MAX_SCENES,
   allowClipReuse = false,
 } = {}) {
-  const maxSceneLimit = Math.max(1, Math.round(Number(maxScenes) || DEFAULT_DIRECT_CLIP_MAX_SCENES));
+  let maxSceneLimit = Math.max(1, Math.round(Number(maxScenes) || DEFAULT_DIRECT_CLIP_MAX_SCENES));
   const cleanEntries = [];
   const seen = new Set();
   const seenDirectBaseSources = new Map();
   const windowRepeatAllowances = allowClipReuse === true ? new Map() : balancedWindowRepeatAllowances(clips);
   const skippedDuplicateBaseSources = [];
+  const duration = Math.max(1, Number(durationS) || 1);
+  const maxDwell = Number(maxSceneDurationS);
+  if (Number.isFinite(maxDwell) && maxDwell > xfadeS + 0.1) {
+    let sourceCappedCoverageS = 0;
+    let sourceCappedCount = 0;
+    const seenSourceCapPaths = new Set();
+    for (const clip of clips.filter(Boolean)) {
+      const clipPath = sceneClipPath(clip);
+      const key = String(clipPath).trim().toLowerCase();
+      if (!key || seenSourceCapPaths.has(key)) continue;
+      seenSourceCapPaths.add(key);
+      const sourceDuration = sceneClipSourceDurationS(clip);
+      const usableDuration = Math.min(
+        maxDwell,
+        Number.isFinite(sourceDuration) ? sourceDuration : maxDwell,
+      );
+      sourceCappedCoverageS = Number(
+        (sourceCappedCoverageS + usableDuration - (sourceCappedCount > 0 ? xfadeS : 0)).toFixed(3),
+      );
+      sourceCappedCount += 1;
+      if (sourceCappedCoverageS + 0.12 >= duration) break;
+    }
+    if (sourceCappedCoverageS + 0.12 >= duration) {
+      maxSceneLimit = Math.max(maxSceneLimit, sourceCappedCount);
+    }
+  }
   for (const clip of clips.filter(Boolean)) {
     const clipPath = sceneClipPath(clip);
     const key = String(clipPath).trim().toLowerCase();
@@ -1015,9 +1054,38 @@ function buildClipScenePlan({
       skippedDuplicateBaseSources,
     };
   }
-  const duration = Math.max(1, Number(durationS) || 1);
+  const repeatFree = allowClipReuse !== true;
+  if (
+    repeatFree &&
+    cleanEntries.length > 1 &&
+    cleanEntries.every((entry) => !entry.readableCardKind)
+  ) {
+    const rawSourceCoverageS = Number(
+      cleanEntries
+        .reduce((sum, entry) => {
+          const sourceDuration = Number.isFinite(entry.sourceDurationS)
+            ? entry.sourceDurationS
+            : maxDwell;
+          const usableDuration =
+            Number.isFinite(maxDwell) && maxDwell > 0
+              ? Math.min(maxDwell, sourceDuration)
+              : sourceDuration;
+          return sum + (Number.isFinite(usableDuration) ? usableDuration : 0);
+        }, 0)
+        .toFixed(3),
+    );
+    const transitionCount = cleanEntries.length - 1;
+    const currentTransitionLossS = Number((xfadeS * transitionCount).toFixed(3));
+    const currentCoveredS = Number((rawSourceCoverageS - currentTransitionLossS).toFixed(3));
+    if (rawSourceCoverageS + 0.12 >= duration && currentCoveredS + 0.12 < duration) {
+      const maxTransitionLossS = Math.max(0, rawSourceCoverageS - duration + 0.08);
+      const fittedXfadeS = Number((maxTransitionLossS / transitionCount).toFixed(3));
+      if (Number.isFinite(fittedXfadeS) && fittedXfadeS >= 0.04 && fittedXfadeS < xfadeS) {
+        xfadeS = fittedXfadeS;
+      }
+    }
+  }
   let requiredCount = cleanEntries.length;
-  const maxDwell = Number(maxSceneDurationS);
   const readableDeck =
     cleanEntries.filter((entry) => entry.readableCardKind).length >= 3 &&
     cleanEntries.filter((entry) => entry.readableCardKind).length / cleanEntries.length >= 0.4;
@@ -1027,8 +1095,28 @@ function buildClipScenePlan({
       ? Math.min(maxSceneLimit, dwellRequiredCount)
       : Math.max(cleanEntries.length, Math.min(maxSceneLimit, dwellRequiredCount));
   }
+  if (Number.isFinite(maxDwell) && maxDwell > xfadeS + 0.1) {
+    let sourceCappedCoverageS = 0;
+    let sourceCappedRequiredCount = null;
+    for (let index = 0; index < Math.min(cleanEntries.length, maxSceneLimit); index += 1) {
+      const entry = cleanEntries[index];
+      const sourceDuration = Number.isFinite(entry.sourceDurationS)
+        ? entry.sourceDurationS
+        : maxDwell;
+      const usableDuration = Math.min(maxDwell, sourceDuration);
+      sourceCappedCoverageS = Number(
+        (sourceCappedCoverageS + usableDuration - (index > 0 ? xfadeS : 0)).toFixed(3),
+      );
+      if (sourceCappedCoverageS + 0.12 >= duration) {
+        sourceCappedRequiredCount = index + 1;
+        break;
+      }
+    }
+    if (sourceCappedRequiredCount != null) {
+      requiredCount = Math.max(requiredCount, sourceCappedRequiredCount);
+    }
+  }
   const blockers = [];
-  const repeatFree = allowClipReuse !== true;
   const repeatedBaseSources = repeatFree ? repeatedSceneBaseSources(cleanEntries) : [];
   if (repeatFree && repeatedBaseSources.length) {
     blockers.push("direct_motion_base_source_repeated");

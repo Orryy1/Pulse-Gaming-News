@@ -237,6 +237,76 @@ test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concret
   assert.equal(script.coherence.result, "pass");
 });
 
+test("fresh refill viewer script preserves Palworld price source and does not invent Game Pass", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "seed_palworld_price_20260709",
+      title: "Palworld 1.0 Just Dodged The Price Backlash",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Eurogamer",
+        url: "https://www.eurogamer.net/palworld-full-release-price",
+        type: "rss",
+        published_at: "2026-07-08T16:00:00.000Z",
+      },
+      current_script:
+        "Palworld just avoided the easiest way to anger its comeback crowd. Eurogamer reports Pocketpair will not raise the price for the 1.0 launch.",
+    },
+    manifest: {
+      story_id: "seed_palworld_price_20260709",
+      canonical_subject: "Palworld",
+      canonical_game: "Palworld",
+      primary_source: "Eurogamer",
+      primary_source_url: "https://www.eurogamer.net/palworld-full-release-price",
+      confirmed_claims: [
+        "Eurogamer reports Pocketpair decided not to raise Palworld's price ahead of its 1.0 launch.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.match(script.full_script, /Eurogamer reports Pocketpair/i);
+  assert.match(script.full_script, /not raise Palworld's price|price steady|price/i);
+  assert.doesNotMatch(script.full_script, /Xbox Wire|Game Pass|July 10, 2026/i);
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass");
+});
+
+test("fresh refill viewer script keeps Buckshot Roulette title clean and avoids headline recitation", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "seed_buckshot_game_pass_20260709",
+      title: "Buckshot Roulette Just Turned Game Pass Into A Dare",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/08/buckshot-roulette-xbox-game-pass/",
+        type: "official_platform_news",
+        published_at: "2026-07-08T15:00:00.000Z",
+      },
+      current_script:
+        "Buckshot Roulette just turned Game Pass into a dare. Xbox Wire says Buckshot Roulette joined Xbox Game Pass on 2026-07-08.",
+    },
+    manifest: {
+      story_id: "seed_buckshot_game_pass_20260709",
+      canonical_subject: "Buckshot Roulette",
+      canonical_game: "Buckshot Roulette",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://news.xbox.com/en-us/2026/07/08/buckshot-roulette-xbox-game-pass/",
+      confirmed_claims: [
+        "Xbox Wire says Buckshot Roulette joined Xbox Game Pass on 2026-07-08.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.match(script.full_script, /^Buckshot Roulette just/i);
+  assert.match(script.full_script, /Xbox Wire says Buckshot Roulette joined Xbox Game Pass/i);
+  assert.doesNotMatch(script.full_script, /Buckshot Roulette Just Turned Game Pass Into A Dare is available/i);
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass");
+});
+
 test("fresh refill viewer script turns Star Wars Monopoly abilities into a clear family-drama hook", () => {
   const script = buildFreshRefillViewerScript({
     job: {
@@ -354,6 +424,56 @@ test("fresh refill viewer script keeps Fatal Fury City Of The Wolves in the publ
     title: script.suggested_title,
     sourceName: "Xbox Wire",
     canonicalSubject: "Fatal Fury: City Of The Wolves",
+  });
+  assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
+  assert.equal(massAudience.concrete_detail_count >= 3, true);
+});
+
+test("fresh refill viewer script keeps Palworld Game Pass comeback scripts motion-safe", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "seed_palworld_10_game_pass_20260708",
+      title: "Palworld 1.0 Comes To Game Pass",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/08/game-pass-palworld-1-0-july-2026/",
+        type: "rss",
+        published_at: "2026-07-08T09:00:00.000Z",
+      },
+      current_script:
+        "Xbox Wire reports Palworld 1.0 comes to Game Pass on July 10, 2026.",
+    },
+    manifest: {
+      story_id: "seed_palworld_10_game_pass_20260708",
+      canonical_subject: "Palworld 1.0",
+      canonical_game: "Palworld",
+      confirmed_claims: [
+        "Xbox Wire reports Palworld 1.0 comes to Game Pass on July 10, 2026.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.suggested_title, "Palworld 1.0 Gets A Game Pass Comeback Test");
+  assert.ok(
+    script.word_count >= 88 && script.word_count <= 94,
+    `expected a motion-safe Game Pass script, got ${script.word_count} words`,
+  );
+  assert.match(script.full_script, /^Palworld 1\.0 just got the comeback test it needed\./);
+  assert.match(script.full_script, /Game Pass on July 10, 2026/i);
+  assert.match(script.full_script, /reinstall first, then judge the loop/i);
+  assert.match(script.full_script, /not the download count/i);
+  assert.match(script.full_script, /real second launch/i);
+  assert.doesNotMatch(script.full_script, /patch notes|live system update|source-backed update|the signal is/i);
+  assert.doesNotMatch(script.suggested_title, /:/, "avoid title punctuation that creates TTS title pauses");
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass");
+  const massAudience = auditMassAudienceClarity({
+    script: script.full_script,
+    title: script.suggested_title,
+    sourceName: "Xbox Wire",
+    canonicalSubject: "Palworld 1.0",
   });
   assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
   assert.equal(massAudience.concrete_detail_count >= 3, true);
@@ -848,6 +968,55 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
   const youtubeEvidence = platform.platform_native_evidence.platforms.find((item) => item.platform === "youtube_shorts");
   assert.match(youtubeEvidence.copy_fingerprint, /bob|eurogamer/i);
   assert.doesNotMatch(youtubeEvidence.copy_fingerprint, /generic description old weak title/i);
+});
+
+test("fresh refill script rewrite apply updates sibling motion-hydrated artefacts", async () => {
+  const caseRoot = path.join(TEST_ROOT, "apply-motion-hydrated");
+  const baseArtifactDir = path.join(caseRoot, "goal-proof-batch", "rss_4a07e21d3192fd7c");
+  const hydratedArtifactDir = path.join(
+    caseRoot,
+    "goal-proof-batch",
+    "motion-hydrated",
+    "rss_4a07e21d3192fd7c",
+  );
+  await fs.remove(caseRoot);
+  for (const artifactDir of [baseArtifactDir, hydratedArtifactDir]) {
+    await fs.ensureDir(artifactDir);
+    await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), canonicalManifest(), {
+      spaces: 2,
+    });
+    await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), platformManifest(), {
+      spaces: 2,
+    });
+  }
+  const workOrderPath = path.join(caseRoot, "work_order.json");
+  await fs.writeJson(workOrderPath, {
+    schema_version: 1,
+    source: "test",
+    jobs: [tekkenBobJob(baseArtifactDir)],
+  }, { spaces: 2 });
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(caseRoot, "report"),
+    applyLocal: true,
+  });
+
+  assert.equal(report.summary.applied_count, 1);
+  assert.deepEqual(
+    report.items[0].applied_artifact_dirs.sort(),
+    [
+      path.relative(ROOT, baseArtifactDir),
+      path.relative(ROOT, hydratedArtifactDir),
+    ].sort(),
+  );
+
+  const baseManifest = await fs.readJson(path.join(baseArtifactDir, "canonical_story_manifest.json"));
+  const hydratedManifest = await fs.readJson(path.join(hydratedArtifactDir, "canonical_story_manifest.json"));
+  assert.match(baseManifest.narration_script, /^Tekken 8 bringing Bob back\b/);
+  assert.equal(hydratedManifest.narration_script, baseManifest.narration_script);
+  assert.equal(hydratedManifest.title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
 });
 
 test("fresh refill script rewrite clears stale public-copy blockers but keeps real media blockers", async () => {

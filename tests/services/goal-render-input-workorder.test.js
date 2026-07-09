@@ -3318,6 +3318,100 @@ test("render input work order rerenders stale short finals when fresh audio fing
   assert.equal(job.actions[0].force, true);
 });
 
+test("render input work order clears stale package script and director blockers when current inputs pass", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-stale-package-"));
+  const artifactDir = path.join(root, "palworld-current-inputs");
+  const audioPath = path.join(artifactDir, "audio", "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(1024, 1));
+  await fs.outputJson(timestampsPath, [{ word: "Palworld", start: 0, end: 0.25 }]);
+  const clips = Array.from({ length: 8 }, (_, index) => {
+    const clipPath = path.join(artifactDir, "clips", `clip-${index + 1}.mp4`);
+    fs.outputFileSync(clipPath, Buffer.alloc(2048, index + 1));
+    return {
+      id: `clip-${index + 1}`,
+      path: clipPath,
+      media_kind: "direct_video",
+      source_family: `steam-trailer-window-${index + 1}`,
+      motion_family: `steam-trailer-window-${index + 1}`,
+      source_url: `https://video.fastly.steamstatic.com/store_trailers/1623730/${index + 1}/hash/hls_264_master.m3u8`,
+      durationS: 5,
+    };
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "palworld-current-inputs",
+    canonical_subject: "Palworld 1.0",
+    selected_title: "Palworld 1.0 Gets A Game Pass Comeback Test",
+    primary_source: "Xbox Wire",
+    narration_script:
+      "Palworld 1.0 just got the comeback test it needed. Xbox Wire says the full release comes to Game Pass on July 10, 2026. For lapsed players, that changes the choice: reinstall first, then judge the loop. Now it has to prove people stay after the launch chaos fades. If building, catching and co-op feel cleaner, Game Pass gives it a real second launch. If not, players can drop it just as fast. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Palworld 1.0 just got the comeback test it needed. Xbox Wire says the full release comes to Game Pass on July 10, 2026. Source: Xbox Wire.",
+  });
+  await fs.outputJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 94,
+    scores: { curiosity_gap: 90 },
+    blockers: [],
+    warnings: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    resolved_narration_audio_path: audioPath,
+    resolved_word_timestamps_path: timestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+    word_timestamp_count: 85,
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clip_count: clips.length,
+    distinct_motion_family_count: clips.length,
+    direct_video_motion_clip_count: clips.length,
+    direct_video_motion_family_count: clips.length,
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "distinct_motion_family_report.json"), {
+    status: "ready",
+    distinct_motion_family_count: clips.length,
+    direct_video_motion_family_count: clips.length,
+  });
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-09T00:50:00.000Z",
+      queue: [
+        blockedQueueItem({
+          story_id: "palworld-current-inputs",
+          title: "Palworld 1.0 Gets A Game Pass Comeback Test",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          render_input_blockers: [
+            "script:rewrite_required",
+            "director:director_blocked",
+            "media_house:script_sounds_ai_generic",
+          ],
+          render_input_evidence: {
+            readable_hyperframes_ready: true,
+            script_scorecard_qa: {
+              verdict: "pass",
+              failures: [],
+            },
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-07-09T00:51:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  const job = workOrder.jobs[0];
+  assert.equal(job.status, "ready_for_final_render_job");
+  assert.deepEqual(job.blockers, []);
+  assert.deepEqual(
+    job.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(job.force_final_render, true);
+});
+
 test("render input work order does not reintroduce stale dry-run blockers after fresh cutover", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

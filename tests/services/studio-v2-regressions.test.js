@@ -1381,6 +1381,21 @@ test("studio local voice path caps pauses before title suffixes like Gears of Wa
   assert.deepEqual(gaps, [0.18]);
 });
 
+test("studio local voice path caps pauses after raw colon title fragments", () => {
+  const voiceSegments = [
+    { label: "hook", rawText: "Marathon:", text: "Marathon" },
+    { label: "body", rawText: "Durandal finally has a playable test.", text: "Durandal finally has a playable test" },
+    { label: "loop", rawText: "Fable:", text: "Fable" },
+    { label: "loop_2", rawText: "Albion needs to look alive.", text: "Albion needs to look alive" },
+  ];
+  const gaps = resolveLocalInterSegmentGapSchedule({
+    interSegmentPausePlan: { gapS: 1.85, maxPauseS: 1.85 },
+    voiceSegments,
+  });
+
+  assert.deepEqual(gaps, [0.18, 1.85, 0.18]);
+});
+
 test("studio local voice path keeps normal hook/body pauses intact", () => {
   const voiceSegments = [
     { label: "hook", text: "Big news" },

@@ -837,6 +837,85 @@ test("fresh refill repair filter recognises scalar approved direct media URLs as
   }
 });
 
+test("fresh refill repair filter lets service stories with official storefront pages enter discovery", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-service-storefront-"));
+  const packagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+  const artifactDir = path.join(tmp, "buckshot_game_pass");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "seed_buckshot_game_pass_20260708",
+        selected_title: "Buckshot Roulette Just Turned Game Pass Into A Dare",
+        canonical_subject: "Buckshot Roulette",
+        narration_script:
+          "Buckshot Roulette just turned Game Pass into a dare. Xbox Wire says it joined the service today, but the real question is whether a short horror gamble can become the kind of thing friends install instantly. Follow Pulse Gaming so you never miss a beat.",
+        official_source_pages: [
+          {
+            official_source_url: "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
+            source_type: "platform_storefront",
+            source_owner: "Steam",
+          },
+        ],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/07/08/buckshot-roulette-xbox-game-pass/",
+          type: "official_platform_news",
+        },
+        official_source_pages: [
+          {
+            official_source_url: "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
+            source_type: "platform_storefront",
+            source_owner: "Steam",
+          },
+        ],
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({
+        story_id: "seed_buckshot_game_pass_20260708",
+        verdict: "viral_ready",
+        blockers: [],
+        failures: [],
+      }),
+    );
+    await fs.writeFile(
+      packagesPath,
+      JSON.stringify([
+        {
+          story_id: "seed_buckshot_game_pass_20260708",
+          title: "Buckshot Roulette Just Turned Game Pass Into A Dare",
+          artifact_dir: artifactDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+      ]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath: packagesPath,
+      outputDir,
+    });
+
+    assert.deepEqual(result.eligibleRows.map((row) => row.story_id), ["seed_buckshot_game_pass_20260708"]);
+    assert.deepEqual(result.quarantinedRows, []);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill repair filter quarantines retro and collector stories without direct motion runway", async () => {
   const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-retro-motion-runway-"));
@@ -1076,6 +1155,54 @@ test("fresh refill repair attempt scope prioritises direct and official motion r
     assert.deepEqual(
       result.repairDeferredByLimitRows.map((row) => row.story_id),
       ["media_only_story", "governance_red_story"],
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill repair package filter quarantines repeat or already-public runway stories", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-repeat-quarantine-"));
+  const packagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+
+  try {
+    await fs.writeFile(
+      packagesPath,
+      JSON.stringify([
+        {
+          story_id: "near_repeat_doom_story",
+          title: "Doom The Dark Ages Chain Spear Changes The Fight Again",
+          blockers: ["near_repeat_story_cluster:fresh_doom_chain_spear_dlc_20260703"],
+        },
+        {
+          story_id: "already_public_story",
+          title: "Game Pass July Wave Already Went Live",
+          blockers: ["already_has_public_platform_id:youtube_post_id"],
+        },
+        {
+          story_id: "fresh_new_story",
+          title: "Marathon Durandal Has A New Player Test",
+          blockers: ["footage:v4_motion_blocked"],
+        },
+      ]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath: packagesPath,
+      outputDir,
+    });
+
+    assert.deepEqual(result.eligibleRows.map((row) => row.story_id), ["fresh_new_story"]);
+    assert.deepEqual(
+      result.quarantinedRows.map((row) => row.story_id),
+      ["near_repeat_doom_story", "already_public_story"],
+    );
+    assert.deepEqual(
+      result.quarantinedRows.map((row) => row.reasons[0]),
+      ["repeat_or_stale_runway_candidate", "already_public_runway_candidate"],
     );
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
@@ -1355,6 +1482,117 @@ test("fresh refill repair attempt scope can select official source stories for d
     const selected = priorityReport.ranked.find((row) => row.story_id === "xbox_article_story");
     assert.equal(selected.selected_for_attempt, true);
     assert.equal(selected.defer_reason, "official_source_discovery_required");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill repair attempt scope can select major-media trailer stories for official media discovery", async () => {
+  const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-major-trailer-"));
+  const repairDir = path.join(tmp, "repair");
+
+  async function artifact(storyId, manifest) {
+    const dir = path.join(tmp, storyId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_subject: manifest.subject,
+        selected_title: manifest.title,
+        narration_script: `${manifest.subject} has a fresh trailer update. Follow Pulse Gaming so you never miss a beat.`,
+      }),
+    );
+    await fs.writeFile(
+      path.join(dir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: manifest.primary_source,
+        direct_media_candidates: [],
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    return dir;
+  }
+
+  try {
+    const trailerDir = await artifact("major_trailer_story", {
+      subject: "Ninja Gaiden 4",
+      title: "Ninja Gaiden 4 Gameplay Trailer Gives Fans Their First Look",
+      primary_source: {
+        name: "IGN",
+        url: "https://www.ign.com/articles/ninja-gaiden-4-gameplay-trailer-first-look",
+        type: "rss",
+      },
+    });
+    const filmTrailerDir = await artifact("major_film_trailer_story", {
+      subject: "Dune Part Three",
+      title: "Dune Part Three Trailer Gives Fans Their First Look",
+      primary_source: {
+        name: "Polygon",
+        url: "https://www.polygon.com/movies/dune-part-three-trailer-first-look",
+        type: "rss",
+      },
+    });
+    const genericDir = await artifact("major_generic_story", {
+      subject: "Bethesda",
+      title: "Bethesda Layoffs Put Xbox RPG Trust Under Pressure",
+      primary_source: {
+        name: "PCGamer",
+        url: "https://www.pcgamer.com/gaming-industry/bethesda-game-studios-and-zenimax-hit-hard-by-xbox-layoffs-says-union/",
+        type: "rss",
+      },
+    });
+
+    const result = await freshRefillRepairAttemptScope({
+      packageFilter: {
+        eligibleRows: [
+          {
+            story_id: "major_generic_story",
+            artifact_dir: genericDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+          {
+            story_id: "major_trailer_story",
+            artifact_dir: trailerDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+          {
+            story_id: "major_film_trailer_story",
+            artifact_dir: filmTrailerDir,
+            blockers: ["footage:v4_motion_blocked"],
+          },
+        ],
+        eligibleStoryPackagesPath: path.join(tmp, "eligible.json"),
+      },
+      repairStoryLimit: 9,
+      requireDirectMotionRunway: true,
+      allowOfficialSourceDiscoveryWithoutRunway: true,
+      repairDir,
+    });
+
+    assert.deepEqual(
+      result.storyPackageRows.map((row) => row.story_id),
+      ["major_trailer_story"],
+    );
+    assert.deepEqual(
+      result.repairDeferredByLimitRows.map((row) => row.story_id),
+      ["major_generic_story", "major_film_trailer_story"],
+    );
+    const priorityReport = JSON.parse(await fs.readFile(result.repairPriorityReportPath, "utf8"));
+    const selected = priorityReport.ranked.find((row) => row.story_id === "major_trailer_story");
+    const deferred = priorityReport.ranked.find((row) => row.story_id === "major_generic_story");
+    const filmTrailer = priorityReport.ranked.find((row) => row.story_id === "major_film_trailer_story");
+    assert.equal(selected.source_type, "major_media_trailer_or_reveal_discovery");
+    assert.equal(selected.selected_for_attempt, true);
+    assert.equal(selected.defer_reason, "official_source_discovery_required");
+    assert.equal(deferred.source_type, null);
+    assert.equal(deferred.selected_for_attempt, false);
+    assert.equal(filmTrailer.source_type, null);
+    assert.equal(filmTrailer.selected_for_attempt, false);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -4147,7 +4385,7 @@ test("fresh refill HyperFrames card generation targets only real-motion material
         realMotionReportPath: reportPath,
         sourceCardFallbackStoryIds: ["motion-blocked-story", "not-in-candidate-list"],
       }),
-      ["motion-blocked-story"],
+      [],
     );
 
     const motionPackDir = path.join(tmp, "motion-packs");
@@ -4779,6 +5017,122 @@ test("fresh production refill repair does not count accepted reference-only URLs
     assert.equal(directMediaIntakeReport.summary.reference_only_accepted, 1);
     assert.equal(directMediaIntakeReport.accepted_entries[0].segment_validation_eligible, false);
     assert.equal(directMediaIntakeReport.accepted_entries[0].accepted_for, "reference_validation_only");
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill repair searches the actual game when headline starts with in-game faction wording", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-entity-clean-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyId = "rss_albion_keepers";
+  const artifactDir = path.join(outDir, storyId);
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+
+  try {
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          const effectiveOutDir = args[args.indexOf("--out-dir") + 1] || outDir;
+          const effectiveContractOutDir =
+            args[args.indexOf("--contract-out-dir") + 1] || contractOutDir;
+          const effectiveArtifactDir = path.join(effectiveOutDir, storyId);
+          await fs.mkdir(effectiveArtifactDir, { recursive: true });
+          await fs.mkdir(effectiveContractOutDir, { recursive: true });
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "canonical_story_manifest.json"),
+            JSON.stringify({
+              story_id: storyId,
+              canonical_title: "In Albion Online the Keepers Has A Reinstall Test",
+              selected_title: "In Albion Online the Keepers Has A Reinstall Test",
+              narration_script:
+                "Albion Online is turning the Keepers into a pressure test for its open world. Xbox Wire says the faction update changes what players fight over next.",
+            }),
+          );
+          await fs.writeFile(
+            path.join(effectiveArtifactDir, "source_manifest.json"),
+            JSON.stringify({
+              primary_source: {
+                name: "Xbox Wire",
+                url: "https://news.xbox.com/en-us/2026/07/07/in-albion-online/",
+                type: "rss",
+                published_at: "Tue, 07 Jul 2026 19:00:00 +0000",
+              },
+              source: {
+                name: "Xbox Wire",
+                url: "https://news.xbox.com/en-us/2026/07/07/in-albion-online/",
+                type: "rss",
+                published_at: "Tue, 07 Jul 2026 19:00:00 +0000",
+              },
+            }),
+          );
+          const storyPackagesPath = path.join(effectiveContractOutDir, "story-packages.json");
+          await fs.writeFile(
+            storyPackagesPath,
+            JSON.stringify([
+              {
+                story_id: storyId,
+                artifact_dir: effectiveArtifactDir,
+                verdict: "RED",
+                blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+              },
+            ]),
+          );
+          return {
+            batch: { summary: { story_count: 1, green_count: 0, red_count: 1 } },
+            outputs: {
+              storyPackagesPath,
+              batchReportPath: path.join(effectiveContractOutDir, "story-packages-report.json"),
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 1,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          if (
+            options.args[0] === "tools/official-search-intake-autofill.js" ||
+            options.args[0] === "tools/official-direct-media-discovery.js"
+          ) {
+            const templateIndex = options.args.indexOf("--output-template");
+            const templatePath = templateIndex >= 0 ? options.args[templateIndex + 1] : null;
+            if (templatePath) await fs.writeFile(templatePath, JSON.stringify({ schema_version: 1, entries: [] }));
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+
+    const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    const entries = JSON.parse(await fs.readFile(repairReport.outputs.official_source_entries, "utf8"));
+    assert.equal(entries[0].entity, "Albion Online");
+    assert.equal(entries[0].source_type, "official_game_site_news_page");
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

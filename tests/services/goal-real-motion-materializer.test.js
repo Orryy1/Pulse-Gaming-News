@@ -10,6 +10,7 @@ const {
   candidateRows,
   materializeGoalRealMotion,
   writeGoalRealMotionReport,
+  _private: { dynamicMaxDirectClipsPerBaseSource },
 } = require("../../lib/goal-real-motion-materializer");
 const { parseArgs } = require("../../tools/goal-real-motion-materializer");
 
@@ -888,6 +889,48 @@ test("real motion materializer honours explicit direct base-source clip cap", as
   );
   assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
   assert.equal(calls.length, 3);
+});
+
+test("real motion materializer can use a third official Steam window when needed for duration floor", () => {
+  const sourceUrls = [
+    "https://video.fastly.steamstatic.com/store_trailers/1623730/1468980435/a9fa/hls_264_master.m3u8?t=1765946111",
+    "https://video.fastly.steamstatic.com/store_trailers/1623730/1650163623/c275/hls_264_master.m3u8?t=1765946112",
+    "https://video.fastly.steamstatic.com/store_trailers/1623730/768837/5e54/hls_264_master.m3u8?t=1728458616",
+    "https://video.fastly.steamstatic.com/store_trailers/1623730/1835768144/fe4d/hls_264_master.m3u8?t=1780701306",
+  ];
+  const candidates = sourceUrls.flatMap((sourceUrl, sourceIndex) => {
+    const windows = sourceIndex === 1 ? [36, 42, 48] : [36, 48];
+    return windows.map((start) => ({
+      id: `steam-window-${sourceIndex}-${start}`,
+      media_kind: "direct_video",
+      source_url: sourceUrl,
+      source_family: `palworld_steam_${sourceIndex}_${start}`,
+      source_type: "official_platform_product_page",
+      source_url_kind: "hls_manifest",
+      mediaStartS: start,
+      durationS: 5,
+      segmentValidationPassed: true,
+      trusted_source_matched: true,
+    }));
+  });
+
+  assert.equal(
+    dynamicMaxDirectClipsPerBaseSource(candidates, {
+      minClips: 6,
+      minFamilies: 5,
+      maxClips: 10,
+    }),
+    3,
+  );
+  assert.equal(
+    dynamicMaxDirectClipsPerBaseSource(candidates, {
+      minClips: 6,
+      minFamilies: 5,
+      maxClips: 10,
+      explicitMax: 2,
+    }),
+    2,
+  );
 });
 
 test("real motion materializer treats Steam extras mp4 and webm encodes as one base source", async () => {
@@ -1883,6 +1926,72 @@ test("real motion materializer can use second validated windows across a diverse
   assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 2);
   assert.equal(report.jobs[0].skipped_duplicate_direct_window_count, 0);
   assert.ok(report.jobs[0].direct_motion_base_source_clip_counts.every((row) => row.count <= 2));
+
+  const materialised = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 6);
+  assert.equal(materialised.distinct_motion_family_count, 6);
+  const windowKeys = new Set(
+    materialised.clips.map((clip) =>
+      `${clip.source_url}|${Number(clip.mediaStartS || 0).toFixed(2)}|${Number(clip.durationS || 0).toFixed(2)}`,
+    ),
+  );
+  assert.equal(windowKeys.size, 6);
+});
+
+test("real motion materializer can use distinct Steam trailer windows without repeating clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-steam-window-pool-"));
+  const job = await makePackage(root, "steam-window-pool");
+  await fs.remove(path.join(job.artifact_dir, "rights_ledger.json"));
+  const sourceUrls = [
+    "https://video.fastly.steamstatic.com/store_trailers/4508340/1063067670/124f9933661f1d67c8ec56e87a1c39d6bf13cba2/1782964104/hls_264_master.m3u8?t=1782977946",
+    "https://video.fastly.steamstatic.com/store_trailers/4508340/1402388194/6d07028ab86498b9ccc87ab8a736ca1928d9df57/1778038743/hls_264_master.m3u8?t=1779501599",
+  ];
+  const segmentValidationReport = {
+    segments: [8, 20, 32, 10, 24, 38].map((start, index) => ({
+      story_id: job.story_id,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_url: sourceUrls[index % sourceUrls.length],
+      source_url_kind: "hls_manifest",
+      source_type: "steam_movie",
+      source_family: `steam_trailer_${(index % sourceUrls.length) + 1}_window_${start}_5`,
+      provider: "steam_storefront",
+      entity: "NTE: Neverness to Everness",
+      media_start_s: start,
+      duration_s: 5,
+      source_duration_s: 90,
+      validation_reason: "official_storefront_trailer_motion_samples_passed",
+    })),
+  };
+  const calls = [];
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-08T22:20:00.000Z",
+    minClips: 6,
+    minFamilies: 5,
+    maxClips: 8,
+    segmentValidationReport,
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, calls.length));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.materialized_clip_count, 6);
+  assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 3);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
+    [3, 3],
+  );
+  assert.equal(report.jobs[0].skipped_duplicate_direct_window_count, 0);
+  assert.equal(calls.length, 6);
 
   const materialised = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");

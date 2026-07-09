@@ -779,6 +779,83 @@ test("poor SFX and audio fail even when visuals pass", () => {
   assert.ok(report.hard_failures.includes("media_house:poor_sfx_audio"));
 });
 
+test("source cards cannot monopolise the opening momentum", () => {
+  const base = strongStory();
+  const report = buildPulseMediaHouseScore(strongStory({
+    director: {
+      ...base.director,
+      shot_plan: [
+        { id: "hook", kind: "hook_slam", startS: 0, durationS: 1.1 },
+        { id: "source", kind: "source_lock", startS: 1.1, durationS: 12 },
+        { id: "motion", kind: "motion_clip", startS: 13.1, durationS: 2.4, source_family: "official_a" },
+      ],
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:source_card_kills_momentum"));
+  assert.equal(report.premium_output_contract.status, "blocked");
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:source_card_dwell_too_long"));
+});
+
+test("repeated direct-motion segments cannot pass as premium output", () => {
+  const repeatedClip = {
+    path: "C:\\media\\halo-campaign-evolved-trailer.mp4",
+    source_url: "https://cdn.example.com/halo-campaign-evolved-trailer.mp4",
+    source_family: "xbox_halo_campaign_evolved_official",
+    start_s: 4,
+    end_s: 7,
+    media_kind: "direct_video",
+    counts_towards_motion_readiness: true,
+  };
+  const report = buildPulseMediaHouseScore(strongStory({
+    materialisedMotionClips: {
+      status: "ready",
+      clips: [
+        repeatedClip,
+        repeatedClip,
+        { ...repeatedClip, start_s: 9, end_s: 12 },
+        { ...repeatedClip, start_s: 13, end_s: 16 },
+        { ...repeatedClip, start_s: 17, end_s: 20 },
+        { ...repeatedClip, start_s: 21, end_s: 24 },
+      ],
+      distinct_motion_families: ["xbox_halo_campaign_evolved_official"],
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:direct_motion_repeats_too_much"));
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:repeated_motion_segments"));
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:motion_family_dominance"));
+});
+
+test("local proof renders cannot masquerade as final publish renders", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    renderManifest: {
+      final_publish_render: false,
+      output_bytes: 22894,
+      output_path: "output/fresh-green-refill/story/visual_v4_render.mp4",
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:final_publish_render_not_proven"));
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:final_publish_render_not_proven"));
+});
+
+test("bad caption display for GTA and years blocks premium output", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    captionQa: {
+      status: "fail",
+      display_text: "G T A SIX launches in twenty twenty six.",
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:caption_display_not_platform_native"));
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:caption_display_not_platform_native"));
+});
+
 test("Footage Empire v2 red evidence blocks source-locked media-house approval", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     footageEmpireV2: {

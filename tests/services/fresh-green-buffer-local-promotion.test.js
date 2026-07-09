@@ -225,6 +225,60 @@ test("fresh buffer promotion CLI is registered and defaults to overnight output"
   assert.match(args.outDir, /overnight-fresh-green-buffer$/);
 });
 
+test("fresh buffer promotion extracts game subjects from Xbox Wire titles before generic platform words", () => {
+  const generatedAt = "2026-07-09T20:00:00.000Z";
+
+  const wreckRunners = buildCanonicalStoryManifest(
+    draftStory({
+      id: "rss_wreck_runners",
+      title: "Xbox Has A Source-Proof Risk",
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/09/wreck-runners-join-the-xbox-insider-playtest/",
+        type: "official_platform_news",
+      },
+      source_published_at: "2026-07-09T17:00:00.000Z",
+      confirmed_claims: [
+        "Xbox Wire says Wreck Runners – Join the Xbox Insider Playtest!",
+      ],
+      narration_script:
+        "Xbox has to answer one simple thing: why should players care now? Xbox Wire says Wreck Runners – Join the Xbox Insider Playtest! Follow Pulse Gaming so you never miss a beat.",
+    }),
+    generatedAt,
+  );
+
+  assert.equal(wreckRunners.canonical_subject, "Wreck Runners");
+  assert.equal(wreckRunners.canonical_game, "Wreck Runners");
+  assert.doesNotMatch(wreckRunners.public_title, /^Xbox\b/i);
+
+  const elderScrollsOnline = buildCanonicalStoryManifest(
+    draftStory({
+      id: "rss_eso_season_one",
+      title: "Season One's Update Has A Week-Two Test",
+      canonical_subject: "Season One",
+      canonical_game: "Season One",
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://www.elderscrollsonline.com/en-us/news/post/70123#new_tab",
+        type: "official_platform_news",
+      },
+      source_published_at: "2026-07-09T14:00:00.000Z",
+      confirmed_claims: [
+        "Xbox Wire says Return of the Thieves Guild is now live in The Elder Scrolls Online.",
+      ],
+      narration_script:
+        "Season One has moved from open-world promise to a live store test. Xbox Wire says it: Return of the Thieves Guild is Now Live in The Elder Scrolls Online. Follow Pulse Gaming so you never miss a beat.",
+    }),
+    generatedAt,
+  );
+
+  assert.equal(elderScrollsOnline.canonical_subject, "The Elder Scrolls Online");
+  assert.equal(elderScrollsOnline.canonical_game, "The Elder Scrolls Online");
+  assert.doesNotMatch(elderScrollsOnline.public_title, /^Season One\b/i);
+});
+
 test("fresh buffer promotion writes specific scripts for motion scorecard stories with colon titles", () => {
   const canonical = buildCanonicalStoryManifest(
     draftStory({

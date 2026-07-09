@@ -2807,6 +2807,57 @@ test("goal batch package rewrites generated source-proof fallback titles before 
   assert.notEqual(qa.verdict, "rewrite_required", JSON.stringify(qa, null, 2));
 });
 
+test("goal batch package extracts current official subjects from source URLs before platform words", () => {
+  const wreck = prepareStoryForGoalProof(
+    {
+      id: "rss_wreck_runners_insider",
+      title: "Xbox Has A Source-Proof Risk",
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      source_type: "rss",
+      source_name: "Xbox Wire",
+      primary_source: "Xbox Wire",
+      article_url: "https://news.xbox.com/en-us/2026/07/09/wreck-runners-join-the-xbox-insider-playtest/",
+      freshness_gate: "pass",
+      confirmed_claims: ["Xbox Wire says Wreck Runners has joined the Xbox Insider playtest."],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+  const eso = prepareStoryForGoalProof(
+    {
+      id: "rss_eso_season_one",
+      title: "Season One's Update Has A Week-Two Test",
+      canonical_subject: "Season One",
+      canonical_game: "Season One",
+      source_type: "official",
+      source_name: "The Elder Scrolls Online",
+      primary_source: "The Elder Scrolls Online",
+      article_url: "https://www.elderscrollsonline.com/en-us/news/post/70123#new_tab",
+      freshness_gate: "pass",
+      confirmed_claims: ["The Elder Scrolls Online says Season One has a new update."],
+      full_script: "source-backed update",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(wreck.canonical_subject, "Wreck Runners");
+  assert.equal(wreck.canonical_game, "Wreck Runners");
+  assert.doesNotMatch(wreck.public_title, /Xbox|Source-Proof Risk|Clearer Reason/i);
+  assert.match(wreck.public_title, /Wreck Runners/i);
+  assert.doesNotMatch(wreck.full_script, /has to answer one simple thing|why should players care now|named source is only useful|watch pile|source-backed update/i);
+  assert.match(wreck.full_script, /^Wreck Runners/i);
+  assert.match(wreck.full_script, /playtest/i);
+
+  assert.equal(eso.canonical_subject, "The Elder Scrolls Online");
+  assert.equal(eso.canonical_game, "The Elder Scrolls Online");
+  assert.doesNotMatch(eso.public_title, /Season One's Update|Source-Proof Risk|Clearer Reason/i);
+  assert.match(eso.public_title, /Elder Scrolls Online/i);
+  assert.doesNotMatch(eso.full_script, /has to answer one simple thing|why should players care now|named source is only useful|watch pile|source-backed update/i);
+  assert.match(eso.full_script, /^The Elder Scrolls Online/i);
+  assert.match(eso.full_script, /Season One/i);
+});
+
 test("goal batch package writes story-specific Albion Online scripts instead of generic openers", () => {
   const prepared = prepareStoryForGoalProof(
     {

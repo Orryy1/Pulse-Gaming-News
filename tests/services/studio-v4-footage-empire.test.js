@@ -968,3 +968,59 @@ test("Footage Empire does not treat platform account friction as product motion 
   assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
   assert.ok(!plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"));
 });
+
+test("Footage Empire does not treat normal Game Pass game availability as hardware product motion", () => {
+  const story = {
+    id: "buckshot-game-pass",
+    canonical_subject: "Buckshot Roulette",
+    canonical_game: "Buckshot Roulette",
+    title: "Buckshot Roulette Turns Game Pass Into A Dare",
+    suggested_thumbnail_text: "GAME PASS DARE",
+    source_name: "Xbox Wire",
+    full_script:
+      "Buckshot Roulette just became the easiest dare on Game Pass. Xbox Wire says the viral horror game joins the library this week, which turns a cult PC hit into a low-friction party test for console players.",
+  };
+  const trustedFootageReport = {
+    accepted_sources: [
+      {
+        source_id: "buckshot-steam-trailer",
+        display_name: "Buckshot Roulette Steam trailer",
+        source_tier: "official",
+        source_family: "steam_2835570_684191",
+        reference_url: "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
+        entities: ["Buckshot Roulette"],
+        autonomous_motion_candidate: true,
+        allowed_render_use: "reference_only_by_default",
+        rights_risk_class: "official_reference_only",
+      },
+    ],
+  };
+  const localMotionClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `buckshot-motion-${index + 1}`,
+    source_family: `buckshot_motion_family_${index + 1}`,
+    path: `C:\\media\\buckshot-motion-${index + 1}.mp4`,
+    source_type: "steam_movie",
+    rights_risk_class: "official_reference_only",
+    allowed_render_use: "reference_only_by_default",
+    durationS: 5,
+    mediaStartS: 12 + index * 5,
+    validated: true,
+    segmentValidationPassed: true,
+    provenance: {
+      segment_motion_class: "gameplay_action",
+      validation_reason: "segment_samples_passed",
+      sample_content_hashes: [`hash-${index}-a`, `hash-${index}-b`, `hash-${index}-c`],
+    },
+  }));
+
+  const plan = buildFootageEmpirePlan({ story, trustedFootageReport, localMotionClips });
+
+  assert.equal(plan.motion_budget.product_motion_story, false);
+  assert.equal(plan.motion_budget.requires_premium_owned_motion, false);
+  assert.equal(plan.motion_budget.required_official_product_motion_scenes, 0);
+  assert.equal(plan.motion_budget.available_motion_clips, 5);
+  assert.equal(plan.motion_budget.available_distinct_families, 5);
+  assert.equal(plan.readiness.status, "v4_motion_ready");
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"));
+});

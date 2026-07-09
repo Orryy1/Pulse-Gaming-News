@@ -108,3 +108,23 @@ test("story-specific HyperFrames source card preserves PlayStation source labels
     "PLAYSTATION BLOG NEWS SOURCE",
   );
 });
+
+test("story-specific HyperFrames context card uses short audience-facing copy", () => {
+  const specs = buildStoryCardSpecs({
+    id: "forza-context",
+    title: "Forza's Xbox Moment",
+    source_card_label: "PC Gamer",
+    source_type: "rss",
+  });
+  const readable = hyperframesCardReadabilityContractForSpec("context", specs.context).evidence;
+
+  assert.equal(specs.context.number, "FORZA");
+  assert.equal(specs.context.sub, "XBOX MOMENT");
+  assert.doesNotMatch(readable.readable_text, /\bverified source\b/i);
+  assert.doesNotMatch(readable.readable_text, /\bchecked before publish\b/i);
+  assert.doesNotMatch(readable.readable_text, /\bFORZA FORZA\b/i);
+  assert.ok(
+    readable.minimum_visible_duration_s <= 8,
+    `context card should stay momentum-friendly, got ${readable.minimum_visible_duration_s}s`,
+  );
+});

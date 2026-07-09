@@ -2644,6 +2644,37 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
   }
 });
 
+test("fresh production refill motion-hydrated args replace original stories file", () => {
+  const { hydratedFreshProductionRefillArgs } = require("../../lib/job-handlers");
+  const originalStoriesFile = path.join("output", "pending_news.json");
+  const repairedStoriesFile = path.join("output", "repair", "official_source_candidate_stories.json");
+  const args = hydratedFreshProductionRefillArgs({
+    baseArgs: [
+      "--stories-file",
+      originalStoriesFile,
+      "--limit",
+      "4",
+      "--out-dir",
+      path.join("output", "proof"),
+      "--contract-out-dir",
+      path.join("output", "contract"),
+    ],
+    candidateStoriesPath: repairedStoriesFile,
+    repairMotionPackDir: path.join("output", "studio-v4", "motion-packs"),
+    candidateStoryIds: ["fresh_repaired_story"],
+    allowOwnedMotionFallback: true,
+  });
+
+  assert.equal(args.filter((arg) => arg === "--stories-file").length, 1);
+  assert.equal(args[args.indexOf("--stories-file") + 1], repairedStoriesFile);
+  assert.equal(args.includes(originalStoriesFile), false);
+  assert.equal(
+    args[args.indexOf("--contract-out-dir") + 1],
+    path.join("output", "contract", "motion-hydrated"),
+  );
+  assert.equal(args[args.indexOf("--story-id") + 1], "fresh_repaired_story");
+});
+
 test("fresh production refill continues motion-hydrated stories through audio and final render materialisation", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

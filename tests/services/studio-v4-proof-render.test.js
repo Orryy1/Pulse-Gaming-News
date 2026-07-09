@@ -755,10 +755,10 @@ test("Studio V4 proof renderer fits one readable HyperFrames card by trimming di
       durationS: 5,
     })),
     {
-      path: "output/generated-motion/story/source-card.mp4",
+      path: "output/generated-motion/story/quote-card.mp4",
       source_type: "hyperframes_premium_shell_card",
       media_kind: "owned_editorial_motion_graphic",
-      source_family: "hyperframes_source_card",
+      source_family: "hyperframes_quote_card",
       text: "SOURCE LOCKED",
       durationS: 12,
       minimum_readable_duration_s: 12,
@@ -780,6 +780,101 @@ test("Studio V4 proof renderer fits one readable HyperFrames card by trimming di
   assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length, 1);
   assert.equal(plan.cardVisibleWindows[0].duration_s, 12);
   assert.ok(plan.scenes.filter((scene) => !scene.readableCardKind).every((scene) => scene.durationS < 5));
+});
+
+test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      ...Array.from({ length: 8 }, (_, index) => ({
+        path: `direct-${index + 1}.mp4`,
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: `direct_family_${index + 1}`,
+        durationS: 5,
+      })),
+      {
+        path: "output/generated-motion/story/source-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_source_card",
+        text: "METACRITIC NEWS SOURCE",
+        durationS: 2.8,
+        minimum_readable_duration_s: 1.2,
+      },
+    ],
+    durationS: 38.5,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
+  assert.equal(plan.cardVisibleWindows[0].kind, "source");
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 2.4);
+  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.4);
+});
+
+test("Studio V4 proof renderer treats rounded readable card equality as pass", () => {
+  const clips = [
+    ...Array.from({ length: 8 }, (_, index) => ({
+      path: `direct-${index + 1}.mp4`,
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_family: `direct_family_${index + 1}`,
+      durationS: 5,
+    })),
+    {
+      path: "output/generated-motion/story/quote-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_quote_card",
+      text: "SOURCE LOCKED",
+      durationS: 12,
+      minimum_readable_duration_s: 12,
+    },
+  ];
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 51.5,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 12);
+  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 12);
+});
+
+test("Studio V4 proof renderer treats sub-frame readable card underrun as pass", () => {
+  const clips = [
+    ...Array.from({ length: 8 }, (_, index) => ({
+      path: `direct-${index + 1}.mp4`,
+      source_type: "official_platform_product_page",
+      media_kind: "direct_video",
+      source_family: `direct_family_${index + 1}`,
+      durationS: 5,
+    })),
+    {
+      path: "output/generated-motion/story/context-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_context_card",
+      text: "PLAYER IMPACT",
+      durationS: 12,
+      minimum_readable_duration_s: 12.02,
+    },
+  ];
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 51.5,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 12);
+  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 12.02);
 });
 
 test("Studio V4 proof renderer blocks cramped HyperFrames decks instead of clipping readable cards", () => {
@@ -816,7 +911,11 @@ test("Studio V4 proof renderer blocks cramped HyperFrames decks instead of clipp
     maxSceneDurationS: 7,
   });
 
-  assert.ok(plan.cardVisibleWindows.every((window) => window.minimum_readable_duration_s >= 12));
+  assert.ok(
+    plan.cardVisibleWindows
+      .filter((window) => window.kind !== "source")
+      .every((window) => window.minimum_readable_duration_s >= 12),
+  );
   assert.ok(plan.blockers.includes("approved_scene_duration_exceeds_audio_duration"));
   assert.equal(plan.repeatFree, true);
 });

@@ -207,6 +207,43 @@ test("fresh refill viewer script turns a generic Bob script into viral-ready nar
   assert.equal(script.coherence.result, "pass");
 });
 
+test("fresh refill viewer script gives Forza Metacritic stories a concrete viral angle", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "1tdwz8e",
+      title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Metacritic",
+        url: "https://www.metacritic.com/game/forza-horizon-6/",
+        type: "rss",
+      },
+      current_script:
+        "Forza just gave Xbox the headline it badly needed. Metacritic says Forza Horizon 6 has moved to the top of Metacritic's 2026 list with the top Metacritic slot. Follow Pulse Gaming so you never miss a beat.",
+    },
+    manifest: {
+      story_id: "1tdwz8e",
+      canonical_subject: "Forza Horizon 6",
+      canonical_game: "Forza Horizon 6",
+      canonical_title: "Forza Horizon 6 Becomes Highest Rated Game of 2026 on Metacritic",
+      primary_source: "Metacritic",
+      primary_source_url: "https://www.metacritic.com/game/forza-horizon-6/",
+      confirmed_claims: ["Forza Horizon 6 is Metacritic's highest-rated game of the year"],
+      narration_script:
+        "Forza just gave Xbox the headline it badly needed. Metacritic says Forza Horizon 6 has moved to the top of Metacritic's 2026 list with the top Metacritic slot. Follow Pulse Gaming so you never miss a beat.",
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.suggested_title, "Forza Horizon 6 Score Gives Xbox A Launch Test");
+  assert.match(script.full_script, /^Critics love Forza Horizon 6, but that is not the real test/i);
+  assert.match(script.full_script, /Metacritic/i);
+  assert.match(script.full_script, /Game Pass|full-price|review score/i);
+  assert.doesNotMatch(script.full_script, /top of Metacritic's 2026 list with the top Metacritic slot/i);
+  assert.doesNotMatch(script.suggested_title, /Low-Risk Trial|Trust Test/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+});
+
 test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concrete early", () => {
   const script = buildFreshRefillViewerScript({
     job: {

@@ -36,6 +36,7 @@ const FPS = 30;
 const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
+const SCENE_DURATION_FRAME_TOLERANCE_S = 1 / FPS;
 const SOURCE_LOCK_OVERLAY_CARD_DURATION_S = 2.4;
 const MIN_OVERLAY_CARD_DURATION_S = 4.2;
 const HEADLINE_OVERLAY_CARD_DURATION_S = 4.6;
@@ -888,7 +889,20 @@ function sceneClipReadableText(clip = {}, fallbackKind = "") {
   );
 }
 
-function readableCardMinimumDurationS({ readableText = "", explicitMinimumS = null } = {}) {
+function readableCardMinimumDurationS({ readableText = "", explicitMinimumS = null, readableCardKind = "" } = {}) {
+  const kind = String(readableCardKind || "").trim().toLowerCase();
+  if (kind === "source" || kind === "source_lock") {
+    const explicit = Number(explicitMinimumS);
+    return Number(
+      Math.min(
+        SOURCE_LOCK_OVERLAY_CARD_DURATION_S,
+        Math.max(
+          Number.isFinite(explicit) && explicit > 0 ? explicit : SOURCE_LOCK_OVERLAY_CARD_DURATION_S,
+          1.2,
+        ),
+      ).toFixed(2),
+    );
+  }
   const explicit = Number(explicitMinimumS);
   const text = cleanCardText(readableText);
   const textMinimum = readableOverlayCardDurationS(text, {
@@ -1020,6 +1034,7 @@ function buildClipScenePlan({
         ? readableCardMinimumDurationS({
             readableText,
             explicitMinimumS: explicitReadableMinimum,
+            readableCardKind,
           })
         : explicitReadableMinimum,
       readableCardKind,
@@ -1243,7 +1258,7 @@ function buildClipScenePlan({
           minimum_readable_duration_s: entry.minimumReadableDurationS,
           underrun_s: Number((entry.minimumReadableDurationS - entry.plannedDurationS).toFixed(2)),
         }))
-        .filter((entry) => entry.underrun_s > 0.01)
+        .filter((entry) => entry.underrun_s > SCENE_DURATION_FRAME_TOLERANCE_S)
     : [];
   if (readableDurationUnderruns.length) {
     blockers.push("readable_card_scene_duration_below_minimum");

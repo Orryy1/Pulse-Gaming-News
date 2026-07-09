@@ -439,6 +439,53 @@ test("standout Shorts packaging records a feed-competition report", () => {
   assert.ok(!report.hard_failures.includes("media_house:shorts_feed_competition_weak"));
 });
 
+test("tracked primary affiliate route inherits trustworthy fallback relevance metadata", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...strongStory().canonical,
+      selected_title: "Forza Horizon 6 Just Gave Xbox A Scoreboard Win",
+      canonical_subject: "Forza Horizon 6",
+      first_spoken_line: "Forza Horizon 6 just gave Xbox a scoreboard win before launch.",
+      thumbnail_headline: "XBOX SCOREBOARD WIN",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Just Gave Xbox A Scoreboard Win",
+          description:
+            "Forza Horizon 6 is leading Metacritic's 2026 list, but the useful question is whether that score changes the full-price decision. Source: Metacritic.",
+          cover_frame: { headline: "XBOX SCOREBOARD WIN" },
+        },
+        instagram_reels: {
+          title: "Forza Horizon 6 Just Gave Xbox A Scoreboard Win",
+          caption:
+            "Forza Horizon 6 is leading Metacritic's 2026 list, but the useful question is whether that score changes the full-price decision. Source: Metacritic.",
+          cover_frame: { headline: "XBOX SCOREBOARD WIN" },
+        },
+      },
+    },
+    affiliate: {
+      disclosure_required: true,
+      disclosure_copy: { short: "Affiliate links may earn us a commission." },
+      primary_link: {
+        label: "Racing wheel",
+        tracking_url: "/go/forza/racing-wheel",
+      },
+      fallback_links: [
+        {
+          label: "Racing wheel",
+          story_relevance: 86,
+          audience_fit: 86,
+          merchant_trust: 84,
+          tracking_url: "/go/forza/racing-wheel",
+        },
+      ],
+    },
+  }));
+
+  assert.ok(!report.hard_failures.includes("media_house:commercial_route_not_trustworthy"));
+});
+
 test("attention reports use current platform-native copy when canonical copy is stale", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

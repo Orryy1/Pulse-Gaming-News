@@ -239,6 +239,20 @@ function headlineWordsFromTitle(title) {
   return words.length ? words : ["STORY", "UPDATE"];
 }
 
+function contextSubFromTitle(title, leadWord) {
+  const lead = normaliseText(leadWord).replace(/[^a-zA-Z0-9]+/g, " ").trim().toLowerCase();
+  const words = normaliseText(title)
+    .replace(/[^a-zA-Z0-9\u00c0-\u017f ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((word) => word.length >= 4);
+  const filtered = words.filter((word, index) => {
+    if (index === 0 && lead && word.toLowerCase() === lead) return false;
+    return true;
+  });
+  return filtered.slice(0, 3).join(" ").toUpperCase() || "PLAYER IMPACT";
+}
+
 function firstUsefulQuote(story) {
   const text = storyText(story);
   if (/No premium ticket\.\s*No paywall\.\s*Every player gets access/i.test(text)) {
@@ -312,6 +326,7 @@ function buildStoryCardSpecs(story) {
   }
 
   const headlineWords = headlineWordsFromTitle(title);
+  const contextSub = contextSubFromTitle(title, headlineWords[0] || "");
   return {
     source: {
       kicker: "SOURCE",
@@ -321,8 +336,8 @@ function buildStoryCardSpecs(story) {
     context: {
       kicker: "WHY IT MATTERS",
       number: headlineWords[0] || "UPDATE",
-      sub: clampWords(title, 5).toUpperCase(),
-      micro: "verified source, checked before publish",
+      sub: contextSub,
+      micro: "PLAYER IMPACT",
     },
     timeline: {
       kicker: "WHAT WE KNOW",

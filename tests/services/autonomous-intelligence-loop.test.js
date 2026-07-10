@@ -688,6 +688,37 @@ test("fresh refill repair filter distrusts stale viral-ready evidence for generi
     const result = await buildFreshRefillRepairPackageFilter({ storyPackagesPath, outputDir });
     assert.deepEqual(result.eligibleRows, []);
     assert.deepEqual(result.quarantinedRows[0].reasons, ["generic_source_signal_template"]);
+
+    const sourceProofDir = path.join(tmp, "source-proof-story");
+    await fs.mkdir(sourceProofDir, { recursive: true });
+    await fs.writeFile(
+      path.join(sourceProofDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "source-proof-story",
+        canonical_subject: "Starward",
+        selected_title: "Starward Has A Source-Proof Risk",
+        narration_script:
+          "Starward has to answer one simple thing: why should players care now? A named source is only useful when it changes a real choice. If Xbox Wire gives that choice teeth, it becomes a story. If not, it belongs in the watch pile until stronger proof lands. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(sourceProofDir, "source_manifest.json"),
+      await fs.readFile(path.join(artifactDir, "source_manifest.json")),
+    );
+    await fs.writeFile(
+      path.join(sourceProofDir, "script_scorecard.json"),
+      await fs.readFile(path.join(artifactDir, "script_scorecard.json")),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([{ story_id: "source-proof-story", artifact_dir: sourceProofDir }]),
+    );
+    const sourceProofResult = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath,
+      outputDir: path.join(tmp, "source-proof-repair"),
+    });
+    assert.deepEqual(sourceProofResult.eligibleRows, []);
+    assert.deepEqual(sourceProofResult.quarantinedRows[0].reasons, ["generic_source_signal_template"]);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -739,6 +770,54 @@ test("fresh refill repair filter quarantines narration attributed to an unrecord
     });
     assert.deepEqual(result.eligibleRows, []);
     assert.deepEqual(result.quarantinedRows[0].reasons, ["source_attribution_mismatch"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill repair filter routes tighten-before-tts scripts through rewrite first", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-tighten-script-"));
+  const artifactDir = path.join(tmp, "wreck-runners");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "wreck-runners",
+        canonical_subject: "Wreck Runners",
+        selected_title: "Wreck Runners Opens A New Xbox Playtest",
+        narration_script:
+          "Wreck Runners has a new Xbox Insider playtest. Xbox Wire says players can join now and test its co-op action loop before release. The first few minutes need to prove movement, hit feedback and team flow. If those click, this becomes a real watchlist game. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: { name: "Xbox Wire", url: "https://news.xbox.com/wreck-runners" },
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({ verdict: "tighten_before_tts", blockers: [], failures: [] }),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([{ story_id: "wreck-runners", artifact_dir: artifactDir }]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath,
+      outputDir: path.join(tmp, "repair"),
+    });
+    assert.deepEqual(result.eligibleRows, []);
+    assert.deepEqual(result.quarantinedRows[0].reasons, ["script_tighten_required"]);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

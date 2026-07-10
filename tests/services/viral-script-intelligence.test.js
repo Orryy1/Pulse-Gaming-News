@@ -68,6 +68,29 @@ test("viral script intelligence blocks generic source-signal fallback narration"
   assert.ok(result.blockers.includes("repeated_generated_title_suffix"));
 });
 
+test("viral script intelligence blocks source-proof watch-pile fallback narration", () => {
+  const script =
+    "Starward has to answer one simple thing: why should players care now? " +
+    "Xbox Wire says Meet the Star Operator Who Rewrites the Ranged Rulebook in Starward V3.1. " +
+    "That matters because a named source is only useful when it changes a real choice: install, wishlist, return or wait. " +
+    "If Xbox Wire gives that choice teeth, it becomes a story. " +
+    "If not, it belongs in the watch pile until stronger proof lands. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "starward-source-proof-fallback",
+      title: "Starward Has A Source-Proof Risk",
+      source_name: "Xbox Wire",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("generic_source_signal_template"));
+  assert.ok(result.blockers.includes("generic_title_template"));
+});
+
 test("viral script intelligence approves a source-safe angle with concrete numbers and one CTA", () => {
   const script =
     "Forza just gave Xbox the headline it badly needed. " +

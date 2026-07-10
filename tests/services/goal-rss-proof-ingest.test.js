@@ -87,6 +87,13 @@ test("RSS proof ingest preserves materialisable video enclosures for source-moti
 
 test("RSS proof ingest rejects broad roundups and avoids bad fallback subjects", () => {
   assert.equal(
+    _private.isGamingProofItem({
+      title: "Share of the Week: Portraits",
+      description: "Community screenshots from the game of your choice using PS Share.",
+    }),
+    false,
+  );
+  assert.equal(
     _private.isGamingProofItem({ title: "Everything Announced at Warhammer Skulls 2026" }),
     false,
   );
@@ -174,6 +181,12 @@ test("RSS proof ingest rejects broad roundups and avoids bad fallback subjects",
   assert.equal(
     _private.titleSubjectFallback("Xbox hires analyst who said games were losing the attention battle"),
     "Xbox",
+  );
+  assert.equal(
+    _private.titleSubjectFallback(
+      "Meet the Star Operator Who Rewrites the Ranged Rulebook in Starward V3.1",
+    ),
+    "Starward",
   );
 });
 

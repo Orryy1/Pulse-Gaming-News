@@ -545,6 +545,9 @@ function liveRssWeakMetaMotionPattern(story = {}) {
   const text = liveRssStorySearchText(story);
   const title = cleanSearchText(story.title);
   const url = cleanSearchText(story.url || story.article_url || story.source_url);
+  if (/\bshare of the week\b|\bpsshare\b|\bcommunity screenshots?\b/i.test(text)) {
+    return true;
+  }
   if (/\bplayers?[â€™']?\s+choice\b/i.test(text) && /\b(?:vote|poll|best new game|awards?)\b/i.test(text)) {
     return true;
   }

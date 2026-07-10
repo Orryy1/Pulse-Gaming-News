@@ -837,6 +837,66 @@ test("fresh refill repair filter recognises scalar approved direct media URLs as
   }
 });
 
+test("fresh refill repair filter keeps official primary source pages as discovery runway", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-official-page-runway-"));
+  const packagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+  const artifactDir = path.join(tmp, "wreck-runners");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "wreck-runners",
+        canonical_subject: "Wreck Runners",
+        selected_title: "Wreck Runners Opens Its Xbox Playtest",
+        primary_source: "Xbox Wire",
+        primary_source_url:
+          "https://news.xbox.com/en-us/2026/07/09/wreck-runners-join-the-xbox-insider-playtest/",
+        narration_script:
+          "Wreck Runners has a useful Game Pass-style question before launch. Xbox Wire says up to four players can test its co-op extraction loop now. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        story_id: "wreck-runners",
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/07/09/wreck-runners-join-the-xbox-insider-playtest/",
+        },
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({ story_id: "wreck-runners", verdict: "viral_ready", blockers: [], failures: [] }),
+    );
+    await fs.writeFile(
+      packagesPath,
+      JSON.stringify([
+        {
+          story_id: "wreck-runners",
+          title: "Wreck Runners Opens Its Xbox Playtest",
+          artifact_dir: artifactDir,
+          blockers: ["footage:v4_motion_blocked", "director:director_blocked"],
+        },
+      ]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({ storyPackagesPath: packagesPath, outputDir });
+
+    assert.deepEqual(result.eligibleRows.map((row) => row.story_id), ["wreck-runners"]);
+    assert.deepEqual(result.quarantinedRows, []);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill repair filter lets service stories with official storefront pages enter discovery", async () => {
   const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-service-storefront-"));

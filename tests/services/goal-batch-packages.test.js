@@ -1259,6 +1259,16 @@ test("goal batch live RSS selection rejects stale source-age repair candidates",
 test("goal batch live RSS repair intake rejects official meta vote stories without game motion", () => {
   const weakStories = [
     {
+      id: "share-of-the-week",
+      title: "Share of the Week: Portraits",
+      canonical_subject: "Share of the Week",
+      source_name: "PlayStation Blog",
+      source_type: "rss",
+      url: "https://blog.playstation.com/2026/07/10/share-of-the-week-portraits-2/",
+      description: "Community screenshots from the game of your choice using PS Share.",
+      breaking_score: 80,
+    },
+    {
       id: "players-choice-vote",
       title: "Players' Choice: Vote for June 2026's best new game",
       canonical_subject: "Players' Choice",

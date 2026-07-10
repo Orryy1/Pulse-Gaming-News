@@ -440,6 +440,23 @@ function filterNearRepeatPublishedStories(stories = [], publishedStories = []) {
   return asStoryArray(stories).filter((story) => !published.some((row) => nearRepeatStory(story, row)));
 }
 
+function filterNearRepeatFreshStoryClusters(stories = []) {
+  const selected = [];
+  for (const story of asStoryArray(stories)) {
+    const titleTokens = new Set(repeatTokens(story.title));
+    const repeatsSelected = selected.some((row) => {
+      if (nearRepeatStory(story, row)) return true;
+      const selectedTitleTokens = new Set(repeatTokens(row.title));
+      const overlap = [...titleTokens].filter((token) => selectedTitleTokens.has(token)).length;
+      const union = new Set([...titleTokens, ...selectedTitleTokens]).size || 1;
+      return overlap >= 5 && overlap / union >= 0.4;
+    });
+    if (repeatsSelected) continue;
+    selected.push(story);
+  }
+  return selected;
+}
+
 function liveRssStorySearchText(story = {}) {
   return [
     story.title,
@@ -779,18 +796,22 @@ function selectStoriesForGoalBatch({
       });
   const repeatFilteredLiveRssSelection = wanted.size
     ? liveRssSelection
-    : filterNearRepeatPublishedStories(liveRssSelection, excludedPublishedStories);
+    : filterNearRepeatFreshStoryClusters(
+        filterNearRepeatPublishedStories(liveRssSelection, excludedPublishedStories),
+      );
   let merged = dedupeStoriesById([...repeatFilteredLiveRssSelection, ...sourceStories]).filter((story) => {
     if (wanted.size) return true;
     const id = storyIdFor(story);
     return !id || !excluded.has(id);
   });
   if (!wanted.size && requireMaterializableDirectMedia && merged.length === 0) {
-    const repairFallbackSelection = filterNearRepeatPublishedStories(filterLiveRssStoriesForMotion(liveRssStories, {
-      now,
-      policyHours: sourceAgePolicyHours,
-      requireMaterializableDirectMedia: false,
-    }), excludedPublishedStories);
+    const repairFallbackSelection = filterNearRepeatFreshStoryClusters(
+      filterNearRepeatPublishedStories(filterLiveRssStoriesForMotion(liveRssStories, {
+        now,
+        policyHours: sourceAgePolicyHours,
+        requireMaterializableDirectMedia: false,
+      }), excludedPublishedStories),
+    );
     merged = dedupeStoriesById([...repairFallbackSelection, ...sourceStories]).filter((story) => {
       const id = storyIdFor(story);
       return !id || !excluded.has(id);

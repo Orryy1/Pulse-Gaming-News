@@ -322,6 +322,33 @@ test("official search autofill rejects broad and generic entity matches", async 
   assert.equal(report.output_template.entries.length, 0);
 });
 
+test("official search autofill does not query storefronts for generic season labels", async () => {
+  const calls = [];
+  const report = await buildOfficialSearchIntakeAutofillReport({
+    entries: [
+      {
+        story_id: "season-gap",
+        entity: "Season One",
+        query: "Season One official gameplay trailer",
+        accepted_sources: ["Steam", "platform storefront"],
+      },
+    ],
+    fetchJson: async (url) => {
+      calls.push(url);
+      return {
+        ok: true,
+        status: 200,
+        json: { items: [{ id: 1234, name: "Season One: A Different Game" }] },
+      };
+    },
+  });
+
+  assert.deepEqual(calls, []);
+  assert.equal(report.summary.skipped, 1);
+  assert.equal(report.rows[0].reason, "generic_entity_not_safe_for_autofill");
+  assert.equal(report.output_template.entries.length, 0);
+});
+
 test("official search autofill allows one-token Steam matches only when the app title is exact", async () => {
   const report = await buildOfficialSearchIntakeAutofillReport({
     entries: [

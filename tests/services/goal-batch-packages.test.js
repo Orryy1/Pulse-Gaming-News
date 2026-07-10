@@ -1071,6 +1071,42 @@ test("goal batch live RSS selection skips near-repeat published story clusters b
   assert.deepEqual(selected.map((story) => story.id), ["fresh-phantom-blade-demo"]);
 });
 
+test("goal batch unattended selection spends one intake slot per fresh story cluster", () => {
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        id: "black-flag-xbox-wire",
+        title: "Assassin's Creed Black Flag Resynced Faces A Steam Backlash",
+        canonical_subject: "Assassin's Creed Black Flag Resynced",
+        source_name: "Xbox Wire",
+        source_type: "official",
+        url: "https://news.xbox.com/en-us/2026/07/10/black-flag-resynced/",
+        approved_direct_media_url: "https://cdn.example.com/black-flag-resynced.mp4",
+      },
+      {
+        id: "black-flag-kotaku",
+        title: "Ubisoft Defends Assassin's Creed Black Flag Resynced As Steam Reviews Fall",
+        canonical_subject: "Ubisoft",
+        source_name: "Kotaku",
+        source_type: "rss",
+        url: "https://kotaku.com/ubisoft-black-flag-resynced-steam-reviews",
+        approved_direct_media_url: "https://cdn.example.com/black-flag-resynced.mp4",
+      },
+      {
+        id: "wreck-runners",
+        title: "Wreck Runners Opens A New Xbox Playtest",
+        canonical_subject: "Wreck Runners",
+        source_name: "Xbox Wire",
+        source_type: "official",
+        url: "https://news.xbox.com/en-us/2026/07/10/wreck-runners-playtest/",
+        approved_direct_media_url: "https://cdn.example.com/wreck-runners.mp4",
+      },
+    ],
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["wreck-runners", "black-flag-xbox-wire"]);
+});
+
 test("goal batch explicit story selection can still package already-published IDs for repair", () => {
   const selected = selectStoriesForGoalBatch({
     liveRssStories: [

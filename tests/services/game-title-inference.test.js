@@ -132,4 +132,5 @@ test("headline candidate guard rejects source labels and quoted fragments", () =
   assert.equal(isLikelyGameTitleCandidate("'Eventually the slop"), false);
   assert.equal(isLikelyGameTitleCandidate("I can't download you. You"), false);
   assert.equal(isLikelyGameTitleCandidate("It's brutal out there"), false);
+  assert.equal(isLikelyGameTitleCandidate("Season One"), false);
 });

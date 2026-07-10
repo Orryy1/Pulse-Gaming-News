@@ -647,6 +647,103 @@ test("fresh refill repair filter skips already scheduler-ready stories", async (
   }
 });
 
+test("fresh refill repair filter distrusts stale viral-ready evidence for generic narration", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-stale-script-score-"));
+  const artifactDir = path.join(tmp, "generic-story");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "generic-story",
+        canonical_subject: "We mean business",
+        selected_title: "We Mean Business Needs One Real Proof Point",
+        narration_script:
+          "We mean business has one detail worth checking before it becomes background noise. Not every update deserves a spotlight. Use this as a watch signal, not a verdict. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: { name: "Eurogamer", url: "https://www.eurogamer.net/example" },
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({ verdict: "viral_ready", blockers: [], failures: [] }),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([{ story_id: "generic-story", artifact_dir: artifactDir }]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({ storyPackagesPath, outputDir });
+    assert.deepEqual(result.eligibleRows, []);
+    assert.deepEqual(result.quarantinedRows[0].reasons, ["generic_source_signal_template"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill repair filter quarantines narration attributed to an unrecorded source", async () => {
+  const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-source-attribution-"));
+  const artifactDir = path.join(tmp, "black-flag-story");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "black-flag-story",
+        canonical_subject: "Assassin's Creed Black Flag Resynced",
+        selected_title: "Black Flag Resynced Faces A Steam Trust Fight",
+        narration_script:
+          "Black Flag Resynced has to prove its complete edition claim. PlayStation Blog says PlayStation 5 Pro upgrades are coming. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://news.xbox.com/en-us/2026/07/08/assassins-creed-black-flag-resynced-returns/",
+        },
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "script_scorecard.json"),
+      JSON.stringify({ verdict: "viral_ready", blockers: [], failures: [] }),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([{ story_id: "black-flag-story", artifact_dir: artifactDir }]),
+    );
+
+    const result = await buildFreshRefillRepairPackageFilter({
+      storyPackagesPath,
+      outputDir: path.join(tmp, "repair"),
+    });
+    assert.deepEqual(result.eligibleRows, []);
+    assert.deepEqual(result.quarantinedRows[0].reasons, ["source_attribution_mismatch"]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh refill repair filter quarantines motion-poor service stories without direct video runway", async () => {
   const { buildFreshRefillRepairPackageFilter } = require("../../lib/job-handlers");
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-motion-runway-"));
@@ -1216,6 +1313,90 @@ test("fresh refill repair attempt scope prioritises direct and official motion r
       result.repairDeferredByLimitRows.map((row) => row.story_id),
       ["media_only_story", "governance_red_story"],
     );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill repair attempt scope spends one slot per canonical story topic", async () => {
+  const { freshRefillRepairAttemptScope } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-topic-dedupe-"));
+  const repairDir = path.join(tmp, "repair");
+
+  async function artifact(storyId, subject, title) {
+    const dir = path.join(tmp, storyId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: storyId,
+        canonical_subject: subject,
+        canonical_game: subject,
+        selected_title: title,
+        narration_script: `${subject} has a fresh player-facing update. Follow Pulse Gaming so you never miss a beat.`,
+      }),
+    );
+    await fs.writeFile(
+      path.join(dir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Xbox Wire",
+          url: `https://news.xbox.com/en-us/2026/07/10/${storyId}/`,
+          type: "rss",
+        },
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+        blockers: [],
+      }),
+    );
+    return dir;
+  }
+
+  try {
+    const blackFlagOne = await artifact(
+      "black_flag_one",
+      "Assassin's Creed Black Flag Resynced",
+      "Assassin's Creed Black Flag Resynced Faces A Steam Backlash",
+    );
+    const blackFlagTwo = await artifact(
+      "black_flag_two",
+      "Ubisoft",
+      "Assassin's Creed Black Flag Resynced Faces A Steam Backlash",
+    );
+    const wreckRunners = await artifact(
+      "wreck_runners",
+      "Wreck Runners",
+      "Wreck Runners Opens A New Xbox Playtest",
+    );
+
+    const result = await freshRefillRepairAttemptScope({
+      packageFilter: {
+        eligibleRows: [
+          { story_id: "black_flag_one", artifact_dir: blackFlagOne },
+          { story_id: "black_flag_two", artifact_dir: blackFlagTwo },
+          { story_id: "wreck_runners", artifact_dir: wreckRunners },
+        ],
+        eligibleStoryPackagesPath: path.join(tmp, "eligible.json"),
+      },
+      repairStoryLimit: 2,
+      repairDir,
+    });
+
+    assert.deepEqual(
+      result.storyPackageRows.map((row) => row.story_id),
+      ["black_flag_one", "wreck_runners"],
+    );
+    assert.deepEqual(
+      result.repairDeferredByLimitRows.map((row) => row.story_id),
+      ["black_flag_two"],
+    );
+    const priorityReport = JSON.parse(await fs.readFile(result.repairPriorityReportPath, "utf8"));
+    const duplicate = priorityReport.ranked.find((row) => row.story_id === "black_flag_two");
+    assert.equal(priorityReport.summary.duplicate_topic_variant_count, 1);
+    assert.equal(duplicate.selected_for_attempt, false);
+    assert.equal(duplicate.defer_reason, "duplicate_topic_variant");
+    assert.equal(duplicate.duplicate_of_story_id, "black_flag_one");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -1825,6 +2006,58 @@ test("fresh refill official source evidence normalises article headlines to game
         ["flight-story", "Microsoft Flight Simulator"],
       ],
     );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill official source evidence resolves generic season labels from recorded claims", async () => {
+  const { buildFreshRefillOfficialSourceEvidence } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-season-entity-"));
+  const artifactDir = path.join(tmp, "season-story");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+  const outputDir = path.join(tmp, "repair");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(
+      path.join(artifactDir, "canonical_story_manifest.json"),
+      JSON.stringify({
+        story_id: "season-story",
+        canonical_subject: "Season One",
+        canonical_game: "Season One",
+        selected_title: "Season One Brings The Thieves Guild Back",
+        confirmed_claims: [
+          "Season One: Return of the Thieves Guild is now live in The Elder Scrolls Online",
+        ],
+        narration_script:
+          "The Elder Scrolls Online just brought the Thieves Guild back into focus. Follow Pulse Gaming so you never miss a beat.",
+      }),
+    );
+    await fs.writeFile(
+      path.join(artifactDir, "source_manifest.json"),
+      JSON.stringify({
+        primary_source: {
+          name: "Xbox Wire",
+          url: "https://www.elderscrollsonline.com/en-us/news/post/70123",
+          type: "official_game_site_news_page",
+        },
+        freshness_gate: "pass",
+        coherence_gate: "pass",
+      }),
+    );
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([{ story_id: "season-story", artifact_dir: artifactDir }]),
+    );
+
+    const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+    const stories = JSON.parse(await fs.readFile(result.candidateStoriesPath, "utf8"));
+    const entries = JSON.parse(await fs.readFile(result.officialSourceEntriesPath, "utf8"));
+    assert.equal(stories[0].canonical_subject, "The Elder Scrolls Online");
+    assert.equal(entries[0].entity, "The Elder Scrolls Online");
+    assert.doesNotMatch(entries[0].entity, /^Season One$/i);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

@@ -2857,9 +2857,9 @@ test("goal batch package extracts current official subjects from source URLs bef
   const wreck = prepareStoryForGoalProof(
     {
       id: "rss_wreck_runners_insider",
-      title: "Xbox Has A Source-Proof Risk",
-      canonical_subject: "Xbox",
-      canonical_game: "Xbox",
+      title: "Pit Of Goblin Insider Test Needs Real Runs",
+      canonical_subject: "Wreck Runners",
+      canonical_game: "Wreck Runners",
       source_type: "rss",
       source_name: "Xbox Wire",
       primary_source: "Xbox Wire",

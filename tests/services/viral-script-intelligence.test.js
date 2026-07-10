@@ -42,6 +42,32 @@ test("viral script intelligence rejects boring recap, repeated hook wording and 
   assert.ok(result.prompt_directives.some((item) => /CTA once/i.test(item)));
 });
 
+test("viral script intelligence blocks generic source-signal fallback narration", () => {
+  const script =
+    "Zaxoid Needs One Real Proof Point has one detail worth checking before it becomes background noise. " +
+    "Xbox Wire reports the latest Zaxoid Needs One Real Proof Point update, so the important part is whether it changes timing, access, price, performance or actual footage. " +
+    "That matters because not every update deserves a spotlight; the story has to change what people understand, watch or wait for. " +
+    "For players, the stakes are immediate: who is affected, what improves and what still needs proof. " +
+    "One report cannot settle the whole game, so anything beyond the named source stays out. " +
+    "Use this as a watch signal, not a verdict. " +
+    "If the next update adds footage, price or a firm date, that becomes the bigger story. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "zaxoid-generic-fallback",
+      title: "Zaxoid Needs One Real Proof Point Needs One Real Proof Point",
+      source_name: "Xbox Wire",
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required");
+  assert.ok(result.blockers.includes("generic_source_signal_template"));
+  assert.ok(result.blockers.includes("generic_title_template"));
+  assert.ok(result.blockers.includes("repeated_generated_title_suffix"));
+});
+
 test("viral script intelligence approves a source-safe angle with concrete numbers and one CTA", () => {
   const script =
     "Forza just gave Xbox the headline it badly needed. " +

@@ -177,6 +177,25 @@ test("generic angle-first scripts avoid player-impact filler and html-entity tit
   assert.doesNotMatch(script.suggested_title, /Could Split Players/i);
 });
 
+test("generic angle generation does not duplicate an existing generated title suffix", () => {
+  const angle = buildEditorialAngle(
+    {
+      id: "zaxoid-repeat-title",
+      title: "Zaxoid Needs One Real Proof Point Needs One Real Proof Point",
+      source_type: "rss",
+      article_url: "https://news.xbox.com/en-us/2026/07/10/zaxoid-update/",
+    },
+    {
+      sourceName: "Xbox Wire",
+      sourceMaterial: "Xbox Wire published a new Zaxoid update.",
+    },
+  );
+
+  assert.equal(angle.lane, "source_signal");
+  assert.equal(angle.title, "Zaxoid Needs One Real Proof Point");
+  assert.doesNotMatch(angle.title, /Needs One Real Proof Point Needs One Real Proof Point/i);
+});
+
 test("hands-on demo angle uses a concrete player-facing title and plain narration", () => {
   const story = {
     id: "rss_granblue_demo",

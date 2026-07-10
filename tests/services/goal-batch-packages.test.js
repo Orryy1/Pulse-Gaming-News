@@ -3299,6 +3299,18 @@ test("goal batch package proof preparation resolves current franchise subjects f
     full_script:
       "Penguin Colony's demo has the one kind of reveal fans cannot hand-wave: actual play. Follow Pulse Gaming so you never miss a beat.",
   });
+  const blackFlag = prepareStoryForGoalProof({
+    id: "rss_black_flag_resynced",
+    title:
+      "Ubisoft Says Assassin's Creed Black Flag Resynced Is The Full Complete Experience As Steam Reviews Fall",
+    source_type: "rss",
+    source_name: "Kotaku",
+    article_url: "https://kotaku.com/ubisoft-black-flag-resynced-steam-reviews",
+    description:
+      "Ubisoft says Black Flag Resynced is the complete experience as players criticise its microtransactions.",
+    full_script:
+      "Ubisoft has moved from open-world promise to a live store test. Follow Pulse Gaming so you never miss a beat.",
+  });
 
   assert.equal(halo.canonical_subject, "Halo: Campaign Evolved");
   assert.doesNotMatch(halo.full_script, /^This Game is the name to watch here/i);
@@ -3307,6 +3319,18 @@ test("goal batch package proof preparation resolves current franchise subjects f
   assert.doesNotMatch(gears.full_script, /paid crowd|Steam player spike/i);
   assert.equal(enginefall.canonical_subject, "Enginefall");
   assert.equal(penguin.canonical_subject, "Penguin Colony");
+  assert.equal(blackFlag.canonical_subject, "Assassin's Creed Black Flag Resynced");
+  assert.equal(blackFlag.public_title, "Black Flag Resynced Has A Microtransaction Problem");
+  assert.match(blackFlag.full_script, /Black Flag Resynced|microtransactions|Steam/i);
+  assert.doesNotMatch(blackFlag.full_script, /this city|release-date fight|open-world promise/i);
+  const blackFlagPack = buildGoalProofPackage({
+    story: blackFlag,
+    rightsLedger: rightsFor(blackFlag),
+  });
+  assert.equal(
+    blackFlagPack.canonical_story_manifest.public_title,
+    "Black Flag Resynced Has A Microtransaction Problem",
+  );
 });
 
 test("goal batch package proof preparation repairs current scored story subjects, titles and scripts", () => {

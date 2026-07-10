@@ -120,6 +120,15 @@ test("headline inference trims prepares-style verbs from game subjects", () => {
   );
 });
 
+test("headline inference prefers the named game after publisher attribution", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates(
+      "Ubisoft Says Assassin's Creed Black Flag Resynced Is The Full Complete Experience As Steam Reviews Fall",
+    ),
+    ["Assassin's Creed Black Flag Resynced"],
+  );
+});
+
 test("headline inference rejects editorial colon fragments but keeps credited games", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("It's brutal out there: Deus Ex and Unreal composer says game music is changing"),

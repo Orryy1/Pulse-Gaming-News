@@ -29,6 +29,13 @@ const {
 const {
   auditRenderedAudioSegments,
 } = require("../lib/render-audio-segment-qa");
+const {
+  PULSE_SIGNATURE_VERSION,
+  buildPulseSignatureContract,
+} = require("../lib/studio/v4/pulse-signature-layer");
+const {
+  SOURCE_CARD_TIMING,
+} = require("../lib/studio/v4/premium-card-timing-policy");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -37,7 +44,7 @@ const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
 const SCENE_DURATION_FRAME_TOLERANCE_S = 1 / FPS;
-const SOURCE_LOCK_OVERLAY_CARD_DURATION_S = 2.4;
+const SOURCE_LOCK_OVERLAY_CARD_DURATION_S = SOURCE_CARD_TIMING.planned_visible_duration_s;
 const MIN_OVERLAY_CARD_DURATION_S = 4.2;
 const HEADLINE_OVERLAY_CARD_DURATION_S = 4.6;
 const MAX_OVERLAY_CARD_DURATION_S = 5.8;
@@ -1639,6 +1646,10 @@ function fitOverlayTextBlock({
 
 function buildOverlayLayout({ story = {} } = {}) {
   const safeMarginMode = story.render_safe_text_margins === true;
+  const signature = buildPulseSignatureContract({ story });
+  const openingOffsetX = safeMarginMode ? 12 : 0;
+  const openingSourceX = signature.opening.layout.source_x_px + openingOffsetX;
+  const openingSafeRight = safeMarginMode ? 998 : 1010;
   const source = sourceLabelFor(story);
   const title = firstText(story.canonical_subject, story.title, "PULSE GAMING");
   const hook = firstText(
@@ -1672,9 +1683,9 @@ function buildOverlayLayout({ story = {} } = {}) {
     fitOverlayTextBlock({
       id: "top_source_lock",
       value: `SOURCE LOCK  ${source}`,
-      x: safeMarginMode ? 348 : 328,
+      x: openingSourceX,
       y: 268,
-      maxWidthPx: safeMarginMode ? 560 : 610,
+      maxWidthPx: openingSafeRight - openingSourceX,
       maxLines: 1,
       preferredFontSizePx: 20,
       minFontSizePx: 16,
@@ -1819,6 +1830,12 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
   const headlineText = firstText(blockById.headline_card?.text, story.thumbnail_headline, story.title);
   const proofPrimaryText = firstText(blockById.proof_primary?.text, story.proof_card_primary, story.player_impact);
   const proofSecondaryText = firstText(blockById.proof_secondary?.text, story.proof_card_secondary, story.player_impact);
+  const normaliseCardCopy = (value) => String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const headlineRepeatsOpening =
+    normaliseCardCopy(headlineText) === normaliseCardCopy(openingText);
   const windows = [];
   let openingWindow = null;
   if (!suppressOpeningStoryCard) {
@@ -1835,32 +1852,37 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
     windows.push(openingWindow);
   }
   if (!suppressAllStoryCards) {
-    const headlineStartS = Math.max(4, (openingWindow?.end_s || 0) + 0.2);
-    const headlineWindow = overlayWindow({
-      id: "headline_card",
-      kind: "proof_card",
-      text: headlineText,
-      startS: headlineStartS,
-      durationS: readableOverlayCardDurationS(headlineText, {
-        minS: HEADLINE_OVERLAY_CARD_DURATION_S,
-      }),
-    });
+    let headlineWindow = null;
+    if (!(openingWindow && headlineRepeatsOpening)) {
+      const headlineStartS = Math.max(4, (openingWindow?.end_s || 0) + 0.2);
+      headlineWindow = overlayWindow({
+        id: "headline_card",
+        kind: "proof_card",
+        text: headlineText,
+        startS: headlineStartS,
+        durationS: readableOverlayCardDurationS(headlineText, {
+          minS: HEADLINE_OVERLAY_CARD_DURATION_S,
+        }),
+      });
+    }
     const proofPrimaryWindow = overlayWindow({
       id: "proof_primary",
       kind: "proof_card",
       text: proofPrimaryText,
-      startS: Math.max(9, headlineWindow.end_s + 0.8),
+      startS: headlineWindow
+        ? Math.max(9, headlineWindow.end_s + 0.8)
+        : Math.max(4, (openingWindow?.end_s || 0) + 0.8),
       durationS: readableOverlayCardDurationS(proofPrimaryText),
     });
     const proofSecondaryWindow = overlayWindow({
       id: "proof_secondary",
       kind: "proof_card",
       text: proofSecondaryText,
-      startS: Math.max(16, proofPrimaryWindow.end_s + 0.8),
+      startS: Math.max(headlineWindow ? 16 : 10, proofPrimaryWindow.end_s + 0.8),
       durationS: readableOverlayCardDurationS(proofSecondaryText),
     });
     windows.push(
-      headlineWindow,
+      ...(headlineWindow ? [headlineWindow] : []),
       proofPrimaryWindow,
       proofSecondaryWindow,
     );
@@ -1870,8 +1892,17 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
   return windows.filter((window) => Number(window.end_s || 0) <= finalDuration + 0.05);
 }
 
-function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt }) {
+function buildOverlayChain({
+  story,
+  inputLabel,
+  outputLabel,
+  durationS,
+  fontOpt,
+  metaFontOpt = fontOpt,
+  cardVisibleWindows = [],
+}) {
   const layout = buildOverlayLayout({ story });
+  const signature = buildPulseSignatureContract({ story, durationS });
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
   const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
   const suppressOpeningStoryCard =
@@ -1886,7 +1917,8 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
   const openingCardW = safeMarginMode ? 916 : 940;
   const openingCardY = 252;
   const openingCardH = 214;
-  const openingChipX = safeMarginMode ? 102 : 90;
+  const openingChipX = signature.opening.layout.chip_x_px + (safeMarginMode ? 12 : 0);
+  const openingChipW = signature.opening.layout.chip_width_px;
   const cardWindows = overlayCardWindowsForStory(story, { durationS });
   const windowById = Object.fromEntries(cardWindows.map((window) => [window.id, window]));
   const disabledWindow = {
@@ -1904,17 +1936,29 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     if (Math.abs(number * 10 - Math.round(number * 10)) < 0.005) return number.toFixed(1);
     return number.toFixed(2);
   };
-  const enableFor = (window) => `between(t,${t(window.start_s)},${t(window.end_s)})`;
+  const cardExclusions = cardVisibleWindows
+    .filter((window) => Number.isFinite(Number(window?.start_s)) && Number.isFinite(Number(window?.end_s)))
+    .map((window) => `not(between(t,${t(window.start_s)},${t(window.end_s)}))`);
+  const enableFor = (window, { avoidCardWindows = false } = {}) => {
+    const base = `between(t,${t(window.start_s)},${t(window.end_s)})`;
+    return avoidCardWindows && cardExclusions.length
+      ? `${base}*${cardExclusions.join("*")}`
+      : base;
+  };
   const openingEnable = enableFor(openingWindow);
-  const headlineEnable = enableFor(headlineWindow);
-  const proofPrimaryEnable = enableFor(proofPrimaryWindow);
-  const proofSecondaryEnable = enableFor(proofSecondaryWindow);
+  const headlineEnable = enableFor(headlineWindow, { avoidCardWindows: true });
+  const proofPrimaryEnable = enableFor(proofPrimaryWindow, { avoidCardWindows: true });
+  const proofSecondaryEnable = enableFor(proofSecondaryWindow, { avoidCardWindows: true });
+  const outroEnable = enableFor(signature.outro);
   const progressStart = (window, offsetS) => t(Number(window.start_s || 0) + offsetS);
+  const segmentLabel = drawtextEscape(signature.segment.display_label);
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
     `drawbox=x=iw-${sideMaskWidth}:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
-    `drawbox=x=${accentRailX}:y='mod(t*240\\,1920)-420':w=3:h=420:color=0x38BDF8@0.34:t=fill`,
+    `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=0xFF6B1A@0.30:t=fill`,
+    `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=0xFF6B1A@0.95:t=fill`,
+    `drawbox=x=${accentRailX + 7}:y='mod(t*480+420\\,2000)-80':w=2:h=80:color=0x38BDF8@0.78:t=fill`,
     `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
     `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=0xFF6B1A@0.055:t=fill`,
     ...(suppressOpeningStoryCard ? [] : [
@@ -1924,10 +1968,10 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=118:h=3:color=0xF8FAFC@0.88:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w='if(lt(t\\,${progressStart(openingWindow, 0.18)})\\,1\\,1+(${openingCardW}-1)*(t-${progressStart(openingWindow, 0.18)})/0.30)':h=5:color=0x38BDF8@0.92:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY + openingCardH - 6}:w=600:h=5:color=0xFF6B1A@0.68:t=fill:enable='${openingEnable}'`,
-    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.16:t=fill:enable='${openingEnable}'`,
-    `drawbox=x=${openingChipX}:y=264:w=210:h=36:color=0x38BDF8@0.56:t=2:enable='${openingEnable}'`,
-    `drawtext=text='PULSE VERIFIED':${fontOpt}:fontcolor=0xBEEBFF:fontsize=18:x=${openingChipX + 16}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${openingEnable}'`,
-    ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt, fontcolor: "0xFFB15C", enable: openingEnable, shadow: false }),
+    `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.16:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.56:t=2:enable='${openingEnable}'`,
+    `drawtext=text='${segmentLabel}':${metaFontOpt}:fontcolor=0xBEEBFF:fontsize=18:x=${openingChipX + 16}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${openingEnable}'`,
+    ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt: metaFontOpt, fontcolor: "0xFFB15C", enable: openingEnable, shadow: false }),
     `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='${openingEnable}'`,
     ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: openingEnable }),
     ]),
@@ -1941,15 +1985,23 @@ function buildOverlayChain({ story, inputLabel, outputLabel, durationS, fontOpt 
     `drawbox=x=76:y=812:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofPrimaryEnable}'`,
     `drawbox=x=76:y=812:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofPrimaryEnable}'`,
     `drawbox=x=76:y=812:w='if(lt(t\\,${progressStart(proofPrimaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofPrimaryWindow, 0.18)})/0.28)':h=5:color=0x38BDF8@0.92:t=fill:enable='${proofPrimaryEnable}'`,
-    `drawtext=text='PROOF BEAT':${fontOpt}:fontcolor=0x38BDF8:fontsize=18:x=98:y=824:enable='${proofPrimaryEnable}'`,
+    `drawtext=text='PULSE PROOF':${metaFontOpt}:fontcolor=0x38BDF8:fontsize=18:x=98:y=824:enable='${proofPrimaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_primary, { fontOpt, fontcolor: "white", enable: proofPrimaryEnable }),
     `drawbox=x=96:y=1010:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofSecondaryEnable}'`,
     `drawbox=x=96:y=1010:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofSecondaryEnable}'`,
     `drawbox=x=96:y=1144:w='if(lt(t\\,${progressStart(proofSecondaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofSecondaryWindow, 0.18)})/0.32)':h=5:color=0x38BDF8@0.92:t=fill:enable='${proofSecondaryEnable}'`,
-    `drawtext=text='PLAYER READ':${fontOpt}:fontcolor=0x38BDF8:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
+    `drawtext=text='PLAYER IMPACT':${metaFontOpt}:fontcolor=0x38BDF8:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: proofSecondaryEnable }),
     ]),
-    `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white@0.78:fontsize=28:x=w-tw-42:y=h-92:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
+    `drawbox=x=w-286:y=h-126:w=244:h=60:color=0x0D0D0F@0.58:t=fill`,
+    `drawbox=x=w-286:y=h-126:w=6:h=60:color=0xFF6B1A@0.95:t=fill`,
+    `drawbox=x=w-280:y=h-126:w=238:h=2:color=0x38BDF8@0.78:t=fill`,
+    `drawtext=text='PULSE // GAMING':${metaFontOpt}:fontcolor=white@0.92:fontsize=25:x=w-tw-58:y=h-108:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
+    `drawbox=x=70:y=310:w=940:h=178:color=0x0D0D0F@0.74:t=fill:enable='${outroEnable}'`,
+    `drawbox=x=70:y=310:w=940:h=5:color=0xFF6B1A@0.95:t=fill:enable='${outroEnable}'`,
+    `drawbox=x=70:y=483:w=940:h=3:color=0x38BDF8@0.78:t=fill:enable='${outroEnable}'`,
+    `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white:fontsize=62:x=110:y=332:shadowcolor=black@0.82:shadowx=3:shadowy=3:enable='${outroEnable}'`,
+    `drawtext=text='NEVER MISS A BEAT':${metaFontOpt}:fontcolor=0xFFB15C:fontsize=30:x=114:y=420:enable='${outroEnable}'`,
     `noise=alls=${OVERLAY_ANTI_FREEZE_NOISE_STRENGTH}:allf=t+u`,
     `trim=duration=${Number(durationS).toFixed(3)},setpts=PTS-STARTPTS[${outputLabel}]`,
   ].join(",");
@@ -2078,8 +2130,12 @@ async function renderProof({ storyJson, output }) {
 
   const fontOpt =
     process.platform === "win32"
-      ? "fontfile='C\\:/Windows/Fonts/arial.ttf'"
+      ? "fontfile='C\\:/Windows/Fonts/bahnschrift.ttf'"
       : "font='DejaVu Sans'";
+  const metaFontOpt =
+    process.platform === "win32"
+      ? "fontfile='C\\:/Windows/Fonts/consola.ttf'"
+      : "font='DejaVu Sans Mono'";
   const filterParts = [];
   for (const scene of scenePlan.scenes) {
     filterParts.push(...buildSceneCompositeFilterParts(scene));
@@ -2101,6 +2157,8 @@ async function renderProof({ storyJson, output }) {
     outputLabel: "overlayBase",
     durationS,
     fontOpt,
+    metaFontOpt,
+    cardVisibleWindows: scenePlan.cardVisibleWindows,
   }));
   filterParts.push(`[overlayBase]ass=${assPathFilter(assPath)},format=yuv420p[outv]`);
 
@@ -2221,6 +2279,11 @@ async function renderProof({ storyJson, output }) {
     sfx_mix_policy_version: STUDIO_V4_SFX_MIX_POLICY_VERSION,
     voice_mix_policy_version: STUDIO_V4_VOICE_MIX_POLICY_VERSION,
     visual_design_policy_version: STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
+    pulse_signature_version: PULSE_SIGNATURE_VERSION,
+    pulse_signature_contract: buildPulseSignatureContract({
+      story,
+      durationS: finalDuration || durationS,
+    }),
     hyperframes_premium_shell_required: story.hyperframes_premium_shell_required === true,
     hyperframes_card_count: Number.isFinite(Number(story.hyperframes_card_count))
       ? Number(story.hyperframes_card_count)

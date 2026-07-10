@@ -88,9 +88,10 @@ test("story-specific HyperFrames cards keep short source cards momentum-friendly
 
   assert.equal(contract.status, "pass");
   assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 5.2);
-  assert.equal(contract.evidence.planned_visible_duration_s, 5.2);
-  assert.equal(contract.evidence.min_readable_card_duration_s, 5.2);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 1.4);
+  assert.equal(contract.evidence.planned_visible_duration_s, 1.6);
+  assert.equal(contract.evidence.maximum_visible_duration_s, 2.2);
+  assert.equal(contract.evidence.min_readable_card_duration_s, 1.4);
 });
 
 test("story-specific HyperFrames source card preserves PlayStation source labels", () => {

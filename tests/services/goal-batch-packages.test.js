@@ -3990,7 +3990,10 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
   assert.equal(pack.footage_inventory.readiness.status, "v4_motion_ready");
   assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips.length, 8);
   assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips[0].source_type, "official_trailer_segment");
-  assert.equal(pack.acceptance_entry.verdict, "GREEN");
+  assert.equal(pack.acceptance_entry.verdict, "GREEN", JSON.stringify({
+    reasons: pack.publish_verdict.reason_codes,
+    premium: pack.pulse_media_house_score?.premium_output_contract,
+  }));
   assert.equal(batch.summary.green_count, 1);
 });
 
@@ -4178,7 +4181,10 @@ test("goal batch packages create rights records for restored official V4 motion 
     (record) => record.source_type === "official_game_site_news_page",
   );
   assert.equal(new Set(restoredRights.map((record) => record.asset_id)).size, 8);
-  assert.equal(pack.acceptance_entry.verdict, "GREEN");
+  assert.equal(pack.acceptance_entry.verdict, "GREEN", JSON.stringify({
+    reasons: pack.publish_verdict.reason_codes,
+    premium: pack.pulse_media_house_score?.premium_output_contract,
+  }));
 });
 
 test("goal batch packages rewrite generic one-detail proof titles before publishing packs", () => {

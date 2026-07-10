@@ -445,6 +445,50 @@ test("narration cadence QA prefers probed audio duration over compressed timesta
   assert.deepEqual(cadence.blockers, []);
 });
 
+test("narration cadence QA blocks a long acoustic gap even when average WPM is acceptable", async () => {
+  const words = [
+    ["This", 0, 0.15],
+    ["game", 0.3, 0.45],
+    ["just", 0.6, 0.75],
+    ["changed", 0.9, 1.05],
+    ["the", 2.05, 2.2],
+    ["whole", 2.35, 2.5],
+    ["player", 2.65, 2.8],
+    ["decision", 2.95, 3.1],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const cadence = await analyseNarrationCadence({
+    audioManifest: { word_timestamp_count: words.length, audio_duration_seconds: 3.2 },
+    timestampPayload: { words },
+    transcript: "This game just changed the whole player decision.",
+  });
+
+  assert.equal(cadence.spoken_wpm, 150);
+  assert.equal(cadence.pause_profile.longest_pause_seconds, 1);
+  assert.ok(cadence.blockers.includes("voice_cadence:acoustic_pause_too_long"));
+});
+
+test("narration cadence QA blocks a pause between Pulse and Gaming in the CTA", async () => {
+  const words = [
+    ["Follow", 0, 0.2],
+    ["Pulse", 0.3, 0.5],
+    ["Gaming", 1.1, 1.35],
+    ["so", 1.45, 1.6],
+    ["you", 1.7, 1.85],
+    ["never", 1.95, 2.15],
+    ["miss", 2.25, 2.4],
+    ["a", 2.5, 2.6],
+    ["beat", 2.7, 2.9],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const cadence = await analyseNarrationCadence({
+    audioManifest: { word_timestamp_count: words.length, audio_duration_seconds: 3.6 },
+    timestampPayload: { words },
+    transcript: "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(cadence.pause_profile.cta_pulse_gaming_gap_seconds, 0.6);
+  assert.ok(cadence.blockers.includes("voice_cadence:pulse_gaming_cta_gap"));
+});
+
 test("narration QA repair can proactively refresh scheduler bridge candidates", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-bridge-"));
   const fixture = await makeNarrationQaFixture(root, {

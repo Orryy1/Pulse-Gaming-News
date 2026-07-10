@@ -829,6 +829,35 @@ test("repeated direct-motion segments cannot pass as premium output", () => {
   assert.ok(report.premium_output_contract.blockers.includes("premium_output:motion_family_dominance"));
 });
 
+test("multi-game stories cannot use one game's footage for the entire video", () => {
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    id: `palworld-${index + 1}`,
+    path: `C:\\media\\palworld-${index + 1}.mp4`,
+    source_family: `steamstatic:/store_trailers/1623730/trailer_${index + 1}_window_36_5`,
+    source_url: `https://video.akamai.steamstatic.com/store_trailers/1623730/trailer-${index + 1}.m3u8`,
+    media_kind: "direct_video",
+    counts_towards_motion_readiness: true,
+  }));
+  const base = strongStory();
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...base.canonical,
+      selected_title: "Game Pass Just Created An Install Fight",
+      canonical_subject: "Xbox Game Pass July Wave",
+      canonical_game: "Xbox Game Pass",
+      canonical_angle: "multiple Game Pass drops compete for player time",
+      first_spoken_line: "Xbox Game Pass just made July feel like a download queue problem.",
+      narration_script:
+        "Xbox Game Pass just put Tony Hawk, The Planet Crafter and Palworld into one wave. Which game earns the install? Follow Pulse Gaming so you never miss a beat.",
+    },
+    materialisedMotionClips: { clips },
+  }));
+
+  assert.ok(report.hard_failures.includes("media_house:multi_entity_motion_coverage_missing"));
+  assert.equal(report.premium_output_contract.checks.multi_entity_motion_coverage.required, true);
+  assert.equal(report.premium_output_contract.checks.multi_entity_motion_coverage.distinct_visual_entities, 1);
+});
+
 test("local proof renders cannot masquerade as final publish renders", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     renderManifest: {

@@ -809,8 +809,8 @@ test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly"
 
   assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
   assert.equal(plan.cardVisibleWindows[0].kind, "source");
-  assert.equal(plan.cardVisibleWindows[0].duration_s, 2.4);
-  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.4);
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 1.6);
+  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 1.6);
 });
 
 test("Studio V4 proof renderer treats rounded readable card equality as pass", () => {
@@ -1174,13 +1174,12 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 2.4],
-      ["headline_card", "proof_card", 4.6],
+      ["opening_source_lock", "source_lock", 1.6],
       ["proof_primary", "proof_card", 4.2],
       ["proof_secondary", "proof_card", 4.2],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 2.4 : 4.2)));
+  assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 4.2)));
   assert.ok(windows.every((window) => window.duration_s <= 5.8));
 });
 
@@ -1223,7 +1222,7 @@ test("Studio V4 proof renderer omits unreadable overlay card windows that do not
     "proof_primary",
     "proof_secondary",
   ]);
-  assert.equal(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 2.4 : 4.2)), true);
+  assert.equal(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 4.2)), true);
   assert.equal(windows.every((window) => window.end_s <= 34.6), true);
 });
 
@@ -2141,7 +2140,7 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.match(source, /visual_design_policy_version:\s*STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION/);
   assert.equal(STUDIO_V4_SFX_MIX_POLICY_VERSION, "source_lock_news_tick_v6");
   assert.equal(STUDIO_V4_VOICE_MIX_POLICY_VERSION, "local_voice_levelled_v2");
-  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "newsroom_repeat_free_readable_cards_v12");
+  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "pulse_signature_repeat_free_v13");
 });
 
 test("Studio V4 overlay chain brightens the opening instead of globally darkening first frames", () => {
@@ -2205,11 +2204,12 @@ test("Studio V4 overlay chain adds newsroom-grade labels and layered glass rails
 
   assert.doesNotMatch(chain, /PULSE \/\/ NEWSWIRE/);
   assert.doesNotMatch(chain, /drawtext=text='VERIFY'/);
-  assert.match(chain, /PULSE VERIFIED/);
-  assert.match(chain, /PROOF BEAT/);
-  assert.match(chain, /PLAYER READ/);
+  assert.match(chain, /PULSE \/\/ BRIEF/);
+  assert.match(chain, /PULSE PROOF/);
+  assert.match(chain, /PLAYER IMPACT/);
   assert.match(chain, /color=0x0B0F19@0\.72/);
-  assert.match(chain, /color=0x38BDF8@0\.34/);
+  assert.match(chain, /color=0xFF6B1A@0\.95/);
+  assert.match(chain, /color=0x38BDF8@0\.78/);
   assert.doesNotMatch(chain, /color=0xFF6B1A@0\.88:t=fill/);
 });
 
@@ -2238,7 +2238,7 @@ test("Studio V4 overlay chain keeps opening metadata below Instagram top chrome"
   }
   assert.doesNotMatch(chain, /drawbox=x=42:y=44:w=996:h=98/);
   assert.doesNotMatch(chain, /drawtext=text='THE EXPANSE\\: OSIRIS REBORN'.*y=65/);
-  assert.match(chain, /drawtext=text='PULSE VERIFIED'.*y=268/);
+  assert.match(chain, /drawtext=text='PULSE \/\/ TRAILER TRUTH'.*y=268/);
   assert.match(chain, /drawtext=text='SOURCE LOCK\s+XBOX'.*y=268/);
 });
 
@@ -2259,7 +2259,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,2\.4\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,1\.6\)'/);
   assert.match(chain, /0x38BDF8@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });
@@ -2319,7 +2319,7 @@ test("Studio V4 overlay chain avoids duplicate story cards over owned generated 
   assert.doesNotMatch(chain, /SOURCE LOCK/);
   assert.match(chain, /PULSE GAMING/);
   assert.doesNotMatch(chain, /MEWTWO IS/);
-  assert.doesNotMatch(chain, /PROOF BEAT|PLAYER READ/);
+  assert.doesNotMatch(chain, /PULSE PROOF|PLAYER IMPACT/);
   assert.doesNotMatch(chain, /x=50:y=248:w=980/);
   assert.doesNotMatch(chain, /x=64:y=520:w=956/);
 });
@@ -2342,12 +2342,12 @@ test("Studio V4 overlay chain suppresses only the opening card during first-fram
     fontOpt: "font='Arial'",
   });
 
-  assert.doesNotMatch(chain, /PULSE VERIFIED/);
+  assert.doesNotMatch(chain, /PULSE \/\/ WISHLIST CHECK/);
   assert.doesNotMatch(chain, /drawtext=text='SOURCE LOCK\s+ROCKSTAR'.*between\(t,0,3\.3\)/);
   assert.doesNotMatch(chain, /color=0x111827@0\.58:t=fill:enable='between\(t,0,3\.3\)'/);
   assert.doesNotMatch(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,0,3\.3\)/);
   assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,8\.6\)/);
-  assert.match(chain, /PROOF BEAT/);
-  assert.match(chain, /PLAYER READ/);
+  assert.match(chain, /PULSE PROOF/);
+  assert.match(chain, /PLAYER IMPACT/);
   assert.match(chain, /PULSE GAMING/);
 });

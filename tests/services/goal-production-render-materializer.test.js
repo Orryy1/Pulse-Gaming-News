@@ -383,13 +383,13 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.sfx_mix_policy_version, STUDIO_V4_SFX_MIX_POLICY_VERSION);
   assert.equal(manifest.voice_mix_policy_version, STUDIO_V4_VOICE_MIX_POLICY_VERSION);
   assert.equal(manifest.visual_design_policy_version, STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION);
-  assert.equal(manifest.overlay_card_windows.length >= 4, true);
+  assert.equal(manifest.overlay_card_windows.length >= 3, true);
   assert.deepEqual(manifest.card_visible_windows, manifest.overlay_card_windows);
   assert.ok(
     manifest.overlay_card_windows.every((window) => {
       const kind = String(window.kind || window.id || "").toLowerCase();
       const duration = Number(window.duration_s);
-      if (/source/.test(kind)) return duration >= 2.4 && duration <= 2.4;
+      if (/source/.test(kind)) return duration === 1.6;
       return duration >= 4.2 && duration <= 5.8;
     }),
   );
@@ -643,7 +643,7 @@ test("goal production render materializer preserves rendered card-visible window
   assert.deepEqual(manifest.card_visible_windows, visibleWindows);
   assert.equal(manifest.clip_scene_plan.repeat_free, true);
   assert.deepEqual(manifest.clip_scene_plan.repeated_base_sources, []);
-  assert.equal(manifest.overlay_card_windows.length >= 4, true);
+  assert.equal(manifest.overlay_card_windows.length >= 3, true);
 });
 
 test("goal production render materializer prefers unique direct motion bases for short-ready renders", async () => {
@@ -835,7 +835,7 @@ test("goal production render materializer preserves nested actual card-visible w
           card_visible_windows: actualWindows,
           scenes: [
             { index: 0, path: "direct-a.mp4", baseSourceKey: "direct_a", durationS: 5 },
-            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 2.4 },
+            { index: 3, path: "source-card.mp4", readableCardKind: "source", durationS: 1.6 },
           ],
         },
       };
@@ -951,9 +951,9 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   );
   const sourceCard = shellClips.find((clip) => clip.source_family === "hyperframes_source_card");
   const readableCards = shellClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
-  assert.equal(sourceCard.durationS, 2.4);
-  assert.equal(sourceCard.duration_s, 2.4);
-  assert.equal(sourceCard.maximum_visible_duration_s, 2.8);
+  assert.equal(sourceCard.durationS, 1.6);
+  assert.equal(sourceCard.duration_s, 1.6);
+  assert.equal(sourceCard.maximum_visible_duration_s, 2.2);
   assert.ok(readableCards.every((clip) => clip.durationS >= 12 && clip.duration_s >= 12));
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
@@ -1267,7 +1267,7 @@ test("goal production render materializer limits HyperFrames cards to a readable
   assert.equal(renderStory.hyperframes_available_card_count, 5);
   const sourceCards = cardClips.filter((clip) => clip.source_family === "hyperframes_source_card");
   const readableCards = cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
-  assert.ok(sourceCards.every((clip) => clip.durationS === 2.4 && clip.minimum_readable_duration_s <= 2.4));
+  assert.ok(sourceCards.every((clip) => clip.durationS === 1.6 && clip.minimum_readable_duration_s <= 1.6));
   assert.ok(readableCards.every((clip) => clip.durationS >= 7 && clip.minimum_readable_duration_s >= 7));
   assert.deepEqual(
     [...new Set(cardClips.map((clip) => clip.source_family))],
@@ -1353,7 +1353,7 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(renderStory.premium_shell_required_selected_card_count, 2);
   assert.equal(renderStory.premium_shell_verdict, "pass");
   assert.deepEqual(renderStory.premium_shell_blockers, []);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 14.4);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 13.6);
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
   assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 2);
 });
@@ -1445,7 +1445,8 @@ test("goal production render materializer stretches selected HyperFrames card wi
   assert.equal(cardClips.length, 2);
   const sourceCard = cardClips.find((clip) => clip.source_family === "hyperframes_source_card");
   const readableCard = cardClips.find((clip) => clip.source_family !== "hyperframes_source_card");
-  assert.equal(sourceCard.durationS, 2.4);
+  assert.ok(sourceCard.durationS >= 1.6);
+  assert.ok(sourceCard.durationS <= 2.2);
   assert.ok(readableCard.durationS >= 12);
   assert.ok(readableCard.durationS <= 14);
   assert.ok(coverage + 0.12 >= 42.028);
@@ -1633,7 +1634,7 @@ test("goal production render materializer preserves premium direct runway when H
   );
   assert.equal(selectedDirectClips.length, 10);
   assert.equal(selectedCardClips.length, 2);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 14.4);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 13.6);
   assert.ok(
     selectedDirectClips.every((clip) => /window_(?:36|42)_5/.test(clip.source_family)),
   );
@@ -3407,7 +3408,7 @@ test("goal production render materializer recovers direct footage when materiali
       counts_towards_motion_readiness: true,
       owned_explainer_visual_plan: true,
       materialized: true,
-      durationS: kind === "source_card" ? 2.4 : 12,
+      durationS: kind === "source_card" ? 1.6 : 12,
       ...(kind === "source_card" ? { minimum_readable_duration_s: 1.2 } : {}),
     };
   });

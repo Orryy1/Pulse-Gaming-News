@@ -21,6 +21,9 @@ const {
 const {
   shellSidecarPathForCard,
 } = require("../lib/studio/v2/premium-card-lane-v2");
+const {
+  SOURCE_CARD_TIMING,
+} = require("../lib/studio/v4/premium-card-timing-policy");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -155,16 +158,28 @@ function cardTextForReadability(kind, spec = {}) {
 
 function hyperframesCardReadabilityContractForSpec(kind, spec = {}) {
   const readableText = normaliseText(cardTextForReadability(kind, spec));
-  const minimum = readableDurationRequiredS(readableText);
+  const isSource = kind === "source";
+  const minimum = isSource
+    ? SOURCE_CARD_TIMING.minimum_visible_duration_s
+    : readableDurationRequiredS(readableText);
+  const planned = isSource
+    ? SOURCE_CARD_TIMING.planned_visible_duration_s
+    : minimum;
+  const maximum = isSource
+    ? SOURCE_CARD_TIMING.maximum_visible_duration_s
+    : MAX_READABLE_HYPERFRAMES_CARD_DURATION_S;
   return {
     status: "pass",
     evidence: {
       readable_text: readableText,
       word_count: readableText ? readableText.split(/\s+/).filter(Boolean).length : 0,
-      planned_visible_duration_s: minimum,
+      planned_visible_duration_s: planned,
       minimum_visible_duration_s: minimum,
-      min_readable_card_duration_s: MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
-      max_readable_card_duration_s: MAX_READABLE_HYPERFRAMES_CARD_DURATION_S,
+      maximum_visible_duration_s: maximum,
+      min_readable_card_duration_s: isSource
+        ? SOURCE_CARD_TIMING.minimum_visible_duration_s
+        : MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
+      max_readable_card_duration_s: maximum,
     },
   };
 }
@@ -667,10 +682,17 @@ function readableTextFromProjectHtml(kind, html = "") {
 function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
   const readableText = readableTextFromProjectHtml(kind, html);
   const planned = htmlDataDurationS(html);
-  const minimum = readableDurationRequiredS(readableText);
+  const isSource = kind === "source";
+  const minimum = isSource
+    ? SOURCE_CARD_TIMING.minimum_visible_duration_s
+    : readableDurationRequiredS(readableText);
+  const maximum = isSource
+    ? SOURCE_CARD_TIMING.maximum_visible_duration_s
+    : MAX_READABLE_HYPERFRAMES_CARD_DURATION_S;
   const blockers = [];
   if (planned == null) blockers.push("hyperframes_card_duration_missing");
   else if (planned + 0.001 < minimum) blockers.push("hyperframes_card_visible_dwell_too_short");
+  else if (isSource && planned > maximum + 0.001) blockers.push("hyperframes_source_card_visible_dwell_too_long");
   return {
     status: blockers.length ? "fail" : "pass",
     blockers,
@@ -679,8 +701,11 @@ function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
       word_count: readableText ? readableText.split(/\s+/).filter(Boolean).length : 0,
       planned_visible_duration_s: planned,
       minimum_visible_duration_s: minimum,
-      min_readable_card_duration_s: MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
-      max_readable_card_duration_s: MAX_READABLE_HYPERFRAMES_CARD_DURATION_S,
+      maximum_visible_duration_s: maximum,
+      min_readable_card_duration_s: isSource
+        ? SOURCE_CARD_TIMING.minimum_visible_duration_s
+        : MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
+      max_readable_card_duration_s: maximum,
     },
   };
 }

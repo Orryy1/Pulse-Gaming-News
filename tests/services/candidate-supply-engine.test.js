@@ -1565,7 +1565,7 @@ test("candidate supply trusts a current full GREEN proof package over stale bloc
         },
       },
       overlay_card_windows: [
-        { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.4, duration_s: 2.4 },
+        { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
         { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 24.3, duration_s: 12 },
       ],
     },

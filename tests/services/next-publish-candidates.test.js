@@ -315,7 +315,7 @@ async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
       },
     },
     overlay_card_windows: [
-      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.4, duration_s: 2.4 },
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
       { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 24.3, duration_s: 12 },
     ],
   });
@@ -6969,7 +6969,7 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
   });
   await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.4 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 1.6 },
       { id: "proof_card", kind: "proof_card", startS: 15, durationS: 12 },
     ],
   });
@@ -7112,7 +7112,7 @@ test("runPreflightQaForStory scores direct-motion overuse from final render clip
   });
   await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.4 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 1.6 },
       { id: "proof_card", kind: "proof_card", startS: 15, durationS: 12 },
     ],
   });

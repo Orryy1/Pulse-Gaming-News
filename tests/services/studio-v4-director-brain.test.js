@@ -398,13 +398,15 @@ test("Visual V4 Director gives every card-like beat readable dwell time", () => 
   );
 
   assert.ok(cardLike.length >= 3);
+  const sourceLocks = cardLike.filter((shot) => shot.kind === "source_lock");
+  const proofCards = cardLike.filter((shot) => shot.kind !== "source_lock");
   assert.equal(
-    cardLike.every((shot) => Number(shot.durationS) >= 3.2 && Number(shot.durationS) <= 5.8),
+    proofCards.every((shot) => Number(shot.durationS) >= 4.2 && Number(shot.durationS) <= 5.8),
     true,
     JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
   );
   assert.equal(
-    cardLike.filter((shot) => shot.kind === "source_lock").every((shot) => Number(shot.durationS) <= 3.2),
+    sourceLocks.every((shot) => Number(shot.durationS) === 1.6),
     true,
     JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
   );

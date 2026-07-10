@@ -38,7 +38,11 @@ test("competitor upgrade bakeoff compares 30 stories and keeps stronger Pulse-or
     generatedAt: "2026-06-07T12:00:00.000Z",
   });
 
-  assert.equal(report.verdict, "PASS");
+  assert.equal(report.verdict, "PASS", JSON.stringify({
+    summary: report.summary,
+    blockers: report.blockers,
+    rejected: report.rejected_variants,
+  }));
   assert.equal(report.summary.candidate_count, 30);
   assert.ok(report.summary.upgraded_beats_baseline_count >= 10);
   assert.equal(report.safety.no_copied_assets, true);

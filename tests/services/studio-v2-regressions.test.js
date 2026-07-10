@@ -1304,7 +1304,7 @@ test("studio local voice path defaults to natural VoxCPM pacing", () => {
   ]);
 });
 
-test("studio local voice path inserts native-rate pauses to reach creator rewards runtime", () => {
+test("studio local voice path caps inserted pauses instead of stretching narration to runtime", () => {
   const gap = resolveLocalInterSegmentPauseS({
     provider: "local",
     segmentDurations: [3.36, 10.24, 7.68, 10.4, 5.44, 6.08, 8.8, 2.56],
@@ -1314,7 +1314,7 @@ test("studio local voice path inserts native-rate pauses to reach creator reward
     },
   });
 
-  assert.equal(gap, 0.949);
+  assert.equal(gap, 0.55);
 });
 
 test("studio local voice path extends native pauses when narration would exceed target WPM", () => {
@@ -1335,7 +1335,7 @@ test("studio local voice path extends native pauses when narration would exceed 
   assert.equal(plan.wordCount, 177);
   assert.equal(plan.targetMaxWpm, 158);
   assert.equal(plan.targetDurationS, 67.215);
-  assert.equal(plan.gapS, 0.819);
+  assert.equal(plan.gapS, 0.55);
   assert.equal(plan.reason, "target_wpm_guard");
 });
 
@@ -1351,7 +1351,7 @@ test("studio local voice path caps the final pause before the Pulse outro", () =
     voiceSegments,
   });
 
-  assert.deepEqual(gaps, [1.85, 1.85, 0.65]);
+  assert.deepEqual(gaps, [0.55, 0.55, 0.25]);
 });
 
 test("studio local voice path caps pauses between split game-title fragments", () => {
@@ -1365,7 +1365,7 @@ test("studio local voice path caps pauses between split game-title fragments", (
     voiceSegments,
   });
 
-  assert.deepEqual(gaps, [0.18, 0.18]);
+  assert.deepEqual(gaps, [0.08, 0.08]);
 });
 
 test("studio local voice path caps pauses before title suffixes like Gears of War E-Day", () => {
@@ -1378,7 +1378,7 @@ test("studio local voice path caps pauses before title suffixes like Gears of Wa
     voiceSegments,
   });
 
-  assert.deepEqual(gaps, [0.18]);
+  assert.deepEqual(gaps, [0.08]);
 });
 
 test("studio local voice path caps pauses after raw colon title fragments", () => {
@@ -1393,10 +1393,10 @@ test("studio local voice path caps pauses after raw colon title fragments", () =
     voiceSegments,
   });
 
-  assert.deepEqual(gaps, [0.18, 1.85, 0.18]);
+  assert.deepEqual(gaps, [0.08, 0.55, 0.08]);
 });
 
-test("studio local voice path keeps normal hook/body pauses intact", () => {
+test("studio local voice path caps normal hook/body pauses at a natural boundary", () => {
   const voiceSegments = [
     { label: "hook", text: "Big news" },
     { label: "body", text: "This report finally has the detail." },
@@ -1406,7 +1406,7 @@ test("studio local voice path keeps normal hook/body pauses intact", () => {
     voiceSegments,
   });
 
-  assert.deepEqual(gaps, [1.85]);
+  assert.deepEqual(gaps, [0.55]);
 });
 
 test("studio local voice path does not add artificial pauses when native runtime is already long", () => {
@@ -1530,12 +1530,12 @@ test("studio local voice signature fingerprints accepted Sleepy Liam reference",
   assert.deepEqual(signature.acceptedLocalVoice, reference);
   assert.equal(signature.localEngine, "voxcpm2");
   assert.deepEqual(signature.naturalInterSegmentPause, {
-    version: 4,
+    version: 5,
     targetDurationS: 62.5,
     targetMaxWpm: 158,
-    maxPauseS: 1.85,
-    maxOutroLeadGapS: 0.65,
-    method: "concat_inserted_silence_between_native_rate_segments_outro_capped",
+    maxPauseS: 0.42,
+    maxOutroLeadGapS: 0.25,
+    method: "concat_inserted_silence_between_native_rate_segments_cadence_capped",
   });
 
   const changed = buildProductionVoiceSignature({

@@ -1905,6 +1905,125 @@ test("official trailer segment validator accepts short muted high-detail storefr
   assert.equal(report.segments[0].allowed_for_flash_lane, true);
 });
 
+test("official trailer segment validator accepts entity-matched muted Steam storefront media", async () => {
+  const outputRoot = tempOutputRoot("official-steam-platform-storefront-muted-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2764370/extras/starward.mp4",
+        sourceType: "platform_storefront",
+        sourceFamily: "steam_2764370_starward_media",
+        referenceTitle: "Starward",
+        sourceDurationS: 5.58,
+        mediaStartS: 1.33,
+        durationS: 5,
+        entity: "Starward",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.299, saturation_mean: 0.145, score: 94.9 },
+          { edge_density: 0.335, saturation_mean: 0.203, score: 100 },
+          { edge_density: 0.355, saturation_mean: 0.133, score: 100 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `starward-storefront-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.14,
+            bright_pixel_ratio: 0.12,
+            letterbox_bar_ratio: 0.02,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["detail_rich"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(
+    report.summary.segments_validated,
+    1,
+    JSON.stringify(report.segments[0], null, 2),
+  );
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].action_sample_count, 0);
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
+test("official trailer segment validator rejects muted Steam storefront media with an entity mismatch", async () => {
+  const outputRoot = tempOutputRoot("official-steam-platform-storefront-entity-mismatch");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2764370/extras/starward.mp4",
+        sourceType: "platform_storefront",
+        sourceFamily: "steam_2764370_starward_media",
+        referenceTitle: "Starward",
+        sourceDurationS: 5.58,
+        mediaStartS: 1.33,
+        durationS: 5,
+        entity: "Wreck Runners",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        return {
+          ...passingQa(outputPath),
+          content_hash: `mismatched-starward-storefront-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.335,
+            saturation_mean: 0.18,
+            dark_pixel_ratio: 0.14,
+            bright_pixel_ratio: 0.12,
+            letterbox_bar_ratio: 0.02,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: 100,
+            tags: ["detail_rich"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 0);
+  assert.equal(report.segments[0].validation_reason, "segment_lacks_gameplay_action_samples");
+  assert.equal(report.segments[0].segment_motion_class, "non_gameplay_context");
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+});
+
 test("official trailer segment validator labels official product page motion without pretending it is gameplay", async () => {
   const outputRoot = tempOutputRoot("official-product-motion");
   await cleanTempRoot(outputRoot);

@@ -578,6 +578,79 @@ test("Visual V4 motion pack accepts official storefront cinematic motion without
   );
 });
 
+test("Visual V4 motion pack accepts entity-matched platform storefront cinematic motion", () => {
+  const sourceUrl =
+    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2764370/extras/starward.mp4";
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: "starward-story",
+      title: "Starward Reveals Its Next Operator",
+      canonical_subject: "Starward",
+      canonical_game: "Starward",
+      full_script: "Starward just revealed its next operator and the official Steam footage shows the new combat kit in motion.",
+    },
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "starward-story",
+        family: "steam_2764370_starward_media_1",
+        entity: "Starward",
+        sourceUrl,
+        sourceType: "platform_storefront",
+        motionClass: "official_storefront_cinematic_motion",
+        validationReason: "official_storefront_cinematic_motion_samples_passed",
+        actionScore: 80.2,
+        start: 1.33,
+        duration: 5,
+        referenceTitle: "Starward",
+      }),
+    ]),
+    generatedAt: "2026-07-10T20:45:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 1);
+  assert.equal(pack.clips[0].source_type, "platform_storefront");
+  assert.equal(pack.clips[0].provenance.segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(
+    pack.rejected_candidates.some((candidate) => candidate.reason === "segment_not_gameplay_action"),
+    false,
+  );
+});
+
+test("Visual V4 motion pack rejects platform storefront cinematic motion for another game", () => {
+  const pack = buildVisualV4MotionPack({
+    story: {
+      id: "wreck-runners-story",
+      title: "Wreck Runners Opens Its Xbox Playtest",
+      canonical_subject: "Wreck Runners",
+      canonical_game: "Wreck Runners",
+      full_script: "Wreck Runners has opened an Xbox playtest.",
+    },
+    segmentValidationReport: segmentReport([
+      segment({
+        storyId: "wreck-runners-story",
+        family: "steam_2764370_starward_media_1",
+        entity: "Starward",
+        sourceUrl:
+          "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2764370/extras/starward.mp4",
+        sourceType: "platform_storefront",
+        motionClass: "official_storefront_cinematic_motion",
+        validationReason: "official_storefront_cinematic_motion_samples_passed",
+        actionScore: 80.2,
+        start: 1.33,
+        duration: 5,
+        referenceTitle: "Starward",
+      }),
+    ]),
+    generatedAt: "2026-07-10T20:45:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 0);
+  assert.equal(
+    pack.rejected_candidates.some((candidate) => candidate.reason === "story_subject_motion_mismatch"),
+    true,
+  );
+});
+
 test("Visual V4 motion pack honours validator-approved Steam storefront trailer motion threshold", () => {
   const sourceUrl =
     "https://video.akamai.steamstatic.com/store_trailers/3240220/840632/e563e0e788371fcadb925449e0ed485937ddb129/1750825067/hls_264_master.m3u8?t=1740681453";

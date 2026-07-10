@@ -745,6 +745,44 @@ test("fresh refill viewer script repairs current access stories without fallback
   }
 });
 
+test("fresh refill viewer script keeps Xbox Insider playtests bound to their named game", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_6825aa8e2c6d7ebc",
+      title: "Wreck Runners Has A Low-Risk Trial",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/09/wreck-runners-join-the-xbox-insider-playtest/",
+        type: "rss",
+      },
+      current_script:
+        "Wreck Runners has a useful question before launch. Xbox Wire says Xbox Insiders can join the Wreck Runners playtest. The first few minutes need to prove movement, hit feedback and team flow. Follow Pulse Gaming so you never miss a beat.",
+    },
+    manifest: {
+      canonical_subject: "Wreck Runners",
+      canonical_title: "Wreck Runners Has A Low-Risk Trial",
+      primary_source: "Xbox Wire",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/07/09/wreck-runners-join-the-xbox-insider-playtest/",
+      confirmed_claims: [
+        "Xbox Wire says Wreck Runners has joined the Xbox Insider playtest.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.match(script.suggested_title, /^Wreck Runners\b/);
+  assert.match(script.full_script, /^Wreck Runners\b/);
+  assert.match(script.full_script, /Xbox Insiders|playtest/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(
+    `${script.suggested_title} ${script.full_script}`,
+    /Pit of Goblin|Enter The Pit|goblin demo/i,
+  );
+  assert.equal(script.coherence.result, "pass");
+});
+
 test("fresh refill viewer script blocks rewritten angles that are not grounded in source claims", () => {
   const script = buildFreshRefillViewerScript({
     job: {

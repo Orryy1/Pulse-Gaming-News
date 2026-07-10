@@ -2866,7 +2866,8 @@ test("goal batch package extracts current official subjects from source URLs bef
       article_url: "https://news.xbox.com/en-us/2026/07/09/wreck-runners-join-the-xbox-insider-playtest/",
       freshness_gate: "pass",
       confirmed_claims: ["Xbox Wire says Wreck Runners has joined the Xbox Insider playtest."],
-      full_script: "source-backed update",
+      full_script:
+        "Pit of Goblin just became something Xbox players can actually test. Xbox Wire says Insiders can play Enter the Pit now. If players leave wanting one more attempt, this becomes a wishlist story. Follow Pulse Gaming so you never miss a beat.",
     },
     { allowOwnedMotionFallback: true },
   );
@@ -2894,6 +2895,7 @@ test("goal batch package extracts current official subjects from source URLs bef
   assert.doesNotMatch(wreck.full_script, /has to answer one simple thing|why should players care now|named source is only useful|watch pile|source-backed update/i);
   assert.match(wreck.full_script, /^Wreck Runners/i);
   assert.match(wreck.full_script, /playtest/i);
+  assert.doesNotMatch(wreck.full_script, /Pit of Goblin|Enter the Pit/i);
 
   assert.equal(eso.canonical_subject, "The Elder Scrolls Online");
   assert.equal(eso.canonical_game, "The Elder Scrolls Online");

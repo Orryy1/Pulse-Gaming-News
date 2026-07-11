@@ -22,6 +22,12 @@ $runtimeScript = Join-Path $RepoRoot "tools/local-live-primary-runtime.ps1"
 $tunnelScript = Join-Path $RepoRoot "tools/local-live-cloudflared-tunnel.ps1"
 $contentWorkersScript = Join-Path $RepoRoot "tools/local-live-content-workers.ps1"
 
+$watchdogMutexCreated = $false
+$watchdogMutex = New-Object System.Threading.Mutex($true, "Local\PulseGamingLiveWatchdog", [ref]$watchdogMutexCreated)
+if (-not $watchdogMutexCreated) {
+  exit 0
+}
+
 function Write-WatchdogLog {
   param([string]$Message)
   $line = "{0} {1}" -f (Get-Date).ToUniversalTime().ToString("s"), $Message

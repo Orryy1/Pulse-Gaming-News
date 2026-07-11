@@ -28,6 +28,9 @@ const {
   assertPublicMetadataSafe,
   safePublicExcerpt,
 } = require("./lib/public-metadata-qa");
+const {
+  metaBinaryUploadTimeoutMs,
+} = require("./lib/platforms/meta-binary-upload-policy");
 
 dotenv.config({ override: true });
 
@@ -325,8 +328,10 @@ async function uploadReel(story) {
       // Seed token from env on first run so auto-refresh can work
       await seedTokenFromEnv();
 
-      const videoBuffer = await fs.readFile(exportedAbs);
-      const fileSize = videoBuffer.length;
+      const fileSize = (await fs.stat(exportedAbs)).size;
+      const uploadTimeoutMs = metaBinaryUploadTimeoutMs(fileSize, {
+        envName: "INSTAGRAM_BINARY_UPLOAD_TIMEOUT_MS",
+      });
       console.log(
         `[instagram] Uploading Reel (${Math.round(fileSize / 1024)}KB): "${(story.suggested_thumbnail_text || story.title).substring(0, 50)}..."`,
       );
@@ -366,7 +371,7 @@ async function uploadReel(story) {
 
       // Step 2: Upload video binary directly to the resumable upload URI
       console.log(
-        `[instagram] Step 2: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary to ${uploadUrl.substring(0, 60)}...`,
+        `[instagram] Step 2: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary (timeout ${Math.round(uploadTimeoutMs / 1000)}s) to ${uploadUrl.substring(0, 60)}...`,
       );
       try {
         const uploadResp = await axios({
@@ -378,10 +383,10 @@ async function uploadReel(story) {
             file_size: fileSize.toString(),
             "Content-Type": "video/mp4",
           },
-          data: videoBuffer,
+          data: fs.createReadStream(exportedAbs),
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
-          timeout: 120000,
+          timeout: uploadTimeoutMs,
         });
         console.log(`[instagram] Step 2 OK: status ${uploadResp.status}`);
       } catch (uploadErr) {

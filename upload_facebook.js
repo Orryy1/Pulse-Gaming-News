@@ -36,6 +36,9 @@ const {
   assertPublicMetadataSafe,
   safePublicExcerpt,
 } = require("./lib/public-metadata-qa");
+const {
+  metaBinaryUploadTimeoutMs,
+} = require("./lib/platforms/meta-binary-upload-policy");
 
 dotenv.config({ override: true });
 
@@ -142,11 +145,14 @@ async function uploadReel(story) {
       }
       console.log(`[facebook] Step 1 OK: video_id=${videoId}`);
 
-      // Step 2: Upload the video binary (with 120s timeout)
-      const videoBuffer = await fs.readFile(exportedAbs);
-      const fileSize = videoBuffer.length;
+      // Step 2: Stream the video with a size-aware timeout. Large V4 files
+      // regularly exceed the old fixed 120-second request budget.
+      const fileSize = (await fs.stat(exportedAbs)).size;
+      const uploadTimeoutMs = metaBinaryUploadTimeoutMs(fileSize, {
+        envName: "FACEBOOK_BINARY_UPLOAD_TIMEOUT_MS",
+      });
       console.log(
-        `[facebook] Step 2/3: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary to ${uploadUrl.substring(0, 60)}...`,
+        `[facebook] Step 2/3: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary (timeout ${Math.round(uploadTimeoutMs / 1000)}s) to ${uploadUrl.substring(0, 60)}...`,
       );
 
       const uploadResponse = await axios({
@@ -158,10 +164,10 @@ async function uploadReel(story) {
           file_size: fileSize.toString(),
           "Content-Type": "application/octet-stream",
         },
-        data: videoBuffer,
+        data: fs.createReadStream(exportedAbs),
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
-        timeout: 120000,
+        timeout: uploadTimeoutMs,
       });
       console.log(
         `[facebook] Step 2 OK: upload status ${uploadResponse.status}, data: ${JSON.stringify(uploadResponse.data).substring(0, 200)}`,

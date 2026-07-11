@@ -582,7 +582,7 @@ test("fresh refill viewer script writes Black Flag Resynced narration that is AS
   });
 
   assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
-  assert.equal(script.suggested_title, "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof");
+  assert.equal(script.suggested_title, "Black Flag Resynced Has A PS5 Pro Proof Problem");
   assert.equal(script.suggested_thumbnail_text, "BLACK FLAG PS5 PRO TEST");
   assert.ok(
     script.word_count >= 82 && script.word_count <= 86,
@@ -604,6 +604,79 @@ test("fresh refill viewer script writes Black Flag Resynced narration that is AS
   });
   assert.equal(massAudience.result, "pass", JSON.stringify(massAudience, null, 2));
   assert.equal(massAudience.concrete_detail_count >= 3, true);
+});
+
+test("fresh refill viewer script does not replace Black Flag monetisation coverage with stale PS5 Pro copy", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_black_flag_backlash",
+      title: "Black Flag Resynced Steam reviews criticise microtransactions",
+      artifact_dir: path.join(TEST_ROOT, "unused"),
+      source: {
+        name: "Kotaku",
+        url: "https://kotaku.com/black-flag-resynced-microtransactions",
+        type: "rss",
+      },
+      current_script:
+        "Kotaku reports Ubisoft says the standard edition is the full complete experience after negative Steam reviews criticised microtransactions and paid DLC.",
+    },
+    manifest: {
+      story_id: "rss_black_flag_backlash",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      confirmed_claims: [
+        "Ubisoft says the standard edition is the full complete experience.",
+        "Negative Steam reviews criticised microtransactions and paid DLC.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.match(script.suggested_title, /Backlash|Ubisoft|Steam/i);
+  assert.match(script.full_script, /standard edition/i);
+  assert.match(script.full_script, /microtransactions|paid DLC/i);
+  assert.match(script.full_script, /Kotaku/i);
+  assert.doesNotMatch(`${script.suggested_title} ${script.full_script}`, /PS5 Pro|PlayStation Blog|motion proof/i);
+});
+
+test("fresh refill viewer script uses the reported outlet for Bethesda roadmap and union stories", () => {
+  const cases = [
+    {
+      id: "bethesda-roadmap",
+      title: "Fallout 5 and The Elder Scrolls 6 as Xbox layoffs hit Bethesda",
+      sourceName: "IGN",
+      claim: "IGN reports layoffs hit Bethesda while Fallout 5 and The Elder Scrolls 6 remain in Xbox's future pipeline.",
+      expected: /Fallout 5|Elder Scrolls 6/i,
+    },
+    {
+      id: "bethesda-union",
+      title: "Bethesda union plans protest after Xbox layoffs",
+      sourceName: "Eurogamer",
+      claim: "Eurogamer reports Bethesda workers represented by the union are planning a protest after Xbox layoffs.",
+      expected: /workers|protest/i,
+    },
+  ];
+
+  for (const item of cases) {
+    const script = buildFreshRefillViewerScript({
+      job: {
+        story_id: item.id,
+        title: item.title,
+        artifact_dir: path.join(TEST_ROOT, "unused"),
+        source: { name: item.sourceName, url: `https://example.com/${item.id}`, type: "rss" },
+        current_script: item.claim,
+      },
+      manifest: {
+        story_id: item.id,
+        canonical_subject: "Bethesda",
+        confirmed_claims: [item.claim],
+      },
+    });
+
+    assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+    assert.match(script.full_script, new RegExp(item.sourceName, "i"));
+    assert.match(script.full_script, item.expected);
+    assert.doesNotMatch(script.full_script, /PC Gamer reports|Needs One Real Proof Point|watch signal/i);
+  }
 });
 
 test("fresh refill viewer script repairs current official-source extraction and DLC stories without generic filler", () => {
@@ -832,9 +905,9 @@ test("fresh refill viewer script repairs current subscription and layoffs storie
         "https://www.pcgamer.com/gaming-industry/bethesda-game-studios-and-zenimax-hit-hard-by-xbox-layoffs-says-union/",
       sourceName: "PCGamer",
       confirmed: "Bethesda Game Studios and ZeniMax hit hard by Xbox layoffs, says union",
-      expectedTitle: "Bethesda Layoffs Turn Into An Xbox Trust Test",
-      expectedHook: /^Bethesda layoffs put Xbox's RPG promises under pressure\./,
-      expectedDetail: /patches, DLC, support teams and the next big RPG pipeline|long-tail games|teams behind it/i,
+      expectedTitle: "Bethesda Workers Take Xbox's Layoff Fight Public",
+      expectedHook: /^Bethesda workers just turned Xbox's layoffs into a public warning\./,
+      expectedDetail: /slower updates, thinner support|force Xbox to explain|public trust fight/i,
       canonicalSubject: "Bethesda Game Studios and ZeniMax",
     },
   ];

@@ -196,6 +196,87 @@ test("generic angle generation does not duplicate an existing generated title su
   assert.doesNotMatch(angle.title, /Needs One Real Proof Point Needs One Real Proof Point/i);
 });
 
+test("Black Flag Resynced backlash gets a concrete monetisation angle instead of motion-proof scaffolding", () => {
+  const story = {
+    id: "rss_black_flag_resynced_backlash",
+    title:
+      "Ubisoft says Assassin's Creed Black Flag Resynced is the full complete experience as negative Steam reviews pile up over microtransactions",
+    source_type: "rss",
+    article_url: "https://example.com/black-flag-resynced-backlash",
+  };
+  const sourceMaterial =
+    "Kotaku reports Ubisoft says Assassin's Creed Black Flag Resynced's standard edition is the full complete experience after negative Steam reviews criticised microtransactions and paid DLC.";
+
+  const angle = buildEditorialAngle(story, { sourceName: "Kotaku", sourceMaterial });
+  const script = buildAngleFirstScript(story, {
+    sourceName: "Kotaku",
+    sourceMaterial,
+    runtimeProfile: LOCAL_PROFILE,
+  });
+
+  assert.equal(angle.lane, "remaster_monetisation_backlash");
+  assert.match(angle.title, /Black Flag Resynced/i);
+  assert.match(angle.title, /Backlash|Ubisoft|Steam/i);
+  assert.match(script.full_script, /standard edition/i);
+  assert.match(script.full_script, /microtransactions|paid DLC/i);
+  assert.match(script.full_script, /Kotaku/i);
+  assert.doesNotMatch(
+    `${script.suggested_title} ${script.full_script}`,
+    /Needs (?:PS5 Pro Motion Proof|One Real Proof Point)|PlayStation Blog says|watch signal|background noise/i,
+  );
+});
+
+test("Bethesda layoffs get a franchise-roadmap angle with clear player stakes", () => {
+  const story = {
+    id: "rss_bethesda_layoff_roadmap",
+    title: "Fallout 5, The Elder Scrolls 6, Blade and more as Xbox layoffs hit Bethesda",
+    source_type: "rss",
+    article_url: "https://example.com/bethesda-layoffs",
+  };
+  const sourceMaterial =
+    "IGN reports layoffs have hit Bethesda while Fallout 5, The Elder Scrolls 6 and Marvel's Blade remain part of Xbox's future games pipeline.";
+
+  const angle = buildEditorialAngle(story, { sourceName: "IGN", sourceMaterial });
+  const script = buildAngleFirstScript(story, {
+    sourceName: "IGN",
+    sourceMaterial,
+    runtimeProfile: LOCAL_PROFILE,
+  });
+
+  assert.equal(angle.lane, "studio_cut_roadmap_risk");
+  assert.match(angle.title, /Bethesda|Fallout 5/i);
+  assert.match(script.full_script, /Fallout 5/i);
+  assert.match(script.full_script, /Elder Scrolls 6/i);
+  assert.match(script.full_script, /IGN/i);
+  assert.match(script.full_script, /players|games|pipeline|release/i);
+  assert.doesNotMatch(script.full_script, /Needs One Real Proof Point|watch signal|background noise/i);
+});
+
+test("Bethesda union response becomes a human, specific labour story instead of a generic source signal", () => {
+  const story = {
+    id: "rss_bethesda_union_response",
+    title: "Bethesda union plans protest after Xbox layoffs",
+    source_type: "rss",
+    article_url: "https://example.com/bethesda-union-protest",
+  };
+  const sourceMaterial =
+    "Eurogamer reports Bethesda workers represented by the union are planning a protest after the latest Xbox layoffs.";
+
+  const angle = buildEditorialAngle(story, { sourceName: "Eurogamer", sourceMaterial });
+  const script = buildAngleFirstScript(story, {
+    sourceName: "Eurogamer",
+    sourceMaterial,
+    runtimeProfile: LOCAL_PROFILE,
+  });
+
+  assert.equal(angle.lane, "studio_union_response");
+  assert.match(angle.title, /Bethesda Workers|Layoff Fight|Protest/i);
+  assert.match(script.full_script, /Bethesda workers/i);
+  assert.match(script.full_script, /protest/i);
+  assert.match(script.full_script, /Eurogamer/i);
+  assert.doesNotMatch(script.full_script, /Needs One Real Proof Point|watch signal|background noise/i);
+});
+
 test("hands-on demo angle uses a concrete player-facing title and plain narration", () => {
   const story = {
     id: "rss_granblue_demo",

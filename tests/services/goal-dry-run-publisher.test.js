@@ -3170,7 +3170,7 @@ test("goal dry-run publisher blocks enabled Instagram Reels without a native pla
     root,
     "instagram-missing-native-variant",
     "GREEN",
-    "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof",
+    "Black Flag Resynced Has A PS5 Pro Proof Problem",
     {
       renderedDurationS: 40.333,
       canonicalSubject: "Assassin's Creed Black Flag Resynced",

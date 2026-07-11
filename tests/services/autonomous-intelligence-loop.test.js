@@ -3047,6 +3047,50 @@ test("fresh production refill motion-hydrated args replace original stories file
   assert.equal(args[args.indexOf("--story-id") + 1], "fresh_repaired_story");
 });
 
+test("fresh refill official-source evidence deduplicates identical editorial angles before media production", () => {
+  const { dedupeFreshRefillOfficialStories } = require("../../lib/job-handlers");
+  const stories = [
+    {
+      id: "black-flag-kotaku",
+      story_id: "black-flag-kotaku",
+      title: "Black Flag Resynced's Steam Backlash Put Ubisoft On Defence",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      primary_source: "Kotaku",
+      primary_source_url: "https://kotaku.com/black-flag-resynced",
+    },
+    {
+      id: "black-flag-xbox",
+      story_id: "black-flag-xbox",
+      title: "Black Flag Resynced's Steam Backlash Put Ubisoft On Defence",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://news.xbox.com/en-us/black-flag-resynced",
+    },
+    {
+      id: "black-flag-rps",
+      story_id: "black-flag-rps",
+      title: "Black Flag Resynced's Steam Backlash Put Ubisoft On Defence",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      primary_source: "Rock Paper Shotgun",
+      primary_source_url: "https://rockpapershotgun.com/black-flag-resynced",
+    },
+    {
+      id: "bethesda-roadmap",
+      story_id: "bethesda-roadmap",
+      title: "Bethesda's Layoffs Put Fallout 5 Under Pressure",
+      canonical_subject: "Bethesda",
+      primary_source: "IGN",
+      primary_source_url: "https://ign.com/bethesda-layoffs",
+    },
+  ];
+
+  const result = dedupeFreshRefillOfficialStories(stories);
+
+  assert.deepEqual(result.stories.map((story) => story.story_id), ["black-flag-xbox", "bethesda-roadmap"]);
+  assert.deepEqual(result.dropped.map((story) => story.story_id).sort(), ["black-flag-kotaku", "black-flag-rps"]);
+  assert.ok(result.dropped.every((story) => story.reason === "duplicate_editorial_angle"));
+});
+
 test("fresh production refill continues motion-hydrated stories through audio and final render materialisation", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");

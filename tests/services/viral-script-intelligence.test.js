@@ -68,6 +68,31 @@ test("viral script intelligence blocks generic source-signal fallback narration"
   assert.ok(result.blockers.includes("repeated_generated_title_suffix"));
 });
 
+test("viral script intelligence blocks internal proof and generic gameplay-check titles", () => {
+  const cases = [
+    {
+      id: "black-flag-motion-proof",
+      title: "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof",
+      source_name: "PlayStation Blog",
+      script:
+        "Black Flag Resynced has a paid upgrade problem worth checking. PlayStation Blog says the PS5 Pro version adds visual upgrades and smoother performance. Players can judge sailing speed, boarding combat and image quality before reinstalling. If those upgrades make the pirate loop feel sharper, the remaster wins. If they only polish the water, the upgrade becomes a warning. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      id: "season-one-gameplay-check",
+      title: "Season One's Gameplay Check",
+      source_name: "Xbox Wire",
+      script:
+        "Season One's just showed how the new update plays. Xbox Wire says the season adds missions, combat and rewards. Players can judge the map, enemies and progression before downloading. If the update makes every session feel fresh, the season wins. If it repeats the same grind, it becomes a warning. Follow Pulse Gaming so you never miss a beat.",
+    },
+  ];
+
+  for (const item of cases) {
+    const result = buildViralScriptIntelligence({ story: item, script: item.script });
+    assert.equal(result.verdict, "rewrite_required");
+    assert.ok(result.blockers.includes("generic_title_template"), JSON.stringify(result, null, 2));
+  }
+});
+
 test("viral script intelligence blocks source-proof watch-pile fallback narration", () => {
   const script =
     "Starward has to answer one simple thing: why should players care now? " +

@@ -1859,7 +1859,7 @@ test("goal batch package proof preparation writes ASR-safe Black Flag Resynced t
     { allowOwnedMotionFallback: true },
   );
 
-  assert.equal(prepared.public_title, "Assassin's Creed Black Flag Resynced Needs PS5 Pro Motion Proof");
+  assert.equal(prepared.public_title, "Black Flag Resynced Has A PS5 Pro Proof Problem");
   assert.equal(prepared.canonical_subject, "Assassin's Creed Black Flag Resynced");
   assert.equal(prepared.canonical_game, "Assassin's Creed Black Flag Resynced");
   assert.equal(prepared.suggested_thumbnail_text, "BLACK FLAG PS5 PRO TEST");

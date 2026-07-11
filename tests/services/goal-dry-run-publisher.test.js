@@ -2430,6 +2430,96 @@ test("goal dry-run publisher trusts clean final scene-plan motion over stale emb
   );
 });
 
+test("goal dry-run publisher accepts compact proof overlays and distinct YouTube IDs in a clean final scene plan", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-compact-proof-overlay-"));
+  const cleanScenePlan = {
+    repeat_free: true,
+    blockers: [],
+    repeated_base_sources: [],
+    repeated_readable_card_kinds: [],
+    direct_motion_source_concentration_metrics: {
+      direct_motion_scene_count: 8,
+      max_scenes_per_source_root: 1,
+      max_source_concentration_ratio: 0.125,
+      concentrated_sources: [],
+    },
+    scenes: Array.from({ length: 8 }, (_, index) => ({
+      id: `albion-current-${index + 1}`,
+      path: `motion/albion-current-${index + 1}.mp4`,
+      source_url: `https://www.youtube.com/watch?v=albionOfficial${index + 1}`,
+      media_kind: "direct_video",
+      base_source_key: `youtube:albionOfficial${index + 1}`,
+      source_root_key: `youtube:albionOfficial${index + 1}`,
+      mediaStartS: index * 7,
+      durationS: 5.5,
+    })),
+  };
+  const storyPackage = await makeStoryPackage(
+    root,
+    "compact-proof-overlay-story",
+    "GREEN",
+    "Albion Online's Keeper Uprising Hides A Permanent Change",
+    {
+      canonicalSubject: "Albion Online",
+      renderManifestPatch: {
+        rendered_duration_s: 46,
+        clips: 8,
+        clip_scene_plan: cleanScenePlan,
+        overlay_card_windows: [
+          {
+            id: "opening_source_lock",
+            kind: "source_lock",
+            text: "ALBION ONLINE",
+            start_s: 0,
+            end_s: 1.6,
+            duration_s: 1.6,
+            source: "studio_v4_overlay_chain",
+          },
+          {
+            id: "proof_primary",
+            kind: "proof_card",
+            text: "PERMANENT MEMORIES",
+            start_s: 4,
+            end_s: 6.6,
+            duration_s: 2.6,
+            source: "studio_v4_overlay_chain",
+          },
+          {
+            id: "proof_secondary",
+            kind: "proof_card",
+            text: "XBOX WIRE",
+            start_s: 10,
+            end_s: 12.6,
+            duration_s: 2.6,
+            source: "studio_v4_overlay_chain",
+          },
+        ],
+      },
+      coherenceMatchesCanonical: true,
+    },
+  );
+  await Promise.all(
+    cleanScenePlan.scenes.map((scene) =>
+      fs.outputFile(path.join(storyPackage.artifact_dir, scene.path), Buffer.alloc(1600, 7)),
+    ),
+  );
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-11T09:05:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  assert.equal(plan.summary.ready_story_count, 1, JSON.stringify(plan.blocked_stories));
+  assert.equal(plan.summary.blocked_story_count, 0);
+  assert.equal(
+    plan.ready_stories[0].file_evidence.direct_motion_loop_evidence_source,
+    "final_clip_scene_plan",
+  );
+  assert.deepEqual(plan.ready_stories[0].file_evidence.rendered_too_fast_card_windows, []);
+  assert.deepEqual(plan.ready_stories[0].file_evidence.direct_motion_base_source_overuse, []);
+});
+
 test("goal dry-run publisher defers externally blocked or operator-disabled platforms without blocking the story", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-state-"));
   const storyPackage = await makeStoryPackage(root);

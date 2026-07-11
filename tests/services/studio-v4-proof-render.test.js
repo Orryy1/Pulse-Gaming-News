@@ -1205,6 +1205,10 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   );
   assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 2.6)));
   assert.ok(windows.every((window) => window.duration_s <= 4.2));
+  assert.deepEqual(
+    windows.filter((window) => window.id.startsWith("proof_")).map((window) => window.presentation_mode),
+    ["compact_proof_overlay", "compact_proof_overlay"],
+  );
 });
 
 test("Studio V4 proof renderer trims long HyperFrames card copy instead of holding momentum", () => {

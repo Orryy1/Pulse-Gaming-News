@@ -1844,6 +1844,7 @@ function overlayWindow({
   durationS,
   text = "",
   source = "studio_v4_overlay_chain",
+  presentationMode = "",
 }) {
   const start = Number(startS.toFixed(2));
   const duration = Number(durationS.toFixed(2));
@@ -1855,6 +1856,7 @@ function overlayWindow({
     end_s: Number((start + duration).toFixed(2)),
     duration_s: duration,
     source,
+    ...(presentationMode ? { presentation_mode: presentationMode } : {}),
   };
 }
 
@@ -1913,6 +1915,7 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
         ? Math.max(9, headlineWindow.end_s + 0.8)
         : Math.max(4, (openingWindow?.end_s || 0) + 0.8),
       durationS: readableCompactProofOverlayDurationS(proofPrimaryText),
+      presentationMode: "compact_proof_overlay",
     });
     const proofSecondaryWindow = overlayWindow({
       id: "proof_secondary",
@@ -1920,6 +1923,7 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
       text: proofSecondaryText,
       startS: Math.max(headlineWindow ? 16 : 10, proofPrimaryWindow.end_s + 0.8),
       durationS: readableCompactProofOverlayDurationS(proofSecondaryText),
+      presentationMode: "compact_proof_overlay",
     });
     windows.push(
       ...(headlineWindow ? [headlineWindow] : []),

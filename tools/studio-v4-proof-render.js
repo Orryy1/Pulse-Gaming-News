@@ -48,6 +48,8 @@ const SOURCE_LOCK_OVERLAY_CARD_DURATION_S = SOURCE_CARD_TIMING.planned_visible_d
 const MIN_OVERLAY_CARD_DURATION_S = 4.2;
 const HEADLINE_OVERLAY_CARD_DURATION_S = 4.6;
 const MAX_OVERLAY_CARD_DURATION_S = 5.8;
+const MIN_COMPACT_PROOF_OVERLAY_DURATION_S = 2.6;
+const MAX_COMPACT_PROOF_OVERLAY_DURATION_S = 4.2;
 const MIN_GENERATED_CARD_SCENE_DURATION_S = 7;
 const MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS = 4;
 const MAX_READABLE_CARD_DURATION_RATIO = 0.42;
@@ -612,6 +614,25 @@ function steamTrailerSceneAssetKey(value = "") {
   return match ? `steam-trailer:${match[1]}/${match[2]}/${match[3]}/${match[4]}` : "";
 }
 
+function youtubeSceneAssetKey(value = "") {
+  const text = firstText(value);
+  if (!text) return "";
+  try {
+    const parsed = new URL(text);
+    const host = parsed.hostname.toLowerCase().replace(/^(?:www\.|m\.)/, "");
+    if (host === "youtube.com") {
+      const pathVideoId = parsed.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/i)?.[1];
+      const videoId = firstText(parsed.searchParams.get("v"), pathVideoId);
+      if (videoId) return `youtube:${videoId.toLowerCase()}`;
+    }
+    if (host === "youtu.be") {
+      const videoId = firstText(parsed.pathname.split("/").filter(Boolean)[0]);
+      if (videoId) return `youtube:${videoId.toLowerCase()}`;
+    }
+  } catch {}
+  return "";
+}
+
 function windowedSceneSourceKey(clip = {}) {
   if (!clip || typeof clip !== "object") return "";
   const value = firstText(
@@ -730,6 +751,8 @@ function sceneClipBaseSourceKey(clip = {}) {
   const rawSourceUrl = isObject
     ? firstText(clip.source_url, clip.url, clip.original_source_url, clip.reference_url)
     : "";
+  const sourceYoutubeKey = youtubeSceneAssetKey(rawSourceUrl);
+  if (sourceYoutubeKey) return sourceYoutubeKey;
   const sourceSteamKey = steamTrailerSceneAssetKey(rawSourceUrl);
   if (sourceSteamKey) return sourceSteamKey;
   const explicit = isObject
@@ -756,6 +779,8 @@ function sceneClipBaseSourceKey(clip = {}) {
   if (sidecarExplicitSteamKey) return sidecarExplicitSteamKey;
   if (sidecarExplicit) return sidecarExplicit;
   const sidecarUrl = firstText(sidecar?.source_url, sidecar?.url, sidecar?.original_source_url);
+  const sidecarYoutubeKey = youtubeSceneAssetKey(sidecarUrl);
+  if (sidecarYoutubeKey) return sidecarYoutubeKey;
   const sidecarSteamKey = steamTrailerSceneAssetKey(sidecarUrl);
   if (sidecarSteamKey) return sidecarSteamKey;
   if (sidecarUrl) {
@@ -792,6 +817,8 @@ function sceneClipSourceRootKey(clip = {}) {
       )
     : "";
   if (url) {
+    const youtubeKey = youtubeSceneAssetKey(url);
+    if (youtubeKey) return youtubeKey;
     const steamKey = steamTrailerSceneAssetKey(url);
     if (steamKey) return steamKey;
     try {
@@ -1797,6 +1824,19 @@ function readableOverlayCardDurationS(
   );
 }
 
+function readableCompactProofOverlayDurationS(value = "") {
+  const text = firstText(value);
+  if (!text) return MIN_COMPACT_PROOF_OVERLAY_DURATION_S;
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const computed = Math.max(MIN_COMPACT_PROOF_OVERLAY_DURATION_S, 0.22 * words + 1.8);
+  return Number(
+    Math.min(
+      MAX_COMPACT_PROOF_OVERLAY_DURATION_S,
+      Math.ceil(computed * 10) / 10,
+    ).toFixed(1),
+  );
+}
+
 function overlayWindow({
   id,
   kind,
@@ -1872,14 +1912,14 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
       startS: headlineWindow
         ? Math.max(9, headlineWindow.end_s + 0.8)
         : Math.max(4, (openingWindow?.end_s || 0) + 0.8),
-      durationS: readableOverlayCardDurationS(proofPrimaryText),
+      durationS: readableCompactProofOverlayDurationS(proofPrimaryText),
     });
     const proofSecondaryWindow = overlayWindow({
       id: "proof_secondary",
       kind: "proof_card",
       text: proofSecondaryText,
       startS: Math.max(headlineWindow ? 16 : 10, proofPrimaryWindow.end_s + 0.8),
-      durationS: readableOverlayCardDurationS(proofSecondaryText),
+      durationS: readableCompactProofOverlayDurationS(proofSecondaryText),
     });
     windows.push(
       ...(headlineWindow ? [headlineWindow] : []),

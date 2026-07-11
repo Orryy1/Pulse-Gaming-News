@@ -1009,6 +1009,30 @@ test("Studio V4 proof renderer can use two windows per official trailer when nee
   assert.equal(plan.scenes.length >= 5, true);
 });
 
+test("Studio V4 proof renderer keeps separate official YouTube video IDs as independent sources", () => {
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    path: `albion-official-video-${index + 1}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=AlbionOfficial${index + 1}`,
+    source_type: "official_youtube_channel",
+    media_kind: "direct_video",
+    source_family: `albion_official_youtube_${index + 1}`,
+    durationS: 5,
+  }));
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 38.8,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.scenes.length, 8);
+  assert.equal(plan.availableUniqueClipCount, 8);
+  assert.equal(plan.skippedDuplicateBaseSources.length, 0);
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"), false);
+});
+
 test("Studio V4 proof renderer uses extra short direct clips when source duration caps would under-cover audio", () => {
   const sourceIds = [
     "1468980435",
@@ -1175,12 +1199,12 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
       ["opening_source_lock", "source_lock", 1.6],
-      ["proof_primary", "proof_card", 4.2],
-      ["proof_secondary", "proof_card", 4.2],
+      ["proof_primary", "proof_card", 2.6],
+      ["proof_secondary", "proof_card", 2.6],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 4.2)));
-  assert.ok(windows.every((window) => window.duration_s <= 5.8));
+  assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 2.6)));
+  assert.ok(windows.every((window) => window.duration_s <= 4.2));
 });
 
 test("Studio V4 proof renderer trims long HyperFrames card copy instead of holding momentum", () => {
@@ -1222,7 +1246,7 @@ test("Studio V4 proof renderer omits unreadable overlay card windows that do not
     "proof_primary",
     "proof_secondary",
   ]);
-  assert.equal(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 4.2)), true);
+  assert.equal(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 2.6)), true);
   assert.equal(windows.every((window) => window.end_s <= 34.6), true);
 });
 

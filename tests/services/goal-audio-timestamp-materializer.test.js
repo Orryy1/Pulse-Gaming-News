@@ -49,6 +49,52 @@ function whisperWordsFromScript(scriptText) {
     }));
 }
 
+test("audio materializer compacts excessive generated narration silence before alignment", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-compact-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const calls = [];
+
+  const result = await _testables.compactGeneratedNarrationSilence(audioPath, {
+    provider: "elevenlabs",
+    detectSilencesForAudio: async () => [
+      { start: 5, end: 6.08, duration: 1.08 },
+      { start: 11, end: 11.4, duration: 0.4 },
+    ],
+    execFileImpl: async (command, args) => {
+      calls.push({ command, args });
+      await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
+      return { stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.excessive_silence_count, 1);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].args.join(" "), /silenceremove=stop_periods=-1/);
+  assert.match(calls[0].args.join(" "), /stop_silence=0\.1/);
+  assert.equal((await fs.stat(audioPath)).size, 3072);
+});
+
+test("audio materializer leaves narration unchanged when cadence silence is already bounded", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-bounded-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  let execCalls = 0;
+
+  const result = await _testables.compactGeneratedNarrationSilence(audioPath, {
+    provider: "elevenlabs",
+    detectSilencesForAudio: async () => [{ start: 5, end: 5.6, duration: 0.6 }],
+    execFileImpl: async () => {
+      execCalls += 1;
+    },
+  });
+
+  assert.equal(result.repaired, false);
+  assert.equal(result.reason, "generated_narration_silence_within_limit");
+  assert.equal(execCalls, 0);
+});
+
 async function makePackage(root, storyId = "story-audio", canonicalOverrides = {}) {
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {

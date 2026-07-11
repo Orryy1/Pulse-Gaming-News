@@ -726,6 +726,55 @@ test("Visual V4 Director refuses extra windows from the same base source even wh
   assert.equal(new Set(motionShots.map((shot) => shot.base_source_family)).size, 4);
 });
 
+test("Visual V4 Director keeps separate official YouTube videos as separate motion sources", () => {
+  const sourceUrls = [
+    "https://cdn.example.test/albion/steam-a.mp4",
+    "https://cdn.example.test/albion/steam-b.mp4",
+    "https://cdn.example.test/albion/steam-c.mp4",
+    "https://www.youtube.com/watch?v=Bu6BPfCtKBQ",
+    "https://www.youtube.com/watch?v=Fmdd2nojs4g",
+  ];
+  const clips = sourceUrls.map((sourceUrl, index) => ({
+    id: `albion-motion-${index + 1}`,
+    source_family: `albion_family_${index + 1}`,
+    source_url: sourceUrl,
+    path: `C:\\media\\albion-motion-${index + 1}.mp4`,
+    durationS: 5,
+    validated: true,
+  }));
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "albion-distinct-youtube-videos",
+      title: "Albion Online's Keepers Just Raised The Stakes",
+      full_script:
+        "Albion Online has official event footage from separate videos and storefront trailers.",
+    },
+    footagePlan: {
+      readiness: { status: "ready", blockers: [] },
+      motion_budget: {
+        required_motion_scenes: 5,
+        available_motion_clips: clips.length,
+        required_distinct_families: 4,
+        required_distinct_source_assets: 4,
+        available_distinct_motion_families: clips.length,
+        available_distinct_source_assets: clips.length,
+        max_static_card_ratio: 0.22,
+        max_static_card_seconds: 12,
+        target_motion_ratio: 0.68,
+      },
+      motion_inventory: { accepted_local_clips: clips },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(motionShots.length, 5);
+  assert.equal(new Set(motionShots.map((shot) => shot.base_source_family)).size, 5);
+  assert.equal(plan.readiness.status, "director_ready");
+});
+
 test("Visual V4 Director normalises compact Steam k metrics into chart numbers", () => {
   const footagePlan = buildFootageEmpirePlan({
     story: {

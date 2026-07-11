@@ -122,6 +122,6 @@ test("Studio V4 suppresses ordinary overlays while a HyperFrames card is visible
 
   assert.match(
     chain,
-    /enable='between\(t,10\.0,14\.2\)\*not\(between\(t,10\.2,12\.1\)\)'/,
+    /enable='between\(t,10\.0,12\.7\)\*not\(between\(t,10\.2,12\.1\)\)'/,
   );
 });

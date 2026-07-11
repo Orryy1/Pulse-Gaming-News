@@ -2799,7 +2799,8 @@ test("goal batch package generic fallback does not emit internal scaffold narrat
       article_url: "https://www.pcgamer.com/blue-meadow-studio-note/",
       freshness_gate: "pass",
       confirmed_claims: ["Blue Meadow has a new controller note"],
-      full_script: "source-backed update",
+      full_script:
+        "Albion Online is turning the Keepers into a pressure test for its open world. Xbox Wire says the Keepers are rising up in Albion Online. For lapsed players, this decides whether they reinstall, return to old zones or wait for a bigger reason. The argument is whether the faction actually shifts where guilds gather, where solo players travel and which fights feel dangerous again. If it does, Albion feels alive. If it is just louder enemies in familiar places, the update fades quickly. Follow Pulse Gaming so you never miss a beat.",
     },
     { allowOwnedMotionFallback: true },
   );
@@ -2911,6 +2912,8 @@ test("goal batch package writes story-specific Albion Online scripts instead of 
     {
       id: "rss_albion_online_keepers",
       title: "In Albion Online the Keepers Has A Source-Proof Risk",
+      canonical_subject: "In Albion Online the Keepers",
+      canonical_game: "In Albion Online the Keepers",
       source_type: "rss",
       source_name: "Xbox Wire",
       primary_source: "Xbox Wire",
@@ -2922,14 +2925,56 @@ test("goal batch package writes story-specific Albion Online scripts instead of 
     { allowOwnedMotionFallback: true },
   );
 
+  assert.equal(prepared.canonical_subject, "Albion Online");
+  assert.equal(prepared.canonical_game, "Albion Online");
+  assert.equal(prepared.public_title, "Albion Online's Keeper Uprising Hides A Permanent Change");
+  assert.equal(prepared.suggested_thumbnail_text, "ONE CHANGE STAYS");
+  assert.doesNotMatch(prepared.public_title, /^In Albion Online the Keepers\b/i);
   assert.doesNotMatch(prepared.public_title, /Source-Proof Risk|Footage Readability Test/i);
   assert.doesNotMatch(
     prepared.full_script,
     /has to answer one simple thing|why should players care now|named source is only useful|gives that choice teeth|watch pile/i,
   );
   assert.match(prepared.full_script, /Albion Online/i);
-  assert.match(prepared.full_script, /Keepers/i);
+  assert.match(prepared.full_script, /Keeper/i);
+  assert.match(prepared.full_script, /August 31/i);
+  assert.match(prepared.full_script, /Keeper Memories/i);
+  assert.match(prepared.full_script, /permanent/i);
+  assert.match(prepared.full_script, /next major (?:content )?update/i);
+  assert.doesNotMatch(prepared.full_script, /where guilds gather|where solo players travel/i);
+  assert.doesNotMatch(prepared.full_script, /Avalonian Invasion-style comeback/i);
+  assert.match(prepared.full_script, /seasonal content leaves the world better than it found it/i);
+  assert.match(prepared.full_script, /the uprising is temporary, but the reason to explore might not be\./i);
+  assert.ok(prepared.confirmed_claims.some((claim) => /season-long event/i.test(claim)));
+  assert.ok(prepared.confirmed_claims.some((claim) => /Keeper Memories/i.test(claim)));
   assert.match(prepared.full_script, /Follow Pulse Gaming so you never miss a beat\./);
+  assert.match(prepared.tts_script, /smartest idea is permanent, Xbox Wire says/i);
+  assert.match(prepared.tts_script, /after the season, They put clues/i);
+  assert.match(prepared.tts_script, /might not be\. Follow Pulse Gaming so you never miss a beat\./i);
+
+  const pack = buildGoalProofPackage({ story: prepared });
+  assert.equal(
+    pack.canonical_story_manifest.public_title,
+    "Albion Online's Keeper Uprising Hides A Permanent Change",
+  );
+  assert.equal(
+    pack.youtube_publish_pack.title,
+    "Albion Online's Keeper Uprising Hides A Permanent Change",
+  );
+  assert.match(pack.canonical_story_manifest.tts_script, /smartest idea is permanent, Xbox Wire says/i);
+  assert.match(pack.canonical_story_manifest.spoken_narration_script, /after the season, They put clues/i);
+  assert.ok(
+    !pack.platform_publish_manifest.platform_native_evidence.failures.some((failure) =>
+      /weak_platform_title|plain_platform_description/.test(failure.reason),
+    ),
+    JSON.stringify(pack.platform_publish_manifest.platform_native_evidence.failures, null, 2),
+  );
+  assert.ok(
+    !pack.pulse_media_house_score.hard_failures.some((failure) =>
+      /title_lacks_curiosity_gap|platform_title_too_plain|shorts_feed_competition_weak/.test(failure),
+    ),
+    JSON.stringify(pack.pulse_media_house_score.hard_failures, null, 2),
+  );
 
   const qa = buildViralScriptIntelligence({
     story: { ...prepared, title: prepared.public_title },
@@ -2937,6 +2982,26 @@ test("goal batch package writes story-specific Albion Online scripts instead of 
   });
   assert.notEqual(qa.verdict, "rewrite_required", JSON.stringify(qa, null, 2));
   assert.ok(!qa.blockers.includes("generic_opener"), JSON.stringify(qa, null, 2));
+});
+
+test("goal batch package replaces stale Albion narration even when the canonical subject is already correct", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_albion_online_stale_script",
+    title: "Albion Online's Keepers Just Raised The Stakes",
+    canonical_subject: "Albion Online",
+    canonical_game: "Albion Online",
+    source_type: "rss",
+    source_name: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/07/07/in-albion-online/",
+    freshness_gate: "pass",
+    confirmed_claims: ["In Albion Online, the Keepers are rising up."],
+    full_script:
+      "Albion Online is turning the Keepers into a pressure test for its open world. Xbox Wire says the Keepers are rising up in Albion Online. For lapsed players, this decides whether they reinstall, return to old zones or wait for a bigger reason. The argument is whether the faction actually shifts where guilds gather, where solo players travel and which fights feel dangerous again. If it does, Albion feels alive. If it is just louder enemies in familiar places, the update fades quickly. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.match(prepared.full_script, /August 31/i);
+  assert.match(prepared.full_script, /Those Memories remain after the season/i);
+  assert.doesNotMatch(prepared.full_script, /where guilds gather|where solo players travel/i);
 });
 
 test("goal batch package writes mass-audience scripts for fresh Steam launch stories", () => {

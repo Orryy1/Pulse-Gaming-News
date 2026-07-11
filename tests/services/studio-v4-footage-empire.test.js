@@ -749,6 +749,43 @@ test("Footage Empire blocks alias families when they all come from the same sour
   );
 });
 
+test("Footage Empire keeps separate official YouTube video IDs as distinct source assets", () => {
+  const clips = [
+    ["keeper-main", "Bu6BPfCtKBQ"],
+    ["keeper-july4", "Fmdd2nojs4g"],
+  ].map(([id, videoId]) => ({
+    id,
+    source_family: `albion_${id}`,
+    path: `output/video_cache/${id}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=${videoId}`,
+    durationS: 5,
+    validated: true,
+    source_type: "official_youtube_channel",
+    provider: "official",
+    allowed_render_use: "reference_only_by_default",
+    rights_risk_class: "official_reference_only",
+  }));
+
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "albion-keeper-uprising",
+      title: "Albion Online's Keepers Just Raised The Stakes",
+      canonical_subject: "Albion Online",
+      canonical_game: "Albion Online",
+      full_script:
+        "Albion Online's official channel published separate Keeper Uprising videos for the event.",
+    },
+    localMotionClips: clips,
+  });
+
+  assert.equal(plan.motion_budget.available_motion_clips, 2);
+  assert.equal(plan.motion_budget.available_distinct_source_assets, 2);
+  assert.deepEqual(
+    plan.motion_inventory.distinct_source_assets.sort(),
+    ["youtube:Bu6BPfCtKBQ", "youtube:Fmdd2nojs4g"].sort(),
+  );
+});
+
 test("Footage Empire counts signed direct MP4 URLs as renderable motion", () => {
   const plan = buildFootageEmpirePlan({
     story: forzaSteamStory(),

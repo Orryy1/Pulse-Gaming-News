@@ -849,6 +849,34 @@ test("goal public copy QA allows pronunciation-only TTS script differences", () 
   assert.ok(!report.failures.includes("public_copy:tts_script_diverges_from_narration"));
 });
 
+test("goal public copy QA allows spoken-only cadence punctuation without allowing word drift", () => {
+  const narration =
+    "Albion Online's event is temporary. Xbox Wire says its Keeper Memories remain. Follow Pulse Gaming so you never miss a beat.";
+  const common = {
+    canonical_subject: "Albion Online",
+    selected_title: "Albion Online Hides A Permanent Change",
+    first_spoken_line: "Albion Online's event is temporary.",
+    narration_script: narration,
+    full_script: narration,
+    description: "Albion Online's Keeper Memories remain after the event. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+  };
+
+  const punctuationOnly = evaluateGoalPublicCopy({
+    ...common,
+    tts_script:
+      "Albion Online's event is temporary, Xbox Wire says its Keeper Memories remain. Follow Pulse Gaming so you never miss a beat.",
+  });
+  assert.ok(!punctuationOnly.failures.includes("public_copy:tts_script_diverges_from_narration"));
+
+  const changedWord = evaluateGoalPublicCopy({
+    ...common,
+    tts_script:
+      "Albion Online's event is permanent, Xbox Wire says its Keeper Memories remain. Follow Pulse Gaming so you never miss a beat.",
+  });
+  assert.ok(changedWord.failures.includes("public_copy:tts_script_diverges_from_narration"));
+});
+
 test("goal public copy QA allows GTA VI safe spoken TTS without changing display copy", () => {
   const narration =
     "GTA VI just turned the console argument into a real buying decision. PlayStation Blog says Grand Theft Auto VI has a new gameplay breakdown for PS5. Follow Pulse Gaming so you never miss a beat.";

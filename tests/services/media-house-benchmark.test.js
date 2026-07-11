@@ -351,6 +351,47 @@ test("media-house benchmark recognises repaired rights-ledger licence basis", ()
   assert.ok(benchmark.scores.rights_risk_score >= 70);
 });
 
+test("media-house benchmark joins absolute rendered paths to relative rights records", () => {
+  const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    path: `C:\\studio\\pulse-gaming\\output\\video_cache\\official\\albion\\clip-${index + 1}.mp4`,
+    media_kind: "direct_video",
+  }));
+
+  const benchmark = runMediaHouseBenchmark({
+    story: {
+      id: "albion_absolute_render_rights",
+      canonical_subject: "Albion Online",
+      title: "Albion Online's Keeper Uprising Hides A Permanent Change",
+      suggested_title: "Albion Online's Keeper Uprising Hides A Permanent Change",
+      hook: "Albion Online's Keeper Uprising ends in August, but one part is staying for good.",
+      full_script:
+        "Albion Online's Keeper Uprising ends in August, but one part is staying for good. Xbox Wire says Keeper Memories are permanent.",
+      suggested_thumbnail_text: "ONE CHANGE STAYS",
+      source_card_label: "Xbox Wire",
+      video_clips: clips,
+      rights_ledger: clips.map((clip, index) => ({
+        asset_id: `albion-official-${index + 1}`,
+        path: clip.path.replace("C:\\studio\\pulse-gaming\\", "").replace(/\\/g, "/"),
+        source_url: `https://www.youtube.com/watch?v=AlbionOfficial${index + 1}`,
+        source_type: "official_youtube_channel",
+        source_family: `albion_official_${index + 1}`,
+        licence_basis: "official_source_documented_transformative_editorial_use",
+        approval_status: "approved_for_transformative_editorial_use",
+        commercial_use_allowed: true,
+        risk_score: 0.28,
+      })),
+      subtitle_timing_source: "timestamps",
+      clean_manual_captions: true,
+    },
+    directorPlan: strongDirectorPlan(),
+    requireGate: true,
+  });
+
+  assert.ok(benchmark.scores.rights_risk_score >= 90);
+  assert.ok(!benchmark.failures.includes("gold_standard:rights_risk_above_reference"));
+});
+
 test("media-house benchmark recognises approved screenshot-derived motion rights", () => {
   const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
   const clips = Array.from({ length: 8 }, (_, index) => ({

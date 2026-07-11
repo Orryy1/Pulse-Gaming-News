@@ -11,6 +11,7 @@ const {
   refreshFinalRenderQualityOnly,
   shouldSkipReadableShellCardsForAudioBudget,
   writeGoalProductionRenderMaterializationReport,
+  _private,
 } = require("../../lib/goal-production-render-materializer");
 const { directMotionBaseSourceOveruseEvidence } = require("../../lib/goal-dry-run-publisher");
 const {
@@ -18,6 +19,67 @@ const {
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../../lib/studio/v4/render-policy");
+
+test("goal production render materializer preserves YouTube video IDs in source keys", () => {
+  assert.equal(
+    _private.clipBaseSourceKey({
+      source_url: "https://www.youtube.com/watch?v=Bu6BPfCtKBQ",
+      source_type: "official_youtube_channel",
+      media_kind: "direct_video",
+    }),
+    "youtube:bu6bpfctkbq",
+  );
+  assert.notEqual(
+    _private.clipBaseSourceKey({
+      source_url: "https://www.youtube.com/watch?v=Bu6BPfCtKBQ",
+      source_type: "official_youtube_channel",
+      media_kind: "direct_video",
+    }),
+    _private.clipBaseSourceKey({
+      source_url: "https://www.youtube.com/watch?v=Fmdd2nojs4g",
+      source_type: "official_youtube_channel",
+      media_kind: "direct_video",
+    }),
+  );
+});
+
+test("goal production render resolves narration duration from governed evidence before probing media", () => {
+  let probeCalls = 0;
+  const probe = () => {
+    probeCalls += 1;
+    return 47.554;
+  };
+
+  assert.equal(
+    _private.resolveNarrationDurationS({
+      voiceQualityReport: { cadence: { duration_seconds: 48.1 } },
+      audioManifest: { duration_s: 47.9 },
+      narrationAudioPath: "narration.mp3",
+      ffprobeDurationImpl: probe,
+    }),
+    48.1,
+  );
+  assert.equal(probeCalls, 0);
+
+  assert.equal(
+    _private.resolveNarrationDurationS({
+      audioManifest: { technical_duration_seconds: 47.8 },
+      narrationAudioPath: "narration.mp3",
+      ffprobeDurationImpl: probe,
+    }),
+    47.8,
+  );
+  assert.equal(probeCalls, 0);
+
+  assert.equal(
+    _private.resolveNarrationDurationS({
+      narrationAudioPath: "narration.mp3",
+      ffprobeDurationImpl: probe,
+    }),
+    47.554,
+  );
+  assert.equal(probeCalls, 1);
+});
 
 test("goal production render skips readable shell cards when short direct motion covers audio", () => {
   assert.equal(
@@ -31,6 +93,24 @@ test("goal production render skips readable shell cards when short direct motion
         source_type: "steam_movie",
         media_kind: "direct_video",
         durationS: 5,
+      })),
+      wordTimestampSource: "local_whisper_word_alignment",
+    }),
+    true,
+  );
+});
+
+test("goal production render skips source cards when eight independent clips cover a full short", () => {
+  assert.equal(
+    shouldSkipReadableShellCardsForAudioBudget({
+      audioDurationS: 47.55,
+      primaryClips: Array.from({ length: 8 }, (_, index) => ({
+        path: `albion-official-${index + 1}.mp4`,
+        source_url: `https://www.youtube.com/watch?v=AlbionOfficial${index + 1}`,
+        source_type: "official_youtube_channel",
+        media_kind: "direct_video",
+        source_family: `albion_official_${index + 1}`,
+        durationS: 7,
       })),
       wordTimestampSource: "local_whisper_word_alignment",
     }),
@@ -390,7 +470,7 @@ test("goal production render materializer renders ready jobs and writes a final 
       const kind = String(window.kind || window.id || "").toLowerCase();
       const duration = Number(window.duration_s);
       if (/source/.test(kind)) return duration === 1.6;
-      return duration >= 4.2 && duration <= 5.8;
+      return duration >= 2.6 && duration <= 4.2;
     }),
   );
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);

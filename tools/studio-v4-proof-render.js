@@ -41,6 +41,9 @@ const {
 const {
   SOURCE_CARD_TIMING,
 } = require("../lib/studio/v4/premium-card-timing-policy");
+const {
+  resolveLivingMotionGrammar,
+} = require("../lib/studio/v4/living-motion-grammar");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -1995,6 +1998,7 @@ function buildOverlayChain({
   const layout = buildOverlayLayout({ story });
   const signature = buildPulseSignatureContract({ story, durationS });
   const contentIdentity = resolveContentIdentity(story);
+  const livingMotion = resolveLivingMotionGrammar(story);
   const identityAccent = `0x${String(contentIdentity.brand.accent || "#FF6B1A").replace(/^#/, "")}`;
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
   const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
@@ -2046,6 +2050,7 @@ function buildOverlayChain({
   const progressStart = (window, offsetS) => t(Number(window.start_s || 0) + offsetS);
   const segmentLabel = drawtextEscape(signature.segment.display_label);
   const identityLabel = drawtextEscape(contentIdentity.brand.on_screen_label);
+  const livingGhostWord = drawtextEscape(livingMotion.ghost_word);
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
@@ -2054,8 +2059,10 @@ function buildOverlayChain({
     `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=${identityAccent}@0.95:t=fill`,
     `drawbox=x=${accentRailX + 5}:y=0:w=2:h=ih:color=0xFF6B1A@0.95:t=fill`,
     `drawbox=x=${accentRailX + 7}:y='mod(t*480+420\\,2000)-80':w=2:h=80:color=0x38BDF8@0.78:t=fill`,
-    `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
-    `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=${identityAccent}@0.055:t=fill`,
+    `drawbox=x='-260+mod(t*${livingMotion.sweeps.primary_speed_px_s}\\,1540)':y=0:w=210:h=ih:color=white@${livingMotion.sweeps.primary_opacity.toFixed(3)}:t=fill`,
+    `drawbox=x='940-mod(t*${livingMotion.sweeps.accent_speed_px_s}\\,1220)':y=0:w=92:h=ih:color=${identityAccent}@${livingMotion.sweeps.accent_opacity.toFixed(3)}:t=fill`,
+    `drawbox=x=54:y='560+sin(t*0.21)*34':w=972:h=1:color=${identityAccent}@0.24:t=fill`,
+    `drawtext=text='${livingGhostWord}':${fontOpt}:fontcolor=${identityAccent}@${livingMotion.editorial.ghost_opacity.toFixed(3)}:fontsize=${livingMotion.editorial.ghost_font_size_px}:x='-24+sin(t*${livingMotion.editorial.ghost_rate})*${livingMotion.editorial.ghost_drift_x_px}':y=${livingMotion.editorial.ghost_y_px}:shadowcolor=black@0.16:shadowx=3:shadowy=3`,
     ...(suppressOpeningStoryCard ? [] : [
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='${openingEnable}'`,
@@ -2103,17 +2110,19 @@ function buildOverlayChain({
   ].join(",");
 }
 
-function buildSceneCompositeFilterParts(scene = {}) {
+function buildSceneCompositeFilterParts(scene = {}, livingMotion = null) {
   const index = Number(scene.index);
   const i = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0;
   const duration = Number(scene.durationS);
   const durationS = Number.isFinite(duration) && duration > 0 ? duration.toFixed(2) : "1.00";
+  const motion = livingMotion || resolveLivingMotionGrammar({});
+  const depth = motion.depth;
 
   return [
     `[${i}:v]split=2[bgsrc${i}][fgsrc${i}]`,
-    `[bgsrc${i}]scale=1260:2240:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x='(iw-1080)*(0.50+0.42*sin(t*0.31+${i}))':y='(ih-1920)*(0.50+0.42*cos(t*0.23+${i}))',boxblur=32:1,eq=brightness=-0.015:saturation=1.26:contrast=1.12,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
+    `[bgsrc${i}]scale=1260:2240:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x='(iw-1080)*(0.50+${depth.background_drift_ratio.toFixed(2)}*sin(t*${depth.background_rate_x.toFixed(2)}+${i}))':y='(ih-1920)*(0.50+${depth.background_drift_ratio.toFixed(2)}*cos(t*${depth.background_rate_y.toFixed(2)}+${i}))',boxblur=32:1,eq=brightness=-0.015:saturation=1.26:contrast=1.12,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
     `[fgsrc${i}]scale=1000:1760:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,eq=brightness=0.055:saturation=1.12:contrast=1.10,unsharp=5:5:0.38:3:3:0.12,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
-    `[bg${i}][fg${i}]overlay=x='(W-w)/2+sin(t*3.10+${i})*34':y='(H-h)/2+cos(t*2.40+${i})*24':eval=frame,noise=alls=4:allf=t+u,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
+    `[bg${i}][fg${i}]overlay=x='(W-w)/2+sin(t*${depth.foreground_rate_x.toFixed(2)}+${i})*${depth.foreground_drift_x_px}':y='(H-h)/2+cos(t*${depth.foreground_rate_y.toFixed(2)}+${i})*${depth.foreground_drift_y_px}':eval=frame,noise=alls=4:allf=t+u,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
   ];
 }
 
@@ -2233,8 +2242,9 @@ async function renderProof({ storyJson, output }) {
       ? "fontfile='C\\:/Windows/Fonts/consola.ttf'"
       : "font='DejaVu Sans Mono'";
   const filterParts = [];
+  const livingMotion = resolveLivingMotionGrammar(story);
   for (const scene of scenePlan.scenes) {
-    filterParts.push(...buildSceneCompositeFilterParts(scene));
+    filterParts.push(...buildSceneCompositeFilterParts(scene, livingMotion));
   }
   let prev = "v0";
   for (let i = 1; i < scenePlan.scenes.length; i++) {
@@ -2380,6 +2390,7 @@ async function renderProof({ storyJson, output }) {
       story,
       durationS: finalDuration || durationS,
     }),
+    living_motion_grammar: resolveLivingMotionGrammar(story),
     hyperframes_premium_shell_required: story.hyperframes_premium_shell_required === true,
     hyperframes_card_count: Number.isFinite(Number(story.hyperframes_card_count))
       ? Number(story.hyperframes_card_count)

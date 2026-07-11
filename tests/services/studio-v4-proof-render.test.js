@@ -1132,9 +1132,9 @@ test("Studio V4 proof renderer adds strong per-scene motion before composing qui
   const composite = filters.join(";");
 
   assert.match(composite, /scale=1260:2240:force_original_aspect_ratio=increase/);
-  assert.match(composite, /crop=w=1080:h=1920:x='\(iw-1080\)\*\(0\.50\+0\.42\*sin\(t\*0\.31\+3\)\)'/);
-  assert.match(composite, /overlay=x='\(W-w\)\/2\+sin\(t\*3\.10\+3\)\*34'/);
-  assert.match(composite, /:y='\(H-h\)\/2\+cos\(t\*2\.40\+3\)\*24':eval=frame/);
+  assert.match(composite, /crop=w=1080:h=1920:x='\(iw-1080\)\*\(0\.50\+0\.28\*sin\(t\*0\.24\+3\)\)'/);
+  assert.match(composite, /overlay=x='\(W-w\)\/2\+sin\(t\*0\.53\+3\)\*16'/);
+  assert.match(composite, /:y='\(H-h\)\/2\+cos\(t\*0\.41\+3\)\*10':eval=frame/);
   assert.match(composite, /noise=alls=4:allf=t\+u/);
   assert.match(composite, /trim=duration=1\.42/);
 });
@@ -2203,9 +2203,10 @@ test("Studio V4 proof renderer keeps source footage inside a safe vertical compo
   assert.match(source, /split=2\[bgsrc\$\{i\}\]\[fgsrc\$\{i\}\]/);
   assert.match(source, /boxblur=32:1/);
   assert.match(source, /scale=1000:1760:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
-  assert.match(source, /crop=w=1080:h=1920:x='\(iw-1080\)\*\(0\.50\+0\.42\*sin\(t\*0\.31\+\$\{i\}\)\)'/);
-  assert.match(source, /overlay=x='\(W-w\)\/2\+sin\(t\*3\.10\+\$\{i\}\)\*34'/);
-  assert.match(source, /:y='\(H-h\)\/2\+cos\(t\*2\.40\+\$\{i\}\)\*24':eval=frame/);
+  assert.match(source, /background_drift_ratio/);
+  assert.match(source, /foreground_drift_x_px/);
+  assert.match(source, /foreground_drift_y_px/);
+  assert.match(source, /overlay=x='\(W-w\)\/2\+sin\(t\*\$\{depth\.foreground_rate_x\.toFixed\(2\)\}\+\$\{i\}\)\*\$\{depth\.foreground_drift_x_px\}'/);
   assert.doesNotMatch(source, /crop=1080:1920:\(iw-1080\)\/2:\(ih-1920\)\/2/);
   assert.match(source, /\[overlayBase\]ass=\$\{assPathFilter\(assPath\)\},format=yuv420p\[outv\]/);
   assert.match(source, /"-pix_fmt",\s*"yuv420p"/);
@@ -2250,6 +2251,31 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "pulse_signature_repeat_free_v13");
 });
 
+test("Studio V4 overlay applies identity-aware living motion behind readable content", () => {
+  const chain = buildOverlayChain({
+    story: {
+      id: "living-motion-proof",
+      content_identity_id: "game_update",
+      canonical_subject: "Halo: Campaign Evolved",
+      primary_source: "Xbox",
+      first_frame_text: "HALO CAMPAIGN CHANGES",
+      thumbnail_headline: "HALO CAMPAIGN CHANGES",
+      proof_card_primary: "CO-OP UPDATE",
+      proof_card_secondary: "WHAT PLAYERS GET",
+    },
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 24,
+    fontOpt: "font='Arial'",
+  });
+
+  assert.match(chain, /drawtext=text='PATCH'/);
+  assert.match(chain, /sin\(t\*/);
+  assert.match(chain, /color=0x64D2FF@0\.0/);
+  assert.match(chain, /PULSE \/\/ BRIEF/);
+  assert.doesNotMatch(chain, /orb|bokeh|blob/i);
+});
+
 test("Studio V4 overlay chain brightens the opening instead of globally darkening first frames", () => {
   const chain = buildOverlayChain({
     story: {
@@ -2289,7 +2315,7 @@ test("Studio V4 overlay chain uses layered premium plates instead of flat orange
   assert.doesNotMatch(chain, /x=70:y=508:w=940:h=208:color=0xFF6B1A@0\.88:t=fill/);
   assert.match(chain, /color=0x111827@0\.58/);
   assert.match(chain, /shadowcolor=black@0\.82:shadowx=3:shadowy=3/);
-  assert.match(chain, /mod\(t\*520\\,1540\)/);
+  assert.match(chain, /mod\(t\*[0-9]+\\,1540\)/);
   assert.match(chain, /SOURCE LOCK/);
 });
 

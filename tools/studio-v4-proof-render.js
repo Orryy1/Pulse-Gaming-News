@@ -536,6 +536,7 @@ async function resolveStoryMusicCueMix(story = {}, {
 }
 
 async function resolveStorySfxCueMix(story = {}, { limit = 6 } = {}) {
+  const contentIdentity = resolveContentIdentity(story);
   const seenPaths = new Set();
   const candidates = [];
   for (const [index, asset] of sfxAssetsFromStory(story).entries()) {
@@ -573,6 +574,7 @@ async function resolveStorySfxCueMix(story = {}, { limit = 6 } = {}) {
         delayMs: request.delayMs,
         volume: profile.volume,
         durationS: Math.min(Number(request.durationS || profile.durationS || 0.32), 0.42),
+        identity_id: contentIdentity.id,
       });
       if (planned.length >= limit) break;
     }
@@ -581,7 +583,13 @@ async function resolveStorySfxCueMix(story = {}, { limit = 6 } = {}) {
 
   const selected = [];
   const usedPaths = new Set();
-  for (const role of SFX_ROLE_ORDER) {
+  const hasContentIdentitySignal = Boolean(
+    story.title || story.selected_title || story.public_title || story.classification || story.flair || story.content_pillar || story.content_identity,
+  );
+  const roleOrder = hasContentIdentitySignal
+    ? [...new Set([...contentIdentity.audio.sfx_roles, ...SFX_ROLE_ORDER])]
+    : SFX_ROLE_ORDER;
+  for (const role of roleOrder) {
     const match = candidates.find((candidate) => candidate.role === role && !usedPaths.has(candidate.path));
     if (!match) continue;
     usedPaths.add(match.path);
@@ -598,6 +606,7 @@ async function resolveStorySfxCueMix(story = {}, { limit = 6 } = {}) {
       delayMs: profile.delayMs,
       volume: profile.volume,
       durationS: profile.durationS,
+      identity_id: contentIdentity.id,
     };
   });
 }

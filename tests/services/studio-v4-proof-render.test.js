@@ -1412,6 +1412,40 @@ test("Studio V4 proof renderer schedules SFX by editorial role with narration-sa
   assert.deepEqual(mix.map((cue) => cue.delayMs), [2750]);
 });
 
+test("Studio V4 fallback SFX follows the category identity palette", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-identity-sfx-"));
+  const files = {
+    impact: path.join(root, "impact.wav"),
+    ui: path.join(root, "ui.wav"),
+    transition: path.join(root, "transition.wav"),
+  };
+  for (const [index, file] of Object.values(files).entries()) {
+    fs.writeFileSync(file, Buffer.alloc(128, index + 1));
+  }
+  const inventory = Object.entries(files).map(([role, file]) => ({
+    role: role === "ui" ? "ui_tick" : role,
+    provider_id: "sonniss",
+    source_url: pathToFileURL(file).href,
+    approval_status: "approved_for_commercial_editorial_use",
+    quality_tier: "creator_studio",
+  }));
+
+  const update = await resolveStorySfxCueMix({
+    title: "Sea Of Thieves Season 18 Update Adds A New Voyage",
+    sfx_asset_inventory: inventory,
+  });
+  const breaking = await resolveStorySfxCueMix({
+    title: "Breaking GTA VI Trailer Released",
+    breaking_score: 90,
+    sfx_asset_inventory: inventory,
+  });
+
+  assert.deepEqual(update.map((cue) => cue.role), ["ui_tick"]);
+  assert.deepEqual(breaking.map((cue) => cue.role), ["impact"]);
+  assert.equal(update[0].identity_id, "game_update");
+  assert.equal(breaking[0].identity_id, "breaking_alert");
+});
+
 test("Studio V4 proof renderer resolves Epidemic music beds and stings from the channel pack", async () => {
   assert.equal(typeof resolveStoryMusicCueMix, "function");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-music-pack-"));

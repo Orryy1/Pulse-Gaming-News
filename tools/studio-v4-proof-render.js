@@ -20,7 +20,12 @@ const {
 const {
   discoverPackConfigs,
   selectVariantAsset,
+  variantAssetsForRole,
 } = require("../lib/audio-identity");
+const {
+  resolveContentIdentity,
+  selectIdentityVariant,
+} = require("../lib/content-identity-system");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
@@ -433,6 +438,30 @@ async function selectedPackAsset(packConfig = {}, role = "", { seed = "", worksp
   };
 }
 
+async function selectedIdentityPackAsset(packConfig = {}, identity = {}, kind = "bed", {
+  seed = "",
+  workspaceRoot = ROOT,
+} = {}) {
+  const selection = identity?.audio?.[kind];
+  if (!selection?.role) return null;
+  const variants = variantAssetsForRole(packConfig, selection.role);
+  const asset = selectIdentityVariant(variants, selection.variant_indexes, {
+    identityId: identity.id,
+    storySeed: seed,
+    role: kind,
+  });
+  if (!asset?.filename) return null;
+  const assetPath = resolvePackAssetPath(packConfig, asset, workspaceRoot);
+  if (!(await fs.pathExists(assetPath))) return null;
+  return {
+    ...asset,
+    role: selection.role,
+    asset_id: asset.asset_id || null,
+    provider_id: asset.provider_id || "epidemic_sound",
+    path: assetPath,
+  };
+}
+
 async function resolveStoryMusicCueMix(story = {}, {
   workspaceRoot = ROOT,
   packConfigs = null,
@@ -441,19 +470,25 @@ async function resolveStoryMusicCueMix(story = {}, {
   const channelId = storyChannelId(story);
   const pack = packs.find((candidate) => String(candidate.channel_id || "") === channelId);
   const seed = storyVariantSeed(story);
+  const contentIdentity = resolveContentIdentity(story);
   if (pack) {
-    const bedRoles = isBreakingStory(story)
-      ? ["bed_breaking", "bed_primary"]
-      : ["bed_primary", "bed_breaking"];
-    let bed = null;
-    for (const role of bedRoles) {
-      bed = await selectedPackAsset(pack, role, { seed, workspaceRoot });
-      if (bed) break;
+    let bed = await selectedIdentityPackAsset(pack, contentIdentity, "bed", { seed, workspaceRoot });
+    if (!bed) {
+      const bedRoles = isBreakingStory(story)
+        ? ["bed_breaking", "bed_primary"]
+        : ["bed_primary", "bed_breaking"];
+      for (const role of bedRoles) {
+        bed = await selectedPackAsset(pack, role, { seed, workspaceRoot });
+        if (bed) break;
+      }
     }
-    const stingRole = stingRoleForStory(story);
-    const sting = stingRole
-      ? await selectedPackAsset(pack, stingRole, { seed, workspaceRoot })
-      : null;
+    let sting = await selectedIdentityPackAsset(pack, contentIdentity, "sting", { seed, workspaceRoot });
+    if (!sting) {
+      const stingRole = stingRoleForStory(story);
+      sting = stingRole
+        ? await selectedPackAsset(pack, stingRole, { seed, workspaceRoot })
+        : null;
+    }
     if (bed) {
       return {
         provider_id: bed.provider_id || "epidemic_sound",
@@ -461,6 +496,7 @@ async function resolveStoryMusicCueMix(story = {}, {
         pack_id: pack.id || null,
         bed,
         sting,
+        content_identity: contentIdentity,
         policy: { ...MUSIC_MIX_POLICY },
       };
     }
@@ -483,6 +519,7 @@ async function resolveStoryMusicCueMix(story = {}, {
         selection_strategy: "legacy_fallback",
       },
       sting: null,
+      content_identity: contentIdentity,
       policy: { ...MUSIC_MIX_POLICY, version: "legacy_sidechain_ducked_bed_v1" },
     };
   }
@@ -493,6 +530,7 @@ async function resolveStoryMusicCueMix(story = {}, {
     pack_id: null,
     bed: null,
     sting: null,
+    content_identity: contentIdentity,
     policy: { ...MUSIC_MIX_POLICY },
   };
 }
@@ -1947,6 +1985,8 @@ function buildOverlayChain({
 }) {
   const layout = buildOverlayLayout({ story });
   const signature = buildPulseSignatureContract({ story, durationS });
+  const contentIdentity = resolveContentIdentity(story);
+  const identityAccent = `0x${String(contentIdentity.brand.accent || "#FF6B1A").replace(/^#/, "")}`;
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
   const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
   const suppressOpeningStoryCard =
@@ -1996,25 +2036,28 @@ function buildOverlayChain({
   const outroEnable = enableFor(signature.outro);
   const progressStart = (window, offsetS) => t(Number(window.start_s || 0) + offsetS);
   const segmentLabel = drawtextEscape(signature.segment.display_label);
+  const identityLabel = drawtextEscape(contentIdentity.brand.on_screen_label);
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
     `drawbox=x=iw-${sideMaskWidth}:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
-    `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=0xFF6B1A@0.30:t=fill`,
-    `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=0xFF6B1A@0.95:t=fill`,
+    `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=${identityAccent}@0.30:t=fill`,
+    `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=${identityAccent}@0.95:t=fill`,
+    `drawbox=x=${accentRailX + 5}:y=0:w=2:h=ih:color=0xFF6B1A@0.95:t=fill`,
     `drawbox=x=${accentRailX + 7}:y='mod(t*480+420\\,2000)-80':w=2:h=80:color=0x38BDF8@0.78:t=fill`,
     `drawbox=x='-260+mod(t*520\\,1540)':y=0:w=210:h=ih:color=white@0.055:t=fill`,
-    `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=0xFF6B1A@0.055:t=fill`,
+    `drawbox=x='940-mod(t*340\\,1220)':y=0:w=92:h=ih:color=${identityAccent}@0.055:t=fill`,
     ...(suppressOpeningStoryCard ? [] : [
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0xF8FAFC@0.16:t=2:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=118:h=3:color=0xF8FAFC@0.88:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w='if(lt(t\\,${progressStart(openingWindow, 0.18)})\\,1\\,1+(${openingCardW}-1)*(t-${progressStart(openingWindow, 0.18)})/0.30)':h=5:color=0x38BDF8@0.92:t=fill:enable='${openingEnable}'`,
-    `drawbox=x=${openingCardX}:y=${openingCardY + openingCardH - 6}:w=600:h=5:color=0xFF6B1A@0.68:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY + openingCardH - 6}:w=600:h=5:color=${identityAccent}@0.68:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.16:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.56:t=2:enable='${openingEnable}'`,
     `drawtext=text='${segmentLabel}':${metaFontOpt}:fontcolor=0xBEEBFF:fontsize=18:x=${openingChipX + 16}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${openingEnable}'`,
+    `drawtext=text='${identityLabel}':${metaFontOpt}:fontcolor=${identityAccent}:fontsize=18:x=w-tw-${safeMarginMode ? 98 : 86}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${openingEnable}'`,
     ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt: metaFontOpt, fontcolor: "0xFFB15C", enable: openingEnable, shadow: false }),
     `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='${openingEnable}'`,
     ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: openingEnable }),
@@ -2038,11 +2081,11 @@ function buildOverlayChain({
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: proofSecondaryEnable }),
     ]),
     `drawbox=x=w-286:y=h-126:w=244:h=60:color=0x0D0D0F@0.58:t=fill`,
-    `drawbox=x=w-286:y=h-126:w=6:h=60:color=0xFF6B1A@0.95:t=fill`,
+    `drawbox=x=w-286:y=h-126:w=6:h=60:color=${identityAccent}@0.95:t=fill`,
     `drawbox=x=w-280:y=h-126:w=238:h=2:color=0x38BDF8@0.78:t=fill`,
     `drawtext=text='PULSE // GAMING':${metaFontOpt}:fontcolor=white@0.92:fontsize=25:x=w-tw-58:y=h-108:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
     `drawbox=x=70:y=310:w=940:h=178:color=0x0D0D0F@0.74:t=fill:enable='${outroEnable}'`,
-    `drawbox=x=70:y=310:w=940:h=5:color=0xFF6B1A@0.95:t=fill:enable='${outroEnable}'`,
+    `drawbox=x=70:y=310:w=940:h=5:color=${identityAccent}@0.95:t=fill:enable='${outroEnable}'`,
     `drawbox=x=70:y=483:w=940:h=3:color=0x38BDF8@0.78:t=fill:enable='${outroEnable}'`,
     `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white:fontsize=62:x=110:y=332:shadowcolor=black@0.82:shadowx=3:shadowy=3:enable='${outroEnable}'`,
     `drawtext=text='NEVER MISS A BEAT':${metaFontOpt}:fontcolor=0xFFB15C:fontsize=30:x=114:y=420:enable='${outroEnable}'`,
@@ -2356,6 +2399,7 @@ async function renderProof({ storyJson, output }) {
     selected_music_cues: {
       provider_id: musicCueMix.provider_id || null,
       pack_id: musicCueMix.pack_id || null,
+      content_identity: musicCueMix.content_identity || null,
       bed: musicCueMix.bed
         ? {
             role: musicCueMix.bed.role,
@@ -2364,6 +2408,8 @@ async function renderProof({ storyJson, output }) {
             variant_index: musicCueMix.bed.variant_index,
             variant_count: musicCueMix.bed.variant_count,
             selection_strategy: musicCueMix.bed.selection_strategy,
+            identity_id: musicCueMix.bed.identity_id || null,
+            identity_variant_index: musicCueMix.bed.identity_variant_index ?? null,
           }
         : null,
       sting: musicCueMix.sting
@@ -2374,6 +2420,8 @@ async function renderProof({ storyJson, output }) {
             variant_index: musicCueMix.sting.variant_index,
             variant_count: musicCueMix.sting.variant_count,
             selection_strategy: musicCueMix.sting.selection_strategy,
+            identity_id: musicCueMix.sting.identity_id || null,
+            identity_variant_index: musicCueMix.sting.identity_variant_index ?? null,
           }
         : null,
       policy: musicCueMix.policy || null,

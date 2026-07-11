@@ -122,6 +122,7 @@
     "ops:goal08-visual-v4-renderer": "node tools/goal08-visual-v4-renderer.js",
     "ops:goal09-sound-design-engine": "node tools/goal09-sound-design-engine.js",
     "ops:elevenlabs-sfx-governance": "node tools/elevenlabs-sfx-governance.js",
+    "ops:content-identities": "node tools/content-identity-catalog.js",
     "ops:elevenlabs-tts-corpus": "node tools/elevenlabs-local-tts-training-corpus.js",
     "ops:pulse-avatar-identity": "node tools/pulse-avatar-identity-system.js",
     "ops:goal10-gold-standard-forensics": "node tools/goal10-gold-standard-forensics-engine.js",

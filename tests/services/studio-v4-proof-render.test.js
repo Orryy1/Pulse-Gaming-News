@@ -1463,6 +1463,51 @@ test("Studio V4 proof renderer resolves Epidemic music beds and stings from the 
   assert.equal(mix.policy.raw_bed_volume <= 0.12, true);
 });
 
+test("Studio V4 proof renderer gives update, review and rumour stories distinct audio identities", async () => {
+  const update = await resolveStoryMusicCueMix({
+    id: "update-story",
+    title: "Sea Of Thieves Season 18 Update Adds A New Voyage",
+  });
+  const review = await resolveStoryMusicCueMix({
+    id: "review-story",
+    title: "Forza Horizon 6 Review Scores Split Critics",
+  });
+  const rumour = await resolveStoryMusicCueMix({
+    id: "rumour-story",
+    title: "Fable Release Reportedly Moved",
+    flair: "Rumour",
+  });
+
+  assert.equal(update.content_identity.id, "game_update");
+  assert.equal(review.content_identity.id, "review_verdict");
+  assert.equal(rumour.content_identity.id, "rumour_watch");
+  assert.notEqual(update.bed.path, review.bed.path);
+  assert.notEqual(review.bed.path, rumour.bed.path);
+  assert.notEqual(update.sting.path, rumour.sting.path);
+  assert.equal(update.bed.identity_id, "game_update");
+  assert.equal(review.sting.identity_id, "review_verdict");
+});
+
+test("Studio V4 overlay shell carries the same visible category identity as its soundscape", () => {
+  const chain = buildOverlayChain({
+    story: {
+      id: "patch-identity",
+      title: "Sea Of Thieves Season 18 Update Adds A New Voyage",
+      primary_source: "Xbox Wire",
+      hook: "Sea Of Thieves just changed its next voyage.",
+    },
+    inputLabel: "base",
+    outputLabel: "out",
+    durationS: 42,
+    fontOpt: "font='DejaVu Sans'",
+    metaFontOpt: "font='DejaVu Sans Mono'",
+  });
+
+  assert.match(chain, /0x64D2FF/);
+  assert.match(chain, /PATCH PULSE/);
+  assert.doesNotMatch(chain, /text='BREAKING PULSE'/);
+});
+
 test("Studio V4 proof renderer keeps flash captions above lower-third and bottom-edge risk", () => {
   const ass = buildKineticAss({
     story: { title: "Hades II Just Broke PlayStation's Silence" },

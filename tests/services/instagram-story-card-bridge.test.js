@@ -30,6 +30,13 @@ test("Story cards use governed Instagram publish-pack copy and keep the legacy u
       platforms: ["x", "instagram", "facebook"],
       headline: "THE EXPANSE GAME IS REAL",
     });
+    const heroRel = path.join("output", "image_cache", `${storyId}_key_art.jpg`);
+    const heroAbs = path.join(root, heroRel);
+    await fs.ensureDir(path.dirname(heroAbs));
+    const sharp = require("sharp");
+    await sharp({
+      create: { width: 1600, height: 900, channels: 3, background: "#284960" },
+    }).jpeg().toFile(heroAbs);
 
     const story = {
       id: storyId,
@@ -37,7 +44,7 @@ test("Story cards use governed Instagram publish-pack copy and keep the legacy u
       exported_path: `output/final/${storyId}.mp4`,
       title: "Old Generic Title That Should Not Drive The Card",
       flair: "News",
-      downloaded_images: [],
+      downloaded_images: [{ path: heroRel, type: "key_art", source: "official" }],
     };
 
     const result = await generateStoryImagesForStories([story], {
@@ -59,8 +66,13 @@ test("Story cards use governed Instagram publish-pack copy and keep the legacy u
     const svg = await fs.readFile(svgPath, "utf8");
     assert.match(svg, /EXPANSE GAMEPLAY/);
     assert.match(svg, /REVEAL/);
-    assert.match(svg, /Source: Xbox Wire/);
+    assert.match(svg, /SOURCE  XBOX WIRE/);
+    assert.match(svg, /data-role="full-bleed-hero"/);
+    assert.doesNotMatch(svg, /WATCH NOW|VERIFIED LEAKS/);
     assert.doesNotMatch(svg, /Old Generic Title/);
+    assert.equal(await fs.pathExists(path.join(root, story.premium_visual_campaign_manifest_path)), true);
+    assert.equal(await fs.pathExists(path.join(root, story.premium_youtube_thumbnail_path)), true);
+    assert.equal(story.premium_visual_campaign_status, "green");
   } finally {
     await fs.remove(root).catch(() => {});
   }

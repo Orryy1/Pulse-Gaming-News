@@ -58,6 +58,7 @@ test("guarded story-card handoff appends derived Story actions after core video 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-story-card-handoff-"));
   const imageRel = path.join("output", "stories", "story-one_story.png");
   const imageAbs = path.join(root, imageRel);
+  const manifestRel = path.join("output", "stories", "story-one", "premium_visual_campaign_manifest.json");
   const generatedStories = [];
 
   const report = await buildGuardedStoryCardHandoff({
@@ -75,7 +76,9 @@ test("guarded story-card handoff appends derived Story actions after core video 
     cardGenerator: async (stories) => {
       generatedStories.push(...stories.map((story) => story.id));
       await fs.outputFile(imageAbs, Buffer.alloc(2048, 1));
+      await fs.outputJson(path.join(root, manifestRel), { verdict: "green" });
       stories[0].story_image_path = imageRel;
+      stories[0].premium_visual_campaign_manifest_path = manifestRel;
       return { generated: 1, considered: stories.length };
     },
   });
@@ -98,6 +101,8 @@ test("guarded story-card handoff appends derived Story actions after core video 
   assert.equal(instagramStory.story_image_path, imageRel);
   assert.equal(instagramStory.image_path, imageRel);
   assert.equal(instagramStory.derived_from_platform, "instagram_reels");
+  assert.equal(instagramStory.premium_visual_campaign_manifest_path, manifestRel);
+  assert.equal(instagramStory.visual_campaign_tier, "premium");
   assert.equal(instagramStory.live_publish_allowed_from_preflight_only, false);
   assert.equal(report.safety.no_network_uploads, true);
   assert.equal(report.safety.no_db_mutation, true);

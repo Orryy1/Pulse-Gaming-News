@@ -5,10 +5,13 @@ const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { rankThumbnailCandidates } = require("./lib/thumbnail-safety");
 const { applyProduceSelection } = require("./lib/produce-selection");
+const {
+  buildPremiumVisualCampaignSpec,
+  buildPremiumVisualSvg,
+  materializePremiumVisualCampaign,
+} = require("./lib/ops/premium-visual-campaign-engine");
 
 dotenv.config({ override: true });
-
-const brand = require("./brand");
 
 const OUTPUT_DIR = path.join("output", "stories");
 
@@ -18,14 +21,6 @@ function cleanText(value) {
 
 function safeStem(value) {
   return cleanText(value || "story").replace(/[^a-z0-9_-]+/gi, "_") || "story";
-}
-
-function escapeXml(text) {
-  return cleanText(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 async function readJsonIfPresent(filePath, fsImpl = fs) {
@@ -113,147 +108,20 @@ async function resolveGovernedStoryCardCopy(story = {}, opts = {}) {
   };
 }
 
-function wrapTextForCard(text, maxCharsPerLine = 22, maxLines = 4) {
-  const words = cleanText(text).split(" ").filter(Boolean);
-  const lines = [];
-  let current = "";
-  for (const word of words) {
-    if ((current + " " + word).length > maxCharsPerLine && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = current ? current + " " + word : word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.slice(0, maxLines);
-}
-
 function buildStorySvg(title, flair, heroImageBase64, hasHero, classification, options = {}) {
-  const classInfo = brand.classificationColour(classification || flair);
-  const flairColour = classInfo.hex;
-  const flairLabel = classInfo.label;
-  const lines = wrapTextForCard(title);
-  const titleTspans = lines
-    .map((line, i) => `<tspan x="540" dy="${i === 0 ? 0 : 68}">${escapeXml(line)}</tspan>`)
-    .join("");
-  const escapedSource = escapeXml(options.sourceLabel);
-  const titleLineCount = Math.max(1, lines.length);
-  const sourceY = Math.min(1110, 880 + (titleLineCount - 1) * 68 + 70);
-  const sourceLine = escapedSource
-    ? `
-  <text x="540" y="${sourceY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="24" font-weight="700" letter-spacing="1" fill="${brand.TEXT}" opacity="0.68">Source: ${escapedSource}</text>
-  `
+  const campaign = buildPremiumVisualCampaignSpec({
+    story_id: options.storyId || "story",
+    canonical_subject: options.subject || title,
+    title: options.canonicalTitle || title,
+    headline: title,
+    source_label: options.sourceLabel,
+    classification: classification || flair,
+    story_prompt: options.storyPrompt,
+  });
+  const heroDataUri = hasHero && heroImageBase64
+    ? `data:image/jpeg;base64,${heroImageBase64}`
     : "";
-  const dividerY = escapedSource ? 1165 : 1140;
-  const newVideoY = escapedSource ? 1245 : 1220;
-  const ctaY = escapedSource ? 1305 : 1280;
-  const ctaTextY = escapedSource ? 1350 : 1325;
-
-  const heroSection = hasHero
-    ? `
-    <!-- Full bleed hero image (background) -->
-    <image href="data:image/jpeg;base64,${heroImageBase64}" x="-200" y="0" width="1480" height="1920"
-           preserveAspectRatio="xMidYMid slice" opacity="0.4" filter="url(#blur)"/>
-
-    <!-- Hero image (main, upper portion) -->
-    <image href="data:image/jpeg;base64,${heroImageBase64}" x="60" y="200" width="960" height="540"
-           preserveAspectRatio="xMidYMid slice" clip-path="url(#heroClip)"/>
-    <rect x="60" y="200" width="960" height="540" rx="20" fill="none"
-          stroke="${brand.PRIMARY}" stroke-width="2" opacity="0.5"/>
-  `
-    : `
-    <!-- No hero - gradient placeholder -->
-    <rect x="60" y="200" width="960" height="540" rx="20" fill="#0d1a2e" opacity="0.5"/>
-    <rect x="60" y="200" width="960" height="540" rx="20" fill="none"
-          stroke="${brand.PRIMARY}" stroke-width="1" opacity="0.3"/>
-  `;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-       width="1080" height="1920" viewBox="0 0 1080 1920">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${brand.SECONDARY}"/>
-      <stop offset="50%" stop-color="#0a0a0c"/>
-      <stop offset="100%" stop-color="${brand.SECONDARY}"/>
-    </linearGradient>
-    <linearGradient id="heroFade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="transparent"/>
-      <stop offset="60%" stop-color="transparent"/>
-      <stop offset="100%" stop-color="${brand.SECONDARY}"/>
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="blur">
-      <feGaussianBlur stdDeviation="25"/>
-    </filter>
-    <filter id="shadow">
-      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#000" flood-opacity="0.8"/>
-    </filter>
-    <clipPath id="heroClip">
-      <rect x="60" y="200" width="960" height="540" rx="20"/>
-    </clipPath>
-  </defs>
-
-  <!-- Base background -->
-  <rect width="1080" height="1920" fill="url(#bg)"/>
-
-  ${heroSection}
-
-  <!-- Gradient fade over hero -->
-  <rect x="0" y="400" width="1080" height="400" fill="url(#heroFade)"/>
-
-  <!-- Flair badge - top of content area -->
-  <rect x="60" y="140" width="180" height="42" rx="21" fill="${flairColour}" opacity="0.9"/>
-  <circle cx="85" cy="161" r="5" fill="white" opacity="0.9">
-    <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
-  </circle>
-  <text x="150" y="168" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="17" font-weight="800" letter-spacing="2" fill="white">${flairLabel}</text>
-
-  <!-- Headline -->
-  <text x="540" y="880" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="56" font-weight="900" fill="${brand.TEXT}" filter="url(#shadow)"
-        letter-spacing="-1">${titleTspans}</text>
-
-  ${sourceLine}
-
-  <!-- Amber accent divider -->
-  <rect x="390" y="${dividerY}" width="300" height="3" rx="1.5" fill="${brand.PRIMARY}" opacity="0.7"/>
-
-  <!-- NEW VIDEO prompt -->
-  <text x="540" y="${newVideoY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="24" font-weight="700" letter-spacing="6" fill="${brand.PRIMARY}" opacity="0.9">NEW VIDEO</text>
-
-  <!-- Watch now CTA -->
-  <rect x="340" y="${ctaY}" width="400" height="70" rx="35" fill="${brand.PRIMARY}" opacity="0.9"/>
-  <text x="540" y="${ctaTextY}" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="24" font-weight="800" letter-spacing="2" fill="white">WATCH NOW</text>
-
-  <!-- Swipe up indicator -->
-  <polygon points="530,1420 540,1400 550,1420" fill="${brand.TEXT}" opacity="0.4"/>
-  <polygon points="530,1440 540,1420 550,1440" fill="${brand.TEXT}" opacity="0.25"/>
-
-  <!-- Bottom brand bar -->
-  <rect x="0" y="1750" width="1080" height="170" fill="rgba(0,0,0,0.7)"/>
-  <rect x="0" y="1750" width="1080" height="2" fill="${brand.PRIMARY}" opacity="0.4"/>
-
-  <!-- Pulse Gaming logo area -->
-  <text x="540" y="1830" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="28" font-weight="800" letter-spacing="6" fill="${brand.PRIMARY}" opacity="0.85">PULSE GAMING</text>
-  <text x="540" y="1870" text-anchor="middle" font-family="Inter,system-ui,sans-serif"
-        font-size="14" font-weight="500" letter-spacing="4" fill="${brand.MUTED}">VERIFIED LEAKS. EVERY DAY.</text>
-
-  <!-- Scanlines -->
-  <pattern id="scanlines" patternUnits="userSpaceOnUse" width="1080" height="4">
-    <rect width="1080" height="3" fill="transparent"/>
-    <rect width="1080" height="1" y="3" fill="rgba(0,0,0,0.12)"/>
-  </pattern>
-  <rect width="1080" height="1920" fill="url(#scanlines)"/>
-</svg>`;
+  return buildPremiumVisualSvg(campaign, "instagram_story", { heroDataUri });
 }
 
 async function loadHeroBase64(story = {}, opts = {}) {
@@ -320,6 +188,7 @@ async function generateStoryImagesForStories(stories = [], opts = {}) {
     (story) => story && story.approved === true && story.exported_path && !story.story_image_path,
   );
   let generated = 0;
+  let blocked = 0;
 
   for (const story of toProcess) {
     log(
@@ -334,38 +203,70 @@ async function generateStoryImagesForStories(stories = [], opts = {}) {
       fs: fsImpl,
       log,
     });
-    const svg = buildStorySvg(
-      storyCardCopy.title || story.title,
-      story.flair,
-      heroBase64,
-      !!heroBase64,
-      story.classification,
-      { sourceLabel: storyCardCopy.sourceLabel },
-    );
+    if (!heroBase64) {
+      story.premium_visual_campaign_status = "red";
+      story.premium_visual_campaign_blockers = ["premium_visual_safe_hero_missing"];
+      blocked += 1;
+      log(`[stories] ${story.id}: premium Story card blocked (safe hero missing)`);
+      continue;
+    }
 
     const stem = safeStem(story.id);
+    const campaignRel = path.join(outputDir, stem);
+    const campaignAbs = writePath(campaignRel);
+    let campaignResult;
+    try {
+      campaignResult = await materializePremiumVisualCampaign({
+        campaignInput: {
+          story_id: story.id,
+          canonical_subject: storyCardCopy.subject || story.canonical_subject || story.canonical_game || story.title,
+          title: story.title,
+          headline: storyCardCopy.title || story.title,
+          source_label: storyCardCopy.sourceLabel,
+          classification: story.classification || story.flair,
+          story_prompt: story.story_poll_idea,
+        },
+        heroImageBuffer: Buffer.from(heroBase64, "base64"),
+        heroImageExtension: ".jpg",
+        outputDir: campaignAbs,
+        recentCampaigns: opts.recentCampaigns || [],
+      });
+    } catch (err) {
+      const campaignBlockers = err.report?.blockers || ["premium_visual_campaign_materialization_failed"];
+      story.premium_visual_campaign_status = "red";
+      story.premium_visual_campaign_blockers = campaignBlockers;
+      blocked += 1;
+      log(`[stories] ${story.id}: premium Story card blocked (${campaignBlockers.join(", ")})`);
+      continue;
+    }
+
     const svgPath = path.join(outputDir, `${stem}_story.svg`);
     const pngPath = path.join(outputDir, `${stem}_story.png`);
     const svgWriteAbs = writePath(svgPath);
     const pngWriteAbs = writePath(pngPath);
     await fsImpl.ensureDir(path.dirname(svgWriteAbs));
-    await fsImpl.writeFile(svgWriteAbs, svg, "utf-8");
-
-    try {
-      const sharp = require("sharp");
-      await sharp(Buffer.from(svg)).png({ quality: 95 }).toFile(pngWriteAbs);
-      story.story_image_path = pngPath;
-      story.story_image_source = storyCardCopy.source;
-      log(`[stories] Saved: ${pngPath}`);
-    } catch (err) {
-      log(`[stories] Sharp conversion failed: ${err.message}`);
-      story.story_image_path = svgPath;
-      story.story_image_source = storyCardCopy.source;
-    }
+    await fsImpl.copy(campaignResult.outputs.instagram_story.svg_path, svgWriteAbs, { overwrite: true });
+    await fsImpl.copy(campaignResult.outputs.instagram_story.static_path, pngWriteAbs, { overwrite: true });
+    story.story_image_path = pngPath;
+    story.story_image_source = `${storyCardCopy.source}:premium_visual_campaign`;
+    story.premium_visual_campaign_status = campaignResult.report.verdict;
+    story.premium_visual_campaign_blockers = campaignResult.report.blockers;
+    story.premium_visual_campaign_manifest_path = path.join(campaignRel, "premium_visual_campaign_manifest.json");
+    story.premium_visual_campaign_scorecard_path = path.join(campaignRel, "premium_visual_campaign_scorecard.json");
+    story.premium_youtube_thumbnail_path = path.join(campaignRel, `${stem}_youtube_thumbnail.png`);
+    story.premium_youtube_shorts_cover_path = path.join(campaignRel, `${stem}_youtube_shorts_cover.png`);
+    story.premium_instagram_reels_cover_path = path.join(campaignRel, `${stem}_instagram_reels_cover.png`);
+    story.premium_facebook_reels_cover_path = path.join(campaignRel, `${stem}_facebook_reels_cover.png`);
+    story.premium_story_motion_project_path = path.join(campaignRel, "instagram_story_motion", "index.html");
+    // The upload path already prioritises hf_thumbnail_path. Point it at the
+    // governed premium 16:9 campaign output so the legacy thumbnail batch
+    // safely skips this story instead of replacing it with an older design.
+    story.hf_thumbnail_path = story.premium_youtube_thumbnail_path;
+    log(`[stories] Saved premium campaign: ${campaignRel}`);
     generated += 1;
   }
 
-  return { generated, considered: toProcess.length };
+  return { generated, blocked, considered: toProcess.length };
 }
 
 async function generateStoryImages() {

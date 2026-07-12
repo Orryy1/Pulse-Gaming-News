@@ -217,3 +217,32 @@ test("scoreFirstFrameThumbnailStory reuses shared platform cover headline for Fa
   assert.equal(report.platform_cover_matrix.ready_enabled_platforms, 3);
   assert.equal(report.verdict, "green");
 });
+
+test("scoreFirstFrameThumbnailStory blocks an explicitly failed premium visual campaign", () => {
+  const report = scoreFirstFrameThumbnailStory({
+    story: {
+      id: "story-premium-red",
+      title: "Super Mario RPG Drops To $15",
+      source: { source_type: "rss" },
+    },
+    canonicalManifest: {
+      canonical_subject: "Super Mario RPG",
+      selected_title: "Super Mario RPG Drops To $15",
+      thumbnail_headline: "SUPER MARIO RPG DROPS",
+      primary_source: "GameStop",
+    },
+    actions: [
+      action("story-premium-red", "youtube_shorts"),
+      action("story-premium-red", "instagram_reels"),
+      action("story-premium-red", "facebook_reels"),
+    ],
+    premiumVisualCampaign: {
+      verdict: "red",
+      outputs: {},
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.equal(report.premium_visual_campaign.verdict, "fail");
+  assert.ok(report.blockers.includes("premium_visual_campaign_not_green"));
+});

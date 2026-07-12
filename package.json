@@ -194,6 +194,7 @@
     "ops:runtime-sentinel": "node tools/runtime-ownership-sentinel.js",
     "ops:install-live-watchdog": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-local-live-watchdog-startup.ps1",
     "ops:first-frame-thumbnail": "node tools/first-frame-thumbnail-engine.js",
+    "ops:premium-visual-campaign": "node tools/premium-visual-campaign-engine.js",
     "ops:footage-empire-v2": "node tools/footage-empire-v2.js",
     "ops:next-publish-candidates": "node tools/next-publish-candidates.js --preflight-qa",
     "ops:publish-unblock": "node tools/publish-blocker-resolution.js",

@@ -89,6 +89,7 @@ async function loadInputs(args) {
     : [];
   const canonicalManifests = {};
   const platformManifests = {};
+  const premiumVisualCampaigns = {};
   for (const candidate of candidates) {
     if (!candidate?.id) continue;
     canonicalManifests[candidate.id] = await readManifestFromCandidate(candidate, "canonical_story_manifest.json");
@@ -96,8 +97,22 @@ async function loadInputs(args) {
     platformManifests[candidate.id] = Object.keys(publishManifest).length
       ? publishManifest
       : await readManifestFromCandidate(candidate, "platform_variant_scorecard.json");
+    premiumVisualCampaigns[candidate.id] = await readManifestFromCandidate(
+      candidate,
+      path.join("premium_visual_campaign", "premium_visual_campaign_manifest.json"),
+    );
+    if (!Object.keys(premiumVisualCampaigns[candidate.id]).length) {
+      const storyCampaignPath = path.join(
+        ROOT,
+        "output",
+        "stories",
+        candidate.id,
+        "premium_visual_campaign_manifest.json",
+      );
+      premiumVisualCampaigns[candidate.id] = await readJsonIfExists(storyCampaignPath, {});
+    }
   }
-  return { candidates, actions, canonicalManifests, platformManifests };
+  return { candidates, actions, canonicalManifests, platformManifests, premiumVisualCampaigns };
 }
 
 async function main() {

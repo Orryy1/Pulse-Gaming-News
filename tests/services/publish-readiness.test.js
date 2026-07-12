@@ -538,6 +538,60 @@ test("applyEnabledPlatformAutoPublishReadinessScope: scheduler-ready approvals d
   assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_story_count_still_visible, 9);
 });
 
+test("applyEnabledPlatformAutoPublishReadinessScope: autonomous scheduler actions hold non-selected strict dry-run RED as advisory", () => {
+  const pillars = {
+    strict_dry_run_control: {
+      verdict: "red",
+      reason: "strict_dry_run_blocked",
+      raw: {
+        safety_intact: true,
+        ready_for_unattended_publish: false,
+        ready_story_count: 2,
+        blocked_story_count: 1,
+        platform_publish_now_action_count: 6,
+        platform_enabled_dry_run_action_count: 6,
+        blocked_action_count: 0,
+        human_review_required_action_count: 0,
+        live_publish_allowed_action_count: 0,
+        guarded_dispatch_ready_action_count: 6,
+        publish_now_warning_action_count: 0,
+        reviewable_enabled_action_count: 0,
+      },
+    },
+    guarded_dispatch_preflight: {
+      verdict: "green",
+      raw: {
+        autonomous_dry_run_action_count: 6,
+        dispatch_ready_action_count: 6,
+        blocked_action_count: 0,
+        safety_blocker_count: 0,
+        ready_for_guarded_dispatch: true,
+      },
+    },
+    guarded_dispatch_executor_preflight: {
+      verdict: "amber",
+      reason: "explicit_action_ids_required",
+      raw: {
+        dispatch_ready_action_count: 6,
+        selected_action_count: 0,
+        handoff_ready_action_count: 0,
+        blocked_selected_action_count: 0,
+      },
+    },
+  };
+
+  const scoped = pr.applyEnabledPlatformAutoPublishReadinessScope(pillars);
+
+  assert.equal(scoped.scope.name, "enabled_platform_guarded_scheduler_window");
+  assert.equal(scoped.scope.guard_ready, true);
+  assert.equal(scoped.pillars.strict_dry_run_control.verdict, "amber");
+  assert.equal(
+    scoped.pillars.strict_dry_run_control.reason,
+    "non_selected_candidate_blockers_held_by_guarded_scheduler_scope",
+  );
+  assert.equal(scoped.pillars.strict_dry_run_control.raw.blocked_story_count_still_visible, 1);
+});
+
 test("applyEnabledPlatformAutoPublishReadinessScope: guarded handoff holds non-selected platform-variant dry-run blockers", () => {
   const pillars = {
     strict_dry_run_control: {

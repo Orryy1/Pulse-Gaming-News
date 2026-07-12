@@ -58,6 +58,7 @@ function assertContentOnlyKinds(kinds) {
 }
 
 function parseArgs(argv = process.argv.slice(2), env = process.env) {
+  const configuredLeaseMs = Number(env.PULSE_CONTENT_WORKER_LEASE_MS || 30 * 60 * 1000);
   const args = {
     help: false,
     workerId: env.PULSE_CONTENT_WORKER_ID || `content-${os.hostname()}-${process.pid}`,
@@ -65,6 +66,10 @@ function parseArgs(argv = process.argv.slice(2), env = process.env) {
       ? parseCsv(env.PULSE_CONTENT_WORKER_KINDS)
       : [...DEFAULT_CONTENT_KINDS],
     gpu: /^(true|1|yes|on)$/i.test(String(env.PULSE_CONTENT_WORKER_GPU || "")),
+    leaseMs: Math.min(
+      2 * 60 * 60 * 1000,
+      Math.max(5 * 60 * 1000, Number.isFinite(configuredLeaseMs) ? configuredLeaseMs : 30 * 60 * 1000),
+    ),
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -114,6 +119,7 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
     runGeneralRunner: true,
     kinds: args.kinds,
     gpu: args.gpu,
+    leaseMs: args.leaseMs,
     autoSeed: false,
     log: (message) => io.stderr.write(`${message}\n`),
   });

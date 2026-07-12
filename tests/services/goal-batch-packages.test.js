@@ -2928,6 +2928,65 @@ test("goal batch package extracts current official subjects from source URLs bef
   assert.doesNotMatch(eso.full_script, /has to answer one simple thing|why should players care now|named source is only useful|watch pile|source-backed update/i);
   assert.match(eso.full_script, /^The Elder Scrolls Online/i);
   assert.match(eso.full_script, /Season One/i);
+  assert.match(eso.full_script, /eight story quests/i);
+  assert.match(eso.full_script, /Tamriel Tome/i);
+  assert.match(eso.full_script, /free path|paid tracks/i);
+  assert.match(eso.public_title, /Thieves Guild|Reward Track/i);
+  assert.equal(eso.suggested_thumbnail_text, "FREE OR PAID?");
+  assert.ok(eso.confirmed_claims.some((claim) => /eight new story quests/i.test(claim)));
+});
+
+test("goal batch package turns the Starward V3.1 source into a concrete fighter trade-off", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_starward_v31",
+    title: "Starward Has A Source-Proof Risk",
+    canonical_subject: "Starward",
+    canonical_game: "Starward",
+    source_type: "rss",
+    source_name: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/07/09/meet-the-star-operator-1/",
+    freshness_gate: "pass",
+    confirmed_claims: [
+      "Starward Version 3.1 adds Pliszka, whose Wing Rider Assembly increases firepower and mobility but also increases her hitbox and descent speed.",
+      "Players can detach the Wing Rider Assembly during battle for a more agile playstyle.",
+    ],
+    full_script: "source-backed update",
+  });
+
+  assert.equal(prepared.canonical_game, "Starward");
+  assert.equal(prepared.public_title, "Starward's New Fighter Has A Huge Trade-Off");
+  assert.equal(prepared.suggested_thumbnail_text, "POWER OR SPEED?");
+  assert.match(prepared.full_script, /Pliszka/i);
+  assert.match(prepared.full_script, /larger hitbox|bigger target/i);
+  assert.match(prepared.full_script, /detach/i);
+  assert.doesNotMatch(prepared.full_script, /why should players care|named source|watch pile|source-backed update/i);
+});
+
+test("goal batch package gives the current Free Play Days line-up a clear recommendation", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_free_play_days_0709",
+    title: "Free Play Days Has A Free-Access Risk",
+    canonical_subject: "Free Play Days MLB The",
+    canonical_game: "Free Play Days MLB The",
+    source_type: "rss",
+    source_name: "Xbox Wire",
+    article_url: "https://news.xbox.com/en-us/2026/07/09/free-play-days-07-09-2026/",
+    freshness_gate: "pass",
+    confirmed_claims: [
+      "Free Play Days includes MLB The Show 26, The Alters and Stuffed until Sunday July 12.",
+      "The Alters is discounted from $34.99 to $17.49 during the event.",
+    ],
+    full_script: "source-backed update",
+  });
+
+  assert.equal(prepared.canonical_game, "Xbox Free Play Days");
+  assert.equal(prepared.public_title, "Xbox Free Play Days Has One Clear Winner");
+  assert.equal(prepared.suggested_thumbnail_text, "PLAY THIS FIRST");
+  assert.match(prepared.full_script, /The Alters/i);
+  assert.match(prepared.full_script, /MLB The Show 26/i);
+  assert.match(prepared.full_script, /Stuffed/i);
+  assert.match(prepared.full_script, /July 12/i);
+  assert.doesNotMatch(prepared.full_script, /why should players care|named source|watch pile|source-backed update/i);
 });
 
 test("goal batch package writes story-specific Albion Online scripts instead of generic openers", () => {

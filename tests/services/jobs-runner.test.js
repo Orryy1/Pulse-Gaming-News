@@ -34,6 +34,7 @@ function loadJobsRunnerWithRepos(t, repos) {
 
 function fakeRepos() {
   const calls = {
+    claims: [],
     jobHeartbeats: [],
     workerHeartbeats: [],
   };
@@ -41,8 +42,12 @@ function fakeRepos() {
     calls,
     repos: {
       jobs: {
-        heartbeat: (jobId, workerId) => {
-          calls.jobHeartbeats.push({ jobId, workerId });
+        claim: (workerId, options) => {
+          calls.claims.push({ workerId, options });
+          return null;
+        },
+        heartbeat: (jobId, workerId, leaseMs) => {
+          calls.jobHeartbeats.push({ jobId, workerId, leaseMs });
         },
       },
       workers: {
@@ -95,6 +100,7 @@ test("JobsRunner heartbeat renews current job lease while busy", (t) => {
     {
       jobId: 42,
       workerId: "local-content-repair",
+      leaseMs: undefined,
     },
   ]);
   assert.deepEqual(calls.workerHeartbeats, [
@@ -103,4 +109,28 @@ test("JobsRunner heartbeat renews current job lease while busy", (t) => {
       patch: { status: "busy" },
     },
   ]);
+});
+
+test("JobsRunner uses its configured lease for claims and heartbeats", async (t) => {
+  const { calls, repos } = fakeRepos();
+  const { JobsRunner } = loadJobsRunnerWithRepos(t, repos);
+  const runner = new JobsRunner({
+    workerId: "local-content-runway",
+    handlers: {},
+    leaseMs: 30 * 60 * 1000,
+    log: () => {},
+  });
+  runner.running = true;
+  runner._schedule = () => {};
+
+  await runner._tick();
+  runner.current = { id: 73 };
+  runner._heartbeat();
+
+  assert.equal(calls.claims[0].options.leaseMs, 30 * 60 * 1000);
+  assert.deepEqual(calls.jobHeartbeats[0], {
+    jobId: 73,
+    workerId: "local-content-runway",
+    leaseMs: 30 * 60 * 1000,
+  });
 });

@@ -56,6 +56,14 @@ test("local sqlite content worker parses explicit kind and worker options", () =
   assert.equal(args.gpu, true);
 });
 
+test("local sqlite content worker uses a long lease for synchronous repair tools", () => {
+  assert.equal(parseArgs([], {}).leaseMs, 30 * 60 * 1000);
+  assert.equal(
+    parseArgs([], { PULSE_CONTENT_WORKER_LEASE_MS: "2400000" }).leaseMs,
+    2400000,
+  );
+});
+
 test("local sqlite content worker rejects live publish and credential explicit kinds", () => {
   assert.throws(
     () => parseArgs(["--kinds", "fresh_production_refill,publish"], {}),

@@ -298,3 +298,50 @@ test("alignWordsWithLocalWhisper can isolate Windows Whisper behind PowerShell",
   assert.match(boundaryCommand, /local_whisper_word_align\.py/);
   assert.match(boundaryCommand, /'--device'\s+'cpu'/);
 });
+
+test("alignWordsWithLocalWhisper retries directly when the Windows PowerShell boundary fails", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-whisper-boundary-fallback-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const calls = [];
+
+  const result = await alignWordsWithLocalWhisper({
+    audioPath,
+    model: "base.en",
+    device: "cpu",
+    useWindowsPowerShellBoundary: true,
+    spawnImpl: (command, args) => {
+      calls.push(command);
+      const child = new EventEmitter();
+      child.kill = () => {};
+      process.nextTick(async () => {
+        if (/powershell/i.test(command)) {
+          child.emit("close", -1, null);
+          return;
+        }
+        const outputIndex = args.indexOf("--output");
+        await fs.outputJson(args[outputIndex + 1], {
+          model: "base.en",
+          language: "en",
+          text: "Glen Umbra returns",
+          segments: [{
+            text: "Glen Umbra returns",
+            words: [
+              { word: "Glen", start: 0, end: 0.2 },
+              { word: "Umbra", start: 0.2, end: 0.4 },
+              { word: "returns", start: 0.42, end: 0.8 },
+            ],
+          }],
+        });
+        child.emit("close", 0, null);
+      });
+      return child;
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.windows_boundary_fallback, true);
+  assert.equal(calls.length, 2);
+  assert.match(calls[0], /powershell/i);
+  assert.doesNotMatch(calls[1], /powershell/i);
+});

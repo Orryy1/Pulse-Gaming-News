@@ -3932,6 +3932,132 @@ test("goal production render materializer skips an existing final production ren
   assert.equal(report.jobs[0].status, "skipped_existing_final_render");
 });
 
+test("goal production render materializer promotes a completed temporary MP4 atomically", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-atomic-"));
+  const artifactDir = await makePackage(root);
+  const finalPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const original = Buffer.alloc(4096, 3);
+  const replacement = Buffer.alloc(8192, 7);
+  await fs.outputFile(finalPath, original);
+
+  let renderOutput = null;
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-atomic", artifactDir)] },
+    generatedAt: "2026-07-12T17:45:00.000Z",
+    force: true,
+    renderProof: async ({ output }) => {
+      renderOutput = output;
+      assert.notEqual(output, finalPath);
+      assert.equal(path.dirname(output), artifactDir);
+      assert.match(path.basename(output), /^visual_v4_render\.partial-[^.]+\.mp4$/);
+      assert.deepEqual(await fs.readFile(finalPath), original);
+      await fs.outputFile(output, replacement);
+      return { clips: 8, rendered_duration_s: 49 };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.deepEqual(await fs.readFile(finalPath), replacement);
+  assert.equal(await fs.pathExists(renderOutput), false);
+  assert.equal(await fs.pathExists(`${finalPath}.render.lock`), false);
+});
+
+test("goal production render materializer rejects overlapping renders for one final MP4", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-lock-"));
+  const artifactDir = await makePackage(root);
+  const job = readyJob("story-locked", artifactDir);
+  let releaseFirst;
+  let firstStarted;
+  const started = new Promise((resolve) => { firstStarted = resolve; });
+  const release = new Promise((resolve) => { releaseFirst = resolve; });
+
+  const first = materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-12T17:46:00.000Z",
+    force: true,
+    renderProof: async ({ output }) => {
+      firstStarted();
+      await release;
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return { clips: 8, rendered_duration_s: 49 };
+    },
+  });
+  await started;
+
+  const second = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-12T17:46:01.000Z",
+    force: true,
+    renderProof: async () => {
+      throw new Error("overlapping renderer must not start");
+    },
+  });
+
+  assert.equal(second.summary.failed_count, 1);
+  assert.match(second.jobs[0].error, /production_render_already_in_progress/);
+  releaseFirst();
+  const firstReport = await first;
+  assert.equal(firstReport.summary.rendered_count, 1);
+});
+
+test("goal production render materializer preserves the final MP4 and cleans temporary files after failure", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-atomic-failure-"));
+  const artifactDir = await makePackage(root);
+  const finalPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const original = Buffer.alloc(4096, 2);
+  await fs.outputFile(finalPath, original);
+  let temporaryPath = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-atomic-failure", artifactDir)] },
+    generatedAt: "2026-07-12T17:47:00.000Z",
+    force: true,
+    renderProof: async ({ output }) => {
+      temporaryPath = output;
+      await fs.outputFile(output, Buffer.alloc(2048, 8));
+      throw new Error("simulated_renderer_failure");
+    },
+  });
+
+  assert.equal(report.summary.failed_count, 1);
+  assert.deepEqual(await fs.readFile(finalPath), original);
+  assert.equal(await fs.pathExists(temporaryPath), false);
+  assert.equal(await fs.pathExists(`${finalPath}.render.lock`), false);
+});
+
+test("goal production render materializer does not promote an MP4 that fails media integrity validation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-integrity-"));
+  const artifactDir = await makePackage(root);
+  const finalPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const original = Buffer.alloc(4096, 2);
+  await fs.outputFile(finalPath, original);
+  let validatedPath = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-integrity-failure", artifactDir)] },
+    generatedAt: "2026-07-12T17:48:00.000Z",
+    force: true,
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(8192, 9));
+      return { clips: 8, rendered_duration_s: 49 };
+    },
+    verifyRenderedMedia: async (candidatePath) => {
+      validatedPath = candidatePath;
+      throw new Error("production_render_media_integrity_failed:decode_error");
+    },
+  });
+
+  assert.equal(report.summary.failed_count, 1);
+  assert.notEqual(validatedPath, finalPath);
+  assert.deepEqual(await fs.readFile(finalPath), original);
+  assert.equal(await fs.pathExists(validatedPath), false);
+});
+
 test("goal production render materializer rerenders existing final MP4s without current repeat and card cadence evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-no-cadence-evidence-"));
   const artifactDir = await makePackage(root);

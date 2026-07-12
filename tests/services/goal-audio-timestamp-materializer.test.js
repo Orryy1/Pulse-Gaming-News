@@ -139,6 +139,93 @@ test("audio materializer trims only the centre of verified inter-word pauses", a
   assert.equal((await fs.stat(audioPath)).size, 3072);
 });
 
+test("audio materializer compacts pauses inside protected game titles without flattening sentence cadence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-title-pause-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const calls = [];
+
+  const result = await _testables.compactTimestampedNarrationPauses(
+    audioPath,
+    [
+      { word: "The", start: 0, end: 0.2 },
+      { word: "Elder", start: 0.2, end: 0.45 },
+      { word: "Scrolls,", start: 0.45, end: 0.8 },
+      { word: "Online's", start: 1.18, end: 1.65 },
+      { word: "return.", start: 1.65, end: 2.1 },
+      { word: "Players", start: 2.6, end: 2.9 },
+    ],
+    {
+      maxGapS: 0.9,
+      preservedGapS: 0.45,
+      protectedTitles: ["The Elder Scrolls Online"],
+      maxProtectedTitleGapS: 0.16,
+      protectedTitleGapS: 0.06,
+      execFileImpl: async (command, args) => {
+        calls.push({ command, args });
+        await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
+        return { stdout: "", stderr: "" };
+      },
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.cut_count, 1);
+  assert.equal(result.protected_title_cut_count, 1);
+  assert.equal(result.preserved_protected_title_gap_s, 0.06);
+  assert.match(calls[0].args.join(" "), /atrim=start=0\.000:end=0\.830/);
+  assert.match(calls[0].args.join(" "), /atrim=start=1\.150/);
+});
+
+test("audio materializer detects a protected game-title pause independently of sentence cadence", () => {
+  const reasons = _testables.protectedTitlePauseReasons(
+    {
+      ready: true,
+      words: [
+        { word: "Halo", start: 0, end: 0.3 },
+        { word: "Campaign", start: 0.68, end: 1.1 },
+        { word: "Evolved", start: 1.1, end: 1.5 },
+      ],
+    },
+    ["Halo: Campaign Evolved"],
+  );
+
+  assert.deepEqual(reasons, ["narration_audio_protected_title_pause_too_long"]);
+});
+
+test("audio materializer repairs aligned cadence before promoting generated narration", async () => {
+  const calls = [];
+  const repaired = await _testables.repairAlignedNarrationPauses({
+    audioPath: "C:/proof/narration.mp3",
+    timestampPath: "C:/proof/words.json",
+    timestampInfo: { word_count: 4 },
+    text: "Halo Campaign Evolved has a catch.",
+    spokenText: "Halo Campaign Evolved has a catch.",
+    provider: "elevenlabs",
+    protectedTitles: ["Halo: Campaign Evolved"],
+    maxPasses: 1,
+    generatedAt: "2026-07-12T18:00:00.000Z",
+    readJson: async () => ({
+      words: [
+        { word: "Halo", start: 0, end: 0.3 },
+        { word: "Campaign", start: 0.7, end: 1 },
+        { word: "Evolved", start: 1, end: 1.3 },
+        { word: "catch", start: 2.4, end: 2.7 },
+      ],
+    }),
+    compactPauses: async (audioPath, words, options) => {
+      calls.push({ audioPath, words, options });
+      return { repaired: true, cut_count: 2, protected_title_cut_count: 1 };
+    },
+    normaliseTimestamps: async () => ({ word_count: 4, timestamp_whisper_alignment: { repaired: true } }),
+  });
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].options.protectedTitles, ["Halo: Campaign Evolved"]);
+  assert.equal(repaired.narration_silence_compaction.cut_count, 2);
+  assert.equal(repaired.word_count, 4);
+});
+
 test("audio materializer leaves narration unchanged when cadence silence is already bounded", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-bounded-"));
   const audioPath = path.join(root, "narration.mp3");
@@ -2208,6 +2295,31 @@ test("goal audio materializer coverage treats safe compound game terms as one sp
   assert.equal(coverage.unmatched_expected_word_count, 0);
   assert.equal(reconciled.ok, true);
   assert.equal(reconciled.words[1].word, "Chain Spear");
+});
+
+test("goal audio materializer reconciles Glenumbra when ASR splits the place name", () => {
+  const scriptText = "Season One sends players into Glenumbra with eight story quests.";
+  const words = [
+    { word: "Season", start: 0, end: 0.2 },
+    { word: "One", start: 0.22, end: 0.34 },
+    { word: "sends", start: 0.36, end: 0.52 },
+    { word: "players", start: 0.54, end: 0.76 },
+    { word: "into", start: 0.78, end: 0.92 },
+    { word: "Glen", start: 0.94, end: 1.1 },
+    { word: "Umbra", start: 1.1, end: 1.34 },
+    { word: "with", start: 1.36, end: 1.5 },
+    { word: "eight", start: 1.52, end: 1.7 },
+    { word: "story", start: 1.72, end: 1.9 },
+    { word: "quests.", start: 1.92, end: 2.14 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[5].word, "Glenumbra");
 });
 
 test("goal audio materializer coverage reconciles split Palworld, decimal and Pocketpair ASR tokens", () => {

@@ -13,7 +13,8 @@ $logDir = Join-Path $RepoRoot "output/runtime"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "pulse-live-content-workers.log"
 $workerScript = Join-Path $RepoRoot "tools/local-sqlite-content-worker.js"
-$nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
+$taskWrapper = Join-Path $RepoRoot "tools/local-content-worker-task.ps1"
+$powershellExe = (Get-Command "powershell.exe" -ErrorAction Stop).Source
 
 function Write-ContentWorkerLog {
   param([string]$Message)
@@ -87,21 +88,24 @@ foreach ($lane in $lanes) {
   }
 
   Write-ContentWorkerLog ("starting_worker id={0} kinds={1}" -f $workerId, $kinds)
-  $stdoutPath = Join-Path $logDir ("{0}.stdout.log" -f $workerId)
-  $stderrPath = Join-Path $logDir ("{0}.stderr.log" -f $workerId)
-  $created = Start-Process -FilePath $nodeExe `
-    -ArgumentList @($workerScript, "--worker-id", $workerId, "--kinds", $kinds) `
-    -WorkingDirectory $RepoRoot `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $stdoutPath `
-    -RedirectStandardError $stderrPath `
-    -PassThru
-  Start-Sleep -Seconds 2
-  $created.Refresh()
-  if ($created.HasExited) {
-    $failure = "worker_launch_failed id={0} exit_code={1} stdout={2} stderr={3}" -f $workerId, $created.ExitCode, $stdoutPath, $stderrPath
+  $stdoutPath = Join-Path $logDir ("{0}.task.stdout.log" -f $workerId)
+  $stderrPath = Join-Path $logDir ("{0}.task.stderr.log" -f $workerId)
+  $commandLine = ('"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -RepoRoot "{2}" -WorkerId "{3}" -Kinds "{4}"' -f $powershellExe, $taskWrapper, $RepoRoot, $workerId, $kinds)
+  $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+    CommandLine = $commandLine
+    CurrentDirectory = $RepoRoot
+  }
+  if ($created.ReturnValue -ne 0 -or -not $created.ProcessId) {
+    $failure = "worker_launch_failed id={0} return_value={1} stdout={2} stderr={3}" -f $workerId, $created.ReturnValue, $stdoutPath, $stderrPath
     Write-ContentWorkerLog $failure
     throw $failure
   }
-  Write-ContentWorkerLog ("worker_started id={0} pid={1}" -f $workerId, $created.Id)
+  Start-Sleep -Seconds 2
+  $launched = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $created.ProcessId) -ErrorAction SilentlyContinue
+  if (-not $launched) {
+    $failure = "worker_launch_failed id={0} pid={1} stdout={2} stderr={3}" -f $workerId, $created.ProcessId, $stdoutPath, $stderrPath
+    Write-ContentWorkerLog $failure
+    throw $failure
+  }
+  Write-ContentWorkerLog ("worker_started id={0} pid={1}" -f $workerId, $created.ProcessId)
 }

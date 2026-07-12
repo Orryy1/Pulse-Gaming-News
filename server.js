@@ -1804,6 +1804,12 @@ function serverGeneralQueueRunnerEnabled(env = process.env) {
   );
 }
 
+function serverContentRunnerLanesEnabled(env = process.env) {
+  return /^(true|1|yes|on)$/i.test(
+    String(env.PULSE_SERVER_CONTENT_RUNNERS || "").trim(),
+  );
+}
+
 async function startAutonomousScheduler() {
   const llmState = describeLlmState();
   if (!llmState.ok) {
@@ -1829,11 +1835,15 @@ async function startAutonomousScheduler() {
   if (dispatch.mode === "queue") {
     try {
       const bootstrap = require("./lib/bootstrap-queue");
+      const { CONTENT_RUNNER_LANES } = require("./lib/content-runner-lanes");
       const bootstrapState = await bootstrap.start({
         workerId: `server-${require("os").hostname()}-${process.pid}`,
         runScheduler: true,
         runRunner: true,
         runGeneralRunner: serverGeneralQueueRunnerEnabled(process.env),
+        additionalRunnerLanes: serverContentRunnerLanesEnabled(process.env)
+          ? CONTENT_RUNNER_LANES
+          : [],
         autoSeed: true,
       });
       schedulerRunning = !!(

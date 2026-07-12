@@ -17,6 +17,40 @@ const TEST_ROOT = path.join(ROOT, "test", "output", "fresh-refill-script-rewrite
 const GENERIC_SCRIPT =
   "Tekken 8 has a new source detail, but the real question is still what players can do with it. Eurogamer says Tekken 8 is adding Bob to its roster and players seem pretty hyped, despite the fighting game's mounting struggles. If it changes when people buy, download, wishlist or return, the update matters. If it only repeats a headline, it needs stronger proof before it deserves attention. The next official detail has to make that choice clear: play now, wait, skip or watch for gameplay. Follow Pulse Gaming so you never miss a beat.";
 
+test("fresh refill rewrite preserves a concrete ESO Season One argument", () => {
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_eso_season_one",
+      title: "Season One: Return of the Thieves Guild is Now Live in The Elder Scrolls Online",
+      source: {
+        name: "The Elder Scrolls Online",
+        url: "https://www.elderscrollsonline.com/en-us/news/post/70123",
+      },
+    },
+    manifest: {
+      story_id: "rss_eso_season_one",
+      canonical_subject: "The Elder Scrolls Online",
+      canonical_title: "The Elder Scrolls Online's Thieves Guild Has A Paid Catch",
+      primary_source: "The Elder Scrolls Online",
+      primary_source_url: "https://www.elderscrollsonline.com/en-us/news/post/70123",
+      confirmed_claims: [
+        "Season One adds eight new Thieves Guild story quests in Glenumbra.",
+        "The Daggerfall Thieves Den adds access to heists, daily quests and a new Mythic reward.",
+        "Every player receives a free Tamriel Tome reward track, with optional paid upgrades.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready");
+  assert.equal(script.suggested_title, "The Elder Scrolls Online's Thieves Guild Has A Paid Catch");
+  assert.equal(script.suggested_thumbnail_text, "FREE OR PAID?");
+  assert.match(script.full_script, /^The Elder Scrolls Online just brought back the Thieves Guild, but its reward track has a paid catch\./);
+  assert.match(script.full_script, /eight story quests/i);
+  assert.match(script.full_script, /Tamriel Tome/i);
+  assert.match(script.description, /Every player gets a free Tamriel Tome/i);
+  assert.doesNotMatch(script.full_script, /Source-Proof Risk|Player Test/i);
+});
+
 function tekkenBobJob(artifactDir) {
   return {
     story_id: "rss_4a07e21d3192fd7c",

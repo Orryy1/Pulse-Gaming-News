@@ -20,11 +20,10 @@ test("local live content worker launcher starts durable non-publish worker lanes
     assert.match(script, new RegExp(workerId));
   }
 
-  assert.match(script, /tools\/local-sqlite-content-worker\.js/);
-  assert.match(script, /Start-Process -FilePath \$nodeExe/);
-  assert.match(script, /-RedirectStandardOutput \$stdoutPath/);
-  assert.match(script, /-RedirectStandardError \$stderrPath/);
-  assert.match(script, /-PassThru/);
+  assert.match(script, /tools\/local-content-worker-task\.ps1/);
+  assert.match(script, /Invoke-CimMethod -ClassName Win32_Process -MethodName Create/);
+  assert.match(script, /CurrentDirectory = \$RepoRoot/);
+  assert.match(script, /ReturnValue -ne 0/);
   assert.match(script, /worker_launch_failed/);
   assert.match(script, /worker_started id=\{0\} pid=\{1\}/);
 });

@@ -7,6 +7,7 @@ const {
   generalRunnerEnabled,
   PUBLISH_CRITICAL_JOB_KINDS,
   publishCriticalRunnerEnabled,
+  normaliseAdditionalRunnerLanes,
 } = require("../../lib/bootstrap-queue");
 
 test("bootstrap queue enables a protected publish lane by default", () => {
@@ -110,4 +111,19 @@ test("server starts queue mode without the unrestricted all-jobs runner by defau
   assert.match(source, /function serverGeneralQueueRunnerEnabled/);
   assert.match(source, /runGeneralRunner:\s*serverGeneralQueueRunnerEnabled\(process\.env\)/);
   assert.match(source, /PULSE_SERVER_GENERAL_QUEUE_RUNNER/);
+});
+
+test("bootstrap validates restricted additional runners", () => {
+  assert.deepEqual(
+    normaliseAdditionalRunnerLanes([{ id: "runway", kinds: ["fresh_production_refill"] }]),
+    [{ id: "runway", kinds: ["fresh_production_refill"], leaseMs: undefined }],
+  );
+  assert.throws(
+    () => normaliseAdditionalRunnerLanes([{ id: "unsafe", kinds: ["publish"] }]),
+    /forbidden.*publish/i,
+  );
+  assert.throws(
+    () => normaliseAdditionalRunnerLanes([{ id: "empty", kinds: [] }]),
+    /non-empty kinds/i,
+  );
 });

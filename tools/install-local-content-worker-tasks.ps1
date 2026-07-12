@@ -12,8 +12,9 @@ if ($Apply -and -not $OperatorConfirmed) {
   throw "Refusing to install content worker tasks without -OperatorConfirmed."
 }
 
-$nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
+$pythonwExe = (Get-Command "pythonw.exe" -ErrorAction Stop).Source
 $workerScript = Join-Path $RepoRoot "tools/local-sqlite-content-worker.js"
+$hostScript = Join-Path $RepoRoot "tools/local_content_worker_host.py"
 $lanes = @(
   @{ Task = "PulseGaming-Content-Runway"; Id = "local-content-runway"; Kinds = "candidate_supply_monitor,fresh_production_refill" },
   @{ Task = "PulseGaming-Content-Repair"; Id = "local-content-repair"; Kinds = "fresh_review_script_repair,safe_auto_repair_runner,local_tts_doctor,local_tts_retry_recovery" },
@@ -34,8 +35,8 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -MultipleInstances IgnoreNew -StartWhenAvailable
 for ($index = 0; $index -lt $lanes.Count; $index++) {
   $lane = $lanes[$index]
-  $arguments = '"{0}" --worker-id "{1}" --kinds "{2}"' -f $workerScript, $lane.Id, $lane.Kinds
-  $action = New-ScheduledTaskAction -Execute $nodeExe -Argument $arguments -WorkingDirectory $RepoRoot
+  $arguments = '"{0}" --repo-root "{1}" --worker-id "{2}" --kinds "{3}"' -f $hostScript, $RepoRoot, $lane.Id, $lane.Kinds
+  $action = New-ScheduledTaskAction -Execute $pythonwExe -Argument $arguments -WorkingDirectory $RepoRoot
   Register-ScheduledTask -TaskName $lane.Task -Action $action -Trigger $trigger -Settings $settings -Description "Pulse Gaming non-publish content worker" -Force | Out-Null
   Start-ScheduledTask -TaskName $lane.Task
   $plan[$index].applied = $true

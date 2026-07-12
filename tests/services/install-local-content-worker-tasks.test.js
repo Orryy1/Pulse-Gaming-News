@@ -24,5 +24,7 @@ test("content worker tasks cover all non-publish lanes", () => {
     assert.match(script, new RegExp(`PulseGaming-Content-${lane}`, "i"));
   }
   assert.match(script, /local-sqlite-content-worker\.js/);
+  assert.match(script, /local_content_worker_host\.py/);
+  assert.match(script, /pythonw\.exe/);
   assert.doesNotMatch(script, /publish_window_watchdog|instagram_token_refresh|tiktok_auth_check/);
 });

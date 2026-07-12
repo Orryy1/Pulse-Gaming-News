@@ -87,15 +87,21 @@ foreach ($lane in $lanes) {
   }
 
   Write-ContentWorkerLog ("starting_worker id={0} kinds={1}" -f $workerId, $kinds)
-  $commandLine = '"{0}" "{1}" --worker-id "{2}" --kinds "{3}"' -f $nodeExe, $workerScript, $workerId, $kinds
-  $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = $commandLine
-    CurrentDirectory = $RepoRoot
-  }
-  if ([int]$created.ReturnValue -ne 0) {
-    $failure = "worker_launch_failed id={0} return_value={1}" -f $workerId, $created.ReturnValue
+  $stdoutPath = Join-Path $logDir ("{0}.stdout.log" -f $workerId)
+  $stderrPath = Join-Path $logDir ("{0}.stderr.log" -f $workerId)
+  $created = Start-Process -FilePath $nodeExe `
+    -ArgumentList @($workerScript, "--worker-id", $workerId, "--kinds", $kinds) `
+    -WorkingDirectory $RepoRoot `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $stdoutPath `
+    -RedirectStandardError $stderrPath `
+    -PassThru
+  Start-Sleep -Seconds 2
+  $created.Refresh()
+  if ($created.HasExited) {
+    $failure = "worker_launch_failed id={0} exit_code={1} stdout={2} stderr={3}" -f $workerId, $created.ExitCode, $stdoutPath, $stderrPath
     Write-ContentWorkerLog $failure
     throw $failure
   }
-  Write-ContentWorkerLog ("worker_started id={0} pid={1}" -f $workerId, $created.ProcessId)
+  Write-ContentWorkerLog ("worker_started id={0} pid={1}" -f $workerId, $created.Id)
 }

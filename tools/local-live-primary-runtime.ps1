@@ -189,7 +189,47 @@ $env:PULSE_RESET_SCHEDULES_ON_BOOT = "true"
 if ($commitSha) { $env:RAILWAY_GIT_COMMIT_SHA = $commitSha }
 if ($branchName) { $env:RAILWAY_GIT_BRANCH = $branchName }
 
+$nodeCommand = Get-Command "node.exe" -ErrorAction SilentlyContinue
+if (-not $nodeCommand) {
+  $nodeCommand = Get-Command "node" -ErrorAction Stop
+}
+$nodeExe = $nodeCommand.Source
+$stdoutPath = Join-Path $logDir "pulse-live-primary-runtime.stdout.log"
+$stderrPath = Join-Path $logDir "pulse-live-primary-runtime.stderr.log"
+
 Write-RuntimeLog ("node_start repo={0} port={1}" -f $RepoRoot, $Port)
-& node server.js *>> $logPath
-$exitCode = $LASTEXITCODE
-Write-RuntimeLog ("node_exit code={0}" -f $exitCode)
+$startedProcess = Start-Process -FilePath $nodeExe `
+  -ArgumentList @("server.js") `
+  -WorkingDirectory $RepoRoot `
+  -WindowStyle Hidden `
+  -RedirectStandardOutput $stdoutPath `
+  -RedirectStandardError $stderrPath `
+  -PassThru
+
+$startedHealth = $null
+for ($attempt = 1; $attempt -le 15; $attempt++) {
+  Start-Sleep -Seconds 2
+  $startedProcess.Refresh()
+  if ($startedProcess.HasExited) { break }
+  $startedHealth = Get-RuntimeHealth -RuntimePort $Port
+  if ($startedHealth -and (Test-ExpectedPrimaryRuntimeMode -Health $startedHealth)) {
+    break
+  }
+}
+
+$startedProcess.Refresh()
+if (
+  $startedProcess.HasExited -or
+  -not $startedHealth -or
+  -not (Test-ExpectedPrimaryRuntimeMode -Health $startedHealth)
+) {
+  if (-not $startedProcess.HasExited) {
+    Stop-Process -Id $startedProcess.Id -Force -ErrorAction SilentlyContinue
+  }
+  $failure = "started_runtime_failed_health_check pid={0} port={1} exited={2} stdout={3} stderr={4}" -f $startedProcess.Id, $Port, $startedProcess.HasExited, $stdoutPath, $stderrPath
+  Write-RuntimeLog $failure
+  throw $failure
+}
+
+Write-RuntimeLog ("node_started pid={0} port={1} commit_sha={2} branch={3}" -f $startedProcess.Id, $Port, (Get-RuntimeCommitSha -Health $startedHealth), (Get-RuntimeBranchName -Health $startedHealth))
+Write-Output ("node_started pid={0} port={1}" -f $startedProcess.Id, $Port)

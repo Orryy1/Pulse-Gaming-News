@@ -68,3 +68,14 @@ test("local live primary runtime launcher preserves guarded queue runtime env", 
   assert.match(script, /\$env:PULSE_EMERGENCY_KILL_SWITCH = "clear"/);
   assert.match(script, /\$env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output\/goal-contract\/guarded_dispatch_executor_plan\.json"/);
 });
+
+test("local live primary runtime launcher detaches and verifies the Node child", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /Start-Process -FilePath \$nodeExe/);
+  assert.match(script, /-WindowStyle Hidden/);
+  assert.match(script, /-RedirectStandardOutput \$stdoutPath/);
+  assert.match(script, /-RedirectStandardError \$stderrPath/);
+  assert.match(script, /started_runtime_failed_health_check/);
+  assert.doesNotMatch(script, /& node server\.js/);
+});

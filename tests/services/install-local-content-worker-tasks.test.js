@@ -9,6 +9,10 @@ const script = fs.readFileSync(
   path.join(__dirname, "..", "..", "tools", "install-local-content-worker-tasks.ps1"),
   "utf8",
 );
+const host = fs.readFileSync(
+  path.join(__dirname, "..", "..", "tools", "local_content_workers_host.py"),
+  "utf8",
+);
 
 test("content worker task installer is confirmation gated and restartable", () => {
   assert.match(script, /\[switch\]\$Apply/);
@@ -25,9 +29,9 @@ test("content worker tasks cover all non-publish lanes", () => {
   for (const lane of ["runway", "repair", "ops", "learning"]) {
     assert.match(script, new RegExp(`PulseGaming-Content-${lane}`, "i"));
   }
-  assert.match(script, /local-sqlite-content-worker\.js/);
-  assert.match(script, /local_content_worker_host\.py/);
+  assert.match(host, /local-sqlite-content-worker\.js/);
   assert.match(script, /pythonw\.exe/);
-  assert.match(script, /--node-exe/);
-  assert.doesNotMatch(script, /publish_window_watchdog|instagram_token_refresh|tiktok_auth_check/);
+  assert.match(script, /PulseGaming-Content-Host/);
+  assert.match(script, /local_content_workers_host\.py/);
+  assert.doesNotMatch(`${script}\n${host}`, /publish_window_watchdog|instagram_token_refresh|tiktok_auth_check/);
 });

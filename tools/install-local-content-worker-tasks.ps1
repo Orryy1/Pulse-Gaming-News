@@ -13,9 +13,7 @@ if ($Apply -and -not $OperatorConfirmed) {
 }
 
 $pythonwExe = (Get-Command "pythonw.exe" -ErrorAction Stop).Source
-$nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
-$workerScript = Join-Path $RepoRoot "tools/local-sqlite-content-worker.js"
-$hostScript = Join-Path $RepoRoot "tools/local_content_worker_host.py"
+$hostScript = Join-Path $RepoRoot "tools/local_content_workers_host.py"
 $lanes = @(
   @{ Task = "PulseGaming-Content-Runway"; Id = "local-content-runway"; Kinds = "candidate_supply_monitor,fresh_production_refill" },
   @{ Task = "PulseGaming-Content-Repair"; Id = "local-content-repair"; Kinds = "fresh_review_script_repair,safe_auto_repair_runner,local_tts_doctor,local_tts_retry_recovery" },
@@ -35,12 +33,11 @@ if (-not $Apply) {
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 for ($index = 0; $index -lt $lanes.Count; $index++) {
-  $lane = $lanes[$index]
-  $arguments = '"{0}" --repo-root "{1}" --node-exe "{2}" --worker-id "{3}" --kinds "{4}"' -f $hostScript, $RepoRoot, $nodeExe, $lane.Id, $lane.Kinds
-  $action = New-ScheduledTaskAction -Execute $pythonwExe -Argument $arguments -WorkingDirectory $RepoRoot
-  Register-ScheduledTask -TaskName $lane.Task -Action $action -Trigger $trigger -Settings $settings -Description "Pulse Gaming non-publish content worker" -Force | Out-Null
-  Start-ScheduledTask -TaskName $lane.Task
-  $plan[$index].applied = $true
-  $plan[$index].started = $true
+  Unregister-ScheduledTask -TaskName $lanes[$index].Task -Confirm:$false -ErrorAction SilentlyContinue
 }
+$taskName = "PulseGaming-Content-Host"
+$action = New-ScheduledTaskAction -Execute $pythonwExe -Argument ('"{0}"' -f $hostScript) -WorkingDirectory $RepoRoot
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Pulse Gaming non-publish content workers" -Force | Out-Null
+Start-ScheduledTask -TaskName $taskName
+foreach ($item in $plan) { $item.applied = $true; $item.started = $true }
 $plan | ConvertTo-Json -Depth 4

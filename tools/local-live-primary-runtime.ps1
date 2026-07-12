@@ -62,6 +62,25 @@ function Get-RuntimeBranchName {
   return ""
 }
 
+function Test-ExpectedPrimaryRuntimeMode {
+  param($Health)
+  if (-not $Health -or -not $Health.runtime) { return $false }
+  $schedulerActive = [bool]$Health.schedulerActive
+  $autoPublish = [bool]$Health.runtime.auto_publish
+  $jobQueueEnabled = ([string]$Health.runtime.use_job_queue_explicit).ToLowerInvariant() -eq "true"
+  $queueDispatch = [string]$Health.runtime.dispatch.mode -eq "queue"
+  $safeObservationMode = [bool]$Health.runtime.safe_observation_mode
+  $primaryRuntimeHold = [bool]$Health.runtime.primary_runtime_hold
+  return (
+    $schedulerActive -and
+    $autoPublish -and
+    $jobQueueEnabled -and
+    $queueDispatch -and
+    -not $safeObservationMode -and
+    -not $primaryRuntimeHold
+  )
+}
+
 function Get-ActivePublishJobs {
   $guardDbPath = $env:SQLITE_DB_PATH
   if (-not $guardDbPath) { $guardDbPath = "D:/pulse-data/pulse.db" }
@@ -117,8 +136,12 @@ if ($existing -and -not $Restart) {
   $existingBranchName = Get-RuntimeBranchName -Health $existingHealth
   $commitMismatch = $commitSha -and $existingCommitSha -and ($existingCommitSha -ne $commitSha)
   $branchMismatch = $branchName -and $existingBranchName -and ($existingBranchName -ne $branchName)
+  $runtimeModeMismatch = $existingHealth -and -not (Test-ExpectedPrimaryRuntimeMode -Health $existingHealth)
 
-  if ($commitMismatch -or $branchMismatch) {
+  if ($runtimeModeMismatch) {
+    Write-RuntimeLog ("existing_listener_mode_mismatch_restart port={0} pid={1} schedulerActive={2} auto_publish={3} use_job_queue_explicit={4} dispatch.mode={5} safe_observation_mode={6} primary_runtime_hold={7}" -f $Port, ($existing -join ","), $existingHealth.schedulerActive, $existingHealth.runtime.auto_publish, $existingHealth.runtime.use_job_queue_explicit, $existingHealth.runtime.dispatch.mode, $existingHealth.runtime.safe_observation_mode, $existingHealth.runtime.primary_runtime_hold)
+    $Restart = $true
+  } elseif ($commitMismatch -or $branchMismatch) {
     Write-RuntimeLog ("existing_listener_stale_restart port={0} pid={1} commit_sha={2} expected_commit_sha={3} branch={4} expected_branch={5}" -f $Port, ($existing -join ","), $existingCommitSha, $commitSha, $existingBranchName, $branchName)
     $Restart = $true
   } elseif (-not $existingCommitSha -and -not $existingBranchName) {

@@ -32,6 +32,18 @@ test("local live primary runtime launcher auto-recovers stale matching server ru
   assert.match(script, /branch/);
 });
 
+test("local live primary runtime launcher replaces matching-commit observation mode", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /existing_listener_mode_mismatch_restart/);
+  assert.match(script, /schedulerActive/);
+  assert.match(script, /auto_publish/);
+  assert.match(script, /use_job_queue_explicit/);
+  assert.match(script, /dispatch\.mode/);
+  assert.match(script, /safe_observation_mode/);
+  assert.match(script, /primary_runtime_hold/);
+});
+
 test("local live primary runtime launcher defers restarts while publish jobs are actively claimed", () => {
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 

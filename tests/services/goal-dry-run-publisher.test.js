@@ -1045,6 +1045,32 @@ test("goal dry-run publisher blocks source cards that overstay and kill pacing",
   ]);
 });
 
+test("goal dry-run publisher does not treat a full V4 scene as measured ordinary-card dwell", () => {
+  const { blockers, evidence } = require("../../lib/goal-dry-run-publisher").hyperframesReadableDwellEvidence({
+    renderManifest: {
+      final_publish_render: true,
+      rendered_duration_s: 48,
+      clips: 8,
+      hyperframes_premium_shell_required: true,
+      hyperframes_card_count: 4,
+      card_visible_windows: [
+        {
+          id: "scene_6_context",
+          kind: "context",
+          text: "THE PLAYER IMPACT",
+          start_s: 28.45,
+          end_s: 37.35,
+          duration_s: 8.9,
+          source: "visual_v4_scene_plan",
+        },
+      ],
+    },
+  });
+
+  assert.ok(!blockers.includes("hyperframes:card_visible_dwell_too_long"));
+  assert.equal(evidence.rendered_card_windows[0].maximum_allowed_duration_s, null);
+});
+
 test("goal dry-run publisher blocks HyperFrames cards that omit readable dwell evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-hf-missing-dwell-"));
   const storyPackage = await makeStoryPackage(

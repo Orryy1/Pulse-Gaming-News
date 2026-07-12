@@ -35,6 +35,12 @@ test("windowless host supervises the approved watchdog", () => {
   assert.match(host, /watchdog_host_error/);
 });
 
+test("live watchdog evaluates publish windows as scalar minute values", () => {
+  const watchdog = fs.readFileSync(path.join(ROOT, "tools", "local-live-watchdog.ps1"), "utf8");
+  assert.match(watchdog, /@\(\(9 \* 60\), \(11 \* 60\), \(14 \* 60\), \(16 \* 60\), \(19 \* 60\)\)/);
+  assert.doesNotMatch(watchdog, /@\(9 \* 60, 11 \* 60/);
+});
+
 test("startup installer is exposed as the live watchdog operator command", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   assert.equal(pkg.scripts["ops:install-live-watchdog"], "powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-local-live-watchdog-startup.ps1");

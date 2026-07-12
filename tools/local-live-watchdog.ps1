@@ -56,7 +56,7 @@ function Test-RuntimeHealth {
 function Test-InCriticalPublishWindow {
   $nowUtc = (Get-Date).ToUniversalTime()
   $minuteOfDay = [int]$nowUtc.TimeOfDay.TotalMinutes
-  $publishWindowMinutes = @(9 * 60, 11 * 60, 14 * 60, 16 * 60, 19 * 60)
+  $publishWindowMinutes = @((9 * 60), (11 * 60), (14 * 60), (16 * 60), (19 * 60))
   foreach ($windowMinute in $publishWindowMinutes) {
     $start = $windowMinute - $PublishWindowGuardBeforeMinutes
     $end = $windowMinute + $PublishWindowGuardAfterMinutes

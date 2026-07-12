@@ -12,8 +12,8 @@ if ($Apply -and -not $OperatorConfirmed) {
   throw "Refusing to install content worker tasks without -OperatorConfirmed."
 }
 
-$pythonwExe = (Get-Command "pythonw.exe" -ErrorAction Stop).Source
-$hostScript = Join-Path $RepoRoot "tools/local_content_workers_host.py"
+$powershellExe = "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe"
+$hostScript = Join-Path $RepoRoot "tools/local-content-workers-host.ps1"
 $lanes = @(
   @{ Task = "PulseGaming-Content-Runway"; Id = "local-content-runway"; Kinds = "candidate_supply_monitor,fresh_production_refill" },
   @{ Task = "PulseGaming-Content-Repair"; Id = "local-content-repair"; Kinds = "fresh_review_script_repair,safe_auto_repair_runner,local_tts_doctor,local_tts_retry_recovery" },
@@ -36,7 +36,8 @@ for ($index = 0; $index -lt $lanes.Count; $index++) {
   Unregister-ScheduledTask -TaskName $lanes[$index].Task -Confirm:$false -ErrorAction SilentlyContinue
 }
 $taskName = "PulseGaming-Content-Host"
-$action = New-ScheduledTaskAction -Execute $pythonwExe -Argument ('"{0}"' -f $hostScript) -WorkingDirectory $RepoRoot
+$arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $hostScript
+$action = New-ScheduledTaskAction -Execute $powershellExe -Argument $arguments -WorkingDirectory $RepoRoot
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Pulse Gaming non-publish content workers" -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName
 foreach ($item in $plan) { $item.applied = $true; $item.started = $true }

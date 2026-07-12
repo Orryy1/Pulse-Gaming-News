@@ -10,7 +10,7 @@ const script = fs.readFileSync(
   "utf8",
 );
 const host = fs.readFileSync(
-  path.join(__dirname, "..", "..", "tools", "local_content_workers_host.py"),
+  path.join(__dirname, "..", "..", "tools", "local-content-workers-host.ps1"),
   "utf8",
 );
 
@@ -29,9 +29,9 @@ test("content worker tasks cover all non-publish lanes", () => {
   for (const lane of ["runway", "repair", "ops", "learning"]) {
     assert.match(script, new RegExp(`PulseGaming-Content-${lane}`, "i"));
   }
-  assert.match(host, /local-sqlite-content-worker\.js/);
-  assert.match(script, /pythonw\.exe/);
+  assert.match(host, /local-live-content-workers\.ps1/);
   assert.match(script, /PulseGaming-Content-Host/);
-  assert.match(script, /local_content_workers_host\.py/);
+  assert.match(script, /local-content-workers-host\.ps1/);
+  assert.match(host, /Start-Sleep -Seconds 15/);
   assert.doesNotMatch(`${script}\n${host}`, /publish_window_watchdog|instagram_token_refresh|tiktok_auth_check/);
 });

@@ -53,6 +53,33 @@ test("counts repeated windows from one direct-video URL as one motion family", (
   assert.ok(profile.blockers.includes("visual_evidence:insufficient_real_visual_source_families"));
 });
 
+test("counts distinct official YouTube videos as distinct motion families", () => {
+  const profile = visualEvidenceProfile({
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          ["video-one", 1],
+          ["video-one", 2],
+          ["video-two", 1],
+          ["video-two", 2],
+        ].map(([videoId, window]) => ({
+          id: `${videoId}-window-${window}`,
+          path: `C:\\repo\\output\\video_cache\\${videoId}_${window}.mp4`,
+          source_url: `https://www.youtube.com/watch?v=${videoId}`,
+          source_type: "official_publisher_trailer_segment",
+          media_kind: "direct_video",
+          source_family: `${videoId}_window_${window}`,
+        })),
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 4);
+  assert.equal(profile.direct_video_motion_family_count, 2);
+  assert.equal(profile.real_media_family_count, 2);
+  assert.deepEqual(profile.blockers, []);
+});
+
 test("counts official trailer segment windows as distinct scene evidence", () => {
   const sourceUrl =
     "https://media.rockstargames.com/VI/downloads/videos/GTAVI_Trailer_2/GTAVI_Trailer_2.mp4";

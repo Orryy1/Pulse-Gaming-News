@@ -489,6 +489,12 @@ function cleanForTTS(raw) {
         (_, whole, cents) => `${whole} euros ${parseInt(cents)}`,
       )
       .replace(/€(\d+)/g, (_, n) => `${n} euros`)
+      // Plain decimals and version labels can arrive as either "1.0" or
+      // "1. 0" after title-punctuation normalisation. Currency has already
+      // been expanded above, so this cannot corrupt prices.
+      .replace(/\b(\d+)\.\s*(\d+)\b/g, (_, whole, fraction) =>
+        `${whole} point ${fraction.split("").join(" ")}`,
+      )
       // Comma-formatted large numbers: "130,000" -> "one hundred and
       // thirty thousand". This avoids voice engines reading the comma
       // shape oddly while leaving years and small sequel numbers alone.

@@ -103,7 +103,6 @@
       .headline .word {
         display: inline-block;
         opacity: 0;
-        transform: translateY(36px) scale(0.96);
       }
 
       .arrow {
@@ -149,7 +148,7 @@
       data-width="1080"
       data-height="1920"
     >
-      <div class="clip" data-start="0" data-duration="4.0" data-track-index="0">
+      <div id="takeaway-card-scene" class="clip" data-start="0" data-duration="4.0" data-track-index="0">
         <div class="backdrop"></div>
         <div class="shade"></div>
 
@@ -192,8 +191,9 @@
       tl.to("#frame-top", { width: 760, duration: 0.5, ease: "power2.out" }, 0)
         .to("#step", { opacity: 1, duration: 0.34 }, 0.1)
         .to("#kicker", { opacity: 1, duration: 0.4 }, 0.3)
-        .to(
+        .fromTo(
           "#headline .word",
+          { opacity: 0, y: 36, scale: 0.96 },
           {
             opacity: 1,
             y: 0,

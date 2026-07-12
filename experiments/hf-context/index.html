@@ -61,7 +61,10 @@
 
       .kicker {
         margin-top: 42px;
-        color: #ff6b1a;
+        color: #ffd1b8;
+        background: rgba(5, 7, 10, 0.84);
+        border: 1px solid rgba(255, 209, 184, 0.32);
+        padding: 10px 16px 10px 24px;
         font-size: 34px;
         font-weight: 900;
         letter-spacing: 0.28em;
@@ -104,7 +107,7 @@
       data-width="1080"
       data-height="1920"
     >
-      <div class="clip" data-start="0" data-duration="4.0" data-track-index="0">
+      <div id="context-card-scene" class="clip" data-start="0" data-duration="4.0" data-track-index="0">
         <div class="backdrop"></div>
         <div class="shade"></div>
         <div class="stage">
@@ -113,7 +116,7 @@
           <div
             id="number"
             class="number"
-            style="opacity: 0; transform: translateY(24px) scale(0.98)"
+            style="opacity: 0"
           >
             7 YEARS
           </div>
@@ -135,8 +138,9 @@
 
       tl.to("#rule-top", { width: 720, duration: 0.52 }, 0)
         .to("#kicker", { opacity: 1, duration: 0.34 }, 0.16)
-        .to(
+        .fromTo(
           "#number",
+          { opacity: 0, y: 24, scale: 0.98 },
           { opacity: 1, y: 0, scale: 1, duration: 0.62 },
           0.42,
         )

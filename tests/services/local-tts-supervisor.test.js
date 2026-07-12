@@ -14,6 +14,7 @@ const {
   resolveLocalTtsRuntimePaths,
   resolveWindowlessPythonPath,
   startLocalTtsServer,
+  waitForLocalTtsHealth,
 } = require("../../lib/studio/local-tts-supervisor");
 
 function tempRoot() {
@@ -142,6 +143,65 @@ test("classifyLocalTtsDoctorAction chooses safe local recovery actions", () => {
   );
 });
 
+test("waitForLocalTtsHealth returns immediately when the spawned process exits before binding", async () => {
+  let fetchCount = 0;
+  const result = await waitForLocalTtsHealth({
+    baseUrl: "http://127.0.0.1:8765",
+    voiceId: "liam",
+    processId: 46064,
+    processExists: () => false,
+    timeoutMs: 45000,
+    intervalMs: 1500,
+    async fetchImpl() {
+      fetchCount += 1;
+      throw new Error("connection refused");
+    },
+  });
+
+  assert.equal(fetchCount, 1);
+  assert.equal(result.status, "unreachable");
+  assert.equal(result.processExited, true);
+  assert.match(result.reasons.join(" "), /process 46064 exited before binding/i);
+});
+
+test("waitForLocalTtsHealth keeps polling through a normal warming phase", async () => {
+  let fetchCount = 0;
+  const result = await waitForLocalTtsHealth({
+    baseUrl: "http://127.0.0.1:8765",
+    voiceId: "liam",
+    processId: 12345,
+    processExists: () => true,
+    timeoutMs: 1000,
+    intervalMs: 1,
+    async fetchImpl() {
+      fetchCount += 1;
+      return {
+        ok: true,
+        async json() {
+          return fetchCount === 1
+            ? { status: "ok", phase: "warming", ready: false, voices: [] }
+            : {
+                status: "ok",
+                phase: "ready",
+                ready: true,
+                voices: [
+                  {
+                    voice_id: "liam",
+                    loaded: true,
+                    ref_resolved: true,
+                    reference_present: true,
+                  },
+                ],
+              };
+        },
+      };
+    },
+  });
+
+  assert.equal(fetchCount, 2);
+  assert.equal(result.phase, "ready");
+});
+
 test("startLocalTtsServer spawns detached hidden local process and returns logs", async () => {
   const root = tempRoot();
   let captured = null;
@@ -177,6 +237,7 @@ test("startLocalTtsServer skips duplicate starts while a fresh start lock exists
     root,
     platform: "win32",
     env: {},
+    processExists: () => true,
     spawnImpl: () => {
       spawned = true;
       return { pid: 12345, unref() {} };
@@ -310,6 +371,34 @@ test("startLocalTtsServer retries during cooldown when the lock pid is dead", as
   assert.equal(result.skipped, undefined);
   assert.equal(captured.cmd.endsWith("pythonw.exe"), true);
   assert.equal(captured.opts.windowsHide, true);
+});
+
+test("startLocalTtsServer clears a fresh dead-pid lock without requiring a recent boot log", async () => {
+  const root = tempRoot();
+  const logsDir = path.join(root, "tts_server", "logs");
+  fs.mkdirSync(logsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(logsDir, "server_start.lock"),
+    JSON.stringify({ started_at: "2026-07-12T00:07:44.513Z", pid: 46064 }),
+  );
+
+  let spawned = false;
+  const result = await startLocalTtsServer({
+    root,
+    platform: "win32",
+    env: {},
+    now: Date.parse("2026-07-12T00:08:00Z"),
+    processExists: () => false,
+    spawnImpl: () => {
+      spawned = true;
+      return { pid: 55555, unref() {} };
+    },
+  });
+
+  assert.equal(spawned, true);
+  assert.equal(result.pid, 55555);
+  const lock = JSON.parse(fs.readFileSync(path.join(logsDir, "server_start.lock"), "utf8"));
+  assert.equal(lock.pid, 55555);
 });
 
 test("hasRecentLocalTtsBootAttempt ignores old boot log entries", () => {

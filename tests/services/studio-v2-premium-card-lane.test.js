@@ -27,7 +27,16 @@ function cardScenes() {
 
 async function writePassingShellSidecar(
   cardPath,
-  { storyId, kind, channelId = "pulse-gaming", plannedVisibleDurationS = 12 } = {},
+  {
+    storyId,
+    kind,
+    channelId = "pulse-gaming",
+    readableText = `${kind} proof card`,
+    wordCount = 3,
+    plannedVisibleDurationS = 12,
+    minimumVisibleDurationS = plannedVisibleDurationS,
+    maximumVisibleDurationS = null,
+  } = {},
 ) {
   await fs.writeJson(
     shellSidecarPathForCard(cardPath),
@@ -73,10 +82,13 @@ async function writePassingShellSidecar(
         readability_contract: {
           status: "pass",
           evidence: {
-            readable_text: `${kind} proof card`,
-            word_count: 3,
+            readable_text: readableText,
+            word_count: wordCount,
             planned_visible_duration_s: plannedVisibleDurationS,
-            minimum_visible_duration_s: plannedVisibleDurationS,
+            minimum_visible_duration_s: minimumVisibleDurationS,
+            ...(maximumVisibleDurationS == null
+              ? {}
+              : { max_readable_card_duration_s: maximumVisibleDurationS }),
           },
         },
       },
@@ -376,6 +388,48 @@ test("premium card lane v2 accepts short proof-card sidecars without reimposing 
 
     assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 5.2);
     assert.equal(result.premiumLane.verdict, "pass");
+    assert.deepEqual(result.premiumLane.hyperframesPremiumShellGate.blockers, []);
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
+
+test("premium card lane v2 accepts a concise source lock under its explicit 1.4-2.2s contract", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-source-lock-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      const cardPath = path.join(outDir, `hf_${kind}_card_story-1.mp4`);
+      await fs.writeFile(cardPath, "story");
+      await writePassingShellSidecar(cardPath, {
+        storyId: "story-1",
+        kind,
+        ...(kind === "source"
+          ? {
+              readableText: "BANDAI NAMCO ENTERTAINMENT AMERICA NEWS SOURCE",
+              wordCount: 6,
+              plannedVisibleDurationS: 1.6,
+              minimumVisibleDurationS: 1.4,
+              maximumVisibleDurationS: 2.2,
+            }
+          : {}),
+      });
+    }
+
+    const result = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Digimon Story" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(result.premiumLane.verdict, "pass");
+    assert.equal(
+      result.premiumLane.hyperframesPremiumShellGate.checks.source.evidence
+        .internalReadableHoldFloorS,
+      1.4,
+    );
     assert.deepEqual(result.premiumLane.hyperframesPremiumShellGate.blockers, []);
   } finally {
     await fs.remove(root).catch(() => {});

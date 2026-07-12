@@ -61,6 +61,72 @@ test("audio timestamp workbench detects an existing usable audio and word timest
   assert.equal(report.safety.no_tts_generation_triggered, true);
 });
 
+test("audio timestamp workbench routes a current cadence-failed pair back to narration generation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-cadence-fail-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");
+  const audioDir = path.join(root, "output", "audio");
+  await fs.ensureDir(artifactDir);
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: [
+      { word: "Star", start: 0, end: 0.2 },
+      { word: "Fox", start: 1.5, end: 1.8 },
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "FAIL",
+    blockers: ["voice_cadence:acoustic_pause_too_long"],
+    cadence: {
+      status: "fail",
+      blockers: ["voice_cadence:acoustic_pause_too_long"],
+    },
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [audioJob({ artifact_dir: artifactDir })],
+    },
+    localTtsDoctorReport: { verdict: "red", stale: true, failure_code: "server_down" },
+    generatedAt: "2026-07-12T02:40:00.000Z",
+  });
+
+  assert.equal(report.summary.ready_audio_timestamp_pair_count, 0);
+  assert.equal(report.summary.requires_generation_count, 1);
+  assert.equal(report.jobs[0].status, "requires_existing_audio_cadence_repair");
+  assert.equal(report.summary.requires_existing_cadence_repair_count, 1);
+  assert.equal(report.jobs[0].audio.reason, "failed_voice_cadence_qa");
+  assert.equal(report.jobs[0].timestamps.reason, "failed_voice_cadence_qa");
+  assert.deepEqual(report.jobs[0].missing, ["narration_audio", "word_timestamps"]);
+});
+
+test("audio timestamp workbench ignores cadence failure evidence older than the repaired pair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-old-cadence-fail-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");
+  const audioDir = path.join(root, "output", "audio");
+  const voiceQualityPath = path.join(artifactDir, "voice_quality_report.json");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(voiceQualityPath, {
+    verdict: "FAIL",
+    blockers: ["voice_cadence:acoustic_pause_too_long"],
+  });
+  const oldTime = new Date("2026-07-12T02:00:00.000Z");
+  await fs.utimes(voiceQualityPath, oldTime, oldTime);
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: [{ word: "Repaired", start: 0, end: 0.4 }],
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: { jobs: [audioJob({ artifact_dir: artifactDir })] },
+    localTtsDoctorReport: { verdict: "green" },
+    generatedAt: "2026-07-12T03:00:00.000Z",
+  });
+
+  assert.equal(report.jobs[0].status, "ready_audio_timestamp_pair");
+});
+
 test("audio timestamp workbench accepts story-package arrays as work orders", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-array-"));
   const audioDir = path.join(root, "output", "audio");
@@ -334,11 +400,7 @@ test("audio timestamp workbench routes existing local audio with non-ASR timesta
   const report = await buildGoalAudioTimestampWorkbench({
     workspaceRoot: root,
     workOrder: {
-      jobs: [
-        audioJob({
-          blockers: ["word_timestamps_not_asr_aligned"],
-        }),
-      ],
+      jobs: [audioJob({ blockers: [] })],
     },
     localTtsDoctorReport: { verdict: "red", failure_code: "server_down" },
     generatedAt: "2026-05-26T08:20:00.000Z",
@@ -355,6 +417,38 @@ test("audio timestamp workbench routes existing local audio with non-ASR timesta
     "align_existing_local_voice_audio_with_local_whisper_word_timestamps",
     "rerun_goal_production_cutover_after_audio_materialisation",
   ]);
+});
+
+test("audio timestamp workbench aligns existing ElevenLabs character timing instead of regenerating paid audio", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-character-align-"));
+  const audioDir = path.join(root, "output", "audio");
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    alignment: {
+      characters: ["P", "u", "l", "s", "e"],
+      character_start_times_seconds: [0, 0.05, 0.1, 0.15, 0.2],
+      character_end_times_seconds: [0.05, 0.1, 0.15, 0.2, 0.25],
+    },
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: { jobs: [audioJob({ blockers: [] })] },
+    localTtsDoctorReport: { verdict: "red", failure_code: "server_down" },
+    ttsEnv: {
+      ELEVENLABS_API_KEY: "test-key-value",
+      ELEVENLABS_VOICE_ID: "test-voice-id",
+    },
+    providerPreference: "elevenlabs",
+    generatedAt: "2026-07-12T00:35:00.000Z",
+  });
+
+  assert.equal(report.summary.requires_asr_alignment_count, 1);
+  assert.equal(report.summary.requires_generation_count, 0);
+  assert.equal(report.jobs[0].status, "requires_word_timestamp_asr_alignment");
+  assert.deepEqual(report.jobs[0].missing, ["word_timestamps_asr_alignment"]);
+  assert.equal(report.jobs[0].tts_provider, null);
+  assert.equal(report.jobs[0].timestamps.format, "character_alignment");
 });
 
 test("audio timestamp workbench treats Whisper-aligned timestamp blockers as ready after stale workorders", async () => {

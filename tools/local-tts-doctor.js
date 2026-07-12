@@ -133,6 +133,7 @@ async function runDoctor(options = {}) {
     before,
     after: null,
     started: null,
+    start_attempts: [],
     prewarm: null,
     generation_smoke: null,
     gpu: null,
@@ -143,19 +144,28 @@ async function runDoctor(options = {}) {
   console.log(`[tts-doctor] action=${plan.action} verdict=${plan.verdict}`);
 
   if (plan.action === "start" || plan.action === "restart") {
-    report.started = await startServer({
-      allowRecentBootBypassWhenNoListener: true,
-    });
-    console.log(
-      `[tts-doctor] started pid=${report.started.pid || "unknown"} stdout=${report.started.spec.stdoutPath}`,
+    const maxStartAttempts = Math.max(
+      1,
+      Math.min(5, Number(process.env.LOCAL_TTS_START_ATTEMPTS || 5) || 5),
     );
-    report.after = await waitForHealth({
-      baseUrl,
-      voiceId,
-      timeoutMs: Number(process.env.LOCAL_TTS_START_WAIT_MS || 45000),
-      intervalMs: Number(process.env.LOCAL_TTS_START_POLL_MS || 1500),
-    });
-    console.log(`[tts-doctor] after-start ${formatLocalTtsStatus(report.after)}`);
+    for (let attempt = 1; attempt <= maxStartAttempts; attempt += 1) {
+      report.started = await startServer({
+        allowRecentBootBypassWhenNoListener: true,
+      });
+      report.start_attempts.push(report.started);
+      console.log(
+        `[tts-doctor] start-attempt=${attempt}/${maxStartAttempts} pid=${report.started.pid || "unknown"} stdout=${report.started.spec.stdoutPath}`,
+      );
+      report.after = await waitForHealth({
+        baseUrl,
+        voiceId,
+        processId: report.started.pid,
+        timeoutMs: Number(process.env.LOCAL_TTS_START_WAIT_MS || 45000),
+        intervalMs: Number(process.env.LOCAL_TTS_START_POLL_MS || 1500),
+      });
+      console.log(`[tts-doctor] after-start ${formatLocalTtsStatus(report.after)}`);
+      if (report.after?.status !== "unreachable") break;
+    }
   }
 
   const current = report.after || before;

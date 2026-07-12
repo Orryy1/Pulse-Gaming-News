@@ -21,6 +21,25 @@ const {
 } = require("../../tools/studio-v4-source-family-acquisition");
 const packageJson = require("../../package.json");
 
+function execFileSyncWithTransientWindowsRetry(file, args, options) {
+  const attempts = process.platform === "win32" ? 3 : 1;
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return execFileSync(file, args, options);
+    } catch (error) {
+      lastError = error;
+      const transientWindowsExit =
+        process.platform === "win32" &&
+        (Number(error?.status) === 0xffffffff || Number(error?.status) === -1) &&
+        !error?.signal;
+      if (!transientWindowsExit || attempt >= attempts) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * attempt);
+    }
+  }
+  throw lastError;
+}
+
 function motionPack(overrides = {}) {
   return {
     schema_version: 1,
@@ -2608,7 +2627,7 @@ test("Studio V4 source-family acquisition CLI filters repeatable story IDs befor
       { spaces: 2 },
     );
 
-    execFileSync(
+    execFileSyncWithTransientWindowsRetry(
       process.execPath,
       [
         path.join(root, "tools", "studio-v4-source-family-acquisition.js"),
@@ -2699,7 +2718,7 @@ test("Studio V4 source-family acquisition CLI hydrates post-render QA blockers f
       packages: [{ story_id: storyId, artifact_dir: artifactDir }],
     });
 
-    execFileSync(
+    execFileSyncWithTransientWindowsRetry(
       process.execPath,
       [
         path.join(root, "tools", "studio-v4-source-family-acquisition.js"),
@@ -2788,7 +2807,7 @@ test("Studio V4 source-family acquisition CLI writes runnable next commands for 
     const governedVisualPlanTemplate = path.join(tempDir, "custom-governed-plan.json");
     await fs.writeJson(indexPath, { packs: indexPacks }, { spaces: 2 });
 
-    execFileSync(
+    execFileSyncWithTransientWindowsRetry(
       process.execPath,
       [
         path.join(root, "tools", "studio-v4-source-family-acquisition.js"),

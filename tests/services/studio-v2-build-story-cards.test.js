@@ -110,6 +110,24 @@ test("story-specific HyperFrames source card preserves PlayStation source labels
   );
 });
 
+test("story-specific HyperFrames source card fits long publisher names without clipping", () => {
+  const templateHtml = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-source", "index.html"),
+    "utf8",
+  );
+  const spec = {
+    kicker: "SOURCE",
+    label: "BANDAI NAMCO ENTERTAINMENT AMERICA",
+    sublabel: "NEWS SOURCE",
+  };
+
+  const html = applySpecToTemplate("source", templateHtml, spec, "pulse-gaming");
+
+  assert.match(html, /\.label\s*\{[^}]*max-width:\s*920px;/s);
+  assert.match(html, /\.label\s*\{[^}]*font-size:\s*72px;/s);
+  assert.match(html, /id="label"[\s\S]*BANDAI NAMCO ENTERTAINMENT AMERICA/);
+});
+
 test("story-specific HyperFrames context card uses short audience-facing copy", () => {
   const specs = buildStoryCardSpecs({
     id: "forza-context",

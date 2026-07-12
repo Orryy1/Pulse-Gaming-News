@@ -12,6 +12,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const {
   buildGoalDryRunPublishPlan,
   directMotionBaseSourceOveruseEvidence,
+  hyperframesReadableDwellEvidence,
   writeGoalDryRunPublishPlan,
 } = require("../../lib/goal-dry-run-publisher");
 const { canonicalHash } = require("../../lib/services/url-canonical");
@@ -44,6 +45,33 @@ function allPlatformsEnabled() {
     pinterest: { state: "enabled", reason: "test_enabled" },
   };
 }
+
+test("dry-run card dwell honours certified source and context window minima", () => {
+  const result = hyperframesReadableDwellEvidence({
+    renderManifest: {
+      hyperframes_card_count: 2,
+      card_visible_windows: [
+        {
+          id: "scene_4_source",
+          kind: "source",
+          duration_s: 1.6,
+          minimum_readable_duration_s: 1.4,
+          text: "KOTAKU NEWS SOURCE",
+        },
+        {
+          id: "scene_6_context",
+          kind: "context",
+          duration_s: 8.9,
+          minimum_readable_duration_s: 8.9,
+          text: "BLACK FLAG RESYNCED MICROTRANSACTIONS PLAYER IMPACT",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(result.evidence.rendered_too_fast_card_windows, []);
+  assert.ok(!result.blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+});
 
 function enabledCorePlatformsOnly() {
   return {
@@ -1329,6 +1357,7 @@ test("goal dry-run publisher checks overlay card dwell even when actual scene ca
   assert.equal(plan.summary.blocked_story_count, 1);
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
   assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:source_card_dwell_too_long"));
   assert.deepEqual(
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
       (window) => window.id,
@@ -1623,7 +1652,7 @@ test("goal dry-run publisher checks actual rendered HyperFrames windows before o
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
       (window) => window.duration_s,
     ),
-    [3.2, 3.45],
+    [3.45],
   );
 });
 

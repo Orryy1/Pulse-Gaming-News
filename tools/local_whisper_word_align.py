@@ -8,6 +8,7 @@ This is intentionally local-only: no platform upload, no token access.
 import argparse
 import json
 import sys
+from pathlib import Path
 
 
 def main() -> int:
@@ -16,6 +17,7 @@ def main() -> int:
     parser.add_argument("--model", default="tiny.en")
     parser.add_argument("--prompt", default="")
     parser.add_argument("--device", default=None)
+    parser.add_argument("--output", default="")
     args = parser.parse_args()
 
     import whisper
@@ -25,7 +27,7 @@ def main() -> int:
         args.audio,
         language="en",
         task="transcribe",
-        verbose=False,
+        verbose=None,
         word_timestamps=True,
         fp16=False,
         condition_on_previous_text=False,
@@ -54,8 +56,13 @@ def main() -> int:
                 ],
             }
         )
-    json.dump(payload, sys.stdout, ensure_ascii=False)
-    sys.stdout.write("\n")
+    rendered = json.dumps(payload, ensure_ascii=False)
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(rendered + "\n", encoding="utf-8")
+    else:
+        sys.stdout.write(rendered + "\n")
     return 0
 
 

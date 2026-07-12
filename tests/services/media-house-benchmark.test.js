@@ -392,6 +392,38 @@ test("media-house benchmark joins absolute rendered paths to relative rights rec
   assert.ok(!benchmark.failures.includes("gold_standard:rights_risk_above_reference"));
 });
 
+test("media-house benchmark preserves official source classification behind a generic editorial licence", () => {
+  const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
+  const clips = Array.from({ length: 8 }, (_, index) => ({
+    id: `official-window-${index + 1}`,
+    path: `D:\\media\\official-window-${index + 1}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=Official${index + 1}`,
+    source_type: "official_publisher_trailer_segment",
+    licence_basis: "transformative_editorial_short_form",
+    risk_score: 0.28,
+  }));
+
+  const benchmark = runMediaHouseBenchmark({
+    story: {
+      id: "official-generic-licence",
+      title: "Palworld 1.0 Changes The Argument",
+      hook: "Palworld 1.0 just changed the argument around its launch.",
+      full_script: "Palworld 1.0 just changed the argument around its launch.",
+      suggested_thumbnail_text: "PALWORLD'S REAL TEST",
+      source_card_label: "Pocketpair",
+      video_clips: clips,
+      rights_ledger: clips,
+      subtitle_timing_source: "timestamps",
+      clean_manual_captions: true,
+    },
+    directorPlan: strongDirectorPlan(),
+    requireGate: true,
+  });
+
+  assert.equal(benchmark.scores.rights_risk_score, 100);
+  assert.ok(!benchmark.failures.includes("gold_standard:rights_risk_above_reference"));
+});
+
 test("media-house benchmark recognises approved screenshot-derived motion rights", () => {
   const { runMediaHouseBenchmark } = require("../../lib/media-house-benchmark");
   const clips = Array.from({ length: 8 }, (_, index) => ({

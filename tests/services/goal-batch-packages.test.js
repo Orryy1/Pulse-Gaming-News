@@ -1881,6 +1881,29 @@ test("goal batch package proof preparation writes ASR-safe Black Flag Resynced t
   );
 });
 
+test("goal batch package proof preparation preserves a specific Digimon Switch 2 port script", () => {
+  const script =
+    "Digimon Story Time Stranger just reached Switch 2 with one upgrade players will notice immediately. Bandai Namco has given the Switch 2 version both Performance and Quality modes. That sounds like a settings-menu detail, but it answers the question that follows every new port: do you want smoother battles or a sharper Digital World? More importantly, this is not a cut-down side story. Time Stranger brings its full role-playing campaign to Nintendo hardware, with the human world, Iliad and its creature-bonding systems intact. The real test is whether portable play makes a long Digimon adventure easier to live with, not merely easier to admire. If the performance mode stays clean during busy fights, Switch 2 could become the most practical version. If compromises remain obvious, the choice between modes may only make them easier to spot. Follow Pulse Gaming so you never miss a beat.";
+  const prepared = prepareStoryForGoalProof({
+    id: "digimon-switch-2-port",
+    title: "Digimon's Switch 2 Upgrade Gives Players A Real Choice",
+    canonical_subject: "Digimon Story Time Stranger",
+    canonical_game: "Digimon Story Time Stranger",
+    source_type: "official_youtube_video",
+    source_name: "Bandai Namco Entertainment America",
+    url: "https://www.youtube.com/watch?v=digimon-official",
+    confirmed_claims: [
+      "Bandai Namco released Digimon Story Time Stranger for Nintendo Switch and Nintendo Switch 2.",
+      "The Switch 2 version includes Performance and Quality modes.",
+    ],
+    full_script: script,
+  });
+
+  assert.equal(prepared.canonical_subject, "Digimon Story Time Stranger");
+  assert.equal(prepared.full_script, script);
+  assert.doesNotMatch(prepared.full_script, /watch pile|named source|background noise/i);
+});
+
 test("goal batch package proof preparation writes specific Xbox console price scripts", () => {
   const prepared = prepareStoryForGoalProof(
     {
@@ -2276,7 +2299,7 @@ test("platform-native packs turn roster reveals into concrete team-fighter stake
     platformOutputs: {
       youtube_shorts: { duration_seconds: { min: 35, max: 60 } },
       tiktok: { duration_seconds: { min: 25, max: 45 } },
-      instagram_reels: { duration_seconds: { min: 25, max: 45 } },
+      instagram_reels: { duration_seconds: { min: 35, max: 59 } },
       facebook_reels: { duration_seconds: { min: 35, max: 60 } },
     },
   });
@@ -3387,7 +3410,7 @@ test("goal batch package proof preparation resolves current franchise subjects f
   assert.equal(enginefall.canonical_subject, "Enginefall");
   assert.equal(penguin.canonical_subject, "Penguin Colony");
   assert.equal(blackFlag.canonical_subject, "Assassin's Creed Black Flag Resynced");
-  assert.equal(blackFlag.public_title, "Black Flag Resynced Has A Microtransaction Problem");
+  assert.equal(blackFlag.public_title, "Why Black Flag Resynced's Microtransactions Are Dividing Players");
   assert.match(blackFlag.full_script, /Black Flag Resynced|microtransactions|Steam/i);
   assert.doesNotMatch(blackFlag.full_script, /this city|release-date fight|open-world promise/i);
   const blackFlagPack = buildGoalProofPackage({
@@ -3396,7 +3419,7 @@ test("goal batch package proof preparation resolves current franchise subjects f
   });
   assert.equal(
     blackFlagPack.canonical_story_manifest.public_title,
-    "Black Flag Resynced Has A Microtransaction Problem",
+    "Why Black Flag Resynced's Microtransactions Are Dividing Players",
   );
 });
 

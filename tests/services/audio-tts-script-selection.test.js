@@ -204,6 +204,13 @@ test("cleanForTTS: expands comma-formatted large numbers for clearer narration",
   );
 });
 
+test("cleanForTTS: speaks simple decimal version numbers with a point", () => {
+  assert.equal(
+    cleanForTTS("Palworld just hit 1.0. The 1.0 launch changes the argument."),
+    "Palworld just hit 1 point 0. The 1 point 0 launch changes the argument.",
+  );
+});
+
 test("cleanForTTS: expands modern years without hybrid spoken digits", () => {
   assert.equal(
     cleanForTTS("Forza Horizon 6 topped Metacritic in 2026, not 2039."),

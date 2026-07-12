@@ -1061,3 +1061,32 @@ test("Footage Empire does not treat normal Game Pass game availability as hardwa
   assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
   assert.ok(!plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"));
 });
+
+test("Footage Empire does not treat a Switch 2 game port as hardware product motion", () => {
+  const story = {
+    id: "digimon-switch-2-port",
+    canonical_subject: "Digimon Story Time Stranger",
+    canonical_game: "Digimon Story Time Stranger",
+    title: "Digimon's Switch 2 Upgrade Gives Players A Real Choice",
+    suggested_thumbnail_text: "SWITCH 2 MODE CHOICE",
+    full_script:
+      "Digimon Story Time Stranger just reached Switch 2 with both performance and quality modes. Players can choose smoother battles or a sharper Digital World.",
+  };
+  const localMotionClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `digimon-motion-${index + 1}`,
+    source_family: `digimon-official-${index + 1}`,
+    path: `C:\\media\\digimon-${index + 1}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=digimon-${index + 1}`,
+    source_type: "official_publisher_trailer_segment",
+    media_kind: "direct_video",
+    rights_risk_class: "official_promotional_video_transformative_editorial_use",
+    durationS: 5,
+    validated: true,
+  }));
+
+  const plan = buildFootageEmpirePlan({ story, localMotionClips });
+
+  assert.equal(plan.motion_budget.product_motion_story, false);
+  assert.equal(plan.motion_budget.required_official_product_motion_scenes, 0);
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
+});

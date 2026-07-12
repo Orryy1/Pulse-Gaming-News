@@ -1012,10 +1012,11 @@ test("Studio V4 proof renderer can use two windows per official trailer when nee
 test("Studio V4 proof renderer keeps separate official YouTube video IDs as independent sources", () => {
   const clips = Array.from({ length: 8 }, (_, index) => ({
     path: `albion-official-video-${index + 1}.mp4`,
-    source_url: `https://www.youtube.com/watch?v=AlbionOfficial${index + 1}`,
+    source_url: `https://www.youtube.com/watch?v=AlbionOfficial${Math.floor(index / 2) + 1}`,
     source_type: "official_youtube_channel",
     media_kind: "direct_video",
-    source_family: `albion_official_youtube_${index + 1}`,
+    source_family: `albion_official_youtube_${Math.floor(index / 2) + 1}`,
+    mediaStartS: index % 2 === 0 ? 12 : 48,
     durationS: 5,
   }));
 

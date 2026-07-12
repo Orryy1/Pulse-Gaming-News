@@ -123,7 +123,7 @@ test("render input work order accepts story-package arrays after audio and motio
   const clips = [1, 2, 3, 4, 5].map((index) => ({
     id: `clip-${index}`,
     path: path.join(artifactDir, `clip-${index}.mp4`),
-    source_url: `https://cdn.example.com/trailer-${index}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=official-trailer-${index}`,
     source_type: "steam_movie",
     media_kind: "direct_video",
     source_family: index <= 3 ? `family-${index}` : `family-${index - 1}`,
@@ -1281,6 +1281,58 @@ test("render input work order routes script-rewritten stale audio through regene
   assert.equal(job.actions[0].action_id, "generate_final_narration_audio_and_word_timestamps");
   assert.ok(job.actions[0].reason_codes.includes("final_narration_audio_stale_after_script_rewrite"));
   assert.ok(job.actions[0].reason_codes.includes("word_timestamps_stale_after_script_rewrite"));
+});
+
+test("render input work order trusts matching display-script evidence when spoken pronunciation expands tokens", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-display-script-audio-"));
+  const artifactDir = path.join(tmpDir, "story");
+  const canonicalScript = "Palworld just hit 1.0. Follow Pulse Gaming so you never miss a beat.";
+  await fs.ensureDir(path.join(artifactDir, "audio"));
+  await fs.outputFile(path.join(artifactDir, "audio", "narration.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(artifactDir, "audio", "word_timestamps.json"), {
+    words: [{ word: "Palworld", start: 0, end: 0.3 }],
+    meta: {
+      display_text: canonicalScript,
+      text: "Palworld just hit 1 point 0. Follow Pulse Gaming so you never miss a beat.",
+      wordTimestampSource: "local_whisper_word_alignment",
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: "audio/narration.mp3",
+    word_timestamps_path: "audio/word_timestamps.json",
+    word_timestamp_count: 16,
+    timestamp_whisper_alignment: {
+      repaired: true,
+      script_expected_word_count: 16,
+      script_inserted_actual_word_count: 0,
+      script_trailing_actual_word_count: 0,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "palworld-pronunciation-expanded",
+    selected_title: "Palworld 1.0 Just Changed The Argument",
+    narration_script: canonicalScript,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-12T03:40:00.000Z",
+      queue: [blockedQueueItem({
+        story_id: "palworld-pronunciation-expanded",
+        title: "Palworld 1.0 Just Changed The Argument",
+        artifact_dir: artifactDir,
+        force_final_render: true,
+        render_input_blockers: ["final_narration_audio_missing", "word_timestamps_missing"],
+      })],
+    },
+    generatedAt: "2026-07-12T03:41:00.000Z",
+  });
+
+  const job = workOrder.jobs[0];
+  assert.equal(job.evidence.stale_after_script_rewrite, false);
+  assert.equal(job.evidence.timestamp_display_script_matches, true);
+  assert.equal(job.blockers.includes("final_narration_audio_stale_after_script_rewrite"), false);
+  assert.equal(job.blockers.includes("word_timestamps_stale_after_script_rewrite"), false);
 });
 
 test("render input work order forces rerender when repaired package inputs supersede failed render QA", async () => {

@@ -58,7 +58,7 @@
         font-family: Georgia, "Times New Roman", serif;
         font-size: 360px;
         line-height: 0.8;
-        color: rgba(255, 107, 26, 0.62);
+        color: #ffd1b8;
         font-weight: 900;
         text-shadow: 0 0 60px rgba(255, 107, 26, 0.34);
       }
@@ -101,7 +101,6 @@
       .quote .word {
         display: inline-block;
         opacity: 0;
-        transform: translateY(18px);
       }
 
       .accent-line {
@@ -124,7 +123,7 @@
 
       .attribution-sub {
         margin-top: 12px;
-        color: rgba(255, 255, 255, 0.55);
+        color: rgba(255, 255, 255, 0.92);
         font-family: Consolas, monospace;
         font-size: 22px;
         letter-spacing: 0.04em;
@@ -141,7 +140,7 @@
       data-width="1080"
       data-height="1920"
     >
-      <div class="clip" data-start="0" data-duration="4.5" data-track-index="0">
+      <div id="quote-card-scene" class="clip" data-start="0" data-duration="4.5" data-track-index="0">
         <div class="backdrop"></div>
         <div class="shade"></div>
         <div id="quote-mark" class="quote-mark" style="opacity: 0">"</div>
@@ -196,8 +195,9 @@
         0,
       )
         .to("#kicker", { opacity: 1, duration: 0.34 }, 0.2)
-        .to(
+        .fromTo(
           "#quote .word",
+          { opacity: 0, y: 18 },
           {
             opacity: 1,
             y: 0,

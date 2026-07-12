@@ -43,6 +43,47 @@ test("goal production render materializer preserves YouTube video IDs in source 
   );
 });
 
+test("goal production render materializer preserves distinct governed windows from one YouTube source", () => {
+  const first = _private.clipBaseSourceKey({
+    source_url: "https://www.youtube.com/watch?v=Bu6BPfCtKBQ",
+    source_type: "official_youtube_channel",
+    media_kind: "direct_video",
+    source_family: "official_bu6bpfctkbq",
+    mediaStartS: 12,
+    durationS: 8,
+  });
+  const second = _private.clipBaseSourceKey({
+    source_url: "https://www.youtube.com/watch?v=Bu6BPfCtKBQ",
+    source_type: "official_youtube_channel",
+    media_kind: "direct_video",
+    source_family: "official_bu6bpfctkbq",
+    mediaStartS: 48,
+    durationS: 8,
+  });
+
+  assert.equal(first, "youtube:bu6bpfctkbq_window_12_8");
+  assert.equal(second, "youtube:bu6bpfctkbq_window_48_8");
+  assert.notEqual(first, second);
+});
+
+test("goal production render materializer carries governed window timing into renderer bridge clips", () => {
+  const clip = _private.rendererBridgeClipFromProductionClip({
+    id: "official-window-2",
+    path: "official-window-2.mp4",
+    source_url: "https://www.youtube.com/watch?v=Bu6BPfCtKBQ",
+    source_type: "official_youtube_channel",
+    source_family: "official_bu6bpfctkbq",
+    media_kind: "direct_video",
+    mediaStartS: 48,
+    durationS: 8,
+  });
+
+  assert.equal(clip.mediaStartS, 48);
+  assert.equal(clip.media_start_s, 48);
+  assert.equal(clip.start_s, 48);
+  assert.equal(clip.durationS, 8);
+});
+
 test("goal production render resolves narration duration from governed evidence before probing media", () => {
   let probeCalls = 0;
   const probe = () => {
@@ -331,8 +372,10 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
-  const minimumDurationS = Number(overrides.minimumDurationS || 12);
-  const maxDurationS = Number(overrides.maxDurationS || Math.max(14, minimumDurationS));
+  const isSource = kind === "source";
+  const minimumDurationS = Number(overrides.minimumDurationS || (isSource ? 1.4 : 12));
+  const plannedDurationS = Number(overrides.plannedDurationS || (isSource ? 1.6 : minimumDurationS));
+  const maxDurationS = Number(overrides.maxDurationS || (isSource ? 2.2 : Math.max(14, minimumDurationS)));
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -372,7 +415,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
         evidence: {
           readable_text: readableText,
           word_count: readableText.split(/\s+/).filter(Boolean).length,
-          planned_visible_duration_s: minimumDurationS,
+          planned_visible_duration_s: plannedDurationS,
           minimum_visible_duration_s: minimumDurationS,
           max_readable_card_duration_s: maxDurationS,
         },
@@ -1359,7 +1402,9 @@ test("goal production render materializer limits HyperFrames cards by narration 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-duration-budget-"));
   const artifactDir = await makePackage(root, "story-hf-duration-budget");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-duration-budget", kind),
+    writePassingHyperframesCard(root, "story-hf-duration-budget", kind, {
+      ...(kind === "source" ? {} : { minimumDurationS: 7 }),
+    }),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -1430,21 +1475,20 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.equal(cardClips.length, 2);
   assert.equal(renderStory.hyperframes_card_count, 2);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.equal(renderStory.premium_shell_required_selected_card_count, 2);
+  assert.equal(renderStory.premium_shell_required_selected_card_count, 1);
   assert.equal(renderStory.premium_shell_verdict, "pass");
   assert.deepEqual(renderStory.premium_shell_blockers, []);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 13.6);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 14.532);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 2);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 8.65);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 8.65);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 1);
 });
 
-test("goal production render materializer stretches selected HyperFrames card within proven dwell to cover narration", async () => {
+test("goal production render materializer keeps selected HyperFrames dwell within the 25 percent narration budget", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-dwell-extension-"));
   const artifactDir = await makePackage(root, "story-hf-dwell-extension");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
     writePassingHyperframesCard(root, "story-hf-dwell-extension", kind, {
-      minimumDurationS: 12,
-      maxDurationS: 14,
+      ...(kind === "source" ? {} : { minimumDurationS: 8, maxDurationS: 14 }),
     }),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
@@ -1516,20 +1560,18 @@ test("goal production render materializer stretches selected HyperFrames card wi
   const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
     (clip) => clip.source_type === "hyperframes_premium_shell_card",
   );
-  const coverage = renderStory.visual_v4_bridge_video_clips.reduce(
-    (sum, clip) => sum + Number(clip.durationS || 0),
-    0,
-  ) - 0.25 * Math.max(0, renderStory.visual_v4_bridge_video_clips.length - 1);
-
   assert.equal(directClipCount, 6);
   assert.equal(cardClips.length, 2);
   const sourceCard = cardClips.find((clip) => clip.source_family === "hyperframes_source_card");
   const readableCard = cardClips.find((clip) => clip.source_family !== "hyperframes_source_card");
   assert.ok(sourceCard.durationS >= 1.6);
   assert.ok(sourceCard.durationS <= 2.2);
-  assert.ok(readableCard.durationS >= 12);
+  assert.ok(readableCard.durationS >= 8);
   assert.ok(readableCard.durationS <= 14);
-  assert.ok(coverage + 0.12 >= 42.028);
+  assert.ok(
+    cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0) <=
+      42.028 * 0.25 + 0.01,
+  );
   assert.equal(
     renderStory.hyperframes_premium_shell_gate.selectedCardDurationS,
     Number(cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0).toFixed(3)),
@@ -1540,7 +1582,9 @@ test("goal production render materializer tops up balanced direct windows when H
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-coverage-topup-"));
   const artifactDir = await makePackage(root, "story-hf-coverage-topup");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-coverage-topup", kind),
+    writePassingHyperframesCard(root, "story-hf-coverage-topup", kind, {
+      ...(kind === "source" ? {} : { minimumDurationS: 8 }),
+    }),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -1724,7 +1768,9 @@ test("goal production render materializer does not stack legacy owned cards on p
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-no-stack-"));
   const artifactDir = await makePackage(root, "story-hf-no-stack");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-no-stack", kind),
+    writePassingHyperframesCard(root, "story-hf-no-stack", kind, {
+      ...(kind === "source" ? {} : { minimumDurationS: 7 }),
+    }),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -3281,7 +3327,7 @@ test("goal production render materializer tops up limited real clips with owned 
   assert.equal(refreshedBenchmark.visual_evidence_profile.generated_only_motion_deck, false);
 });
 
-test("goal production render materializer interleaves readable owned cards before direct clip tail", async () => {
+test("goal production render materializer rejects legacy readable cards that exceed the 25 percent motion budget", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-direct-owned-interleave-"));
   const artifactDir = await makePackage(root, "direct-owned-interleave");
   const directClips = [];
@@ -3345,13 +3391,10 @@ test("goal production render materializer interleaves readable owned cards befor
     },
   });
 
-  assert.deepEqual(calls[0].video_clips.slice(0, 4), directClips.slice(0, 4).map((clip) => clip.path));
-  assert.equal(calls[0].video_clips[4], ownedClips[0].path);
-  assert.deepEqual(calls[0].video_clips.slice(5, 7), directClips.slice(4).map((clip) => clip.path));
-  assert.deepEqual(calls[0].video_clips.slice(7), []);
+  assert.deepEqual(calls[0].video_clips, directClips.map((clip) => clip.path));
   assert.equal(calls[0].video_clips.includes(ownedClips[1].path), false);
   assert.equal(calls[0].video_clips.includes(ownedClips[2].path), false);
-  assert.equal(calls[0].visual_v4_bridge_video_clips[4].minimum_readable_duration_s, 12);
+  assert.equal(calls[0].video_clips.includes(ownedClips[0].path), false);
 });
 
 test("goal production render materializer balances scarce direct clips with non-readable owned motion", async () => {

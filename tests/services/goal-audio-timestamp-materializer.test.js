@@ -24,6 +24,35 @@ const ACCEPTED_SLEEPY_LIAM = {
   referenceHash: "a".repeat(40),
 };
 
+test("strict Whisper promotion requires fresh repaired alignment evidence", () => {
+  assert.equal(
+    _testables.strictWhisperAlignmentPassed({
+      word_timestamp_source: "local_whisper_word_alignment",
+      timestamp_whisper_alignment: { repaired: false, error: "opening_not_covered" },
+    }),
+    false,
+  );
+  assert.equal(
+    _testables.strictWhisperAlignmentPassed({
+      word_timestamp_source: "local_whisper_word_alignment",
+      timestamp_whisper_alignment: { repaired: true },
+    }),
+    true,
+  );
+});
+
+test("spoken-text selection rejects a TTS derivative that collapsed sentence punctuation", () => {
+  const narration =
+    "Palworld changed the argument. Players now judge a finished game. The launch trailer promises scale. The payoff is whether the endgame lasts. Follow Pulse Gaming so you never miss a beat.";
+  const collapsed =
+    "Palworld changed the argument, Players now judge a finished game, The launch trailer promises scale, The payoff is whether the endgame lasts, Follow Pulse Gaming so you never miss a beat.";
+
+  const selected = _testables.selectSpokenTextForTts(narration, collapsed);
+
+  assert.equal(selected, narration);
+  assert.equal((selected.match(/\./g) || []).length, 5);
+});
+
 function charAlignment(text) {
   return charAlignmentWithStep(text, 0.05);
 }
@@ -73,6 +102,40 @@ test("audio materializer compacts excessive generated narration silence before a
   assert.equal(calls.length, 1);
   assert.match(calls[0].args.join(" "), /silenceremove=stop_periods=-1/);
   assert.match(calls[0].args.join(" "), /stop_silence=0\.1/);
+  assert.equal((await fs.stat(audioPath)).size, 3072);
+});
+
+test("audio materializer trims only the centre of verified inter-word pauses", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-timestamp-pause-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const calls = [];
+
+  const result = await _testables.compactTimestampedNarrationPauses(
+    audioPath,
+    [
+      { word: "Trust.", start: 0, end: 1 },
+      { word: "Ubisoft", start: 2.1, end: 2.5 },
+      { word: "responds.", start: 2.6, end: 3 },
+    ],
+    {
+      maxGapS: 0.9,
+      preservedGapS: 0.45,
+      execFileImpl: async (command, args) => {
+        calls.push({ command, args });
+        await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
+        return { stdout: "", stderr: "" };
+      },
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.cut_count, 1);
+  assert.equal(result.longest_gap_before_s, 1.1);
+  assert.equal(result.preserved_gap_s, 0.45);
+  assert.match(calls[0].args.join(" "), /atrim=start=0\.000:end=1\.225/);
+  assert.match(calls[0].args.join(" "), /atrim=start=1\.875/);
+  assert.match(calls[0].args.join(" "), /concat=n=2:v=0:a=1/);
   assert.equal((await fs.stat(audioPath)).size, 3072);
 });
 
@@ -415,7 +478,7 @@ test("goal audio materializer stores safe spoken text as primary timestamp text"
   assert.doesNotMatch(timestamps.meta.text, /\bGTA\s+VI\b/);
 });
 
-test("goal audio materializer promotes workbench ready pairs without forced TTS regeneration", async () => {
+test("goal audio materializer promotes workbench ready pairs while TTS providers are unavailable", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-ready-promote-"));
   const script = "Star Fox just got a sharper Switch 2 camera deal.";
   const artifactDir = await makePackage(root, "story-ready-promote", {
@@ -440,11 +503,11 @@ test("goal audio materializer promotes workbench ready pairs without forced TTS 
 
   const report = await materializeGoalAudioTimestamps({
     workspaceRoot: root,
-    provider: "elevenlabs",
+    provider: "auto",
     alignmentMode: "whisper",
     workbenchReport: {
-      local_tts: { verdict: "green", ready: true },
-      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      local_tts: { verdict: "red", ready: false },
+      elevenlabs_tts: { provider: "elevenlabs", ready: false, configured: true },
       jobs: [
         {
           ...workbenchJob("story-ready-promote", artifactDir),
@@ -1837,7 +1900,7 @@ test("goal audio materializer runs local TTS recovery before retrying server_dow
   const report = await materializeGoalAudioTimestamps({
     workspaceRoot: root,
     workbenchReport: {
-      local_tts: { verdict: "green", ready: true },
+      local_tts: { verdict: "red", ready: false },
       jobs: [workbenchJob("story-server-down-recovery", artifactDir)],
     },
     generatedAt: "2026-07-07T14:20:00.000Z",
@@ -2106,6 +2169,84 @@ test("goal audio materializer coverage treats safe compound game terms as one sp
   assert.equal(coverage.unmatched_expected_word_count, 0);
   assert.equal(reconciled.ok, true);
   assert.equal(reconciled.words[1].word, "Chain Spear");
+});
+
+test("goal audio materializer coverage reconciles split Palworld, decimal and Pocketpair ASR tokens", () => {
+  const scriptText = "Palworld just hit 1.0. Pocketpair is asking players to judge the finished game.";
+  const words = [
+    { word: "Pal", start: 0, end: 0.18 },
+    { word: "World", start: 0.18, end: 0.4 },
+    { word: "just", start: 0.42, end: 0.58 },
+    { word: "hit", start: 0.6, end: 0.74 },
+    { word: "1", start: 0.76, end: 0.88 },
+    { word: ".0.", start: 0.88, end: 1.08 },
+    { word: "Pocket", start: 1.12, end: 1.36 },
+    { word: "Pair", start: 1.36, end: 1.58 },
+    { word: "is", start: 1.6, end: 1.7 },
+    { word: "asking", start: 1.72, end: 1.96 },
+    { word: "players", start: 1.98, end: 2.22 },
+    { word: "to", start: 2.24, end: 2.32 },
+    { word: "judge", start: 2.34, end: 2.54 },
+    { word: "the", start: 2.56, end: 2.66 },
+    { word: "finished", start: 2.68, end: 2.98 },
+    { word: "game.", start: 3, end: 3.24 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[0].word, "Palworld");
+  assert.deepEqual(
+    reconciled.words.slice(3, 6).map((word) => word.word),
+    ["1", "point", "0"],
+  );
+  assert.equal(reconciled.words[6].word, "Pocketpair");
+});
+
+test("goal audio materializer coverage maps Whisper decimal tokens to spoken point notation", () => {
+  const scriptText = "Palworld just hit 1 point 0, but the launch test is harder.";
+  const words = [
+    { word: "Palworld", start: 0, end: 0.3 },
+    { word: "just", start: 0.3, end: 0.48 },
+    { word: "hit", start: 0.48, end: 0.64 },
+    { word: "1 .0,", start: 0.64, end: 1.05 },
+    { word: "but", start: 1.05, end: 1.2 },
+    { word: "the", start: 1.2, end: 1.34 },
+    { word: "launch", start: 1.34, end: 1.6 },
+    { word: "test", start: 1.6, end: 1.8 },
+    { word: "is", start: 1.8, end: 1.9 },
+    { word: "harder.", start: 1.9, end: 2.2 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.opening_covered, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+});
+
+test("goal audio materializer coverage accepts the observed Resynced ASR pronunciation", () => {
+  const scriptText = "Black Flag Resynced looks built to revive a classic.";
+  const words = [
+    { word: "Black", start: 0, end: 0.2 },
+    { word: "Flag", start: 0.2, end: 0.4 },
+    { word: "Resynct", start: 0.4, end: 0.72 },
+    { word: "looks", start: 0.72, end: 0.92 },
+    { word: "built", start: 0.92, end: 1.12 },
+    { word: "to", start: 1.12, end: 1.22 },
+    { word: "revive", start: 1.22, end: 1.5 },
+    { word: "a", start: 1.5, end: 1.56 },
+    { word: "classic.", start: 1.56, end: 1.9 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.opening_covered, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
 });
 
 test("goal audio materializer coverage accepts GTA VI roman numeral ASR variants without allowing inserted words", () => {
@@ -2497,6 +2638,9 @@ test("goal audio materializer stages strict Whisper regeneration before replacin
     words: [{ word: "Old", start: 0, end: 0.2 }],
     meta: { transcript: "Old accepted narration." },
   });
+  const originalMtime = new Date("2026-06-21T18:00:00.000Z");
+  await fs.utimes(canonicalAudioPath, originalMtime, originalMtime);
+  await fs.utimes(canonicalTimestampPath, originalMtime, originalMtime);
   const oldAudio = await fs.readFile(canonicalAudioPath);
   const calls = [];
   const alignmentAudioPaths = [];
@@ -2545,12 +2689,14 @@ test("goal audio materializer stages strict Whisper regeneration before replacin
   assert.equal(report.summary.materialized_count, 0);
   assert.equal(report.summary.failed_count, 1);
   assert.match(report.jobs[0].error, /local_whisper_word_alignment_failed/);
-  assert.equal(calls.length, 1);
-  assert.equal(alignmentAudioPaths.length, 1);
+  assert.equal(calls.length, 3);
+  assert.equal(alignmentAudioPaths.length, 3);
   assert.match(alignmentAudioPaths[0], /[\\/]output[\\/]audio[\\/]\.staging[\\/]/);
   assert.deepEqual(await fs.readFile(canonicalAudioPath), oldAudio);
   const canonicalTimestamps = await fs.readJson(canonicalTimestampPath);
   assert.equal(canonicalTimestamps.meta.transcript, "Old accepted narration.");
+  assert.equal((await fs.stat(canonicalAudioPath)).mtime.toISOString(), originalMtime.toISOString());
+  assert.equal((await fs.stat(canonicalTimestampPath)).mtime.toISOString(), originalMtime.toISOString());
   assert.equal(await fs.pathExists(path.join(root, "output", "audio", ".staging")), false);
 });
 
@@ -2679,7 +2825,7 @@ test("goal audio materializer retries local narration when generated speech stut
   assert.equal(report.summary.failed_count, 0);
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].generation_attempts, 2);
-  assert.equal(report.jobs[0].reason, "local_tts_retry_after_strict_alignment_failure");
+  assert.equal(report.jobs[0].reason, "tts_retry_after_strict_alignment_failure");
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-tts-stutter-retry_timestamps.json"));
   assert.equal(timestamps.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
 });
@@ -3366,7 +3512,7 @@ test("goal audio materializer uses ElevenLabs fallback selected by the workbench
     workspaceRoot: root,
     workbenchReport: {
       local_tts: { verdict: "red", ready: false, failure_code: "server_down" },
-      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      elevenlabs_tts: { provider: "elevenlabs", ready: false, configured: true },
       provider_preference: "auto",
       jobs: [
         {
@@ -3669,6 +3815,87 @@ test("goal audio materializer skips existing ready pairs unless forced", async (
   assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
 });
 
+test("goal audio materializer repairs excessive pauses in-place before regenerating the voice", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-compact-cadence-"));
+  const script = "Palworld is finally at version one. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-compact-cadence", {
+    selected_title: "Palworld Version One Changes The Argument",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", "story-compact-cadence.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-compact-cadence_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(script),
+    meta: { transcript: script, wordTimestampSource: "local_whisper_word_alignment" },
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "FAIL",
+    blockers: ["voice_cadence:acoustic_pause_too_long"],
+    cadence: {
+      status: "fail",
+      blockers: ["voice_cadence:acoustic_pause_too_long"],
+    },
+  });
+  const voiceQualityPath = path.join(artifactDir, "voice_quality_report.json");
+  const voiceQualityReport = await fs.readJson(voiceQualityPath);
+  assert.equal(_testables.supportsExistingPauseCompaction(voiceQualityReport), true);
+  assert.deepEqual(
+    _testables.failedVoiceCadenceReasons(
+      {
+        ready: true,
+        audioStat: await fs.stat(audioPath),
+        timestampStat: await fs.stat(timestampPath),
+      },
+      voiceQualityReport,
+      await fs.stat(voiceQualityPath),
+    ),
+    ["narration_audio_stale_after_voice_cadence_failure"],
+  );
+  let compactCalls = 0;
+  let compactOptions = null;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-compact-cadence", artifactDir)],
+    },
+    generatedAt: "2026-07-12T03:10:00.000Z",
+    generateTtsForStory: async () => {
+      throw new Error("voice regeneration should not run when bounded silence compaction succeeds");
+    },
+    compactGeneratedNarrationSilence: async (_audioPath, options) => {
+      compactCalls += 1;
+      compactOptions = options;
+      return { repaired: true, strategy: "bounded_generated_narration_silence_compaction" };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(scriptText),
+      transcript: scriptText,
+      language: "en",
+      segments: 1,
+    }),
+  });
+
+  assert.equal(compactCalls, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(compactOptions.maxSilenceS, 0.6);
+  assert.equal(compactOptions.retainedSilenceS, 0.12);
+  assert.equal(compactOptions.silenceThreshold, "-35dB");
+  assert.equal(compactOptions.stopDurationS, 0.3);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].status, "materialized_existing_cadence_compaction");
+  assert.equal(report.jobs[0].reason, "existing_pair_excessive_pause_compacted_and_realigned");
+  const timestamps = await fs.readJson(timestampPath);
+  assert.equal(timestamps.meta.provider, "local");
+  assert.equal(timestamps.meta.source, "local-production-path");
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+});
+
 test("goal audio materializer regenerates existing pairs that current voice cadence QA rejects", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-stale-voice-cadence-"));
   const script =
@@ -3728,6 +3955,61 @@ test("goal audio materializer regenerates existing pairs that current voice cade
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_failed_voice_cadence_regenerated");
   assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
+});
+
+test("forced ElevenLabs generation overrides an existing-audio cadence repair job", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-force-elevenlabs-"));
+  const script = "Palworld has a cleaner launch argument. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-force-elevenlabs", {
+    narration_script: script,
+  });
+  let generationProvider = null;
+  let generationCalls = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "auto",
+    force: true,
+    alignmentMode: "whisper",
+    workbenchReport: {
+      elevenlabs_tts: { ready: true },
+      jobs: [{
+        ...workbenchJob("story-force-elevenlabs", artifactDir),
+        status: "requires_existing_audio_cadence_repair",
+        tts_provider: "existing_local_audio",
+      }],
+    },
+    generatedAt: "2026-07-12T03:20:00.000Z",
+    generateTtsForStory: async ({ text, outputPath, provider }) => {
+      generationCalls += 1;
+      generationProvider = provider;
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 2));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+    compactGeneratedNarrationSilence: async () => ({ repaired: false, reason: "within_limit" }),
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: generationCalls === 1
+        ? (() => {
+            const words = whisperWordsFromScript(scriptText);
+            return [words[0], { ...words[0], start: words[0].end, end: words[0].end + 0.05 }, ...words.slice(1)];
+          })()
+        : whisperWordsFromScript(scriptText),
+      transcript: generationCalls === 1 ? `Palworld ${scriptText}` : scriptText,
+      language: "en",
+      segments: 1,
+    }),
+  });
+
+  assert.equal(generationProvider, "elevenlabs");
+  assert.equal(generationCalls, 2);
+  assert.equal(report.jobs[0].status, "materialized");
+  assert.equal(report.jobs[0].provider, "elevenlabs");
 });
 
 test("goal audio materializer regenerates when existing ASR alignment repair is not clean", async () => {

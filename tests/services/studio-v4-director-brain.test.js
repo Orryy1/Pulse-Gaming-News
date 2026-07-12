@@ -380,6 +380,51 @@ test("Visual V4 Director uses distinct official clip windows when source assets 
   assert.ok(!plan.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
 });
 
+test("Visual V4 Director fills its shot floor with a second unique window per official video", () => {
+  const clips = Array.from({ length: 8 }, (_, index) => {
+    const sourceIndex = Math.floor(index / 2) + 1;
+    return {
+      id: `official-video-${sourceIndex}-window-${(index % 2) + 1}`,
+      source_family: `official-video-${sourceIndex}`,
+      path: `C:\\media\\official-video-${sourceIndex}-window-${(index % 2) + 1}.mp4`,
+      source_url: `https://www.youtube.com/watch?v=official-video-${sourceIndex}`,
+      source_type: "official_publisher_trailer_segment",
+      media_kind: "direct_video",
+      durationS: 6,
+      validated: true,
+    };
+  });
+  const footagePlan = {
+    readiness: { status: "v4_motion_ready", blockers: [], warnings: [] },
+    motion_budget: {
+      required_motion_scenes: 5,
+      available_motion_clips: clips.length,
+      required_distinct_families: 4,
+      available_distinct_motion_families: 4,
+      required_distinct_source_assets: 4,
+      available_distinct_source_assets: 4,
+    },
+    motion_inventory: { accepted_local_clips: clips },
+  };
+
+  const plan = buildVisualV4DirectorPlan({
+    story: story(),
+    footagePlan,
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(plan.readiness.status, "director_ready");
+  assert.equal(motionShots.length >= 5, true);
+  assert.equal(new Set(motionShots.map((shot) => shot.motion_pack_clip_id)).size, motionShots.length);
+  const usesBySource = new Map();
+  for (const shot of motionShots) {
+    usesBySource.set(shot.base_source_family, (usesBySource.get(shot.base_source_family) || 0) + 1);
+  }
+  assert.equal(Math.max(...usesBySource.values()) <= 2, true);
+});
+
 test("Visual V4 Director gives every card-like beat readable dwell time", () => {
   const footagePlan = buildFootageEmpirePlan({
     story: story(),

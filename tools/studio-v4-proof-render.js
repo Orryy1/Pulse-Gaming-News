@@ -691,7 +691,20 @@ function windowedSceneSourceKey(clip = {}) {
     clip.provenance?.source_family,
     clip.provenance?.motion_family,
   );
-  if (!/(?:^|[_/-])window[_/-]?\d+/i.test(value)) return "";
+  if (!/(?:^|[_/-])window[_/-]?\d+/i.test(value)) {
+    const startS = Number(
+      clip.start_s ??
+        clip.startS ??
+        clip.mediaStartS ??
+        clip.media_start_s ??
+        clip.segment_start_s ??
+        clip.provenance?.source_start_s,
+    );
+    if (!value || !Number.isFinite(startS) || startS < 0) return "";
+    const durationS = Number(clip.durationS ?? clip.duration_s ?? clip.duration);
+    const durationKey = Number.isFinite(durationS) && durationS > 0 ? `_${durationS}` : "";
+    return normaliseSceneSourceKey(`${value}_window_${startS}${durationKey}`);
+  }
   return normaliseSceneSourceKey(value);
 }
 

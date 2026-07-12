@@ -525,10 +525,22 @@ function contextNumberFontSize(value) {
   return 152;
 }
 
+function sourceLabelFontSize(value) {
+  const length = normaliseText(value).length;
+  if (length >= 30) return 72;
+  if (length >= 22) return 88;
+  if (length >= 15) return 108;
+  return 132;
+}
+
 function applySpecToTemplate(kind, templateHtml, spec, channelId) {
   let html = templateHtml;
 
   if (kind === "source") {
+    html = html.replace(
+      /(\.label\s*\{[^}]*?font-size:\s*)\d+(px;)/,
+      `$1${sourceLabelFontSize(spec.label)}$2`,
+    );
     html = replaceElementText(html, "kicker", spec.kicker);
     html = replaceElementText(html, "label", spec.label);
     html = replaceElementText(html, "sublabel", spec.sublabel);

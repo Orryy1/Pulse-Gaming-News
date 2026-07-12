@@ -235,6 +235,7 @@ test("HyperFrames card templates keep decorative text contrast-safe", () => {
     "utf8",
   );
 
-  assert.match(quoteTemplate, /quote-mark[\s\S]*color:\s*rgba\(255,\s*107,\s*26,\s*0\.62\)/);
+  assert.match(quoteTemplate, /quote-mark[\s\S]*color:\s*#ffd1b8/);
+  assert.match(quoteTemplate, /quote-mark[\s\S]*text-shadow:\s*0 0 60px rgba\(255,\s*107,\s*26,\s*0\.34\)/);
   assert.match(takeawayTemplate, /pulse[\s\S]*color:\s*rgba\(255,\s*255,\s*255,\s*0\.62\)/);
 });

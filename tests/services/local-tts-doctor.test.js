@@ -217,6 +217,70 @@ test("local TTS doctor retries generation smoke after an allowed restart", async
   assert.equal(report.generation_smoke.ok, true);
 });
 
+test("local TTS doctor retries once when the first allowed start dies before binding", async () => {
+  let startCount = 0;
+  let healthWaitCount = 0;
+  const unreachable = {
+    ok: false,
+    status: "unreachable",
+    phase: "unknown",
+    ready: false,
+    engineCount: 0,
+    voice: { loaded: false, refResolved: false, present: false },
+    reasons: ["health endpoint unreachable"],
+  };
+  const ready = {
+    ok: true,
+    status: "ok",
+    phase: "ready",
+    ready: true,
+    engineCount: 1,
+    voice: {
+      alias: "Sleepy Liam",
+      loaded: true,
+      refResolved: true,
+      present: true,
+      reference: { id: "accepted", referenceHash: "hash" },
+    },
+    reasons: [],
+  };
+
+  const report = await runDoctor({
+    restart: true,
+    prewarm: false,
+    smoke: false,
+    setExitCode: false,
+    writeReport: false,
+    deps: {
+      async fetchLocalTtsHealth() {
+        return unreachable;
+      },
+      async startLocalTtsServer() {
+        startCount += 1;
+        return {
+          pid: startCount === 1 ? 11111 : 22222,
+          spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" },
+        };
+      },
+      async waitForLocalTtsHealth() {
+        healthWaitCount += 1;
+        return healthWaitCount === 1 ? unreachable : ready;
+      },
+      async inspectLocalGpuPressure() {
+        return { ok: true, reason: "gpu ok" };
+      },
+    },
+  });
+
+  assert.equal(startCount, 2);
+  assert.equal(report.verdict, "green");
+  assert.equal(report.started.pid, 22222);
+  assert.deepEqual(
+    report.start_attempts.map((attempt) => attempt.pid),
+    [11111, 22222],
+  );
+});
+
 test("local TTS doctor JSON includes its report paths", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-tts-doctor-"));
   const previousCwd = process.cwd();

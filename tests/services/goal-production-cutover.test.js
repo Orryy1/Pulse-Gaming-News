@@ -8,7 +8,9 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  _testables,
   buildProductionRenderCutoverPlan,
+  schedulerPublishableRightsRecords,
   writeProductionRenderCutoverPlan,
 } = require("../../lib/goal-production-cutover");
 const {
@@ -16,6 +18,59 @@ const {
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../../lib/studio/v4/render-policy");
+
+test("production cutover replaces generic licence-only rows with final scheduler rights evidence", () => {
+  const records = schedulerPublishableRightsRecords([
+    {
+      asset_id: "weak-window",
+      path: "D:\\media\\weak-window.mp4",
+      licence_basis: "transformative_editorial_short_form",
+      risk_score: 0.28,
+    },
+    {
+      asset_id: "official-window",
+      path: "D:\\media\\official-window.mp4",
+      source_type: "official_publisher_trailer_segment",
+      licence_basis: "transformative_editorial_short_form",
+      risk_score: 0.28,
+    },
+  ]);
+
+  assert.deepEqual(records.map((record) => record.asset_id), ["official-window"]);
+});
+
+test("production cutover preserves strict ASR coverage after display caption token merges", () => {
+  const coverage = _testables.asrWordTimestampCoverage({
+    payload: {
+      words: [
+        { word: "Palworld", start: 0, end: 0.3 },
+        { word: "just", start: 0.3, end: 0.5 },
+        { word: "hit", start: 0.5, end: 0.7 },
+        { word: "1.0", start: 0.7, end: 1.1 },
+      ],
+      meta: {
+        transcript: "Palworld just hit 1 point 0",
+        wordTimestampSource: "local_whisper_word_alignment",
+        timestampWhisperAlignment: {
+          repaired: true,
+          script_coverage_ratio: 1,
+          script_opening_covered: true,
+          script_expected_word_count: 6,
+          script_actual_word_count: 6,
+          script_matched_word_count: 6,
+          script_inserted_actual_word_count: 0,
+          script_trailing_actual_word_count: 0,
+        },
+      },
+    },
+    canonical: { narration_script: "Palworld just hit 1.0" },
+  });
+
+  assert.equal(coverage.ratio, 1);
+  assert.equal(coverage.opening_covered, true);
+  assert.equal(coverage.expected_word_count, 6);
+  assert.equal(coverage.actual_word_count, 6);
+});
 
 async function makeCutoverPackage(root, id = "story-one", options = {}) {
   const artifactDir = path.join(root, id);

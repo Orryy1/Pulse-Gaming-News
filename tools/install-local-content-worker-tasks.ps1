@@ -13,6 +13,7 @@ if ($Apply -and -not $OperatorConfirmed) {
 }
 
 $pythonwExe = (Get-Command "pythonw.exe" -ErrorAction Stop).Source
+$nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
 $workerScript = Join-Path $RepoRoot "tools/local-sqlite-content-worker.js"
 $hostScript = Join-Path $RepoRoot "tools/local_content_worker_host.py"
 $lanes = @(
@@ -35,7 +36,7 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -MultipleInstances IgnoreNew -StartWhenAvailable
 for ($index = 0; $index -lt $lanes.Count; $index++) {
   $lane = $lanes[$index]
-  $arguments = '"{0}" --repo-root "{1}" --worker-id "{2}" --kinds "{3}"' -f $hostScript, $RepoRoot, $lane.Id, $lane.Kinds
+  $arguments = '"{0}" --repo-root "{1}" --node-exe "{2}" --worker-id "{3}" --kinds "{4}"' -f $hostScript, $RepoRoot, $nodeExe, $lane.Id, $lane.Kinds
   $action = New-ScheduledTaskAction -Execute $pythonwExe -Argument $arguments -WorkingDirectory $RepoRoot
   Register-ScheduledTask -TaskName $lane.Task -Action $action -Trigger $trigger -Settings $settings -Description "Pulse Gaming non-publish content worker" -Force | Out-Null
   Start-ScheduledTask -TaskName $lane.Task

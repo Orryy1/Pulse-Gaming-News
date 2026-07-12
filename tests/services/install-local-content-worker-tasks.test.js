@@ -20,6 +20,7 @@ test("content worker task installer is confirmation gated and restartable", () =
   assert.match(script, /Refusing to install/);
   assert.match(script, /Register-ScheduledTask/);
   assert.match(script, /Start-ScheduledTask/);
+  assert.match(script, /Unregister-ScheduledTask -TaskName \$taskName/);
   assert.match(script, /-RestartCount 99/);
   assert.match(script, /-AllowStartIfOnBatteries/);
   assert.match(script, /-DontStopIfGoingOnBatteries/);

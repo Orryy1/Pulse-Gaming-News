@@ -36,6 +36,8 @@ for ($index = 0; $index -lt $lanes.Count; $index++) {
   Unregister-ScheduledTask -TaskName $lanes[$index].Task -Confirm:$false -ErrorAction SilentlyContinue
 }
 $taskName = "PulseGaming-Content-Host"
+Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument ('"{0}"' -f $hostScript) -WorkingDirectory $RepoRoot
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Pulse Gaming non-publish content workers" -Force | Out-Null
 Start-ScheduledTask -TaskName $taskName

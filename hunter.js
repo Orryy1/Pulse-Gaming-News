@@ -11,6 +11,10 @@ const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
 const {
   shouldRejectGeneralRedditForNews,
 } = require("./lib/community-discussion-gate");
+const {
+  enrichStoryFromRedditCandidates,
+  selectTopRedditReactions,
+} = require("./lib/reddit-discussion-enrichment");
 
 const USER_AGENT = "pulse-gaming-hunter/2.0 (by /u/PulseGamingBot)";
 
@@ -961,6 +965,8 @@ async function hunt() {
         // source so the assemble.js comment overlay knows NOT to
         // render it under a u/Redditor badge.
         top_comment: item.description || "",
+        description: item.description || "",
+        rss_description: item.description || "",
         comment_source_type: item.description ? "rss_description" : "none",
         timestamp: item.timestamp,
         num_comments: 0,
@@ -1017,6 +1023,9 @@ async function hunt() {
 
   // --- Take top 8 stories (more content = more chances to go viral) ---
   const topStories = deduped.slice(0, 8);
+  const redditDiscussionCandidates = allPosts.filter(
+    (story) => String(story?.source_type || "").toLowerCase() === "reddit",
+  );
 
   // --- Enrich with images (parallel for speed) ---
   console.log("[hunter] Phase 3: Enriching with images...");
@@ -1026,7 +1035,10 @@ async function hunt() {
       // Fetch top comments from Reddit posts (multiple for video overlays)
       try {
         if (story.source_type === "reddit" && !story.top_comment) {
-          const comments = await fetchTopComments(story.subreddit, story.id, 8);
+          const comments = selectTopRedditReactions(
+            await fetchTopComments(story.subreddit, story.id, 8),
+            { minScore: 5, limit: 4 },
+          );
           story.top_comment = comments.length > 0 ? comments[0].body : "";
           story.reddit_comments = comments;
           // 2026-04-29 incident: only mark the comment-source as
@@ -1035,6 +1047,20 @@ async function hunt() {
           // to render the u/Redditor overlay or skip it.
           if (comments.length > 0) {
             story.comment_source_type = "reddit_top_comment";
+            story.top_comment_author = "Redditor";
+            story.top_comment_score = comments[0].score;
+          }
+        } else if (story.source_type !== "reddit") {
+          const enriched = await enrichStoryFromRedditCandidates({
+            story,
+            redditCandidates: redditDiscussionCandidates,
+            fetchComments: fetchTopComments,
+          });
+          Object.assign(story, enriched);
+          if (story.comment_source_type === "related_reddit_discussion") {
+            console.log(
+              `[hunter] Added related Reddit reaction for ${story.id} from r/${story.reddit_discussion.subreddit}`,
+            );
           }
         }
       } catch (err) {

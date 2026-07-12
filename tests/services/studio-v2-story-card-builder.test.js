@@ -147,6 +147,27 @@ test("quote card specs clamp long comments before rendering", () => {
   );
 });
 
+test("quote card labels a verified related Reddit reaction instead of the news outlet", () => {
+  const specs = buildStoryCardSpecs({
+    title: "Digimon Story Time Stranger Turns Switch 2 Modes Into A Fight",
+    subreddit: "Bandai Namco",
+    source_type: "rss",
+    top_comment: "Portable mode is the version I actually care about.",
+    comment_source_type: "related_reddit_discussion",
+    reddit_comments: [{ body: "Portable mode is the version I actually care about.", author: "Redditor", score: 231 }],
+    reddit_discussion: {
+      post_id: "thread-1",
+      subreddit: "NintendoSwitch",
+      audience_reaction_only: true,
+    },
+  });
+
+  assert.equal(specs.source.label, "BANDAI NAMCO");
+  assert.equal(specs.quote.quoteText, "Portable mode is the version I actually care about.");
+  assert.equal(specs.quote.attribution, "r/NintendoSwitch");
+  assert.equal(specs.quote.attributionSub, "top-rated player reaction");
+});
+
 test("quote layout class switches to compact mode for long safe quotes", () => {
   const quote =
     "This sentence is still concise enough to use, but long enough that the card needs compact layout.";

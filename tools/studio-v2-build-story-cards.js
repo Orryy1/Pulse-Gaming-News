@@ -26,6 +26,7 @@ const {
   SOURCE_CARD_TIMING,
   cardTimingContract,
 } = require("../lib/studio/v4/premium-card-timing-policy");
+const { hasVerifiedRedditReaction } = require("../lib/reddit-discussion-enrichment");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -266,9 +267,26 @@ function firstUsefulQuote(story) {
   return title ? clampQuoteText(title) : "The important detail is changing fast.";
 }
 
+function quoteAttribution(story, fallbackLabel) {
+  if (
+    hasVerifiedRedditReaction(story) &&
+    String(story?.comment_source_type || "").toLowerCase() === "related_reddit_discussion"
+  ) {
+    return {
+      attribution: `r/${normaliseText(story.reddit_discussion?.subreddit || "gaming").replace(/^r\//i, "")}`,
+      attributionSub: "top-rated player reaction",
+    };
+  }
+  return {
+    attribution: fallbackLabel,
+    attributionSub: story?.source_type === "reddit" ? "top comment" : "reported detail",
+  };
+}
+
 function buildStoryCardSpecs(story) {
   const label = sourceLabel(story);
   const title = normaliseText(story?.title);
+  const reactionAttribution = quoteAttribution(story, label);
 
   if (isPokemonMewtwoStory(story)) {
     return {
@@ -304,8 +322,7 @@ function buildStoryCardSpecs(story) {
       quote: {
         kicker: "KEY LINE",
         quoteText: firstUsefulQuote(story),
-        attribution: label,
-        attributionSub: "reported detail",
+        ...reactionAttribution,
       },
       takeaway: {
         step: "03 / TAKEAWAY",
@@ -348,8 +365,7 @@ function buildStoryCardSpecs(story) {
     quote: {
       kicker: "KEY LINE",
       quoteText: firstUsefulQuote(story),
-      attribution: label,
-      attributionSub: story?.source_type === "reddit" ? "top comment" : "reported detail",
+      ...reactionAttribution,
     },
     takeaway: {
       step: "03 / TAKEAWAY",

@@ -293,6 +293,26 @@ test("Creator Studio OS flags raw HTML entities before public render", () => {
   assert.ok(packet.fact_check_report.text_hygiene.issues.includes("raw_html_entity"));
 });
 
+test("Creator Studio OS allows verified Reddit discussion reactions on official stories", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "rss-related-reaction",
+      source_type: "rss",
+      top_comment: "This is the argument players are actually having.",
+      comment_source_type: "related_reddit_discussion",
+      reddit_comments: [{ body: "This is the argument players are actually having.", author: "Redditor", score: 145 }],
+      reddit_discussion: {
+        post_id: "thread-1",
+        subreddit: "gaming",
+        audience_reaction_only: true,
+      },
+    }),
+  );
+
+  assert.equal(packet.comment_overlay.comment_source_type, "related_reddit_discussion");
+  assert.equal(packet.comment_overlay.comment_overlay_allowed, true);
+});
+
 test("Creator Studio OS repairs Pokemon mojibake and keeps the canonical accent", () => {
   const packet = buildProductionPacket(
     baseStory({

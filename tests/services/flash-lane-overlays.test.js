@@ -70,6 +70,26 @@ test("Flash Lane overlay plan turns source and entity context into compact chips
   assert.doesNotMatch(JSON.stringify(plan), /u\/Redditor/i);
 });
 
+test("Flash Lane exposes a verified related Reddit reaction as audience colour", () => {
+  const plan = buildFlashLaneOverlayPlan({
+    story: {
+      title: "Digimon Story Time Stranger Switch 2 Modes Revealed",
+      source_type: "rss",
+      subreddit: "Bandai Namco",
+      top_comment: "Portable mode is the version I actually care about.",
+      comment_source_type: "related_reddit_discussion",
+      reddit_comments: [{ body: "Portable mode is the version I actually care about.", author: "Redditor", score: 231 }],
+      reddit_discussion: { post_id: "thread-1", subreddit: "NintendoSwitch", audience_reaction_only: true },
+    },
+    scenes: [{ type: SCENE_TYPES.CLIP, entity: "Nintendo", duration: 4 }],
+    durationS: 55,
+  });
+
+  assert.equal(plan.comment_overlay.allowed, true);
+  assert.equal(plan.comment_overlay.source_type, "related_reddit_discussion");
+  assert.equal(plan.comment_overlay.label, "r/NintendoSwitch");
+});
+
 test("Flash Lane overlay filters are time-bound and never create full-screen cards", () => {
   const plan = buildFlashLaneOverlayPlan({
     story: { title: "GTA trailer", source_type: "reddit", subreddit: "GamingLeaksAndRumours", top_comment: "Real comment" },

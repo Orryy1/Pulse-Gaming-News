@@ -66,6 +66,30 @@ test("standard short creator overlay refuses fake Reddit comment styling for RSS
   );
 });
 
+test("standard short creator overlay allows a provenance-backed related Reddit reaction", () => {
+  const plan = buildStandardShortCreatorOverlayPlan({
+    story: {
+      id: "rss-with-discussion",
+      source_type: "rss",
+      subreddit: "GameSpot",
+      top_comment: "Portable mode is the version I actually care about.",
+      comment_source_type: "related_reddit_discussion",
+      reddit_comments: [{ body: "Portable mode is the version I actually care about.", author: "Redditor", score: 231 }],
+      reddit_discussion: {
+        post_id: "thread-1",
+        subreddit: "NintendoSwitch",
+        audience_reaction_only: true,
+      },
+    },
+    scenes: scenes(),
+    durationS: 55,
+  });
+
+  assert.equal(plan.comment_overlay.allowed, true);
+  assert.equal(plan.comment_overlay.source_type, "related_reddit_discussion");
+  assert.equal(plan.comment_overlay.label, "r/NintendoSwitch");
+});
+
 test("standard short creator overlay downgrades dense card-led scenes before they look premium", () => {
   const dense = buildStandardShortCreatorOverlayPlan({
     story: { id: "thin", source_type: "rss", subreddit: "IGN" },

@@ -33,7 +33,7 @@ if (-not $Apply) {
 }
 
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$settings = New-ScheduledTaskSettingsSet -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -MultipleInstances IgnoreNew -StartWhenAvailable
+$settings = New-ScheduledTaskSettingsSet -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 3650) -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 for ($index = 0; $index -lt $lanes.Count; $index++) {
   $lane = $lanes[$index]
   $arguments = '"{0}" --repo-root "{1}" --node-exe "{2}" --worker-id "{3}" --kinds "{4}"' -f $hostScript, $RepoRoot, $nodeExe, $lane.Id, $lane.Kinds

@@ -17,6 +17,8 @@ test("content worker task installer is confirmation gated and restartable", () =
   assert.match(script, /Register-ScheduledTask/);
   assert.match(script, /Start-ScheduledTask/);
   assert.match(script, /-RestartCount 99/);
+  assert.match(script, /-AllowStartIfOnBatteries/);
+  assert.match(script, /-DontStopIfGoingOnBatteries/);
 });
 
 test("content worker tasks cover all non-publish lanes", () => {

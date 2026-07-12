@@ -141,6 +141,13 @@ async function fixture() {
           "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.",
         cover_frame: { headline: "SEA THIEVES CUSTOM SEAS" },
       },
+      instagram_reels: {
+        platform_variant_render: {
+          generated_at: "2026-07-12T18:23:05.218Z",
+          output_path: "output/variants/current-instagram.mp4",
+        },
+        variant_video_path: "output/variants/current-instagram.mp4",
+      },
     },
   });
   await fs.writeJson(path.join(artifactDir, "instagram_publish_pack.json"), {
@@ -148,6 +155,11 @@ async function fixture() {
     caption:
       "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.",
     cover_frame: { headline: "SEA THIEVES CUSTOM SEAS" },
+    platform_variant_render: {
+      generated_at: "2026-07-12T17:15:45.476Z",
+      output_path: "output/variants/stale-instagram.mp4",
+    },
+    variant_video_path: "output/variants/stale-instagram.mp4",
   });
   await fs.writeJson(path.join(artifactDir, "facebook_publish_pack.json"), {
     title: "Sea of Thieves Custom Seas Could Split Crews",
@@ -236,6 +248,14 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.match(candidate.manual_caption_path, /captions\.srt$/);
   assert.equal(candidate.platform_publish_manifest.outputs.youtube_shorts.title, "Sea of Thieves Custom Seas Could Split Crews");
   assert.equal(candidate.platform_publish_manifest.outputs.instagram_reels.title, "Sea of Thieves Custom Seas Could Split Crews");
+  assert.equal(
+    candidate.platform_publish_manifest.outputs.instagram_reels.platform_variant_render.generated_at,
+    "2026-07-12T18:23:05.218Z",
+  );
+  assert.equal(
+    candidate.platform_publish_manifest.outputs.instagram_reels.variant_video_path,
+    "output/variants/current-instagram.mp4",
+  );
   assert.equal(candidate.platform_publish_manifest.outputs.facebook_reels.description, "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.");
   assert.equal(candidate.platform_publish_manifest.publish_status, "GREEN");
   assert.equal(candidate.platform_publish_manifest.can_auto_publish, true);

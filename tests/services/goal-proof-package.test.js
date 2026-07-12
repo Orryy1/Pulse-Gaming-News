@@ -223,6 +223,8 @@ test("goal proof package gives DOOM Chain Spear a concrete combat title instead 
   assert.equal(youtube.title, "DOOM The Dark Ages Chain Spear Changes Combat Flow");
   assert.equal(instagram.title, "DOOM The Dark Ages Chain Spear Changes Combat Flow");
   assert.equal(facebook.title, "DOOM The Dark Ages Chain Spear Changes Combat Flow");
+  assert.equal(facebook.cover_frame.headline, instagram.cover_frame.headline);
+  assert.equal(facebook.cover_frame.subject, instagram.cover_frame.subject);
   assert.match(youtube.description, /^DOOM: The Dark Ages is turning Chain Spear movement/i);
   assert.match(instagram.caption, /^DOOM: The Dark Ages is turning Chain Spear movement/i);
   assert.match(facebook.page_caption, /^DOOM: The Dark Ages is turning Chain Spear movement/i);

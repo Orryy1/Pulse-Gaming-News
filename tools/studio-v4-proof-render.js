@@ -1968,6 +1968,7 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
         durationS: readableOverlayCardDurationS(headlineText, {
           minS: HEADLINE_OVERLAY_CARD_DURATION_S,
         }),
+        presentationMode: "compact_headline_overlay",
       });
     }
     const proofPrimaryWindow = overlayWindow({

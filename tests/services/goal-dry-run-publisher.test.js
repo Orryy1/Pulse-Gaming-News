@@ -73,6 +73,27 @@ test("dry-run card dwell honours certified source and context window minima", ()
   assert.ok(!result.blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
 });
 
+test("dry-run card dwell treats the compact Studio V4 headline as a short overlay", () => {
+  const result = hyperframesReadableDwellEvidence({
+    renderManifest: {
+      hyperframes_card_count: 2,
+      card_visible_windows: [
+        {
+          id: "headline_card",
+          kind: "proof_card",
+          source: "studio_v4_overlay_chain",
+          presentation_mode: "compact_headline_overlay",
+          duration_s: 4.8,
+          text: "ELDER SCROLLS: FREE OR PAID?",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(result.evidence.rendered_too_fast_card_windows, []);
+  assert.ok(!result.blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+});
+
 function enabledCorePlatformsOnly() {
   return {
     youtube: { state: "enabled", reason: "core_upload_path" },
@@ -1326,8 +1347,8 @@ test("goal dry-run publisher checks overlay card dwell even when actual scene ca
             kind: "proof_card",
             text: "KENSHIRO ROSTER FIGHT",
             start_s: 2,
-            end_s: 6.2,
-            duration_s: 4.2,
+            end_s: 4.2,
+            duration_s: 2.2,
             source: "studio_v4_overlay_chain",
           },
         ],

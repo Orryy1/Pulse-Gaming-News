@@ -43,6 +43,189 @@ test("goal production render materializer preserves YouTube video IDs in source 
   );
 });
 
+test("goal production render materializer caps trailer windows when four roots can sustain premium motion", () => {
+  const clips = ["a", "b", "c", "d"].flatMap((root) =>
+    [0, 10, 20].map((start) => ({
+      id: `${root}-${start}`,
+      path: `output/video_cache/${root}-${start}.mp4`,
+      source_family: `steam-trailer:${root}_window_${start}_5`,
+      base_source_family: `steam-trailer:${root}_window_${start}_5`,
+      media_kind: "direct_video",
+    })),
+  );
+  const selected = _private.preferStrictDirectMotionBaseUniquenessWhenEnough(clips);
+  assert.equal(selected.length, 8);
+  const counts = new Map();
+  for (const clip of selected) {
+    const root = clip.id.split("-")[0];
+    counts.set(root, (counts.get(root) || 0) + 1);
+  }
+  assert.ok([...counts.values()].every((count) => count <= 2));
+});
+
+test("goal production render materializer completes rights for selected official storefront scenes", () => {
+  const ledger = [{
+    asset_id: "owned-card",
+    path: "output/generated/owned-card.mp4",
+    source_url: "local://owned-card",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+  }];
+  const clips = [
+    {
+      id: "steam-scene-1",
+      path: "output/video_cache/steam-scene-1.mp4",
+      source_url: "https://video.akamai.steamstatic.com/store_trailers/306130/123/master.m3u8",
+      source_type: "steam_movie",
+      source_family: "steam-trailer-1",
+      media_kind: "direct_video",
+    },
+    {
+      id: "owned-card",
+      path: "output/generated/owned-card.mp4",
+      source_url: "local://owned-card",
+      media_kind: "owned_editorial_motion_graphic",
+    },
+  ];
+
+  const completed = _private.augmentRightsLedgerForSelectedClips(ledger, clips);
+  assert.equal(completed.length, 2);
+  const steam = completed.find((record) => record.asset_id === "steam-scene-1");
+  assert.equal(steam.licence_basis, "steam_storefront_promotional_editorial_use");
+  assert.deepEqual(steam.allowed_platforms, ["youtube", "instagram", "facebook"]);
+  assert.equal(completed.filter((record) => record.asset_id === "owned-card").length, 1);
+});
+
+test("goal production render materializer treats Steam HLS and DASH delivery as one trailer root", () => {
+  const hls = {
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/306130/396046/hash/1750504333/hls_264_master.m3u8?t=1",
+    source_family: "steam_hls_window_42_5",
+    media_kind: "direct_video",
+  };
+  const dash = {
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/306130/396046/hash/1750504333/dash_h264.mpd?t=1",
+    source_family: "steam_dash_window_54_5",
+    media_kind: "direct_video",
+  };
+  assert.equal(
+    _private.strictDirectMotionBaseSourceKey(hls),
+    _private.strictDirectMotionBaseSourceKey(dash),
+  );
+});
+
+test("goal production render materializer tops eight direct clips with one non-readable kinetic bridge", () => {
+  const direct = Array.from({ length: 8 }, (_, index) => ({
+    id: `direct-${index}`,
+    path: `output/video_cache/direct-${index}.mp4`,
+    media_kind: "direct_video",
+  }));
+  const owned = [
+    {
+      id: "motion-background",
+      path: "output/generated-motion/story/motion-background.mp4",
+      media_kind: "owned_explainer_motion",
+      source_type: "internally_generated_motion_graphic",
+      source_kind: "owned_explainer_motion_surface",
+      durationS: 12,
+    },
+  ];
+  assert.equal(
+    _private.selectNonReadableOwnedExplainerTopUpForMotionBalance(owned, direct).length,
+    1,
+  );
+});
+
+test("goal production render materializer removes readable cards from primary clips and fills with kinetic bridges", () => {
+  const direct = Array.from({ length: 7 }, (_, index) => ({
+    id: `direct-${index}`,
+    path: `output/video_cache/direct-${index}.mp4`,
+    media_kind: "direct_video",
+  }));
+  const readable = {
+    id: "source-card",
+    path: "test/output/source-card.mp4",
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_source_card_explainer_motion",
+    readable_card_kind: "source",
+    approval_status: "approved_for_transformative_editorial_use",
+    owned_explainer_visual_plan: true,
+    durationS: 12,
+  };
+  const kinetic = ["background", "signal"].map((id) => ({
+    id,
+    path: `output/generated-motion/story/${id}.mp4`,
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_explainer_motion_surface",
+    approval_status: "approved_for_transformative_editorial_use",
+    owned_explainer_visual_plan: true,
+    durationS: 12,
+  }));
+  const selected = _private.premiumShellPrimaryClipsForRender(
+    [...direct, readable],
+    { clips: [...direct, readable, ...kinetic] },
+  );
+  assert.equal(selected.length, 9);
+  assert.equal(selected.includes(readable), false);
+  assert.equal(selected.filter((clip) => kinetic.includes(clip)).length, 2);
+});
+
+test("goal production render materializer clamps stale inventory floors to the selected final scene set", () => {
+  const clips = Array.from({ length: 10 }, (_, index) => ({
+    id: `clip-${index}`,
+    path: `output/video_cache/clip-${index}.mp4`,
+    source_family: `family-${index}`,
+    media_kind: "direct_video",
+  }));
+  const plan = _private.footagePlanForDirector({
+    footageInventory: {
+      motion_inventory: {
+        accepted_local_clips: Array.from({ length: 28 }, (_, index) => ({
+          path: `output/video_cache/stale-${index}.mp4`,
+          source_family: `stale-family-${index}`,
+        })),
+      },
+      motion_budget: {
+        required_motion_scenes: 28,
+        required_distinct_families: 28,
+      },
+    },
+    clips,
+  });
+  assert.equal(plan.motion_budget.required_motion_scenes, 10);
+  assert.equal(plan.motion_budget.required_distinct_families, 10);
+  assert.equal(plan.readiness.status, "ready");
+});
+
+test("goal production render materializer retries a locked Windows final before atomic promotion", async () => {
+  const calls = [];
+  let lockedAttempts = 0;
+  const files = new Set(["temp.mp4", "final.mp4"]);
+  const fsImpl = {
+    pathExists: async (file) => files.has(file),
+    rename: async (source, destination) => {
+      calls.push([source, destination]);
+      if (source === "final.mp4" && lockedAttempts++ < 1) {
+        const error = new Error("locked");
+        error.code = "EPERM";
+        throw error;
+      }
+      files.delete(source);
+      files.add(destination);
+    },
+    remove: async (file) => files.delete(file),
+  };
+  await _private.promoteRenderedOutputAtomically({
+    temporaryPath: "temp.mp4",
+    outputPath: "final.mp4",
+    fsImpl,
+    sleepImpl: async () => {},
+  });
+  assert.equal(files.has("final.mp4"), true);
+  assert.equal(files.has("temp.mp4"), false);
+  assert.ok(calls.filter(([source]) => source === "final.mp4").length >= 2);
+});
+
 test("goal production render materializer preserves distinct governed windows from one YouTube source", () => {
   const first = _private.clipBaseSourceKey({
     source_url: "https://www.youtube.com/watch?v=Bu6BPfCtKBQ",

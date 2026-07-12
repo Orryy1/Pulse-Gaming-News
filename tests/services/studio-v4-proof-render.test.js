@@ -1225,6 +1225,7 @@ test("Studio V4 proof renderer trims long HyperFrames card copy instead of holdi
 
   assert.match(byId.headline_card.text, /PREORDERS STILL NEED PRICE/);
   assert.equal(byId.headline_card.duration_s <= 5.8, true);
+  assert.equal(byId.headline_card.presentation_mode, "compact_headline_overlay");
   assert.equal(byId.proof_primary.duration_s <= 5.8, true);
   assert.equal(byId.proof_secondary.duration_s <= 5.8, true);
   assert.equal(byId.headline_card.start_s >= byId.opening_source_lock.end_s + 0.1, true);

@@ -2932,7 +2932,7 @@ test("goal batch package extracts current official subjects from source URLs bef
   assert.match(eso.full_script, /Tamriel Tome/i);
   assert.match(eso.full_script, /free path|paid tracks/i);
   assert.match(eso.public_title, /Thieves Guild|Reward Track/i);
-  assert.equal(eso.suggested_thumbnail_text, "FREE OR PAID?");
+  assert.equal(eso.suggested_thumbnail_text, "ELDER SCROLLS: FREE OR PAID?");
   assert.ok(eso.confirmed_claims.some((claim) => /eight new story quests/i.test(claim)));
 });
 

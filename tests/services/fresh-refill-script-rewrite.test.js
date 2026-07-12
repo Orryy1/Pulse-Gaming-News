@@ -43,7 +43,7 @@ test("fresh refill rewrite preserves a concrete ESO Season One argument", () => 
 
   assert.equal(script.verdict, "viral_ready");
   assert.equal(script.suggested_title, "The Elder Scrolls Online's Thieves Guild Has A Paid Catch");
-  assert.equal(script.suggested_thumbnail_text, "FREE OR PAID?");
+  assert.equal(script.suggested_thumbnail_text, "ELDER SCROLLS: FREE OR PAID?");
   assert.match(script.full_script, /^The Elder Scrolls Online just brought back the Thieves Guild, but its reward track has a paid catch\./);
   assert.match(script.full_script, /eight story quests/i);
   assert.match(script.full_script, /Tamriel Tome/i);
@@ -1137,6 +1137,9 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
 
   const coherence = await fs.readJson(path.join(artifactDir, "coherence_report.json"));
   assert.equal(coherence.result, "pass", JSON.stringify(coherence, null, 2));
+  assert.equal(coherence.story_id, manifest.story_id);
+  assert.equal(coherence.manifest.narration_script, manifest.narration_script);
+  assert.equal(coherence.repair_source, "fresh_refill_source_bound_viewer_rewrite");
 
   const platform = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
   assert.equal(platform.outputs.youtube_shorts.title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");

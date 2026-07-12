@@ -1,6 +1,6 @@
 # Longform Overnight Architecture Report
 
-Generated: 2026-05-08T09:10:24.926Z
+Generated: 2026-07-12T21:20:20.658Z
 Selected format: Weekly Roundup
 Status: insufficient_segments
 

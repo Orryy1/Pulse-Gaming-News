@@ -13,6 +13,7 @@ $logDir = Join-Path $RepoRoot "output/runtime"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "pulse-live-content-workers.log"
 $workerScript = Join-Path $RepoRoot "tools/local-sqlite-content-worker.js"
+$nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
 
 function Write-ContentWorkerLog {
   param([string]$Message)
@@ -86,8 +87,15 @@ foreach ($lane in $lanes) {
   }
 
   Write-ContentWorkerLog ("starting_worker id={0} kinds={1}" -f $workerId, $kinds)
-  Start-Process -FilePath "node.exe" `
-    -ArgumentList @($workerScript, "--worker-id", $workerId, "--kinds", $kinds) `
-    -WorkingDirectory $RepoRoot `
-    -WindowStyle Hidden | Out-Null
+  $commandLine = '"{0}" "{1}" --worker-id "{2}" --kinds "{3}"' -f $nodeExe, $workerScript, $workerId, $kinds
+  $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+    CommandLine = $commandLine
+    CurrentDirectory = $RepoRoot
+  }
+  if ([int]$created.ReturnValue -ne 0) {
+    $failure = "worker_launch_failed id={0} return_value={1}" -f $workerId, $created.ReturnValue
+    Write-ContentWorkerLog $failure
+    throw $failure
+  }
+  Write-ContentWorkerLog ("worker_started id={0} pid={1}" -f $workerId, $created.ProcessId)
 }

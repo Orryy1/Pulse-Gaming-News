@@ -21,8 +21,10 @@ test("local live content worker launcher starts durable non-publish worker lanes
   }
 
   assert.match(script, /tools\/local-sqlite-content-worker\.js/);
-  assert.match(script, /Start-Process/);
-  assert.match(script, /-WindowStyle Hidden/);
+  assert.match(script, /Invoke-CimMethod -ClassName Win32_Process -MethodName Create/);
+  assert.match(script, /CurrentDirectory = \$RepoRoot/);
+  assert.match(script, /worker_launch_failed/);
+  assert.doesNotMatch(script, /Start-Process/);
 });
 
 test("local live content worker launcher does not include publish or credential jobs", () => {

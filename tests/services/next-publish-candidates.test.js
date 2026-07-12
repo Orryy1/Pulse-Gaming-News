@@ -8567,6 +8567,14 @@ test("runPreflightQaForStory trusts clean final scene-plan motion over stale emb
     final_publish_render: true,
     rendered_duration_s: 39,
     clips: 6,
+    card_visible_windows: [
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
+      { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
+    ],
+    overlay_card_windows: [
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
+      { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
+    ],
     clip_scene_plan: {
       repeat_free: true,
       blockers: [],

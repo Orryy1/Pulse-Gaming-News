@@ -22,14 +22,16 @@ const {
   shellSidecarPathForCard,
 } = require("../lib/studio/v2/premium-card-lane-v2");
 const {
+  READABLE_CARD_TIMING,
   SOURCE_CARD_TIMING,
+  cardTimingContract,
 } = require("../lib/studio/v4/premium-card-timing-policy");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 const DEFAULT_CHANNEL = "pulse-gaming";
-const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = 5.2;
-const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = 14;
+const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = READABLE_CARD_TIMING.minimum_visible_duration_s;
+const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = READABLE_CARD_TIMING.maximum_visible_duration_s;
 
 const CARD_KINDS = [
   "source",
@@ -120,23 +122,6 @@ function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
   });
 }
 
-function readableDurationRequiredS(text) {
-  const clean = normaliseText(text);
-  if (!clean) return MIN_READABLE_HYPERFRAMES_CARD_DURATION_S;
-  const words = clean.split(/\s+/).filter(Boolean).length;
-  const longTokenPenalty = /\b[A-Z0-9]{6,}\b/.test(clean) ? 0.5 : 0;
-  const computed = Math.max(
-    MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
-    1.15 * words + 1.5 + longTokenPenalty,
-  );
-  return Number(
-    Math.min(
-      MAX_READABLE_HYPERFRAMES_CARD_DURATION_S,
-      Math.ceil(computed * 10) / 10,
-    ).toFixed(1),
-  );
-}
-
 function cardTextForReadability(kind, spec = {}) {
   if (kind === "source") return [spec.label, spec.sublabel].filter(Boolean).join(" ");
   if (kind === "context") return [spec.number, spec.sub, spec.micro].filter(Boolean).join(" ");
@@ -158,16 +143,13 @@ function cardTextForReadability(kind, spec = {}) {
 
 function hyperframesCardReadabilityContractForSpec(kind, spec = {}) {
   const readableText = normaliseText(cardTextForReadability(kind, spec));
-  const isSource = kind === "source";
+  const timing = cardTimingContract(kind, readableText);
+  const isSource = timing.kind === "source";
   const minimum = isSource
-    ? SOURCE_CARD_TIMING.minimum_visible_duration_s
-    : readableDurationRequiredS(readableText);
-  const planned = isSource
-    ? SOURCE_CARD_TIMING.planned_visible_duration_s
-    : minimum;
-  const maximum = isSource
-    ? SOURCE_CARD_TIMING.maximum_visible_duration_s
-    : MAX_READABLE_HYPERFRAMES_CARD_DURATION_S;
+    ? timing.minimum_visible_duration_s
+    : timing.planned_visible_duration_s;
+  const planned = timing.planned_visible_duration_s;
+  const maximum = timing.maximum_visible_duration_s;
   return {
     status: "pass",
     evidence: {
@@ -694,13 +676,12 @@ function readableTextFromProjectHtml(kind, html = "") {
 function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
   const readableText = readableTextFromProjectHtml(kind, html);
   const planned = htmlDataDurationS(html);
-  const isSource = kind === "source";
+  const timing = cardTimingContract(kind, readableText);
+  const isSource = timing.kind === "source";
   const minimum = isSource
-    ? SOURCE_CARD_TIMING.minimum_visible_duration_s
-    : readableDurationRequiredS(readableText);
-  const maximum = isSource
-    ? SOURCE_CARD_TIMING.maximum_visible_duration_s
-    : MAX_READABLE_HYPERFRAMES_CARD_DURATION_S;
+    ? timing.minimum_visible_duration_s
+    : timing.planned_visible_duration_s;
+  const maximum = timing.maximum_visible_duration_s;
   const blockers = [];
   if (planned == null) blockers.push("hyperframes_card_duration_missing");
   else if (planned + 0.001 < minimum) blockers.push("hyperframes_card_visible_dwell_too_short");

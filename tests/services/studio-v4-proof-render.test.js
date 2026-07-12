@@ -809,8 +809,8 @@ test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly"
 
   assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
   assert.equal(plan.cardVisibleWindows[0].kind, "source");
-  assert.equal(plan.cardVisibleWindows[0].duration_s, 1.6);
-  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 1.6);
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 2.2);
+  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.2);
 });
 
 test("Studio V4 proof renderer treats rounded readable card equality as pass", () => {
@@ -1199,12 +1199,12 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 1.6],
+      ["opening_source_lock", "source_lock", 2.2],
       ["proof_primary", "proof_card", 2.6],
       ["proof_secondary", "proof_card", 2.6],
     ],
   );
-  assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 2.6)));
+  assert.ok(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.9 : 2.6)));
   assert.ok(windows.every((window) => window.duration_s <= 4.2));
   assert.deepEqual(
     windows.filter((window) => window.id.startsWith("proof_")).map((window) => window.presentation_mode),
@@ -2394,7 +2394,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,1\.6\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,2\.2\)'/);
   assert.match(chain, /0x38BDF8@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });

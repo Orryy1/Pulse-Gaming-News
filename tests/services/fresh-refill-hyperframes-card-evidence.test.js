@@ -16,7 +16,7 @@ function cardPath(storyId, kind) {
   return path.join(ROOT, "test", "output", `hf_${kind}_card_${storyId}.mp4`);
 }
 
-async function writePassingCard(storyId, kind, visibleDurationS = 6.6) {
+async function writePassingCard(storyId, kind, visibleDurationS = 4.1) {
   const mp4Path = cardPath(storyId, kind);
   await fs.ensureDir(path.dirname(mp4Path));
   await fs.writeFile(mp4Path, `card:${storyId}:${kind}`);
@@ -36,8 +36,8 @@ async function writePassingCard(storyId, kind, visibleDurationS = 6.6) {
             word_count: 4,
             planned_visible_duration_s: visibleDurationS,
             minimum_visible_duration_s: visibleDurationS,
-            min_readable_card_duration_s: 5.2,
-            max_readable_card_duration_s: 14,
+            min_readable_card_duration_s: 3.6,
+            max_readable_card_duration_s: 6.4,
           },
         },
       },
@@ -50,7 +50,7 @@ test("fresh-refill HyperFrames evidence accepts canonical readable short-card dw
   const storyId = `fresh-refill-readable-${Date.now()}`;
   try {
     for (const kind of CARD_KINDS) {
-      await writePassingCard(storyId, kind, kind === "timeline" ? 7.3 : 6.6);
+      await writePassingCard(storyId, kind, kind === "timeline" ? 4.3 : 4.1);
     }
 
     const result = await collectFreshRefillHyperframesCardStoryEvidence({

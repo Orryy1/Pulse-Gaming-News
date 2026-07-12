@@ -54,7 +54,7 @@ test("story-specific HyperFrames shell evidence counts chained GSAP timeline ste
   assert.equal(countTimelineAnimationSteps(html), 4);
 });
 
-test("story-specific HyperFrames cards stretch long copy to readable dwell", () => {
+test("story-specific HyperFrames cards cap dense copy at a momentum-friendly readable dwell", () => {
   const templateHtml = fs.readFileSync(
     path.join(__dirname, "..", "..", "experiments", "hf-timeline", "index.html"),
     "utf8",
@@ -73,8 +73,8 @@ test("story-specific HyperFrames cards stretch long copy to readable dwell", () 
   const html = applySpecToTemplate("timeline", templateHtml, spec, "pulse-gaming");
 
   assert.equal(contract.status, "pass");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 14);
-  assert.match(html, /data-duration="14\.0"/);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 6.4);
+  assert.match(html, /data-duration="6\.4"/);
 });
 
 test("story-specific HyperFrames cards keep short source cards momentum-friendly", () => {
@@ -88,10 +88,10 @@ test("story-specific HyperFrames cards keep short source cards momentum-friendly
 
   assert.equal(contract.status, "pass");
   assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 1.4);
-  assert.equal(contract.evidence.planned_visible_duration_s, 1.6);
-  assert.equal(contract.evidence.maximum_visible_duration_s, 2.2);
-  assert.equal(contract.evidence.min_readable_card_duration_s, 1.4);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 1.6);
+  assert.equal(contract.evidence.planned_visible_duration_s, 2.2);
+  assert.equal(contract.evidence.maximum_visible_duration_s, 2.8);
+  assert.equal(contract.evidence.min_readable_card_duration_s, 1.6);
 });
 
 test("story-specific HyperFrames source card preserves PlayStation source labels", () => {

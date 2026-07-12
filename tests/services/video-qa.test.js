@@ -267,6 +267,23 @@ test("classifyVideoQa blocks choppy renders with mid black and freeze debt", () 
   );
 });
 
+test("classifyVideoQa does not add isolated editorial micro-holds into cumulative freeze debt", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 48.2,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: Array.from({ length: 9 }, (_, index) => ({
+      start: 4 + index * 4.5,
+      end: 4.3 + index * 4.5,
+      duration: 0.3,
+    })),
+  });
+
+  assert.strictEqual(r.result, "pass");
+  assert.ok(!r.failures.some((failure) => failure.startsWith("cumulative_freeze_too_high")));
+});
+
 test("classifyVideoQa: short duration AND long black → both failures captured", () => {
   const r = classifyVideoQa({
     durationSeconds: 15,

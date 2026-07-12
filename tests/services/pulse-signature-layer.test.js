@@ -57,7 +57,7 @@ test("Studio V4 output carries the Pulse signature from opening through outro", 
   const opening = overlayCardWindowsForStory(story, { durationS })
     .find((window) => window.id === "opening_source_lock");
 
-  assert.ok(opening.duration_s <= 1.8);
+  assert.ok(opening.duration_s <= 2.8);
   assert.match(chain, /PULSE \/\/ GAMING/);
   assert.match(chain, /PULSE \/\/ PLATFORM/);
   assert.match(chain, /PULSE PROOF/);

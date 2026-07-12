@@ -390,14 +390,16 @@ function resolveTtsVoiceIdForProvider(provider, env = process.env, brandConfig =
 }
 
 // --- Clean text for TTS - shared logic ---
-function cleanForTTS(raw) {
+function cleanForTTS(raw, options = {}) {
   // 2026-04-30 fix (Discord report): narrator pronounced "AAA" as
   // letters "A. A. A." rather than industry-standard "Triple A".
   // Apply gaming-specific pronunciation rewrites BEFORE the other
   // transforms so subsequent regex passes see the already-rewritten
   // text (e.g. so the abbreviation-stripper doesn't trip on "Triple A").
   const normalised = normaliseText(raw || "");
-  const pre = applyGamingPronunciation(normalised);
+  const pre = applyGamingPronunciation(normalised, {
+    protectedTitles: options.protectedTitles,
+  });
   const cleaned = pre
       // 2026-04-19 fix (precedes the other transforms): paragraph /
       // line separators (U+2028, U+2029) must become real spaces BEFORE
@@ -443,10 +445,6 @@ function cleanForTTS(raw) {
       .replace(/\bGTA\s*V\b/gi, "Grand Theft Auto five")
       .replace(/\bGTA\s*5\b/gi, "Grand Theft Auto five")
       .replace(/\bGTA\b/g, "Grand Theft Auto")
-      .replace(
-        /\b((?:[A-Z0-9][\p{L}\p{M}\p{N}'-]*|The|A|An|Of|And|For|With)(?:\s+(?:[A-Z0-9][\p{L}\p{M}\p{N}'-]*|The|A|An|Of|And|For|With)){0,5})\s*:\s*((?:[A-Z0-9][\p{L}\p{M}\p{N}'-]*|The|A|An|Of|And|For|With)(?:\s+(?:[A-Z0-9][\p{L}\p{M}\p{N}'-]*|The|A|An|Of|And|For|With)){0,5})\b/gu,
-        "$1 $2",
-      )
       .replace(/\bDune\s*:\s*Awakening\b/gi, "Dune Awakening")
       .replace(/([a-z0-9])\s*:\s*([a-z])/g, "$1 $2")
       // Compound hyphenated words: join with space, no dash (prevents TTS pauses)

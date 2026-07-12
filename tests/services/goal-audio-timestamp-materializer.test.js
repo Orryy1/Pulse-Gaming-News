@@ -439,6 +439,45 @@ test("goal audio materializer force-regenerates a workbench ready pair", async (
   assert.equal(report.jobs[0].provider, "elevenlabs");
 });
 
+test("goal audio materializer reads the canonical game as one continuous spoken title", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-canonical-title-"));
+  const artifactDir = await makePackage(root, "story-canonical-title", {
+    selected_title: "eFootball Ranked Mode Just Changed",
+    canonical_game: "eFootball: kick off",
+    narration_script:
+      "eFootball: kick off just changed its ranked mode. Source: Konami confirmed it.",
+    tts_script:
+      "eFootball: kick off just changed its ranked mode. Source: Konami confirmed it.",
+  });
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    workbenchReport: {
+      elevenlabs_tts: { provider: "elevenlabs", ready: true, configured: true },
+      jobs: [workbenchJob("story-canonical-title", artifactDir)],
+    },
+    generatedAt: "2026-07-12T14:10:00.000Z",
+    generateTtsForStory: async ({ story, text, outputPath }) => {
+      calls.push({ story, text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].text,
+    "eFootball kick off just changed its ranked mode. Source: Konami confirmed it.",
+  );
+  assert.equal(calls[0].story.tts_script, calls[0].text);
+});
+
 test("goal audio materializer stores safe spoken text as primary timestamp text", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-safe-primary-text-"));
   const displayScript = "GTA VI just turned cover art into a buying argument.";

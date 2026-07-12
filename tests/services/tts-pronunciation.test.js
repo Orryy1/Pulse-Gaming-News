@@ -327,6 +327,16 @@ test("two-part colon game titles lose the TTS pause without flattening source la
   );
 });
 
+test("canonical game titles lose spoken punctuation without changing surrounding prose", () => {
+  assert.equal(
+    applyGamingPronunciation(
+      "eFootball: kick off just changed its ranked mode. Source: Konami confirmed it.",
+      { protectedTitles: ["eFootball: kick off"] },
+    ),
+    "eFootball kick off just changed its ranked mode. Source: Konami confirmed it.",
+  );
+});
+
 test("PlayStation hardware acronyms expand for local narration clarity", () => {
   assert.equal(
     applyGamingPronunciation("PS5 prices changed and PS5 Pro moved too."),

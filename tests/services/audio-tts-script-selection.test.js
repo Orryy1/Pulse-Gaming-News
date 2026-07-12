@@ -294,6 +294,30 @@ test("cleanForTTS: removes title-colon pauses inside canonical game names", () =
   );
 });
 
+test("cleanForTTS: reads protected game titles continuously regardless of punctuation or lowercase words", () => {
+  assert.equal(
+    cleanForTTS(
+      "eFootball: kick off has a new update. Source: Konami confirmed it.",
+      { protectedTitles: ["eFootball: kick off"] },
+    ),
+    "eFootball kick off has a new update. Source: Konami confirmed it.",
+  );
+  assert.equal(
+    cleanForTTS(
+      "Star Wars Outlaws: A Pirate's Fortune changes the ending.",
+      { protectedTitles: ["Star Wars Outlaws: A Pirate's Fortune"] },
+    ),
+    "Star Wars Outlaws A Pirate's Fortune changes the ending.",
+  );
+  assert.equal(
+    cleanForTTS(
+      "Pokémon Legends: Z-A is the full game title.",
+      { protectedTitles: ["Pokémon Legends: Z-A"] },
+    ),
+    "Pokémon Legends Z A is the full game title.",
+  );
+});
+
 test("cleanForTTS: removes hyphen pause from Gears of War E-Day while keeping the title together", () => {
   assert.equal(
     cleanForTTS("Gears of War E-Day finally has new footage."),

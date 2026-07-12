@@ -567,6 +567,36 @@ test("local restart readiness is green for the approved queue runtime flags", as
   assert.equal(report.expected_runtime.dispatch_mode, "queue");
 });
 
+test("local restart readiness keeps a transient localhost timeout non-red when the public tunnel proves the current local primary", async () => {
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/test",
+    },
+    localHealth: { ok: false, status: null, json: null, error: "timeout" },
+    publicHealth: healthy("abcdef1234567890"),
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.doesNotMatch(report.blockers.join("; "), /localhost \/api\/health/);
+  assert.match(report.warnings.join("; "), /localhost health timed out/i);
+});
+
 test("local restart readiness is green when build, health, cadence and gates are clean", async () => {
   const report = await buildLocalRestartReadiness({
     cwd: ROOT,

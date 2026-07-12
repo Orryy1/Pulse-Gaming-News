@@ -12,8 +12,8 @@ if ($Apply -and -not $OperatorConfirmed) {
   throw "Refusing to install content worker tasks without -OperatorConfirmed."
 }
 
-$wscriptExe = "$env:SystemRoot/System32/wscript.exe"
-$hostScript = Join-Path $RepoRoot "tools/local-content-workers-host.vbs"
+$nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
+$workerScript = Join-Path $RepoRoot "tools/local-sqlite-content-worker.js"
 $lanes = @(
   @{ Task = "PulseGaming-Content-Runway"; Id = "local-content-runway"; Kinds = "candidate_supply_monitor,fresh_production_refill" },
   @{ Task = "PulseGaming-Content-Repair"; Id = "local-content-repair"; Kinds = "fresh_review_script_repair,safe_auto_repair_runner,local_tts_doctor,local_tts_retry_recovery" },
@@ -38,8 +38,13 @@ for ($index = 0; $index -lt $lanes.Count; $index++) {
 $taskName = "PulseGaming-Content-Host"
 Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-$action = New-ScheduledTaskAction -Execute $wscriptExe -Argument ('"{0}"' -f $hostScript) -WorkingDirectory $RepoRoot
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Pulse Gaming non-publish content workers" -Force | Out-Null
-Start-ScheduledTask -TaskName $taskName
-foreach ($item in $plan) { $item.applied = $true; $item.started = $true }
+for ($index = 0; $index -lt $lanes.Count; $index++) {
+  $lane = $lanes[$index]
+  $arguments = ('"{0}" --worker-id "{1}" --kinds "{2}"' -f $workerScript, $lane.Id, $lane.Kinds)
+  $action = New-ScheduledTaskAction -Execute $nodeExe -Argument $arguments -WorkingDirectory $RepoRoot
+  Register-ScheduledTask -TaskName $lane.Task -Action $action -Trigger $trigger -Settings $settings -Description ("Pulse Gaming non-publish worker: {0}" -f $lane.Id) -Force | Out-Null
+  Start-ScheduledTask -TaskName $lane.Task
+  $plan[$index].applied = $true
+  $plan[$index].started = $true
+}
 $plan | ConvertTo-Json -Depth 4

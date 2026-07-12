@@ -31,9 +31,12 @@ test("content worker tasks cover all non-publish lanes", () => {
     assert.match(script, new RegExp(`PulseGaming-Content-${lane}`, "i"));
   }
   assert.match(host, /local-live-content-workers\.ps1/);
+  assert.match(script, /local-sqlite-content-worker\.js/);
+  assert.match(script, /Get-Command "node\.exe"/);
+  assert.match(script, /Register-ScheduledTask -TaskName \$lane\.Task/);
+  assert.match(script, /--worker-id/);
+  assert.match(script, /--kinds/);
   assert.match(script, /PulseGaming-Content-Host/);
-  assert.match(script, /local-content-workers-host\.vbs/);
-  assert.match(script, /wscript\.exe/);
   assert.match(host, /Start-Sleep -Seconds 15/);
   assert.doesNotMatch(`${script}\n${host}`, /publish_window_watchdog|instagram_token_refresh|tiktok_auth_check/);
 });

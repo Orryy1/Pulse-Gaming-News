@@ -274,6 +274,105 @@ test("guarded dispatch preflight accepts autonomous GREEN dry-run actions withou
   assert.equal(report.guarded_dispatch_plan.live_publish_allowed_from_this_tool, false);
 });
 
+test("guarded dispatch preflight preserves governed Facebook metadata from autonomous strict dry-run actions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-facebook-copy-"));
+  const media = await makeMedia(root);
+  const nativeMetadata = {
+    description: "Facebook description from the governed platform manifest.",
+    caption: "Facebook caption from the governed platform manifest.",
+    page_caption: "Facebook page caption from the governed platform manifest. More context: /p/forza",
+    cover_headline: "FORZA PC BET TEST",
+    landing_page_slug: "/p/forza",
+    disclosure_requirements: { affiliate: false, source_attribution: true },
+  };
+  const dryRunAction = {
+    story_id: "story-one",
+    platform: "facebook_reels",
+    action: "would_publish",
+    title: "Forza Horizon 6 Exposes Xbox's Steam Bet",
+    video_path: media.videoPath,
+    captions_path: media.captionsPath,
+    cover_frame_source: media.videoPath,
+    canonical_manifest_path: media.canonicalPath,
+    platform_publish_manifest_path: media.platformManifestPath,
+    ...nativeMetadata,
+    platform_enabled: true,
+    live_publish_allowed_from_dry_run: false,
+    requires_human_review_before_live_publish: false,
+    live_execution_gate: "guarded_dispatch_ready",
+    autonomous_green_lit_by_dry_run: true,
+    requires_guarded_dispatch_command: true,
+    requires_enabled_platform_recheck: true,
+    blockers: [],
+    warnings: [],
+  };
+  const matrix = platformStatusMatrix();
+  matrix.platforms.facebook_reels = {
+    platform: "facebook_reels",
+    status: "ready_now",
+    operational_state: "enabled",
+    blocked_action_count: 0,
+    deferred_action_count: 0,
+    planned_story_ids: ["story-one"],
+  };
+
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media, []),
+    strictDryRunPlan: {
+      ...strictDryRunPlan(media, []),
+      actions: [dryRunAction],
+    },
+    platformStatusMatrix: matrix,
+    transcriptAudienceReport: transcriptAudienceReport(),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.autonomous_dry_run_action_count, 1);
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(nativeMetadata).map((field) => [field, report.dispatch_ready_actions[0][field]])),
+    nativeMetadata,
+  );
+  assert.deepEqual(report.guarded_dispatch_plan.dispatch_ready_actions[0], report.dispatch_ready_actions[0]);
+});
+
+test("guarded dispatch preflight restores governed Facebook metadata onto operator-approved actions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-approved-facebook-copy-"));
+  const media = await makeMedia(root);
+  const approved = approvedAction(media, { platform: "facebook_reels" });
+  const nativeMetadata = {
+    description: "Current strict dry-run Facebook description.",
+    caption: "Current strict dry-run Facebook caption.",
+    page_caption: "Current strict dry-run Facebook page caption. More context: /p/forza",
+    cover_headline: "FORZA PC BET TEST",
+    landing_page_slug: "/p/forza",
+    disclosure_requirements: { affiliate: false, source_attribution: true },
+  };
+  const strictPlan = strictDryRunPlan(media, [approved]);
+  Object.assign(strictPlan.actions[0], nativeMetadata);
+  const matrix = platformStatusMatrix();
+  matrix.platforms.facebook_reels = {
+    platform: "facebook_reels",
+    status: "ready_now",
+    operational_state: "enabled",
+    blocked_action_count: 0,
+    deferred_action_count: 0,
+    planned_story_ids: ["story-one"],
+  };
+
+  const report = buildGuardedDispatchPreflight({
+    approvalGateReport: approvalGateReport(media, [approved]),
+    strictDryRunPlan: strictPlan,
+    platformStatusMatrix: matrix,
+    transcriptAudienceReport: transcriptAudienceReport(),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(nativeMetadata).map((field) => [field, report.dispatch_ready_actions[0][field]])),
+    nativeMetadata,
+  );
+});
+
 test("guarded dispatch preflight holds rewrite-required transcript audience rows", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-dispatch-transcript-"));
   const media = await makeMedia(root);

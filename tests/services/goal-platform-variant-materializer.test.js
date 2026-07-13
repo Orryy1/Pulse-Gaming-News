@@ -191,6 +191,40 @@ test("platform variant materializer creates Instagram-safe variants for in-windo
   assert.equal(youtube.variant_video_path, undefined);
 });
 
+test("platform variant materializer creates Facebook-safe variants before the publish window", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-facebook-safe-"));
+  const storyPackage = await makePackage(root, "facebook-in-window", 42.4);
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.facebook_reels = {
+    publish_duration_seconds: { min: 15, max: 90 },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+  const rendered = [];
+
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-13T08:30:00.000Z",
+    variantRenderer: async ({ outputPath, platform, targetDurationS }) => {
+      rendered.push({ outputPath, platform, targetDurationS });
+      await fs.outputFile(outputPath, Buffer.alloc(2200, 2));
+    },
+    probeDuration: async () => 42.4,
+  });
+
+  assert.equal(report.summary.failed_count, 0);
+  assert.ok(rendered.some((item) => item.platform === "facebook_reels"));
+  const updated = await fs.readJson(manifestPath);
+  assert.match(
+    updated.outputs.facebook_reels.variant_video_path,
+    /visual_v4_render_facebook_reels\.mp4$/,
+  );
+  assert.equal(
+    updated.outputs.facebook_reels.platform_variant_render.encoder_profile,
+    "facebook_reels_meta_safe_h264_aac_v1",
+  );
+});
+
 test("platform variant materializer refreshes stale in-window platform variants", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-stale-variant-"));
   const storyPackage = await makePackage(root, "ig-stale-variant", 40.333);
@@ -335,5 +369,23 @@ test("platform variant materializer uses conservative Instagram Reels encoding a
   assert.ok(args.includes("-ac"));
   assert.equal(args[args.indexOf("-ac") + 1], "2");
   assert.ok(args.includes("-movflags"));
+  assert.equal(args[args.indexOf("-movflags") + 1], "+faststart");
+});
+
+test("platform variant materializer uses Meta-native Facebook Reels encoding args", () => {
+  const args = buildPlatformVariantFfmpegArgs({
+    inputPath: "input.mp4",
+    outputPath: "facebook.mp4",
+    targetDurationS: 48.2,
+    platform: "facebook_reels",
+  });
+
+  assert.deepEqual(args.slice(0, 5), ["-y", "-i", "input.mp4", "-t", "48.2"]);
+  assert.equal(args[args.indexOf("-preset") + 1], "slow");
+  assert.equal(args[args.indexOf("-crf") + 1], "18");
+  assert.equal(args[args.indexOf("-maxrate") + 1], "10M");
+  assert.equal(args[args.indexOf("-r") + 1], "30");
+  assert.equal(args[args.indexOf("-ar") + 1], "44100");
+  assert.equal(args[args.indexOf("-ac") + 1], "2");
   assert.equal(args[args.indexOf("-movflags") + 1], "+faststart");
 });

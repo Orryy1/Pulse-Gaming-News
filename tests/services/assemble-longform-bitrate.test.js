@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  longformAudioCodecArgs,
   longformSegmentDuration,
   longformVideoCodecArgs,
 } = require("../../assemble_longform");
@@ -15,6 +16,15 @@ test("longform assembler targets enough video bitrate for the longform quality g
   assert.match(args, /-b:v 3500k/);
   assert.match(args, /-maxrate 5000k/);
   assert.match(args, /-bufsize 7000k/);
+});
+
+test("longform assembler exports premium 48 kHz stereo audio", () => {
+  const args = longformAudioCodecArgs();
+
+  assert.match(args, /-c:a aac/);
+  assert.match(args, /-b:a 192k/);
+  assert.match(args, /-ar 48000/);
+  assert.match(args, /-ac 2/);
 });
 
 test("longform assembler fits all story segments into the actual audio duration", () => {

@@ -22,10 +22,13 @@ test("Meta binary upload timeout scales with file size", () => {
 
 test("Meta reel uploaders stream media and use the shared adaptive timeout", () => {
   const root = path.resolve(__dirname, "..", "..");
-  for (const filename of ["upload_facebook.js", "upload_instagram.js"]) {
+  for (const [filename, expectedStream] of [
+    ["upload_facebook.js", /fs\.createReadStream\(delivery\.path\)/],
+    ["upload_instagram.js", /fs\.createReadStream\(exportedAbs\)/],
+  ]) {
     const source = fs.readFileSync(path.join(root, filename), "utf8");
     assert.match(source, /metaBinaryUploadTimeoutMs/);
-    assert.match(source, /fs\.createReadStream\(exportedAbs\)/);
+    assert.match(source, expectedStream);
     assert.doesNotMatch(source, /data:\s*videoBuffer/);
     assert.doesNotMatch(source, /timeout:\s*120000/);
   }

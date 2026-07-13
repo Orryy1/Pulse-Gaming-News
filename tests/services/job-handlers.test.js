@@ -9,9 +9,11 @@ const {
   freshRefillHyperframesStoryIdsAfterMotion,
   freshRefillMaterializedAudioStoryIdsFromReport,
   freshRefillNarrationProviderPreference,
+  freshRefillPlatformVariantChildArgs,
   guardedPublishFailureMessage,
   guardedPublishResultShouldFailJob,
   readGuardedLiveExecutorPlanForScheduler,
+  renderGuardedLiveDispatchSummary,
 } = require("../../lib/job-handlers");
 
 const fs = require("fs-extra");
@@ -86,6 +88,35 @@ test("guarded publish failure message includes a safe platform error detail", ()
   assert.doesNotMatch(message, /abc123/);
 });
 
+test("guarded Discord summary separates upload attempts from successes and includes safe Meta diagnostics", () => {
+  const summary = renderGuardedLiveDispatchSummary({
+    verdict: "RED",
+    summary: {
+      upload_attempt_count: 1,
+      upload_success_count: 0,
+      network_attempt_count: 1,
+      db_mutation_count: 1,
+    },
+    actions: [
+      {
+        action_id: "story-1:facebook_reels",
+        outcome: "failed",
+        error: "Facebook Graph reel_binary_upload failed: HTTP 400 code=352 access_token=secret-token",
+      },
+    ],
+  }, {
+    jobId: 123,
+    actionId: "story-1:facebook_reels",
+  });
+
+  assert.match(summary.message, /Attempts:\s+1/);
+  assert.match(summary.message, /Uploads:\s+0/);
+  assert.match(summary.message, /Network:\s+1/);
+  assert.match(summary.message, /Error:\s+Facebook Graph reel_binary_upload failed: HTTP 400 code=352/);
+  assert.doesNotMatch(summary.message, /secret-token/);
+  assert.match(summary.message, /access_token=<redacted>/);
+});
+
 test("fresh refill narration provider stays local unless ElevenLabs is explicitly enabled", () => {
   assert.equal(freshRefillNarrationProviderPreference({ payload: {}, env: {} }), "local");
   assert.equal(
@@ -101,6 +132,23 @@ test("fresh refill narration provider stays local unless ElevenLabs is explicitl
       env: { PULSE_FRESH_REFILL_ALLOW_ELEVENLABS_TTS: "true" },
     }),
     "elevenlabs",
+  );
+});
+
+test("fresh refill prepares platform-native delivery variants before scheduler preflight", () => {
+  assert.deepEqual(
+    freshRefillPlatformVariantChildArgs({
+      storyPackagesPath: "output/refill/story-packages.json",
+      outputDir: "output/refill/continuation",
+    }),
+    [
+      "tools/goal-platform-variant-materializer.js",
+      "--story-packages",
+      "output/refill/story-packages.json",
+      "--out-dir",
+      "output/refill/continuation",
+      "--json",
+    ],
   );
 });
 

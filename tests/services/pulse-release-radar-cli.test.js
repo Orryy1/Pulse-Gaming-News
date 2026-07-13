@@ -11,11 +11,18 @@ const {
   buildReleaseRadarLongformEvidence,
   buildReleaseRadarLongformQualityReport,
   buildReleaseRadarMotionQa,
+  blackEventsPass,
   buildActualReleaseRadarChapters,
+  applyCandidateExclusions,
   imageCandidatesForSegment,
   motionSourceUrlsForSegment,
   motionClipStarts,
+  motionClipStartCandidates,
+  releaseRadarRenderBlockers,
+  buildReleaseRadarAudioManifest,
+  releaseRadarAudioManifestMatches,
   shouldUploadReleaseRadarLongform,
+  cleanTtsText,
   writePulseReleaseRadarArtifacts,
   parseArgs,
   youtubeVideoId,
@@ -222,6 +229,33 @@ test("Pulse Release Radar motion QA blocks still-led longform packages", () => {
   assert.ok(fail.blockers.includes("motion_clip_coverage_incomplete"));
 });
 
+test("Pulse Release Radar refuses to render an incomplete candidate pack", () => {
+  const blocked = require("../../lib/formats/pulse-release-radar").buildPulseReleaseRadarPack({
+    monthLabel: "August 2026",
+    candidates: [candidate(1)],
+  });
+  const ready = require("../../lib/formats/pulse-release-radar").buildPulseReleaseRadarPack({
+    monthLabel: "July 2026",
+    candidates: Array.from({ length: 10 }, (_, index) => candidate(index + 1)),
+  });
+
+  assert.ok(releaseRadarRenderBlockers(blocked).includes("insufficient_ready_candidates"));
+  assert.deepEqual(releaseRadarRenderBlockers(ready), []);
+});
+
+test("Pulse Release Radar can replace a motion-blocked top-ten entry with a verified reserve", () => {
+  const input = {
+    month_label: "August 2026",
+    candidates: Array.from({ length: 12 }, (_, index) => candidate(index + 1)),
+  };
+
+  const filtered = applyCandidateExclusions(input, ["release-05"]);
+
+  assert.equal(filtered.candidates.length, 11);
+  assert.ok(!filtered.candidates.some((item) => item.id === "release-05"));
+  assert.equal(filtered.excluded_candidate_ids[0], "release-05");
+});
+
 test("Pulse Release Radar keeps fallback motion sources for longform acquisition", () => {
   const urls = motionSourceUrlsForSegment({
     official_motion: { trailer_url: "https://official.example/short-teaser" },
@@ -237,4 +271,50 @@ test("Pulse Release Radar keeps fallback motion sources for longform acquisition
     "https://store.steampowered.com/app/123456/Real_Game/",
     "https://www.youtube.com/watch?v=usableOfficialTrailer",
   ]);
+});
+
+test("Pulse Release Radar tries bounded alternate clip starts when a trailer window is black", () => {
+  assert.deepEqual(motionClipStartCandidates(60, 24, 100), [60, 66, 54, 72, 48]);
+  assert.deepEqual(motionClipStartCandidates(2, 24, 30), [2, 6]);
+});
+
+test("Pulse Release Radar rejects sustained black trailer windows", () => {
+  assert.equal(blackEventsPass([{ duration_seconds: 0.4 }]), true);
+  assert.equal(blackEventsPass([{ duration_seconds: 0.8 }]), false);
+  assert.equal(blackEventsPass([{ duration_seconds: 0.4 }, { duration_seconds: 0.4 }]), false);
+});
+
+test("Pulse Release Radar TTS preserves accented title letters while removing title punctuation pauses", () => {
+  assert.equal(
+    cleanTtsText("MARVEL Tōkon: Fighting Souls arrives in August.", {
+      protectedTitles: ["MARVEL Tōkon: Fighting Souls"],
+    }),
+    "MARVEL Tokon Fighting Souls arrives in August.",
+  );
+});
+
+test("Pulse Release Radar audio manifests invalidate stale narration after script changes", () => {
+  const options = { protectedTitles: ["Halo: Campaign Evolved"] };
+  const manifest = buildReleaseRadarAudioManifest(
+    "Halo: Campaign Evolved is the headline.",
+    options,
+  );
+
+  assert.equal(
+    releaseRadarAudioManifestMatches(
+      manifest,
+      "Halo: Campaign Evolved is the headline.",
+      options,
+    ),
+    true,
+  );
+  assert.equal(
+    releaseRadarAudioManifestMatches(
+      manifest,
+      "Halo: Campaign Evolved now has a release date.",
+      options,
+    ),
+    false,
+  );
+  assert.equal(releaseRadarAudioManifestMatches(null, "anything", options), false);
 });

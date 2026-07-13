@@ -89,6 +89,46 @@ async function readCaptionTranscript(weeklyDir = DEFAULT_WEEKLY_DIR) {
   return { path: null, transcript: "" };
 }
 
+function normaliseLongformEvidence(value = {}) {
+  const evidence = value.longform_evidence || value;
+  return {
+    segmentCount: Number(evidence.segmentCount ?? evidence.segment_count ?? 0),
+    chapterTimestamps:
+      evidence.chapterTimestamps || evidence.chapter_timestamps || value.chapter_timestamps || [],
+    sourcePack: evidence.sourcePack || evidence.source_pack || [],
+    visualPlan: evidence.visualPlan || evidence.visual_plan || [],
+  };
+}
+
+async function readWeeklyEvidence(weeklyDir = DEFAULT_WEEKLY_DIR, videoPath = null) {
+  const candidates = [
+    path.join(weeklyDir, "weekly_longform_evidence.json"),
+    path.join(weeklyDir, "weekly_roundup_evidence.json"),
+    path.join(ROOT, "weekly_compilation.json"),
+  ];
+  for (const candidate of candidates) {
+    if (!(await fs.pathExists(candidate))) continue;
+    const value = await fs.readJson(candidate);
+    if (path.basename(candidate) === "weekly_compilation.json" && videoPath) {
+      const compiledVideo = value.output_path || value.video_path || null;
+      if (!compiledVideo || path.basename(compiledVideo) !== path.basename(videoPath)) continue;
+    }
+    return {
+      path: candidate,
+      evidence: normaliseLongformEvidence(value),
+    };
+  }
+  return {
+    path: null,
+    evidence: {
+      segmentCount: 0,
+      chapterTimestamps: [],
+      sourcePack: [],
+      visualPlan: [],
+    },
+  };
+}
+
 function renderMarkdown(report) {
   const lines = [];
   lines.push("# Weekly Longform Readiness");
@@ -122,11 +162,25 @@ function renderMarkdown(report) {
   return lines.join("\n");
 }
 
-async function buildWeeklyLongformReadinessReport({ weeklyDir = DEFAULT_WEEKLY_DIR } = {}) {
+async function buildWeeklyLongformReadinessReport({
+  weeklyDir = DEFAULT_WEEKLY_DIR,
+  probeVideo = ffprobeVideo,
+} = {}) {
   const weekly = require("../weekly_compile");
   const video = await latestWeeklyVideo(weeklyDir);
   const caption = await readCaptionTranscript(weeklyDir);
-  const probe = video ? await ffprobeVideo(video.path) : {};
+  const probe = video ? await probeVideo(video.path) : {};
+  const evidence = await readWeeklyEvidence(weeklyDir, video?.path || null);
+  const evidenceInputs = evidence.path
+    ? evidence.evidence
+    : {
+        segmentCount: weekly._private.minimumLongformSegments
+          ? weekly._private.minimumLongformSegments("weekly_roundup")
+          : 8,
+        chapterTimestamps: [],
+        sourcePack: [],
+        visualPlan: [],
+      };
   const qualityReport = weekly._private.buildLongformQualityReport({
     kind: "weekly_roundup",
     durationSeconds: probe.durationSeconds || 0,
@@ -137,19 +191,19 @@ async function buildWeeklyLongformReadinessReport({ weeklyDir = DEFAULT_WEEKLY_D
       videoBitrate: probe.videoBitrate,
       bit_rate: probe.videoBitrate,
     },
-    segmentCount: weekly._private.minimumLongformSegments
-      ? weekly._private.minimumLongformSegments("weekly_roundup")
-      : 8,
-    chapterTimestamps: [],
-    sourcePack: [],
-    visualPlan: [],
+    ...evidenceInputs,
   });
+  if (!evidence.path) {
+    qualityReport.blockers = [...new Set(["longform_evidence_missing", ...qualityReport.blockers])];
+    qualityReport.verdict = "fail";
+  }
   const report = {
     schema_version: 1,
     generated_at: new Date().toISOString(),
     verdict: qualityReport.verdict === "pass" ? "READY_FOR_OPERATOR_REVIEW" : "NOT_READY",
     video_path: video?.path || null,
     caption_path: caption.path,
+    evidence_path: evidence.path,
     probe,
     quality_report: qualityReport,
     next_action:
@@ -191,5 +245,7 @@ module.exports = {
   buildWeeklyLongformReadinessReport,
   extractAssTranscript,
   latestWeeklyVideo,
+  normaliseLongformEvidence,
+  readWeeklyEvidence,
   renderMarkdown,
 };

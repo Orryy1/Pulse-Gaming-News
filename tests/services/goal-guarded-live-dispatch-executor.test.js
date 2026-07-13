@@ -397,7 +397,8 @@ test("guarded live dispatch executor does not report GREEN when one selected ena
   assert.equal(report.summary.selected_action_count, 3);
   assert.equal(report.summary.completed_action_count, 2);
   assert.equal(report.summary.blocked_action_count, 1);
-  assert.equal(report.summary.upload_attempt_count, 2);
+  assert.equal(report.summary.upload_attempt_count, 3);
+  assert.equal(report.summary.upload_success_count, 2);
   assert.equal(report.summary.db_mutation_count, 3);
   assert.deepEqual(report.actions.map((item) => item.outcome), ["new_upload", "new_upload"]);
   assert.equal(report.blocked_actions[0].action_id, "story-one:youtube_shorts");
@@ -479,7 +480,8 @@ test("guarded live dispatch executor records failed platform evidence and contin
   assert.equal(report.summary.selected_action_count, 3);
   assert.equal(report.summary.completed_action_count, 3);
   assert.equal(report.summary.failed_action_count, 1);
-  assert.equal(report.summary.upload_attempt_count, 2);
+  assert.equal(report.summary.upload_attempt_count, 3);
+  assert.equal(report.summary.upload_success_count, 2);
   assert.deepEqual(
     report.actions.map((item) => `${item.platform}:${item.outcome}`),
     [
@@ -1378,6 +1380,103 @@ test("selectNextGuardedLiveAction uses current package caption and thumbnail pro
   assert.equal(capturedStory.duration_lane, "normal_production");
   assert.equal(capturedVideoOptions.minDuration, 35);
   assert.equal(capturedVideoOptions.maxDuration, 60);
+});
+
+test("guarded live dispatch executor preserves a verified Facebook Reel permalink", async () => {
+  const platformPostCalls = [];
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("facebook_reels")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:facebook_reels"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      facebook_reels: {
+        uploadShort: async () => ({
+          platform: "facebook",
+          videoId: "fb_permalink_1",
+          url: "https://www.facebook.com/reel/fb_permalink_1",
+          publicVerified: true,
+          networkAttempted: true,
+        }),
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    platformPosts: {
+      ensurePending(storyId, platform) {
+        return { id: `${storyId}:${platform}` };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push([id, result.externalId, result.externalUrl]);
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].url, "https://www.facebook.com/reel/fb_permalink_1");
+  assert.deepEqual(platformPostCalls, [
+    [
+      "story-one:facebook_reel",
+      "fb_permalink_1",
+      "https://www.facebook.com/reel/fb_permalink_1",
+    ],
+  ]);
+});
+
+test("guarded live dispatch executor distinguishes failed network attempts from successful uploads", async () => {
+  const graphError = new Error(
+    "Facebook Graph reel_binary_upload failed: HTTP 400 code=352 subcode=2207026",
+  );
+  graphError.networkAttempted = true;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("facebook_reels")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:facebook_reels"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      facebook_reels: {
+        uploadShort: async () => {
+          throw graphError;
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    platformPosts: {
+      ensurePending() {
+        return { id: "facebook-failed-row" };
+      },
+      markFailed() {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.upload_attempt_count, 1);
+  assert.equal(report.summary.upload_success_count, 0);
+  assert.equal(report.summary.network_attempt_count, 1);
+  assert.equal(report.actions[0].upload_attempted, true);
+  assert.equal(report.actions[0].network_attempted, true);
+  assert.equal(report.actions[0].uploaded, false);
+  assert.equal(report.live_publish_applied, true);
+  assert.equal(report.safety.live_network_uploads, true);
+  assert.equal(report.required_next_step, "repair_guarded_live_dispatch_failures");
 });
 
 test("selectNextGuardedLiveAction keeps compact thumbnail when subject prefix would exceed mobile limit", async (t) => {

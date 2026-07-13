@@ -2,6 +2,7 @@
 "use strict";
 
 const path = require("node:path");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const axios = require("axios");
 const { execFile } = require("node:child_process");
@@ -12,12 +13,19 @@ const {
   buildPulseReleaseRadarPack,
   renderPulseReleaseRadarMarkdown,
 } = require("../lib/formats/pulse-release-radar");
+const { applyGamingPronunciation } = require("../lib/tts-pronunciation");
 
 const ROOT = path.resolve(__dirname, "..");
-const DEFAULT_INPUT = path.join(ROOT, "data", "release-radar", "july-2026-candidates.json");
-const DEFAULT_OUT = path.join(ROOT, "output", "release-radar", "july-2026");
+const DEFAULT_INPUT = path.join(
+  ROOT,
+  "output",
+  "longform-candidate-intake",
+  "release_radar_candidates.json",
+);
+const DEFAULT_OUT = path.join(ROOT, "output", "release-radar", "current");
 const execFileAsync = util.promisify(execFile);
 const LONGFORM_MOTION_CLIP_SECONDS = 24;
+const RELEASE_RADAR_AUDIO_PROFILE_VERSION = "release-radar-tts-v2";
 
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
@@ -29,6 +37,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     renderLongform: false,
     publishYoutube: false,
     operatorConfirmed: false,
+    excludedStoryIds: [],
+    autoReserveFallback: true,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -40,8 +50,20 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--render-longform") args.renderLongform = true;
     else if (arg === "--publish-youtube") args.publishYoutube = true;
     else if (arg === "--operator-confirmed") args.operatorConfirmed = true;
+    else if (arg === "--exclude-story-id") args.excludedStoryIds.push(argv[++i]);
+    else if (arg === "--no-reserve-fallback") args.autoReserveFallback = false;
   }
   return args;
+}
+
+function applyCandidateExclusions(input = {}, excludedStoryIds = []) {
+  const excluded = [...new Set((excludedStoryIds || []).filter(Boolean).map(String))];
+  const excludedSet = new Set(excluded);
+  return {
+    ...input,
+    candidates: (input.candidates || []).filter((candidate) => !excludedSet.has(String(candidate.id))),
+    excluded_candidate_ids: excluded,
+  };
 }
 
 function chapterMarkdown(chapters = []) {
@@ -386,6 +408,78 @@ async function cutMotionClip({ sourcePath, outputPath, startS, durationS = 8 }) 
   return outputPath;
 }
 
+function parseBlackEvents(value) {
+  const events = [];
+  const pattern = /black_start:([\d.]+)\s+black_end:([\d.]+)\s+black_duration:([\d.]+)/g;
+  for (const match of String(value || "").matchAll(pattern)) {
+    events.push({
+      start_seconds: Number(match[1]),
+      end_seconds: Number(match[2]),
+      duration_seconds: Number(match[3]),
+    });
+  }
+  return events;
+}
+
+function blackEventsPass(events = [], { maxEventSeconds = 0.5, maxTotalSeconds = 0.5 } = {}) {
+  const rows = Array.isArray(events) ? events : [];
+  const total = rows.reduce((sum, event) => sum + Number(event.duration_seconds || 0), 0);
+  return rows.every((event) => Number(event.duration_seconds || 0) < maxEventSeconds) && total < maxTotalSeconds;
+}
+
+async function detectMotionClipBlackEvents(videoPath) {
+  const { stderr } = await execFileAsync(
+    "ffmpeg",
+    [
+      "-v",
+      "info",
+      "-i",
+      videoPath,
+      "-vf",
+      "blackdetect=d=0.35:pix_th=0.10",
+      "-an",
+      "-f",
+      "null",
+      process.platform === "win32" ? "NUL" : "/dev/null",
+    ],
+    { timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+  );
+  return parseBlackEvents(stderr);
+}
+
+function motionClipStartCandidates(preferredStartS, clipDurationS, sourceDurationS) {
+  const duration = Math.max(0, Number(sourceDurationS) || 0);
+  const clipDuration = Math.max(1, Number(clipDurationS) || 1);
+  const maxStart = Math.max(0, duration - clipDuration);
+  const minStart = Math.min(2, maxStart);
+  const starts = [
+    Number(preferredStartS) || 0,
+    (Number(preferredStartS) || 0) + 6,
+    (Number(preferredStartS) || 0) - 6,
+    (Number(preferredStartS) || 0) + 12,
+    (Number(preferredStartS) || 0) - 12,
+  ].map((start) => Math.max(minStart, Math.min(maxStart, start)));
+  return [...new Set(starts.map((start) => Math.round(start * 100) / 100))];
+}
+
+async function cutMotionClipAvoidingBlack({
+  sourcePath,
+  outputPath,
+  preferredStartS,
+  durationS,
+  sourceDurationS,
+}) {
+  const attempts = [];
+  for (const startS of motionClipStartCandidates(preferredStartS, durationS, sourceDurationS)) {
+    await cutMotionClip({ sourcePath, outputPath, startS, durationS });
+    const blackEvents = await detectMotionClipBlackEvents(outputPath);
+    const pass = blackEventsPass(blackEvents);
+    attempts.push({ start_seconds: startS, black_events: blackEvents, pass });
+    if (pass) return { path: outputPath, startS, blackEvents, attempts };
+  }
+  throw new Error(`official motion clip has sustained black frames: ${JSON.stringify(attempts)}`);
+}
+
 function motionClipStarts(durationS, count = 3, clipDurationS = 8) {
   const duration = Number(durationS) || 0;
   if (duration <= clipDurationS + 4) return [0];
@@ -454,21 +548,28 @@ async function materializeReleaseRadarMotion(compilation, pack = {}, { outDir = 
       const starts = motionClipStarts(duration, 3, LONGFORM_MOTION_CLIP_SECONDS);
       for (let index = 0; index < starts.length; index += 1) {
         const outputPath = path.join(clipDir, `${base}-${String(index + 1).padStart(2, "0")}.mp4`);
-        await cutMotionClip({
+        const clipDuration = Math.min(
+          LONGFORM_MOTION_CLIP_SECONDS,
+          Math.max(4, Number(duration || LONGFORM_MOTION_CLIP_SECONDS) - starts[index]),
+        );
+        const clipResult = await cutMotionClipAvoidingBlack({
           sourcePath: rawPath,
           outputPath,
-          startS: starts[index],
-          durationS: Math.min(
-            LONGFORM_MOTION_CLIP_SECONDS,
-            Math.max(4, Number(duration || LONGFORM_MOTION_CLIP_SECONDS) - starts[index]),
-          ),
+          preferredStartS: starts[index],
+          durationS: clipDuration,
+          sourceDurationS: duration,
         });
         entry.clips.push({
           path: outputPath,
-          start_seconds: Math.round(starts[index] * 100) / 100,
-          duration_seconds: LONGFORM_MOTION_CLIP_SECONDS,
+          start_seconds: clipResult.startS,
+          duration_seconds: clipDuration,
           source_url: selectedSourceUrl,
           source_type: "official_direct_motion",
+          black_frame_qa: {
+            verdict: "pass",
+            events: clipResult.blackEvents,
+            attempts: clipResult.attempts,
+          },
         });
       }
       story.motion_clips = entry.clips;
@@ -504,8 +605,26 @@ function buildReleaseRadarMotionQa(motionManifest = []) {
   };
 }
 
-function cleanTtsText(value) {
-  return String(value || "")
+function releaseRadarRenderBlockers(pack = {}) {
+  const blockers = [
+    ...(pack.readiness?.hard_blockers || []),
+  ];
+  if (Number(pack.readiness?.ready_candidate_count || 0) < 10) {
+    blockers.push("insufficient_ready_candidates");
+  }
+  if (Number(pack.longform?.estimated_runtime_seconds || 0) < 600) {
+    blockers.push("runtime_under_10_minutes");
+  }
+  if (pack.longform?.transcript_qa?.verdict === "fail") {
+    blockers.push("longform_transcript_qa_failed");
+  }
+  return [...new Set(blockers)];
+}
+
+function cleanTtsText(value, options = {}) {
+  return applyGamingPronunciation(String(value || ""), options)
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
     .replace(/\[PAUSE\]/gi, ". ")
     .replace(/\[VISUAL:[^\]]*\]/gi, "")
     .replace(/\.{2,}/g, ".")
@@ -516,12 +635,53 @@ function cleanTtsText(value) {
     .trim();
 }
 
-async function generateReleaseRadarAudio(fullScript, outputPath) {
+function buildReleaseRadarAudioManifest(fullScript, options = {}) {
+  const spokenText = cleanTtsText(fullScript, options);
+  return {
+    schema_version: 1,
+    profile_version: RELEASE_RADAR_AUDIO_PROFILE_VERSION,
+    spoken_text_sha256: crypto.createHash("sha256").update(spokenText).digest("hex"),
+    protected_titles: [...new Set((options.protectedTitles || []).map(String))].sort(),
+    voice_id: options.voiceId || null,
+    model_id: options.modelId || null,
+    voice_settings: options.voiceSettings || null,
+  };
+}
+
+function releaseRadarAudioManifestMatches(manifest, fullScript, options = {}) {
+  if (!manifest || typeof manifest !== "object") return false;
+  const expected = buildReleaseRadarAudioManifest(fullScript, options);
+  return Object.keys(expected).every(
+    (key) => JSON.stringify(manifest[key]) === JSON.stringify(expected[key]),
+  );
+}
+
+function releaseRadarAudioManifestPath(audioPath) {
+  return String(audioPath || "").replace(/\.mp3$/i, "_audio_manifest.json");
+}
+
+function releaseRadarAudioOptions(pack = {}) {
   const brand = require("../brand");
+  return {
+    protectedTitles: (pack.longform?.segments || []).map((segment) => segment.canonical_game),
+    voiceId: brand.voiceId || process.env.ELEVENLABS_VOICE_ID || null,
+    modelId: brand.voiceModel || "eleven_multilingual_v2",
+    voiceSettings: brand.voiceSettings || {
+      stability: 0.25,
+      similarity_boost: 0.8,
+      style: 0.55,
+      use_speaker_boost: true,
+      speaking_rate: 1.04,
+    },
+  };
+}
+
+async function generateReleaseRadarAudio(fullScript, outputPath, options = {}) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error("ELEVENLABS_API_KEY missing");
-  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID;
+  const voiceId = options.voiceId || process.env.ELEVENLABS_VOICE_ID;
   if (!voiceId) throw new Error("ElevenLabs voice ID missing");
+  const manifest = buildReleaseRadarAudioManifest(fullScript, options);
   const response = await axios({
     method: "POST",
     url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
@@ -530,15 +690,9 @@ async function generateReleaseRadarAudio(fullScript, outputPath) {
       "Content-Type": "application/json",
     },
     data: {
-      text: cleanTtsText(fullScript),
-      model_id: brand.voiceModel || "eleven_multilingual_v2",
-      voice_settings: brand.voiceSettings || {
-        stability: 0.25,
-        similarity_boost: 0.8,
-        style: 0.55,
-        use_speaker_boost: true,
-        speaking_rate: 1.04,
-      },
+      text: cleanTtsText(fullScript, options),
+      model_id: options.modelId || "eleven_multilingual_v2",
+      voice_settings: options.voiceSettings,
       output_format: "mp3_44100_128",
     },
     timeout: 180000,
@@ -547,6 +701,12 @@ async function generateReleaseRadarAudio(fullScript, outputPath) {
   await fs.ensureDir(path.dirname(outputPath));
   await fs.writeFile(outputPath, Buffer.from(response.data.audio_base64, "base64"));
   await fs.writeJson(outputPath.replace(/\.mp3$/, "_timestamps.json"), response.data.alignment || {}, { spaces: 2 });
+  await fs.writeJson(releaseRadarAudioManifestPath(outputPath), {
+    ...manifest,
+    generated_at: new Date().toISOString(),
+    audio_path: path.resolve(outputPath),
+    timestamps_path: path.resolve(outputPath.replace(/\.mp3$/, "_timestamps.json")),
+  }, { spaces: 2 });
   return outputPath;
 }
 
@@ -561,9 +721,20 @@ async function renderReleaseRadarLongform({ pack, outDir = DEFAULT_OUT } = {}) {
     throw new Error(`Release Radar motion QA failed: ${motionQa.blockers.join(",")}`);
   }
   const timestampsPath = compilation.audioPath.replace(/\.mp3$/, "_timestamps.json");
-  if (!((await fs.pathExists(compilation.audioPath)) && (await fs.pathExists(timestampsPath)))) {
-    await generateReleaseRadarAudio(compilation.fullScript, compilation.audioPath);
+  const manifestPath = releaseRadarAudioManifestPath(compilation.audioPath);
+  const audioOptions = releaseRadarAudioOptions(pack);
+  let audioManifest = null;
+  if (await fs.pathExists(manifestPath)) {
+    audioManifest = await fs.readJson(manifestPath).catch(() => null);
   }
+  const audioIsCurrent =
+    (await fs.pathExists(compilation.audioPath)) &&
+    (await fs.pathExists(timestampsPath)) &&
+    releaseRadarAudioManifestMatches(audioManifest, compilation.fullScript, audioOptions);
+  if (!audioIsCurrent) {
+    await generateReleaseRadarAudio(compilation.fullScript, compilation.audioPath, audioOptions);
+  }
+  compilation.audio_manifest_path = manifestPath;
   const audioDuration = await ffprobeDuration(compilation.audioPath);
   if (audioDuration) {
     compilation.duration = audioDuration;
@@ -612,12 +783,18 @@ async function writePulseReleaseRadarArtifacts({
   outDir = DEFAULT_OUT,
   affiliateTag = process.env.AMAZON_AFFILIATE_TAG || "placeholder",
   monthLabel = null,
+  excludedStoryIds = [],
 } = {}) {
   const resolvedInput = path.resolve(inputPath);
   const resolvedOut = path.resolve(outDir);
-  const input = await fs.readJson(resolvedInput);
+  const input = applyCandidateExclusions(await fs.readJson(resolvedInput), excludedStoryIds);
   const pack = buildPulseReleaseRadarPack({
-    monthLabel: monthLabel || input.monthLabel || input._window?.monthLabel || "Next Month",
+    monthLabel:
+      monthLabel ||
+      input.monthLabel ||
+      input.month_label ||
+      input._window?.monthLabel ||
+      "Next Month",
     candidates: input.candidates || [],
     affiliateTag,
   });
@@ -672,13 +849,48 @@ async function writePulseReleaseRadarArtifacts({
   };
 }
 
+async function blockedMotionStoryIds(outDir) {
+  const manifestPath = path.join(path.resolve(outDir), "longform_motion_manifest.json");
+  if (!(await fs.pathExists(manifestPath))) return [];
+  const rows = await fs.readJson(manifestPath);
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row.status !== "ready" || (row.clips || []).length < 2)
+    .map((row) => row.story_id)
+    .filter(Boolean);
+}
+
 async function main() {
   const args = parseArgs();
-  const result = await writePulseReleaseRadarArtifacts(args);
+  let result = await writePulseReleaseRadarArtifacts(args);
   let renderResult = null;
   let uploadResult = null;
+  const reserveFallbackStoryIds = [];
   if (args.renderLongform || args.publishYoutube) {
-    renderResult = await renderReleaseRadarLongform({ pack: result.pack, outDir: result.outDir });
+    for (let attempt = 0; attempt < 3 && !renderResult; attempt += 1) {
+      const blockers = releaseRadarRenderBlockers(result.pack);
+      if (blockers.length) {
+        throw new Error(`Release Radar render blocked: ${blockers.join(",")}`);
+      }
+      try {
+        renderResult = await renderReleaseRadarLongform({ pack: result.pack, outDir: result.outDir });
+      } catch (error) {
+        const failedMotionIds = await blockedMotionStoryIds(result.outDir);
+        if (
+          !args.autoReserveFallback ||
+          !/motion qa failed/i.test(String(error.message || error)) ||
+          !failedMotionIds.length ||
+          attempt >= 2
+        ) {
+          throw error;
+        }
+        reserveFallbackStoryIds.push(...failedMotionIds);
+        args.excludedStoryIds = [...new Set([
+          ...(args.excludedStoryIds || []),
+          ...reserveFallbackStoryIds,
+        ])];
+        result = await writePulseReleaseRadarArtifacts(args);
+      }
+    }
   }
   if (args.publishYoutube) {
     uploadResult = await publishReleaseRadarLongform({
@@ -697,6 +909,7 @@ async function main() {
     render_verdict: renderResult?.qualityReport?.verdict || null,
     uploaded: Boolean(uploadResult),
     youtube_url: uploadResult?.url || null,
+    reserve_fallback_story_ids: [...new Set(reserveFallbackStoryIds)],
   };
   if (args.json) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
@@ -721,18 +934,27 @@ if (require.main === module) {
 }
 
 module.exports = {
+  applyCandidateExclusions,
+  blackEventsPass,
+  blockedMotionStoryIds,
+  buildReleaseRadarAudioManifest,
   buildActualReleaseRadarChapters,
   buildReleaseRadarLongformCompilation,
   buildReleaseRadarLongformEvidence,
   buildReleaseRadarLongformQualityReport,
   buildReleaseRadarMotionQa,
+  cleanTtsText,
   imageCandidatesForSegment,
   materializeReleaseRadarImages,
   materializeReleaseRadarMotion,
   motionClipStarts,
+  motionClipStartCandidates,
   motionSourceUrlsForSegment,
   parseArgs,
   publishReleaseRadarLongform,
+  releaseRadarRenderBlockers,
+  releaseRadarAudioManifestMatches,
+  releaseRadarAudioManifestPath,
   renderReleaseRadarLongform,
   shouldUploadReleaseRadarLongform,
   writePulseReleaseRadarArtifacts,

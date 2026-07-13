@@ -862,6 +862,51 @@ test("executor preflight produces a non-posting handoff plan only after action i
   assert.match(markdown, /No uploads are triggered/);
 });
 
+test("executor preflight preserves governed Facebook metadata for live handoff", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-facebook-copy-"));
+  const files = await evidenceFiles(root);
+  const nativeMetadata = {
+    description: "Facebook description from the governed platform manifest.",
+    caption: "Facebook caption from the governed platform manifest.",
+    page_caption: "Facebook page caption from the governed platform manifest. More context: /p/forza",
+    cover_headline: "FORZA PC BET TEST",
+    landing_page_slug: "/p/forza",
+    disclosure_requirements: { affiliate: false, source_attribution: true },
+  };
+  const plan = guardedDispatchPlan(files);
+  plan.dispatch_ready_actions[0] = {
+    ...plan.dispatch_ready_actions[0],
+    platform: "facebook_reels",
+    ...nativeMetadata,
+  };
+  const matrix = platformStatusMatrix();
+  matrix.platforms.facebook_reels = {
+    platform: "facebook_reels",
+    status: "ready_now",
+    operational_state: "enabled",
+    blocked_action_count: 0,
+    deferred_action_count: 0,
+    planned_story_ids: ["story-one"],
+  };
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: plan,
+    platformStatusMatrix: matrix,
+    selectedActionIds: ["story-one:facebook_reels"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.deepEqual(
+    Object.fromEntries(Object.keys(nativeMetadata).map((field) => [field, report.handoff_ready_actions[0][field]])),
+    nativeMetadata,
+  );
+  assert.deepEqual(report.executor_plan.handoff_ready_actions[0], report.handoff_ready_actions[0]);
+});
+
 test("executor preflight writes machine-readable reports and CLI emits JSON", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-cli-"));
   const files = await evidenceFiles(root);

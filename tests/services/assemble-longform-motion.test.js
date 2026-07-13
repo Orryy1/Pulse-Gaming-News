@@ -7,9 +7,22 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  alignedCaptionWords,
   existingMotionClipPaths,
   longformMotionFilterChain,
 } = require("../../assemble_longform");
+
+test("longform captions split chapter ranks from questions and hide the rank token", () => {
+  const value = "work?2. The sequel keeps detective work.";
+  const chars = [...value];
+  const starts = chars.map((_, index) => index * 0.05);
+  const ends = chars.map((_, index) => (index + 1) * 0.05);
+
+  assert.deepEqual(
+    alignedCaptionWords(chars, starts, ends).map((word) => word.text),
+    ["work?", "The", "sequel", "keeps", "detective", "work."],
+  );
+});
 
 test("longform assembler prefers existing motion clips from segment and story evidence", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-longform-motion-"));

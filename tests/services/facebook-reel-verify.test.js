@@ -242,6 +242,17 @@ test("upload_facebook: Reel finish uses video_state=PUBLISHED, not published=tru
   }
 });
 
+test("upload_facebook: verified Reels return their public permalink evidence", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "upload_facebook.js"),
+    "utf8",
+  );
+
+  assert.match(source, /const verification = await verifyReelPublished\(videoId, accessToken\)/);
+  assert.match(source, /publicVerified:\s*true/);
+  assert.match(source, /url:\s*verification\.permalinkUrl/);
+});
+
 test("retry policy treats Facebook Reel verification timeout as terminal", () => {
   const err = new Error(
     "Facebook Reel did not go live within 2 min - videoId=abc last video_status=ready publish=complete published=false permalink=(none)",

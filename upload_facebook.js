@@ -39,6 +39,12 @@ const {
 const {
   metaBinaryUploadTimeoutMs,
 } = require("./lib/platforms/meta-binary-upload-policy");
+const {
+  withFacebookGraphStage,
+} = require("./lib/platforms/facebook-graph-error");
+const {
+  prepareFacebookReelMedia,
+} = require("./lib/platforms/facebook-reel-media");
 
 dotenv.config({ override: true });
 
@@ -115,6 +121,14 @@ async function uploadReel(story) {
         story.exported_path;
       await validateVideo(exportedAbs, "facebook");
       await assertPlatformVideoQaPass(exportedAbs, { platform: "facebook" });
+      const delivery = await prepareFacebookReelMedia(exportedAbs);
+      if (delivery.path !== exportedAbs) {
+        await validateVideo(delivery.path, "facebook");
+        await assertPlatformVideoQaPass(delivery.path, { platform: "facebook" });
+        console.log(
+          `[facebook] Using cached native delivery encode (${delivery.reused ? "reused" : "created"}): ${delivery.reasons.join(",")}`,
+        );
+      }
       assertPublicMetadataSafe(story, { surface: "facebook" });
 
       const publicBaseUrl = getPublicUrl();
@@ -128,12 +142,16 @@ async function uploadReel(story) {
 
       // Step 1: Initiate Reel upload
       console.log(`[facebook] Step 1/3: Initiating reel upload...`);
-      const initResponse = await axios.post(
-        `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
-        {
-          upload_phase: "start",
-          access_token: accessToken,
-        },
+      const initResponse = await withFacebookGraphStage(
+        "reel_start",
+        () =>
+          axios.post(
+            `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
+            {
+              upload_phase: "start",
+              access_token: accessToken,
+            },
+          ),
       );
 
       const videoId = initResponse.data.video_id;
@@ -147,7 +165,7 @@ async function uploadReel(story) {
 
       // Step 2: Stream the video with a size-aware timeout. Large V4 files
       // regularly exceed the old fixed 120-second request budget.
-      const fileSize = (await fs.stat(exportedAbs)).size;
+      const fileSize = (await fs.stat(delivery.path)).size;
       const uploadTimeoutMs = metaBinaryUploadTimeoutMs(fileSize, {
         envName: "FACEBOOK_BINARY_UPLOAD_TIMEOUT_MS",
       });
@@ -155,44 +173,52 @@ async function uploadReel(story) {
         `[facebook] Step 2/3: Uploading ${Math.round(fileSize / 1024 / 1024)}MB binary (timeout ${Math.round(uploadTimeoutMs / 1000)}s) to ${uploadUrl.substring(0, 60)}...`,
       );
 
-      const uploadResponse = await axios({
-        method: "POST",
-        url: uploadUrl,
-        headers: {
-          Authorization: `OAuth ${accessToken}`,
-          offset: "0",
-          file_size: fileSize.toString(),
-          "Content-Type": "application/octet-stream",
-        },
-        data: fs.createReadStream(exportedAbs),
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-        timeout: uploadTimeoutMs,
-      });
+      const uploadResponse = await withFacebookGraphStage(
+        "reel_binary_upload",
+        () =>
+          axios({
+            method: "POST",
+            url: uploadUrl,
+            headers: {
+              Authorization: `OAuth ${accessToken}`,
+              offset: "0",
+              file_size: fileSize.toString(),
+              "Content-Type": "application/octet-stream",
+            },
+            data: fs.createReadStream(delivery.path),
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+            timeout: uploadTimeoutMs,
+          }),
+      );
       console.log(
         `[facebook] Step 2 OK: upload status ${uploadResponse.status}, data: ${JSON.stringify(uploadResponse.data).substring(0, 200)}`,
       );
 
       // Step 3: Finish the upload and publish
       console.log(`[facebook] Step 3/3: Publishing reel...`);
-      const finishResponse = await axios.post(
-        `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
-        {
-          upload_phase: "finish",
-          video_id: videoId,
-          title: (
-            story.suggested_title ||
-            story.suggested_thumbnail_text ||
-            story.title ||
-            ""
-          ).substring(0, 100),
-          description,
-          // Reels finish requires a publish state transition. The
-          // legacy boolean publish flag can leave Graph at success:true
-          // while the Reel remains processed but unpublished.
-          video_state: "PUBLISHED",
-          access_token: accessToken,
-        },
+      const finishResponse = await withFacebookGraphStage(
+        "reel_finish",
+        () =>
+          axios.post(
+            `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
+            {
+              upload_phase: "finish",
+              video_id: videoId,
+              title: (
+                story.suggested_title ||
+                story.suggested_thumbnail_text ||
+                story.title ||
+                ""
+              ).substring(0, 100),
+              description,
+              // Reels finish requires a publish state transition. The
+              // legacy boolean publish flag can leave Graph at success:true
+              // while the Reel remains processed but unpublished.
+              video_state: "PUBLISHED",
+              access_token: accessToken,
+            },
+          ),
       );
 
       // Verify the finish phase succeeded
@@ -211,16 +237,19 @@ async function uploadReel(story) {
       // Reels tab stays empty while our pipeline reports FB Reel ✅.
       // Poll the video's upload_phase + status until we see the reel is
       // actually ready & published, or bail with a descriptive error.
-      await verifyReelPublished(videoId, accessToken);
+      const verification = await verifyReelPublished(videoId, accessToken);
 
       console.log(`[facebook] Reel published! Video ID: ${videoId}`);
 
       return {
         platform: "facebook",
         videoId,
+        url: verification.permalinkUrl,
+        publicVerified: true,
+        networkAttempted: true,
       };
     },
-    { label: "facebook upload" },
+    { label: "facebook upload", platform: "facebook" },
   );
 }
 
@@ -285,14 +314,17 @@ async function verifyReelPublished(videoId, accessToken) {
     await new Promise((r) => setTimeout(r, 5000));
     let resp;
     try {
-      resp = await axios.get(`https://graph.facebook.com/v21.0/${videoId}`, {
-        params: {
-          fields: "status,published,permalink_url",
-          access_token: accessToken,
-        },
-        timeout: 15000,
-      });
+      resp = await withFacebookGraphStage("reel_status", () =>
+        axios.get(`https://graph.facebook.com/v21.0/${videoId}`, {
+          params: {
+            fields: "status,published,permalink_url",
+            access_token: accessToken,
+          },
+          timeout: 15000,
+        }),
+      );
     } catch (err) {
+      if (err.retriable === false) throw err;
       // Network flake / 5xx — keep polling. A Graph 4xx surfaces as
       // err.response and is also retried; if the condition is real
       // (e.g. token revoked) the whole window will time out and we'll
@@ -319,7 +351,11 @@ async function verifyReelPublished(videoId, accessToken) {
       console.log(
         `[facebook] Reel verified live after ${attempt} poll(s) videoId=${videoId}: ${resp.data?.permalink_url || "(no permalink)"}`,
       );
-      return;
+      return {
+        permalinkUrl: verdict.permalinkUrl || resp.data?.permalink_url || null,
+        attempts: attempt,
+        publicVerified: true,
+      };
     }
     console.log(
       `[facebook] Reel verify ${attempt}/${maxAttempts} videoId=${videoId}: video_status=${videoStatus || "?"} publish=${publishStatus || "?"} published=${lastTags.published} permalink=${lastTags.permalink_url || "(none)"}`,
@@ -363,9 +399,13 @@ async function uploadReelViaUrl(story) {
   console.log(`[facebook] URL fallback: posting Reel via ${videoUrl}`);
 
   // Step 1: init
-  const initResponse = await axios.post(
-    `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
-    { upload_phase: "start", access_token: accessToken },
+  const initResponse = await withFacebookGraphStage(
+    "reel_url_start",
+    () =>
+      axios.post(`https://graph.facebook.com/v21.0/${pageId}/video_reels`, {
+        upload_phase: "start",
+        access_token: accessToken,
+      }),
   );
   const videoId = initResponse.data.video_id;
   const uploadUrl = initResponse.data.upload_url;
@@ -376,15 +416,19 @@ async function uploadReelViaUrl(story) {
   }
 
   // Step 2: tell FB to fetch from URL instead of sending binary
-  const uploadResponse = await axios({
-    method: "POST",
-    url: uploadUrl,
-    headers: {
-      Authorization: `OAuth ${accessToken}`,
-      file_url: videoUrl,
-    },
-    timeout: 180000,
-  });
+  const uploadResponse = await withFacebookGraphStage(
+    "reel_url_fetch",
+    () =>
+      axios({
+        method: "POST",
+        url: uploadUrl,
+        headers: {
+          Authorization: `OAuth ${accessToken}`,
+          file_url: videoUrl,
+        },
+        timeout: 180000,
+      }),
+  );
   if (uploadResponse.data && uploadResponse.data.success === false) {
     throw new Error(
       `Facebook Reel URL fetch failed: ${JSON.stringify(uploadResponse.data)}`,
@@ -392,21 +436,22 @@ async function uploadReelViaUrl(story) {
   }
 
   // Step 3: finish/publish
-  const finishResponse = await axios.post(
-    `https://graph.facebook.com/v21.0/${pageId}/video_reels`,
-    {
-      upload_phase: "finish",
-      video_id: videoId,
-      title: (
-        story.suggested_title ||
-        story.suggested_thumbnail_text ||
-        story.title ||
-        ""
-      ).substring(0, 100),
-      description,
-      video_state: "PUBLISHED",
-      access_token: accessToken,
-    },
+  const finishResponse = await withFacebookGraphStage(
+    "reel_url_finish",
+    () =>
+      axios.post(`https://graph.facebook.com/v21.0/${pageId}/video_reels`, {
+        upload_phase: "finish",
+        video_id: videoId,
+        title: (
+          story.suggested_title ||
+          story.suggested_thumbnail_text ||
+          story.title ||
+          ""
+        ).substring(0, 100),
+        description,
+        video_state: "PUBLISHED",
+        access_token: accessToken,
+      }),
   );
   if (finishResponse.data && finishResponse.data.success === false) {
     throw new Error(
@@ -417,12 +462,15 @@ async function uploadReelViaUrl(story) {
   // Same verify-after-publish guard as the binary upload path — see
   // verifyReelPublished for why Meta's success:true isn't trustworthy
   // without a second confirmation poll.
-  await verifyReelPublished(videoId, accessToken);
+  const verification = await verifyReelPublished(videoId, accessToken);
 
   console.log(`[facebook] Reel published via URL! ID: ${videoId}`);
   return {
     platform: "facebook",
     videoId,
+    url: verification.permalinkUrl,
+    publicVerified: true,
+    networkAttempted: true,
   };
 }
 
@@ -498,26 +546,34 @@ async function uploadStoryImage(story) {
       form.append("published", "false");
       form.append("access_token", accessToken);
 
-      const photoResponse = await axios.post(
-        `https://graph.facebook.com/v21.0/${pageId}/photos`,
-        form,
-        {
-          headers: form.getHeaders(),
-          maxContentLength: Infinity,
-          maxBodyLength: Infinity,
-        },
+      const photoResponse = await withFacebookGraphStage(
+        "story_photo_upload",
+        () =>
+          axios.post(
+            `https://graph.facebook.com/v21.0/${pageId}/photos`,
+            form,
+            {
+              headers: form.getHeaders(),
+              maxContentLength: Infinity,
+              maxBodyLength: Infinity,
+            },
+          ),
       );
 
       const photoId = photoResponse.data.id;
       console.log(`[facebook] Photo uploaded (unpublished): ${photoId}`);
 
       // Step 2: Create the Story using the photo_id
-      const storyResponse = await axios.post(
-        `https://graph.facebook.com/v21.0/${pageId}/photo_stories`,
-        {
-          photo_id: photoId,
-          access_token: accessToken,
-        },
+      const storyResponse = await withFacebookGraphStage(
+        "story_publish",
+        () =>
+          axios.post(
+            `https://graph.facebook.com/v21.0/${pageId}/photo_stories`,
+            {
+              photo_id: photoId,
+              access_token: accessToken,
+            },
+          ),
       );
 
       const storyId = storyResponse.data.id || storyResponse.data.post_id;
@@ -528,7 +584,7 @@ async function uploadStoryImage(story) {
         storyId,
       };
     },
-    { label: "facebook story upload" },
+    { label: "facebook story upload", platform: "facebook_story" },
   );
 }
 

@@ -14,6 +14,7 @@ const { getChannel } = require("./channels");
 const MUSIC_VOLUME = 0.12;
 const LONGFORM_VIDEO_CODEC_ARGS =
   "-c:v libx264 -preset medium -b:v 3500k -maxrate 5000k -bufsize 7000k";
+const LONGFORM_AUDIO_CODEC_ARGS = "-c:a aac -b:a 192k -ar 48000 -ac 2";
 
 function roundSeconds(value) {
   return Math.round(Number(value || 0) * 1000) / 1000;
@@ -21,6 +22,10 @@ function roundSeconds(value) {
 
 function longformVideoCodecArgs() {
   return LONGFORM_VIDEO_CODEC_ARGS;
+}
+
+function longformAudioCodecArgs() {
+  return LONGFORM_AUDIO_CODEC_ARGS;
 }
 
 function longformMotionFilterChain(inputLabel, outputLabel) {
@@ -116,6 +121,37 @@ function sanitizeDrawtext(text, maxLen) {
   return clean;
 }
 
+function alignedCaptionWords(chars = [], starts = [], ends = []) {
+  const words = [];
+  let wordStart = null;
+  let wordEnd = null;
+  let wordChars = "";
+  const flush = () => {
+    if (!wordChars) return;
+    words.push({ text: wordChars, start: wordStart, end: wordEnd });
+    wordChars = "";
+    wordStart = null;
+    wordEnd = null;
+  };
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    const chapterRankBoundary =
+      /\d/.test(char) &&
+      /[.!?]/.test(chars[i - 1] || "") &&
+      chars[i + 1] === ".";
+    if (chapterRankBoundary) flush();
+    if (char === " " || char === "\n") {
+      flush();
+      continue;
+    }
+    if (wordStart === null) wordStart = starts[i];
+    wordEnd = ends[i];
+    wordChars += char;
+  }
+  flush();
+  return words.filter((word) => !/^(?:[1-9]|10)\.$/.test(word.text));
+}
+
 // --- Generate ASS subtitles for landscape longform ---
 async function generateLongformSubtitles(compilation, outputDir) {
   const fullScript = compilation.fullScript || "";
@@ -146,27 +182,7 @@ async function generateLongformSubtitles(compilation, outputDir) {
     const starts = wordTimestamps.character_start_times_seconds;
     const ends = wordTimestamps.character_end_times_seconds;
 
-    // Group characters into words
-    const words = [];
-    let wordStart = null;
-    let wordEnd = null;
-    let wordChars = "";
-    for (let i = 0; i < chars.length; i++) {
-      if (chars[i] === " " || chars[i] === "\n") {
-        if (wordChars.length > 0) {
-          words.push({ text: wordChars, start: wordStart, end: wordEnd });
-          wordChars = "";
-          wordStart = null;
-          wordEnd = null;
-        }
-      } else {
-        if (wordStart === null) wordStart = starts[i];
-        wordEnd = ends[i];
-        wordChars += chars[i];
-      }
-    }
-    if (wordChars.length > 0)
-      words.push({ text: wordChars, start: wordStart, end: wordEnd });
+    const words = alignedCaptionWords(chars, starts, ends);
 
     // Group into 4-6 word phrases (longer than shorts - suits landscape)
     const phrases = [];
@@ -656,7 +672,7 @@ async function assembleLongform(compilation) {
     `-filter_complex_script "${filterScriptPath.replace(/\\/g, "/")}"`,
     audioMapping,
     longformVideoCodecArgs(),
-    "-c:a aac -b:a 192k",
+    longformAudioCodecArgs(),
     "-r 30 -shortest",
     `-movflags +faststart "${outputPath}"`,
   ].join(" ");
@@ -682,9 +698,11 @@ async function assembleLongform(compilation) {
 }
 
 module.exports = {
+  alignedCaptionWords,
   assembleLongform,
   chapterTime,
   existingMotionClipPaths,
+  longformAudioCodecArgs,
   longformMotionFilterChain,
   longformSegmentDuration,
   longformVideoCodecArgs,

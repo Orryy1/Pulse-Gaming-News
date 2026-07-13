@@ -173,7 +173,7 @@ test("Pulse Release Radar rewrites internal script notes into viewer-facing narr
 
   assert.doesNotMatch(pack.longform.script, /the hook is|viewers should know/i);
   assert.doesNotMatch(pack.longform.script, /\. Not that/);
-  assert.match(pack.longform.script, /has to prove whether the changes matter/i);
+  assert.match(pack.longform.script, /has to settle this: whether the changes matter/i);
   assert.match(pack.longform.script, /The practical call is whether this is worth a preorder/i);
 });
 
@@ -191,4 +191,61 @@ test("Pulse Release Radar markdown exposes title, sources, verdict and review ac
   assert.match(markdown, /Verified Game 01/);
   assert.match(markdown, /Official trailer/);
   assert.match(markdown, /operator review required/i);
+});
+
+test("Pulse Release Radar keeps month references and curiosity transitions grammatically coherent", () => {
+  const overrides = [
+    { curiosity_gap: "The point to watch is how the combat systems work together." },
+    { curiosity_gap: "The main question is how much detective work survives." },
+    { curiosity_gap: "Removing stamina could make fights more aggressive." },
+    { curiosity_gap: "The unknown is whether the co-op loop has staying power." },
+    { curiosity_gap: "The remaining question is how the portable build performs." },
+    { curiosity_gap: "The trailers establish the setting, but not the full loop." },
+  ];
+  const pack = buildPulseReleaseRadarPack({
+    monthLabel: "August 2026",
+    candidates: Array.from({ length: 10 }, (_, index) =>
+      candidate(index + 1, overrides[index] || {}),
+    ),
+  });
+
+  assert.equal(pack.longform.transcript_qa.verdict, "pass");
+  assert.doesNotMatch(pack.longform.script, /because July is/i);
+  assert.doesNotMatch(pack.longform.script, /prove The point/i);
+  assert.doesNotMatch(pack.longform.script, /answers The main/i);
+  assert.doesNotMatch(pack.longform.script, /question is Removing/i);
+  assert.doesNotMatch(pack.longform.script, /answer The unknown/i);
+  assert.doesNotMatch(pack.longform.script, /question is The (?:remaining|trailers)/i);
+});
+
+test("Pulse Release Radar keeps source labels out of narration and ends with an actionable verdict split", () => {
+  const pack = buildPulseReleaseRadarPack({
+    monthLabel: "August 2026",
+    candidates: Array.from({ length: 10 }, (_, index) =>
+      candidate(index + 1, index === 0
+        ? {
+            source_manifest: [
+              {
+                type: "official_publisher_news",
+                label: "Corporate pressroom release date announcement",
+                url: "https://publisher.example/game",
+                supports: ["release_date", "platforms"],
+              },
+              {
+                type: "official_store",
+                label: "Steam",
+                url: "https://store.steampowered.com/app/123/game",
+                supports: ["release_date", "platforms"],
+              },
+            ],
+            verdict: "demo_first",
+          }
+        : {}),
+    ),
+  });
+
+  assert.doesNotMatch(pack.longform.script, /Corporate pressroom release date announcement/i);
+  assert.doesNotMatch(pack.longform.script, /check .*game page against the footage/i);
+  assert.match(pack.longform.script, /Here is the practical split/i);
+  assert.match(pack.longform.script, /Use the demo before buying/i);
 });

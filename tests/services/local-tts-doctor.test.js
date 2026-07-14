@@ -217,6 +217,104 @@ test("local TTS doctor retries generation smoke after an allowed restart", async
   assert.equal(report.generation_smoke.ok, true);
 });
 
+test("local TTS doctor prewarms an unloaded voice before retrying smoke after restart", async () => {
+  let fetchCount = 0;
+  let prewarmCount = 0;
+  let smokeCount = 0;
+  const ready = {
+    ok: true,
+    status: "ok",
+    phase: "ready",
+    ready: true,
+    engineCount: 1,
+    voice: {
+      alias: "Sleepy Liam",
+      loaded: true,
+      refResolved: true,
+      reference: { id: "accepted", referenceHash: "hash" },
+    },
+    reasons: [],
+  };
+  const unloaded = {
+    ok: false,
+    status: "ok",
+    phase: "idle",
+    ready: false,
+    engineCount: 0,
+    voice: {
+      alias: "Sleepy Liam",
+      loaded: false,
+      refResolved: true,
+      reference: { id: "accepted", referenceHash: "hash" },
+    },
+    reasons: ["accepted voice is not loaded"],
+  };
+
+  const report = await runDoctor({
+    restart: true,
+    prewarm: true,
+    smoke: true,
+    setExitCode: false,
+    writeReport: false,
+    deps: {
+      async fetchLocalTtsHealth() {
+        fetchCount += 1;
+        return ready;
+      },
+      classifyLocalTtsDoctorAction(summary, options = {}) {
+        if (summary.voice?.loaded) {
+          return {
+            action: "none",
+            verdict: "green",
+            reason: "local TTS is ready with the accepted voice loaded",
+          };
+        }
+        if (options.allowPrewarm) {
+          return {
+            action: "prewarm",
+            verdict: "amber",
+            reason: "accepted voice needs prewarming",
+          };
+        }
+        return {
+          action: "manual_prewarm_required",
+          verdict: "amber",
+          reason: "accepted voice is not loaded",
+        };
+      },
+      classifyLocalTtsHealthFailure(summary) {
+        return { code: summary.voice?.loaded ? null : "voice_not_loaded" };
+      },
+      async startLocalTtsServer() {
+        return { pid: 24681, spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" } };
+      },
+      async waitForLocalTtsHealth() {
+        return unloaded;
+      },
+      async prewarmLocalTtsVoice() {
+        prewarmCount += 1;
+        return { ok: true, reused: false, loadedMs: 250 };
+      },
+      async inspectLocalGpuPressure() {
+        return { ok: true, reason: "gpu ok" };
+      },
+      async runGenerationSmoke() {
+        smokeCount += 1;
+        if (smokeCount === 1) throw new Error("local_tts_generation_failed:server_error");
+        return { ok: true, provider: "local", size_bytes: 4096, attempts: 1 };
+      },
+    },
+  });
+
+  assert.equal(prewarmCount, 1);
+  assert.equal(fetchCount, 2);
+  assert.equal(smokeCount, 2);
+  assert.equal(report.verdict, "green");
+  assert.equal(report.failure_code, null);
+  assert.equal(report.prewarm.ok, true);
+  assert.equal(report.generation_smoke.ok, true);
+});
+
 test("local TTS doctor retries once when the first allowed start dies before binding", async () => {
   let startCount = 0;
   let healthWaitCount = 0;

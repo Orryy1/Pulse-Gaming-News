@@ -228,7 +228,7 @@ async function runDoctor(options = {}) {
       report.failure_code = "generation_smoke_failed";
       report.reason = `local TTS generation smoke failed: ${message}`;
       console.log(`[tts-doctor] smoke failed ${message}`);
-        if (options.restart === true) {
+      if (options.restart === true) {
         report.started = await startServer({
           allowRecentBootBypassWhenNoListener: true,
         });
@@ -242,6 +242,28 @@ async function runDoctor(options = {}) {
           intervalMs: Number(process.env.LOCAL_TTS_START_POLL_MS || 1500),
         });
         console.log(`[tts-doctor] after-smoke-restart ${formatLocalTtsStatus(report.after)}`);
+        const restartedPrewarmPlan = classifyAction(report.after, {
+          allowRestart: false,
+          allowPrewarm: options.prewarm === true,
+        });
+        if (restartedPrewarmPlan.action === "prewarm") {
+          report.prewarm = await prewarmVoice({
+            baseUrl,
+            voiceId,
+            timeoutMs: Number(process.env.LOCAL_TTS_PREWARM_TIMEOUT_MS || 600000),
+          });
+          console.log(
+            `[tts-doctor] smoke-restart prewarm ok reused=${report.prewarm.reused === true} loaded_ms=${report.prewarm.loadedMs}`,
+          );
+          report.after = await fetchHealth({
+            baseUrl,
+            voiceId,
+            timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
+          });
+          console.log(
+            `[tts-doctor] after-smoke-restart-prewarm ${formatLocalTtsStatus(report.after)}`,
+          );
+        }
         const restartedPlan = classifyAction(report.after, {
           allowRestart: false,
           allowPrewarm: false,

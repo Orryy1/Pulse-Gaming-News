@@ -333,7 +333,12 @@ test("bootstrap-queue: primary runtime starts a dedicated stale-claim maintenanc
           assert.deepEqual(runnerStarts.map((runner) => runner.kinds), [
             null,
             ["jobs_reap"],
-            ["publish_window_watchdog", "publish"],
+            [
+              "publish_window_watchdog",
+              "publish",
+              "instagram_token_refresh",
+              "tiktok_auth_check",
+            ],
           ]);
           assert.equal(runnerStarts[1].workerId, "server-test-123-maintenance");
         } finally {

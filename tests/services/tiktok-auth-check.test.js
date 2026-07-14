@@ -287,6 +287,73 @@ test("handleTiktokAuthCheck: refreshes a normal 24h token at the daily checkpoin
   }
 });
 
+test("handleTiktokAuthCheck: superseded queued checks do not inspect or refresh tokens", async () => {
+  const axios = require("axios");
+  const origPost = axios.post;
+  let refreshCalls = 0;
+  axios.post = async () => {
+    refreshCalls += 1;
+    throw new Error("stale auth check must not contact TikTok");
+  };
+  const discord = stubDiscord();
+  try {
+    clearHandlersCache();
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.tiktok_auth_check(
+      { id: 10, run_at: "2026-07-03 17:30:00" },
+      {
+        log() {},
+        repos: {
+          db: {
+            prepare() {
+              return { get: () => ({ id: 11 }) };
+            },
+          },
+        },
+      },
+    );
+    assert.strictEqual(result.skipped, "superseded_auth_check_job");
+    assert.strictEqual(result.refresh_attempted, false);
+    assert.strictEqual(refreshCalls, 0);
+    assert.strictEqual(discord.sent.length, 0);
+  } finally {
+    axios.post = origPost;
+    discord.restore();
+  }
+});
+
+test("handleTiktokAuthCheck: newest due check still runs after a long outage", async () => {
+  await fs.writeJson(tokenFile, {
+    access_token: "act.example12345Example12345",
+    refresh_token: "rft.example12345Example12345",
+    expires_at: Date.now() + 48 * 60 * 60 * 1000,
+  });
+  const discord = stubDiscord();
+  try {
+    clearHandlersCache();
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.tiktok_auth_check(
+      { id: 11, run_at: "2000-01-01 00:00:00" },
+      {
+        log() {},
+        repos: {
+          db: {
+            prepare() {
+              return { get: () => null };
+            },
+          },
+        },
+      },
+    );
+    assert.strictEqual(result.initial_reason, "ok");
+    assert.strictEqual(result.skipped, undefined);
+    assert.strictEqual(result.refresh_attempted, false);
+    assert.strictEqual(discord.sent.length, 0);
+  } finally {
+    discord.restore();
+  }
+});
+
 test("handleTiktokAuthCheck: skips token inspection when TikTok is operator-disabled", async () => {
   process.env.TIKTOK_ENABLED = "false";
   const discord = stubDiscord();

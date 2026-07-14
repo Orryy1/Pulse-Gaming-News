@@ -14,6 +14,8 @@ test("bootstrap queue enables a protected publish lane by default", () => {
   assert.deepEqual(PUBLISH_CRITICAL_JOB_KINDS, [
     "publish_window_watchdog",
     "publish",
+    "instagram_token_refresh",
+    "tiktok_auth_check",
   ]);
   assert.equal(
     publishCriticalRunnerEnabled({

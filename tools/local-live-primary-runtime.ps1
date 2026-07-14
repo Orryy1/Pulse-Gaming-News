@@ -185,6 +185,7 @@ $env:PULSE_EMERGENCY_KILL_SWITCH = "clear"
 $env:PULSE_SAFE_OBSERVATION_MODE = "false"
 $env:PULSE_PRIMARY_RUNTIME_HOLD = "false"
 $env:PULSE_SERVER_CONTENT_RUNNERS = "true"
+$env:TIKTOK_AUTH_CHECK_ENABLED = "true"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
 $env:PULSE_RESET_SCHEDULES_ON_BOOT = "true"
 if ($commitSha) { $env:RAILWAY_GIT_COMMIT_SHA = $commitSha }

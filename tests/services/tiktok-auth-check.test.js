@@ -36,6 +36,7 @@ beforeEach(async () => {
   process.env.TIKTOK_CLIENT_SECRET = "sbfakesecret";
   delete process.env.TIKTOK_ENABLED;
   delete process.env.TIKTOK_AUTO_UPLOAD_ENABLED;
+  delete process.env.TIKTOK_AUTH_CHECK_ENABLED;
 });
 
 after(async () => {
@@ -364,6 +365,29 @@ test("handleTiktokAuthCheck: skips token inspection when TikTok is operator-disa
     assert.strictEqual(result.skipped, "operator_disabled");
     assert.strictEqual(result.refresh_attempted, false);
     assert.strictEqual(result.needs_reauth, false);
+    assert.strictEqual(discord.sent.length, 0);
+  } finally {
+    discord.restore();
+  }
+});
+
+test("handleTiktokAuthCheck: explicit watchdog opt-in keeps inbox credentials healthy while Direct Post is disabled", async () => {
+  process.env.TIKTOK_ENABLED = "false";
+  process.env.TIKTOK_AUTO_UPLOAD_ENABLED = "false";
+  process.env.TIKTOK_AUTH_CHECK_ENABLED = "true";
+  await fs.writeJson(tokenFile, {
+    access_token: "act.example12345Example12345",
+    refresh_token: "rft.example12345Example12345",
+    expires_at: Date.now() + 48 * 60 * 60 * 1000,
+  });
+  const discord = stubDiscord();
+  try {
+    clearHandlersCache();
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.tiktok_auth_check({}, { log() {} });
+    assert.strictEqual(result.initial_reason, "ok");
+    assert.strictEqual(result.skipped, undefined);
+    assert.strictEqual(result.refresh_attempted, false);
     assert.strictEqual(discord.sent.length, 0);
   } finally {
     discord.restore();

@@ -1920,6 +1920,94 @@ test("public copy package repair creates missing script scorecards before schedu
   assert.ok(savedScorecard.viral_score >= 75, JSON.stringify(savedScorecard, null, 2));
 });
 
+test("public copy package repair preserves a market-ready script instead of replacing it with a thin fallback", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-no-thin-fallback-"));
+  const artifactDir = path.join(root, "batch", "paleo-pines");
+  await fs.ensureDir(artifactDir);
+  const script =
+    "Paleo Pines just fixed one of its most exhausting hunts. The free Players' Choice update adds a skin tracker that lets you target one dinosaur colour and pattern. When that rarity next spawns, the game guarantees the combination you chose. A blind grind now has an actual finish line. Saddlebags let large dinosaurs carry up to four items. Small dinosaurs can collect wild resources and finally help with composters around the ranch. There are new crops, recipes and decorations too, plus a compass and automatic inventory sorting. For players who love rare dinos but hate wasting whole evenings on random spawns, that is a huge quality-of-life win. But it also creates the argument: does a guaranteed target respect your time, or make the rarest dinosaurs feel less special? If the tracker saves hours without flattening the hunt, it turns rare dinos into a goal instead of a lottery. Follow Pulse Gaming so you never miss a beat.";
+  const manifest = {
+    story_id: "paleo-pines-no-thin-fallback",
+    canonical_subject: "Paleo Pines",
+    canonical_game: "Paleo Pines",
+    selected_title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+    short_title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+    first_spoken_line: "Paleo Pines just fixed one of its most exhausting hunts.",
+    primary_source: "PlayStation Blog",
+    confirmed_claims: ["Paleo Pines received the free Players' Choice update on July 13, 2026."],
+    narration_script: script,
+    full_script: script,
+    tts_script: script,
+    description: "Paleo Pines now guarantees a chosen rare dinosaur skin combination. Source: PlayStation Blog.",
+    thumbnail_headline: "RARE DINO, GUARANTEED",
+    thumbnail_text: "RARE DINO, GUARANTEED",
+    public_copy_repaired_at: "2026-07-13T19:59:00.000Z",
+  };
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), manifest, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    blockers: [],
+    generated_at: "2026-07-13T19:30:00.000Z",
+    manifest: {
+      ...manifest,
+      narration_script:
+        "Paleo Pines has one detail worth checking before it becomes background noise. Follow Pulse Gaming so you never miss a beat.",
+      full_script:
+        "Paleo Pines has one detail worth checking before it becomes background noise. Follow Pulse Gaming so you never miss a beat.",
+      tts_script:
+        "Paleo Pines has one detail worth checking before it becomes background noise. Follow Pulse Gaming so you never miss a beat.",
+      public_copy_repaired_at: "2026-07-13T19:20:00.000Z",
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: manifest.selected_title,
+        description: manifest.description,
+      },
+    },
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: manifest.story_id, artifact_dir: artifactDir }],
+    generatedAt: "2026-07-13T20:00:00.000Z",
+  });
+
+  assert.equal(report.summary.changed_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.summary.blocked_count, 0, JSON.stringify(report, null, 2));
+  const saved = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(saved.narration_script, script);
+  const scorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+  assert.deepEqual(scorecard.blockers, [], JSON.stringify(scorecard, null, 2));
+});
+
+test("public copy repair keeps The Mound thumbnail subject anchored without repeating the title", () => {
+  const script =
+    "The Mound has found a nastier co-op enemy: the friend who swears they saw something. Launching July 15, this horror game sends a team into a cursed jungle where its madness system distorts what players see and hear. One person calls out movement. Nobody else sees it. Do you trust them, spend resources checking, or assume the game is inside their head? That uncertainty could create stories scripted jump scares cannot. A bad call splits the team. A real warning gets ignored. Voice chat becomes part of the horror. But randomness is the danger. If hallucinations feel arbitrary, players tune them out. If they arrive at the right moment, The Mound turns trust itself into the monster. Follow Pulse Gaming so you never miss a beat.";
+  const repaired = repairGoalPublicCopyManifest({
+    story_id: "the-mound-thumbnail",
+    canonical_subject: "The Mound: Omen of Cthulhu",
+    canonical_game: "The Mound: Omen of Cthulhu",
+    selected_title: "The Mound Makes Your Own Co-op Team The Threat",
+    short_title: "The Mound Makes Your Own Co-op Team The Threat",
+    first_spoken_line: "The Mound has found a nastier co-op enemy: the friend who swears they saw something.",
+    primary_source: "Xbox Wire",
+    confirmed_claims: ["The Mound: Omen of Cthulhu launches on July 15."],
+    narration_script: script,
+    full_script: script,
+    tts_script: script,
+    description: "The Mound turns conflicting co-op hallucinations into the real threat. Source: Xbox Wire.",
+    thumbnail_headline: "THE MOUND: TRUST NO ONE",
+    thumbnail_text: "THE MOUND: TRUST NO ONE",
+  });
+
+  assert.equal(repaired.after.verdict, "pass", JSON.stringify(repaired.after, null, 2));
+  assert.equal(repaired.manifest.thumbnail_headline, "THE MOUND: TRUST NO ONE");
+  assert.equal(repaired.manifest.narration_script, script);
+});
+
 test("public copy package repair rewrites GTA 5 free upgrade stories into viral-ready owner payoff", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-public-copy-gta5-upgrade-"));
   const artifactDir = path.join(root, "batch", "gta5-upgrade");
@@ -2266,6 +2354,10 @@ test("public copy package repair blocks old Dragonwilds loop phrasing even when 
   const savedManifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
   assert.equal(report.summary.changed_count, 0);
   assert.equal(report.summary.blocked_count, 1);
+  assert.ok(
+    !report.blocked[0].blockers.includes("public_copy_rewrite_would_create_thin_narration"),
+    JSON.stringify(report.blocked[0], null, 2),
+  );
   assert.ok(
     report.blocked[0].blockers.includes("script_scorecard:vague_update_without_concrete_proof"),
     JSON.stringify(report.blocked[0], null, 2),
@@ -2873,6 +2965,7 @@ test("public copy package repair rewrites Mega Mewtwo title-repeat hooks before 
   assert.match(savedManifest.selected_title, /Pokémon Go/i);
   assert.doesNotMatch(savedManifest.selected_title, /^Mega Mewtwo Is Finally Coming/i);
   assert.match(savedManifest.first_spoken_line, /Mega Mewtwo/i);
+  assert.ok(savedManifest.narration_script.split(/\s+/).length >= 115);
   const normalTitle = savedManifest.selected_title.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
   const normalHook = savedManifest.first_spoken_line.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
   assert.equal(normalHook.startsWith(normalTitle), false);
@@ -4176,6 +4269,7 @@ test("public copy repair rewrites ASR-exhausted narration even when public copy 
   assert.equal(report.changed[0].status, "changed_asr_exhausted_rewrite");
   assert.equal(updated.public_copy_repair_strategy, "deterministic_source_safe_rewrite");
   assert.match(updated.narration_script, /Crimson Desert/);
+  assert.ok(updated.narration_script.split(/\s+/).length >= 115);
   assert.doesNotMatch(updated.narration_script, /out in the wild after years of huge trailers/i);
   assert.equal(
     (updated.narration_script.match(/GameSpot reports/g) || []).length,
@@ -4237,7 +4331,7 @@ test("public copy repair rewrites ASR-inserted narration before another local TT
   assert.equal(updated.public_copy_repair_strategy, "deterministic_source_safe_rewrite");
   assert.match(updated.narration_script, /Mega Mewtwo/);
   assert.doesNotMatch(updated.narration_script, /not just worth checking once|raid window, access rules/i);
-  assert.ok(updated.narration_script.split(/\s+/).length < 70);
+  assert.ok(updated.narration_script.split(/\s+/).length >= 115);
   assert.equal(evaluateGoalPublicCopy(updated).verdict, "pass");
 });
 
@@ -5743,6 +5837,108 @@ test("public copy package repair hydrates stale package metadata from fresher co
   assert.equal(platformManifest.outputs.youtube_shorts.title, updated.selected_title);
   assert.match(JSON.stringify(platformManifest), /PALWORLD COMEBACK BUTTON/);
   assert.equal(evaluateGoalPublicCopy(updated).verdict, "pass");
+
+  const cadenceScript = freshScript.replace(
+    "Game Pass. Xbox Wire says",
+    "Game Pass is the catch. Xbox Wire says",
+  );
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    ...updated,
+    narration_script: cadenceScript,
+    full_script: cadenceScript,
+    tts_script: cadenceScript,
+    spoken_narration_script: cadenceScript,
+  });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), buildViralScriptIntelligence({
+    story: updated,
+    script: cadenceScript,
+  }));
+  await fs.utimes(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+    new Date("2026-07-07T21:00:00.000Z"),
+    new Date("2026-07-07T21:00:00.000Z"),
+  );
+  await fs.utimes(
+    path.join(artifactDir, "coherence_report.json"),
+    new Date("2026-07-07T20:00:00.000Z"),
+    new Date("2026-07-07T20:00:00.000Z"),
+  );
+
+  await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "official_palworld_10_gamepass_20260707_repair", artifact_dir: artifactDir }],
+    generatedAt: "2026-07-07T21:05:00.000Z",
+  });
+  const cadencePreserved = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+
+  assert.equal(cadencePreserved.narration_script, cadenceScript);
+});
+
+test("public copy package repair does not hydrate a newer canonical script from stale coherence evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-repair-stale-coherence-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  const staleScript =
+    "Denshattack asks one ridiculous question: can a train do a kickflip? Xbox Wire confirms it hits Game Pass and Xbox Play Anywhere on July 15, with players flipping, grinding and tricking a customisable train across a colourful Japanese dystopia. The trailer sells the joke instantly. The controls have to sell the next ten hours. The catch is whether a clean combo feels improvised, not like watching a preset stunt reel. Game Pass removes the price risk, but it cannot make canned tricks satisfying. The split is simple: players who master a ridiculous line need to feel they earned it, while everyone else should still enjoy the crash. If the stunts feel earned, Denshattack becomes this summer's strangest one-more-run obsession; if they look canned, the gimmick stops being funny after one clip. Follow Pulse Gaming so you never miss a beat.";
+  const currentScript =
+    "Denshattack asks one ridiculous question. Can a train do a kickflip? Xbox Wire confirms it hits Game Pass and Xbox Play Anywhere on July 15. Players flip, grind and trick a customisable train across a colourful Japanese dystopia. The trailer sells the joke instantly. The controls have to sell the next ten hours. A clean combo should feel improvised. It should not look like a preset stunt reel. Game Pass removes the price risk. It cannot make canned tricks satisfying. The split is simple. Players who master a ridiculous line need to feel they earned it. Everyone else should still enjoy the crash. If the stunts feel earned, Denshattack becomes this summer's strangest one-more-run obsession. If they look canned, the gimmick stops being funny after one clip. Follow Pulse Gaming so you never miss a beat.";
+  const manifest = {
+    story_id: "denshattack-stale-coherence",
+    canonical_subject: "Denshattack",
+    canonical_game: "Denshattack",
+    canonical_title: "Why Denshattack's Train Kickflips Could Actually Work",
+    selected_title: "Why Denshattack's Train Kickflips Could Actually Work",
+    short_title: "Why Denshattack's Train Kickflips Could Actually Work",
+    first_spoken_line: "Denshattack asks one ridiculous question.",
+    narration_script: currentScript,
+    full_script: currentScript,
+    tts_script: currentScript,
+    description: "Denshattack brings train kickflips to Game Pass on July 15. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/07/13/denshattack-game-pass/",
+    confirmed_claims: ["Denshattack launches on Game Pass on July 15."],
+    thumbnail_headline: "DENSHATTACK TRAIN KICKFLIPS",
+    thumbnail_text: "DENSHATTACK TRAIN KICKFLIPS",
+  };
+  const coherencePath = path.join(artifactDir, "coherence_report.json");
+  const manifestPath = path.join(artifactDir, "canonical_story_manifest.json");
+  await fs.writeJson(coherencePath, {
+    result: "pass",
+    failures: [],
+    warnings: [],
+    generated_at: "2026-07-13T20:00:00.000Z",
+    manifest: {
+      ...manifest,
+      first_spoken_line: "Denshattack asks one ridiculous question: can a train do a kickflip?",
+      narration_script: staleScript,
+      full_script: staleScript,
+      tts_script: staleScript,
+    },
+  });
+  await fs.utimes(coherencePath, new Date("2026-07-13T20:00:00.000Z"), new Date("2026-07-13T20:00:00.000Z"));
+  await fs.writeJson(manifestPath, manifest);
+  await fs.utimes(manifestPath, new Date("2026-07-13T21:00:00.000Z"), new Date("2026-07-13T21:00:00.000Z"));
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), buildViralScriptIntelligence({
+    story: manifest,
+    script: currentScript,
+  }));
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {
+      youtube_shorts: {
+        title: manifest.selected_title,
+        description: manifest.description,
+        cover: { headline: manifest.thumbnail_headline },
+      },
+    },
+  });
+
+  await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: manifest.story_id, artifact_dir: artifactDir }],
+    generatedAt: "2026-07-13T21:05:00.000Z",
+  });
+  const updated = await fs.readJson(manifestPath);
+
+  assert.equal(updated.narration_script, currentScript);
 });
 
 test("public copy repair does not generate source-process Threads copy", () => {

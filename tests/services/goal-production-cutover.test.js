@@ -72,6 +72,31 @@ test("production cutover preserves strict ASR coverage after display caption tok
   assert.equal(coverage.actual_word_count, 6);
 });
 
+test("production cutover preserves confirmed event windows in scheduler bridge candidates", () => {
+  const confirmedEventWindow = {
+    status: "confirmed",
+    starts_at: "2026-07-09T00:00:00.000Z",
+    ends_at: "2026-07-12T23:59:59.000Z",
+    source_url: "https://news.xbox.com/en-us/2026/07/09/free-play-days-07-09-2026/",
+  };
+  const candidate = _testables.buildSchedulerBridgeCandidate({
+    storyId: "free_play_days_event_window",
+    artifactDir: "C:\\proof\\free_play_days_event_window",
+    canonical: {
+      selected_title: "Xbox Free Play Days Has One Clear Winner",
+      canonical_subject: "Xbox Free Play Days",
+      narration_script: "Xbox Free Play Days has one clear winner.",
+      source_published_at: "2026-07-09T15:00:00.000Z",
+      confirmed_event_window: confirmedEventWindow,
+    },
+    sourceManifest: {
+      primary_source: { name: "Xbox Wire", url: confirmedEventWindow.source_url },
+    },
+  });
+
+  assert.deepEqual(candidate.confirmed_event_window, confirmedEventWindow);
+});
+
 async function makeCutoverPackage(root, id = "story-one", options = {}) {
   const artifactDir = path.join(root, id);
   await fs.ensureDir(artifactDir);

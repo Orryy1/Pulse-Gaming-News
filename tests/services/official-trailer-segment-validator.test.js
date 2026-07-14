@@ -307,6 +307,42 @@ test("segment validator merges repeated reference-report inputs for one story", 
   );
 });
 
+test("segment validator CLI accepts a bounded exploratory window duration", () => {
+  const args = parseArgs([
+    "node",
+    "tools/official-trailer-segment-validator.js",
+    "--deep-scan",
+    "--exploratory-starts",
+    "40,48",
+    "--exploratory-duration-s",
+    "3",
+    "--allow-early-exploratory-windows",
+  ]);
+
+  assert.equal(args.includeExploratoryWindows, true);
+  assert.deepEqual(args.exploratoryStartSeconds, [40, 48]);
+  assert.equal(args.exploratoryDurationS, 3);
+  assert.equal(args.allowEarlyExploratoryWindows, true);
+});
+
+test("segment validator propagates exploratory window duration into clip refs", () => {
+  const refs = buildClipRefsFromReport(
+    {},
+    { plans: [referencePlan("starward-short-window", "https://video.example/starward.m3u8")] },
+    "starward-short-window",
+    {
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [40],
+      exploratoryDurationS: 3,
+      candidateWindowsPerSource: 1,
+      maxSegments: 2,
+    },
+  );
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].durationS, 3);
+});
+
 test("segment validator accepts official game-site news pages with direct media", () => {
   const referenceReport = {
     plans: [
@@ -1095,6 +1131,42 @@ test("official trailer segment validator preflight-rejects official segments sti
   assert.equal(report.summary.segments_rejected, 1);
   assert.equal(report.segments[0].validation_reason, "segment_starts_in_trailer_intro_or_rating_window");
   assert.equal(report.segments[0].media_start_s, 23);
+});
+
+test("official trailer segment validator samples opt-in early windows through full frame QA", async () => {
+  const outputRoot = tempOutputRoot("qa-guarded-early-window");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        mediaStartS: 8,
+        durationS: 3,
+        sourceDurationS: 50,
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          exploratory_scan: true,
+          allow_early_exploratory_window: true,
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async (args) => {
+        extractorCalls += 1;
+        return fakeExtractor(args);
+      },
+      inspectFrame: async (outputPath) => passingQa(outputPath),
+    },
+  );
+
+  assert.equal(extractorCalls, 2);
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].media_start_s, 8);
 });
 
 test("official trailer segment validator allows short trailer windows when 36s skip would exhaust input", async () => {

@@ -191,6 +191,38 @@ test("platform variant materializer creates Instagram-safe variants for in-windo
   assert.equal(youtube.variant_video_path, undefined);
 });
 
+test("platform variant materializer prefers an explicit target window over a numeric display duration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-numeric-duration-"));
+  const storyPackage = await makePackage(root, "ig-numeric-display-duration", 48.348);
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.instagram_reels = {
+    duration_seconds: 48.348,
+    strategic_duration_seconds: { min: 35, max: 59 },
+    target_duration_seconds: { min: 35, max: 59 },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const rendered = [];
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-14T01:00:00.000Z",
+    variantRenderer: async ({ outputPath, platform, targetDurationS }) => {
+      rendered.push({ outputPath, platform, targetDurationS });
+      await fs.outputFile(outputPath, Buffer.alloc(2200, 2));
+    },
+    probeDuration: async () => 48.348,
+  });
+
+  assert.equal(report.summary.variant_job_count, 1);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.deepEqual(rendered.map((item) => item.platform), ["instagram_reels"]);
+  assert.equal(rendered[0].targetDurationS, 48.348);
+
+  const updated = await fs.readJson(manifestPath);
+  assert.equal(updated.outputs.instagram_reels.platform_variant_render.encoder_profile, "instagram_reels_meta_safe_h264_aac_v3");
+});
+
 test("platform variant materializer creates Facebook-safe variants before the publish window", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-facebook-safe-"));
   const storyPackage = await makePackage(root, "facebook-in-window", 42.4);

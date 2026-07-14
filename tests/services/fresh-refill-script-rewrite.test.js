@@ -17,6 +17,19 @@ const TEST_ROOT = path.join(ROOT, "test", "output", "fresh-refill-script-rewrite
 const GENERIC_SCRIPT =
   "Tekken 8 has a new source detail, but the real question is still what players can do with it. Eurogamer says Tekken 8 is adding Bob to its roster and players seem pretty hyped, despite the fighting game's mounting struggles. If it changes when people buy, download, wishlist or return, the update matters. If it only repeats a headline, it needs stronger proof before it deserves attention. The next official detail has to make that choice clear: play now, wait, skip or watch for gameplay. Follow Pulse Gaming so you never miss a beat.";
 
+function officialSourceEvidence(claim, sourceUrl) {
+  return {
+    status: "pass",
+    source_url: sourceUrl,
+    claims: [{
+      text: claim,
+      evidence_text: claim,
+      source_url: sourceUrl,
+      origin: "source_body",
+    }],
+  };
+}
+
 test("fresh refill rewrite preserves a concrete ESO Season One argument", () => {
   const script = buildFreshRefillViewerScript({
     job: {
@@ -415,6 +428,152 @@ test("fresh refill viewer script turns Star Wars Monopoly abilities into a clear
   assert.equal(script.coherence.result, "pass");
 });
 
+test("fresh refill viewer script blocks title-only claims even when generated copy adds details", () => {
+  const sourceTitle = "Star Wars Monopoly Heroes Vs Villains Character Abilities";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_title_only_monopoly",
+      title: sourceTitle,
+      source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/06/29/monopoly-star-wars-heroes-villains-character-abilities/",
+        title: sourceTitle,
+        description: "Generated copy says this is a safe gift that creates family drama.",
+      },
+      current_script:
+        "Generated narration says kids get chaos, parents get stories and people will argue to replay.",
+    },
+    manifest: {
+      canonical_subject: "Monopoly Star Wars",
+      canonical_title: sourceTitle,
+      title_candidates: [sourceTitle],
+      description: "Generated copy says this is a safe gift that creates family drama.",
+      confirmed_claims: [sourceTitle],
+    },
+  });
+
+  assert.equal(script.verdict, "blocked");
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.ok(script.quality.blockers.includes("source_claim_scope_mismatch"));
+});
+
+test("fresh refill viewer script uses official source-body evidence for Starward", () => {
+  const sourceUrl = "https://news.xbox.com/en-us/2026/07/09/meet-the-star-operator-1/";
+  const evidenceSentences = [
+    "Starward Version 3.1 is now live and adds Pliszka.",
+    "The Wing Rider Assembly increases Pliszka's firepower and mobility but also increases her hitbox size and descent speed.",
+    "Players can detach the assembly mid-battle for a more agile playstyle.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_starward_source_body",
+      title: "Starward Patch Check",
+      source: {
+        name: "Xbox Wire",
+        url: sourceUrl,
+        title: "Meet the Star Operator Who Rewrites the Ranged Rulebook in Starward V3.1",
+        body: evidenceSentences.join(" "),
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        claims: evidenceSentences.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+      current_script: "Starward just got a boring-looking system update.",
+    },
+    manifest: {
+      canonical_subject: "Starward",
+      canonical_title: "Starward Patch Check",
+      confirmed_claims: ["Meet the Star Operator Who Rewrites the Ranged Rulebook in Starward V3.1"],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.suggested_title, "Starward's New Fighter Has A Huge Trade-Off");
+  assert.match(script.full_script, /Pliszka/);
+  assert.match(script.full_script, /larger hitbox|enlarges her hitbox|bigger target/i);
+  assert.match(script.full_script, /detach|ditch/i);
+  assert.match(script.full_script, /most controversial fighter/i);
+  assert.doesNotMatch(script.full_script, /argued-over fighter/i);
+  assert.doesNotMatch(script.full_script, /system update|patch notes|save|controller reliability/i);
+});
+
+test("fresh refill viewer script blocks generic review-signal fallback copy", () => {
+  const sourceUrl = "https://example.com/zaxoid-review";
+  const evidence =
+    "Zaxoid is now sitting on a major review score in the current review conversation.";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_generic_review_signal",
+      title: "Zaxoid Review Update",
+      source: {
+        name: "Example Reviews",
+        url: sourceUrl,
+        title: "Zaxoid Review Update",
+        body: evidence,
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        claims: [{
+          text: evidence,
+          evidence_text: evidence,
+          source_url: sourceUrl,
+          origin: "source_body",
+        }],
+      },
+    },
+    manifest: {
+      canonical_subject: "Zaxoid",
+      canonical_title: "Zaxoid Review Update",
+    },
+  });
+
+  assert.equal(script.verdict, "rewrite_required");
+  assert.ok(script.quality.blockers.includes("generic_review_signal_template"));
+});
+
+test("fresh refill viewer script blocks an ended confirmed event before rewriting", () => {
+  const script = buildFreshRefillViewerScript({
+    now: new Date("2026-07-13T09:00:00.000Z"),
+    job: {
+      story_id: "rss_expired_free_play_days",
+      title: "Xbox Free Play Days Has One Clear Winner",
+      source: {
+        name: "Xbox Wire",
+        url: "https://news.xbox.com/en-us/2026/07/09/free-play-days-07-09-2026/",
+        confirmed_event_window: {
+          status: "confirmed",
+          starts_at: "2026-07-09T00:00:00.000Z",
+          ends_at: "2026-07-12T23:59:59.999Z",
+        },
+      },
+      source_evidence: {
+        status: "pass",
+        claims: [{
+          text: "MLB The Show 26, The Alters and Stuffed were available until Sunday, July 12.",
+          evidence_text: "MLB The Show 26, The Alters and Stuffed were available until Sunday, July 12.",
+          source_url: "https://news.xbox.com/en-us/2026/07/09/free-play-days-07-09-2026/",
+          origin: "source_body",
+        }],
+      },
+    },
+    manifest: {
+      canonical_subject: "Xbox Free Play Days",
+      confirmed_claims: ["Free Play Days - MLB The Show 26, The Alters and Stuffed"],
+    },
+  });
+
+  assert.equal(script.verdict, "blocked");
+  assert.equal(script.reason, "confirmed_event_window_ended");
+  assert.deepEqual(script.quality.blockers, ["confirmed_event_window_ended"]);
+});
+
 test("fresh refill viewer script rewrites Echoes of Aincrad without repeating the title", () => {
   const script = buildFreshRefillViewerScript({
     job: {
@@ -759,6 +918,7 @@ test("fresh refill viewer script repairs current official-source extraction and 
           url: item.sourceUrl,
           type: "rss",
         },
+        source_evidence: officialSourceEvidence(item.confirmed, item.sourceUrl),
         current_script: `${item.title} has a new source detail, but the real question is still what players can do with it.`,
       },
       manifest: {
@@ -818,6 +978,7 @@ test("fresh refill viewer script repairs current access stories without fallback
           url: item.sourceUrl,
           type: "rss",
         },
+        source_evidence: officialSourceEvidence(item.confirmed, item.sourceUrl),
         current_script: `${item.title} has one detail worth checking before it becomes background noise.`,
       },
       manifest: {
@@ -957,6 +1118,7 @@ test("fresh refill viewer script repairs current subscription and layoffs storie
           url: item.sourceUrl,
           type: "rss",
         },
+        source_evidence: officialSourceEvidence(item.confirmed, item.sourceUrl),
         current_script: `${item.title} has one detail worth checking before it becomes background noise.`,
       },
       manifest: {
@@ -1074,6 +1236,10 @@ test("fresh refill script rewrite story filter applies only the requested story"
               "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
             type: "rss",
           },
+          source_evidence: officialSourceEvidence(
+            "DOOM: The Dark Ages Goes Supersonic With New DLC Chain Spear",
+            "https://news.xbox.com/en-us/2026/07/01/doom-the-dark-ages-revelations-chain-spear-preview/",
+          ),
           current_script:
             "Doom: The Dark Ages has a new source detail, but the real question is still what players can do with it.",
           scorecard_verdict: "rewrite_required",
@@ -1153,6 +1319,104 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
   const youtubeEvidence = platform.platform_native_evidence.platforms.find((item) => item.platform === "youtube_shorts");
   assert.match(youtubeEvidence.copy_fingerprint, /bob|eurogamer/i);
   assert.doesNotMatch(youtubeEvidence.copy_fingerprint, /generic description old weak title/i);
+});
+
+test("fresh refill script rewrite persists official source provenance and event windows", async () => {
+  const { artifactDir, workOrderPath } = await writeFixture("apply-source-evidence");
+  const workOrder = await fs.readJson(workOrderPath);
+  const sourceUrl = "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer";
+  const confirmedEventWindow = {
+    status: "confirmed",
+    starts_at: "2026-07-13T00:00:00.000Z",
+    ends_at: "2026-07-20T23:59:59.999Z",
+    source_url: sourceUrl,
+  };
+  workOrder.jobs[0].source.confirmed_event_window = confirmedEventWindow;
+  workOrder.jobs[0].source_evidence = {
+    status: "pass",
+    source_url: sourceUrl,
+    headline: "Tekken 8 adds Bob",
+    source_text_sha256: "b".repeat(64),
+    confirmed_event_window: confirmedEventWindow,
+    claims: [{
+      text: "Tekken 8 is adding Bob to its roster.",
+      evidence_text: "Tekken 8 is adding Bob to its roster.",
+      source_url: sourceUrl,
+      origin: "source_body",
+    }],
+  };
+  await fs.writeJson(workOrderPath, workOrder, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: { name: "Eurogamer", url: sourceUrl },
+  }, { spaces: 2 });
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(TEST_ROOT, "apply-source-evidence", "report"),
+    applyLocal: true,
+    generatedAt: "2026-07-13T10:00:00.000Z",
+  });
+  const manifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const sourceManifest = await fs.readJson(path.join(artifactDir, "source_manifest.json"));
+
+  assert.equal(report.summary.applied_count, 1);
+  assert.equal(manifest.source_evidence.source_text_sha256, "b".repeat(64));
+  assert.deepEqual(manifest.confirmed_event_window, confirmedEventWindow);
+  assert.equal(sourceManifest.source_evidence.source_text_sha256, "b".repeat(64));
+  assert.deepEqual(sourceManifest.confirmed_event_window, confirmedEventWindow);
+});
+
+test("fresh refill script rewrite quarantines expired source evidence in local proof", async () => {
+  const { artifactDir, workOrderPath } = await writeFixture("apply-expired-source-evidence");
+  const workOrder = await fs.readJson(workOrderPath);
+  const sourceUrl = "https://news.xbox.com/en-us/2026/07/09/free-play-days-07-09-2026/";
+  const confirmedEventWindow = {
+    status: "confirmed",
+    starts_at: "2026-07-09T00:00:00.000Z",
+    ends_at: "2026-07-12T23:59:59.999Z",
+    source_url: sourceUrl,
+  };
+  workOrder.jobs[0].source.url = sourceUrl;
+  workOrder.jobs[0].source.confirmed_event_window = confirmedEventWindow;
+  workOrder.jobs[0].source_evidence = {
+    status: "pass",
+    source_url: sourceUrl,
+    headline: "Free Play Days",
+    source_text_sha256: "c".repeat(64),
+    confirmed_event_window: confirmedEventWindow,
+    claims: [{
+      text: "The offer was available until Sunday, July 12.",
+      evidence_text: "The offer was available until Sunday, July 12.",
+      source_url: sourceUrl,
+      origin: "source_body",
+    }],
+  };
+  await fs.writeJson(workOrderPath, workOrder, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: { name: "Xbox Wire", url: sourceUrl },
+    freshness_gate: "pass",
+    blockers: [],
+  }, { spaces: 2 });
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(TEST_ROOT, "apply-expired-source-evidence", "report"),
+    applyLocal: true,
+    generatedAt: "2026-07-13T10:00:00.000Z",
+  });
+  const manifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const sourceManifest = await fs.readJson(path.join(artifactDir, "source_manifest.json"));
+  const scorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+
+  assert.equal(report.summary.blocked_count, 1);
+  assert.equal(manifest.source_evidence.source_text_sha256, "c".repeat(64));
+  assert.deepEqual(manifest.confirmed_event_window, confirmedEventWindow);
+  assert.equal(sourceManifest.freshness_gate, "blocked");
+  assert.ok(sourceManifest.blockers.includes("confirmed_event_window_ended"));
+  assert.equal(scorecard.verdict, "rewrite_required");
+  assert.ok(scorecard.blockers.includes("confirmed_event_window_ended"));
 });
 
 test("fresh refill script rewrite apply updates sibling motion-hydrated artefacts", async () => {

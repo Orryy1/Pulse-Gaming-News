@@ -32,6 +32,7 @@ Run: uvicorn server:app --host 127.0.0.1 --port 8765
 """
 import base64
 import faulthandler
+import gc
 import hashlib
 import io
 import json
@@ -701,6 +702,7 @@ class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=20_000)
     voice_settings: Optional[VoiceSettings] = None
     output_format: Optional[str] = "mp3_44100_128"
+    alignment_mode: Optional[str] = "forced"
     seed: Optional[int] = None
 
 
@@ -1018,6 +1020,15 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
     except Exception as e:
         log.exception("Synth failed")
         raise HTTPException(500, f"Synth failed: {e}")
+    finally:
+        gc.collect()
+        try:
+            import torch  # noqa: WPS433
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as cache_error:
+            log.warning(f"CUDA cache release failed: {cache_error}")
     voice_diagnostics = getattr(engine, "last_voice_diagnostics", None)
 
     sample_rate = engine.sample_rate
@@ -1029,13 +1040,15 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
         log.exception("MP3 encode failed")
         raise HTTPException(500, f"MP3 encode failed: {e}")
 
-    # Forced alignment for char-level timestamps
-    try:
-        alignment = aligner.align(audio_f32, sample_rate, text)
-    except Exception as e:
-        log.warning(f"Alignment failed, using fallback: {e}")
-        total_dur = len(audio_f32) / sample_rate
+    total_dur = len(audio_f32) / sample_rate
+    if str(req.alignment_mode or "forced").strip().lower() == "fallback":
         alignment = Aligner._fallback_even(text, total_dur)
+    else:
+        try:
+            alignment = aligner.align(audio_f32, sample_rate, text)
+        except Exception as e:
+            log.warning(f"Alignment failed, using fallback: {e}")
+            alignment = Aligner._fallback_even(text, total_dur)
 
     return TTSResponse(
         audio_base64=base64.b64encode(mp3_bytes).decode("ascii"),

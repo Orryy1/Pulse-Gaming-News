@@ -27,6 +27,7 @@ const {
   buildComparisonMarkdown,
   transcriptTextFromReport,
   buildFrameExtractionFilter,
+  renderReportDurationS,
 } = require("../../lib/studio/v2/forensic-qa-v2");
 
 function tempFile(contents, fileName = "captions.ass") {
@@ -483,6 +484,30 @@ test("analyseRenderedFrameTaste ignores colourful subtitle overlay false positiv
   assert.equal(result.samples[0].reason, "subtitle_overlay_taste_ignored");
 });
 
+test("analyseRenderedFrameTaste ignores ambiguous promotional-slate heuristics on rendered gameplay", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "bright-colourful-gameplay.jpg",
+        timeS: 36,
+        prescan: {
+          text_overlay_likelihood: 0,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.19,
+          saturation_mean: 0.64,
+          bright_pixel_ratio: 0.33,
+          dark_pixel_ratio: 0.02,
+        },
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+  assert.equal(result.samples[0].reason, "promotional_slate_heuristic_ignored_on_composite");
+});
+
 test("analyseRenderedFrameTaste fails low-information rendered frames", async () => {
   const result = await analyseRenderedFrameTaste({
     frames: [
@@ -764,6 +789,66 @@ test("sceneBreakdown reads object-shaped clip scene plans from production manife
       ["scene_motion_window_reuse", "unreadable_card_duration"].includes(issue.code),
     ).map((issue) => issue.code),
     ["scene_motion_window_reuse", "unreadable_card_duration"],
+  );
+});
+
+test("sceneBreakdown does not count V4 card evidence windows as duplicate scenes", () => {
+  const cardPath = "hf_quote_card_story.mp4";
+  const scene = sceneBreakdown({
+    clip_scene_plan: {
+      scenes: [
+        {
+          path: cardPath,
+          baseSourceKey: "hyperframes_quote_card",
+          sourceRootKey: "hyperframes/story/quote",
+          durationS: 5.2,
+          readableCardKind: "quote",
+        },
+      ],
+    },
+    card_visible_windows: [
+      {
+        path: cardPath,
+        source: "visual_v4_scene_plan",
+        start_s: 10,
+        end_s: 15.2,
+        duration_s: 5.2,
+        kind: "quote",
+      },
+    ],
+  });
+
+  assert.equal(scene.sceneCount, 1);
+  assert.deepEqual(scene.repeatedCardAssets, []);
+  assert.equal(scene.cardAssetReuse.verdict, "pass");
+});
+
+test("sceneBreakdown treats distinct V4 overlay placements as distinct sources", () => {
+  const scene = sceneBreakdown({
+    overlay_card_windows: [
+      {
+        id: "opening_source_lock",
+        source: "studio_v4_overlay_chain",
+        start_s: 0,
+        end_s: 2.2,
+      },
+      {
+        id: "proof_primary",
+        source: "studio_v4_overlay_chain",
+        start_s: 4,
+        end_s: 6.6,
+      },
+    ],
+  });
+
+  assert.deepEqual(scene.repeatedSources, []);
+});
+
+test("renderReportDurationS reads Visual V4 rendered duration evidence", () => {
+  assert.equal(renderReportDurationS({ rendered_duration_s: 45.046 }), 45.046);
+  assert.equal(
+    renderReportDurationS({ runtime: { durationS: 44.5 }, rendered_duration_s: 45.046 }),
+    44.5,
   );
 });
 

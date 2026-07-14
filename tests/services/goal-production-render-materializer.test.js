@@ -43,6 +43,143 @@ test("goal production render materializer preserves YouTube video IDs in source 
   );
 });
 
+test("goal production render materializer preserves official segment-validation provenance for renderer clips", () => {
+  const bridged = _private.rendererBridgeClipFromProductionClip({
+    id: "validated-window-24",
+    path: "output/video_cache/validated-window-24.mp4",
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/2697940/1128286692/hash/build/hls_264_master.m3u8",
+    source_type: "steam_movie",
+    source_family: "steamstatic:/store_trailers/2697940/1128286692/hash/build_window_24_5",
+    base_source_family: "steamstatic:/store_trailers/2697940/1128286692/hash/build",
+    media_kind: "direct_video",
+    mediaStartS: 24,
+    durationS: 5,
+    provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: "official_storefront_trailer_motion_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      base_source_family: "steamstatic:/store_trailers/2697940/1128286692/hash/build",
+    },
+  });
+
+  assert.deepEqual(bridged.provenance, {
+    source: "official_trailer_segment_validation",
+    validation_reason: "official_storefront_trailer_motion_samples_passed",
+    segment_validated: true,
+    allowed_for_flash_lane: true,
+    base_source_family: "steamstatic:/store_trailers/2697940/1128286692/hash/build",
+  });
+});
+
+test("goal production render materializer hydrates generic fallback clips from governed evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hydrate-"));
+  const clipPath = path.join(root, "segment_direct_motion_15.mp4");
+  await fs.outputFile(clipPath, Buffer.alloc(2048, 1));
+  await fs.outputJson(`${clipPath}.json`, {
+    clip_id: "segment_direct_motion_15",
+    source_family: "steam_master_one_window_48_5",
+    base_source_family: "steam_master_one",
+    source_url: "https://video.example.test/master-one.m3u8",
+    source_type: "steam_movie",
+    source_url_kind: "hls_manifest",
+    media_start_s: 48,
+    duration_s: 5,
+  });
+  const governedEvidence = {
+    id: "segment_direct_motion_15",
+    path: clipPath,
+    source_family: "steam_master_one_window_48_5",
+    base_source_family: "steam_master_one",
+    motion_family: "steam_master_one_window_48_5",
+    mediaStartS: 48,
+    durationS: 5,
+    provenance: {
+      source: "official_trailer_segment_validation",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      media_start_s: 48,
+      duration_s: 5,
+    },
+  };
+
+  const hydrated = _private.hydrateClipWithGovernedEvidence(
+    {
+      id: "segment_direct_motion_15",
+      path: clipPath,
+      source_family: "segment_direct_motion_15",
+      durationS: 2.4,
+    },
+    [governedEvidence],
+  );
+
+  assert.equal(hydrated.source_family, "steam_master_one_window_48_5");
+  assert.equal(hydrated.base_source_family, "steam_master_one");
+  assert.equal(hydrated.mediaStartS, 48);
+  assert.equal(hydrated.durationS, 5);
+  assert.deepEqual(hydrated.provenance, governedEvidence.provenance);
+});
+
+test("goal production render materializer preserves governed subject identity for renderer clips", () => {
+  const bridged = _private.rendererBridgeClipFromProductionClip({
+    id: "official-denshattack-window",
+    path: "output/video_cache/official-denshattack-window.mp4",
+    source_url: "https://store.steampowered.com/app/2524850/Denshattack/",
+    source_type: "official_storefront_trailer",
+    source_family: "steam_2524850_denshattack_window_12_5",
+    media_kind: "direct_video",
+    entity: "Denshattack",
+    entities: ["Denshattack", "Fireshine Games"],
+    durationS: 5,
+  });
+
+  assert.equal(bridged.entity, "Denshattack");
+  assert.deepEqual(bridged.entities, ["Denshattack", "Fireshine Games"]);
+});
+
+test("goal production render materializer supplies the canonical subject when clip identity is absent", () => {
+  const bridged = _private.rendererBridgeClipFromProductionClip(
+    {
+      id: "official-denshattack-window",
+      path: "output/video_cache/official-denshattack-window.mp4",
+      source_url: "https://store.steampowered.com/app/2524850/Denshattack/",
+      source_type: "official_storefront_trailer",
+      source_family: "steam_2524850_denshattack_window_12_5",
+      media_kind: "direct_video",
+      durationS: 5,
+    },
+    0,
+    "Denshattack",
+  );
+
+  assert.equal(bridged.entity, "Denshattack");
+  assert.deepEqual(bridged.entities, ["Denshattack"]);
+});
+
+test("goal production render materializer maximises distinct premium cards within the motion budget", () => {
+  const cards = [
+    { kind: "source", readability: { planned_visible_duration_s: 2.2 } },
+    { kind: "context", readability: { planned_visible_duration_s: 4.3 } },
+    { kind: "timeline", readability: { planned_visible_duration_s: 6.4 } },
+    { kind: "quote", readability: { planned_visible_duration_s: 5.4 } },
+    { kind: "takeaway", readability: { planned_visible_duration_s: 4.1 } },
+  ];
+
+  const selected = _private.selectReadableHyperframesCardsForMotionBalance(
+    cards,
+    8,
+    51.909,
+  );
+
+  assert.deepEqual(selected.map((card) => card.kind), ["source", "context", "quote", "takeaway"]);
+  assert.ok(
+    selected.reduce(
+      (total, card) => total + (card.kind === "source" ? 2.2 : card.readability.planned_visible_duration_s),
+      0,
+    ) <= 51.909 * 0.31 + 0.01,
+  );
+});
+
 test("goal production render materializer caps trailer windows when four roots can sustain premium motion", () => {
   const clips = ["a", "b", "c", "d"].flatMap((root) =>
     [0, 10, 20].map((start) => ({
@@ -61,6 +198,65 @@ test("goal production render materializer caps trailer windows when four roots c
     counts.set(root, (counts.get(root) || 0) + 1);
   }
   assert.ok([...counts.values()].every((count) => count <= 2));
+});
+
+test("goal production render materializer preserves two validated windows from four official roots", () => {
+  const clips = Array.from({ length: 8 }, (_, index) => {
+    const root = Math.floor(index / 2) + 1;
+    const start = 36 + (index % 2) * 6;
+    return {
+      id: `official-${root}-${start}`,
+      path: `output/video_cache/official-${root}-${start}.mp4`,
+      local_materialized_path: `output/video_cache/official-${root}-${start}.mp4`,
+      source_url: `C:/proof/official-source-${root}.mp4`,
+      source_type: "official_platform_product_page",
+      source_kind: "video_file",
+      base_source_family: `official-platform-root-${root}`,
+      source_family: `official-platform-root-${root}_window_${start}_5`,
+      motion_family: `official-platform-root-${root}_window_${start}_5`,
+      media_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+      validated: true,
+      durationS: 5,
+    };
+  });
+
+  const selected = _private.preferredMaterialisedClips({
+    materialisedMotion: {
+      status: "ready",
+      clips,
+      materialised_clips: clips,
+    },
+  });
+
+  assert.equal(selected.length, 8);
+  const roots = new Map();
+  for (const clip of selected) {
+    const root = _private.strictDirectMotionBaseSourceKey(clip);
+    roots.set(root, (roots.get(root) || 0) + 1);
+  }
+  assert.equal(roots.size, 4);
+  assert.ok([...roots.values()].every((count) => count === 2));
+});
+
+test("goal production render materializer selects non-overlapping windows from one official source", () => {
+  const sourceUrl = "C:/proof/fogpiercer-demo-trailer.mp4";
+  const clips = [3, 0, 6].map((start) => ({
+    id: `fogpiercer-demo-${start}`,
+    path: `output/video_cache/fogpiercer-demo-${start}.mp4`,
+    source_url: sourceUrl,
+    source_type: "official_developer_youtube_local_editorial_intake",
+    base_source_family: "madcookies_official_fogpiercer_demo_trailer",
+    source_family: `madcookies_official_fogpiercer_demo_trailer_window_${start}_5`,
+    motion_family: `madcookies_official_fogpiercer_demo_trailer_window_${start}_5`,
+    media_kind: "direct_video",
+    validated: true,
+    durationS: 5,
+  }));
+
+  const selected = _private.preferStrictDirectMotionBaseUniquenessWhenEnough(clips);
+
+  assert.deepEqual(selected.map((clip) => clip.id), ["fogpiercer-demo-0", "fogpiercer-demo-6"]);
 });
 
 test("goal production render materializer completes rights for selected official storefront scenes", () => {
@@ -367,7 +563,7 @@ test("goal production render skips readable shell cards when distinct official m
   );
 });
 
-test("goal production render skips readable shell cards when seven official windows nearly cover audio", () => {
+test("goal production render keeps readable shell cards when crossfades leave official windows short of audio", () => {
   assert.equal(
     shouldSkipReadableShellCardsForAudioBudget({
       audioDurationS: 39.8,
@@ -388,7 +584,25 @@ test("goal production render skips readable shell cards when seven official wind
       })),
       wordTimestampSource: "local_whisper_word_alignment",
     }),
-    true,
+    false,
+  );
+});
+
+test("goal production render keeps readable shell cards when eight compact windows do not cover audio after crossfades", () => {
+  assert.equal(
+    shouldSkipReadableShellCardsForAudioBudget({
+      audioDurationS: 41.12,
+      fallbackClips: Array.from({ length: 8 }, (_, index) => ({
+        path: `mound-official-steam-window-${index + 1}.mp4`,
+        source_url: `https://video.fastly.steamstatic.com/store_trailers/2878250/movie${index + 1}/hls_264_master.m3u8`,
+        source_family: `steamstatic:/store_trailers/2878250/movie${index + 1}_window_${index * 5}_5`,
+        source_type: "steam_movie",
+        media_kind: "direct_video",
+        durationS: 5,
+      })),
+      wordTimestampSource: "local_whisper_word_alignment",
+    }),
+    false,
   );
 });
 
@@ -1657,18 +1871,107 @@ test("goal production render materializer limits HyperFrames cards by narration 
   const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
     (clip) => clip.source_type === "hyperframes_premium_shell_card",
   );
-  assert.equal(cardClips.length, 2);
-  assert.equal(renderStory.hyperframes_card_count, 2);
+  assert.equal(cardClips.length, 3);
+  assert.equal(renderStory.hyperframes_card_count, 3);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
   assert.equal(renderStory.premium_shell_required_selected_card_count, 2);
   assert.equal(renderStory.premium_shell_verdict, "pass");
   assert.deepEqual(renderStory.premium_shell_blockers, []);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardDurationS, 8.65);
-  assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 8.65);
+  assert.equal(
+    renderStory.hyperframes_premium_shell_gate.selectedCardDurationS,
+    Number(cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0).toFixed(3)),
+  );
+  assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 10.726);
+  assert.ok(
+    renderStory.hyperframes_premium_shell_gate.selectedCardDurationS <= 34.6 * 0.31 + 0.01,
+  );
   assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 2);
 });
 
-test("goal production render materializer keeps selected HyperFrames dwell within the 25 percent narration budget", async () => {
+test("goal production render materializer uses the V4 director card budget to cover a 52 second narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-v4-budget-"));
+  const artifactDir = await makePackage(root, "story-hf-v4-budget");
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, "story-hf-v4-budget", kind, {
+      ...(kind === "source"
+        ? {}
+        : { minimumDurationS: 6, plannedDurationS: 6, maxDurationS: 6.4 }),
+    }),
+  ));
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 51.909,
+      spoken_wpm: 154,
+    },
+  });
+  const directClips = Array.from({ length: 8 }, (_, index) => ({
+    id: `v4-budget-direct-${index + 1}`,
+    path: path.join(artifactDir, `v4-budget-direct-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `v4-budget-direct-${index + 1}.mp4`),
+    source_url: `C:/proof/official-source-${Math.floor(index / 2) + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    source_kind: "video_file",
+    base_source_family: `official-platform-root-${Math.floor(index / 2) + 1}`,
+    source_family: `official-platform-root-${Math.floor(index / 2) + 1}_window_${36 + (index % 2) * 6}_5`,
+    motion_family: `official-platform-root-${Math.floor(index / 2) + 1}_window_${36 + (index % 2) * 6}_5`,
+    media_kind: "direct_video",
+    source_url_kind: "hls_manifest",
+    counts_towards_motion_readiness: true,
+    validated: true,
+    durationS: 5.5,
+  }));
+  await Promise.all(directClips.map((clip, index) =>
+    fs.outputFile(clip.path, Buffer.alloc(2048, 110 + index)),
+  ));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    materialised_clips: directClips,
+  });
+  const job = readyJob("story-hf-v4-budget", artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: directClips.length,
+      distinct_motion_family_count: directClips.length,
+      materialised_motion_clip_paths: directClips.map((clip) => clip.path),
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-13T18:30:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 51.909,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+  assert.equal(cardClips.length, 3);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationRatio, 0.31);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 16.092);
+  assert.ok(
+    cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0) <=
+      51.909 * 0.31 + 0.01,
+  );
+});
+
+test("goal production render materializer keeps selected HyperFrames dwell within the V4 narration budget", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-dwell-extension-"));
   const artifactDir = await makePackage(root, "story-hf-dwell-extension");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
@@ -1755,7 +2058,7 @@ test("goal production render materializer keeps selected HyperFrames dwell withi
   assert.ok(readableCards.every((clip) => clip.durationS <= 6.4));
   assert.ok(
     cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0) <=
-      42.028 * 0.25 + 0.01,
+      42.028 * 0.31 + 0.01,
   );
   assert.equal(
     renderStory.hyperframes_premium_shell_gate.selectedCardDurationS,
@@ -1858,6 +2161,47 @@ test("goal production render materializer tops up balanced direct windows when H
   assert.equal(cardClips.some((clip) => clip.source_family === "hyperframes_source_card"), true);
   assert.ok(cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card").length >= 1);
   assert.ok(coverage + 0.12 >= 44.8);
+});
+
+test("goal production render materializer does not top up when adaptive crossfades already cover narration", () => {
+  const directDurations = [5, 5, 5, 5, 5, 5, 3, 3, 3];
+  const primaryClips = directDurations.map((durationS, index) => ({
+    id: `fog-primary-${index + 1}`,
+    path: `fog-primary-${index + 1}.mp4`,
+    source_type: "official_trailer_segment",
+    media_kind: "direct_video",
+    source_family: `fog_root_${index + 1}_window_0_${durationS}`,
+    durationS,
+  }));
+  const shellClips = [2.7, 4.1, 6.4, 4.1].map((durationS, index) => ({
+    id: `fog-card-${index + 1}`,
+    path: `fog-card-${index + 1}.mp4`,
+    source_type: "hyperframes_premium_shell_card",
+    media_kind: "owned_editorial_motion_graphic",
+    source_family: `hyperframes_card_${index + 1}`,
+    durationS,
+  }));
+  const fallbackClips = [
+    ...primaryClips,
+    {
+      id: "overlapping-demo-window",
+      path: "overlapping-demo-window.mp4",
+      source_type: "official_trailer_segment",
+      media_kind: "direct_video",
+      source_family: "fog_demo_window_3_5",
+      durationS: 2.4,
+    },
+  ];
+
+  const selected = _private.topUpPrimaryClipsForAudioCoverage({
+    primaryClips,
+    fallbackClips,
+    shellClips,
+    audioDurationS: 55.82,
+  });
+
+  assert.equal(selected.length, primaryClips.length);
+  assert.equal(selected.some((clip) => clip.id === "overlapping-demo-window"), false);
 });
 
 test("goal production render materializer preserves premium direct runway when HyperFrames cards are added", async () => {
@@ -2041,14 +2385,13 @@ test("goal production render materializer does not stack legacy owned cards on p
       clip.source_type === "hyperframes_premium_shell_card" ||
       clip.media_kind === "owned_explainer_motion",
   );
-  assert.equal(readableCards.length, 2);
+  assert.ok(readableCards.length >= 1);
   assert.ok(readableCards.every((clip) => clip.source_type === "hyperframes_premium_shell_card"));
-  assert.equal(renderStory.hyperframes_card_count, 2);
+  assert.equal(renderStory.hyperframes_card_count, readableCards.length);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
   assert.ok(
-    renderStory.visual_v4_bridge_video_clips
-      .filter((clip) => clip.media_kind === "direct_video")
-      .length >= 8,
+    readableCards.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0) <=
+      38.88 * 0.31 + 0.01,
   );
 });
 

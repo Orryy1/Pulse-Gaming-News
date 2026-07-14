@@ -7,6 +7,17 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
+test("Pulse ElevenLabs narration uses a stable broadcast profile", () => {
+  const pulse = require("../../channels/pulse-gaming");
+
+  assert.deepEqual(pulse.voiceSettings, {
+    stability: 0.55,
+    similarity_boost: 0.85,
+    style: 0.35,
+    speaking_rate: 1.0,
+  });
+});
+
 test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
   const voices = JSON.parse(
     fs.readFileSync(path.join(ROOT, "tts_server", "voices.json"), "utf8"),

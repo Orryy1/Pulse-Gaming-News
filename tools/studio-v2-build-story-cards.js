@@ -132,7 +132,7 @@ function cardTextForReadability(kind, spec = {}) {
       .join(" ");
     return [spec.heading, bullets].filter(Boolean).join(" ");
   }
-  if (kind === "quote") return spec.quoteText || spec.attribution || "";
+  if (kind === "quote") return [spec.quoteText, spec.attribution].filter(Boolean).join(" ");
   if (kind === "takeaway" || kind === "outro") {
     return [
       ...(Array.isArray(spec.headlineWords) ? spec.headlineWords : []),
@@ -238,17 +238,55 @@ function headlineWordsFromTitle(title) {
 }
 
 function contextSubFromTitle(title, leadWord) {
-  const lead = normaliseText(leadWord).replace(/[^a-zA-Z0-9]+/g, " ").trim().toLowerCase();
+  const leadTokens = new Set(
+    normaliseText(leadWord)
+      .replace(/[^a-zA-Z0-9]+/g, " ")
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean),
+  );
+  const filler = new Set([
+    "actually", "could", "gets", "just", "made", "makes", "really", "should",
+    "turns", "what", "when", "where", "which", "why", "work", "works", "would",
+  ]);
   const words = normaliseText(title)
     .replace(/[^a-zA-Z0-9\u00c0-\u017f ]+/g, " ")
     .split(/\s+/)
     .filter(Boolean)
     .filter((word) => word.length >= 4);
-  const filtered = words.filter((word, index) => {
-    if (index === 0 && lead && word.toLowerCase() === lead) return false;
-    return true;
+  const filtered = words.filter((word) => {
+    const token = word.toLowerCase();
+    return !leadTokens.has(token) && !filler.has(token);
   });
   return filtered.slice(0, 3).join(" ").toUpperCase() || "PLAYER IMPACT";
+}
+
+function editorialKeyLine(story) {
+  const explicit = normaliseText(
+    story?.card_key_line || story?.editorial_key_line || story?.pull_quote,
+  );
+  if (explicit) return clampQuoteText(explicit);
+
+  const candidates = storyScriptText(story)
+    .split(/(?<=[.!?])\s+/)
+    .map(normaliseText)
+    .filter(Boolean)
+    .map((text, index) => {
+      const words = text.split(/\s+/).filter(Boolean).length;
+      if (words < 6 || words > 14 || /follow pulse gaming/i.test(text)) return null;
+      let score = words >= 7 && words <= 12 ? 1 : 0;
+      if (/\b(?:has to|have to|must|only matters|real test|could|would|risk|problem|catch)\b/i.test(text)) {
+        score += 4;
+      }
+      if (/\d/.test(text)) score += 2;
+      if (/\?$/.test(text)) score -= 3;
+      if (/\b(?:official|source|reports?|trailer)\b/i.test(text)) score -= 2;
+      return { text, index, score };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  return candidates.length ? clampQuoteText(candidates[0].text) : "The player impact is the real story.";
 }
 
 function firstUsefulQuote(story) {
@@ -258,16 +296,21 @@ function firstUsefulQuote(story) {
   }
 
   const topComment =
-    story?.top_comment ||
-    story?.quoteCandidates?.[0]?.body ||
-    story?.quoteCandidates?.[0]?.text;
+    hasVerifiedRedditReaction(story) || String(story?.source_type || "").toLowerCase() === "reddit"
+      ? story?.top_comment || story?.quoteCandidates?.[0]?.body || story?.quoteCandidates?.[0]?.text
+      : "";
   if (topComment) return clampQuoteText(topComment);
-
-  const title = normaliseText(story?.title);
-  return title ? clampQuoteText(title) : "The important detail is changing fast.";
+  return editorialKeyLine(story);
 }
 
 function quoteAttribution(story, fallbackLabel) {
+  const explicitAttribution = normaliseText(story?.quote_attribution);
+  if (explicitAttribution) {
+    return {
+      attribution: explicitAttribution.toUpperCase(),
+      attributionSub: normaliseText(story?.quote_attribution_sub) || "verified quote",
+    };
+  }
   if (
     hasVerifiedRedditReaction(story) &&
     String(story?.comment_source_type || "").toLowerCase() === "related_reddit_discussion"
@@ -277,9 +320,15 @@ function quoteAttribution(story, fallbackLabel) {
       attributionSub: "top-rated player reaction",
     };
   }
+  if (String(story?.source_type || "").toLowerCase() === "reddit" && story?.top_comment) {
+    return {
+      attribution: fallbackLabel,
+      attributionSub: "top comment",
+    };
+  }
   return {
-    attribution: fallbackLabel,
-    attributionSub: story?.source_type === "reddit" ? "top comment" : "reported detail",
+    attribution: "PULSE GAMING",
+    attributionSub: "editorial take",
   };
 }
 
@@ -340,7 +389,11 @@ function buildStoryCardSpecs(story) {
   }
 
   const headlineWords = headlineWordsFromTitle(title);
-  const contextSub = contextSubFromTitle(title, headlineWords[0] || "");
+  const canonicalSubject = normaliseText(
+    story?.card_context_number || story?.canonical_subject || story?.canonical_game,
+  );
+  const contextNumber = canonicalSubject || headlineWords[0] || "UPDATE";
+  const contextSub = normaliseText(story?.card_context_sub) || contextSubFromTitle(title, contextNumber);
   return {
     source: {
       kicker: "SOURCE",
@@ -349,9 +402,9 @@ function buildStoryCardSpecs(story) {
     },
     context: {
       kicker: "WHY IT MATTERS",
-      number: headlineWords[0] || "UPDATE",
+      number: contextNumber.toUpperCase(),
       sub: contextSub,
-      micro: "PLAYER IMPACT",
+      micro: normaliseText(story?.card_context_micro).toUpperCase() || "PLAYER IMPACT",
     },
     timeline: {
       kicker: "WHAT WE KNOW",
@@ -604,6 +657,15 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
   );
 }
 
+function storyScriptText(story) {
+  const script = story?.script;
+  return normaliseText(
+    typeof script === "string"
+      ? script
+      : script?.tightened || script?.raw || story?.full_script || story?.body || "",
+  );
+}
+
 function runHyperframes(args, cwd) {
   const command = ["npx", "hyperframes", ...args]
     .map((arg) => {
@@ -651,17 +713,36 @@ function htmlDataDurationS(html = "") {
   return firstNumber(...durations);
 }
 
+function elementInnerHtmlById(html = "", id = "") {
+  const source = String(html);
+  const escapedId = String(id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const openingPattern = new RegExp(
+    `<([a-z][\\w:-]*)\\b[^>]*\\bid=(["'])${escapedId}\\2[^>]*>`,
+    "i",
+  );
+  const opening = openingPattern.exec(source);
+  if (!opening) return "";
+  const tag = opening[1];
+  const contentStart = opening.index + opening[0].length;
+  const tokenPattern = new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi");
+  tokenPattern.lastIndex = contentStart;
+  let depth = 1;
+  for (let token = tokenPattern.exec(source); token; token = tokenPattern.exec(source)) {
+    const closing = /^<\//.test(token[0]);
+    const selfClosing = /\/\s*>$/.test(token[0]);
+    if (closing) depth -= 1;
+    else if (!selfClosing) depth += 1;
+    if (depth === 0) return source.slice(contentStart, token.index);
+  }
+  return "";
+}
+
 function elementTextById(html = "", id = "") {
-  const pattern = new RegExp(`<[^>]+id="${id}"[^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i");
-  const match = String(html).match(pattern);
-  return match ? normaliseText(match[1]) : "";
+  return normaliseText(elementInnerHtmlById(html, id));
 }
 
 function listTextById(html = "", id = "") {
-  const pattern = new RegExp(`<[^>]+id="${id}"[^>]*>([\\s\\S]*?)<\\/[^>]+>`, "i");
-  const match = String(html).match(pattern);
-  if (!match) return "";
-  return normaliseText(match[1]);
+  return normaliseText(elementInnerHtmlById(html, id));
 }
 
 function readableTextFromProjectHtml(kind, html = "") {

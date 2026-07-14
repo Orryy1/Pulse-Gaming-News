@@ -101,6 +101,72 @@ test("strong Pulse-original package passes competitor-informed score", () => {
   assert.deepEqual(report.hard_failures, []);
 });
 
+test("vivid transformations, superlatives and comparisons clear Shorts attention gates", () => {
+  const cases = [
+    {
+      subject: "The Mound: Omen of Cthulhu",
+      title: "The Mound Makes Your Own Co-op Team The Threat",
+      cover: "YOUR TEAM IS LYING",
+      description:
+        "The Mound launches with a madness system that makes co-op players doubt what they see and hear. That turns voice chat into the scariest threat. Source: Xbox Wire.",
+    },
+    {
+      subject: "Paleo Pines",
+      title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+      cover: "RARE DINO, GUARANTEED",
+      description:
+        "Paleo Pines' free Players' Choice update removes some of its most frustrating grind. The new skin tracker can guarantee a chosen dinosaur colour and pattern when the tracked rarity next appears. Source: Paleo Pines.",
+    },
+    {
+      subject: "Fogpiercer",
+      title: "Fogpiercer Turns Your Train Into A Deck Of Cards",
+      cover: "YOUR TRAIN IS THE DECK",
+      description:
+        "Fogpiercer launches on Game Pass on July 17. Its train is more than transport: the carriages you assemble determine your starting deck before each tactical run. Sources: Xbox Wire and the official Steam page.",
+    },
+  ];
+
+  for (const item of cases) {
+    const base = strongStory();
+    const report = buildPulseMediaHouseScore(strongStory({
+      canonical: {
+        ...base.canonical,
+        selected_title: item.title,
+        public_title: item.title,
+        canonical_subject: item.subject,
+        first_spoken_line: item.title,
+        thumbnail_headline: item.cover,
+        first_frame_text: item.cover,
+      },
+      platformManifest: {
+        outputs: {
+          youtube_shorts: {
+            title: item.title,
+            description: item.description,
+            cover_frame: { headline: item.cover },
+          },
+          instagram_reels: {
+            title: item.title,
+            caption: item.description,
+            cover_frame: { headline: item.cover },
+          },
+          facebook_reels: {
+            title: item.title,
+            page_caption: item.description,
+            cover_frame: { headline: item.cover },
+          },
+        },
+      },
+    }));
+
+    assert.equal(report.hard_failures.includes("media_house:title_lacks_curiosity_gap"), false);
+    assert.equal(report.hard_failures.includes("media_house:platform_title_too_plain"), false);
+    assert.equal(report.hard_failures.includes("media_house:platform_copy_too_plain"), false);
+    assert.equal(report.hard_failures.includes("media_house:shorts_feed_competition_weak"), false);
+    assert.notEqual(report.shorts_feed_competition_report.status, "blocked");
+  }
+});
+
 test("media-house score treats GTA VI as Grand Theft Auto VI subject parity", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

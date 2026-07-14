@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const {
   handleGuardedLiveDispatchPublish,
   buildFreshRefillOfficialSourceEvidence,
+  buildFreshRefillScriptRewriteWorkOrder,
   freshRefillHyperframesStoryIdsAfterMotion,
   freshRefillMaterializedAudioStoryIdsFromReport,
   freshRefillNarrationProviderPreference,
@@ -173,6 +174,58 @@ test("fresh refill audio materialization report does not fallback after failed j
   });
 
   assert.deepEqual(ids, []);
+});
+
+test("fresh refill script work orders attach official source claims before rewriting", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-source-first-"));
+  const artifactDir = path.join(tmp, "rss_starward");
+  const outputDir = path.join(tmp, "repair");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_starward",
+    canonical_title: "Starward Patch Check",
+    narration_script: "Starward just got a boring-looking system update.",
+    source_published_at: "2026-07-09T20:00:00.000Z",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: {
+      name: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/07/09/meet-the-star-operator-1/",
+      type: "official_platform_news",
+      published_at: "2026-07-09T20:00:00.000Z",
+    },
+  }, { spaces: 2 });
+
+  const result = await buildFreshRefillScriptRewriteWorkOrder({
+    quarantinedRows: [{
+      story_id: "rss_starward",
+      artifact_dir: artifactDir,
+      title: "Starward Patch Check",
+      reasons: ["script_rewrite_required"],
+    }],
+    outputDir,
+    sourceEvidenceFetcher: async () => ({
+      status: "pass",
+      source_url: "https://news.xbox.com/en-us/2026/07/09/meet-the-star-operator-1/",
+      headline: "Meet the Star Operator Who Rewrites the Ranged Rulebook in Starward V3.1",
+      source_text: "Starward Version 3.1 adds Pliszka. Her Wing Rider Assembly increases firepower and mobility but also increases her hitbox and descent speed. Players can detach it mid-battle for a more agile style.",
+      source_text_sha256: "a".repeat(64),
+      claims: [{
+        text: "Her Wing Rider Assembly increases firepower and mobility but also increases her hitbox and descent speed.",
+        source_url: "https://news.xbox.com/en-us/2026/07/09/meet-the-star-operator-1/",
+        evidence_text: "Her Wing Rider Assembly increases firepower and mobility but also increases her hitbox and descent speed.",
+        origin: "source_body",
+      }],
+      confirmed_event_window: null,
+    }),
+  });
+  const workOrder = await fs.readJson(result.workOrderPath);
+
+  assert.equal(workOrder.jobs.length, 1);
+  assert.equal(workOrder.jobs[0].source.title, "Meet the Star Operator Who Rewrites the Ranged Rulebook in Starward V3.1");
+  assert.match(workOrder.jobs[0].source.body, /Pliszka/);
+  assert.equal(workOrder.jobs[0].source_evidence.claims[0].origin, "source_body");
+  assert.equal(workOrder.jobs[0].source_evidence.source_text_sha256, "a".repeat(64));
 });
 
 test("fresh refill source evidence preserves official YouTube watch references as reference-only sources", async () => {

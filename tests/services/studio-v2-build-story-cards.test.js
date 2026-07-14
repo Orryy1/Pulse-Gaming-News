@@ -10,6 +10,7 @@ const {
   countTimelineAnimationSteps,
   applySpecToTemplate,
   hyperframesCardReadabilityContractForSpec,
+  hyperframesCardReadabilityContractFromHtml,
 } = require("../../tools/studio-v2-build-story-cards");
 
 test("story-specific HyperFrames cards validate before render", () => {
@@ -146,4 +147,57 @@ test("story-specific HyperFrames context card uses short audience-facing copy", 
     readable.minimum_visible_duration_s <= 8,
     `context card should stay momentum-friendly, got ${readable.minimum_visible_duration_s}s`,
   );
+});
+
+test("story-specific HyperFrames cards use canonical subjects and honest editorial key lines", () => {
+  const specs = buildStoryCardSpecs({
+    id: "denshattack-cards",
+    title: "Why Denshattack's Train Kickflips Could Actually Work",
+    canonical_subject: "Denshattack",
+    source_card_label: "Xbox Wire",
+    source_type: "rss",
+    full_script:
+      "Denshattack asks one ridiculous question: can a train do a kickflip? " +
+      "The trailer sells the joke instantly. " +
+      "The controls have to sell the next ten hours. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(specs.context.number, "DENSHATTACK");
+  assert.equal(specs.context.sub, "TRAIN KICKFLIPS");
+  assert.equal(specs.quote.quoteText, "The controls have to sell the next ten hours.");
+  assert.equal(specs.quote.attribution, "PULSE GAMING");
+  assert.equal(specs.quote.attributionSub, "editorial take");
+  assert.doesNotMatch(specs.quote.quoteText, /Why Denshattack/i);
+});
+
+test("story-specific HyperFrames readability evidence keeps every animated quote word", () => {
+  const html = `
+    <div id="quote" class="quote">
+      <span class="word">The</span>
+      <span class="word">controls</span>
+      <span class="word">have</span>
+      <span class="word">to</span>
+      <span class="word">sell</span>
+      <span class="word">it.</span>
+    </div>
+    <div id="attribution">PULSE GAMING</div>
+    <div data-duration="4.1"></div>
+  `;
+
+  const contract = hyperframesCardReadabilityContractFromHtml("quote", html);
+
+  assert.equal(contract.evidence.readable_text, "The controls have to sell it. PULSE GAMING");
+  assert.equal(contract.evidence.word_count, 8);
+});
+
+test("story-specific HyperFrames quote timing includes the visible attribution", () => {
+  const contract = hyperframesCardReadabilityContractForSpec("quote", {
+    quoteText: "The controls have to sell the next ten hours.",
+    attribution: "PULSE GAMING",
+  });
+
+  assert.equal(contract.evidence.readable_text, "The controls have to sell the next ten hours. PULSE GAMING");
+  assert.equal(contract.evidence.word_count, 11);
+  assert.equal(contract.evidence.planned_visible_duration_s, 5.2);
 });

@@ -42,6 +42,59 @@ function draftStory(overrides = {}) {
   };
 }
 
+test("fresh buffer promotion preserves an explicit game subject over platform-source inference", () => {
+  const generatedAt = "2026-07-13T12:00:00.000Z";
+  const story = draftStory({
+    id: "fresh_denshattack_game_pass_20260715",
+    title: "Why Denshattack's Train Kickflips Could Actually Work",
+    selected_title: "Why Denshattack's Train Kickflips Could Actually Work",
+    canonical_subject: "Denshattack",
+    canonical_game: "Denshattack",
+    primary_source: {
+      name: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/07/10/next-week-on-xbox-new-games-for-july-13-to-17/",
+      type: "official_platform_news",
+    },
+    primary_source_url:
+      "https://news.xbox.com/en-us/2026/07/10/next-week-on-xbox-new-games-for-july-13-to-17/",
+    source_published_at: "2026-07-10T00:00:00.000Z",
+    confirmed_claims: [
+      "Xbox Wire says Denshattack launches on July 15 through Game Pass and Xbox Play Anywhere.",
+    ],
+    narration_script:
+      "Denshattack asks one ridiculous question: can a train do a kickflip? Xbox Wire says it launches on July 15 through Game Pass and Xbox Play Anywhere. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [story],
+    generatedAt,
+  });
+  const canonical = buildCanonicalStoryManifest(story, generatedAt);
+
+  assert.equal(report.candidates[0].canonical_subject, "Denshattack");
+  assert.equal(canonical.canonical_subject, "Denshattack");
+  assert.equal(canonical.canonical_game, "Denshattack");
+  assert.match(canonical.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.match(canonical.tts_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+});
+
+test("fresh buffer promotion preserves a specific source-labelled editorial description", () => {
+  const story = draftStory({
+    id: "fresh_paleo_pines_major_update_20260713",
+    title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+    selected_title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+    canonical_subject: "Paleo Pines",
+    canonical_game: "Paleo Pines",
+    description:
+      "Paleo Pines' free Players' Choice update removes some of its most frustrating grind. The new skin tracker can guarantee a chosen dinosaur colour and pattern when the tracked rarity next appears. Source: official Paleo Pines Steam announcement.",
+  });
+
+  const canonical = buildCanonicalStoryManifest(story, "2026-07-13T14:00:00.000Z");
+
+  assert.equal(canonical.description, story.description);
+  assert.equal(canonical.public_description, story.description);
+  assert.doesNotMatch(canonical.description, /expansion trust test|DLC sounds big/i);
+});
+
 test("fresh buffer promotion writes local package work orders without publish or DB side effects", async () => {
   const generatedAt = "2026-06-12T08:00:00.000Z";
   const report = buildFreshGreenBufferLocalPromotionReport({
@@ -198,6 +251,13 @@ test("fresh buffer promotion refresh preserves current render and SFX evidence f
   for (const [fileName, content] of Object.entries(evidence)) {
     fs.writeFileSync(path.join(packageDir, fileName), content);
   }
+  const audioDir = path.join(packageDir, "audio");
+  fs.mkdirSync(audioDir, { recursive: true });
+  fs.writeFileSync(path.join(audioDir, "narration.mp3"), Buffer.alloc(8192, 7));
+  fs.writeFileSync(
+    path.join(audioDir, "word_timestamps.json"),
+    JSON.stringify({ words: [{ word: "Halo", start: 0, end: 0.4 }] }),
+  );
   fs.writeFileSync(path.join(packageDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 3));
 
   await writeFreshGreenBufferLocalPromotionArtifacts(report, { outputDir: outDir });
@@ -210,6 +270,11 @@ test("fresh buffer promotion refresh preserves current render and SFX evidence f
   const mp4Path = path.join(packageDir, "visual_v4_render.mp4");
   assert.equal(fs.existsSync(mp4Path), true);
   assert.equal(fs.statSync(mp4Path).size, 4096);
+  assert.equal(fs.statSync(path.join(packageDir, "audio", "narration.mp3")).size, 8192);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(packageDir, "audio", "word_timestamps.json"), "utf8")),
+    { words: [{ word: "Halo", start: 0, end: 0.4 }] },
+  );
 });
 
 test("fresh buffer promotion CLI is registered and defaults to overnight output", () => {

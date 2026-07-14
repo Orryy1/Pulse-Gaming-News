@@ -39,6 +39,7 @@ const {
   buildPulseSignatureContract,
 } = require("../lib/studio/v4/pulse-signature-layer");
 const {
+  READABLE_CARD_TIMING,
   SOURCE_CARD_TIMING,
 } = require("../lib/studio/v4/premium-card-timing-policy");
 const {
@@ -58,11 +59,11 @@ const HEADLINE_OVERLAY_CARD_DURATION_S = 4.6;
 const MAX_OVERLAY_CARD_DURATION_S = 5.8;
 const MIN_COMPACT_PROOF_OVERLAY_DURATION_S = 2.6;
 const MAX_COMPACT_PROOF_OVERLAY_DURATION_S = 4.2;
-const MIN_GENERATED_CARD_SCENE_DURATION_S = 7;
+const MIN_GENERATED_CARD_SCENE_DURATION_S = READABLE_CARD_TIMING.minimum_visible_duration_s;
 const MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS = 4;
 const MAX_READABLE_CARD_DURATION_RATIO = 0.42;
-const MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO = 0.55;
-const MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT = 4;
+const MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO = 0.25;
+const MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT = 2;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
 const FRAME_WIDTH_PX = 1080;
 const FRAME_HEIGHT_PX = 1920;
@@ -739,6 +740,22 @@ function clipHasWindowedSourceKey(clip = {}, entry = {}) {
   return /(?:^|[_/-])window[_/-]?\d+/i.test(value);
 }
 
+function clipHasValidatorApprovedWindowEvidence(clip = {}, entry = {}) {
+  if (!clip || typeof clip !== "object" || !clipHasWindowedSourceKey(clip, entry)) return false;
+  const sidecar = readSceneClipSidecar(clip) || {};
+  const provenance = clip.provenance || sidecar.provenance || {};
+  const validationSource = firstText(
+    provenance.source,
+    clip.validation_source,
+    sidecar.validation_source,
+  ).toLowerCase();
+  return (
+    (provenance.segment_validated === true || clip.segment_validated === true) &&
+    (provenance.allowed_for_flash_lane === true || clip.allowed_for_flash_lane === true) &&
+    /official_trailer_segment_validation/.test(validationSource)
+  );
+}
+
 function balancedWindowRepeatAllowances(clips = []) {
   const uniquePaths = new Set();
   const windowedEntries = [];
@@ -755,7 +772,11 @@ function balancedWindowRepeatAllowances(clips = []) {
     };
     const repeatKey = sceneClipRepeatSourceKey(clip, entry);
     if (!repeatKey || readableCardKind || !clipHasWindowedSourceKey(clip, entry)) continue;
-    windowedEntries.push({ repeatKey });
+    windowedEntries.push({
+      repeatKey,
+      exactWindowKey: entry.baseSourceKey,
+      validatorApproved: clipHasValidatorApprovedWindowEvidence(clip, entry),
+    });
   }
   const total = windowedEntries.length;
   if (!total) return new Map();
@@ -764,12 +785,24 @@ function balancedWindowRepeatAllowances(clips = []) {
     counts.set(entry.repeatKey, (counts.get(entry.repeatKey) || 0) + 1);
   }
   const allowances = new Map();
+  for (const [key, count] of counts.entries()) {
+    const group = windowedEntries.filter((entry) => entry.repeatKey === key);
+    const exactWindows = new Set(group.map((entry) => entry.exactWindowKey).filter(Boolean));
+    if (
+      group.length > 1 &&
+      group.every((entry) => entry.validatorApproved) &&
+      exactWindows.size === group.length
+    ) {
+      allowances.set(key, Math.min(count, MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT));
+    }
+  }
   const distinctRoots = counts.size;
   if (distinctRoots === 2 && total >= 6) {
     const balancedTwoRootPool = [...counts.values()].every((count) => count >= 3);
     if (balancedTwoRootPool) {
-      for (const [key] of counts.entries()) {
-        allowances.set(key, 3);
+      for (const [key, count] of counts.entries()) {
+        const validatorApprovedAllowance = Number(allowances.get(key) || 0);
+        allowances.set(key, Math.min(count, Math.max(3, validatorApprovedAllowance)));
       }
     }
     return allowances;
@@ -1001,16 +1034,10 @@ function readableCardMinimumDurationS({ readableText = "", explicitMinimumS = nu
     );
   }
   const explicit = Number(explicitMinimumS);
-  const text = cleanCardText(readableText);
-  const textMinimum = readableOverlayCardDurationS(text, {
-    minS: MIN_GENERATED_CARD_SCENE_DURATION_S,
-    maxS: 12,
-  });
   return Number(
     Math.max(
       MIN_GENERATED_CARD_SCENE_DURATION_S,
       Number.isFinite(explicit) && explicit > 0 ? explicit : 0,
-      textMinimum,
     ).toFixed(2),
   );
 }
@@ -1072,6 +1099,42 @@ function directMotionSourceConcentration(entries = []) {
     max_source_concentration_ratio: MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO,
     concentrated_sources: concentrated,
   };
+}
+
+function scenePlanBlockerDiagnostic(plan = {}, { targetDurationS = null } = {}) {
+  const parts = [
+    `available=${Number(plan.availableUniqueClipCount || 0)}`,
+    `required=${Number(plan.requiredUniqueClipCount || 0)}`,
+  ];
+  const metrics =
+    plan.directMotionSourceConcentrationMetrics ||
+    plan.direct_motion_source_concentration_metrics ||
+    {};
+  const maxRatio = Number(
+    metrics.max_source_concentration_ratio ?? metrics.maxSourceConcentrationRatio,
+  );
+  for (const source of metrics.concentrated_sources || metrics.concentratedSources || []) {
+    const key = String(source.key || source.source_root || source.sourceRoot || "unknown").trim();
+    const count = Number(source.count || 0);
+    const ratio = Number(source.ratio || 0);
+    parts.push(
+      [
+        `source=${key}`,
+        `count=${count}`,
+        `ratio=${Number(ratio.toFixed(3))}`,
+        Number.isFinite(maxRatio) ? `max_ratio=${Number(maxRatio.toFixed(3))}` : "",
+      ].filter(Boolean).join(";"),
+    );
+  }
+  const covered = Number(plan.coveredDurationS ?? plan.covered_duration_s);
+  const target = Number(targetDurationS);
+  if (Number.isFinite(covered) && Number.isFinite(target) && target > 0) {
+    parts.push(
+      `covered=${Number(covered.toFixed(3))};target=${Number(target.toFixed(3))};` +
+        `missing=${Number(Math.max(0, target - covered).toFixed(3))}`,
+    );
+  }
+  return parts.join(":");
 }
 
 function buildClipScenePlan({
@@ -1169,8 +1232,7 @@ function buildClipScenePlan({
   const repeatFree = allowClipReuse !== true;
   if (
     repeatFree &&
-    cleanEntries.length > 1 &&
-    cleanEntries.every((entry) => !entry.readableCardKind)
+    cleanEntries.length > 1
   ) {
     const rawSourceCoverageS = Number(
       cleanEntries
@@ -2182,7 +2244,7 @@ async function renderProof({ storyJson, output }) {
   if (Array.isArray(scenePlan.blockers) && scenePlan.blockers.length) {
     throw new Error(
       `direct_motion_scene_plan_blocked:${scenePlan.blockers.join(",")}:` +
-        `available=${scenePlan.availableUniqueClipCount}:required=${scenePlan.requiredUniqueClipCount}`,
+        scenePlanBlockerDiagnostic(scenePlan, { targetDurationS: durationS }),
     );
   }
   const assPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof.ass`);
@@ -2499,6 +2561,7 @@ module.exports = {
   parseArgs,
   buildOverlayLayout,
   buildClipScenePlan,
+  scenePlanBlockerDiagnostic,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
   overlayCardWindowsForStory,

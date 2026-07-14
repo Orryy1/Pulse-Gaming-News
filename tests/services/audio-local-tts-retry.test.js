@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const {
   clearAudioGenerationState,
   generateTtsForStory,
+  buildTtsRequestPayload,
   buildTtsAlignmentMeta,
   isLocalTtsProvider,
   isRetryableLocalTtsError,
@@ -20,6 +21,26 @@ const {
   shouldAutoPromoteRuntimePlanToExtendedShort,
   shouldUseDynamicPacingForProvider,
 } = require("../../audio");
+
+test("buildTtsRequestPayload: local generation defers final alignment to strict Whisper", () => {
+  const local = buildTtsRequestPayload({
+    provider: "local",
+    text: "Pulse Gaming local narration.",
+    resolvedVoiceSettings: { speaking_rate: 1 },
+    outputFormat: "mp3_44100_256",
+  });
+  const managed = buildTtsRequestPayload({
+    provider: "elevenlabs",
+    text: "Pulse Gaming managed narration.",
+    resolvedVoiceSettings: { speaking_rate: 1 },
+    outputFormat: "mp3_44100_128",
+    modelId: "eleven_multilingual_v2",
+  });
+
+  assert.equal(local.alignment_mode, "fallback");
+  assert.equal(managed.alignment_mode, undefined);
+  assert.equal(managed.model_id, "eleven_multilingual_v2");
+});
 
 test("isRetryableLocalTtsError: recognises transient local socket resets", () => {
   assert.equal(isRetryableLocalTtsError({ code: "ECONNRESET" }), true);

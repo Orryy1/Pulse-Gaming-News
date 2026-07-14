@@ -389,6 +389,31 @@ function resolveTtsVoiceIdForProvider(provider, env = process.env, brandConfig =
   return firstNonBlank(brandConfig?.voiceId, env.ELEVENLABS_VOICE_ID) || "default";
 }
 
+function buildTtsRequestPayload({
+  provider,
+  text,
+  resolvedVoiceSettings,
+  outputFormat,
+  modelId,
+  env = process.env,
+} = {}) {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const payload = {
+    text,
+    voice_settings: resolvedVoiceSettings,
+    output_format: outputFormat,
+  };
+  if (normalisedProvider === "local") {
+    const requestedAlignment = String(
+      env.LOCAL_TTS_SERVER_ALIGNMENT_MODE || "fallback",
+    ).toLowerCase();
+    payload.alignment_mode = requestedAlignment === "forced" ? "forced" : "fallback";
+  } else if (modelId) {
+    payload.model_id = modelId;
+  }
+  return payload;
+}
+
 // --- Clean text for TTS - shared logic ---
 function cleanForTTS(raw, options = {}) {
   // 2026-04-30 fix (Discord report): narrator pronounced "AAA" as
@@ -1409,14 +1434,16 @@ async function generateTTS(text, outputPath, rateOverride, providerOverride = nu
           "Content-Type": "application/json",
         };
 
-  const data = {
+  const data = buildTtsRequestPayload({
+    provider,
     text,
-    voice_settings: resolvedVoiceSettings,
-    output_format: resolveTtsOutputFormat(provider, process.env),
-  };
-  if (provider !== "local") {
-    data.model_id = brand.voiceModel || "eleven_multilingual_v2";
-  }
+    resolvedVoiceSettings,
+    outputFormat: resolveTtsOutputFormat(provider, process.env),
+    modelId: provider !== "local"
+      ? brand.voiceModel || "eleven_multilingual_v2"
+      : null,
+    env: process.env,
+  });
 
   if (provider === "local") {
     const localTtsHealth = await fetchLocalTtsHealth({
@@ -1996,6 +2023,7 @@ module.exports = generateAudio;
 module.exports.getAudioDuration = getAudioDuration;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.generateTTS = generateTTS;
+module.exports.buildTtsRequestPayload = buildTtsRequestPayload;
 module.exports.buildTtsAlignmentMeta = buildTtsAlignmentMeta;
 module.exports.concatAudioFiles = concatAudioFiles;
 module.exports.resolveTtsTimeoutMs = resolveTtsTimeoutMs;

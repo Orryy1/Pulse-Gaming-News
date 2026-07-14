@@ -241,6 +241,34 @@ test("allows direct-video motion whose franchise token matches the story", () =>
   assert.ok(!profile.blockers.includes("visual_evidence:subject_motion_mismatch"));
 });
 
+test("trusts an explicit matching asset entity over incidental title words in its source family", () => {
+  const profile = visualEvidenceProfile({
+    story: {
+      canonical_subject: "Denshattack",
+      selected_title: "Denshattack Brings Train Kickflips To Game Pass",
+    },
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            id: "denshattack-meet-the-crew-window",
+            entity: "Denshattack",
+            path: "C:\\repo\\output\\video_cache\\denshattack-meet-the-crew-window.mp4",
+            source_url: "https://www.youtube.com/watch?v=yDozyKrNNDk",
+            source_type: "official_youtube_channel",
+            source_family: "fireshine_official_denshattack_meet_the_crew_window_6_5",
+            media_kind: "direct_video",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(profile.direct_video_motion_asset_count, 1);
+  assert.equal(profile.subject_motion_mismatch_count, 0);
+  assert.ok(!profile.blockers.includes("visual_evidence:subject_motion_mismatch"));
+});
+
 test("deduplicates the same direct-video clip across inventory and rights evidence", () => {
   const clip = {
     id: "steam-controller-window-1",

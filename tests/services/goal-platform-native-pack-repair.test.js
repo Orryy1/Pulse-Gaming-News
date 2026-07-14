@@ -176,6 +176,78 @@ test("platform-native pack repair preserves fresh Palworld comeback title and co
   assert.equal(evaluateGoalPublicCopy(repairedCanonical).verdict, "pass");
 });
 
+test("platform-native pack repair preserves vivid concrete canonical headlines", async () => {
+  const cases = [
+    {
+      subject: "The Mound: Omen of Cthulhu",
+      title: "The Mound Makes Your Own Co-op Team The Threat",
+      angle: "the friend who swears they saw something can fracture co-op trust",
+      cover: "YOUR TEAM IS LYING",
+      description:
+        "The Mound launches with a madness system that makes co-op players doubt what they see and hear. Sources: Xbox Wire and Nacon.",
+    },
+    {
+      subject: "Paleo Pines",
+      title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+      angle: "a skin tracker gives the rare dinosaur hunt an actual finish line",
+      cover: "RARE DINO, GUARANTEED",
+      description:
+        "Paleo Pines now guarantees the chosen colour and pattern when the tracked dinosaur rarity appears. Source: Paleo Pines.",
+    },
+    {
+      subject: "Fogpiercer",
+      title: "Fogpiercer Turns Your Train Into A Deck Of Cards",
+      angle: "the carriages assembled on the train determine the starting deck",
+      cover: "YOUR TRAIN IS THE DECK",
+      description:
+        "Fogpiercer turns every carriage you assemble into part of the starting deck for the next tactical run. Sources: Xbox Wire and Steam.",
+    },
+  ];
+
+  for (const [index, item] of cases.entries()) {
+    const { storyPackages } = await legacyArtifact();
+    const artifactDir = storyPackages[0].artifact_dir;
+    const storyId = `vivid-canonical-title-${index}`;
+    storyPackages[0] = {
+      story_id: storyId,
+      verdict: "local_proof_pending",
+      blockers: [],
+      artifact_dir: artifactDir,
+    };
+    await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+      story_id: storyId,
+      canonical_subject: item.subject,
+      canonical_game: item.subject,
+      canonical_angle: item.angle,
+      selected_title: item.title,
+      canonical_title: item.title,
+      title: item.title,
+      public_title: item.title,
+      thumbnail_headline: item.cover,
+      suggested_thumbnail_text: item.cover,
+      first_frame_text: item.cover,
+      first_spoken_line: item.title,
+      description: item.description,
+      primary_source: "Xbox Wire",
+    });
+    await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+      final_publish_render: true,
+      output: "visual_v4_render.mp4",
+      rendered_duration_s: 48,
+    });
+
+    const dryRun = await repairPlatformNativePacks({
+      storyPackages,
+      generatedAt: "2026-07-13T17:10:00.000Z",
+      apply: false,
+    });
+
+    assert.equal(dryRun.items[0].target_youtube_title, item.title);
+    assert.equal(dryRun.items[0].target_youtube_cover_headline, item.cover);
+    assert.equal((dryRun.items[0].target_youtube_description.match(/\bSources?:/gi) || []).length, 1);
+  }
+});
+
 test("platform-native pack repair clears stale RED publish status after GREEN governance", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;

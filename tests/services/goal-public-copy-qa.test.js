@@ -1343,3 +1343,23 @@ test("goal public copy QA ignores boilerplate disclosure captions for subject pa
 
   assert.equal(report.verdict, "pass", report.failures.join(", "));
 });
+
+test("goal public copy QA accepts the spoken Denshattack pronunciation alias", () => {
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Denshattack",
+    selected_title: "Why Denshattack's Train Kickflips Could Actually Work",
+    first_spoken_line: "Denshattack asks one ridiculous question: can a train do a kickflip?",
+    narration_script:
+      "Denshattack asks one ridiculous question: can a train do a kickflip? If the stunts feel earned, Denshattack becomes this summer's strangest one-more-run obsession.",
+    full_script:
+      "Denshattack asks one ridiculous question: can a train do a kickflip? If the stunts feel earned, Denshattack becomes this summer's strangest one-more-run obsession.",
+    tts_script:
+      "Densha Attack asks one ridiculous question: can a train do a kickflip? If the stunts feel earned, Densha Attack becomes this summer's strangest one more run obsession.",
+    description:
+      "Denshattack turns a full-size train into a stunt machine. Source: Xbox Wire.",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/example/denshattack/",
+  });
+
+  assert.equal(report.verdict, "pass", report.failures.join(", "));
+});

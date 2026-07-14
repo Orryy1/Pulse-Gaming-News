@@ -343,6 +343,20 @@ test("cleanForTTS: protects Beastro from local ASR title drift", () => {
   );
 });
 
+test("cleanForTTS: gives Pliszka a stable spoken spelling while captions keep the official name", () => {
+  assert.equal(
+    cleanForTTS("Pliszka can detach her Wing Rider gear mid-fight."),
+    "Pliska can detach her Wing Rider gear mid fight.",
+  );
+});
+
+test("cleanForTTS: gives Denshattack a stable spoken form while captions keep the official title", () => {
+  assert.equal(
+    cleanForTTS("Denshattack! turns a train into a skateboard."),
+    "Densha Attack turns a train into a skateboard.",
+  );
+});
+
 test("cleanForTTS: expands PS5 when it leads a spoken news line", () => {
   assert.equal(
     cleanForTTS("PS5 prices went up across Europe and the UK. PS5 Pro moved too."),

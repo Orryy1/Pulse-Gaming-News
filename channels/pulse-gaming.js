@@ -41,9 +41,9 @@ module.exports = {
   voiceId: process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ",
   voiceModel: "eleven_multilingual_v2",
   voiceSettings: {
-    stability: 0.2,
-    similarity_boost: 0.8,
-    style: 0.75,
+    stability: 0.55,
+    similarity_boost: 0.85,
+    style: 0.35,
     speaking_rate: 1.0,
   },
 

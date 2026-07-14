@@ -26,6 +26,7 @@ const {
   directClipMaxScenes,
   directClipMaxVisibleDwellS,
   buildFinalSocialAudioMixFilter,
+  scenePlanBlockerDiagnostic,
 } = require("../../tools/studio-v4-proof-render");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
@@ -135,6 +136,37 @@ test("Studio V4 proof renderer blocks premium shorts dominated by one direct-vid
   assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
   assert.ok(plan.blockers.includes("approved_scene_duration_below_audio_duration"));
   assert.equal(plan.skippedDuplicateBaseSources.length, 6);
+});
+
+test("Studio V4 proof renderer reports the exact concentrated source and coverage gap", () => {
+  const diagnostic = scenePlanBlockerDiagnostic(
+    {
+      blockers: [
+        "direct_motion_source_concentration_above_premium_floor",
+        "approved_scene_duration_below_audio_duration",
+      ],
+      availableUniqueClipCount: 13,
+      requiredUniqueClipCount: 13,
+      coveredDurationS: 49.82,
+      directMotionSourceConcentrationMetrics: {
+        direct_motion_scene_count: 9,
+        max_scenes_per_source_root: 2,
+        max_source_concentration_ratio: 0.25,
+        concentrated_sources: [
+          { key: "youtube:xbox/paleo-pines-major-update", count: 3, ratio: 0.333 },
+        ],
+      },
+    },
+    { targetDurationS: 50 },
+  );
+
+  assert.match(diagnostic, /source=youtube:xbox\/paleo-pines-major-update/);
+  assert.match(diagnostic, /count=3/);
+  assert.match(diagnostic, /ratio=0\.333/);
+  assert.match(diagnostic, /max_ratio=0\.25/);
+  assert.match(diagnostic, /covered=49\.82/);
+  assert.match(diagnostic, /target=50/);
+  assert.match(diagnostic, /missing=0\.18/);
 });
 
 test("Studio V4 proof renderer allows balanced second windows when coverage needs them", () => {
@@ -614,6 +646,7 @@ test("Studio V4 proof renderer blocks generated cards that would be squeezed bel
         media_kind: "owned_explainer_motion",
         source_family: "elliot_quote_card",
         durationS: 10,
+        minimum_readable_duration_s: 7,
       },
       {
         path: "output/generated-motion/elliot/07_platform_proof_card.mp4",
@@ -621,6 +654,7 @@ test("Studio V4 proof renderer blocks generated cards that would be squeezed bel
         media_kind: "owned_explainer_motion",
         source_family: "elliot_proof_card",
         durationS: 10,
+        minimum_readable_duration_s: 7,
       },
       {
         path: "output/generated-motion/elliot/08_safe_article_screenshot_transform.mp4",
@@ -628,6 +662,7 @@ test("Studio V4 proof renderer blocks generated cards that would be squeezed bel
         media_kind: "owned_explainer_motion",
         source_family: "elliot_screenshot_card",
         durationS: 10,
+        minimum_readable_duration_s: 7,
       },
       {
         path: "output/generated-motion/elliot/04_stat_card.mp4",
@@ -635,6 +670,7 @@ test("Studio V4 proof renderer blocks generated cards that would be squeezed bel
         media_kind: "owned_explainer_motion",
         source_family: "elliot_stat_card",
         durationS: 5,
+        minimum_readable_duration_s: 7,
       },
     ],
     durationS: 30,
@@ -811,6 +847,48 @@ test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly"
   assert.equal(plan.cardVisibleWindows[0].kind, "source");
   assert.equal(plan.cardVisibleWindows[0].duration_s, 2.2);
   assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.2);
+});
+
+test("Studio V4 proof renderer accepts current-policy readable cards without extending them to seven seconds", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      ...Array.from({ length: 9 }, (_, index) => ({
+        path: `direct-${index + 1}.mp4`,
+        source_type: "official_platform_product_page",
+        media_kind: "direct_video",
+        source_family: `direct_family_${index + 1}`,
+        durationS: 5,
+      })),
+      {
+        path: "output/generated-motion/story/context-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_context_card",
+        text: "PLAYER IMPACT",
+        durationS: 4.1,
+        minimum_readable_duration_s: 4.1,
+      },
+      {
+        path: "output/generated-motion/story/quote-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        media_kind: "owned_editorial_motion_graphic",
+        source_family: "hyperframes_quote_card",
+        text: "THE CONTROLS HAVE TO SELL IT",
+        durationS: 4.1,
+        minimum_readable_duration_s: 4.1,
+      },
+    ],
+    durationS: 50.7,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.deepEqual(
+    plan.cardVisibleWindows.map((window) => window.duration_s),
+    [4.1, 4.1],
+  );
 });
 
 test("Studio V4 proof renderer treats rounded readable card equality as pass", () => {
@@ -1009,6 +1087,55 @@ test("Studio V4 proof renderer can use two windows per official trailer when nee
   assert.equal(plan.scenes.length >= 5, true);
 });
 
+test("Studio V4 proof renderer refuses to fill a premium Short from only two trailer roots", () => {
+  const primaryTrailer =
+    "https://video.akamai.steamstatic.com/store_trailers/2697940/1128286692/4b8d1e7d317c434d53a53138ae5ef8ad378e5b55/1783663477/hls_264_master.m3u8";
+  const secondaryTrailer =
+    "https://video.akamai.steamstatic.com/store_trailers/2697940/2004631958/2b2acd2262d934d78e7aaadb196be90ca89927a1/1774541422/hls_264_master.m3u8";
+  const clips = [12, 24, 30, 36].map((windowStart, index) => ({
+    path: `ascend-primary-window-${index + 1}.mp4`,
+    source_url: primaryTrailer,
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    source_family: `steamstatic:/store_trailers/2697940/1128286692/4b8d1e7d317c434d53a53138ae5ef8ad378e5b55/1783663477_window_${windowStart}_5`,
+    mediaStartS: windowStart,
+    durationS: 5,
+    provenance: {
+      source: "official_trailer_segment_validation",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    },
+  }));
+  clips.splice(1, 0, {
+    path: "ascend-secondary-window-1.mp4",
+    source_url: secondaryTrailer,
+    source_type: "steam_movie",
+    media_kind: "direct_video",
+    source_family:
+      "steamstatic:/store_trailers/2697940/2004631958/2b2acd2262d934d78e7aaadb196be90ca89927a1/1774541422_window_12_5",
+    mediaStartS: 12,
+    durationS: 5,
+    provenance: {
+      source: "official_trailer_segment_validation",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    },
+  });
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 24,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.scenes.length, 3);
+  assert.equal(plan.availableUniqueClipCount, 3);
+  assert.equal(plan.skippedDuplicateBaseSources.length, 2);
+  assert.ok(plan.blockers.includes("direct_motion_clip_diversity_below_dwell_floor"));
+  assert.ok(plan.blockers.includes("approved_scene_duration_below_audio_duration"));
+});
+
 test("Studio V4 proof renderer keeps separate official YouTube video IDs as independent sources", () => {
   const clips = Array.from({ length: 8 }, (_, index) => ({
     path: `albion-official-video-${index + 1}.mp4`,
@@ -1121,6 +1248,89 @@ test("Studio V4 proof renderer keeps distinct official trailer windows when read
   assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length, 2);
   assert.equal(plan.readableCardSceneMetrics.readable_card_duration_ratio <= 0.42, true);
   assert.equal(plan.coveredDurationS >= 58.514 - 0.01, true);
+});
+
+test("Studio V4 proof renderer fits crossfades around readable cards without exceeding scheduler source-share limits", () => {
+  const trailerUrls = [
+    "https://video.akamai.steamstatic.com/store_trailers/3219010/release/hash/hls_264_master.m3u8",
+    "https://video.akamai.steamstatic.com/store_trailers/3219010/announcement/hash/hls_264_master.m3u8",
+    "https://www.youtube.com/watch?v=FogpiercerOfficialRelease",
+    "https://cdn.trailers.xboxservices.com/trailers/fogpiercer/gameplay-AVS.m3u8?packagedStreaming=true",
+  ];
+  const directClips = trailerUrls.flatMap((sourceUrl, sourceIndex) =>
+    [12, 36].map((windowStart, windowIndex) => ({
+      path: `fogpiercer-${sourceIndex + 1}-${windowIndex + 1}.mp4`,
+      source_url: sourceUrl,
+      source_type: "steam_movie",
+      source_kind: "video_file",
+      media_kind: "direct_video",
+      source_family: `steamstatic:/store_trailers/3219010/${sourceIndex + 1}_window_${windowStart}_5`,
+      motion_family: `steamstatic:/store_trailers/3219010/${sourceIndex + 1}_window_${windowStart}_5`,
+      mediaStartS: windowStart,
+      durationS: 5,
+      provenance: {
+        source: "official_trailer_segment_validation",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    })),
+  );
+  const cards = [
+    {
+      path: "fogpiercer-source-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_source_card",
+      text: "XBOX WIRE NEWS SOURCE",
+      durationS: 2.2,
+      minimum_readable_duration_s: 2.2,
+    },
+    {
+      path: "fogpiercer-context-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_context_card",
+      text: "YOUR TRAIN BECOMES THE DECK",
+      durationS: 4.1,
+      minimum_readable_duration_s: 4.1,
+    },
+    {
+      path: "fogpiercer-quote-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_quote_card",
+      text: "YOUR OPENING HAND IS A TRAIN",
+      durationS: 4.9,
+      minimum_readable_duration_s: 4.9,
+    },
+  ];
+
+  const plan = buildClipScenePlan({
+    clips: [
+      ...directClips.slice(0, 4),
+      cards[0],
+      ...directClips.slice(4, 7),
+      cards[1],
+      ...directClips.slice(7),
+      cards[2],
+    ],
+    durationS: 48.866,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.scenes.filter((scene) => !scene.readableCardKind).length, 8);
+  assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length, 3);
+  const directScenes = plan.scenes.filter((scene) => !scene.readableCardKind);
+  const sourceCounts = directScenes.reduce((counts, scene) => {
+    counts.set(scene.sourceRootKey, (counts.get(scene.sourceRootKey) || 0) + 1);
+    return counts;
+  }, new Map());
+  assert.ok([...sourceCounts.values()].every((count) => count <= 2));
+  assert.ok([...sourceCounts.values()].every((count) => count / directScenes.length <= 0.25));
+  assert.equal(plan.xfadeS < 0.25, true);
+  assert.equal(plan.coveredDurationS >= 48.866 - 0.12, true);
 });
 
 test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {

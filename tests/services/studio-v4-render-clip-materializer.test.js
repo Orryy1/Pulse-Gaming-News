@@ -17,16 +17,24 @@ test("Studio V4 clip materializer cuts safe direct media into local render clips
   const calls = [];
   const result = await materializeStudioV4BridgeClips({
     root,
-    story: { id: "forza-v4" },
+    story: { id: "forza-v4", canonical_subject: "Forza Horizon 6" },
     bridge: {
       readiness: { status: "bridge_ready", blockers: [] },
       video_clips: [
         {
           id: "clip-1",
           source_family: "forza_official_x",
+          base_source_family: "forza_official_master",
           path: directUrl,
           mediaStartS: 7.77,
           durationS: 2.85,
+          provenance: {
+            source: "official_trailer_segment_validation",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            media_start_s: 7.77,
+            duration_s: 2.85,
+          },
         },
       ],
     },
@@ -54,7 +62,16 @@ test("Studio V4 clip materializer cuts safe direct media into local render clips
   assert.equal(sidecar.story_id, "forza-v4");
   assert.equal(sidecar.clip_id, "clip-1");
   assert.equal(sidecar.source_family, "forza_official_x");
+  assert.equal(sidecar.base_source_family, "forza_official_master");
+  assert.equal(sidecar.entity, "Forza Horizon 6");
   assert.equal(sidecar.source_url, directUrl);
+  assert.deepEqual(sidecar.provenance, {
+    source: "official_trailer_segment_validation",
+    segment_validated: true,
+    allowed_for_flash_lane: true,
+    media_start_s: 7.77,
+    duration_s: 2.85,
+  });
 });
 
 test("Studio V4 clip materializer refreshes stale cache entries when source timing changes", async () => {
@@ -182,6 +199,51 @@ test("Studio V4 clip materializer preserves existing local render clips", async 
   assert.equal(result.readiness.status, "materialized");
   assert.equal(result.bridge.video_clips[0].path, localClip);
   assert.equal(execCount, 0);
+});
+
+test("Studio V4 clip materializer cuts explicitly validated windows from a local official master", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-v4-local-master-"));
+  const localMaster = path.join(root, "test", "output", "official-xbox-master.mp4");
+  await fs.outputFile(localMaster, "official master fixture");
+  const calls = [];
+
+  const result = await materializeStudioV4BridgeClips({
+    root,
+    story: { id: "paleo-pines-update" },
+    bridge: {
+      readiness: { status: "bridge_ready", blockers: [] },
+      video_clips: [
+        {
+          id: "official-window-1",
+          source_family: "xbox_official_update_window_12_5",
+          path: localMaster,
+          source_url: localMaster,
+          source_url_kind: "local_video_file",
+          materialize_source_window: true,
+          mediaStartS: 12,
+          durationS: 5,
+        },
+      ],
+    },
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.outputFileSync(args[args.length - 1], "cropped official window");
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(result.readiness.status, "materialized");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args[calls[0].args.indexOf("-i") + 1], localMaster);
+  assert.deepEqual(calls[0].args.slice(calls[0].args.indexOf("-ss"), calls[0].args.indexOf("-ss") + 4), [
+    "-ss",
+    "12",
+    "-t",
+    "5",
+  ]);
+  assert.notEqual(result.bridge.video_clips[0].path, localMaster);
+  assert.equal(result.bridge.video_clips[0].source_url, localMaster);
+  assert.equal(result.bridge.video_clips[0].materialized, true);
 });
 
 test("Studio V4 clip materializer accepts usable output when HLS ffmpeg exits noisily", async () => {

@@ -854,7 +854,11 @@ test("TikTok creator-rewards materializer keeps display copy separate from local
   const qa = evaluateGoalPublicCopy(variantCanonical);
   assert.equal(qa.verdict, "pass", JSON.stringify(qa.failures));
   assert.match(audioCalls[0].text, /^PlayStation five prices/i);
+  assert.equal(variantCanonical.tts_script, variantCanonical.narration_script);
+  assert.equal(variantCanonical.spoken_narration_script, audioCalls[0].text);
+  assert.notEqual(variantCanonical.spoken_narration_script, variantCanonical.narration_script);
   assert.match(renderCalls[0].full_script, /^PS5 prices/i);
+  assert.equal(renderCalls[0].tts_script, audioCalls[0].text);
   assert.notEqual(renderCalls[0].full_script, audioCalls[0].text);
 });
 

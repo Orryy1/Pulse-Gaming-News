@@ -11,6 +11,7 @@ const {
   writeGoalProofPackageArtifacts,
 } = require("../../lib/goal-proof-package");
 const { buildAffiliateLinkManifest } = require("../../lib/commercial-intelligence-engine");
+const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 const { _private: mediaHousePrivate } = require("../../lib/pulse-media-house-score");
 
 const story = require("../../test/fixtures/goal/mixtape-governance-story.json");
@@ -2056,10 +2057,103 @@ test("goal proof package keeps Fatal Fury Kenshiro roster copy instead of generi
   );
   assert.ok(
     !pack.platform_publish_manifest.platform_native_evidence.failures.some((failure) =>
+      /weak_platform_title|weak_cover_headline|plain_platform_description/.test(failure.reason),
+    ),
+    JSON.stringify(pack.platform_publish_manifest.platform_native_evidence.failures),
+  );
+});
+
+test("goal proof package gives the current Denshattack story attention-led native copy", () => {
+  const denshattackStory = greenStory();
+  denshattackStory.id = "fresh_denshattack_game_pass_20260715";
+  denshattackStory.canonical_subject = "Denshattack!";
+  denshattackStory.canonical_game = "Denshattack!";
+  denshattackStory.canonical_angle = "game_pass_train_trick_game_launch";
+  denshattackStory.title = "Why Denshattack's Train Kickflips Could Actually Work";
+  denshattackStory.public_title = denshattackStory.title;
+  denshattackStory.selected_title = denshattackStory.title;
+  denshattackStory.suggested_thumbnail_text = "A TRAIN DID WHAT?";
+  denshattackStory.thumbnail_headline = "A TRAIN DID WHAT?";
+  denshattackStory.source_name = "Xbox Wire";
+  denshattackStory.primary_source = "Xbox Wire";
+  denshattackStory.article_url =
+    "https://news.xbox.com/en-us/2026/07/10/next-week-on-xbox-new-games-for-july-13-to-17/";
+  denshattackStory.description =
+    "Denshattack launches on Game Pass on July 15 and turns a full-size train into a stunt machine. The hook is instant; the real test is whether the controls can make the joke last. Source: Xbox Wire.";
+  denshattackStory.full_script =
+    "Denshattack asks one ridiculous question: can a train do a kickflip? " +
+    "Denshattack launches on July 15 and treats a full-size carriage like a skateboard. " +
+    "The controls have to sell the next ten hours. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story: denshattackStory,
+    rightsLedger: rightsForGreenStory(denshattackStory),
+    generatedAt: "2026-07-13T13:00:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.public_title, "Why Denshattack's Train Kickflips Could Actually Work");
+  assert.equal(pack.canonical_story_manifest.canonical_subject, "Denshattack");
+  assert.match(pack.canonical_story_manifest.first_spoken_line, /^Denshattack asks/i);
+  assert.match(pack.canonical_story_manifest.tts_script, /^Densha Attack asks/i);
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "DENSHATTACK TRAIN FLIPS");
+  assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Footage Readability Test|Low-Risk Trial/i);
+  const nativeOutputs = pack.platform_publish_manifest.outputs;
+  assert.match(nativeOutputs.youtube_shorts.description, /full-size train/i);
+  assert.match(nativeOutputs.youtube_shorts.description, /one-more-run/i);
+  assert.match(nativeOutputs.instagram_reels.caption, /July 15/i);
+  assert.match(nativeOutputs.facebook_reels.page_caption, /controls/i);
+  assert.doesNotMatch(JSON.stringify(nativeOutputs), /game_pass_train_trick_game_launch/i);
+  assert.ok(
+    !pack.platform_publish_manifest.platform_native_evidence.failures.some((failure) =>
       /weak_platform_title|plain_platform_description/.test(failure.reason),
     ),
     JSON.stringify(pack.platform_publish_manifest.platform_native_evidence.failures),
   );
+  assert.ok(
+    !pack.pulse_media_house_score.hard_failures.some((failure) =>
+      /title_lacks_curiosity_gap|platform_title_too_plain|platform_copy_too_plain|shorts_feed_competition_weak/.test(failure),
+    ),
+    JSON.stringify(pack.pulse_media_house_score.hard_failures),
+  );
+  const publicCopyQa = evaluateGoalPublicCopy({
+    ...pack.canonical_story_manifest,
+    platform_publish_manifest: pack.platform_publish_manifest,
+  });
+  assert.ok(
+    !publicCopyQa.failures.some((failure) =>
+      /canonical_subject_is_quote_fragment|first_line_too_weak|platform_copy_missing_canonical_subject/.test(failure),
+    ),
+    JSON.stringify(publicCopyQa.failures),
+  );
+});
+
+test("goal proof package preserves a concrete Fogpiercer train-deck cover", () => {
+  const fogpiercerStory = greenStory();
+  fogpiercerStory.id = "fresh_fogpiercer_game_pass_20260717";
+  fogpiercerStory.canonical_subject = "Fogpiercer";
+  fogpiercerStory.canonical_game = "Fogpiercer";
+  fogpiercerStory.title = "Fogpiercer Turns Your Train Into A Deck Of Cards";
+  fogpiercerStory.public_title = fogpiercerStory.title;
+  fogpiercerStory.selected_title = fogpiercerStory.title;
+  fogpiercerStory.suggested_thumbnail_text = "FOGPIERCER: TRAIN DECK";
+  fogpiercerStory.thumbnail_headline = "FOGPIERCER: TRAIN DECK";
+  fogpiercerStory.source_name = "Xbox Wire";
+  fogpiercerStory.primary_source = "Xbox Wire";
+  fogpiercerStory.description =
+    "Fogpiercer launches on Game Pass with a train whose carriages become the player's deck of cards.";
+  fogpiercerStory.full_script =
+    "Fogpiercer turns your opening hand into a train. Every carriage changes the deck you take into battle. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story: fogpiercerStory,
+    rightsLedger: rightsForGreenStory(fogpiercerStory),
+    generatedAt: "2026-07-14T01:00:00.000Z",
+  });
+
+  assert.equal(pack.canonical_story_manifest.thumbnail_headline, "FOGPIERCER: TRAIN DECK");
+  assert.equal(pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.headline, "FOGPIERCER: TRAIN DECK");
+  assert.equal(pack.platform_publish_manifest.outputs.instagram_reels.cover_frame.headline, "FOGPIERCER: TRAIN DECK");
 });
 
 test("goal proof package writes goal-named artefacts", async () => {

@@ -870,6 +870,57 @@ test("audio timestamp workbench blocks old ASR-clean audio when the current cano
   assert.equal(report.jobs[0].timestamps.reason, "timestamp_current_script_mismatch");
 });
 
+test("audio timestamp workbench blocks a ready pair after even a one-word canonical trim", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-one-word-trim-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-audio");
+  const audioDir = path.join(root, "output", "audio");
+  const currentScript =
+    "Paleo Pines just fixed one of its most exhausting hunts. The free Players Choice update adds a skin tracker. You choose one dinosaur colour and pattern. When that rarity next spawns, the game guarantees the combination. A blind grind now has a finish line. Saddlebags let large dinosaurs carry up to four items. Small dinosaurs can collect wild resources. There are new crops, recipes and decorations too. Follow Pulse Gaming so you never miss a beat.";
+  const recordedScript = currentScript.replace("has a finish line", "has an actual finish line");
+  const recordedWordCount = recordedScript.split(/\s+/).length;
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-audio",
+    tts_script: currentScript,
+    spoken_narration_script: currentScript,
+  });
+  await fs.outputFile(path.join(audioDir, "story-audio.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(audioDir, "story-audio_timestamps.json"), {
+    words: recordedScript.split(/\s+/).map((word, index) => ({
+      word,
+      start: index * 0.2,
+      end: (index + 1) * 0.2,
+    })),
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        model: "small.en",
+        transcript: recordedScript,
+        script_expected_word_count: recordedWordCount,
+        script_actual_word_count: recordedWordCount,
+        script_matched_word_count: recordedWordCount,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+
+  const report = await buildGoalAudioTimestampWorkbench({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [audioJob({ artifact_dir: artifactDir, blockers: [] })],
+    },
+    localTtsDoctorReport: { verdict: "green" },
+    providerPreference: "local",
+    generatedAt: "2026-07-14T01:55:00.000Z",
+  });
+
+  assert.equal(report.summary.ready_audio_timestamp_pair_count, 0);
+  assert.equal(report.jobs[0].status, "requires_audio_timestamp_generation");
+  assert.equal(report.jobs[0].audio.reason, "timestamp_current_script_word_count_mismatch");
+  assert.equal(report.jobs[0].timestamps.reason, "timestamp_current_script_word_count_mismatch");
+});
+
 test("audio timestamp workbench does not let legacy timing files hide bad ASR regeneration evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-asr-evidence-priority-"));
   const audioDir = path.join(root, "output", "audio");

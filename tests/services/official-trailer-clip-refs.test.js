@@ -778,6 +778,72 @@ test("official clip refs deep-scan dedupes repeated source/entity/start windows"
   );
 });
 
+test("official clip refs deep-scan can isolate short clean motion windows", () => {
+  const refs = buildExploratoryClipRefs(
+    { plans: [] },
+    "story-1",
+    {
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url: "https://video.example/gameplay.m3u8",
+                source_type: "steam_movie",
+                entity: "Starward",
+                source_duration_s: 60,
+                downloads_allowed: false,
+                segment_validation_eligible: true,
+              },
+            ],
+          },
+        ],
+      },
+      exploratoryStartSeconds: [40],
+      exploratoryDurationS: 3,
+    },
+  );
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].mediaStartS, 40);
+  assert.equal(refs[0].durationS, 3);
+  assert.equal(refs[0].provenance.exploratory_duration_s, 3);
+});
+
+test("official clip refs deep-scan can opt into QA-guarded post-intro windows", () => {
+  const referenceReport = {
+    plans: [
+      {
+        story_id: "story-1",
+        references: [
+          {
+            source_url: "https://video.example/multiplayer-trailer.m3u8",
+            source_type: "steam_movie",
+            entity: "Buckshot Roulette",
+            source_duration_s: 50,
+            downloads_allowed: false,
+            segment_validation_eligible: true,
+          },
+        ],
+      },
+    ],
+  };
+  const standard = buildExploratoryClipRefs({ plans: [] }, "story-1", {
+    referenceReport,
+    exploratoryStartSeconds: [8, 18, 36],
+  });
+  const guardedEarly = buildExploratoryClipRefs({ plans: [] }, "story-1", {
+    referenceReport,
+    exploratoryStartSeconds: [8, 18, 36],
+    allowEarlyExploratoryWindows: true,
+  });
+
+  assert.deepEqual(standard.map((ref) => ref.mediaStartS), [36]);
+  assert.deepEqual(guardedEarly.map((ref) => ref.mediaStartS), [8, 18, 36]);
+  assert.ok(guardedEarly.every((ref) => ref.provenance.allow_early_exploratory_window === true));
+});
+
 test("official clip refs deep-scan alternate official sources from a resolver report", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     {
@@ -1469,6 +1535,67 @@ test("official clip refs ignore unsafe or downloadable resolver references", () 
     refs.map((ref) => ref.path),
     ["https://video.example/official.m3u8"],
   );
+});
+
+test("official clip refs accept source-verified local masters from an official YouTube channel", () => {
+  const localMaster =
+    "C:/workspace/test/output/ascend-official-youtube/J49gg_V3EaA.mp4";
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    { plans: [{ story_id: "ascend-story", frames: [] }] },
+    "ascend-story",
+    {
+      includeExploratoryWindows: true,
+      allowEarlyExploratoryWindows: true,
+      exploratoryStartSeconds: [6, 12],
+      referenceReport: {
+        plans: [
+          {
+            story_id: "ascend-story",
+            references: [
+              {
+                source_type: "official_youtube_channel",
+                provider: "official_youtube_channel",
+                source_url: localMaster,
+                source_url_kind: "local_video_file",
+                source_family: "youtube:J49gg_V3EaA",
+                entity: "Ascend to ZERO",
+                source_duration_s: 91.3,
+                source_verified: true,
+                segment_validation_eligible: true,
+                downloads_allowed: true,
+                allowed_render_use: "transformative_editorial_short_form",
+                rights_risk_class: "official_publisher_promotional_video",
+                provenance: {
+                  source: "official_youtube_channel_download",
+                  official_channel: "https://www.youtube.com/@FlywayGames",
+                  reference_url: "https://www.youtube.com/watch?v=J49gg_V3EaA",
+                  youtube_video_id: "J49gg_V3EaA",
+                  source_sha256:
+                    "f38f639b8937299ebad43722f7a3023cd8222ba9b91e504e530e618e4e87a7fe",
+                },
+              },
+              {
+                source_type: "official_youtube_channel",
+                provider: "official_youtube_channel",
+                source_url: "C:/workspace/test/output/unverified.mp4",
+                source_url_kind: "local_video_file",
+                entity: "Ascend to ZERO",
+                source_duration_s: 91.3,
+                downloads_allowed: true,
+                segment_validation_eligible: true,
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 8,
+    },
+  );
+
+  assert.deepEqual(refs.map((ref) => ref.path), [localMaster, localMaster]);
+  assert.deepEqual(refs.map((ref) => ref.mediaStartS), [6, 12]);
+  assert.ok(refs.every((ref) => ref.sourceType === "official_youtube_channel"));
+  assert.ok(refs.every((ref) => ref.provenance.reference_report_source === true));
 });
 
 test("official clip refs deep-scan official product page direct media without calling it gameplay", () => {

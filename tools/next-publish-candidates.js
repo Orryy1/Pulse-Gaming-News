@@ -2281,7 +2281,10 @@ function visualSpecificSourceLockTokensForStory(story = {}) {
     .map(cleanText)
     .filter(Boolean)
     .join(" ");
-  if (!VISUAL_CHARACTER_SPECIFIC_CONTEXT_RE.test(context)) return [];
+  if (
+    !explicitSpecificSubject &&
+    !VISUAL_CHARACTER_SPECIFIC_CONTEXT_RE.test(titleContext)
+  ) return [];
 
   let urlPath = "";
   const includeUrlPathForSpecificSubject =
@@ -2696,6 +2699,11 @@ function sidecarProvenanceLooksOpaque(provenance = "") {
 }
 
 function visualAssetSubjectLocked(asset = {}, subjectTokens = []) {
+  const governedIdentity = cleanText([
+    asset.entity,
+    ...asArray(asset.entities),
+  ].filter(Boolean).join(" "));
+  if (provenanceContainsSubjectToken(governedIdentity, subjectTokens)) return true;
   const sidecarProvenance = visualAssetSidecarProvenanceText(asset);
   const provenance = visualAssetProvenanceText(asset);
   if (sidecarProvenance) {
@@ -3314,6 +3322,43 @@ async function sourceAgePreflightForStory(story = {}, opts = {}) {
   const sourceManifest = objectValue(story.source_manifest, {});
   const freshnessGate = cleanText(sourceManifest.freshness_gate || story.freshness_gate).toLowerCase();
   const published = parsedSourcePublishedAt(story);
+  const nowMs = Number.isFinite(Number(opts.nowMs))
+    ? Number(opts.nowMs)
+    : opts.now instanceof Date
+      ? opts.now.getTime()
+      : Date.now();
+  const confirmedEventWindow = objectValue(
+    story.confirmed_event_window || sourceManifest.confirmed_event_window,
+    {},
+  );
+  const eventWindowStatus = cleanText(confirmedEventWindow.status).toLowerCase();
+  const eventWindowEndText = cleanText(
+    confirmedEventWindow.ends_at || confirmedEventWindow.end_at || confirmedEventWindow.end,
+  );
+  const eventWindowEndMs = eventWindowEndText ? Date.parse(eventWindowEndText) : NaN;
+  if (eventWindowStatus === "confirmed" && Number.isFinite(eventWindowEndMs)) {
+    const eventWindowEvidence = {
+      status: "confirmed",
+      starts_at: cleanText(
+        confirmedEventWindow.starts_at || confirmedEventWindow.start_at || confirmedEventWindow.start,
+      ) || null,
+      ends_at: eventWindowEndText,
+      source_url: cleanText(confirmedEventWindow.source_url) || null,
+      expired: eventWindowEndMs <= nowMs,
+    };
+    if (eventWindowEvidence.expired) {
+      return {
+        result: "fail",
+        failures: ["confirmed_event_window_ended"],
+        warnings: [],
+        evidence: {
+          source_published_at: published?.value || null,
+          confirmed_event_window: eventWindowEvidence,
+        },
+      };
+    }
+  }
+
   if (!published && freshnessGate !== "blocked") return null;
 
   const policyHours = Number.isFinite(Number(story.source_age_policy_hours))
@@ -3321,11 +3366,6 @@ async function sourceAgePreflightForStory(story = {}, opts = {}) {
     : Number.isFinite(Number(sourceManifest.source_age_policy_hours))
       ? Number(sourceManifest.source_age_policy_hours)
       : DEFAULT_SOURCE_AGE_POLICY_HOURS;
-  const nowMs = Number.isFinite(Number(opts.nowMs))
-    ? Number(opts.nowMs)
-    : opts.now instanceof Date
-      ? opts.now.getTime()
-      : Date.now();
   const ageHours = published
     ? Math.max(0, Number(((nowMs - published.ms) / 36e5).toFixed(2)))
     : null;
@@ -3343,6 +3383,19 @@ async function sourceAgePreflightForStory(story = {}, opts = {}) {
         source_published_at: published?.value || null,
         age_hours: ageHours,
         policy_hours: policyHours,
+        ...(eventWindowStatus === "confirmed" && Number.isFinite(eventWindowEndMs)
+          ? {
+              confirmed_event_window: {
+                status: "confirmed",
+                starts_at: cleanText(
+                  confirmedEventWindow.starts_at || confirmedEventWindow.start_at || confirmedEventWindow.start,
+                ) || null,
+                ends_at: eventWindowEndText,
+                source_url: cleanText(confirmedEventWindow.source_url) || null,
+                expired: false,
+              },
+            }
+          : {}),
       },
     };
   }
@@ -4336,7 +4389,22 @@ function timestampWordsForPayload(payload = {}) {
 function timestampInspectionDurationSeconds(story = {}, payload = {}, words = []) {
   const meta = payload?.meta || payload?.alignment?.meta || {};
   const maxWordEnd = Math.max(0, ...words.map((word) => Number(word.end)).filter(Number.isFinite));
-  const durationMetadataIgnored = Boolean(meta?.timestampDurationMetadataIgnored);
+  const postprocessAlignment =
+    meta?.timestampWhisperAlignment ||
+    meta?.timestamp_whisper_alignment ||
+    {};
+  const acousticDuration = numberOrNull(meta?.acoustic?.durationSeconds);
+  const deterministicSilenceShift =
+    cleanText(postprocessAlignment?.postprocess) ===
+      "deterministic_silence_insertion_timestamp_shift" &&
+    numberOrNull(postprocessAlignment?.postprocess_inserted_silence_seconds) > 0;
+  const durationMetadataIgnored =
+    Boolean(meta?.timestampDurationMetadataIgnored) ||
+    (
+      deterministicSilenceShift &&
+      acousticDuration != null &&
+      maxWordEnd > acousticDuration + 0.12
+    );
   const candidates = durationMetadataIgnored
     ? [
         storyDurationSeconds(story),
@@ -5591,6 +5659,14 @@ function preflightBlockerIsDurationVariantOutOfBounds(blocker = "") {
 
 function schedulerQuarantineForPreflightBlockers(blockers = []) {
   const blockerList = asArray(blockers).map(cleanText).filter(Boolean);
+  if (blockerList.includes("source_age:confirmed_event_window_ended")) {
+    return {
+      status: "held",
+      reason: "confirmed_event_window_ended",
+      lane: "temporal_event_review",
+      safe_next_action: "replace_with_current_event_or_reframe_as_post_event_coverage",
+    };
+  }
   if (blockerList.includes("source_age:source_age_exceeds_policy")) {
     return {
       status: "held",
@@ -5717,7 +5793,11 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
       const schedulerQuarantine = schedulerQuarantineForPreflightBlockers(preflight.blockers);
       if (schedulerQuarantine) {
         candidate.scheduler_quarantine = schedulerQuarantine;
-        if (schedulerQuarantine.reason === "source_age_exceeds_policy") {
+        if (schedulerQuarantine.reason === "confirmed_event_window_ended") {
+          candidate.reasons = [
+            ...new Set([...(candidate.reasons || []), "scheduler_quarantine_confirmed_event_window_ended"]),
+          ];
+        } else if (schedulerQuarantine.reason === "source_age_exceeds_policy") {
           candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_stale_source"])];
         } else if (schedulerQuarantine.reason === "current_motion_pack_blocked") {
           candidate.reasons = [...new Set([...(candidate.reasons || []), "scheduler_quarantine_current_motion_pack"])];
@@ -6418,6 +6498,8 @@ module.exports = {
   selectCandidateSourceStories,
   schedulerEffectivePreflightStory,
   timestampAlignmentPreflightForStory,
+  timestampInspectionDurationSeconds,
+  timestampTimingInspectionForPayload,
   visualEntityPreflightForStory,
   visualLoopPreflightForStory,
   voiceQualityPreflightForStory,

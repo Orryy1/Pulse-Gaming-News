@@ -73,6 +73,8 @@ function parseArgs(argv) {
     includeFrameAnchoredWindows: false,
     includeExploratoryWindows: false,
     exploratoryStartSeconds: null,
+    exploratoryDurationS: 5,
+    allowEarlyExploratoryWindows: false,
     reportJson: null,
     reportMd: null,
     checkpointReport: false,
@@ -137,6 +139,11 @@ function parseArgs(argv) {
         .split(",")
         .map((item) => Number(item.trim()))
         .filter((item) => Number.isFinite(item));
+    } else if (arg === "--exploratory-duration-s") {
+      const duration = Number(argv[++i]);
+      if (Number.isFinite(duration)) args.exploratoryDurationS = Math.max(1, Math.min(5, duration));
+    } else if (arg === "--allow-early-exploratory-windows") {
+      args.allowEarlyExploratoryWindows = true;
     } else if (arg === "--report-json") {
       args.reportJson = argv[++i] || null;
     } else if (arg === "--report-md") {
@@ -184,6 +191,10 @@ function printHelp() {
       "  --deep-scan            Add uniform exploratory windows from every official source",
       "  --exploratory-starts <csv>",
       "                         Start seconds for --deep-scan, default: 36,42,48,54,60,66",
+      "  --exploratory-duration-s <n>",
+      "                         Window length for --deep-scan, 1-5 seconds, default 5",
+      "  --allow-early-exploratory-windows",
+      "                         Sample explicit starts from 6s onward through full frame QA",
       "  --json                 Print JSON instead of Markdown",
       "",
       "This command is local-only. It validates proposed official trailer clip windows before they can be used by Flash Lane.",
@@ -664,6 +675,8 @@ function buildClipRefsFromReport(frameReport, referenceReport, storyId, args = {
       maxClips: args.maxSegments,
       includeExploratoryWindows: args.includeExploratoryWindows,
       exploratoryStartSeconds: args.exploratoryStartSeconds,
+      exploratoryDurationS: args.exploratoryDurationS,
+      allowEarlyExploratoryWindows: args.allowEarlyExploratoryWindows,
       referenceReport: normalisedReferenceReport,
     }).map((clip) => ({
       ...clip,

@@ -2005,6 +2005,54 @@ test("goal batch package proof preparation maps Yoshie boss fragments to Denshat
   assert.doesNotMatch(prepared.full_script, /one clear detail|player test|Meet Yoshie has/i);
 });
 
+test("goal batch package keeps the current Denshattack launch as a train-kickflip story", () => {
+  const prepared = prepareStoryForGoalProof(
+    {
+      id: "fresh_denshattack_game_pass_20260715",
+      canonical_subject: "Denshattack!",
+      canonical_game: "Denshattack!",
+      canonical_angle: "game_pass_train_trick_game_launch",
+      title: "Game Pass Is Getting A Train That Does Kickflips",
+      public_title: "Game Pass Is Getting A Train That Does Kickflips",
+      primary_source: "Xbox Wire",
+      source_name: "Xbox Wire",
+      source_type: "official_platform",
+      article_url: "https://news.xbox.com/en-us/2026/07/10/next-week-on-xbox-new-games-for-july-13-to-17/",
+      source_published_at: "2026-07-10T12:00:00.000Z",
+      confirmed_claims: [
+        "Denshattack! launches on July 15, 2026",
+        "Denshattack! launches through Game Pass and Xbox Play Anywhere",
+        "Players flip, trick and grind a train through a Japanese dystopia",
+        "The game uses high-score chasing and customisable trains",
+      ],
+      full_script:
+        "Denshattack has one detail players can check before the hype gets ahead of it. " +
+        "Xbox Wire says it launches through Game Pass on July 15. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    { allowOwnedMotionFallback: true },
+  );
+
+  assert.equal(prepared.public_title, "Why Denshattack's Train Kickflips Could Actually Work");
+  assert.equal(prepared.canonical_subject, "Denshattack");
+  assert.equal(prepared.canonical_game, "Denshattack");
+  assert.match(prepared.first_spoken_line, /^Denshattack asks/i);
+  assert.match(prepared.tts_script, /^Densha Attack asks/i);
+  assert.equal(prepared.suggested_thumbnail_text, "DENSHATTACK TRAIN FLIPS");
+  assert.match(prepared.full_script, /^Denshattack asks one ridiculous question: can a train do a kickflip\?/i);
+  assert.match(prepared.full_script, /one-more-run obsession/i);
+  assert.match(prepared.full_script, /players can try it without buying first/i);
+  assert.match(prepared.full_script, /A clean combo should feel improvised, not like watching a preset stunt reel\./i);
+  assert.match(prepared.full_script, /The official Xbox listing puts it on Game Pass and Xbox Play Anywhere/i);
+  assert.match(prepared.full_script, /Earned stunts could make Denshattack this summer's strangest one-more-run obsession\./i);
+  assert.match(prepared.full_script, /Canned animations would derail the gimmick after one clip\./i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /footage readability|player trust|wishlist attention|source-backed update|concrete player-facing detail/i,
+  );
+  assert.doesNotMatch(prepared.public_title, /Footage Readability Test|Source-Proof Risk/i);
+});
+
 test("goal batch package proof preparation gives Invincible VS roster stories enough sharp runtime", () => {
   const prepared = prepareStoryForGoalProof(
     {
@@ -3241,7 +3289,7 @@ test("goal batch package proof preparation does not invert GTA VI screenshot ana
   assert.equal(pack.canonical_story_manifest.thumbnail_headline, "GTA VI NOT GAMEPLAY");
   assert.equal(pack.canonical_story_manifest.tts_script, prepared.tts_script);
   assert.equal(pack.canonical_story_manifest.spoken_narration_script, prepared.tts_script);
-  assert.equal(pack.canonical_story_manifest.first_spoken_line, prepared.spoken_first_line);
+  assert.equal(pack.canonical_story_manifest.first_spoken_line, prepared.first_spoken_line);
   assert.doesNotMatch(pack.canonical_story_manifest.public_title, /Could Split Players/i);
   assert.equal(pack.script_scorecard.verdict, "viral_ready", JSON.stringify(pack.script_scorecard, null, 2));
 });

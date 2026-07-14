@@ -24,6 +24,27 @@ const ACCEPTED_SLEEPY_LIAM = {
   referenceHash: "a".repeat(40),
 };
 
+test("canonical audio selection ignores stale caption and spoken derivatives", () => {
+  const narration =
+    "Ascend to ZERO lets you freeze time, but can its bosses make that power feel dangerous? Follow Pulse Gaming so you never miss a beat.";
+  const spoken =
+    "Ascend to ZERO lets you freeze time, but can its bosses make that power feel dangerous? Follow Pulse Gaming so you never miss a beat.";
+  const stale =
+    "Ascend to ZERO turns time itself into a weapon. Follow Pulse Gaming so you never miss a beat.";
+
+  assert.deepEqual(
+    _testables.selectCanonicalAudioText({
+      narration_script: narration,
+      full_script: narration,
+      tts_script: spoken,
+      caption_display_text: stale,
+      display_script: stale,
+      spoken_narration_script: stale,
+    }),
+    { narrationText: narration, spokenText: spoken },
+  );
+});
+
 test("strict Whisper promotion requires fresh repaired alignment evidence", () => {
   assert.equal(
     _testables.strictWhisperAlignmentPassed({
@@ -103,6 +124,217 @@ test("audio materializer compacts excessive generated narration silence before a
   assert.match(calls[0].args.join(" "), /silenceremove=stop_periods=-1/);
   assert.match(calls[0].args.join(" "), /stop_silence=0\.1/);
   assert.equal((await fs.stat(audioPath)).size, 3072);
+});
+
+test("audio materializer pads only sentence boundaries to repair a fast native take", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-sentence-pause-pad-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const words = [
+    ["Hook", 0, 0.2],
+    ["lands.", 0.2, 0.4],
+    ["This", 0.5, 0.7],
+    ["matters.", 0.7, 0.9],
+    ["Follow", 1, 1.2],
+    ["Pulse", 1.2, 1.4],
+    ["Gaming", 1.4, 1.6],
+    ["never", 1.6, 1.8],
+    ["misses", 1.8, 2],
+    ["beats.", 2, 2.5],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const calls = [];
+
+  const result = await _testables.padTimestampedNarrationSentencePauses(
+    audioPath,
+    words,
+    {
+      targetWpm: 162,
+      maxGapS: 0.82,
+      execFileImpl: async (command, args) => {
+        calls.push({ command, args });
+        await fs.outputFile(args.at(-1), Buffer.alloc(4096, 2));
+      },
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.boundary_count, 2);
+  assert.equal(result.inserted_silence_seconds, 1.204);
+  assert.equal(calls.length, 1);
+  const filter = calls[0].args[calls[0].args.indexOf("-filter_complex") + 1];
+  assert.equal((filter.match(/anullsrc/g) || []).length, 2);
+  assert.doesNotMatch(filter, /Pulse|Gaming/);
+});
+
+test("audio materializer uses bounded clause pauses when sentence capacity cannot repair cadence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-clause-pause-pad-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const words = [
+    ["Halo,", 0, 0.2],
+    ["Campaign", 0.2, 0.4],
+    ["Evolved", 0.4, 0.6],
+    ["lands.", 0.6, 0.8],
+    ["The", 0.9, 1.1],
+    ["demo,", 1.1, 1.3],
+    ["however,", 1.3, 1.5],
+    ["changes", 1.5, 1.7],
+    ["everything", 1.7, 1.9],
+    ["now.", 1.9, 2.1],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const calls = [];
+
+  const result = await _testables.padTimestampedNarrationSentencePauses(
+    audioPath,
+    words,
+    {
+      targetWpm: 175,
+      maxGapS: 0.82,
+      maxClauseGapS: 0.48,
+      protectedTitles: ["Halo, Campaign Evolved"],
+      execFileImpl: async (command, args) => {
+        calls.push({ command, args });
+        await fs.outputFile(args.at(-1), Buffer.alloc(4096, 2));
+      },
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.sentence_boundary_count, 1);
+  assert.equal(result.clause_boundary_count, 2);
+  assert.equal(result.protected_title_boundary_count, 2);
+  assert.equal(result.target_reached, true);
+  assert.equal(calls.length, 1);
+  const filter = calls[0].args[calls[0].args.indexOf("-filter_complex") + 1];
+  assert.equal((filter.match(/anullsrc/g) || []).length, 3);
+});
+
+test("audio materializer extends spaced natural prosodic gaps only after punctuation capacity", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-prosodic-pause-pad-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const words = [
+    ["Halo", 0, 0.2],
+    ["Campaign", 0.22, 0.42],
+    ["Evolved", 0.44, 0.64],
+    ["lands.", 0.66, 0.86],
+    ["This", 0.96, 1.16],
+    ["build", 1.21, 1.41],
+    ["changes", 1.46, 1.66],
+    ["how", 1.71, 1.91],
+    ["every", 1.96, 2.16],
+    ["fight", 2.21, 2.41],
+    ["feels", 2.46, 2.66],
+    ["now.", 2.71, 2.91],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const calls = [];
+
+  const result = await _testables.padTimestampedNarrationSentencePauses(
+    audioPath,
+    words,
+    {
+      targetWpm: 175,
+      maxGapS: 0.82,
+      maxClauseGapS: 0.48,
+      maxProsodicGapS: 0.32,
+      protectedTitles: ["Halo Campaign Evolved"],
+      execFileImpl: async (command, args) => {
+        calls.push({ command, args });
+        await fs.outputFile(args.at(-1), Buffer.alloc(4096, 2));
+      },
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.sentence_boundary_count, 1);
+  assert.equal(result.clause_boundary_count, 0);
+  assert.equal(result.prosodic_boundary_count, 2);
+  assert.equal(result.protected_title_boundary_count, 2);
+  assert.equal(result.target_reached, true);
+  assert.equal(calls.length, 1);
+});
+
+test("audio materializer adds bounded broadcast breath groups when native gaps are absent", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-breath-group-pad-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const tokens = [
+    "Fogpiercer", "turns", "your", "opening", "hand", "now.",
+    "Every", "carriage", "changes", "the", "deck", "today.",
+    "Players", "take", "that", "build", "into", "battle.",
+  ];
+  const words = tokens.map((word, index) => ({
+    word,
+    start: Number((index * 0.2).toFixed(2)),
+    end: Number((index * 0.2 + (index === tokens.length - 1 ? 0.4 : 0.2)).toFixed(2)),
+  }));
+
+  const result = await _testables.padTimestampedNarrationSentencePauses(
+    audioPath,
+    words,
+    {
+      targetWpm: 175,
+      maxGapS: 0.82,
+      maxClauseGapS: 0.48,
+      maxProsodicGapS: 0.32,
+      maxBreathGapS: 0.28,
+      protectedTitles: ["Fogpiercer"],
+      execFileImpl: async (_command, args) => {
+        await fs.outputFile(args.at(-1), Buffer.alloc(4096, 2));
+      },
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.ok(result.breath_boundary_count > 0);
+  assert.ok(result.insertions.some((insertion) => insertion.type === "breath"));
+  assert.ok(
+    result.insertions
+      .filter((insertion) => insertion.type === "breath")
+      .every((insertion) => insertion.inserted_seconds <= 0.28),
+  );
+  assert.equal(result.target_reached, true);
+});
+
+test("audio materializer shifts strict Whisper timestamps after deterministic silence insertion", () => {
+  const payload = {
+    words: [
+      { word: "First.", start: 0, end: 0.2 },
+      { word: "Second,", start: 0.4, end: 0.6 },
+      { word: "third.", start: 0.8, end: 1 },
+    ],
+    meta: {
+      acoustic: { durationSeconds: 1 },
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  };
+
+  const shifted = _testables.shiftWordTimestampsForInsertedSilence(payload, [
+    { at_seconds: 0.3, inserted_seconds: 0.4, type: "sentence" },
+    { at_seconds: 0.7, inserted_seconds: 0.2, type: "clause" },
+  ]);
+
+  assert.equal(shifted.shifted_word_count, 2);
+  assert.deepEqual(shifted.payload.words, [
+    { word: "First.", start: 0, end: 0.2 },
+    { word: "Second,", start: 0.8, end: 1 },
+    { word: "third.", start: 1.4, end: 1.6 },
+  ]);
+  assert.equal(
+    shifted.payload.meta.timestampWhisperAlignment.postprocess,
+    "deterministic_silence_insertion_timestamp_shift",
+  );
+  assert.equal(shifted.payload.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
+  assert.deepEqual(shifted.payload.meta.timestampDurationMetadataIgnored, {
+    reason: "metadata_duration_precedes_postprocessed_word_timeline",
+    metadata_duration_s: 1,
+    last_word_end_s: 1.6,
+  });
 });
 
 test("audio materializer trims only the centre of verified inter-word pauses", async () => {
@@ -2297,6 +2529,71 @@ test("goal audio materializer coverage treats safe compound game terms as one sp
   assert.equal(reconciled.words[1].word, "Chain Spear");
 });
 
+test("goal audio materializer coverage reconciles an observed title-case game name compound", () => {
+  const scriptText =
+    "Wreck Runners is letting Xbox players answer the only question that matters. Is it actually fun?";
+  const words = [
+    { word: "Wreckrunners", start: 0, end: 0.42 },
+    { word: "is", start: 0.44, end: 0.54 },
+    { word: "letting", start: 0.56, end: 0.76 },
+    { word: "Xbox", start: 0.78, end: 0.98 },
+    { word: "players", start: 1, end: 1.2 },
+    { word: "answer", start: 1.22, end: 1.42 },
+    { word: "the", start: 1.44, end: 1.54 },
+    { word: "only", start: 1.56, end: 1.72 },
+    { word: "question", start: 1.74, end: 2 },
+    { word: "that", start: 2.02, end: 2.14 },
+    { word: "matters.", start: 2.16, end: 2.4 },
+    { word: "Is", start: 2.42, end: 2.5 },
+    { word: "it", start: 2.52, end: 2.6 },
+    { word: "actually", start: 2.62, end: 2.84 },
+    { word: "fun?", start: 2.86, end: 3.04 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.opening_covered, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[0].word, "Wreck Runners");
+});
+
+test("goal audio materializer coverage does not merge ordinary lowercase words", () => {
+  const scriptText =
+    "She could become Starward's most argued-over fighter. Follow Pulse Gaming so you never miss a beat.";
+  const words = [
+    { word: "She", start: 0, end: 0.12 },
+    { word: "could", start: 0.14, end: 0.28 },
+    { word: "become", start: 0.3, end: 0.5 },
+    { word: "Starward's", start: 0.52, end: 0.84 },
+    { word: "most", start: 0.86, end: 1 },
+    { word: "argued", start: 1.02, end: 1.24 },
+    { word: "overfighter.", start: 1.26, end: 1.62 },
+    { word: "Follow", start: 1.64, end: 1.82 },
+    { word: "Pulse", start: 1.84, end: 2.02 },
+    { word: "Gaming", start: 2.04, end: 2.26 },
+    { word: "so", start: 2.28, end: 2.36 },
+    { word: "you", start: 2.38, end: 2.48 },
+    { word: "never", start: 2.5, end: 2.68 },
+    { word: "miss", start: 2.7, end: 2.84 },
+    { word: "a", start: 2.86, end: 2.92 },
+    { word: "beat.", start: 2.94, end: 3.12 },
+  ];
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 1);
+  assert.equal(coverage.unmatched_expected_word_count, 2);
+  assert.equal(reconciled.ok, false);
+  assert.equal(reconciled.reason, "reconciled_word_count_mismatch");
+  assert.equal(reconciled.words[6].word, "overfighter.");
+});
+
 test("goal audio materializer reconciles Glenumbra when ASR splits the place name", () => {
   const scriptText = "Season One sends players into Glenumbra with eight story quests.";
   const words = [
@@ -2400,6 +2697,39 @@ test("goal audio materializer coverage accepts the observed Resynced ASR pronunc
   assert.equal(coverage.inserted_actual_word_count, 0);
 });
 
+test("goal audio materializer treats Whisper cardinal and ordinal numeral spellings as exact speech", () => {
+  const scriptText =
+    "The official listing puts it on Game Pass on July 15, and the controls have to sell the next ten hours.";
+  const words = [
+    "The", "official", "listing", "puts", "it", "on", "Game", "Pass", "on", "July", "15th", "and",
+    "the", "controls", "have", "to", "sell", "the", "next", "10", "hours",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+
+  const unsafeWords = words.toSpliced(20, 0, {
+    word: "extra",
+    start: 3.2,
+    end: 3.3,
+  });
+  const unsafeCoverage = _testables.analyseWhisperScriptCoverage({
+    words: unsafeWords,
+    scriptText,
+  });
+  assert.equal(unsafeCoverage.inserted_actual_word_count, 1);
+  assert.equal(unsafeCoverage.inserted_actual_tokens[0].norm, "extra");
+});
+
 test("goal audio materializer coverage accepts GTA VI roman numeral ASR variants without allowing inserted words", () => {
   const scriptText =
     "Grand Theft Auto VI now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.";
@@ -2464,6 +2794,67 @@ test("goal audio materializer coverage accepts GTA VI roman numeral ASR variants
   assert.equal(c6Coverage.ok, true);
   assert.equal(c6Coverage.opening_covered, true);
   assert.equal(c6Coverage.inserted_actual_word_count, 0);
+});
+
+test("goal audio materializer coverage treats British and US spellings as the same spoken words", () => {
+  const scriptText =
+    "Choose one dinosaur colour and make the cosy game feel cosy again with automatic inventory sorting.";
+  const words = [
+    "Choose", "one", "dinosaur", "color", "and", "make", "the", "cozy", "game", "feel", "cozy", "again",
+    "with", "automatic", "inventory", "sorting",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+});
+
+test("goal audio materializer coverage reconciles split game compounds and the observed Xbox pronunciation", () => {
+  const scriptText =
+    "Fogpiercer is a deckbuilder. Xbox says positioning matters, and deckbuilding should feel physical.";
+  const words = [
+    "Fog", "Piercer", "is", "a", "deck", "builder", "Exes", "says", "positioning", "matters", "and", "deck",
+    "building", "should", "feel", "physical",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[0].word, "Fogpiercer");
+  assert.equal(reconciled.words[3].word, "deckbuilder.");
+  assert.equal(reconciled.words[4].word, "Xbox");
+});
+
+test("goal audio materializer split-compound repair still rejects unrelated inserted words", () => {
+  const scriptText = "Fogpiercer is a deckbuilder where positioning matters.";
+  const words = [
+    "Fog", "Piercer", "is", "a", "deck", "builder", "where", "bonus", "positioning", "matters",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+
+  assert.equal(coverage.inserted_actual_word_count, 1);
+  assert.equal(coverage.inserted_actual_tokens[0].norm, "bonus");
 });
 
 test("goal audio materializer aligns hyphenated script words when Whisper splits them", async () => {
@@ -4106,6 +4497,137 @@ test("goal audio materializer regenerates existing pairs that current voice cade
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_failed_voice_cadence_regenerated");
   assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
+});
+
+test("goal audio materializer promotes only a cadence-safe native local take", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-native-cadence-"));
+  const script = Array.from({ length: 140 }, (_, index) => `word${index + 1}`).join(" ");
+  const artifactDir = await makePackage(root, "story-native-cadence", {
+    narration_script: script,
+  });
+  const generationCalls = [];
+  let alignmentCall = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "local",
+    alignmentMode: "whisper",
+    enforceNativeCadenceBeforePromotion: true,
+    localTtsAsrRetryAttempts: 3,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-native-cadence", artifactDir)],
+    },
+    generatedAt: "2026-07-13T22:00:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      generationCalls.push({ text, outputPath });
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, generationCalls.length));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignmentWithStep(text, 0.05),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => {
+      alignmentCall += 1;
+      const step = 0.4;
+      return {
+        ok: true,
+        model: "fixture-whisper",
+        transcript: scriptText,
+        words: String(scriptText).split(/\s+/).map((word, index) => ({
+          word,
+          start: Number((index * step).toFixed(2)),
+          end: Number((index * step + 0.12).toFixed(2)),
+        })),
+      };
+    },
+    getAudioDuration: async () => (generationCalls.length === 1 ? 28 : 56),
+  });
+
+  assert.equal(generationCalls.length, 2);
+  assert.equal(alignmentCall, 1);
+  assert.deepEqual(generationCalls.map((call) => call.text), [script, script]);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].generation_attempts, 2);
+  assert.equal(report.jobs[0].reason, "tts_retry_after_native_cadence_rejection");
+  const voiceQuality = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+  assert.equal(voiceQuality.verdict, "PASS");
+  assert.equal(voiceQuality.cadence.spoken_wpm, 150.8);
+});
+
+test("goal audio materializer repairs a fast one-take cadence with sentence pauses before promotion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-cadence-padding-"));
+  const script = Array.from({ length: 140 }, (_, index) => `word${index + 1}`).join(" ");
+  const artifactDir = await makePackage(root, "story-cadence-padding", {
+    narration_script: script,
+  });
+  let generationCalls = 0;
+  let alignmentCalls = 0;
+  let paddingCalls = 0;
+  let paddingApplied = false;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "local",
+    alignmentMode: "whisper",
+    enforceNativeCadenceBeforePromotion: true,
+    nativeCadencePausePadding: true,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-cadence-padding", artifactDir)],
+    },
+    generatedAt: "2026-07-13T22:10:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      generationCalls += 1;
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignmentWithStep(text, 0.05),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => {
+      alignmentCalls += 1;
+      const step = 0.32;
+      return {
+        ok: true,
+        model: "fixture-whisper",
+        transcript: scriptText,
+        words: String(scriptText).split(/\s+/).map((word, index) => ({
+          word,
+          start: Number((index * step).toFixed(2)),
+          end: Number((index * step + 0.12).toFixed(2)),
+        })),
+      };
+    },
+    getAudioDuration: async () => (paddingApplied ? 52 : 45),
+    padTimestampedNarrationSentencePauses: async () => {
+      paddingCalls += 1;
+      paddingApplied = true;
+      return {
+        repaired: true,
+        strategy: "timestamp_guided_sentence_pause_padding",
+        boundary_count: 12,
+        inserted_silence_seconds: 6.996,
+        insertions: Array.from({ length: 12 }, (_, index) => ({
+          at_seconds: 3 + index * 3.5,
+          inserted_seconds: 0.583,
+          type: "sentence",
+        })),
+      };
+    },
+  });
+
+  assert.equal(generationCalls, 1);
+  assert.equal(alignmentCalls, 1);
+  assert.equal(paddingCalls, 1);
+  assert.equal(report.summary.materialized_count, 1);
+  const voiceQuality = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+  assert.equal(voiceQuality.verdict, "PASS");
+  assert.equal(voiceQuality.cadence.spoken_wpm, 162.8);
+  const timestamps = await fs.readJson(
+    path.join(root, "output", "audio", "story-cadence-padding_timestamps.json"),
+  );
+  assert.equal(timestamps.meta.cadencePausePadding.repaired, true);
 });
 
 test("forced ElevenLabs generation overrides an existing-audio cadence repair job", async () => {

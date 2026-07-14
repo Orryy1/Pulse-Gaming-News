@@ -91,6 +91,47 @@ test("SFX rerender work order turns bridge SFX mismatches into forced final rend
   assert.equal(workOrder.safety.no_db_mutation, true);
 });
 
+test("SFX rerender work order resolves package-relative audio manifest paths from the artifact directory", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-workorder-package-audio-"));
+  const artifactDir = await makeBridgePackage(root, "story-package-audio");
+  await fs.outputFile(path.join(artifactDir, "audio", "narration.mp3"), Buffer.alloc(2048, 5));
+  await fs.outputJson(path.join(artifactDir, "audio", "word_timestamps.json"), {
+    words: [{ word: "Fable", start: 0, end: 0.2 }],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: "audio/narration.mp3",
+    word_timestamps_path: "audio/word_timestamps.json",
+  });
+
+  const workOrder = await buildGoalSfxRerenderWorkOrder({
+    workspaceRoot: root,
+    generatedAt: "2026-07-13T13:10:00.000Z",
+    includeAllBridgeCandidates: true,
+    bridgeCandidates: [
+      {
+        id: "story-package-audio",
+        title: "Fable Has A New Combat Problem",
+        artifact_dir: artifactDir,
+        visual_v4_bridge_video_clips: [
+          { path: path.join(artifactDir, "clip-1.mp4") },
+          { path: path.join(artifactDir, "clip-2.mp4") },
+          { path: path.join(artifactDir, "clip-3.mp4") },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
+  assert.equal(
+    workOrder.jobs[0].evidence.narration_audio_path,
+    path.join(artifactDir, "audio", "narration.mp3"),
+  );
+  assert.equal(
+    workOrder.jobs[0].evidence.word_timestamps_path,
+    path.join(artifactDir, "audio", "word_timestamps.json"),
+  );
+});
+
 test("SFX rerender work order blocks candidates that still lack final render inputs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-workorder-blocked-"));
   const artifactDir = await makeBridgePackage(root, "story-blocked");

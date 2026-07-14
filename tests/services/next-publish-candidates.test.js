@@ -20,6 +20,7 @@ const {
   resolveUpstreamBenchmarkReportPath,
   runCli,
   runPreflightQaForStory,
+  sourceAgePreflightForStory,
   schedulerEffectivePreflightStory,
   scoreAnalyticsFit,
   durationVerdict,
@@ -28,6 +29,8 @@ const {
   visualEntityPreflightForStory,
   visualLoopPreflightForStory,
   voiceQualityPreflightForStory,
+  timestampInspectionDurationSeconds,
+  timestampTimingInspectionForPayload,
 } = require("../../tools/next-publish-candidates");
 const {
   TTS_PRONUNCIATION_PROFILE_VERSION,
@@ -2058,6 +2061,90 @@ test("bridge preflight blocks source evidence older than seven days without appr
   assert.equal(preflight.status, "blocked");
   assert.ok(preflight.blockers.includes("source_age:source_age_exceeds_policy"));
   assert.equal(preflight.checks.source_age.evidence.policy_hours, 168);
+});
+
+test("source age preflight blocks a recent source after its confirmed event window ends", async () => {
+  const result = await sourceAgePreflightForStory(
+    baseStory({
+      id: "expired_recent_event",
+      source_published_at: "2026-07-09T15:00:00.000Z",
+      confirmed_event_window: {
+        status: "confirmed",
+        starts_at: "2026-07-09T00:00:00.000Z",
+        ends_at: "2026-07-12T23:59:59.000Z",
+        source_url: "https://news.xbox.com/en-us/2026/07/09/free-play-days-07-09-2026/",
+      },
+    }),
+    { nowMs: Date.parse("2026-07-13T09:00:00.000Z") },
+  );
+
+  assert.equal(result.result, "fail");
+  assert.deepEqual(result.failures, ["confirmed_event_window_ended"]);
+  assert.equal(result.evidence.confirmed_event_window.ends_at, "2026-07-12T23:59:59.000Z");
+  assert.equal(result.evidence.confirmed_event_window.expired, true);
+});
+
+test("source age preflight passes a recent source with a future confirmed event window", async () => {
+  const result = await sourceAgePreflightForStory(
+    baseStory({
+      id: "active_recent_event",
+      source_published_at: "2026-07-09T17:00:00.000Z",
+      confirmed_event_window: {
+        status: "confirmed",
+        starts_at: "2026-07-09T17:00:00.000Z",
+        ends_at: "2026-07-16T17:00:00.000Z",
+      },
+    }),
+    { nowMs: Date.parse("2026-07-13T09:00:00.000Z") },
+  );
+
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.evidence.confirmed_event_window.expired, false);
+});
+
+test("attachPreflightQa quarantines an expired confirmed-event candidate", async () => {
+  const story = baseStory({
+    id: "expired_event_bridge_queue",
+    title: "Xbox Free Play Days Has One Clear Winner",
+    selected_title: "Xbox Free Play Days Has One Clear Winner",
+    canonical_subject: "Xbox Free Play Days",
+    source_published_at: "2026-07-09T15:00:00.000Z",
+    confirmed_event_window: {
+      status: "confirmed",
+      starts_at: "2026-07-09T00:00:00.000Z",
+      ends_at: "2026-07-12T23:59:59.000Z",
+    },
+    scheduler_bridge_source: "goal_production_cutover",
+  });
+  const report = buildNextPublishCandidatesReport([story], {
+    generatedAt: "2026-07-13T09:00:00.000Z",
+  });
+
+  await attachPreflightQa(report, [story], {
+    nowMs: Date.parse("2026-07-13T09:00:00.000Z"),
+    runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runBridgeMotionGovernanceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runAggregateBenchmarkQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runScriptScorecardQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+  });
+
+  assert.equal(report.candidates[0].status, "review");
+  assert.deepEqual(report.candidates[0].scheduler_quarantine, {
+    status: "held",
+    reason: "confirmed_event_window_ended",
+    lane: "temporal_event_review",
+    safe_next_action: "replace_with_current_event_or_reframe_as_post_event_coverage",
+  });
+  assert.ok(report.candidates[0].reasons.includes("scheduler_quarantine_confirmed_event_window_ended"));
 });
 
 test("attachPreflightQa quarantines stale bridge backlog rows from normal review", async () => {
@@ -5485,6 +5572,92 @@ test("visual entity preflight treats generic segment sidecar families as opaque 
   assert.match(result.evidence.direct_motion_assets[0].provenance_text, /sea of thieves/);
 });
 
+test("visual entity preflight trusts explicit governed identity ahead of URL-only sidecar provenance", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-explicit-identity-sidecar",
+    "ascend_to_zero_window.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+  await fs.writeJson(`${clipPath}.json`, {
+    schema_version: 1,
+    source_url: "https://www.youtube.com/watch?v=J49gg_V3EaA",
+    source_family: "url:youtube:j49gg_v3eaa_window_12_5",
+    rights_basis: "official_direct_media",
+  });
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "fresh_ascend_to_zero_game_pass_20260713",
+      title: "Ascend to ZERO Turns Time Into A Game Pass Weapon",
+      canonical_subject: "Ascend to ZERO",
+      canonical_game: "Ascend to ZERO",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_url: "https://www.youtube.com/watch?v=J49gg_V3EaA",
+          source_family: "url:youtube:j49gg_v3eaa_window_12_5",
+          entity: "Ascend to ZERO",
+          entities: ["Ascend to ZERO"],
+          source_type: "official_youtube_channel",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: { verdict: "pass", assets: [] },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.ok(!result.failures.includes("direct_motion_subject_mismatch"));
+});
+
+test("visual entity preflight does not turn body copy vocabulary into a motion subject", async () => {
+  const clipPath = path.join(
+    "test",
+    "output",
+    "next-publish-candidates-game-level-body-copy",
+    "denshattack_window.mp4",
+  );
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, "placeholder");
+
+  const result = await visualEntityPreflightForStory(
+    baseStory({
+      id: "fresh_denshattack_game_pass_20260715",
+      title: "Why Denshattack's Train Kickflips Could Actually Work",
+      selected_title: "Why Denshattack's Train Kickflips Could Actually Work",
+      canonical_subject: "Denshattack",
+      canonical_game: "Denshattack",
+      full_script: "Denshattack gives a train the character and control language of a skating game.",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      visual_v4_bridge_video_clips: [
+        {
+          id: "segment_direct_motion_1",
+          path: clipPath,
+          source_family: "steam_2524850_denshattack_window_12_5",
+          source_title: "Denshattack",
+          entity: "Denshattack",
+          entities: ["Denshattack"],
+          source_type: "steam_movie",
+          media_kind: "direct_video",
+          rights_basis: "official_direct_media",
+        },
+      ],
+      video_clips: [clipPath],
+      rights_ledger: { verdict: "pass", assets: [] },
+    }),
+  );
+
+  assert.equal(result.result, "pass");
+  assert.deepEqual(result.evidence.required_specific_source_lock_tokens, []);
+});
+
 test("visual entity preflight accepts game-level motion when source URL mentions characters but title stays game-level", async () => {
   const clipPath = path.join(
     "test",
@@ -7466,6 +7639,30 @@ test("attachPreflightQa ignores stale segment acoustic duration when timestamp m
   assert.equal(check.result, "pass");
   assert.equal(check.evidence.word_timestamp_timing_reason, "usable");
   assert.equal(check.evidence.word_timestamp_source, "local_whisper_word_alignment");
+});
+
+test("timestamp inspection ignores pre-padding acoustic duration after deterministic silence insertion", () => {
+  const words = [
+    { word: "Fogpiercer", start: 0, end: 0.34 },
+    { word: "beat.", start: 55.2, end: 55.56 },
+  ];
+  const payload = {
+    words,
+    meta: {
+      acoustic: { durationSeconds: 45.92 },
+      timestampWhisperAlignment: {
+        repaired: true,
+        postprocess: "deterministic_silence_insertion_timestamp_shift",
+        postprocess_inserted_silence_seconds: 9.64,
+      },
+    },
+  };
+  const story = { duration_seconds: 55.82 };
+
+  assert.equal(timestampInspectionDurationSeconds(story, payload, words), 55.82);
+  const timing = timestampTimingInspectionForPayload(payload, story);
+  assert.equal(timing.duration, 55.82);
+  assert.notEqual(timing.inspection.reason, "timeline_runs_past_audio");
 });
 
 test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallback timestamps", async () => {

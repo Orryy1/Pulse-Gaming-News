@@ -3,7 +3,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
+const sharp = require("sharp");
 
 const {
   buildStoryCardSpecs,
@@ -11,9 +14,66 @@ const {
   applySpecToTemplate,
   hyperframesCardReadabilityContractForSpec,
   hyperframesCardReadabilityContractFromHtml,
+  materialiseStoryBackdropFromClips,
+  buildCardBackdropMap,
+  scoreStoryBackdropCandidate,
 } = require("../../tools/studio-v2-build-story-cards");
 
-test("story-specific HyperFrames cards validate before render", () => {
+test("premium HyperFrames cards rotate distinct backdrops across selected editorial beats", () => {
+  const map = buildCardBackdropMap([
+    "source-gameplay.jpg",
+    "context-gameplay.jpg",
+    "takeaway-gameplay.jpg",
+  ]);
+
+  assert.equal(map.source, "source-gameplay.jpg");
+  assert.equal(map.context, "context-gameplay.jpg");
+  assert.equal(map.takeaway, "takeaway-gameplay.jpg");
+  assert.equal(new Set([map.source, map.context, map.takeaway]).size, 3);
+});
+
+test("story-specific HyperFrames backdrop scoring rejects baked trailer text", () => {
+  const report = scoreStoryBackdropCandidate({
+    brightness: 105,
+    entropy: 7.4,
+    sharpness: 12,
+    prescan: {
+      text_overlay_likelihood: 0.39,
+      trailer_frame_taste: { verdict: "pass", tags: ["detail_rich", "text_heavy"] },
+    },
+  });
+
+  assert.equal(report.eligible, false);
+  assert.ok(report.reasons.includes("baked_trailer_text_risk"));
+});
+
+test("story-specific HyperFrames cards extract a relevant backdrop from approved motion", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-hf-motion-backdrop-"));
+  const blackPath = path.join(root, "black.mp4");
+  const motionPath = path.join(root, "motion.mp4");
+  execFileSync("ffmpeg", [
+    "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "color=c=black:size=540x960:rate=30", "-t", "2", "-pix_fmt", "yuv420p", blackPath,
+  ]);
+  execFileSync("ffmpeg", [
+    "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "testsrc2=size=540x960:rate=30", "-t", "2", "-pix_fmt", "yuv420p", motionPath,
+  ]);
+
+  const backdropPath = await materialiseStoryBackdropFromClips({
+    story: { video_clips: [blackPath, motionPath] },
+    storyId: "motion-backdrop",
+    outputDir: path.join(root, "backdrops"),
+  });
+
+  assert.ok(backdropPath);
+  assert.equal(fs.existsSync(backdropPath), true);
+  const stats = await sharp(backdropPath).stats();
+  const brightness = stats.channels.slice(0, 3).reduce((sum, channel) => sum + channel.mean, 0) / 3;
+  assert.equal(brightness > 20, true);
+});
+
+test("story-specific HyperFrames cards run the authoritative browser check before render", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v2-build-story-cards.js"),
     "utf8",
@@ -24,21 +84,17 @@ test("story-specific HyperFrames cards validate before render", () => {
 
   assert.ok(match, "renderCard block should exist");
   const body = match[0];
-  const lintIndex = body.indexOf('runHyperframes(["lint"], projectDir)');
-  const validateIndex = body.indexOf('runHyperframes(["validate"], projectDir)');
-  const inspectIndex = body.indexOf('["inspect", ".", "--samples", "3"');
+  const checkIndex = body.indexOf('runHyperframes(["check", "."], projectDir)');
   const renderIndex = body.indexOf('["render", ".", "-o", outPath');
   const shellIndex = body.indexOf("writeHyperframesPremiumShellEvidence");
 
-  assert.ok(lintIndex >= 0, "HyperFrames lint must run");
-  assert.ok(validateIndex >= 0, "HyperFrames validate must run");
-  assert.ok(inspectIndex >= 0, "HyperFrames inspect must run");
+  assert.ok(checkIndex >= 0, "HyperFrames check must run");
   assert.ok(renderIndex >= 0, "HyperFrames render must run");
   assert.ok(shellIndex >= 0, "premium shell evidence must be written");
-  assert.ok(lintIndex < validateIndex, "validate must run after lint");
-  assert.ok(validateIndex < inspectIndex, "inspect must run after validate");
-  assert.ok(inspectIndex < renderIndex, "inspect must run before render");
+  assert.ok(checkIndex < renderIndex, "check must run before render");
   assert.ok(renderIndex < shellIndex, "shell evidence must be written after render");
+  assert.doesNotMatch(body, /runHyperframes\(\["validate"\]/);
+  assert.doesNotMatch(body, /runHyperframes\(\["inspect"/);
 });
 
 test("story-specific HyperFrames shell evidence counts chained GSAP timeline steps", () => {
@@ -74,8 +130,32 @@ test("story-specific HyperFrames cards cap dense copy at a momentum-friendly rea
   const html = applySpecToTemplate("timeline", templateHtml, spec, "pulse-gaming");
 
   assert.equal(contract.status, "pass");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 6.4);
-  assert.match(html, /data-duration="6\.4"/);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 5.2);
+  assert.match(html, /data-duration="5\.2"/);
+});
+
+test("story-specific HyperFrames cards carry the category-aware Pulse V5 kinetic identity", () => {
+  const templateHtml = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-context", "index.html"),
+    "utf8",
+  );
+  const specs = buildStoryCardSpecs({
+    id: "halo-update-identity",
+    title: "Halo Update Adds Three New Campaign Missions",
+    source_card_label: "Halo Waypoint",
+    source_type: "rss",
+  });
+
+  assert.equal(specs.context.creative_identity.category, "update");
+  assert.equal(specs.context.creative_identity.segment_name, "Patch Notes That Matter");
+
+  const html = applySpecToTemplate("context", templateHtml, specs.context, "pulse-gaming");
+  assert.match(html, /data-pulse-creative-system="pulse_visual_identity_v5"/);
+  assert.match(html, /data-pulse-category="update"/);
+  assert.match(html, /id="pulse-brand-bug"/);
+  assert.match(html, /id="pulse-depth-a"/);
+  assert.match(html, /id="pulse-depth-b"/);
+  assert.match(html, /PATCH NOTES THAT MATTER/);
 });
 
 test("story-specific HyperFrames cards keep short source cards momentum-friendly", () => {
@@ -89,10 +169,10 @@ test("story-specific HyperFrames cards keep short source cards momentum-friendly
 
   assert.equal(contract.status, "pass");
   assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
-  assert.equal(contract.evidence.minimum_visible_duration_s, 1.6);
-  assert.equal(contract.evidence.planned_visible_duration_s, 2.2);
-  assert.equal(contract.evidence.maximum_visible_duration_s, 2.8);
-  assert.equal(contract.evidence.min_readable_card_duration_s, 1.6);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 1.9);
+  assert.equal(contract.evidence.planned_visible_duration_s, 2.6);
+  assert.equal(contract.evidence.maximum_visible_duration_s, 3.1);
+  assert.equal(contract.evidence.min_readable_card_duration_s, 1.9);
 });
 
 test("story-specific HyperFrames source card preserves PlayStation source labels", () => {
@@ -171,6 +251,36 @@ test("story-specific HyperFrames cards use canonical subjects and honest editori
   assert.doesNotMatch(specs.quote.quoteText, /Why Denshattack/i);
 });
 
+test("story-specific HyperFrames cards turn narration into concrete editorial beats", () => {
+  const specs = buildStoryCardSpecs({
+    id: "paleo-pines-premium-copy",
+    title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+    canonical_subject: "Paleo Pines",
+    source_card_label: "Paleo Pines",
+    source_type: "rss",
+    full_script:
+      "Paleo Pines just fixed one of its most exhausting hunts. " +
+      "The free Players' Choice update adds a skin tracker. " +
+      "When that rarity next spawns, the game guarantees the combination. " +
+      "A blind grind now has a finish line. " +
+      "Saddlebags let large dinosaurs carry up to four items. " +
+      "For players who love rare dinos, that is a huge quality-of-life win. " +
+      "If the tracker saves hours, it turns rare dinos into a goal instead of a lottery. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const timelineText = specs.timeline.bullets
+    .map((bullet) => `${bullet.strong} ${bullet.copy}`)
+    .join(" ");
+
+  assert.equal(specs.context.sub, "A BLIND GRIND NOW HAS A FINISH LINE");
+  assert.deepEqual(specs.takeaway.headlineWords, ["GOAL", "NOT", "LOTTERY"]);
+  assert.doesNotMatch(timelineText, /source checked|main detail|next step|official follow-up/i);
+  assert.match(timelineText, /skin tracker/i);
+  assert.match(timelineText, /four items/i);
+  assert.match(timelineText, /guarantees the combination/i);
+});
+
 test("story-specific HyperFrames readability evidence keeps every animated quote word", () => {
   const html = `
     <div id="quote" class="quote">
@@ -199,5 +309,5 @@ test("story-specific HyperFrames quote timing includes the visible attribution",
 
   assert.equal(contract.evidence.readable_text, "The controls have to sell the next ten hours. PULSE GAMING");
   assert.equal(contract.evidence.word_count, 11);
-  assert.equal(contract.evidence.planned_visible_duration_s, 5.2);
+  assert.equal(contract.evidence.planned_visible_duration_s, 4.8);
 });

@@ -7,6 +7,7 @@ const fs = require("fs-extra");
 const {
   materializePremiumVisualCampaign,
 } = require("../lib/ops/premium-visual-campaign-engine");
+const { prescanImage } = require("../lib/visual-content-prescan");
 
 function clean(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -55,6 +56,37 @@ function buildCampaignInputFromArtefacts({ canonical = {}, instagram = {} } = {}
   };
 }
 
+function normaliseMediaPath(value) {
+  return clean(value).replace(/\\/g, "/").toLowerCase();
+}
+
+function enrichMaterialisedClipsWithRights(materialised = {}, rightsLedger = {}) {
+  const records = Array.isArray(rightsLedger.records) ? rightsLedger.records : [];
+  const byPath = new Map(
+    records
+      .map((record) => [normaliseMediaPath(record.path), record])
+      .filter(([recordPath]) => recordPath),
+  );
+  const clips = (materialised.clips || materialised.materialised_clips || []).map((clip) => {
+    const rights = byPath.get(normaliseMediaPath(clip.path));
+    if (!rights) return clip;
+    return {
+      ...clip,
+      source_type: clip.source_type || rights.source_type,
+      rights_basis:
+        clip.rights_basis ||
+        rights.rights_basis ||
+        rights.licence_basis,
+      licence_basis: clip.licence_basis || rights.licence_basis,
+      approval_status: clip.approval_status || rights.approval_status,
+      commercial_use_allowed:
+        clip.commercial_use_allowed ?? rights.commercial_use_allowed,
+      rights_record_id: clip.rights_record_id || rights.asset_id || null,
+    };
+  });
+  return { ...materialised, clips, materialised_clips: clips };
+}
+
 function selectOfficialHeroClip(materialised = {}) {
   return (materialised.clips || materialised.materialised_clips || []).find((clip) => {
     const sourceType = clean(clip.source_type).toLowerCase();
@@ -73,7 +105,7 @@ function officialHeroClips(materialised = {}) {
   });
 }
 
-function scoreHeroFrameStats(stats = {}) {
+function scoreHeroFrameStats(stats = {}, prescan = {}) {
   const channels = (stats.channels || []).slice(0, 3);
   const brightness = channels.length
     ? channels.reduce((sum, channel) => sum + Number(channel.mean || 0), 0) / channels.length
@@ -84,6 +116,16 @@ function scoreHeroFrameStats(stats = {}) {
   if (brightness < 20) reasons.push("hero_frame_too_dark");
   if (brightness > 238) reasons.push("hero_frame_overexposed");
   if (sharpness < 0.12) reasons.push("hero_frame_too_soft");
+  const textOverlayLikelihood = Number(prescan.text_overlay_likelihood || 0);
+  const tasteTags = Array.isArray(prescan.trailer_frame_taste?.tags)
+    ? prescan.trailer_frame_taste.tags
+    : [];
+  if (textOverlayLikelihood >= 0.28 || tasteTags.includes("text_heavy")) {
+    reasons.push("hero_frame_baked_caption_risk");
+  }
+  if (String(prescan.trailer_frame_taste?.verdict || "").toLowerCase() === "fail") {
+    reasons.push("hero_frame_taste_failed");
+  }
   const exposurePenalty = Math.abs(brightness - 105) * 0.035;
   return {
     eligible: reasons.length === 0,
@@ -91,6 +133,7 @@ function scoreHeroFrameStats(stats = {}) {
     sharpness,
     entropy,
     brightness: Number(brightness.toFixed(3)),
+    text_overlay_likelihood: Number(textOverlayLikelihood.toFixed(3)),
     reasons,
   };
 }
@@ -111,6 +154,7 @@ async function extractBestOfficialHeroFrame({ materialised, outDir } = {}) {
       try {
         run("ffmpeg", ["-y", "-hide_banner", "-loglevel", "error", "-ss", at.toFixed(3), "-i", clip.path, "-frames:v", "1", "-vf", "scale=1600:-2", "-q:v", "2", candidatePath]);
         const stats = await sharp(candidatePath).stats();
+        const prescan = await prescanImage(candidatePath, { sourceTypeHint: "trailer" });
         candidates.push({
           path: candidatePath,
           clip_path: clip.path,
@@ -118,7 +162,7 @@ async function extractBestOfficialHeroFrame({ materialised, outDir } = {}) {
           source_type: clip.source_type || null,
           rights_basis: clip.rights_basis || null,
           extraction_time_seconds: Number(at.toFixed(3)),
-          ...scoreHeroFrameStats(stats),
+          ...scoreHeroFrameStats(stats, prescan),
         });
       } catch (error) {
         candidates.push({ path: candidatePath, clip_path: clip.path, eligible: false, score: -999, reasons: ["hero_frame_extraction_failed"], error: error.message });
@@ -159,7 +203,9 @@ async function materializeFromArtifactDir({ artifactDir, heroImagePath, outputDi
   if (!artifactDir || !(await fs.pathExists(root))) throw new Error("--artifact-dir must point to a governed story package");
   const canonical = await readJson(path.join(root, "canonical_story_manifest.json"));
   const instagram = await readJson(path.join(root, "instagram_publish_pack.json"));
-  const materialised = await readJson(path.join(root, "materialised_motion_clips.json"));
+  const rawMaterialised = await readJson(path.join(root, "materialised_motion_clips.json"));
+  const rightsLedger = await readJson(path.join(root, "rights_ledger.json"));
+  const materialised = enrichMaterialisedClipsWithRights(rawMaterialised, rightsLedger);
   const outDir = path.resolve(outputDir || path.join(root, "premium_visual_campaign"));
   await fs.ensureDir(outDir);
   let hero = heroImagePath ? path.resolve(heroImagePath) : "";
@@ -242,6 +288,7 @@ async function main() {
 
 module.exports = {
   buildCampaignInputFromArtefacts,
+  enrichMaterialisedClipsWithRights,
   extractBestOfficialHeroFrame,
   materializeFromArtifactDir,
   scoreHeroFrameStats,

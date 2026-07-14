@@ -28,6 +28,12 @@ async function makeStory(root, storyId, overrides = {}) {
     file_size_bytes: overrides.outputSize || 4096,
     rendered_duration_s: 42,
     clips: overrides.clips || 8,
+    ...(overrides.creativeSystemVersion
+      ? { creative_system_version: overrides.creativeSystemVersion }
+      : {}),
+    ...(overrides.decodedVisualGate
+      ? { decoded_visual_gate: overrides.decodedVisualGate }
+      : {}),
     ...currentRenderPolicyManifest(),
     safety: {
       no_publish_triggered: true,
@@ -91,6 +97,51 @@ async function makeStory(root, storyId, overrides = {}) {
     artifact_dir: artifactDir,
   };
 }
+
+test("Goal 08 blocks V5 render evidence when decoded visual proof is missing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal08-v5-missing-decoded-"));
+  const story = await makeStory(root, "story-v5-missing-decoded", {
+    creativeSystemVersion: "pulse_visual_identity_v5",
+  });
+
+  const report = await buildGoal08VisualV4Renderer({
+    storyPackages: [story],
+    upstreamDirectorReport: {
+      stories: [{ story_id: "story-v5-missing-decoded", status: "ready", blockers: [] }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].blockers.includes("render:decoded_visual_gate_missing"));
+});
+
+test("Goal 08 accepts V5 render evidence only when decoded visual proof passed", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal08-v5-decoded-pass-"));
+  const story = await makeStory(root, "story-v5-decoded-pass", {
+    creativeSystemVersion: "pulse_visual_identity_v5",
+    decodedVisualGate: {
+      version: "decoded_visual_gate_v5",
+      status: "pass",
+      decoded_media_evidence: true,
+      blockers: [],
+      frame_count: 42,
+    },
+  });
+
+  const report = await buildGoal08VisualV4Renderer({
+    storyPackages: [story],
+    upstreamDirectorReport: {
+      stories: [{ story_id: "story-v5-decoded-pass", status: "ready", blockers: [] }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.stories[0].render.decoded_visual_gate.status, "pass");
+});
 
 test("Goal 08 blocks renderer readiness when upstream director proof is blocked", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal08-upstream-"));

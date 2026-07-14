@@ -26,6 +26,10 @@ const {
   directClipMaxScenes,
   directClipMaxVisibleDwellS,
   buildFinalSocialAudioMixFilter,
+  buildCreativeTransitionSequence,
+  mergeMaterialisedMotionClipCandidates,
+  selectPremiumSceneClips,
+  resolveFreshHyperframesPremiumShellGate,
   scenePlanBlockerDiagnostic,
 } = require("../../tools/studio-v4-proof-render");
 const {
@@ -35,6 +39,70 @@ const {
 } = require("../../lib/studio/v4/render-policy");
 const { buildKineticAss } = require("../../lib/studio/v2/subtitle-layer-v2");
 const proofRenderLib = require("../../lib/studio/v4/proof-render");
+
+test("Studio V4 proof renderer reports current selected HyperFrames sidecars", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-fresh-shell-"));
+  try {
+    const cardPath = path.join(root, "hf_source_card_story.mp4");
+    fs.writeFileSync(cardPath, Buffer.alloc(32, 1));
+    fs.writeFileSync(
+      cardPath.replace(/\.mp4$/i, ".shell.json"),
+      JSON.stringify({
+        generated_at: "2026-07-14T04:01:54.291Z",
+        hyperframes_premium_shell: {
+          status: "pass",
+          story_id: "story",
+          card_kind: "source",
+          channel_id: "pulse-gaming",
+          output_path: cardPath,
+          project_dir: "experiments/hf-source-story",
+          checks: {
+            check: { status: "pass", command: "npx hyperframes check ." },
+            render: { status: "pass", command: "npx hyperframes render ." },
+          },
+          visual_identity: { status: "pass", blockers: [] },
+          animation_contract: { status: "pass", blockers: [] },
+          readability_contract: { status: "pass", blockers: [] },
+          creative_identity_contract: {
+            status: "pass",
+            blockers: [],
+            evidence: { version: "pulse_visual_identity_v5" },
+          },
+          blockers: [],
+        },
+      }),
+    );
+
+    const gate = resolveFreshHyperframesPremiumShellGate({
+      selectedCards: [{ kind: "source", path: cardPath }],
+      fallbackGate: {
+        verdict: "pass",
+        checks: {
+          source: {
+            evidence: {
+              generatedAt: "2026-07-13T16:15:58.641Z",
+              checks: { validate: { status: "pass" } },
+            },
+          },
+        },
+      },
+    });
+
+    assert.equal(gate.verdict, "pass");
+    assert.equal(gate.evidenceSource, "selected_card_sidecars");
+    assert.equal(gate.selectedCardCount, 1);
+    assert.equal(gate.passCount, 1);
+    assert.equal(gate.checks.source.evidence.generatedAt, "2026-07-14T04:01:54.291Z");
+    assert.equal(gate.checks.source.evidence.checks.check.command, "npx hyperframes check .");
+    assert.equal(
+      gate.checks.source.evidence.creativeIdentityContract.evidence.version,
+      "pulse_visual_identity_v5",
+    );
+    assert.equal("validate" in gate.checks.source.evidence.checks, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("Studio V4 proof renderer plans motion-only scenes across full narration", () => {
   const plan = buildClipScenePlan({
@@ -210,6 +278,43 @@ test("Studio V4 proof renderer allows balanced second windows when coverage need
   assert.equal(plan.skippedDuplicateBaseSources.length, 0);
   assert.equal(plan.scenes.filter((scene) => !scene.readableCardKind).length, 8);
   assert.equal(plan.scenes.filter((scene) => scene.readableCardKind).length, 1);
+});
+
+test("Studio V4 proof renderer balances three windows across four approved source roots", () => {
+  const counts = { xbox: 5, nintendo: 5, playstation: 3, developer: 3 };
+  const clips = [];
+  const maxCount = Math.max(...Object.values(counts));
+  for (let windowIndex = 0; windowIndex < maxCount; windowIndex += 1) {
+    for (const [root, count] of Object.entries(counts)) {
+      if (windowIndex >= count) continue;
+      clips.push({
+        path: `${root}-window-${windowIndex * 6}.mp4`,
+        source_url: `https://official.example/${root}/trailer.mp4`,
+        source_family: `${root}_official_window_${windowIndex * 6}_5`,
+        media_kind: "direct_video",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_source: "official_trailer_segment_validation",
+        duration_s: 5,
+      });
+    }
+  }
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 57.1,
+    xfadeS: 0.25,
+    maxSceneDurationS: 5,
+  });
+
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.scenes.length, 12);
+  assert.equal(plan.directMotionSourceConcentrationMetrics.concentrated_sources.length, 0);
+  const roots = plan.scenes.reduce((map, scene) => {
+    map.set(scene.sourceRootKey, (map.get(scene.sourceRootKey) || 0) + 1);
+    return map;
+  }, new Map());
+  assert.deepEqual([...roots.values()].sort((a, b) => a - b), [3, 3, 3, 3]);
 });
 
 test("Studio V4 proof renderer defaults to readable non-repeating direct-motion cuts", () => {
@@ -738,6 +843,68 @@ test("Studio V4 proof renderer blocks card-heavy decks with too little real moti
   assert.ok(plan.blockers.includes("readable_card_duration_ratio_above_premium_floor"));
 });
 
+test("Studio V4 premium selector keeps source proof and the two strongest narrative cards", () => {
+  const clips = [
+    { path: "direct-a.mp4", media_kind: "direct_video" },
+    {
+      path: "source-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      source_family: "hyperframes_source_card",
+    },
+    { path: "direct-b.mp4", media_kind: "direct_video" },
+    {
+      path: "context-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      source_family: "hyperframes_context_card",
+    },
+    { path: "direct-c.mp4", media_kind: "direct_video" },
+    {
+      path: "timeline-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      source_family: "hyperframes_timeline_card",
+    },
+    { path: "direct-d.mp4", media_kind: "direct_video" },
+    {
+      path: "takeaway-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      source_family: "hyperframes_takeaway_card",
+    },
+    { path: "direct-e.mp4", media_kind: "direct_video" },
+  ];
+
+  const selection = selectPremiumSceneClips(clips);
+  const selectedKinds = selection.clips
+    .filter((clip) => /card\.mp4$/.test(clip.path))
+    .map((clip) => clip.path.replace("-card.mp4", ""));
+
+  assert.deepEqual(selectedKinds, ["source", "context", "takeaway"]);
+  assert.deepEqual(selection.skipped_cards, [
+    { index: 5, kind: "timeline", path: "timeline-card.mp4", reason: "premium_card_ceiling" },
+  ]);
+  assert.equal(selection.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
+});
+
+test("Studio V4 renderer merges fresh materialised motion into stale story clip lists", () => {
+  const storyClips = [
+    { path: "direct-a.mp4", media_kind: "direct_video" },
+    { path: "context-card.mp4", media_kind: "owned_editorial_motion_graphic" },
+  ];
+  const merged = mergeMaterialisedMotionClipCandidates(storyClips, {
+    status: "pass",
+    clips: [
+      { path: "direct-a.mp4", media_kind: "direct_video" },
+      { path: "direct-b.mp4", media_kind: "direct_video", source_family: "official_b" },
+      { path: "generated-card.mp4", media_kind: "owned_editorial_motion_graphic" },
+    ],
+  });
+
+  assert.deepEqual(merged.map((clip) => (typeof clip === "string" ? clip : clip.path)), [
+    "direct-a.mp4",
+    "context-card.mp4",
+    "direct-b.mp4",
+  ]);
+});
+
 test("Studio V4 proof renderer blocks repeated HyperFrames card kinds", () => {
   const plan = buildClipScenePlan({
     clips: [
@@ -845,8 +1012,8 @@ test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly"
 
   assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
   assert.equal(plan.cardVisibleWindows[0].kind, "source");
-  assert.equal(plan.cardVisibleWindows[0].duration_s, 2.2);
-  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.2);
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 2.6);
+  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.6);
 });
 
 test("Studio V4 proof renderer accepts current-policy readable cards without extending them to seven seconds", () => {
@@ -1282,8 +1449,8 @@ test("Studio V4 proof renderer fits crossfades around readable cards without exc
       media_kind: "owned_editorial_motion_graphic",
       source_family: "hyperframes_source_card",
       text: "XBOX WIRE NEWS SOURCE",
-      durationS: 2.2,
-      minimum_readable_duration_s: 2.2,
+      durationS: 2.6,
+      minimum_readable_duration_s: 2.6,
     },
     {
       path: "fogpiercer-context-card.mp4",
@@ -1329,7 +1496,7 @@ test("Studio V4 proof renderer fits crossfades around readable cards without exc
   }, new Map());
   assert.ok([...sourceCounts.values()].every((count) => count <= 2));
   assert.ok([...sourceCounts.values()].every((count) => count / directScenes.length <= 0.25));
-  assert.equal(plan.xfadeS < 0.25, true);
+  assert.equal(plan.xfadeS > 0 && plan.xfadeS <= 0.25, true);
   assert.equal(plan.coveredDurationS >= 48.866 - 0.12, true);
 });
 
@@ -1409,7 +1576,7 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 2.2],
+      ["opening_source_lock", "source_lock", 2.6],
       ["proof_primary", "proof_card", 2.6],
       ["proof_secondary", "proof_card", 2.6],
     ],
@@ -1523,6 +1690,78 @@ test("Studio V4 proof renderer is exposed as a first-class library module", () =
 
   assert.equal(plan.scenes.length, 2);
   assert.equal(plan.scenes[0].path, "one.mp4");
+});
+
+test("Studio V4 proof renderer uses category-aware V5 transitions without adjacent repeats", () => {
+  const update = buildCreativeTransitionSequence(
+    { title: "Halo update adds three campaign missions" },
+    7,
+  );
+  const reveal = buildCreativeTransitionSequence(
+    { title: "GTA VI gameplay reveal trailer" },
+    7,
+  );
+
+  assert.equal(update.length, 7);
+  assert.equal(reveal.length, 7);
+  assert.notDeepEqual(update, reveal);
+  assert.equal(update.some((transition, index) => index > 0 && transition === update[index - 1]), false);
+  assert.equal(reveal.some((transition, index) => index > 0 && transition === reveal[index - 1]), false);
+});
+
+test("Studio V4 proof renderer blocks adjacent full-screen HyperFrames cards", () => {
+  const plan = buildClipScenePlan({
+    clips: [
+      "motion-one.mp4",
+      {
+        path: "source-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        source_family: "hyperframes_source_card",
+        durationS: 2.2,
+        minimum_readable_duration_s: 2.2,
+      },
+      {
+        path: "context-card.mp4",
+        source_type: "hyperframes_premium_shell_card",
+        source_family: "hyperframes_context_card",
+        durationS: 4.2,
+        minimum_readable_duration_s: 4.2,
+      },
+      "motion-two.mp4",
+      "motion-three.mp4",
+      "motion-four.mp4",
+    ],
+    durationS: 30,
+    xfadeS: 0.25,
+  });
+
+  assert.ok(plan.blockers.includes("adjacent_generated_card_scenes"));
+  assert.equal(plan.premiumEditRhythm.status, "fail");
+  assert.equal(plan.premiumEditRhythm.metrics.adjacent_card_pair_count, 1);
+});
+
+test("Studio V4 proof overlay carries the V5 category palette and recurring segment identity", () => {
+  const filter = buildOverlayChain({
+    story: {
+      id: "halo-update-v5-overlay",
+      title: "Halo update adds three campaign missions",
+      canonical_subject: "Halo Campaign Evolved",
+      primary_source: "Xbox Wire",
+      first_frame_text: "HALO JUST CHANGED",
+      proof_card_primary: "THREE MISSIONS ARRIVE",
+      proof_card_secondary: "THE FULL RUN IS THE TEST",
+    },
+    inputLabel: "base",
+    outputLabel: "out",
+    durationS: 52,
+    fontOpt: "font='DejaVu Sans'",
+    metaFontOpt: "font='DejaVu Sans Mono'",
+  });
+
+  assert.match(filter, /0x45E06F/i);
+  assert.match(filter, /0xF7C948/i);
+  assert.match(filter, /PATCH NOTES THAT MATTER/);
+  assert.match(filter, /PG\/UPD/);
 });
 
 test("Studio V4 proof renderer prefers licensed creator-studio SFX over legacy placeholders", async () => {
@@ -2554,7 +2793,7 @@ test("Studio V4 overlay chain adds newsroom-grade labels and layered glass rails
   assert.match(chain, /PLAYER IMPACT/);
   assert.match(chain, /color=0x0B0F19@0\.72/);
   assert.match(chain, /color=0xFF6B1A@0\.95/);
-  assert.match(chain, /color=0x38BDF8@0\.78/);
+  assert.match(chain, /color=0x43D7FF@0\.78/);
   assert.doesNotMatch(chain, /color=0xFF6B1A@0\.88:t=fill/);
 });
 
@@ -2604,8 +2843,8 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,2\.2\)'/);
-  assert.match(chain, /0x38BDF8@0\.92/);
+  assert.match(chain, /:t=2:enable='between\(t,0,2\.6\)'/);
+  assert.match(chain, /0x43D7FF@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });
 

@@ -10,9 +10,13 @@ const { ffprobeDuration } = require("../lib/studio/media-acquisition");
 const { wordsFromAlignment } = require("../lib/studio/sound-layer");
 const mediaPaths = require("../lib/media-paths");
 const {
-  buildKineticAss,
   prepareSubtitleWords,
 } = require("../lib/studio/v2/subtitle-layer-v2");
+const {
+  KINETIC_TYPOGRAPHY_V5,
+  buildPremiumKineticAss,
+  inspectPremiumCaptionCadence,
+} = require("../lib/studio/v5/kinetic-typography");
 const {
   editorialSfxScore,
   minimumScoreForRole,
@@ -39,12 +43,28 @@ const {
   buildPulseSignatureContract,
 } = require("../lib/studio/v4/pulse-signature-layer");
 const {
-  READABLE_CARD_TIMING,
-  SOURCE_CARD_TIMING,
+  V5_READABLE_CARD_TIMING,
+  V5_SOURCE_CARD_TIMING,
 } = require("../lib/studio/v4/premium-card-timing-policy");
 const {
   resolveLivingMotionGrammar,
 } = require("../lib/studio/v4/living-motion-grammar");
+const {
+  CREATIVE_SYSTEM_VERSION,
+  resolvePulseTransitionCycle,
+  resolvePulseVisualIdentity,
+} = require("../lib/studio/v5/pulse-visual-identity");
+const {
+  PREMIUM_EDIT_RHYTHM_V5,
+  inspectPremiumEditRhythm,
+} = require("../lib/studio/v5/premium-edit-rhythm");
+const {
+  DIRECT_MOTION_VISUAL_SELECTOR_V5,
+  filterPremiumDirectMotionClips,
+} = require("../lib/studio/v5/direct-motion-visual-selector");
+const {
+  runDecodedVisualGate,
+} = require("../lib/studio/v2/forensic-qa-v2");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -53,15 +73,16 @@ const XFADE_S = 0.25;
 const DEFAULT_DIRECT_CLIP_MAX_VISIBLE_DWELL_S = 7;
 const DEFAULT_DIRECT_CLIP_MAX_SCENES = 40;
 const SCENE_DURATION_FRAME_TOLERANCE_S = 1 / FPS;
-const SOURCE_LOCK_OVERLAY_CARD_DURATION_S = SOURCE_CARD_TIMING.planned_visible_duration_s;
+const SOURCE_LOCK_OVERLAY_CARD_DURATION_S = V5_SOURCE_CARD_TIMING.planned_visible_duration_s;
 const MIN_OVERLAY_CARD_DURATION_S = 4.2;
 const HEADLINE_OVERLAY_CARD_DURATION_S = 4.6;
 const MAX_OVERLAY_CARD_DURATION_S = 5.8;
 const MIN_COMPACT_PROOF_OVERLAY_DURATION_S = 2.6;
 const MAX_COMPACT_PROOF_OVERLAY_DURATION_S = 4.2;
-const MIN_GENERATED_CARD_SCENE_DURATION_S = READABLE_CARD_TIMING.minimum_visible_duration_s;
+const MIN_GENERATED_CARD_SCENE_DURATION_S = V5_READABLE_CARD_TIMING.minimum_visible_duration_s;
 const MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS = 4;
 const MAX_READABLE_CARD_DURATION_RATIO = 0.42;
+const MAX_V5_PREMIUM_CARD_DURATION_RATIO = PREMIUM_EDIT_RHYTHM_V5.max_generated_card_duration_ratio;
 const MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO = 0.25;
 const MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT = 2;
 const OVERLAY_ANTI_FREEZE_NOISE_STRENGTH = 10;
@@ -127,6 +148,25 @@ function loadDotenvForCli() {
       require("dotenv").config({ override: true });
     }
   } catch {}
+}
+
+function ffmpegHex(value = "#ff6b1a") {
+  const match = String(value || "").trim().match(/^#?([0-9a-f]{6})$/i);
+  return `0x${(match?.[1] || "ff6b1a").toUpperCase()}`;
+}
+
+function buildCreativeTransitionSequence(story = {}, count = 0) {
+  const cycle = resolvePulseTransitionCycle(story);
+  const total = Math.max(0, Math.floor(Number(count) || 0));
+  const sequence = [];
+  for (let index = 0; index < total; index += 1) {
+    let transition = cycle[index % cycle.length] || "fade";
+    if (sequence.length && transition === sequence[sequence.length - 1]) {
+      transition = cycle[(index + 1) % cycle.length] || "fade";
+    }
+    sequence.push(transition);
+  }
+  return sequence;
 }
 
 function parseArgs(argv = process.argv) {
@@ -808,6 +848,16 @@ function balancedWindowRepeatAllowances(clips = []) {
     return allowances;
   }
   if (distinctRoots < 4) return allowances;
+  const balancedFourRootPool = [...counts.entries()].filter(
+    ([key, count]) => count >= 3 && allowances.has(key),
+  ).length >= 4;
+  if (balancedFourRootPool) {
+    for (const [key, count] of counts.entries()) {
+      if (count >= 3 && allowances.has(key)) {
+        allowances.set(key, Math.min(count, 3));
+      }
+    }
+  }
   for (const [key, count] of counts.entries()) {
     const share = count / total;
     if (count === 3 && total >= 8 && share <= 0.38) {
@@ -824,8 +874,12 @@ function balancedWindowRepeatAllowances(clips = []) {
 function readSceneClipSidecar(clip = {}) {
   const clipPath = sceneClipPath(clip);
   if (!clipPath) return null;
-  const candidates = [`${clipPath}.json`];
+  const candidates = [
+    clipPath.replace(/\.mp4$/i, ".shell.json"),
+    `${clipPath}.json`,
+  ];
   if (clip && typeof clip === "object" && clip.original_path) {
+    candidates.push(String(clip.original_path).replace(/\.mp4$/i, ".shell.json"));
     candidates.push(`${clip.original_path}.json`);
   }
   for (const candidate of candidates) {
@@ -837,6 +891,59 @@ function readSceneClipSidecar(clip = {}) {
     }
   }
   return null;
+}
+
+function resolveFreshHyperframesPremiumShellGate({ selectedCards = [], fallbackGate = {} } = {}) {
+  const checks = {};
+  const blockers = [];
+  const generatedAt = [];
+  for (const card of Array.isArray(selectedCards) ? selectedCards : []) {
+    const kind = firstText(card?.kind, sceneClipReadableCardKind(card)).toLowerCase();
+    const cardPath = sceneClipPath(card);
+    if (!kind || !cardPath) continue;
+    const sidecar = readSceneClipSidecar(card);
+    const shell = sidecar?.hyperframes_premium_shell;
+    if (!shell || typeof shell !== "object") continue;
+    const status = firstText(shell.status, shell.verdict).toLowerCase();
+    const shellBlockers = Array.isArray(shell.blockers) ? shell.blockers.filter(Boolean) : [];
+    if (status !== "pass") blockers.push(`${kind}:shell_${status || "unknown"}`);
+    blockers.push(...shellBlockers.map((blocker) => `${kind}:${blocker}`));
+    if (sidecar.generated_at) generatedAt.push(sidecar.generated_at);
+    checks[kind] = {
+      verdict: status || "unknown",
+      blockers: shellBlockers,
+      warnings: Array.isArray(shell.warnings) ? shell.warnings.filter(Boolean) : [],
+      evidence: {
+        kind,
+        storyId: shell.story_id || sidecar.story_id || null,
+        channelId: shell.channel_id || sidecar.channel_id || null,
+        cardPath,
+        sidecarPath: cardPath.replace(/\.mp4$/i, ".shell.json"),
+        generatedAt: sidecar.generated_at || null,
+        projectDir: shell.project_dir || sidecar.project_dir || null,
+        outputPath: shell.output_path || sidecar.output_path || cardPath,
+        checks: shell.checks || {},
+        visualIdentity: shell.visual_identity || {},
+        animationContract: shell.animation_contract || {},
+        readabilityContract: shell.readability_contract || {},
+        creativeIdentityContract: shell.creative_identity_contract || {},
+      },
+    };
+  }
+  const selectedCardCount = Object.keys(checks).length;
+  if (selectedCardCount === 0) return fallbackGate || {};
+  const passCount = Object.values(checks).filter((entry) => entry.verdict === "pass").length;
+  return {
+    verdict: blockers.length === 0 && passCount === selectedCardCount ? "pass" : "blocked",
+    evidenceSource: "selected_card_sidecars",
+    generatedAt: generatedAt.sort().at(-1) || null,
+    requiredPassCount: selectedCardCount,
+    requiredSelectedCardCount: selectedCardCount,
+    passCount,
+    selectedCardCount,
+    blockers: [...new Set(blockers)],
+    checks,
+  };
 }
 
 function sceneClipBaseSourceKey(clip = {}) {
@@ -1000,6 +1107,104 @@ function sceneClipReadableCardKind(clip = {}) {
   return "";
 }
 
+const PREMIUM_CARD_KIND_PRIORITY = Object.freeze({
+  source: 100,
+  source_lock: 100,
+  takeaway: 95,
+  context: 90,
+  proof: 85,
+  breaking: 84,
+  stat: 80,
+  chart: 80,
+  quote: 75,
+  timeline: 65,
+  title: 55,
+  carousel: 50,
+  screenshot: 45,
+  card: 40,
+});
+
+function selectPremiumSceneClips(clips = []) {
+  const source = Array.isArray(clips) ? clips.filter(Boolean) : [];
+  const cards = source
+    .map((clip, index) => {
+      const kind = sceneClipReadableCardKind(clip);
+      return kind
+        ? {
+            index,
+            kind,
+            path: sceneClipPath(clip),
+            priority: PREMIUM_CARD_KIND_PRIORITY[kind] || 40,
+            source_lock: kind === "source" || kind === "source_lock",
+          }
+        : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.priority - left.priority || left.index - right.index);
+  const selected = [];
+  let sourceLocks = 0;
+  let narrativeCards = 0;
+  for (const card of cards) {
+    if (selected.length >= PREMIUM_EDIT_RHYTHM_V5.max_generated_card_scene_count) break;
+    if (card.source_lock && sourceLocks >= 1) continue;
+    if (!card.source_lock && narrativeCards >= PREMIUM_EDIT_RHYTHM_V5.max_narrative_card_scene_count) {
+      continue;
+    }
+    const adjacent = selected.some((entry) => Math.abs(entry.index - card.index) === 1);
+    if (adjacent) continue;
+    selected.push(card);
+    if (card.source_lock) sourceLocks += 1;
+    else narrativeCards += 1;
+  }
+  const selectedIndexes = new Set(selected.map((entry) => entry.index));
+  const skippedCards = cards
+    .filter((entry) => !selectedIndexes.has(entry.index))
+    .sort((left, right) => left.index - right.index)
+    .map((entry) => ({
+      index: entry.index,
+      kind: entry.kind,
+      path: entry.path,
+      reason: selected.some((chosen) => Math.abs(chosen.index - entry.index) === 1)
+        ? "premium_card_spacing"
+        : "premium_card_ceiling",
+    }));
+  const selectedInOrder = selected.slice().sort((left, right) => left.index - right.index);
+  return {
+    version: PREMIUM_EDIT_RHYTHM_V5.version,
+    clips: source.filter((_, index) => {
+      const kind = sceneClipReadableCardKind(source[index]);
+      return !kind || selectedIndexes.has(index);
+    }),
+    selected_cards: selectedInOrder.map(({ index, kind, path }) => ({ index, kind, path })),
+    skipped_cards: skippedCards,
+  };
+}
+
+function mergeMaterialisedMotionClipCandidates(storyClips = [], manifest = {}) {
+  const base = Array.isArray(storyClips) ? storyClips.filter(Boolean) : [];
+  const status = String(manifest?.status || "").trim().toLowerCase();
+  if (!/^(?:pass|ready|green|materialized|materialised)$/.test(status)) return base;
+  const candidates = [
+    ...(Array.isArray(manifest.clips) ? manifest.clips : []),
+    ...(Array.isArray(manifest.materialised_clips) ? manifest.materialised_clips : []),
+  ];
+  const seen = new Set(
+    base
+      .map((clip) => sceneClipPath(clip).replace(/\\/g, "/").toLowerCase())
+      .filter(Boolean),
+  );
+  const merged = base.slice();
+  for (const clip of candidates) {
+    const mediaKind = String(clip?.media_kind || clip?.mediaKind || "").trim().toLowerCase();
+    const clipPath = sceneClipPath(clip);
+    const key = clipPath.replace(/\\/g, "/").toLowerCase();
+    if (mediaKind !== "direct_video" || !key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(clip);
+  }
+  return merged;
+}
+
 function sceneClipReadableText(clip = {}, fallbackKind = "") {
   if (!clip || typeof clip !== "object") return cleanCardText(fallbackKind);
   const sidecar = readSceneClipSidecar(clip) || {};
@@ -1016,6 +1221,35 @@ function sceneClipReadableText(clip = {}, fallbackKind = "") {
       sidecar.readable_text,
       fallbackKind,
     ),
+  );
+}
+
+function sceneClipUsesV5PremiumCard(clip = {}) {
+  if (!clip || typeof clip !== "object") return false;
+  const provenance = firstText(
+    clip.media_kind,
+    clip.source_kind,
+    clip.source_type,
+    clip.rights_risk_class,
+  ).toLowerCase();
+  if (/owned_(?:generated_)?explainer|owned_generated_motion/.test(provenance)) return false;
+  const sidecar = readSceneClipSidecar(clip) || {};
+  const version = firstText(
+    clip.creative_system_version,
+    clip.creativeSystemVersion,
+    sidecar.creative_system_version,
+    sidecar.hyperframes_premium_shell?.creative_identity_contract?.evidence?.version,
+  ).toLowerCase();
+  if (version === CREATIVE_SYSTEM_VERSION) return true;
+  const cardDescriptor = [
+    clip.source_type,
+    clip.source_kind,
+    clip.source_family,
+    clip.motion_family,
+    clip.hyperframes_card === true ? "hyperframes_card" : "",
+  ].map((value) => String(value || "").toLowerCase()).join(" ");
+  return /hyperframes_(?:premium_shell_)?card|hyperframes.*(?:source|context|quote|takeaway|timeline)_card/.test(
+    cardDescriptor,
   );
 }
 
@@ -1199,6 +1433,7 @@ function buildClipScenePlan({
         : explicitReadableMinimum,
       readableCardKind,
       readableText,
+      premiumCardV5: readableCardKind ? sceneClipUsesV5PremiumCard(clip) : false,
     };
     const repeatSourceKey = allowClipReuse === true ? "" : sceneClipRepeatSourceKey(clip, entry);
     const allowedRepeatCount = Math.max(1, Number(windowRepeatAllowances.get(repeatSourceKey) || 1));
@@ -1429,6 +1664,9 @@ function buildClipScenePlan({
     blockers.push("approved_scene_duration_exceeds_audio_duration");
   }
   const readableCardSceneCount = sceneEntries.filter((entry) => entry.readableCardKind).length;
+  const v5PremiumCardSceneCount = sceneEntries.filter(
+    (entry) => entry.readableCardKind && entry.premiumCardV5 === true,
+  ).length;
   const directMotionSceneCount = sceneEntries.length - readableCardSceneCount;
   const readableCardDurationS = Number(
     sceneEntries
@@ -1452,7 +1690,10 @@ function buildClipScenePlan({
     readable_card_duration_s: readableCardDurationS,
     direct_motion_duration_s: directMotionDurationS,
     readable_card_duration_ratio: readableCardDurationRatio,
-    max_readable_card_duration_ratio: MAX_READABLE_CARD_DURATION_RATIO,
+    v5_premium_card_scene_count: v5PremiumCardSceneCount,
+    max_readable_card_duration_ratio: v5PremiumCardSceneCount
+      ? MAX_V5_PREMIUM_CARD_DURATION_RATIO
+      : MAX_READABLE_CARD_DURATION_RATIO,
     min_direct_motion_scene_count_with_readable_cards:
       MIN_DIRECT_MOTION_SCENES_WITH_READABLE_CARDS,
   };
@@ -1467,9 +1708,22 @@ function buildClipScenePlan({
   if (
     repeatFree &&
     readableCardSceneCount > 0 &&
-    readableCardDurationRatio > MAX_READABLE_CARD_DURATION_RATIO
+    readableCardDurationRatio > (
+      v5PremiumCardSceneCount
+        ? MAX_V5_PREMIUM_CARD_DURATION_RATIO
+        : MAX_READABLE_CARD_DURATION_RATIO
+    )
   ) {
     blockers.push("readable_card_duration_ratio_above_premium_floor");
+  }
+  const premiumEditRhythm = inspectPremiumEditRhythm({
+    scenes: sceneEntries,
+    coveredDurationS,
+  });
+  if (repeatFree) {
+    for (const blocker of premiumEditRhythm.blockers) {
+      if (!blockers.includes(blocker)) blockers.push(blocker);
+    }
   }
   const transitionOffsets = sceneEntries.slice(1).map((_, index) => {
     const scenesBeforeTransition = sceneEntries.slice(0, index + 1);
@@ -1489,6 +1743,7 @@ function buildClipScenePlan({
     baseSourceKey: entry.baseSourceKey || null,
     sourceRootKey: entry.sourceRootKey || null,
     readableCardKind: entry.readableCardKind || null,
+    premiumCardV5: entry.premiumCardV5 === true,
     readableText: entry.readableText || "",
   }));
   const cardVisibleWindows = scenes
@@ -1525,6 +1780,7 @@ function buildClipScenePlan({
     sourceDurationOverruns,
     readableDurationUnderruns,
     readableCardSceneMetrics,
+    premiumEditRhythm,
     coveredDurationS,
     transitionOffsets,
     cardVisibleWindows,
@@ -2074,8 +2330,13 @@ function buildOverlayChain({
   const layout = buildOverlayLayout({ story });
   const signature = buildPulseSignatureContract({ story, durationS });
   const contentIdentity = resolveContentIdentity(story);
+  const pulseIdentity = resolvePulseVisualIdentity(story);
   const livingMotion = resolveLivingMotionGrammar(story);
   const identityAccent = `0x${String(contentIdentity.brand.accent || "#FF6B1A").replace(/^#/, "")}`;
+  const pulseBrandAccent = signature.palette.pulse_amber;
+  const pulseSignalCyan = signature.palette.signal_cyan;
+  const pulsePrimary = ffmpegHex(pulseIdentity.primary);
+  const pulseSecondary = ffmpegHex(pulseIdentity.secondary);
   const blockById = Object.fromEntries(layout.text_blocks.map((block) => [block.id, block]));
   const suppressAllStoryCards = usesOwnedGeneratedMotionDeck(story);
   const suppressOpeningStoryCard =
@@ -2125,16 +2386,17 @@ function buildOverlayChain({
   const outroEnable = enableFor(signature.outro);
   const progressStart = (window, offsetS) => t(Number(window.start_s || 0) + offsetS);
   const segmentLabel = drawtextEscape(signature.segment.display_label);
-  const identityLabel = drawtextEscape(contentIdentity.brand.on_screen_label);
+  const identityLabel = drawtextEscape(`${contentIdentity.brand.on_screen_label} // ${pulseIdentity.code}`);
+  const creativeSegmentLabel = drawtextEscape(pulseIdentity.segment_name.toUpperCase());
   const livingGhostWord = drawtextEscape(livingMotion.ghost_word);
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
     `drawbox=x=iw-${sideMaskWidth}:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
-    `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=${identityAccent}@0.30:t=fill`,
-    `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=${identityAccent}@0.95:t=fill`,
-    `drawbox=x=${accentRailX + 5}:y=0:w=2:h=ih:color=0xFF6B1A@0.95:t=fill`,
-    `drawbox=x=${accentRailX + 7}:y='mod(t*480+420\\,2000)-80':w=2:h=80:color=0x38BDF8@0.78:t=fill`,
+    `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=${pulseBrandAccent}@0.30:t=fill`,
+    `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=${pulseBrandAccent}@0.95:t=fill`,
+    `drawbox=x=${accentRailX + 5}:y=0:w=2:h=ih:color=${pulsePrimary}@0.95:t=fill`,
+    `drawbox=x=${accentRailX + 7}:y='mod(t*480+420\\,2000)-80':w=2:h=80:color=${pulseSignalCyan}@0.78:t=fill`,
     `drawbox=x='-260+mod(t*${livingMotion.sweeps.primary_speed_px_s}\\,1540)':y=0:w=210:h=ih:color=white@${livingMotion.sweeps.primary_opacity.toFixed(3)}:t=fill`,
     `drawbox=x='940-mod(t*${livingMotion.sweeps.accent_speed_px_s}\\,1220)':y=0:w=92:h=ih:color=${identityAccent}@${livingMotion.sweeps.accent_opacity.toFixed(3)}:t=fill`,
     `drawbox=x=54:y='560+sin(t*0.21)*34':w=972:h=1:color=${identityAccent}@0.24:t=fill`,
@@ -2144,7 +2406,7 @@ function buildOverlayChain({
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0xF8FAFC@0.16:t=2:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=118:h=3:color=0xF8FAFC@0.88:t=fill:enable='${openingEnable}'`,
-    `drawbox=x=${openingCardX}:y=${openingCardY}:w='if(lt(t\\,${progressStart(openingWindow, 0.18)})\\,1\\,1+(${openingCardW}-1)*(t-${progressStart(openingWindow, 0.18)})/0.30)':h=5:color=0x38BDF8@0.92:t=fill:enable='${openingEnable}'`,
+    `drawbox=x=${openingCardX}:y=${openingCardY}:w='if(lt(t\\,${progressStart(openingWindow, 0.18)})\\,1\\,1+(${openingCardW}-1)*(t-${progressStart(openingWindow, 0.18)})/0.30)':h=5:color=${pulseSecondary}@0.92:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY + openingCardH - 6}:w=600:h=5:color=${identityAccent}@0.68:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.16:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.56:t=2:enable='${openingEnable}'`,
@@ -2153,32 +2415,33 @@ function buildOverlayChain({
     ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt: metaFontOpt, fontcolor: "0xFFB15C", enable: openingEnable, shadow: false }),
     `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='${openingEnable}'`,
     ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: openingEnable }),
+    `drawtext=text='${creativeSegmentLabel}':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=17:x=${openingCardX + 24}:y=${openingCardY + openingCardH - 30}:enable='${openingEnable}'`,
     ]),
     ...(suppressAllStoryCards ? [] : [
     `drawbox=x=64:y=520:w=956:h=222:color=0x0B0F19@0.48:t=fill:enable='${headlineEnable}'`,
     `drawbox=x=64:y=520:w=956:h=222:color=0xF8FAFC@0.16:t=2:enable='${headlineEnable}'`,
     `drawbox=x=64:y=520:w=956:h=4:color=white@0.22:t=fill:enable='${headlineEnable}'`,
-    `drawbox=x=64:y=736:w='if(lt(t\\,${progressStart(headlineWindow, 0.22)})\\,1\\,1+(956-1)*(t-${progressStart(headlineWindow, 0.22)})/0.34)':h=6:color=0x38BDF8@0.92:t=fill:enable='${headlineEnable}'`,
+    `drawbox=x=64:y=736:w='if(lt(t\\,${progressStart(headlineWindow, 0.22)})\\,1\\,1+(956-1)*(t-${progressStart(headlineWindow, 0.22)})/0.34)':h=6:color=${pulseSecondary}@0.92:t=fill:enable='${headlineEnable}'`,
     ...drawtextLinesForBlock(blockById.headline_card, { fontOpt, fontcolor: "white", enable: headlineEnable }),
     ...drawtextLinesForBlock(blockById.headline_source, { fontOpt, fontcolor: "0xFFB15C", enable: headlineEnable, shadow: false }),
     `drawbox=x=76:y=812:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofPrimaryEnable}'`,
     `drawbox=x=76:y=812:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofPrimaryEnable}'`,
-    `drawbox=x=76:y=812:w='if(lt(t\\,${progressStart(proofPrimaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofPrimaryWindow, 0.18)})/0.28)':h=5:color=0x38BDF8@0.92:t=fill:enable='${proofPrimaryEnable}'`,
-    `drawtext=text='PULSE PROOF':${metaFontOpt}:fontcolor=0x38BDF8:fontsize=18:x=98:y=824:enable='${proofPrimaryEnable}'`,
+    `drawbox=x=76:y=812:w='if(lt(t\\,${progressStart(proofPrimaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofPrimaryWindow, 0.18)})/0.28)':h=5:color=${pulseSecondary}@0.92:t=fill:enable='${proofPrimaryEnable}'`,
+    `drawtext=text='PULSE PROOF':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=98:y=824:enable='${proofPrimaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_primary, { fontOpt, fontcolor: "white", enable: proofPrimaryEnable }),
     `drawbox=x=96:y=1010:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofSecondaryEnable}'`,
     `drawbox=x=96:y=1010:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofSecondaryEnable}'`,
-    `drawbox=x=96:y=1144:w='if(lt(t\\,${progressStart(proofSecondaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofSecondaryWindow, 0.18)})/0.32)':h=5:color=0x38BDF8@0.92:t=fill:enable='${proofSecondaryEnable}'`,
-    `drawtext=text='PLAYER IMPACT':${metaFontOpt}:fontcolor=0x38BDF8:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
+    `drawbox=x=96:y=1144:w='if(lt(t\\,${progressStart(proofSecondaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofSecondaryWindow, 0.18)})/0.32)':h=5:color=${pulseSecondary}@0.92:t=fill:enable='${proofSecondaryEnable}'`,
+    `drawtext=text='PLAYER IMPACT':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: proofSecondaryEnable }),
     ]),
     `drawbox=x=w-286:y=h-126:w=244:h=60:color=0x0D0D0F@0.58:t=fill`,
     `drawbox=x=w-286:y=h-126:w=6:h=60:color=${identityAccent}@0.95:t=fill`,
-    `drawbox=x=w-280:y=h-126:w=238:h=2:color=0x38BDF8@0.78:t=fill`,
-    `drawtext=text='PULSE // GAMING':${metaFontOpt}:fontcolor=white@0.92:fontsize=25:x=w-tw-58:y=h-108:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
+    `drawbox=x=w-280:y=h-126:w=238:h=2:color=${pulseSecondary}@0.78:t=fill`,
+    `drawtext=text='PULSE // GAMING // ${drawtextEscape(pulseIdentity.code)}':${metaFontOpt}:fontcolor=white@0.92:fontsize=22:x=w-tw-58:y=h-108:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
     `drawbox=x=70:y=310:w=940:h=178:color=0x0D0D0F@0.74:t=fill:enable='${outroEnable}'`,
     `drawbox=x=70:y=310:w=940:h=5:color=${identityAccent}@0.95:t=fill:enable='${outroEnable}'`,
-    `drawbox=x=70:y=483:w=940:h=3:color=0x38BDF8@0.78:t=fill:enable='${outroEnable}'`,
+    `drawbox=x=70:y=483:w=940:h=3:color=${pulseSecondary}@0.78:t=fill:enable='${outroEnable}'`,
     `drawtext=text='PULSE GAMING':${fontOpt}:fontcolor=white:fontsize=62:x=110:y=332:shadowcolor=black@0.82:shadowx=3:shadowy=3:enable='${outroEnable}'`,
     `drawtext=text='NEVER MISS A BEAT':${metaFontOpt}:fontcolor=0xFFB15C:fontsize=30:x=114:y=420:enable='${outroEnable}'`,
     `noise=alls=${OVERLAY_ANTI_FREEZE_NOISE_STRENGTH}:allf=t+u`,
@@ -2219,7 +2482,14 @@ async function renderProof({ storyJson, output }) {
   const bridgeClips = Array.isArray(story.visual_v4_bridge_video_clips)
     ? story.visual_v4_bridge_video_clips
     : [];
-  const clipCandidates = bridgeClips.length ? bridgeClips : story.video_clips || [];
+  const siblingMotionManifestPath = path.join(path.dirname(storyPath), "materialised_motion_clips.json");
+  const siblingMotionManifest = await fs.pathExists(siblingMotionManifestPath)
+    ? await fs.readJson(siblingMotionManifestPath)
+    : {};
+  const clipCandidates = mergeMaterialisedMotionClipCandidates(
+    bridgeClips.length ? bridgeClips : story.video_clips || [],
+    siblingMotionManifest,
+  );
   const clips = [];
   for (const clip of clipCandidates) {
     const rawPath = sceneClipPath(clip);
@@ -2235,8 +2505,21 @@ async function renderProof({ storyJson, output }) {
   if (!Number.isFinite(durationS) || durationS <= 0) {
     throw new Error(`invalid audio duration: ${audioPath}`);
   }
+  const directMotionVisualSelection = await filterPremiumDirectMotionClips(clips, {
+    outputDir: path.join(
+      TEST_OUT,
+      "v5-direct-motion-visual",
+      String(story.id || "story").replace(/[^a-z0-9_-]+/gi, "_"),
+    ),
+  });
+  if (directMotionVisualSelection.blockers.length) {
+    throw new Error(
+      `direct_motion_visual_selector_blocked:${directMotionVisualSelection.blockers.join(",")}`,
+    );
+  }
+  const premiumSceneSelection = selectPremiumSceneClips(directMotionVisualSelection.clips);
   const scenePlan = buildClipScenePlan({
-    clips,
+    clips: premiumSceneSelection.clips,
     durationS,
     maxSceneDurationS: directClipMaxVisibleDwellS(),
     maxScenes: directClipMaxScenes(),
@@ -2259,20 +2542,16 @@ async function renderProof({ storyJson, output }) {
     scriptText,
     strictEndCoverage: false,
   });
-  const ass = buildKineticAss({
+  const ass = buildPremiumKineticAss({
     story,
     words,
     duration: durationS,
     scriptText,
-    maxWordsPerPhrase: 2,
-    maxPhraseChars: 16,
-    captionCase: "upper",
-    revealMode: "word",
-    motionStyle: "flash",
-    avoidDanglingWords: true,
-    maxPhraseDurationS: 1.1,
-    minPhraseDurationS: 0.28,
   });
+  const captionCadence = inspectPremiumCaptionCadence(ass);
+  if (captionCadence.status !== "pass") {
+    throw new Error(`kinetic_typography_gate_blocked:${captionCadence.blockers.join(",")}`);
+  }
   await fs.ensureDir(TEST_OUT);
   await fs.writeFile(assPath, ass, "utf8");
 
@@ -2319,6 +2598,10 @@ async function renderProof({ storyJson, output }) {
       : "font='DejaVu Sans Mono'";
   const filterParts = [];
   const livingMotion = resolveLivingMotionGrammar(story);
+  const creativeTransitionSequence = buildCreativeTransitionSequence(
+    story,
+    Math.max(0, scenePlan.scenes.length - 1),
+  );
   for (const scene of scenePlan.scenes) {
     filterParts.push(...buildSceneCompositeFilterParts(scene, livingMotion));
   }
@@ -2328,7 +2611,7 @@ async function renderProof({ storyJson, output }) {
     const offset = (Array.isArray(scenePlan.transitionOffsets) ? scenePlan.transitionOffsets : [])[i - 1] ??
       i * (scenePlan.segmentDurationS - scenePlan.xfadeS);
     filterParts.push(
-      `[${prev}][v${i}]xfade=transition=smoothleft:duration=${scenePlan.xfadeS}:offset=${offset.toFixed(2)}[${out}]`,
+      `[${prev}][v${i}]xfade=transition=${creativeTransitionSequence[i - 1] || "fade"}:duration=${scenePlan.xfadeS}:offset=${offset.toFixed(2)}[${out}]`,
     );
     prev = out;
   }
@@ -2431,6 +2714,24 @@ async function renderProof({ storyJson, output }) {
   });
 
   const finalDuration = ffprobeDuration(outputPath);
+  const decodedVisualGate = await runDecodedVisualGate({
+    storyId: story.id || "story",
+    mp4Path: outputPath,
+    outputDir: path.join(path.dirname(outputPath), "qa", "decoded-visual"),
+    frameIntervalS: 1,
+    renderReport: {
+      sceneList: scenePlan.scenes.map((scene) => ({
+        ...scene,
+        duration: scene.durationS,
+        type: scene.type || scene.sceneType,
+      })),
+    },
+  });
+  if (decodedVisualGate.status !== "pass") {
+    throw new Error(
+      `decoded_visual_gate_blocked:${decodedVisualGate.blockers.join(",")}`,
+    );
+  }
   const audioSegmentLoudness = assertProofAudioSegmentLoudness(await auditRenderedAudioSegments({
     storyId: story.id || null,
     inputPath: outputPath,
@@ -2439,6 +2740,10 @@ async function renderProof({ storyJson, output }) {
   const audioSegmentReportPath = path.join(TEST_OUT, `${story.id || "story"}_audio_segment_loudness_report.json`);
   await fs.writeJson(audioSegmentReportPath, audioSegmentLoudness, { spaces: 2 });
   const stat = await fs.stat(outputPath);
+  const freshHyperframesPremiumShellGate = resolveFreshHyperframesPremiumShellGate({
+    selectedCards: premiumSceneSelection.selected_cards,
+    fallbackGate: story.hyperframes_premium_shell_gate || {},
+  });
   const report = {
     story_id: story.id || null,
     title: story.title || null,
@@ -2453,6 +2758,25 @@ async function renderProof({ storyJson, output }) {
       repeated_base_sources: scenePlan.repeatedBaseSources,
       skipped_duplicate_base_sources: scenePlan.skippedDuplicateBaseSources,
       source_duration_overruns: scenePlan.sourceDurationOverruns,
+      premium_edit_rhythm: scenePlan.premiumEditRhythm,
+      premium_scene_selection: {
+        version: premiumSceneSelection.version,
+        selected_cards: premiumSceneSelection.selected_cards,
+        skipped_cards: premiumSceneSelection.skipped_cards,
+        clip_count: premiumSceneSelection.clips.length,
+      },
+      direct_motion_visual_selection: {
+        version: DIRECT_MOTION_VISUAL_SELECTOR_V5.version,
+        accepted_count: directMotionVisualSelection.accepted.length,
+        rejected_count: directMotionVisualSelection.rejected.length,
+        rejected: directMotionVisualSelection.rejected.map((clip) => ({
+          path: clip.path,
+          reasons: clip.reasons,
+          metrics: clip.metrics,
+        })),
+      },
+      sibling_motion_manifest: path.relative(ROOT, siblingMotionManifestPath).replace(/\\/g, "/"),
+      transition_sequence: creativeTransitionSequence,
       scenes: scenePlan.scenes,
     },
     audio_duration_s: Number(durationS.toFixed(3)),
@@ -2461,6 +2785,11 @@ async function renderProof({ storyJson, output }) {
     sfx_mix_policy_version: STUDIO_V4_SFX_MIX_POLICY_VERSION,
     voice_mix_policy_version: STUDIO_V4_VOICE_MIX_POLICY_VERSION,
     visual_design_policy_version: STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
+    creative_system_version: CREATIVE_SYSTEM_VERSION,
+    creative_identity: resolvePulseVisualIdentity(story),
+    decoded_visual_gate: decodedVisualGate,
+    kinetic_typography_version: KINETIC_TYPOGRAPHY_V5.version,
+    kinetic_typography_gate: captionCadence,
     pulse_signature_version: PULSE_SIGNATURE_VERSION,
     pulse_signature_contract: buildPulseSignatureContract({
       story,
@@ -2471,7 +2800,8 @@ async function renderProof({ storyJson, output }) {
     hyperframes_card_count: Number.isFinite(Number(story.hyperframes_card_count))
       ? Number(story.hyperframes_card_count)
       : null,
-    hyperframes_premium_shell_gate: story.hyperframes_premium_shell_gate || {},
+    hyperframes_premium_shell_gate: freshHyperframesPremiumShellGate,
+    story_package_hyperframes_premium_shell_gate: story.hyperframes_premium_shell_gate || {},
     overlay_card_windows: overlayCardWindowsForStory(story, { durationS: finalDuration || durationS }),
     card_visible_windows: scenePlan.cardVisibleWindows,
     premium_shell_verdict: story.premium_shell_verdict || null,
@@ -2564,6 +2894,10 @@ module.exports = {
   scenePlanBlockerDiagnostic,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
+  buildCreativeTransitionSequence,
+  mergeMaterialisedMotionClipCandidates,
+  selectPremiumSceneClips,
+  resolveFreshHyperframesPremiumShellGate,
   overlayCardWindowsForStory,
   buildFinalSocialAudioMixFilter,
   drawtextEscape,

@@ -33,6 +33,29 @@ test("premium visual campaign defines platform-native covers and social derivati
 
   assert.deepEqual(Object.keys(campaign.outputs), Object.keys(PLATFORM_VISUAL_SPECS));
   assert.equal(campaign.identity.id, "update");
+  assert.deepEqual(
+    {
+      version: campaign.creative_identity.version,
+      category: campaign.creative_identity.category,
+      palette_id: campaign.creative_identity.palette_id,
+      primary: campaign.creative_identity.primary,
+      secondary: campaign.creative_identity.secondary,
+      segment_name: campaign.creative_identity.segment_name,
+      code: campaign.creative_identity.code,
+    },
+    {
+      version: "pulse_visual_identity_v5",
+      category: "update",
+      palette_id: "green_gold",
+      primary: "#45e06f",
+      secondary: "#f7c948",
+      segment_name: "Patch Notes That Matter",
+      code: "PG/UPD",
+    },
+  );
+  for (const output of Object.values(campaign.outputs)) {
+    assert.deepEqual(output.creative_identity, campaign.creative_identity);
+  }
   assert.equal(campaign.brand_lockup, "PULSE GAMING");
   assert.equal(campaign.outputs.instagram_story.width, 1080);
   assert.equal(campaign.outputs.youtube_thumbnail.width, 1280);
@@ -53,6 +76,19 @@ test("premium visual campaign rejects generic, unsafe or visually repeated campa
   assert.ok(report.blockers.includes("premium_visual_safe_hero_missing"));
   assert.ok(report.blockers.includes("premium_visual_headline_subject_mismatch"));
   assert.ok(report.blockers.includes("premium_visual_recent_fingerprint_repeated"));
+});
+
+test("premium visual campaign rejects a cover whose V5 identity drifts from the story", () => {
+  const campaign = buildPremiumVisualCampaignSpec(fixture());
+  campaign.outputs.youtube_thumbnail.creative_identity = {
+    ...campaign.outputs.youtube_thumbnail.creative_identity,
+    category: "rumour",
+  };
+
+  const report = validatePremiumVisualCampaign(campaign, { heroImagePresent: true });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(report.blockers.includes("premium_visual_cover_identity_mismatch:youtube_thumbnail"));
 });
 
 test("premium visual SVG is full bleed, source restrained and free of legacy CTA furniture", () => {

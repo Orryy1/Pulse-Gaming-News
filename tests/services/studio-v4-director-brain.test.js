@@ -329,6 +329,37 @@ test("Visual V4 Director turns Steam, score, price and retention signals into a 
       "media_house_polish_score",
     ),
   );
+  assert.equal(plan.creative_identity.category, "review");
+  assert.equal(plan.creative_identity.segment_name, "Worth Your Wishlist?");
+  assert.equal(plan.creative_rhythm.max_narrative_card_scene_count, 2);
+  assert.equal(plan.render_adjustments.creative_system_version, "pulse_visual_identity_v5");
+  assert.equal(plan.shot_plan.every((shot) => shot.creative_category === "review"), true);
+});
+
+test("Visual V4 Director applies a distinct V5 category grammar to update stories", () => {
+  const footagePlan = buildFootageEmpirePlan({
+    story: story(),
+    trustedFootageReport: trustedReport(),
+    localMotionClips: localClips(8),
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "halo-update-v5",
+      title: "Halo update adds three campaign missions",
+      full_script:
+        "Halo just added three campaign missions, but the useful question is whether the update changes the full run for returning players.",
+    },
+    footagePlan,
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+
+  assert.equal(plan.creative_identity.category, "update");
+  assert.equal(plan.creative_identity.code, "PG/UPD");
+  assert.equal(plan.creative_identity.transition_cycle[0], "smoothup");
+  assert.equal(plan.visual_obligations.no_adjacent_fullscreen_cards, true);
+  assert.equal(plan.visual_obligations.fullscreen_cards_are_context_only, true);
 });
 
 test("Visual V4 Director uses distinct official clip windows when source assets are limited", () => {
@@ -451,7 +482,7 @@ test("Visual V4 Director gives every card-like beat readable dwell time", () => 
     JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
   );
   assert.equal(
-    sourceLocks.every((shot) => Number(shot.durationS) === 2.2),
+    sourceLocks.every((shot) => Number(shot.durationS) === 2.6),
     true,
     JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
   );

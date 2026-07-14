@@ -364,7 +364,7 @@ test("premium card lane v2 rejects shell sidecars without readable hold proof", 
   }
 });
 
-test("premium card lane v2 accepts short proof-card sidecars without reimposing old 12s dwell", async () => {
+test("premium card lane v2 accepts V5 proof-card holds without reimposing old 12s dwell", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-legacy-dwell-"));
   try {
     const outDir = path.join(root, "test", "output");
@@ -386,7 +386,7 @@ test("premium card lane v2 accepts short proof-card sidecars without reimposing 
       channelId: "pulse-gaming",
     });
 
-    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 3.6);
+    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 3.4);
     assert.equal(result.premiumLane.verdict, "pass");
     assert.deepEqual(result.premiumLane.hyperframesPremiumShellGate.blockers, []);
   } finally {
@@ -394,7 +394,7 @@ test("premium card lane v2 accepts short proof-card sidecars without reimposing 
   }
 });
 
-test("premium card lane v2 accepts a concise source lock under its explicit 1.6-2.8s contract", async () => {
+test("premium card lane v2 accepts a concise source lock under its V5 1.9-3.1s contract", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-source-lock-"));
   try {
     const outDir = path.join(root, "test", "output");
@@ -410,8 +410,8 @@ test("premium card lane v2 accepts a concise source lock under its explicit 1.6-
               readableText: "BANDAI NAMCO ENTERTAINMENT AMERICA NEWS SOURCE",
               wordCount: 6,
               plannedVisibleDurationS: 2.2,
-              minimumVisibleDurationS: 1.6,
-              maximumVisibleDurationS: 2.8,
+              minimumVisibleDurationS: 1.9,
+              maximumVisibleDurationS: 3.1,
             }
           : {}),
       });
@@ -428,7 +428,7 @@ test("premium card lane v2 accepts a concise source lock under its explicit 1.6-
     assert.equal(
       result.premiumLane.hyperframesPremiumShellGate.checks.source.evidence
         .internalReadableHoldFloorS,
-      1.6,
+      1.9,
     );
     assert.deepEqual(result.premiumLane.hyperframesPremiumShellGate.blockers, []);
   } finally {

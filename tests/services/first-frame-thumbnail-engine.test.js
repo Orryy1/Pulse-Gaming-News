@@ -7,8 +7,12 @@ const {
   analyseCoverText,
   buildFirstFrameThumbnailReport,
   formatFirstFrameThumbnailMarkdown,
+  inspectPremiumVisualCampaign,
   scoreFirstFrameThumbnailStory,
 } = require("../../lib/ops/first-frame-thumbnail-engine");
+const {
+  buildPremiumVisualCampaignSpec,
+} = require("../../lib/ops/premium-visual-campaign-engine");
 
 function action(storyId, platform, overrides = {}) {
   return {
@@ -245,4 +249,64 @@ test("scoreFirstFrameThumbnailStory blocks an explicitly failed premium visual c
   assert.equal(report.verdict, "red");
   assert.equal(report.premium_visual_campaign.verdict, "fail");
   assert.ok(report.blockers.includes("premium_visual_campaign_not_green"));
+});
+
+test("inspectPremiumVisualCampaign keeps internally aligned V5 cover plans green", () => {
+  const campaign = buildPremiumVisualCampaignSpec({
+    story_id: "story-aligned-identity",
+    canonical_subject: "Super Mario RPG",
+    title: "Super Mario RPG Drops To $15",
+    headline: "SUPER MARIO RPG DROPS",
+    source_label: "GameStop",
+    classification: "deal",
+  });
+
+  const report = inspectPremiumVisualCampaign({ ...campaign, verdict: "green" });
+
+  assert.equal(report.verdict, "pass");
+  assert.equal(report.identity_parity.verdict, "pass");
+  assert.deepEqual(report.blockers, []);
+});
+
+test("scoreFirstFrameThumbnailStory blocks premium cover identity drift from the V5 story identity", () => {
+  const premiumVisualCampaign = buildPremiumVisualCampaignSpec({
+    story_id: "story-identity-drift",
+    canonical_subject: "Super Mario RPG",
+    title: "Super Mario RPG Drops To $15",
+    headline: "SUPER MARIO RPG DROPS",
+    source_label: "GameStop",
+    classification: "rumour",
+  });
+  const report = scoreFirstFrameThumbnailStory({
+    story: {
+      id: "story-identity-drift",
+      title: "Super Mario RPG Drops To $15",
+      creative_category: "deal",
+      source: { source_type: "rss" },
+    },
+    canonicalManifest: {
+      canonical_subject: "Super Mario RPG",
+      selected_title: "Super Mario RPG Drops To $15",
+      thumbnail_headline: "SUPER MARIO RPG DROPS",
+      primary_source: "GameStop",
+    },
+    actions: [
+      action("story-identity-drift", "youtube_shorts"),
+      action("story-identity-drift", "instagram_reels"),
+      action("story-identity-drift", "facebook_reels"),
+    ],
+    premiumVisualCampaign: {
+      ...premiumVisualCampaign,
+      verdict: "green",
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.equal(report.creative_identity.version, "pulse_visual_identity_v5");
+  assert.equal(report.creative_identity.category, "deal");
+  assert.equal(report.creative_identity.palette_id, "lime_orange");
+  assert.equal(report.creative_identity.segment_name, "Worth Your Wishlist?");
+  assert.equal(report.creative_identity.code, "PG/DAL");
+  assert.equal(report.premium_visual_campaign.identity_parity.verdict, "fail");
+  assert.ok(report.blockers.includes("premium_visual_campaign_story_identity_mismatch"));
 });

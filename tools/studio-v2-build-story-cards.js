@@ -12,7 +12,9 @@
 
 const path = require("node:path");
 const fs = require("fs-extra");
-const { execSync } = require("node:child_process");
+const { execFileSync, execSync } = require("node:child_process");
+const sharp = require("sharp");
+const { prescanImage } = require("../lib/visual-content-prescan");
 const {
   fitQuoteText,
   pickQuoteFontSize,
@@ -22,17 +24,22 @@ const {
   shellSidecarPathForCard,
 } = require("../lib/studio/v2/premium-card-lane-v2");
 const {
-  READABLE_CARD_TIMING,
-  SOURCE_CARD_TIMING,
-  cardTimingContract,
+  V5_READABLE_CARD_TIMING,
+  V5_SOURCE_CARD_TIMING,
+  v5CardTimingContract,
 } = require("../lib/studio/v4/premium-card-timing-policy");
+const {
+  applyPulseVisualIdentityToHtml,
+  inspectPulseVisualIdentityHtml,
+  resolvePulseVisualIdentity,
+} = require("../lib/studio/v5/pulse-visual-identity");
 const { hasVerifiedRedditReaction } = require("../lib/reddit-discussion-enrichment");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
 const DEFAULT_CHANNEL = "pulse-gaming";
-const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = READABLE_CARD_TIMING.minimum_visible_duration_s;
-const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = READABLE_CARD_TIMING.maximum_visible_duration_s;
+const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = V5_READABLE_CARD_TIMING.minimum_visible_duration_s;
+const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = V5_READABLE_CARD_TIMING.maximum_visible_duration_s;
 
 const CARD_KINDS = [
   "source",
@@ -144,7 +151,7 @@ function cardTextForReadability(kind, spec = {}) {
 
 function hyperframesCardReadabilityContractForSpec(kind, spec = {}) {
   const readableText = normaliseText(cardTextForReadability(kind, spec));
-  const timing = cardTimingContract(kind, readableText);
+  const timing = v5CardTimingContract(kind, readableText);
   const isSource = timing.kind === "source";
   const minimum = isSource
     ? timing.minimum_visible_duration_s
@@ -160,7 +167,7 @@ function hyperframesCardReadabilityContractForSpec(kind, spec = {}) {
       minimum_visible_duration_s: minimum,
       maximum_visible_duration_s: maximum,
       min_readable_card_duration_s: isSource
-        ? SOURCE_CARD_TIMING.minimum_visible_duration_s
+        ? V5_SOURCE_CARD_TIMING.minimum_visible_duration_s
         : MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
       max_readable_card_duration_s: maximum,
     },
@@ -228,10 +235,11 @@ function isPokemonMewtwoStory(story) {
 }
 
 function headlineWordsFromTitle(title) {
+  const filler = new Set(["a", "an", "the", "its", "just", "this", "that"]);
   const words = normaliseText(title)
     .replace(/[^a-zA-Z0-9\u00c0-\u017f ]+/g, " ")
     .split(/\s+/)
-    .filter((word) => word.length >= 4)
+    .filter((word) => word.length >= 3 && !filler.has(word.toLowerCase()))
     .slice(0, 3)
     .map((word) => word.toUpperCase());
   return words.length ? words : ["STORY", "UPDATE"];
@@ -289,6 +297,95 @@ function editorialKeyLine(story) {
   return candidates.length ? clampQuoteText(candidates[0].text) : "The player impact is the real story.";
 }
 
+function scriptSentences(story) {
+  return storyScriptText(story)
+    .split(/(?<=[.!?])\s+/)
+    .map(normaliseText)
+    .filter((sentence) => sentence && !/follow pulse gaming/i.test(sentence));
+}
+
+function contextImpactFromScript(story) {
+  const candidates = scriptSentences(story)
+    .map((sentence, index) => {
+      const words = sentence.split(/\s+/).filter(Boolean).length;
+      if (words < 5 || words > 10 || /\?$/.test(sentence)) return null;
+      let score = 0;
+      if (/\bfinish line\b/i.test(sentence)) score += 12;
+      if (/\b(?:saves?|saved)\s+(?:you\s+)?hours?\b/i.test(sentence)) score += 8;
+      if (/\b(?:respects?|wastes?)\s+(?:your|players?')?\s*time\b/i.test(sentence)) score += 7;
+      if (/\b(?:no longer|finally|now|fixed?|changes?|solves?)\b/i.test(sentence)) score += 4;
+      if (/\b(?:grind|payoff|quality-of-life|player impact)\b/i.test(sentence)) score += 3;
+      if (/\b(?:source|reports?|official|trailer)\b/i.test(sentence)) score -= 4;
+      return { sentence, index, score };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+  if (!candidates.length || candidates[0].score < 7) return "";
+  return normaliseText(candidates[0].sentence)
+    .replace(/[.!?]+$/, "")
+    .toUpperCase();
+}
+
+function concreteFactScore(sentence) {
+  let score = 0;
+  if (/\b(?:adds?|introduces?|reveals?|launches?|includes?|guarantees?)\b/i.test(sentence)) score += 5;
+  if (/\b(?:carry|costs?|releases?|arrives?|unlocks?|supports?|removes?|doubles?|cuts?)\b/i.test(sentence)) score += 4;
+  if (/\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i.test(sentence)) score += 3;
+  if (/\b(?:free|skin tracker|inventory|crossplay|release date|gameplay|missions?|maps?|modes?)\b/i.test(sentence)) score += 2;
+  if (/\b(?:source|reports?|official follow-up|argument|debate)\b/i.test(sentence)) score -= 4;
+  if (/\?$/.test(sentence) || /^if\b/i.test(sentence)) score -= 5;
+  return score;
+}
+
+function factLabel(sentence) {
+  const numberMatch = sentence.match(/\b(?:up to\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+([a-z][a-z'-]*)/i);
+  if (numberMatch) return `${numberMatch[1]} ${numberMatch[2]}`.toUpperCase();
+
+  const guaranteeMatch = sentence.match(/\bguarantees?\s+(?:a|an|the)?\s*([^,.!?]+)/i);
+  if (guaranteeMatch) return clampWords(`GUARANTEED ${guaranteeMatch[1]}`, 3).toUpperCase();
+
+  const additionMatch = sentence.match(/\b(?:adds?|introduces?|includes?)\s+(?:a|an|the)?\s*([^,.!?]+)/i);
+  if (additionMatch) {
+    return clampWords(additionMatch[1].replace(/^(?:new|free)\s+/i, ""), 3).toUpperCase();
+  }
+
+  return headlineWordsFromTitle(sentence).join(" ");
+}
+
+function concreteTimelineBullets(story, fallbackTitle, sourceName) {
+  const candidates = scriptSentences(story)
+    .map((sentence, index) => ({
+      sentence,
+      index,
+      score: concreteFactScore(sentence),
+      words: sentence.split(/\s+/).filter(Boolean).length,
+    }))
+    .filter((candidate) => candidate.words >= 5 && candidate.words <= 14 && candidate.score >= 4)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, 3)
+    .sort((left, right) => left.index - right.index)
+    .map(({ sentence }) => ({
+      strong: factLabel(sentence),
+      copy: clampWords(sentence, 10).replace(/[.!?]+$/, "").toLowerCase(),
+    }));
+
+  if (candidates.length >= 2) return candidates;
+  return [
+    { strong: "Verified detail", copy: sourceName.toLowerCase() },
+    { strong: "Player impact", copy: clampWords(fallbackTitle, 7).toLowerCase() },
+  ];
+}
+
+function takeawayHeadlineFromScript(story, fallbackWords) {
+  const sentences = scriptSentences(story);
+  for (let index = sentences.length - 1; index >= 0; index -= 1) {
+    const sentence = sentences[index];
+    const contrast = sentence.match(/\binto\s+(?:a|an|the)?\s*([a-z][a-z'-]*)[\s\S]*?\binstead of\s+(?:a|an|the)?\s*([a-z][a-z'-]*)/i);
+    if (contrast) return [contrast[1].toUpperCase(), "NOT", contrast[2].toUpperCase()];
+  }
+  return fallbackWords;
+}
+
 function firstUsefulQuote(story) {
   const text = storyText(story);
   if (/No premium ticket\.\s*No paywall\.\s*Every player gets access/i.test(text)) {
@@ -332,7 +429,7 @@ function quoteAttribution(story, fallbackLabel) {
   };
 }
 
-function buildStoryCardSpecs(story) {
+function buildStoryCardSpecsBase(story) {
   const label = sourceLabel(story);
   const title = normaliseText(story?.title);
   const reactionAttribution = quoteAttribution(story, label);
@@ -393,7 +490,11 @@ function buildStoryCardSpecs(story) {
     story?.card_context_number || story?.canonical_subject || story?.canonical_game,
   );
   const contextNumber = canonicalSubject || headlineWords[0] || "UPDATE";
-  const contextSub = normaliseText(story?.card_context_sub) || contextSubFromTitle(title, contextNumber);
+  const contextSub = normaliseText(story?.card_context_sub) ||
+    contextImpactFromScript(story) ||
+    contextSubFromTitle(title, contextNumber);
+  const timelineBullets = concreteTimelineBullets(story, title, label);
+  const takeawayHeadlineWords = takeawayHeadlineFromScript(story, headlineWords);
   return {
     source: {
       kicker: "SOURCE",
@@ -409,11 +510,7 @@ function buildStoryCardSpecs(story) {
     timeline: {
       kicker: "WHAT WE KNOW",
       heading: headlineWords.join(" "),
-      bullets: [
-        { strong: "Source checked", copy: label.toLowerCase() },
-        { strong: "Main detail", copy: clampWords(title, 7).toLowerCase() },
-        { strong: "Next step", copy: "watch for official follow-up" },
-      ],
+      bullets: timelineBullets,
     },
     quote: {
       kicker: "KEY LINE",
@@ -423,7 +520,7 @@ function buildStoryCardSpecs(story) {
     takeaway: {
       step: "03 / TAKEAWAY",
       kicker: "THE BOTTOM LINE",
-      headlineWords,
+      headlineWords: takeawayHeadlineWords,
       cta: "FOLLOW FOR MORE",
     },
     outro: {
@@ -433,6 +530,19 @@ function buildStoryCardSpecs(story) {
       cta: "VERIFIED GAMING NEWS",
     },
   };
+}
+
+function buildStoryCardSpecs(story) {
+  const creativeIdentity = resolvePulseVisualIdentity(story);
+  return Object.fromEntries(
+    Object.entries(buildStoryCardSpecsBase(story)).map(([kind, spec]) => [
+      kind,
+      {
+        ...spec,
+        creative_identity: creativeIdentity,
+      },
+    ]),
+  );
 }
 
 function channelSuffix(channelId = DEFAULT_CHANNEL) {
@@ -469,6 +579,154 @@ function pickStoryBackdrop(story) {
   }
 
   return firstExisting(candidates);
+}
+
+function storyVideoClipPaths(story = {}) {
+  return [
+    ...(Array.isArray(story.visual_v4_bridge_video_clips)
+      ? story.visual_v4_bridge_video_clips
+      : []),
+    ...(Array.isArray(story.video_clips) ? story.video_clips : []),
+  ]
+    .map((clip) => typeof clip === "string"
+      ? clip
+      : clip?.path || clip?.local_path || clip?.clip_path || clip?.video_path)
+    .map((clipPath) => String(clipPath || "").trim())
+    .filter((clipPath, index, all) => clipPath && all.indexOf(clipPath) === index)
+    .filter((clipPath) => !/^hf_(?:source|context|timeline|quote|takeaway|outro)_card_/i.test(path.basename(clipPath)))
+    .filter((clipPath) => fs.existsSync(clipPath));
+}
+
+function scoreStoryBackdropCandidate({ brightness, entropy, sharpness, prescan = {} } = {}) {
+  const reasons = [];
+  const textOverlayLikelihood = Number(prescan.text_overlay_likelihood || 0);
+  const tasteTags = Array.isArray(prescan.trailer_frame_taste?.tags)
+    ? prescan.trailer_frame_taste.tags
+    : [];
+  if (Number(brightness) < 20) reasons.push("backdrop_too_dark");
+  if (Number(brightness) > 238) reasons.push("backdrop_overexposed");
+  if (Number(entropy) < 1.5) reasons.push("backdrop_low_detail");
+  if (textOverlayLikelihood >= 0.22 || tasteTags.includes("text_heavy")) {
+    reasons.push("baked_trailer_text_risk");
+  }
+  if (String(prescan.trailer_frame_taste?.verdict || "") === "fail") {
+    reasons.push("backdrop_frame_taste_failed");
+  }
+  const exposurePenalty = Math.abs(Number(brightness) - 108) * 0.025;
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+    score: Number((Number(entropy || 0) * 4 + Number(sharpness || 0) * 6 - exposurePenalty - textOverlayLikelihood * 80).toFixed(3)),
+    text_overlay_likelihood: textOverlayLikelihood,
+  };
+}
+
+async function materialiseStoryBackdropsFromClips({
+  story = {},
+  storyId = "story",
+  outputDir = path.join(TEST_OUT, "hf-backdrops"),
+  count = CARD_KINDS.length,
+} = {}) {
+  const clips = storyVideoClipPaths(story).slice(0, 10);
+  if (!clips.length) return [];
+  const safeStoryId = String(storyId || "story").replace(/[^a-z0-9_-]+/gi, "_");
+  const candidateDir = path.join(outputDir, safeStoryId, "candidates");
+  await fs.ensureDir(candidateDir);
+  const candidates = [];
+
+  for (let clipIndex = 0; clipIndex < clips.length; clipIndex += 1) {
+    for (const sampleS of [0.45, 1.6, 3.2]) {
+      const candidatePath = path.join(
+        candidateDir,
+        `clip_${clipIndex + 1}_${String(sampleS).replace(".", "_")}.jpg`,
+      );
+      try {
+        execFileSync("ffmpeg", [
+          "-y",
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-ss",
+          String(sampleS),
+          "-i",
+          clips[clipIndex],
+          "-frames:v",
+          "1",
+          "-vf",
+          "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+          "-q:v",
+          "2",
+          candidatePath,
+        ]);
+        const stats = await sharp(candidatePath).stats();
+        const channels = stats.channels.slice(0, 3);
+        const brightness = channels.reduce((sum, channel) => sum + Number(channel.mean || 0), 0) /
+          Math.max(1, channels.length);
+        const prescan = await prescanImage(candidatePath, { sourceTypeHint: "trailer" });
+        const score = scoreStoryBackdropCandidate({
+          brightness,
+          entropy: stats.entropy,
+          sharpness: stats.sharpness,
+          prescan,
+        });
+        candidates.push({
+          path: candidatePath,
+          clip_index: clipIndex,
+          sample_s: sampleS,
+          ...score,
+        });
+      } catch {
+        // Another approved clip/sample may still provide the governed backdrop.
+      }
+    }
+  }
+
+  const eligible = candidates
+    .filter((candidate) => candidate.eligible)
+    .sort((left, right) => right.score - left.score);
+  const selected = [];
+  const usedClipIndexes = new Set();
+  for (const candidate of eligible) {
+    if (usedClipIndexes.has(candidate.clip_index)) continue;
+    selected.push(candidate);
+    usedClipIndexes.add(candidate.clip_index);
+    if (selected.length >= count) break;
+  }
+  for (const candidate of eligible) {
+    if (selected.includes(candidate)) continue;
+    selected.push(candidate);
+    if (selected.length >= count) break;
+  }
+
+  const backdropPaths = [];
+  for (let index = 0; index < selected.length; index += 1) {
+    const backdropPath = path.join(
+      outputDir,
+      safeStoryId,
+      `backdrop_${String(index + 1).padStart(2, "0")}.jpg`,
+    );
+    await fs.copy(selected[index].path, backdropPath, { overwrite: true });
+    backdropPaths.push(backdropPath);
+  }
+  return backdropPaths;
+}
+
+async function materialiseStoryBackdropFromClips(options = {}) {
+  const backdrops = await materialiseStoryBackdropsFromClips({ ...options, count: 1 });
+  return backdrops[0] || null;
+}
+
+function buildCardBackdropMap(backdropPaths = [], fallbackPath = null) {
+  const backdrops = backdropPaths.filter(Boolean);
+  if (!backdrops.length && fallbackPath) backdrops.push(fallbackPath);
+  const map = {};
+  const editorialPriority = ["source", "context", "takeaway", "timeline", "quote", "outro"];
+  for (let index = 0; index < editorialPriority.length; index += 1) {
+    map[editorialPriority[index]] = backdrops.length
+      ? backdrops[index % backdrops.length]
+      : null;
+  }
+  return map;
 }
 
 async function loadStoryForCards(storyId) {
@@ -651,10 +909,15 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
   } = require("../lib/studio/v2/channel-themes");
   html = applyThemeToHtml(html, getChannelTheme(channelId));
   const readability = hyperframesCardReadabilityContractForSpec(kind, spec);
-  return applyReadableDurationToTemplate(
+  html = applyReadableDurationToTemplate(
     html,
     readability.evidence.planned_visible_duration_s,
   );
+  return applyPulseVisualIdentityToHtml(html, {
+    identity: spec.creative_identity || resolvePulseVisualIdentity({}),
+    kind,
+    durationS: readability.evidence.planned_visible_duration_s,
+  });
 }
 
 function storyScriptText(story) {
@@ -773,7 +1036,7 @@ function readableTextFromProjectHtml(kind, html = "") {
 function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
   const readableText = readableTextFromProjectHtml(kind, html);
   const planned = htmlDataDurationS(html);
-  const timing = cardTimingContract(kind, readableText);
+  const timing = v5CardTimingContract(kind, readableText);
   const isSource = timing.kind === "source";
   const minimum = isSource
     ? timing.minimum_visible_duration_s
@@ -793,7 +1056,7 @@ function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
       minimum_visible_duration_s: minimum,
       maximum_visible_duration_s: maximum,
       min_readable_card_duration_s: isSource
-        ? SOURCE_CARD_TIMING.minimum_visible_duration_s
+        ? V5_SOURCE_CARD_TIMING.minimum_visible_duration_s
         : MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
       max_readable_card_duration_s: maximum,
     },
@@ -840,6 +1103,7 @@ async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
     animationBlockers.push("main_timeline_not_registered");
   }
   const readabilityContract = hyperframesCardReadabilityContractFromHtml(kind, html);
+  const creativeIdentityContract = inspectPulseVisualIdentityHtml(html);
 
   return {
     visual_identity: {
@@ -868,6 +1132,7 @@ async function inspectPremiumShellProject({ projectDir, kind, storyId }) {
       },
     },
     readability_contract: readabilityContract,
+    creative_identity_contract: creativeIdentityContract,
   };
 }
 
@@ -891,9 +1156,8 @@ async function writeHyperframesPremiumShellEvidence({
     ...(projectEvidence.visual_identity.blockers || []),
     ...(projectEvidence.animation_contract.blockers || []),
     ...(projectEvidence.readability_contract.blockers || []),
+    ...(projectEvidence.creative_identity_contract.blockers || []),
   ];
-  if (checks?.inspect?.skipped === true) blockers.push("hyperframes_inspect_skipped");
-
   const shell = {
     schema_version: 1,
     generated_at: new Date().toISOString(),
@@ -983,23 +1247,8 @@ async function renderCard({ kind, storyId, channelId, projectDir, inspect }) {
   await fs.ensureDir(TEST_OUT);
   const outPath = path.join(TEST_OUT, outputNameForCard(kind, storyId, channelId));
   const checks = {};
-  console.log(`[story-cards] lint ${path.basename(projectDir)}`);
-  checks.lint = runHyperframes(["lint"], projectDir);
-  console.log(`[story-cards] validate ${path.basename(projectDir)}`);
-  checks.validate = runHyperframes(["validate"], projectDir);
-  if (inspect) {
-    console.log(`[story-cards] inspect ${path.basename(projectDir)}`);
-    checks.inspect = runHyperframes(
-      ["inspect", ".", "--samples", "3", "--timeout", "10000", "--max-issues", "20"],
-      projectDir,
-    );
-  } else {
-    checks.inspect = {
-      status: "skipped",
-      skipped: true,
-      reason: "inspect_disabled",
-    };
-  }
+  console.log(`[story-cards] check ${path.basename(projectDir)}`);
+  checks.check = runHyperframes(["check", "."], projectDir);
   console.log(
     `[story-cards] render ${path.basename(projectDir)} -> ${path.relative(
       ROOT,
@@ -1038,7 +1287,13 @@ async function buildStoryCards({
   const id = storyId || story.storyId || story.id;
   const loadedStory = story || (await loadStoryForCards(id));
   const specs = buildStoryCardSpecs(loadedStory);
-  const backdropPath = pickStoryBackdrop(loadedStory);
+  const fallbackBackdropPath = pickStoryBackdrop(loadedStory);
+  const materialisedBackdrops = await materialiseStoryBackdropsFromClips({
+    story: loadedStory,
+    storyId: id,
+  });
+  const backdropMap = buildCardBackdropMap(materialisedBackdrops, fallbackBackdropPath);
+  const backdropPath = backdropMap.source || fallbackBackdropPath || null;
   const outputs = {};
 
   for (const kind of CARD_KINDS) {
@@ -1047,7 +1302,7 @@ async function buildStoryCards({
       storyId: id,
       channelId,
       spec: specs[kind],
-      backdropPath,
+      backdropPath: backdropMap[kind],
     });
     outputs[kind] = {
       projectDir,
@@ -1072,6 +1327,7 @@ async function buildStoryCards({
     channelId,
     specs,
     backdropPath,
+    backdropMap,
     outputs,
   };
 }
@@ -1143,4 +1399,8 @@ module.exports = {
   inspectPremiumShellProject,
   outputNameForCard,
   pickStoryBackdrop,
+  buildCardBackdropMap,
+  materialiseStoryBackdropFromClips,
+  materialiseStoryBackdropsFromClips,
+  scoreStoryBackdropCandidate,
 };

@@ -53,6 +53,7 @@ function getActiveBrand() {
     voiceId: ch.voiceId,
     voiceModel: ch.voiceModel,
     voiceSettings: ch.voiceSettings,
+    longformVoice: ch.longformVoice,
   };
 }
 

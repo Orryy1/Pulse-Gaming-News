@@ -79,7 +79,31 @@ Check the existing weekly build and aggregate long-form operations:
 ```powershell
 npm run ops:weekly-longform-readiness -- --json
 npm run ops:longform-operations -- --json
+npm run ops:longform-voice-doctor
 ```
+
+## Narrator identity
+
+Pulse Gaming long-form uses the managed Scottish **Isla** voice as a dedicated
+documentary narrator. Shorts and Reels continue to use Liam. The two routes are
+separate by design so a long-form voice change cannot silently alter the live
+short-form identity.
+
+The long-form compiler:
+
+- resolves only `PULSE_LONGFORM_VOICE_ID` or `LONGFORM_VOICE_ID` overrides
+- does not inherit `ELEVENLABS_VOICE_ID`, which belongs to short-form
+- uses the stable `eleven_multilingual_v2` model and native-speed synthesis
+- applies the shared gaming title and punctuation pronunciation rules
+- masters narration to a `-16 LUFS` target with a `-2.2 dBTP` ceiling
+- stamps voice ID, narrator name, accent, model, settings and use scope into
+  the timestamp evidence
+- fails closed when the managed voice is unavailable or mastering fails
+
+`npm run ops:longform-voice-doctor` performs a read-only account check and
+writes `output/longform-voice/longform_voice_status.json`. A GREEN result proves
+that the configured voice is available. It does not publish, modify credentials
+or authorise a long-form upload.
 
 ## Required evidence
 

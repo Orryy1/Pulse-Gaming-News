@@ -1,13 +1,21 @@
 const axios = require('axios');
 const fs = require('fs-extra');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const util = require('util');
 const dotenv = require('dotenv');
 const db = require('./lib/db');
 const { createLlmClient } = require('./lib/llm-client');
+const { masterTtsAudioFile } = require('./lib/audio-quality');
+const {
+  buildLongformTtsRequest,
+  cleanLongformNarration,
+  resolveLongformVoiceProfile,
+  stampLongformVoiceEvidence,
+} = require('./lib/longform-voice-profile');
 
 const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
 dotenv.config({ override: true });
 
@@ -478,49 +486,61 @@ Output ONLY valid JSON with no preamble and no markdown backticks:
   return script;
 }
 
-// --- Generate TTS audio via ElevenLabs (with-timestamps endpoint) ---
+// --- Generate governed long-form TTS (with-timestamps endpoint) ---
 
-async function generateCompilationAudio(fullScript, outputPath) {
-  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID;
-  const voiceSettings = brand.voiceSettings || { stability: 0.20, similarity_boost: 0.80, style: 0.75, speaking_rate: 1.1 };
-
-  // Clean the script for TTS
-  const ttsText = (fullScript || '')
-    .replace(/\[PAUSE\]/gi, '. ')
-    .replace(/\[VISUAL:[^\]]*\]/gi, '')
-    .replace(/\.{2,}/g, '.')
-    .replace(/[*_~`#|]/g, '')
-    .replace(/[^\x20-\x7E.,'!?;:\-()]/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/\.\s*\./g, '.')
-    .trim();
-
-  console.log(`[weekly] Generating TTS audio (${ttsText.length} chars)...`);
-
-  const response = await axios({
-    method: 'POST',
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
-    headers: {
-      'xi-api-key': process.env.ELEVENLABS_API_KEY,
-      'Content-Type': 'application/json',
-    },
-    data: {
-      text: ttsText,
-      model_id: brand.voiceModel || 'eleven_multilingual_v2',
-      voice_settings: voiceSettings,
-      output_format: 'mp3_44100_128',
-    },
-    timeout: 120000,
+async function generateCompilationAudio(fullScript, outputPath, { kind = 'longform' } = {}) {
+  const profile = resolveLongformVoiceProfile({
+    channel: brand,
+    env: process.env,
+    kind,
   });
+  const ttsText = cleanLongformNarration(fullScript);
+  if (!ttsText) throw new Error('longform_narration_text_missing');
+  if (!process.env.ELEVENLABS_API_KEY) {
+    throw new Error('longform_tts_credentials_missing: ELEVENLABS_API_KEY');
+  }
+
+  console.log(
+    `[weekly] Generating ${kind} TTS with ${profile.name} (${ttsText.length} chars)...`,
+  );
+
+  const response = await axios(buildLongformTtsRequest({
+    profile,
+    text: ttsText,
+    apiKey: process.env.ELEVENLABS_API_KEY,
+    timeoutMs: Number(process.env.LONGFORM_TTS_TIMEOUT_MS || 600000),
+  }));
 
   await fs.ensureDir(path.dirname(outputPath));
 
   const audioBase64 = response.data.audio_base64;
+  if (!audioBase64) throw new Error('longform_tts_returned_no_audio');
   await fs.writeFile(outputPath, Buffer.from(audioBase64, 'base64'));
+  const voiceMastering = await masterTtsAudioFile({
+    inputPath: outputPath,
+    outputPath,
+    execFileAsync,
+    env: {
+      ...process.env,
+      TTS_VOICE_TARGET_LUFS: process.env.LONGFORM_VOICE_TARGET_LUFS || '-16',
+      TTS_VOICE_TRUE_PEAK: process.env.LONGFORM_VOICE_TRUE_PEAK || '-2.2',
+      TTS_VOICE_LRA: process.env.LONGFORM_VOICE_LRA || '8',
+      TTS_VOICE_MASTER_BITRATE: process.env.LONGFORM_VOICE_MASTER_BITRATE || '256k',
+    },
+    log: console.log,
+  });
+  if (!voiceMastering.ok) {
+    throw new Error(`longform_voice_mastering_failed:${voiceMastering.code}`);
+  }
 
-  // Save word timestamps for subtitle sync
   const timestampsPath = outputPath.replace(/\.mp3$/, '_timestamps.json');
-  const alignment = response.data.alignment || {};
+  const alignment = stampLongformVoiceEvidence({
+    alignment: response.data.alignment || {},
+    profile,
+    kind,
+    text: ttsText,
+    voiceMastering,
+  });
   await fs.writeJson(timestampsPath, alignment, { spaces: 2 });
 
   console.log(`[weekly] TTS audio saved: ${outputPath}`);
@@ -560,7 +580,7 @@ async function compileWeekly() {
   const audioDir = path.join('output', 'audio');
   await fs.ensureDir(audioDir);
   const audioPath = path.join(audioDir, 'weekly_roundup.mp3');
-  await generateCompilationAudio(script.full_script, audioPath);
+  await generateCompilationAudio(script.full_script, audioPath, { kind: 'weekly_roundup' });
 
   // 5. Get audio duration
   const duration = await getAudioDuration(audioPath);
@@ -791,7 +811,7 @@ async function compileByTopic(topicName) {
   await fs.ensureDir(audioDir);
   const slug = topicName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   const audioPath = path.join(audioDir, `topic_${slug}.mp3`);
-  await generateCompilationAudio(script.full_script, audioPath);
+  await generateCompilationAudio(script.full_script, audioPath, { kind: 'topic_compilation' });
 
   // 5. Get audio duration
   const duration = await getAudioDuration(audioPath);
@@ -987,6 +1007,7 @@ module.exports = {
     hasEnoughWeeklyStories,
     getVideoProbe,
     requiredLongformPublishFlag,
+    generateCompilationAudio,
   },
 };
 

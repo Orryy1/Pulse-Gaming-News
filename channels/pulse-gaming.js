@@ -47,6 +47,23 @@ module.exports = {
     speaking_rate: 1.0,
   },
 
+  // Long-form documentary voice. This lane is deliberately separate from
+  // the Liam profile used by Shorts and Reels.
+  longformVoice: {
+    provider: "elevenlabs",
+    voiceId: "h8eW5xfRUGVJrZhAFxqK",
+    name: "Isla - Youthful, Relaxed, and Warm",
+    accent: "Scottish",
+    source: "existing_managed_voice_account",
+    modelId: "eleven_multilingual_v2",
+    voiceSettings: {
+      stability: 0.58,
+      similarity_boost: 0.86,
+      style: 0.28,
+      speed: 1.0,
+    },
+  },
+
   // Content sources
   subreddits: [
     "GamingLeaksAndRumours",

@@ -165,6 +165,7 @@
     "ops:goal-sfx-evidence-repair": "node tools/goal-sfx-evidence-repair.js",
     "ops:goal-sfx-rerender-workorder": "node tools/goal-sfx-rerender-workorder.js",
     "ops:render-audio-segment-audit": "node tools/render-audio-segment-audit.js",
+    "ops:longform-voice-doctor": "node tools/longform-voice-doctor.js",
     "ops:local-bridge-candidate-upsert": "node tools/local-bridge-candidate-upsert.js",
     "ops:bridge-candidate-promotion": "node tools/bridge-candidate-promotion.js",
     "ops:bridge-candidate-metadata-refresh": "node tools/bridge-candidate-metadata-refresh.js",

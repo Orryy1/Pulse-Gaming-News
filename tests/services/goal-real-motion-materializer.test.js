@@ -245,7 +245,6 @@ test("real motion materializer can refresh a requested ready story from its moti
     readiness: { status: "v4_motion_ready", blockers: [] },
     clips,
   });
-
   const report = await materializeGoalRealMotion({
     root,
     workOrder: {
@@ -356,6 +355,7 @@ test("real motion materializer rebalances validated package clips when refreshin
     maxClips: 8,
     maxDirectClipsPerBaseSource: 2,
     generatedAt: "2026-07-13T17:45:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
   });
 
   assert.equal(report.summary.materialized_story_count, 1);
@@ -715,6 +715,7 @@ test("real motion materializer restores package evidence from an already materia
       }],
     },
     generatedAt: "2026-06-23T18:20:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
   });
 
   assert.equal(report.summary.materialized_story_count, 1);
@@ -727,6 +728,163 @@ test("real motion materializer restores package evidence from an already materia
   const familyReport = await fs.readJson(path.join(artifactDir, "distinct_motion_family_report.json"));
   assert.equal(familyReport.status, "ready");
   assert.equal(familyReport.summary.clip_count, 6);
+});
+
+test("real motion materializer blocks visually duplicated clips restored from a ready central pack", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-central-visual-dedupe-"));
+  const storyId = "central-visual-dedupe";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const videoCache = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(videoCache);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  const clips = Array.from({ length: 5 }, (_, index) => {
+    const clipPath = path.join(videoCache, `${storyId}-${index + 1}.mp4`);
+    fs.writeFileSync(clipPath, Buffer.alloc(4096, index + 1));
+    return {
+      id: `central-clip-${index + 1}`,
+      type: "motion_clip",
+      source_family: `central_family_${index + 1}`,
+      motion_family: `central_family_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://video.akamai.steamstatic.com/store_trailers/100/200/hash-${index + 1}/hls_264_master.m3u8`,
+      source_kind: "hls_manifest",
+      source_type: "steam_movie",
+      media_kind: "direct_video",
+      durationS: 5,
+      mediaStartS: index * 6,
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      trusted_source_matched: false,
+      rights_basis: "official_direct_media",
+      provenance: {
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    };
+  });
+  await fs.outputJson(path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`), {
+    story_id: storyId,
+    source: "validated_real_motion_materializer",
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    status: "ready",
+    clips,
+    clip_count: clips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "distinct_motion_family_report.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    status: "ready",
+    families: clips.map((clip) => clip.source_family),
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["materialised_motion_clips_missing"],
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-07-14T18:45:00.000Z",
+    clipVisualFingerprint: async (clip) =>
+      ["central-clip-1", "central-clip-2"].includes(clip.id) ? "same-content" : clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].skipped_visual_duplicate_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("visual_motion_duplicate_content_detected"));
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "blocked");
+  assert.equal(materialised.not_publishable, true);
+  assert.equal(materialised.clip_count, 4);
+  assert.ok(materialised.blockers.includes("visual_motion_duplicate_content_detected"));
+  const familyReport = await fs.readJson(path.join(artifactDir, "distinct_motion_family_report.json"));
+  assert.equal(familyReport.status, "blocked");
+});
+
+test("real motion materializer audits and demotes an artifact-only stale ready manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-artifact-only-audit-"));
+  const storyId = "artifact-only-visual-dedupe";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const videoCache = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(videoCache);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  const clips = Array.from({ length: 5 }, (_, index) => {
+    const clipPath = path.join(videoCache, `${storyId}-${index + 1}.mp4`);
+    fs.writeFileSync(clipPath, Buffer.alloc(4096, index + 1));
+    return {
+      id: `artifact-clip-${index + 1}`,
+      source_family: `artifact_family_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://vulcan.dl.playstation.net/img/rnd/202607/clip-${index + 1}.mp4`,
+      source_type: "official_game_site_news_page",
+      media_kind: "direct_video",
+      durationS: 5,
+      mediaStartS: index * 6,
+      materialized: true,
+      counts_towards_motion_readiness: true,
+    };
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    status: "ready",
+    clips,
+    clip_count: clips.length,
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        status: "ready_for_final_render_job",
+        actions: [{ action_id: "run_visual_v4_production_render" }],
+      }],
+    },
+    storyIds: [storyId],
+    includeReadyStories: true,
+    generatedAt: "2026-07-14T19:00:00.000Z",
+    clipVisualFingerprint: async (clip) =>
+      ["artifact-clip-1", "artifact-clip-2"].includes(clip.id) ? "same-content" : clip.id,
+  });
+
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].skipped_visual_duplicate_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("visual_motion_duplicate_content_detected"));
+  assert.equal(report.jobs[0].stale_ready_evidence_invalidated, true);
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "blocked");
+  assert.equal(materialised.clip_count, 4);
 });
 
 test("real motion materializer blocks one official trailer from masquerading as many direct-video windows", async () => {
@@ -3135,6 +3293,46 @@ test("real motion materializer refuses to mark a story ready below motion thresh
   assert.ok(partial.clips.every((clip) => clip.counts_towards_motion_readiness === false));
 });
 
+test("real motion materializer skips visually duplicate clips from different source URLs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-visual-dedupe-"));
+  const job = await makePackage(root, "visual-dedupe");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.assets = Array.from({ length: 6 }, (_, index) => ({
+    ...rights.assets[index % rights.assets.length],
+    id: `visual-dedupe-direct-${index + 1}`,
+    source_family: `visual_dedupe_family_${index + 1}`,
+    path: `https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/visual-${index + 1}.mp4?tag=14`,
+    source_url: `https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/visual-${index + 1}.mp4?tag=14`,
+    mediaStartS: index * 5,
+    visual_test_signature: index < 2 ? "same-visual-content" : `unique-visual-${index + 1}`,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-14T18:30:00.000Z",
+    maxClips: 5,
+    clipVisualFingerprint: async (clip) =>
+      ["visual-dedupe-direct-1", "visual-dedupe-direct-2"].includes(clip.id)
+        ? "same-visual-content"
+        : `unique-${clip.id}`,
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 9));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0], null, 2));
+  assert.equal(report.jobs[0].materialized_count, 5);
+  assert.equal(report.jobs[0].distinct_motion_family_count, 5);
+  assert.equal(report.jobs[0].skipped_visual_duplicate_count, 1);
+  assert.equal(report.jobs[0].skipped_visual_duplicates[0].id, "visual-dedupe-direct-2");
+  assert.equal(report.jobs[0].clips.some((clip) => clip.id === "visual-dedupe-direct-6"), true);
+});
+
 test("real motion materializer writes machine-readable and operator reports", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-write-"));
   const report = {
@@ -3187,6 +3385,17 @@ test("real motion materializer writes source acquisition work orders for blocked
         distinct_motion_family_count: 0,
         direct_video_motion_clip_count: 0,
       },
+      {
+        story_id: "visual-duplicates",
+        title: "PS5 Games List Repeats The Same Footage",
+        artifact_dir: path.join(root, "output", "goal-proof", "batch", "visual-duplicates"),
+        status: "blocked",
+        blockers: ["visual_motion_duplicate_content_detected"],
+        candidate_count: 8,
+        materialized_count: 6,
+        distinct_motion_family_count: 6,
+        direct_video_motion_clip_count: 6,
+      },
     ],
   };
 
@@ -3197,8 +3406,8 @@ test("real motion materializer writes source acquisition work orders for blocked
   assert.equal(await fs.pathExists(written.realMotionSourceAcquisitionWorkOrderPath), true);
   const workOrder = await fs.readJson(written.realMotionSourceAcquisitionWorkOrderPath);
   assert.equal(workOrder.mode, "REAL_MOTION_SOURCE_ACQUISITION_WORK_ORDER");
-  assert.equal(workOrder.summary.story_count, 2);
-  assert.equal(workOrder.summary.operator_required_count, 2);
+  assert.equal(workOrder.summary.story_count, 3);
+  assert.equal(workOrder.summary.operator_required_count, 3);
   assert.equal(workOrder.summary.auto_repairable_count, 0);
   assert.equal(workOrder.jobs[0].story_id, "direct-video-missing");
   assert.equal(workOrder.jobs[0].repair_lane, "direct_video_motion_source_acquisition");
@@ -3209,6 +3418,8 @@ test("real motion materializer writes source acquisition work orders for blocked
   assert.equal(workOrder.jobs[1].story_id, "no-candidates");
   assert.equal(workOrder.jobs[1].repair_lane, "validated_direct_media_candidate_acquisition");
   assert.match(workOrder.jobs[1].required_artefact_path, /motion-packs/);
+  assert.equal(workOrder.jobs[2].story_id, "visual-duplicates");
+  assert.equal(workOrder.jobs[2].repair_lane, "real_motion_depth_acquisition");
   assert.equal(workOrder.safety.no_publish_triggered, true);
   assert.equal(workOrder.safety.no_oauth_or_token_change, true);
 });

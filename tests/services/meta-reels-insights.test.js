@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  META_INSIGHTS_REQUEST_METRICS,
   buildMetaMetricSnapshotRow,
   buildMetaReelsInsightsPlan,
   buildMetaInsightsRequest,
@@ -52,6 +53,36 @@ test("buildMetaMetricSnapshotRow maps Instagram Reels plays into platform snapsh
   assert.equal(row.shares, 1);
   assert.equal(row.raw_json.source, "meta_graph_reels_insights");
   assert.equal(row.raw_json.reach, 786);
+});
+
+test("buildMetaMetricSnapshotRow maps current Instagram views and watch-time metrics", () => {
+  const row = buildMetaMetricSnapshotRow({
+    post: {
+      story_id: "story-ig-current",
+      platform: "instagram_reels",
+      external_id: "ig_current",
+    },
+    insights: {
+      data: [
+        { name: "views", values: [{ value: 21117 }] },
+        { name: "ig_reels_video_view_total_time", values: [{ value: 98765 }] },
+      ],
+    },
+  });
+
+  assert.equal(row.views, 21117);
+  assert.equal(row.watch_time_seconds, 98.765);
+  assert.deepEqual(META_INSIGHTS_REQUEST_METRICS.instagram_reels, [
+    "views",
+    "reach",
+    "likes",
+    "comments",
+    "shares",
+    "saved",
+    "ig_reels_video_view_total_time",
+    "ig_reels_avg_watch_time",
+    "reels_skip_rate",
+  ]);
 });
 
 test("buildMetaMetricSnapshotRow maps Facebook Reels views and reactions", () => {
@@ -204,4 +235,66 @@ test("collectMetaReelsInsightSnapshots preserves per-target errors and continues
   assert.equal(result.counts.failed, 1);
   assert.match(result.errors[0].message, /Graph says no/);
   assert.equal(result.snapshots[0].story_id, "fb");
+});
+
+test("collectMetaReelsInsightSnapshots preserves actionable permission diagnostics", async () => {
+  const error = new Error("Meta insights permission is missing");
+  error.metaDiagnostics = {
+    blocker_kind: "permission_required",
+    operator_action_required: true,
+    retryable: false,
+    required_permissions: ["instagram_manage_insights", "pages_read_engagement"],
+  };
+
+  const result = await collectMetaReelsInsightSnapshots({
+    targets: [
+      { story_id: "ig", platform: "instagram_reels", external_id: "ig_1" },
+    ],
+    fetchInsights: async () => {
+      throw error;
+    },
+  });
+
+  assert.equal(result.verdict, "failed");
+  assert.equal(result.errors[0].blocker_kind, "permission_required");
+  assert.equal(result.errors[0].operator_action_required, true);
+  assert.equal(result.errors[0].retryable, false);
+  assert.deepEqual(result.errors[0].required_permissions, [
+    "instagram_manage_insights",
+    "pages_read_engagement",
+  ]);
+  assert.deepEqual(result.blocker_summary, {
+    permission_required: 1,
+  });
+});
+
+test("collectMetaReelsInsightSnapshots circuit-breaks repeated platform permission failures", async () => {
+  let fetches = 0;
+  const permissionError = new Error("Meta insights permission is missing");
+  permissionError.metaDiagnostics = {
+    blocker_kind: "permission_required",
+    operator_action_required: true,
+    retryable: false,
+    required_permissions: ["instagram_manage_insights", "pages_read_engagement"],
+    next_action: "Grant read-only insights permissions.",
+  };
+
+  const result = await collectMetaReelsInsightSnapshots({
+    targets: [
+      { story_id: "ig-1", platform: "instagram_reels", external_id: "ig_1" },
+      { story_id: "ig-2", platform: "instagram_reels", external_id: "ig_2" },
+      { story_id: "ig-3", platform: "instagram_reels", external_id: "ig_3" },
+    ],
+    fetchInsights: async () => {
+      fetches += 1;
+      throw permissionError;
+    },
+  });
+
+  assert.equal(fetches, 1);
+  assert.equal(result.counts.network_requests, 1);
+  assert.equal(result.counts.failed, 3);
+  assert.equal(result.errors[0].skipped_due_to_platform_blocker, false);
+  assert.equal(result.errors[1].skipped_due_to_platform_blocker, true);
+  assert.equal(result.errors[2].skipped_due_to_platform_blocker, true);
 });

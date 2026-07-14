@@ -9,6 +9,7 @@ require("dotenv").config({ override: true, quiet: true });
 
 const { recordSnapshot } = require("../lib/repositories/platform_metric_snapshots");
 const {
+  META_INSIGHTS_REQUEST_METRICS,
   buildMetaInsightsRequest,
   buildMetaReelsInsightsPlan,
   collectMetaReelsInsightSnapshots,
@@ -60,6 +61,9 @@ function resolveTokenForTarget(target, env = process.env) {
 }
 
 function uniqueMetricNames(target = {}) {
+  if (Array.isArray(target.request_metrics)) {
+    return [...new Set(target.request_metrics.filter(Boolean))];
+  }
   const names = [];
   for (const value of Object.values(target.metrics || {})) {
     for (const name of Array.isArray(value) ? value : []) {
@@ -67,6 +71,85 @@ function uniqueMetricNames(target = {}) {
     }
   }
   return names;
+}
+
+function requiredPermissionsForPlatform(platform) {
+  if (platform === "instagram_reels") {
+    return ["instagram_manage_insights", "pages_read_engagement"];
+  }
+  if (platform === "facebook_reels") {
+    return ["read_insights", "pages_read_engagement"];
+  }
+  return [];
+}
+
+function classifyMetaInsightsError(error, target = {}) {
+  const redacted = redactError(error);
+  const message = String(redacted.message || "").toLowerCase();
+  const platform = target.platform || "unknown";
+  const permissionRequired = [10, 200].includes(Number(redacted.code))
+    || /permission missing|does not have permission|not authorized|not authorised/.test(message);
+  const tokenRequired = Number(redacted.code) === 190
+    || /invalid oauth access token|access token.*invalid|token.*expired/.test(message);
+  const invalidMetric = Number(redacted.code) === 100
+    && /metric|insights/.test(message);
+  const rateLimited = Number(redacted.status) === 429
+    || [4, 17, 32, 613].includes(Number(redacted.code));
+
+  if (permissionRequired) {
+    return {
+      ...redacted,
+      blocker_kind: "permission_required",
+      operator_action_required: true,
+      retryable: false,
+      required_permissions: requiredPermissionsForPlatform(platform),
+      next_action: `Grant the existing ${platform} integration its missing read-only insights permissions, then re-run collection.`,
+    };
+  }
+  if (tokenRequired) {
+    return {
+      ...redacted,
+      blocker_kind: "token_invalid_or_expired",
+      operator_action_required: true,
+      retryable: false,
+      required_permissions: [],
+      next_action: `Repair the existing ${platform} access token through the approved operator flow.`,
+    };
+  }
+  if (invalidMetric) {
+    return {
+      ...redacted,
+      blocker_kind: "invalid_metric",
+      operator_action_required: false,
+      retryable: false,
+      required_permissions: [],
+      next_action: "Retry only current metrics or use the platform edge's all-supported-metrics response.",
+    };
+  }
+  if (rateLimited) {
+    return {
+      ...redacted,
+      blocker_kind: "rate_limited",
+      operator_action_required: false,
+      retryable: true,
+      required_permissions: [],
+      next_action: "Respect Retry-After and retry during the next analytics collection cycle.",
+    };
+  }
+  return {
+    ...redacted,
+    blocker_kind: "meta_api_error",
+    operator_action_required: false,
+    retryable: Number(redacted.status) >= 500,
+    required_permissions: [],
+    next_action: "Preserve the Graph error and retry only if it is transient.",
+  };
+}
+
+function enrichMetaInsightsError(error, target) {
+  const enriched = error instanceof Error ? error : new Error(String(error));
+  enriched.metaDiagnostics = classifyMetaInsightsError(enriched, target);
+  return enriched;
 }
 
 function redactError(error) {
@@ -79,31 +162,52 @@ function redactError(error) {
   };
 }
 
-function createMetaInsightsFetcher({ graphVersion = "v21.0", env = process.env } = {}) {
+function createMetaInsightsFetcher({
+  graphVersion = "v21.0",
+  env = process.env,
+  httpClient = axios,
+} = {}) {
   return async function fetchInsights(target) {
     const token = resolveTokenForTarget(target, env);
-    if (!token) throw new Error(`${target.platform}_access_token_missing`);
+    if (!token) {
+      const error = new Error(`${target.platform}_access_token_missing`);
+      error.metaDiagnostics = {
+        blocker_kind: "access_token_missing",
+        operator_action_required: true,
+        retryable: false,
+        required_permissions: requiredPermissionsForPlatform(target.platform),
+        next_action: `Configure the existing ${target.platform} read token through the approved operator flow.`,
+      };
+      throw error;
+    }
     const metrics = uniqueMetricNames(target);
-    if (!metrics.length) throw new Error(`${target.platform}_metric_names_missing`);
+    const isFacebook = target.platform === "facebook_reels";
+    if (!isFacebook && !metrics.length) {
+      target.request_metrics = META_INSIGHTS_REQUEST_METRICS.instagram_reels;
+      metrics.push(...META_INSIGHTS_REQUEST_METRICS.instagram_reels);
+    }
 
     const { url: endpoint } = buildMetaInsightsRequest({ target, graphVersion });
+    const requestParams = { access_token: token };
+    if (!isFacebook) requestParams.metric = metrics.join(",");
     try {
-      const response = await axios.get(endpoint, {
-        params: {
-          metric: metrics.join(","),
-          access_token: token,
-        },
+      const response = await httpClient.get(endpoint, {
+        params: requestParams,
         timeout: 20000,
       });
       return response.data;
     } catch (error) {
+      const initialDiagnostics = classifyMetaInsightsError(error, target);
+      if (initialDiagnostics.blocker_kind !== "invalid_metric") {
+        throw enrichMetaInsightsError(error, target);
+      }
       // Meta can reject one unsupported metric and fail the whole batch. Fall
       // back to individual metric reads so usable counters still get captured.
       const data = [];
       const failures = [];
       for (const metric of metrics) {
         try {
-          const response = await axios.get(endpoint, {
+          const response = await httpClient.get(endpoint, {
             params: {
               metric,
               access_token: token,
@@ -112,13 +216,16 @@ function createMetaInsightsFetcher({ graphVersion = "v21.0", env = process.env }
           });
           data.push(...(Array.isArray(response.data?.data) ? response.data.data : []));
         } catch (metricError) {
-          failures.push({ metric, error: redactError(metricError) });
+          const diagnostics = classifyMetaInsightsError(metricError, target);
+          failures.push({ metric, error: diagnostics });
+          if (diagnostics.blocker_kind === "permission_required"
+            || diagnostics.blocker_kind === "token_invalid_or_expired") {
+            throw enrichMetaInsightsError(metricError, target);
+          }
         }
       }
       if (!data.length) {
-        const err = new Error(redactError(error).message || "meta_insights_fetch_failed");
-        err.response = error.response;
-        throw err;
+        throw enrichMetaInsightsError(error, target);
       }
       return { data, partial_failures: failures };
     }
@@ -200,6 +307,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  classifyMetaInsightsError,
   createMetaInsightsFetcher,
   main,
   parseArgs,

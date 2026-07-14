@@ -2497,6 +2497,28 @@ test("goal audio materializer coverage treats compact and split outlet/game phra
   assert.equal(coverage.unmatched_expected_word_count, 0);
 });
 
+test("goal audio materializer coverage reconciles versus with the spoken ASR abbreviation", () => {
+  const scriptText =
+    "Each match is four-versus-four, and the real test is whether every swap stays readable.";
+  const words = [
+    "Each", "match", "is", "4", "vs", "4", "and", "the", "real", "test", "is", "whether",
+    "every", "swap", "stays", "readable",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[4].word, "versus");
+});
+
 test("goal audio materializer coverage treats safe compound game terms as one spoken token", () => {
   const scriptText =
     "The Chain Spear sharpens the push-forward combat. Follow Pulse Gaming so you never miss a beat.";

@@ -314,6 +314,7 @@ test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concret
   });
 
   assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.canonical_subject, "MARVEL Tokon");
   assert.match(script.full_script, /combat styles|movement problem/i);
   assert.match(script.full_script, /Each hero needs to create a different movement problem/i);
   assert.doesNotMatch(script.full_script, /It is about whether|players have to whether|The real question is/i);
@@ -831,6 +832,43 @@ test("fresh refill viewer script does not replace Black Flag monetisation covera
   assert.doesNotMatch(`${script.suggested_title} ${script.full_script}`, /PS5 Pro|PlayStation Blog|motion proof/i);
 });
 
+test("fresh refill viewer script ignores unrelated subjects in related-story source text", () => {
+  const personaUrl = "https://www.polygon.com/tv/999999/persona-netflix-live-action-series";
+  const personaClaim =
+    "Polygon reports Atlus and Sega are adapting Persona as a live-action Netflix series.";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_persona_netflix",
+      title: "Persona is getting a live-action Netflix series",
+      source: {
+        name: "Polygon",
+        url: personaUrl,
+        type: "rss",
+      },
+      current_script: personaClaim,
+      source_evidence: officialSourceEvidence(personaClaim, personaUrl),
+    },
+    manifest: {
+      story_id: "rss_persona_netflix",
+      canonical_subject: "Persona",
+      canonical_title: "Persona is getting a live-action Netflix series",
+      primary_source: "Polygon",
+      primary_source_url: personaUrl,
+      confirmed_claims: [
+        personaClaim,
+        "Related stories: Black Flag Resynced faces microtransaction criticism.",
+        "Related stories: Marvel Tokon adds Blade, Loki and Deadpool.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.suggested_title, "Netflix Persona Has One Huge Trap");
+  assert.equal(script.canonical_subject, "Persona");
+  assert.match(script.full_script, /^Persona going live-action on Netflix is a dangerous swing\./);
+  assert.doesNotMatch(`${script.suggested_title} ${script.full_script}`, /Black Flag|Marvel Tokon|Blade|Loki|Deadpool/i);
+});
+
 test("fresh refill viewer script uses the reported outlet for Bethesda roadmap and union stories", () => {
   const cases = [
     {
@@ -1319,6 +1357,52 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
   const youtubeEvidence = platform.platform_native_evidence.platforms.find((item) => item.platform === "youtube_shorts");
   assert.match(youtubeEvidence.copy_fingerprint, /bob|eurogamer/i);
   assert.doesNotMatch(youtubeEvidence.copy_fingerprint, /generic description old weak title/i);
+});
+
+test("fresh refill script rewrite persists a narrowed canonical subject before motion discovery", async () => {
+  const caseRoot = path.join(TEST_ROOT, "apply-narrowed-subject");
+  const artifactDir = path.join(caseRoot, "artifact");
+  const workOrderPath = path.join(caseRoot, "work_order.json");
+  await fs.remove(caseRoot);
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_marvel_tokon_listicle",
+    canonical_subject: "19 unmissable PS5 games still",
+    canonical_game: "19 unmissable PS5 games still",
+    canonical_title: "Marvel Tokon Roster Just Got Louder",
+    primary_source: "PlayStation Blog",
+    primary_source_url: "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/",
+    confirmed_claims: [
+      "PlayStation Blog says Blade, Loki and Deadpool are joining MARVEL Tokon: Fighting Souls.",
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), { outputs: {} }, { spaces: 2 });
+  await fs.writeJson(workOrderPath, {
+    jobs: [{
+      story_id: "rss_marvel_tokon_listicle",
+      title: "Marvel Tokon Roster Just Got Louder",
+      artifact_dir: artifactDir,
+      source: {
+        name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/",
+        type: "rss",
+      },
+      current_script:
+        "PlayStation Blog says Blade, Loki and Deadpool are joining MARVEL Tokon: Fighting Souls.",
+    }],
+  }, { spaces: 2 });
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(caseRoot, "report"),
+    applyLocal: true,
+  });
+  const manifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+
+  assert.equal(report.summary.applied_count, 1);
+  assert.equal(manifest.canonical_subject, "MARVEL Tokon");
+  assert.equal(manifest.canonical_game, "MARVEL Tokon");
 });
 
 test("fresh refill script rewrite persists official source provenance and event windows", async () => {

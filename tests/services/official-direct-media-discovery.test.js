@@ -558,6 +558,48 @@ test("direct-media discovery follows trusted official storefront links from arti
   );
 });
 
+test("direct-media discovery rejects a linked official page for a different game", async () => {
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/";
+  const wrongGameUrl = "https://www.playstation.com/games/halo-campaign-evolved/media/";
+  const report = await buildOfficialDirectMediaDiscoveryReport({
+    entries: [{
+      story_id: "marvel-tokon-listicle",
+      entity: "MARVEL Tokon",
+      source_family: "playstation_blog_marvel_tokon",
+      official_source_url: sourceUrl,
+    }],
+    fetchText: async (url) => {
+      if (url === sourceUrl) {
+        return {
+          ok: true,
+          status: 200,
+          text: `<a href="${wrongGameUrl}">MARVEL Tokon gameplay video</a>`,
+        };
+      }
+      if (url === wrongGameUrl) {
+        return {
+          ok: true,
+          status: 200,
+          text: `
+            <title>Halo Campaign Evolved | PlayStation</title>
+            <meta property="og:title" content="Halo Campaign Evolved">
+            <source src="https://vulcan.dl.playstation.net/img/rnd/202606/0920/aa3bffcb9a604387c1abd11cc8bb8a0eff0cf650145307a2.mp4">
+          `,
+        };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    },
+    probeMedia: async () => ({ duration_seconds: 68, width: 1920, height: 1080 }),
+  });
+
+  assert.equal(report.summary.discovered, 0);
+  assert.equal(report.rows[0].status, "no_direct_media_found");
+  assert.equal(report.rows[0].rejection_reason, "linked_media_page_entity_mismatch");
+  assert.equal(report.rows[0].linked_page_entity_mismatch_count, 1);
+  assert.deepEqual(report.rows[0].direct_media_candidates, []);
+});
+
 test("direct-media discovery can expand multiple official media candidates for intake", async () => {
   const report = await buildOfficialDirectMediaDiscoveryReport({
     entries: [

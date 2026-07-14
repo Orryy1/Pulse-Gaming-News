@@ -749,6 +749,124 @@ test("Footage Empire blocks alias families when they all come from the same sour
   );
 });
 
+test("Footage Empire blocks separately materialised windows from one explicit base source", () => {
+  const baseSourceFamily = "playstation_marvel_tokon_official_trailer";
+  const clips = Array.from({ length: 10 }, (_, index) => ({
+    id: `tokon-window-${index + 1}`,
+    source_family: `${baseSourceFamily}_window_${12 + index * 5}_5`,
+    base_source_family: baseSourceFamily,
+    path: `C:\\media\\tokon-window-${index + 1}.mp4`,
+    source_url: `https://media.playstation.com/tokon/window-${index + 1}.mp4`,
+    mediaStartS: 12 + index * 5,
+    durationS: 5,
+    validated: true,
+    segmentValidationPassed: true,
+    source_type: "official_publisher_trailer_segment",
+    media_kind: "direct_video",
+    allowed_render_use: "transformative_editorial_use",
+    rights_risk_class: "official_promotional_video_transformative_editorial_use",
+  }));
+
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "marvel-tokon-single-trailer",
+      title: "Marvel Tokon Has One Number That Could Decide The Fight",
+      canonical_subject: "Marvel Tokon: Fighting Souls",
+      canonical_game: "Marvel Tokon: Fighting Souls",
+      full_script:
+        "Marvel Tokon has twenty fighters, but four-versus-four readability could decide whether new players buy at launch or wait.",
+    },
+    trustedFootageReport: {
+      accepted_sources: [
+        {
+          story_id: "marvel-tokon-single-trailer",
+          entity: "Marvel Tokon: Fighting Souls",
+          source_id: baseSourceFamily,
+          display_name: "PlayStation official Marvel Tokon trailer",
+          source_tier: "official",
+          source_family: baseSourceFamily,
+          reference_url: "https://www.youtube.com/watch?v=marvel-tokon-official",
+          source_url_kind: "direct_video",
+          segment_validation_eligible: true,
+          autonomous_motion_candidate: true,
+          allowed_render_use: "transformative_editorial_use",
+          rights_risk_class: "official_promotional_video_transformative_editorial_use",
+        },
+      ],
+    },
+    localMotionClips: clips,
+  });
+
+  assert.equal(plan.motion_budget.available_motion_clips, 10);
+  assert.equal(plan.motion_budget.available_distinct_families, 10);
+  assert.equal(plan.motion_budget.available_distinct_source_assets, 1);
+  assert.equal(plan.readiness.status, "v4_motion_blocked");
+  assert.ok(
+    plan.readiness.blockers.includes("distinct_motion_source_assets_minimum_not_met"),
+  );
+  assert.deepEqual(
+    new Set(plan.motion_inventory.accepted_local_clips.map((clip) => clip.base_source_family)),
+    new Set([baseSourceFamily]),
+  );
+});
+
+test("Footage Empire accepts distinct validated official base sources", () => {
+  const clips = Array.from({ length: 5 }, (_, index) => {
+    const baseSourceFamily = `official_tokon_source_${index + 1}`;
+    return {
+      id: `tokon-source-${index + 1}`,
+      source_family: `${baseSourceFamily}_window_12_5`,
+      base_source_family: baseSourceFamily,
+      path: `C:\\media\\tokon-source-${index + 1}.mp4`,
+      source_url: `https://media.playstation.com/tokon/source-${index + 1}.mp4`,
+      mediaStartS: 12,
+      durationS: 5,
+      validated: true,
+      segmentValidationPassed: true,
+      source_type: "official_publisher_trailer_segment",
+      media_kind: "direct_video",
+      allowed_render_use: "transformative_editorial_use",
+      rights_risk_class: "official_promotional_video_transformative_editorial_use",
+    };
+  });
+
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "marvel-tokon-multi-source",
+      title: "Marvel Tokon Has One Number That Could Decide The Fight",
+      canonical_subject: "Marvel Tokon: Fighting Souls",
+      canonical_game: "Marvel Tokon: Fighting Souls",
+      full_script:
+        "Marvel Tokon has twenty fighters, but four-versus-four readability could decide whether new players buy at launch or wait.",
+    },
+    trustedFootageReport: {
+      accepted_sources: clips.map((clip, index) => ({
+        story_id: "marvel-tokon-multi-source",
+        entity: "Marvel Tokon: Fighting Souls",
+        source_id: clip.base_source_family,
+        display_name: `PlayStation official Marvel Tokon source ${index + 1}`,
+        source_tier: "official",
+        source_family: clip.base_source_family,
+        reference_url: clip.source_url,
+        source_url_kind: "direct_video",
+        segment_validation_eligible: true,
+        autonomous_motion_candidate: true,
+        allowed_render_use: "transformative_editorial_use",
+        rights_risk_class: "official_promotional_video_transformative_editorial_use",
+      })),
+    },
+    localMotionClips: clips,
+  });
+
+  assert.equal(plan.motion_budget.available_motion_clips, 5);
+  assert.equal(plan.motion_budget.available_distinct_families, 5);
+  assert.equal(plan.motion_budget.available_distinct_source_assets, 5);
+  assert.equal(plan.readiness.status, "v4_motion_ready");
+  assert.ok(
+    !plan.readiness.blockers.includes("distinct_motion_source_assets_minimum_not_met"),
+  );
+});
+
 test("Footage Empire keeps separate official YouTube video IDs as distinct source assets", () => {
   const clips = [
     ["keeper-main", "Bu6BPfCtKBQ"],

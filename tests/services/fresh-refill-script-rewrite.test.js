@@ -869,6 +869,57 @@ test("fresh refill viewer script ignores unrelated subjects in related-story sou
   assert.doesNotMatch(`${script.suggested_title} ${script.full_script}`, /Black Flag|Marvel Tokon|Blade|Loki|Deadpool/i);
 });
 
+test("fresh refill viewer script quarantines multi-game listicles until one story is source-locked", () => {
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_ps5_listicle",
+      title: "GTA 6's Launch Endgame",
+      source: {
+        name: "PlayStation Blog",
+        url: sourceUrl,
+        title: "19 unmissable PS5 games still releasing in 2026",
+        type: "rss",
+      },
+      current_script:
+        "GTA 6 may finally be shifting from delay fear to launch countdown. Follow Pulse Gaming so you never miss a beat.",
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "19 unmissable PS5 games still releasing in 2026",
+        claims: [
+          {
+            text: "The article lists 19 different PlayStation 5 games releasing in 2026.",
+            evidence_text: "The article lists 19 different PlayStation 5 games releasing in 2026.",
+            source_url: sourceUrl,
+            origin: "source_body",
+          },
+        ],
+      },
+    },
+    manifest: {
+      story_id: "rss_ps5_listicle",
+      canonical_subject: "19 unmissable PS5 games still",
+      canonical_title: "GTA 6's Launch Endgame",
+      primary_source: "PlayStation Blog",
+      primary_source_url: sourceUrl,
+      source_evidence: {
+        headline: "19 unmissable PS5 games still releasing in 2026",
+      },
+      confirmed_claims: [
+        "The article lists 19 different PlayStation 5 games releasing in 2026.",
+      ],
+    },
+  });
+
+  assert.equal(script.verdict, "blocked");
+  assert.equal(script.reason, "multi_subject_source_requires_narrowing");
+  assert.deepEqual(script.quality.blockers, ["multi_subject_source_requires_narrowing"]);
+  assert.equal(script.safety.no_publish, true);
+  assert.equal(script.full_script, "");
+});
+
 test("fresh refill viewer script uses the reported outlet for Bethesda roadmap and union stories", () => {
   const cases = [
     {

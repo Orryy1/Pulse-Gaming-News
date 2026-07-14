@@ -233,7 +233,7 @@ test("handleTiktokAuthCheck: silent success when token is healthy", async () => 
   await fs.writeJson(tokenFile, {
     access_token: "act.example12345Example12345",
     refresh_token: "rft.example12345Example12345",
-    expires_at: Date.now() + 86_400_000, // 24h ahead — well past 3h threshold
+    expires_at: Date.now() + 48 * 60 * 60 * 1000,
   });
   const discord = stubDiscord();
   try {
@@ -244,6 +244,45 @@ test("handleTiktokAuthCheck: silent success when token is healthy", async () => 
     assert.strictEqual(result.refresh_attempted, false);
     assert.strictEqual(discord.sent.length, 0);
   } finally {
+    discord.restore();
+  }
+});
+
+test("handleTiktokAuthCheck: refreshes a normal 24h token at the daily checkpoint", async () => {
+  await fs.writeJson(tokenFile, {
+    access_token: "act.example12345Example12345",
+    refresh_token: "rft.example12345Example12345",
+    expires_at: Date.now() + 24 * 60 * 60 * 1000,
+  });
+  const axios = require("axios");
+  const origPost = axios.post;
+  let refreshCalls = 0;
+  axios.post = async () => {
+    refreshCalls += 1;
+    return {
+      data: {
+        access_token: "act.refreshed12345Example12345",
+        refresh_token: "rft.refreshed12345Example12345",
+        expires_in: 86_400,
+        refresh_expires_in: 31_536_000,
+        open_id: "open-id",
+        scope: "user.info.basic,video.publish,video.upload",
+        token_type: "Bearer",
+      },
+    };
+  };
+  const discord = stubDiscord();
+  try {
+    clearHandlersCache();
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.tiktok_auth_check({}, { log() {} });
+    assert.strictEqual(result.initial_reason, "ok");
+    assert.strictEqual(result.refresh_attempted, true);
+    assert.strictEqual(result.refresh_ok, true);
+    assert.strictEqual(refreshCalls, 1);
+    assert.strictEqual(discord.sent.length, 0);
+  } finally {
+    axios.post = origPost;
     discord.restore();
   }
 });

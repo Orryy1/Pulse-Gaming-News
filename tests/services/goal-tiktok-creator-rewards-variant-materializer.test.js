@@ -258,7 +258,30 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
         ],
       },
       mustMatch: /past the trailer phase|launch build|real hardware/i,
+      mustNotMatch: /finally has footage players can judge|clip puts the pitch|one reveal cannot settle|longer play section/i,
       wordRange: { min: 155, max: 180 },
+    },
+    {
+      storyId: "creator-rewards-coop-paranoia",
+      canonical: {
+        canonical_subject: "The Mound: Omen of Cthulhu",
+        canonical_game: "The Mound: Omen of Cthulhu",
+        selected_title: "The Mound Makes Your Own Co-op Team The Threat",
+        thumbnail_headline: "YOUR TEAM IS THE THREAT",
+        first_spoken_line: "The Mound has found a nastier co-op enemy than any monster.",
+        narration_script:
+          "The Mound has found a nastier co-op enemy than any monster. It is the friend who swears they saw something. Xbox Wire reports The Mound: Omen of Cthulhu launches on July 15, 2026. Its madness system distorts what players see and hear. The Mound: Omen of Cthulhu finally has footage players can judge. The clip puts the pitch on screen: pace, camera, combat and whether the world reads clearly in a short. One reveal cannot settle the game, but it gives players a sharper read than another announcement. Follow Pulse Gaming so you never miss a beat.",
+        primary_source: "Xbox Wire",
+        confirmed_claims: [
+          "The Mound: Omen of Cthulhu launches on July 15, 2026.",
+          "The game is a co-op horror experience set in a cursed jungle.",
+          "Its madness system distorts what players see and hear.",
+          "The system is designed to create paranoia within the group.",
+        ],
+      },
+      mustMatch: /voice chat becomes part of the level design|waste supplies checking|distrust each other/i,
+      mustNotMatch: /finally has footage players can judge|clip puts the pitch|one reveal cannot settle|longer play section|big battles|mission flow/i,
+      wordRange: { min: 170, max: 195 },
     },
     {
       storyId: "creator-rewards-job-market",

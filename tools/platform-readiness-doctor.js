@@ -73,7 +73,10 @@ function strictDryRunTikTokActions(strictDryRunPlan = {}) {
   });
 }
 
-function freshDispatchPackFromStrictDryRunPlan(strictDryRunPlan = {}, { tiktokTokenStatus = {} } = {}) {
+function freshDispatchPackFromStrictDryRunPlan(
+  strictDryRunPlan = {},
+  { tiktokTokenStatus = {}, generatedAt = new Date().toISOString() } = {},
+) {
   const action = strictDryRunTikTokActions(strictDryRunPlan)[0] || null;
   if (!action) return {};
   const durationSeconds = numberOrNull(action.video_duration_s ?? action.duration_s ?? action.duration_seconds);
@@ -83,7 +86,7 @@ function freshDispatchPackFromStrictDryRunPlan(strictDryRunPlan = {}, { tiktokTo
   const cover = action.cover_frame_source || action.cover_path || action.video_path || null;
   return {
     schemaVersion: 1,
-    generatedAt: strictDryRunPlan.generated_at || strictDryRunPlan.generatedAt || new Date().toISOString(),
+    generatedAt: strictDryRunPlan.generated_at || strictDryRunPlan.generatedAt || generatedAt,
     story: {
       id: storyId,
       title: action.title || storyId || "TikTok dispatch candidate",
@@ -154,6 +157,7 @@ function buildCurrentTikTokAutomationReport({
 } = {}) {
   const strictDryRunDispatchPack = freshDispatchPackFromStrictDryRunPlan(strictDryRunPlan, {
     tiktokTokenStatus,
+    generatedAt,
   });
   const currentFreshDispatchPack = hasFreshOrManifestEvidence({
     freshDispatchPack: strictDryRunDispatchPack,

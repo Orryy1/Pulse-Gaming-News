@@ -389,6 +389,21 @@ async function refreshToken(refreshToken) {
   return tokenData;
 }
 
+async function forceRefreshStoredToken() {
+  const tokenPath = resolveTokenPath();
+  if (!(await fs.pathExists(tokenPath))) {
+    throw new Error("TikTok token file is missing; visit /auth/tiktok to re-auth.");
+  }
+  const tokenData = await fs.readJson(tokenPath);
+  if (
+    typeof tokenData.refresh_token !== "string" ||
+    tokenData.refresh_token.length < 8
+  ) {
+    throw new Error("TikTok token file has no usable refresh_token; visit /auth/tiktok to re-auth.");
+  }
+  return refreshToken(tokenData.refresh_token);
+}
+
 // --- Reject error-shaped OAuth responses before they ever hit disk ----
 // TikTok returns HTTP 200 on token-exchange/refresh errors and signals
 // failure in the body (`{error, error_description, log_id}`). Without an
@@ -1043,6 +1058,7 @@ module.exports = {
   // which is why every heal attempt returned `getAccessToken is not a
   // function` instead of repairing legacy tokens.
   getAccessToken,
+  forceRefreshStoredToken,
   inspectTokenStatus,
   refreshToken,
   resolveTokenPath,

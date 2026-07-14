@@ -146,6 +146,63 @@ test("TikTok automation report prefers a fresh local dispatch pack over stale ma
   assert.doesNotMatch(md, /access_token|refresh_token|Bearer/);
 });
 
+test("TikTok automation report expires old fresh-pack proof before route selection", () => {
+  const report = buildTikTokAutomationReport({
+    generatedAt: "2026-07-14T06:00:00.000Z",
+    authDoctorReport: {
+      token_status: {
+        ok: true,
+        connected: true,
+        reason: "ok",
+        refresh_available: true,
+        needs_reauth: false,
+      },
+    },
+    dispatchManifest: {
+      count: 1,
+      statusCounts: { tiktok_length_review_required: 1 },
+      topPack: {
+        storyId: "current_manifest_story",
+        status: "tiktok_length_review_required",
+        mp4: "output/final/current_manifest_story.mp4",
+        eligibility: {
+          durationSeconds: 52.1,
+          captionReady: true,
+          dispatchLengthReady: false,
+        },
+      },
+    },
+    freshDispatchPack: {
+      generatedAt: "2026-05-28T22:22:44.687Z",
+      dispatchPack: {
+        storyId: "stale_fresh_story",
+        status: "tiktok_auth_action_required",
+        mp4: "output/final/stale_fresh_story.mp4",
+        eligibility: {
+          durationSeconds: 75.8,
+          captionReady: true,
+          dispatchLengthReady: true,
+        },
+      },
+      inboxPlan: {
+        status: "not_ready",
+        dry_run: true,
+        blockers: ["dispatch_pack_tiktok_auth_action_required"],
+      },
+    },
+  });
+
+  assert.equal(report.dispatchGate.source, "dispatch_manifest");
+  assert.equal(report.dispatchGate.topPack.storyId, "current_manifest_story");
+  assert.equal(report.dispatchGate.topReadyPack, null);
+  assert.equal(report.diagnostics.ignoredFreshDispatchPack.reason, "fresh_dispatch_pack_expired");
+  assert.ok(report.diagnostics.ignoredFreshDispatchPack.age_hours > 24 * 30);
+
+  const md = renderTikTokAutomationMarkdown(report);
+  assert.match(md, /Ignored fresh dispatch proof: fresh_dispatch_pack_expired/);
+  assert.doesNotMatch(md, /stale_fresh_story/);
+});
+
 test("TikTok automation report surfaces blocked fresh Studio V2 dispatch packs", () => {
   const report = buildTikTokAutomationReport({
     generatedAt: "2026-05-07T01:30:00.000Z",

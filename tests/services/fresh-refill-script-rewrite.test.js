@@ -322,6 +322,70 @@ test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concret
   assert.equal(script.coherence.result, "pass");
 });
 
+test("fresh refill viewer script does not turn Phantom Blade in a roundup into Tokon roster news", () => {
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_marvel_tokon_roundup",
+      title: "MARVEL Tokon: Fighting Souls - August 6",
+      source: {
+        name: "PlayStation Blog",
+        url: sourceUrl,
+        title: "19 unmissable PS5 games still releasing in 2026",
+        type: "rss",
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "19 unmissable PS5 games still releasing in 2026",
+        claims: [
+          {
+            text: "MARVEL Tokon: Fighting Souls launches August 6 with 20 playable base heroes and villains.",
+            evidence_text: "MARVEL Tokon: Fighting Souls launches August 6 with 20 playable base heroes and villains.",
+            source_url: sourceUrl,
+            origin: "source_body",
+          },
+          {
+            text: "The 4v4 roster ranges from Black Panther and Doctor Doom to Spider-Man and Carnage.",
+            evidence_text: "The 4v4 roster ranges from Black Panther and Doctor Doom to Spider-Man and Carnage.",
+            source_url: sourceUrl,
+            origin: "source_body",
+          },
+          {
+            text: "Phantom Blade Zero is another game in the same PlayStation roundup.",
+            evidence_text: "Phantom Blade Zero is another game in the same PlayStation roundup.",
+            source_url: sourceUrl,
+            origin: "source_body",
+          },
+          {
+            text: "A tutorial, single-player mode and easier combo inputs are included for newcomers.",
+            evidence_text: "A tutorial, single-player mode and easier combo inputs are included for newcomers.",
+            source_url: sourceUrl,
+            origin: "source_body",
+          },
+        ],
+      },
+    },
+    manifest: {
+      story_id: "rss_marvel_tokon_roundup",
+      canonical_subject: "MARVEL Tokon",
+      canonical_title: "MARVEL Tokon: Fighting Souls - August 6",
+      primary_source: "PlayStation Blog",
+      primary_source_url: sourceUrl,
+      confirmed_claims: ["19 unmissable PS5 games still releasing in 2026"],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.equal(script.canonical_subject, "MARVEL Tokon");
+  assert.match(script.suggested_title, /4v4|Roster/i);
+  assert.match(script.full_script, /20 playable|twenty playable/i);
+  assert.match(script.full_script, /Black Panther|Doctor Doom|Spider-Man|Carnage/i);
+  assert.doesNotMatch(script.full_script, /Blade, Loki|Loki and Deadpool/i);
+  assert.equal(script.coherence.result, "pass");
+});
+
 test("fresh refill viewer script preserves Palworld price source and does not invent Game Pass", () => {
   const script = buildFreshRefillViewerScript({
     job: {

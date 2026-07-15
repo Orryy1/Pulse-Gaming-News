@@ -26,6 +26,9 @@ const {
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../../lib/studio/v4/render-policy");
+const {
+  assessProfessionalSourceDiversity,
+} = require("../../lib/studio/motion-source-identity");
 
 function passingPostRenderForensicInputs(overrides = {}) {
   const clips = Array.from({ length: 3 }, (_, index) => ({
@@ -1120,6 +1123,99 @@ test("goal production render materializer renders ready jobs and writes a final 
     }),
   );
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
+});
+
+test("goal production render materializer preserves verified base-source identity through the public render interface", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-source-identity-"));
+  const artifactDir = await makePackage(root, "source-identity-story");
+  const clips = [];
+
+  for (let sourceIndex = 1; sourceIndex <= 3; sourceIndex += 1) {
+    const sourceMasterSha256 = crypto
+      .createHash("sha256")
+      .update(`verified-source-${sourceIndex}`)
+      .digest("hex");
+    for (let windowIndex = 1; windowIndex <= 2; windowIndex += 1) {
+      const clipPath = path.join(
+        artifactDir,
+        `source-${sourceIndex}-window-${windowIndex}.mp4`,
+      );
+      await fs.outputFile(clipPath, Buffer.alloc(2048, sourceIndex * 10 + windowIndex));
+      clips.push({
+        id: `source-${sourceIndex}-window-${windowIndex}`,
+        path: clipPath,
+        source_url: clipPath,
+        canonical_source_url: `https://www.youtube.com/watch?v=PulseSource${sourceIndex}`,
+        youtube_video_id: `PulseSource${sourceIndex}`,
+        source_master_sha256: sourceMasterSha256,
+        sampled_visual_fingerprint: `pulse-source-${sourceIndex}-fingerprint`,
+        base_source_asset_id: `verified-source-${sourceIndex}`,
+        base_source_identity_basis: "source_master_sha256",
+        source_type: "official_publisher_trailer",
+        source_family: `verified_source_${sourceIndex}_window_${windowIndex}`,
+        base_source_family: `verified_source_${sourceIndex}`,
+        motion_family: `verified_source_${sourceIndex}_window_${windowIndex}`,
+        media_kind: "direct_video",
+        durationS: 5,
+        provenance: {
+          source: "official_trailer_segment_validation",
+          segment_validated: true,
+        },
+      });
+    }
+  }
+
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  const job = readyJob("source-identity-story", artifactDir, {
+    evidence: {
+      ...readyJob("source-identity-story", artifactDir).evidence,
+      materialised_motion_clip_count: clips.length,
+      distinct_motion_family_count: clips.length,
+      materialised_motion_clip_paths: clips.map((clip) => clip.path),
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T10:30:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 9));
+      return {
+        story_id: renderStory.id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 30,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.ok(renderStory);
+  const directClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.media_kind === "direct_video",
+  );
+  assert.equal(directClips.length, clips.length);
+  assert.ok(directClips.every((clip) => clip.source_master_sha256));
+  assert.ok(directClips.every((clip) => clip.canonical_source_url));
+  assert.ok(directClips.every((clip) => clip.youtube_video_id));
+  assert.ok(directClips.every((clip) => clip.sampled_visual_fingerprint));
+  assert.ok(directClips.every((clip) => !/^https?:/i.test(clip.source_url)));
+
+  const diversity = assessProfessionalSourceDiversity({
+    clips: directClips,
+    scenes: directClips,
+    requiredBaseSources: 3,
+  });
+  assert.equal(diversity.status, "pass");
+  assert.equal(diversity.observed_genuine_base_source_count, 3);
+  assert.equal(diversity.unresolved_clips.length, 0);
 });
 
 test("production renderer writes hash-bound same-run flagship generation evidence", async () => {

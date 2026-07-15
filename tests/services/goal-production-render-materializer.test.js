@@ -3988,6 +3988,56 @@ test("goal production render materializer persists renderer loudness evidence be
   assert.equal(persisted.story_id, "story-loudness");
   assert.equal(persisted.persisted_for_story_id, "story-loudness");
   assert.equal(persisted.persisted_from_render_report, true);
+  assert.equal(persisted.input_path, path.join(artifactDir, "visual_v4_render.mp4"));
+  assert.equal(persisted.renderer_report_input_path, null);
+  assert.equal(persisted.final_render_binding.exact, true);
+  assert.equal(persisted.final_render_binding.path, path.join(artifactDir, "visual_v4_render.mp4"));
+  assert.equal(persisted.final_render_binding.size_bytes, 4096);
+  assert.match(persisted.final_render_binding.sha256, /^[a-f0-9]{64}$/);
+});
+
+test("goal production render materializer resolves repo-relative renderer loudness evidence outside an isolated workspace", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-relative-loudness-"));
+  const artifactDir = await makePackage(root, "story-relative-loudness");
+  const scratchReportPath = path.join(
+    process.cwd(),
+    "test",
+    "output",
+    `${path.basename(root)}_audio_segment_loudness_report.json`,
+  );
+  t.after(() => fs.remove(scratchReportPath));
+  await fs.outputJson(scratchReportPath, {
+    story_id: "story-relative-loudness",
+    verdict: "pass",
+    generated_at: "2026-07-15T18:05:00.000Z",
+    blockers: [],
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("story-relative-loudness", artifactDir)] },
+    generatedAt: "2026-07-15T18:06:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 6));
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        audio_segment_loudness_report: path.relative(process.cwd(), scratchReportPath),
+      };
+    },
+  });
+
+  const persistedPath = path.join(artifactDir, "audio_segment_loudness_report.json");
+  assert.equal(report.jobs[0].audio_segment_loudness_report_path, persistedPath);
+  const persisted = await fs.readJson(persistedPath);
+  assert.equal(persisted.story_id, "story-relative-loudness");
+  assert.equal(persisted.input_path, path.join(artifactDir, "visual_v4_render.mp4"));
+  assert.equal(persisted.renderer_report_input_path, null);
+  assert.equal(persisted.final_render_binding.exact, true);
 });
 
 test("goal production render materializer passes visual safe-margin repair intent to renderer", async () => {

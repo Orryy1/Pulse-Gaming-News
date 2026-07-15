@@ -2518,10 +2518,7 @@ function buildSceneCompositeFilterParts(scene = {}, livingMotion = null) {
   const depth = motion.depth;
 
   return [
-    `[${i}:v]split=2[bgsrc${i}][fgsrc${i}]`,
-    `[bgsrc${i}]scale=1260:2240:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x='(iw-1080)*(0.50+${depth.background_drift_ratio.toFixed(2)}*sin(t*${depth.background_rate_x.toFixed(2)}+${i}))':y='(ih-1920)*(0.50+${depth.background_drift_ratio.toFixed(2)}*cos(t*${depth.background_rate_y.toFixed(2)}+${i}))',boxblur=32:1,eq=brightness=-0.015:saturation=1.26:contrast=1.12,fps=${FPS},format=yuv420p,setsar=1[bg${i}]`,
-    `[fgsrc${i}]scale=1000:1760:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,eq=brightness=0.055:saturation=1.12:contrast=1.10,unsharp=5:5:0.38:3:3:0.12,fps=${FPS},format=yuv420p,setsar=1[fg${i}]`,
-    `[bg${i}][fg${i}]overlay=x='(W-w)/2+sin(t*${depth.foreground_rate_x.toFixed(2)}+${i})*${depth.foreground_drift_x_px}':y='(H-h)/2+cos(t*${depth.foreground_rate_y.toFixed(2)}+${i})*${depth.foreground_drift_y_px}':eval=frame,noise=alls=4:allf=t+u,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
+    `[${i}:v]scale=1260:2240:force_original_aspect_ratio=increase:in_range=pc:out_range=tv,crop=w=1080:h=1920:x='(iw-1080)*(0.50+${depth.background_drift_ratio.toFixed(2)}*sin(t*${depth.background_rate_x.toFixed(2)}+${i}))':y='(ih-1920)*(0.50+${depth.background_drift_ratio.toFixed(2)}*cos(t*${depth.background_rate_y.toFixed(2)}+${i}))',eq=brightness=0.035:saturation=1.16:contrast=1.10,unsharp=5:5:0.42:3:3:0.12,noise=alls=4:allf=t+u,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
   ];
 }
 

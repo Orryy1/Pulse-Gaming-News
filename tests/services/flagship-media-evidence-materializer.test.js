@@ -663,6 +663,31 @@ test("accepts deterministic spoken currency timestamps bound to numeric display 
   assert.equal(report.verdict, "GREEN");
 });
 
+test("accepts governed title-pronunciation timestamps bound to official display copy", async () => {
+  const fixture = await makeFixture();
+  const scriptText = "Black Flag Resynced has nine day-one DLC packs.";
+  const spokenWords = "Black Flag reesynced has nine day one DLC packs".split(/\s+/);
+  await replaceBoundTimeline(fixture, {
+    scriptText,
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: `1\n00:00:00,000 --> 00:00:01,000\n${scriptText}\n`,
+    words: spokenWords.map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, true, JSON.stringify(report.blockers, null, 2));
+  assert.equal(report.verdict, "GREEN");
+});
+
 test("RED: marks timestamps unverified when their audio binding is absent", async () => {
   const fixture = await makeFixture();
   const timestampPath = path.join(fixture.packageDir, "captions/word_timestamps.json");

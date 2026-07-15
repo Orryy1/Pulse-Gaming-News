@@ -1582,7 +1582,7 @@ test("Studio V4 proof renderer fits crossfades around readable cards without exc
   assert.equal(plan.coveredDurationS >= 48.866 - 0.12, true);
 });
 
-test("Studio V4 proof renderer adds strong per-scene motion before composing quiet clips", () => {
+test("Studio V4 proof renderer adds full-bleed per-scene motion without blurred filler", () => {
   assert.equal(typeof buildSceneCompositeFilterParts, "function");
 
   const filters = buildSceneCompositeFilterParts({
@@ -1593,10 +1593,11 @@ test("Studio V4 proof renderer adds strong per-scene motion before composing qui
 
   assert.match(composite, /scale=1260:2240:force_original_aspect_ratio=increase/);
   assert.match(composite, /crop=w=1080:h=1920:x='\(iw-1080\)\*\(0\.50\+0\.28\*sin\(t\*0\.24\+3\)\)'/);
-  assert.match(composite, /overlay=x='\(W-w\)\/2\+sin\(t\*0\.53\+3\)\*16'/);
-  assert.match(composite, /:y='\(H-h\)\/2\+cos\(t\*0\.41\+3\)\*10':eval=frame/);
+  assert.match(composite, /:y='\(ih-1920\)\*\(0\.50\+0\.28\*cos\(t\*0\.18\+3\)\)'/);
+  assert.match(composite, /unsharp=5:5:0\.42:3:3:0\.12/);
   assert.match(composite, /noise=alls=4:allf=t\+u/);
   assert.match(composite, /trim=duration=1\.42/);
+  assert.doesNotMatch(composite, /boxblur|fgsrc|force_original_aspect_ratio=decrease|overlay=/);
 });
 
 test("Studio V4 proof renderer accepts explicit direct-motion dwell overrides", () => {
@@ -2727,19 +2728,19 @@ test("Studio V4 overlay chain avoids raw straight apostrophes inside ffmpeg draw
   assert.doesNotMatch(chain, /ASSASSIN\\'S|ASSASSIN'S/);
 });
 
-test("Studio V4 proof renderer keeps source footage inside a safe vertical compose", () => {
+test("Studio V4 proof renderer uses a full-bleed vertical compose without blurred letterbox filler", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "studio-v4-proof-render.js"),
     "utf8",
   );
 
-  assert.match(source, /split=2\[bgsrc\$\{i\}\]\[fgsrc\$\{i\}\]/);
-  assert.match(source, /boxblur=32:1/);
-  assert.match(source, /scale=1000:1760:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv/);
+  assert.match(source, /scale=1260:2240:force_original_aspect_ratio=increase:in_range=pc:out_range=tv/);
+  assert.match(source, /crop=w=1080:h=1920/);
   assert.match(source, /background_drift_ratio/);
-  assert.match(source, /foreground_drift_x_px/);
-  assert.match(source, /foreground_drift_y_px/);
-  assert.match(source, /overlay=x='\(W-w\)\/2\+sin\(t\*\$\{depth\.foreground_rate_x\.toFixed\(2\)\}\+\$\{i\}\)\*\$\{depth\.foreground_drift_x_px\}'/);
+  assert.doesNotMatch(source, /split=2\[bgsrc\$\{i\}\]\[fgsrc\$\{i\}\]/);
+  assert.doesNotMatch(source, /boxblur=32:1/);
+  assert.doesNotMatch(source, /scale=1000:1760:force_original_aspect_ratio=decrease/);
+  assert.doesNotMatch(source, /\[bg\$\{i\}\]\[fg\$\{i\}\]overlay=/);
   assert.doesNotMatch(source, /crop=1080:1920:\(iw-1080\)\/2:\(ih-1920\)\/2/);
   assert.match(source, /\[overlayBase\]ass=\$\{assPathFilter\(assPath\)\},format=yuv420p\[outv\]/);
   assert.match(source, /"-pix_fmt",\s*"yuv420p"/);

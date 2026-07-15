@@ -7,10 +7,24 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
-  repairPlatformNativePacks,
+  repairPlatformNativePacks: repairPlatformNativePacksProduction,
   refreshStoryPackageEntriesFromArtifacts,
 } = require("../../lib/goal-platform-native-pack-repair");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
+
+const trustedFinalAvReviewValidator = async () => ({
+  valid: true,
+  verdict: "GREEN",
+  can_auto_publish: true,
+  blockers: [],
+});
+
+function repairPlatformNativePacks(options = {}) {
+  return repairPlatformNativePacksProduction({
+    finalAvReviewValidator: trustedFinalAvReviewValidator,
+    ...options,
+  });
+}
 
 async function legacyArtifact() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-native-pack-repair-"));
@@ -301,6 +315,57 @@ test("platform-native pack repair clears stale RED publish status after GREEN go
   assert.equal(repaired.platform_native_evidence.verdict, "pass");
   assert.equal(repaired.no_publish_triggered, true);
   assert.equal(await fs.pathExists(applied.repairs[0].backup_files.platform_publish_manifest), true);
+});
+
+test("platform-native pack repair cannot promote a pending final AV review", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  storyPackages[0].artifact_dir = path.relative(process.cwd(), artifactDir);
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    rendered_duration_s: 48,
+  });
+  await fs.writeJson(path.join(artifactDir, "final_av_review.json"), {
+    schema_version: 1,
+    story_id: "story-native",
+    status: "PENDING",
+    verdict: "PENDING",
+    can_auto_publish: false,
+    blockers: ["independent_final_av_review_pending"],
+  });
+
+  let validatedReviewPath = "";
+  let validatedArtifactDir = "";
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-15T13:20:00.000Z",
+    apply: false,
+    finalAvReviewValidator: async (reviewPath, options) => {
+      validatedReviewPath = reviewPath;
+      validatedArtifactDir = options.artifactDir;
+      return {
+        valid: false,
+        verdict: "RED",
+        can_auto_publish: false,
+        blockers: ["final_av_review_verdict_not_green"],
+      };
+    },
+  });
+
+  assert.equal(validatedArtifactDir, artifactDir);
+  assert.equal(validatedReviewPath, path.join(artifactDir, "final_av_review.json"));
+  assert.equal(dryRun.items[0].target_publish_status, "RED");
+  assert.equal(dryRun.items[0].target_can_auto_publish, false);
+  assert.equal(dryRun.items[0].final_av_review_verdict, "RED");
+  assert.deepEqual(dryRun.items[0].final_av_review_blockers, [
+    "final_av_review_verdict_not_green",
+  ]);
+  assert.ok(
+    dryRun.items[0].target_publish_verdict.reason_codes.includes(
+      "control:final_av_review_verdict_not_green",
+    ),
+  );
 });
 
 test("platform-native pack repair stamps GREEN publish controls from final render and media-house pass", async () => {
@@ -1697,6 +1762,54 @@ test("platform-native repair refreshes stale story-package RED summary from GREE
   assert.deepEqual(refreshed.story_packages[0].blockers, []);
   assert.equal(refreshed.rows[0].updated, true);
   assert.equal(refreshed.safety.no_db_mutation, true);
+});
+
+test("platform-native repair keeps RED while replacing stale package blockers with current evidence", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: ["control:final_av_review_reviewer_id_missing"],
+    blockers: ["control:final_av_review_reviewer_id_missing"],
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "RED",
+    platform_native_evidence: { verdict: "pass", failures: [] },
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "GREEN",
+    hard_failures: [],
+  });
+
+  const refreshed = await refreshStoryPackageEntriesFromArtifacts([
+    {
+      story_id: "story-native",
+      verdict: "RED",
+      blockers: [
+        "render:final_publish_render_missing",
+        "audio:narration_audio_missing",
+        "captions:word_timestamps_missing",
+      ],
+      artifact_dir: artifactDir,
+    },
+  ], {
+    storyIds: ["story-native"],
+  });
+
+  assert.equal(refreshed.summary.updated_count, 1);
+  assert.equal(refreshed.story_packages[0].verdict, "RED");
+  assert.deepEqual(refreshed.story_packages[0].blockers, [
+    "control:final_av_review_reviewer_id_missing",
+  ]);
+  assert.deepEqual(refreshed.story_packages[0].publish_verdict, {
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: ["control:final_av_review_reviewer_id_missing"],
+    blockers: ["control:final_av_review_reviewer_id_missing"],
+  });
+  assert.equal(refreshed.rows[0].updated, true);
+  assert.equal(refreshed.safety.no_publish_triggered, true);
 });
 
 test("platform-native repair derives Facebook Reels duration from render manifest", async () => {

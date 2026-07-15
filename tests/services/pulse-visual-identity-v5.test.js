@@ -105,6 +105,8 @@ test("Pulse visual identity injects a seek-safe living brand layer into one time
   assert.match(html, /--pulse-primary:\s*#[0-9a-f]{6}/i);
   assert.match(html, /top:\s*252px/);
   assert.match(html, /\.micro\s*\{[\s\S]*background:\s*rgba\(7,\s*9,\s*13,\s*0\.86\)\s*!important/);
+  assert.match(html, /\.sub\s*\{[\s\S]*color:\s*var\(--pulse-paper\)\s*!important/);
+  assert.match(html, /\.sub\s*\{[\s\S]*background:\s*rgba\(7,\s*9,\s*13,\s*0\.86\)\s*!important/);
   assert.match(html, /\.step\s*\{[\s\S]*background:\s*rgba\(7,\s*9,\s*13,\s*0\.86\)\s*!important/);
   assert.match(html, /\.cta\s*\{[\s\S]*background:\s*rgba\(7,\s*9,\s*13,\s*0\.90\)\s*!important/);
   assert.match(html, /\.arrow\s*\{[\s\S]*background:\s*rgba\(7,\s*9,\s*13,\s*0\.90\)\s*!important/);

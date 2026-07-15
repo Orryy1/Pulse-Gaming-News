@@ -755,7 +755,7 @@ test("goal audio materializer force-regenerates a workbench ready pair", async (
   assert.match(calls[0].text, /the next Grand Theft Auto/);
   assert.doesNotMatch(calls[0].text, /Grand Theft Auto Six/);
   assert.equal(report.summary.candidate_count, 1);
-  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
   assert.equal(report.jobs[0].provider, "elevenlabs");
 });
 
@@ -4672,6 +4672,132 @@ test("goal audio materializer repairs excessive pauses in-place before regenerat
   assert.equal(timestamps.meta.provider, "local");
   assert.equal(timestamps.meta.source, "local-production-path");
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+});
+
+test("goal audio materializer compacts cadence when timestamps mask acoustic silence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-mask-silence-"));
+  const script = "Marvel Tokon has twenty playable fighters. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-mask-silence", {
+    selected_title: "Marvel Tokon's Roster Has One Big Risk",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", "story-mask-silence.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-mask-silence_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(script),
+    meta: { transcript: script, wordTimestampSource: "local_whisper_word_alignment" },
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "FAIL",
+    blockers: ["voice_cadence:timestamp_masks_acoustic_silence"],
+    cadence: {
+      status: "fail",
+      blockers: ["voice_cadence:timestamp_masks_acoustic_silence"],
+    },
+  });
+  let compactCalls = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-mask-silence", artifactDir)],
+    },
+    generatedAt: "2026-07-15T15:10:00.000Z",
+    generateTtsForStory: async () => {
+      throw new Error("voice regeneration should not run when bounded silence compaction succeeds");
+    },
+    compactGeneratedNarrationSilence: async () => {
+      compactCalls += 1;
+      return { repaired: true, strategy: "bounded_generated_narration_silence_compaction" };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(scriptText),
+      transcript: scriptText,
+      language: "en",
+      segments: 1,
+    }),
+  });
+
+  assert.equal(compactCalls, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.jobs[0].status, "materialized_existing_cadence_compaction");
+});
+
+test("goal audio materializer pads an existing pair that cadence QA marks too fast", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-pad-existing-"));
+  const script = "Marvel Tokon has twenty playable fighters. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-pad-existing", {
+    selected_title: "Marvel Tokon's Roster Has One Big Risk",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", "story-pad-existing.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-pad-existing_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(script),
+    complete: true,
+    meta: { transcript: script, wordTimestampSource: "local_whisper_word_alignment" },
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "FAIL",
+    blockers: ["voice_cadence:wpm_too_fast"],
+    cadence: {
+      status: "fail",
+      spoken_wpm: 179,
+      blockers: ["voice_cadence:wpm_too_fast"],
+    },
+  });
+  let paddingCalls = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    alignmentMode: "whisper",
+    nativeCadencePausePadding: true,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-pad-existing", artifactDir)],
+    },
+    generatedAt: "2026-07-15T15:20:00.000Z",
+    generateTtsForStory: async () => {
+      throw new Error("voice regeneration should not run when cadence padding succeeds");
+    },
+    padTimestampedNarrationSentencePauses: async () => {
+      paddingCalls += 1;
+      return {
+        repaired: true,
+        strategy: "timestamp_guided_sentence_pause_padding",
+        insertions: [0.5, 1, 1.5, 2, 2.5].map((at) => ({
+          at,
+          inserted: 0.3,
+          type: "sentence",
+        })),
+        inserted_silence_seconds: 1.5,
+        target_reached: true,
+      };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(scriptText),
+      transcript: scriptText,
+      language: "en",
+      segments: 1,
+    }),
+    getAudioDuration: async () => 5.5,
+    detectSilencesForAudio: async () => [],
+  });
+
+  assert.equal(paddingCalls, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.jobs[0].status, "materialized_existing_cadence_padding");
+  assert.equal(report.jobs[0].cadence_pause_padding.inserted_silence_seconds, 1.5);
 });
 
 test("goal audio materializer regenerates existing pairs that current voice cadence QA rejects", async () => {

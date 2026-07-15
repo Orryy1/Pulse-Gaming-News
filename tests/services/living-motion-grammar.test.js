@@ -40,6 +40,10 @@ test("living motion stays restrained, readable and free of decorative orb langua
     assert.ok(treatment.editorial.ghost_opacity <= 0.10);
     assert.ok(treatment.editorial.ghost_font_size_px >= 150);
     assert.ok(treatment.editorial.ghost_font_size_px <= 220);
+    assert.ok(
+      treatment.editorial.ghost_y_px + treatment.editorial.ghost_font_size_px <= 1240,
+      `${identity.id} ghost word enters the caption-safe band`,
+    );
     assert.ok(treatment.sweeps.primary_opacity <= 0.065);
     assert.ok(treatment.sweeps.accent_opacity <= 0.06);
     assert.equal(treatment.motion_continuity.seek_safe, true);

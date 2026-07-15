@@ -2668,6 +2668,35 @@ test("real motion materializer writes local clips, motion manifests and explicit
   const job = await makePackage(root);
   const calls = [];
   const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const footagePath = path.join(job.artifact_dir, "footage_inventory.json");
+  const staleFootage = await fs.readJson(footagePath);
+  await fs.writeJson(footagePath, {
+    ...staleFootage,
+    status: "blocked",
+    ready: false,
+    motion_ready: false,
+    not_publishable: true,
+    counts_towards_final_render_readiness: false,
+    readiness: {
+      status: "v4_motion_blocked",
+      ready: false,
+      motion_ready: false,
+      can_publish: false,
+      blockers: ["rights_evidence_contradiction"],
+    },
+    motion_budget: {
+      status: "blocked",
+      ready: false,
+      motion_ready: false,
+    },
+    motion_inventory: {
+      ...(staleFootage.motion_inventory || {}),
+      status: "blocked",
+      ready: false,
+      motion_ready: false,
+      counts_towards_final_render_readiness: false,
+    },
+  }, { spaces: 2 });
   const staleRights = await fs.readJson(rightsPath);
   const ownedCardPath = path.join(job.artifact_dir, "owned-hyperframes-card.mp4");
   await fs.writeFile(ownedCardPath, Buffer.alloc(4096, 9));
@@ -2818,7 +2847,27 @@ test("real motion materializer writes local clips, motion manifests and explicit
     assert.deepEqual(record.transformation_provenance, materialised.clips[index].transformation_provenance);
   }
 
-  const footage = await fs.readJson(path.join(job.artifact_dir, "footage_inventory.json"));
+  const footage = await fs.readJson(footagePath);
+  assert.equal(footage.status, "ready");
+  assert.equal(footage.ready, true);
+  assert.equal(footage.motion_ready, true);
+  assert.equal(footage.not_publishable, false);
+  assert.equal(footage.counts_towards_final_render_readiness, true);
+  assert.deepEqual(footage.readiness, {
+    status: "v4_motion_ready",
+    ready: true,
+    motion_ready: true,
+    can_publish: true,
+    blockers: [],
+    warnings: [],
+  });
+  assert.equal(footage.motion_budget.status, "ready");
+  assert.equal(footage.motion_budget.ready, true);
+  assert.equal(footage.motion_budget.motion_ready, true);
+  assert.equal(footage.motion_inventory.status, "ready");
+  assert.equal(footage.motion_inventory.ready, true);
+  assert.equal(footage.motion_inventory.motion_ready, true);
+  assert.equal(footage.motion_inventory.counts_towards_final_render_readiness, true);
   assert.equal(footage.motion_inventory.accepted_local_clips.length, 5);
 });
 

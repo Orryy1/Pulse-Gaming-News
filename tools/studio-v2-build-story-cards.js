@@ -292,6 +292,18 @@ function contextSubFromTitle(title, leadWord) {
   return filtered.slice(0, 3).join(" ").toUpperCase() || "PLAYER IMPACT";
 }
 
+function versusModeBalanceRisk(story, title) {
+  const titleText = normaliseText(title);
+  const mode = titleText.match(/\b(\d+)\s*v\s*(\d+)\b/i);
+  if (!mode || !/\b(?:risk|problem|catch|trade[- ]?off)\b/i.test(titleText)) {
+    return "";
+  }
+  if (!/\b(?:assist|balance|balancing|matchup|roster|swap|team)\b/i.test(storyScriptText(story))) {
+    return "";
+  }
+  return `${mode[1]}V${mode[2]} BALANCE RISK`;
+}
+
 function editorialKeyLine(story) {
   const explicit = normaliseText(
     story?.card_key_line || story?.editorial_key_line || story?.pull_quote,
@@ -557,6 +569,7 @@ function buildStoryCardSpecsBase(story) {
   );
   const contextNumber = canonicalSubject || headlineWords[0] || "UPDATE";
   const contextSub = normaliseText(story?.card_context_sub) ||
+    versusModeBalanceRisk(story, title) ||
     contextImpactFromScript(story) ||
     contextSubFromTitle(title, contextNumber);
   const timelineBullets = concreteTimelineBullets(story, title, label);

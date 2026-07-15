@@ -12,6 +12,7 @@ const {
   buildCurrentVoiceQualityReport,
   repairNarrationQaArtifacts,
   writeFlagshipNarrationQaEvidence,
+  _testables,
 } = require("../../lib/goal-narration-qa-repair");
 const { auditNarrationQaArtifacts } = require("../../lib/narration-qa-artifact");
 const { analyseNarrationCadence } = require("../../lib/narration-cadence-qa");
@@ -249,6 +250,36 @@ test("post-render narration QA binds separate display and spoken evidence to one
     captionManifest: captions,
     voiceQualityReport: voice,
   }).status, "fresh");
+});
+
+test("timestamp coverage accepts sparse exact words spanning the narration but rejects a truncated tail", () => {
+  const naturallySpacedWords = [
+    { word: "One", start: 0.05, end: 0.2 },
+    { word: "two", start: 1.2, end: 1.35 },
+    { word: "three", start: 2.4, end: 2.55 },
+    { word: "four", start: 3.6, end: 3.75 },
+    { word: "five", start: 4.8, end: 4.95 },
+    { word: "six", start: 6, end: 6.15 },
+    { word: "seven", start: 7.2, end: 7.35 },
+    { word: "eight", start: 8.4, end: 8.55 },
+    { word: "nine", start: 9.7, end: 9.9 },
+  ];
+  const full = _testables.timestampTimelineAudit(naturallySpacedWords, {
+    audioDurationSeconds: 10,
+    videoDurationSeconds: 10,
+  });
+  assert.ok(full.audio_coverage_ratio < 0.8);
+  assert.ok(full.audio_timeline_coverage_ratio >= 0.98);
+  assert.equal(full.audio_coverage_sufficient, true);
+  assert.equal(full.video_coverage_sufficient, true);
+
+  const truncated = _testables.timestampTimelineAudit(naturallySpacedWords.slice(0, 5), {
+    audioDurationSeconds: 10,
+    videoDurationSeconds: 10,
+  });
+  assert.ok(truncated.audio_timeline_coverage_ratio < 0.8);
+  assert.equal(truncated.audio_coverage_sufficient, false);
+  assert.equal(truncated.video_coverage_sufficient, false);
 });
 
 test("post-render narration QA repairs verifier-safe timestamps from word onsets and acoustic speech boundaries", async () => {

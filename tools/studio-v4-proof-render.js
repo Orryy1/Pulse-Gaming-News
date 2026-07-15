@@ -2422,6 +2422,13 @@ function buildOverlayChain({
   const cardExclusions = cardVisibleWindows
     .filter((window) => Number.isFinite(Number(window?.start_s)) && Number.isFinite(Number(window?.end_s)))
     .map((window) => `not(between(t,${t(window.start_s)},${t(window.end_s)}))`);
+  const cardCaptionPlateEnable = cardVisibleWindows
+    .filter((window) => Number.isFinite(Number(window?.start_s)) && Number.isFinite(Number(window?.end_s)))
+    .map((window) => `between(t,${t(window.start_s)},${t(window.end_s)})`)
+    .join("+");
+  const livingGhostEnable = cardExclusions.length
+    ? `:enable='${cardExclusions.join("*")}'`
+    : "";
   const enableFor = (window, { avoidCardWindows = false } = {}) => {
     const base = `between(t,${t(window.start_s)},${t(window.end_s)})`;
     return avoidCardWindows && cardExclusions.length
@@ -2449,7 +2456,11 @@ function buildOverlayChain({
     `drawbox=x='-260+mod(t*${livingMotion.sweeps.primary_speed_px_s}\\,1540)':y=0:w=210:h=ih:color=white@${livingMotion.sweeps.primary_opacity.toFixed(3)}:t=fill`,
     `drawbox=x='940-mod(t*${livingMotion.sweeps.accent_speed_px_s}\\,1220)':y=0:w=92:h=ih:color=${identityAccent}@${livingMotion.sweeps.accent_opacity.toFixed(3)}:t=fill`,
     `drawbox=x=54:y='560+sin(t*0.21)*34':w=972:h=1:color=${identityAccent}@0.24:t=fill`,
-    `drawtext=text='${livingGhostWord}':${fontOpt}:fontcolor=${identityAccent}@${livingMotion.editorial.ghost_opacity.toFixed(3)}:fontsize=${livingMotion.editorial.ghost_font_size_px}:x='-24+sin(t*${livingMotion.editorial.ghost_rate})*${livingMotion.editorial.ghost_drift_x_px}':y=${livingMotion.editorial.ghost_y_px}:shadowcolor=black@0.16:shadowx=3:shadowy=3`,
+    `drawtext=text='${livingGhostWord}':${fontOpt}:fontcolor=${identityAccent}@${livingMotion.editorial.ghost_opacity.toFixed(3)}:fontsize=${livingMotion.editorial.ghost_font_size_px}:x='-24+sin(t*${livingMotion.editorial.ghost_rate})*${livingMotion.editorial.ghost_drift_x_px}':y=${livingMotion.editorial.ghost_y_px}:shadowcolor=black@0.16:shadowx=3:shadowy=3${livingGhostEnable}`,
+    ...(cardCaptionPlateEnable ? [
+      `drawbox=x=96:y=1248:w=888:h=210:color=0x07090D@0.66:t=fill:enable='${cardCaptionPlateEnable}'`,
+      `drawbox=x=96:y=1248:w=888:h=3:color=${identityAccent}@0.82:t=fill:enable='${cardCaptionPlateEnable}'`,
+    ] : []),
     ...(suppressOpeningStoryCard ? [] : [
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x0B0F19@0.18:t=fill:enable='${openingEnable}'`,

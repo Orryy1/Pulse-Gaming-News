@@ -1298,6 +1298,80 @@ test("production renderer writes hash-bound same-run flagship generation evidenc
   );
 });
 
+test("production renderer preserves collocated timestamp input and freezes bound evidence separately", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-collocated-timestamps-"));
+  const script = "Lego Batman has more Arkham DNA than it first looks.";
+  const artifactDir = await makePackage(root, "flagship-collocated-timestamps", {
+    narration_script: script,
+  });
+  const flagshipDir = path.join(artifactDir, "flagship");
+  const renderInputTimestampPath = path.join(flagshipDir, "word_timestamps.json");
+  await fs.ensureDir(flagshipDir);
+  await fs.outputJson(renderInputTimestampPath, {
+    words: script.split(/\s+/).map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    verdict: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  const baseJob = readyJob("flagship-collocated-timestamps", artifactDir);
+  const job = readyJob("flagship-collocated-timestamps", artifactDir, {
+    evidence: {
+      ...baseJob.evidence,
+      word_timestamps_path: renderInputTimestampPath,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+  const sha256File = async (filePath) => crypto
+    .createHash("sha256")
+    .update(await fs.readFile(filePath))
+    .digest("hex");
+  let rendererTimestampSha256 = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:01:00.000Z",
+    narrationQaDurationProbe: async () => 1,
+    narrationQaSilenceProbe: async () => [],
+    renderProof: async ({ output }) => {
+      rendererTimestampSha256 = await sha256File(renderInputTimestampPath);
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  const finalRenderInputSha256 = await sha256File(renderInputTimestampPath);
+  const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  const generationManifest = await fs.readJson(path.join(flagshipDir, "generation_manifest.json"));
+  const captionManifest = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
+  assert.equal(finalRenderInputSha256, rendererTimestampSha256);
+  assert.equal(renderManifest.input_fingerprint.word_timestamps_sha256, finalRenderInputSha256);
+  assert.equal(generationManifest.artifacts.word_timestamps.path, "flagship/generation_word_timestamps.json");
+  assert.equal(captionManifest.word_timestamps_path, generationManifest.artifacts.word_timestamps.path);
+  assert.equal(await fs.pathExists(path.join(artifactDir, generationManifest.artifacts.word_timestamps.path)), true);
+});
+
 test("production renderer freezes validated external audio and timestamps into flagship evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-freeze-"));
   const artifactDir = await makePackage(root, "flagship-freeze-story", {
@@ -2686,6 +2760,93 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.equal(manifest.hyperframes_card_count, 3);
   assert.equal(manifest.premium_shell_verdict, "pass");
   assert.equal(manifest.premium_shell_pass_count, 5);
+});
+
+test("goal production render materializer rejects a stale HyperFrames source-card label before render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-source-label-"));
+  const storyId = "story-hf-source-label-mismatch";
+  const artifactDir = await makePackage(root, storyId, {
+    primary_source: "Steam",
+    source_card_label: "Steam",
+  });
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, storyId, kind, {
+      readableText: kind === "source" ? "KOTAKU NEWS SOURCE" : `${kind} proof card`,
+    }),
+  ));
+  const job = readyJob(storyId, artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-source-label-motion");
+  job.actions[0].target_render_manifest = {
+    ...job.actions[0].target_render_manifest,
+    hyperframes_premium_shell_required: true,
+    hyperframes_premium_shell_required_pass_count: 4,
+  };
+  let renderCalled = false;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T13:35:00.000Z",
+    renderProof: async () => {
+      renderCalled = true;
+      throw new Error("render must not run for a stale source-card label");
+    },
+  });
+
+  assert.equal(renderCalled, false);
+  assert.equal(report.summary.rendered_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.match(report.jobs[0].error, /production_render_source_card_identity_blocked/);
+  assert.match(report.jobs[0].error, /source_card_label_mismatch:kotaku:steam/);
+});
+
+test("goal production render materializer allows an explicitly governed discovery-source card", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-source-allow-"));
+  const storyId = "story-hf-source-label-allowed";
+  const artifactDir = await makePackage(root, storyId, {
+    primary_source: "Steam",
+    source_card_label: "Steam",
+    source_card_allowed_labels: ["Kotaku"],
+  });
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, storyId, kind, {
+      readableText: kind === "source" ? "KOTAKU NEWS SOURCE" : `${kind} proof card`,
+    }),
+  ));
+  const job = readyJob(storyId, artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-source-allowed-motion");
+  job.actions[0].target_render_manifest = {
+    ...job.actions[0].target_render_manifest,
+    hyperframes_premium_shell_required: true,
+    hyperframes_premium_shell_required_pass_count: 4,
+  };
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T13:36:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: story.story_id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        hyperframes_premium_shell_required: story.hyperframes_premium_shell_required,
+        hyperframes_card_count: story.hyperframes_card_count,
+        hyperframes_premium_shell_gate: story.hyperframes_premium_shell_gate,
+        premium_shell_verdict: story.premium_shell_verdict,
+        premium_shell_pass_count: story.premium_shell_pass_count,
+        premium_shell_required_pass_count: story.premium_shell_required_pass_count,
+        premium_shell_blockers: story.premium_shell_blockers,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(report.summary.failed_count, 0);
 });
 
 test("goal production render materializer prefers the nearest complete sandbox card set", async () => {

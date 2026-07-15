@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -54,6 +55,10 @@ async function makePackage(root, id = "ig-overlong", durationS = 61.2) {
     ].join("\n"),
   );
   return { story_id: id, artifact_dir: artifactDir };
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
 }
 
 test("platform variant materializer creates probe-backed overlong platform variants without publishing", async () => {
@@ -191,6 +196,36 @@ test("platform variant materializer creates Instagram-safe variants for in-windo
   assert.equal(youtube.variant_video_path, undefined);
 });
 
+test("platform variant materializer resolves and hash-verifies governed flagship captions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-flagship-captions-"));
+  const storyPackage = await makePackage(root, "flagship-caption-source", 41.2);
+  const artifactDir = storyPackage.artifact_dir;
+  const captions = await fs.readFile(path.join(artifactDir, "captions.srt"));
+  const flagshipCaptionsPath = path.join(artifactDir, "flagship", "captions.srt");
+  await fs.outputFile(flagshipCaptionsPath, captions);
+  await fs.remove(path.join(artifactDir, "captions.srt"));
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+    story_id: storyPackage.story_id,
+    captions_sha256: sha256(captions),
+  });
+
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T12:55:00.000Z",
+    variantRenderer: async ({ outputPath }) => {
+      await fs.outputFile(outputPath, Buffer.alloc(2200, 2));
+    },
+    probeDuration: async () => 41.2,
+  });
+
+  assert.equal(report.summary.variant_job_count, 1);
+  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.failed_count, 0);
+  const manifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.match(manifest.outputs.instagram_reels.variant_captions_path, /captions_instagram_reels\.srt$/);
+  assert.match(await fs.readFile(manifest.outputs.instagram_reels.variant_captions_path, "utf8"), /Hook caption/);
+});
+
 test("platform variant materializer prefers an explicit target window over a numeric display duration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-variant-numeric-duration-"));
   const storyPackage = await makePackage(root, "ig-numeric-display-duration", 48.348);
@@ -229,7 +264,8 @@ test("platform variant materializer creates Facebook-safe variants before the pu
   const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
   const manifest = await fs.readJson(manifestPath);
   manifest.outputs.facebook_reels = {
-    publish_duration_seconds: { min: 15, max: 90 },
+    duration_seconds: 42.4,
+    strategic_duration_seconds: 42.4,
   };
   await fs.writeJson(manifestPath, manifest, { spaces: 2 });
   const rendered = [];
@@ -316,6 +352,62 @@ test("platform variant materializer refreshes stale in-window platform variants"
   assert.doesNotMatch(await fs.readFile(instagram.variant_captions_path, "utf8"), /Old caption/);
 });
 
+test("platform variant materializer refreshes a same-duration Facebook variant when its source hash is stale", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-stale-source-hash-"));
+  const storyPackage = await makePackage(root, "facebook-stale-source-hash", 42.4);
+  const artifactDir = storyPackage.artifact_dir;
+  const variantDir = path.join(artifactDir, "platform_variants", "facebook_reels");
+  const variantVideoPath = path.join(variantDir, "visual_v4_render_facebook_reels.mp4");
+  const variantCaptionsPath = path.join(variantDir, "captions_facebook_reels.srt");
+  const oldVariant = Buffer.alloc(2200, 2);
+  await fs.outputFile(variantVideoPath, oldVariant);
+  await fs.outputFile(variantCaptionsPath, "1\n00:00:00,000 --> 00:00:01,000\nOld caption.\n");
+  const manifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.facebook_reels = {
+    publish_duration_seconds: { min: 15, max: 90 },
+    variant_video_path: variantVideoPath,
+    variant_captions_path: variantCaptionsPath,
+    technical_duration_seconds: 42.4,
+    platform_variant_render: {
+      status: "ready",
+      platform: "facebook_reels",
+      encoder_profile: "facebook_reels_meta_safe_h264_aac_v1",
+      output_path: variantVideoPath,
+      captions_path: variantCaptionsPath,
+      duration_s: 42.4,
+      source_duration_s: 42.4,
+      source_video_sha256: sha256(Buffer.from("obsolete source render")),
+      source_video_size_bytes: 2000,
+      output_sha256: sha256(oldVariant),
+      output_size_bytes: oldVariant.length,
+      generated_at: "2026-07-15T14:00:00.000Z",
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+  const rendered = [];
+  const replacementVariant = Buffer.alloc(2400, 7);
+
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T14:05:00.000Z",
+    variantRenderer: async ({ outputPath, platform }) => {
+      rendered.push(platform);
+      await fs.outputFile(outputPath, replacementVariant);
+    },
+    probeDuration: async () => 42.4,
+  });
+
+  assert.ok(rendered.includes("facebook_reels"));
+  assert.equal(report.summary.failed_count, 0);
+  const updated = await fs.readJson(manifestPath);
+  const facebook = updated.outputs.facebook_reels.platform_variant_render;
+  assert.equal(facebook.source_video_sha256, sha256(Buffer.alloc(2000, 1)));
+  assert.equal(facebook.source_video_size_bytes, 2000);
+  assert.equal(facebook.output_sha256, sha256(replacementVariant));
+  assert.equal(facebook.output_size_bytes, replacementVariant.length);
+});
+
 test("platform variant materializer refreshes stale variant captions without rerendering in-window video", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-caption-refresh-"));
   const storyPackage = await makePackage(root, "ig-caption-refresh", 39.2);
@@ -323,7 +415,8 @@ test("platform variant materializer refreshes stale variant captions without rer
   const variantDir = path.join(artifactDir, "platform_variants", "instagram_reels");
   const variantVideoPath = path.join(variantDir, "visual_v4_render_instagram_reels.mp4");
   const variantCaptionsPath = path.join(variantDir, "captions_instagram_reels.srt");
-  await fs.outputFile(variantVideoPath, Buffer.alloc(2200, 2));
+  const trustedVariant = Buffer.alloc(2200, 2);
+  await fs.outputFile(variantVideoPath, trustedVariant);
   await fs.outputFile(variantCaptionsPath, "1\n00:00:00,000 --> 00:00:01,000\nOld caption.\n");
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     story_id: "ig-caption-refresh",
@@ -338,7 +431,12 @@ test("platform variant materializer refreshes stale variant captions without rer
           status: "ready",
           platform: "instagram_reels",
           encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
+          source_video_path: path.join(artifactDir, "visual_v4_render.mp4"),
+          source_video_sha256: sha256(Buffer.alloc(2000, 1)),
+          source_video_size_bytes: 2000,
           output_path: variantVideoPath,
+          output_sha256: sha256(trustedVariant),
+          output_size_bytes: trustedVariant.length,
           captions_path: variantCaptionsPath,
           duration_s: 39.2,
         },

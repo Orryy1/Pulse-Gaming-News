@@ -124,4 +124,12 @@ test("Studio V4 suppresses ordinary overlays while a HyperFrames card is visible
     chain,
     /enable='between\(t,10\.0,12\.7\)\*not\(between\(t,10\.2,12\.1\)\)'/,
   );
+  assert.match(
+    chain,
+    /drawtext=text='[^']+'.*enable='not\(between\(t,10\.2,12\.1\)\)'/,
+  );
+  assert.match(
+    chain,
+    /drawbox=x=96:y=1248:w=888:h=210:color=0x07090D@0\.66:t=fill:enable='between\(t,10\.2,12\.1\)'/,
+  );
 });

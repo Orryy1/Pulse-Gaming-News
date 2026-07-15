@@ -747,6 +747,54 @@ test("Goal 19 preserves authoritative RED across render, director and affiliate 
   }
 });
 
+test("Goal 19 does not require an affiliate manifest when commercial disclosure is explicitly not required", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-no-affiliate-required-"));
+  const storyId = "non-commercial-editorial-story";
+  const story = await makeControlStory(root, storyId, {
+    canonical: {
+      commercial_intelligence: { disclosure_required: false },
+    },
+    affiliate: [],
+    platformManifest: {
+      publish_status: "GREEN",
+      can_auto_publish: true,
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Shows Real Footage",
+          disclosure_status: { required: false, type: "none" },
+        },
+        tiktok: {
+          caption: "Source: Xbox.",
+          disclosure_status: { required: false, type: "none" },
+        },
+      },
+      governance_gates: {
+        public_output_coherence_gate: passGate(),
+        rights_ledger: passGate(),
+        platform_policy_gate: passGate(),
+        affiliate_disclosure_gate: passGate(),
+        reused_content_risk_gate: passGate(),
+        anti_spam_uniqueness_gate: passGate(),
+        finance_crypto_firewall: passGate(),
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T14:25:00.000Z",
+  });
+
+  const disclosure = report.stories[0].control_inputs.affiliate_disclosure_report;
+  assert.equal(disclosure.status, "pass", JSON.stringify(disclosure, null, 2));
+  assert.equal(disclosure.evidence.disclosure_required, false);
+  assert.equal(disclosure.evidence.present, false);
+  assert.ok(!report.stories[0].blockers.includes("control:affiliate_disclosure_not_pass"));
+});
+
 test("Goal 19 rejects a final render that omits scene, narration and timestamp lineage", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-missing-render-lineage-"));
   const story = await makeControlStory(root, "story-missing-render-lineage", {

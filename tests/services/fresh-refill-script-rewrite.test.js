@@ -1612,6 +1612,7 @@ test("fresh refill script rewrite replaces stale claims with its focused source-
   assert.equal(claimInventory.fallback_from_story_manifest, false);
   assert.doesNotMatch(manifest.confirmed_claims.join(" "), /Blade|Loki|Deadpool/i);
   assert.match(manifest.confirmed_claims.join(" "), /20 playable|four-versus-four|tutorial/i);
+  assert.equal(manifest.suggested_thumbnail_text, "MARVEL'S 4V4 META FIGHT");
 });
 
 test("fresh refill script rewrite persists official source provenance and event windows", async () => {

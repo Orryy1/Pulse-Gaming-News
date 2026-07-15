@@ -266,6 +266,25 @@ test("story-specific HyperFrames context card uses short audience-facing copy", 
   );
 });
 
+test("story-specific HyperFrames context card preserves a concrete versus-mode balance risk", () => {
+  const specs = buildStoryCardSpecs({
+    id: "marvel-tokon-balance-risk",
+    title: "Marvel Tokon's 4v4 Roster Has One Big Risk",
+    canonical_subject: "MARVEL Tokon",
+    source_card_label: "PlayStation Blog",
+    source_type: "rss",
+    full_script:
+      "Marvel Tokon has 20 playable fighters, but the number that could make or break it is four. " +
+      "PlayStation Blog confirms each match lets you bring a team of four, then call assists and swap fighters mid-fight. " +
+      "That gives Arc System Works room for Marvel-style chaos, but it also creates a balance problem. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(specs.context.number, "MARVEL TOKON");
+  assert.equal(specs.context.sub, "4V4 BALANCE RISK");
+  assert.doesNotMatch(specs.context.sub, /ROSTER LOUDER|PLAYER IMPACT/i);
+});
+
 test("story-specific HyperFrames cards use canonical subjects and honest editorial key lines", () => {
   const specs = buildStoryCardSpecs({
     id: "denshattack-cards",

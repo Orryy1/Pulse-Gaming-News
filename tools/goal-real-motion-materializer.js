@@ -29,6 +29,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     minBaseSources: 0,
     strictBaseSourceDiversity: false,
     refreshReady: false,
+    refreshWindowPlanPath: null,
+    excludedClipIds: [],
     json: false,
     help: false,
   };
@@ -53,6 +55,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--min-base-sources") args.minBaseSources = Number(argv[++i] || 0);
     else if (arg === "--strict-base-source-diversity") args.strictBaseSourceDiversity = true;
     else if (arg === "--refresh-ready") args.refreshReady = true;
+    else if (arg === "--refresh-window-plan") args.refreshWindowPlanPath = argv[++i] || null;
+    else if (arg === "--exclude-clip-id") args.excludedClipIds.push(argv[++i] || "");
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -82,6 +86,8 @@ function usage() {
     "  --min-base-sources <n>  Required genuine immutable base-source identities",
     "  --strict-base-source-diversity  Enforce the ultimate professional identity tier",
     "  --refresh-ready         Refresh requested ready stories from the current motion pack",
+    "  --refresh-window-plan <path>  Materialise exact governed replacement windows from JSON",
+    "  --exclude-clip-id <id>  Exclude a known-bad package clip during refresh; repeatable",
     "  --json                  Print JSON",
   ].join("\n");
 }
@@ -95,6 +101,9 @@ async function main(argv = process.argv.slice(2)) {
   const workOrder = await fs.readJson(path.resolve(args.workOrderPath));
   const segmentValidationReport = args.segmentReportPath
     ? await fs.readJson(path.resolve(args.segmentReportPath))
+    : {};
+  const refreshWindowPlan = args.refreshWindowPlanPath
+    ? await fs.readJson(path.resolve(args.refreshWindowPlanPath))
     : {};
   const report = await materializeGoalRealMotion({
     root: path.resolve(args.root),
@@ -111,6 +120,8 @@ async function main(argv = process.argv.slice(2)) {
     segmentValidationReport,
     artifactRoot: args.artifactRoot,
     includeReadyStories: args.refreshReady,
+    refreshWindowPlan,
+    excludedClipIds: args.excludedClipIds,
   });
   const written = await writeGoalRealMotionReport(report, {
     outputDir: path.resolve(args.outDir),

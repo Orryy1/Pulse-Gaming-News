@@ -194,6 +194,23 @@ test("real motion materializer CLI exposes the ultimate professional source-dive
   assert.equal(args.minBaseSources, 7);
 });
 
+test("real motion materializer CLI accepts an exact refresh-window plan and repeatable exclusions", () => {
+  const args = parseArgs([
+    "--refresh-window-plan",
+    "output/local-proof/refresh-window-plan.json",
+    "--exclude-clip-id",
+    "bad-window-one",
+    "--exclude-clip-id",
+    "bad-window-two",
+  ]);
+
+  assert.equal(
+    args.refreshWindowPlanPath,
+    "output/local-proof/refresh-window-plan.json",
+  );
+  assert.deepEqual(args.excludedClipIds, ["bad-window-one", "bad-window-two"]);
+});
+
 test("real motion materializer forwards an explicit base-source window cap to story materialisation", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-explicit-window-cap-"));
   const job = await makePackage(root, "explicit-window-cap");
@@ -410,6 +427,264 @@ test("real motion materializer rebalances validated package clips when refreshin
     assert.equal(clip.entity, "Ascend to ZERO");
   }
   assert.deepEqual([...countsByRoot.values()].sort((a, b) => a - b), [2, 2, 2, 2]);
+});
+
+test("real motion materializer preserves exact materialised source identities during ready refresh", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-refresh-identity-"));
+  const storyId = "black-flag-refresh-identity";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Assassin's Creed IV Black Flag Resynced",
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+
+  const clips = [];
+  for (let sourceIndex = 0; sourceIndex < 4; sourceIndex += 1) {
+    for (let windowIndex = 0; windowIndex < 2; windowIndex += 1) {
+      const id = `identity-source-${sourceIndex + 1}-window-${windowIndex + 1}`;
+      const localPath = path.join(root, "output", "video_cache", `${id}.mp4`);
+      const bytes = Buffer.alloc(4096, sourceIndex + 21);
+      await fs.outputFile(localPath, bytes);
+      const sourceUrl = path.join(root, "source-masters", `official-${sourceIndex + 1}.mp4`);
+      await fs.outputFile(sourceUrl, Buffer.alloc(8192, sourceIndex + 31));
+      clips.push({
+        id,
+        path: localPath,
+        local_materialized_path: localPath,
+        source_url: sourceUrl,
+        source_family: `official-source-${sourceIndex + 1}-window-${windowIndex + 1}`,
+        base_source_family: `official-source-${sourceIndex + 1}`,
+        source_type: "official_trailer_video",
+        media_kind: "direct_video",
+        durationS: 5,
+        mediaStartS: 6 + windowIndex * 8,
+        source_duration_s: 60,
+        rights_basis: "official_direct_media",
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        validated: true,
+        segmentValidationPassed: true,
+        materialized_file_evidence: {
+          schema_version: 1,
+          sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+          size_bytes: bytes.length,
+          duration_seconds: 5,
+          video_codec: "h264",
+          width: 1080,
+          height: 1920,
+        },
+        provenance: {
+          source: "official_trailer_segment_validation",
+          validation_reason: "official_trailer_motion_samples_passed",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          base_source_family: `official-source-${sourceIndex + 1}`,
+        },
+      });
+    }
+  }
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    story_id: storyId,
+    clips: clips.map((clip, index) => ({
+      ...clip,
+      canonical_source_url: `https://www.youtube.com/watch?v=Official${Math.floor(index / 2) + 1}`,
+      youtube_video_id: `Official${Math.floor(index / 2) + 1}`,
+      source_master_sha256: crypto
+        .createHash("sha256")
+        .update(`official-master-${Math.floor(index / 2) + 1}`)
+        .digest("hex"),
+      sampled_visual_fingerprint: `official-source-${Math.floor(index / 2) + 1}-visual-signature`,
+    })),
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        title: "Black Flag Resynced Finally Has A Release Date",
+        artifact_dir: artifactDir,
+        status: "ready_for_final_render_job",
+        actions: [{ action_id: "run_visual_v4_production_render" }],
+      }],
+    },
+    storyIds: [storyId],
+    includeReadyStories: true,
+    minClips: 8,
+    minFamilies: 4,
+    maxClips: 8,
+    maxDirectClipsPerBaseSource: 2,
+    strictBaseSourceDiversity: true,
+    minBaseSources: 4,
+    generatedAt: "2026-07-15T12:20:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.professional_source_diversity.observed_genuine_base_source_count, 4);
+  assert.equal(materialised.professional_source_diversity.unresolved_clips.length, 0);
+  for (const clip of materialised.clips) {
+    assert.match(clip.source_master_sha256, /^[a-f0-9]{64}$/);
+    assert.match(clip.canonical_source_url, /^https:\/\/www\.youtube\.com\/watch\?v=Official/);
+    assert.match(clip.youtube_video_id, /^Official/);
+    assert.match(clip.sampled_visual_fingerprint, /^official-source-/);
+  }
+});
+
+test("real motion materializer applies an exact refresh plan with independent derivative evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-refresh-derivative-evidence-"));
+  const storyId = "black-flag-refresh-derivative-evidence";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Assassin's Creed IV Black Flag Resynced",
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+
+  const clips = [];
+  for (let sourceIndex = 0; sourceIndex < 5; sourceIndex += 1) {
+    const masterPath = `https://cdn.publisher.example/black-flag/official-${sourceIndex + 1}.mp4`;
+    for (let windowIndex = 0; windowIndex < 1; windowIndex += 1) {
+      const id = `refresh-source-${sourceIndex + 1}-window-${windowIndex + 1}`;
+      const localPath = path.join(root, "output", "video_cache", `${id}.mp4`);
+      const bytes = Buffer.alloc(4096, sourceIndex + windowIndex + 51);
+      await fs.outputFile(localPath, bytes);
+      clips.push({
+        id,
+        path: localPath,
+        local_materialized_path: localPath,
+        source_url: masterPath,
+        source_family: `refresh-source-${sourceIndex + 1}-window-${windowIndex + 1}`,
+        base_source_family: `refresh-source-${sourceIndex + 1}`,
+        source_type: "official_trailer_video",
+        media_kind: "direct_video",
+        durationS: 5,
+        mediaStartS: 5 + windowIndex * 8,
+        source_duration_s: 80,
+        rights_basis: "official_direct_media",
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        validated: true,
+        segmentValidationPassed: true,
+        asset_sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+        asset_size_bytes: bytes.length,
+        probed_duration_seconds: 5,
+        video_codec: "h264",
+        width: 1080,
+        height: 1920,
+        materialized_file_evidence: {
+          schema_version: 1,
+          sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+          size_bytes: bytes.length,
+          duration_seconds: 5,
+          video_codec: "h264",
+          width: 1080,
+          height: 1920,
+        },
+        provenance: {
+          source: "official_trailer_segment_validation",
+          validation_reason: "official_trailer_motion_samples_passed",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          base_source_family: `refresh-source-${sourceIndex + 1}`,
+          source_duration_s: 80,
+        },
+      });
+    }
+  }
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+    },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        title: "Black Flag Resynced Finally Has A Release Date",
+        artifact_dir: artifactDir,
+        status: "ready_for_final_render_job",
+        actions: [{ action_id: "run_visual_v4_production_render" }],
+      }],
+    },
+    storyIds: [storyId],
+    includeReadyStories: true,
+    minClips: 6,
+    minFamilies: 5,
+    maxClips: 6,
+    maxDirectClipsPerBaseSource: 2,
+    excludedClipIds: ["refresh-source-5-window-1"],
+    refreshWindowPlan: {
+      story_id: storyId,
+      windows: [
+        {
+          id: "approved-source-5-window-24",
+          source_clip_id: "refresh-source-5-window-1",
+          source_family: "approved-source-5-window-24-5",
+          media_start_s: 24,
+          duration_s: 5,
+          source_crop_bottom_px: 80,
+        },
+        {
+          id: "approved-source-1-window-24",
+          source_clip_id: "refresh-source-1-window-1",
+          source_family: "approved-source-1-window-24-5",
+          media_start_s: 24,
+          duration_s: 5,
+        },
+      ],
+    },
+    generatedAt: "2026-07-15T12:25:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(8192, 61));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.jobs[0].materialized_count, 6);
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.clips.some((clip) => clip.id === "refresh-source-5-window-1"), false);
+  const supplemental = materialised.clips.filter((clip) => /^approved-source-/.test(clip.id));
+  assert.equal(supplemental.length, 2);
+  for (const clip of supplemental) {
+    assert.equal(clip.asset_size_bytes, 8192);
+    assert.equal(clip.materialized_file_evidence.size_bytes, 8192);
+    assert.equal(clip.asset_sha256, clip.materialized_file_evidence.sha256);
+  }
+  assert.equal(
+    supplemental.find((clip) => clip.id === "approved-source-5-window-24")
+      .source_crop_bottom_px,
+    80,
+  );
+  assert.deepEqual(
+    supplemental.map((clip) => clip.mediaStartS).sort((a, b) => a - b),
+    [24, 24],
+  );
 });
 
 test("real motion materializer accepts segment-validated official Steam motion-pack clips", async () => {

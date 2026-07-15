@@ -26,6 +26,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     limit: 0,
     provider: "auto",
     ttsRate: null,
+    enforceTargetCadence: false,
+    padTargetCadence: false,
     localTtsTimeoutMs: null,
     localTtsRequestAttempts: null,
     localTtsSegmentedMaterializer: null,
@@ -48,6 +50,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--limit") args.limit = Number(argv[++i] || 0);
     else if (arg === "--provider") args.provider = argv[++i] || args.provider;
     else if (arg === "--tts-rate") args.ttsRate = Number(argv[++i] || 0) || null;
+    else if (arg === "--enforce-target-cadence") args.enforceTargetCadence = true;
+    else if (arg === "--pad-target-cadence") args.padTargetCadence = true;
     else if (arg === "--local-tts-timeout-ms") args.localTtsTimeoutMs = Number(argv[++i] || 0) || null;
     else if (arg === "--local-tts-request-attempts") args.localTtsRequestAttempts = Number(argv[++i] || 0) || null;
     else if (arg === "--local-tts-segmented-materializer") args.localTtsSegmentedMaterializer = argv[++i] || null;
@@ -81,6 +85,8 @@ function usage() {
     "  --story-id <id>       Generate only this story; repeatable",
     "  --provider <auto|local|elevenlabs>  Narration provider preference; auto uses the provider selected by the workbench",
     "  --tts-rate <number>    Explicit speaking-rate override for regenerated narration",
+    "  --enforce-target-cadence  Reject regenerated narration outside the target cadence",
+    "  --pad-target-cadence      Insert bounded sentence pauses to repair fast cadence without stretching speech",
     "  --local-tts-timeout-ms <n>       Explicit bounded local TTS request timeout",
     "  --local-tts-request-attempts <n> Explicit bounded local TTS request attempts",
     "  --local-tts-segmented-materializer <true|false>  Enable sentence-level local TTS materialisation",
@@ -210,6 +216,8 @@ async function main(argv = process.argv.slice(2)) {
     inspectOnly: args.inspectOnly,
     provider: args.provider,
     ttsRate: args.ttsRate,
+    enforceNativeCadenceBeforePromotion: args.enforceTargetCadence,
+    nativeCadencePausePadding: args.padTargetCadence,
     alignmentMode: args.alignmentMode,
     localTtsSegmentedMaterializer: args.localTtsSegmentedMaterializer,
     localTtsSegmentedWordThreshold: args.localTtsSegmentedWordThreshold,

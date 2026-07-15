@@ -490,6 +490,31 @@ test("RED: rejects stale timestamp-to-audio hashes", async () => {
   );
 });
 
+test("accepts deterministic spoken currency timestamps bound to numeric display copy", async () => {
+  const fixture = await makeFixture();
+  const scriptText = "Steam lists the bundle at $84.91.";
+  const spokenWords = "Steam lists the bundle at 84 dollars 91".split(/\s+/);
+  await replaceBoundTimeline(fixture, {
+    scriptText,
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: `1\n00:00:00,000 --> 00:00:01,000\n${scriptText}\n`,
+    words: spokenWords.map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, true, JSON.stringify(report.blockers, null, 2));
+  assert.equal(report.verdict, "GREEN");
+});
+
 test("RED: marks timestamps unverified when their audio binding is absent", async () => {
   const fixture = await makeFixture();
   const timestampPath = path.join(fixture.packageDir, "captions/word_timestamps.json");

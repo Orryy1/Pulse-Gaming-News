@@ -3753,6 +3753,76 @@ test("render input work order does not route viral-ready no-curiosity-marker war
   assert.deepEqual(job.evidence.script_scorecard_qa.failures, []);
 });
 
+test("render input work order preserves confirmed claims when rescoring supported universal language", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-render-input-supported-claim-"));
+  const artifactDir = path.join(root, "batch", "supported-universal-claim");
+  const script =
+    "Black Flag Resynced has nine day-one DLC packs costing more than the game. Steam lists them at $84.91 combined, while the base game costs $59.99. Eight packs are $9.99 each, adding character outfits, ship cosmetics and sometimes weapons or trinkets with unique perks. The ninth is a $4.99 map pack that instantly reveals rare collectibles. Ubisoft says the standard edition is still the full experience, and that is the line players will test. Do these feel like harmless extras, or content carved out before launch? Bonus content, or too far? If the base game feels complete, Ubisoft's defence holds. If it does not, nine day-one packs turn nostalgia into a pricing fight. Follow Pulse Gaming so you never miss a beat.";
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "supported-universal-claim",
+    canonical_subject: "Assassin's Creed Black Flag Resynced",
+    selected_title: "Black Flag Resynced's $84.91 DLC Costs More Than The Game",
+    primary_source: "Steam",
+    confirmed_claims: [
+      "Steam lists nine launch-day DLC packs for Assassin's Creed Black Flag Resynced.",
+      "Eight listed packs cost $9.99 each and the map pack costs $4.99, totalling $84.91.",
+      "Steam lists the Black Flag Resynced base game at $59.99.",
+      "Ubisoft says the standard edition delivers the full experience.",
+    ],
+    claim_inventory: {
+      confirmed: [
+        "Steam lists nine launch-day DLC packs for Assassin's Creed Black Flag Resynced.",
+        "Eight listed packs cost $9.99 each and the map pack costs $4.99, totalling $84.91.",
+        "Steam lists the Black Flag Resynced base game at $59.99.",
+        "Ubisoft says the standard edition delivers the full experience.",
+      ],
+      unconfirmed: [],
+      prohibited: [],
+    },
+    narration_script: script,
+    full_script: script,
+    description:
+      "Black Flag Resynced has nine day-one DLC packs costing more than the game. Source: Steam.",
+    thumbnail_headline: "$84.91 DAY-ONE DLC",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    viral_score: 93,
+    blockers: [],
+    warnings: [],
+    scores: {
+      hook_strength: 100,
+      curiosity_gap: 85,
+      insight_density: 100,
+      source_safety: 86,
+      retention_pacing: 93,
+    },
+  }, { spaces: 2 });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-15T05:14:19.000Z",
+      queue: [
+        {
+          story_id: "supported-universal-claim",
+          title: "Black Flag Resynced's $84.91 DLC Costs More Than The Game",
+          artifact_dir: artifactDir,
+          render_input_status: "blocked",
+          render_input_blockers: ["render_manifest_missing"],
+        },
+      ],
+    },
+    generatedAt: "2026-07-15T05:15:00.000Z",
+  });
+
+  const job = workOrder.jobs.find((item) => item.story_id === "supported-universal-claim");
+  assert.ok(job);
+  assert.ok(!job.blockers.includes("script_scorecard_repair_required"), JSON.stringify(job, null, 2));
+  assert.equal(job.evidence.script_scorecard_qa.verdict, "pass");
+  assert.deepEqual(job.evidence.script_scorecard_qa.failures, []);
+});
+
 test("render input work order routes aggregate visual benchmark failures away from sound-only repair", () => {
   const workOrder = buildGoalRenderInputWorkOrder({
     cutoverPlan: {

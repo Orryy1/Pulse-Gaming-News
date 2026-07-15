@@ -46,7 +46,7 @@ function allPlatformsEnabled() {
   };
 }
 
-test("dry-run card dwell honours certified source and context window minima", () => {
+test("dry-run card dwell does not let stale certified minima waive the V5 source floor", () => {
   const result = hyperframesReadableDwellEvidence({
     renderManifest: {
       hyperframes_card_count: 2,
@@ -69,8 +69,15 @@ test("dry-run card dwell honours certified source and context window minima", ()
     },
   });
 
-  assert.deepEqual(result.evidence.rendered_too_fast_card_windows, []);
-  assert.ok(!result.blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
+  assert.deepEqual(
+    result.evidence.rendered_too_fast_card_windows.map((window) => window.id),
+    ["scene_4_source"],
+  );
+  assert.equal(
+    result.evidence.rendered_too_fast_card_windows[0].minimum_required_duration_s,
+    1.9,
+  );
+  assert.ok(result.blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
 });
 
 test("dry-run card dwell treats the compact Studio V4 headline as a short overlay", () => {
@@ -1027,8 +1034,8 @@ test("goal dry-run publisher blocks source cards that overstay and kill pacing",
       end_s: 6.5,
       duration_s: 6,
       text: "SOURCE: ROCKSTAR GAMES opening_source_lock",
-      minimum_required_duration_s: 1.6,
-      maximum_allowed_duration_s: 2.8,
+      minimum_required_duration_s: 1.9,
+      maximum_allowed_duration_s: 3.1,
       source: "",
     },
     {
@@ -1038,8 +1045,8 @@ test("goal dry-run publisher blocks source cards that overstay and kill pacing",
       end_s: 20,
       duration_s: 12,
       text: "THE PRICE DEBATE JUST GOT LOUDER argument_card",
-      minimum_required_duration_s: 4.3,
-      maximum_allowed_duration_s: 6.4,
+      minimum_required_duration_s: 4,
+      maximum_allowed_duration_s: 5.2,
       source: "",
     },
   ]);
@@ -1258,7 +1265,7 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         },
         overlay_card_windows: [],
         card_visible_windows: [
-          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
+          { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
           { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 16.5, duration_s: 4.2 },
           { id: "proof_primary", kind: "proof_card", start_s: 16.8, end_s: 21, duration_s: 4.2 },
         ],
@@ -2556,8 +2563,8 @@ test("goal dry-run publisher accepts compact proof overlays and distinct YouTube
             kind: "source_lock",
             text: "ALBION ONLINE",
             start_s: 0,
-            end_s: 1.6,
-            duration_s: 1.6,
+            end_s: 2.6,
+            duration_s: 2.6,
             source: "studio_v4_overlay_chain",
           },
           {

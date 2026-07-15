@@ -106,6 +106,8 @@ function canonicalManifest() {
     narration_script: GENERIC_SCRIPT,
     tts_script: GENERIC_SCRIPT,
     spoken_narration_script: GENERIC_SCRIPT,
+    caption_display_text: GENERIC_SCRIPT,
+    display_script: GENERIC_SCRIPT,
     description: "Source: Eurogamer.",
     title: "Tekken 8 Finally Shows Real Gameplay",
     public_title: "Tekken 8 Finally Shows Real Gameplay",
@@ -382,6 +384,18 @@ test("fresh refill viewer script does not turn Phantom Blade in a roundup into T
   assert.match(script.suggested_title, /4v4|Roster/i);
   assert.match(script.full_script, /20 playable|twenty playable/i);
   assert.match(script.full_script, /Black Panther|Doctor Doom|Spider-Man|Carnage/i);
+  assert.ok(
+    script.word_count >= 132 && script.word_count <= 138,
+    `expected a naturally paced Tokon script, got ${script.word_count} words`,
+  );
+  const sentenceWordCounts = (script.full_script.match(/[^.!?]+[.!?]+/g) || []).map(
+    (sentence) => (sentence.match(/[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*/g) || []).length,
+  );
+  assert.ok(
+    Math.max(...sentenceWordCounts) <= 17,
+    `expected short mass-audience sentences, got ${Math.max(...sentenceWordCounts)} words`,
+  );
+  assert.match(script.full_script, /Readable chaos will sell the game\./);
   assert.doesNotMatch(script.full_script, /Blade, Loki|Loki and Deadpool/i);
   assert.equal(script.coherence.result, "pass");
 });
@@ -1443,6 +1457,10 @@ test("fresh refill script rewrite apply updates only local proof artefacts", asy
   const manifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
   assert.match(manifest.narration_script, /^Tekken 8 bringing Bob back\b/);
   assert.doesNotMatch(manifest.narration_script, /new source detail|real question|play now, wait, skip/i);
+  assert.equal(manifest.tts_script, manifest.narration_script);
+  assert.equal(manifest.spoken_narration_script, manifest.narration_script);
+  assert.equal(manifest.caption_display_text, manifest.narration_script);
+  assert.equal(manifest.display_script, manifest.narration_script);
   assert.equal(manifest.title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
   assert.equal(manifest.canonical_title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
   assert.equal(manifest.selected_title, "Tekken 8 Bob DLC Turns Into A Roster Comeback Test");
@@ -1518,6 +1536,82 @@ test("fresh refill script rewrite persists a narrowed canonical subject before m
   assert.equal(report.summary.applied_count, 1);
   assert.equal(manifest.canonical_subject, "MARVEL Tokon");
   assert.equal(manifest.canonical_game, "MARVEL Tokon");
+});
+
+test("fresh refill script rewrite replaces stale claims with its focused source-backed inventory", async () => {
+  const caseRoot = path.join(TEST_ROOT, "apply-focused-claim-inventory");
+  const artifactDir = path.join(caseRoot, "artifact");
+  const workOrderPath = path.join(caseRoot, "work_order.json");
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/";
+  const staleClaim =
+    "PlayStation Blog says Blade, Loki and Deadpool are joining MARVEL Tokon: Fighting Souls.";
+  await fs.remove(caseRoot);
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_marvel_tokon_focused_claims",
+    canonical_subject: "MARVEL Tokon",
+    canonical_title: "Marvel Tokon Roster Just Got Louder",
+    primary_source: "PlayStation Blog",
+    primary_source_url: sourceUrl,
+    confirmed_claims: [staleClaim],
+    claim_inventory: { confirmed: [staleClaim], unconfirmed: [], prohibited: [] },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "claim_inventory.json"), {
+    schema_version: 1,
+    story_id: "rss_marvel_tokon_focused_claims",
+    confirmed: [staleClaim],
+    unconfirmed: [],
+    prohibited: [],
+    fallback_from_story_manifest: true,
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), { outputs: {} }, { spaces: 2 });
+  const evidenceClaims = [
+    "MARVEL Tokon: Fighting Souls has 20 playable base heroes and villains, including Black Panther, Doctor Doom, Spider-Man and Carnage.",
+    "MARVEL Tokon: Fighting Souls uses four-versus-four matches.",
+    "The game includes a tutorial, a single-player mode and options for easier inputs and combo chains.",
+  ];
+  await fs.writeJson(workOrderPath, {
+    jobs: [{
+      story_id: "rss_marvel_tokon_focused_claims",
+      title: "MARVEL Tokon: Fighting Souls - August 6",
+      artifact_dir: artifactDir,
+      source: {
+        name: "PlayStation Blog",
+        url: sourceUrl,
+        title: "19 unmissable PS5 games still releasing in 2026",
+        type: "rss",
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "19 unmissable PS5 games still releasing in 2026",
+        claims: evidenceClaims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+    }],
+  }, { spaces: 2 });
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(caseRoot, "report"),
+    applyLocal: true,
+  });
+  const manifest = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const claimInventory = await fs.readJson(path.join(artifactDir, "claim_inventory.json"));
+
+  assert.equal(report.summary.applied_count, 1);
+  assert.equal(manifest.confirmed_claims.length, 3);
+  assert.deepEqual(manifest.claim_inventory.confirmed, manifest.confirmed_claims);
+  assert.deepEqual(claimInventory.confirmed, manifest.confirmed_claims);
+  assert.equal(claimInventory.fallback_from_story_manifest, false);
+  assert.doesNotMatch(manifest.confirmed_claims.join(" "), /Blade|Loki|Deadpool/i);
+  assert.match(manifest.confirmed_claims.join(" "), /20 playable|four-versus-four|tutorial/i);
 });
 
 test("fresh refill script rewrite persists official source provenance and event windows", async () => {

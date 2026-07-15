@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   buildGoal07DirectorBrain,
+  validateDirectorPlan,
   writeGoal07DirectorBrain,
 } = require("../../lib/goal07-director-brain");
 
@@ -67,7 +68,7 @@ function readyDirectorPlan(storyId = "story-director") {
         id: "source_lock",
         kind: "source_lock",
         startS: 2.2,
-        durationS: 12,
+        durationS: 2.6,
         source: "IGN",
         visual_treatment: "large readable source bug",
       },
@@ -75,7 +76,7 @@ function readyDirectorPlan(storyId = "story-director") {
         id: "proof_card",
         kind: "proof_card",
         startS: 14.2,
-        durationS: 12,
+        durationS: 5.1,
         label: "SOURCE LOCKED",
       },
       {
@@ -162,6 +163,120 @@ function readyDirectorPlan(storyId = "story-director") {
   };
 }
 
+test("Goal 07 director brain enforces the current V5 source-lock range", () => {
+  for (const [durationS, expectedStatus] of [
+    [1.6, "too_short"],
+    [1.9, "pass"],
+    [2.6, "pass"],
+    [3.1, "pass"],
+  ]) {
+    const plan = readyDirectorPlan(`story-source-${durationS}`);
+    plan.shot_plan.find((shot) => shot.kind === "source_lock").durationS = durationS;
+
+    const validation = validateDirectorPlan(plan);
+    const evidence = validation.metrics.card_timing_evidence.find(
+      (shot) => shot.kind === "source_lock",
+    );
+    const sourceTimingBlockers = validation.blockers.filter(
+      (blocker) => /(?:card|source_lock)_dwell_too_(?:short|long)$/.test(blocker),
+    );
+
+    assert.equal(evidence.status, expectedStatus, `source lock at ${durationS}s`);
+    assert.deepEqual(
+      sourceTimingBlockers,
+      expectedStatus === "too_short"
+        ? ["director:card_dwell_too_short", "director:source_lock_dwell_too_short"]
+        : [],
+      `source lock blockers at ${durationS}s`,
+    );
+  }
+});
+
+test("Goal 07 director brain accepts current narrative proof beats and emits role-aware timing evidence", () => {
+  const longProofText =
+    "THE FULL PLAYER IMPACT ACROSS RELEASE DATE PRICE PLATFORMS EDITIONS AND UPGRADES";
+
+  for (const durationS of [5.1, 5.8]) {
+    const plan = readyDirectorPlan(`story-proof-${durationS}`);
+    plan.shot_plan.find((shot) => shot.kind === "source_lock").durationS = 2.6;
+    const proof = plan.shot_plan.find((shot) => shot.kind === "proof_card");
+    proof.durationS = durationS;
+    proof.label = longProofText;
+
+    const validation = validateDirectorPlan(plan);
+
+    assert.equal(validation.blockers.includes("director:card_dwell_too_short"), false);
+    assert.equal(validation.blockers.includes("director:card_dwell_too_long"), false);
+  }
+
+  const evidencePlan = readyDirectorPlan("story-timing-evidence");
+  evidencePlan.shot_plan.find((shot) => shot.kind === "source_lock").durationS = 2.6;
+  const evidenceProof = evidencePlan.shot_plan.find((shot) => shot.kind === "proof_card");
+  evidenceProof.durationS = 5.1;
+  evidenceProof.label = longProofText;
+  const validation = validateDirectorPlan(evidencePlan);
+
+  assert.equal(validation.metrics.card_timing_contract_version, "pulse_card_timing_v3");
+  assert.deepEqual(validation.metrics.card_timing_evidence, [
+    {
+      id: "source_lock",
+      kind: "source_lock",
+      role: "source",
+      duration_s: 2.6,
+      minimum_visible_duration_s: 1.9,
+      target_visible_duration_s: 2.6,
+      maximum_visible_duration_s: 3.1,
+      contract_version: "pulse_card_timing_v3",
+      status: "pass",
+    },
+    {
+      id: "proof_card",
+      kind: "proof_card",
+      role: "proof",
+      duration_s: 5.1,
+      minimum_visible_duration_s: 3.4,
+      target_visible_duration_s: 5.1,
+      maximum_visible_duration_s: 5.8,
+      contract_version: "pulse_card_timing_v3",
+      status: "pass",
+    },
+  ]);
+});
+
+test("Goal 07 director brain blocks cards above their role-specific timing ceiling", () => {
+  for (const cardCase of [
+    {
+      kind: "source_lock",
+      durationS: 3.2,
+      expectedBlockers: [
+        "director:card_dwell_too_long",
+        "director:source_lock_dwell_too_long",
+      ],
+    },
+    {
+      kind: "proof_card",
+      durationS: 5.9,
+      expectedBlockers: ["director:card_dwell_too_long"],
+    },
+  ]) {
+    const plan = readyDirectorPlan(`story-overlong-${cardCase.kind}`);
+    plan.shot_plan.find((shot) => shot.kind === "source_lock").durationS = 2.6;
+    plan.shot_plan.find((shot) => shot.kind === "proof_card").durationS = 5.1;
+    plan.shot_plan.find((shot) => shot.kind === cardCase.kind).durationS = cardCase.durationS;
+
+    const validation = validateDirectorPlan(plan);
+    const evidence = validation.metrics.card_timing_evidence.find(
+      (shot) => shot.kind === cardCase.kind,
+    );
+
+    assert.equal(evidence.status, "too_long");
+    for (const blocker of cardCase.expectedBlockers) {
+      assert.ok(validation.blockers.includes(blocker), `${cardCase.kind}: ${blocker}`);
+    }
+    assert.equal(validation.metrics.too_long_readable_card_count, 1);
+  }
+});
+
 test("Goal 07 director brain passes a timed plan with early visual change, motion and SFX alignment", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-ready-"));
   const storyPackage = await makePackage(root, "story-ready", readyDirectorPlan("story-ready"));
@@ -185,9 +300,8 @@ test("Goal 07 director brain blocks source and proof cards that are too quick to
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal07-short-card-dwell-"));
   const shortCards = readyDirectorPlan("story-short-card-dwell");
   for (const shot of shortCards.shot_plan) {
-    if (["source_lock", "proof_card"].includes(shot.kind)) {
-      shot.durationS = 2.2;
-    }
+    if (shot.kind === "source_lock") shot.durationS = 1.6;
+    if (shot.kind === "proof_card") shot.durationS = 3.3;
   }
   const storyPackage = await makePackage(root, "story-short-card-dwell", shortCards);
 
@@ -214,8 +328,8 @@ test("Goal 07 director brain does not count readable source overlays as card-onl
   overlayPlan.shot_plan = [
     { id: "hook_slam", kind: "hook_slam", startS: 0, durationS: 2.4, label: "THE HEADLINE", visual_treatment: "instant motion hit, no text stack" },
     { id: "motion_clip_01", kind: "motion_clip", startS: 0.35, durationS: 3.6, source_family: "clip_1", media_path: "output/video/clip-1.mp4" },
-    { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 12, source: "IGN", visual_treatment: "large readable source bug" },
-    { id: "proof_card", kind: "proof_card", startS: 4.45, durationS: 12, label: "PROOF", visual_treatment: "large readable source card" },
+    { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.6, source: "IGN", visual_treatment: "large readable source bug" },
+    { id: "proof_card", kind: "proof_card", startS: 4.45, durationS: 5.8, label: "PROOF", visual_treatment: "large readable source card" },
     { id: "motion_clip_02", kind: "motion_clip", startS: 5.2, durationS: 3.6, source_family: "clip_2", media_path: "output/video/clip-2.mp4" },
     { id: "motion_clip_03", kind: "motion_clip", startS: 10.8, durationS: 3.6, source_family: "clip_3", media_path: "output/video/clip-3.mp4" },
     { id: "motion_clip_04", kind: "motion_clip", startS: 16.6, durationS: 3.6, source_family: "clip_4", media_path: "output/video/clip-4.mp4" },
@@ -239,8 +353,8 @@ test("Goal 07 director brain does not count readable source overlays as card-onl
   });
 
   assert.equal(report.verdict, "PASS");
-  assert.equal(report.stories[0].metrics.card_seconds, 5.3);
-  assert.equal(report.stories[0].metrics.card_ratio, 0.147);
+  assert.equal(report.stories[0].metrics.card_seconds, 2.7);
+  assert.equal(report.stories[0].metrics.card_ratio, 0.075);
   assert.ok(!report.stories[0].blockers.includes("director:too_many_card_only_beats"));
 });
 

@@ -110,7 +110,9 @@ function completeMetrics(storyId, overrides = {}) {
   return {
     story_id: storyId,
     video_id: `yt-${storyId}`,
+    public_post_id: overrides.public_post_id || `yt-${storyId}`,
     platform: "youtube_shorts",
+    observed_at: overrides.observed_at || "2026-05-25T12:00:00.000Z",
     views: overrides.views ?? 1200,
     impressions: overrides.impressions ?? 5100,
     average_view_duration_seconds: overrides.average_view_duration_seconds ?? 12.4,
@@ -147,9 +149,54 @@ function completeMetrics(storyId, overrides = {}) {
   };
 }
 
-test("Goal 11 blocks readiness when analytics are missing and Goal 10 is blocked upstream", async () => {
+function markStoryPublished(story, overrides = {}) {
+  story.youtube_post_id = overrides.public_post_id || `yt-${story.story_id}`;
+  story.youtube_published_at = overrides.published_at || "2026-05-20T12:00:00.000Z";
+  return story;
+}
+
+test("Goal 11 keeps an upstream-blocked verified draft pending until performance is observable", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-missing-"));
-  const story = await makeStoryPackage(root, "story-upstream");
+  const story = await makeStoryPackage(root, "story-upstream", {
+    title: "The Expanse Shows Real Gameplay",
+    primary_source: "Xbox",
+    first_frame_text: "EXPANSE GAMEPLAY",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  await fs.outputJson(path.join(story.artifact_dir, "director_beat_map.json"), {
+    shot_plan: [
+      {
+        id: "opener",
+        kind: "opener",
+        type: "opener",
+        startS: 0,
+        durationS: 2.4,
+        source: "expanse-trailer-a.mp4",
+        mediaStartS: 12.5,
+        text: "EXPANSE GAMEPLAY",
+      },
+      {
+        id: "clip-b",
+        kind: "clip",
+        type: "clip",
+        startS: 2.4,
+        durationS: 3,
+        source: "expanse-trailer-b.mp4",
+        mediaStartS: 31,
+      },
+      {
+        id: "source",
+        kind: "source_lock",
+        type: "card.source",
+        startS: 5.4,
+        durationS: 2.2,
+      },
+    ],
+  });
 
   const report = await buildGoal11RetentionIntelligenceLoop({
     storyPackages: [story],
@@ -172,12 +219,18 @@ test("Goal 11 blocks readiness when analytics are missing and Goal 10 is blocked
   assert.equal(report.summary.story_count, 1);
   assert.equal(report.summary.retention_ready_story_count, 0);
   assert.equal(report.summary.metrics_ready_story_count, 0);
-  assert.equal(report.summary.analytics_missing_story_count, 1);
+  assert.equal(report.summary.analytics_missing_story_count, 0);
+  assert.equal(report.summary.analytics_pending_story_count, 1);
   assert.equal(report.summary.upstream_blocked_story_count, 1);
   assert.equal(report.summary.static_diagnosis_story_count, 1);
-  assert.equal(report.stories[0].direct_retention_status, "blocked");
+  assert.equal(report.stories[0].direct_retention_status, "pass");
+  assert.equal(report.stories[0].publication_phase, "prepublication");
+  assert.equal(
+    report.stories[0].performance_evidence_status,
+    "pending_not_yet_observable",
+  );
   assert.ok(report.stories[0].blockers.includes("upstream:goal10_gold_standard_forensics_blocked"));
-  assert.ok(report.stories[0].blockers.includes("retention:analytics_missing"));
+  assert.ok(!report.stories[0].blockers.includes("retention:analytics_missing"));
   assert.equal(report.stories[0].missing_metrics.length, GOAL11_REQUIRED_METRICS.length);
   assert.equal(report.learning_rules.status, "blocked_pending_analytics");
   assert.equal(report.experiment_results.status, "not_started");
@@ -193,6 +246,7 @@ test("Goal 11 turns complete local retention metrics into diagnoses, rules and r
     motionDensityScore: 60,
     sourceLockScore: 52,
   });
+  markStoryPublished(story);
 
   const report = await buildGoal11RetentionIntelligenceLoop({
     storyPackages: [story],
@@ -307,6 +361,8 @@ test("Goal 11 treats clean pre-publish candidates without live metrics as analyt
   assert.equal(report.summary.blocked_story_count, 0);
   assert.equal(ready.status, "ready");
   assert.equal(ready.direct_retention_status, "pass");
+  assert.equal(ready.publication_phase, "prepublication");
+  assert.equal(ready.performance_evidence_status, "pending_not_yet_observable");
   assert.equal(ready.metrics_status, "pending");
   assert.ok(!ready.blockers.includes("retention:analytics_missing"));
   assert.equal(skipped.status, "skipped");
@@ -320,7 +376,200 @@ test("Goal 11 treats clean pre-publish candidates without live metrics as analyt
   );
 });
 
-test("Goal 11 uses shallow platform snapshots without blocking deep-retention readiness", async () => {
+test("Goal 11 blocks a published story when performance metrics are missing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-published-missing-"));
+  const story = await makeStoryPackage(root, "story-published", {
+    title: "The Expanse Shows Real Gameplay",
+    primary_source: "Xbox",
+    first_frame_text: "EXPANSE GAMEPLAY",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  story.youtube_post_id = "yt-story-published";
+  story.youtube_published_at = "2026-05-28T12:00:00.000Z";
+  await fs.outputJson(path.join(story.artifact_dir, "director_beat_map.json"), {
+    shot_plan: [
+      {
+        id: "opener",
+        kind: "opener",
+        type: "opener",
+        startS: 0,
+        durationS: 2.4,
+        source: "expanse-trailer-a.mp4",
+        mediaStartS: 12.5,
+        text: "EXPANSE GAMEPLAY",
+      },
+      {
+        id: "clip-b",
+        kind: "clip",
+        type: "clip",
+        startS: 2.4,
+        durationS: 3,
+        source: "expanse-trailer-b.mp4",
+        mediaStartS: 31,
+      },
+      {
+        id: "source",
+        kind: "source_lock",
+        type: "card.source",
+        startS: 5.4,
+        durationS: 2.2,
+      },
+    ],
+  });
+
+  const report = await buildGoal11RetentionIntelligenceLoop({
+    storyPackages: [story],
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "story-published", status: "ready", blockers: [] }],
+    },
+    metricsManifest: { stories: [] },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-30T12:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.summary.retention_ready_story_count, 0);
+  assert.equal(report.summary.analytics_missing_story_count, 1);
+  assert.equal(report.summary.analytics_pending_story_count, 0);
+  assert.equal(report.stories[0].publication_phase, "published");
+  assert.equal(report.stories[0].performance_evidence_status, "missing_after_publication");
+  assert.equal(report.stories[0].direct_retention_status, "blocked");
+  assert.ok(report.stories[0].blockers.includes("retention:published_metrics_missing"));
+});
+
+test("Goal 11 blocks conflicting publication lifecycle evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-lifecycle-conflict-"));
+  const story = await makeStoryPackage(root, "story-conflicted", {
+    title: "The Expanse Shows Real Gameplay",
+    primary_source: "Xbox",
+    first_frame_text: "EXPANSE GAMEPLAY",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  story.publication_phase = "prepublication";
+  story.youtube_post_id = "yt-story-conflicted";
+  story.youtube_published_at = "2026-05-28T12:00:00.000Z";
+
+  const report = await buildGoal11RetentionIntelligenceLoop({
+    storyPackages: [story],
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "story-conflicted", status: "ready", blockers: [] }],
+    },
+    metricsManifest: { stories: [] },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-30T12:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].publication_phase, "conflicted");
+  assert.equal(
+    report.stories[0].performance_evidence_status,
+    "blocked_lifecycle_conflict",
+  );
+  assert.equal(report.stories[0].direct_retention_status, "blocked");
+  assert.ok(
+    report.stories[0].blockers.includes("retention:publication_lifecycle_conflict"),
+  );
+});
+
+test("Goal 11 blocks complete published metrics that are unlinked from the public post", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-unlinked-metrics-"));
+  const story = await makeStoryPackage(root, "story-unlinked", {
+    title: "The Expanse Shows Real Gameplay",
+    primary_source: "Xbox",
+    first_frame_text: "EXPANSE GAMEPLAY",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  markStoryPublished(story);
+
+  const report = await buildGoal11RetentionIntelligenceLoop({
+    storyPackages: [story],
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "story-unlinked", status: "ready", blockers: [] }],
+    },
+    metricsManifest: {
+      stories: [
+        completeMetrics("story-unlinked", {
+          public_post_id: "yt-a-different-public-post",
+        }),
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-30T12:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.summary.metrics_ready_story_count, 0);
+  assert.equal(report.stories[0].metrics_status, "invalid");
+  assert.equal(
+    report.stories[0].performance_evidence_status,
+    "unlinked_after_publication",
+  );
+  assert.ok(
+    report.stories[0].blockers.includes("retention:published_metrics_unlinked"),
+  );
+  assert.equal(report.experiment_results.experiments.length, 0);
+});
+
+test("Goal 11 blocks complete published metrics observed before publication", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-stale-metrics-"));
+  const story = await makeStoryPackage(root, "story-stale", {
+    title: "The Expanse Shows Real Gameplay",
+    primary_source: "Xbox",
+    first_frame_text: "EXPANSE GAMEPLAY",
+    platform_outputs: {
+      youtube_shorts: { cta_style: "identity_follow" },
+      instagram_reels: { cta_style: "bio_link" },
+      facebook_reels: { cta_style: "follow_page" },
+    },
+  });
+  markStoryPublished(story, { published_at: "2026-05-20T12:00:00.000Z" });
+
+  const report = await buildGoal11RetentionIntelligenceLoop({
+    storyPackages: [story],
+    upstreamBenchmarkReport: {
+      stories: [{ story_id: "story-stale", status: "ready", blockers: [] }],
+    },
+    metricsManifest: {
+      stories: [
+        completeMetrics("story-stale", {
+          observed_at: "2026-05-19T12:00:00.000Z",
+        }),
+      ],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-05-30T12:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.summary.metrics_ready_story_count, 0);
+  assert.equal(report.stories[0].metrics_status, "invalid");
+  assert.equal(
+    report.stories[0].performance_evidence_status,
+    "stale_after_publication",
+  );
+  assert.ok(
+    report.stories[0].blockers.includes("retention:published_metrics_stale"),
+  );
+  assert.equal(report.experiment_results.experiments.length, 0);
+});
+
+test("Goal 11 reports shallow platform snapshots without treating them as retention proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-shallow-"));
   const story = await makeStoryPackage(root, "story-shallow", {
     title: "Halo Campaign Evolved Makes PS5 Real",
@@ -332,6 +581,7 @@ test("Goal 11 uses shallow platform snapshots without blocking deep-retention re
       facebook_reels: { cta_style: "follow_page" },
     },
   });
+  markStoryPublished(story);
   await fs.outputJson(path.join(story.artifact_dir, "director_beat_map.json"), {
     shot_plan: [
       {
@@ -374,6 +624,8 @@ test("Goal 11 uses shallow platform snapshots without blocking deep-retention re
         {
           story_id: "story-shallow",
           platform: "youtube",
+          video_id: "yt-story-shallow",
+          snapshot_at: "2026-06-11T11:00:00.000Z",
           views: 807,
           likes: 4,
           comments: 0,
@@ -388,19 +640,25 @@ test("Goal 11 uses shallow platform snapshots without blocking deep-retention re
     generatedAt: "2026-06-11T12:15:00.000Z",
   });
 
-  assert.equal(report.verdict, "PASS");
+  assert.equal(report.verdict, "BLOCKED");
   assert.equal(report.stories[0].metrics_status, "shallow");
-  assert.deepEqual(report.stories[0].direct_retention_blockers, []);
+  assert.equal(report.stories[0].performance_evidence_status, "incomplete_after_publication");
+  assert.ok(
+    report.stories[0].direct_retention_blockers.includes(
+      "retention:published_metrics_incomplete",
+    ),
+  );
   assert.equal(report.daily_retention_report.summary.analytics_observed_story_count, 1);
   assert.equal(report.daily_retention_report.platforms[0].platform, "youtube");
   assert.equal(report.daily_retention_report.platforms[0].total_views, 807);
-  assert.ok(report.title_pattern_winners.patterns.length > 0);
-  assert.ok(report.hook_pattern_winners.patterns.length > 0);
+  assert.equal(report.title_pattern_winners.patterns.length, 0);
+  assert.equal(report.hook_pattern_winners.patterns.length, 0);
 });
 
 test("Goal 11 writes required retention loop artefacts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal11-write-"));
   const story = await makeStoryPackage(root, "story-write");
+  markStoryPublished(story);
   const outputDir = path.join(root, "out");
   const report = await buildGoal11RetentionIntelligenceLoop({
     storyPackages: [story],
@@ -437,6 +695,7 @@ test("Goal 11 writes v2 daily learning artefacts for winners, recommendations an
       facebook_reels: { cta_style: "follow_page" },
     },
   });
+  markStoryPublished(strongStory);
   await fs.outputJson(path.join(strongStory.artifact_dir, "director_beat_map.json"), {
     shot_plan: [
       { id: "opener", kind: "opener", type: "opener", startS: 0, durationS: 2.2, source: "forza-a.mp4", mediaStartS: 10, text: "FORZA STEAM" },
@@ -451,6 +710,7 @@ test("Goal 11 writes v2 daily learning artefacts for winners, recommendations an
     motionDensityScore: 48,
     sourceLockScore: 40,
   });
+  markStoryPublished(weakStory);
   const outputDir = path.join(root, "out");
   const report = await buildGoal11RetentionIntelligenceLoop({
     storyPackages: [strongStory, weakStory],

@@ -70,7 +70,12 @@ async function makeStory(root, storyId) {
       source_lock_quality_score: 65,
     },
   });
-  return { story_id: storyId, artifact_dir: artifactDir };
+  return {
+    story_id: storyId,
+    artifact_dir: artifactDir,
+    youtube_post_id: `yt-${storyId}`,
+    youtube_published_at: "2026-05-20T12:00:00.000Z",
+  };
 }
 
 function metrics(storyId) {
@@ -79,6 +84,9 @@ function metrics(storyId) {
       {
         story_id: storyId,
         video_id: `yt-${storyId}`,
+        public_post_id: `yt-${storyId}`,
+        platform: "youtube_shorts",
+        observed_at: "2026-05-25T12:00:00.000Z",
         views: 2000,
         impressions: 6000,
         average_view_duration_seconds: 31,
@@ -194,6 +202,8 @@ test("Goal 11 CLI writes retention intelligence loop artefacts", async () => {
   ]);
 
   assert.equal(result.report.verdict, "PASS");
+  assert.equal(result.report.summary.metrics_ready_story_count, 1);
+  assert.equal(result.report.stories[0].performance_evidence_status, "observed_complete");
   assert.equal(await fs.pathExists(path.join(outDir, "goal11_readiness_report.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "retention_report.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "learning_rules.json")), true);

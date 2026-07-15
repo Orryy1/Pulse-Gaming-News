@@ -48,6 +48,40 @@ test("caption SRT uses word timestamps instead of evenly distributing full sente
   assert.doesNotMatch(srt, /Paul Skaming/);
 });
 
+test("caption SRT restores display currency from spoken dollar tokens", () => {
+  const srt = buildCaptionSrt(
+    "Steam lists the packs at $84.91, while the game costs $59.99.",
+    8,
+    {
+      words: [
+        { word: "Steam", start: 0, end: 0.3 },
+        { word: "lists", start: 0.3, end: 0.55 },
+        { word: "the", start: 0.55, end: 0.7 },
+        { word: "packs", start: 0.7, end: 1 },
+        { word: "at", start: 1, end: 1.15 },
+        { word: "84", start: 1.15, end: 1.35 },
+        { word: "dollars", start: 1.35, end: 1.65 },
+        { word: "91,", start: 1.65, end: 1.9 },
+        { word: "while", start: 2.2, end: 2.5 },
+        { word: "the", start: 2.5, end: 2.65 },
+        { word: "game", start: 2.65, end: 2.95 },
+        { word: "costs", start: 2.95, end: 3.2 },
+        { word: "59", start: 3.2, end: 3.4 },
+        { word: "dollars", start: 3.4, end: 3.7 },
+        { word: "99.", start: 3.7, end: 4 },
+      ],
+      maxWordsPerPhrase: 4,
+      maxPhraseChars: 24,
+      maxPhraseDurationS: 1.8,
+    },
+  );
+
+  assert.match(srt, /\$84\.91/);
+  assert.match(srt, /\$59\.99/);
+  assert.doesNotMatch(srt, /84 dollars|59 dollars/i);
+  assert.match(srt, /00:00:04,000/);
+});
+
 test("caption SRT keeps a protected game title together when local TTS expands the number", () => {
   const srt = buildCaptionSrt(
     "Hades 2 is not just leaving early access.",

@@ -63,6 +63,10 @@ const {
   filterPremiumDirectMotionClips,
 } = require("../lib/studio/v5/direct-motion-visual-selector");
 const {
+  PROFESSIONAL_MOTION_SOURCE_POLICY,
+  assessProfessionalSourceDiversity,
+} = require("../lib/studio/motion-source-identity");
+const {
   runDecodedVisualGate,
 } = require("../lib/studio/v2/forensic-qa-v2");
 
@@ -1335,6 +1339,51 @@ function directMotionSourceConcentration(entries = []) {
   };
 }
 
+function buildProfessionalSourceDiversityProof({ clips = [], scenePlan = {} } = {}) {
+  const clipByPath = new Map();
+  for (const clip of Array.isArray(clips) ? clips.filter(Boolean) : []) {
+    const clipPath = sceneClipPath(clip);
+    const key = String(clipPath || "").trim().replace(/\\/g, "/").toLowerCase();
+    if (key && !clipByPath.has(key)) clipByPath.set(key, clip);
+  }
+
+  const selectedDirectScenes = (Array.isArray(scenePlan?.scenes) ? scenePlan.scenes : [])
+    .filter((scene) => !scene?.readableCardKind)
+    .map((scene) => {
+      const scenePath = sceneClipPath(scene);
+      const key = String(scenePath || "").trim().replace(/\\/g, "/").toLowerCase();
+      const original = clipByPath.get(key);
+      const sidecar = original ? readSceneClipSidecar(original) || {} : {};
+      return {
+        ...sidecar,
+        ...(original && typeof original === "object" ? original : {}),
+        ...scene,
+        path: scenePath,
+        provenance: {
+          ...(sidecar?.provenance || {}),
+          ...(original?.provenance || {}),
+          ...(scene?.provenance || {}),
+        },
+      };
+    });
+
+  const proof = assessProfessionalSourceDiversity({
+    clips: selectedDirectScenes,
+    scenes: selectedDirectScenes,
+    requiredBaseSources: PROFESSIONAL_MOTION_SOURCE_POLICY.min_genuine_base_sources,
+    maxScenesPerSource: MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT,
+    maxSourceShare: MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO,
+  });
+
+  return {
+    ...proof,
+    scene_plan_concentration_evidence: {
+      ...(scenePlan?.directMotionSourceConcentrationMetrics || {}),
+      current_rule: proof.concentration_rule,
+    },
+  };
+}
+
 function scenePlanBlockerDiagnostic(plan = {}, { targetDurationS = null } = {}) {
   const parts = [
     `available=${Number(plan.availableUniqueClipCount || 0)}`,
@@ -2511,6 +2560,7 @@ async function renderProof({ storyJson, output }) {
       "v5-direct-motion-visual",
       String(story.id || "story").replace(/[^a-z0-9_-]+/gi, "_"),
     ),
+    policyTier: "ultimate_professional",
   });
   if (directMotionVisualSelection.blockers.length) {
     throw new Error(
@@ -2524,6 +2574,15 @@ async function renderProof({ storyJson, output }) {
     maxSceneDurationS: directClipMaxVisibleDwellS(),
     maxScenes: directClipMaxScenes(),
   });
+  const professionalSourceDiversity = buildProfessionalSourceDiversityProof({
+    clips: premiumSceneSelection.clips,
+    scenePlan,
+  });
+  if (professionalSourceDiversity.status !== "pass") {
+    throw new Error(
+      `professional_source_diversity_blocked:${professionalSourceDiversity.blockers.join(",")}`,
+    );
+  }
   if (Array.isArray(scenePlan.blockers) && scenePlan.blockers.length) {
     throw new Error(
       `direct_motion_scene_plan_blocked:${scenePlan.blockers.join(",")}:` +
@@ -2751,6 +2810,7 @@ async function renderProof({ storyJson, output }) {
     ass: path.relative(ROOT, assPath).replace(/\\/g, "/"),
     filter: path.relative(ROOT, filterPath).replace(/\\/g, "/"),
     clips: scenePlan.scenes.length,
+    professional_source_diversity: professionalSourceDiversity,
     clip_scene_plan: {
       repeat_free: scenePlan.repeatFree,
       covered_duration_s: scenePlan.coveredDurationS,
@@ -2758,6 +2818,7 @@ async function renderProof({ storyJson, output }) {
       repeated_base_sources: scenePlan.repeatedBaseSources,
       skipped_duplicate_base_sources: scenePlan.skippedDuplicateBaseSources,
       source_duration_overruns: scenePlan.sourceDurationOverruns,
+      professional_source_diversity: professionalSourceDiversity,
       premium_edit_rhythm: scenePlan.premiumEditRhythm,
       premium_scene_selection: {
         version: premiumSceneSelection.version,
@@ -2898,6 +2959,7 @@ module.exports = {
   mergeMaterialisedMotionClipCandidates,
   selectPremiumSceneClips,
   resolveFreshHyperframesPremiumShellGate,
+  buildProfessionalSourceDiversityProof,
   overlayCardWindowsForStory,
   buildFinalSocialAudioMixFilter,
   drawtextEscape,

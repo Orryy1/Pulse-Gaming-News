@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const os = require("node:os");
 const { spawnSync } = require("node:child_process");
@@ -10,6 +11,7 @@ const fs = require("fs-extra");
 const {
   buildCurrentVoiceQualityReport,
   repairNarrationQaArtifacts,
+  writeFlagshipNarrationQaEvidence,
 } = require("../../lib/goal-narration-qa-repair");
 const { auditNarrationQaArtifacts } = require("../../lib/narration-qa-artifact");
 const { analyseNarrationCadence } = require("../../lib/narration-cadence-qa");
@@ -114,6 +116,140 @@ function wordTimeline(count, durationSeconds) {
     };
   });
 }
+
+async function sha256File(filePath) {
+  return crypto.createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
+}
+
+test("post-render narration QA binds separate display and spoken evidence to one immutable GREEN run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-narration-qa-"));
+  const storyId = "flagship-currency-qa";
+  const artifactDir = path.join(root, storyId);
+  const evidenceDir = path.join(artifactDir, "flagship");
+  const runId = `production-render:${storyId}:2026-07-15T09:00:00.000Z`;
+  await fs.ensureDir(evidenceDir);
+
+  const displayScript = "Steam lists it at $84.91.";
+  const spokenScript = "Steam lists it at 84 dollars 91.";
+  const paths = {
+    final_video: path.join(artifactDir, "visual_v4_render.mp4"),
+    final_audio: path.join(evidenceDir, "final_audio.mp3"),
+    script: path.join(evidenceDir, "final_script.txt"),
+    spoken_script: path.join(evidenceDir, "final_spoken_script.txt"),
+    captions: path.join(evidenceDir, "captions.srt"),
+    word_timestamps: path.join(evidenceDir, "word_timestamps.json"),
+  };
+  await fs.writeFile(paths.final_video, Buffer.alloc(4096, 4));
+  await fs.writeFile(paths.final_audio, Buffer.alloc(4096, 5));
+  await fs.writeFile(paths.script, `${displayScript}\n`, "utf8");
+  await fs.writeFile(paths.spoken_script, `${spokenScript}\n`, "utf8");
+  await fs.writeFile(
+    paths.captions,
+    `1\n00:00:00,000 --> 00:00:03,000\n${displayScript}\n`,
+    "utf8",
+  );
+  const audioSha256 = await sha256File(paths.final_audio);
+  const scriptSha256 = await sha256File(paths.script);
+  const spokenScriptSha256 = await sha256File(paths.spoken_script);
+  const captionsSha256 = await sha256File(paths.captions);
+  const words = spokenScript.replace(/[.]/g, "").split(/\s+/).map((word, index, all) => ({
+    word,
+    start: Number((index * (3 / all.length)).toFixed(3)),
+    end: Number(((index + 1) * (3 / all.length)).toFixed(3)),
+  }));
+  await fs.writeJson(paths.word_timestamps, {
+    words,
+    audio_sha256: audioSha256,
+    script_sha256: scriptSha256,
+    spoken_script_sha256: spokenScriptSha256,
+    captions_sha256: captionsSha256,
+    flagship_generation_run_id: runId,
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    input_fingerprint: {
+      signature: "render-input-fingerprint",
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: await sha256File(paths.word_timestamps),
+    },
+  }, { spaces: 2 });
+
+  const artifacts = {};
+  for (const [key, filePath] of Object.entries(paths)) {
+    const stat = await fs.stat(filePath);
+    artifacts[key] = {
+      path: path.relative(artifactDir, filePath).replace(/\\/g, "/"),
+      sha256: await sha256File(filePath),
+      bytes: stat.size,
+      run_id: runId,
+      script_sha256: scriptSha256,
+      spoken_script_sha256: spokenScriptSha256,
+    };
+  }
+  const generationManifestPath = path.join(evidenceDir, "generation_manifest.json");
+  await fs.writeJson(generationManifestPath, {
+    schema_version: 1,
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    producer_id: "pulse-gaming-flagship-renderer",
+    run_id: runId,
+    generated_at: "2026-07-15T09:00:00.000Z",
+    script_sha256: scriptSha256,
+    spoken_script_sha256: spokenScriptSha256,
+    artifacts,
+    blockers: [],
+  }, { spaces: 2 });
+
+  const result = await writeFlagshipNarrationQaEvidence({
+    artifactDir,
+    generatedAt: "2026-07-15T09:00:00.000Z",
+    durationProbe: async () => 3,
+    silenceProbe: async () => [],
+  });
+
+  assert.equal(result.verdict, "PASS", JSON.stringify(result.blockers, null, 2));
+  const captions = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
+  const voice = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+  const narration = await fs.readJson(path.join(artifactDir, "narration_manifest.json"));
+  assert.equal(narration.authoritative, true);
+  assert.equal(narration.verdict, "PASS");
+  assert.equal(narration.status, "ready");
+  assert.equal(narration.run_id, runId);
+  assert.equal(narration.provider, "unknown");
+  assert.equal(narration.resolved_audio_path, paths.final_audio);
+  assert.equal(narration.audio_sha256, audioSha256);
+  assert.equal(narration.word_timestamps_sha256, await sha256File(paths.word_timestamps));
+  assert.equal(narration.display_script_sha256, scriptSha256);
+  assert.equal(narration.spoken_script_sha256, spokenScriptSha256);
+  assert.equal(narration.transcript, spokenScript);
+  assert.equal(narration.display_transcript, displayScript);
+  assert.equal(
+    narration.lineage.generation_manifest.sha256,
+    await sha256File(generationManifestPath),
+  );
+  assert.deepEqual(narration.blockers, []);
+  assert.equal(captions.authoritative, true);
+  assert.equal(voice.authoritative, true);
+  assert.equal(captions.run_id, runId);
+  assert.equal(voice.run_id, runId);
+  assert.equal(captions.display_word_count, 6);
+  assert.equal(captions.spoken_word_count, 7);
+  assert.equal(voice.word_timestamp_count, 7);
+  assert.equal(voice.cadence.status, "pass");
+  assert.equal(
+    captions.lineage.generation_manifest.sha256,
+    await sha256File(generationManifestPath),
+  );
+  assert.equal(voice.lineage.captions_sha256, captionsSha256);
+  assert.deepEqual(captions.blockers, []);
+  assert.deepEqual(voice.blockers, []);
+  assert.equal(auditNarrationQaArtifacts({
+    audioManifest: { word_timestamp_count: 7 },
+    captionManifest: captions,
+    voiceQualityReport: voice,
+  }).status, "fresh");
+});
 
 test("narration QA repair rewrites stale reports from current audio and captions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-repair-"));
@@ -465,6 +601,91 @@ test("narration cadence QA blocks a long acoustic gap even when average WPM is a
   assert.equal(cadence.spoken_wpm, 150);
   assert.equal(cadence.pause_profile.longest_pause_seconds, 1);
   assert.ok(cadence.blockers.includes("voice_cadence:acoustic_pause_too_long"));
+});
+
+test("narration cadence QA blocks timestamps that mask acoustic silence inside a word", async () => {
+  const words = wordTimeline(130, 52.5);
+  words[126] = { word: "Follow", start: 50.54, end: 51.62 };
+  words[127] = { word: "Pulse", start: 51.68, end: 51.84 };
+  words[128] = { word: "Gaming", start: 51.88, end: 52.04 };
+  words[129] = { word: "beat", start: 52.08, end: 52.24 };
+  const probedPaths = [];
+
+  const cadence = await analyseNarrationCadence({
+    audioManifest: { word_timestamp_count: words.length, audio_duration_seconds: 52.5 },
+    timestampPayload: { words },
+    transcript: transcriptWithWordCount(words.length),
+    audioPath: "black-flag-narration.mp3",
+    silenceProbe: async (audioPath) => {
+      probedPaths.push(audioPath);
+      return [{ start: 50.621, end: 51.371, duration: 0.75 }];
+    },
+  });
+
+  assert.deepEqual(probedPaths, ["black-flag-narration.mp3"]);
+  assert.equal(cadence.status, "fail");
+  assert.ok(cadence.blockers.includes("voice_cadence:timestamp_masks_acoustic_silence"));
+  assert.equal(cadence.acoustic_silence_profile.probe_status, "ok");
+  assert.equal(cadence.acoustic_silence_profile.detected_silence_count, 1);
+  assert.equal(cadence.acoustic_silence_profile.timestamp_masked_silence_count, 1);
+  assert.deepEqual(cadence.acoustic_silence_profile.timestamp_masked_silences, [
+    {
+      word: "Follow",
+      word_start_seconds: 50.54,
+      word_end_seconds: 51.62,
+      silence_start_seconds: 50.621,
+      silence_end_seconds: 51.371,
+      silence_duration_seconds: 0.75,
+      overlap_seconds: 0.75,
+      silence_overlap_ratio: 1,
+    },
+  ]);
+});
+
+test("narration cadence QA does not reject acoustic silence between sentence words", async () => {
+  const words = [
+    ["This", 0, 0.2],
+    ["game", 0.3, 0.5],
+    ["landed", 0.6, 0.8],
+    ["today", 0.9, 1.15],
+    ["Players", 1.85, 2.1],
+    ["are", 2.2, 2.4],
+    ["already", 2.5, 2.75],
+    ["moving", 2.85, 3.1],
+  ].map(([word, start, end]) => ({ word, start, end }));
+
+  const cadence = await analyseNarrationCadence({
+    audioManifest: { word_timestamp_count: words.length, audio_duration_seconds: 3.2 },
+    timestampPayload: { words },
+    transcript: "This game landed today. Players are already moving.",
+    audioPath: "sentence-pause.mp3",
+    silenceProbe: async () => [{ start: 1.2, end: 1.8, duration: 0.6 }],
+  });
+
+  assert.equal(cadence.status, "pass");
+  assert.equal(cadence.acoustic_silence_profile.meaningful_silence_count, 1);
+  assert.equal(cadence.acoustic_silence_profile.timestamp_masked_silence_count, 0);
+  assert.deepEqual(cadence.blockers, []);
+});
+
+test("narration cadence QA exposes acoustic silence probe failure as warning evidence", async () => {
+  const probeError = new Error("ffmpeg unavailable");
+  probeError.code = "ffmpeg_unavailable";
+  const cadence = await analyseNarrationCadence({
+    audioManifest: { word_timestamp_count: 8, audio_duration_seconds: 3.2 },
+    timestampPayload: { words: wordTimeline(8, 3.2) },
+    transcript: "This natural narration remains valid when acoustic probing fails.",
+    audioPath: "narration.mp3",
+    silenceProbe: async () => {
+      throw probeError;
+    },
+  });
+
+  assert.equal(cadence.status, "warn");
+  assert.deepEqual(cadence.blockers, []);
+  assert.ok(cadence.warnings.includes("voice_cadence:acoustic_silence_probe_failed"));
+  assert.equal(cadence.acoustic_silence_profile.probe_status, "failed");
+  assert.equal(cadence.acoustic_silence_profile.probe_error_code, "ffmpeg_unavailable");
 });
 
 test("narration cadence QA blocks a pause between Pulse and Gaming in the CTA", async () => {

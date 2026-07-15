@@ -97,8 +97,202 @@ test("strong Pulse-original package passes competitor-informed score", () => {
   assert.ok(report.scores.competitor_surpass_score >= 75);
   assert.ok(report.scores.source_lock_score >= 80);
   assert.equal(report.source_lock_report.status, "pass");
+  assert.equal(report.professional_source_diversity_report.policy_tier, "normal_strict_green");
+  assert.equal(report.professional_source_diversity_report.status, "not_required");
   assert.equal(report.production_grammar_alignment_report.status, "pass");
   assert.deepEqual(report.hard_failures, []);
+});
+
+test("ultimate professional source diversity fails closed without authoritative provenance", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "ultimate_professional",
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.professional_source_diversity_report.policy_tier, "ultimate_professional");
+  assert.equal(report.professional_source_diversity_report.status, "blocked");
+  assert.ok(
+    report.professional_source_diversity_report.blockers.includes(
+      "professional_source_diversity_evidence_missing",
+    ),
+  );
+  assert.ok(report.hard_failures.includes("media_house:professional_source_diversity_not_verified"));
+});
+
+test("ultimate professional source diversity accepts complete authoritative base identities", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "ultimate_professional",
+    professional_source_diversity: {
+      policy_tier: "ultimate_professional",
+      authoritative: true,
+      status: "GREEN",
+      required_genuine_base_source_count: 2,
+      observed_genuine_base_source_count: 2,
+      unresolved_clips: [],
+      ambiguous_base_sources: [],
+      blockers: [],
+      base_sources: [
+        {
+          base_source_asset_id: "official-trailer-master",
+          base_source_identity_basis: "master_sha256",
+          master_sha256: "a".repeat(64),
+        },
+        {
+          base_source_asset_id: "official-gameplay-master",
+          base_source_identity_basis: "sampled_visual_fingerprint",
+          sampled_visual_fingerprint: "b".repeat(64),
+        },
+      ],
+    },
+  }));
+
+  assert.equal(report.professional_source_diversity_report.status, "pass");
+  assert.equal(report.professional_source_diversity_report.complete_identity_record_count, 2);
+  assert.equal(
+    report.hard_failures.includes("media_house:professional_source_diversity_not_verified"),
+    false,
+  );
+  assert.equal(report.verdict, "GREEN");
+});
+
+test("ultimate professional source diversity rejects ambiguous family-only identities", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "ultimate_professional",
+    professional_source_diversity: {
+      policy_tier: "ultimate_professional",
+      authoritative: true,
+      status: "GREEN",
+      required_genuine_base_source_count: 2,
+      observed_genuine_base_source_count: 2,
+      unresolved_clips: [],
+      blockers: [],
+      base_sources: [
+        {
+          base_source_asset_id: "window-family-a",
+          base_source_identity_basis: "source_family",
+          canonical_source_url: "https://example.com/trailer.mp4",
+        },
+        {
+          base_source_asset_id: "window-family-b",
+          base_source_identity_basis: "derivative_path",
+          master_sha256: "c".repeat(64),
+        },
+      ],
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.professional_source_diversity_report.status, "blocked");
+  assert.ok(
+    report.professional_source_diversity_report.blockers.includes(
+      "professional_source_diversity_provenance_incomplete",
+    ),
+  );
+});
+
+test("ultimate professional source diversity rejects renamed rows with one master identity", () => {
+  const sharedMaster = "f".repeat(64);
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "ultimate_professional",
+    professional_source_diversity: {
+      policy_tier: "ultimate_professional",
+      authoritative: true,
+      status: "GREEN",
+      required_genuine_base_source_count: 2,
+      observed_genuine_base_source_count: 2,
+      unresolved_clips: [],
+      blockers: [],
+      base_sources: [
+        {
+          base_source_asset_id: "trailer-upload-a",
+          base_source_identity_basis: "master_sha256",
+          master_sha256: sharedMaster,
+        },
+        {
+          base_source_asset_id: "trailer-mirror-b",
+          base_source_identity_basis: "master_sha256",
+          master_sha256: sharedMaster,
+        },
+      ],
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(
+    report.professional_source_diversity_report.blockers.includes(
+      "professional_source_diversity_duplicate_base_identities",
+    ),
+  );
+});
+
+test("ultimate professional source diversity rejects URL-only base identities", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "ultimate_professional",
+    professional_source_diversity: {
+      policy_tier: "ultimate_professional",
+      authoritative: true,
+      status: "GREEN",
+      required_genuine_base_source_count: 2,
+      observed_genuine_base_source_count: 2,
+      unresolved_clips: [],
+      blockers: [],
+      base_sources: [
+        {
+          base_source_asset_id: "upload-a",
+          base_source_identity_basis: "canonical_source_url",
+          canonical_source_url: "https://example.com/upload-a.mp4",
+        },
+        {
+          base_source_asset_id: "upload-b",
+          base_source_identity_basis: "canonical_source_url",
+          canonical_source_url: "https://mirror.example.com/upload-b.mp4",
+        },
+      ],
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(
+    report.professional_source_diversity_report.blockers.includes(
+      "professional_source_diversity_provenance_incomplete",
+    ),
+  );
+});
+
+test("authoritative professional-tier evidence cannot be downgraded by a normal caller tier", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "normal_strict_green",
+    professional_source_diversity: {
+      policy_tier: "ultimate_professional",
+      authoritative: false,
+      status: "AMBER",
+    },
+  }));
+
+  assert.equal(report.professional_source_diversity_report.policy_tier, "ultimate_professional");
+  assert.equal(report.professional_source_diversity_report.status, "blocked");
+  assert.equal(report.verdict, "RED");
+});
+
+test("normal tier still preserves a present authoritative diversity RED", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "normal_strict_green",
+    professional_source_diversity: {
+      policy_tier: "normal_strict_green",
+      authoritative: true,
+      status: "RED",
+      blockers: ["genuine_base_source_minimum_not_met"],
+    },
+  }));
+
+  assert.equal(report.professional_source_diversity_report.policy_tier, "normal_strict_green");
+  assert.equal(report.professional_source_diversity_report.status, "blocked");
+  assert.ok(
+    report.professional_source_diversity_report.blockers.includes(
+      "genuine_base_source_minimum_not_met",
+    ),
+  );
+  assert.equal(report.verdict, "RED");
 });
 
 test("vivid transformations, superlatives and comparisons clear Shorts attention gates", () => {
@@ -203,28 +397,35 @@ test("media-house score treats GTA VI as Grand Theft Auto VI subject parity", ()
   assert.equal(report.shorts_feed_competition_report.signals.title_has_subject, true);
 });
 
-test("fresh direct-motion family proof overrides stale distinct-source blocker", () => {
-  const report = buildPulseMediaHouseScore(strongStory({
-    footageEmpireV2: {
-      verdict: "v4_motion_blocked",
-      blockers: ["distinct_motion_source_assets_minimum_not_met"],
-    },
-    distinctMotionFamily: {
-      status: "ready",
-      summary: {
-        clip_count: 8,
-        distinct_motion_family_count: 8,
-        direct_video_motion_family_count: 8,
-        minimum_required_distinct_motion_families: 4,
+test("fresh direct-motion family proof cannot launder a genuine base-source blocker", () => {
+  for (const blocker of [
+    "distinct_motion_source_assets_minimum_not_met",
+    "genuine_base_source_minimum_not_met",
+  ]) {
+    const report = buildPulseMediaHouseScore(strongStory({
+      footageEmpireV2: {
+        verdict: "v4_motion_blocked",
+        blockers: [blocker],
       },
-    },
-  }));
+      distinctMotionFamily: {
+        status: "ready",
+        summary: {
+          clip_count: 8,
+          distinct_motion_family_count: 8,
+          direct_video_motion_family_count: 8,
+          minimum_required_distinct_motion_families: 4,
+        },
+      },
+    }));
 
-  assert.equal(report.source_lock_report.status, "pass");
-  assert.equal(report.hard_failures.includes("media_house:source_lock_not_verified"), false);
+    assert.equal(report.verdict, "RED");
+    assert.equal(report.source_lock_report.status, "blocked");
+    assert.ok(report.source_lock_report.blockers.includes(blocker));
+    assert.ok(report.hard_failures.includes("media_house:source_lock_not_verified"));
+  }
 });
 
-test("materialised direct-motion clips override stale source-lock blockers", () => {
+test("materialised direct-motion windows cannot override a genuine base-source blocker", () => {
   const clips = Array.from({ length: 8 }, (_, index) => ({
     id: `clip-${index + 1}`,
     path: `C:\\media\\gta-vi-${index + 1}.mp4`,
@@ -254,10 +455,11 @@ test("materialised direct-motion clips override stale source-lock blockers", () 
     },
   }));
 
-  assert.equal(report.source_lock_report.status, "pass");
+  assert.equal(report.source_lock_report.status, "blocked");
   assert.equal(report.source_lock_report.evidence.distinct_motion_family_count, 8);
   assert.equal(report.source_lock_report.evidence.direct_video_motion_family_count, 8);
-  assert.equal(report.hard_failures.includes("media_house:source_lock_not_verified"), false);
+  assert.ok(report.source_lock_report.blockers.includes("distinct_motion_source_assets_minimum_not_met"));
+  assert.ok(report.hard_failures.includes("media_house:source_lock_not_verified"));
 });
 
 test("generic title fails", () => {

@@ -512,6 +512,44 @@ test("Visual V4 Director recomputes stale motion readiness from materialised cli
   assert.equal(sourceLock.source, "IGN PREVIEW");
 });
 
+test("Visual V4 Director preserves the complete Bandai Namco source name", () => {
+  const sourceName = "BANDAI NAMCO ENTERTAINMENT AMERICA";
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      source_name: sourceName,
+    },
+    footagePlan: staleBlockedFootagePlan(),
+    localTimeline: localTimeline(),
+    retentionIntelligence: retentionIntelligence(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const sourceLock = plan.shot_plan.find((shot) => shot.kind === "source_lock");
+
+  assert.equal(sourceLock.source, sourceName);
+});
+
+test("Visual V4 Director exposes complete long source names through stable card fields", () => {
+  const sourceName =
+    "INTERNATIONAL ASSOCIATION OF INTERACTIVE ENTERTAINMENT PUBLISHERS";
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      source_name: sourceName,
+    },
+    footagePlan: staleBlockedFootagePlan(),
+    localTimeline: localTimeline(),
+    retentionIntelligence: retentionIntelligence(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const sourceLock = plan.shot_plan.find((shot) => shot.kind === "source_lock");
+
+  assert.equal(sourceLock.source, sourceName);
+  assert.equal(sourceLock.title, "SOURCE");
+  assert.equal(sourceLock.label, sourceName);
+  assert.ok(sourceLock.label.length > 28);
+});
+
 test("Visual V4 Director does not pad premium motion with repeated source-family clips", () => {
   const repeatedClips = Array.from({ length: 6 }, (_, index) => ({
     id: `sea-repeat-${index + 1}`,

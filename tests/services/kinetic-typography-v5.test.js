@@ -70,3 +70,25 @@ test("V5 kinetic typography rebalances single-word sentence tails", () => {
     ["SMALL DINOSAURS CAN COLLECT", "WILD RESOURCES."],
   );
 });
+
+test("V5 kinetic typography never lets dangling-tail repair exceed the premium word ceiling", () => {
+  const scriptText = "Make or break it is four.";
+  const words = scriptText.split(/\s+/).map((word, index) => ({
+    word,
+    start: index * 0.2,
+    end: index * 0.2 + 0.18,
+  }));
+  const ass = buildPremiumKineticAss({
+    story: { title: "MARVEL Tokon" },
+    words,
+    duration: 1.5,
+    scriptText,
+  });
+  const report = inspectPremiumCaptionCadence(ass);
+
+  assert.equal(report.status, "pass");
+  assert.equal(
+    report.metrics.maximum_words_per_caption <= KINETIC_TYPOGRAPHY_V5.max_words_per_phrase,
+    true,
+  );
+});

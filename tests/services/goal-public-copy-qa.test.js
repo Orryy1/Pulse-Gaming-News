@@ -849,6 +849,26 @@ test("goal public copy QA allows pronunciation-only TTS script differences", () 
   assert.ok(!report.failures.includes("public_copy:tts_script_diverges_from_narration"));
 });
 
+test("goal public copy QA allows currency pronunciation-only TTS differences", () => {
+  const narration =
+    "Black Flag Resynced has nine day-one DLC packs costing $84.91 combined, while the base game costs $59.99. " +
+    "The map pack alone costs $4.99. Follow Pulse Gaming so you never miss a beat.";
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Black Flag Resynced",
+    selected_title: "Black Flag Resynced DLC Costs More Than The Game",
+    first_spoken_line: "Black Flag Resynced has nine day-one DLC packs costing more than the game.",
+    narration_script: narration,
+    full_script: narration,
+    tts_script:
+      "Black Flag Resynced has nine day one DLC packs costing 84 dollars 91 combined, while the base game costs 59 dollars 99. " +
+      "The map pack alone costs 4 dollars 99. Follow Pulse Gaming so you never miss a beat.",
+    description: "Steam lists nine launch-day Black Flag Resynced DLC packs. Source: Steam.",
+    primary_source: "Steam",
+  });
+
+  assert.ok(!report.failures.includes("public_copy:tts_script_diverges_from_narration"));
+});
+
 test("goal public copy QA allows spoken-only cadence punctuation without allowing word drift", () => {
   const narration =
     "Albion Online's event is temporary. Xbox Wire says its Keeper Memories remain. Follow Pulse Gaming so you never miss a beat.";
@@ -1136,6 +1156,50 @@ test("goal public copy QA allows concrete cover-frame story entities when platfo
   });
 
   assert.equal(report.failures.includes("public_copy:platform_copy_missing_canonical_subject"), false);
+});
+
+test("goal public copy QA accepts an evidence-backed price-led Black Flag cover", () => {
+  const description =
+    "Black Flag Resynced puts players in an $84.91 DLC fight. Nine day-one packs cost more than the $59.99 base game, so the launch now depends on whether the standard edition still feels complete. Source: Steam.";
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Assassin's Creed Black Flag Resynced",
+    selected_title: "Black Flag Resynced's $84.91 DLC Costs More Than The Game",
+    first_spoken_line: "Black Flag Resynced has nine day-one DLC packs costing more than the game.",
+    narration_script:
+      "Black Flag Resynced has nine day-one DLC packs costing more than the game. Steam lists them at $84.91 combined, while the base game costs $59.99. Follow Pulse Gaming so you never miss a beat.",
+    description,
+    primary_source: "Steam",
+    source_card_label: "Steam",
+    confirmed_claims: [
+      "Steam lists nine day-one DLC packs at $84.91 combined while the base game costs $59.99.",
+    ],
+    platform_publish_manifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "Black Flag Resynced's $84.91 DLC Costs More Than The Game",
+          description,
+          cover_frame: {
+            headline: "$84.91 DAY-ONE DLC",
+            subject: "Assassin's Creed Black Flag Resynced",
+          },
+        },
+        instagram_reels: {
+          title: "Black Flag Resynced's $84.91 DLC Costs More Than The Game",
+          caption: description,
+          cover_frame: {
+            headline: "$84.91 DAY-ONE DLC",
+            subject: "Assassin's Creed Black Flag Resynced",
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(
+    report.failures.includes("public_copy:platform_copy_missing_canonical_subject"),
+    false,
+    JSON.stringify(report.failures),
+  );
 });
 
 test("goal public copy QA blocks stale platform source labels", () => {

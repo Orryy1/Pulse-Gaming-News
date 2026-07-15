@@ -111,7 +111,7 @@ test("story-specific HyperFrames shell evidence counts chained GSAP timeline ste
   assert.equal(countTimelineAnimationSteps(html), 4);
 });
 
-test("story-specific HyperFrames cards cap dense copy at a momentum-friendly readable dwell", () => {
+test("story-specific HyperFrames cards reject copy that cannot be read inside the momentum ceiling", () => {
   const templateHtml = fs.readFileSync(
     path.join(__dirname, "..", "..", "experiments", "hf-timeline", "index.html"),
     "utf8",
@@ -129,7 +129,12 @@ test("story-specific HyperFrames cards cap dense copy at a momentum-friendly rea
   const contract = hyperframesCardReadabilityContractForSpec("timeline", spec);
   const html = applySpecToTemplate("timeline", templateHtml, spec, "pulse-gaming");
 
-  assert.equal(contract.status, "pass");
+  assert.equal(contract.status, "fail");
+  assert.ok(contract.blockers.includes("hyperframes_card_copy_exceeds_momentum_budget"));
+  assert.ok(
+    contract.evidence.required_visible_duration_s >
+      contract.evidence.maximum_visible_duration_s,
+  );
   assert.equal(contract.evidence.minimum_visible_duration_s, 5.2);
   assert.match(html, /data-duration="5\.2"/);
 });
@@ -173,6 +178,38 @@ test("story-specific HyperFrames cards keep short source cards momentum-friendly
   assert.equal(contract.evidence.planned_visible_duration_s, 2.6);
   assert.equal(contract.evidence.maximum_visible_duration_s, 3.1);
   assert.equal(contract.evidence.min_readable_card_duration_s, 1.9);
+});
+
+test("story-specific HyperFrames cards reject empty readable copy", () => {
+  const specContract = hyperframesCardReadabilityContractForSpec("timeline", {
+    heading: "",
+    bullets: [],
+  });
+  const htmlContract = hyperframesCardReadabilityContractFromHtml(
+    "timeline",
+    '<div id="heading"></div><ul id="bullets"></ul><div data-duration="3.4"></div>',
+  );
+
+  for (const contract of [specContract, htmlContract]) {
+    assert.equal(contract.status, "fail");
+    assert.ok(contract.blockers.includes("hyperframes_card_readable_text_missing"));
+  }
+});
+
+test("story-specific HyperFrames source cards reject labels too dense for their ceiling", () => {
+  const contract = hyperframesCardReadabilityContractForSpec("source", {
+    label: "BANDAI NAMCO ENTERTAINMENT AMERICA OFFICIAL PUBLISHER",
+    sublabel: "NEWS SOURCE",
+  });
+
+  assert.equal(contract.status, "fail");
+  assert.ok(
+    contract.blockers.includes("hyperframes_source_card_copy_exceeds_momentum_budget"),
+  );
+  assert.ok(
+    contract.evidence.required_visible_duration_s >
+      contract.evidence.maximum_visible_duration_s,
+  );
 });
 
 test("story-specific HyperFrames source card preserves PlayStation source labels", () => {
@@ -278,7 +315,87 @@ test("story-specific HyperFrames cards turn narration into concrete editorial be
   assert.doesNotMatch(timelineText, /source checked|main detail|next step|official follow-up/i);
   assert.match(timelineText, /skin tracker/i);
   assert.match(timelineText, /four items/i);
-  assert.match(timelineText, /guarantees the combination/i);
+  assert.match(timelineText, /guaranteed combination/i);
+});
+
+test("story-specific HyperFrames takeaway turns controversy into an editorial payoff and reserves follow CTA for outro", () => {
+  const specs = buildStoryCardSpecs({
+    id: "black-flag-player-trust",
+    title: "Why Black Flag's Remake Could Lose Player Trust",
+    canonical_subject: "Black Flag",
+    source_card_label: "Ubisoft News",
+    source_type: "rss",
+    confirmed_claims: [
+      { claim: "The remake includes optional microtransactions." },
+    ],
+    full_script:
+      "Black Flag's remake is leaning hard on nostalgia. " +
+      "Ubisoft can modernise combat without changing the pitch. " +
+      "But paid microtransactions would turn that nostalgia into a test of player trust. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const headline = specs.takeaway.headlineWords.join(" ");
+  assert.match(headline, /NOSTALGIA/i);
+  assert.match(headline, /TRUST/i);
+  assert.match(specs.takeaway.cta, /MICROTRANSACTIONS/i);
+  assert.match(specs.takeaway.cta, /PLAYER TRUST/i);
+  assert.doesNotMatch(`${headline} ${specs.takeaway.cta}`, /WHY BLACK FLAG|FOLLOW|SUBSCRIBE|FOR MORE/i);
+  assert.deepEqual(specs.outro.headlineWords, ["FOLLOW", "FOR", "MORE"]);
+});
+
+test("Black Flag pricing cards preserve decimal facts, source attribution and the story payoff", () => {
+  const specs = buildStoryCardSpecs({
+    id: "official-black-flag-pricing",
+    title: "Black Flag Resynced's Day-One DLC Costs More Than the Game",
+    canonical_subject: "Assassin's Creed Black Flag Resynced",
+    card_context_number: "Black Flag Resynced",
+    card_context_sub: "DLC costs more than the game",
+    card_context_micro: "$84.91 vs $59.99",
+    source_card_label: "Steam + Ubisoft",
+    source_type: "rss",
+    card_key_line: "Nine day-one DLC packs cost $84.91 combined.",
+    quote_attribution: "Steam Store",
+    quote_attribution_sub: "launch listing",
+    full_script:
+      "Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+      "Steam lists them at $84.91 combined, while the base game costs $59.99. " +
+      "Eight packs are $9.99 each, adding character outfits, ship cosmetics and sometimes weapons or trinkets with unique perks. " +
+      "The ninth is a $4.99 map pack that instantly reveals rare collectibles. " +
+      "Ubisoft says the standard edition is still the full experience, and that is the line players will test. " +
+      "Do these feel like harmless extras, or content carved out before launch? " +
+      "Bonus content, or too far? " +
+      "If the base game feels complete, Ubisoft's defence holds. " +
+      "If it does not, nine day-one packs turn nostalgia into a pricing fight. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const strongFacts = specs.timeline.bullets.map((bullet) => bullet.strong);
+  const compactCopies = specs.timeline.bullets.map((bullet) => bullet.copy);
+  assert.equal(specs.context.number, "BLACK FLAG RESYNCED");
+  assert.equal(specs.context.sub, "DLC costs more than the game");
+  assert.equal(specs.context.micro, "$84.91 VS $59.99");
+  assert.ok(strongFacts.includes("NINE DLC PACKS"), JSON.stringify(specs.timeline));
+  assert.ok(strongFacts.includes("$84.91 VS $59.99"), JSON.stringify(specs.timeline));
+  assert.ok(strongFacts.includes("$4.99 MAP PACK"), JSON.stringify(specs.timeline));
+  assert.ok(!strongFacts.includes("91 COMBINED"));
+  assert.ok(!strongFacts.includes("99 MAP"));
+  assert.deepEqual(compactCopies, ["", "", ""]);
+  assert.equal(specs.quote.quoteText, "Nine day-one DLC packs cost $84.91 combined.");
+  assert.equal(specs.quote.attribution, "STEAM STORE");
+  assert.equal(specs.quote.attributionSub, "launch listing");
+  assert.deepEqual(specs.takeaway.headlineWords, ["DLC", "COSTS", "MORE", "THAN", "GAME"]);
+  assert.equal(specs.takeaway.cta, "DAY-ONE DLC STARTS A PRICING FIGHT");
+  assert.doesNotMatch(
+    `${specs.takeaway.headlineWords.join(" ")} ${specs.takeaway.cta}`,
+    /PLAYER IMPACT|WHAT CHANGES FOR PLAYERS|FOLLOW|FOR MORE/i,
+  );
+  const timelineReadability = hyperframesCardReadabilityContractForSpec(
+    "timeline",
+    specs.timeline,
+  );
+  assert.equal(timelineReadability.status, "pass");
+  assert.ok(timelineReadability.evidence.word_count <= 13);
 });
 
 test("story-specific HyperFrames readability evidence keeps every animated quote word", () => {
@@ -299,6 +416,24 @@ test("story-specific HyperFrames readability evidence keeps every animated quote
 
   assert.equal(contract.evidence.readable_text, "The controls have to sell it. PULSE GAMING");
   assert.equal(contract.evidence.word_count, 8);
+});
+
+test("timeline readability excludes decorative sequence numbers from its copy budget", () => {
+  const html = `
+    <div id="heading">BLACK FLAG RESYNCED</div>
+    <ul id="bullets">
+      <li><span class="num">01</span><strong>NINE DLC PACKS</strong></li>
+      <li><span class="num">02</span><strong>$84.91 VS $59.99</strong></li>
+      <li><span class="num">03</span><strong>$4.99 MAP PACK</strong></li>
+    </ul>
+    <div data-duration="5.0"></div>
+  `;
+
+  const contract = hyperframesCardReadabilityContractFromHtml("timeline", html);
+
+  assert.equal(contract.status, "pass");
+  assert.equal(contract.evidence.word_count, 12);
+  assert.equal(contract.evidence.required_visible_duration_s, 5.0);
 });
 
 test("story-specific HyperFrames quote timing includes the visible attribution", () => {

@@ -24,6 +24,7 @@ async function makeStory(root, storyId) {
   await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
     story_id: storyId,
     rendered_duration_s: 38,
+    safety: { no_publish_triggered: true },
   });
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     operating_mode: "DRY_RUN_PUBLISH",
@@ -31,6 +32,7 @@ async function makeStory(root, storyId) {
       youtube_shorts: { cta_style: "identity_follow" },
       instagram_reels: { cta_style: "bio_link" },
     },
+    safety: { no_publish_triggered: true },
   });
   return { story_id: storyId, artifact_dir: artifactDir };
 }
@@ -74,7 +76,14 @@ test("Goal 12 CLI writes experimentation artefacts", async () => {
   const outDir = path.join(root, "out");
   await fs.outputJson(storyPackagesPath, [story]);
   await fs.outputJson(upstreamPath, {
-    stories: [{ story_id: "story-cli", status: "blocked", blockers: ["retention:analytics_missing"] }],
+    stories: [{
+      story_id: "story-cli",
+      status: "blocked",
+      publication_phase: "prepublication",
+      performance_evidence_status: "pending_not_yet_observable",
+      metrics_status: "pending",
+      blockers: ["upstream:goal10_gold_standard_forensics_blocked"],
+    }],
   });
   await fs.outputJson(recommendationsPath, { stories: [] });
   await fs.outputJson(metricsPath, { stories: [] });
@@ -97,6 +106,12 @@ test("Goal 12 CLI writes experimentation artefacts", async () => {
   ]);
 
   assert.equal(result.report.verdict, "BLOCKED");
+  assert.equal(result.report.stories[0].publication_phase, "prepublication");
+  assert.equal(
+    result.report.stories[0].performance_evidence_status,
+    "pending_not_yet_observable",
+  );
+  assert.ok(!result.report.stories[0].blockers.includes("experiment:variant_metrics_missing"));
   assert.equal(await fs.pathExists(path.join(outDir, "goal12_readiness_report.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "experiment_manifest.json")), true);
   assert.equal(await fs.pathExists(path.join(outDir, "variant_scorecard.json")), true);

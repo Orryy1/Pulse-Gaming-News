@@ -17,6 +17,7 @@ const {
 const { buildGoalProofPackage, buildPlatformNativePublishPacks } = require("../../lib/goal-proof-package");
 const { buildPulseMediaHouseScore } = require("../../lib/pulse-media-house-score");
 const {
+  asStoryArray,
   parseArgs: parseGoalBatchArgs,
   filterLiveRssStoriesForMotion,
   loadPublishedStoryIdsForGoalBatch,
@@ -28,6 +29,84 @@ const {
 } = require("../../tools/goal-batch-packages");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 const { buildViralScriptIntelligence } = require("../../lib/viral-script-intelligence");
+
+test("goal batch CLI accepts one canonical story manifest as its stories file", () => {
+  const story = {
+    story_id: "official-black-flag-proof",
+    canonical_title: "Black Flag Resynced DLC Costs More Than The Game",
+  };
+
+  assert.deepEqual(asStoryArray(story), [story]);
+});
+
+test("goal batch CLI separates existing evidence input from regenerated output", () => {
+  const args = parseGoalBatchArgs([
+    "--out-dir",
+    "output/fresh-proof",
+    "--existing-artifact-root",
+    "output/source-proof",
+  ]);
+
+  assert.equal(args.outDir, "output/fresh-proof");
+  assert.equal(args.existingArtifactRoot, "output/source-proof");
+});
+
+test("goal batch editorial QA prefers display narration over pronunciation-only TTS text", () => {
+  const narrationScript =
+    "Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+    "Steam lists them at $84.91 combined, while the base game costs $59.99. " +
+    "Eight packs are $9.99 each, adding character outfits, ship cosmetics and sometimes weapons or trinkets with unique perks. " +
+    "The ninth is a $4.99 map pack that instantly reveals rare collectibles. " +
+    "Ubisoft says the standard edition is still the full experience, and that is the line players will test. " +
+    "Do these feel like harmless extras, or content carved out before launch? Bonus content, or too far? " +
+    "If the base game feels complete, Ubisoft's defence holds. If it does not, nine day-one packs turn nostalgia into a pricing fight. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const prepared = prepareStoryForGoalProof({
+    id: "black-flag-pronunciation-proof",
+    title: "Black Flag Resynced's Day-One DLC Costs More Than the Game",
+    public_title: "Black Flag Resynced's Day-One DLC Costs More Than the Game",
+    selected_title: "Black Flag Resynced's Day-One DLC Costs More Than the Game",
+    canonical_subject: "Black Flag Resynced",
+    source_name: "Steam",
+    source_type: "official",
+    article_url: "https://store.steampowered.com/app/3127950/",
+    claim_inventory: {
+      confirmed: [
+        "Steam lists nine launch-day DLC packs for Black Flag Resynced.",
+        "The DLC costs $84.91 combined while the base game costs $59.99.",
+        "Eight listed packs cost $9.99 each and the map pack costs $4.99.",
+        "The DLC descriptions include character outfits, ship cosmetics, weapons and trinkets with unique perks.",
+        "The map pack description says it instantly reveals the locations of rare collectibles.",
+        "Ubisoft says the standard edition delivers the full experience.",
+      ],
+      unconfirmed: [],
+      prohibited: [],
+    },
+    narration_script: narrationScript,
+    display_script: narrationScript,
+    tts_script: narrationScript
+      .replace(/\$84\.91/g, "84 dollars 91")
+      .replace(/\$59\.99/g, "59 dollars 99")
+      .replace(/\$9\.99/g, "9 dollars 99")
+      .replace(/\$4\.99/g, "4 dollars 99")
+      .replace(/day-one/g, "day one"),
+    first_frame_text: "$84.91 DAY-ONE DLC",
+    suggested_thumbnail_text: "$84.91 DAY-ONE DLC",
+  });
+
+  assert.equal(prepared.full_script, narrationScript);
+  assert.equal(prepared.narration_script, narrationScript);
+  assert.match(prepared.tts_script, /84 dollars 91/);
+  assert.equal(
+    prepared.title,
+    "Black Flag Resynced's Day-One DLC Costs More Than the Game",
+  );
+  assert.equal(prepared.suggested_thumbnail_text, "$84.91 DAY-ONE DLC");
+  assert.equal(
+    buildViralScriptIntelligence({ story: prepared, script: prepared.full_script }).verdict,
+    "viral_ready",
+  );
+});
 
 function licensedSfxAssets() {
   return [
@@ -4069,7 +4148,11 @@ test("goal batch packages write per-story artefacts and goal-contract story pack
 
   assert.equal(await fs.pathExists(path.join(tmp, "packages", "green-one", "script_scorecard.json")), true);
   assert.equal(await fs.pathExists(path.join(tmp, "goal-contract", "story-packages.json")), true);
-  assert.equal((await fs.readJson(written.storyPackagesPath))[0].verdict, "GREEN");
+  const [materialised] = await fs.readJson(written.storyPackagesPath);
+  assert.equal(materialised.verdict, "RED");
+  assert.ok(materialised.blockers.includes("render:final_render_audio_missing"));
+  assert.equal(written.summary.green_count, 0);
+  assert.equal(written.summary.red_count, 1);
 });
 
 test("goal batch packages can fill audit candidates from revenue paths without marking them ready", () => {
@@ -4090,6 +4173,46 @@ test("goal batch packages can fill audit candidates from revenue paths without m
   assert.equal(stories[1].full_script, "");
 });
 
+test("goal batch revenue stubs carry a governed no-offer decision before proof preparation", () => {
+  const [story] = augmentStoriesWithRevenuePaths(
+    [],
+    {
+      top_paths: [
+        {
+          story_id: "revenue-no-offer",
+          title: "Xbox Publishes A Source-Only Gameplay Update",
+          route: "/p/xbox-source-only-gameplay-update",
+          revenue_manifest: {
+            landing_page: {
+              route: "/p/xbox-source-only-gameplay-update",
+              source_links: [
+                {
+                  label: "Xbox Wire",
+                  url: "https://news.xbox.com/en-us/source-only-gameplay-update",
+                },
+              ],
+            },
+            disclosure: { required: false },
+            offer_stack: { primary_offer: null, fallback_offers: [] },
+          },
+        },
+      ],
+    },
+    1,
+  );
+
+  const affiliate = story.affiliate_link_manifest;
+  assert.equal(affiliate.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(affiliate.no_direct_offer_reason, "no_governed_direct_offer_supplied");
+  assert.equal(affiliate.primary_link, null);
+  assert.deepEqual(affiliate.fallback_links, []);
+  assert.deepEqual(affiliate.offers, []);
+  assert.equal(affiliate.disclosure_required, false);
+  assert.equal(affiliate.landing_page_route, "/p/xbox-source-only-gameplay-update");
+  assert.equal(affiliate.landing_page_attribution.verdict, "pass");
+  assert.equal(Object.keys(affiliate.landing_page_attribution.platforms).length, 7);
+});
+
 test("goal batch package revenue fallback can be disabled for targeted repair runs", () => {
   const stories = augmentStoriesWithRevenuePaths(
     [{ id: "target", title: "Target Story" }],
@@ -4104,6 +4227,45 @@ test("goal batch package revenue fallback can be disabled for targeted repair ru
   );
 
   assert.deepEqual(stories.map((story) => story.id), ["target"]);
+});
+
+test("goal batch preparation materialises governed no-offer commercial evidence", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "batch-governed-no-offer",
+    title: "The Expanse: Osiris Reborn Shows Its First Gameplay",
+    canonical_subject: "The Expanse: Osiris Reborn",
+    source_name: "Xbox Wire",
+    source_type: "rss",
+    article_url: "https://news.xbox.com/en-us/example-expanse-gameplay",
+    full_script:
+      "The Expanse: Osiris Reborn finally showed real gameplay. Xbox Wire published the first combat footage and story details. Follow Pulse Gaming so you never miss a beat.",
+    affiliate_link_manifest: { disclosure_required: false },
+  });
+
+  const affiliate = prepared.affiliate_link_manifest;
+  assert.equal(affiliate.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(affiliate.no_direct_offer_reason, "no_governed_direct_offer_supplied");
+  assert.equal(affiliate.primary_link, null);
+  assert.deepEqual(affiliate.fallback_links, []);
+  assert.deepEqual(affiliate.offers, []);
+  assert.equal(affiliate.disclosure_required, false);
+  assert.deepEqual(affiliate.affiliate_tracking_map, {
+    story_id: prepared.id,
+    primary_offer_id: null,
+    story_page: null,
+    platforms: {},
+    fallback_offer_ids: [],
+  });
+  assert.equal(affiliate.source_links[0].url, prepared.article_url);
+  assert.match(affiliate.landing_page_route, /^\/p\//);
+  assert.equal(affiliate.landing_page_attribution.verdict, "pass");
+  assert.equal(affiliate.landing_page_attribution.safety.source_first_story_page, true);
+  assert.equal(Object.keys(affiliate.landing_page_attribution.platforms).length, 7);
+  for (const [platform, row] of Object.entries(affiliate.landing_page_attribution.platforms)) {
+    assert.match(row.landing_page_url, new RegExp(`utm_source=${platform}(?:&|$)`));
+    assert.equal(row.offer_id, null);
+    assert.equal(row.offer_tracking_url, null);
+  }
 });
 
 test("goal batch packages hydrate revenue stubs from per-story commercial manifests", () => {

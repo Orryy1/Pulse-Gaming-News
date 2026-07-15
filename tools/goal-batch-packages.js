@@ -35,6 +35,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     sfxRightsLedgerPath: path.join(ROOT, "output", "goal-contract", "sfx_rights_ledger.json"),
     limit: 30,
     outDir: path.join(ROOT, "output", "goal-proof", "batch"),
+    existingArtifactRoot: null,
     contractOutDir: path.join(ROOT, "output", "goal-contract"),
     generatedAt: null,
     liveRss: false,
@@ -57,6 +58,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--sfx-rights-ledger") args.sfxRightsLedgerPath = argv[++i] || "";
     else if (arg === "--limit") args.limit = Number(argv[++i] || args.limit);
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
+    else if (arg === "--existing-artifact-root") {
+      args.existingArtifactRoot = argv[++i] || args.existingArtifactRoot;
+    }
     else if (arg === "--contract-out-dir") args.contractOutDir = argv[++i] || args.contractOutDir;
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--live-rss") args.liveRss = true;
@@ -94,6 +98,8 @@ function usage() {
     "  --sfx-rights-ledger <path>   Retained licensed SFX rights ledger JSON; defaults to output/goal-contract/sfx_rights_ledger.json",
     "  --limit <n>                 Defaults to 30",
     "  --out-dir <dir>",
+    "  --existing-artifact-root <dir>",
+    "                              Read prior per-story evidence from this directory without writing into it",
     "  --contract-out-dir <dir>",
     "  --generated-at <iso>",
     "  --live-rss                 Prepend current source-backed RSS proof candidates from Pulse Gaming feeds",
@@ -112,6 +118,7 @@ function asStoryArray(value) {
   if (Array.isArray(value)) return value;
   if (Array.isArray(value?.stories)) return value.stories;
   if (Array.isArray(value?.items)) return value.items;
+  if (value && typeof value === "object" && storyIdFor(value)) return [value];
   return [];
 }
 
@@ -928,7 +935,7 @@ async function main(argv = process.argv.slice(2)) {
     sfxAssetInventory,
     sfxRightsLedger,
     videoCacheDir: path.resolve(args.videoCacheDir),
-    existingArtifactRoot: path.resolve(args.outDir),
+    existingArtifactRoot: path.resolve(args.existingArtifactRoot || args.outDir),
     allowOwnedMotionFallback: args.allowOwnedMotionFallback,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
@@ -936,9 +943,10 @@ async function main(argv = process.argv.slice(2)) {
     outputDir: args.outDir,
     contractOutDir: args.contractOutDir,
   });
-  if (args.json) console.log(JSON.stringify({ summary: batch.summary, outputs }, null, 2));
+  if (args.json) console.log(JSON.stringify({ summary: outputs.summary || batch.summary, outputs }, null, 2));
   else {
-    console.log(`Goal batch packages: ${batch.summary.green_count}/${batch.summary.story_count} GREEN`);
+    const summary = outputs.summary || batch.summary;
+    console.log(`Goal batch packages: ${summary.green_count}/${summary.story_count} GREEN`);
     console.log(`Story packages: ${outputs.storyPackagesPath}`);
     console.log("Safety: local-only, no publish, no DB mutation, no OAuth changes.");
   }
@@ -953,6 +961,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  asStoryArray,
   loadRevenueManifestByStory,
   loadMotionPackByStory,
   filterLiveRssStoriesForMotion,

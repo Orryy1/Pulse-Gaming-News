@@ -31,6 +31,7 @@ const {
   selectPremiumSceneClips,
   resolveFreshHyperframesPremiumShellGate,
   scenePlanBlockerDiagnostic,
+  buildProfessionalSourceDiversityProof,
 } = require("../../tools/studio-v4-proof-render");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
@@ -235,6 +236,87 @@ test("Studio V4 proof renderer reports the exact concentrated source and coverag
   assert.match(diagnostic, /covered=49\.82/);
   assert.match(diagnostic, /target=50/);
   assert.match(diagnostic, /missing=0\.18/);
+});
+
+test("Studio V4 proof renderer builds authoritative professional source-diversity evidence", () => {
+  const hashA = "a".repeat(64);
+  const hashB = "b".repeat(64);
+  const clips = [
+    {
+      id: "publisher_master_a",
+      path: "a-window-1.mp4",
+      source_url: "https://publisher.example/trailers/a.mp4",
+      source_master_sha256: hashA,
+      source_family: "mutable_a_window_1",
+    },
+    {
+      id: "youtube_mirror_a",
+      path: "a-window-2.mp4",
+      source_url: "https://youtu.be/PublisherMirrorA",
+      source_master_sha256: hashA,
+      source_family: "renamed_mirror_window_2",
+    },
+    {
+      id: "publisher_master_b",
+      path: "b-window-1.mp4",
+      source_url: "https://publisher.example/trailers/b.mp4",
+      source_master_sha256: hashB,
+      source_family: "mutable_b_window_1",
+    },
+    {
+      id: "platform_mirror_b",
+      path: "b-window-2.mp4",
+      source_url: "https://platform.example/trailers/b-encode.m3u8",
+      sampled_visual_fingerprint: "phash:b-source-shared",
+      source_master_sha256: hashB,
+      source_family: "renamed_b_window_2",
+    },
+  ];
+  const scenePlan = {
+    scenes: clips.map((clip, index) => ({
+      index,
+      path: clip.path,
+      readableCardKind: null,
+    })),
+  };
+
+  const proof = buildProfessionalSourceDiversityProof({ clips, scenePlan });
+
+  assert.equal(proof.authoritative, true);
+  assert.equal(proof.policy_tier, "ultimate_professional");
+  assert.equal(proof.status, "pass");
+  assert.equal(proof.required_genuine_base_source_count, 2);
+  assert.equal(proof.observed_genuine_base_source_count, 2);
+  assert.deepEqual(proof.unresolved_clips, []);
+  assert.deepEqual(proof.per_source_scene_shares.map((source) => source.scene_count), [2, 2]);
+  assert.equal(proof.identity_evidence.length, 2);
+  assert.deepEqual(proof.blockers, []);
+});
+
+test("Studio V4 proof renderer fails professional proof closed on family-only scene identity", () => {
+  const clips = [1, 2, 3].map((index) => ({
+    id: `clip_${index}`,
+    path: `clip-${index}.mp4`,
+    source_family: `renamed_window_${index}`,
+    motion_family: `mutable_motion_${index}`,
+  }));
+
+  const proof = buildProfessionalSourceDiversityProof({
+    clips,
+    scenePlan: {
+      scenes: clips.map((clip, index) => ({
+        index,
+        path: clip.path,
+        readableCardKind: null,
+      })),
+    },
+  });
+
+  assert.equal(proof.status, "blocked");
+  assert.equal(proof.observed_genuine_base_source_count, 0);
+  assert.equal(proof.unresolved_clips.length, 3);
+  assert.ok(proof.blockers.includes("professional_motion_source_identity_unresolved"));
+  assert.ok(proof.blockers.includes("professional_genuine_base_source_minimum_not_met"));
 });
 
 test("Studio V4 proof renderer allows balanced second windows when coverage needs them", () => {

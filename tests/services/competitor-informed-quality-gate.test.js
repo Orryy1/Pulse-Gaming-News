@@ -1,10 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFile } = require("node:child_process");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { promisify } = require("node:util");
 
 const {
   buildCompetitorInformedQualityGate,
@@ -15,9 +17,64 @@ function passGate(extra = {}) {
   return { verdict: "pass", failures: [], blockers: [], ...extra };
 }
 
+const execFileAsync = promisify(execFile);
+let validFinalMediaBytesPromise;
+let warningFinalMediaBytesPromise;
+
+async function validFinalMediaBytes() {
+  if (!validFinalMediaBytesPromise) {
+    validFinalMediaBytesPromise = (async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-competitor-valid-media-"));
+      const output = path.join(root, "valid-short.mp4");
+      try {
+        await execFileAsync("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-f", "lavfi", "-i", "testsrc2=size=540x960:rate=15",
+          "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+          "-t", "10.2",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart",
+          output,
+        ], { timeout: 60000 });
+        return await fs.readFile(output);
+      } finally {
+        await fs.remove(root);
+      }
+    })();
+  }
+  return validFinalMediaBytesPromise;
+}
+
+async function warningFinalMediaBytes() {
+  if (!warningFinalMediaBytesPromise) {
+    warningFinalMediaBytesPromise = (async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-competitor-warning-media-"));
+      const output = path.join(root, "warning-short.mp4");
+      try {
+        await execFileAsync("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-f", "lavfi", "-i", "color=c=black:s=360x640:r=1",
+          "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+          "-t", "10.2",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart",
+          output,
+        ], { timeout: 60000 });
+        return Buffer.concat([await fs.readFile(output), Buffer.alloc(600000)]);
+      } finally {
+        await fs.remove(root);
+      }
+    })();
+  }
+  return warningFinalMediaBytesPromise;
+}
+
 async function makeGateStory(root, storyId, overrides = {}) {
   const artifactDir = path.join(root, storyId);
   await fs.ensureDir(artifactDir);
+  if (overrides.finalMedia !== false) {
+    await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), await validFinalMediaBytes());
+  }
   const canonical = {
     story_id: storyId,
     selected_title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
@@ -26,6 +83,7 @@ async function makeGateStory(root, storyId, overrides = {}) {
     narration_script:
       "Forza Horizon 6 just broke the one Xbox ceiling that matters on Steam. Steam interest gives Xbox a cleaner PC story before launch. The payoff is simple: Game Pass messaging now has to compete with where PC players are already paying attention. Follow Pulse Gaming so you never miss a beat.",
     primary_source: "Steam",
+    final_duration_seconds: 10.2,
     ...(overrides.canonical || {}),
   };
   const director = overrides.director || {
@@ -129,6 +187,64 @@ test("competitor-informed quality gate passes strong Pulse-original packages and
   assert.equal(report.summary.green_story_count, 1);
   assert.equal(report.stories[0].pulse_media_house_score.verdict, "GREEN");
   assert.equal(await fs.pathExists(path.join(story.artifact_dir, "pulse_media_house_score.json")), true);
+});
+
+test("competitor-informed quality gate blocks a missing final video", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-missing-video-"));
+  const story = await makeGateStory(root, "missing-video", { finalMedia: false });
+
+  const report = await buildCompetitorInformedQualityGate({
+    storyPackages: [story],
+    outputDir: path.join(root, "out"),
+    workspaceRoot: root,
+    generatedAt: "2026-07-14T21:01:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.ok(report.stories[0].blockers.includes("media_house:final_video_missing_or_unreadable"));
+  assert.equal(report.stories[0].pulse_media_house_score.final_video_report.status, "blocked");
+});
+
+test("competitor-informed quality gate blocks a large corrupt MP4", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-corrupt-video-"));
+  const story = await makeGateStory(root, "corrupt-video");
+  await fs.writeFile(path.join(story.artifact_dir, "visual_v4_render.mp4"), Buffer.alloc(600000, 0x61));
+
+  const report = await buildCompetitorInformedQualityGate({
+    storyPackages: [story],
+    outputDir: path.join(root, "out"),
+    workspaceRoot: root,
+    generatedAt: "2026-07-14T21:02:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.ok(report.stories[0].blockers.includes("media_house:final_video_unreadable"));
+  assert.equal(report.stories[0].pulse_media_house_score.final_video_report.decodable, false);
+});
+
+test("competitor-informed quality gate preserves independent media warnings as AMBER", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-media-warning-"));
+  const story = await makeGateStory(root, "media-warning", { finalMedia: false });
+  await fs.writeFile(
+    path.join(story.artifact_dir, "visual_v4_render.mp4"),
+    await warningFinalMediaBytes(),
+  );
+
+  const report = await buildCompetitorInformedQualityGate({
+    storyPackages: [story],
+    outputDir: path.join(root, "out"),
+    workspaceRoot: root,
+    generatedAt: "2026-07-14T21:06:00.000Z",
+  });
+
+  const score = report.stories[0].pulse_media_house_score;
+  assert.equal(report.verdict, "PARTIAL");
+  assert.equal(report.stories[0].final_verdict, "AMBER");
+  assert.equal(score.verdict, "AMBER");
+  assert.equal(score.final_video_report.status, "amber");
+  assert.ok(score.warnings.some((warning) => warning.includes("video_resolution_low")));
 });
 
 test("competitor-informed quality gate blocks weak competitor parity", async () => {

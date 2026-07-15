@@ -2699,6 +2699,33 @@ test("goal audio materializer coverage maps Whisper decimal tokens to spoken poi
   assert.equal(coverage.unmatched_expected_word_count, 0);
 });
 
+test("goal audio materializer coverage reconciles collapsed Whisper currency tokens exactly", () => {
+  const scriptText =
+    "Steam lists nine packs at 84 dollars 91 combined, against 59 dollars 99 for the base game. " +
+    "Eight packs cost 9 dollars 99 each, and the map pack costs 4 dollars 99.";
+  const words = [
+    "Steam", "lists", "nine", "packs", "at", "$84.91", "combined", "against", "$59.99", "for",
+    "the", "base", "game", "Eight", "packs", "cost", "$9.99", "each", "and", "the", "map",
+    "pack", "costs", "$4.99",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true, JSON.stringify(coverage, null, 2));
+  assert.equal(coverage.inserted_actual_word_count, 0, JSON.stringify(coverage, null, 2));
+  assert.equal(coverage.unmatched_expected_word_count, 0, JSON.stringify(coverage, null, 2));
+  assert.equal(reconciled.ok, true, JSON.stringify(reconciled, null, 2));
+  assert.deepEqual(
+    reconciled.words.filter((word) => /(?:84|59|9|4|dollars|91|99)/.test(word.word)).map((word) => word.word),
+    ["84", "dollars", "91", "59", "dollars", "99", "9", "dollars", "99", "4", "dollars", "99."],
+  );
+});
+
 test("goal audio materializer coverage accepts the observed Resynced ASR pronunciation", () => {
   const scriptText = "Black Flag Resynced looks built to revive a classic.";
   const words = [
@@ -4650,6 +4677,154 @@ test("goal audio materializer repairs a fast one-take cadence with sentence paus
     path.join(root, "output", "audio", "story-cadence-padding_timestamps.json"),
   );
   assert.equal(timestamps.meta.cadencePausePadding.repaired, true);
+});
+
+test("goal audio materializer explicitly pads an ElevenLabs warning-speed take into target cadence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-elevenlabs-cadence-padding-"));
+  const displayWords = Array.from({ length: 137 }, (_, index) =>
+    index < 5 ? `word${index + 1}-part` : `word${index + 1}`,
+  );
+  for (let index = 9; index < displayWords.length; index += 10) {
+    displayWords[index] += ".";
+  }
+  const script = displayWords.join(" ");
+  const spokenScript = script.replace(/-/g, " ");
+  const artifactDir = await makePackage(root, "story-elevenlabs-cadence-padding", {
+    narration_script: script,
+    tts_script: spokenScript,
+  });
+  let generationCalls = 0;
+  let paddingCalls = 0;
+  let paddingApplied = false;
+  let durationProbeCalls = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    alignmentMode: "whisper",
+    enforceNativeCadenceBeforePromotion: true,
+    nativeCadencePausePadding: true,
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [{
+        ...workbenchJob("story-elevenlabs-cadence-padding", artifactDir),
+        tts_provider: "elevenlabs",
+      }],
+    },
+    generatedAt: "2026-07-14T23:30:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      generationCalls += 1;
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignmentWithStep(text, 0.05),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      model: "fixture-whisper",
+      transcript: scriptText,
+      words: String(scriptText).split(/\s+/).map((word, index) => ({
+        word,
+        start: Number((index * 0.365).toFixed(3)),
+        end: Number((index * 0.365 + 0.12).toFixed(3)),
+      })),
+    }),
+    getAudioDuration: async () => {
+      durationProbeCalls += 1;
+      if (paddingApplied) return 53;
+      return durationProbeCalls === 1 ? 53 : 51.5;
+    },
+    detectSilencesForAudio: async () => [],
+    padTimestampedNarrationSentencePauses: async () => {
+      paddingCalls += 1;
+      paddingApplied = true;
+      return {
+        repaired: true,
+        strategy: "timestamp_guided_sentence_pause_padding",
+        boundary_count: 12,
+        inserted_silence_seconds: 5,
+        insertions: Array.from({ length: 12 }, (_, index) => ({
+          at_seconds: 3 + index * 3.5,
+          inserted_seconds: 0.417,
+          type: "sentence",
+        })),
+      };
+    },
+  });
+
+  assert.equal(generationCalls, 1);
+  assert.equal(paddingCalls, 1);
+  assert.equal(report.summary.materialized_count, 1);
+  const voiceQuality = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+  assert.equal(voiceQuality.verdict, "PASS");
+  assert.equal(voiceQuality.cadence.spoken_wpm <= 162, true, JSON.stringify(voiceQuality.cadence));
+  assert.deepEqual(voiceQuality.warnings, []);
+});
+
+test("goal audio materializer rejects timestamp-masked acoustic silence before promotion", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-acoustic-mask-"));
+  const storyId = "story-acoustic-mask";
+  const script = [
+    "Black Flag Resynced has nine day one packs.",
+    "Players can judge whether those extras belong at launch.",
+    "The price makes that argument impossible to ignore.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+  const artifactDir = await makePackage(root, storyId, {
+    selected_title: "Black Flag Resynced Has A Day-One DLC Problem",
+    narration_script: script,
+    tts_script: script,
+  });
+  let generationCalls = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    alignmentMode: "whisper",
+    enforceNativeCadenceBeforePromotion: true,
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [{
+        ...workbenchJob(storyId, artifactDir),
+        tts_provider: "elevenlabs",
+      }],
+    },
+    generatedAt: "2026-07-15T03:55:00.000Z",
+    generateTtsForStory: async ({ text, outputPath }) => {
+      generationCalls += 1;
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, generationCalls));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignmentWithStep(text, 0.05),
+      });
+      return { ok: true };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      model: "fixture-whisper",
+      transcript: scriptText,
+      words: String(scriptText).split(/\s+/).map((word, index) => ({
+        word,
+        start: index === 5 ? 2 : Number((index * 0.28).toFixed(2)),
+        end: index === 5 ? 2.8 : Number((index * 0.28 + 0.18).toFixed(2)),
+      })),
+    }),
+    getAudioDuration: async () => 14,
+    detectSilencesForAudio: async () => [{
+      start: 2.1,
+      end: 2.7,
+      duration: 0.6,
+    }],
+  });
+
+  assert.equal(generationCalls > 0, true);
+  assert.equal(report.summary.materialized_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.failed_count, 1);
+  assert.match(JSON.stringify(report.jobs[0]), /timestamp_masks_acoustic_silence/);
+  assert.equal(
+    await fs.pathExists(path.join(root, "output", "audio", `${storyId}.mp3`)),
+    false,
+  );
 });
 
 test("forced ElevenLabs generation overrides an existing-audio cadence repair job", async () => {

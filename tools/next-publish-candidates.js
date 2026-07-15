@@ -1735,6 +1735,7 @@ function combinePreflightQa({
   video,
   platform,
   governance,
+  schedulerRights,
   publicCopy,
   publicMetadata,
   incidentGuard,
@@ -1756,6 +1757,7 @@ function combinePreflightQa({
     platform: summariseQaResult(platform),
     governance: summariseQaResult(governance),
   };
+  if (schedulerRights) checks.scheduler_rights = summariseQaResult(schedulerRights);
   if (publicCopy) checks.public_copy = summariseQaResult(publicCopy);
   if (publicMetadata) checks.public_metadata = summariseQaResult(publicMetadata);
   if (incidentGuard) checks.incident_guard = summariseQaResult(incidentGuard);
@@ -4875,6 +4877,511 @@ function recordCoversClip(record = {}, clip = {}) {
   return clipKeyValues(clip).some((key) => recordKeys.has(key));
 }
 
+function schedulerAssetReference(asset = {}) {
+  if (typeof asset === "string") return cleanText(asset);
+  return cleanText(
+    asset.local_materialized_path ||
+      asset.local_materialised_path ||
+      asset.local_path ||
+      asset.path ||
+      asset.file_path ||
+      asset.media_path ||
+      asset.output_path ||
+      asset.video_path ||
+      asset.source_url,
+  );
+}
+
+function resolveSchedulerAssetPath(reference = "", artifactDir = "") {
+  let value = cleanText(reference);
+  if (!value || /^https?:\/\//i.test(value)) return "";
+  if (/^file:\/\//i.test(value)) {
+    value = decodeURIComponent(value.replace(/^file:\/\//i, ""));
+    if (/^\/[a-z]:\//i.test(value)) value = value.slice(1);
+  } else if (/^[a-z]+:\/\//i.test(value)) {
+    return "";
+  }
+  return path.resolve(path.isAbsolute(value) ? value : path.join(artifactDir, value));
+}
+
+function schedulerAssetPathKey(reference = "", artifactDir = "") {
+  const resolved = resolveSchedulerAssetPath(reference, artifactDir);
+  if (!resolved) return "";
+  const normalised = resolved.replace(/\\/g, "/");
+  return process.platform === "win32" ? normalised.toLowerCase() : normalised;
+}
+
+function schedulerRightsRecordPaths(record = {}, artifactDir = "") {
+  return [
+    record.path,
+    record.local_path,
+    record.local_materialized_path,
+    record.local_materialised_path,
+    record.file_path,
+    record.media_path,
+    record.output_path,
+  ]
+    .map((value) => schedulerAssetPathKey(value, artifactDir))
+    .filter(Boolean);
+}
+
+function schedulerRightsBasis(record = {}) {
+  return cleanText(
+    record.licence_basis ||
+      record.license_basis ||
+      record.rights_basis ||
+      record.allowed_use,
+  );
+}
+
+function schedulerRightsEvidenceReference(record = {}) {
+  return cleanText(
+    record.evidence_file ||
+      record.evidence_reference ||
+      record.licence_evidence ||
+      record.license_evidence ||
+      record.licence_evidence_url ||
+      record.permission_evidence ||
+      record.permission_evidence_url,
+  );
+}
+
+function normaliseSha256(value = "") {
+  return cleanText(value).replace(/^sha256:/i, "").toLowerCase();
+}
+
+function authoritativeStatusIsRed(value = "") {
+  return new Set([
+    "RED",
+    "FAIL",
+    "FAILED",
+    "BLOCKED",
+    "HARD_STOP",
+    "HELD",
+    "HOLD",
+    "REJECTED",
+  ]).has(statusText(value));
+}
+
+function authoritativeEvidenceFailures(value = {}) {
+  return [
+    value.blockers,
+    value.hard_blockers,
+    value.failures,
+    value.reason_codes,
+    value.rejection_reasons,
+  ].flatMap(parseFailureList).map(cleanText).filter(Boolean);
+}
+
+function authoritativeEvidenceIsRed(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Boolean(
+    [
+      value.publish_status,
+      value.final_verdict,
+      value.verdict,
+      value.status,
+      value.result,
+      value.overall_verdict,
+      value.control_tower_verdict,
+      value.package_verdict,
+      value.readiness_status,
+      value.governance_publish_status,
+    ].some(authoritativeStatusIsRed) ||
+      value.can_auto_publish === false ||
+      authoritativeEvidenceFailures(value).length,
+  );
+}
+
+function authoritativePlatformEvidenceIsRed(value = {}, targetPlatforms = []) {
+  if (authoritativeEvidenceIsRed(value)) return true;
+  const outputs = objectValue(value.outputs || value.platforms, {});
+  return targetPlatforms.some((platform) => authoritativeEvidenceIsRed(outputs[platform]));
+}
+
+function authoritativePackageEvidenceIsRed(value = {}, targetPlatforms = []) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return [
+    value,
+    value.publish_verdict,
+    value.package_verdict,
+    value.control_tower,
+    value.readiness,
+  ].some(authoritativeEvidenceIsRed) ||
+    authoritativePlatformEvidenceIsRed(value.platform_publish_manifest, targetPlatforms);
+}
+
+async function schedulerFileFingerprint(filePath, cache = new Map(), fsImpl = fs) {
+  const cacheKey = schedulerAssetPathKey(filePath);
+  if (cacheKey && cache.has(cacheKey)) return cache.get(cacheKey);
+  const stat = await fsImpl.stat(filePath);
+  if (!stat.isFile()) throw new Error("scheduler_rights_asset_not_file");
+  const hash = crypto.createHash("sha256");
+  if (typeof fsImpl.createReadStream === "function") {
+    for await (const chunk of fsImpl.createReadStream(filePath)) hash.update(chunk);
+  } else {
+    hash.update(await fsImpl.readFile(filePath));
+  }
+  const fingerprint = { sha256: hash.digest("hex"), size_bytes: stat.size };
+  if (cacheKey) cache.set(cacheKey, fingerprint);
+  return fingerprint;
+}
+
+async function readSchedulerArtifactValue(artifactDir = "", fileName = "", fallback = null) {
+  if (!artifactDir || !fileName) return { present: false, valid: false, value: fallback };
+  const filePath = path.join(artifactDir, fileName);
+  if (!(await fs.pathExists(filePath))) {
+    return { present: false, valid: false, path: filePath, value: fallback };
+  }
+  try {
+    return { present: true, valid: true, path: filePath, value: await fs.readJson(filePath) };
+  } catch {
+    return { present: true, valid: false, path: filePath, value: fallback };
+  }
+}
+
+function schedulerFinalUsedAssets({
+  artifactDir = "",
+  renderManifest = {},
+  audioManifest = {},
+  sfxManifest = {},
+  platformManifest = {},
+  targetPlatforms = [],
+} = {}) {
+  const used = [];
+  for (const [index, scene] of asArray(renderManifest.clip_scene_plan?.scenes).entries()) {
+    used.push({
+      kind: "motion",
+      asset_id: cleanText(scene.asset_id || scene.id || `render_scene_${index + 1}`),
+      path: resolveSchedulerAssetPath(schedulerAssetReference(scene), artifactDir),
+    });
+  }
+  const renderInputEvidence = objectValue(renderManifest.input_evidence, {});
+  const narrationReference = cleanText(
+    renderInputEvidence.resolved_narration_audio_path ||
+      renderInputEvidence.narration_audio_path ||
+      renderManifest.resolved_narration_audio_path ||
+      renderManifest.narration_audio_path ||
+      audioManifest.resolved_narration_audio_path ||
+      audioManifest.narration_audio_path ||
+      audioManifest.audio_path,
+  );
+  if (narrationReference) {
+    used.push({
+      kind: "narration",
+      asset_id: cleanText(audioManifest.narration_asset_id || audioManifest.asset_id || "final_narration"),
+      path: resolveSchedulerAssetPath(narrationReference, artifactDir),
+    });
+  }
+  const selectedSfx = asArray(
+    sfxManifest.source_plan?.selected_assets ?? sfxManifest.selected_assets,
+  );
+  for (const [index, selected] of selectedSfx.entries()) {
+    used.push({
+      kind: "sfx",
+      asset_id: cleanText(selected.asset_id || selected.id || `selected_sfx_${index + 1}`),
+      path: resolveSchedulerAssetPath(schedulerAssetReference(selected), artifactDir),
+    });
+  }
+  const platformOutputs = objectValue(platformManifest.outputs, {});
+  for (const platform of targetPlatforms) {
+    const output = objectValue(platformOutputs[platform], {});
+    const variantReference = platformVariantReference(output);
+    if (!variantReference) continue;
+    used.push({
+      kind: "platform_native",
+      platform,
+      platforms: [platform],
+      asset_id: cleanText(
+        output.asset_id ||
+          output.platform_variant_render?.asset_id ||
+          `platform-native-${platform}`,
+      ),
+      path: resolveSchedulerAssetPath(variantReference, artifactDir),
+    });
+  }
+  const unique = [];
+  const seen = new Map();
+  for (const asset of used) {
+    const key = schedulerAssetPathKey(asset.path, artifactDir) || `${asset.kind}:${asset.asset_id}`;
+    if (seen.has(key)) {
+      const existing = seen.get(key);
+      existing.platforms = [...new Set([
+        ...asArray(existing.platforms),
+        ...asArray(asset.platforms),
+      ])];
+      continue;
+    }
+    seen.set(key, asset);
+    unique.push(asset);
+  }
+  return unique;
+}
+
+function schedulerRightsPlatforms(record = {}) {
+  return asArray(record.allowed_platforms || record.platforms)
+    .map((platform) => cleanPlatformName(
+      platform && typeof platform === "object"
+        ? platform.platform || platform.platform_key || platform.key || platform.name || platform.id
+        : platform,
+    ))
+    .filter(Boolean);
+}
+
+function duplicateSchedulerRightsRecordCount(records = [], artifactDir = "") {
+  const seenIds = new Set();
+  const seenPaths = new Set();
+  let duplicates = 0;
+  for (const record of records) {
+    const assetId = cleanText(record.asset_id || record.id).toLowerCase();
+    const recordPaths = schedulerRightsRecordPaths(record, artifactDir);
+    const duplicate =
+      (assetId && seenIds.has(assetId)) ||
+      recordPaths.some((recordPath) => seenPaths.has(recordPath));
+    if (duplicate) duplicates += 1;
+    if (assetId) seenIds.add(assetId);
+    for (const recordPath of recordPaths) seenPaths.add(recordPath);
+  }
+  return duplicates;
+}
+
+async function schedulerRightsRecordAssessment({
+  record = {},
+  asset = {},
+  artifactDir = "",
+  targetPlatforms = [],
+  fingerprintCache = new Map(),
+} = {}) {
+  const failures = [];
+  if (!cleanText(record.asset_id || record.id)) failures.push("rights_record_incomplete");
+  if (!schedulerRightsBasis(record)) failures.push("rights_record_incomplete");
+  if (record.commercial_use_allowed !== true) failures.push("rights_record_incomplete");
+  const evidenceReference = schedulerRightsEvidenceReference(record);
+  if (!evidenceReference) {
+    failures.push("rights_record_incomplete");
+  } else if (/^https?:\/\//i.test(evidenceReference)) {
+    failures.push("rights_evidence_not_materialised");
+  } else {
+    const evidencePath = resolveSchedulerAssetPath(evidenceReference, artifactDir);
+    if (!evidencePath || !(await fs.pathExists(evidencePath))) {
+      failures.push("rights_evidence_missing");
+    } else {
+      const expectedEvidenceHash = normaliseSha256(record.evidence_sha256);
+      const expectedEvidenceSize = Number(record.evidence_size_bytes);
+      if (!/^[a-f0-9]{64}$/.test(expectedEvidenceHash)) {
+        failures.push("rights_evidence_sha256_missing");
+      }
+      if (!Number.isFinite(expectedEvidenceSize) || expectedEvidenceSize <= 0) {
+        failures.push("rights_evidence_size_missing");
+      }
+      try {
+        const currentEvidence = await schedulerFileFingerprint(
+          evidencePath,
+          fingerprintCache,
+        );
+        if (
+          /^[a-f0-9]{64}$/.test(expectedEvidenceHash) &&
+          expectedEvidenceHash !== currentEvidence.sha256
+        ) {
+          failures.push("rights_evidence_sha256_mismatch");
+        }
+        if (
+          Number.isFinite(expectedEvidenceSize) &&
+          expectedEvidenceSize > 0 &&
+          expectedEvidenceSize !== currentEvidence.size_bytes
+        ) {
+          failures.push("rights_evidence_size_mismatch");
+        }
+      } catch {
+        failures.push("rights_evidence_unreadable");
+      }
+    }
+  }
+  const allowedPlatforms = new Set(schedulerRightsPlatforms(record));
+  if (!targetPlatforms.every((platform) => allowedPlatforms.has(platform))) {
+    failures.push("rights_platform_scope_incomplete");
+  }
+  const expectedHash = normaliseSha256(record.asset_sha256 || record.sha256);
+  const expectedSize = Number(record.asset_size_bytes || record.size_bytes);
+  if (!/^[a-f0-9]{64}$/.test(expectedHash)) failures.push("asset_sha256_missing");
+  if (!Number.isFinite(expectedSize) || expectedSize <= 0) {
+    failures.push("asset_size_missing");
+  }
+  if (!asset.path || !(await fs.pathExists(asset.path))) {
+    failures.push("used_asset_missing");
+  } else {
+    try {
+      const currentAsset = await schedulerFileFingerprint(asset.path, fingerprintCache);
+      if (
+        /^[a-f0-9]{64}$/.test(expectedHash) &&
+        expectedHash !== currentAsset.sha256
+      ) {
+        failures.push("asset_sha256_mismatch");
+      }
+      if (
+        Number.isFinite(expectedSize) &&
+        expectedSize > 0 &&
+        expectedSize !== currentAsset.size_bytes
+      ) {
+        failures.push("asset_size_mismatch");
+      }
+    } catch {
+      failures.push("used_asset_unreadable");
+    }
+  }
+  return {
+    current: failures.length === 0,
+    failures: [...new Set(failures)],
+  };
+}
+
+async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
+  const artifactDir = artifactDirForStory(story);
+  if (!artifactDir) {
+    return { result: "fail", failures: ["rights_artifact_dir_missing"], warnings: [] };
+  }
+  const rightsArtifact = await readSchedulerArtifactValue(
+    artifactDir,
+    "rights_ledger.json",
+    story.rights_ledger || story.rights_records || null,
+  );
+  if (rightsArtifact.present && !rightsArtifact.valid) {
+    return { result: "fail", failures: ["rights_ledger_invalid"], warnings: [] };
+  }
+  if (!rightsArtifact.present) {
+    const fallbackLedger = rightsArtifact.value;
+    const fallbackAvailable = Boolean(
+      Array.isArray(fallbackLedger) ||
+        (fallbackLedger && typeof fallbackLedger === "object"),
+    );
+    if (!fallbackAvailable) {
+      return { result: "fail", failures: ["rights_ledger_missing"], warnings: [] };
+    }
+  }
+  const [
+    renderArtifact,
+    audioArtifact,
+    sfxArtifact,
+    platformArtifact,
+    packageArtifact,
+    publishArtifact,
+  ] = await Promise.all([
+    readSchedulerArtifactValue(artifactDir, "render_manifest.json", story.render_manifest || {}),
+    readSchedulerArtifactValue(artifactDir, "audio_manifest.json", story.audio_manifest || {}),
+    readSchedulerArtifactValue(
+      artifactDir,
+      "sfx_manifest.json",
+      story.sfx_manifest || story.sound_transition_plan?.sfx || {},
+    ),
+    readSchedulerArtifactValue(
+      artifactDir,
+      "platform_publish_manifest.json",
+      story.platform_publish_manifest || story.platformManifest || {},
+    ),
+    readSchedulerArtifactValue(
+      artifactDir,
+      "goal_package_summary.json",
+      story.goal_package_summary || story.package_summary || {},
+    ),
+    readSchedulerArtifactValue(
+      artifactDir,
+      "publish_verdict.json",
+      story.publish_verdict || {},
+    ),
+  ]);
+  const ledger = rightsArtifact.value;
+  const records = rightsLedgerRecords(ledger);
+  const targetPlatforms = missingEnabledPublishPlatformNames(story, opts);
+  const usedAssets = schedulerFinalUsedAssets({
+    artifactDir,
+    renderManifest: objectValue(renderArtifact.value, {}),
+    audioManifest: objectValue(audioArtifact.value, {}),
+    sfxManifest: objectValue(sfxArtifact.value, {}),
+    platformManifest: objectValue(platformArtifact.value, {}),
+    targetPlatforms,
+  });
+  const failures = [];
+  if (packageArtifact.present && !packageArtifact.valid) {
+    failures.push("authoritative_goal_package_summary_invalid");
+  } else if (authoritativePackageEvidenceIsRed(packageArtifact.value, targetPlatforms)) {
+    failures.push("authoritative_goal_package_summary_red");
+  }
+  if (platformArtifact.present && !platformArtifact.valid) {
+    failures.push("authoritative_platform_publish_manifest_invalid");
+  } else if (authoritativePlatformEvidenceIsRed(platformArtifact.value, targetPlatforms)) {
+    failures.push("authoritative_platform_publish_manifest_red");
+  }
+  if (publishArtifact.present && !publishArtifact.valid) {
+    failures.push("authoritative_publish_verdict_invalid");
+  } else if (authoritativePlatformEvidenceIsRed(publishArtifact.value, targetPlatforms)) {
+    failures.push("authoritative_publish_verdict_red");
+  }
+  const ledgerVerdict = statusText(ledger?.verdict || ledger?.status || ledger?.result);
+  if (
+    !["PASS", "GREEN"].includes(ledgerVerdict) ||
+    authoritativeEvidenceFailures(ledger).length
+  ) {
+    failures.push("rights_ledger_not_pass");
+  }
+  if (!usedAssets.length) failures.push("used_asset_inventory_empty");
+  const duplicateRecordCount = duplicateSchedulerRightsRecordCount(records, artifactDir);
+  if (duplicateRecordCount > 0) failures.push("duplicate_rights_records");
+  let coveredAssetCount = 0;
+  const assignedRecordIndexes = new Set();
+  const fingerprintCache = new Map();
+  for (const asset of usedAssets) {
+    const assetPathKey = schedulerAssetPathKey(asset.path, artifactDir);
+    const matches = records
+      .map((record, index) => ({ record, index }))
+      .filter(({ record }) =>
+        assetPathKey && schedulerRightsRecordPaths(record, artifactDir).includes(assetPathKey),
+      );
+    if (matches.length === 0) {
+      failures.push("rights_record_missing");
+      continue;
+    }
+    if (matches.length > 1) {
+      failures.push("duplicate_rights_records");
+      continue;
+    }
+    if (matches.length === 1) {
+      const match = matches[0];
+      if (assignedRecordIndexes.has(match.index)) {
+        failures.push("rights_record_not_one_to_one");
+        continue;
+      }
+      assignedRecordIndexes.add(match.index);
+      const assessment = await schedulerRightsRecordAssessment({
+        record: match.record,
+        asset,
+        artifactDir,
+        targetPlatforms:
+          asset.kind === "platform_native" && asArray(asset.platforms).length
+            ? asset.platforms
+            : targetPlatforms,
+        fingerprintCache,
+      });
+      if (assessment.current) coveredAssetCount += 1;
+      else failures.push(...assessment.failures);
+    }
+  }
+  if (coveredAssetCount !== usedAssets.length) {
+    failures.push("used_asset_rights_coverage_incomplete");
+  }
+  return {
+    result: failures.length ? "fail" : "pass",
+    failures: [...new Set(failures)],
+    warnings: [],
+    evidence: {
+      rights_ledger_path: rightsArtifact.path,
+      used_asset_count: usedAssets.length,
+      covered_asset_count: coveredAssetCount,
+      duplicate_record_count: duplicateRecordCount,
+      target_platforms: targetPlatforms,
+    },
+  };
+}
+
 function ownedExplainerMotionReadyForStory(story = {}) {
   const footageInventory = objectValue(story.footage_inventory, {});
   const budget = footageInventory.motion_budget || {};
@@ -5524,6 +6031,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       };
     },
     runIncidentGuard = incidentGuardPreflightForStory,
+    runSchedulerRightsQa = schedulerRightsPreflightForStory,
     runVoiceQualityQa = voiceQualityPreflightForStory,
     runAudioSegmentQa = audioSegmentPreflightForStory,
     runTimestampAlignmentQa = timestampAlignmentPreflightForStory,
@@ -5574,6 +6082,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       ...(opts.publicMetadataQaOptions || {}),
     });
     const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
+    const schedulerRights = await runSchedulerRightsQa(cloneStoryForPreflight(story), opts);
     const voiceQuality = await runVoiceQualityQa(cloneStoryForPreflight(story));
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
     const timestampAlignment = await runTimestampAlignmentQa(cloneStoryForPreflight(story));
@@ -5599,6 +6108,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       video,
       platform,
       governance,
+      schedulerRights,
       publicCopy,
       publicMetadata,
       incidentGuard,
@@ -5639,6 +6149,10 @@ function preflightBlockerIsNonSupersedableVoiceQuality(blocker = "") {
   return /(?:^|:)voice_quality:|(?:^|:)voice_cadence:|local_tts_|word_timestamps_not_strict_whisper_aligned|risky_gta_vi_|voice_pronunciation_|gta_vi_(?:opening_spoken_six_risk|spoken_six|spoken_stutter|spoken_roman_split)/i.test(
     text,
   );
+}
+
+function preflightBlockerIsNonSupersedableSchedulerRights(blocker = "") {
+  return /(?:^|:)scheduler_rights:/i.test(cleanText(blocker));
 }
 
 function preflightBlockerIsCurrentMotionPack(blocker = "") {
@@ -5751,7 +6265,8 @@ async function attachPreflightQa(report = {}, stories = [], opts = {}) {
       );
       const nonSupersedableBlocked = asArray(preflight.blockers).some((blocker) =>
         preflightBlockerIsNonSupersedableVisualLoop(blocker) ||
-        preflightBlockerIsNonSupersedableVoiceQuality(blocker),
+        preflightBlockerIsNonSupersedableVoiceQuality(blocker) ||
+        preflightBlockerIsNonSupersedableSchedulerRights(blocker),
       );
       if (!sourceAgeBlocked && !nonSupersedableBlocked) {
         const hydrated = hydrateCandidateFromCurrentProofPackage(
@@ -6494,6 +7009,7 @@ module.exports = {
   resolveUpstreamBenchmarkReportPath,
   runPreflightQaForStory,
   scriptScorecardPreflightForStory,
+  schedulerRightsPreflightForStory,
   sourceAgePreflightForStory,
   selectCandidateSourceStories,
   schedulerEffectivePreflightStory,

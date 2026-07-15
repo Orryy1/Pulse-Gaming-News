@@ -142,6 +142,33 @@ function safeAffiliate(storyId, route) {
   };
 }
 
+function safeNoOfferAffiliate(storyId) {
+  return {
+    story_id: storyId,
+    vertical: "gaming",
+    commercial_intent_type: "no_safe_commercial_intent",
+    primary_link: null,
+    fallback_links: [],
+    disclosure_required: false,
+    disclosure_copy: {
+      short: "No affiliate links are attached to this story.",
+      landing: "This page is editorial first. Any future affiliate links will be labelled clearly.",
+    },
+    platform_disclosure: {
+      youtube: { affiliate_disclosure_required: false, caption_copy: null },
+      x: { affiliate_disclosure_required: false, caption_copy: null },
+    },
+    affiliate_tracking_map: {
+      story_id: storyId,
+      primary_offer_id: null,
+      story_page: null,
+      platforms: {},
+      fallback_offer_ids: [],
+    },
+    rejection_reasons: ["story_does_not_naturally_support_affiliate"],
+  };
+}
+
 function safeLanding(storyId, route) {
   const disclosure = "Affiliate links may earn us a commission.";
   return {
@@ -180,6 +207,37 @@ function safeLanding(storyId, route) {
           disclosure_copy: disclosure,
         },
       },
+    },
+  };
+}
+
+function safeNoOfferLanding(storyId, route) {
+  return {
+    story_id: storyId,
+    landing_page_route: route,
+    link_pack: {
+      primary_link: null,
+      fallback_links: [],
+      source_links: [{ label: "Steam News", url: "https://store.steampowered.com/news/example" }],
+    },
+    disclosure_block: {
+      required: false,
+      copy: { short: "No affiliate links are attached to this story." },
+      source_first: true,
+    },
+    attribution_manifest: {
+      story_id: storyId,
+      verdict: "pass",
+      platforms: {
+        youtube: {
+          tracking_key: `${storyId}:youtube:story_page`,
+          landing_page_url: `${route}?utm_source=youtube&utm_medium=social&utm_campaign=${storyId}`,
+          offer_tracking_url: null,
+          disclosure_required: false,
+          disclosure_copy: null,
+        },
+      },
+      link_tracking: [],
     },
   };
 }
@@ -236,6 +294,94 @@ test("Goal 15 blocks full readiness when Goal 14 is blocked but preserves safe a
   assert.equal(report.safety.no_publish_triggered, true);
   assert.equal(report.safety.no_db_mutation, true);
   assert.equal(report.safety.no_oauth_or_token_change, true);
+});
+
+test("Goal 15 hard-blocks an empty affiliate link manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal15-empty-manifest-"));
+  const story = await makeStoryPackage(root, "story-empty-manifest", { affiliate: {} });
+
+  const report = await buildGoal15AffiliateIntelligenceEngine({
+    storyPackages: [story],
+    upstreamSocialReport: readySocialReport("story-empty-manifest"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T00:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.direct_affiliate_verdict, "BLOCKED");
+  assert.equal(report.stories[0].direct_affiliate_status, "blocked");
+  assert.ok(report.stories[0].direct_affiliate_blockers.includes("affiliate:manifest_incomplete"));
+});
+
+test("Goal 15 hard-blocks an unevidenced no-offer manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal15-bare-no-offer-"));
+  const story = await makeStoryPackage(root, "story-bare-no-offer", {
+    affiliate: {
+      story_id: "story-bare-no-offer",
+      commercial_intent_type: "no_safe_commercial_intent",
+      primary_link: null,
+      fallback_links: [],
+      disclosure_required: false,
+    },
+  });
+
+  const report = await buildGoal15AffiliateIntelligenceEngine({
+    storyPackages: [story],
+    upstreamSocialReport: readySocialReport("story-bare-no-offer"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T00:00:00.000Z",
+  });
+
+  assert.equal(report.direct_affiliate_verdict, "BLOCKED");
+  assert.ok(report.stories[0].direct_affiliate_blockers.includes("affiliate:manifest_incomplete"));
+});
+
+test("Goal 15 preserves an evidenced safe no-offer decision", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal15-safe-no-offer-"));
+  const storyId = "story-safe-no-offer";
+  const route = `/p/${storyId}`;
+  const story = await makeStoryPackage(root, storyId, {
+    affiliate: safeNoOfferAffiliate(storyId),
+    landing: safeNoOfferLanding(storyId, route),
+  });
+
+  const report = await buildGoal15AffiliateIntelligenceEngine({
+    storyPackages: [story],
+    upstreamSocialReport: readySocialReport(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T00:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_affiliate_verdict, "PASS");
+  assert.equal(report.stories[0].commercial_opportunity_score.status, "no_direct_offer_safe");
+  assert.equal(report.stories[0].commercial_opportunity_score.no_offer_reason, "story_does_not_naturally_support_affiliate");
+  assert.equal(report.stories[0].disclosure_row.disclosure_required, false);
+  assert.equal(report.stories[0].tracking_row.status, "not_required_without_direct_offer");
+});
+
+test("Goal 15 accepts a complete governed direct offer manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal15-governed-offer-"));
+  const storyId = "story-governed-offer";
+  const story = await makeStoryPackage(root, storyId);
+
+  const report = await buildGoal15AffiliateIntelligenceEngine({
+    storyPackages: [story],
+    upstreamSocialReport: readySocialReport(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T00:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_affiliate_verdict, "PASS");
+  assert.equal(report.summary.direct_offer_story_count, 1);
+  assert.equal(report.stories[0].disclosure_row.disclosure_required, true);
+  assert.equal(report.stories[0].tracking_row.status, "tracked");
+  assert.deepEqual(report.stories[0].direct_affiliate_blockers, []);
 });
 
 test("Goal 15 hard-fails unsafe affiliate evidence", async () => {

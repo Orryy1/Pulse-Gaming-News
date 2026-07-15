@@ -109,6 +109,46 @@ test("Studio v2 quote derivation shortens long unbroken quote tokens", () => {
   );
 });
 
+test("Studio v2 takeaway derivation turns controversy into editorial payoff without a follow CTA", () => {
+  const content = deriveCardContent({
+    story: {
+      id: "black-flag-player-trust",
+      title: "Why Black Flag's Remake Could Lose Player Trust",
+      source_type: "rss",
+      confirmed_claims: [
+        { claim: "The remake includes optional microtransactions." },
+      ],
+      full_script:
+        "Black Flag's remake is leaning hard on nostalgia. " +
+        "Ubisoft can modernise combat without changing the pitch. " +
+        "But paid microtransactions would turn that nostalgia into a test of player trust. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    pkg: {},
+  });
+
+  const headline = content.takeaway.headlineWords.join(" ");
+  assert.match(headline, /NOSTALGIA/i);
+  assert.match(headline, /TRUST/i);
+  assert.match(content.takeaway.cta, /MICROTRANSACTIONS/i);
+  assert.match(content.takeaway.cta, /PLAYER TRUST/i);
+  assert.doesNotMatch(`${headline} ${content.takeaway.cta}`, /WHY BLACK FLAG|FOLLOW|SUBSCRIBE|FOR MORE/i);
+});
+
+test("Studio v2 takeaway derivation uses an editorial fallback when evidence is vague", () => {
+  const content = deriveCardContent({
+    story: {
+      id: "vague-studio-update",
+      title: "Studio Shares An Update",
+      source_type: "rss",
+    },
+    pkg: {},
+  });
+
+  assert.deepEqual(content.takeaway.headlineWords, ["PLAYER", "IMPACT"]);
+  assert.equal(content.takeaway.cta, "WHAT CHANGES FOR PLAYERS");
+});
+
 test("full-screen quote cards cap body copy to a compact safe block", () => {
   const layout = buildQuoteBodyLayout(
     "This is a long community quote that keeps adding detail and context until it would otherwise become a boring wall of text inside a fast gaming short.",

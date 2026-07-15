@@ -11,9 +11,22 @@ const {
   repairGoalCommercialDisclosure,
 } = require("../../lib/goal-commercial-disclosure-repair");
 const {
+  materialiseGovernedCommercialEvidence,
+} = require("../../lib/goal-proof-package");
+const {
   parseArgs: parseGoalCommercialDisclosureRepairArgs,
 } = require("../../tools/goal-commercial-disclosure-repair");
 const { evaluateIncidentGuard } = require("../../lib/incident-guard");
+
+const COMMERCIAL_PLATFORMS = [
+  "youtube",
+  "tiktok",
+  "instagram",
+  "facebook",
+  "x",
+  "threads",
+  "pinterest",
+];
 
 async function writeDealPackage(tmp, overrides = {}) {
   const storyId = overrides.story_id || "gamesir-deal";
@@ -29,6 +42,7 @@ async function writeDealPackage(tmp, overrides = {}) {
       "GameSir G7 Pro just became a better controller deal for PC players. IGN says the controller is on sale for Memorial Day, but the catch is whether it fits your setup.",
     description: "The GameSir G7 Pro is on sale for Memorial Day. Source: IGN.",
     primary_source: "IGN",
+    primary_source_url: "https://www.ign.com/articles/gamesir-g7-pro-deal",
     discovery_source: "IGN",
     ...(overrides.canonical || {}),
   });
@@ -106,6 +120,16 @@ async function incidentReportForPackage(storyPackage) {
 test("commercial disclosure repair writes matching disclosure evidence with backups only", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-commercial-disclosure-"));
   const storyPackage = await writeDealPackage(tmp);
+  const artifactFiles = [
+    "affiliate_link_manifest.json",
+    "landing_page_manifest.json",
+    "platform_policy_report.json",
+    "platform_publish_manifest.json",
+  ];
+  const dryRunBefore = Object.fromEntries(await Promise.all(artifactFiles.map(async (basename) => [
+    basename,
+    await fs.readFile(path.join(storyPackage.artifact_dir, basename), "utf8"),
+  ])));
 
   const before = await incidentReportForPackage(storyPackage);
   assert.ok(before.disaster_upload_blockers.includes("incident:commercial_deal_disclosure_missing"));
@@ -119,6 +143,24 @@ test("commercial disclosure repair writes matching disclosure evidence with back
   assert.equal(dryRun.summary.repairable_count, 1);
   assert.equal(dryRun.summary.repaired_count, 0);
   assert.equal(dryRun.items[0].status, "repairable");
+  for (const [basename, contents] of Object.entries(dryRunBefore)) {
+    assert.equal(await fs.readFile(path.join(storyPackage.artifact_dir, basename), "utf8"), contents);
+  }
+  assert.equal(await fs.pathExists(path.join(tmp, "backups")), false);
+
+  const canonicalBefore = await fs.readJson(path.join(storyPackage.artifact_dir, "canonical_story_manifest.json"));
+  const affiliateBefore = await fs.readJson(path.join(storyPackage.artifact_dir, "affiliate_link_manifest.json"));
+  const landingBefore = await fs.readJson(path.join(storyPackage.artifact_dir, "landing_page_manifest.json"));
+  const expectedGovernedEvidence = materialiseGovernedCommercialEvidence({
+    story: {
+      ...canonicalBefore,
+      id: storyPackage.story_id,
+      story_id: storyPackage.story_id,
+    },
+    canonical: canonicalBefore,
+    affiliateManifest: affiliateBefore,
+    landingPage: landingBefore,
+  });
 
   const applied = await repairGoalCommercialDisclosure({
     storyPackages: [storyPackage],
@@ -140,12 +182,57 @@ test("commercial disclosure repair writes matching disclosure evidence with back
 
   assert.equal(affiliate.commercial_disclosure_required, true);
   assert.equal(affiliate.no_affiliate_link, true);
-  assert.match(affiliate.disclosure_copy.short, /No affiliate link is attached/);
+  for (const field of [
+    "commercial_intent_type",
+    "decision_status",
+    "no_direct_offer_reason",
+    "primary_link",
+    "fallback_links",
+    "offers",
+    "candidate_links",
+    "disclosure_required",
+    "disclosure_copy",
+    "platform_disclosure",
+    "source_links",
+    "landing_page_slug",
+    "landing_page_route",
+    "tracking_utm",
+    "affiliate_tracking_map",
+    "revenue_attribution",
+    "rejection_reasons",
+    "landing_page_attribution",
+  ]) {
+    assert.deepEqual(affiliate[field], expectedGovernedEvidence[field], field);
+  }
+  assert.equal(affiliate.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(affiliate.decision_status, "governed_no_offer");
+  assert.match(affiliate.disclosure_copy.short, /No affiliate links are attached/);
+  assert.deepEqual(Object.keys(affiliate.landing_page_attribution.platforms), COMMERCIAL_PLATFORMS);
+  for (const [platformKey, row] of Object.entries(affiliate.landing_page_attribution.platforms)) {
+    const landingUrl = new URL(row.landing_page_url, "https://pulse.local");
+    assert.equal(landingUrl.pathname, affiliate.landing_page_route);
+    assert.equal(landingUrl.searchParams.get("utm_source"), platformKey);
+    assert.equal(landingUrl.searchParams.get("utm_medium"), "social");
+    assert.equal(landingUrl.searchParams.get("utm_campaign"), affiliate.landing_page_slug);
+    assert.equal(landingUrl.searchParams.get("story_id"), storyPackage.story_id);
+    assert.equal(row.offer_id, null);
+    assert.equal(row.offer_tracking_url, null);
+  }
   assert.equal(policy.disclosure_requirements.commercial, true);
   assert.match(policy.disclosure_text, /No affiliate link is attached/);
-  assert.equal(landing.disclosure_block.required, true);
+  assert.equal(landing.disclosure_block.required, false);
+  assert.equal(landing.disclosure_block.source_first, true);
+  assert.deepEqual(landing.link_pack.primary_link, null);
+  assert.deepEqual(landing.link_pack.fallback_links, []);
+  assert.deepEqual(landing.attribution_manifest, affiliate.landing_page_attribution);
+  assert.deepEqual(landing.tracking_utm, affiliate.tracking_utm);
+  assert.deepEqual(platform.landing_page_attribution, affiliate.landing_page_attribution);
   assert.equal(platform.commercial_disclosure.verdict, "pass");
   assert.equal(await fs.pathExists(path.join(tmp, "backups", "gamesir-deal", "affiliate_link_manifest.json")), true);
+  assert.deepEqual(
+    (await fs.readdir(path.join(tmp, "backups", "gamesir-deal"))).sort(),
+    artifactFiles.slice().sort(),
+  );
 
   const after = await incidentReportForPackage(storyPackage);
   assert.doesNotMatch(after.disaster_upload_blockers.join(","), /commercial_deal_disclosure_missing/);
@@ -170,6 +257,7 @@ test("commercial disclosure repair preserves approved affiliate links and marks 
         id: "xbox-controller",
         url: "https://www.amazon.co.uk/s?k=xbox+controller&tag=pulsegaming-21",
         label: "Xbox controller",
+        approval_status: "approved",
       },
     },
   });
@@ -183,15 +271,43 @@ test("commercial disclosure repair preserves approved affiliate links and marks 
 
   const affiliate = await fs.readJson(path.join(storyPackage.artifact_dir, "affiliate_link_manifest.json"));
   const policy = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_policy_report.json"));
+  const landing = await fs.readJson(path.join(storyPackage.artifact_dir, "landing_page_manifest.json"));
+  const platform = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
 
   assert.equal(affiliate.no_affiliate_link, false);
   assert.equal(affiliate.disclosure_required, true);
   assert.equal(affiliate.primary_link.id, "xbox-controller");
+  assert.equal(
+    affiliate.primary_link.url,
+    "https://www.amazon.co.uk/s?k=xbox+controller&tag=pulsegaming-21",
+  );
+  assert.equal(new URL(affiliate.primary_link.url).searchParams.get("tag"), "pulsegaming-21");
+  assert.equal(affiliate.primary_link.label, "Xbox controller");
+  assert.equal(affiliate.primary_link.approval_status, "approved");
   assert.match(affiliate.disclosure_copy.short, /Affiliate links may earn us a commission/);
   assert.equal(policy.disclosure_requirements.affiliate, true);
+  assert.equal(affiliate.landing_page_attribution.verdict, "pass");
+  assert.deepEqual(affiliate.landing_page_attribution.rejection_reasons, []);
+  assert.deepEqual(Object.keys(affiliate.primary_link.platform_tracking_urls), COMMERCIAL_PLATFORMS);
+  assert.deepEqual(affiliate.affiliate_tracking_map.platforms, affiliate.primary_link.platform_tracking_urls);
+  for (const platformKey of COMMERCIAL_PLATFORMS) {
+    const offerTrackingUrl = affiliate.primary_link.platform_tracking_urls[platformKey];
+    const attribution = affiliate.landing_page_attribution.platforms[platformKey];
+    const landingUrl = new URL(attribution.landing_page_url, "https://pulse.local");
+    assert.match(offerTrackingUrl, new RegExp(`(?:\\?|&)platform=${platformKey}(?:&|$)`));
+    assert.equal(attribution.offer_id, "xbox-controller");
+    assert.equal(attribution.offer_tracking_url, offerTrackingUrl);
+    assert.equal(attribution.disclosure_required, true);
+    assert.equal(landingUrl.searchParams.get("utm_source"), platformKey);
+    assert.equal(landingUrl.searchParams.get("utm_medium"), "social");
+    assert.equal(landingUrl.searchParams.get("story_id"), storyPackage.story_id);
+  }
+  assert.deepEqual(landing.link_pack.primary_link, affiliate.primary_link);
+  assert.deepEqual(landing.attribution_manifest, affiliate.landing_page_attribution);
+  assert.deepEqual(platform.landing_page_attribution, affiliate.landing_page_attribution);
 });
 
-test("commercial disclosure repair treats unrejected affiliate candidates as disclosure-required", async () => {
+test("commercial disclosure repair keeps candidate-only links as governed no-offer evidence", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-commercial-candidates-"));
   const storyPackage = await writeDealPackage(tmp, {
     story_id: "destiny-affiliate-candidate",
@@ -235,9 +351,80 @@ test("commercial disclosure repair treats unrejected affiliate candidates as dis
 
   const affiliate = await fs.readJson(path.join(storyPackage.artifact_dir, "affiliate_link_manifest.json"));
 
-  assert.equal(affiliate.no_affiliate_link, false);
-  assert.equal(affiliate.disclosure_required, true);
-  assert.match(affiliate.disclosure_copy.short, /Affiliate links may earn us a commission/);
+  assert.equal(affiliate.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(affiliate.decision_status, "governed_no_offer");
+  assert.equal(affiliate.no_affiliate_link, true);
+  assert.equal(affiliate.disclosure_required, false);
+  assert.equal(affiliate.primary_link, null);
+  assert.deepEqual(affiliate.fallback_links, []);
+  assert.deepEqual(affiliate.offers, []);
+  assert.equal(affiliate.candidate_links.length, 1);
+  assert.equal(affiliate.candidate_links[0].id, "game-pass-card");
+  assert.deepEqual(affiliate.affiliate_tracking_map.platforms, {});
+  assert.deepEqual(Object.keys(affiliate.landing_page_attribution.platforms), COMMERCIAL_PLATFORMS);
+  assert.ok(Object.values(affiliate.landing_page_attribution.platforms).every((row) => (
+    row.offer_id === null && row.offer_tracking_url === null
+  )));
+  assert.match(affiliate.disclosure_copy.short, /No affiliate links are attached/);
+});
+
+test("commercial disclosure repair does not promote rejected or empty offer placeholders", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-commercial-rejected-offer-"));
+  const storyPackage = await writeDealPackage(tmp, {
+    story_id: "rejected-affiliate-placeholder",
+    affiliate: {
+      primary_link: {
+        url: "https://www.amazon.co.uk/s?k=controller&tag=pulsegaming-21",
+        approval_status: "rejected",
+        rejection_reasons: ["story_relevance_below_threshold"],
+      },
+      fallback_links: [{}],
+      offers: [],
+    },
+  });
+
+  await repairGoalCommercialDisclosure({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T00:10:00.000Z",
+    apply: true,
+    backupRoot: path.join(tmp, "backups"),
+  });
+
+  const affiliate = await fs.readJson(path.join(storyPackage.artifact_dir, "affiliate_link_manifest.json"));
+  assert.equal(affiliate.decision_status, "governed_no_offer");
+  assert.equal(affiliate.no_affiliate_link, true);
+  assert.equal(affiliate.primary_link, null);
+  assert.deepEqual(affiliate.fallback_links, []);
+  assert.equal(affiliate.disclosure_required, false);
+  assert.equal(affiliate.landing_page_attribution.verdict, "pass");
+});
+
+test("commercial disclosure repair repairs disclosure-only evidence missing governed attribution", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-commercial-incomplete-evidence-"));
+  const storyPackage = await writeDealPackage(tmp, { story_id: "disclosure-only-evidence" });
+
+  await repairGoalCommercialDisclosure({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T00:15:00.000Z",
+    apply: true,
+    backupRoot: path.join(tmp, "initial-backup"),
+  });
+
+  const affiliatePath = path.join(storyPackage.artifact_dir, "affiliate_link_manifest.json");
+  const incomplete = await fs.readJson(affiliatePath);
+  delete incomplete.affiliate_tracking_map;
+  delete incomplete.landing_page_attribution;
+  await fs.writeJson(affiliatePath, incomplete, { spaces: 2 });
+
+  const dryRun = await repairGoalCommercialDisclosure({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T00:16:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(dryRun.summary.repairable_count, 1);
+  assert.equal(dryRun.items[0].status, "repairable");
+  assert.ok(dryRun.items[0].repair_reasons.includes("commercial_evidence_incomplete"));
 });
 
 test("commercial disclosure repair CLI is wired into package scripts", () => {

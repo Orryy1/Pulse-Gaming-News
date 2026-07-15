@@ -36,6 +36,7 @@ async function writePassingShellSidecar(
     plannedVisibleDurationS = 12,
     minimumVisibleDurationS = plannedVisibleDurationS,
     maximumVisibleDurationS = null,
+    unifiedCheck = false,
   } = {},
 ) {
   await fs.writeJson(
@@ -53,12 +54,17 @@ async function writePassingShellSidecar(
         story_id: storyId,
         card_kind: kind,
         channel_id: channelId,
-        checks: {
-          lint: { status: "pass" },
-          validate: { status: "pass" },
-          inspect: { status: "pass", skipped: false },
-          render: { status: "pass" },
-        },
+        checks: unifiedCheck
+          ? {
+              check: { status: "pass" },
+              render: { status: "pass" },
+            }
+          : {
+              lint: { status: "pass" },
+              validate: { status: "pass" },
+              inspect: { status: "pass", skipped: false },
+              render: { status: "pass" },
+            },
         visual_identity: {
           status: "pass",
           evidence: {
@@ -96,6 +102,48 @@ async function writePassingShellSidecar(
     { spaces: 2 },
   );
 }
+
+test("premium card lane v2 accepts the current unified HyperFrames check contract", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-unified-check-"));
+  try {
+    const outDir = path.join(root, "test", "output");
+    await fs.ensureDir(outDir);
+    for (const kind of ["source", "context", "quote", "takeaway"]) {
+      const cardPath = path.join(outDir, `hf_${kind}_card_story-1.mp4`);
+      await fs.writeFile(cardPath, "story");
+      await writePassingShellSidecar(cardPath, {
+        storyId: "story-1",
+        kind,
+        unifiedCheck: true,
+        ...(kind === "source"
+          ? {
+              readableText: "KOTAKU NEWS SOURCE",
+              wordCount: 3,
+              plannedVisibleDurationS: 2.6,
+              minimumVisibleDurationS: 1.9,
+              maximumVisibleDurationS: 3.1,
+            }
+          : {
+              plannedVisibleDurationS: 4.2,
+              minimumVisibleDurationS: 3.4,
+              maximumVisibleDurationS: 5.2,
+            }),
+      });
+    }
+
+    const result = applyPremiumCardLaneV2({
+      scenes: cardScenes(),
+      story: { id: "story-1", title: "Black Flag Resynced" },
+      root,
+      channelId: "pulse-gaming",
+    });
+
+    assert.equal(result.premiumLane.verdict, "pass");
+    assert.deepEqual(result.premiumLane.hyperframesPremiumShellGate.blockers, []);
+  } finally {
+    await fs.remove(root).catch(() => {});
+  }
+});
 
 async function writeStatusOnlyShellSidecar(cardPath, { storyId, kind, channelId = "pulse-gaming" }) {
   await fs.writeJson(

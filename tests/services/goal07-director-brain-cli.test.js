@@ -25,7 +25,7 @@ function directorPlan(storyId) {
     shot_plan: [
       { id: "hook_slam", kind: "hook_slam", startS: 0, durationS: 1 },
       { id: "motion_1", kind: "motion_clip", startS: 0.4, durationS: 3, source_family: "steam", media_path: "clip1.mp4" },
-      { id: "source_lock", kind: "source_lock", startS: 2.2, durationS: 12, source: "IGN", visual_treatment: "large readable source bug" },
+      { id: "source_lock", kind: "source_lock", startS: 2.2, durationS: 2.6, source: "IGN", visual_treatment: "large readable source bug" },
       { id: "motion_2", kind: "motion_clip", startS: 15, durationS: 3, source_family: "xbox", media_path: "clip2.mp4" },
     ],
     sound_transition_plan: { duration_s: 32, readiness: { verdict: "pass", blockers: [] } },

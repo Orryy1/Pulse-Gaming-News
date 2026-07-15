@@ -32,6 +32,22 @@ function passingPostRenderForensicInputs(overrides = {}) {
     path: `clip-${index + 1}.mp4`,
     source_family: `official-source-${index + 1}`,
   }));
+  const runId = "production-render:strict-post-render-forensics:2026-07-15T09:10:00.000Z";
+  const generationManifestSha256 = "a".repeat(64);
+  const lineage = {
+    generation_manifest: {
+      path: "flagship/generation_manifest.json",
+      sha256: generationManifestSha256,
+      verdict: "GREEN",
+    },
+    final_video_sha256: "b".repeat(64),
+    final_audio_sha256: "c".repeat(64),
+    source_word_timestamps_sha256: "d".repeat(64),
+    frozen_word_timestamps_sha256: "e".repeat(64),
+    display_script_sha256: "f".repeat(64),
+    spoken_script_sha256: "1".repeat(64),
+    captions_sha256: "2".repeat(64),
+  };
   return {
     storyId: "strict-post-render-forensics",
     renderManifest: {
@@ -79,8 +95,43 @@ function passingPostRenderForensicInputs(overrides = {}) {
     },
     clips,
     audioSegmentReport: { verdict: "pass", blockers: [], warnings: [] },
-    voiceQualityReport: { verdict: "pass", blockers: [], warnings: [] },
-    captionManifest: { verdict: "pass", blockers: [] },
+    flagshipGenerationManifest: {
+      story_id: "strict-post-render-forensics",
+      complete: true,
+      verdict: "GREEN",
+      run_id: runId,
+      artifacts: {
+        final_video: { sha256: lineage.final_video_sha256 },
+        final_audio: { sha256: lineage.final_audio_sha256 },
+        word_timestamps: { sha256: lineage.frozen_word_timestamps_sha256 },
+        script: { sha256: lineage.display_script_sha256 },
+        spoken_script: { sha256: lineage.spoken_script_sha256 },
+        captions: { sha256: lineage.captions_sha256 },
+      },
+    },
+    flagshipGenerationManifestSha256: generationManifestSha256,
+    voiceQualityReport: {
+      verdict: "pass",
+      authoritative: true,
+      producer_id: "pulse-gaming-post-render-narration-qa",
+      story_id: "strict-post-render-forensics",
+      run_id: runId,
+      lineage,
+      checks: { generation_lineage_verified: true, spoken_alignment_exact: true },
+      cadence: { status: "pass" },
+      blockers: [],
+      warnings: [],
+    },
+    captionManifest: {
+      verdict: "pass",
+      authoritative: true,
+      producer_id: "pulse-gaming-post-render-narration-qa",
+      story_id: "strict-post-render-forensics",
+      run_id: runId,
+      lineage,
+      checks: { generation_lineage_verified: true, display_alignment_exact: true },
+      blockers: [],
+    },
     ...overrides,
   };
 }
@@ -93,6 +144,19 @@ test("post-render forensics fails closed when captions were not checked", () => 
   assert.equal(report.result, "fail");
   assert.equal(report.verdict, "blocked_or_rewrite_required");
   assert.ok(report.blockers.includes("caption_manifest_not_passed"));
+});
+
+test("post-render forensics rejects bare passing voice and caption flags without same-run lineage", () => {
+  const report = _private.buildPostRenderForensicQaReport(
+    passingPostRenderForensicInputs({
+      voiceQualityReport: { verdict: "pass", blockers: [] },
+      captionManifest: { status: "ready", blockers: [] },
+    }),
+  );
+
+  assert.equal(report.result, "fail");
+  assert.ok(report.blockers.includes("voice_quality_not_authoritative"));
+  assert.ok(report.blockers.includes("caption_manifest_not_authoritative"));
 });
 
 test("post-render forensics rejects a bare passing rights flag", () => {
@@ -1211,6 +1275,69 @@ test("production renderer freezes validated external audio and timestamps into f
   assert.equal(frozenTimestamps.audio_sha256, generation.artifacts.final_audio.sha256);
 });
 
+test("production renderer binds display script and expanded spoken alignment without false mismatch", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-spoken-display-"));
+  const displayScript = "Steam lists nine packs at $84.91, above the game's $59.99 price.";
+  const spokenScript = "Steam lists nine packs at 84 dollars 91, above the game's 59 dollars 99 price.";
+  const artifactDir = await makePackage(root, "flagship-spoken-display", {
+    narration_script: displayScript,
+  });
+  const timestampWords = spokenScript.split(/\s+/).map((word, index) => ({
+    word,
+    start: Number((index * 0.25).toFixed(2)),
+    end: Number(((index + 1) * 0.25).toFixed(2)),
+  }));
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    words: timestampWords,
+    meta: {
+      display_text: displayScript,
+      spoken_text: spokenScript,
+      transcript: spokenScript,
+    },
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${displayScript}\n`,
+  );
+  const job = readyJob("flagship-spoken-display", artifactDir);
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:04:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 19));
+      return {
+        clips: 2,
+        rendered_duration_s: timestampWords.at(-1).end,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  const evidenceDir = path.join(artifactDir, "flagship");
+  const generation = await fs.readJson(path.join(evidenceDir, "generation_manifest.json"));
+  const frozenTimestamps = await fs.readJson(path.join(evidenceDir, "word_timestamps.json"));
+  const captions = await fs.readFile(path.join(evidenceDir, "captions.srt"), "utf8");
+  assert.equal(generation.complete, true, JSON.stringify(generation.blockers, null, 2));
+  assert.equal(await fs.readFile(path.join(evidenceDir, "final_script.txt"), "utf8"), `${displayScript}\n`);
+  assert.equal(await fs.readFile(path.join(evidenceDir, "final_spoken_script.txt"), "utf8"), `${spokenScript}\n`);
+  assert.equal(generation.spoken_script_sha256, generation.artifacts.spoken_script.sha256);
+  assert.equal(frozenTimestamps.script_sha256, generation.script_sha256);
+  assert.equal(frozenTimestamps.spoken_script_sha256, generation.spoken_script_sha256);
+  assert.match(captions, /\$84\.91/);
+  assert.match(captions, /\$59\.99/);
+  assert.doesNotMatch(captions, /84 dollars|59 dollars/i);
+  assert.match(captions, /00:00:03,750/);
+});
+
 test("production renderer refuses flagship generation evidence when timestamps do not match narration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-timestamp-mismatch-"));
   const artifactDir = await makePackage(root, "flagship-timestamp-mismatch", {
@@ -1260,6 +1387,62 @@ test("production renderer refuses flagship generation evidence when timestamps d
   assert.ok(generation.blockers.includes("word_timestamps_do_not_match_final_script"));
   const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(renderManifest.flagship_generation_evidence.complete, false);
+});
+
+test("production renderer accepts deterministic spoken currency alignment for numeric display copy", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-currency-"));
+  const script = "Steam lists the bundle at $84.91.";
+  const artifactDir = await makePackage(root, "flagship-currency-alignment", {
+    narration_script: script,
+  });
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    words: "Steam lists the bundle at 84 dollars 91".split(/\s+/).map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  const job = readyJob("flagship-currency-alignment", artifactDir, {
+    evidence: {
+      ...readyJob("flagship-currency-alignment", artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:07:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 14));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const generation = await fs.readJson(
+    path.join(artifactDir, "flagship", "generation_manifest.json"),
+  );
+  assert.equal(generation.complete, true, JSON.stringify(generation.blockers, null, 2));
+  assert.equal(generation.verdict, "GREEN");
 });
 
 test("production renderer refuses flagship generation evidence when captions do not match narration", async () => {
@@ -3948,7 +4131,7 @@ test("goal production render quality refresh scores the final rendered scene pla
   assert.deepEqual(refreshedManifest.clip_scene_plan.scenes.map((scene) => scene.path), clipScenePlan.scenes.map((scene) => scene.path));
 });
 
-test("goal production render materializer refreshes stale quality reports without rerendering", async () => {
+test("goal production render materializer cannot mint final GREEN from legacy bare QA sidecars", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-quality-refresh-"));
   const artifactDir = await makePackage(root, "xbox-quality-refresh");
   await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 9));
@@ -4095,9 +4278,10 @@ test("goal production render materializer refreshes stale quality reports withou
   assert.ok(refreshedBenchmark.scores.rights_risk_score >= 90);
   assert.ok(!refreshedBenchmark.failures.includes("gold_standard:rights_risk_above_reference"));
   const refreshedForensics = await fs.readJson(path.join(artifactDir, "forensic_qa_report.json"));
-  assert.equal(refreshedForensics.verdict, "post_render_forensics_passed");
-  assert.equal(refreshedForensics.result, "pass");
-  assert.deepEqual(refreshedForensics.blockers, []);
+  assert.equal(refreshedForensics.verdict, "blocked_or_rewrite_required");
+  assert.equal(refreshedForensics.result, "fail");
+  assert.ok(refreshedForensics.blockers.includes("voice_quality_not_authoritative"));
+  assert.ok(refreshedForensics.blockers.includes("caption_manifest_not_authoritative"));
   assert.equal(refreshedForensics.checks.benchmark, "pass");
   assert.equal(refreshedForensics.checks.final_render_mp4, "pass");
   assert.equal(refreshedForensics.evidence.motion_clip_count >= 5, true);
@@ -4107,7 +4291,7 @@ test("goal production render materializer refreshes stale quality reports withou
   assert.deepEqual(refreshedCoherence.failures, []);
   assert.equal(refreshedCoherence.repair_source, "post_render_quality_refresh");
   const refreshedRenderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
-  assert.equal(refreshedRenderManifest.quality_gate_status, "post_render_forensics_passed");
+  assert.equal(refreshedRenderManifest.quality_gate_status, "post_render_forensics_failed");
   assert.equal(refreshedRenderManifest.post_render_quality_refreshed_at, "2026-05-26T08:00:00.000Z");
 });
 

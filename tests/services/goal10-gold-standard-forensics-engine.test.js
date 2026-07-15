@@ -54,6 +54,109 @@ function completeReferenceLibrary(overrides = {}) {
   };
 }
 
+function governedDirectOfferManifest(storyId) {
+  const route = `/p/${storyId}`;
+  const offerId = `${storyId}-xbox-game`;
+  const platforms = ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"];
+  const offerTrackingUrl = (platform) => `/go/${storyId}/${offerId}?platform=${platform}`;
+  return {
+    story_id: storyId,
+    vertical: "gaming",
+    commercial_intent_type: "story_relevant_game_page",
+    primary_link: {
+      id: offerId,
+      label: "The Expanse: Osiris Reborn on Xbox",
+      merchant: "Xbox",
+      product_category: "game",
+      url: "https://www.xbox.com/en-GB/games/store/the-expanse-osiris-reborn/example",
+      tracking_url: offerTrackingUrl("story_page"),
+      platform_tracking_urls: Object.fromEntries(
+        platforms.map((platform) => [platform, offerTrackingUrl(platform)]),
+      ),
+    },
+    fallback_links: [],
+    disclosure_required: true,
+    disclosure_copy: {
+      short: "Affiliate links may earn us a commission.",
+      landing: "Affiliate links may earn us a commission.",
+    },
+    affiliate_tracking_map: {
+      story_id: storyId,
+      primary_offer_id: offerId,
+      story_page: offerTrackingUrl("story_page"),
+      platforms: Object.fromEntries(platforms.map((platform) => [platform, offerTrackingUrl(platform)])),
+      fallback_offer_ids: [],
+    },
+    landing_page_route: route,
+    landing_page_attribution: {
+      verdict: "pass",
+      platforms: Object.fromEntries(platforms.map((platform) => [
+        platform,
+        {
+          tracking_key: `${storyId}:${platform}:story_page`,
+          landing_page_url: `${route}?utm_source=${platform}&utm_medium=social&utm_campaign=${storyId}`,
+          offer_tracking_url: offerTrackingUrl(platform),
+          disclosure_required: true,
+        },
+      ])),
+      link_tracking: platforms.map((platform) => ({
+        platform,
+        offer_id: offerId,
+        tracking_key: `${storyId}:${platform}:story_page`,
+        landing_page_url: `${route}?utm_source=${platform}&utm_medium=social&utm_campaign=${storyId}`,
+        offer_tracking_url: offerTrackingUrl(platform),
+        disclosure_required: true,
+      })),
+      safety: { source_first_story_page: true },
+    },
+  };
+}
+
+function governedNoOfferManifest(storyId) {
+  const route = `/p/${storyId}`;
+  const platforms = ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"];
+  return {
+    story_id: storyId,
+    vertical: "gaming",
+    disclosure_required: false,
+    commercial_intent_type: "no_safe_commercial_intent",
+    no_direct_offer_reason: "story_does_not_naturally_support_affiliate",
+    primary_link: null,
+    fallback_links: [],
+    candidate_links: [],
+    offers: [],
+    affiliate_tracking_map: {
+      story_id: storyId,
+      primary_offer_id: null,
+      story_page: null,
+      platforms: {},
+      fallback_offer_ids: [],
+    },
+    landing_page_route: route,
+    landing_page_attribution: {
+      verdict: "pass",
+      platforms: Object.fromEntries(platforms.map((platform) => [
+        platform,
+        {
+          tracking_key: `${storyId}:${platform}:story_page`,
+          landing_page_url: `${route}?utm_source=${platform}&utm_medium=social&utm_campaign=${storyId}`,
+          offer_tracking_url: null,
+          disclosure_required: false,
+        },
+      ])),
+      link_tracking: platforms.map((platform) => ({
+        platform,
+        offer_id: null,
+        tracking_key: `${storyId}:${platform}:story_page`,
+        landing_page_url: `${route}?utm_source=${platform}&utm_medium=social&utm_campaign=${storyId}`,
+        offer_tracking_url: null,
+        disclosure_required: false,
+      })),
+      safety: { source_first_story_page: true },
+    },
+  };
+}
+
 async function makeBenchmarkStory(root, storyId, overrides = {}) {
   const artifactDir = path.join(root, storyId);
   await fs.ensureDir(artifactDir);
@@ -182,14 +285,10 @@ async function makeBenchmarkStory(root, storyId, overrides = {}) {
       no_oauth_or_token_change: true,
     },
   });
-  await fs.outputJson(path.join(artifactDir, "affiliate_link_manifest.json"), {
-    disclosure_required: true,
-    landing_page_route: "/p/xbox-story",
-    landing_page_attribution: {
-      verdict: "pass",
-      link_tracking: [{ platform: "youtube", landing_page_url: "/p/xbox-story?utm_source=youtube" }],
-    },
-  });
+  await fs.outputJson(
+    path.join(artifactDir, "affiliate_link_manifest.json"),
+    governedDirectOfferManifest(storyId),
+  );
   return { story_id: storyId, title: overrides.title || "The Expanse Shows Real Gameplay", artifact_dir: artifactDir };
 }
 
@@ -220,6 +319,14 @@ test("Goal 10 records benchmark pattern evidence but blocks full readiness when 
   assert.equal(report.stories[0].direct_benchmark_status, "pass");
   assert.equal(report.stories[0].pattern_data.title_structure.status, "present");
   assert.equal(report.stories[0].pattern_data.platform_behaviour.status, "present");
+  assert.equal(
+    report.stories[0].pattern_data.commercial_integration.value,
+    "disclosed_story_page_route",
+  );
+  assert.equal(
+    report.stories[0].pattern_data.commercial_integration.evidence.decision_type,
+    "governed_direct_offer",
+  );
   assert.equal(report.benchmark_comparison_report.stories[0].non_infringing_use, true);
 });
 
@@ -257,21 +364,68 @@ test("Goal 10 blocks missing benchmark packs instead of inventing reference cove
   assert.equal(report.benchmark_rejection_reasons.rejections.length, 3);
 });
 
+test("Goal 10 rejects empty, disclosure-only and unevidenced no-offer manifests", async () => {
+  const cases = [
+    { name: "empty", manifest: {} },
+    { name: "disclosure-only", manifest: { disclosure_required: false } },
+    {
+      name: "bare-no-offer",
+      manifest: {
+        disclosure_required: false,
+        commercial_intent_type: "no_safe_commercial_intent",
+        primary_link: null,
+        fallback_links: [],
+        landing_page_route: "/p/bare-no-offer",
+        landing_page_attribution: {
+          verdict: "pass",
+          link_tracking: [
+            {
+              platform: "youtube",
+              landing_page_url: "/p/bare-no-offer?utm_source=youtube&utm_medium=social&utm_campaign=bare-no-offer",
+            },
+          ],
+        },
+      },
+    },
+    {
+      name: "no-offer-with-offer",
+      manifest: {
+        ...governedNoOfferManifest("story-no-offer-with-offer"),
+        offers: [{ id: "unexpected-offer" }],
+      },
+    },
+  ];
+
+  for (const item of cases) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `pulse-goal10-${item.name}-`));
+    const storyId = `story-${item.name}`;
+    const story = await makeBenchmarkStory(root, storyId);
+    await fs.outputJson(path.join(story.artifact_dir, "affiliate_link_manifest.json"), item.manifest);
+
+    const report = await buildGoal10GoldStandardForensicsEngine({
+      storyPackages: [story],
+      referenceLibrary: completeReferenceLibrary(),
+      upstreamSoundReport: { stories: [{ story_id: storyId, status: "ready", blockers: [] }] },
+      workspaceRoot: root,
+      outputDir: path.join(root, "out"),
+      generatedAt: "2026-07-15T00:00:00.000Z",
+    });
+
+    assert.equal(report.stories[0].direct_benchmark_status, "blocked", item.name);
+    assert.ok(
+      report.stories[0].direct_benchmark_blockers.includes("pattern:commercial_integration_missing"),
+      item.name,
+    );
+  }
+});
+
 test("Goal 10 accepts source-first tracked story pages when no affiliate disclosure is required", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal10-source-page-"));
   const story = await makeBenchmarkStory(root, "story-source-page");
-  await fs.outputJson(path.join(story.artifact_dir, "affiliate_link_manifest.json"), {
-    disclosure_required: false,
-    commercial_intent_type: "no_safe_commercial_intent",
-    landing_page_route: "/p/source-first-story",
-    landing_page_attribution: {
-      verdict: "pass",
-      link_tracking: [
-        { platform: "youtube", landing_page_url: "/p/source-first-story?utm_source=youtube" },
-        { platform: "instagram", landing_page_url: "/p/source-first-story?utm_source=instagram" },
-      ],
-    },
-  });
+  await fs.outputJson(
+    path.join(story.artifact_dir, "affiliate_link_manifest.json"),
+    governedNoOfferManifest("story-source-page"),
+  );
 
   const report = await buildGoal10GoldStandardForensicsEngine({
     storyPackages: [story],
@@ -286,6 +440,14 @@ test("Goal 10 accepts source-first tracked story pages when no affiliate disclos
   assert.equal(
     report.stories[0].pattern_data.commercial_integration.value,
     "source_first_tracked_story_page",
+  );
+  assert.equal(
+    report.stories[0].pattern_data.commercial_integration.evidence.decision_type,
+    "governed_no_offer",
+  );
+  assert.equal(
+    report.stories[0].pattern_data.commercial_integration.evidence.attributed_platform_count,
+    7,
   );
   assert.ok(!report.stories[0].blockers.includes("pattern:commercial_integration_missing"));
 });

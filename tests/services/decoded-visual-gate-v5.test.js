@@ -66,6 +66,25 @@ test("decoded visual gate passes a genuinely moving decoded video", async () => 
   assert.equal(report.rendered_frame_taste.blackFrameCount, 0);
 });
 
+test("decoded visual gate keeps extracted frame paths below the Windows media-tool limit", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-decoded-gate-long-path-"));
+  const mp4Path = path.join(root, "moving.mp4");
+  const storyId = `official_${"black_flag_".repeat(9)}`;
+  const outputDir = path.join(root, `qa-${"proof_".repeat(14)}`);
+  renderFixture(mp4Path, "testsrc2=size=540x960:rate=30");
+
+  const report = await runDecodedVisualGate({
+    storyId,
+    mp4Path,
+    outputDir,
+    frameIntervalS: 0.5,
+  });
+
+  assert.equal(report.status, "pass", JSON.stringify(report, null, 2));
+  const resolvedFrameDir = path.resolve(process.cwd(), report.frame_dir);
+  assert.equal(path.join(resolvedFrameDir, "frame_001.jpg").length < 248, true);
+});
+
 test("decoded visual gate blocks black and frozen output", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-decoded-gate-black-"));
   const mp4Path = path.join(root, "black.mp4");

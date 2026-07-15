@@ -252,14 +252,205 @@ async function passPreflightQa() {
   return { result: "pass", failures: [], warnings: [] };
 }
 
+function passSchedulerPreflightDependencies(overrides = {}) {
+  return {
+    runSourceAgeQa: passPreflightQa,
+    runContentQa: passPreflightQa,
+    buildVideoQaOptionsForStory: () => ({}),
+    runVideoQa: passPreflightQa,
+    runPlatformVideoQa: passPreflightQa,
+    runStudioGovernancePreflight: passPreflightQa,
+    runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
+    runPublicMetadataQa: passPreflightQa,
+    runIncidentGuard: passPreflightQa,
+    runVoiceQualityQa: passPreflightQa,
+    runAudioSegmentQa: passPreflightQa,
+    runTimestampAlignmentQa: passPreflightQa,
+    runVisualEntityQa: passPreflightQa,
+    runCurrentMotionPackQa: passPreflightQa,
+    runBridgeArtifactFreshnessQa: passPreflightQa,
+    runBridgeMotionGovernanceQa: passPreflightQa,
+    runAggregateBenchmarkQa: passPreflightQa,
+    runScriptScorecardQa: passPreflightQa,
+    ...overrides,
+  };
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+async function makeSchedulerRightsPackage({
+  storyId = "scheduler-rights-complete",
+  platformVariants = [],
+  platformOutputOverrides = {},
+} = {}) {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-scheduler-rights-package-"));
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const motionPath = path.join(artifactDir, "motion", "scene-01.mp4");
+  const narrationPath = path.join(artifactDir, "audio", "narration.mp3");
+  const sfxPath = path.join(artifactDir, "audio", "impact.wav");
+  const files = [
+    { asset_id: "scene-01", kind: "motion", path: motionPath, bytes: Buffer.from("current motion") },
+    { asset_id: "final-narration", kind: "narration", path: narrationPath, bytes: Buffer.from("current narration") },
+    { asset_id: "impact", kind: "sfx", path: sfxPath, bytes: Buffer.from("current sfx") },
+  ];
+  const outputs = {
+    youtube_shorts: {},
+    instagram_reels: {},
+    facebook_reels: {},
+    ...platformOutputOverrides,
+  };
+  for (const platform of platformVariants) {
+    const variantPath = path.join(
+      artifactDir,
+      "platform_variants",
+      platform,
+      `visual_v4_render_${platform}.mp4`,
+    );
+    files.push({
+      asset_id: `platform-native-${platform}`,
+      kind: "platform_native",
+      platform,
+      path: variantPath,
+      bytes: Buffer.from(`current ${platform} variant`),
+    });
+    outputs[platform] = {
+      ...(outputs[platform] || {}),
+      variant_video_path: variantPath,
+      technical_duration_seconds: 49.5,
+      platform_variant_render: {
+        status: "ready",
+        platform,
+        output_path: variantPath,
+        duration_s: 49.5,
+      },
+    };
+  }
+  for (const file of files) await fs.outputFile(file.path, file.bytes);
+  await fs.outputFile(finalVideoPath, Buffer.alloc(2048, 7));
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    final_publish_render: true,
+    output_path: finalVideoPath,
+    clip_scene_plan: {
+      repeat_free: true,
+      scenes: [{ id: "scene-01", path: motionPath, media_kind: "direct_video" }],
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: storyId,
+    resolved_narration_audio_path: narrationPath,
+  });
+  await fs.writeJson(path.join(artifactDir, "narration_manifest.json"), {
+    story_id: storyId,
+    status: "ready",
+    resolved_audio_path: narrationPath,
+  });
+  await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: {
+      selected_assets: [{ asset_id: "impact", local_materialized_path: sfxPath }],
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    story_id: storyId,
+    publish_status: "GREEN",
+    can_auto_publish: true,
+    outputs,
+  });
+  await fs.writeJson(path.join(artifactDir, "goal_package_summary.json"), {
+    story_id: storyId,
+    verdict: "GREEN",
+    blockers: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    story_id: storyId,
+    verdict: "GREEN",
+    can_auto_publish: true,
+    reason_codes: [],
+  });
+  const records = [];
+  for (const file of files) {
+    const evidenceFile =
+      file.kind === "narration"
+        ? "narration_manifest.json"
+        : file.kind === "sfx"
+          ? "sfx_manifest.json"
+          : file.kind === "platform_native"
+            ? "platform_publish_manifest.json"
+            : "render_manifest.json";
+    const evidenceBytes = await fs.readFile(path.join(artifactDir, evidenceFile));
+    records.push({
+      asset_id: file.asset_id,
+      kind: file.kind,
+      ...(file.platform ? { platform: file.platform } : {}),
+      path: file.path,
+      local_materialized_path: file.path,
+      asset_sha256: sha256(file.bytes),
+      asset_size_bytes: file.bytes.length,
+      licence_basis: "transformative_editorial_short_form",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      evidence_file: evidenceFile,
+      evidence_sha256: sha256(evidenceBytes),
+      evidence_size_bytes: evidenceBytes.length,
+    });
+  }
+  const rightsLedger = {
+    schema_version: 2,
+    story_id: storyId,
+    verdict: "pass",
+    used_assets: records.map(({ asset_id, kind, platform, path: assetPath, asset_sha256 }) => ({
+      asset_id,
+      kind,
+      ...(platform ? { platform } : {}),
+      path: assetPath,
+      asset_sha256,
+    })),
+    records,
+    metrics: {
+      used_asset_count: records.length,
+      rights_record_count: records.length,
+      missing_asset_count: 0,
+      duplicate_record_count: 0,
+    },
+  };
+  const rightsPath = path.join(artifactDir, "rights_ledger.json");
+  await fs.writeJson(rightsPath, rightsLedger);
+  return {
+    artifactDir,
+    files,
+    rightsPath,
+    rightsLedger,
+    story: baseStory({
+      id: storyId,
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      scheduler_bridge_artifact_dir: artifactDir,
+      exported_path: finalVideoPath,
+      audio_path: narrationPath,
+      duration_lane: "normal_production",
+      duration_seconds: 50,
+      runtime_seconds: 50,
+      audio_duration: 50,
+      min_video_duration_seconds: 35,
+      max_video_duration_seconds: 60,
+      rights_ledger: rightsLedger,
+      platform_publish_manifest: { outputs },
+    }),
+  };
+}
+
 async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
   const now = "2026-06-23T22:30:00.000Z";
+  const narrationPath = path.join(artifactDir, "audio", "narration.mp3");
+  const narrationBytes = Buffer.from(`current governed narration for ${storyId}`);
   const script =
     "Street Fighter 6 just made Yasmine look like a ranked-mode problem. " +
     "GameSpot's footage shows Capcom giving her Eskrima combat, knife feints and fast step-ins that punish anyone who backs up. " +
     "That matters because zoner mains may have to spend meter just to breathe, while rushdown players may get a new bully when she arrives. " +
     "Follow Pulse Gaming so you never miss a beat.";
   await fs.outputFile(videoPath, "fake mp4 bytes");
+  await fs.outputFile(narrationPath, narrationBytes);
   await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: storyId,
     canonical_subject: "Street Fighter 6",
@@ -270,6 +461,7 @@ async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
   await fs.writeJson(path.join(artifactDir, "narration_manifest.json"), {
     status: "ready",
     final_transcript: script,
+    resolved_audio_path: narrationPath,
   });
   await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
     verdict: "viral_ready",
@@ -318,19 +510,61 @@ async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
       },
     },
     overlay_card_windows: [
-      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
-      { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 24.3, duration_s: 12 },
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
+      { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 16.5, duration_s: 4.2 },
     ],
   });
   await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
     story_id: storyId,
     voice_status: "materialized",
+    resolved_narration_audio_path: narrationPath,
     word_timestamp_count: 80,
     word_timestamp_source: "local_whisper_word_alignment",
     timestamp_whisper_alignment: {
       script_coverage_ratio: 1,
       script_inserted_actual_word_count: 0,
       script_trailing_actual_word_count: 0,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  const narrationEvidenceBytes = await fs.readFile(
+    path.join(artifactDir, "narration_manifest.json"),
+  );
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    schema_version: 2,
+    story_id: storyId,
+    verdict: "pass",
+    used_assets: [
+      {
+        asset_id: `${storyId}-final-narration`,
+        kind: "narration",
+        path: narrationPath,
+        asset_sha256: sha256(narrationBytes),
+      },
+    ],
+    records: [
+      {
+        asset_id: `${storyId}-final-narration`,
+        kind: "narration",
+        path: narrationPath,
+        local_materialized_path: narrationPath,
+        asset_sha256: sha256(narrationBytes),
+        asset_size_bytes: narrationBytes.length,
+        licence_basis: "operator_licensed_commercial_tts_generation",
+        commercial_use_allowed: true,
+        allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+        evidence_file: "narration_manifest.json",
+        evidence_sha256: sha256(narrationEvidenceBytes),
+        evidence_size_bytes: narrationEvidenceBytes.length,
+      },
+    ],
+    metrics: {
+      used_asset_count: 1,
+      rights_record_count: 1,
+      missing_asset_count: 0,
+      duplicate_record_count: 0,
     },
   });
   await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
@@ -1728,6 +1962,429 @@ test("preflight QA summary includes studio governance blockers", () => {
   assert.equal(combined.checks.governance.result, "fail");
 });
 
+test("scheduler preflight blocks a non-empty rights ledger that does not cover every final-used asset", async () => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-scheduler-rights-incomplete-"));
+  const motionPath = path.join(artifactDir, "motion", "scene-01.mp4");
+  const narrationPath = path.join(artifactDir, "audio", "narration.mp3");
+  const sfxPath = path.join(artifactDir, "audio", "impact.wav");
+  await fs.outputFile(motionPath, "current motion");
+  await fs.outputFile(narrationPath, "current narration");
+  await fs.outputFile(sfxPath, "current sfx");
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    clip_scene_plan: {
+      scenes: [{ id: "scene-01", path: motionPath, media_kind: "direct_video" }],
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    resolved_narration_audio_path: narrationPath,
+  });
+  await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: {
+      selected_assets: [{ asset_id: "impact", local_materialized_path: sfxPath }],
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [
+      {
+        asset_id: "scene-01",
+        path: motionPath,
+        licence_basis: "transformative_editorial_short_form",
+        commercial_use_allowed: true,
+        allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+        evidence_file: "render_manifest.json",
+      },
+    ],
+  });
+
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "scheduler-rights-incomplete",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      scheduler_bridge_artifact_dir: artifactDir,
+      exported_path: path.join(artifactDir, "visual_v4_render.mp4"),
+      audio_path: narrationPath,
+      rights_ledger: { verdict: "pass", records: [{ asset_id: "scene-01" }] },
+    }),
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:used_asset_rights_coverage_incomplete"));
+});
+
+test("scheduler preflight passes complete one-to-one rights records for current final-used files", async () => {
+  const fixture = await makeSchedulerRightsPackage();
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(preflight.checks.scheduler_rights.evidence.used_asset_count, 3);
+  assert.equal(preflight.checks.scheduler_rights.evidence.covered_asset_count, 3);
+});
+
+test("scheduler preflight requires rights for enabled platform-native final assets", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-platform-native",
+    platformVariants: ["instagram_reels"],
+  });
+  const incompleteLedger = {
+    ...fixture.rightsLedger,
+    used_assets: fixture.rightsLedger.used_assets.filter(
+      (asset) => asset.asset_id !== "platform-native-instagram_reels",
+    ),
+    records: fixture.rightsLedger.records.filter(
+      (record) => record.asset_id !== "platform-native-instagram_reels",
+    ),
+  };
+  await fs.writeJson(fixture.rightsPath, incompleteLedger);
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:used_asset_rights_coverage_incomplete"));
+});
+
+test("scheduler rights preflight preserves deferred TikTok platform semantics", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-deferred-tiktok",
+    platformVariants: ["tiktok"],
+  });
+  const deferredLedger = {
+    ...fixture.rightsLedger,
+    used_assets: fixture.rightsLedger.used_assets.filter(
+      (asset) => asset.asset_id !== "platform-native-tiktok",
+    ),
+    records: fixture.rightsLedger.records.filter(
+      (record) => record.asset_id !== "platform-native-tiktok",
+    ),
+  };
+  await fs.writeJson(fixture.rightsPath, deferredLedger);
+  const platformManifestPath = path.join(fixture.artifactDir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(platformManifestPath);
+  platformManifest.outputs.tiktok = {
+    ...platformManifest.outputs.tiktok,
+    status: "RED",
+    blockers: ["tiktok_credentials_deferred"],
+  };
+  await fs.writeJson(platformManifestPath, platformManifest);
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies({
+      env: {
+        TIKTOK_ENABLED: "true",
+        TIKTOK_AUTO_UPLOAD_ENABLED: "false",
+      },
+    }),
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.deepEqual(
+    preflight.checks.scheduler_rights.evidence.target_platforms,
+    ["youtube_shorts", "instagram_reels", "facebook_reels"],
+  );
+});
+
+test("scheduler preflight blocks duplicate rights records for one final-used asset", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-duplicate-record",
+  });
+  await fs.writeJson(fixture.rightsPath, {
+    ...fixture.rightsLedger,
+    records: [fixture.rightsLedger.records[0], ...fixture.rightsLedger.records],
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:duplicate_rights_records"));
+});
+
+test("scheduler preflight rejects one rights record bound to two final-used assets", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-record-reused",
+  });
+  const narration = fixture.files.find((file) => file.asset_id === "final-narration");
+  const records = fixture.rightsLedger.records
+    .filter((record) => record.asset_id !== "final-narration")
+    .map((record) =>
+      record.asset_id === "scene-01"
+        ? { ...record, local_path: narration.path }
+        : record,
+    );
+  await fs.writeJson(fixture.rightsPath, {
+    ...fixture.rightsLedger,
+    records,
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:rights_record_not_one_to_one"));
+});
+
+test("scheduler preflight blocks rights records with missing asset SHA-256", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-missing-sha",
+  });
+  await fs.writeJson(fixture.rightsPath, {
+    ...fixture.rightsLedger,
+    records: fixture.rightsLedger.records.map((record) => {
+      if (record.asset_id !== "final-narration") return record;
+      const withoutHash = { ...record };
+      delete withoutHash.asset_sha256;
+      return withoutHash;
+    }),
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:asset_sha256_missing"));
+});
+
+test("scheduler preflight blocks materially incomplete rights evidence fingerprints", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-missing-evidence-sha",
+  });
+  await fs.writeJson(fixture.rightsPath, {
+    ...fixture.rightsLedger,
+    records: fixture.rightsLedger.records.map((record) => {
+      if (record.asset_id !== "final-narration") return record;
+      const withoutEvidenceHash = { ...record };
+      delete withoutEvidenceHash.evidence_sha256;
+      return withoutEvidenceHash;
+    }),
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:rights_evidence_sha256_missing"));
+});
+
+test("scheduler preflight blocks stale hashes after a final-used file changes", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-stale-sha",
+  });
+  const narration = fixture.files.find((file) => file.asset_id === "final-narration");
+  await fs.writeFile(narration.path, "changed narration after rights reconciliation");
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:asset_sha256_mismatch"));
+});
+
+test("scheduler preflight blocks authoritative RED package evidence despite complete rights", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-package-red",
+  });
+  await fs.writeJson(path.join(fixture.artifactDir, "goal_package_summary.json"), {
+    story_id: fixture.story.id,
+    verdict: "RED",
+    blockers: ["package_not_publishable"],
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("scheduler_rights:authoritative_goal_package_summary_red"),
+  );
+});
+
+test("scheduler preflight blocks authoritative RED enabled-platform evidence", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-platform-red",
+  });
+  const platformManifestPath = path.join(fixture.artifactDir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(platformManifestPath);
+  platformManifest.outputs.instagram_reels = {
+    status: "RED",
+    blockers: ["instagram_variant_failed"],
+  };
+  await fs.writeJson(platformManifestPath, platformManifest);
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("scheduler_rights:authoritative_platform_publish_manifest_red"),
+  );
+});
+
+test("scheduler preflight blocks authoritative RED publish verdict evidence", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-publish-red",
+  });
+  await fs.writeJson(path.join(fixture.artifactDir, "publish_verdict.json"), {
+    story_id: fixture.story.id,
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: ["rights_reconciliation_required"],
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes("scheduler_rights:authoritative_publish_verdict_red"),
+  );
+});
+
+test("attachPreflightQa does not supersede scheduler rights blockers with a GREEN proof package", async () => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-scheduler-rights-no-supersede-"));
+  const storyId = "scheduler-rights-no-supersede";
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(artifactDir, storyId, finalVideoPath);
+  const motionPath = path.join(artifactDir, "motion", "scene-01.mp4");
+  const narrationPath = path.join(artifactDir, "audio", "narration.mp3");
+  const sfxPath = path.join(artifactDir, "audio", "impact.wav");
+  await fs.outputFile(motionPath, "current motion");
+  await fs.outputFile(narrationPath, "current narration");
+  await fs.outputFile(sfxPath, "current sfx");
+  const renderManifestPath = path.join(artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    clip_scene_plan: {
+      repeat_free: true,
+      scenes: [{ id: "scene-01", path: motionPath, media_kind: "direct_video" }],
+    },
+  });
+  const audioManifestPath = path.join(artifactDir, "audio_manifest.json");
+  const audioManifest = await fs.readJson(audioManifestPath);
+  await fs.writeJson(audioManifestPath, {
+    ...audioManifest,
+    resolved_narration_audio_path: narrationPath,
+  });
+  await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: {
+      selected_assets: [{ asset_id: "impact", local_materialized_path: sfxPath }],
+    },
+  });
+  const incompleteRights = {
+    verdict: "pass",
+    records: [{ asset_id: "scene-01", path: motionPath }],
+  };
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), incompleteRights);
+  const story = baseStory({
+    id: storyId,
+    approved: true,
+    auto_approved: true,
+    scheduler_bridge_source: "local_bridge_candidate_upsert",
+    scheduler_bridge_artifact_dir: artifactDir,
+    exported_path: finalVideoPath,
+    audio_path: narrationPath,
+    duration_lane: "normal_production",
+    duration_seconds: 37.1,
+    min_video_duration_seconds: 35,
+    max_video_duration_seconds: 60,
+    rights_ledger: incompleteRights,
+  });
+  const report = buildNextPublishCandidatesReport([story], {
+    generatedAt: "2026-07-15T12:00:00.000Z",
+  });
+
+  await attachPreflightQa(report, [story], passSchedulerPreflightDependencies());
+
+  assert.equal(report.candidates[0].preflight_qa.status, "blocked");
+  assert.equal(report.candidates[0].status, "review");
+  assert.equal(report.candidates[0].preflight_qa.superseded_preflight_qa, undefined);
+});
+
+test("next publish candidates keep all 2.4-second placeholder renders blocked", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-placeholder-render",
+    platformVariants: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+  });
+  const placeholderOutputs = Object.fromEntries(
+    Object.entries(fixture.story.platform_publish_manifest.outputs).map(([platform, output]) => [
+      platform,
+      {
+        ...output,
+        technical_duration_seconds: 2.4,
+        platform_variant_render: {
+          ...(output.platform_variant_render || {}),
+          duration_s: 2.4,
+        },
+      },
+    ]),
+  );
+  const story = {
+    ...fixture.story,
+    duration_seconds: 2.4,
+    runtime_seconds: 2.4,
+    audio_duration: 2.4,
+    platform_publish_manifest: { outputs: placeholderOutputs },
+  };
+
+  const report = buildNextPublishCandidatesReport([story], {
+    generatedAt: "2026-07-15T12:30:00.000Z",
+  });
+
+  assert.equal(report.candidates.length, 0);
+  assert.ok(
+    report.excluded.some(
+      (row) => row.id === story.id && row.reason === "normal_production_too_short_2.40s",
+    ),
+  );
+});
+
+test("scheduler preflight blocks a bare embedded passing rights verdict when the ledger file is missing", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-bare-embedded-pass",
+  });
+  await fs.remove(fixture.rightsPath);
+  const story = {
+    ...fixture.story,
+    scheduler_bridge_source: undefined,
+    rights_ledger: { verdict: "pass" },
+  };
+
+  const preflight = await runPreflightQaForStory(
+    story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(preflight.blockers.includes("scheduler_rights:rights_record_missing"));
+  assert.ok(preflight.blockers.includes("scheduler_rights:used_asset_rights_coverage_incomplete"));
+});
+
 test("attachPreflightQa blocks malformed public copy before scheduler promotion", async () => {
   const stories = [
     baseStory({
@@ -1979,6 +2636,7 @@ test("bridge preflight accepts visual QA and benchmark evidence from scheduler c
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: passPreflightQa,
+      runSchedulerRightsQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2012,6 +2670,7 @@ test("preflight governance uses enabled scheduler platforms instead of deferred 
       runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
       runPublicMetadataQa: pass,
       runIncidentGuard: pass,
+      runSchedulerRightsQa: passPreflightQa,
       runVoiceQualityQa: pass,
       runAudioSegmentQa: pass,
       runTimestampAlignmentQa: pass,
@@ -2043,6 +2702,7 @@ test("bridge preflight blocks source evidence older than seven days without appr
     }),
     {
       nowMs: Date.parse("2026-06-12T10:30:00.000Z"),
+      runSchedulerRightsQa: passPreflightQa,
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -2214,6 +2874,7 @@ test("bridge preflight keeps operator-approved evergreen stale sources as warnin
     }),
     {
       nowMs: Date.parse("2026-06-12T10:30:00.000Z"),
+      runSchedulerRightsQa: passPreflightQa,
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -2258,6 +2919,7 @@ test("preflight public copy preserves confirmed claims for specific detail check
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
       runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runSchedulerRightsQa: passPreflightQa,
       runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     },
@@ -2606,6 +3268,7 @@ test("bridge preflight blocks generated-only orange-card motion decks", async ()
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: passPreflightQa,
+      runSchedulerRightsQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2681,6 +3344,7 @@ test("bridge preflight accepts human-reviewed source-locked owned explainer brid
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: passPreflightQa,
+      runSchedulerRightsQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2758,6 +3422,7 @@ test("bridge preflight blocks direct-video enrichment work-order gaps before sch
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: passPreflightQa,
+      runSchedulerRightsQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2849,6 +3514,7 @@ test("bridge preflight does not hard-block non-blocking direct-video quality-gap
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: passPreflightQa,
+      runSchedulerRightsQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -2939,6 +3605,7 @@ test("bridge preflight ignores stale source-family motion blockers when current 
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: passPreflightQa,
+      runSchedulerRightsQa: passPreflightQa,
       runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
     },
   );
@@ -3014,6 +3681,7 @@ test("bridge preflight allows human-reviewed source-locked owned explainer excep
       video_clips: JSON.stringify(clips),
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       bridgeMotionGovernanceEvidence: {
         direct_video_enrichment_story_ids: ["bridge_reviewed_gap"],
       },
@@ -3092,6 +3760,7 @@ test("bridge preflight blocks automatic owned explainer exceptions without sourc
       video_clips: JSON.stringify(clips),
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       bridgeMotionGovernanceEvidence: {
         source_family_acquisition_report: {
           rows: [
@@ -3183,6 +3852,7 @@ test("bridge preflight accepts automatic owned explainer exceptions for source-f
       video_clips: JSON.stringify(clips),
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       bridgeMotionGovernanceEvidence: {
         source_family_acquisition_report: {
           rows: [
@@ -3268,6 +3938,7 @@ test("bridge preflight blocks owned explainer decks without a human review or ve
       video_clips: JSON.stringify(clips),
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -3332,6 +4003,7 @@ test("bridge preflight blocks owned explainer decks without a human review or ve
       video_clips: JSON.stringify(clips),
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -3545,6 +4217,7 @@ test("attachPreflightQa marks candidates with read-only QA evidence", async () =
     },
     runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runSchedulerRightsQa: passPreflightQa,
   });
 
   const pass = report.candidates.find((candidate) => candidate.id === "qa_pass");
@@ -4256,6 +4929,7 @@ test("attachPreflightQa does not block non-GTA pronunciation aliases when record
     runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
     runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runBridgeArtifactFreshnessQa: passBridgeArtifactFreshnessQa,
+    runSchedulerRightsQa: passPreflightQa,
     runAggregateBenchmarkQa: async () => null,
   });
 
@@ -6696,6 +7370,7 @@ test("media-house preflight scores current artifact platform manifest over stale
     }),
     {
       mediaHouseQaEnabled: true,
+      runSchedulerRightsQa: passPreflightQa,
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -6926,6 +7601,7 @@ test("runPreflightQaForStory passes scheduler-effective platform media to conten
       runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
       runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runSchedulerRightsQa: passPreflightQa,
       runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -7002,6 +7678,7 @@ test("runPreflightQaForStory resolves artifact-relative voice paths before conte
       runPublicCopyQa: async () => ({ verdict: "pass", failures: [], warnings: [] }),
       runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runIncidentGuard: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runSchedulerRightsQa: passPreflightQa,
       runVoiceQualityQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runAudioSegmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runTimestampAlignmentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -7142,8 +7819,8 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
   });
   await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 1.6 },
-      { id: "proof_card", kind: "proof_card", startS: 15, durationS: 12 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.6 },
+      { id: "proof_card", kind: "proof_card", startS: 15, durationS: 4.2 },
     ],
   });
 
@@ -7202,6 +7879,7 @@ test("runPreflightQaForStory prefers current package render manifest over stale 
       ...bridgeVisualEvidence("Street Fighter 6"),
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -7285,8 +7963,8 @@ test("runPreflightQaForStory scores direct-motion overuse from final render clip
   });
   await fs.writeJson(path.join(tmpDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 1.6 },
-      { id: "proof_card", kind: "proof_card", startS: 15, durationS: 12 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.6 },
+      { id: "proof_card", kind: "proof_card", startS: 15, durationS: 4.2 },
     ],
   });
   await fs.writeJson(path.join(tmpDir, "render_manifest.json"), {
@@ -7356,6 +8034,7 @@ test("runPreflightQaForStory scores direct-motion overuse from final render clip
       ...bridgeVisualEvidence("MARVEL Tokon"),
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -7623,6 +8302,7 @@ test("attachPreflightQa ignores stale segment acoustic duration when timestamp m
   });
 
   await attachPreflightQa(report, stories, {
+    runSchedulerRightsQa: passPreflightQa,
     runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -7748,6 +8428,7 @@ test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallba
     });
 
     await attachPreflightQa(report, stories, {
+      runSchedulerRightsQa: passPreflightQa,
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -7772,7 +8453,7 @@ test("attachPreflightQa prefers MEDIA_ROOT ASR timestamps over stale repo fallba
   }
 });
 
-test("attachPreflightQa trusts a current full GREEN proof package over stale preflight blockers", async () => {
+test("attachPreflightQa does not let a claimed current GREEN proof supersede critical preflight blockers", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-next-preflight-proof-"));
   const videoPath = path.join(tmp, "visual_v4_render.mp4");
   await writeCurrentGreenProofPackage(tmp, "current-green-package", videoPath);
@@ -7879,20 +8560,18 @@ test("attachPreflightQa trusts a current full GREEN proof package over stale pre
   });
 
   const candidate = report.candidates[0];
-  assert.equal(candidate.status, "publish_ready");
-  assert.equal(candidate.preflight_qa.status, "pass");
-  assert.equal(candidate.current_proof_package.status, "green");
-  assert.ok(candidate.reasons.includes("current_green_proof_package"));
-  assert.ok(!candidate.reasons.includes("preflight_qa_blocked"));
-  assert.deepEqual(candidate.current_proof_package.superseded_preflight_blockers, [
+  assert.equal(candidate.status, "review", JSON.stringify(candidate, null, 2));
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.ok(candidate.reasons.includes("preflight_qa_blocked"));
+  assert.deepEqual(candidate.preflight_qa.blockers, [
     "content:subtitle_timing_unusable:too_few_words",
     "content:public_output:manual_captions_missing",
     "governance:captions:missing_or_messy",
     "incident_guard:incident:distinct_motion_families_missing",
     "visual_entity_match:direct_motion_subject_mismatch",
   ]);
-  assert.equal(report.preflight_qa.blocked, 0);
-  assert.equal(report.preflight_qa.pass, 1);
+  assert.equal(report.preflight_qa.blocked, 1);
+  assert.equal(report.preflight_qa.pass, 0);
 });
 
 test("attachPreflightQa does not supersede voice cadence blockers with current proof packages", async () => {
@@ -8590,6 +9269,7 @@ test("attachPreflightQa quarantines duration plus subject-mismatch candidates as
   });
 
   await attachPreflightQa(report, [story], {
+    runSchedulerRightsQa: passPreflightQa,
     runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runContentQa: async () => ({
       result: "fail",
@@ -8765,11 +9445,11 @@ test("runPreflightQaForStory trusts clean final scene-plan motion over stale emb
     rendered_duration_s: 39,
     clips: 6,
     card_visible_windows: [
-      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
       { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
     ],
     overlay_card_windows: [
-      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 1.6, duration_s: 1.6 },
+      { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
       { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
     ],
     clip_scene_plan: {
@@ -8892,6 +9572,7 @@ test("runPreflightQaForStory trusts clean final scene-plan motion over stale emb
       },
     }),
     {
+      runSchedulerRightsQa: passPreflightQa,
       runSourceAgeQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
       runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
@@ -9083,6 +9764,7 @@ test("attachPreflightQa keeps read-only preflight mutations off source stories",
     runVideoQa: async (_path, _opts) => ({ result: "pass", failures: [], warnings: [] }),
     runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
     runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+    runSchedulerRightsQa: passPreflightQa,
     runStudioGovernancePreflight: async (story) => {
       story.content_qa_failures = ["mutated_inside_governance"];
       return { result: "pass", failures: [], warnings: [] };

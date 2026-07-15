@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  buildPackagePublishVerdict,
   buildGoalProofPackage,
   writeGoalProofPackageArtifacts,
 } = require("../../lib/goal-proof-package");
@@ -260,6 +261,77 @@ test("goal proof package builds the remaining creative and commercial artefacts"
   assert.equal(pack.safety.production_db_mutated, false);
 });
 
+test("goal proof package materialises governed no-offer commercial evidence", () => {
+  const noOfferStory = {
+    ...story,
+    id: "mixtape-governed-no-offer",
+    affiliate_link_manifest: {},
+  };
+
+  const pack = buildGoalProofPackage({
+    story: noOfferStory,
+    rightsLedger,
+    generatedAt: "2026-07-15T00:00:00.000Z",
+  });
+
+  const affiliate = pack.affiliate_link_manifest;
+  assert.equal(affiliate.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(affiliate.no_direct_offer_reason, "no_governed_direct_offer_supplied");
+  assert.equal(affiliate.primary_link, null);
+  assert.deepEqual(affiliate.fallback_links, []);
+  assert.deepEqual(affiliate.offers, []);
+  assert.equal(affiliate.disclosure_required, false);
+  assert.deepEqual(affiliate.affiliate_tracking_map, {
+    story_id: noOfferStory.id,
+    primary_offer_id: null,
+    story_page: null,
+    platforms: {},
+    fallback_offer_ids: [],
+  });
+  assert.match(affiliate.landing_page_route, /^\/p\//);
+  assert.equal(affiliate.landing_page_attribution.verdict, "pass");
+  assert.equal(affiliate.landing_page_attribution.safety.source_first_story_page, true);
+  assert.deepEqual(
+    Object.keys(affiliate.landing_page_attribution.platforms),
+    ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+  );
+  for (const [platform, row] of Object.entries(affiliate.landing_page_attribution.platforms)) {
+    assert.match(row.landing_page_url, new RegExp(`utm_source=${platform}(?:&|$)`));
+    assert.equal(row.offer_id, null);
+    assert.equal(row.offer_tracking_url, null);
+  }
+  assert.equal(pack.landing_page_manifest.link_pack.primary_link, null);
+  assert.deepEqual(pack.landing_page_manifest.link_pack.fallback_links, []);
+  assert.equal(pack.landing_page_manifest.disclosure_block.required, false);
+  assert.equal(pack.landing_page_manifest.disclosure_block.source_first, true);
+  assert.equal(pack.platform_publish_manifest.landing_page_attribution.verdict, "pass");
+});
+
+test("goal proof package treats an empty primary-link placeholder as no offer", () => {
+  const noOfferStory = {
+    ...story,
+    id: "mixtape-empty-primary-link",
+    affiliate_link_manifest: {
+      primary_link: {},
+      fallback_links: [],
+      offers: [],
+    },
+  };
+
+  const pack = buildGoalProofPackage({
+    story: noOfferStory,
+    rightsLedger,
+    generatedAt: "2026-07-15T00:05:00.000Z",
+  });
+
+  const affiliate = pack.affiliate_link_manifest;
+  assert.equal(affiliate.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(affiliate.decision_status, "governed_no_offer");
+  assert.equal(affiliate.primary_link, null);
+  assert.equal(affiliate.disclosure_required, false);
+  assert.equal(affiliate.landing_page_attribution.verdict, "pass");
+});
+
 test("goal proof package produces a GREEN acceptance entry only when every core gate passes", () => {
   const story = greenStory();
   const pack = buildGoalProofPackage({
@@ -321,7 +393,7 @@ test("goal proof package deduplicates repeated local clip paths in acceptance en
   );
 });
 
-test("goal proof package does not keep stale footage blocker after materialised direct-motion proof", () => {
+test("goal proof package cannot launder a base-source blocker with materialised window families", () => {
   const story = greenStory();
   story.id = "gta-windowed-motion-proof";
   story.canonical_subject = "Grand Theft Auto VI";
@@ -353,8 +425,112 @@ test("goal proof package does not keep stale footage blocker after materialised 
     generatedAt: "2026-06-26T19:45:00.000Z",
   });
 
-  assert.equal(pack.publish_verdict.reason_codes.includes("footage:v4_motion_blocked"), false);
-  assert.equal(pack.publish_verdict.reason_codes.includes("distinct_motion_source_assets_minimum_not_met"), false);
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes(
+      "footage:distinct_motion_source_assets_minimum_not_met",
+    ),
+  );
+  assert.ok(
+    pack.acceptance_entry.blockers.includes(
+      "footage:distinct_motion_source_assets_minimum_not_met",
+    ),
+  );
+});
+
+test("package publish verdict preserves top-level genuine base-source blockers", () => {
+  const verdict = buildPackagePublishVerdict({
+    publishControlTower: { verdict: "GREEN", can_auto_publish: true, reason_codes: [] },
+    scriptScorecard: { verdict: "viral_ready", viral_score: 90, blockers: [] },
+    audioManifest: {},
+    footageInventory: {
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      blockers: ["genuine_base_source_minimum_not_met"],
+    },
+    directorBeatMap: { readiness: { status: "director_ready" } },
+    benchmarkReport: { result: "pass" },
+    platformNativeEvidence: { verdict: "pass", failures: [] },
+    mediaHouseScore: { verdict: "GREEN", hard_failures: [] },
+    materialisedMotionEvidence: {
+      status: "ready",
+      clip_count: 8,
+      distinct_motion_family_count: 8,
+      direct_video_motion_family_count: 8,
+    },
+  });
+
+  assert.equal(verdict.verdict, "RED");
+  assert.equal(verdict.can_auto_publish, false);
+  assert.ok(verdict.reason_codes.includes("footage:genuine_base_source_minimum_not_met"));
+});
+
+test("goal proof package fails closed when ultimate professional provenance evidence is missing", () => {
+  const story = greenStory();
+  story.source_diversity_tier = "ultimate_professional";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-15T06:30:00.000Z",
+  });
+
+  assert.equal(pack.professional_source_diversity_report.policy_tier, "ultimate_professional");
+  assert.equal(pack.professional_source_diversity_report.status, "blocked");
+  assert.ok(
+    pack.professional_source_diversity_report.blockers.includes(
+      "professional_source_diversity_evidence_missing",
+    ),
+  );
+  assert.equal(pack.publish_verdict.verdict, "RED");
+  assert.equal(pack.publish_verdict.can_auto_publish, false);
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes(
+      "media_house:professional_source_diversity_not_verified",
+    ),
+  );
+});
+
+test("goal proof package consumes complete authoritative professional source diversity", () => {
+  const story = greenStory();
+  story.source_diversity_tier = "ultimate_professional";
+  story.professional_source_diversity = {
+    policy_tier: "ultimate_professional",
+    authoritative: true,
+    status: "GREEN",
+    required_genuine_base_source_count: 2,
+    observed_genuine_base_source_count: 2,
+    unresolved_clips: [],
+    ambiguous_base_sources: [],
+    blockers: [],
+    base_sources: [
+      {
+        base_source_asset_id: "forza-official-trailer",
+        base_source_identity_basis: "master_sha256",
+        master_sha256: "d".repeat(64),
+      },
+      {
+        base_source_asset_id: "forza-official-gameplay",
+        base_source_identity_basis: "sampled_visual_fingerprint",
+        sampled_visual_fingerprint: "e".repeat(64),
+      },
+    ],
+  };
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-15T06:35:00.000Z",
+  });
+
+  assert.equal(pack.professional_source_diversity_report.policy_tier, "ultimate_professional");
+  assert.equal(pack.professional_source_diversity_report.status, "pass");
+  assert.equal(
+    pack.publish_verdict.reason_codes.includes(
+      "media_house:professional_source_diversity_not_verified",
+    ),
+    false,
+  );
 });
 
 test("goal proof package proves each social pack is platform-native rather than mirrored", () => {
@@ -488,6 +664,50 @@ test("goal proof package preserves concrete closure-risk titles in downstream pl
   assert.equal(pack.canonical_story_manifest.selected_title, "State Of Decay Studio Has A Closure Risk");
   assert.equal(pack.canonical_story_manifest.canonical_title, "State Of Decay Studio Has A Closure Risk");
   assert.equal(pack.platform_publish_manifest.outputs.youtube_shorts.title, "State Of Decay Studio Has A Closure Risk");
+});
+
+test("goal proof package preserves Black Flag price-led attention copy", () => {
+  const story = greenStory();
+  story.id = "black-flag-price-led-pack";
+  story.canonical_subject = "Assassin's Creed Black Flag Resynced";
+  story.canonical_game = "Assassin's Creed Black Flag Resynced";
+  story.title = "Black Flag Resynced's $84.91 DLC Costs More Than The Game";
+  story.public_title = story.title;
+  story.selected_title = story.title;
+  story.suggested_title = story.title;
+  story.first_frame_text = "$84.91 DAY-ONE DLC";
+  story.suggested_thumbnail_text = "$84.91 DAY-ONE DLC";
+  story.primary_source = "Steam";
+  story.source_name = "Steam";
+  story.description =
+    "Black Flag Resynced has nine day-one DLC packs costing more than the game. If it does not, nine day-one packs turn nostalgia into a pricing fight. Source: Steam.";
+  story.full_script =
+    "Black Flag Resynced has nine day-one DLC packs costing more than the game. Steam lists them at $84.91 combined, while the base game costs $59.99. Players now have to decide whether harmless extras became content carved out before launch. If the base game feels complete, Ubisoft's defence holds. If it does not, nine day-one packs turn nostalgia into a pricing fight. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-15T05:45:00.000Z",
+  });
+  const youtube = pack.platform_publish_manifest.outputs.youtube_shorts;
+
+  assert.equal(youtube.title, story.title);
+  assert.equal(youtube.cover_frame.headline, "$84.91 DAY-ONE DLC");
+  assert.match(youtube.description, /players/i);
+  assert.match(youtube.description, /\$84\.91/);
+  assert.equal(mediaHousePrivate.platformCopyTooPlain({ outputs: { youtube_shorts: youtube } }), false);
+  assert.equal(
+    pack.publish_verdict.reason_codes.includes("public_output:thumbnail_missing_canonical_subject"),
+    false,
+  );
+  assert.equal(
+    pack.publish_verdict.reason_codes.includes("public_output:description_missing_canonical_subject"),
+    false,
+  );
+  assert.equal(
+    pack.publish_verdict.reason_codes.includes("public_copy:platform_copy_missing_canonical_subject"),
+    false,
+  );
 });
 
 test("goal proof package keeps hyphenated game titles clean in cover headlines", () => {
@@ -1839,9 +2059,9 @@ test("goal proof package keeps incomplete packages out of GREEN acceptance", () 
 
   assert.equal(pack.acceptance_entry.verdict, "RED");
   assert.ok(pack.acceptance_entry.blockers.includes("script:rewrite_required"));
-  assert.ok(pack.acceptance_entry.blockers.includes("footage:v4_motion_blocked"));
+  assert.ok(pack.acceptance_entry.blockers.includes("footage:distinct_motion_source_assets_minimum_not_met"));
   assert.ok(pack.publish_verdict.blockers.includes("script_scorecard:script_verdict_rewrite_required"));
-  assert.ok(pack.publish_verdict.blockers.includes("footage:v4_motion_blocked"));
+  assert.ok(pack.publish_verdict.blockers.includes("footage:distinct_motion_source_assets_minimum_not_met"));
   assert.ok(pack.publish_verdict.blockers.includes("render:final_publish_render_missing"));
 });
 
@@ -1871,16 +2091,12 @@ test("goal proof package surfaces native Shorts title description and cover fail
   });
 
   assert.equal(pack.platform_publish_manifest.platform_native_evidence.verdict, "fail");
-  assert.ok(
-    pack.publish_verdict.reason_codes.includes(
-      "platform_native:youtube_shorts:internal_review_language_in_public_copy",
-    ),
-  );
-  assert.ok(
-    pack.acceptance_entry.blockers.includes(
-      "platform_native:youtube_shorts:internal_review_language_in_public_copy",
-    ),
-  );
+  assert.ok(pack.publish_verdict.reason_codes.some((blocker) =>
+    /^platform_native:[^:]+:internal_review_language_in_public_copy$/.test(blocker)
+  ));
+  assert.ok(pack.acceptance_entry.blockers.some((blocker) =>
+    /^platform_native:[^:]+:internal_review_language_in_public_copy$/.test(blocker)
+  ));
   assert.equal(pack.publish_verdict.can_auto_publish, false);
 });
 
@@ -2175,6 +2391,7 @@ test("goal proof package writes goal-named artefacts", async () => {
     "visual_quality_report.json",
     "forensic_qa_report.json",
     "benchmark_report.json",
+    "professional_source_diversity_report.json",
     "affiliate_link_manifest.json",
     "finance_crypto_risk_report.json",
     "uniqueness_report.json",
@@ -2186,6 +2403,36 @@ test("goal proof package writes goal-named artefacts", async () => {
     assert.equal(await fs.pathExists(path.join(tmp, basename)), true, basename);
   }
   assert.equal(Object.keys(written).length >= 15, true);
+});
+
+test("goal proof artefact writer never emits an empty no-offer package", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-no-offer-write-"));
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger,
+    generatedAt: "2026-07-15T00:00:00.000Z",
+  });
+  pack.affiliate_link_manifest = {};
+  pack.landing_page_manifest = {};
+  pack.platform_publish_manifest = {
+    ...pack.platform_publish_manifest,
+    landing_page_attribution: null,
+  };
+
+  await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
+
+  const affiliate = await fs.readJson(path.join(tmp, "affiliate_link_manifest.json"));
+  const landing = await fs.readJson(path.join(tmp, "landing_page_manifest.json"));
+  const platform = await fs.readJson(path.join(tmp, "platform_publish_manifest.json"));
+  assert.equal(affiliate.commercial_intent_type, "no_safe_commercial_intent");
+  assert.equal(affiliate.no_direct_offer_reason, "no_governed_direct_offer_supplied");
+  assert.equal(affiliate.primary_link, null);
+  assert.deepEqual(affiliate.fallback_links, []);
+  assert.deepEqual(affiliate.offers, []);
+  assert.equal(Object.keys(affiliate.landing_page_attribution.platforms).length, 7);
+  assert.equal(landing.landing_page_route, affiliate.landing_page_route);
+  assert.equal(landing.attribution_manifest.verdict, "pass");
+  assert.equal(platform.landing_page_attribution.verdict, "pass");
 });
 
 test("goal proof package writes explicit materialised motion clip evidence", async () => {
@@ -2236,7 +2483,7 @@ test("goal proof package writes explicit materialised motion clip evidence", asy
   assert.equal(motion.clips[1].local_materialized_path, clipB);
 });
 
-test("goal proof package materialises every claimed GREEN acceptance artefact", async () => {
+test("goal proof package demotes a claimed GREEN when materialised final media is only local proof", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-complete-"));
   const story = greenStory();
   const pack = buildGoalProofPackage({
@@ -2254,8 +2501,16 @@ test("goal proof package materialises every claimed GREEN acceptance artefact", 
   const renderStat = await fs.stat(path.join(tmp, "visual_v4_render.mp4"));
   assert.ok(renderStat.size > 1000, "visual_v4_render.mp4 should be a real local proof video");
   const renderManifest = await fs.readJson(path.join(tmp, "render_manifest.json"));
-  assert.equal(renderManifest.final_publish_render, true);
-  assert.equal(renderManifest.quality_gate_status, "post_render_forensics_passed");
+  const summary = await fs.readJson(path.join(tmp, "goal_package_summary.json"));
+  const publishVerdict = await fs.readJson(path.join(tmp, "publish_verdict.json"));
+  assert.equal(renderManifest.final_publish_render, false);
+  assert.equal(renderManifest.quality_gate_status, "materialised_final_verification_failed");
+  assert.ok(renderManifest.materialisation_blockers.includes("final_render_audio_missing"));
+  assert.equal(summary.verdict, "RED");
+  assert.ok(summary.blockers.includes("render:final_render_audio_missing"));
+  assert.equal(publishVerdict.verdict, "RED");
+  assert.equal(publishVerdict.can_auto_publish, false);
+  assert.ok(publishVerdict.reason_codes.includes("render:final_render_audio_missing"));
 });
 
 test("goal proof package carries failed final-render forensic blockers into publish verdict", () => {
@@ -2303,4 +2558,11 @@ test("goal proof package does not overwrite an existing final render with a loca
   await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
 
   assert.deepEqual(await fs.readFile(finalRenderPath), existingBytes);
+  const summary = await fs.readJson(path.join(tmp, "goal_package_summary.json"));
+  assert.equal(summary.verdict, "RED");
+  assert.ok(
+    summary.blockers.some((blocker) =>
+      ["render:final_render_not_decodable", "render:final_render_audio_missing"].includes(blocker)
+    ),
+  );
 });

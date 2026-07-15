@@ -78,6 +78,44 @@ function readyLedger(storyId) {
   };
 }
 
+function finalUsedAsset(assetId, assetSha256, overrides = {}) {
+  return {
+    asset_id: assetId,
+    kind: "video",
+    path: `output/video/${assetId}.mp4`,
+    source_url: "https://www.youtube.com/watch?v=official",
+    source_type: "official_publisher_trailer_segment",
+    asset_sha256: assetSha256,
+    ...overrides,
+  };
+}
+
+function finalUsedRecord(asset, overrides = {}) {
+  return {
+    ...asset,
+    licence_basis: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    risk_score: 0.2,
+    evidence_file: "rights/official-source.json",
+    ...overrides,
+  };
+}
+
+function finalUsedLedger(usedAssets, records = usedAssets.map((asset) => finalUsedRecord(asset))) {
+  return {
+    schema_version: 2,
+    verdict: "pass",
+    used_assets: usedAssets,
+    records,
+    metrics: {
+      used_asset_count: usedAssets.length,
+      rights_record_count: records.length,
+      missing_asset_count: 0,
+    },
+  };
+}
+
 test("Goal 06 rights ledger passes only when every asset has explicit commercial, platform and evidence scope", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-ready-"));
   const storyPackage = await makePackage(root, "story-ready", readyLedger("story-ready"));
@@ -94,6 +132,168 @@ test("Goal 06 rights ledger passes only when every asset has explicit commercial
   assert.equal(report.summary.blocked_story_count, 0);
   assert.equal(report.stories[0].status, "ready");
   assert.deepEqual(report.stories[0].blockers, []);
+});
+
+test("Goal 06 rights ledger blocks raw record arrays without a final-use asset inventory", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-raw-ledger-"));
+  const storyPackage = await makePackage(root, "story-raw-ledger", [
+    {
+      asset_id: "story-raw-ledger-audio",
+      kind: "audio",
+      path: "output/audio/story-raw-ledger.mp3",
+      source_type: "local_tts_voice",
+      licence_basis: "owned_local_voice_model",
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      commercial_use_allowed: true,
+      risk_score: 0.05,
+      evidence_file: "rights/local-tts.json",
+    },
+  ]);
+
+  const report = await buildGoal06RightsLedger({
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-06"),
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T08:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].status, "blocked");
+  assert.ok(report.stories[0].blockers.includes("rights:used_asset_inventory_missing"));
+});
+
+test("Goal 06 rights ledger blocks empty, scalar and bare-pass ledgers", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-empty-ledgers-"));
+  const storyPackages = await Promise.all([
+    makePackage(root, "story-empty-ledger", {}),
+    makePackage(root, "story-scalar-ledger", "unparseable rights ledger"),
+    makePackage(root, "story-bare-pass-ledger", { verdict: "pass" }),
+  ]);
+
+  const report = await buildGoal06RightsLedger({
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-06"),
+    storyPackages,
+    generatedAt: "2026-07-15T08:00:30.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.summary.ready_story_count, 0);
+  for (const story of report.stories) {
+    assert.ok(story.blockers.includes("rights:used_asset_inventory_missing"), story.story_id);
+    assert.ok(story.blockers.includes("rights:rights_record_inventory_missing"), story.story_id);
+  }
+});
+
+test("Goal 06 rights ledger accepts equivalent aliases for every targeted live platform", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-platform-aliases-"));
+  const asset = finalUsedAsset("story-platform-aliases-clip", "a".repeat(64));
+  const storyPackage = await makePackage(root, "story-platform-aliases", finalUsedLedger([asset]));
+
+  const report = await buildGoal06RightsLedger({
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-06"),
+    storyPackages: [storyPackage],
+    platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    generatedAt: "2026-07-15T08:01:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS", JSON.stringify(report.stories[0], null, 2));
+  assert.equal(report.stories[0].status, "ready");
+  assert.equal(report.stories[0].asset_count, 1);
+  assert.equal(report.stories[0].matched_asset_count, 1);
+  assert.equal(report.stories[0].metrics.original_asset_count, 1);
+  assert.deepEqual(report.target_platforms, ["youtube", "instagram", "facebook"]);
+});
+
+test("Goal 06 rights ledger does not reuse one record for final-used assets sharing a source URL", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-one-to-one-"));
+  const sharedSourceUrl = "https://www.youtube.com/watch?v=official";
+  const assetA = finalUsedAsset("story-one-to-one-clip-a", "a".repeat(64), {
+    source_url: sharedSourceUrl,
+  });
+  const assetB = finalUsedAsset("story-one-to-one-clip-b", "b".repeat(64), {
+    source_url: sharedSourceUrl,
+  });
+  const storyPackage = await makePackage(
+    root,
+    "story-one-to-one",
+    finalUsedLedger([assetA, assetB], [finalUsedRecord(assetA)]),
+  );
+
+  const report = await buildGoal06RightsLedger({
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-06"),
+    storyPackages: [storyPackage],
+    platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    generatedAt: "2026-07-15T08:02:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].matched_asset_count, 1);
+  assert.ok(report.stories[0].blockers.includes("rights:no_rights_record"));
+  assert.deepEqual(
+    report.stories[0].rejected_assets
+      .filter((asset) => asset.reason_codes.includes("rights:no_rights_record"))
+      .map((asset) => asset.asset_id),
+    ["story-one-to-one-clip-b"],
+  );
+});
+
+test("Goal 06 rights ledger blocks a rights record whose hash does not match the final-used asset", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-hash-mismatch-"));
+  const asset = finalUsedAsset("story-hash-mismatch-clip", "a".repeat(64));
+  const storyPackage = await makePackage(
+    root,
+    "story-hash-mismatch",
+    finalUsedLedger([asset], [finalUsedRecord(asset, { asset_sha256: "b".repeat(64) })]),
+  );
+
+  const report = await buildGoal06RightsLedger({
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-06"),
+    storyPackages: [storyPackage],
+    platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    generatedAt: "2026-07-15T08:03:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].matched_asset_count, 0);
+  assert.ok(report.stories[0].blockers.includes("rights:asset_hash_mismatch"));
+  assert.deepEqual(report.stories[0].rejected_assets[0].reason_codes, ["rights:asset_hash_mismatch"]);
+});
+
+test("Goal 06 rights ledger blocks missing or malformed final-used SHA-256 evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-hash-completeness-"));
+  const missingHash = finalUsedAsset("story-hash-completeness-missing", "");
+  const malformedHash = finalUsedAsset("story-hash-completeness-malformed", "not-a-sha256");
+  const storyPackage = await makePackage(
+    root,
+    "story-hash-completeness",
+    finalUsedLedger(
+      [missingHash, malformedHash],
+      [finalUsedRecord(missingHash), finalUsedRecord(malformedHash)],
+    ),
+  );
+
+  const report = await buildGoal06RightsLedger({
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-06"),
+    storyPackages: [storyPackage],
+    platforms: ["youtube", "instagram", "facebook"],
+    generatedAt: "2026-07-15T08:04:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.stories[0].matched_asset_count, 0);
+  for (const blocker of [
+    "rights:used_asset_hash_missing",
+    "rights:rights_record_hash_missing",
+    "rights:used_asset_hash_invalid",
+    "rights:rights_record_hash_invalid",
+  ]) {
+    assert.ok(report.stories[0].blockers.includes(blocker), blocker);
+  }
 });
 
 // goal-test:missing_rights_record_rejection

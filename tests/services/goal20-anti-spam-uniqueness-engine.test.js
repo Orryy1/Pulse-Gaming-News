@@ -22,7 +22,9 @@ async function makeStoryPackage(root, storyId, overrides = {}) {
     story_id: storyId,
     selected_title: title,
     thumbnail_headline: overrides.thumbnail || title.toUpperCase(),
-    narration_script: `${firstLine} The rest of the script adds source context without repeating the opener.`,
+    narration_script:
+      overrides.narrationScript ||
+      `${firstLine} The rest of the script adds source context without repeating the opener.`,
     pinned_comment: cta,
   });
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
@@ -515,6 +517,82 @@ test("Goal 20 treats reused CTA and affiliate offer patterns as review risk", as
   assert.ok(report.stories[0].warnings.includes("anti_spam:cta_reused"));
   assert.ok(report.stories[0].warnings.includes("anti_spam:affiliate_offer_reused"));
   assert.equal(report.variation_recommendations.stories[0].status, "variation_recommended");
+});
+
+test("Goal 20 blocks a cohort that repeats the canonical spoken CTA in every video", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal20-spoken-cta-cohort-"));
+  const canonicalCta = "Follow Pulse Gaming so you never miss a beat.";
+  const storyA = await makeStoryPackage(root, "story-a", {
+    title: "Fable Combat Finally Has A Real Test",
+    firstLine: "Fable just put its combat reputation on the line.",
+    narrationScript: `Fable just put its combat reputation on the line. Players can now judge whether every hit has weight. ${canonicalCta}`,
+  });
+  const storyB = await makeStoryPackage(root, "story-b", {
+    title: "Halo Campaign Evolved Changes The Remake Argument",
+    firstLine: "Halo Campaign Evolved just changed the remake argument.",
+    narrationScript: `Halo Campaign Evolved just changed the remake argument. The demo now has to prove the original rhythm survived. ${canonicalCta}`,
+  });
+  const storyC = await makeStoryPackage(root, "story-c", {
+    title: "Gears Of War E-Day Reveals Its Biggest Risk",
+    firstLine: "Gears of War E-Day just revealed its biggest risk.",
+    narrationScript: `Gears of War E-Day just revealed its biggest risk. The darker tone only works if the fights stay readable. ${canonicalCta}`,
+  });
+
+  const report = await buildGoal20AntiSpamUniquenessEngine({
+    storyPackages: [storyA, storyB, storyC],
+    upstreamControlTowerReport: readyGoal19("story-a", "story-b", "story-c"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-14T21:00:00.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.equal(report.direct_uniqueness_verdict, "BLOCKED");
+  assert.equal(report.summary.direct_uniqueness_blocked_story_count, 3);
+  assert.equal(report.blocker_counts["anti_spam:canonical_spoken_cta_cohort_saturation"], 3);
+  for (const story of report.stories) {
+    assert.equal(story.uniqueness_checks.repeated_ctas.status, "fail");
+    assert.ok(
+      story.direct_uniqueness_blockers.includes(
+        "anti_spam:canonical_spoken_cta_cohort_saturation",
+      ),
+    );
+  }
+});
+
+test("Goal 20 allows the canonical spoken CTA at controlled cohort cadence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal20-spoken-cta-cadence-"));
+  const storyA = await makeStoryPackage(root, "story-a", {
+    title: "Fable Combat Finally Has A Real Test",
+    narrationScript:
+      "Fable just put its combat reputation on the line. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const storyB = await makeStoryPackage(root, "story-b", {
+    title: "Halo Campaign Evolved Changes The Remake Argument",
+    narrationScript:
+      "Halo Campaign Evolved just changed the remake argument. Follow for the next campaign verdict.",
+  });
+  const storyC = await makeStoryPackage(root, "story-c", {
+    title: "Gears Of War E-Day Reveals Its Biggest Risk",
+    narrationScript:
+      "Gears of War E-Day just revealed its biggest risk. Save this before the next gameplay reveal.",
+  });
+
+  const report = await buildGoal20AntiSpamUniquenessEngine({
+    storyPackages: [storyA, storyB, storyC],
+    upstreamControlTowerReport: readyGoal19("story-a", "story-b", "story-c"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-14T21:05:00.000Z",
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.direct_uniqueness_verdict, "PASS");
+  assert.equal(report.stories[0].uniqueness_checks.repeated_ctas.status, "pass");
+  assert.equal(
+    report.stories[0].uniqueness_checks.repeated_ctas.evidence.canonical_spoken_outro_count,
+    1,
+  );
 });
 
 test("Goal 20 writes required anti-spam artefacts", async () => {

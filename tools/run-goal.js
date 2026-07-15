@@ -18,6 +18,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     root: process.cwd(),
     outDir: path.join(process.cwd(), "output", "goal-contract"),
     storyPackagesPath: null,
+    flagshipMediaPortfolioPath: null,
     generatedAt: null,
     json: false,
     help: false,
@@ -28,6 +29,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     if (arg === "--root") args.root = argv[++i] || args.root;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--story-packages") args.storyPackagesPath = argv[++i] || "";
+    else if (arg === "--flagship-media-portfolio") {
+      args.flagshipMediaPortfolioPath = argv[++i] || "";
+    }
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -45,6 +49,7 @@ function usage() {
     "  --root <dir>              Workspace root to scan",
     "  --out-dir <dir>           Output directory for goal artefacts",
     "  --story-packages <path>   Optional 30-story package manifest",
+    "  --flagship-media-portfolio <path>  Raw materialised flagship portfolio manifest",
     "  --generated-at <iso>      Fixed timestamp for deterministic reports",
     "  --json                    Print JSON instead of Markdown",
   ].join("\n");
@@ -63,31 +68,53 @@ async function buildModuleIndex(root) {
   return entries;
 }
 
-async function walkFiles(dir) {
-  if (!(await fs.pathExists(dir))) return [];
+async function walkFiles(dir, { filesystem = fs } = {}) {
+  if (!(await filesystem.pathExists(dir))) return [];
   const out = [];
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...(await walkFiles(fullPath)));
-    } else {
-      out.push(fullPath);
+  const pending = [path.resolve(dir)];
+  const visited = new Set();
+  while (pending.length) {
+    const current = pending.pop();
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const entries = await filesystem.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink?.()) continue;
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) pending.push(fullPath);
+      else out.push(fullPath);
     }
   }
   return out;
 }
 
-async function buildArtefactIndex(root) {
-  const files = [
-    ...(await walkFiles(path.join(root, "output"))),
-    ...(await walkFiles(path.join(root, "test", "output"))),
+async function findRequiredArtefactNames(root, requiredNames, { filesystem = fs } = {}) {
+  const found = new Set();
+  const pending = [
+    path.join(root, "output"),
+    path.join(root, "test", "output"),
   ];
-  const names = new Set(files.map((file) => path.basename(file)));
+  const visited = new Set();
+  while (pending.length && found.size < requiredNames.size) {
+    const current = path.resolve(pending.pop());
+    if (visited.has(current) || !(await filesystem.pathExists(current))) continue;
+    visited.add(current);
+    const entries = await filesystem.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink?.()) continue;
+      if (entry.isDirectory()) pending.push(path.join(current, entry.name));
+      else if (requiredNames.has(entry.name)) found.add(entry.name);
+    }
+  }
+  return found;
+}
+
+async function buildArtefactIndex(root, { filesystem = fs } = {}) {
   const requiredNames = new Set([
     ...REQUIRED_ARTEFACTS,
     ...REQUIRED_SYSTEMS.flatMap((system) => system.outputs || []),
   ]);
+  const names = await findRequiredArtefactNames(root, requiredNames, { filesystem });
   const entries = {};
   for (const artefact of requiredNames) entries[artefact] = names.has(artefact);
   return entries;
@@ -135,6 +162,11 @@ async function readStoryPackages(root, explicitPath = null) {
   return [];
 }
 
+async function readFlagshipMediaPortfolio(explicitPath = null) {
+  if (!explicitPath) return null;
+  return fs.readJson(explicitPath);
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -146,20 +178,32 @@ async function main(argv = process.argv.slice(2)) {
   const storyPackagesPath = args.storyPackagesPath
     ? path.resolve(args.storyPackagesPath)
     : null;
+  const flagshipMediaPortfolioPath = args.flagshipMediaPortfolioPath
+    ? path.resolve(args.flagshipMediaPortfolioPath)
+    : null;
 
-  const [moduleIndex, artefactIndex, testIndex, storyPackages] = await Promise.all([
+  const [
+    moduleIndex,
+    artefactIndex,
+    testIndex,
+    storyPackages,
+    flagshipMediaPortfolio,
+  ] = await Promise.all([
     buildModuleIndex(root),
     buildArtefactIndex(root),
     buildTestIndex(root),
     readStoryPackages(root, storyPackagesPath),
+    readFlagshipMediaPortfolio(flagshipMediaPortfolioPath),
   ]);
 
-  const report = buildGoalContractReport({
+  const report = await buildGoalContractReport({
     generatedAt: args.generatedAt || new Date().toISOString(),
     moduleIndex,
     artefactIndex,
     testIndex,
     storyPackages,
+    flagshipMediaPortfolio,
+    flagshipMediaPortfolioOptions: { workspaceRoot: root },
   });
   const artefacts = await writeGoalContractArtifacts(report, { outputDir: outDir });
 
@@ -182,4 +226,5 @@ module.exports = {
   buildArtefactIndex,
   buildTestIndex,
   readStoryPackages,
+  readFlagshipMediaPortfolio,
 };

@@ -34,6 +34,8 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
     "elevenlabs",
     "--tts-rate",
     "0.92",
+    "--enforce-target-cadence",
+    "--pad-target-cadence",
     "--local-tts-timeout-ms",
     "120000",
     "--local-tts-request-attempts",
@@ -55,6 +57,8 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
   assert.deepEqual(args.storyIds, ["story-one", "story-two"]);
   assert.equal(args.provider, "elevenlabs");
   assert.equal(args.ttsRate, 0.92);
+  assert.equal(args.enforceTargetCadence, true);
+  assert.equal(args.padTargetCadence, true);
   assert.equal(args.localTtsTimeoutMs, 120000);
   assert.equal(args.localTtsRequestAttempts, 1);
   assert.equal(args.localTtsSegmentedWordThreshold, 20);

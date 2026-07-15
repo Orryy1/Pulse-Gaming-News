@@ -1,10 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFile } = require("node:child_process");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { promisify } = require("node:util");
 
 const {
   repairGoalControlTowerEvidence,
@@ -17,9 +19,37 @@ function passGate(extra = {}) {
   return { status: "pass", verdict: "pass", failures: [], blockers: [], ...extra };
 }
 
+const execFileAsync = promisify(execFile);
+let validFinalMediaBytesPromise;
+
+async function validFinalMediaBytes() {
+  if (!validFinalMediaBytesPromise) {
+    validFinalMediaBytesPromise = (async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-repair-valid-media-"));
+      const output = path.join(root, "valid-short.mp4");
+      try {
+        await execFileAsync("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-f", "lavfi", "-i", "color=c=black:s=540x960:r=30",
+          "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+          "-t", "1",
+          "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart",
+          output,
+        ], { timeout: 30000 });
+        return await fs.readFile(output);
+      } finally {
+        await fs.remove(root);
+      }
+    })();
+  }
+  return validFinalMediaBytesPromise;
+}
+
 async function makeControlTowerPackage(root, storyId = "story-ready") {
   const artifactDir = path.join(root, storyId);
   await fs.ensureDir(artifactDir);
+  await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), await validFinalMediaBytes());
   await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: storyId,
     canonical_subject: "Hellraiser: Revival",
@@ -52,7 +82,18 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
       ],
     },
   });
-  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), passGate());
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), passGate({
+    records: Array.from({ length: 5 }, (_, index) => ({
+      asset_id: `clip-${index + 1}`,
+      source_type: "official_direct_media",
+      source_owner: "Official publisher",
+      licence_basis: "official_promotional_media_transformative_editorial_use",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      evidence_file: `rights/clip-${index + 1}.json`,
+      risk_score: 0.1,
+    })),
+  }));
   await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
     readiness: { status: "director_ready", blockers: [] },
     shot_plan: [{ id: "hook", kind: "motion_clip" }],
@@ -201,7 +242,7 @@ test("control tower evidence repair promotes passed local proof into package-lev
     outputDir: path.join(root, "out-after"),
     generatedAt: "2026-06-22T02:12:00.000Z",
   });
-  assert.equal(after.verdict, "PASS");
+  assert.equal(after.verdict, "PASS", JSON.stringify(after.stories[0], null, 2));
   assert.equal(after.direct_control_tower_verdict, "PASS");
   assert.equal(after.stories[0].final_verdict, "GREEN");
   assert.deepEqual(after.stories[0].direct_control_tower_blockers, []);
@@ -228,16 +269,96 @@ test("control tower evidence repair refuses to promote missing policy proof", as
   assert.equal(await fs.pathExists(path.join(story.artifact_dir, "platform_policy_report.json")), false);
 });
 
-test("control tower evidence repair promotes stale RED platform manifest when native proof passes", async () => {
+test("control tower evidence repair refuses to promote a missing final media file", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-evidence-missing-media-"));
+  const story = await makeControlTowerPackage(root, "story-missing-final-media");
+  await fs.remove(path.join(story.artifact_dir, "visual_v4_render.mp4"));
+
+  const report = await repairGoalControlTowerEvidence({
+    storyPackages: [story],
+    goal16Report: goal16Pass("story-missing-final-media"),
+    landingManifestReport: landingProof("story-missing-final-media"),
+    goal17Report: goal17Pass("story-missing-final-media"),
+    platformPolicyReport: policyProof("story-missing-final-media"),
+    generatedAt: "2026-07-14T21:04:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups"),
+  });
+
+  assert.equal(report.summary.blocked_count, 1);
+  assert.equal(report.summary.repaired_count, 0);
+  assert.ok(report.items[0].blockers.includes("final_render_output_missing_or_unreadable"));
+});
+
+test("control tower evidence repair refuses bare rights pass evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-evidence-bare-rights-"));
+  const story = await makeControlTowerPackage(root, "story-bare-rights");
+  await fs.writeJson(path.join(story.artifact_dir, "rights_ledger.json"), passGate());
+
+  const report = await repairGoalControlTowerEvidence({
+    storyPackages: [story],
+    goal16Report: goal16Pass("story-bare-rights"),
+    landingManifestReport: landingProof("story-bare-rights"),
+    goal17Report: goal17Pass("story-bare-rights"),
+    platformPolicyReport: policyProof("story-bare-rights"),
+    generatedAt: "2026-07-14T21:05:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups"),
+  });
+
+  assert.equal(report.summary.blocked_count, 1);
+  assert.equal(report.summary.repaired_count, 0);
+  assert.ok(report.items[0].blockers.includes("rights_evidence_incomplete"));
+});
+
+test("control tower evidence repair refuses missing rights for a final render scene", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-evidence-render-rights-"));
+  const story = await makeControlTowerPackage(root, "story-render-rights");
+  const renderPath = path.join(story.artifact_dir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderPath);
+  await fs.writeJson(renderPath, {
+    ...renderManifest,
+    clip_scene_plan: {
+      scenes: [{ path: "motion/final-render-only.mp4" }],
+    },
+  });
+
+  const report = await repairGoalControlTowerEvidence({
+    storyPackages: [story],
+    goal16Report: goal16Pass("story-render-rights"),
+    landingManifestReport: landingProof("story-render-rights"),
+    goal17Report: goal17Pass("story-render-rights"),
+    platformPolicyReport: policyProof("story-render-rights"),
+    generatedAt: "2026-07-14T21:06:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups"),
+  });
+
+  assert.equal(report.summary.blocked_count, 1);
+  assert.equal(report.summary.repaired_count, 0);
+  assert.ok(report.items[0].blockers.includes("rights_evidence_incomplete"));
+});
+
+test("control tower evidence repair refreshes evidence without promoting authoritative RED publish controls", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-evidence-platform-manifest-"));
   const story = await makeControlTowerPackage(root, "story-stale-platform-manifest");
   const platformManifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
   const platformManifest = await fs.readJson(platformManifestPath);
-  await fs.writeJson(platformManifestPath, {
+  const authoritativePlatformManifest = {
     ...platformManifest,
     publish_status: "RED",
     can_auto_publish: false,
-  });
+  };
+  const publishVerdictPath = path.join(story.artifact_dir, "publish_verdict.json");
+  const authoritativePublishVerdict = {
+    verdict: "RED",
+    status: "RED",
+    can_auto_publish: false,
+    publish_action: "blocked",
+    reason_codes: ["operator_hold"],
+  };
+  await fs.writeJson(platformManifestPath, authoritativePlatformManifest);
+  await fs.writeJson(publishVerdictPath, authoritativePublishVerdict);
 
   const report = await repairGoalControlTowerEvidence({
     storyPackages: [story],
@@ -252,13 +373,18 @@ test("control tower evidence repair promotes stale RED platform manifest when na
 
   assert.equal(report.summary.repairable_count, 1, JSON.stringify(report, null, 2));
   assert.equal(report.summary.repaired_count, 1);
-  assert.deepEqual(report.items[0].blockers, []);
+  assert.ok(report.items[0].blockers.includes("authoritative_platform_publish_manifest_red"));
+  assert.ok(report.items[0].blockers.includes("authoritative_publish_verdict_red"));
   assert.ok(report.items[0].stale_files.includes("platform_publish_manifest.json"));
 
   const repairedPlatformManifest = await fs.readJson(platformManifestPath);
-  const publishVerdict = await fs.readJson(path.join(story.artifact_dir, "publish_verdict.json"));
-  assert.equal(repairedPlatformManifest.publish_status, "GREEN");
-  assert.equal(repairedPlatformManifest.can_auto_publish, true);
-  assert.equal(publishVerdict.verdict, "GREEN");
-  assert.equal(publishVerdict.can_auto_publish, true);
+  const publishVerdict = await fs.readJson(publishVerdictPath);
+  assert.equal(repairedPlatformManifest.publish_status, "RED");
+  assert.equal(repairedPlatformManifest.can_auto_publish, false);
+  assert.equal(publishVerdict.verdict, "RED");
+  assert.equal(publishVerdict.status, "RED");
+  assert.equal(publishVerdict.can_auto_publish, false);
+  assert.equal(publishVerdict.publish_action, "blocked");
+  assert.ok(publishVerdict.reason_codes.includes("operator_hold"));
+  assert.equal(await fs.pathExists(path.join(story.artifact_dir, "analytics_ingest_plan.json")), true);
 });

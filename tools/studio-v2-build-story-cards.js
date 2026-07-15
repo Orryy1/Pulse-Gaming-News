@@ -21,6 +21,11 @@ const {
   quoteLayoutClass,
 } = require("../lib/studio/v2/quote-fit");
 const {
+  deriveEditorialTakeaway,
+  safeTakeawayHeadlineWords,
+  safeTakeawayStrap,
+} = require("../lib/studio/v2/hf-card-builders");
+const {
   shellSidecarPathForCard,
 } = require("../lib/studio/v2/premium-card-lane-v2");
 const {
@@ -140,7 +145,13 @@ function cardTextForReadability(kind, spec = {}) {
     return [spec.heading, bullets].filter(Boolean).join(" ");
   }
   if (kind === "quote") return [spec.quoteText, spec.attribution].filter(Boolean).join(" ");
-  if (kind === "takeaway" || kind === "outro") {
+  if (kind === "takeaway") {
+    return [
+      ...safeTakeawayHeadlineWords(spec.headlineWords),
+      safeTakeawayStrap(spec.cta),
+    ].filter(Boolean).join(" ");
+  }
+  if (kind === "outro") {
     return [
       ...(Array.isArray(spec.headlineWords) ? spec.headlineWords : []),
       spec.cta,
@@ -158,14 +169,25 @@ function hyperframesCardReadabilityContractForSpec(kind, spec = {}) {
     : timing.planned_visible_duration_s;
   const planned = timing.planned_visible_duration_s;
   const maximum = timing.maximum_visible_duration_s;
+  const blockers = [];
+  if (!readableText) blockers.push("hyperframes_card_readable_text_missing");
+  if (!isSource && timing.content_fits_maximum === false) {
+    blockers.push("hyperframes_card_copy_exceeds_momentum_budget");
+  }
+  if (isSource && timing.content_fits_maximum === false) {
+    blockers.push("hyperframes_source_card_copy_exceeds_momentum_budget");
+  }
   return {
-    status: "pass",
+    status: blockers.length ? "fail" : "pass",
+    blockers,
     evidence: {
       readable_text: readableText,
       word_count: readableText ? readableText.split(/\s+/).filter(Boolean).length : 0,
       planned_visible_duration_s: planned,
       minimum_visible_duration_s: minimum,
       maximum_visible_duration_s: maximum,
+      required_visible_duration_s:
+        timing.required_visible_duration_s ?? planned,
       min_readable_card_duration_s: isSource
         ? V5_SOURCE_CARD_TIMING.minimum_visible_duration_s
         : MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,
@@ -329,7 +351,8 @@ function contextImpactFromScript(story) {
 function concreteFactScore(sentence) {
   let score = 0;
   if (/\b(?:adds?|introduces?|reveals?|launches?|includes?|guarantees?)\b/i.test(sentence)) score += 5;
-  if (/\b(?:carry|costs?|releases?|arrives?|unlocks?|supports?|removes?|doubles?|cuts?)\b/i.test(sentence)) score += 4;
+  if (/\b(?:carry|costs?|costing|releases?|arrives?|unlocks?|supports?|removes?|doubles?|cuts?)\b/i.test(sentence)) score += 4;
+  if (/\b(?:day[- ]one\s+)?DLC\s+packs?\b/i.test(sentence)) score += 2;
   if (/\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i.test(sentence)) score += 3;
   if (/\b(?:free|skin tracker|inventory|crossplay|release date|gameplay|missions?|maps?|modes?)\b/i.test(sentence)) score += 2;
   if (/\b(?:source|reports?|official follow-up|argument|debate)\b/i.test(sentence)) score -= 4;
@@ -338,6 +361,24 @@ function concreteFactScore(sentence) {
 }
 
 function factLabel(sentence) {
+  const dlcPackMatch = sentence.match(
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+day[- ]one\s+DLC\s+packs?\b/i,
+  );
+  if (dlcPackMatch) return `${dlcPackMatch[1]} DLC PACKS`.toUpperCase();
+
+  const currencyMatches = [...sentence.matchAll(/[$\u00a3\u20ac]\s*\d+(?:\.\d{1,2})?/g)].map((match) =>
+    match[0].replace(/\s+/g, ""),
+  );
+  if (currencyMatches.length >= 2) {
+    return `${currencyMatches[0]} VS ${currencyMatches[1]}`.toUpperCase();
+  }
+  if (currencyMatches.length === 1 && /\bmap\s+pack\b/i.test(sentence)) {
+    return `${currencyMatches[0]} MAP PACK`.toUpperCase();
+  }
+  if (currencyMatches.length === 1 && /\b(?:combined|total)\b/i.test(sentence)) {
+    return `${currencyMatches[0]} TOTAL`.toUpperCase();
+  }
+
   const numberMatch = sentence.match(/\b(?:up to\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+([a-z][a-z'-]*)/i);
   if (numberMatch) return `${numberMatch[1]} ${numberMatch[2]}`.toUpperCase();
 
@@ -352,7 +393,36 @@ function factLabel(sentence) {
   return headlineWordsFromTitle(sentence).join(" ");
 }
 
+function compactFactCopy(sentence, strong) {
+  if (/\bday[- ]one\s+DLC\s+packs?\b/i.test(sentence) && /\bcost(?:s|ing)?\s+more\s+than\b/i.test(sentence)) {
+    return "at launch";
+  }
+  if (/\bVS\b/.test(strong) || /\bMAP PACK\b/.test(strong)) return "";
+  return clampWords(sentence, 4).replace(/[.!?]+$/, "").toLowerCase();
+}
+
+function fitTimelineBulletsToMomentumBudget(bullets, heading, maximumWords = 13) {
+  const compact = bullets.map((bullet) => ({
+    strong: clampWords(bullet.strong, 3).toUpperCase(),
+    copy: normaliseText(bullet.copy),
+  }));
+  const fixedWords = [heading, ...compact.map((bullet) => bullet.strong)]
+    .join(" ")
+    .split(/\s+/)
+    .filter(Boolean).length;
+  let remainingWords = Math.max(0, maximumWords - fixedWords);
+  return compact.map((bullet) => {
+    const copyWords = bullet.copy.split(/\s+/).filter(Boolean);
+    if (!copyWords.length || copyWords.length > remainingWords) {
+      return { ...bullet, copy: "" };
+    }
+    remainingWords -= copyWords.length;
+    return bullet;
+  });
+}
+
 function concreteTimelineBullets(story, fallbackTitle, sourceName) {
+  const heading = headlineWordsFromTitle(fallbackTitle).join(" ");
   const candidates = scriptSentences(story)
     .map((sentence, index) => ({
       sentence,
@@ -364,26 +434,21 @@ function concreteTimelineBullets(story, fallbackTitle, sourceName) {
     .sort((left, right) => right.score - left.score || left.index - right.index)
     .slice(0, 3)
     .sort((left, right) => left.index - right.index)
-    .map(({ sentence }) => ({
-      strong: factLabel(sentence),
-      copy: clampWords(sentence, 10).replace(/[.!?]+$/, "").toLowerCase(),
-    }));
+    .map(({ sentence }) => {
+      const strong = factLabel(sentence);
+      return {
+        strong,
+        copy: compactFactCopy(sentence, strong),
+      };
+    });
 
-  if (candidates.length >= 2) return candidates;
-  return [
+  if (candidates.length >= 2) {
+    return fitTimelineBulletsToMomentumBudget(candidates, heading);
+  }
+  return fitTimelineBulletsToMomentumBudget([
     { strong: "Verified detail", copy: sourceName.toLowerCase() },
     { strong: "Player impact", copy: clampWords(fallbackTitle, 7).toLowerCase() },
-  ];
-}
-
-function takeawayHeadlineFromScript(story, fallbackWords) {
-  const sentences = scriptSentences(story);
-  for (let index = sentences.length - 1; index >= 0; index -= 1) {
-    const sentence = sentences[index];
-    const contrast = sentence.match(/\binto\s+(?:a|an|the)?\s*([a-z][a-z'-]*)[\s\S]*?\binstead of\s+(?:a|an|the)?\s*([a-z][a-z'-]*)/i);
-    if (contrast) return [contrast[1].toUpperCase(), "NOT", contrast[2].toUpperCase()];
-  }
-  return fallbackWords;
+  ], heading);
 }
 
 function firstUsefulQuote(story) {
@@ -433,6 +498,7 @@ function buildStoryCardSpecsBase(story) {
   const label = sourceLabel(story);
   const title = normaliseText(story?.title);
   const reactionAttribution = quoteAttribution(story, label);
+  const editorialTakeaway = deriveEditorialTakeaway({ story });
 
   if (isPokemonMewtwoStory(story)) {
     return {
@@ -474,7 +540,7 @@ function buildStoryCardSpecsBase(story) {
         step: "03 / TAKEAWAY",
         kicker: "THE BOTTOM LINE",
         headlineWords: ["FREE", "MEGA", "MEWTWO"],
-        cta: "FOLLOW FOR MORE",
+        cta: editorialTakeaway.strap,
       },
       outro: {
         step: "PULSE GAMING",
@@ -494,7 +560,6 @@ function buildStoryCardSpecsBase(story) {
     contextImpactFromScript(story) ||
     contextSubFromTitle(title, contextNumber);
   const timelineBullets = concreteTimelineBullets(story, title, label);
-  const takeawayHeadlineWords = takeawayHeadlineFromScript(story, headlineWords);
   return {
     source: {
       kicker: "SOURCE",
@@ -520,8 +585,8 @@ function buildStoryCardSpecsBase(story) {
     takeaway: {
       step: "03 / TAKEAWAY",
       kicker: "THE BOTTOM LINE",
-      headlineWords: takeawayHeadlineWords,
-      cta: "FOLLOW FOR MORE",
+      headlineWords: editorialTakeaway.headlineWords,
+      cta: editorialTakeaway.strap,
     },
     outro: {
       step: "PULSE GAMING",
@@ -817,12 +882,15 @@ function renderTimelineBullets(bullets) {
   return bullets
     .slice(0, 3)
     .map(
-      (bullet, index) => `            <li>
+      (bullet, index) => {
+        const copy = normaliseText(bullet.copy);
+        return `            <li>
               <span class="num">${String(index + 1).padStart(2, "0")}</span>
               <span class="copy"><strong>${escapeHtml(
                 bullet.strong,
-              )}</strong>, ${escapeHtml(bullet.copy)}</span>
-            </li>`,
+              )}</strong>${copy ? `, ${escapeHtml(copy)}` : ""}</span>
+            </li>`;
+      },
     )
     .join("\n");
 }
@@ -892,13 +960,19 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
     html = replaceElementText(html, "attribution", spec.attribution);
     html = replaceElementText(html, "attribution-sub", spec.attributionSub);
   } else if (kind === "takeaway" || kind === "outro") {
+    const headlineWords = kind === "takeaway"
+      ? safeTakeawayHeadlineWords(spec.headlineWords)
+      : spec.headlineWords;
+    const strap = kind === "takeaway"
+      ? safeTakeawayStrap(spec.cta)
+      : spec.cta;
     html = replaceElementText(html, "step", spec.step);
     html = replaceElementText(html, "kicker", spec.kicker);
     html = html.replace(
       /(<div id="headline" class="headline">)[\s\S]*?(<\/div>)/,
-      `$1\n${buildHeadlineSpans(spec.headlineWords)}\n          $2`,
+      `$1\n${buildHeadlineSpans(headlineWords)}\n          $2`,
     );
-    html = replaceElementText(html, "cta", spec.cta);
+    html = replaceElementText(html, "cta", strap);
   } else {
     throw new Error(`Unknown card kind: ${kind}`);
   }
@@ -1008,6 +1082,15 @@ function listTextById(html = "", id = "") {
   return normaliseText(elementInnerHtmlById(html, id));
 }
 
+function timelineListTextById(html = "", id = "") {
+  return normaliseText(
+    elementInnerHtmlById(html, id).replace(
+      /<span\b[^>]*\bclass=(["'])[^"']*\bnum\b[^"']*\1[^>]*>[\s\S]*?<\/span>/gi,
+      " ",
+    ),
+  );
+}
+
 function readableTextFromProjectHtml(kind, html = "") {
   if (kind === "source") return [
     elementTextById(html, "label"),
@@ -1020,7 +1103,7 @@ function readableTextFromProjectHtml(kind, html = "") {
   ].filter(Boolean).join(" ");
   if (kind === "timeline") return [
     elementTextById(html, "heading"),
-    listTextById(html, "bullets"),
+    timelineListTextById(html, "bullets"),
   ].filter(Boolean).join(" ");
   if (kind === "quote") return [
     elementTextById(html, "quote"),
@@ -1043,9 +1126,16 @@ function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
     : timing.planned_visible_duration_s;
   const maximum = timing.maximum_visible_duration_s;
   const blockers = [];
+  if (!readableText) blockers.push("hyperframes_card_readable_text_missing");
   if (planned == null) blockers.push("hyperframes_card_duration_missing");
   else if (planned + 0.001 < minimum) blockers.push("hyperframes_card_visible_dwell_too_short");
   else if (isSource && planned > maximum + 0.001) blockers.push("hyperframes_source_card_visible_dwell_too_long");
+  if (!isSource && timing.content_fits_maximum === false) {
+    blockers.push("hyperframes_card_copy_exceeds_momentum_budget");
+  }
+  if (isSource && timing.content_fits_maximum === false) {
+    blockers.push("hyperframes_source_card_copy_exceeds_momentum_budget");
+  }
   return {
     status: blockers.length ? "fail" : "pass",
     blockers,
@@ -1055,6 +1145,8 @@ function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
       planned_visible_duration_s: planned,
       minimum_visible_duration_s: minimum,
       maximum_visible_duration_s: maximum,
+      required_visible_duration_s:
+        timing.required_visible_duration_s ?? planned,
       min_readable_card_duration_s: isSource
         ? V5_SOURCE_CARD_TIMING.minimum_visible_duration_s
         : MIN_READABLE_HYPERFRAMES_CARD_DURATION_S,

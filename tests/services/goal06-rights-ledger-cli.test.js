@@ -36,21 +36,24 @@ test("Goal 06 rights ledger CLI parses package, output and platform arguments", 
 test("Goal 06 rights ledger CLI writes proof reports from a story package manifest", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-cli-"));
   const artifactDir = path.join(root, "package", "story-cli");
+  const assetSha256 = "c".repeat(64);
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: "story-cli",
     selected_title: "Switch 2 Upgrade Path Gets Clearer",
   });
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    schema_version: 2,
     verdict: "pass",
-    assets: [
+    used_assets: [
       {
         asset_id: "story-cli-audio",
         kind: "audio",
         path: "output/audio/story-cli.mp3",
         source_type: "local_tts_voice",
+        asset_sha256: assetSha256,
       },
     ],
-    rights_ledger: [
+    records: [
       {
         asset_id: "story-cli-audio",
         kind: "audio",
@@ -61,6 +64,7 @@ test("Goal 06 rights ledger CLI writes proof reports from a story package manife
         commercial_use_allowed: true,
         risk_score: 0.05,
         evidence_file: "rights/local-tts.json",
+        asset_sha256: assetSha256,
       },
     ],
   });
@@ -76,13 +80,15 @@ test("Goal 06 rights ledger CLI writes proof reports from a story package manife
     "--workspace",
     root,
     "--platforms",
-    "youtube,tiktok,x",
+    "youtube_shorts,tiktok,x",
     "--generated-at",
     "2026-05-25T21:05:00.000Z",
     "--json",
   ]);
 
   assert.equal(report.verdict, "PASS");
+  assert.deepEqual(report.target_platforms, ["youtube", "tiktok", "x"]);
+  assert.equal(report.stories[0].matched_asset_count, 1);
   assert.equal(await fs.pathExists(written.readinessJson), true);
   assert.equal(await fs.pathExists(path.join(outDir, "rights_risk_report.json")), true);
   assert.equal((await fs.readJson(path.join(outDir, "rights_ledger.json"))).ready_story_count, 1);

@@ -97,6 +97,65 @@ test("production cutover preserves confirmed event windows in scheduler bridge c
   assert.deepEqual(candidate.confirmed_event_window, confirmedEventWindow);
 });
 
+test("production cutover withholds a scheduler bridge cohort with saturated canonical spoken CTAs", () => {
+  const canonicalCta = "Follow Pulse Gaming so you never miss a beat.";
+  const inspected = ["fable", "halo", "gears"].map((id) => ({
+    status: "ready_for_dry_run_publish",
+    scheduler_candidate: {
+      id,
+      full_script: `${id} has a distinct player-facing story and payoff. ${canonicalCta}`,
+    },
+  }));
+
+  const bridge = _testables.buildSchedulerBridge(inspected, {
+    generatedAt: "2026-07-14T21:10:00.000Z",
+  });
+
+  assert.equal(bridge.status, "blocked_cta_cohort_saturation");
+  assert.equal(bridge.inspected_candidate_count, 3);
+  assert.equal(bridge.candidate_count, 0);
+  assert.deepEqual(bridge.candidates, []);
+  assert.deepEqual(bridge.blocked_candidate_ids, ["fable", "halo", "gears"]);
+  assert.deepEqual(bridge.cta_uniqueness_gate, {
+    status: "blocked",
+    blocker: "anti_spam:canonical_spoken_cta_cohort_saturation",
+    inspected_candidate_count: 3,
+    canonical_spoken_outro_count: 3,
+    canonical_cadence_allowed: true,
+  });
+});
+
+test("production cutover preserves a scheduler bridge with controlled canonical CTA cadence", () => {
+  const inspected = [
+    {
+      id: "fable",
+      script: "Fable has a distinct payoff. Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      id: "halo",
+      script: "Halo has a distinct payoff. Follow for the next campaign verdict.",
+    },
+    {
+      id: "gears",
+      script: "Gears has a distinct payoff. Save this before the next reveal.",
+    },
+  ].map(({ id, script }) => ({
+    status: "ready_for_dry_run_publish",
+    scheduler_candidate: { id, full_script: script },
+  }));
+
+  const bridge = _testables.buildSchedulerBridge(inspected, {
+    generatedAt: "2026-07-14T21:15:00.000Z",
+  });
+
+  assert.equal(bridge.status, "ready_for_dry_run_preflight");
+  assert.equal(bridge.inspected_candidate_count, 3);
+  assert.equal(bridge.candidate_count, 3);
+  assert.deepEqual(bridge.blocked_candidate_ids, []);
+  assert.equal(bridge.cta_uniqueness_gate.status, "pass");
+  assert.equal(bridge.cta_uniqueness_gate.canonical_spoken_outro_count, 1);
+});
+
 async function makeCutoverPackage(root, id = "story-one", options = {}) {
   const artifactDir = path.join(root, id);
   await fs.ensureDir(artifactDir);
@@ -2167,9 +2226,34 @@ test("production cutover queues RED packages when the only blocker is a missing 
     story_id: "final-render-only-red",
     motion_inventory: { accepted_local_clips: acceptedLocalClips },
   });
+  const finalMaterialisationBlockers = [
+    "render:final_render_audio_missing",
+    "control:review_story_id_missing",
+    "control:review_verdict_not_green",
+  ];
+  const platformManifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const publishVerdictPath = path.join(artifactDir, "publish_verdict.json");
+  const packageSummaryPath = path.join(artifactDir, "goal_package_summary.json");
+  await fs.outputJson(platformManifestPath, {
+    ...await fs.readJson(platformManifestPath),
+    publish_status: "RED",
+    can_auto_publish: false,
+    blockers: finalMaterialisationBlockers,
+  });
+  await fs.outputJson(publishVerdictPath, {
+    ...await fs.readJson(publishVerdictPath),
+    verdict: "RED",
+    can_auto_publish: false,
+    reason_codes: finalMaterialisationBlockers,
+  });
+  await fs.outputJson(packageSummaryPath, {
+    story_id: "final-render-only-red",
+    verdict: "RED",
+    blockers: finalMaterialisationBlockers,
+  });
   Object.assign(storyPackage, {
     verdict: "RED",
-    blockers: ["render:final_publish_render_missing"],
+    blockers: finalMaterialisationBlockers,
   });
 
   const plan = await buildProductionRenderCutoverPlan({
@@ -4401,7 +4485,7 @@ test("production cutover records ElevenLabs narration rights when final audio us
   assert.match(audioRecord.evidence_file, /elevenlabs/i);
 });
 
-test("production cutover refreshes stale RED control-tower verdicts for clean final renders", async () => {
+test("production cutover cannot promote a one-sided RED control verdict", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-stale-verdict-"));
   const ready = await makeCutoverPackage(root, "stale-verdict-story", {
     finalPublishRender: true,
@@ -4425,24 +4509,90 @@ test("production cutover refreshes stale RED control-tower verdicts for clean fi
     description: "Forza Horizon 6 has a Steam attention spike. Source: IGN.",
     source_card_label: "IGN",
   });
-  await fs.outputJson(path.join(artifactDir, "publish_verdict.json"), {
+  const publishVerdictPath = path.join(artifactDir, "publish_verdict.json");
+  const platformManifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(platformManifestPath);
+  const publishVerdict = {
     verdict: "RED",
     can_auto_publish: false,
     reason_codes: ["rights:no_rights_record"],
-  });
+  };
+  await fs.outputJson(publishVerdictPath, publishVerdict);
 
   const plan = await buildProductionRenderCutoverPlan({
     storyPackages: [ready],
     generatedAt: "2026-05-23T07:20:00.000Z",
   });
 
-  const candidate = plan.scheduler_bridge.candidates[0];
-  assert.equal(candidate.publish_verdict.verdict, "GREEN");
-  assert.equal(candidate.publish_verdict.can_auto_publish, true);
-  assert.equal(candidate.platform_publish_manifest.publish_status, "GREEN");
-  assert.deepEqual(candidate.publish_verdict.reason_codes, []);
-  assert.equal((await fs.readJson(path.join(artifactDir, "publish_verdict.json"))).verdict, "GREEN");
-  assert.equal((await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"))).publish_status, "GREEN");
+  assert.equal(plan.summary.ready_final_render_count, 0);
+  assert.equal(plan.summary.blocked_count, 1);
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 0);
+  assert.ok(plan.blocked[0].blockers.includes("authoritative_publish_verdict_red"));
+  assert.deepEqual(await fs.readJson(publishVerdictPath), publishVerdict);
+  assert.deepEqual(await fs.readJson(platformManifestPath), platformManifest);
+});
+
+test("production cutover cannot ignore an authoritative RED package summary", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-red-package-summary-"));
+  const storyPackage = await makeCutoverPackage(root, "red-package-summary-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+  await fs.outputJson(path.join(storyPackage.artifact_dir, "goal_package_summary.json"), {
+    final_verdict: "RED",
+    blockers: ["audio:timestamp_hash_mismatch"],
+  });
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T09:55:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_final_render_count, 0);
+  assert.equal(plan.summary.blocked_count, 1);
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 0);
+  assert.ok(plan.blocked[0].blockers.includes("authoritative_goal_package_summary_red"));
+});
+
+test("production cutover cannot overwrite or promote authoritative RED publish controls", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-cutover-authoritative-red-"));
+  const storyPackage = await makeCutoverPackage(root, "authoritative-red-story", {
+    finalPublishRender: true,
+    renderer: "visual_v4_production",
+    visualTier: "production_v4_motion",
+  });
+  const artifactDir = storyPackage.artifact_dir;
+  const platformManifestPath = path.join(artifactDir, "platform_publish_manifest.json");
+  const publishVerdictPath = path.join(artifactDir, "publish_verdict.json");
+  const platformManifest = {
+    publish_status: "RED",
+    can_auto_publish: false,
+    reason_codes: ["operator_hold"],
+    outputs: { youtube_shorts: { duration_seconds: { min: 35, max: 60 } } },
+  };
+  const publishVerdict = {
+    verdict: "RED",
+    status: "RED",
+    can_auto_publish: false,
+    publish_action: "blocked",
+    reason_codes: ["operator_hold"],
+  };
+  await fs.outputJson(platformManifestPath, platformManifest);
+  await fs.outputJson(publishVerdictPath, publishVerdict);
+
+  const plan = await buildProductionRenderCutoverPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-15T10:00:00.000Z",
+  });
+
+  assert.equal(plan.summary.ready_final_render_count, 0);
+  assert.equal(plan.summary.blocked_count, 1, JSON.stringify(plan, null, 2));
+  assert.equal(plan.summary.scheduler_bridge_candidate_count, 0);
+  assert.ok(plan.blocked[0].blockers.includes("authoritative_platform_publish_manifest_red"));
+  assert.ok(plan.blocked[0].blockers.includes("authoritative_publish_verdict_red"));
+  assert.deepEqual(await fs.readJson(platformManifestPath), platformManifest);
+  assert.deepEqual(await fs.readJson(publishVerdictPath), publishVerdict);
 });
 
 test("production cutover creates missing control-tower verdicts for clean final renders", async () => {

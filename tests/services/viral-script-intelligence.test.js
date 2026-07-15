@@ -241,6 +241,574 @@ test("viral script intelligence rejects abstract title-test narration before TTS
   assert.ok(result.blockers.includes("missing_early_concrete_source_detail"), JSON.stringify(result));
 });
 
+test("viral script intelligence requires monetisation conflicts in the first spoken beat", () => {
+  const script =
+    "Corsair Recut's launch argument is now about whether players can trust the comeback. " +
+    "Arcade Ledger reports criticism of the remake's day-one DLC and microtransactions. " +
+    "The launch includes six paid character packs, which puts optional spending beside the base release from day one. " +
+    "That turns a familiar adventure into an argument about what the standard edition leaves behind. " +
+    "The debate is whether those extras stay optional or make the base game feel deliberately incomplete. " +
+    "If players see the six packs before they see the remake's improvements, nostalgia becomes a pricing fight. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "corsair-recut-delayed-monetisation-conflict",
+      title: "Corsair Recut's Day-One DLC Sparks A Pricing Backlash",
+      source_name: "Arcade Ledger",
+      confirmed_claims: ["Corsair Recut launches with six paid character packs."],
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(
+    result.blockers.includes("monetisation_conflict_missing_from_hook"),
+    JSON.stringify(result, null, 2),
+  );
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+  assert.ok(result.scores.hook_strength < 60, JSON.stringify(result.scores));
+});
+
+test("viral script intelligence does not treat an unrelated hook budget as monetisation evidence", () => {
+  const script =
+    "Starward's $2 million production budget has put its launch under fire. " +
+    "Arcade Ledger confirms the game launches with six paid character packs. " +
+    "Those packs put optional spending beside the base release from day one. " +
+    "The argument is whether buyers receive enough in the standard edition. " +
+    "Players can compare the six packs with what ships in the base game. " +
+    "If the extras dominate launch, Starward turns its comeback into a pricing fight. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "starward-unrelated-budget-hook",
+      title: "Starward's Paid Character Packs Draw Launch Backlash",
+      source_name: "Arcade Ledger",
+      confirmed_claims: [
+        "Starward's production budget is $2 million.",
+        "Starward launches with six paid character packs.",
+      ],
+    },
+    script,
+  });
+
+  assert.ok(
+    result.blockers.includes("monetisation_conflict_missing_from_hook"),
+    JSON.stringify(result, null, 2),
+  );
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+});
+
+test("viral script intelligence requires a supported concrete monetisation consequence", () => {
+  const script =
+    "Harbour Legends launches under fire for day-one DLC and microtransactions. " +
+    "Arcade Ledger reports players are challenging how much content sits outside the standard release. " +
+    "The publisher says the base game is complete, but the sales pitch still creates spending pressure beside launch. " +
+    "That makes the comeback feel less like a clean release and more like a test of what players will tolerate. " +
+    "The argument is whether optional extras can remain optional when they shape the launch conversation. " +
+    "If the standard release cannot stand on its own, Harbour Legends turns nostalgia into a trust problem. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "harbour-legends-missing-monetisation-detail",
+      title: "Harbour Legends' Microtransactions Trigger A Launch Backlash",
+      source_name: "Arcade Ledger",
+      claim_inventory: {
+        confirmed: [
+          "Harbour Legends launches with five paid map packs.",
+          "Buying all five packs costs \u00a337.45.",
+          "A treasure chart pack costs \u00a33.49.",
+        ],
+      },
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(
+    result.blockers.includes("monetisation_conflict_missing_supported_detail"),
+    JSON.stringify(result, null, 2),
+  );
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
+});
+
+test("viral script intelligence product-matches monetisation prices and counts", () => {
+  const story = {
+    id: "starward-context-bound-monetisation-evidence",
+    title: "Starward's DLC Pricing Draws Backlash",
+    source_name: "Arcade Ledger",
+    confirmed_claims: [
+      "Starward's production budget is $2 million.",
+      "Starward launches with six paid character packs.",
+    ],
+  };
+  const cases = [
+    {
+      label: "unrelated budget",
+      detail: "Arcade Ledger reports the production budget reached $2 million.",
+    },
+    {
+      label: "unrelated roster count",
+      detail: "Arcade Ledger reports the launch roster contains six characters.",
+    },
+  ];
+
+  for (const item of cases) {
+    const script =
+      "Starward's paid DLC has turned launch into a pricing fight. " +
+      `${item.detail} ` +
+      "The paid-content argument is about what buyers receive at launch. " +
+      "Players need a concrete charge or pack consequence before that claim becomes useful. " +
+      "The debate is whether the base game is complete or the extras move value outside it. " +
+      "If the evidence stays abstract, the pricing story has no player payoff. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const result = buildViralScriptIntelligence({ story, script });
+
+    assert.ok(
+      result.blockers.includes("monetisation_conflict_missing_supported_detail"),
+      `${item.label}: ${JSON.stringify(result, null, 2)}`,
+    );
+  }
+});
+
+for (const item of [
+  {
+    label: "conflicting pack count",
+    title: "Riftline's Paid Character Packs Draw Backlash",
+    claim: "Riftline launches with six paid character packs.",
+    detail: "Arcade Ledger reports nine paid character packs at launch.",
+  },
+  {
+    label: "conflicting bundle price",
+    title: "Riftline's Skin Bundle Price Draws Backlash",
+    claim: "Riftline's skin bundle costs $2.99.",
+    detail: "Arcade Ledger reports the skin bundle costs $99.99.",
+  },
+]) {
+  test(`viral script intelligence rejects ${item.label}`, () => {
+    const script =
+      "Riftline's paid DLC pricing has put its launch under fire. " +
+      `${item.detail} ` +
+      "That concrete store detail shapes what buyers think the base game includes. " +
+      "The argument is whether the extra belongs beside launch or inside the standard release. " +
+      "Players can judge the price against what ships on day one. " +
+      "If the add-on dominates launch, Riftline turns optional content into a value problem. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const result = buildViralScriptIntelligence({
+      story: {
+        id: `riftline-${item.label.replace(/\s+/g, "-")}`,
+        title: item.title,
+        source_name: "Arcade Ledger",
+        confirmed_claims: [item.claim],
+      },
+      script,
+    });
+
+    assert.ok(
+      result.blockers.includes("monetisation_conflict_missing_supported_detail"),
+      `${item.label}: ${JSON.stringify(result, null, 2)}`,
+    );
+  });
+}
+
+test("viral script intelligence recognises paid products and larger number words", () => {
+  const cases = [
+    {
+      id: "riftline-character-packs",
+      title: "Riftline's Paid Character Packs Draw Complaints",
+      claim: "Riftline launches with six paid character packs.",
+      hook: "Riftline launches with six paid character packs, and players are pushing back.",
+    },
+    {
+      id: "riftline-paid-skins",
+      title: "Riftline's Paid Skins Draw Complaints",
+      claim: "Riftline launches with thirty-two paid skins.",
+      hook: "Riftline launches with thirty-two paid skins, and players are pushing back.",
+    },
+  ];
+
+  for (const item of cases) {
+    const story = {
+      id: item.id,
+      title: item.title,
+      source_name: "Arcade Ledger",
+      confirmed_claims: [item.claim],
+    };
+    const script =
+      `${item.hook} ` +
+      "Arcade Ledger confirms the launch store listing. " +
+      "That makes the pricing fight concrete for buyers deciding what the base game includes. " +
+      "The debate is whether those products belong beside launch or inside the standard release. " +
+      "Players can now judge the complaint against a named store consequence. " +
+      "If the extras dominate launch, Riftline turns optional content into a value problem. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const result = buildViralScriptIntelligence({ story, script });
+
+    assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
+    assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+  }
+
+  const abstractResult = buildViralScriptIntelligence({
+    story: {
+      id: "riftline-paid-skins-abstract-hook",
+      title: "Riftline's Paid Skins Draw Complaints",
+      source_name: "Arcade Ledger",
+      confirmed_claims: ["Riftline launches with thirty-two paid skins."],
+    },
+    script:
+      "Riftline's launch argument is now about trust. " +
+      "Arcade Ledger confirms thirty-two paid skins in the launch store. " +
+      "That puts a concrete product count behind the complaints from buyers. " +
+      "The debate is whether those skins belong beside launch or inside the standard release. " +
+      "Players can judge the store against the base game's value. " +
+      "If the extras dominate launch, Riftline turns optional content into a pricing problem. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.ok(
+    abstractResult.blockers.includes("monetisation_conflict_missing_from_hook"),
+    JSON.stringify(abstractResult, null, 2),
+  );
+  assert.equal(
+    abstractResult.blockers.includes("monetisation_conflict_missing_supported_detail"),
+    false,
+  );
+});
+
+test("viral script intelligence does not classify neutral monetisation explainers as conflicts", () => {
+  const script =
+    "Nova Drift's rotating store is built around optional cosmetic skins. " +
+    "Arcade Ledger explains that the skins do not change combat stats. " +
+    "Players can use that distinction to understand what the store sells and what normal play still unlocks. " +
+    "The useful comparison is cosmetic choice against earned progression. " +
+    "Nothing in the confirmed description turns the explainer into a backlash story. " +
+    "If the store rules change, that would be a separate update with different evidence. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "nova-drift-neutral-monetisation-explainer",
+      title: "How Nova Drift's Microtransactions Work",
+      source_name: "Arcade Ledger",
+      confirmed_claims: [
+        "Nova Drift sells optional cosmetic skins through a rotating store without changing combat stats.",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+});
+
+test("viral script intelligence does not borrow conflict framing from an unrelated claim", () => {
+  const script =
+    "Nova Drift's latest store guide explains its optional cosmetic choices. " +
+    "Arcade Ledger reports that the rotating store sells optional paid skins. " +
+    "The skins do not change combat stats or block normal progression. " +
+    "Players can use that distinction to understand what the store offers. " +
+    "The useful comparison is cosmetic choice against earned rewards. " +
+    "If the store rules change, that would be a separate update with different evidence. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "nova-drift-unrelated-conflict-framing",
+      title: "How Nova Drift's Microtransactions Work",
+      source_name: "Arcade Ledger",
+      confirmed_claims: [
+        "Nova Drift sells optional paid skins through a rotating store.",
+        "The studio fixed a matchmaking problem before launch.",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(
+    result.blockers.includes("monetisation_conflict_missing_from_hook"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+});
+
+test("viral script intelligence rejects unsupported universal claims", () => {
+  const script =
+    "Moonfall's $2.99 skin bundle has put its storefront under fire. " +
+    "Arcade Ledger reports the bundle adds three optional character skins. " +
+    "The publisher calls the purchase optional, but every menu points towards another purchase. " +
+    "That claim goes beyond the confirmed store placement and turns a real price dispute into hyperbole. " +
+    "The argument is whether the bundle belongs beside launch or should have been part of the base game. " +
+    "If buyers reject the bundle, Moonfall turns a small add-on into a larger pricing problem. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "moonfall-overbroad-storefront-claim",
+      title: "Moonfall's Storefront Bundle Draws Monetisation Complaints",
+      source_name: "Arcade Ledger",
+      confirmed_claims: [
+        "Moonfall sells a skin bundle containing three character skins for $2.99.",
+        "Purchase prompts appear in the inventory and character tabs.",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.ok(result.blockers.includes("unsupported_universal_claim"), JSON.stringify(result, null, 2));
+  assert.ok(result.scores.source_safety < 55, JSON.stringify(result.scores));
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+});
+
+test("viral script intelligence preserves materially supported universal claims", () => {
+  const script =
+    "All 12 Iron Circuit launch maps work offline from day one. " +
+    "Arena Wire confirms the launch-map list and offline support. " +
+    "That gives players a concrete fallback when servers or connections fail. " +
+    "The trade-off is whether progression remains useful once a match leaves the network. " +
+    "Players can judge ownership by what still works without a live service. " +
+    "If offline progress survives intact, Iron Circuit turns a server feature into a lasting player win. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "iron-circuit-supported-universal",
+      title: "Iron Circuit Launches With 12 Offline Maps",
+      source_name: "Arena Wire",
+      claim_inventory: {
+        confirmed: ["All 12 launch maps support offline play."],
+      },
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.equal(result.blockers.includes("unsupported_universal_claim"), false);
+
+  const mixedAccessResult = buildViralScriptIntelligence({
+    story: {
+      id: "iron-circuit-supported-mixed-access-universal",
+      title: "Iron Circuit Launches With 12 Offline Maps",
+      source_name: "Arena Wire",
+      confirmed_claims: ["All 12 launch maps support offline and online play."],
+    },
+    script: script.replace(
+      "All 12 Iron Circuit launch maps work offline from day one.",
+      "All 12 Iron Circuit launch maps support offline and online play.",
+    ),
+  });
+
+  assert.equal(
+    mixedAccessResult.blockers.includes("unsupported_universal_claim"),
+    false,
+    JSON.stringify(mixedAccessResult, null, 2),
+  );
+});
+
+test("viral script intelligence requires semantic polarity agreement for universals", () => {
+  const script =
+    "All Iron Circuit modes require an online connection to play. " +
+    "Arena Wire confirms the release has published its access rules. " +
+    "That restriction would decide whether players can keep using the game when servers fail. " +
+    "The trade-off is ownership against live-service control. " +
+    "Players need the access rule stated accurately before deciding what the release means. " +
+    "If online access is mandatory, Iron Circuit becomes a very different ownership argument. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "iron-circuit-opposite-access-polarity",
+      title: "Iron Circuit Publishes Its Offline Access Rules",
+      source_name: "Arena Wire",
+      confirmed_claims: ["All Iron Circuit modes support offline play."],
+    },
+    script,
+  });
+
+  assert.ok(result.blockers.includes("unsupported_universal_claim"), JSON.stringify(result, null, 2));
+
+  const expandedAccessResult = buildViralScriptIntelligence({
+    story: {
+      id: "iron-circuit-expanded-access-polarity",
+      title: "Iron Circuit Publishes Its Offline Access Rules",
+      source_name: "Arena Wire",
+      confirmed_claims: ["All Iron Circuit modes support offline play."],
+    },
+    script: script.replace(
+      "All Iron Circuit modes require an online connection to play.",
+      "All Iron Circuit modes support offline and online play.",
+    ),
+  });
+
+  assert.ok(
+    expandedAccessResult.blockers.includes("unsupported_universal_claim"),
+    JSON.stringify(expandedAccessResult, null, 2),
+  );
+});
+
+for (const item of [
+  {
+    label: "reversed internet requirement",
+    assertion: "All Iron Circuit launch maps require an internet connection.",
+  },
+  {
+    label: "unrelated paid-item predicate",
+    assertion: "All Iron Circuit launch maps include paid items.",
+  },
+]) {
+  test(`viral script intelligence rejects universal support with ${item.label}`, () => {
+    const script =
+      `${item.assertion} ` +
+      "Arena Wire confirms the release has published its access rules. " +
+      "That detail affects what players can use when a connection fails. " +
+      "The trade-off is ownership against live-service control. " +
+      "Players need the access rule stated accurately before deciding what the release means. " +
+      "If offline access survives, Iron Circuit gives buyers a concrete fallback. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const result = buildViralScriptIntelligence({
+      story: {
+        id: `iron-circuit-${item.label.replace(/\s+/g, "-")}`,
+        title: "Iron Circuit Publishes Its Offline Map Rules",
+        source_name: "Arena Wire",
+        confirmed_claims: [
+          "All Iron Circuit launch maps work without an internet connection.",
+        ],
+      },
+      script,
+    });
+
+    assert.ok(
+      result.blockers.includes("unsupported_universal_claim"),
+      `${item.label}: ${JSON.stringify(result, null, 2)}`,
+    );
+  });
+}
+
+test("viral script intelligence does not let trailing modals exempt universal claims", () => {
+  const script =
+    "Every Moonfall menu points towards another purchase, but the backlash could fade after launch. " +
+    "Arcade Ledger reports purchase prompts in the inventory tab. " +
+    "That placement matters because store pressure changes how players read ordinary navigation. " +
+    "The argument is whether one confirmed prompt represents the wider interface. " +
+    "Players need the supported scope before treating the storefront as a game-wide problem. " +
+    "If the prompt stays limited, the launch argument narrows with it. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "moonfall-trailing-modal-universal",
+      title: "Moonfall Updates Its Store Navigation",
+      source_name: "Arcade Ledger",
+      confirmed_claims: ["Purchase prompts appear in Moonfall's inventory tab."],
+    },
+    script,
+  });
+
+  assert.ok(result.blockers.includes("unsupported_universal_claim"), JSON.stringify(result, null, 2));
+
+  const andResult = buildViralScriptIntelligence({
+    story: {
+      id: "moonfall-trailing-and-modal-universal",
+      title: "Moonfall Updates Its Store Navigation",
+      source_name: "Arcade Ledger",
+      confirmed_claims: ["Purchase prompts appear in Moonfall's inventory tab."],
+    },
+    script: script.replace(", but the backlash could", " and the backlash could"),
+  });
+
+  assert.ok(
+    andResult.blockers.includes("unsupported_universal_claim"),
+    JSON.stringify(andResult, null, 2),
+  );
+});
+
+test("viral script intelligence validates a universal before a trailing relative modal", () => {
+  const script =
+    "Every menu points towards another purchase which could frustrate players. " +
+    "Arcade Ledger reports purchase prompts in the inventory tab. " +
+    "That placement matters because store pressure changes how players read ordinary navigation. " +
+    "The argument is whether one confirmed prompt represents the wider interface. " +
+    "Players need the supported scope before treating the storefront as a game-wide problem. " +
+    "If the prompt stays limited, the launch argument narrows with it. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "moonfall-relative-modal-universal",
+      title: "Moonfall Updates Its Store Navigation",
+      source_name: "Arcade Ledger",
+      confirmed_claims: ["Purchase prompts appear in Moonfall's inventory tab."],
+    },
+    script,
+  });
+
+  assert.ok(result.blockers.includes("unsupported_universal_claim"), JSON.stringify(result, null, 2));
+});
+
+test("viral script intelligence excludes anaphoric all-of-that rhetoric from universals", () => {
+  const script =
+    "Nova Drift just moved its progression update into the launch window. " +
+    "Arcade Ledger reports new missions, revised rewards and a later release date. " +
+    "Players now have more content to judge, but less time to see whether the balance holds. " +
+    "All of that puts the launch under pressure. " +
+    "The debate is whether the extra work improves the game enough to justify the wait. " +
+    "If the missions land cleanly, Nova Drift turns a delay into a stronger release. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "nova-drift-anaphoric-all-of-that",
+      title: "Nova Drift Moves Its Progression Update",
+      source_name: "Arcade Ledger",
+      confirmed_claims: [
+        "Nova Drift adds new missions and revised rewards alongside a later release date.",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(
+    result.blockers.includes("unsupported_universal_claim"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+});
+
+for (const item of [
+  { label: "all this", sentence: "All this puts the launch under pressure." },
+  { label: "all that", sentence: "All that puts the launch under pressure." },
+  { label: "all it", sentence: "All it does is put the launch under pressure." },
+]) {
+  test(`viral script intelligence excludes anaphoric ${item.label} rhetoric from universals`, () => {
+    const script =
+      "Nova Drift just moved its progression update into the launch window. " +
+      "Arcade Ledger reports new missions, revised rewards and a later release date. " +
+      "Players now have more content to judge, but less time to see whether the balance holds. " +
+      `${item.sentence} ` +
+      "The debate is whether the extra work improves the game enough to justify the wait. " +
+      "If the missions land cleanly, Nova Drift turns a delay into a stronger release. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const result = buildViralScriptIntelligence({
+      story: {
+        id: `nova-drift-${item.label.replace(/\s+/g, "-")}`,
+        title: "Nova Drift Moves Its Progression Update",
+        source_name: "Arcade Ledger",
+        confirmed_claims: [
+          "Nova Drift adds new missions and revised rewards alongside a later release date.",
+        ],
+      },
+      script,
+    });
+
+    assert.equal(
+      result.blockers.includes("unsupported_universal_claim"),
+      false,
+      `${item.label}: ${JSON.stringify(result, null, 2)}`,
+    );
+  });
+}
+
 test("viral script intelligence approves concrete gameplay-first rewrite", () => {
   const script =
     "Halo's remake has one brutal test: Assault on the Control Room. " +

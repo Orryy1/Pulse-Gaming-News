@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -13,12 +15,103 @@ const {
   writeGoalProductionRenderMaterializationReport,
   _private,
 } = require("../../lib/goal-production-render-materializer");
+const {
+  createTrustedRenderInputInventory,
+  materializeFlagshipMediaEvidence,
+} = require("../../lib/flagship-media-evidence-materializer");
 const { directMotionBaseSourceOveruseEvidence } = require("../../lib/goal-dry-run-publisher");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../../lib/studio/v4/render-policy");
+
+function passingPostRenderForensicInputs(overrides = {}) {
+  const clips = Array.from({ length: 3 }, (_, index) => ({
+    id: `clip-${index + 1}`,
+    path: `clip-${index + 1}.mp4`,
+    source_family: `official-source-${index + 1}`,
+  }));
+  return {
+    storyId: "strict-post-render-forensics",
+    renderManifest: {
+      story_id: "strict-post-render-forensics",
+      final_publish_render: true,
+      creative_system_version: "pulse_visual_identity_v5",
+    },
+    renderReport: {
+      creative_system_version: "pulse_visual_identity_v5",
+      decoded_visual_gate: {
+        status: "pass",
+        decoded_media_evidence: true,
+        frame_count: 3,
+        blockers: [],
+      },
+    },
+    outputPath: "visual_v4_render.mp4",
+    scriptScorecard: { verdict: "viral_ready", blockers: [] },
+    coherenceReport: { result: "pass", blockers: [], failures: [] },
+    rightsLedger: {
+      verdict: "pass",
+      records: clips.map((clip) => ({
+        asset_id: clip.id,
+        path: clip.path,
+        source_url: `https://official.example/${clip.id}`,
+        licence_basis: "official_publisher_editorial_use",
+      })),
+    },
+    directorPlan: {
+      readiness: { status: "pass", blockers: [] },
+      shot_plan: clips,
+      shot_budget: { min_actual_motion_clips: 3, min_distinct_motion_families: 3 },
+    },
+    benchmark: { result: "pass", failures: [], warnings: [] },
+    visualQuality: {
+      result: "pass",
+      failures: [],
+      warnings: [],
+      visual_evidence_profile: {
+        motion_asset_count: 3,
+        real_media_family_count: 3,
+        generated_motion_family_count: 0,
+        blockers: [],
+      },
+    },
+    clips,
+    audioSegmentReport: { verdict: "pass", blockers: [], warnings: [] },
+    voiceQualityReport: { verdict: "pass", blockers: [], warnings: [] },
+    captionManifest: { verdict: "pass", blockers: [] },
+    ...overrides,
+  };
+}
+
+test("post-render forensics fails closed when captions were not checked", () => {
+  const report = _private.buildPostRenderForensicQaReport(
+    passingPostRenderForensicInputs({ captionManifest: {} }),
+  );
+
+  assert.equal(report.result, "fail");
+  assert.equal(report.verdict, "blocked_or_rewrite_required");
+  assert.ok(report.blockers.includes("caption_manifest_not_passed"));
+});
+
+test("post-render forensics rejects a bare passing rights flag", () => {
+  const report = _private.buildPostRenderForensicQaReport(
+    passingPostRenderForensicInputs({ rightsLedger: { verdict: "pass" } }),
+  );
+
+  assert.equal(report.result, "fail");
+  assert.ok(report.blockers.includes("rights_ledger_not_passed"));
+});
+
+test("post-render forensics cannot promote a critical AMBER check", () => {
+  const report = _private.buildPostRenderForensicQaReport(
+    passingPostRenderForensicInputs({ benchmark: { result: "amber" } }),
+  );
+
+  assert.equal(report.result, "fail");
+  assert.ok(report.blockers.includes("benchmark_not_passed"));
+});
 
 test("goal production render materializer preserves YouTube video IDs in source keys", () => {
   assert.equal(
@@ -964,6 +1057,616 @@ test("goal production render materializer renders ready jobs and writes a final 
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
 });
 
+test("production renderer writes hash-bound same-run flagship generation evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-evidence-"));
+  const artifactDir = await makePackage(root, "flagship-evidence-story", {
+    narration_script: "Lego Batman has more Arkham DNA than it first looks.",
+  });
+  const job = readyJob("flagship-evidence-story", artifactDir, {
+    evidence: {
+      ...readyJob("flagship-evidence-story", artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    "1\n00:00:00,000 --> 00:00:01,000\nLego Batman has more Arkham DNA than it first looks.\n",
+  );
+  const timestampWords = "Lego Batman has more Arkham DNA than it first looks."
+    .split(/\s+/)
+    .map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    }));
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), { words: timestampWords });
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    verdict: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:00:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 9));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  const evidenceDir = path.join(artifactDir, "flagship");
+  const generation = await fs.readJson(path.join(evidenceDir, "generation_manifest.json"));
+  const script = await fs.readFile(path.join(evidenceDir, "final_script.txt"));
+  const timestamps = await fs.readJson(path.join(evidenceDir, "word_timestamps.json"));
+  const captions = await fs.readFile(path.join(evidenceDir, "captions.srt"));
+  const video = await fs.readFile(path.join(artifactDir, "visual_v4_render.mp4"));
+  const audio = await fs.readFile(path.join(artifactDir, "audio.mp3"));
+  const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
+
+  assert.equal(generation.complete, true, JSON.stringify(generation.blockers, null, 2));
+  assert.equal(generation.producer_id, "pulse-gaming-flagship-renderer");
+  assert.equal(generation.run_id, "production-render:flagship-evidence-story:2026-07-15T08:00:00.000Z");
+  assert.equal(generation.script_sha256, sha256(script));
+  assert.equal(generation.artifacts.final_video.sha256, sha256(video));
+  assert.equal(generation.artifacts.final_audio.sha256, sha256(audio));
+  assert.equal(generation.artifacts.word_timestamps.sha256, sha256(Buffer.from(JSON.stringify(timestamps, null, 2) + "\n")));
+  assert.equal(generation.artifacts.captions.sha256, sha256(captions));
+  assert.equal(timestamps.complete, true);
+  assert.equal(timestamps.audio_sha256, sha256(audio));
+  assert.equal(timestamps.script_sha256, sha256(script));
+  assert.equal(timestamps.captions_sha256, sha256(captions));
+
+  const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(renderManifest.flagship_generation_evidence.complete, true);
+  assert.equal(
+    renderManifest.flagship_generation_evidence.manifest_path,
+    path.join(evidenceDir, "generation_manifest.json"),
+  );
+});
+
+test("production renderer freezes validated external audio and timestamps into flagship evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-freeze-"));
+  const artifactDir = await makePackage(root, "flagship-freeze-story", {
+    narration_script: "Lego Batman has more Arkham DNA than it first looks.",
+  });
+  const sourceDir = path.join(root, "governed-source-inputs");
+  const sourceAudioPath = path.join(sourceDir, "narration.mp3");
+  const sourceTimestampsPath = path.join(sourceDir, "word_timestamps.json");
+  const script = "Lego Batman has more Arkham DNA than it first looks.";
+  await fs.outputFile(sourceAudioPath, Buffer.alloc(4096, 17));
+  await fs.outputJson(sourceTimestampsPath, {
+    words: script.split(/\s+/).map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    verdict: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  const baseJob = readyJob("flagship-freeze-story", artifactDir);
+  const job = readyJob("flagship-freeze-story", artifactDir, {
+    evidence: {
+      ...baseJob.evidence,
+      narration_audio_path: sourceAudioPath,
+      word_timestamps_path: sourceTimestampsPath,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:02:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 18));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  const evidenceDir = path.join(artifactDir, "flagship");
+  const generation = await fs.readJson(path.join(evidenceDir, "generation_manifest.json"));
+  const frozenAudioPath = path.join(artifactDir, generation.artifacts.final_audio.path);
+  const frozenTimestampsPath = path.join(artifactDir, generation.artifacts.word_timestamps.path);
+  assert.equal(generation.complete, true, JSON.stringify(generation.blockers, null, 2));
+  assert.equal(path.resolve(frozenAudioPath).startsWith(path.resolve(evidenceDir)), true);
+  assert.equal(path.resolve(frozenTimestampsPath).startsWith(path.resolve(evidenceDir)), true);
+  assert.deepEqual(await fs.readFile(frozenAudioPath), await fs.readFile(sourceAudioPath));
+  assert.equal(
+    generation.artifacts.final_audio.sha256,
+    crypto.createHash("sha256").update(await fs.readFile(sourceAudioPath)).digest("hex"),
+  );
+  const frozenTimestamps = await fs.readJson(frozenTimestampsPath);
+  assert.equal(frozenTimestamps.flagship_generation_run_id, generation.run_id);
+  assert.equal(frozenTimestamps.audio_sha256, generation.artifacts.final_audio.sha256);
+});
+
+test("production renderer refuses flagship generation evidence when timestamps do not match narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-timestamp-mismatch-"));
+  const artifactDir = await makePackage(root, "flagship-timestamp-mismatch", {
+    narration_script: "Lego Batman has more Arkham DNA than it first looks.",
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    "1\n00:00:00,000 --> 00:00:01,000\nLego Batman has more Arkham DNA than it first looks.\n",
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  const job = readyJob("flagship-timestamp-mismatch", artifactDir, {
+    evidence: {
+      ...readyJob("flagship-timestamp-mismatch", artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:05:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 10));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const generation = await fs.readJson(
+    path.join(artifactDir, "flagship", "generation_manifest.json"),
+  );
+  assert.equal(generation.complete, false);
+  assert.equal(generation.verdict, "RED");
+  assert.ok(generation.blockers.includes("word_timestamps_do_not_match_final_script"));
+  const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(renderManifest.flagship_generation_evidence.complete, false);
+});
+
+test("production renderer refuses flagship generation evidence when captions do not match narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-caption-mismatch-"));
+  const script = "Lego Batman has more Arkham DNA than it first looks.";
+  const artifactDir = await makePackage(root, "flagship-caption-mismatch", {
+    narration_script: script,
+  });
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    words: script.split(/\s+/).map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    "1\n00:00:00,000 --> 00:00:01,000\nCompletely unrelated caption text.\n",
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  const job = readyJob("flagship-caption-mismatch", artifactDir, {
+    evidence: {
+      ...readyJob("flagship-caption-mismatch", artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:10:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 11));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const generation = await fs.readJson(
+    path.join(artifactDir, "flagship", "generation_manifest.json"),
+  );
+  assert.equal(generation.complete, false);
+  assert.equal(generation.verdict, "RED");
+  assert.ok(generation.blockers.includes("captions_do_not_match_final_script"));
+});
+
+test("production renderer writes an immutable used-asset inventory with file-backed rights evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-rights-"));
+  const storyId = "flagship-rights-story";
+  const script = "Lego Batman has more Arkham DNA than it first looks.";
+  const artifactDir = await makePackage(root, storyId, { narration_script: script });
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    words: script.split(/\s+/).map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  const rightsRows = [
+    {
+      asset_id: "clip-one",
+      kind: "video",
+      path: path.join(artifactDir, "clip-1.mp4"),
+      source_url: "https://official.example/trailer-one",
+      creator: "Official Publisher",
+      licence_basis: "transformative_editorial_short_form",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      risk_score: 0.2,
+      credit_required: false,
+    },
+    {
+      asset_id: "clip-two",
+      kind: "video",
+      path: path.join(artifactDir, "clip-2.mp4"),
+      source_url: "https://official.example/trailer-two",
+      creator: "Official Publisher",
+      licence_basis: "transformative_editorial_short_form",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      risk_score: 0.2,
+      credit_required: false,
+    },
+    {
+      asset_id: "narration",
+      kind: "narration",
+      path: path.join(artifactDir, "audio.mp3"),
+      source_url: "elevenlabs://pulse-gaming/flagship-rights-story",
+      creator: "Pulse Gaming via ElevenLabs",
+      licence_basis: "elevenlabs_commercial_tts_generation",
+      commercial_use_allowed: true,
+      approval_status: "approved",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      risk_score: 0.05,
+      credit_required: false,
+    },
+  ];
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    used_assets: rightsRows.map(({ asset_id, kind, path: filePath, source_url }) => ({
+      asset_id,
+      kind,
+      path: filePath,
+      source_url,
+    })),
+    records: rightsRows,
+    blockers: [],
+  });
+  const job = readyJob(storyId, artifactDir, {
+    evidence: {
+      ...readyJob(storyId, artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:15:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  const inventoryPath = path.join(artifactDir, "flagship", "inventory.json");
+  const inventory = await fs.readJson(inventoryPath);
+  assert.equal(inventory.complete, true, JSON.stringify(inventory.blockers, null, 2));
+  assert.equal(inventory.story_id, storyId);
+  assert.equal(inventory.generation_manifest.path, "flagship/generation_manifest.json");
+  assert.equal(inventory.used_assets.length, 3);
+  for (const asset of inventory.used_assets) {
+    const copiedAssetPath = path.join(artifactDir, asset.path);
+    const rightsEvidencePath = path.join(artifactDir, asset.evidence_file);
+    assert.equal(await fs.pathExists(copiedAssetPath), true);
+    assert.equal(await fs.pathExists(rightsEvidencePath), true);
+    const assetBytes = await fs.readFile(copiedAssetPath);
+    const evidence = await fs.readJson(rightsEvidencePath);
+    const digest = crypto.createHash("sha256").update(assetBytes).digest("hex");
+    assert.equal(evidence.asset_id, asset.asset_id);
+    assert.equal(evidence.asset_sha256, digest);
+    assert.equal(evidence.rights_verdict, "GREEN");
+    assert.equal(evidence.commercial_use_allowed, true);
+    assert.deepEqual(evidence.allowed_platforms, asset.allowed_platforms);
+    assert.match(evidence.source_ledger_sha256, /^[a-f0-9]{64}$/);
+  }
+});
+
+test("production renderer fails flagship rights closed across duplicate asset aliases", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-rights-alias-"));
+  const storyId = "flagship-rights-alias";
+  const script = "Lego Batman has more Arkham DNA than it first looks.";
+  const artifactDir = await makePackage(root, storyId, { narration_script: script });
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    words: script.split(/\s+/).map((word, index) => ({
+      word,
+      start: Number((index * 0.1).toFixed(2)),
+      end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  const sourcePath = path.join(artifactDir, "clip-1.mp4");
+  const sourceUrl = "https://official.example/trailer-one";
+  const approved = {
+    asset_id: "clip-one",
+    kind: "video",
+    path: sourcePath,
+    source_url: sourceUrl,
+    creator: "Official Publisher",
+    licence_basis: "transformative_editorial_short_form",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    risk_score: 0.2,
+    credit_required: false,
+  };
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    used_assets: [{
+      asset_id: approved.asset_id,
+      kind: approved.kind,
+      path: sourcePath,
+      source_url: sourceUrl,
+    }],
+    records: [approved],
+    matched_assets: [{
+      ...approved,
+      asset_id: "clip-one-rejected-alias",
+      approval_status: "rejected",
+    }],
+    blockers: [],
+  });
+  const job = readyJob(storyId, artifactDir, {
+    evidence: {
+      ...readyJob(storyId, artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:20:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 13));
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const inventory = await fs.readJson(path.join(artifactDir, "flagship", "inventory.json"));
+  assert.equal(inventory.complete, false);
+  assert.equal(inventory.verdict, "RED");
+  assert.ok(inventory.blockers.includes("used_asset_rights_rejected:clip-one"));
+  assert.equal(inventory.used_assets.length, 0);
+});
+
+test("production renderer emits a real decodable package accepted by flagship evidence verification", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-integration-"));
+  const storyId = "flagship-render-integration";
+  const script = "Pulse Gaming proves the renderer evidence path.";
+  const artifactDir = await makePackage(root, storyId, { narration_script: script });
+  const runFfmpeg = (args) => execFileSync(
+    "ffmpeg",
+    ["-hide_banner", "-loglevel", "error", "-y", ...args],
+    { stdio: "ignore", windowsHide: true },
+  );
+  runFfmpeg([
+    "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=1",
+    "-c:a", "libmp3lame", "-ar", "48000", "-ac", "1",
+    path.join(artifactDir, "audio.mp3"),
+  ]);
+  for (const [fileName, colour] of [["clip-1.mp4", "red"], ["clip-2.mp4", "blue"]]) {
+    runFfmpeg([
+      "-f", "lavfi", "-i", `color=c=${colour}:s=320x180:r=5:d=0.4`,
+      "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+      "-an", "-movflags", "+faststart", path.join(artifactDir, fileName),
+    ]);
+  }
+  const words = script.split(/\s+/).map((word, index) => ({
+    word,
+    start: Number((index * 0.12).toFixed(2)),
+    end: Number(((index + 1) * 0.12).toFixed(2)),
+  }));
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), { words });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  const rightsRows = [
+    ["clip-one", "video", "clip-1.mp4", "https://official.example/trailer-one", "Official Publisher", 0.2],
+    ["clip-two", "video", "clip-2.mp4", "https://official.example/trailer-two", "Official Publisher", 0.2],
+    ["narration", "narration", "audio.mp3", `pulse-generated://${storyId}/narration`, "Pulse Gaming renderer", 0.05],
+  ].map(([assetId, kind, relativePath, sourceUrl, creator, riskScore]) => ({
+    asset_id: assetId,
+    kind,
+    path: path.join(artifactDir, relativePath),
+    source_url: sourceUrl,
+    creator,
+    licence_basis: kind === "narration"
+      ? "owned generated narration"
+      : "transformative editorial use of official publisher media",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    risk_score: riskScore,
+    credit_required: false,
+  }));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    used_assets: rightsRows.map(({ asset_id, kind, path: filePath, source_url }) => ({
+      asset_id,
+      kind,
+      path: filePath,
+      source_url,
+    })),
+    records: rightsRows,
+    blockers: [],
+  });
+  const job = readyJob(storyId, artifactDir, {
+    evidence: {
+      ...readyJob(storyId, artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const renderReport = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:25:00.000Z",
+    renderProof: async ({ output }) => {
+      runFfmpeg([
+        "-f", "lavfi", "-i", "color=c=0x121820:s=1080x1920:r=5:d=1",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest",
+        "-movflags", "+faststart", output,
+      ]);
+      return {
+        clips: 2,
+        rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(renderReport.summary.rendered_count, 1, JSON.stringify(renderReport.jobs, null, 2));
+  const inventory = await fs.readJson(path.join(artifactDir, "flagship", "inventory.json"));
+  assert.equal(inventory.complete, true, JSON.stringify(inventory.blockers, null, 2));
+  const trustedRenderInputs = await createTrustedRenderInputInventory({
+    packageDir: artifactDir,
+    inventory,
+  });
+  const evidence = await materializeFlagshipMediaEvidence({
+    packageDir: artifactDir,
+    inventory,
+    outputDir: path.join(root, "flagship-proof"),
+    generatedAt: "2026-07-15T08:26:00.000Z",
+    trustedRenderInputs,
+  });
+
+  assert.equal(evidence.complete, true, JSON.stringify(evidence.blockers, null, 2));
+  assert.equal(evidence.verdict, "GREEN");
+  const finalVideo = evidence.final_outputs.final_video;
+  const videoStream = finalVideo.technical_metadata.streams.find((stream) => stream.codec_type === "video");
+  const audioStream = finalVideo.technical_metadata.streams.find((stream) => stream.codec_type === "audio");
+  assert.equal(finalVideo.media_readable, true);
+  assert.equal(finalVideo.decode_verified, true);
+  assert.equal(videoStream.width, 1080);
+  assert.equal(videoStream.height, 1920);
+  assert.equal(videoStream.codec_name, "h264");
+  assert.equal(audioStream.codec_name, "aac");
+  assert.equal(audioStream.sample_rate, 48000);
+  assert.equal(evidence.used_assets.length, 3);
+  assert.ok(evidence.used_assets.every((asset) => asset.verified));
+});
+
 test("goal production render materializer passes repaired first-frame cover text to renderer", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-repaired-cover-"));
   const artifactDir = await makePackage(root, "fatal-fury-cover-render", {
@@ -1528,6 +2231,62 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.equal(manifest.hyperframes_card_count, 3);
   assert.equal(manifest.premium_shell_verdict, "pass");
   assert.equal(manifest.premium_shell_pass_count, 5);
+});
+
+test("goal production render materializer prefers the nearest complete sandbox card set", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-nearest-"));
+  const sandboxRoot = path.join(root, "output", "blackflag-sandbox");
+  const storyId = "story-hf-nearest-sandbox";
+  const artifactDir = await makePackage(sandboxRoot, storyId);
+  const kinds = ["source", "context", "timeline", "quote", "takeaway"];
+  await Promise.all(kinds.flatMap((kind) => [
+    writePassingHyperframesCard(root, storyId, kind, {
+      readableText: `STALE WORKSPACE ${kind} CARD`,
+    }),
+    writePassingHyperframesCard(sandboxRoot, storyId, kind, {
+      readableText: `FRESH SANDBOX ${kind} CARD`,
+    }),
+  ]));
+  const job = readyJob(storyId, artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-nearest-sandbox-motion");
+  job.actions[0].target_render_manifest = {
+    ...job.actions[0].target_render_manifest,
+    hyperframes_premium_shell_required: true,
+    hyperframes_premium_shell_required_pass_count: 4,
+  };
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:04:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 19));
+      return {
+        story_id: storyId,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        hyperframes_premium_shell_required: renderStory.hyperframes_premium_shell_required,
+        hyperframes_card_count: renderStory.hyperframes_card_count,
+        hyperframes_premium_shell_gate: renderStory.hyperframes_premium_shell_gate,
+        premium_shell_verdict: renderStory.premium_shell_verdict,
+        premium_shell_pass_count: renderStory.premium_shell_pass_count,
+        premium_shell_required_pass_count: renderStory.premium_shell_required_pass_count,
+        premium_shell_blockers: renderStory.premium_shell_blockers,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  const shellClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+  assert.equal(shellClips.length > 0, true);
+  assert.equal(shellClips.every((clip) => path.resolve(clip.path).startsWith(path.resolve(sandboxRoot))), true);
+  assert.equal(shellClips.every((clip) => /FRESH SANDBOX/.test(clip.readable_text)), true);
 });
 
 test("goal production render materializer preserves readable HyperFrames card dwell from shell sidecars", async () => {
@@ -3274,6 +4033,24 @@ test("goal production render materializer refreshes stale quality reports withou
     source_plan: {
       selected_assets: licensedSfxAssets(),
     },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_segment_loudness_report.json"), {
+    verdict: "pass",
+    blockers: [],
+    warnings: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "pass",
+    blockers: [],
+    warnings: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    verdict: "pass",
+    blockers: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    blockers: [],
   });
   await fs.outputJson(path.join(artifactDir, "benchmark_report.json"), {
     result: "fail",

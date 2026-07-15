@@ -81,6 +81,7 @@ const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
 const DEFAULT_LIMIT = 12;
 const DEFAULT_SCRIPT_SCORE_THRESHOLD = 75;
 const DEFAULT_SOURCE_AGE_POLICY_HOURS = 168;
+const DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS = 24;
 const DEFAULT_ENABLED_SCHEDULER_GOVERNANCE_PLATFORMS = ["youtube", "instagram", "facebook"];
 const DEFAULT_PUBLISH_PLATFORM_MAX_SECONDS = {
   youtube_shorts: 60,
@@ -598,6 +599,16 @@ function applyPublishedPlatformEvidence(stories = [], evidence = null) {
       }
       if (platform === "facebook_reels" && !realPlatformId(story.facebook_post_id)) {
         story.facebook_post_id = `SOURCE_URL_ALREADY_PUBLISHED_${story.id || "story"}`;
+      }
+      if (platform === "tiktok" && !realPlatformId(story.tiktok_post_id)) {
+        story.tiktok_post_id = `SOURCE_URL_ALREADY_PUBLISHED_${story.id || "story"}`;
+      }
+      if (
+        platform === "x" &&
+        !realPlatformId(story.x_post_id) &&
+        !realPlatformId(story.twitter_post_id)
+      ) {
+        story.x_post_id = `SOURCE_URL_ALREADY_PUBLISHED_${story.id || "story"}`;
       }
     }
   }
@@ -6609,6 +6620,13 @@ function formatNextPublishCandidatesMarkdown(report = {}) {
   lines.push("- no OAuth");
   lines.push("- no token printing");
   lines.push("- no DB mutation");
+  if (report.safety?.mode === "file_only") {
+    lines.push("- no dotenv load");
+    lines.push("- no DB load, read or open");
+    lines.push("- no publish attempt");
+    lines.push("- no OAuth or token access");
+    lines.push("- no network write");
+  }
   lines.push("");
   const totals = report.totals || {};
   lines.push("## Totals");
@@ -6716,6 +6734,9 @@ function parseArgs(argv) {
     upstreamBenchmarkReportPathExplicit: false,
     upstreamAntiSpamReportPath: DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
     allowLiveFallback: false,
+    fileOnly: false,
+    publicationEvidencePath: null,
+    publicationEvidenceMaxAgeHours: DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -6734,6 +6755,27 @@ function parseArgs(argv) {
       args.bridgeCandidatesPath = null;
     }
     else if (arg === "--allow-live-fallback") args.allowLiveFallback = true;
+    else if (arg === "--file-only") args.fileOnly = true;
+    else if (arg === "--publication-evidence" || arg === "--published-platform-evidence") {
+      args.publicationEvidencePath = argv[++i] || null;
+    }
+    else if (arg.startsWith("--publication-evidence=")) {
+      args.publicationEvidencePath = arg.slice("--publication-evidence=".length) || null;
+    }
+    else if (arg.startsWith("--published-platform-evidence=")) {
+      args.publicationEvidencePath = arg.slice("--published-platform-evidence=".length) || null;
+    }
+    else if (arg === "--publication-evidence-max-age-hours") {
+      args.publicationEvidenceMaxAgeHours = Number(
+        argv[++i] || DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS,
+      );
+    }
+    else if (arg.startsWith("--publication-evidence-max-age-hours=")) {
+      args.publicationEvidenceMaxAgeHours = Number(
+        arg.slice("--publication-evidence-max-age-hours=".length) ||
+          DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS,
+      );
+    }
     else if (arg === "--bridge-candidates" || arg === "--bridge") {
       args.bridgeCandidatesPath = argv[++i] || null;
     }
@@ -6832,6 +6874,198 @@ async function readOptionalJson(pathname) {
   return null;
 }
 
+function validatePublicationEvidenceFreshness(
+  snapshot,
+  {
+    maxAgeHours = DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS,
+    nowMs = Date.now(),
+  } = {},
+) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    throw new Error("publication_evidence_snapshot_malformed:object_required");
+  }
+  if (snapshot.schema_version == null || String(snapshot.schema_version).trim() === "") {
+    throw new Error("publication_evidence_snapshot_malformed:schema_version_required");
+  }
+  if (Number(snapshot.schema_version) !== 1) {
+    throw new Error(
+      `publication_evidence_snapshot_schema_unsupported:${String(snapshot.schema_version).trim()}`,
+    );
+  }
+  const generatedAt = String(
+    snapshot.generated_at || snapshot.generatedAt || snapshot.snapshot_at || snapshot.captured_at || "",
+  ).trim();
+  const generatedAtMs = Date.parse(generatedAt);
+  if (!generatedAt || !Number.isFinite(generatedAtMs)) {
+    throw new Error("publication_evidence_snapshot_malformed:generated_at_required");
+  }
+  const maxAge = Number(maxAgeHours);
+  if (!Number.isFinite(maxAge) || maxAge <= 0) {
+    throw new Error("publication_evidence_snapshot_malformed:max_age_hours_invalid");
+  }
+  const ageHours = (Number(nowMs) - generatedAtMs) / (60 * 60 * 1000);
+  if (ageHours < -(5 / 60)) {
+    throw new Error("publication_evidence_snapshot_malformed:generated_at_in_future");
+  }
+  if (ageHours > maxAge) {
+    throw new Error(
+      `publication_evidence_snapshot_stale:age_hours=${ageHours.toFixed(3)}:max_age_hours=${maxAge}`,
+    );
+  }
+  return {
+    generated_at: generatedAt,
+    age_hours: Math.max(0, ageHours),
+    max_age_hours: maxAge,
+  };
+}
+
+function publicationEvidenceCoverage(snapshot = {}) {
+  const scopes = [snapshot.scope, snapshot.coverage, snapshot.snapshot_scope]
+    .filter((value) => value && typeof value === "object" && !Array.isArray(value));
+  const storyIds = [
+    snapshot.story_ids,
+    snapshot.candidate_story_ids,
+    snapshot.covered_story_ids,
+    ...scopes.flatMap((scope) => [
+      scope.story_ids,
+      scope.candidate_story_ids,
+      scope.covered_story_ids,
+    ]),
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : []))
+    .map((value) => String(value || "").trim())
+    .filter((value, index, values) => value && values.indexOf(value) === index);
+  const platforms = uniqueCleanPlatformNames(
+    [
+      snapshot.covered_platforms,
+      snapshot.checked_platforms,
+      ...scopes.flatMap((scope) => [
+        scope.platforms,
+        scope.covered_platforms,
+        scope.checked_platforms,
+      ]),
+    ].flatMap((value) => (Array.isArray(value) ? value : [])),
+  );
+  if (!storyIds.length || !platforms.length) {
+    const missing = [
+      ...(!storyIds.length ? ["story_ids"] : []),
+      ...(!platforms.length ? ["platforms"] : []),
+    ];
+    throw new Error(`publication_evidence_snapshot_identity_missing:${missing.join(",")}`);
+  }
+  return {
+    story_ids: storyIds,
+    platforms,
+  };
+}
+
+function validatePublicationEvidenceRecordIdentity(snapshot = {}) {
+  const storySections = [snapshot.by_story_id, snapshot.byStoryId, snapshot.stories];
+  const sourceHashSections = [
+    snapshot.by_source_url_hash,
+    snapshot.bySourceUrlHash,
+    snapshot.source_url_hashes,
+  ];
+  if (storySections.every((section) => section == null)) {
+    throw new Error("publication_evidence_snapshot_malformed:by_story_id_required");
+  }
+  if (sourceHashSections.every((section) => section == null)) {
+    throw new Error("publication_evidence_snapshot_malformed:by_source_url_hash_required");
+  }
+  const sections = [
+    ["by_story_id", snapshot.by_story_id],
+    ["by_story_id", snapshot.byStoryId],
+    ["by_story_id", snapshot.stories],
+    ["by_source_url_hash", snapshot.by_source_url_hash],
+    ["by_source_url_hash", snapshot.bySourceUrlHash],
+    ["by_source_url_hash", snapshot.source_url_hashes],
+  ];
+  let recordCount = 0;
+  for (const [sectionName, section] of sections) {
+    if (section == null) continue;
+    if (typeof section !== "object" || Array.isArray(section)) {
+      throw new Error(`publication_evidence_snapshot_malformed:${sectionName}_object_required`);
+    }
+    for (const [identity, entry] of Object.entries(section)) {
+      if (!String(identity || "").trim()) {
+        throw new Error(
+          `publication_evidence_snapshot_record_identity_missing:story:${sectionName}`,
+        );
+      }
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error(
+          `publication_evidence_snapshot_malformed:${sectionName}:${identity}:object_required`,
+        );
+      }
+      const entryStoryId = String(entry.story_id || entry.id || "").trim();
+      if (sectionName === "by_story_id" && entryStoryId && entryStoryId !== identity) {
+        throw new Error(
+          `publication_evidence_snapshot_record_identity_mismatch:story:${sectionName}:${identity}`,
+        );
+      }
+      const declaredPlatforms = [
+        ...(Array.isArray(entry.already_published_platforms)
+          ? entry.already_published_platforms
+          : []),
+        ...(Array.isArray(entry.published_platforms) ? entry.published_platforms : []),
+        ...(Array.isArray(entry.platforms) ? entry.platforms : []),
+      ];
+      for (const platform of declaredPlatforms) {
+        if (!cleanPlatformName(platform)) {
+          throw new Error(
+            `publication_evidence_snapshot_record_identity_missing:platform:${sectionName}:${identity}`,
+          );
+        }
+      }
+      if (entry.rows != null && !Array.isArray(entry.rows)) {
+        throw new Error(
+          `publication_evidence_snapshot_malformed:${sectionName}:${identity}:rows_array_required`,
+        );
+      }
+      for (const [index, row] of (entry.rows || []).entries()) {
+        if (!row || typeof row !== "object" || Array.isArray(row)) {
+          throw new Error(
+            `publication_evidence_snapshot_malformed:${sectionName}:${identity}:${index}:object_required`,
+          );
+        }
+        if (!cleanPlatformName(row.platform)) {
+          throw new Error(
+            `publication_evidence_snapshot_record_identity_missing:platform:${sectionName}:${identity}:${index}`,
+          );
+        }
+        const rowStoryId = String(row.story_id || row.id || "").trim();
+        if (sectionName === "by_story_id" && rowStoryId && rowStoryId !== identity) {
+          throw new Error(
+            `publication_evidence_snapshot_record_identity_mismatch:story:${sectionName}:${identity}:${index}`,
+          );
+        }
+        recordCount += 1;
+      }
+    }
+  }
+  return { record_count: recordCount };
+}
+
+async function readRequiredPublicationEvidenceSnapshot(pathname, options = {}) {
+  const resolved = path.resolve(pathname);
+  if (!(await fs.pathExists(resolved))) {
+    throw new Error(`publication_evidence_snapshot_missing:${resolved}`);
+  }
+  try {
+    const snapshot = await fs.readJson(resolved);
+    return {
+      path: resolved,
+      snapshot,
+      freshness: validatePublicationEvidenceFreshness(snapshot, options),
+      coverage: publicationEvidenceCoverage(snapshot),
+      records: validatePublicationEvidenceRecordIdentity(snapshot),
+    };
+  } catch (err) {
+    if (/^publication_evidence_snapshot_/.test(String(err?.message || ""))) throw err;
+    throw new Error(`publication_evidence_snapshot_malformed:${resolved}`);
+  }
+}
+
 async function readBridgeCandidates(pathname) {
   return (await readBridgeCandidateManifest(pathname)).candidates;
 }
@@ -6860,6 +7094,7 @@ async function readBridgeCandidateManifest(pathname) {
       };
     }
     const value = await fs.readJson(resolved);
+    const shapeValid = Array.isArray(value) || Array.isArray(value?.candidates);
     const candidates = Array.isArray(value)
       ? value
       : Array.isArray(value?.candidates)
@@ -6872,6 +7107,7 @@ async function readBridgeCandidateManifest(pathname) {
       exists: true,
       path: resolved,
       status: "loaded",
+      shape_valid: shapeValid,
       candidate_count: candidates.length,
     };
   } catch {
@@ -6896,10 +7132,22 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--out-dir DIR] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--direct-video-work-order PATH|--no-direct-video-work-order] [--source-family-acquisition PATH|--no-source-family-acquisition] [--allow-live-fallback]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--out-dir DIR] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--direct-video-work-order PATH|--no-direct-video-work-order] [--source-family-acquisition PATH|--no-source-family-acquisition] [--allow-live-fallback] [--file-only --publication-evidence PATH [--publication-evidence-max-age-hours N]]\n",
     );
     return { exitCode: 0 };
   }
+  if (args.fileOnly && !args.publicationEvidencePath) {
+    throw new Error("file_only_publication_evidence_required");
+  }
+  if (args.fileOnly && args.allowLiveFallback) {
+    throw new Error("file_only_live_fallback_forbidden");
+  }
+
+  const publicationEvidence = args.fileOnly
+    ? await readRequiredPublicationEvidenceSnapshot(args.publicationEvidencePath, {
+        maxAgeHours: args.publicationEvidenceMaxAgeHours,
+      })
+    : null;
 
   const upstreamBenchmarkReportPath = await resolveUpstreamBenchmarkReportPath(args);
   const [
@@ -6911,7 +7159,7 @@ async function runCli(argv = process.argv) {
     upstreamBenchmarkReport,
     upstreamAntiSpamReport,
   ] = await Promise.all([
-    loadStories(),
+    args.fileOnly ? Promise.resolve([]) : loadStories(),
     readAnalytics(args.analyticsPath),
     readBridgeCandidateManifest(args.bridgeCandidatesPath),
     readOptionalJson(args.directVideoEnrichmentWorkOrderPath),
@@ -6919,6 +7167,41 @@ async function runCli(argv = process.argv) {
     readOptionalJson(upstreamBenchmarkReportPath),
     readOptionalJson(args.upstreamAntiSpamReportPath),
   ]);
+  if (args.fileOnly) {
+    if (bridgeManifest.disabled || !bridgeManifest.requested) {
+      throw new Error("file_only_bridge_snapshot_required");
+    }
+    if (!bridgeManifest.exists || bridgeManifest.status === "missing") {
+      throw new Error(`file_only_bridge_snapshot_missing:${bridgeManifest.path || "unknown"}`);
+    }
+    if (bridgeManifest.status !== "loaded" || bridgeManifest.shape_valid !== true) {
+      throw new Error(`file_only_bridge_snapshot_malformed:${bridgeManifest.path || "unknown"}`);
+    }
+    const missingBridgeStoryIdentityIndex = bridgeManifest.candidates
+      .findIndex((candidate) => !bridgeCandidateId(candidate));
+    if (missingBridgeStoryIdentityIndex >= 0) {
+      throw new Error(
+        `file_only_bridge_story_identity_missing:index=${missingBridgeStoryIdentityIndex}`,
+      );
+    }
+    const coveredStoryIds = new Set(publicationEvidence.coverage.story_ids);
+    const missingStoryIds = bridgeManifest.candidates
+      .map(bridgeCandidateId)
+      .filter((storyId) => storyId && !coveredStoryIds.has(storyId));
+    if (missingStoryIds.length) {
+      throw new Error(
+        `publication_evidence_snapshot_story_coverage_missing:${missingStoryIds.join(",")}`,
+      );
+    }
+    const coveredPlatforms = new Set(publicationEvidence.coverage.platforms);
+    const missingPlatforms = enabledPublishPlatformNames({ env: process.env })
+      .filter((platform) => !coveredPlatforms.has(platform));
+    if (missingPlatforms.length) {
+      throw new Error(
+        `publication_evidence_snapshot_platform_coverage_missing:${missingPlatforms.join(",")}`,
+      );
+    }
+  }
   const bridgeMotionGovernanceEvidence = {
     directVideoEnrichmentWorkOrder,
     sourceFamilyAcquisitionReport,
@@ -6939,8 +7222,43 @@ async function runCli(argv = process.argv) {
     storyId: args.storyId,
     bridgeManifest: selected.bridge_manifest,
     upstreamAntiSpamReport,
-    publishedPlatformEvidence: buildPublishedPlatformEvidenceFromStories(stories),
+    publishedPlatformEvidence: args.fileOnly
+      ? publicationEvidence.snapshot
+      : buildPublishedPlatformEvidenceFromStories(stories),
   });
+  if (args.fileOnly) {
+    report.safety = {
+      mode: "file_only",
+      operational_read_only: true,
+      dotenv_loaded: false,
+      database_loaded: false,
+      sqlite_opened: false,
+      db_read: false,
+      db_mutation: false,
+      publish_attempted: false,
+      posting: false,
+      oauth_attempted: false,
+      oauth: false,
+      token_read: false,
+      token_mutation: false,
+      token_printing: false,
+      network_write_attempted: false,
+      network_write: false,
+    };
+    report.publication_evidence = {
+      status: "validated",
+      authoritative: true,
+      path: publicationEvidence.path,
+      source: String(publicationEvidence.snapshot.source || "publication_evidence_snapshot"),
+      schema_version: publicationEvidence.snapshot.schema_version ?? null,
+      generated_at: publicationEvidence.freshness.generated_at,
+      age_hours: Number(publicationEvidence.freshness.age_hours.toFixed(6)),
+      max_age_hours: publicationEvidence.freshness.max_age_hours,
+      covered_story_ids: publicationEvidence.coverage.story_ids,
+      covered_platforms: publicationEvidence.coverage.platforms,
+      record_count: publicationEvidence.records.record_count,
+    };
+  }
   if (args.preflightQa) {
     await attachPreflightQa(report, mergedStories, {
       bridgeMotionGovernanceEvidence,
@@ -6953,10 +7271,13 @@ async function runCli(argv = process.argv) {
       mediaHouseQaEnabled: true,
     });
   }
-  const markdown = formatNextPublishCandidatesMarkdown(report);
-  await fs.ensureDir(args.outDir);
   const jsonPath = path.join(args.outDir, "next_publish_candidates.json");
   const mdPath = path.join(args.outDir, "next_publish_candidates.md");
+  if (args.fileOnly) {
+    report.safety.allowed_file_writes = [jsonPath, mdPath];
+  }
+  const markdown = formatNextPublishCandidatesMarkdown(report);
+  await fs.ensureDir(args.outDir);
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, markdown, "utf8");
 
@@ -6970,7 +7291,8 @@ async function runCli(argv = process.argv) {
 }
 
 if (require.main === module) {
-  require("dotenv").config({ override: true });
+  const entryArgs = parseArgs(process.argv);
+  if (!entryArgs.fileOnly) require("dotenv").config({ override: true });
   runCli().catch((err) => {
     process.stderr.write(`[next-publish-candidates] ${err.stack || err.message}\n`);
     process.exitCode = 1;
@@ -6983,6 +7305,7 @@ module.exports = {
   DEFAULT_SOURCE_FAMILY_ACQUISITION_REPORT_PATH,
   DEFAULT_UPSTREAM_BENCHMARK_REPORT_PATH,
   DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH,
+  DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS,
   DEFAULT_SCRIPT_SCORE_THRESHOLD,
   buildNextPublishCandidatesReport,
   buildPublishedPlatformEvidenceFromStories,
@@ -7006,6 +7329,7 @@ module.exports = {
   readBridgeCandidateManifest,
   readBridgeCandidates,
   readOptionalJson,
+  readRequiredPublicationEvidenceSnapshot,
   resolveUpstreamBenchmarkReportPath,
   runPreflightQaForStory,
   scriptScorecardPreflightForStory,
@@ -7020,6 +7344,9 @@ module.exports = {
   visualLoopPreflightForStory,
   voiceQualityPreflightForStory,
   normaliseBridgeMotionGovernanceEvidence,
+  publicationEvidenceCoverage,
   summariseQaResult,
+  validatePublicationEvidenceFreshness,
+  validatePublicationEvidenceRecordIdentity,
   runCli,
 };

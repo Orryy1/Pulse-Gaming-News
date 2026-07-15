@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { execFile } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -50,6 +51,39 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
   const artifactDir = path.join(root, storyId);
   await fs.ensureDir(artifactDir);
   await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), await validFinalMediaBytes());
+  const rightsRecords = [];
+  for (let index = 0; index < 5; index += 1) {
+    const assetId = `clip-${index + 1}`;
+    const relativeAssetPath = `motion/${assetId}.mp4`;
+    const relativeEvidencePath = `rights/${assetId}.json`;
+    const assetBytes = Buffer.from(`materialised governed motion ${assetId}`);
+    const assetPath = path.join(artifactDir, relativeAssetPath);
+    const evidencePath = path.join(artifactDir, relativeEvidencePath);
+    await fs.outputFile(assetPath, assetBytes);
+    await fs.outputJson(evidencePath, {
+      asset_id: assetId,
+      decision: "approved_for_transformative_editorial_use",
+      source_owner: "Official publisher",
+    }, { spaces: 2 });
+    const evidenceBytes = await fs.readFile(evidencePath);
+    rightsRecords.push({
+      asset_id: assetId,
+      path: relativeAssetPath,
+      source_type: "official_direct_media",
+      source_owner: "Official publisher",
+      licence_basis: "official_promotional_media_transformative_editorial_use",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      evidence_file: relativeEvidencePath,
+      approval_status: "approved_for_transformative_editorial_use",
+      verdict: "GREEN",
+      asset_sha256: crypto.createHash("sha256").update(assetBytes).digest("hex"),
+      asset_size_bytes: assetBytes.length,
+      evidence_sha256: crypto.createHash("sha256").update(evidenceBytes).digest("hex"),
+      evidence_size_bytes: evidenceBytes.length,
+      risk_score: 0.1,
+    });
+  }
   await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: storyId,
     canonical_subject: "Hellraiser: Revival",
@@ -74,25 +108,16 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     distinct_motion_family_count: 5,
     motion_inventory: {
       accepted_local_clips: [
-        { id: "clip-1", source_family: "official_1" },
-        { id: "clip-2", source_family: "official_2" },
-        { id: "clip-3", source_family: "official_3" },
-        { id: "clip-4", source_family: "official_4" },
-        { id: "clip-5", source_family: "official_5" },
+        { id: "clip-1", path: "motion/clip-1.mp4", source_family: "official_1" },
+        { id: "clip-2", path: "motion/clip-2.mp4", source_family: "official_2" },
+        { id: "clip-3", path: "motion/clip-3.mp4", source_family: "official_3" },
+        { id: "clip-4", path: "motion/clip-4.mp4", source_family: "official_4" },
+        { id: "clip-5", path: "motion/clip-5.mp4", source_family: "official_5" },
       ],
     },
   });
   await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), passGate({
-    records: Array.from({ length: 5 }, (_, index) => ({
-      asset_id: `clip-${index + 1}`,
-      source_type: "official_direct_media",
-      source_owner: "Official publisher",
-      licence_basis: "official_promotional_media_transformative_editorial_use",
-      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
-      commercial_use_allowed: true,
-      evidence_file: `rights/clip-${index + 1}.json`,
-      risk_score: 0.1,
-    })),
+    records: rightsRecords,
   }));
   await fs.writeJson(path.join(artifactDir, "director_beat_map.json"), {
     readiness: { status: "director_ready", blockers: [] },

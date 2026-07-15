@@ -53,6 +53,77 @@ test("V5 direct-motion selector preserves clean detailed gameplay", () => {
   assert.equal(report.metrics.text_heavy_sample_count, 0);
 });
 
+test("V5 direct-motion selector rejects portrait-cropped embedded text without banning gameplay HUD", () => {
+  const croppedTrailerText = scoreDirectMotionVisualSamples([
+    {
+      width: 540,
+      height: 960,
+      aspect_ratio: 0.5625,
+      text_overlay_likelihood: 0.053,
+      letterbox_bar_ratio: 0.096,
+      border: {
+        dark_edge_ratio: 0.666,
+        bright_edge_ratio: 0.003,
+        edge_touch_ratio: 0.018,
+        text_cutoff_risk_score: 0.147,
+      },
+      trailer_frame_taste: {
+        verdict: "pass",
+        tags: ["detail_rich", "colourful", "gameplay_candidate"],
+      },
+    },
+    {
+      width: 540,
+      height: 960,
+      aspect_ratio: 0.5625,
+      text_overlay_likelihood: 0.191,
+      letterbox_bar_ratio: 0,
+      border: {
+        dark_edge_ratio: 0.123,
+        bright_edge_ratio: 0.223,
+        edge_touch_ratio: 0.053,
+        text_cutoff_risk_score: 0.797,
+      },
+      trailer_frame_taste: {
+        verdict: "pass",
+        tags: ["detail_rich", "colourful", "gameplay_candidate"],
+      },
+    },
+  ]);
+
+  assert.equal(croppedTrailerText.eligible, false);
+  assert.ok(
+    croppedTrailerText.reasons.includes(
+      "direct_motion_portrait_crop_embedded_text_truncation_risk",
+    ),
+  );
+  assert.equal(croppedTrailerText.metrics.portrait_crop_text_risk_sample_count, 2);
+
+  const gameplayHud = scoreDirectMotionVisualSamples([
+    {
+      width: 540,
+      height: 960,
+      aspect_ratio: 0.5625,
+      text_overlay_likelihood: 0.23,
+      letterbox_bar_ratio: 0,
+      border: {
+        dark_edge_ratio: 0.08,
+        bright_edge_ratio: 0.03,
+        edge_touch_ratio: 0.04,
+        text_cutoff_risk_score: 0.2,
+      },
+      trailer_frame_taste: {
+        verdict: "pass",
+        tags: ["detail_rich", "colourful", "gameplay_candidate", "hud_text"],
+      },
+    },
+  ]);
+
+  assert.equal(gameplayHud.eligible, true);
+  assert.deepEqual(gameplayHud.reasons, []);
+  assert.equal(gameplayHud.metrics.portrait_crop_text_risk_sample_count, 0);
+});
+
 test("V5 direct-motion selector fails closed when no decoded samples exist", () => {
   const report = scoreDirectMotionVisualSamples([]);
 

@@ -42,6 +42,18 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 async function writeFixtureFile(packageDir, relativePath, contents) {
   const target = path.join(packageDir, relativePath);
   await fs.ensureDir(path.dirname(target));
@@ -119,14 +131,15 @@ async function makeFixture() {
   const audio = await fs.readFile(path.join(packageDir, "audio/narration.wav"));
   const script = Buffer.from("Pulse\n");
   const captions = Buffer.from("1\n00:00:00,000 --> 00:00:01,000\nPulse\n");
+  const runId = "flagship-run-0001";
   const timestamps = Buffer.from(JSON.stringify({
     complete: true,
     audio_sha256: sha256(audio),
     script_sha256: sha256(script),
     captions_sha256: sha256(captions),
+    flagship_generation_run_id: runId,
     words: [{ word: "Pulse", start: 0, end: 1 }],
   }));
-  const runId = "flagship-run-0001";
 
   await writeFixtureFile(packageDir, "scripts/final_script.txt", script);
   await writeFixtureFile(packageDir, "captions/word_timestamps.json", timestamps);
@@ -196,8 +209,41 @@ async function makeFixture() {
     inventory.used_assets[1],
     inventory.used_assets[1].nested_backdrops[0],
   ];
+  const generatedCardLineage = {
+    source_assets: [{
+      asset_id: inventory.used_assets[1].nested_backdrops[0].asset_id,
+      sha256: sha256(await fs.readFile(path.join(
+        packageDir,
+        inventory.used_assets[1].nested_backdrops[0].path,
+      ))),
+    }],
+  };
+  const sourceRightsRecords = evidenceAssets.map((asset) => ({
+    asset_id: asset.asset_id,
+    kind: asset.kind,
+    path: asset.path,
+    source_url: asset.source_url,
+    creator: asset.creator,
+    licence_basis: asset.licence_basis,
+    commercial_use_allowed: true,
+    rights_verdict: asset.rights_verdict,
+    allowed_platforms: asset.allowed_platforms,
+    ...(asset.asset_id === "generated-card" ? {
+      generated_card_lineage: generatedCardLineage,
+    } : {}),
+  }));
+  const sourceLedgerPath = path.join(packageDir, "rights_ledger.json");
+  await fs.writeJson(sourceLedgerPath, {
+    schema_version: 1,
+    verdict: "PASS",
+    blockers: [],
+    failures: [],
+    records: sourceRightsRecords,
+  }, { spaces: 2 });
+  const sourceLedgerSha256 = sha256(await fs.readFile(sourceLedgerPath));
   for (const asset of evidenceAssets) {
     const assetBytes = await fs.readFile(path.join(packageDir, asset.path));
+    const sourceRecord = sourceRightsRecords.find((record) => record.asset_id === asset.asset_id);
     await fs.ensureDir(path.dirname(path.join(packageDir, asset.evidence_file)));
     await fs.writeJson(path.join(packageDir, asset.evidence_file), {
       schema_version: 1,
@@ -209,6 +255,12 @@ async function makeFixture() {
       commercial_use_allowed: true,
       rights_verdict: asset.rights_verdict,
       allowed_platforms: asset.allowed_platforms,
+      source_ledger_path: "rights_ledger.json",
+      source_ledger_sha256: sourceLedgerSha256,
+      source_record_sha256: sha256(canonicalJson([sourceRecord])),
+      ...(asset.asset_id === "generated-card" ? {
+        generated_card_lineage: generatedCardLineage,
+      } : {}),
     }, { spaces: 2 });
   }
 
@@ -220,8 +272,9 @@ async function replaceBoundTimeline(fixture, {
   captionsRelativePath,
   captionsText,
   words,
+  videoRelativePath = "final/final.mp4",
 }) {
-  const videoPath = path.join(fixture.packageDir, "final/final.mp4");
+  const videoPath = path.join(fixture.packageDir, videoRelativePath);
   const audioPath = path.join(fixture.packageDir, "audio/narration.wav");
   const scriptRelativePath = "scripts/final_script.txt";
   const timestampsRelativePath = "captions/word_timestamps.json";
@@ -229,6 +282,7 @@ async function replaceBoundTimeline(fixture, {
   const captions = Buffer.from(captionsText);
   const video = await fs.readFile(videoPath);
   const audio = await fs.readFile(audioPath);
+  const runId = "flagship-run-0001";
   await writeFixtureFile(fixture.packageDir, scriptRelativePath, script);
   await writeFixtureFile(fixture.packageDir, captionsRelativePath, captions);
   const timestamps = Buffer.from(JSON.stringify({
@@ -236,11 +290,11 @@ async function replaceBoundTimeline(fixture, {
     audio_sha256: sha256(audio),
     script_sha256: sha256(script),
     captions_sha256: sha256(captions),
+    flagship_generation_run_id: runId,
     words,
   }));
   await writeFixtureFile(fixture.packageDir, timestampsRelativePath, timestamps);
 
-  const runId = "flagship-run-0001";
   fixture.inventory.final_outputs.script = { path: scriptRelativePath };
   fixture.inventory.final_outputs.timestamps = { path: timestampsRelativePath };
   fixture.inventory.final_outputs.captions = {
@@ -257,7 +311,7 @@ async function replaceBoundTimeline(fixture, {
     run_id: runId,
     script_sha256: sha256(script),
     artifacts: {
-      final_video: { path: "final/final.mp4", sha256: sha256(video), run_id: runId, script_sha256: sha256(script) },
+      final_video: { path: videoRelativePath, sha256: sha256(video), run_id: runId, script_sha256: sha256(script) },
       final_audio: { path: "audio/narration.wav", sha256: sha256(audio), run_id: runId, script_sha256: sha256(script) },
       word_timestamps: { path: timestampsRelativePath, sha256: sha256(timestamps), run_id: runId, script_sha256: sha256(script) },
       captions: { path: captionsRelativePath, sha256: sha256(captions), run_id: runId, script_sha256: sha256(script) },
@@ -338,6 +392,35 @@ test("RED: package self-attestation cannot replace a trusted same-run input inve
   assert.equal(report.trusted_render_inputs.verified, false);
 });
 
+test("RED: generation manifest cannot fabricate same-run timing without a timestamp run binding", async () => {
+  const fixture = await makeFixture();
+  const timestampPath = path.join(fixture.packageDir, "captions/word_timestamps.json");
+  const timestamps = await fs.readJson(timestampPath);
+  delete timestamps.flagship_generation_run_id;
+  await fs.writeJson(timestampPath, timestamps);
+  const timestampSha256 = sha256(await fs.readFile(timestampPath));
+  fixture.inventory.final_outputs.captions.word_timestamps_sha256 = timestampSha256;
+  const generationManifestPath = path.join(
+    fixture.packageDir,
+    "manifests/generation_manifest.json",
+  );
+  const generationManifest = await fs.readJson(generationManifestPath);
+  generationManifest.artifacts.word_timestamps.sha256 = timestampSha256;
+  await fs.writeJson(generationManifestPath, generationManifest, { spaces: 2 });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, false, JSON.stringify(report.blockers, null, 2));
+  assert.ok(
+    report.blockers.includes("trusted_generation_manifest_timestamp_run_binding_missing"),
+  );
+  assert.equal(report.generation_manifest.verified, false);
+});
+
 test("RED: rejects a declared music asset whose actual input file is missing", async () => {
   const fixture = await makeFixture();
   await fs.remove(path.join(fixture.packageDir, "assets/music.wav"));
@@ -391,6 +474,71 @@ test("RED: generic rights prose cannot prove an exact asset permission binding",
   assert.equal(report.complete, false, JSON.stringify(report.blockers, null, 2));
   assert.ok(report.blockers.includes("used_asset_evidence_json_required:music-bed"));
   assert.ok(report.blockers.includes("used_asset_evidence_binding_incomplete:music-bed"));
+  assert.equal(report.rights_evidence_coverage.verified, false);
+});
+
+test("RED: matching rights assertions require binding to an upstream source ledger", async () => {
+  const fixture = await makeFixture();
+  for (const asset of [
+    fixture.inventory.used_assets[0],
+    fixture.inventory.used_assets[1],
+    fixture.inventory.used_assets[1].nested_backdrops[0],
+  ]) {
+    const evidencePath = path.join(fixture.packageDir, asset.evidence_file);
+    const evidence = await fs.readJson(evidencePath);
+    delete evidence.source_ledger_path;
+    delete evidence.source_ledger_sha256;
+    delete evidence.source_record_sha256;
+    await fs.writeJson(evidencePath, evidence, { spaces: 2 });
+  }
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, false, JSON.stringify(report.blockers, null, 2));
+  assert.ok(
+    report.blockers.includes("used_asset_evidence_source_ledger_binding_missing:music-bed"),
+  );
+  assert.equal(report.rights_evidence_coverage.verified, false);
+});
+
+test("RED: a hash-bound NOT_APPROVED source-ledger record cannot satisfy rights approval", async () => {
+  const fixture = await makeFixture();
+  const sourceLedgerPath = path.join(fixture.packageDir, "rights_ledger.json");
+  const sourceLedger = await fs.readJson(sourceLedgerPath);
+  const musicRecord = sourceLedger.records.find((record) => record.asset_id === "music-bed");
+  musicRecord.rights_verdict = "NOT_APPROVED";
+  await fs.writeJson(sourceLedgerPath, sourceLedger, { spaces: 2 });
+
+  const sourceLedgerSha256 = sha256(await fs.readFile(sourceLedgerPath));
+  for (const asset of [
+    fixture.inventory.used_assets[0],
+    fixture.inventory.used_assets[1],
+    fixture.inventory.used_assets[1].nested_backdrops[0],
+  ]) {
+    const evidencePath = path.join(fixture.packageDir, asset.evidence_file);
+    const evidence = await fs.readJson(evidencePath);
+    evidence.source_ledger_sha256 = sourceLedgerSha256;
+    if (asset.asset_id === "music-bed") {
+      evidence.source_record_sha256 = sha256(canonicalJson([musicRecord]));
+    }
+    await fs.writeJson(evidencePath, evidence, { spaces: 2 });
+  }
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, false, JSON.stringify(report.blockers, null, 2));
+  assert.ok(
+    report.blockers.includes("used_asset_evidence_source_record_mismatch:music-bed"),
+    JSON.stringify(report.blockers, null, 2),
+  );
   assert.equal(report.rights_evidence_coverage.verified, false);
 });
 
@@ -618,28 +766,12 @@ test("RED: rejects non-empty caption files without parseable timed cues", async 
 
 test("RED: caller-refreshed hashes cannot bless 999-second cues against one-second media", async () => {
   const fixture = await makeFixture();
-  const audio = await fs.readFile(path.join(fixture.packageDir, "audio/narration.wav"));
-  const timestampPath = path.join(fixture.packageDir, "captions/word_timestamps.json");
-  const captionPath = path.join(fixture.packageDir, "captions/captions.srt");
-  await fs.writeJson(timestampPath, {
-    complete: true,
-    audio_sha256: sha256(audio),
+  await replaceBoundTimeline(fixture, {
+    scriptText: "Pulse\n",
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: "1\n00:16:39,000 --> 00:16:40,000\nPulse\n",
     words: [{ word: "Pulse", start: 999, end: 1000 }],
   });
-  await fs.writeFile(
-    captionPath,
-    "1\n00:16:39,000 --> 00:16:40,000\nPulse\n",
-    "utf8",
-  );
-  const timestampHash = sha256(await fs.readFile(timestampPath));
-  fixture.inventory.final_outputs.timestamps.sha256 = timestampHash;
-  fixture.inventory.final_outputs.captions = {
-    ...fixture.inventory.final_outputs.captions,
-    sha256: sha256(await fs.readFile(captionPath)),
-    word_timestamps_sha256: timestampHash,
-  };
-  delete fixture.inventory.generation_manifest;
-  await fs.remove(path.join(fixture.packageDir, "manifests/generation_manifest.json"));
 
   const report = await materializeFlagshipMediaEvidence({
     packageDir: fixture.packageDir,
@@ -650,7 +782,7 @@ test("RED: caller-refreshed hashes cannot bless 999-second cues against one-seco
   assert.equal(report.complete, false);
   assert.ok(report.blockers.includes("word_timestamps_outside_audio_duration"));
   assert.ok(report.blockers.includes("captions_outside_video_duration"));
-  assert.ok(report.blockers.includes("trusted_generation_manifest_missing"));
+  assert.equal(report.generation_manifest.verified, true, JSON.stringify(report.blockers, null, 2));
 });
 
 test("RED: rejects an unreadable final video", async () => {
@@ -714,6 +846,69 @@ test("RED: final video rejects a decoded PNG container renamed to .mp4", async (
   assert.ok(report.blockers.includes("final_video_container_not_mp4_or_quicktime"));
   assert.ok(report.blockers.includes("final_video_video_codec_not_h264"));
   assert.ok(report.blockers.includes("final_video_audio_stream_missing"));
+  assert.equal(report.final_outputs.final_video.contract_verified, false);
+});
+
+test("RED: flagship final video must be MP4 rather than a valid QuickTime MOV", async () => {
+  const fixture = await makeFixture();
+  const movRelativePath = "final/final.mov";
+  const movPath = path.join(fixture.packageDir, movRelativePath);
+  execFileSync("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", "color=c=black:s=1080x1920:r=5:d=1",
+    "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1",
+    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest",
+    "-f", "mov", movPath,
+  ], { stdio: "ignore", windowsHide: true });
+  fixture.inventory.final_outputs.video.path = movRelativePath;
+  await replaceBoundTimeline(fixture, {
+    scriptText: "Pulse\n",
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: "1\n00:00:00,000 --> 00:00:01,000\nPulse\n",
+    words: [{ word: "Pulse", start: 0, end: 1 }],
+    videoRelativePath: movRelativePath,
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, false, JSON.stringify(report.blockers, null, 2));
+  assert.ok(report.blockers.includes("final_video_container_not_mp4"));
+  assert.equal(report.final_outputs.final_video.contract_verified, false);
+});
+
+test("RED: valid H.264 MP4 without embedded audio cannot become GREEN", async () => {
+  const fixture = await makeFixture();
+  const videoRelativePath = "final/video-only.mp4";
+  const videoPath = path.join(fixture.packageDir, videoRelativePath);
+  execFileSync("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", "color=c=black:s=1080x1920:r=5:d=1",
+    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+    "-an", "-movflags", "+faststart", "-brand", "mp42", videoPath,
+  ], { stdio: "ignore", windowsHide: true });
+  fixture.inventory.final_outputs.video.path = videoRelativePath;
+  await replaceBoundTimeline(fixture, {
+    scriptText: "Pulse\n",
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: "1\n00:00:00,000 --> 00:00:01,000\nPulse\n",
+    words: [{ word: "Pulse", start: 0, end: 1 }],
+    videoRelativePath,
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, false, JSON.stringify(report.blockers, null, 2));
+  assert.ok(report.blockers.includes("final_video_audio_stream_missing"));
+  assert.equal(report.generation_manifest.verified, true, JSON.stringify(report.blockers, null, 2));
   assert.equal(report.final_outputs.final_video.contract_verified, false);
 });
 
@@ -1091,6 +1286,29 @@ test("RED: rejects a generated card without a nested backdrop lineage row", asyn
   assert.equal(card.backdrop_lineage.row_count, 0);
   assert.equal(card.backdrop_lineage.verified, false);
   assert.equal(card.verified, false);
+});
+
+test("RED: generated-card backdrops require hash-bound source-ledger lineage", async () => {
+  const fixture = await makeFixture();
+  const card = fixture.inventory.used_assets[1];
+  const cardEvidencePath = path.join(fixture.packageDir, card.evidence_file);
+  const cardEvidence = await fs.readJson(cardEvidencePath);
+  delete cardEvidence.generated_card_lineage;
+  await fs.writeJson(cardEvidencePath, cardEvidence, { spaces: 2 });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, false, JSON.stringify(report.blockers, null, 2));
+  assert.ok(
+    report.blockers.includes("generated_card_backdrop_lineage_unbound:generated-card"),
+  );
+  const materialisedCard = report.used_assets.find((asset) => asset.asset_id === "generated-card");
+  assert.equal(materialisedCard.backdrop_lineage.evidence_binding_verified, false);
+  assert.equal(materialisedCard.verified, false);
 });
 
 test("RED: rejects generated-card self-nesting masquerading as a backdrop", async () => {

@@ -3,6 +3,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -35,6 +36,37 @@ async function writeStory(root, id, title, script, source = "Xbox") {
   await fs.writeJson(path.join(dir, "source_manifest.json"), {
     primary_source: { name: source, url: "https://example.test/story" },
   });
+  return dir;
+}
+
+function scriptFileSha256(script) {
+  return crypto.createHash("sha256").update(`${script}\n`).digest("hex");
+}
+
+async function writeBoundNarrationManifest(dir, { spoken, display, overrides = {} }) {
+  const displayScriptSha256 = scriptFileSha256(display);
+  const spokenScriptSha256 = scriptFileSha256(spoken);
+  const narration = {
+    authoritative: true,
+    verdict: "PASS",
+    status: "ready",
+    transcript: spoken,
+    final_transcript: spoken,
+    display_transcript: display,
+    display_script_sha256: displayScriptSha256,
+    spoken_script_sha256: spokenScriptSha256,
+    lineage: {
+      display_script_sha256: displayScriptSha256,
+      spoken_script_sha256: spokenScriptSha256,
+    },
+    checks: {
+      display_script_verified: true,
+      spoken_script_verified: true,
+    },
+    blockers: [],
+    ...overrides,
+  };
+  await fs.writeJson(path.join(dir, "narration_manifest.json"), narration);
 }
 
 test("transcript audience audit separates viral-ready scripts from rewrite-required scripts", async () => {
@@ -64,6 +96,232 @@ test("transcript audience audit separates viral-ready scripts from rewrite-requi
     const markdown = renderTranscriptAudienceAuditMarkdown(report);
     assert.match(markdown, /Capturing Has One Player Question/);
     assert.match(markdown, /Rewrite Required/);
+  });
+});
+
+test("transcript audience audit exempts only the approved CTA from universal claim analysis", async () => {
+  await withTempDir(async (root) => {
+    const safeEditorialScript =
+      "Forgefall just turned its launch into a storage argument. " +
+      "Xbox Wire reports three campaign maps, a co-op mode and a 40 GB download for Xbox and PC. " +
+      "That matters because players choosing the campaign need to know whether the servers control access. " +
+      "The risk is a launch-night outage blocking a game they expected to play alone. " +
+      "If the connection fails, the campaign becomes the real test.";
+
+    await writeStory(
+      root,
+      "approved-cta",
+      "Forgefall Turns Launch Into A Storage Fight",
+      `${safeEditorialScript} Follow Pulse Gaming: so you never miss a beat.`,
+      "Xbox Wire",
+    );
+
+    const unsupportedClaims = {
+      always: "Forgefall always requires an online connection.",
+      every: "Every Forgefall mode requires an online connection.",
+      never: "Forgefall never supports offline play.",
+      all: "All Forgefall maps require an online connection.",
+    };
+    for (const [id, claim] of Object.entries(unsupportedClaims)) {
+      await writeStory(
+        root,
+        `unsupported-${id}`,
+        "Forgefall Turns Launch Into A Storage Fight",
+        `${safeEditorialScript} ${claim} Follow Pulse Gaming so you never miss a beat.`,
+        "Xbox Wire",
+      );
+    }
+
+    const report = await auditGeneratedTranscripts({ root });
+    const approvedCta = report.stories.find((story) => story.story_id === "approved-cta");
+
+    assert.equal(
+      approvedCta.blockers.includes("unsupported_universal_claim"),
+      false,
+      approvedCta.blockers.join(", "),
+    );
+    for (const id of Object.keys(unsupportedClaims)) {
+      const row = report.stories.find((story) => story.story_id === `unsupported-${id}`);
+      assert.ok(row.blockers.includes("unsupported_universal_claim"), `${id}: ${row.blockers.join(", ")}`);
+    }
+  });
+});
+
+test("transcript audience audit keeps numeric format blockers when exempting the approved CTA", async () => {
+  await withTempDir(async (root) => {
+    await writeStory(
+      root,
+      "numeric-format",
+      "Forgefall Turns Launch Into A Price Fight",
+      "Forgefall just turned its launch into a price argument. Xbox Wire reports three campaign maps, a co-op mode and a 40 GB download for Xbox and PC. The premium edition costs 120 DOLLARS, which makes the launch package the real player test. The risk is paying extra before the servers prove stable. If that price holds, the included campaign maps need to justify it. Follow Pulse Gaming: so you never miss a beat.",
+      "Xbox Wire",
+    );
+
+    const report = await auditGeneratedTranscripts({ root });
+    const row = report.stories[0];
+
+    assert.ok(row.blockers.includes("bad_numeric_spellout"), row.blockers.join(", "));
+    assert.equal(row.blockers.includes("unsupported_universal_claim"), false, row.blockers.join(", "));
+  });
+});
+
+test("transcript audience audit uses the package claim inventory for supported universal details", async () => {
+  await withTempDir(async (root) => {
+    const script =
+      "Assassin's Creed Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+      "Eight packs are $9.99 each, adding character outfits, ship cosmetics and weapons. " +
+      "The $4.99 map pack reveals rare collectibles, while the base game costs $59.99. " +
+      "Players now have a direct choice: harmless extras, or content carved out before launch? " +
+      "If the base game feels complete, Ubisoft wins the pricing fight. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const dir = await writeStory(
+      root,
+      "black-flag-supported-each",
+      "Black Flag Resynced Turns DLC Into A Price Fight",
+      script,
+      "Steam",
+    );
+    const canonical = await fs.readJson(path.join(dir, "canonical_story_manifest.json"));
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      ...canonical,
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      confirmed_claims: [
+        "Steam lists eight Assassin's Creed Black Flag Resynced DLC packs at $9.99 each.",
+        "Steam lists a $4.99 map pack and the $59.99 base game.",
+      ],
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+    const row = report.stories[0];
+
+    assert.equal(row.blockers.includes("unsupported_universal_claim"), false, row.blockers.join(", "));
+  });
+});
+
+test("transcript audience audit accepts spoken currency words when the numeric display transcript is bound", async () => {
+  await withTempDir(async (root) => {
+    const spoken =
+      "Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+      "Steam lists them at 84 dollars 91 combined, while the base game costs 59 dollars 99. " +
+      "Eight packs are 9 dollars 99 each, adding character outfits, ship cosmetics and weapons. " +
+      "The ninth is a 4 dollars 99 map pack that instantly reveals rare collectibles. " +
+      "Do these feel like harmless extras, or content carved out before launch? " +
+      "If the base game feels complete, Ubisoft wins the pricing fight. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const display = spoken
+      .replace("84 dollars 91", "$84.91")
+      .replace("59 dollars 99", "$59.99")
+      .replace("9 dollars 99", "$9.99")
+      .replace("4 dollars 99", "$4.99");
+    const dir = await writeStory(
+      root,
+      "black-flag-bound-display",
+      "Black Flag Resynced Turns DLC Into A Price Fight",
+      display,
+      "Steam",
+    );
+    await writeBoundNarrationManifest(dir, { spoken, display });
+
+    const report = await auditGeneratedTranscripts({ root });
+    const row = report.stories[0];
+
+    assert.equal(row.blockers.includes("bad_numeric_spellout"), false, row.blockers.join(", "));
+    assert.equal(row.numeric_format_source, "authoritative_display_transcript");
+    assert.match(row.transcript, /84 dollars 91/);
+    assert.match(row.display_transcript, /\$84\.91/);
+  });
+});
+
+test("transcript audience audit rejects bad numeric display copy and unavailable or stale display evidence", async () => {
+  await withTempDir(async (root) => {
+    const spoken =
+      "Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+      "Steam lists them at 84 dollars 91 combined, while the base game costs 59 dollars 99. " +
+      "Eight packs add character outfits, ship cosmetics and weapons before launch. " +
+      "Do these feel like harmless extras, or content carved out before launch? " +
+      "If the base game feels complete, Ubisoft wins the pricing fight. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const goodDisplay = spoken
+      .replace("84 dollars 91", "$84.91")
+      .replace("59 dollars 99", "$59.99");
+    const cases = [
+      {
+        id: "bad-display-copy",
+        display: spoken.replace("84 dollars 91", "84 DOLLARS 91"),
+      },
+      {
+        id: "stale-display-binding",
+        display: goodDisplay,
+        overrides: { display_script_sha256: "0".repeat(64) },
+      },
+      {
+        id: "stale-display-evidence",
+        display: goodDisplay,
+        overrides: {
+          checks: { display_script_verified: false, spoken_script_verified: true },
+        },
+      },
+    ];
+
+    for (const item of cases) {
+      const dir = await writeStory(
+        root,
+        item.id,
+        "Black Flag Resynced Turns DLC Into A Price Fight",
+        goodDisplay,
+        "Steam",
+      );
+      await writeBoundNarrationManifest(dir, {
+        spoken,
+        display: item.display,
+        overrides: item.overrides,
+      });
+    }
+    const noDisplayDir = await writeStory(
+      root,
+      "no-display-copy",
+      "Black Flag Resynced Turns DLC Into A Price Fight",
+      goodDisplay,
+      "Steam",
+    );
+    await fs.writeJson(path.join(noDisplayDir, "narration_manifest.json"), {
+      final_transcript: spoken,
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+    for (const id of [...cases.map((item) => item.id), "no-display-copy"]) {
+      const row = report.stories.find((story) => story.story_id === id);
+      assert.ok(row.blockers.includes("bad_numeric_spellout"), `${id}: ${row.blockers.join(", ")}`);
+      assert.equal(row.numeric_format_source, "spoken_transcript", id);
+    }
+  });
+});
+
+test("transcript audience audit keeps spoken subject drift when bound display copy is clean", async () => {
+  await withTempDir(async (root) => {
+    const display =
+      "Beastro puts a $84.91 bundle next to its Game Pass demo. Xbox Wire says the game mixes cooking, farming and card battles. The price creates a direct choice for players before launch. If the demo holds up, Beastro earns the upgrade argument. Follow Pulse Gaming so you never miss a beat.";
+    const spoken = display.replace("Beastro", "Bistro").replace("$84.91", "84 dollars 91");
+    const dir = await writeStory(
+      root,
+      "bound-display-subject-drift",
+      "Beastro Turns Its Bundle Into A Price Test",
+      display,
+      "Xbox Wire",
+    );
+    const canonical = await fs.readJson(path.join(dir, "canonical_story_manifest.json"));
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      ...canonical,
+      canonical_subject: "Beastro",
+    });
+    await writeBoundNarrationManifest(dir, { spoken, display });
+
+    const report = await auditGeneratedTranscripts({ root });
+    const row = report.stories[0];
+
+    assert.equal(row.blockers.includes("bad_numeric_spellout"), false, row.blockers.join(", "));
+    assert.ok(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), row.blockers.join(", "));
+    assert.match(row.transcript, /^Bistro/);
   });
 });
 
@@ -522,6 +780,43 @@ test("transcript audience audit normalises recoverable spoken title aliases befo
   });
 });
 
+test("transcript audience audit accepts the governed Black Flag Resynced pronunciation alias", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "black-flag-resynced-alias");
+    await fs.ensureDir(dir);
+    const displayScript =
+      "Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+      "Steam lists them at $84.91 combined, while the base game costs $59.99. " +
+      "Ubisoft says the standard edition is still the full experience, so players will judge whether these are harmless extras or content carved out before launch. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    const spokenScript =
+      "Black Flag reesynced has nine day one DLC packs costing more than the game. " +
+      "Steam lists them at $84.91 combined, while the base game costs $59.99. " +
+      "Ubisoft says the standard edition is still the full experience, so players will judge whether these are harmless extras or content carved out before launch. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "black-flag-resynced-alias",
+      canonical_subject: "Assassin's Creed Black Flag Resynced",
+      selected_title: "Black Flag Resynced's DLC Costs More Than The Game",
+      primary_source: "Steam",
+      narration_script: displayScript,
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: { name: "Steam", url: "https://store.steampowered.com/" },
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript: spokenScript,
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(row.verdict, "pass", row.blockers.join(", "));
+    assert.equal(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), false);
+  });
+});
+
 test("transcript audience audit accepts canonical game aliases in viewer narration", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "black-ops-price");
@@ -783,11 +1078,11 @@ test("transcript audience audit still fails unrecoverable subject drift", async 
       selected_title: "Beastro Has A Cozy Deckbuilding Test",
       primary_source: "Xbox Wire",
       narration_script:
-        "Beastro is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming so you never miss a beat.",
+        "Beastro is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming: so you never miss a beat.",
     });
     await fs.writeJson(path.join(dir, "narration_manifest.json"), {
       final_transcript:
-        "Bistro is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming so you never miss a beat.",
+        "Bistro is the Game Pass test for players who usually bounce off card games. Xbox Wire says the demo mixes cooking, farming and card battles. Follow Pulse Gaming: so you never miss a beat.",
     });
 
     const report = await auditGeneratedTranscripts({ root });
@@ -797,5 +1092,6 @@ test("transcript audience audit still fails unrecoverable subject drift", async 
     const row = report.stories[0];
     assert.equal(row.first_line.startsWith("Bistro"), true);
     assert.ok(row.blockers.includes("mass_audience:tts_transcript_subject_drift"), row.blockers.join(", "));
+    assert.equal(row.blockers.includes("unsupported_universal_claim"), false, row.blockers.join(", "));
   });
 });

@@ -183,6 +183,17 @@ test("real motion materializer CLI accepts explicit direct base-source clip cap"
   assert.equal(args.maxDirectClipsPerBaseSource, 1);
 });
 
+test("real motion materializer CLI exposes the ultimate professional source-diversity tier", () => {
+  const args = parseArgs([
+    "--strict-base-source-diversity",
+    "--min-base-sources",
+    "7",
+  ]);
+
+  assert.equal(args.strictBaseSourceDiversity, true);
+  assert.equal(args.minBaseSources, 7);
+});
+
 test("real motion materializer forwards an explicit base-source window cap to story materialisation", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-explicit-window-cap-"));
   const job = await makePackage(root, "explicit-window-cap");
@@ -2383,6 +2394,8 @@ test("real motion materializer writes local clips, motion manifests and explicit
   const calls = [];
   const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
   const staleRights = await fs.readJson(rightsPath);
+  const ownedCardPath = path.join(job.artifact_dir, "owned-hyperframes-card.mp4");
+  await fs.writeFile(ownedCardPath, Buffer.alloc(4096, 9));
   staleRights.records = [
     {
       asset_id: `${job.story_id}-direct-1`,
@@ -2401,7 +2414,33 @@ test("real motion materializer writes local clips, motion manifests and explicit
       source_family: "unused_segment_family",
       approval_status: "approved_for_transformative_editorial_use",
     },
+    {
+      asset_id: `${job.story_id}-owned-hyperframes-card`,
+      asset_type: "video",
+      kind: "video",
+      path: ownedCardPath,
+      source_url: `local://hyperframes/${job.story_id}/source-card`,
+      source_type: "selected_render_motion_clip",
+      source_family: "hyperframes_source_card",
+      source_owner: "Pulse Gaming",
+      provider_id: "pulse_hyperframes",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      allowed_use: "finished_editorial_video",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels", "tiktok"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_commercial_editorial_use",
+      risk_score: 0,
+      evidence_reference: ownedCardPath,
+    },
   ];
+  staleRights.used_assets = [{
+    asset_id: `${job.story_id}-owned-hyperframes-card`,
+    kind: "video",
+    path: ownedCardPath,
+    source_url: `local://hyperframes/${job.story_id}/source-card`,
+    source_type: "selected_render_motion_clip",
+    source_family: "hyperframes_source_card",
+  }];
   await fs.writeJson(rightsPath, staleRights, { spaces: 2 });
 
   const report = await materializeGoalRealMotion({
@@ -2473,18 +2512,24 @@ test("real motion materializer writes local clips, motion manifests and explicit
   const rights = await fs.readJson(path.join(job.artifact_dir, "rights_ledger.json"));
   assert.equal(rights.verdict, "pass");
   assert.equal(rights.failures.length, 0);
-  assert.equal(rights.records.length, 5);
+  assert.equal(rights.records.length, 6);
   assert.equal(Object.hasOwn(rights, "rights_ledger"), false);
   assert.equal(Object.hasOwn(rights, "rights_records"), false);
   assert.equal(Object.hasOwn(rights, "matched_assets"), false);
-  assert.equal(rights.metrics.used_asset_count, 5);
-  assert.equal(rights.metrics.rights_record_count, 5);
+  assert.equal(rights.metrics.used_asset_count, 6);
+  assert.equal(rights.metrics.rights_record_count, 6);
   assert.equal(rights.metrics.missing_asset_count, 0);
   assert.equal(rights.metrics.duplicate_record_count, 0);
   assert.equal(rights.records.some((record) => record.asset_id.endsWith("-unused-segment")), false);
   assert.ok(rights.records.every((record) => record.allowed_platforms.includes("tiktok")));
-  assert.ok(rights.records.every((record) => record.source_url.startsWith("https://video.twimg.com/")));
-  for (const [index, record] of rights.records.entries()) {
+  const motionRecords = rights.records.filter((record) => record.asset_type === "motion_clip");
+  assert.equal(motionRecords.length, 5);
+  assert.ok(motionRecords.every((record) => record.source_url.startsWith("https://video.twimg.com/")));
+  assert.equal(
+    rights.records.some((record) => record.asset_id === `${job.story_id}-owned-hyperframes-card`),
+    true,
+  );
+  for (const [index, record] of motionRecords.entries()) {
     assert.equal(record.asset_sha256, expectedSha256);
     assert.equal(record.asset_size_bytes, 4096);
     assert.equal(record.probed_duration_seconds, 2.85);
@@ -5848,6 +5893,8 @@ test("real motion materializer persists compound base identities and collapses m
   assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
   const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
   assert.equal(manifest.professional_source_diversity.status, "pass");
+  assert.equal(report.jobs[0].professional_source_diversity.status, "pass");
+  assert.equal(report.jobs[0].professional_source_diversity.observed_genuine_base_source_count, 3);
   assert.equal(manifest.professional_source_diversity.observed_genuine_base_source_count, 3);
   assert.equal(manifest.professional_source_diversity.unresolved_clips.length, 0);
   assert.equal(manifest.professional_source_diversity.identity_evidence.length, 3);
@@ -5893,6 +5940,430 @@ test("real motion materializer fails an ultimate job closed when source URLs lac
   assert.equal(manifest.professional_source_diversity.status, "blocked");
   assert.equal(manifest.professional_source_diversity.unresolved_clips.length, 5);
   assert.ok(manifest.clips.every((clip) => clip.motion_source_identity?.status === "blocked"));
+});
+
+test("real motion materializer hashes validated local masters behind official canonical URLs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-local-master-hash-"));
+  const job = await makePackage(root, "local-master-identity");
+  const masterDir = path.join(root, "output", "official-masters");
+  const masterPaths = [];
+  const expectedHashes = [];
+  for (let index = 0; index < 3; index += 1) {
+    const masterPath = path.join(masterDir, `official-master-${index + 1}.mp4`);
+    const bytes = Buffer.alloc(8192, index + 31);
+    await fs.outputFile(masterPath, bytes);
+    masterPaths.push(masterPath);
+    expectedHashes.push(crypto.createHash("sha256").update(bytes).digest("hex"));
+  }
+  const sourceIndexes = [0, 0, 1, 1, 2];
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.assets = rights.assets.map((asset, index) => {
+    const sourceIndex = sourceIndexes[index];
+    return {
+      ...asset,
+      id: `local-master-window-${index + 1}`,
+      path: masterPaths[sourceIndex],
+      source_url: masterPaths[sourceIndex],
+      canonical_source_url: `https://publisher.example.com/official/master-${sourceIndex + 1}`,
+      source_identity_provenance: {
+        schema_version: 1,
+        kind: "canonical_rights_record",
+        status: "resolved",
+        evidence_sha256: `${sourceIndex + 4}`.repeat(64),
+      },
+      source_kind: "local_video_file",
+      source_url_kind: "local_video_file",
+      materialize_source_window: true,
+      source_family: `mutable_local_window_${index + 1}`,
+      base_source_family: `mutable_local_master_${sourceIndex + 1}`,
+      mediaStartS: index * 5,
+      durationS: 4,
+    };
+  });
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T07:10:00.000Z",
+    maxClips: 5,
+    maxDirectClipsPerBaseSource: 5,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 25));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 4 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  assert.equal(manifest.professional_source_diversity.status, "pass");
+  assert.equal(manifest.professional_source_diversity.observed_genuine_base_source_count, 3);
+  assert.deepEqual(
+    [...new Set(manifest.clips.map((clip) => clip.source_master_sha256))].sort(),
+    expectedHashes.sort(),
+  );
+  assert.ok(manifest.clips.every((clip) => clip.motion_source_identity?.strict_pass === true));
+  assert.ok(
+    manifest.clips.every(
+      (clip) => clip.source_identity_provenance?.kind === "canonical_rights_record",
+    ),
+  );
+});
+
+test("real motion materializer derives canonical identities from adjacent yt-dlp sidecars and collapses mirrored masters", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-sidecar-identity-"));
+  const job = await makePackage(root, "sidecar-source-identity");
+  job.ultimate_quality_bar = true;
+  const masterRoot = path.join(root, "output", "official-masters");
+  const sourceSpecs = [
+    { directory: "primary-a", id: "OfficialA01", bytes: Buffer.alloc(8192, 41) },
+    { directory: "mirror-a", id: "OfficialA01", bytes: Buffer.alloc(8192, 41) },
+    { directory: "primary-b", id: "OfficialB02", bytes: Buffer.alloc(8192, 42) },
+    { directory: "primary-c", id: "OfficialC03", bytes: Buffer.alloc(8192, 43) },
+  ];
+  const masterPaths = [];
+  for (const spec of sourceSpecs) {
+    const directory = path.join(masterRoot, spec.directory);
+    const masterPath = path.join(directory, `${spec.id}.mp4`);
+    await fs.outputFile(masterPath, spec.bytes);
+    await fs.outputJson(path.join(directory, `${spec.id}.info.json`), {
+      id: spec.id,
+      webpage_url: `https://www.youtube.com/watch?v=${spec.id}`,
+      extractor: "youtube",
+      extractor_key: "Youtube",
+      uploader: "Official Publisher",
+      channel: "Official Publisher",
+      title: `Official trailer ${spec.id}`,
+    });
+    masterPaths.push(masterPath);
+  }
+
+  const assetSources = [0, 1, 2, 2, 3];
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.assets = rights.assets.map((asset, index) => ({
+    ...asset,
+    id: `sidecar-window-${index + 1}`,
+    path: masterPaths[assetSources[index]],
+    source_url: masterPaths[assetSources[index]],
+    source_kind: "local_video_file",
+    source_url_kind: "local_video_file",
+    materialize_source_window: true,
+    source_family: `mutable_sidecar_window_${index + 1}`,
+    base_source_family: `mutable_sidecar_base_${index + 1}`,
+    mediaStartS: index * 5,
+    durationS: 4,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T07:12:00.000Z",
+    strictBaseSourceDiversity: true,
+    minBaseSources: 3,
+    maxClips: 5,
+    maxDirectClipsPerBaseSource: 5,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 26));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 4 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  assert.equal(manifest.professional_source_diversity.status, "pass");
+  assert.equal(manifest.professional_source_diversity.observed_genuine_base_source_count, 3);
+  assert.ok(manifest.clips.every((clip) => clip.youtube_video_id));
+  assert.ok(manifest.clips.every((clip) => clip.canonical_source_url?.startsWith("https://www.youtube.com/watch?v=")));
+  assert.ok(manifest.clips.every((clip) => clip.source_master_sha256));
+  assert.ok(manifest.clips.every((clip) => clip.source_identity_provenance?.kind === "yt_dlp_info_sidecar"));
+  assert.ok(manifest.clips.every((clip) => clip.source_identity_provenance?.sidecar_sha256));
+  assert.equal(manifest.clips[0].base_source_asset_id, manifest.clips[1].base_source_asset_id);
+  assert.equal(
+    manifest.professional_source_diversity.identity_evidence.find(
+      (row) => row.base_source_asset_id === manifest.clips[0].base_source_asset_id,
+    ).clip_ids.length,
+    2,
+  );
+});
+
+test("real motion materializer exposes mismatched sidecar provenance and fails ultimate proof closed", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-sidecar-conflict-"));
+  const job = await makePackage(root, "sidecar-conflict-proof");
+  job.ultimate_quality_bar = true;
+  const masterRoot = path.join(root, "output", "official-masters");
+  const masterPaths = [];
+  for (let index = 0; index < 5; index += 1) {
+    const id = `TrustedSource${index + 1}`;
+    const masterPath = path.join(masterRoot, `${id}.mp4`);
+    await fs.outputFile(masterPath, Buffer.alloc(8192, index + 51));
+    await fs.outputJson(path.join(masterRoot, `${id}.info.json`), {
+      id,
+      webpage_url: `https://www.youtube.com/watch?v=${index === 0 ? "WrongSource99" : id}`,
+      extractor: "youtube",
+      uploader: "Official Publisher",
+      title: `Official trailer ${id}`,
+    });
+    masterPaths.push(masterPath);
+  }
+
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.assets = rights.assets.map((asset, index) => ({
+    ...asset,
+    id: `conflict-window-${index + 1}`,
+    path: masterPaths[index],
+    source_url: masterPaths[index],
+    source_kind: "local_video_file",
+    source_url_kind: "local_video_file",
+    materialize_source_window: true,
+    source_family: `mutable_conflict_window_${index + 1}`,
+    mediaStartS: index * 5,
+    durationS: 4,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T07:14:00.000Z",
+    strictBaseSourceDiversity: true,
+    minBaseSources: 2,
+    maxClips: 5,
+    maxDirectClipsPerBaseSource: 5,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 27));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 4 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("professional_motion_source_identity_unresolved"));
+  const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  const unresolved = manifest.professional_source_diversity.unresolved_clips.find(
+    (clip) => clip.clip_id === "conflict-window-1",
+  );
+  assert.ok(unresolved);
+  assert.ok(unresolved.blockers.includes("professional_motion_source_sidecar_youtube_identity_conflict"));
+  assert.equal(unresolved.source_identity_provenance.kind, "yt_dlp_info_sidecar");
+  assert.equal(unresolved.source_identity_provenance.status, "blocked");
+  assert.ok(unresolved.source_identity_provenance.sidecar_sha256);
+});
+
+test("real motion materializer resolves complete Pulse source-identity sidecars without forging yt-dlp metadata", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-explicit-identity-sidecar-"));
+  const job = await makePackage(root, "pulse-source-identity-sidecar-proof");
+  job.ultimate_quality_bar = true;
+  const masterRoot = path.join(root, "output", "official-masters");
+  const masterPaths = [];
+  for (let index = 0; index < 3; index += 1) {
+    const id = `PulseSource${index + 1}`;
+    const bytes = Buffer.alloc(8192, index + 61);
+    const masterPath = path.join(masterRoot, `${id}.mp4`);
+    const masterSha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+    await fs.outputFile(masterPath, bytes);
+    await fs.outputJson(path.join(masterRoot, `${id}.source-identity.json`), {
+      schema: "pulse_motion_source_identity_sidecar_v1",
+      schema_version: 1,
+      producer: "pulse_source_identity_oembed_verifier_v1",
+      canonical_source_url: `https://www.youtube.com/watch?v=${id}`,
+      youtube_video_id: id,
+      channel_identity: {
+        author_name: "Assassin's Creed",
+        author_url: "https://www.youtube.com/@assassinscreed",
+      },
+      source_master_sha256: masterSha256,
+      identity_scope: "source_identity_only",
+      rights_grant: false,
+      evidence: {
+        provider: "youtube_oembed",
+        verified_at: "2026-07-15T08:45:00.000Z",
+        title: `Black Flag Resynced official source ${index + 1}`,
+      },
+    });
+    masterPaths.push(masterPath);
+  }
+
+  const sourceIndexes = [0, 0, 1, 1, 2];
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.assets = rights.assets.map((asset, index) => ({
+    ...asset,
+    id: `pulse-identity-window-${index + 1}`,
+    path: masterPaths[sourceIndexes[index]],
+    source_url: masterPaths[sourceIndexes[index]],
+    source_kind: "local_video_file",
+    source_url_kind: "local_video_file",
+    materialize_source_window: true,
+    source_family: `mutable_pulse_identity_window_${index + 1}`,
+    mediaStartS: index * 5,
+    durationS: 4,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:46:00.000Z",
+    strictBaseSourceDiversity: true,
+    minBaseSources: 3,
+    maxClips: 5,
+    maxDirectClipsPerBaseSource: 5,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 28));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 4 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  assert.equal(manifest.professional_source_diversity.status, "pass");
+  assert.equal(manifest.professional_source_diversity.observed_genuine_base_source_count, 3);
+  assert.ok(manifest.clips.every((clip) => clip.canonical_source_url));
+  assert.ok(manifest.clips.every((clip) => clip.youtube_video_id));
+  assert.ok(manifest.clips.every((clip) => clip.source_master_sha256));
+  assert.ok(
+    manifest.clips.every(
+      (clip) => clip.source_identity_provenance?.kind === "pulse_source_identity_sidecar",
+    ),
+  );
+  assert.ok(manifest.clips.every((clip) => clip.source_identity_provenance?.rights_grant === false));
+  assert.ok(
+    manifest.professional_source_diversity.identity_evidence.every(
+      (source) => source.source_identity_provenance?.[0]?.kind === "pulse_source_identity_sidecar",
+    ),
+  );
+});
+
+test("real motion materializer rejects a Pulse source-identity sidecar whose master SHA is stale", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-stale-identity-sidecar-"));
+  const job = await makePackage(root, "stale-pulse-source-identity-sidecar");
+  job.ultimate_quality_bar = true;
+  const masterRoot = path.join(root, "output", "official-masters");
+  const masterPaths = [];
+  for (let index = 0; index < 3; index += 1) {
+    const id = `StaleSource${index + 1}`;
+    const bytes = Buffer.alloc(8192, index + 71);
+    const masterPath = path.join(masterRoot, `${id}.mp4`);
+    const currentSha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+    await fs.outputFile(masterPath, bytes);
+    await fs.outputJson(path.join(masterRoot, `${id}.source-identity.json`), {
+      schema: "pulse_motion_source_identity_sidecar_v1",
+      schema_version: 1,
+      producer: "pulse_source_identity_oembed_verifier_v1",
+      canonical_source_url: `https://www.youtube.com/watch?v=${id}`,
+      youtube_video_id: id,
+      channel_identity: {
+        author_name: "Assassin's Creed",
+        author_url: "https://www.youtube.com/@assassinscreed",
+      },
+      source_master_sha256: index === 0 ? "f".repeat(64) : currentSha256,
+      identity_scope: "source_identity_only",
+      rights_grant: false,
+      evidence: {
+        provider: "youtube_oembed",
+        verified_at: "2026-07-15T08:47:00.000Z",
+      },
+    });
+    masterPaths.push(masterPath);
+  }
+
+  const sourceIndexes = [0, 0, 1, 1, 2];
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.assets = rights.assets.map((asset, index) => ({
+    ...asset,
+    id: `stale-identity-window-${index + 1}`,
+    path: masterPaths[sourceIndexes[index]],
+    source_url: masterPaths[sourceIndexes[index]],
+    source_kind: "local_video_file",
+    source_url_kind: "local_video_file",
+    materialize_source_window: true,
+    source_family: `mutable_stale_identity_window_${index + 1}`,
+    mediaStartS: index * 5,
+    durationS: 4,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:48:00.000Z",
+    strictBaseSourceDiversity: true,
+    minBaseSources: 2,
+    maxClips: 5,
+    maxDirectClipsPerBaseSource: 5,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 29));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 4 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  const unresolved = manifest.professional_source_diversity.unresolved_clips.find(
+    (clip) => clip.clip_id === "stale-identity-window-1",
+  );
+  assert.ok(unresolved);
+  assert.ok(unresolved.blockers.includes("professional_motion_source_sidecar_master_sha256_conflict"));
+  assert.equal(unresolved.source_identity_provenance.kind, "pulse_source_identity_sidecar");
+  assert.equal(unresolved.source_identity_provenance.status, "blocked");
+  assert.equal(unresolved.source_identity_provenance.rights_grant, false);
+});
+
+test("real motion materializer preserves immutable identity fields from validated segment reports", () => {
+  const masterHash = "a".repeat(64);
+  const rows = candidateRows({
+    storyId: "segment-identity-story",
+    segmentValidationReport: {
+      segments: [{
+        id: "segment-with-identity",
+        story_id: "segment-identity-story",
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        trusted_source_matched: true,
+        source_url: "https://cdn.publisher.example/game/trailer-window.mp4",
+        source_url_kind: "direct_video",
+        source_type: "official_trailer_video",
+        canonical_source_url: "https://www.youtube.com/watch?v=Official123",
+        youtube_video_id: "Official123",
+        source_master_sha256: masterHash,
+        entity: "Identity Game",
+        media_start_s: 12,
+        duration_s: 5,
+      }],
+    },
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].canonical_source_url, "https://www.youtube.com/watch?v=Official123");
+  assert.equal(rows[0].youtube_video_id, "Official123");
+  assert.equal(rows[0].source_master_sha256, masterHash);
 });
 
 test("real motion materializer separates motion-window diversity from strict genuine base-source diversity", async (t) => {

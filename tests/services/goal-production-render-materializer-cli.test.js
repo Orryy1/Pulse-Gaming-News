@@ -149,3 +149,58 @@ test("goal production render materializer CLI limits normal work order by story 
   assert.equal(result.report.summary.inspect_only_count, 1);
   assert.equal(result.report.jobs[0].story_id, "keep-me");
 });
+
+test("goal production render materializer CLI refreshes flagship inventory without rendering", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-inventory-cli-"));
+  const storyId = "flagship-inventory-cli";
+  const artifactDir = path.join(root, "package");
+  const assetPath = path.join(artifactDir, "platform-native.mp4");
+  await fs.outputFile(assetPath, Buffer.alloc(4096, 3));
+  await fs.outputJson(path.join(artifactDir, "flagship", "generation_manifest.json"), {
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    artifacts: {
+      final_video: { path: "visual_v4_render.mp4", sha256: "a".repeat(64) },
+    },
+  });
+  const rightsRow = {
+    asset_id: "platform-native-instagram_reels",
+    kind: "platform_native",
+    path: assetPath,
+    source_url: `local://pulse-gaming/${storyId}/platform-native/instagram_reels`,
+    source_owner: "Pulse Gaming",
+    licence_basis: "derived_platform_variant_of_fully_rights_covered_final_render",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_commercial_editorial_use",
+    allowed_platforms: ["instagram_reels"],
+    risk_score: 0.2,
+    credit_required: false,
+  };
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    used_assets: [rightsRow],
+    records: [rightsRow],
+    blockers: [],
+  });
+
+  const result = await main([
+    "--refresh-flagship-inventory",
+    "--story-id",
+    storyId,
+    "--artifact-dir",
+    artifactDir,
+    "--out-dir",
+    path.join(root, "out"),
+    "--generated-at",
+    "2026-07-15T09:35:00.000Z",
+  ]);
+
+  assert.equal(result.report.mode, "FLAGSHIP_INVENTORY_REFRESH");
+  assert.equal(result.report.summary.inventory_refreshed_count, 1);
+  assert.equal(result.report.safety.renderer_invoked, false);
+  assert.equal(
+    await fs.pathExists(path.join(artifactDir, "flagship", "inventory.json")),
+    true,
+  );
+});

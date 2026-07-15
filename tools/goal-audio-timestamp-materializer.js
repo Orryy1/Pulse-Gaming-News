@@ -36,6 +36,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     localTtsSegmentGapS: null,
     storyIds: [],
     alignmentMode: "whisper",
+    isolatedWorkspace: false,
     force: false,
     inspectOnly: false,
     json: false,
@@ -63,6 +64,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       if (storyId) args.storyIds.push(storyId);
     }
     else if (arg === "--alignment") args.alignmentMode = argv[++i] || args.alignmentMode;
+    else if (arg === "--isolated-workspace") args.isolatedWorkspace = true;
     else if (arg === "--force") args.force = true;
     else if (arg === "--inspect-only") args.inspectOnly = true;
     else if (arg === "--json") args.json = true;
@@ -94,6 +96,7 @@ function usage() {
     "  --local-tts-segment-max-words <n>                Maximum words per local TTS segment",
     "  --local-tts-segment-gap-s <seconds>              Natural gap inserted between local TTS segments",
     "  --alignment <whisper|silence|auto|off>  Local word-timing alignment mode; default whisper for CLI materialisation",
+    "  --isolated-workspace  Never read matching audio/timestamps from external MEDIA_ROOT paths",
     "  --force               Regenerate even if an audio/timestamp pair exists",
     "  --inspect-only        Do not call local TTS; write a pending-generation report",
     "  --json                Print JSON summary",
@@ -219,6 +222,7 @@ async function main(argv = process.argv.slice(2)) {
     enforceNativeCadenceBeforePromotion: args.enforceTargetCadence,
     nativeCadencePausePadding: args.padTargetCadence,
     alignmentMode: args.alignmentMode,
+    allowExternalMediaRoot: !args.isolatedWorkspace,
     localTtsSegmentedMaterializer: args.localTtsSegmentedMaterializer,
     localTtsSegmentedWordThreshold: args.localTtsSegmentedWordThreshold,
     localTtsSegmentMaxWords: args.localTtsSegmentMaxWords,

@@ -156,9 +156,14 @@ async function makeReviewFixture(storyId = "story-final-av") {
     schema_version: 1,
     story_id: storyId,
     reviewed_at: "2026-07-15T01:00:00.000Z",
+    signed_at: "2026-07-15T01:01:00.000Z",
     reviewer: {
       id: "independent-av-reviewer",
       independent: true,
+    },
+    signoff: {
+      reviewer_id: "independent-av-reviewer",
+      signed_at: "2026-07-15T01:01:00.000Z",
     },
     artefacts,
     reviewed_artefact_fingerprints: artefactFingerprints,
@@ -175,7 +180,12 @@ async function makeReviewFixture(storyId = "story-final-av") {
       FINAL_AV_REVIEW_ATTESTATION_KEYS.map((key) => [key, true]),
     ),
     defects: [],
+    status: "GREEN",
     verdict: "GREEN",
+    final_verdict: "GREEN",
+    publish_ready: true,
+    can_publish: true,
+    can_auto_publish: true,
   };
   const reviewPath = path.join(root, "final_av_review.json");
   await fs.writeJson(reviewPath, review, { spaces: 2 });
@@ -518,6 +528,28 @@ test("final AV review rejects RED or AMBER status fields that contradict a GREEN
   }
 });
 
+test("final AV review rejects an unsigned outer PENDING review despite internally GREEN evidence", async () => {
+  const fixture = await makeReviewFixture();
+  const result = await validateFinalAvReview({
+    ...fixture.review,
+    status: "PENDING",
+    final_verdict: null,
+    signed_at: null,
+    signoff: null,
+    publish_ready: false,
+    can_publish: false,
+    can_auto_publish: false,
+  }, validationOptions(fixture));
+
+  assert.equal(result.verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+  assert.ok(result.blockers.includes("final_av_review_status_not_approved"));
+  assert.ok(result.blockers.includes("final_av_review_final_verdict_not_green"));
+  assert.ok(result.blockers.includes("final_av_review_signed_at_invalid"));
+  assert.ok(result.blockers.includes("final_av_review_signoff_invalid"));
+  assert.ok(result.blockers.includes("final_av_review_publish_not_approved"));
+});
+
 test("final AV review rejects reported blockers, failures or errors despite a GREEN verdict", async (t) => {
   const cases = [
     { field: "blockers", value: ["captions_overlap"] },
@@ -558,6 +590,10 @@ test("final AV review trusts reviewer identity only through an explicit allowlis
   const review = {
     ...fixture.review,
     reviewer: { id: reviewerId, independent: true, trusted: true },
+    signoff: {
+      ...fixture.review.signoff,
+      reviewer_id: reviewerId,
+    },
   };
 
   const unregistered = await validateFinalAvReview(review, validationOptions(fixture));

@@ -251,6 +251,224 @@ test("post-render narration QA binds separate display and spoken evidence to one
   }).status, "fresh");
 });
 
+test("post-render narration QA repairs verifier-safe timestamps from word onsets and acoustic speech boundaries", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-timestamp-repair-"));
+  const storyId = "flagship-timestamp-repair";
+  const artifactDir = path.join(root, storyId);
+  const evidenceDir = path.join(artifactDir, "flagship");
+  const runId = `production-render:${storyId}:2026-07-15T09:30:00.000Z`;
+  await fs.ensureDir(evidenceDir);
+
+  const script = "Alpha beta gamma delta epsilon zeta eta theta iota.";
+  const paths = {
+    final_video: path.join(artifactDir, "visual_v4_render.mp4"),
+    final_audio: path.join(evidenceDir, "final_audio.mp3"),
+    script: path.join(evidenceDir, "final_script.txt"),
+    spoken_script: path.join(evidenceDir, "final_spoken_script.txt"),
+    captions: path.join(evidenceDir, "captions.srt"),
+    word_timestamps: path.join(evidenceDir, "word_timestamps.json"),
+  };
+  await fs.writeFile(paths.final_video, Buffer.alloc(4096, 4));
+  await fs.writeFile(paths.final_audio, Buffer.alloc(4096, 5));
+  await fs.writeFile(paths.script, `${script}\n`, "utf8");
+  await fs.writeFile(paths.spoken_script, `${script}\n`, "utf8");
+  await fs.writeFile(
+    paths.captions,
+    `1\n00:00:00,000 --> 00:00:03,800\n${script}\n`,
+    "utf8",
+  );
+
+  const audioSha256 = await sha256File(paths.final_audio);
+  const scriptSha256 = await sha256File(paths.script);
+  const spokenScriptSha256 = await sha256File(paths.spoken_script);
+  const captionsSha256 = await sha256File(paths.captions);
+  const originalWords = [
+    { word: "Alpha", start: 0, end: 0.4 },
+    { word: "beta", start: 0.35, end: 0.75 },
+    { word: "gamma", start: 0.9, end: 1.3 },
+    { word: "delta", start: 1.45, end: 1.85 },
+    { word: "epsilon", start: 2, end: 2.4 },
+    { word: "zeta", start: 2.55, end: 2.95 },
+    { word: "eta", start: 3.1, end: 3.3 },
+    { word: "theta", start: 3.45, end: 3.6 },
+    { word: "iota.", start: 3.6, end: 3.8 },
+  ];
+  const acousticSilences = [
+    { start: 0.85, end: 0.9 },
+    { start: 1.4, end: 1.45 },
+    { start: 1.95, end: 2 },
+    { start: 2.5, end: 2.55 },
+    { start: 3.05, end: 3.1 },
+    { start: 3.4, end: 3.45 },
+  ];
+  await fs.writeJson(paths.word_timestamps, {
+    complete: true,
+    words: originalWords,
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        strategy: "local_whisper_word_alignment",
+        script_reconciled: true,
+        script_coverage_ratio: 1,
+        script_expected_word_count: originalWords.length,
+        script_actual_word_count: originalWords.length,
+        script_matched_word_count: originalWords.length,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+    audio_sha256: audioSha256,
+    script_sha256: scriptSha256,
+    spoken_script_sha256: spokenScriptSha256,
+    captions_sha256: captionsSha256,
+    flagship_generation_run_id: runId,
+  }, { spaces: 2 });
+  const originalTimestampSha256 = await sha256File(paths.word_timestamps);
+
+  const artifacts = {};
+  for (const [key, filePath] of Object.entries(paths)) {
+    const stat = await fs.stat(filePath);
+    artifacts[key] = {
+      path: path.relative(artifactDir, filePath).replace(/\\/g, "/"),
+      sha256: await sha256File(filePath),
+      bytes: stat.size,
+      run_id: runId,
+      script_sha256: scriptSha256,
+      spoken_script_sha256: spokenScriptSha256,
+    };
+  }
+  const generationManifestPath = path.join(evidenceDir, "generation_manifest.json");
+  await fs.writeJson(generationManifestPath, {
+    schema_version: 1,
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    producer_id: "pulse-gaming-flagship-renderer",
+    run_id: runId,
+    generated_at: "2026-07-15T09:30:00.000Z",
+    script_sha256: scriptSha256,
+    spoken_script_sha256: spokenScriptSha256,
+    artifacts,
+    blockers: [],
+  }, { spaces: 2 });
+  const originalGenerationManifestSha256 = await sha256File(generationManifestPath);
+
+  const inventoryPath = path.join(evidenceDir, "inventory.json");
+  await fs.writeJson(inventoryPath, {
+    schema_version: 1,
+    story_id: storyId,
+    generation_manifest: { path: "flagship/generation_manifest.json" },
+    final_outputs: {
+      captions: {
+        path: "flagship/captions.srt",
+        final_video_sha256: await sha256File(paths.final_video),
+        final_audio_sha256: audioSha256,
+        word_timestamps_sha256: originalTimestampSha256,
+        script_sha256: scriptSha256,
+      },
+    },
+  }, { spaces: 2 });
+  const originalInventorySha256 = await sha256File(inventoryPath);
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    input_fingerprint: {
+      signature: "immutable-render-input-signature",
+      word_timestamps_sha256: originalTimestampSha256,
+    },
+    flagship_generation_evidence: {
+      manifest_path: generationManifestPath,
+      manifest_sha256: originalGenerationManifestSha256,
+      manifest_size_bytes: (await fs.stat(generationManifestPath)).size,
+    },
+    flagship_inventory_evidence: {
+      inventory_path: inventoryPath,
+      inventory_sha256: originalInventorySha256,
+      inventory_size_bytes: (await fs.stat(inventoryPath)).size,
+    },
+  }, { spaces: 2 });
+
+  const result = await writeFlagshipNarrationQaEvidence({
+    artifactDir,
+    generatedAt: "2026-07-15T09:30:00.000Z",
+    durationProbe: async () => 4,
+    silenceProbe: async () => acousticSilences,
+  });
+
+  assert.equal(result.verdict, "PASS", JSON.stringify(result.blockers, null, 2));
+  assert.equal(result.timestamp_repair.repaired, true);
+  assert.equal(result.timestamp_repair.source_sha256, originalTimestampSha256);
+  assert.ok(result.timestamp_repair.coverage_ratio_before < 0.8);
+  assert.ok(result.timestamp_repair.coverage_ratio_after >= 0.8);
+
+  const repairedTimestamps = await fs.readJson(paths.word_timestamps);
+  assert.deepEqual(repairedTimestamps.words.map((row) => row.word), originalWords.map((row) => row.word));
+  assert.deepEqual(repairedTimestamps.words.map((row) => row.start), originalWords.map((row) => row.start));
+  assert.deepEqual(
+    repairedTimestamps.words.slice(0, -1).map((row) => row.end),
+    [0.35, 0.85, 1.4, 1.95, 2.5, 3.05, 3.4, 3.6],
+  );
+  assert.equal(repairedTimestamps.words.at(-1).end, originalWords.at(-1).end);
+  assert.equal(repairedTimestamps.audio_sha256, audioSha256);
+  assert.equal(repairedTimestamps.script_sha256, scriptSha256);
+  assert.equal(repairedTimestamps.spoken_script_sha256, spokenScriptSha256);
+  assert.equal(repairedTimestamps.captions_sha256, captionsSha256);
+  assert.equal(repairedTimestamps.flagship_generation_run_id, runId);
+  assert.equal(
+    repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.source_word_timestamps_sha256,
+    originalTimestampSha256,
+  );
+  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.word_text_unchanged, true);
+  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.word_start_times_unchanged, true);
+  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.final_word_end_unchanged, true);
+  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.end_times_from_acoustic_silence_starts, true);
+  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.timestamp_masked_silence_count_after, 0);
+  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.fabricated_word_or_time_value_count, 0);
+
+  const repairedTimestampSha256 = await sha256File(paths.word_timestamps);
+  assert.notEqual(repairedTimestampSha256, originalTimestampSha256);
+  const generationManifest = await fs.readJson(generationManifestPath);
+  assert.equal(generationManifest.run_id, runId);
+  assert.equal(generationManifest.script_sha256, scriptSha256);
+  assert.equal(generationManifest.spoken_script_sha256, spokenScriptSha256);
+  assert.equal(generationManifest.artifacts.word_timestamps.sha256, repairedTimestampSha256);
+  assert.equal(
+    generationManifest.artifacts.word_timestamps.bytes,
+    (await fs.stat(paths.word_timestamps)).size,
+  );
+  const inventory = await fs.readJson(inventoryPath);
+  assert.equal(inventory.final_outputs.captions.word_timestamps_sha256, repairedTimestampSha256);
+
+  const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(renderManifest.input_fingerprint.word_timestamps_sha256, originalTimestampSha256);
+  assert.equal(
+    renderManifest.flagship_generation_evidence.manifest_sha256,
+    await sha256File(generationManifestPath),
+  );
+  assert.equal(renderManifest.flagship_inventory_evidence.inventory_sha256, await sha256File(inventoryPath));
+  const narration = await fs.readJson(path.join(artifactDir, "narration_manifest.json"));
+  assert.equal(narration.lineage.source_word_timestamps_sha256, originalTimestampSha256);
+  assert.equal(narration.lineage.frozen_word_timestamps_sha256, repairedTimestampSha256);
+  assert.equal(narration.display_script_sha256, scriptSha256);
+  assert.equal(narration.spoken_script_sha256, spokenScriptSha256);
+
+  const generationManifestSha256 = await sha256File(generationManifestPath);
+  const rerun = await writeFlagshipNarrationQaEvidence({
+    artifactDir,
+    generatedAt: "2026-07-15T09:31:00.000Z",
+    durationProbe: async () => 4,
+    silenceProbe: async () => acousticSilences,
+  });
+  assert.equal(rerun.verdict, "PASS", JSON.stringify(rerun.blockers, null, 2));
+  assert.equal(rerun.timestamp_repair.repaired, false);
+  assert.equal(rerun.timestamp_repair.previously_repaired, true);
+  assert.equal(rerun.timestamp_repair.source_sha256, originalTimestampSha256);
+  assert.equal(await sha256File(paths.word_timestamps), repairedTimestampSha256);
+  assert.equal(await sha256File(generationManifestPath), generationManifestSha256);
+  const rerunNarration = await fs.readJson(path.join(artifactDir, "narration_manifest.json"));
+  assert.equal(rerunNarration.lineage.timestamp_repair_source_sha256, originalTimestampSha256);
+});
+
 test("narration QA repair rewrites stale reports from current audio and captions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-narration-qa-repair-"));
   const fixture = await makeNarrationQaFixture(root);

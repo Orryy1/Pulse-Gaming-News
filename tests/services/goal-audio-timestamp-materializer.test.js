@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -1316,6 +1317,119 @@ test("goal audio materializer rejects fresh Whisper transcript when it still con
   assert.match(report.jobs[0].error, /whisper|asr|coverage|insert/i);
 });
 
+test("goal audio materializer quarantines the final failed managed ElevenLabs take without promoting it", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-elevenlabs-quarantine-"));
+  const script = [
+    "Black Flag Resynced launches with nine paid extras.",
+    "Together, they cost more than the game.",
+  ].join(" ");
+  const storyId = "story-elevenlabs-quarantine";
+  const artifactDir = await makePackage(root, storyId, {
+    selected_title: "Black Flag Resynced Has A Price Problem",
+    narration_script: script,
+    tts_script: script,
+  });
+  const secret = "elevenlabs-test-secret-must-not-leak";
+  const generatedPaths = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    alignmentMode: "whisper",
+    workbenchReport: {
+      local_tts: { verdict: "red", ready: false },
+      elevenlabs_tts: { ready: true, configured: true },
+      jobs: [
+        {
+          ...workbenchJob(storyId, artifactDir),
+          tts_provider: "elevenlabs",
+        },
+      ],
+    },
+    generatedAt: "2026-07-15T12:00:00.000Z",
+    ttsEnv: {
+      ELEVENLABS_API_KEY: secret,
+      ELEVENLABS_VOICE_ID: "voice-test-safe-id",
+    },
+    compactGeneratedNarrationSilence: async () => ({
+      repaired: false,
+      reason: "generated_narration_silence_within_limit",
+    }),
+    generateTtsForStory: async ({ text, outputPath }) => {
+      generatedPaths.push(outputPath);
+      await fs.outputFile(path.join(root, outputPath), Buffer.alloc(4096, generatedPaths.length));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: {
+          ...charAlignment(text),
+          meta: {
+            provider: "elevenlabs",
+            api_key: secret,
+            elevenlabs: {
+              voiceId: "voice-test-safe-id",
+              modelId: "eleven_multilingual_v2",
+              speakingRate: 1,
+            },
+          },
+        },
+      });
+      return { ok: true, attempts: 1 };
+    },
+    alignWordsWithAudio: async () => {
+      const transcript = "Nine paid extras cost more than the game.";
+      return {
+        ok: true,
+        source: "local_whisper_word_alignment",
+        model: "fixture",
+        transcript,
+        words: whisperWordsFromScript(transcript),
+      };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.equal(report.jobs[0].status, "failed");
+  assert.match(report.jobs[0].error, /local_whisper_word_alignment_failed/);
+  assert.equal(generatedPaths.length, 3);
+
+  const quarantine = report.jobs[0].diagnostic_quarantine;
+  assert.equal(quarantine.status, "preserved");
+  assert.equal(quarantine.publishable, false);
+  assert.equal(quarantine.attempt, 3);
+  assert.match(quarantine.manifest_path, /^output\/audio\/quarantine\//);
+  assert.match(quarantine.audio_path, /narration\.failed\.mp3$/);
+  assert.match(quarantine.word_timestamps_path, /word_timestamps\.failed\.json$/);
+
+  const manifestPath = path.join(root, quarantine.manifest_path);
+  const manifest = await fs.readJson(manifestPath);
+  const audioPath = path.join(root, quarantine.audio_path);
+  const timestampsPath = path.join(root, quarantine.word_timestamps_path);
+  const audioBytes = await fs.readFile(audioPath);
+  const timestampBytes = await fs.readFile(timestampsPath);
+  assert.equal(manifest.publishable, false);
+  assert.equal(manifest.story_id, storyId);
+  assert.equal(manifest.provider, "elevenlabs");
+  assert.equal(manifest.attempt, 3);
+  assert.equal(manifest.request.word_count, script.split(/\s+/).length);
+  assert.match(manifest.request.text_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(manifest.settings.alignment_mode, "whisper");
+  assert.equal(manifest.settings.model_id, "eleven_multilingual_v2");
+  assert.equal(manifest.settings.voice_id, "voice-test-safe-id");
+  assert.equal(
+    manifest.media.audio.sha256,
+    crypto.createHash("sha256").update(audioBytes).digest("hex"),
+  );
+  assert.equal(
+    manifest.media.word_timestamps.sha256,
+    crypto.createHash("sha256").update(timestampBytes).digest("hex"),
+  );
+  assert.doesNotMatch(await fs.readFile(manifestPath, "utf8"), new RegExp(secret));
+  assert.equal(await fs.pathExists(path.join(root, "output", "audio", `${storyId}.mp3`)), false);
+  assert.equal(await fs.pathExists(path.join(root, "output", "audio", `${storyId}_timestamps.json`)), false);
+  const stagingDir = path.join(root, "output", "audio", ".staging");
+  const stagedFiles = (await fs.pathExists(stagingDir)) ? await fs.readdir(stagingDir) : [];
+  assert.deepEqual(stagedFiles, []);
+});
+
 test("goal audio materializer rejects fresh Whisper transcript with GTA VI spoken six", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-gta-fresh-spoken-six-"));
   const artifactDir = await makePackage(root, "story-gta-fresh-spoken-six", {
@@ -1413,10 +1527,29 @@ test("goal audio materializer refreshes stale narration and caption manifests af
     narration_script: script,
   });
   await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+    authoritative: true,
+    verdict: "PASS",
     status: "ready",
     generated_at: "2026-05-22T05:00:00.000Z",
     transcript: "Hades, two finally has a PlayStation and Xbox date.",
     final_transcript: "Hades, two finally has a PlayStation and Xbox date.",
+    display_transcript: script,
+    display_script_sha256: "stale-display-sha",
+    spoken_script_sha256: "stale-spoken-sha",
+    audio_sha256: "stale-audio-sha",
+    word_timestamps_sha256: "stale-timestamp-sha",
+    checks: {
+      display_script_verified: true,
+      spoken_script_verified: true,
+    },
+    lineage: {
+      display_script_sha256: "stale-display-sha",
+      spoken_script_sha256: "stale-spoken-sha",
+      source_word_timestamps_sha256: "stale-timestamp-sha",
+      final_audio_sha256: "stale-final-audio-sha",
+      final_video_sha256: "stale-final-video-sha",
+      render_input_fingerprint_signature: "stale-render-signature",
+    },
     word_timestamps_path: "output/audio/story-manifest-refresh_timestamps.json",
   });
   await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
@@ -1454,6 +1587,24 @@ test("goal audio materializer refreshes stale narration and caption manifests af
   assert.deepEqual(narration.blockers, []);
   assert.equal(narration.checks.narration_audio_present, true);
   assert.equal(narration.checks.narration_audio_usable, true);
+  assert.equal(narration.checks.display_script_verified, true);
+  assert.equal(narration.checks.spoken_script_verified, true);
+  assert.equal(narration.display_transcript, script);
+  const expectedDisplaySha = crypto.createHash("sha256").update(`${script}\n`).digest("hex");
+  const expectedSpokenSha = crypto
+    .createHash("sha256")
+    .update("Hades two finally has a PlayStation and Xbox date.\n")
+    .digest("hex");
+  assert.equal(narration.display_script_sha256, expectedDisplaySha);
+  assert.equal(narration.spoken_script_sha256, expectedSpokenSha);
+  assert.equal(narration.lineage.display_script_sha256, expectedDisplaySha);
+  assert.equal(narration.lineage.spoken_script_sha256, expectedSpokenSha);
+  assert.equal(narration.lineage.final_audio_sha256, null);
+  assert.equal(narration.lineage.final_video_sha256, null);
+  assert.equal(narration.lineage.render_input_fingerprint_signature, null);
+  assert.match(narration.audio_sha256, /^[a-f0-9]{64}$/);
+  assert.match(narration.word_timestamps_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(narration.lineage.source_word_timestamps_sha256, narration.word_timestamps_sha256);
   assert.doesNotMatch(narration.transcript, /Hades, two/);
 
   const captions = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
@@ -2744,6 +2895,42 @@ test("goal audio materializer coverage accepts the observed Resynced ASR pronunc
   assert.equal(coverage.ok, true);
   assert.equal(coverage.opening_covered, true);
   assert.equal(coverage.inserted_actual_word_count, 0);
+});
+
+test("goal audio materializer coverage accepts the joined Resynced TTS alias without hiding insertions", () => {
+  const scriptText = "Black Flag reesynced has nine day one DLC packs.";
+  const observedPronunciations = ["Resynct", "Resinked"];
+
+  for (const pronunciation of observedPronunciations) {
+    const words = ["Black", "Flag", pronunciation, "has", "nine", "day", "one", "DLC", "packs."].map(
+      (word, index) => ({
+        word,
+        start: Number((index * 0.18).toFixed(3)),
+        end: Number((index * 0.18 + 0.14).toFixed(3)),
+      }),
+    );
+
+    const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+    const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+    assert.equal(coverage.ok, true, JSON.stringify(coverage, null, 2));
+    assert.equal(coverage.opening_covered, true, JSON.stringify(coverage, null, 2));
+    assert.equal(coverage.inserted_actual_word_count, 0, JSON.stringify(coverage, null, 2));
+    assert.equal(coverage.unmatched_expected_word_count, 0, JSON.stringify(coverage, null, 2));
+    assert.equal(reconciled.ok, true, JSON.stringify(reconciled, null, 2));
+
+    const unsafeWords = words.toSpliced(3, 0, {
+      word: "actually",
+      start: 0.53,
+      end: 0.55,
+    });
+    const unsafeCoverage = _testables.analyseWhisperScriptCoverage({
+      words: unsafeWords,
+      scriptText,
+    });
+    assert.equal(unsafeCoverage.inserted_actual_word_count, 1);
+    assert.equal(unsafeCoverage.inserted_actual_tokens[0].norm, "actually");
+  }
 });
 
 test("goal audio materializer treats Whisper cardinal and ordinal numeral spellings as exact speech", () => {
@@ -5192,6 +5379,76 @@ test("goal audio materializer recognises ready pairs under MEDIA_ROOT", async ()
   }
 });
 
+test("goal audio materializer isolates an explicit staging workspace from older MEDIA_ROOT media", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-isolated-workspace-"));
+  const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-isolated-workspace-"));
+  const originalMediaRoot = process.env.MEDIA_ROOT;
+  process.env.MEDIA_ROOT = mediaRoot;
+  try {
+    const artifactDir = await makePackage(root);
+    const workspaceAudioPath = path.join(root, "output", "audio", "story-audio.mp3");
+    const workspaceTimestampPath = path.join(root, "output", "audio", "story-audio_timestamps.json");
+    await fs.outputFile(workspaceAudioPath, Buffer.alloc(4096, 7));
+    await fs.outputJson(workspaceTimestampPath, {
+      words: [
+        { word: "Workspace", start: 0, end: 0.3 },
+        { word: "pair", start: 0.3, end: 0.6 },
+      ],
+    });
+
+    await fs.outputFile(
+      path.join(mediaRoot, "output", "audio", "story-audio.mp3"),
+      Buffer.alloc(8192, 3),
+    );
+    await fs.outputJson(path.join(mediaRoot, "output", "audio", "story-audio_timestamps.json"), {
+      words: [
+        { word: "Wrong", start: 0, end: 0.2 },
+        { word: "global", start: 0.2, end: 0.4 },
+        { word: "pair", start: 0.4, end: 0.6 },
+      ],
+    });
+    await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+      generated_at: "2026-07-15T09:59:00.000Z",
+      verdict: "FAIL",
+      audio_size_bytes: 8192,
+      word_timestamp_count: 3,
+      blockers: ["voice_cadence:wpm_too_fast"],
+      cadence: {
+        status: "fail",
+        blockers: ["voice_cadence:wpm_too_fast"],
+      },
+    });
+
+    const report = await materializeGoalAudioTimestamps({
+      workspaceRoot: root,
+      allowExternalMediaRoot: false,
+      workbenchReport: {
+        local_tts: { verdict: "green", ready: true },
+        jobs: [workbenchJob("story-audio", artifactDir, { status: "ready_audio_timestamp_pair" })],
+      },
+      generatedAt: "2026-07-15T10:00:00.000Z",
+      generateTtsForStory: async () => {
+        throw new Error("should use the isolated workspace pair");
+      },
+    });
+
+    assert.equal(report.summary.skipped_existing_count, 1);
+    assert.equal(report.jobs[0].status, "skipped_existing_ready_pair");
+    assert.equal(report.jobs[0].word_count, 2);
+    assert.equal(report.jobs[0].audio_size_bytes, 4096);
+    const packageTimestamps = await fs.readJson(path.join(artifactDir, "audio", "word_timestamps.json"));
+    assert.deepEqual(packageTimestamps.words.map((word) => word.word), ["Workspace", "pair"]);
+    const refreshedVoiceReport = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+    assert.equal(refreshedVoiceReport.word_timestamp_count, 2);
+    assert.equal(refreshedVoiceReport.audio_size_bytes, 4096);
+    assert.match(refreshedVoiceReport.audio_sha256, /^[a-f0-9]{64}$/);
+    assert.match(refreshedVoiceReport.word_timestamps_sha256, /^[a-f0-9]{64}$/);
+  } finally {
+    if (originalMediaRoot === undefined) delete process.env.MEDIA_ROOT;
+    else process.env.MEDIA_ROOT = originalMediaRoot;
+  }
+});
+
 test("goal audio materializer does not regenerate when fresh MEDIA_ROOT audio supersedes stale workspace audio", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-media-supersede-"));
   const mediaRoot = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-media-root-supersede-"));
@@ -5680,6 +5937,44 @@ test("goal audio materializer blocks Pulse Gaming ASR brand confusion instead of
     report.jobs[0].timestamp_whisper_alignment.error,
     "whisper_protected_brand_phrase_mismatch",
   );
+});
+
+test("normaliseTimestampFile gives Whisper canonical display copy while reconciling the TTS alias", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-canonical-whisper-prompt-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  const displayText = "Black Flag Resynced has nine day-one DLC packs.";
+  const spokenText = "Black Flag reesynced has nine day one DLC packs.";
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(spokenText),
+    meta: {},
+  });
+  const calls = [];
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-15T12:30:00.000Z",
+    text: displayText,
+    spokenText,
+    provider: "elevenlabs",
+    audioPath: path.join(root, "narration.mp3"),
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async (options) => {
+      calls.push(options);
+      return {
+        ok: true,
+        source: "local_whisper_word_alignment",
+        model: "fixture",
+        transcript: displayText,
+        words: whisperWordsFromScript(displayText),
+      };
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].scriptText, spokenText);
+  assert.equal(calls[0].promptText, displayText);
+  const result = await fs.readJson(timestampPath);
+  assert.equal(result.meta.timestampWhisperAlignment.repaired, true);
+  assert.equal(result.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
 });
 
 test("normaliseTimestampFile writes display-safe caption tokens for spoken platform, year and GTA expansions", async () => {

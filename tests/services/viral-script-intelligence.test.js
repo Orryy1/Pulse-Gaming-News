@@ -607,6 +607,39 @@ test("viral script intelligence preserves materially supported universal claims"
   );
 });
 
+test("viral script intelligence matches supported each-pack claims across spoken currency", () => {
+  const script =
+    "Assassin's Creed Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+    "Steam lists them at 84 dollars 91 combined, while the base game costs 59 dollars 99. " +
+    "Eight packs are 9 dollars 99 each, adding character outfits, ship cosmetics and weapons. " +
+    "The argument is whether players see harmless extras or content carved out before launch. " +
+    "If the base game feels complete, Ubisoft wins the pricing fight. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "black-flag-supported-each-spoken-currency",
+      title: "Black Flag Resynced's $84.91 DLC Costs More Than The Game",
+      source_name: "Steam",
+      confirmed_claims: [
+        "Eight listed packs cost $9.99 each.",
+        "Steam lists the nine packs at $84.91 combined and the base game at $59.99.",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(
+    result.blockers.includes("unsupported_universal_claim"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+  assert.equal(
+    result.blockers.includes("monetisation_conflict_missing_supported_detail"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+});
+
 test("viral script intelligence requires semantic polarity agreement for universals", () => {
   const script =
     "All Iron Circuit modes require an online connection to play. " +

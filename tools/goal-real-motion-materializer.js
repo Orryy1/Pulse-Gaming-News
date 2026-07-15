@@ -26,6 +26,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     minFamilies: 4,
     maxClips: 8,
     maxDirectClipsPerBaseSource: null,
+    minBaseSources: 0,
+    strictBaseSourceDiversity: false,
     refreshReady: false,
     json: false,
     help: false,
@@ -48,6 +50,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--max-direct-clips-per-base-source") {
       args.maxDirectClipsPerBaseSource = Number(argv[++i] || 0) || null;
     }
+    else if (arg === "--min-base-sources") args.minBaseSources = Number(argv[++i] || 0);
+    else if (arg === "--strict-base-source-diversity") args.strictBaseSourceDiversity = true;
     else if (arg === "--refresh-ready") args.refreshReady = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -75,6 +79,8 @@ function usage() {
     "  --min-families <n>      Required distinct source families",
     "  --max-clips <n>         Maximum clips to materialise per story",
     "  --max-direct-clips-per-base-source <n>  Maximum clips from the same direct-video base source",
+    "  --min-base-sources <n>  Required genuine immutable base-source identities",
+    "  --strict-base-source-diversity  Enforce the ultimate professional identity tier",
     "  --refresh-ready         Refresh requested ready stories from the current motion pack",
     "  --json                  Print JSON",
   ].join("\n");
@@ -100,6 +106,8 @@ async function main(argv = process.argv.slice(2)) {
     minFamilies: args.minFamilies,
     maxClips: args.maxClips,
     maxDirectClipsPerBaseSource: args.maxDirectClipsPerBaseSource,
+    minBaseSources: args.minBaseSources,
+    strictBaseSourceDiversity: args.strictBaseSourceDiversity,
     segmentValidationReport,
     artifactRoot: args.artifactRoot,
     includeReadyStories: args.refreshReady,

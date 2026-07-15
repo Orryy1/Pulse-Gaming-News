@@ -246,6 +246,48 @@ test("Studio V4 clip materializer cuts explicitly validated windows from a local
   assert.equal(result.bridge.video_clips[0].materialized, true);
 });
 
+test("Studio V4 clip materializer records and applies a bounded baked-text crop", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-v4-safe-crop-"));
+  const localMaster = path.join(root, "test", "output", "official-gameplay-master.mp4");
+  await fs.outputFile(localMaster, "official master fixture");
+  const calls = [];
+
+  const result = await materializeStudioV4BridgeClips({
+    root,
+    story: { id: "black-flag-repair" },
+    bridge: {
+      readiness: { status: "bridge_ready", blockers: [] },
+      video_clips: [
+        {
+          id: "official-window-clean-crop",
+          source_family: "official_gameplay_window_10_5",
+          path: localMaster,
+          source_url: localMaster,
+          source_url_kind: "local_video_file",
+          materialize_source_window: true,
+          mediaStartS: 10,
+          durationS: 5,
+          source_crop_bottom_px: 80,
+        },
+      ],
+    },
+    execFileSync: (bin, args) => {
+      calls.push({ bin, args });
+      fs.outputFileSync(args[args.length - 1], "cropped official window");
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(result.readiness.status, "materialized");
+  assert.match(
+    calls[0].args[calls[0].args.indexOf("-vf") + 1],
+    /^crop=iw:ih-80:0:0,scale=1080:1920:/,
+  );
+  assert.equal(result.bridge.video_clips[0].source_crop_bottom_px, 80);
+  const sidecar = await fs.readJson(`${result.bridge.video_clips[0].path}.json`);
+  assert.equal(sidecar.source_crop_bottom_px, 80);
+});
+
 test("Studio V4 clip materializer accepts usable output when HLS ffmpeg exits noisily", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-v4-materializer-"));
   const directUrl =

@@ -31,6 +31,8 @@ function narrationRightsRecord(storyId, allowedPlatforms = ["youtube_shorts", "t
     allowed_platforms: allowedPlatforms,
     commercial_use_allowed: true,
     evidence_file: "rights/narration.json",
+    approval_status: "approved_for_transformative_editorial_use",
+    verdict: "GREEN",
     risk_score: 0.05,
   };
 }
@@ -261,6 +263,8 @@ async function makeControlStory(root, storyId, overrides = {}) {
         allowed_platforms: ["youtube_shorts", "tiktok"],
         commercial_use_allowed: true,
         evidence_file: `rights/${clip.asset_id || clip.id || `motion-${index + 1}`}.json`,
+        approval_status: "approved_for_transformative_editorial_use",
+        verdict: "GREEN",
         risk_score: 0.1,
       })),
       narrationRightsRecord(storyId),
@@ -417,9 +421,14 @@ async function makeControlStory(root, storyId, overrides = {}) {
       schema_version: 1,
       story_id: storyId,
       reviewed_at: "2026-07-15T01:00:00.000Z",
+      signed_at: "2026-07-15T01:01:00.000Z",
       reviewer: {
         id: "independent-final-av-reviewer",
         independent: true,
+      },
+      signoff: {
+        reviewer_id: "independent-final-av-reviewer",
+        signed_at: "2026-07-15T01:01:00.000Z",
       },
       artefacts,
       reviewed_artefact_fingerprints: artefactFingerprints,
@@ -442,7 +451,12 @@ async function makeControlStory(root, storyId, overrides = {}) {
         subject_match: true,
       },
       defects: [],
+      status: "GREEN",
       verdict: "GREEN",
+      final_verdict: "GREEN",
+      publish_ready: true,
+      can_publish: true,
+      can_auto_publish: true,
     };
     const reviewOverride = overrides.finalAvReview || {};
     await fs.writeJson(path.join(artifactDir, "final_av_review.json"), {
@@ -926,6 +940,79 @@ test("Goal 19 rejects missing final-used asset and evidence fingerprints", async
   assert.ok(reasons.includes("rights:evidence_size_missing_or_invalid"));
 });
 
+test("Goal 19 binds rights evidence to the selected final-used asset path", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-selected-rights-path-"));
+  const story = await makeControlStory(root, "story-selected-rights-path");
+  const ledgerPath = path.join(story.artifact_dir, "rights_ledger.json");
+  const ledger = await fs.readJson(ledgerPath);
+  const selectedPath = path.join(story.artifact_dir, "motion", "clip-a.mp4");
+  const donorPath = path.join(story.artifact_dir, "motion", "same-id-donor.mp4");
+  const donorBytes = Buffer.from("same asset ID, different file");
+
+  await fs.remove(selectedPath);
+  await fs.outputFile(donorPath, donorBytes);
+  ledger.records = ledger.records.map((record) => ({
+    ...record,
+    approval_status: "approved_for_transformative_editorial_use",
+    verdict: "GREEN",
+  }));
+  ledger.records[0] = {
+    ...ledger.records[0],
+    path: "motion/same-id-donor.mp4",
+    asset_sha256: sha256(donorBytes),
+    asset_size_bytes: donorBytes.length,
+  };
+  await fs.writeJson(ledgerPath, ledger, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T09:20:00.000Z",
+  });
+
+  const result = report.stories[0];
+  const rights = result.control_inputs.rights_ledger;
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(rights.status, "fail");
+  assert.ok(rights.evidence.incomplete_record_reasons.includes("rights:asset_path_mismatch"));
+  assert.ok(rights.evidence.incomplete_record_reasons.includes("rights:asset_file_missing_or_unreadable"));
+});
+
+test("Goal 19 rejects final-used rights records without a positive per-record decision", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-rights-decision-"));
+  const story = await makeControlStory(root, "story-rights-decision");
+  const ledgerPath = path.join(story.artifact_dir, "rights_ledger.json");
+  const ledger = await fs.readJson(ledgerPath);
+
+  ledger.records = ledger.records.map((record) => ({
+    ...record,
+    approval_status: "approved_for_transformative_editorial_use",
+    verdict: "GREEN",
+  }));
+  ledger.records[0].approval_status = "REJECTED";
+  ledger.records[0].verdict = "RED";
+  await fs.writeJson(ledgerPath, ledger, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T09:21:00.000Z",
+  });
+
+  const result = report.stories[0];
+  const rights = result.control_inputs.rights_ledger;
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(rights.status, "fail");
+  assert.ok(rights.evidence.incomplete_record_reasons.includes("rights:approval_status_not_approved"));
+  assert.ok(rights.evidence.incomplete_record_reasons.includes("rights:verdict_not_pass"));
+});
+
 test("Goal 19 rejects narration changed after the final render fingerprint was stamped", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-stale-render-audio-"));
   const story = await makeControlStory(root, "story-stale-render-audio");
@@ -961,6 +1048,8 @@ test("Goal 19 scopes final-render rights to enabled live platforms while derivat
           allowed_platforms: ["youtube", "instagram", "facebook"],
           commercial_use_allowed: true,
           evidence_file: `rights/${assetId}.json`,
+          approval_status: "approved_for_transformative_editorial_use",
+          verdict: "GREEN",
         })),
         narrationRightsRecord("story-platform-rights-alias", ["youtube", "instagram", "facebook"]),
       ],
@@ -1266,6 +1355,8 @@ test("Goal 19 requires rights coverage for enabled platform-native final variant
           allowed_platforms: allowedPlatforms,
           commercial_use_allowed: true,
           evidence_file: "rights/clip-a.json",
+          approval_status: "approved_for_transformative_editorial_use",
+          verdict: "GREEN",
           risk_score: 0.1,
         },
         {
@@ -1278,6 +1369,8 @@ test("Goal 19 requires rights coverage for enabled platform-native final variant
           allowed_platforms: allowedPlatforms,
           commercial_use_allowed: true,
           evidence_file: "rights/clip-b.json",
+          approval_status: "approved_for_transformative_editorial_use",
+          verdict: "GREEN",
           risk_score: 0.1,
         },
         narrationRightsRecord(storyId, allowedPlatforms),
@@ -1336,6 +1429,8 @@ test("Goal 19 requires rights coverage for enabled platform-native final variant
       commercial_use_allowed: true,
       allowed_platforms: allowedPlatforms,
       evidence_file: "platform_publish_manifest.json",
+      approval_status: "approved_for_platform_native_transcode",
+      verdict: "GREEN",
     },
     {
       asset_id: "platform-native-facebook_reels",
@@ -1345,6 +1440,8 @@ test("Goal 19 requires rights coverage for enabled platform-native final variant
       commercial_use_allowed: true,
       allowed_platforms: allowedPlatforms,
       evidence_file: "platform_publish_manifest.json",
+      approval_status: "approved_for_platform_native_transcode",
+      verdict: "GREEN",
     },
   );
   await materialiseRightsFixture(artifactDir, repairedRights);
@@ -1946,6 +2043,66 @@ test("Goal 19 treats a present RED goal package summary as an authoritative veto
   assert.equal(report.stories[0].can_auto_publish, false);
   assert.equal(report.stories[0].control_inputs.package_summary.status, "fail");
   assert.ok(report.stories[0].blockers.includes("control:package_summary_red"));
+});
+
+test("Goal 19 preserves an authoritative RED on the supplied story-package row", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-story-package-red-"));
+  const story = await makeControlStory(root, "story-package-row-red");
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [{
+      ...story,
+      verdict: "RED",
+      can_auto_publish: false,
+      blockers: ["story_package:authoritative_red"],
+    }],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-15T09:22:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(result.control_inputs.story_package_authority.status, "fail");
+  assert.ok(result.blockers.includes("control:story_package_red"));
+  assert.ok(result.control_inputs.story_package_authority.evidence.failures.includes(
+    "story_package:authoritative_red",
+  ));
+});
+
+test("Goal 19 caps authoritative story-package AMBER or warnings at final AMBER", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-story-package-amber-"));
+  const cases = [
+    {
+      story_id: "story-package-row-amber",
+      story_package: { verdict: "AMBER" },
+      expected_warning: "control:story_package_amber",
+    },
+    {
+      story_id: "story-package-row-warning",
+      story_package: { verdict: "GREEN", warnings: ["story_package:review_advisory"] },
+      expected_warning: "story_package:review_advisory",
+    },
+  ];
+
+  for (const item of cases) {
+    const story = await makeControlStory(root, item.story_id);
+    const report = await buildGoal19AutonomyControlTower({
+      storyPackages: [{ ...story, ...item.story_package }],
+      upstreamFirewallReport: readyGoal18(story.story_id),
+      workspaceRoot: root,
+      outputDir: path.join(root, `${item.story_id}-out`),
+      generatedAt: "2026-07-15T09:23:00.000Z",
+    });
+
+    const result = report.stories[0];
+    assert.equal(result.final_verdict, "AMBER", item.story_id);
+    assert.equal(result.can_auto_publish, false, item.story_id);
+    assert.equal(result.control_inputs.story_package_authority.status, "amber", item.story_id);
+    assert.ok(result.direct_control_tower_warnings.includes(item.expected_warning), item.story_id);
+  }
 });
 
 test("Goal 19 hard-blocks Pulse Media-House Score with missing source-lock score", async () => {

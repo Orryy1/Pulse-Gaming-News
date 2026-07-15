@@ -10,6 +10,7 @@ const test = require("node:test");
 
 const {
   materializeGoalProductionRenders,
+  refreshFlagshipInventoryEvidence,
   refreshFinalRenderQualityOnly,
   shouldSkipReadableShellCardsForAudioBudget,
   writeGoalProductionRenderMaterializationReport,
@@ -1626,6 +1627,181 @@ test("production renderer writes an immutable used-asset inventory with file-bac
     assert.deepEqual(evidence.allowed_platforms, asset.allowed_platforms);
     assert.match(evidence.source_ledger_sha256, /^[a-f0-9]{64}$/);
   }
+});
+
+test("flagship inventory refresh captures platform variants materialised after the master render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-inventory-refresh-"));
+  const storyId = "flagship-platform-variant-refresh";
+  const artifactDir = path.join(root, "package");
+  const flagshipDir = path.join(artifactDir, "flagship");
+  const variantPath = path.join(
+    artifactDir,
+    "platform_variants",
+    "instagram_reels",
+    "visual_v4_render_instagram_reels.mp4",
+  );
+  await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 1));
+  await fs.outputFile(variantPath, Buffer.alloc(4096, 2));
+  await fs.outputJson(path.join(flagshipDir, "generation_manifest.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    artifacts: {
+      final_video: { path: "visual_v4_render.mp4", sha256: "a".repeat(64) },
+    },
+  });
+  const platformVariant = {
+    asset_id: "platform-native-instagram_reels",
+    kind: "platform_native",
+    path: variantPath,
+    source_url: `local://pulse-gaming/${storyId}/platform-native/instagram_reels`,
+    source_type: "platform_native_render",
+    owner: "Pulse Gaming",
+    provider_id: "legacy_variant_catalogue",
+    licence_basis: "derived_platform_variant_of_fully_rights_covered_final_render",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_commercial_editorial_use",
+    allowed_platforms: ["instagram_reels"],
+    risk_score: 0.2,
+    credit_required: false,
+  };
+  const historicalAlias = {
+    ...platformVariant,
+    asset_id: `${platformVariant.asset_id}-historical-alias`,
+    creator: "Legacy variant catalogue",
+    licence_basis: "legacy_variant_catalogue_import",
+    allowed_platforms: ["youtube_shorts"],
+  };
+  const rightsLedgerPath = path.join(artifactDir, "rights_ledger.json");
+  await fs.outputJson(rightsLedgerPath, {
+    verdict: "pass",
+    used_assets: [{
+      asset_id: platformVariant.asset_id,
+      kind: platformVariant.kind,
+      path: platformVariant.path,
+      source_url: platformVariant.source_url,
+    }],
+    records: [platformVariant],
+    matched_assets: [historicalAlias],
+    blockers: [],
+  });
+
+  const refreshed = await refreshFlagshipInventoryEvidence({
+    artifactDir,
+    storyId,
+    generatedAt: "2026-07-15T09:30:00.000Z",
+  });
+
+  assert.equal(refreshed.status, "inventory_refreshed", JSON.stringify(refreshed, null, 2));
+  assert.equal(refreshed.complete, true);
+  assert.equal(refreshed.safety.renderer_invoked, false);
+  assert.equal(refreshed.safety.no_publish_triggered, true);
+  const inventory = await fs.readJson(path.join(flagshipDir, "inventory.json"));
+  assert.equal(inventory.used_assets.length, 1);
+  assert.equal(inventory.used_assets[0].asset_id, platformVariant.asset_id);
+  assert.equal(inventory.used_assets[0].source_url, platformVariant.source_url);
+  assert.equal(inventory.used_assets[0].creator, "Pulse Gaming");
+  const sidecar = await fs.readJson(
+    path.join(artifactDir, inventory.used_assets[0].evidence_file),
+  );
+  const sourceLedgerSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(rightsLedgerPath))
+    .digest("hex");
+  const canonicalJson = (value) => {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+    if (value && typeof value === "object") {
+      return `{${Object.keys(value)
+        .filter((key) => value[key] !== undefined)
+        .sort()
+        .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+        .join(",")}}`;
+    }
+    return JSON.stringify(value);
+  };
+  const sourceRecordSha256 = crypto
+    .createHash("sha256")
+    .update(canonicalJson([platformVariant]))
+    .digest("hex");
+  assert.equal(sidecar.source_ledger_sha256, sourceLedgerSha256);
+  assert.equal(sidecar.source_record_sha256, sourceRecordSha256);
+
+  const trustedRenderInputs = await createTrustedRenderInputInventory({
+    packageDir: artifactDir,
+    inventory,
+  });
+  const verification = await materializeFlagshipMediaEvidence({
+    packageDir: artifactDir,
+    inventory,
+    outputDir: path.join(root, "flagship-proof"),
+    generatedAt: "2026-07-15T09:31:00.000Z",
+    trustedRenderInputs,
+  });
+  const verifiedVariant = verification.used_assets.find(
+    (asset) => asset.asset_id === platformVariant.asset_id,
+  );
+  assert.equal(
+    verifiedVariant.evidence_file.source_ledger.verified,
+    true,
+    JSON.stringify(verifiedVariant.evidence_file.source_ledger.blockers, null, 2),
+  );
+});
+
+test("flagship inventory refresh refuses creator fallbacks outside the verifier record contract", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-inventory-creator-"));
+  const storyId = "flagship-provider-only-creator";
+  const assetId = `${storyId}_audio_path`;
+  const artifactDir = path.join(root, "package");
+  const flagshipDir = path.join(artifactDir, "flagship");
+  const assetPath = path.join(artifactDir, "audio.mp3");
+  await fs.outputFile(assetPath, Buffer.alloc(4096, 3));
+  await fs.outputJson(path.join(flagshipDir, "generation_manifest.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    artifacts: {},
+  });
+  const sourceRecord = {
+    asset_id: assetId,
+    kind: "narration",
+    path: assetPath,
+    source_url: `elevenlabs://pulse-gaming/${storyId}`,
+    provider_id: "pulse_gaming",
+    licence_basis: "owned_local_voice_model",
+    commercial_use_allowed: true,
+    approval_status: "approved",
+    allowed_platforms: ["youtube_shorts"],
+    risk_score: 0.08,
+    credit_required: false,
+  };
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    used_assets: [{
+      asset_id: assetId,
+      kind: sourceRecord.kind,
+      path: sourceRecord.path,
+      source_url: sourceRecord.source_url,
+    }],
+    records: [sourceRecord],
+    blockers: [],
+  });
+
+  const refreshed = await refreshFlagshipInventoryEvidence({
+    artifactDir,
+    storyId,
+    generatedAt: "2026-07-15T09:35:00.000Z",
+  });
+
+  assert.equal(refreshed.status, "blocked");
+  assert.ok(refreshed.blockers.includes(`used_asset_creator_missing:${assetId}`));
+  const inventory = await fs.readJson(path.join(flagshipDir, "inventory.json"));
+  assert.deepEqual(inventory.used_assets, []);
+  assert.equal(
+    await fs.pathExists(path.join(flagshipDir, "rights", `${assetId}.json`)),
+    false,
+  );
 });
 
 test("production renderer fails flagship rights closed across duplicate asset aliases", async () => {

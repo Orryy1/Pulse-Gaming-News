@@ -96,6 +96,79 @@ test("alignWordsWithLocalWhisper passes configured Whisper device", async () => 
   assert.equal(calls[0].args.includes("--prompt"), false);
 });
 
+test("alignWordsWithLocalWhisper prefers a canonical recognition prompt over a TTS-only alias", async () => {
+  const calls = [];
+  const result = await alignWordsWithLocalWhisper({
+    audioPath: "C:\\media\\black-flag.mp3",
+    scriptText: "Black Flag reesynced has nine day one DLC packs.",
+    promptText: "Black Flag Resynced has nine day-one DLC packs.",
+    model: "tiny.en",
+    device: "cpu",
+    useScriptPrompt: true,
+    execFileImpl: async (python, args) => {
+      calls.push({ python, args });
+      return {
+        stdout: JSON.stringify({
+          model: "tiny.en",
+          language: "en",
+          text: "Black Flag Resynced",
+          segments: [{
+            text: "Black Flag Resynced",
+            words: [
+              { word: "Black", start: 0, end: 0.2 },
+              { word: "Flag", start: 0.2, end: 0.4 },
+              { word: "Resynced", start: 0.4, end: 0.8 },
+            ],
+          }],
+        }),
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  const promptIndex = calls[0].args.indexOf("--prompt");
+  assert.notEqual(promptIndex, -1);
+  assert.equal(calls[0].args[promptIndex + 1], "Black Flag Resynced has nine day-one DLC packs.");
+});
+
+test("alignWordsWithLocalWhisper defaults Windows inference to CUDA when no override is set", async () => {
+  const previous = process.env.LOCAL_WHISPER_DEVICE;
+  delete process.env.LOCAL_WHISPER_DEVICE;
+  const calls = [];
+  try {
+    const result = await alignWordsWithLocalWhisper({
+      audioPath: "C:\\media\\black-flag.mp3",
+      model: "small.en",
+      execFileImpl: async (python, args) => {
+        calls.push({ python, args });
+        return {
+          stdout: JSON.stringify({
+            model: "small.en",
+            language: "en",
+            text: "Black Flag Resynced",
+            segments: [{
+              text: "Black Flag Resynced",
+              words: [
+                { word: "Black", start: 0, end: 0.2 },
+                { word: "Flag", start: 0.2, end: 0.4 },
+                { word: "Resynced", start: 0.4, end: 0.8 },
+              ],
+            }],
+          }),
+        };
+      },
+    });
+
+    assert.equal(result.ok, true);
+    const deviceIndex = calls[0].args.indexOf("--device");
+    assert.notEqual(deviceIndex, -1);
+    assert.equal(calls[0].args[deviceIndex + 1], "cuda");
+  } finally {
+    if (previous == null) delete process.env.LOCAL_WHISPER_DEVICE;
+    else process.env.LOCAL_WHISPER_DEVICE = previous;
+  }
+});
+
 test("alignWordsWithLocalWhisper supports a synchronous Windows batch fallback", async () => {
   let asyncCalled = false;
   let syncCalled = false;

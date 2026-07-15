@@ -6,6 +6,7 @@ const fs = require("fs-extra");
 
 const {
   materializeGoalProductionRenders,
+  refreshFlagshipInventoryEvidence,
   refreshFinalRenderQualityOnly,
   writeGoalProductionRenderMaterializationReport,
 } = require("../lib/goal-production-render-materializer");
@@ -30,6 +31,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     force: false,
     inspectOnly: false,
     refreshQualityOnly: false,
+    refreshFlagshipInventory: false,
     storyId: "",
     artifactDir: "",
     json: false,
@@ -46,6 +48,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--force") args.force = true;
     else if (arg === "--inspect-only") args.inspectOnly = true;
     else if (arg === "--refresh-quality-only") args.refreshQualityOnly = true;
+    else if (arg === "--refresh-flagship-inventory") args.refreshFlagshipInventory = true;
     else if (arg === "--story-id") args.storyId = argv[++i] || "";
     else if (arg === "--artifact-dir") args.artifactDir = argv[++i] || "";
     else if (arg === "--json") args.json = true;
@@ -58,9 +61,11 @@ function printHelp() {
     [
       "Usage: node tools/goal-production-render-materializer.js [--work-order path] [--limit n] [--json]",
       "       node tools/goal-production-render-materializer.js --refresh-quality-only --story-id id --artifact-dir path [--json]",
+      "       node tools/goal-production-render-materializer.js --refresh-flagship-inventory --story-id id --artifact-dir path [--json]",
       "",
       "Materialises fresh Visual V4 final renders from the ready final-render work order.",
       "Quality-refresh mode rebuilds post-render benchmark/visual QA for an existing final MP4.",
+      "Flagship-inventory refresh snapshots current used assets and rights without rendering or changing publish authority.",
       "No publishing, database mutation, OAuth or token changes are performed.",
     ].join("\n") + "\n",
   );
@@ -72,6 +77,38 @@ async function main(argv = process.argv.slice(2)) {
   if (args.help) {
     printHelp();
     return { args, report: null, written: null };
+  }
+  if (args.refreshFlagshipInventory) {
+    const job = await refreshFlagshipInventoryEvidence({
+      storyId: args.storyId,
+      artifactDir: args.artifactDir,
+      generatedAt: args.generatedAt,
+    });
+    const report = {
+      schema_version: 1,
+      generated_at: args.generatedAt,
+      mode: "FLAGSHIP_INVENTORY_REFRESH",
+      summary: {
+        candidate_count: 1,
+        rendered_count: 0,
+        failed_count: job.status === "blocked" ? 1 : 0,
+        skipped_existing_count: 0,
+        inspect_only_count: 0,
+        inventory_refreshed_count: job.status === "inventory_refreshed" ? 1 : 0,
+      },
+      jobs: [job],
+      safety: job.safety,
+    };
+    const written = await writeGoalProductionRenderMaterializationReport(report, {
+      outputDir: path.resolve(args.outDir),
+    });
+    if (args.json) process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+    else {
+      process.stdout.write(
+        `[goal-production-render] inventory_refreshed=${report.summary.inventory_refreshed_count} failed=${report.summary.failed_count}\n`,
+      );
+    }
+    return { args, report, written };
   }
   if (args.refreshQualityOnly) {
     const job = await refreshFinalRenderQualityOnly({

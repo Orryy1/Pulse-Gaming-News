@@ -260,3 +260,17 @@ test("HyperFrames card templates keep decorative text contrast-safe", () => {
   assert.match(quoteTemplate, /quote-mark[\s\S]*text-shadow:\s*0 0 60px rgba\(255,\s*107,\s*26,\s*0\.34\)/);
   assert.match(takeawayTemplate, /pulse[\s\S]*color:\s*rgba\(255,\s*255,\s*255,\s*0\.62\)/);
 });
+
+test("HyperFrames takeaway card exposes meaningful hierarchy on its first decoded frame", () => {
+  const template = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-takeaway", "index.html"),
+    "utf8",
+  );
+
+  assert.match(template, /\.kicker\s*\{[\s\S]*?opacity:\s*0\.72;/);
+  assert.match(template, /\.headline \.word\s*\{[\s\S]*?opacity:\s*0\.58;/);
+  assert.match(
+    template,
+    /"#headline \.word",[\s\S]*?\{ opacity: 0\.58, y: 12, scale: 0\.985 \}[\s\S]*?\},\s*0,\s*\)/,
+  );
+});

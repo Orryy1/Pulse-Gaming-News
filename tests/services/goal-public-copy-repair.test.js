@@ -82,6 +82,33 @@ test("caption SRT restores display currency from spoken dollar tokens", () => {
   assert.match(srt, /00:00:04,000/);
 });
 
+test("caption SRT preserves exact display copy after phonetic titles and decimal currency expansions", () => {
+  const script =
+    "Black Flag Resynced has nine day-one DLC packs. Steam lists them at $84.91 combined, while the game costs $59.99. If it does not, nine day-one packs turn nostalgia into a pricing fight.";
+  const spoken =
+    "Black Flag reesynced has nine day one DLC packs. Steam lists them at 84 dollars 91 combined, while the game costs 59 dollars 99. If it does not, nine day one packs turn nostalgia into a pricing fight.";
+  const words = spoken.split(/\s+/).map((word, index) => ({
+    word,
+    start: Number((index * 0.3).toFixed(3)),
+    end: Number(((index + 1) * 0.3).toFixed(3)),
+  }));
+
+  const srt = buildCaptionSrt(script, words.at(-1).end, {
+    words,
+    maxWordsPerPhrase: 3,
+    maxPhraseChars: 24,
+    maxPhraseDurationS: 1.6,
+  });
+  const visibleText = srt
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !/^\d+$/.test(line.trim()) && !/-->/.test(line))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  assert.equal(visibleText, script);
+});
+
 test("caption SRT keeps a protected game title together when local TTS expands the number", () => {
   const srt = buildCaptionSrt(
     "Hades 2 is not just leaving early access.",

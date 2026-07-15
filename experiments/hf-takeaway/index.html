@@ -74,7 +74,7 @@
         font-size: 24px;
         letter-spacing: 0.4em;
         margin-bottom: 24px;
-        opacity: 0;
+        opacity: 0.72;
       }
 
       .kicker {
@@ -102,7 +102,7 @@
 
       .headline .word {
         display: inline-block;
-        opacity: 0;
+        opacity: 0.72;
       }
 
       .arrow {
@@ -111,7 +111,7 @@
         font-size: 56px;
         letter-spacing: 0.2em;
         font-weight: 900;
-        opacity: 0;
+        opacity: 0.58;
         text-shadow: 0 0 30px rgba(255, 107, 26, 0.55);
       }
 
@@ -183,26 +183,26 @@
 
       // Reveal sequence:
       //  0.00  top frame line draws across
-      //  0.10  step "03 / TAKEAWAY" fades in
-      //  0.30  kicker fades in
-      //  0.55  headline words pop one by one
+      //  0.00  meaningful hierarchy is already readable while it settles
+      //  0.08  step and kicker finish fading in
+      //  0.00  headline words sharpen one by one
       //  X     bottom frame line draws across
       //  X+0.2 arrow + cta + pulse fade in
       tl.to("#frame-top", { width: 760, duration: 0.5, ease: "power2.out" }, 0)
-        .to("#step", { opacity: 1, duration: 0.34 }, 0.1)
-        .to("#kicker", { opacity: 1, duration: 0.4 }, 0.3)
+        .to("#step", { opacity: 1, duration: 0.28 }, 0.08)
+        .to("#kicker", { opacity: 1, duration: 0.32 }, 0.08)
         .fromTo(
           "#headline .word",
-          { opacity: 0, y: 36, scale: 0.96 },
+          { opacity: 0.58, y: 12, scale: 0.985 },
           {
             opacity: 1,
             y: 0,
             scale: 1,
-            duration: 0.5,
-            stagger: 0.08,
-            ease: "back.out(1.4)",
+            duration: 0.42,
+            stagger: 0.06,
+            ease: "power3.out",
           },
-          0.55,
+          0,
         )
         .to(
           "#frame-bot",

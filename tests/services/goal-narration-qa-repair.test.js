@@ -291,7 +291,7 @@ test("post-render narration QA repairs verifier-safe timestamps from word onsets
     { word: "zeta", start: 2.55, end: 2.95 },
     { word: "eta", start: 3.1, end: 3.3 },
     { word: "theta", start: 3.45, end: 3.6 },
-    { word: "iota.", start: 3.6, end: 3.8 },
+    { word: "iota.", start: 3.45, end: 3.8 },
   ];
   const acousticSilences = [
     { start: 0.85, end: 0.9 },
@@ -403,7 +403,10 @@ test("post-render narration QA repairs verifier-safe timestamps from word onsets
 
   const repairedTimestamps = await fs.readJson(paths.word_timestamps);
   assert.deepEqual(repairedTimestamps.words.map((row) => row.word), originalWords.map((row) => row.word));
-  assert.deepEqual(repairedTimestamps.words.map((row) => row.start), originalWords.map((row) => row.start));
+  assert.deepEqual(
+    repairedTimestamps.words.map((row) => row.start),
+    originalWords.map((row, index) => index === originalWords.length - 1 ? 3.6 : row.start),
+  );
   assert.deepEqual(
     repairedTimestamps.words.slice(0, -1).map((row) => row.end),
     [0.35, 0.85, 1.4, 1.95, 2.5, 3.05, 3.4, 3.6],
@@ -419,7 +422,15 @@ test("post-render narration QA repairs verifier-safe timestamps from word onsets
     originalTimestampSha256,
   );
   assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.word_text_unchanged, true);
-  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.word_start_times_unchanged, true);
+  assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.word_start_times_unchanged, false);
+  assert.deepEqual(
+    repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.co_timed_onset_repair_ordinals,
+    [9],
+  );
+  assert.equal(
+    repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.co_timed_onsets_from_adjacent_authoritative_ends,
+    true,
+  );
   assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.final_word_end_unchanged, true);
   assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.end_times_from_acoustic_silence_starts, true);
   assert.equal(repairedTimestamps.meta.flagshipNarrationQaTimelineRepair.timestamp_masked_silence_count_after, 0);

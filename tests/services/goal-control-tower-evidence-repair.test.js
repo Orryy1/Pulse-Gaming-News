@@ -15,42 +15,133 @@ const {
 const {
   buildGoal19AutonomyControlTower,
 } = require("../../lib/goal19-autonomy-control-tower");
+const { fingerprintFile } = require("../../lib/human-review-artefact-fingerprints");
 
 function passGate(extra = {}) {
   return { status: "pass", verdict: "pass", failures: [], blockers: [], ...extra };
 }
 
 const execFileAsync = promisify(execFile);
-let validFinalMediaBytesPromise;
+let validFinalMediaFixturePromise;
 
-async function validFinalMediaBytes() {
-  if (!validFinalMediaBytesPromise) {
-    validFinalMediaBytesPromise = (async () => {
+function sha256(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function canonicalSnapshot(canonical = {}) {
+  return {
+    story_id: canonical.story_id || "",
+    selected_title: canonical.selected_title || canonical.short_title || "",
+    thumbnail_headline: canonical.thumbnail_headline || canonical.thumbnail_text || "",
+    first_spoken_line: canonical.first_spoken_line || canonical.narration_hook || "",
+    narration_script: canonical.narration_script || "",
+    canonical_subject: canonical.canonical_subject || canonical.canonical_game || "",
+    canonical_angle: canonical.canonical_angle || "",
+    primary_source: canonical.primary_source || canonical.source_card_label || "",
+    public_copy_repaired_at: canonical.public_copy_repaired_at || "",
+    duration_variant_repaired_at: canonical.duration_variant_repaired_at || "",
+  };
+}
+
+function renderInputFingerprint({ canonical, audio, timestamps }) {
+  const snapshot = canonicalSnapshot(canonical);
+  const source = {
+    canonical_snapshot: snapshot,
+    audio_sha256: sha256(audio),
+    word_timestamps_sha256: sha256(timestamps),
+    audio_size_bytes: audio.length,
+    word_timestamps_size_bytes: timestamps.length,
+  };
+  return {
+    algorithm: "sha256",
+    signature: sha256(Buffer.from(stableJson(source), "utf8")),
+    canonical_public_copy_hash: sha256(Buffer.from(stableJson(snapshot), "utf8")),
+    ...source,
+  };
+}
+
+async function extractSampledFrameHashes(finalMp4Path, sampleTimes) {
+  const frames = [];
+  for (const timeSeconds of sampleTimes) {
+    const { stdout } = await execFileAsync("ffmpeg", [
+      "-hide_banner", "-nostdin", "-v", "error", "-xerror",
+      "-i", finalMp4Path,
+      "-ss", String(timeSeconds),
+      "-map", "0:v:0",
+      "-frames:v", "1",
+      "-an", "-sn", "-dn",
+      "-threads", "1",
+      "-pix_fmt", "rgba",
+      "-f", "rawvideo",
+      "pipe:1",
+    ], {
+      encoding: null,
+      timeout: 30000,
+      windowsHide: true,
+      maxBuffer: 128 * 1024 * 1024,
+    });
+    frames.push({ time_seconds: timeSeconds, hash: sha256(stdout) });
+  }
+  return frames;
+}
+
+async function validFinalMediaFixture() {
+  if (!validFinalMediaFixturePromise) {
+    validFinalMediaFixturePromise = (async () => {
       const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-repair-valid-media-"));
       const output = path.join(root, "valid-short.mp4");
+      const contactSheet = path.join(root, "contact-sheet.png");
       try {
         await execFileAsync("ffmpeg", [
           "-hide_banner", "-loglevel", "error", "-y",
-          "-f", "lavfi", "-i", "color=c=black:s=540x960:r=30",
-          "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+          "-f", "lavfi", "-i", "testsrc2=size=540x960:rate=30:duration=1",
+          "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=1",
           "-t", "1",
           "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
           "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart",
           output,
-        ], { timeout: 30000 });
-        return await fs.readFile(output);
+        ], { timeout: 30000, windowsHide: true });
+        await execFileAsync("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-i", output,
+          "-vf", "fps=4,scale=270:480:flags=lanczos,tile=2x2:padding=0:margin=0",
+          "-frames:v", "1",
+          contactSheet,
+        ], { timeout: 30000, windowsHide: true });
+        return {
+          finalMediaBytes: await fs.readFile(output),
+          contactSheetBytes: await fs.readFile(contactSheet),
+          sampledFrames: await extractSampledFrameHashes(output, [0, 0.2, 0.4, 0.6, 0.8]),
+        };
       } finally {
         await fs.remove(root);
       }
     })();
   }
-  return validFinalMediaBytesPromise;
+  return validFinalMediaFixturePromise;
+}
+
+async function validFinalMediaBytes() {
+  return (await validFinalMediaFixture()).finalMediaBytes;
 }
 
 async function makeControlTowerPackage(root, storyId = "story-ready") {
   const artifactDir = path.join(root, storyId);
   await fs.ensureDir(artifactDir);
-  await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), await validFinalMediaBytes());
+  const finalMediaFixture = await validFinalMediaFixture();
+  const finalMp4Path = path.join(artifactDir, "visual_v4_render.mp4");
+  await fs.writeFile(finalMp4Path, await validFinalMediaBytes());
   const rightsRecords = [];
   for (let index = 0; index < 5; index += 1) {
     const assetId = `clip-${index + 1}`;
@@ -84,7 +175,7 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
       risk_score: 0.1,
     });
   }
-  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+  const canonical = {
     story_id: storyId,
     canonical_subject: "Hellraiser: Revival",
     selected_title: "Hellraiser: Revival's October Date Is A Risk",
@@ -93,6 +184,43 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
       "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons. Source-backed copy stays clean.",
     primary_source: "Eurogamer",
     primary_source_url: "https://www.eurogamer.net/hellraiser-revival-release-date-trailer",
+  };
+  const narrationBytes = Buffer.from(`governed narration for ${storyId}`);
+  const timestampBytes = Buffer.from(JSON.stringify([{ word: "Hellraiser", start: 0, end: 0.2 }]));
+  const narrationPath = path.join(artifactDir, "audio", "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "audio", "word-timestamps.json");
+  const narrationEvidencePath = path.join(artifactDir, "rights", "narration.json");
+  await fs.outputFile(narrationPath, narrationBytes);
+  await fs.outputFile(timestampsPath, timestampBytes);
+  await fs.outputJson(narrationEvidencePath, {
+    asset_id: `${storyId}_audio_path`,
+    decision: "approved_owned_or_licensed_editorial_narration",
+    source_owner: "Pulse Gaming",
+  }, { spaces: 2 });
+  const narrationEvidenceBytes = await fs.readFile(narrationEvidencePath);
+  rightsRecords.push({
+    asset_id: `${storyId}_audio_path`,
+    path: "audio/narration.mp3",
+    source_url: `local-tts://${storyId}`,
+    source_type: "governed_narration_audio",
+    source_owner: "Pulse Gaming",
+    licence_basis: "owned_or_licensed_editorial_narration",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    commercial_use_allowed: true,
+    evidence_file: "rights/narration.json",
+    approval_status: "approved_owned_or_licensed_editorial_narration",
+    verdict: "GREEN",
+    asset_sha256: sha256(narrationBytes),
+    asset_size_bytes: narrationBytes.length,
+    evidence_sha256: sha256(narrationEvidenceBytes),
+    evidence_size_bytes: narrationEvidenceBytes.length,
+    risk_score: 0.05,
+  });
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), canonical);
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: storyId,
+    resolved_narration_audio_path: narrationPath,
+    resolved_word_timestamps_path: timestampsPath,
   });
   await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
     verdict: "viral_ready",
@@ -124,9 +252,25 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     shot_plan: [{ id: "hook", kind: "motion_clip" }],
   });
   await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
     final_publish_render: true,
     output: "visual_v4_render.mp4",
     quality_gate_status: "pass",
+    clip_scene_plan: {
+      scenes: rightsRecords.slice(0, 5).map((record) => ({
+        asset_id: record.asset_id,
+        path: record.path,
+      })),
+    },
+    input_evidence: {
+      resolved_narration_audio_path: narrationPath,
+      resolved_word_timestamps_path: timestampsPath,
+    },
+    input_fingerprint: renderInputFingerprint({
+      canonical,
+      audio: narrationBytes,
+      timestamps: timestampBytes,
+    }),
     safety: { no_publish_triggered: true },
   });
   await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), passGate());
@@ -153,6 +297,67 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     },
     platform_native_evidence: { verdict: "pass", platforms: [{ platform: "youtube_shorts", status: "pass" }] },
   });
+  const contactSheetPath = path.join(artifactDir, "final_av_contact_sheet.png");
+  const decodedForensicReportPath = path.join(artifactDir, "decoded_forensic_report.json");
+  await fs.writeFile(contactSheetPath, finalMediaFixture.contactSheetBytes);
+  await fs.writeJson(decodedForensicReportPath, {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "pass",
+    blockers: [],
+    final_media: {
+      path: finalMp4Path,
+      sha256: sha256(finalMediaFixture.finalMediaBytes),
+      size_bytes: finalMediaFixture.finalMediaBytes.length,
+    },
+    checks: Object.fromEntries(
+      ["audio", "video", "captions", "av_sync", "freeze", "black", "blur", "repetition"]
+        .map((name) => [name, { checked: true, verdict: "pass" }]),
+    ),
+    sampled_frames: finalMediaFixture.sampledFrames,
+    critical_defects: [],
+  }, { spaces: 2 });
+  const artefacts = {
+    final_mp4: finalMp4Path,
+    contact_sheet: contactSheetPath,
+    decoded_forensic_report: decodedForensicReportPath,
+  };
+  const reviewedArtefactFingerprints = Object.fromEntries(
+    Object.entries(artefacts).map(([key, filePath]) => [key, fingerprintFile(filePath).sha256]),
+  );
+  await fs.writeJson(path.join(artifactDir, "final_av_review.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    reviewed_at: "2026-07-15T01:00:00.000Z",
+    signed_at: "2026-07-15T01:01:00.000Z",
+    reviewer: { id: "independent-final-av-reviewer", independent: true },
+    signoff: {
+      reviewer_id: "independent-final-av-reviewer",
+      signed_at: "2026-07-15T01:01:00.000Z",
+    },
+    artefacts,
+    reviewed_artefact_fingerprints: reviewedArtefactFingerprints,
+    contact_sheet_binding: {
+      contact_sheet_sha256: reviewedArtefactFingerprints.contact_sheet,
+      final_mp4_sha256: reviewedArtefactFingerprints.final_mp4,
+      decoded_forensic_report_sha256: reviewedArtefactFingerprints.decoded_forensic_report,
+      sampled_frames: finalMediaFixture.sampledFrames,
+    },
+    attestations: {
+      full_watch: true,
+      full_listen: true,
+      av_sync: true,
+      caption_readability: true,
+      subject_match: true,
+    },
+    defects: [],
+    status: "GREEN",
+    verdict: "GREEN",
+    final_verdict: "GREEN",
+    publish_ready: true,
+    can_publish: true,
+    can_auto_publish: true,
+  }, { spaces: 2 });
   return { story_id: storyId, artifact_dir: artifactDir, title: "Hellraiser: Revival's October Date Is A Risk" };
 }
 

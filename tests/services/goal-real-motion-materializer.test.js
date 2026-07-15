@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -8,11 +10,28 @@ const test = require("node:test");
 
 const {
   candidateRows,
-  materializeGoalRealMotion,
+  materializeGoalRealMotion: materializeGoalRealMotionProduction,
   writeGoalRealMotionReport,
   _private: { dynamicMaxDirectClipsPerBaseSource },
 } = require("../../lib/goal-real-motion-materializer");
 const { parseArgs } = require("../../tools/goal-real-motion-materializer");
+
+function materializeGoalRealMotion(options = {}) {
+  return materializeGoalRealMotionProduction({
+    ...options,
+    materializedClipProbe: options.materializedClipProbe || ((filePath, expectedMedia = {}) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: Number(expectedMedia.duration_seconds || 5),
+      video: { codec: "h264", width: 1080, height: 1920 },
+    })),
+    materializedClipDecode: options.materializedClipDecode || ((filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      full_clip: true,
+    })),
+  });
+}
 
 async function makePackage(root, storyId = "forza-real-motion") {
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
@@ -42,6 +61,14 @@ async function makePackage(root, storyId = "forza-real-motion") {
     trusted_source_matched: true,
     rights_risk_class: "official_reference_only",
     risk_score: 0.2,
+    provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: "segment_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      media_start_s: 8 + index,
+      duration_s: 2.85,
+    },
   }));
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
     verdict: "fail",
@@ -197,10 +224,13 @@ test("real motion materializer forwards an explicit base-source window cap to st
     ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
   });
 
-  assert.equal(report.summary.materialized_story_count, 1);
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
   assert.equal(report.jobs[0].materialized_count, 3);
   assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 3);
   assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 0);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
+  assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
 });
 
 test("real motion materializer can refresh a requested ready story from its motion pack", async () => {
@@ -548,7 +578,11 @@ test("real motion materializer does not materialize validated segment rows from 
   assert.equal(report.summary.materialized_story_count, 0);
   assert.equal(report.summary.blocked_story_count, 1);
   assert.equal(report.jobs[0].story_id, storyId);
-  assert.deepEqual(report.jobs[0].blockers, ["validated_direct_media_candidates_missing"]);
+  assert.deepEqual(report.jobs[0].blockers, [
+    "validated_direct_media_candidates_missing",
+    "real_motion_clip_minimum_not_met",
+    "real_motion_family_minimum_not_met",
+  ]);
   assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
 });
 
@@ -725,9 +759,359 @@ test("real motion materializer restores package evidence from an already materia
   assert.equal(materialised.status, "ready");
   assert.equal(materialised.clip_count, 6);
   assert.equal(materialised.clips.every((clip) => clip.media_kind === "direct_video"), true);
+  for (const [index, clip] of materialised.clips.entries()) {
+    const expectedSha256 = crypto
+      .createHash("sha256")
+      .update(Buffer.alloc(4096, index + 1))
+      .digest("hex");
+    assert.equal(clip.materialized_file_evidence?.sha256, expectedSha256);
+    assert.equal(clip.materialized_file_evidence?.size_bytes, 4096);
+    assert.equal(clip.materialized_file_evidence?.duration_seconds, 3);
+    assert.equal(clip.materialized_file_evidence?.video_codec, "h264");
+    assert.equal(clip.materialized_file_evidence?.width, 1080);
+    assert.equal(clip.materialized_file_evidence?.height, 1920);
+    assert.equal(clip.source_url, sourceUrl);
+    assert.equal(
+      clip.base_source_family,
+      "steamstatic:/store_trailers/1364780/164062000/hash",
+    );
+    assert.equal(clip.mediaStartS, 36 + index * 3);
+    assert.equal(clip.durationS, 3);
+    assert.equal(clip.source_media_start_s, 36 + index * 3);
+    assert.equal(clip.source_window_duration_s, 3);
+    assert.equal(clip.provenance?.source, "official_trailer_segment_validation");
+    assert.equal(clip.provenance?.segment_validated, true);
+    assert.equal(clip.provenance?.allowed_for_flash_lane, true);
+  }
   const familyReport = await fs.readJson(path.join(artifactDir, "distinct_motion_family_report.json"));
   assert.equal(familyReport.status, "ready");
   assert.equal(familyReport.summary.clip_count, 6);
+});
+
+test("real motion materializer rejects stale immutable evidence on restored clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-stale-restore-evidence-"));
+  const storyId = "stale-restore-evidence";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const videoCache = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(videoCache);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { verdict: "pass", records: [] });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  const clips = Array.from({ length: 5 }, (_, index) => {
+    const clipPath = path.join(videoCache, `${storyId}-${index + 1}.mp4`);
+    fs.writeFileSync(clipPath, Buffer.alloc(4096, index + 1));
+    const staleEvidence = {
+      schema_version: 1,
+      captured_at: "2026-07-14T23:00:00.000Z",
+      sha256: "0".repeat(64),
+      size_bytes: 999,
+      duration_seconds: 4.5,
+      video_codec: "vp9",
+      width: 720,
+      height: 1280,
+    };
+    return {
+      id: `${storyId}-${index + 1}`,
+      source_family: `official_family_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://cdn.example.com/official-${index + 1}.mp4`,
+      source_type: "official_trailer",
+      mediaStartS: index * 5,
+      durationS: 5,
+      media_kind: "direct_video",
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      ...(index === 0
+        ? {
+            asset_sha256: staleEvidence.sha256,
+            asset_size_bytes: staleEvidence.size_bytes,
+            probed_duration_seconds: staleEvidence.duration_seconds,
+            video_codec: staleEvidence.video_codec,
+            width: staleEvidence.width,
+            height: staleEvidence.height,
+          }
+        : { materialized_file_evidence: staleEvidence }),
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "segment_samples_passed",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    };
+  });
+  await fs.outputJson(
+    path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`),
+    {
+      story_id: storyId,
+      source: "validated_real_motion_materializer",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      clips,
+    },
+  );
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-07-15T04:00:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_mismatch"));
+  assert.equal(
+    report.jobs[0].failed[0].error,
+    "materialized_clip_evidence_mismatch:sha256,size_bytes,duration_seconds,video_codec,width,height",
+  );
+  const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(manifest.status, "blocked");
+  assert.equal(manifest.not_publishable, true);
+});
+
+test("real motion materializer does not let empty nested evidence suppress stale top-level evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-empty-nested-evidence-"));
+  const storyId = "empty-nested-evidence";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const videoCache = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(videoCache);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    failures: [],
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  const clips = Array.from({ length: 5 }, (_, index) => {
+    const clipPath = path.join(videoCache, `${storyId}-${index + 1}.mp4`);
+    fs.writeFileSync(clipPath, Buffer.alloc(4096, index + 1));
+    return {
+      id: `${storyId}-${index + 1}`,
+      source_family: `official_family_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://cdn.example.com/official-${index + 1}.mp4`,
+      source_type: "official_trailer",
+      mediaStartS: index * 5,
+      durationS: 5,
+      media_kind: "direct_video",
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      ...(index === 0
+        ? {
+            materialized_file_evidence: {},
+            asset_sha256: "0".repeat(64),
+            asset_size_bytes: 999,
+            probed_duration_seconds: 4.5,
+            video_codec: "vp9",
+            width: 720,
+            height: 1280,
+          }
+        : {}),
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "segment_samples_passed",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    };
+  });
+  await fs.outputJson(
+    path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`),
+    {
+      story_id: storyId,
+      source: "validated_real_motion_materializer",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      clips,
+    },
+  );
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-07-15T05:40:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_mismatch"));
+  assert.match(report.jobs[0].failed[0].error, /sha256/);
+});
+
+test("real motion materializer rejects conflicting nested and top-level immutable evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-conflicting-evidence-"));
+  const storyId = "conflicting-evidence";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const videoCache = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(videoCache);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    failures: [],
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  const clips = Array.from({ length: 5 }, (_, index) => {
+    const payload = Buffer.alloc(4096, index + 1);
+    const clipPath = path.join(videoCache, `${storyId}-${index + 1}.mp4`);
+    fs.writeFileSync(clipPath, payload);
+    return {
+      id: `${storyId}-${index + 1}`,
+      source_family: `official_family_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://cdn.example.com/official-${index + 1}.mp4`,
+      source_type: "official_trailer",
+      mediaStartS: index * 5,
+      durationS: 5,
+      media_kind: "direct_video",
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      materialized_file_evidence: {
+        sha256: crypto.createHash("sha256").update(payload).digest("hex"),
+        size_bytes: payload.length,
+        duration_seconds: 5,
+        video_codec: "h264",
+        width: 1080,
+        height: 1920,
+      },
+      ...(index === 0 ? { asset_sha256: "0".repeat(64) } : {}),
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "segment_samples_passed",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    };
+  });
+  await fs.outputJson(
+    path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`),
+    {
+      story_id: storyId,
+      source: "validated_real_motion_materializer",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      clips,
+    },
+  );
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-07-15T05:42:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_mismatch"));
+  assert.match(report.jobs[0].failed[0].error, /nested_top_level:sha256/);
+});
+
+test("real motion materializer invalidates a restored ready pack when same-run probing fails", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-restore-probe-fail-"));
+  const storyId = "restore-probe-fail";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const videoCache = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(videoCache);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { verdict: "pass", records: [] });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  const clips = Array.from({ length: 5 }, (_, index) => {
+    const clipPath = path.join(videoCache, `${storyId}-${index + 1}.mp4`);
+    fs.writeFileSync(clipPath, Buffer.alloc(4096, index + 1));
+    return {
+      id: `${storyId}-${index + 1}`,
+      source_family: `official_family_${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://cdn.example.com/official-${index + 1}.mp4`,
+      source_type: "official_trailer",
+      mediaStartS: index * 5,
+      durationS: 5,
+      media_kind: "direct_video",
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "segment_samples_passed",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    };
+  });
+  await fs.outputJson(
+    path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`),
+    {
+      story_id: storyId,
+      source: "validated_real_motion_materializer",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      clips,
+    },
+  );
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["materialised_motion_clips_missing"],
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-07-15T03:30:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+    materializedClipProbe: () => {
+      throw new Error("probe_failed");
+    },
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.deepEqual(report.jobs[0].blockers, ["materialized_clip_evidence_unavailable"]);
+  const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(manifest.status, "blocked");
+  assert.equal(manifest.not_publishable, true);
+  assert.deepEqual(manifest.blockers, ["materialized_clip_evidence_unavailable"]);
 });
 
 test("real motion materializer blocks visually duplicated clips restored from a ready central pack", async () => {
@@ -980,7 +1364,9 @@ test("real motion materializer blocks one official trailer from masquerading as 
   assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 1);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_floor_not_met"));
 
-  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
+  const blockedManifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(blockedManifest.status, "blocked");
+  assert.equal(blockedManifest.not_publishable, true);
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
   assert.equal(partial.clip_count, 1);
   assert.equal(partial.direct_video_motion_asset_count, 1);
@@ -1115,6 +1501,8 @@ test("real motion materializer honours explicit direct base-source clip cap", as
     "https://video.fastly.steamstatic.com/store_trailers/100/111/hash-a/hls_264_master.m3u8?t=1780000001",
     "https://video.fastly.steamstatic.com/store_trailers/100/222/hash-b/hls_264_master.m3u8?t=1780000002",
     "https://video.fastly.steamstatic.com/store_trailers/100/333/hash-c/hls_264_master.m3u8?t=1780000003",
+    "https://video.fastly.steamstatic.com/store_trailers/100/444/hash-d/hls_264_master.m3u8?t=1780000004",
+    "https://video.fastly.steamstatic.com/store_trailers/100/555/hash-e/hls_264_master.m3u8?t=1780000005",
   ];
   const segmentValidationReport = {
     segments: sourceUrls.flatMap((sourceUrl, sourceIndex) =>
@@ -1160,9 +1548,9 @@ test("real motion materializer honours explicit direct base-source clip cap", as
       ],
     },
     segmentValidationReport,
-    minClips: 3,
-    minFamilies: 3,
-    maxClips: 5,
+    minClips: 5,
+    minFamilies: 4,
+    maxClips: 10,
     maxDirectClipsPerBaseSource: 1,
     generatedAt: "2026-07-07T15:20:00.000Z",
     execFileSync: (bin, args) => {
@@ -1174,14 +1562,14 @@ test("real motion materializer honours explicit direct base-source clip cap", as
   });
 
   assert.equal(report.jobs[0].status, "materialized");
-  assert.equal(report.jobs[0].materialized_count, 3);
+  assert.equal(report.jobs[0].materialized_count, 5);
   assert.equal(report.jobs[0].max_direct_motion_clips_per_base_source, 1);
   assert.deepEqual(
     report.jobs[0].direct_motion_base_source_clip_counts.map((entry) => entry.count).sort((a, b) => b - a),
-    [1, 1, 1],
+    [1, 1, 1, 1, 1],
   );
-  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 3);
-  assert.equal(calls.length, 3);
+  assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 5);
+  assert.equal(calls.length, 5);
 });
 
 test("real motion materializer can use a third official Steam window when needed for duration floor", () => {
@@ -1993,6 +2381,16 @@ test("real motion materializer writes local clips, motion manifests and explicit
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-"));
   const job = await makePackage(root);
   const calls = [];
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const staleRights = await fs.readJson(rightsPath);
+  staleRights.records = [{
+    asset_id: `${job.story_id}-direct-1`,
+    asset_type: "motion_clip",
+    path: staleRights.assets[0].source_url,
+    source_url: staleRights.assets[0].source_url,
+    approval_status: "approved_for_transformative_editorial_use",
+  }];
+  await fs.writeJson(rightsPath, staleRights, { spaces: 2 });
 
   const report = await materializeGoalRealMotion({
     root,
@@ -2004,6 +2402,12 @@ test("real motion materializer writes local clips, motion manifests and explicit
       fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 3));
     },
     ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: 2.85,
+      video: { codec: "h264", width: 1080, height: 1920 },
+    }),
   });
 
   assert.equal(report.summary.materialized_story_count, 1);
@@ -2017,6 +2421,38 @@ test("real motion materializer writes local clips, motion manifests and explicit
   assert.equal(materialised.clip_count, 5);
   assert.equal(materialised.distinct_motion_family_count, 5);
   assert.ok(materialised.clips.every((clip) => clip.path.includes(`${job.story_id}_v4_clip_`)));
+  const expectedSha256 = crypto.createHash("sha256").update(Buffer.alloc(4096, 3)).digest("hex");
+  for (const [index, clip] of materialised.clips.entries()) {
+    assert.deepEqual(clip.materialized_file_evidence, {
+      schema_version: 1,
+      captured_at: "2026-05-23T08:10:00.000Z",
+      sha256: expectedSha256,
+      size_bytes: 4096,
+      duration_seconds: 2.85,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    });
+    assert.equal(clip.source_url, `https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/clip_${index + 1}.mp4?tag=14`);
+    assert.equal(clip.base_source_family, `url:https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/clip_${index + 1}.mp4`);
+    assert.equal(clip.mediaStartS, 8 + index);
+    assert.equal(clip.durationS, 2.85);
+    assert.equal(clip.source_media_start_s, 8 + index);
+    assert.equal(clip.source_window_duration_s, 2.85);
+    const expectedValidationProvenance = {
+      source: "official_trailer_segment_validation",
+      validation_reason: "segment_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    };
+    assert.deepEqual(clip.validation_provenance, expectedValidationProvenance);
+    assert.deepEqual(clip.provenance, expectedValidationProvenance);
+    assert.deepEqual(clip.transformation_provenance, {
+      media_start_s: 8 + index,
+      duration_s: 2.85,
+      base_source_family: clip.base_source_family,
+    });
+  }
 
   const ownedMotion = await fs.readJson(path.join(job.artifact_dir, "owned_motion_manifest.json"));
   assert.equal(ownedMotion.status, "ready");
@@ -2028,9 +2464,1111 @@ test("real motion materializer writes local clips, motion manifests and explicit
   assert.equal(rights.records.length, 5);
   assert.ok(rights.records.every((record) => record.allowed_platforms.includes("tiktok")));
   assert.ok(rights.records.every((record) => record.source_url.startsWith("https://video.twimg.com/")));
+  for (const [index, record] of rights.records.entries()) {
+    assert.equal(record.asset_sha256, expectedSha256);
+    assert.equal(record.asset_size_bytes, 4096);
+    assert.equal(record.probed_duration_seconds, 2.85);
+    assert.equal(record.video_codec, "h264");
+    assert.equal(record.width, 1080);
+    assert.equal(record.height, 1920);
+    assert.equal(record.base_source_family, materialised.clips[index].base_source_family);
+    assert.equal(record.source_media_start_s, 8 + index);
+    assert.equal(record.source_window_duration_s, 2.85);
+    assert.deepEqual(record.validation_provenance, materialised.clips[index].validation_provenance);
+    assert.deepEqual(record.transformation_provenance, materialised.clips[index].transformation_provenance);
+  }
 
   const footage = await fs.readJson(path.join(job.artifact_dir, "footage_inventory.json"));
   assert.equal(footage.motion_inventory.accepted_local_clips.length, 5);
+});
+
+test("real motion materializer preserves restrictive rights fields instead of regenerating permissive records", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-rights-preservation-"));
+  const job = await makePackage(root, "rights-preservation");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.assets = rights.assets.map((asset) => ({
+    ...asset,
+    licence_basis: "official_press_licence_v2",
+    allowed_use: "editorial_short_form_only",
+    allowed_platforms: ["youtube", "instagram"],
+    platform_restrictions: {
+      facebook: "not_licensed",
+      tiktok: "not_licensed",
+    },
+    commercial_use_allowed: true,
+    risk_score: 0.41,
+    credit_required: true,
+    evidence_reference: `licence://${asset.id}`,
+  }));
+  rights.records = rights.assets.map((asset) => ({
+    asset_id: asset.id,
+    asset_type: "motion_clip",
+    kind: "video",
+    path: asset.source_url,
+    source_url: asset.source_url,
+    licence_basis: asset.licence_basis,
+    allowed_use: asset.allowed_use,
+    allowed_platforms: asset.allowed_platforms,
+    platform_restrictions: asset.platform_restrictions,
+    commercial_use_allowed: asset.commercial_use_allowed,
+    risk_score: asset.risk_score,
+    credit_required: asset.credit_required,
+    evidence_reference: asset.evidence_reference,
+    approval_status: "approved_for_transformative_editorial_use",
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T04:10:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 6));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: 2.85,
+      video: { codec: "h264", width: 1080, height: 1920 },
+    }),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1);
+  const updated = await fs.readJson(rightsPath);
+  assert.equal(updated.records.length, 5);
+  for (const record of updated.records) {
+    assert.equal(record.licence_basis, "official_press_licence_v2");
+    assert.equal(record.allowed_use, "editorial_short_form_only");
+    assert.deepEqual(record.allowed_platforms, ["youtube", "instagram"]);
+    assert.deepEqual(record.platform_restrictions, {
+      facebook: "not_licensed",
+      tiktok: "not_licensed",
+    });
+    assert.equal(record.commercial_use_allowed, true);
+    assert.equal(record.risk_score, 0.41);
+    assert.equal(record.credit_required, true);
+    assert.equal(record.evidence_reference, `licence://${record.asset_id}`);
+  }
+});
+
+test("real motion materializer fails closed when immutable rights records contradict source rights", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-rights-conflict-"));
+  const job = await makePackage(root, "rights-conflict");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.assets = rights.assets.map((asset) => ({
+    ...asset,
+    licence_basis: "official_press_licence_v2",
+    allowed_use: "editorial_short_form_only",
+    allowed_platforms: ["youtube", "instagram"],
+    commercial_use_allowed: true,
+    risk_score: 0.31,
+    credit_required: true,
+    evidence_reference: `licence://${asset.id}`,
+  }));
+  rights.records = rights.assets.map((asset, index) => ({
+    asset_id: asset.id,
+    source_url: asset.source_url,
+    licence_basis: index === 0 ? "third_party_reupload_unknown" : asset.licence_basis,
+    allowed_use: asset.allowed_use,
+    allowed_platforms: asset.allowed_platforms,
+    commercial_use_allowed: asset.commercial_use_allowed,
+    risk_score: asset.risk_score,
+    credit_required: asset.credit_required,
+    evidence_reference: asset.evidence_reference,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const before = await fs.readFile(rightsPath, "utf8");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T04:15:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: 2.85,
+      video: { codec: "h264", width: 1080, height: 1920 },
+    }),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_evidence_contradiction"));
+  assert.match(report.jobs[0].failed[0].error, /licence_basis/);
+  assert.equal(await fs.readFile(rightsPath, "utf8"), before);
+});
+
+test("real motion materializer preserves and blocks a non-commercial existing rights restriction", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-non-commercial-rights-"));
+  const job = await makePackage(root, "non-commercial-rights");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.records = rights.assets.map((asset) => ({
+    asset_id: asset.id,
+    source_url: asset.source_url,
+    licence_basis: "official_reference_licence",
+    allowed_use: "editorial_short_form_only",
+    allowed_platforms: ["youtube"],
+    commercial_use_allowed: false,
+    risk_score: 0.2,
+    credit_required: true,
+    evidence_reference: `licence://${asset.id}`,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const before = await fs.readFile(rightsPath, "utf8");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T04:18:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: 2.85,
+      video: { codec: "h264", width: 1080, height: 1920 },
+    }),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.ok(report.jobs[0].blockers.includes("rights_evidence_restricts_commercial_use"));
+  assert.equal(await fs.readFile(rightsPath, "utf8"), before);
+});
+
+test("real motion materializer preserves a rejected rights-ledger verdict as blocking", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-rejected-ledger-"));
+  const job = await makePackage(root, "rejected-ledger");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "rejected";
+  rights.failures = [];
+  rights.records = [];
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const before = await fs.readFile(rightsPath, "utf8");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:00:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_ledger_rejected"));
+  assert.equal(await fs.readFile(rightsPath, "utf8"), before);
+});
+
+test("real motion materializer does not let a pass verdict mask a rejected ledger approval status", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-rejected-ledger-approval-"));
+  const job = await makePackage(root, "rejected-ledger-approval");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.approval_status = "rejected";
+  rights.failures = [];
+  rights.records = [];
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const before = await fs.readFile(rightsPath, "utf8");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:02:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_ledger_rejected"));
+  assert.equal(await fs.readFile(rightsPath, "utf8"), before);
+});
+
+test("real motion materializer preserves a rejected rights-record approval status as blocking", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-rejected-record-"));
+  const job = await makePackage(root, "rejected-record");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.records = rights.assets.map((asset, index) => ({
+    asset_id: asset.id,
+    source_url: asset.source_url,
+    licence_basis: "official_press_licence_v2",
+    allowed_use: "editorial_short_form_only",
+    commercial_use_allowed: true,
+    approval_status: index === 0 ? "rejected" : "approved_for_transformative_editorial_use",
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const before = await fs.readFile(rightsPath, "utf8");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:05:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_record_rejected"));
+  assert.equal(await fs.readFile(rightsPath, "utf8"), before);
+});
+
+test("real motion materializer blocks equivalent restrictive rights-record statuses", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-failed-rights-record-"));
+  const job = await makePackage(root, "failed-rights-record");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.records = rights.assets.map((asset, index) => ({
+    asset_id: asset.id,
+    source_url: asset.source_url,
+    licence_basis: "official_press_licence_v2",
+    allowed_use: "editorial_short_form_only",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    rights_status: index === 0 ? "failed_rights_review" : "verified",
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const before = await fs.readFile(rightsPath, "utf8");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:10:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_record_rejected"));
+  assert.equal(await fs.readFile(rightsPath, "utf8"), before);
+});
+
+test("real motion materializer binds complete same-run evidence to screenshot-derived MP4s", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-still-evidence-"));
+  const storyId = "still-evidence";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const imagePaths = Array.from(
+    { length: 5 },
+    (_, index) => path.join(root, "inputs", `official-shot-${index + 1}.png`),
+  );
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(path.dirname(imagePaths[0]));
+  await Promise.all(
+    imagePaths.map((imagePath, index) => fs.writeFile(imagePath, Buffer.alloc(2048, index + 2))),
+  );
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    assets: imagePaths.map((imagePath, index) => ({
+      id: `official-shot-${index + 1}`,
+      type: "official_press_kit_stills",
+      kind: "screenshot",
+      source_type: "official_press_kit_stills",
+      source_family: `official_press_shot_${index + 1}`,
+      path: imagePath,
+      source_url: `https://cdn.example.com/official-shot-${index + 1}.png`,
+      durationS: 3,
+      licence_basis: "official_press_licence_v2",
+      allowed_use: "editorial_short_form_only",
+      commercial_use_allowed: true,
+      risk_score: 0.2,
+      evidence_reference: `licence://official-shot-${index + 1}`,
+    })),
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    minClips: 5,
+    minFamilies: 4,
+    maxClips: 5,
+    generatedAt: "2026-07-15T04:20:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 5));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 3 : null),
+    materializedClipProbe: (filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: 3,
+      video: { codec: "h264", width: 1080, height: 1920 },
+    }),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(manifest.clips.length, 5);
+  assert.ok(manifest.clips.every((clip) => clip.media_kind === "visual_still"));
+  assert.deepEqual(manifest.clips[0].materialized_file_evidence, {
+    schema_version: 1,
+    captured_at: "2026-07-15T04:20:00.000Z",
+    sha256: crypto.createHash("sha256").update(Buffer.alloc(4096, 5)).digest("hex"),
+    size_bytes: 4096,
+    duration_seconds: 3,
+    video_codec: "h264",
+    width: 1080,
+    height: 1920,
+  });
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(rights.records.length, 5);
+  assert.ok(rights.records.every((record) => record.asset_type === "screenshot_derived_motion_clip"));
+  assert.equal(rights.records[0].asset_sha256, manifest.clips[0].materialized_file_evidence.sha256);
+});
+
+test("real motion materializer keeps one screenshot blocked despite lowered invocation thresholds", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-one-still-floor-"));
+  const storyId = "one-still-floor";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const imagePath = path.join(root, "inputs", "official-shot.png");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(path.dirname(imagePath));
+  await fs.writeFile(imagePath, Buffer.alloc(2048, 2));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    failures: [],
+    assets: [{
+      id: "official-shot",
+      type: "official_press_kit_stills",
+      kind: "screenshot",
+      source_type: "official_press_kit_stills",
+      source_family: "official_press_shot_1",
+      path: imagePath,
+      source_url: "https://cdn.example.com/official-shot.png",
+      durationS: 3,
+      licence_basis: "official_press_licence_v2",
+      allowed_use: "editorial_short_form_only",
+      commercial_use_allowed: true,
+      risk_score: 0.2,
+      evidence_reference: "licence://official-shot",
+    }],
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    minClips: 1,
+    minFamilies: 1,
+    maxClips: 1,
+    generatedAt: "2026-07-15T05:45:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 5));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 3 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
+  assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
+  const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(manifest.status, "blocked");
+  assert.equal(manifest.not_publishable, true);
+  const centralPack = await fs.readJson(
+    path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`),
+  );
+  assert.equal(centralPack.status, "blocked");
+  assert.equal(centralPack.readiness.status, "v4_motion_blocked");
+  assert.equal(centralPack.motion_budget.required_motion_scenes, 5);
+  assert.equal(centralPack.motion_budget.required_distinct_families, 4);
+});
+
+test("real motion materializer demotes an undersized ready central pack despite lowered thresholds", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-undersized-central-pack-"));
+  const storyId = "undersized-central-pack";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const clipPath = path.join(root, "output", "video_cache", `${storyId}.mp4`);
+  const motionPackPath = path.join(
+    root,
+    "output",
+    "studio-v4",
+    "motion-packs",
+    `${storyId}_motion_pack_manifest.json`,
+  );
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, Buffer.alloc(4096, 7));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    failures: [],
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  await fs.outputJson(motionPackPath, {
+    story_id: storyId,
+    status: "ready",
+    source: "validated_real_motion_materializer",
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips: [{
+      id: "undersized-official-window",
+      source_family: "official_window_1",
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: "https://cdn.example.com/official-window.mp4",
+      source_type: "official_trailer",
+      mediaStartS: 0,
+      durationS: 3,
+      media_kind: "direct_video",
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "segment_samples_passed",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    }],
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    minClips: 1,
+    minFamilies: 1,
+    maxClips: 1,
+    generatedAt: "2026-07-15T05:50:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
+  assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
+  const centralPack = await fs.readJson(motionPackPath);
+  assert.equal(centralPack.status, "blocked");
+  assert.equal(centralPack.readiness.status, "v4_motion_blocked");
+  const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(manifest.status, "blocked");
+  assert.equal(manifest.not_publishable, true);
+});
+
+test("real motion materializer rejects probe evidence that does not match the output contract or requested window", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-probe-contract-"));
+  const job = await makePackage(root, "probe-contract");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T04:25:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: 1.2,
+      video: { codec: "vp9", width: 720, height: 1280 },
+    }),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(
+    report.jobs[0].blockers.includes("materialized_clip_probe_contract_mismatch"),
+    JSON.stringify(report.jobs[0]),
+  );
+  assert.match(report.jobs[0].failed[0].rejected[0].error, /duration_seconds/);
+  assert.match(report.jobs[0].failed[0].rejected[0].error, /video_codec/);
+  assert.match(report.jobs[0].failed[0].rejected[0].error, /width/);
+  assert.match(report.jobs[0].failed[0].rejected[0].error, /height/);
+});
+
+test("real motion materializer requires explicit available and decodable probe truth", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-probe-truth-"));
+  const job = await makePackage(root, "probe-truth");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T04:27:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: () => ({
+      duration_seconds: 2.85,
+      video: { codec: "h264", width: 1080, height: 1920 },
+    }),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_unavailable"));
+  assert.equal(report.jobs[0].failed[0].rejected[0].error, "materialized_clip_probe_incomplete");
+});
+
+test("real motion materializer accepts a real tiny H.264 fixture only after production ffprobe verifies it", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-real-ffprobe-"));
+  const storyId = "real-ffprobe";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const sourcePaths = Array.from(
+    { length: 5 },
+    (_, index) => path.join(root, "test", "output", "fixtures", `official-source-${index + 1}.mp4`),
+  );
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(path.dirname(sourcePaths[0]));
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel", "error",
+    "-f", "lavfi",
+    "-i", "testsrc=size=320x180:rate=30",
+    "-t", "1.8",
+    "-an",
+    "-c:v", "libx264",
+    "-pix_fmt", "yuv420p",
+    sourcePaths[0],
+  ], { windowsHide: true });
+  for (const sourcePath of sourcePaths.slice(1)) {
+    await fs.copy(sourcePaths[0], sourcePath);
+  }
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    assets: sourcePaths.map((sourcePath, index) => ({
+      id: `official-source-window-${index + 1}`,
+      type: "motion_clip",
+      kind: "video",
+      source_family: `official_source_window_${index + 1}`,
+      path: sourcePath,
+      source_url: sourcePath,
+      source_url_kind: "local_video_file",
+      source_kind: "local_video_file",
+      source_type: "official_trailer_segment_validator",
+      materialize_source_window: true,
+      mediaStartS: 0,
+      durationS: 1.5,
+      source_duration_s: 1.8,
+      validated: true,
+      segmentValidationPassed: true,
+      commercial_use_allowed: true,
+      risk_score: 0.2,
+      licence_basis: "official_press_licence_v2",
+      allowed_use: "editorial_short_form_only",
+      provenance: {
+        source: "official_trailer_segment_validation",
+        validation_reason: "official_segment_samples_passed",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    })),
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+
+  const report = await materializeGoalRealMotionProduction({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    minClips: 5,
+    minFamilies: 4,
+    maxClips: 5,
+    generatedAt: "2026-07-15T04:30:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(manifest.clips.length, 5);
+  const clip = manifest.clips[0];
+  assert.equal(clip.materialized_file_evidence.video_codec, "h264");
+  assert.equal(clip.materialized_file_evidence.width, 1080);
+  assert.equal(clip.materialized_file_evidence.height, 1920);
+  assert.ok(Math.abs(clip.materialized_file_evidence.duration_seconds - 1.5) <= 0.12);
+  assert.equal(clip.materialized_duration_s, clip.materialized_file_evidence.duration_seconds);
+  execFileSync("ffprobe", ["-v", "error", "-show_format", clip.path], {
+    windowsHide: true,
+    stdio: "ignore",
+  });
+  assert.ok(manifest.clips.every((entry) => entry.materialized_file_evidence.video_codec === "h264"));
+});
+
+test("real motion materializer rejects malformed MP4 bytes through production ffprobe", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-malformed-ffprobe-"));
+  const storyId = "malformed-ffprobe";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const clipPath = path.join(root, "output", "video_cache", `${storyId}.mp4`);
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(path.dirname(clipPath));
+  await fs.writeFile(clipPath, Buffer.from("not-an-mp4"));
+  const validClipPaths = Array.from(
+    { length: 4 },
+    (_, index) => path.join(root, "output", "video_cache", `${storyId}-valid-${index + 2}.mp4`),
+  );
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel", "error",
+    "-f", "lavfi",
+    "-i", "color=c=blue:size=1080x1920:rate=24",
+    "-t", "2",
+    "-an",
+    "-c:v", "libx264",
+    "-pix_fmt", "yuv420p",
+    validClipPaths[0],
+  ], { windowsHide: true });
+  for (const validClipPath of validClipPaths.slice(1)) {
+    await fs.copy(validClipPaths[0], validClipPath);
+  }
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { verdict: "pass", records: [] });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  await fs.outputJson(
+    path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`),
+    {
+      story_id: storyId,
+      source: "validated_real_motion_materializer",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      clips: [clipPath, ...validClipPaths].map((localPath, index) => ({
+        id: index === 0 ? "malformed-official-window" : `valid-official-window-${index + 1}`,
+        source_family: `official_window_${index + 1}`,
+        path: localPath,
+        local_materialized_path: localPath,
+        source_url: `https://cdn.example.com/official-window-${index + 1}.mp4`,
+        source_type: "official_trailer",
+        mediaStartS: 0,
+        durationS: 2,
+        media_kind: "direct_video",
+        materialized: true,
+        counts_towards_motion_readiness: true,
+        validated: true,
+        segmentValidationPassed: true,
+        provenance: {
+          source: "official_trailer_segment_validation",
+          validation_reason: "segment_samples_passed",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+        },
+      })),
+    },
+  );
+
+  const report = await materializeGoalRealMotionProduction({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    minClips: 5,
+    minFamilies: 4,
+    maxClips: 5,
+    generatedAt: "2026-07-15T04:35:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_unavailable"));
+  assert.match(report.jobs[0].failed[0].error, /ffprobe|Command failed/i);
+});
+
+test("real motion materializer rejects a valid MP4 container whose video payload cannot be decoded", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-corrupt-payload-"));
+  const storyId = "corrupt-payload";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const clipPath = path.join(root, "output", "video_cache", `${storyId}.mp4`);
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(path.dirname(clipPath));
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel", "error",
+    "-f", "lavfi",
+    "-i", "testsrc2=size=1080x1920:rate=24",
+    "-t", "1.5",
+    "-an",
+    "-c:v", "libx264",
+    "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
+    clipPath,
+  ], { windowsHide: true });
+  const validClipPaths = Array.from(
+    { length: 4 },
+    (_, index) => path.join(root, "output", "video_cache", `${storyId}-valid-${index + 2}.mp4`),
+  );
+  for (const validClipPath of validClipPaths) {
+    await fs.copy(clipPath, validClipPath);
+  }
+  const bytes = await fs.readFile(clipPath);
+  const mdatTypeOffset = bytes.indexOf(Buffer.from("mdat"));
+  assert.ok(mdatTypeOffset >= 4, "fixture must contain an mdat atom");
+  const declaredMdatSize = bytes.readUInt32BE(mdatTypeOffset - 4);
+  const payloadStart = mdatTypeOffset + 4;
+  const payloadEnd = Math.min(bytes.length, mdatTypeOffset - 4 + declaredMdatSize);
+  assert.ok(payloadEnd - payloadStart > 256, "fixture must contain a material video payload");
+  bytes.fill(0, payloadStart, payloadEnd);
+  await fs.writeFile(clipPath, bytes);
+  execFileSync("ffprobe", ["-v", "error", "-show_streams", "-show_format", clipPath], {
+    windowsHide: true,
+    stdio: "ignore",
+  });
+  assert.throws(() => execFileSync("ffmpeg", [
+    "-v", "error",
+    "-xerror",
+    "-i", clipPath,
+    "-map", "0:v:0",
+    "-f", "null",
+    "-",
+  ], { windowsHide: true, stdio: "ignore" }));
+
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    failures: [],
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: { accepted_local_clips: [] },
+  });
+  await fs.outputJson(
+    path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`),
+    {
+      story_id: storyId,
+      source: "validated_real_motion_materializer",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+      clips: [clipPath, ...validClipPaths].map((localPath, index) => ({
+        id: index === 0 ? "corrupt-official-window" : `valid-official-window-${index + 1}`,
+        source_family: `official_window_${index + 1}`,
+        path: localPath,
+        local_materialized_path: localPath,
+        source_url: `https://cdn.example.com/official-window-${index + 1}.mp4`,
+        source_type: "official_trailer",
+        mediaStartS: 0,
+        durationS: 1.5,
+        media_kind: "direct_video",
+        materialized: true,
+        counts_towards_motion_readiness: true,
+        validated: true,
+        segmentValidationPassed: true,
+        provenance: {
+          source: "official_trailer_segment_validation",
+          validation_reason: "segment_samples_passed",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+        },
+      })),
+    },
+  );
+
+  const report = await materializeGoalRealMotionProduction({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    minClips: 5,
+    minFamilies: 4,
+    maxClips: 5,
+    generatedAt: "2026-07-15T05:30:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_decode_failed"));
+  assert.match(report.jobs[0].failed[0].error, /materialized_clip_decode_failed/);
+});
+
+test("real motion materializer rejects conflicting validator provenance instead of synthesising it", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-validator-conflict-"));
+  const job = await makePackage(root, "validator-conflict");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.assets = rights.assets.map((asset, index) => ({
+    ...asset,
+    validation_provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: index === 0 ? "different_validator_verdict" : "segment_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    },
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T04:40:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 7));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => ({
+      available: fs.existsSync(filePath),
+      decodable: fs.existsSync(filePath),
+      duration_seconds: 2.85,
+      video: { codec: "h264", width: 1080, height: 1920 },
+    }),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("validation_provenance_conflict"));
+  assert.match(report.jobs[0].failed[0].rejected[0].error, /validation_reason/);
+});
+
+test("real motion materializer preserves rejected segment-report validation provenance and blocks conflicts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-segment-provenance-rejected-"));
+  const job = await makePackage(root, "segment-provenance-rejected");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  await fs.writeJson(rightsPath, { verdict: "pass", failures: [], records: [] }, { spaces: 2 });
+  const segmentValidationReport = {
+    segments: Array.from({ length: 5 }, (_, index) => ({
+      story_id: job.story_id,
+      id: `segment-${index + 1}`,
+      status: "validated",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_url: `https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/segment_${index + 1}.mp4?tag=14`,
+      source_url_kind: "direct_video",
+      source_type: "licensed_direct_media_url",
+      source_family: `official_segment_family_${index + 1}`,
+      provider: "official_trailer_segment_validation",
+      entity: "Forza Horizon 6",
+      media_start_s: index * 4,
+      duration_s: 3,
+      source_duration_s: 60,
+      validation_reason: "top_level_claims_validated",
+      validation_provenance: index === 0
+        ? {
+            source: "independent_segment_validator",
+            verdict: "rejected",
+            segment_validated: false,
+            allowed_for_flash_lane: false,
+            validation_reason: "decoder_frame_check_failed",
+          }
+        : {
+            source: "independent_segment_validator",
+            verdict: "pass",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+            validation_reason: "decoder_frame_check_passed",
+          },
+    })),
+  };
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    segmentValidationReport,
+    generatedAt: "2026-07-15T05:20:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 3 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("validation_provenance_conflict"));
+  assert.match(JSON.stringify(report.jobs[0].failed), /decoder_frame_check_failed/);
+});
+
+test("real motion materializer fails the story closed when any selected direct clip cannot be probed", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-probe-fail-"));
+  const job = await makePackage(root, "probe-fail-closed");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.assets.push({
+    ...rights.assets[0],
+    id: "probe-fail-closed-direct-6",
+    source_family: "forza_official_family_6",
+    path: "https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/clip_6.mp4?tag=14",
+    source_url: "https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/clip_6.mp4?tag=14",
+    mediaStartS: 13,
+    provenance: {
+      ...rights.assets[0].provenance,
+      media_start_s: 13,
+    },
+  });
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  let probeCalls = 0;
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T03:00:00.000Z",
+    maxClips: 5,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => {
+      probeCalls += 1;
+      if (probeCalls === 1) throw new Error("probe_failed");
+      return {
+        available: fs.existsSync(filePath),
+        decodable: true,
+        duration_seconds: 2.85,
+        video: { codec: "h264", width: 1080, height: 1920 },
+      };
+    },
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].status, "blocked");
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_unavailable"));
+  const blockedManifest = await fs.readJson(
+    path.join(job.artifact_dir, "materialised_motion_clips.json"),
+  );
+  assert.equal(blockedManifest.status, "blocked");
+  assert.equal(blockedManifest.not_publishable, true);
+  assert.ok(blockedManifest.blockers.includes("materialized_clip_evidence_unavailable"));
+});
+
+test("real motion materializer rejects a clip that changes while same-run evidence is captured", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-evidence-race-"));
+  const job = await makePackage(root, "evidence-race");
+  let probeCalls = 0;
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T03:15:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 4));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => {
+      probeCalls += 1;
+      if (probeCalls === 1) fs.writeFileSync(filePath, Buffer.alloc(4096, 9));
+      return {
+        available: true,
+        decodable: true,
+        duration_seconds: 2.85,
+        video: { codec: "h264", width: 1080, height: 1920 },
+      };
+    },
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.jobs[0].status, "blocked");
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_unavailable"));
+  assert.equal(
+    report.jobs[0].failed[0].rejected[0].error,
+    "materialized_clip_changed_during_evidence_capture",
+  );
+});
+
+test("real motion materializer rejects inconsistent repeated evidence captures for fresh clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-repeat-capture-"));
+  const job = await makePackage(root, "repeat-capture");
+  const callsByPath = new Map();
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T04:45:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 6));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: (filePath) => {
+      const call = (callsByPath.get(filePath) || 0) + 1;
+      callsByPath.set(filePath, call);
+      return {
+        available: fs.existsSync(filePath),
+        decodable: fs.existsSync(filePath),
+        duration_seconds: call === 1 ? 2.85 : 2.77,
+        video: { codec: "h264", width: 1080, height: 1920 },
+      };
+    },
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_mismatch"));
+  assert.match(report.jobs[0].failed[0].error, /duration_seconds/);
+  assert.ok([...callsByPath.values()].every((count) => count === 2));
 });
 
 test("real motion materializer blocks repeated validated official segments when the rights ledger is missing", async () => {
@@ -2085,7 +3623,11 @@ test("real motion materializer blocks repeated validated official segments when 
   assert.equal(partial.clip_count, 1);
   assert.equal(partial.distinct_motion_family_count, 1);
   assert.equal(partial.direct_video_motion_family_count, 1);
-  assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
+  const blockedManifest = await fs.readJson(
+    path.join(job.artifact_dir, "materialised_motion_clips.json"),
+  );
+  assert.equal(blockedManifest.status, "blocked");
+  assert.equal(blockedManifest.not_publishable, true);
 });
 
 test("real motion materializer keeps two validated rights-backed windows from one official trailer without making a looped candidate ready", async () => {
@@ -2163,7 +3705,11 @@ test("real motion materializer keeps two validated rights-backed windows from on
   const partial = await fs.readJson(path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
   assert.equal(partial.clip_count, 2);
   assert.equal(partial.counts_towards_final_render_readiness, false);
-  assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
+  const blockedManifest = await fs.readJson(
+    path.join(job.artifact_dir, "materialised_motion_clips.json"),
+  );
+  assert.equal(blockedManifest.status, "blocked");
+  assert.equal(blockedManifest.not_publishable, true);
 });
 
 test("real motion materializer can use second validated windows across a diverse official source pool", async () => {
@@ -2446,7 +3992,9 @@ test("real motion materializer does not satisfy direct-video repair with screens
   assert.equal(report.summary.materialized_clip_count, 0);
   assert.equal(report.summary.attempted_materialized_clip_count, 5);
   assert.ok(report.jobs[0].blockers.includes("direct_video_motion_clip_missing"));
-  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
+  const blockedManifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(blockedManifest.status, "blocked");
+  assert.equal(blockedManifest.not_publishable, true);
 });
 
 test("real motion materializer can repair only the direct-video gap without discarding existing motion families", async () => {
@@ -2470,6 +4018,7 @@ test("real motion materializer can repair only the direct-video gap without disc
     mediaStartS: 0,
     validated: true,
     materialized: true,
+    counts_towards_motion_readiness: true,
   }));
   existingClips.push({
     id: "stale-direct-motion",
@@ -2483,7 +4032,11 @@ test("real motion materializer can repair only the direct-video gap without disc
     mediaStartS: 36,
     validated: true,
     materialized: true,
+    counts_towards_motion_readiness: true,
   });
+  for (const [index, clip] of existingClips.entries()) {
+    await fs.outputFile(clip.path, Buffer.alloc(4096, index + 1));
+  }
   await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
     story_id: storyId,
     motion_inventory: {
@@ -2721,7 +4274,11 @@ test("real motion materializer can use validated segment reports to repair a dir
     mediaStartS: 0,
     validated: true,
     materialized: true,
+    counts_towards_motion_readiness: true,
   }));
+  for (const [index, clip] of existingClips.entries()) {
+    await fs.outputFile(clip.path, Buffer.alloc(4096, index + 1));
+  }
   await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
     story_id: storyId,
     motion_inventory: {
@@ -3066,7 +4623,9 @@ test("real motion materializer blocks repeated windows from one direct video sou
   assert.equal(report.jobs[0].direct_video_motion_family_count, 1);
   assert.equal(report.jobs[0].skipped_duplicate_base_source_count, 4);
   assert.ok(report.jobs[0].blockers.includes("real_motion_family_minimum_not_met"));
-  assert.equal(await fs.pathExists(path.join(artifactDir, "materialised_motion_clips.json")), false);
+  const blockedManifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(blockedManifest.status, "blocked");
+  assert.equal(blockedManifest.not_publishable, true);
 
   const partial = await fs.readJson(path.join(artifactDir, "partial_real_motion_evidence.json"));
   assert.equal(partial.status, "blocked");
@@ -3076,7 +4635,10 @@ test("real motion materializer blocks repeated windows from one direct video sou
   assert.equal(partial.direct_video_motion_family_count, 1);
   assert.equal(partial.clips.length, 1);
   assert.match(partial.clips[0].base_source_family, /^url:https:\/\/vulcan\.dl\.playstation\.net\/img\/rnd\/202606\/1802\/granblue-relink-demo\.mp4$/);
-  assert.equal(partial.clips[0].provenance?.base_source_family, partial.clips[0].base_source_family);
+  assert.equal(
+    partial.clips[0].transformation_provenance?.base_source_family,
+    partial.clips[0].base_source_family,
+  );
 });
 
 test("real motion materializer treats Steam HLS and DASH variants from one trailer as one source", async () => {
@@ -3279,7 +4841,11 @@ test("real motion materializer refuses to mark a story ready below motion thresh
   assert.equal(report.summary.blocked_story_count, 1);
   assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
   assert.equal(report.jobs[0].partial_evidence_path, path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
-  assert.equal(await fs.pathExists(path.join(job.artifact_dir, "materialised_motion_clips.json")), false);
+  const blockedManifest = await fs.readJson(
+    path.join(job.artifact_dir, "materialised_motion_clips.json"),
+  );
+  assert.equal(blockedManifest.status, "blocked");
+  assert.equal(blockedManifest.not_publishable, true);
 
   const partial = await fs.readJson(path.join(job.artifact_dir, "partial_real_motion_evidence.json"));
   assert.equal(partial.status, "blocked");
@@ -3331,6 +4897,582 @@ test("real motion materializer skips visually duplicate clips from different sou
   assert.equal(report.jobs[0].skipped_visual_duplicate_count, 1);
   assert.equal(report.jobs[0].skipped_visual_duplicates[0].id, "visual-dedupe-direct-2");
   assert.equal(report.jobs[0].clips.some((clip) => clip.id === "visual-dedupe-direct-6"), true);
+});
+
+test("real motion materializer preserves and blocks restrictive candidate rights statuses from assets and matched assets", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-candidate-rights-status-"));
+  const job = await makePackage(root, "candidate-rights-status");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  const restrictiveFields = [
+    ["approval_status", "rejected"],
+    ["rights_status", "failed_rights_review"],
+    ["usage_status", "blocked"],
+    ["status", "denied"],
+    ["verdict", "red"],
+  ];
+  const candidates = rights.assets.map((asset, index) => ({
+    ...asset,
+    [restrictiveFields[index][0]]: restrictiveFields[index][1],
+  }));
+  rights.assets = candidates.slice(0, 3);
+  rights.matched_assets = candidates.slice(3);
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const normalised = candidateRows({ rightsLedger: rights });
+  assert.equal(normalised.length, 5);
+  for (const [field, value] of restrictiveFields) {
+    assert.equal(normalised.some((candidate) => candidate[field] === value), true, field);
+  }
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:00:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 7));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_candidate_rejected"));
+  assert.equal(
+    report.jobs[0].failed.filter((failure) => failure.blockers?.includes("rights_candidate_rejected")).length,
+    5,
+  );
+});
+
+test("real motion materializer never waives an explicit failed ledger approval as missing-record repair", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-ledger-approval-failed-"));
+  const job = await makePackage(root, "ledger-approval-failed");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.approval_status = "failed";
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:05:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 7));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_ledger_rejected"));
+  const preserved = await fs.readJson(rightsPath);
+  assert.equal(preserved.approval_status, "failed");
+  assert.equal(preserved.verdict, "fail");
+});
+
+test("real motion materializer merges incomplete explicit provenance with every legacy negative", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-provenance-merge-negative-"));
+  const job = await makePackage(root, "provenance-merge-negative");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  const legacyNegatives = [
+    { segment_validated: false },
+    { allowed_for_flash_lane: false },
+    { validation_status: "validation_failed" },
+    { review: { status: "rejected" } },
+    { decision: { verdict: "failed" } },
+  ];
+  rights.assets = rights.assets.map((asset, index) => ({
+    ...asset,
+    provenance: {
+      ...asset.provenance,
+      ...legacyNegatives[index],
+    },
+    validation_provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: "explicit_record_is_incomplete",
+    },
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const normalised = candidateRows({ rightsLedger: rights });
+  assert.equal(normalised.length, 5);
+  assert.equal(normalised[0].validation_provenance.segment_validated, false);
+  assert.equal(normalised[1].validation_provenance.allowed_for_flash_lane, false);
+  assert.equal(normalised[2].validation_provenance.validation_status, "validation_failed");
+  assert.equal(normalised[3].validation_provenance.review.status, "rejected");
+  assert.equal(normalised[4].validation_provenance.decision.verdict, "failed");
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:10:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 7));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("validation_provenance_conflict"));
+  assert.equal(
+    report.jobs[0].failed.filter((failure) => failure.blockers?.includes("validation_provenance_conflict")).length,
+    5,
+  );
+});
+
+test("real motion materializer excludes false-count identical preserved clips from every readiness floor", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-false-preserved-clips-"));
+  const storyId = "false-preserved-clips";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  const cacheDir = path.join(root, "output", "video_cache");
+  await fs.ensureDir(artifactDir);
+  await fs.ensureDir(cacheDir);
+  const preservedClips = [];
+  for (let index = 0; index < 4; index += 1) {
+    const clipPath = path.join(cacheDir, `identical-screenshot-${index + 1}.mp4`);
+    await fs.writeFile(clipPath, Buffer.alloc(4096, 4));
+    preservedClips.push({
+      id: `identical-screenshot-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://cdn.example.com/screenshot-${index + 1}.jpg`,
+      source_family: `fake_screenshot_family_${index + 1}`,
+      motion_family: `fake_screenshot_family_${index + 1}`,
+      source_type: "screenshot_derived_motion_clip",
+      media_kind: "visual_still",
+      durationS: 3,
+      mediaStartS: 0,
+      materialized: true,
+      counts_towards_motion_readiness: false,
+    });
+  }
+  const directUrl = "https://video.twimg.com/amplify_video/2047677198685933568/vid/avc1/1280x720/direct.mp4?tag=14";
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    assets: [{
+      id: "only-direct-clip",
+      type: "motion_clip",
+      source_family: "only_direct_family",
+      path: directUrl,
+      source_url: directUrl,
+      source_kind: "direct_video",
+      source_type: "official_social_media_video",
+      mediaStartS: 8,
+      durationS: 5,
+      validated: true,
+      segmentValidationPassed: true,
+      trusted_source_matched: true,
+      commercial_use_allowed: true,
+      provenance: {
+        source: "official_trailer_segment_validation",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    }],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: preservedClips,
+      production_motion_clips: preservedClips,
+      distinct_source_families: preservedClips.map((clip) => clip.source_family),
+    },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["visual_evidence:direct_video_motion_missing"],
+        actions: [{
+          action_id: "materialise_validated_real_motion_clips",
+          reason_codes: ["visual_evidence:direct_video_motion_missing"],
+        }],
+      }],
+    },
+    generatedAt: "2026-07-15T05:15:00.000Z",
+    clipVisualFingerprint: async (clip) =>
+      String(clip.id || "").startsWith("identical-screenshot") ? "same-screenshot" : clip.id,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "blocked");
+  assert.equal(materialised.clips.filter((clip) => clip.counts_towards_motion_readiness === true).length, 0);
+});
+
+test("real motion materializer demotes stale ready manifests when every existing candidate fails", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-all-candidates-fail-stale-"));
+  const storyId = "all-candidates-fail-stale";
+  const job = await makePackage(root, storyId);
+  const staleClip = {
+    id: "stale-undersized-clip",
+    path: path.join(root, "output", "video_cache", "stale-undersized.mp4"),
+    local_materialized_path: path.join(root, "output", "video_cache", "stale-undersized.mp4"),
+    source_url: "https://cdn.example.com/stale-undersized.mp4",
+    source_family: "stale_family",
+    media_kind: "direct_video",
+    durationS: 5,
+    materialized: true,
+    counts_towards_motion_readiness: true,
+  };
+  await fs.outputFile(staleClip.path, Buffer.alloc(4096, 3));
+  await fs.outputJson(path.join(job.artifact_dir, "materialised_motion_clips.json"), {
+    story_id: storyId,
+    status: "ready",
+    clips: [staleClip],
+    clip_count: 1,
+  });
+  const centralPath = path.join(root, "output", "studio-v4", "motion-packs", `${storyId}_motion_pack_manifest.json`);
+  await fs.outputJson(centralPath, {
+    story_id: storyId,
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips: [],
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:20:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 6));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: () => {
+      throw new Error("candidate_probe_failed");
+    },
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].stale_ready_evidence_invalidated, true);
+  assert.ok(report.jobs[0].blockers.includes("stale_ready_motion_manifest_unvalidated"));
+  assert.ok(report.jobs[0].blockers.includes("stale_ready_central_motion_pack_unvalidated"));
+  assert.equal((await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"))).status, "blocked");
+  assert.equal((await fs.readJson(centralPath)).readiness.status, "v4_motion_blocked");
+});
+
+test("real motion materializer requires affirmative candidate validation and preserves validator state", () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/620/99999/hash/movie_max.mp4";
+  const common = {
+    type: "motion_clip",
+    source_url: sourceUrl,
+    path: sourceUrl,
+    source_type: "official_steam_trailer_video",
+    source_kind: "direct_video",
+    provider: "steam",
+    source_family: "steam_620_99999",
+    mediaStartS: 4,
+    durationS: 5,
+    commercial_use_allowed: true,
+    risk_score: 0.2,
+  };
+  const candidates = candidateRows({
+    rightsLedger: {
+      assets: [
+        {
+          ...common,
+          id: "missing-affirmative-validation",
+        },
+        {
+          ...common,
+          id: "affirmatively-validated",
+          validated: true,
+          segmentValidationPassed: true,
+          segment_validation_status: "validated",
+          validation_provenance_conflicts: ["validator:legacy_source_conflict"],
+          validation_provenance: {
+            source: "official_trailer_segment_validator",
+            segment_validated: true,
+            allowed_for_flash_lane: true,
+          },
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(candidates.map((candidate) => candidate.id), ["affirmatively-validated"]);
+  assert.equal(candidates[0].segment_validation_status, "validated");
+  assert.deepEqual(
+    candidates[0].validation_provenance_conflicts,
+    ["validator:legacy_source_conflict"],
+  );
+});
+
+test("real motion materializer rejects restrictive and high-risk preserved clips during rights reconciliation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-preserved-rights-"));
+  const job = await makePackage(root, "preserved-rights-rejection");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.verdict = "pass";
+  rights.failures = [];
+  rights.assets = rights.assets.slice(0, 1);
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const preserved = [];
+  for (let index = 0; index < 5; index += 1) {
+    const clipPath = path.join(root, "output", "owned-motion", `preserved-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(4096, index + 1));
+    preserved.push({
+      id: `preserved-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://cdn.example.com/official/preserved-${index + 1}.mp4`,
+      source_family: `preserved_family_${index + 1}`,
+      source_type: "official_social_media_video",
+      media_kind: "direct_video",
+      durationS: 5,
+      mediaStartS: index * 5,
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      segmentValidationPassed: true,
+      commercial_use_allowed: true,
+      risk_score: index === 1 ? 0.9 : 0.2,
+      approval_status: index === 0 ? "rejected" : "approved_for_transformative_editorial_use",
+      provenance: {
+        source: "official_trailer_segment_validation",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+      },
+    });
+  }
+  await fs.outputJson(path.join(job.artifact_dir, "footage_inventory.json"), {
+    story_id: job.story_id,
+    motion_inventory: {
+      accepted_local_clips: preserved,
+      production_motion_clips: preserved,
+      distinct_source_families: preserved.map((clip) => clip.source_family),
+    },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:30:00.000Z",
+    maxClips: 1,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 9));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.ok(report.jobs[0].blockers.includes("rights_record_rejected"));
+  assert.ok(report.jobs[0].blockers.includes("rights_evidence_high_risk"));
+  assert.equal(report.jobs[0].failed.some((failure) => failure.id === "preserved-1"), true);
+  assert.equal(report.jobs[0].failed.some((failure) => failure.id === "preserved-2"), true);
+});
+
+test("real motion materializer aggregates duplicate source-window rights fail-closed across every ledger collection", async (t) => {
+  const collections = ["assets", "records", "matched_assets", "rights_ledger"];
+  for (const collection of collections) {
+    await t.test(collection, async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), `pulse-real-motion-rights-${collection}-`));
+      const job = await makePackage(root, `duplicate-rights-${collection}`);
+      const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+      const rights = await fs.readJson(rightsPath);
+      rights.verdict = "pass";
+      rights.failures = [];
+      const duplicate = {
+        ...rights.assets[0],
+        id: `${rights.assets[0].id}-${collection}-rejection`,
+        asset_id: `${rights.assets[0].id}-${collection}-rejection`,
+        approval_status: "rejected",
+      };
+      if (collection === "assets") rights.assets.push(duplicate);
+      else rights[collection] = [duplicate];
+      await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+      const report = await materializeGoalRealMotion({
+        root,
+        workOrder: { jobs: [job] },
+        generatedAt: "2026-07-15T05:35:00.000Z",
+        execFileSync: (_bin, args) => {
+          fs.ensureFileSync(args[args.length - 1]);
+          fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 10));
+        },
+        ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+      });
+
+      assert.equal(report.summary.materialized_story_count, 0, collection);
+      assert.ok(report.jobs[0].blockers.includes("rights_record_rejected"), collection);
+    });
+  }
+
+  await t.test("conflicting duplicate", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-rights-conflict-"));
+    const job = await makePackage(root, "duplicate-rights-conflict");
+    const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+    const rights = await fs.readJson(rightsPath);
+    rights.verdict = "pass";
+    rights.failures = [];
+    rights.assets[0].allowed_use = "transformative_editorial_short_form";
+    rights.matched_assets = [{
+      ...rights.assets[0],
+      id: `${rights.assets[0].id}-conflicting-use`,
+      asset_id: `${rights.assets[0].id}-conflicting-use`,
+      allowed_use: "internal_reference_only",
+    }];
+    await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+    const report = await materializeGoalRealMotion({
+      root,
+      workOrder: { jobs: [job] },
+      generatedAt: "2026-07-15T05:36:00.000Z",
+      execFileSync: (_bin, args) => {
+        fs.ensureFileSync(args[args.length - 1]);
+        fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 11));
+      },
+      ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    });
+
+    assert.equal(report.summary.materialized_story_count, 0);
+    assert.ok(report.jobs[0].blockers.includes("rights_evidence_contradiction"));
+  });
+});
+
+test("real motion materializer demotes stale owned-motion and footage readiness when all candidates fail", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-stale-owned-footage-"));
+  const job = await makePackage(root, "stale-owned-footage");
+  const ownedPath = path.join(job.artifact_dir, "owned_motion_manifest.json");
+  const footagePath = path.join(job.artifact_dir, "footage_inventory.json");
+  await fs.outputJson(ownedPath, {
+    story_id: job.story_id,
+    status: "ready",
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    clips: [],
+  });
+  await fs.outputJson(footagePath, {
+    story_id: job.story_id,
+    readiness: { status: "v4_motion_ready", blockers: [] },
+    motion_budget: {
+      status: "ready",
+      available_motion_clips: 5,
+      available_distinct_families: 5,
+    },
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: ["stale_a", "stale_b", "stale_c", "stale_d", "stale_e"],
+    },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T05:40:00.000Z",
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 12));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.85 : null),
+    materializedClipProbe: () => {
+      throw new Error("candidate_probe_failed");
+    },
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].stale_ready_evidence_invalidated, true);
+  assert.ok(report.jobs[0].blockers.includes("stale_ready_owned_motion_manifest_unvalidated"));
+  assert.ok(report.jobs[0].blockers.includes("stale_ready_footage_inventory_unvalidated"));
+  const owned = await fs.readJson(ownedPath);
+  const footage = await fs.readJson(footagePath);
+  assert.equal(owned.status, "blocked");
+  assert.equal(owned.readiness.status, "v4_motion_blocked");
+  assert.equal(footage.readiness.status, "v4_motion_blocked");
+  assert.equal(footage.motion_budget.available_motion_clips, 0);
+  assert.equal(footage.motion_budget.available_distinct_families, 0);
+});
+
+test("real motion materializer separates motion-window diversity from strict genuine base-source diversity", async (t) => {
+  async function runCase(strict) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `pulse-real-motion-base-diversity-${strict}-`));
+    const job = await makePackage(root, `base-diversity-${strict}`);
+    const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+    const rights = await fs.readJson(rightsPath);
+    const sharedUrl =
+      "https://video.akamai.steamstatic.com/store_trailers/620/88888/hash/movie_max.mp4";
+    rights.verdict = "pass";
+    rights.failures = [];
+    rights.assets = rights.assets.map((asset, index) => ({
+      ...asset,
+      id: `shared-trailer-window-${index + 1}`,
+      path: sharedUrl,
+      source_url: sharedUrl,
+      source_type: "official_steam_trailer_video",
+      source_kind: "direct_video",
+      provider: "steam",
+      source_family: `shared_trailer_window_${index + 1}`,
+      base_source_family: "shared_trailer",
+      mediaStartS: index * 6,
+      durationS: 5,
+      source_duration_s: 60,
+    }));
+    await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+    const report = await materializeGoalRealMotion({
+      root,
+      workOrder: { jobs: [job] },
+      generatedAt: strict ? "2026-07-15T05:46:00.000Z" : "2026-07-15T05:45:00.000Z",
+      maxClips: 5,
+      maxDirectClipsPerBaseSource: 5,
+      strictBaseSourceDiversity: strict,
+      minBaseSources: strict ? 2 : 0,
+      execFileSync: (_bin, args) => {
+        fs.ensureFileSync(args[args.length - 1]);
+        fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 13));
+      },
+      ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+    });
+    return { root, job, report };
+  }
+
+  await t.test("normal motion-window readiness", async () => {
+    const { job, report } = await runCase(false);
+    assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+    const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+    const footage = await fs.readJson(path.join(job.artifact_dir, "footage_inventory.json"));
+    assert.equal(manifest.distinct_motion_families.length, 5);
+    assert.deepEqual(manifest.distinct_source_families, [
+      "steamstatic:/store_trailers/620/88888/hash",
+    ]);
+    assert.deepEqual(
+      footage.motion_inventory.distinct_source_families,
+      manifest.distinct_source_families,
+    );
+  });
+
+  await t.test("strict genuine base-source readiness", async () => {
+    const { job, report } = await runCase(true);
+    assert.equal(report.summary.materialized_story_count, 0);
+    assert.equal(report.summary.blocked_story_count, 1);
+    assert.ok(report.jobs[0].blockers.includes("genuine_base_source_minimum_not_met"));
+    const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+    assert.equal(manifest.status, "blocked");
+    assert.equal(manifest.distinct_motion_families.length, 5);
+    assert.equal(manifest.distinct_source_families.length, 1);
+    assert.equal(manifest.minimum_requirements.min_genuine_base_sources, 2);
+  });
 });
 
 test("real motion materializer writes machine-readable and operator reports", async () => {

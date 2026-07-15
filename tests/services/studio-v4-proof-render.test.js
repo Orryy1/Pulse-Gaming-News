@@ -32,6 +32,8 @@ const {
   resolveFreshHyperframesPremiumShellGate,
   scenePlanBlockerDiagnostic,
   buildProfessionalSourceDiversityProof,
+  verifyRenderedProofMedia,
+  materializeVerifiedProofOutput,
 } = require("../../tools/studio-v4-proof-render");
 const {
   STUDIO_V4_SFX_MIX_POLICY_VERSION,
@@ -3017,4 +3019,66 @@ test("Studio V4 overlay chain suppresses only the opening card during first-fram
   assert.match(chain, /PULSE PROOF/);
   assert.match(chain, /PLAYER IMPACT/);
   assert.match(chain, /PULSE GAMING/);
+});
+
+test("Studio V4 proof renderer rejects a final MP4 that cannot fully decode both streams", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-corrupt-final-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const corruptPath = path.join(root, "corrupt.mp4");
+  fs.writeFileSync(corruptPath, Buffer.from("not a decodable MP4"));
+
+  await assert.rejects(
+    verifyRenderedProofMedia(corruptPath, { expectedDurationS: 1 }),
+    /proof_render_(?:probe|full_decode)_failed/,
+  );
+});
+
+test("Studio V4 proof renderer preserves the prior output when staged media verification fails", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-atomic-output-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const outputPath = path.join(root, "flagship.mp4");
+  fs.writeFileSync(outputPath, Buffer.from("previous verified output"));
+
+  await assert.rejects(
+    materializeVerifiedProofOutput({
+      outputPath,
+      renderTemporary: async (temporaryPath) => {
+        fs.writeFileSync(temporaryPath, Buffer.alloc(2048, 7));
+      },
+      verifyTemporary: async () => {
+        throw new Error("synthetic_decode_failure");
+      },
+    }),
+    /synthetic_decode_failure/,
+  );
+
+  assert.equal(fs.readFileSync(outputPath, "utf8"), "previous verified output");
+  assert.equal(fs.existsSync(`${outputPath}.render.lock`), false);
+  assert.deepEqual(
+    fs.readdirSync(root).filter((name) => name.includes(".rendering-")),
+    [],
+  );
+});
+
+test("Studio V4 proof renderer refuses a concurrent output owner without deleting its lock", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-output-lock-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const outputPath = path.join(root, "flagship.mp4");
+  const lockPath = `${outputPath}.render.lock`;
+  fs.writeFileSync(lockPath, "existing owner");
+  let renderCalled = false;
+
+  await assert.rejects(
+    materializeVerifiedProofOutput({
+      outputPath,
+      renderTemporary: async () => {
+        renderCalled = true;
+      },
+      verifyTemporary: async () => ({ status: "pass" }),
+    }),
+    /proof_render_already_in_progress/,
+  );
+
+  assert.equal(renderCalled, false);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), "existing owner");
 });

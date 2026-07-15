@@ -2,9 +2,14 @@
 "use strict";
 
 const path = require("node:path");
+const crypto = require("node:crypto");
+const nativeFs = require("node:fs/promises");
 const fs = require("fs-extra");
-const { execFileSync } = require("node:child_process");
+const { execFile, execFileSync } = require("node:child_process");
+const { promisify } = require("node:util");
 const { fileURLToPath } = require("node:url");
+
+const execFileAsync = promisify(execFile);
 
 const { ffprobeDuration } = require("../lib/studio/media-acquisition");
 const { wordsFromAlignment } = require("../lib/studio/sound-layer");
@@ -2522,6 +2527,144 @@ function buildSceneCompositeFilterParts(scene = {}, livingMotion = null) {
   ];
 }
 
+async function materializeVerifiedProofOutput({
+  outputPath,
+  renderTemporary,
+  verifyTemporary,
+} = {}) {
+  if (typeof renderTemporary !== "function") throw new Error("render_temporary_handler_missing");
+  if (typeof verifyTemporary !== "function") throw new Error("verify_temporary_handler_missing");
+  const resolvedOutputPath = path.resolve(outputPath || "");
+  await fs.ensureDir(path.dirname(resolvedOutputPath));
+  const lockPath = `${resolvedOutputPath}.render.lock`;
+  const temporaryPath = path.join(
+    path.dirname(resolvedOutputPath),
+    `.${path.basename(resolvedOutputPath)}.rendering-${process.pid}-${crypto.randomUUID()}.mp4`,
+  );
+  const backupPath = `${resolvedOutputPath}.previous-${crypto.randomUUID()}`;
+  let lockHandle;
+  let ownsLock = false;
+  let hadPrevious = false;
+  try {
+    try {
+      lockHandle = await nativeFs.open(lockPath, "wx");
+      ownsLock = true;
+      await lockHandle.writeFile(JSON.stringify({
+        pid: process.pid,
+        started_at: new Date().toISOString(),
+        output_path: resolvedOutputPath,
+        temporary_path: temporaryPath,
+      }, null, 2));
+    } catch (error) {
+      if (error?.code === "EEXIST") throw new Error(`proof_render_already_in_progress:${resolvedOutputPath}`);
+      throw error;
+    }
+    await renderTemporary(temporaryPath);
+    if (!(await fs.pathExists(temporaryPath))) throw new Error("proof_render_temporary_output_missing");
+    const temporaryStat = await fs.stat(temporaryPath);
+    if (!temporaryStat.isFile() || temporaryStat.size < 1024) {
+      throw new Error("proof_render_temporary_output_too_small");
+    }
+    const verification = await verifyTemporary(temporaryPath);
+    hadPrevious = await fs.pathExists(resolvedOutputPath);
+    if (hadPrevious) await fs.rename(resolvedOutputPath, backupPath);
+    try {
+      await fs.rename(temporaryPath, resolvedOutputPath);
+      if (hadPrevious) await fs.remove(backupPath);
+    } catch (error) {
+      if (hadPrevious && (await fs.pathExists(backupPath))) {
+        await fs.rename(backupPath, resolvedOutputPath).catch(() => {});
+      }
+      throw error;
+    }
+    return { output_path: resolvedOutputPath, verification };
+  } finally {
+    await fs.remove(temporaryPath).catch(() => {});
+    if (lockHandle) await lockHandle.close().catch(() => {});
+    if (ownsLock) await fs.remove(lockPath).catch(() => {});
+    if (hadPrevious && (await fs.pathExists(backupPath))) await fs.remove(backupPath).catch(() => {});
+  }
+}
+
+async function verifyRenderedProofMedia(filePath, {
+  expectedDurationS,
+  execFileImpl = execFileAsync,
+} = {}) {
+  const resolvedPath = path.resolve(filePath || "");
+  if (!(await fs.pathExists(resolvedPath))) throw new Error("proof_render_output_missing");
+  let metadata;
+  try {
+    const { stdout } = await execFileImpl("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,sample_rate",
+      "-of", "json",
+      resolvedPath,
+    ], {
+      encoding: "utf8",
+      timeout: 30_000,
+      windowsHide: true,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    metadata = JSON.parse(stdout);
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || "probe_error").replace(/\s+/g, " ").slice(0, 240);
+    throw new Error(`proof_render_probe_failed:${detail}`);
+  }
+  const streams = Array.isArray(metadata?.streams) ? metadata.streams : [];
+  const video = streams.find((stream) => stream.codec_type === "video");
+  const audio = streams.find((stream) => stream.codec_type === "audio");
+  const durationS = Number(metadata?.format?.duration);
+  const profileBlockers = [];
+  if (!Number.isFinite(durationS) || durationS <= 0) profileBlockers.push("duration_invalid");
+  if (video?.codec_name !== "h264") profileBlockers.push("video_codec_not_h264");
+  if (Number(video?.width) !== 1080 || Number(video?.height) !== 1920) {
+    profileBlockers.push("video_dimensions_not_1080x1920");
+  }
+  if (audio?.codec_name !== "aac") profileBlockers.push("audio_codec_not_aac");
+  if (Number(audio?.sample_rate) !== SOCIAL_AUDIO_SAMPLE_RATE) {
+    profileBlockers.push("audio_sample_rate_not_48000");
+  }
+  if (
+    Number.isFinite(Number(expectedDurationS)) &&
+    Number.isFinite(durationS) &&
+    Math.abs(durationS - Number(expectedDurationS)) > 0.5
+  ) {
+    profileBlockers.push("duration_mismatch");
+  }
+  if (profileBlockers.length) {
+    throw new Error(`proof_render_profile_failed:${profileBlockers.join(",")}`);
+  }
+  const nullSink = process.platform === "win32" ? "NUL" : "/dev/null";
+  try {
+    await execFileImpl("ffmpeg", [
+      "-hide_banner",
+      "-nostdin",
+      "-v", "error",
+      "-xerror",
+      "-i", resolvedPath,
+      "-map", "0:v:0",
+      "-map", "0:a:0",
+      "-f", "null",
+      nullSink,
+    ], {
+      encoding: "utf8",
+      timeout: 300_000,
+      windowsHide: true,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || "decode_error").replace(/\s+/g, " ").slice(0, 240);
+    throw new Error(`proof_render_full_decode_failed:${detail}`);
+  }
+  return {
+    status: "pass",
+    fully_decoded: true,
+    duration_s: durationS,
+    video: { codec: video.codec_name, width: Number(video.width), height: Number(video.height) },
+    audio: { codec: audio.codec_name, sample_rate_hz: Number(audio.sample_rate) },
+  };
+}
+
 async function renderProof({ storyJson, output }) {
   if (!storyJson) throw new Error("missing --story-json");
   const storyPath = resolvePathMaybeRoot(storyJson);
@@ -2772,14 +2915,22 @@ async function renderProof({ storyJson, output }) {
     "-1",
     "-map_chapters",
     "-1",
-    outputPath,
   );
 
-  execFileSync("ffmpeg", ffmpegArgs, {
-    cwd: ROOT,
-    stdio: "inherit",
+  const outputTransaction = await materializeVerifiedProofOutput({
+    outputPath,
+    renderTemporary: async (temporaryPath) => {
+      execFileSync("ffmpeg", [...ffmpegArgs, temporaryPath], {
+        cwd: ROOT,
+        stdio: "inherit",
+      });
+    },
+    verifyTemporary: (temporaryPath) => verifyRenderedProofMedia(temporaryPath, {
+      expectedDurationS: durationS,
+    }),
   });
 
+  const renderedMediaIntegrity = outputTransaction.verification;
   const finalDuration = ffprobeDuration(outputPath);
   const decodedVisualGate = await runDecodedVisualGate({
     storyId: story.id || "story",
@@ -2818,6 +2969,7 @@ async function renderProof({ storyJson, output }) {
     ass: path.relative(ROOT, assPath).replace(/\\/g, "/"),
     filter: path.relative(ROOT, filterPath).replace(/\\/g, "/"),
     clips: scenePlan.scenes.length,
+    rendered_media_integrity: renderedMediaIntegrity,
     professional_source_diversity: professionalSourceDiversity,
     clip_scene_plan: {
       repeat_free: scenePlan.repeatFree,
@@ -2982,5 +3134,7 @@ module.exports = {
   subtitleWordsFromTimestampPayload,
   validateProofTimestampPayload,
   assertProofAudioSegmentLoudness,
+  verifyRenderedProofMedia,
+  materializeVerifiedProofOutput,
   renderProof,
 };

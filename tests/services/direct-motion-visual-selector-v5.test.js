@@ -124,6 +124,37 @@ test("V5 direct-motion selector rejects portrait-cropped embedded text without b
   assert.equal(gameplayHud.metrics.portrait_crop_text_risk_sample_count, 0);
 });
 
+test("V5 direct-motion selector rejects oversized cropped edge glyphs missed by text overlay scoring", () => {
+  const report = scoreDirectMotionVisualSamples([
+    {
+      width: 540,
+      height: 960,
+      aspect_ratio: 0.5625,
+      text_overlay_likelihood: 0,
+      white_text_on_dark_likelihood: 0.526,
+      border: {
+        edge_touch_ratio: 0.159,
+        bright_edge_ratio: 0.075,
+        dark_edge_ratio: 0.448,
+        text_cutoff_risk_score: 0.625,
+      },
+      trailer_frame_taste: {
+        verdict: "warn",
+        reason: "taste_borderline",
+        tags: [],
+      },
+    },
+  ]);
+
+  assert.equal(report.eligible, false);
+  assert.ok(
+    report.reasons.includes(
+      "direct_motion_portrait_crop_embedded_text_truncation_risk",
+    ),
+  );
+  assert.equal(report.metrics.portrait_crop_text_risk_sample_count, 1);
+});
+
 test("V5 direct-motion selector fails closed when no decoded samples exist", () => {
   const report = scoreDirectMotionVisualSamples([]);
 
@@ -135,8 +166,8 @@ test("V5 direct-motion selector samples densely enough to catch sub-second trans
   const times = premiumSampleTimes(5);
   const gaps = times.slice(1).map((time, index) => time - times[index]);
 
-  assert.equal(times.length >= 8, true);
-  assert.equal(Math.max(...gaps) <= 0.7, true);
+  assert.equal(times.length >= 20, true);
+  assert.equal(Math.max(...gaps) <= 0.25, true);
   assert.equal(times[0] <= 0.5, true);
   assert.equal(times.at(-1) >= 4.5, true);
 });

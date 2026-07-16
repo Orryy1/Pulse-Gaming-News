@@ -97,6 +97,42 @@ test("story-specific HyperFrames cards run the authoritative browser check befor
   assert.doesNotMatch(body, /runHyperframes\(\["inspect"/);
 });
 
+test("quote-card attribution uses a full-opacity masked reveal so contrast never dips during animation", () => {
+  const template = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-quote", "index.html"),
+    "utf8",
+  );
+
+  assert.match(template, /\.attribution\s*\{[\s\S]*?color:\s*#fff(?:fff)?;/i);
+  assert.match(template, /\.attribution-sub\s*\{[\s\S]*?color:\s*#fff(?:fff)?;/i);
+  assert.match(template, /\.attribution(?:-sub)?\s*\{[\s\S]*?opacity:\s*1;/i);
+  assert.match(template, /\.attribution\s*\{[\s\S]*?background:\s*rgba\(7,\s*9,\s*13,\s*0\.9\d*\)/i);
+  assert.match(template, /\.attribution-sub\s*\{[\s\S]*?background:\s*rgba\(7,\s*9,\s*13,\s*0\.9\d*\)/i);
+  assert.match(template, /clip-path:\s*inset\(0\s+100%\s+0\s+0\)/i);
+  assert.doesNotMatch(template, /\.to\("#attribution(?:-sub)?",\s*\{\s*opacity:/i);
+  assert.match(template, /clipPath:\s*"inset\(0 0% 0 0\)"/i);
+});
+
+test("takeaway card keeps its story backdrop bright and moving instead of becoming a static dark slate", () => {
+  const template = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-takeaway", "index.html"),
+    "utf8",
+  );
+
+  assert.match(template, /id="backdrop"\s+class="backdrop"/i);
+  assert.match(
+    template,
+    /\.backdrop\s*\{[\s\S]*?filter:\s*blur\(\d+px\)\s+brightness\(0\.[6-9]\d*\)\s+saturate\((?:0\.[9]\d*|1(?:\.\d+)?)\)/i,
+  );
+  const shadeBlock = template.match(/\.shade\s*\{[\s\S]*?\}/i)?.[0] || "";
+  assert.ok(shadeBlock);
+  assert.doesNotMatch(shadeBlock, /rgba\(0,\s*0,\s*0,\s*0\.[6-9]\d*\)/i);
+  assert.match(
+    template,
+    /\.fromTo\(\s*"#backdrop",[\s\S]*?scale:\s*1\.\d+[\s\S]*?xPercent:[\s\S]*?duration:\s*5\.2/i,
+  );
+});
+
 test("story-specific HyperFrames shell evidence counts chained GSAP timeline steps", () => {
   const html = `
     <script>
@@ -137,6 +173,33 @@ test("story-specific HyperFrames cards reject copy that cannot be read inside th
   );
   assert.equal(contract.evidence.minimum_visible_duration_s, 5.2);
   assert.match(html, /data-duration="5\.2"/);
+});
+
+test("story-specific HyperFrames cards fit long flagship text inside vertical safe margins", () => {
+  const contextTemplate = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-context", "index.html"),
+    "utf8",
+  );
+  const takeawayTemplate = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-takeaway", "index.html"),
+    "utf8",
+  );
+  const contextHtml = applySpecToTemplate("context", contextTemplate, {
+    kicker: "WHY IT MATTERS",
+    number: "DIGIMON STORY TIME STRANGER",
+    sub: "SWITCH MODES INTO",
+    micro: "PLAYER IMPACT",
+  }, "pulse-gaming");
+  const takeawayHtml = applySpecToTemplate("takeaway", takeawayTemplate, {
+    step: "03 / TAKEAWAY",
+    kicker: "THE BOTTOM LINE",
+    headlineWords: ["PERFORMANCE", "IS", "THE", "TEST"],
+    cta: "PERFORMANCE CHANGES THE DECISION",
+  }, "pulse-gaming");
+
+  assert.match(contextHtml, /\.stage\s*\{[\s\S]*?padding:\s*0 72px;/);
+  assert.match(contextHtml, /\.number\s*\{[\s\S]*?font-size:\s*84px;/);
+  assert.match(takeawayHtml, /\.headline\s*\{[\s\S]*?font-size:\s*100px;/);
 });
 
 test("story-specific HyperFrames cards carry the category-aware Pulse V5 kinetic identity", () => {
@@ -361,6 +424,26 @@ test("story-specific HyperFrames takeaway turns controversy into an editorial pa
   assert.match(specs.takeaway.cta, /PLAYER TRUST/i);
   assert.doesNotMatch(`${headline} ${specs.takeaway.cta}`, /WHY BLACK FLAG|FOLLOW|SUBSCRIBE|FOR MORE/i);
   assert.deepEqual(specs.outro.headlineWords, ["FOLLOW", "FOR", "MORE"]);
+});
+
+test("story-specific HyperFrames takeaway surfaces a blocked save transfer instead of generic player-impact copy", () => {
+  const specs = buildStoryCardSpecs({
+    id: "official_digimon_switch2_launch_20260710",
+    title: "Digimon's Switch 2 Upgrade Has A Hidden Catch",
+    canonical_subject: "Digimon Story Time Stranger",
+    full_script:
+      "Digimon just gave Switch 2 owners a choice that should be easy, but it really isn't. " +
+      "A patched Switch copy gets improved graphics on Switch 2, but its save cannot transfer to the separate Switch 2 edition. " +
+      "So the best mode may depend on which version you already own before visuals even enter the argument. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.deepEqual(specs.takeaway.headlineWords, ["SAVE", "DATA", "WON'T", "TRANSFER"]);
+  assert.equal(specs.takeaway.cta, "SWITCH 2 EDITION MEANS STARTING OVER");
+  assert.doesNotMatch(
+    `${specs.takeaway.headlineWords.join(" ")} ${specs.takeaway.cta}`,
+    /PLAYER IMPACT|WHAT CHANGES FOR PLAYERS|FOLLOW|FOR MORE/i,
+  );
 });
 
 test("Black Flag pricing cards preserve decimal facts, source attribution and the story payoff", () => {

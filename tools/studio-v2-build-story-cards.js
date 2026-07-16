@@ -910,9 +910,21 @@ function renderTimelineBullets(bullets) {
 
 function contextNumberFontSize(value) {
   const text = normaliseText(value).replace(/\s+/g, "");
-  if (text.length >= 14) return 108;
+  if (text.length >= 22) return 84;
+  if (text.length >= 18) return 92;
+  if (text.length >= 14) return 100;
   if (text.length >= 10) return 128;
   return 152;
+}
+
+function takeawayHeadlineFontSize(words) {
+  const longestWordLength = (Array.isArray(words) ? words : [])
+    .map((word) => normaliseText(word).replace(/\s+/g, "").length)
+    .reduce((longest, length) => Math.max(longest, length), 0);
+  if (longestWordLength >= 11) return 100;
+  if (longestWordLength >= 9) return 108;
+  if (longestWordLength >= 7) return 116;
+  return 124;
 }
 
 function sourceLabelFontSize(value) {
@@ -979,6 +991,10 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
     const strap = kind === "takeaway"
       ? safeTakeawayStrap(spec.cta)
       : spec.cta;
+    html = html.replace(
+      /(\.headline\s*\{[^}]*?font-size:\s*)\d+(px;)/,
+      `$1${takeawayHeadlineFontSize(headlineWords)}$2`,
+    );
     html = replaceElementText(html, "step", spec.step);
     html = replaceElementText(html, "kicker", spec.kicker);
     html = html.replace(

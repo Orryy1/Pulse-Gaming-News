@@ -130,8 +130,8 @@ test("post-render narration QA binds separate display and spoken evidence to one
   const runId = `production-render:${storyId}:2026-07-15T09:00:00.000Z`;
   await fs.ensureDir(evidenceDir);
 
-  const displayScript = "Steam lists it at $84.91.";
-  const spokenScript = "Steam lists it at 84 dollars 91.";
+  const displayScript = "Steam lists it at $84.91. Choose 4K or 1080p.";
+  const spokenScript = "Steam lists it at 84 dollars 91. Choose 4K or 1080p.";
   const paths = {
     final_video: path.join(artifactDir, "visual_v4_render.mp4"),
     final_audio: path.join(evidenceDir, "final_audio.mp3"),
@@ -146,17 +146,24 @@ test("post-render narration QA binds separate display and spoken evidence to one
   await fs.writeFile(paths.spoken_script, `${spokenScript}\n`, "utf8");
   await fs.writeFile(
     paths.captions,
-    `1\n00:00:00,000 --> 00:00:03,000\n${displayScript}\n`,
+    `1\n00:00:00,000 --> 00:00:05,200\n${displayScript}\n`,
     "utf8",
   );
   const audioSha256 = await sha256File(paths.final_audio);
   const scriptSha256 = await sha256File(paths.script);
   const spokenScriptSha256 = await sha256File(paths.spoken_script);
   const captionsSha256 = await sha256File(paths.captions);
-  const words = spokenScript.replace(/[.]/g, "").split(/\s+/).map((word, index, all) => ({
+  const spokenTimelineWords = spokenScript
+    .replace(/[.]/g, "")
+    .split(/\s+/)
+    .flatMap((word) => {
+      if (word === "4K") return ["4", "K"];
+      return [word];
+    });
+  const words = spokenTimelineWords.map((word, index, all) => ({
     word,
-    start: Number((index * (3 / all.length)).toFixed(3)),
-    end: Number(((index + 1) * (3 / all.length)).toFixed(3)),
+    start: Number((index * (5.2 / all.length)).toFixed(3)),
+    end: Number(((index + 1) * (5.2 / all.length)).toFixed(3)),
   }));
   await fs.writeJson(paths.word_timestamps, {
     words,
@@ -205,7 +212,7 @@ test("post-render narration QA binds separate display and spoken evidence to one
   const result = await writeFlagshipNarrationQaEvidence({
     artifactDir,
     generatedAt: "2026-07-15T09:00:00.000Z",
-    durationProbe: async () => 3,
+    durationProbe: async () => 5.2,
     silenceProbe: async () => [],
   });
 
@@ -213,6 +220,7 @@ test("post-render narration QA binds separate display and spoken evidence to one
   const captions = await fs.readJson(path.join(artifactDir, "caption_manifest.json"));
   const voice = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
   const narration = await fs.readJson(path.join(artifactDir, "narration_manifest.json"));
+  const refreshedRenderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(narration.authoritative, true);
   assert.equal(narration.verdict, "PASS");
   assert.equal(narration.status, "ready");
@@ -234,9 +242,10 @@ test("post-render narration QA binds separate display and spoken evidence to one
   assert.equal(voice.authoritative, true);
   assert.equal(captions.run_id, runId);
   assert.equal(voice.run_id, runId);
-  assert.equal(captions.display_word_count, 6);
-  assert.equal(captions.spoken_word_count, 7);
-  assert.equal(voice.word_timestamp_count, 7);
+  assert.equal(captions.display_word_count, 12);
+  assert.equal(captions.spoken_word_count, 13);
+  assert.equal(voice.word_timestamp_count, 13);
+  assert.equal(voice.cadence.word_count, 12);
   assert.equal(voice.cadence.status, "pass");
   assert.equal(
     captions.lineage.generation_manifest.sha256,
@@ -245,8 +254,15 @@ test("post-render narration QA binds separate display and spoken evidence to one
   assert.equal(voice.lineage.captions_sha256, captionsSha256);
   assert.deepEqual(captions.blockers, []);
   assert.deepEqual(voice.blockers, []);
+  assert.equal(refreshedRenderManifest.flagship_narration_qa_evidence.verdict, "PASS");
+  assert.equal(refreshedRenderManifest.flagship_narration_qa_evidence.run_id, runId);
+  assert.deepEqual(refreshedRenderManifest.flagship_narration_qa_evidence.blockers, []);
+  assert.equal(
+    refreshedRenderManifest.flagship_narration_qa_evidence.voice_quality_report_path,
+    path.join(artifactDir, "voice_quality_report.json"),
+  );
   assert.equal(auditNarrationQaArtifacts({
-    audioManifest: { word_timestamp_count: 7 },
+    audioManifest: { word_timestamp_count: 13 },
     captionManifest: captions,
     voiceQualityReport: voice,
   }).status, "fresh");

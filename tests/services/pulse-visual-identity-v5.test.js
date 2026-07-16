@@ -124,6 +124,23 @@ test("Pulse visual identity injects a seek-safe living brand layer into one time
   assert.equal(report.evidence.single_timeline, true);
 });
 
+test("Pulse visual identity does not repeat the Pulse wordmark inside its category bug", () => {
+  const html = applyPulseVisualIdentityToHtml(BASE_HTML, {
+    identity: resolvePulseVisualIdentity({ title: "Digimon Switch 2 upgrade details" }),
+    kind: "takeaway",
+    durationS: 3.8,
+  });
+
+  assert.match(
+    html,
+    /<span class="pulse-wordmark">PULSE<\/span>\s*<span class="pulse-category">BRIEF<\/span>/,
+  );
+  assert.doesNotMatch(
+    html,
+    /<span class="pulse-wordmark">PULSE<\/span>\s*<span class="pulse-category">PULSE\s+/,
+  );
+});
+
 test("Pulse visual identity QA rejects a static generic card shell", () => {
   const report = inspectPulseVisualIdentityHtml(BASE_HTML, { expectedCategory: "news" });
 

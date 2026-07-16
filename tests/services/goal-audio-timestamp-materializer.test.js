@@ -100,18 +100,26 @@ function whisperWordsFromScript(scriptText) {
     }));
 }
 
-test("audio materializer compacts excessive generated narration silence before alignment", async () => {
+test("audio materializer compacts sub-second narration gaps that mask stretched delivery before alignment", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-compact-"));
   const audioPath = path.join(root, "narration.mp3");
   await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
   const calls = [];
+  let silenceProbeCalls = 0;
 
   const result = await _testables.compactGeneratedNarrationSilence(audioPath, {
     provider: "elevenlabs",
-    detectSilencesForAudio: async () => [
-      { start: 5, end: 6.08, duration: 1.08 },
-      { start: 11, end: 11.4, duration: 0.4 },
-    ],
+    detectSilencesForAudio: async () => {
+      silenceProbeCalls += 1;
+      return silenceProbeCalls === 1
+        ? [
+            { start: 5, end: 6.08, duration: 1.08 },
+            { start: 8, end: 8.8, duration: 0.8 },
+            { start: 11, end: 11.4, duration: 0.4 },
+          ]
+        : [{ start: 9.5, end: 9.9, duration: 0.4 }];
+    },
+    getAudioDuration: async (candidatePath) => (candidatePath === audioPath ? 12 : 10.6),
     execFileImpl: async (command, args) => {
       calls.push({ command, args });
       await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
@@ -120,11 +128,38 @@ test("audio materializer compacts excessive generated narration silence before a
   });
 
   assert.equal(result.repaired, true);
-  assert.equal(result.excessive_silence_count, 1);
+  assert.equal(result.excessive_silence_count, 2);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].args.join(" "), /silenceremove=stop_periods=-1/);
-  assert.match(calls[0].args.join(" "), /stop_silence=0\.1/);
+  assert.equal(silenceProbeCalls, 2);
+  assert.ok(calls[0].args.includes("-filter_complex"));
+  assert.match(calls[0].args.join(" "), /atrim=start=/);
+  assert.match(calls[0].args.join(" "), /concat=n=3:v=0:a=1/);
+  assert.equal(result.remaining_excessive_silence_count, 0);
+  assert.equal(result.duration_before_s, 12);
+  assert.equal(result.duration_after_s, 10.6);
   assert.equal((await fs.stat(audioPath)).size, 3072);
+});
+
+test("audio materializer rejects a false compaction success when oversized gaps remain", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-verify-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const persistentGap = [{ start: 4, end: 4.82, duration: 0.82 }];
+
+  await assert.rejects(
+    _testables.compactGeneratedNarrationSilence(audioPath, {
+      provider: "elevenlabs",
+      detectSilencesForAudio: async () => persistentGap,
+      getAudioDuration: async (candidatePath) => (candidatePath === audioPath ? 10 : 9.3),
+      execFileImpl: async (_command, args) => {
+        await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
+        return { stdout: "", stderr: "" };
+      },
+    }),
+    /generated_narration_silence_compaction_failed_verification/,
+  );
+
+  assert.equal((await fs.stat(audioPath)).size, 2048);
 });
 
 test("audio materializer pads only sentence boundaries to repair a fast native take", async () => {
@@ -4858,6 +4893,7 @@ test("goal audio materializer regenerates existing pairs that current voice cade
   assert.equal(report.summary.skipped_existing_count, 0);
   assert.equal(report.jobs[0].status, "materialized");
   assert.equal(report.jobs[0].reason, "existing_pair_failed_voice_cadence_regenerated");
+  assert.match(report.jobs[0].existing_cadence_repair_error, /whisper|alignment/i);
   assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
 });
 

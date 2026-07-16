@@ -82,6 +82,20 @@ test("premium edit rhythm blocks a card-heavy sequence even when cards are separ
   assert.ok(report.blockers.includes("generated_card_duration_ratio_above_premium_ceiling"));
 });
 
+test("premium edit rhythm blocks a source lock that ends the episode", () => {
+  const scenes = [
+    motion("m1", 4),
+    motion("m2", 4),
+    motion("m3", 4),
+    card("source", 2.6),
+  ];
+  const coveredDurationS = scenes.reduce((sum, scene) => sum + scene.durationS, 0);
+  const report = inspectPremiumEditRhythm({ scenes, coveredDurationS });
+
+  assert.equal(report.status, "fail");
+  assert.ok(report.blockers.includes("source_lock_card_at_episode_end"));
+});
+
 test("premium edit rhythm ignores legacy owned explainer cards outside the V5 shell", () => {
   const scenes = [
     { ...card("title", 12), premiumCardV5: false },

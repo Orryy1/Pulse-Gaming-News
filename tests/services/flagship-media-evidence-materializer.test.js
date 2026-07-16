@@ -648,8 +648,8 @@ test("accepts deterministic spoken currency timestamps bound to numeric display 
     captionsText: `1\n00:00:00,000 --> 00:00:01,000\n${scriptText}\n`,
     words: spokenWords.map((word, index) => ({
       word,
-      start: Number((index * 0.1).toFixed(2)),
-      end: Number(((index + 1) * 0.1).toFixed(2)),
+      start: Number((index / spokenWords.length).toFixed(3)),
+      end: Number(((index + 1) / spokenWords.length).toFixed(3)),
     })),
   });
 
@@ -675,6 +675,31 @@ test("accepts governed title-pronunciation timestamps bound to official display 
       word,
       start: Number((index * 0.1).toFixed(2)),
       end: Number(((index + 1) * 0.1).toFixed(2)),
+    })),
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, true, JSON.stringify(report.blockers, null, 2));
+  assert.equal(report.verdict, "GREEN");
+});
+
+test("accepts compact resolution captions bound to split spoken timestamp tokens", async () => {
+  const fixture = await makeFixture();
+  const scriptText = "Choose 4K or 1080p.";
+  const spokenWords = ["Choose", "4", "K", "or", "1080", "p"];
+  await replaceBoundTimeline(fixture, {
+    scriptText,
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: `1\n00:00:00,000 --> 00:00:01,000\n${scriptText}\n`,
+    words: spokenWords.map((word, index) => ({
+      word,
+      start: Number((index / spokenWords.length).toFixed(3)),
+      end: Number(((index + 1) / spokenWords.length).toFixed(3)),
     })),
   });
 

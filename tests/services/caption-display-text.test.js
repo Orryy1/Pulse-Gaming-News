@@ -84,3 +84,21 @@ test("caption display compacts spoken currency tokens for burned-in subtitles", 
   assert.equal(normalised[2].start, 1.05);
   assert.equal(normalised[2].end, 1.8);
 });
+
+test("caption display compacts split resolution tokens without changing their timing", () => {
+  const words = [
+    { word: "4", start: 0, end: 0.2 },
+    { word: "K", start: 0.2, end: 0.4 },
+    { word: "or", start: 0.45, end: 0.6 },
+    { word: "1080", start: 0.65, end: 0.95 },
+    { word: "p", start: 0.95, end: 1.1 },
+  ];
+
+  const normalised = normaliseCaptionDisplayWords(words);
+
+  assert.deepEqual(normalised.map((word) => word.word), ["4K", "or", "1080p"]);
+  assert.equal(normalised[0].start, 0);
+  assert.equal(normalised[0].end, 0.4);
+  assert.equal(normalised[2].start, 0.65);
+  assert.equal(normalised[2].end, 1.1);
+});

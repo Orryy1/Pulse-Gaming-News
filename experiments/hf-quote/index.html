@@ -113,21 +113,30 @@
 
       .attribution {
         margin-top: 40px;
-        color: rgba(255, 255, 255, 0.85);
+        color: #ffffff;
         font-size: 30px;
         font-weight: 800;
         letter-spacing: 0.26em;
         text-transform: uppercase;
-        opacity: 0;
+        background: rgba(7, 9, 13, 0.94);
+        border-left: 4px solid #ff6b1a;
+        padding: 12px 18px 10px 22px;
+        opacity: 1;
+        clip-path: inset(0 100% 0 0);
+        will-change: clip-path, transform;
       }
 
       .attribution-sub {
         margin-top: 12px;
-        color: rgba(255, 255, 255, 0.92);
+        color: #ffffff;
         font-family: Consolas, monospace;
         font-size: 22px;
         letter-spacing: 0.04em;
-        opacity: 0;
+        background: rgba(7, 9, 13, 0.94);
+        padding: 8px 14px;
+        opacity: 1;
+        clip-path: inset(0 100% 0 0);
+        will-change: clip-path, transform;
       }
     </style>
   </head>
@@ -180,7 +189,7 @@
       //   0.20s  kicker FROM THE TRAILER fades in
       //   0.45s  words of the quote stagger up
       //   X+0.4s accent line draws across (1px -> 540px)
-      //   X+0.7s attribution + sub fade in
+      //   X+0.7s attribution + sub reveal without reducing text contrast
       tl.fromTo(
         "#quote-mark",
         { opacity: 0, x: -12, y: 12, scale: 0.94 },
@@ -212,8 +221,18 @@
           { width: 540, duration: 0.5, ease: "power2.out" },
           1.15,
         )
-        .to("#attribution", { opacity: 1, duration: 0.4 }, 1.4)
-        .to("#attribution-sub", { opacity: 1, duration: 0.36 }, 1.6);
+        .fromTo(
+          "#attribution",
+          { clipPath: "inset(0 100% 0 0)", x: -12 },
+          { clipPath: "inset(0 0% 0 0)", x: 0, duration: 0.4 },
+          1.4,
+        )
+        .fromTo(
+          "#attribution-sub",
+          { clipPath: "inset(0 100% 0 0)", x: -12 },
+          { clipPath: "inset(0 0% 0 0)", x: 0, duration: 0.36 },
+          1.6,
+        );
 
       window.__timelines["main"] = tl;
     </script>

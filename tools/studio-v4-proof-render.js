@@ -259,6 +259,112 @@ function relativeReportPath(value) {
   return path.relative(ROOT, text).replace(/\\/g, "/");
 }
 
+function selectedInputPathKey(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return path.resolve(text).replace(/\\/g, "/").toLowerCase();
+}
+
+function selectedInputAssetId(value, fallback) {
+  const text = String(value || fallback || "").trim();
+  return text.replace(/[^a-z0-9._-]+/gi, "_").replace(/^_+|_+$/g, "").slice(0, 160);
+}
+
+function buildSelectedInputAssetEvidence({
+  story = {},
+  audioPath = "",
+  selectedClips = [],
+  scenePlan = {},
+  musicCueMix = {},
+  sfxCueMix = [],
+} = {}) {
+  const assets = [];
+  const byPath = new Map();
+  const add = (asset = {}) => {
+    const assetPath = String(asset.path || "").trim();
+    const key = selectedInputPathKey(assetPath);
+    if (!key) return;
+    const existing = byPath.get(key);
+    if (existing) {
+      existing.scene_count = Number(existing.scene_count || 0) + Number(asset.scene_count || 0);
+      existing.scene_indexes = [...new Set([
+        ...(Array.isArray(existing.scene_indexes) ? existing.scene_indexes : []),
+        ...(Array.isArray(asset.scene_indexes) ? asset.scene_indexes : []),
+      ])].sort((left, right) => left - right);
+      return;
+    }
+    const row = {
+      asset_id: selectedInputAssetId(asset.asset_id, `selected_input_${assets.length + 1}`),
+      kind: String(asset.kind || "asset").trim() || "asset",
+      path: assetPath,
+      source_url: String(asset.source_url || "").trim() || null,
+      media_start_s: Number.isFinite(Number(asset.media_start_s)) ? Number(asset.media_start_s) : null,
+      duration_s: Number.isFinite(Number(asset.duration_s)) ? Number(asset.duration_s) : null,
+      role: String(asset.role || "").trim() || null,
+      scene_count: Number(asset.scene_count || 0),
+      scene_indexes: Array.isArray(asset.scene_indexes) ? [...asset.scene_indexes] : [],
+    };
+    assets.push(row);
+    byPath.set(key, row);
+  };
+
+  const storyId = selectedInputAssetId(story.id || story.story_id, "story");
+  add({
+    asset_id: `${storyId}_audio_path`,
+    kind: "narration",
+    path: audioPath,
+    role: "final_narration",
+  });
+
+  const clipByPath = new Map(
+    (Array.isArray(selectedClips) ? selectedClips : [])
+      .map((clip) => [selectedInputPathKey(sceneClipPath(clip)), clip])
+      .filter(([key]) => key),
+  );
+  for (const [index, scene] of (Array.isArray(scenePlan.scenes) ? scenePlan.scenes : []).entries()) {
+    const clip = clipByPath.get(selectedInputPathKey(scene.path)) || {};
+    add({
+      asset_id: clip.id || clip.asset_id || scene.id || `render_scene_${index + 1}`,
+      kind: clip.media_kind === "owned_editorial_motion_graphic" ? "generated_card" : "video",
+      path: scene.path,
+      source_url: clip.source_url || clip.canonical_source_url || null,
+      media_start_s: clip.mediaStartS ?? clip.media_start_s ?? clip.start_s,
+      duration_s: clip.durationS ?? clip.duration_s ?? scene.durationS,
+      role: "visual_scene",
+      scene_count: 1,
+      scene_indexes: [index],
+    });
+  }
+
+  for (const [role, cue] of [["music_bed", musicCueMix.bed], ["music_sting", musicCueMix.sting]]) {
+    if (!cue) continue;
+    add({
+      asset_id: cue.asset_id || role,
+      kind: "music",
+      path: cue.path,
+      source_url: cue.source_url || null,
+      role,
+    });
+  }
+  for (const [index, cue] of (Array.isArray(sfxCueMix) ? sfxCueMix : []).entries()) {
+    add({
+      asset_id: cue.asset_id || `sfx_${index + 1}`,
+      kind: "sfx",
+      path: cue.path,
+      source_url: cue.source_url || null,
+      role: cue.role || cue.target_kind || "sfx",
+    });
+  }
+
+  return {
+    schema_version: 1,
+    authoritative: true,
+    producer_id: "pulse-gaming-studio-v4-renderer",
+    asset_count: assets.length,
+    assets,
+  };
+}
+
 function outputRelativeMediaPath(value) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -2109,10 +2215,22 @@ function fitOverlayTextBlock({
 function buildOverlayLayout({ story = {} } = {}) {
   const safeMarginMode = story.render_safe_text_margins === true;
   const signature = buildPulseSignatureContract({ story });
+  const contentIdentity = resolveContentIdentity(story);
+  const pulseIdentity = resolvePulseVisualIdentity(story);
   const openingOffsetX = safeMarginMode ? 12 : 0;
+  const openingChipX = signature.opening.layout.chip_x_px + openingOffsetX;
+  const openingChipRight = openingChipX + signature.opening.layout.chip_width_px;
   const openingSourceX = signature.opening.layout.source_x_px + openingOffsetX;
   const openingSafeRight = safeMarginMode ? 998 : 1010;
+  const openingRailGapPx = 18;
+  const openingIdentityMaxWidthPx = safeMarginMode ? 250 : 270;
+  const openingIdentityX = openingSafeRight - openingIdentityMaxWidthPx;
+  const openingSourceMaxWidthPx = Math.max(
+    160,
+    openingIdentityX - openingRailGapPx - openingSourceX,
+  );
   const source = sourceLabelFor(story);
+  const identity = `${contentIdentity.brand.on_screen_label} // ${pulseIdentity.code}`;
   const title = firstText(story.canonical_subject, story.title, "PULSE GAMING");
   const hook = firstText(
     story.first_frame_text,
@@ -2147,10 +2265,21 @@ function buildOverlayLayout({ story = {} } = {}) {
       value: `SOURCE LOCK  ${source}`,
       x: openingSourceX,
       y: 268,
-      maxWidthPx: openingSafeRight - openingSourceX,
+      maxWidthPx: openingSourceMaxWidthPx,
       maxLines: 1,
       preferredFontSizePx: 20,
       minFontSizePx: 16,
+      lineGapPx: 5,
+    }),
+    fitOverlayTextBlock({
+      id: "top_identity",
+      value: identity,
+      x: openingIdentityX,
+      y: 268,
+      maxWidthPx: openingIdentityMaxWidthPx,
+      maxLines: 1,
+      preferredFontSizePx: 18,
+      minFontSizePx: 14,
       lineGapPx: 5,
     }),
     fitOverlayTextBlock({
@@ -2218,6 +2347,14 @@ function buildOverlayLayout({ story = {} } = {}) {
       instagram_top_chrome_safe_px: INSTAGRAM_TOP_CHROME_SAFE_PX,
       safe_right_px: FRAME_WIDTH_PX - SAFE_RIGHT_PX,
       safe_bottom_px: FRAME_HEIGHT_PX - SAFE_BOTTOM_PX,
+    },
+    opening_rail: {
+      segment_chip_right_px: openingChipRight,
+      source_left_px: openingSourceX,
+      source_right_px: openingIdentityX - openingRailGapPx,
+      identity_left_px: openingIdentityX,
+      identity_right_px: openingSafeRight,
+      minimum_gap_px: openingRailGapPx,
     },
     text_blocks: blocks.map((block) => ({
       ...block,
@@ -2447,7 +2584,6 @@ function buildOverlayChain({
   const outroEnable = enableFor(signature.outro);
   const progressStart = (window, offsetS) => t(Number(window.start_s || 0) + offsetS);
   const segmentLabel = drawtextEscape(signature.segment.display_label);
-  const identityLabel = drawtextEscape(`${contentIdentity.brand.on_screen_label} // ${pulseIdentity.code}`);
   const creativeSegmentLabel = drawtextEscape(pulseIdentity.segment_name.toUpperCase());
   const livingGhostWord = drawtextEscape(livingMotion.ghost_word);
   return [
@@ -2476,7 +2612,7 @@ function buildOverlayChain({
     `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.16:t=fill:enable='${openingEnable}'`,
     `drawbox=x=${openingChipX}:y=264:w=${openingChipW}:h=36:color=0x38BDF8@0.56:t=2:enable='${openingEnable}'`,
     `drawtext=text='${segmentLabel}':${metaFontOpt}:fontcolor=0xBEEBFF:fontsize=18:x=${openingChipX + 16}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${openingEnable}'`,
-    `drawtext=text='${identityLabel}':${metaFontOpt}:fontcolor=${identityAccent}:fontsize=18:x=w-tw-${safeMarginMode ? 98 : 86}:y=268:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${openingEnable}'`,
+    ...drawtextLinesForBlock(blockById.top_identity, { fontOpt: metaFontOpt, fontcolor: identityAccent, enable: openingEnable }),
     ...drawtextLinesForBlock(blockById.top_source_lock, { fontOpt: metaFontOpt, fontcolor: "0xFFB15C", enable: openingEnable, shadow: false }),
     `drawbox=x='${openingCardX + 24}+mod(t*380\\,760)':y=${openingCardY + 12}:w=92:h=${openingCardH - 24}:color=white@0.046:t=fill:enable='${openingEnable}'`,
     ...drawtextLinesForBlock(blockById.hook_card, { fontOpt, fontcolor: "white", enable: openingEnable }),
@@ -2962,6 +3098,14 @@ async function renderProof({ storyJson, output }) {
     selectedCards: premiumSceneSelection.selected_cards,
     fallbackGate: story.hyperframes_premium_shell_gate || {},
   });
+  const selectedInputAssets = buildSelectedInputAssetEvidence({
+    story,
+    audioPath,
+    selectedClips: premiumSceneSelection.clips,
+    scenePlan,
+    musicCueMix,
+    sfxCueMix,
+  });
   const report = {
     story_id: story.id || null,
     title: story.title || null,
@@ -3040,6 +3184,7 @@ async function renderProof({ storyJson, output }) {
       asset_id: cue.asset_id || null,
       role: cue.role || null,
       target_kind: cue.target_kind || null,
+      path: relativeReportPath(cue.path),
       volume: cue.volume,
       durationS: cue.durationS,
     })),
@@ -3073,6 +3218,7 @@ async function renderProof({ storyJson, output }) {
         : null,
       policy: musicCueMix.policy || null,
     },
+    selected_input_assets: selectedInputAssets,
     caption_timestamp_source: timestampValidation.word_timestamp_source,
     caption_timing_strict: timestampValidation.local_timing_strict,
     audio_segment_loudness_report: relativeReportPath(audioSegmentReportPath),
@@ -3136,5 +3282,6 @@ module.exports = {
   assertProofAudioSegmentLoudness,
   verifyRenderedProofMedia,
   materializeVerifiedProofOutput,
+  buildSelectedInputAssetEvidence,
   renderProof,
 };

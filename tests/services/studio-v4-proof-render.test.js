@@ -32,6 +32,7 @@ const {
   resolveFreshHyperframesPremiumShellGate,
   scenePlanBlockerDiagnostic,
   buildProfessionalSourceDiversityProof,
+  buildSelectedInputAssetEvidence,
   verifyRenderedProofMedia,
   materializeVerifiedProofOutput,
 } = require("../../tools/studio-v4-proof-render");
@@ -42,6 +43,49 @@ const {
 } = require("../../lib/studio/v4/render-policy");
 const { buildKineticAss } = require("../../lib/studio/v2/subtitle-layer-v2");
 const proofRenderLib = require("../../lib/studio/v4/proof-render");
+
+test("Studio V4 reports every renderer-selected media input for rights reconciliation", () => {
+  const evidence = buildSelectedInputAssetEvidence({
+    story: { id: "story-1" },
+    audioPath: "C:/media/narration.mp3",
+    selectedClips: [
+      {
+        id: "official-window-1",
+        path: "C:/media/window-1.mp4",
+        source_url: "https://official.example/trailer",
+        mediaStartS: 12,
+        durationS: 4,
+      },
+    ],
+    scenePlan: {
+      scenes: [
+        { path: "C:/media/window-1.mp4", durationS: 4 },
+        { path: "C:/media/window-1.mp4", durationS: 3 },
+      ],
+    },
+    musicCueMix: {
+      bed: { asset_id: "music-bed", path: "C:/media/bed.mp3" },
+      sting: { asset_id: "music-sting", path: "C:/media/sting.wav" },
+    },
+    sfxCueMix: [
+      { asset_id: "sfx-hit", path: "C:/media/hit.wav", role: "impact" },
+    ],
+  });
+
+  assert.equal(evidence.authoritative, true);
+  assert.deepEqual(
+    evidence.assets.map((asset) => [asset.asset_id, asset.kind, asset.path]),
+    [
+      ["story-1_audio_path", "narration", "C:/media/narration.mp3"],
+      ["official-window-1", "video", "C:/media/window-1.mp4"],
+      ["music-bed", "music", "C:/media/bed.mp3"],
+      ["music-sting", "music", "C:/media/sting.wav"],
+      ["sfx-hit", "sfx", "C:/media/hit.wav"],
+    ],
+  );
+  assert.equal(evidence.assets[1].scene_count, 2);
+  assert.deepEqual(evidence.assets[1].scene_indexes, [0, 1]);
+});
 
 test("Studio V4 proof renderer reports current selected HyperFrames sidecars", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-fresh-shell-"));
@@ -1070,15 +1114,16 @@ test("Studio V4 proof renderer fits one readable HyperFrames card by trimming di
 });
 
 test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly", () => {
+  const directClips = Array.from({ length: 8 }, (_, index) => ({
+    path: `direct-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_family: `direct_family_${index + 1}`,
+    durationS: 5,
+  }));
   const plan = buildClipScenePlan({
     clips: [
-      ...Array.from({ length: 8 }, (_, index) => ({
-        path: `direct-${index + 1}.mp4`,
-        source_type: "official_platform_product_page",
-        media_kind: "direct_video",
-        source_family: `direct_family_${index + 1}`,
-        durationS: 5,
-      })),
+      ...directClips.slice(0, 2),
       {
         path: "output/generated-motion/story/source-card.mp4",
         source_type: "hyperframes_premium_shell_card",
@@ -1088,6 +1133,7 @@ test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly"
         durationS: 2.8,
         minimum_readable_duration_s: 1.2,
       },
+      ...directClips.slice(2),
     ],
     durationS: 38.5,
     xfadeS: 0.25,
@@ -1098,6 +1144,8 @@ test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly"
   assert.equal(plan.cardVisibleWindows[0].kind, "source");
   assert.equal(plan.cardVisibleWindows[0].duration_s, 2.6);
   assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.6);
+  assert.equal(plan.blockers.includes("source_lock_card_at_episode_end"), false);
+  assert.notEqual(plan.scenes.at(-1).readableCardKind, "source");
 });
 
 test("Studio V4 proof renderer accepts current-policy readable cards without extending them to seven seconds", () => {
@@ -2909,6 +2957,33 @@ test("Studio V4 overlay chain keeps opening metadata below Instagram top chrome"
   assert.doesNotMatch(chain, /drawtext=text='THE EXPANSE\\: OSIRIS REBORN'.*y=65/);
   assert.match(chain, /drawtext=text='PULSE \/\/ TRAILER TRUTH'.*y=268/);
   assert.match(chain, /drawtext=text='SOURCE LOCK\s+XBOX'.*y=268/);
+});
+
+test("Studio V4 opening rail reserves non-overlapping zones for segment, source and identity", () => {
+  const story = {
+    canonical_subject: "Digimon Story Time Stranger",
+    primary_source: "Bandai Namco Entertainment America Official Agent Trailer",
+    first_frame_text: "DIGIMON HAS A SWITCH 2 PROBLEM",
+    thumbnail_headline: "THE PORT PLAYERS SHOULD CHECK",
+  };
+  const layout = buildOverlayLayout({ story });
+  const source = layout.text_blocks.find((block) => block.id === "top_source_lock");
+  const identity = layout.text_blocks.find((block) => block.id === "top_identity");
+
+  assert.ok(source, "source-lock block must exist");
+  assert.ok(identity, "identity block must exist");
+  assert.ok(
+    source.x >= layout.opening_rail.segment_chip_right_px + layout.opening_rail.minimum_gap_px,
+    "source-lock text must start after the segment chip",
+  );
+  assert.ok(
+    source.estimated_right_px <= identity.x - layout.opening_rail.minimum_gap_px,
+    "source-lock text must end before the identity block",
+  );
+  assert.ok(
+    identity.estimated_right_px <= layout.frame.safe_right_px,
+    "identity block must remain inside the right safe boundary",
+  );
 });
 
 test("Studio V4 overlay chain avoids large flat text cards over real footage", () => {

@@ -676,13 +676,13 @@ test("publish window watchdog Discord message is operator-readable", () => {
   assert.match(message, /Runway:\s+5\/5 windows/);
 });
 
-test("scheduler registers watchdog checks before every guarded publish window", () => {
+test("scheduler starts runway checks ninety minutes before every guarded publish window", () => {
   const pairs = [
-    ["publish_watchdog_morning", "55 8 * * *", "publish_window_watchdog:{date}:08-55"],
-    ["publish_watchdog_late_morning", "55 10 * * *", "publish_window_watchdog:{date}:10-55"],
-    ["publish_watchdog_afternoon", "55 13 * * *", "publish_window_watchdog:{date}:13-55"],
-    ["publish_watchdog_mid_afternoon", "55 15 * * *", "publish_window_watchdog:{date}:15-55"],
-    ["publish_watchdog_primary", "55 18 * * *", "publish_window_watchdog:{date}:18-55"],
+    ["publish_watchdog_morning", "30 7 * * *", "publish_window_watchdog:{date}:07-30"],
+    ["publish_watchdog_late_morning", "30 9 * * *", "publish_window_watchdog:{date}:09-30"],
+    ["publish_watchdog_afternoon", "30 12 * * *", "publish_window_watchdog:{date}:12-30"],
+    ["publish_watchdog_mid_afternoon", "30 14 * * *", "publish_window_watchdog:{date}:14-30"],
+    ["publish_watchdog_primary", "30 17 * * *", "publish_window_watchdog:{date}:17-30"],
   ];
   for (const [name, cron, key] of pairs) {
     const entry = byName(name);
@@ -690,6 +690,7 @@ test("scheduler registers watchdog checks before every guarded publish window", 
     assert.equal(entry.kind, "publish_window_watchdog");
     assert.equal(entry.cron_expr, cron);
     assert.equal(entry.idempotencyTemplate, key);
+    assert.equal(entry.payload.enqueue_candidate_refill_on_runway, true);
   }
 });
 
@@ -784,17 +785,32 @@ test("job handler enqueues safe repair when pre-window story reserve is empty", 
 
     const { handlers } = require("../../lib/job-handlers");
     const result = await handlers.publish_window_watchdog(
-      { payload: { window_label: "publish_afternoon", repair_limit: 8 }, channel_id: "pulse-gaming" },
+      {
+        payload: {
+          window_label: "publish_afternoon",
+          repair_limit: 8,
+          enqueue_candidate_refill_on_runway: true,
+        },
+        channel_id: "pulse-gaming",
+      },
       { log() {}, repos: { jobs: { enqueue(job) { enqueued.push(job); return { id: 123 }; } } } },
     );
 
     assert.equal(result.status, "amber");
     assert.equal(result.safe_to_publish_window, true);
     assert.equal(result.repair_enqueued, true);
-    assert.equal(enqueued.length, 1);
+    assert.equal(result.candidate_refill_enqueued, true);
+    assert.equal(enqueued.length, 2);
     assert.equal(enqueued[0].kind, "safe_auto_repair_runner");
     assert.equal(enqueued[0].payload.reason, "publish_window_watchdog_runway_refill");
     assert.equal(enqueued[0].idempotency_key, "publish_window_watchdog_repair:2026-06-17:publish_afternoon");
+    assert.equal(enqueued[1].kind, "candidate_supply_monitor");
+    assert.equal(enqueued[1].payload.enqueue_fresh_production_refill, true);
+    assert.equal(enqueued[1].payload.reason, "publish_window_watchdog_candidate_refill");
+    assert.equal(
+      enqueued[1].idempotency_key,
+      "publish_window_candidate_refill:2026-06-17:publish_afternoon",
+    );
   } finally {
     if (originalHandlers) require.cache[jobHandlersPath] = originalHandlers;
     else delete require.cache[jobHandlersPath];

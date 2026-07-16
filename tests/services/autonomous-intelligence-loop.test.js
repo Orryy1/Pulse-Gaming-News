@@ -2714,9 +2714,20 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     const segmentValidatorCall = childCalls.find(
       (call) => call.args[0] === "tools/official-trailer-segment-validator.js",
     );
-    assert.ok(
+    assert.equal(
       segmentValidatorCall.args.includes("--no-reference-duration-probe"),
-      "fresh refill segment validation must not stall on remote duration probes",
+      false,
+      "fresh refill must probe unknown direct-media durations so short official clips are sampled on-timeline",
+    );
+    assert.equal(
+      segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--reference-duration-probe-timeout-ms") + 1],
+      "10000",
+      "fresh refill duration probes must remain individually bounded",
+    );
+    assert.equal(
+      segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--max-reference-duration-probes") + 1],
+      "12",
+      "fresh refill duration probes must remain batch-bounded",
     );
     assert.equal(
       segmentValidatorCall.args[segmentValidatorCall.args.indexOf("--max-segments") + 1],
@@ -2844,7 +2855,15 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.ok(segmentValidationCall.args.includes("--deep-scan"));
     assert.equal(segmentValidationCall.args.includes("--include-frame-anchored-windows"), true);
-    assert.ok(segmentValidationCall.args.includes("--no-reference-duration-probe"));
+    assert.equal(segmentValidationCall.args.includes("--no-reference-duration-probe"), false);
+    assert.equal(
+      segmentValidationCall.args[segmentValidationCall.args.indexOf("--reference-duration-probe-timeout-ms") + 1],
+      "10000",
+    );
+    assert.equal(
+      segmentValidationCall.args[segmentValidationCall.args.indexOf("--max-reference-duration-probes") + 1],
+      "12",
+    );
     const reportJsonIndex = segmentValidationCall.args.indexOf("--report-json");
     assert.notEqual(reportJsonIndex, -1, "expected fresh refill to request a run-scoped segment report");
     assert.match(

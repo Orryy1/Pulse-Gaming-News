@@ -1563,7 +1563,13 @@ test("official clip refs accept source-verified local masters from an official Y
                 source_verified: true,
                 segment_validation_eligible: true,
                 downloads_allowed: true,
+                source_owner: "Flyway Games",
+                licence_basis: "official_publisher_promotional_editorial_use",
                 allowed_render_use: "transformative_editorial_short_form",
+                allowed_platforms: ["youtube", "tiktok", "instagram", "facebook"],
+                commercial_use_allowed: true,
+                credit_required: false,
+                evidence_reference: "https://www.youtube.com/watch?v=J49gg_V3EaA",
                 rights_risk_class: "official_publisher_promotional_video",
                 provenance: {
                   source: "official_youtube_channel_download",
@@ -1596,6 +1602,19 @@ test("official clip refs accept source-verified local masters from an official Y
   assert.deepEqual(refs.map((ref) => ref.mediaStartS), [6, 12]);
   assert.ok(refs.every((ref) => ref.sourceType === "official_youtube_channel"));
   assert.ok(refs.every((ref) => ref.provenance.reference_report_source === true));
+  assert.ok(refs.every((ref) => ref.provenance.source_owner === "Flyway Games"));
+  assert.ok(refs.every((ref) => (
+    ref.provenance.licence_basis === "official_publisher_promotional_editorial_use"
+  )));
+  assert.ok(refs.every((ref) => (
+    JSON.stringify(ref.provenance.allowed_platforms) ===
+    JSON.stringify(["youtube", "tiktok", "instagram", "facebook"])
+  )));
+  assert.ok(refs.every((ref) => ref.provenance.commercial_use_allowed === true));
+  assert.ok(refs.every((ref) => ref.provenance.credit_required === false));
+  assert.ok(refs.every((ref) => (
+    ref.provenance.evidence_reference === "https://www.youtube.com/watch?v=J49gg_V3EaA"
+  )));
 });
 
 test("official clip refs deep-scan official product page direct media without calling it gameplay", () => {

@@ -145,6 +145,47 @@ test("official trailer segment validator reports source provenance for each samp
   assert.equal(report.segments[0].store_app_title, "Red Dead Redemption 2");
 });
 
+test("official trailer segment validator preserves explicit source rights evidence", async () => {
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        sourceOwner: "Example Studio",
+        licenceBasis: "official_storefront_promotional_editorial_use",
+        allowedRenderUse: "transformative_editorial_short_form",
+        allowedPlatforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+        commercialUseAllowed: true,
+        creditRequired: false,
+        evidenceReference: "https://example.com/official-media-policy",
+        rightsRiskClass: "official_storefront_promotional_editorial",
+      }),
+    ],
+    { outputRoot: tempOutputRoot("rights-provenance-dry-run") },
+  );
+
+  assert.deepEqual(
+    {
+      source_owner: report.segments[0].source_owner,
+      licence_basis: report.segments[0].licence_basis,
+      allowed_render_use: report.segments[0].allowed_render_use,
+      allowed_platforms: report.segments[0].allowed_platforms,
+      commercial_use_allowed: report.segments[0].commercial_use_allowed,
+      credit_required: report.segments[0].credit_required,
+      evidence_reference: report.segments[0].evidence_reference,
+      rights_risk_class: report.segments[0].rights_risk_class,
+    },
+    {
+      source_owner: "Example Studio",
+      licence_basis: "official_storefront_promotional_editorial_use",
+      allowed_render_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      credit_required: false,
+      evidence_reference: "https://example.com/official-media-policy",
+      rights_risk_class: "official_storefront_promotional_editorial",
+    },
+  );
+});
+
 test("segment validator CLI scopes batch clip refs from explicit reference reports", () => {
   const refs = buildClipRefsFromReport(
     {

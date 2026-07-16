@@ -2705,6 +2705,28 @@ test("goal audio materializer coverage reconciles versus with the spoken ASR abb
   assert.equal(reconciled.words[4].word, "versus");
 });
 
+test("goal audio materializer coverage treats ASR 30 as the spoken word thirty", () => {
+  const scriptText =
+    "Ascend to ZERO gives you thirty seconds to turn a doomed run into a power fantasy.";
+  const words = [
+    "Ascend", "to", "ZERO", "gives", "you", "30", "seconds", "to", "turn", "a", "doomed",
+    "run", "into", "a", "power", "fantasy",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[5].word, "30");
+});
+
 test("goal audio materializer coverage treats safe compound game terms as one spoken token", () => {
   const scriptText =
     "The Chain Spear sharpens the push-forward combat. Follow Pulse Gaming so you never miss a beat.";

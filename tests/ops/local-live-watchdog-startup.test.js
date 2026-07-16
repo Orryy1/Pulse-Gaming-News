@@ -26,6 +26,19 @@ test("startup installer creates a windowless shortcut and launches through WMI",
   assert.match(source, /Copy-Item/);
 });
 
+test("startup installer also registers a restartable Task Scheduler supervisor", () => {
+  const source = fs.readFileSync(installerPath, "utf8");
+  assert.match(source, /PulseGaming-LiveWatchdog-Supervisor/);
+  assert.match(source, /New-ScheduledTaskAction/);
+  assert.match(source, /New-ScheduledTaskTrigger -AtLogOn/);
+  assert.match(source, /New-ScheduledTaskTrigger -Once/);
+  assert.match(source, /New-ScheduledTaskSettingsSet/);
+  assert.match(source, /-RestartCount 99/);
+  assert.match(source, /-MultipleInstances IgnoreNew/);
+  assert.match(source, /Register-ScheduledTask/);
+  assert.match(source, /Start-ScheduledTask/);
+});
+
 test("windowless host supervises the approved watchdog", () => {
   const host = fs.readFileSync(path.join(ROOT, "tools", "local_live_watchdog_host.py"), "utf8");
   assert.match(host, /local-live-watchdog\.ps1/);
@@ -33,6 +46,14 @@ test("windowless host supervises the approved watchdog", () => {
   assert.match(host, /while True:/);
   assert.match(host, /child\.wait\(\)/);
   assert.match(host, /watchdog_host_error/);
+});
+
+test("windowless host enforces one supervisor instance across Task Scheduler and Startup fallback", () => {
+  const host = fs.readFileSync(path.join(ROOT, "tools", "local_live_watchdog_host.py"), "utf8");
+  assert.match(host, /PulseGamingLiveWatchdogHost/);
+  assert.match(host, /CreateMutexW/);
+  assert.match(host, /ERROR_ALREADY_EXISTS/);
+  assert.match(host, /CloseHandle/);
 });
 
 test("live watchdog evaluates publish windows as scalar minute values", () => {

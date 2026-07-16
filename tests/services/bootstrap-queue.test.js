@@ -5,10 +5,63 @@ const test = require("node:test");
 
 const {
   generalRunnerEnabled,
+  launchMissedPublishWindowRecovery,
   PUBLISH_CRITICAL_JOB_KINDS,
   publishCriticalRunnerEnabled,
   normaliseAdditionalRunnerLanes,
 } = require("../../lib/bootstrap-queue");
+
+test("bootstrap launches missed-window recovery asynchronously for the primary scheduler", async () => {
+  const calls = [];
+  const logged = [];
+  const report = await launchMissedPublishWindowRecovery({
+    runScheduler: true,
+    primary: true,
+    env: {},
+    recover: async () => {
+      calls.push("recover");
+      return {
+        verdict: "green",
+        missed_window_count: 3,
+        enqueued: true,
+        queued_job_id: 99125,
+        reason: "missed_window_recovery_ready",
+      };
+    },
+    log: (message) => logged.push(message),
+  });
+
+  assert.deepEqual(calls, ["recover"]);
+  assert.equal(report.enqueued, true);
+  assert.match(logged.join("\n"), /missed-window recovery.*queued job #99125/i);
+});
+
+test("bootstrap skips missed-window recovery for observation-only or explicitly disabled runtimes", async () => {
+  let calls = 0;
+  const recover = async () => {
+    calls += 1;
+    return {};
+  };
+
+  const mirror = await launchMissedPublishWindowRecovery({
+    runScheduler: true,
+    primary: false,
+    env: {},
+    recover,
+    log() {},
+  });
+  const disabled = await launchMissedPublishWindowRecovery({
+    runScheduler: true,
+    primary: true,
+    env: { PULSE_MISSED_WINDOW_RECOVERY: "false" },
+    recover,
+    log() {},
+  });
+
+  assert.equal(calls, 0);
+  assert.equal(mirror.skipped, true);
+  assert.equal(disabled.skipped, true);
+});
 
 test("bootstrap queue enables a protected publish lane by default", () => {
   assert.deepEqual(PUBLISH_CRITICAL_JOB_KINDS, [

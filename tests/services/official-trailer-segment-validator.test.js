@@ -592,6 +592,42 @@ test("segment validator builds safe windows for five-second approved direct medi
   );
 });
 
+test("segment validator bounds render duration to the probed direct-media tail", () => {
+  const sourceDurationS = 6.14;
+  const licensedReport = {
+    execution_mode: "visual_v4_licensed_direct_media_acquisition",
+    accepted_references: [
+      {
+        story_id: "arknights-short-direct-media",
+        entity: "Arknights: Endfield",
+        source_family: "playstation_arknights_short_clip",
+        source_type: "official_game_site_news_page",
+        provider: "official_intake",
+        source_url: "https://blog.playstation.com/uploads/2086/07/arknights-direct.mp4",
+        source_url_kind: "direct_video",
+        source_duration_s: sourceDurationS,
+        segment_validation_eligible: true,
+        rights_risk_class: "official_direct_media",
+      },
+    ],
+  };
+
+  const refs = buildClipRefsFromReport({}, licensedReport, "arknights-short-direct-media", {
+    includeExploratoryWindows: true,
+    exploratoryDurationS: 5,
+    candidateWindowsPerSource: 1,
+    maxSegments: 1,
+  });
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].mediaStartS, 1.72);
+  assert.ok(refs[0].durationS < 5);
+  assert.ok(
+    refs[0].mediaStartS + refs[0].durationS <= sourceDurationS - 0.09,
+    "the declared render duration must fit inside the probed source tail",
+  );
+});
+
 test("segment validator CLI balances batch clip refs across stories before segment caps", () => {
   const refs = [
     clip({ story_id: "story-a", storyId: "story-a", mediaStartS: 36 }),

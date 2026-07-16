@@ -122,6 +122,121 @@ async function sha256File(filePath) {
   return crypto.createHash("sha256").update(await fs.readFile(filePath)).digest("hex");
 }
 
+async function makePostRenderCadenceFixture(root, {
+  storyId = "flagship-cadence-warning",
+  wordCount = 136,
+  durationSeconds = 46.72,
+} = {}) {
+  const artifactDir = path.join(root, storyId);
+  const evidenceDir = path.join(artifactDir, "flagship");
+  const runId = `production-render:${storyId}:2026-07-16T21:23:07.367Z`;
+  await fs.ensureDir(evidenceDir);
+
+  const tokens = Array.from({ length: wordCount }, (_, index) => `word${index + 1}`);
+  const script = tokens
+    .reduce((sentences, token, index) => {
+      const sentenceIndex = Math.floor(index / 10);
+      sentences[sentenceIndex] = [...(sentences[sentenceIndex] || []), token];
+      return sentences;
+    }, [])
+    .map((sentence) => `${sentence.join(" ")}.`)
+    .join(" ");
+  const paths = {
+    final_video: path.join(artifactDir, "visual_v4_render.mp4"),
+    final_audio: path.join(evidenceDir, "final_audio.mp3"),
+    script: path.join(evidenceDir, "final_script.txt"),
+    spoken_script: path.join(evidenceDir, "final_spoken_script.txt"),
+    captions: path.join(evidenceDir, "captions.srt"),
+    word_timestamps: path.join(evidenceDir, "word_timestamps.json"),
+  };
+  await fs.writeFile(paths.final_video, Buffer.alloc(4096, 4));
+  await fs.writeFile(paths.final_audio, Buffer.alloc(4096, 5));
+  await fs.writeFile(paths.script, `${script}\n`, "utf8");
+  await fs.writeFile(paths.spoken_script, `${script}\n`, "utf8");
+  await fs.writeFile(
+    paths.captions,
+    `1\n00:00:00,000 --> 00:00:${durationSeconds.toFixed(3).replace(".", ",")}\n${script}\n`,
+    "utf8",
+  );
+
+  const audioSha256 = await sha256File(paths.final_audio);
+  const scriptSha256 = await sha256File(paths.script);
+  const spokenScriptSha256 = await sha256File(paths.spoken_script);
+  const captionsSha256 = await sha256File(paths.captions);
+  const step = durationSeconds / tokens.length;
+  await fs.writeJson(paths.word_timestamps, {
+    words: tokens.map((word, index) => ({
+      word,
+      start: Number((index * step).toFixed(3)),
+      end: Number(((index + 1) * step).toFixed(3)),
+    })),
+    audio_sha256: audioSha256,
+    script_sha256: scriptSha256,
+    spoken_script_sha256: spokenScriptSha256,
+    captions_sha256: captionsSha256,
+    flagship_generation_run_id: runId,
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    input_fingerprint: {
+      signature: "render-input-fingerprint",
+      audio_sha256: audioSha256,
+      word_timestamps_sha256: await sha256File(paths.word_timestamps),
+    },
+  }, { spaces: 2 });
+
+  const artifacts = {};
+  for (const [key, filePath] of Object.entries(paths)) {
+    const stat = await fs.stat(filePath);
+    artifacts[key] = {
+      path: path.relative(artifactDir, filePath).replace(/\\/g, "/"),
+      sha256: await sha256File(filePath),
+      bytes: stat.size,
+      run_id: runId,
+      script_sha256: scriptSha256,
+      spoken_script_sha256: spokenScriptSha256,
+    };
+  }
+  await fs.writeJson(path.join(evidenceDir, "generation_manifest.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    producer_id: "pulse-gaming-flagship-renderer",
+    run_id: runId,
+    generated_at: "2026-07-16T21:23:07.367Z",
+    script_sha256: scriptSha256,
+    spoken_script_sha256: spokenScriptSha256,
+    artifacts,
+    blockers: [],
+  }, { spaces: 2 });
+
+  return { artifactDir, durationSeconds };
+}
+
+test("post-render narration QA preserves a blocker-free publishable cadence warning without false RED", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-cadence-warning-"));
+  const fixture = await makePostRenderCadenceFixture(root);
+
+  const result = await writeFlagshipNarrationQaEvidence({
+    artifactDir: fixture.artifactDir,
+    generatedAt: "2026-07-16T21:23:07.367Z",
+    durationProbe: async () => fixture.durationSeconds,
+    silenceProbe: async () => [],
+  });
+
+  const voice = await fs.readJson(path.join(fixture.artifactDir, "voice_quality_report.json"));
+  assert.equal(voice.cadence.status, "warn");
+  assert.equal(voice.cadence.spoken_wpm, 174.7);
+  assert.deepEqual(voice.cadence.blockers, []);
+  assert.ok(voice.warnings.includes("voice_cadence:wpm_outside_target_range"));
+  assert.equal(voice.checks.cadence_passed, true);
+  assert.equal(voice.verdict, "PASS");
+  assert.equal(voice.authoritative, true);
+  assert.deepEqual(voice.blockers, []);
+  assert.equal(result.verdict, "PASS");
+});
+
 test("post-render narration QA binds separate display and spoken evidence to one immutable GREEN run", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-narration-qa-"));
   const storyId = "flagship-currency-qa";

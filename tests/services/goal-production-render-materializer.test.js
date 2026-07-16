@@ -181,6 +181,27 @@ test("post-render forensics cannot promote a critical AMBER check", () => {
   assert.ok(report.blockers.includes("benchmark_not_passed"));
 });
 
+test("post-render forensics accepts a blocker-free publishable cadence warning only when QA marks cadence passed", () => {
+  const inputs = passingPostRenderForensicInputs();
+  inputs.voiceQualityReport = {
+    ...inputs.voiceQualityReport,
+    checks: {
+      ...inputs.voiceQualityReport.checks,
+      cadence_passed: true,
+    },
+    cadence: {
+      status: "warn",
+      blockers: [],
+      warnings: ["wpm_outside_target_but_within_publishable_limit"],
+    },
+  };
+  const report = _private.buildPostRenderForensicQaReport(inputs);
+
+  assert.equal(report.result, "pass", JSON.stringify(report, null, 2));
+  assert.equal(report.checks.voice_quality, "pass");
+  assert.ok(!report.blockers.includes("voice_quality_not_authoritative"));
+});
+
 test("goal production render materializer preserves YouTube video IDs in source keys", () => {
   assert.equal(
     _private.clipBaseSourceKey({
@@ -545,6 +566,72 @@ test("goal production render materializer never invents commercial rights for lo
   assert.deepEqual(completed[0].allowed_platforms, []);
   assert.equal(completed[0].approval_status, "operator_legal_review_required");
   assert.equal(completed[0].risk_score, 1);
+  assert.equal(
+    completed[0].rights_decision_basis,
+    "provisional_renderer_local_proof_pending_policy_reconciliation",
+  );
+});
+
+test("goal production render materializer preserves a current hash-bound reconciled official rights row", () => {
+  const clipPath = "output/video_cache/current-official-window.mp4";
+  const clipSha256 = "a".repeat(64);
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    can_auto_publish: false,
+    records: [{
+      asset_id: "current-official-window",
+      path: clipPath,
+      sha256: clipSha256,
+      asset_sha256: clipSha256,
+      asset_size_bytes: 16384,
+      source_url: "https://www.youtube.com/watch?v=CurrentOfficial1",
+      source_type: "official_youtube_channel",
+      source_owner: "Official Publisher",
+      licence_basis: "official_publisher_promotional_video",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      rights_status: "approved_under_transformative_editorial_policy",
+      usage_scope: "transformative_editorial_short_form",
+      rights_verdict: "GREEN",
+      rights_decision_basis: "validated_official_direct_media_editorial_policy",
+      reconciliation_basis: "current_validated_official_materialised_clip",
+      risk_score: 0.28,
+      evidence_file: "output/current/materialised_motion_clips.json",
+      evidence_sha256: "b".repeat(64),
+      evidence_size_bytes: 4096,
+    }],
+  }, [{
+    id: "current-official-window",
+    path: clipPath,
+    source_url: "https://www.youtube.com/watch?v=CurrentOfficial1",
+    source_type: "official_youtube_channel",
+    source_family: "official_window_20_4",
+    media_kind: "direct_video",
+    rights_basis: "official_publisher_promotional_video",
+    rights_grant: false,
+    rights_status: "operator_legal_review_required",
+    usage_scope: "local_proof_only",
+    sha256: clipSha256,
+    size_bytes: 16384,
+  }]);
+
+  assert.equal(completed.verdict, "PASS");
+  assert.equal(completed.result, "PASS");
+  assert.deepEqual(completed.blockers, []);
+  assert.equal(completed.records[0].commercial_use_allowed, true);
+  assert.equal(completed.records[0].rights_verdict, "GREEN");
+  assert.equal(
+    completed.records[0].rights_decision_basis,
+    "validated_official_direct_media_editorial_policy",
+  );
+  assert.equal(
+    completed.records[0].reconciliation_basis,
+    "current_validated_official_materialised_clip",
+  );
 });
 
 test("goal production render materializer records every selected trailer window with exact hashes", () => {

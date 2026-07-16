@@ -582,6 +582,104 @@ test("fresh refill viewer script uses official source-body evidence for Starward
   assert.doesNotMatch(script.full_script, /system update|patch notes|save|controller reliability/i);
 });
 
+test("fresh refill viewer script cannot let related-story footer text replace the canonical game", () => {
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/";
+  const evidenceSentences = [
+    "Arknights: Endfield Version 1.4 launches on July 16 with upgraded PSSR on PS5 Pro.",
+    "The upgraded PSSR delivers sharper image quality, improved temporal stability and smoother performance.",
+    "Latest News: Explore horror's furthest sensations in Clive Barker's Hellraiser: Revival.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_arknights_footer_contamination",
+      title: "Arknights Has A Source-Proof Risk",
+      source: {
+        name: "PlayStation Blog",
+        url: sourceUrl,
+        title: "Arknights: Endfield on PS5 Pro: Upgraded PSSR launches with Version 1.4",
+        body: evidenceSentences.join(" "),
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        claims: evidenceSentences.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+    },
+    manifest: {
+      canonical_subject: "Arknights",
+      canonical_game: "Arknights",
+      canonical_title: "Arknights Has A Source-Proof Risk",
+      source_title: "Arknights: Endfield on PS5 Pro: Upgraded PSSR launches with Version 1.4",
+      primary_source_url: sourceUrl,
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.match(script.suggested_title, /Arknights/i);
+  assert.match(script.full_script, /Arknights/i);
+  assert.doesNotMatch(
+    [script.suggested_title, script.full_script].join(" "),
+    /Hellraiser|Revival/i,
+  );
+});
+
+test("fresh refill viewer script turns a PS5 Pro PSSR update into a concrete player-value angle", () => {
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/";
+  const evidenceSentences = [
+    "Arknights: Endfield Version 1.4 launches on July 16 with upgraded PSSR on PS5 Pro.",
+    "The upgraded PSSR delivers sharper image quality and improved temporal stability.",
+    "On PS5 Pro the game can more consistently maintain higher frame rates at 4K resolution.",
+    "Character outfits and material textures appear noticeably sharper during exploration and combat.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_arknights_pssr_value",
+      title: "Arknights Has A Source-Proof Risk",
+      source: {
+        name: "PlayStation Blog",
+        url: sourceUrl,
+        title: "Arknights: Endfield on PS5 Pro: Upgraded PSSR launches with Version 1.4",
+        body: evidenceSentences.join(" "),
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        claims: evidenceSentences.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+    },
+    manifest: {
+      canonical_subject: "Arknights",
+      canonical_game: "Arknights",
+      canonical_title: "Arknights Has A Source-Proof Risk",
+      source_title: "Arknights: Endfield on PS5 Pro: Upgraded PSSR launches with Version 1.4",
+      primary_source_url: sourceUrl,
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
+  assert.match(script.suggested_title, /Arknights: Endfield/i);
+  assert.match(script.full_script, /PSSR/i);
+  assert.match(script.full_script, /4K/i);
+  assert.match(script.full_script, /frame rates/i);
+  assert.match(script.full_script, /PS5 Pro owners|players/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /boring-looking update|housekeeping|console updates only become interesting/i,
+  );
+});
+
 test("fresh refill viewer script blocks generic review-signal fallback copy", () => {
   const sourceUrl = "https://example.com/zaxoid-review";
   const evidence =

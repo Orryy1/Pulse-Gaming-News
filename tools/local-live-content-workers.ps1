@@ -72,40 +72,62 @@ $env:PULSE_PRIMARY_INSTANCE = "true"
 $env:PULSE_PUBLISH_CRITICAL_RUNNER = "false"
 $env:PULSE_MAINTENANCE_RUNNER = "false"
 
-foreach ($lane in $lanes) {
-  $workerId = [string]$lane.Id
-  $kinds = [string]$lane.Kinds
-
-  if ($Restart) {
-    Stop-ContentWorkerProcesses -WorkerId $workerId
-    Start-Sleep -Milliseconds 250
+$supervisorMutex = [System.Threading.Mutex]::new(
+  $false,
+  "Local\PulseGamingLiveContentWorkers"
+)
+$supervisorLockAcquired = $false
+try {
+  try {
+    $supervisorLockAcquired = $supervisorMutex.WaitOne([TimeSpan]::FromSeconds(60))
+  } catch [System.Threading.AbandonedMutexException] {
+    $supervisorLockAcquired = $true
+    Write-ContentWorkerLog "supervisor_mutex_abandoned_recovered"
+  }
+  if (-not $supervisorLockAcquired) {
+    throw "Timed out waiting for PulseGamingLiveContentWorkers supervisor mutex."
   }
 
-  $existing = @(Get-ContentWorkerProcesses -WorkerId $workerId)
-  if ($existing.Count -gt 0) {
-    Write-ContentWorkerLog ("worker_noop_current id={0} pid={1}" -f $workerId, (($existing | Select-Object -ExpandProperty ProcessId) -join ","))
-    continue
-  }
+  foreach ($lane in $lanes) {
+    $workerId = [string]$lane.Id
+    $kinds = [string]$lane.Kinds
 
-  Write-ContentWorkerLog ("starting_worker id={0} kinds={1}" -f $workerId, $kinds)
-  $stdoutPath = Join-Path $logDir ("{0}.task.stdout.log" -f $workerId)
-  $stderrPath = Join-Path $logDir ("{0}.task.stderr.log" -f $workerId)
-  $commandLine = ('"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -RepoRoot "{2}" -WorkerId "{3}" -Kinds "{4}"' -f $powershellExe, $taskWrapper, $RepoRoot, $workerId, $kinds)
-  $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = $commandLine
-    CurrentDirectory = $RepoRoot
+    if ($Restart) {
+      Stop-ContentWorkerProcesses -WorkerId $workerId
+      Start-Sleep -Milliseconds 250
+    }
+
+    $existing = @(Get-ContentWorkerProcesses -WorkerId $workerId)
+    if ($existing.Count -gt 0) {
+      Write-ContentWorkerLog ("worker_noop_current id={0} pid={1}" -f $workerId, (($existing | Select-Object -ExpandProperty ProcessId) -join ","))
+      continue
+    }
+
+    Write-ContentWorkerLog ("starting_worker id={0} kinds={1}" -f $workerId, $kinds)
+    $stdoutPath = Join-Path $logDir ("{0}.task.stdout.log" -f $workerId)
+    $stderrPath = Join-Path $logDir ("{0}.task.stderr.log" -f $workerId)
+    $commandLine = ('"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -RepoRoot "{2}" -WorkerId "{3}" -Kinds "{4}"' -f $powershellExe, $taskWrapper, $RepoRoot, $workerId, $kinds)
+    $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+      CommandLine = $commandLine
+      CurrentDirectory = $RepoRoot
+    }
+    if ($created.ReturnValue -ne 0 -or -not $created.ProcessId) {
+      $failure = "worker_launch_failed id={0} return_value={1} stdout={2} stderr={3}" -f $workerId, $created.ReturnValue, $stdoutPath, $stderrPath
+      Write-ContentWorkerLog $failure
+      throw $failure
+    }
+    Start-Sleep -Seconds 2
+    $launched = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $created.ProcessId) -ErrorAction SilentlyContinue
+    if (-not $launched) {
+      $failure = "worker_launch_failed id={0} pid={1} stdout={2} stderr={3}" -f $workerId, $created.ProcessId, $stdoutPath, $stderrPath
+      Write-ContentWorkerLog $failure
+      throw $failure
+    }
+    Write-ContentWorkerLog ("worker_started id={0} pid={1}" -f $workerId, $created.ProcessId)
   }
-  if ($created.ReturnValue -ne 0 -or -not $created.ProcessId) {
-    $failure = "worker_launch_failed id={0} return_value={1} stdout={2} stderr={3}" -f $workerId, $created.ReturnValue, $stdoutPath, $stderrPath
-    Write-ContentWorkerLog $failure
-    throw $failure
+} finally {
+  if ($supervisorLockAcquired) {
+    $supervisorMutex.ReleaseMutex()
   }
-  Start-Sleep -Seconds 2
-  $launched = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $created.ProcessId) -ErrorAction SilentlyContinue
-  if (-not $launched) {
-    $failure = "worker_launch_failed id={0} pid={1} stdout={2} stderr={3}" -f $workerId, $created.ProcessId, $stdoutPath, $stderrPath
-    Write-ContentWorkerLog $failure
-    throw $failure
-  }
-  Write-ContentWorkerLog ("worker_started id={0} pid={1}" -f $workerId, $created.ProcessId)
+  $supervisorMutex.Dispose()
 }

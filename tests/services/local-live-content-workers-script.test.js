@@ -46,3 +46,14 @@ test("local live content worker launcher can safely restart only its own worker 
   assert.match(script, /Refusing to stop/);
   assert.match(script, /local-content-runway/);
 });
+
+test("local live content worker launcher serialises concurrent supervisor invocations", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /System\.Threading\.Mutex/);
+  assert.match(script, /PulseGamingLiveContentWorkers/);
+  assert.match(script, /\.WaitOne\(/);
+  assert.match(script, /AbandonedMutexException/);
+  assert.match(script, /\.ReleaseMutex\(\)/);
+  assert.match(script, /\.Dispose\(\)/);
+});

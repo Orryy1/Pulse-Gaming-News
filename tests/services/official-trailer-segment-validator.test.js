@@ -28,6 +28,7 @@ const {
   normaliseReferenceReportPayload,
   parseArgs,
   reportOutputTargets,
+  shouldProbeReferenceDurations,
 } = require("../../tools/official-trailer-segment-validator");
 
 function clip(overrides = {}) {
@@ -364,6 +365,25 @@ test("segment validator CLI accepts a bounded exploratory window duration", () =
   assert.deepEqual(args.exploratoryStartSeconds, [40, 48]);
   assert.equal(args.exploratoryDurationS, 3);
   assert.equal(args.allowEarlyExploratoryWindows, true);
+});
+
+test("segment validator apply-local probes missing direct-media durations without deep scan", () => {
+  const args = parseArgs([
+    "node",
+    "tools/official-trailer-segment-validator.js",
+    "--apply-local",
+  ]);
+  const optedOut = parseArgs([
+    "node",
+    "tools/official-trailer-segment-validator.js",
+    "--apply-local",
+    "--no-reference-duration-probe",
+  ]);
+
+  assert.equal(args.includeExploratoryWindows, false);
+  assert.equal(shouldProbeReferenceDurations(args), true);
+  assert.equal(shouldProbeReferenceDurations(optedOut), false);
+  assert.equal(shouldProbeReferenceDurations({ ...args, applyLocal: false }), false);
 });
 
 test("segment validator propagates exploratory window duration into clip refs", () => {

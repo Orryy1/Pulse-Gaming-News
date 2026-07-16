@@ -155,6 +155,10 @@ function parseArgs(argv) {
   return args;
 }
 
+function shouldProbeReferenceDurations(args = {}) {
+  return args.applyLocal === true && args.noReferenceDurationProbe !== true;
+}
+
 function printHelp() {
   process.stdout.write(
     [
@@ -165,7 +169,7 @@ function printHelp() {
       "  --reference-report <p> Read official trailer resolver references for alternate source scanning",
       "  --no-reference-report  Ignore test/output/official_trailer_references_v1.json",
       "  --no-reference-duration-probe",
-      "                         Do not ffprobe missing HLS/DASH/direct durations before deep scan",
+      "                         Do not ffprobe missing HLS/DASH/direct durations before local validation",
       "  --reference-duration-probe-timeout-ms <n>",
       "                         Bound each reference duration probe, default 10000",
       "  --max-reference-duration-probes <n>",
@@ -741,7 +745,7 @@ async function main() {
   const loaded = await loadFrameReport(args);
   const loadedReference = await loadOptionalReferenceReport(args);
   const enrichedReference = await enrichReferenceReportDurations(loadedReference.report, {
-    enabled: args.applyLocal && args.includeExploratoryWindows && !args.noReferenceDurationProbe,
+    enabled: shouldProbeReferenceDurations(args),
     storyId: args.storyId,
     durationProbeTimeoutMs: args.referenceDurationProbeTimeoutMs,
     maxProbes: args.maxReferenceDurationProbes,
@@ -890,6 +894,7 @@ module.exports = {
   normaliseReferenceReportPayload,
   parseArgs,
   reportOutputTargets,
+  shouldProbeReferenceDurations,
   enrichReferenceReportDurations,
   mergeReferenceReportPayloads,
 };

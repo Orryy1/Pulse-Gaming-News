@@ -12,7 +12,10 @@ const {
   candidateRows,
   materializeGoalRealMotion: materializeGoalRealMotionProduction,
   writeGoalRealMotionReport,
-  _private: { dynamicMaxDirectClipsPerBaseSource },
+  _private: {
+    dynamicMaxDirectClipsPerBaseSource,
+    reconcileMaterializedRightsRecords,
+  },
 } = require("../../lib/goal-real-motion-materializer");
 const { parseArgs } = require("../../tools/goal-real-motion-materializer");
 
@@ -3109,6 +3112,126 @@ test("real motion materializer fails closed when immutable rights records contra
   assert.ok(report.jobs[0].blockers.includes("rights_evidence_contradiction"));
   assert.match(report.jobs[0].failed[0].error, /licence_basis/);
   assert.equal(await fs.readFile(rightsPath, "utf8"), before);
+});
+
+test("real motion rights reconciliation keeps distinct windows from one official master as separate assets", () => {
+  const sourceUrl = "https://cdn.example.com/official/ascend-to-zero-launch-trailer.mp4";
+  const baseClip = {
+    id: "segment_direct_motion_5",
+    media_kind: "direct_video",
+    source_url: sourceUrl,
+    source_owner: "Flyway Games",
+    source_type: "official_youtube_channel",
+    licence_basis: "official_publisher_promotional_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    credit_required: false,
+    evidence_reference: "https://www.youtube.com/watch?v=nAfFe2nds-4",
+    materialized_file_evidence: {
+      sha256: "a".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 5,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const clips = [
+    {
+      ...baseClip,
+      path: "C:/pulse/segment-36.mp4",
+      mediaStartS: 36,
+      durationS: 5,
+      validation_provenance: {
+        validation_reason: "trimmed_segment_samples_passed",
+        segment_validated: true,
+        source_duration_s: 82.361,
+      },
+    },
+    {
+      ...baseClip,
+      path: "C:/pulse/segment-75.mp4",
+      mediaStartS: 75,
+      durationS: 4,
+      validation_provenance: {
+        validation_reason: "segment_samples_passed",
+        segment_validated: true,
+        source_duration_s: 82.361,
+      },
+      materialized_file_evidence: {
+        ...baseClip.materialized_file_evidence,
+        sha256: "b".repeat(64),
+        duration_seconds: 4,
+      },
+    },
+  ];
+
+  const result = reconcileMaterializedRightsRecords(clips, {
+    verdict: "pass",
+    records: [],
+  });
+
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.records.length, 2);
+  assert.equal(new Set(result.records.map((record) => record.asset_id)).size, 2);
+  assert.deepEqual(
+    result.records
+      .map((record) => [record.source_media_start_s, record.source_window_duration_s])
+      .sort((left, right) => left[0] - right[0]),
+    [
+      [36, 5],
+      [75, 4],
+    ],
+  );
+});
+
+test("real motion rights reconciliation still rejects conflicting provenance for the same source window", () => {
+  const sourceUrl = "https://cdn.example.com/official/ascend-to-zero-launch-trailer.mp4";
+  const clip = {
+    id: "segment_direct_motion_5",
+    media_kind: "direct_video",
+    path: "C:/pulse/segment-36.mp4",
+    source_url: sourceUrl,
+    source_owner: "Flyway Games",
+    source_type: "official_youtube_channel",
+    licence_basis: "official_publisher_promotional_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    credit_required: false,
+    evidence_reference: "https://www.youtube.com/watch?v=nAfFe2nds-4",
+    mediaStartS: 36,
+    durationS: 5,
+    validation_provenance: {
+      validation_reason: "segment_samples_passed",
+      segment_validated: true,
+    },
+    materialized_file_evidence: {
+      sha256: "c".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 5,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const conflicting = {
+    ...clip,
+    validation_provenance: {
+      validation_reason: "different_same_window_decision",
+      segment_validated: true,
+    },
+  };
+
+  const result = reconcileMaterializedRightsRecords([clip, conflicting], {
+    verdict: "pass",
+    records: [],
+  });
+
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures[0].reason, "rights_evidence_contradiction");
+  assert.match(result.failures[0].error, /validation_provenance/);
 });
 
 test("real motion materializer preserves and blocks a non-commercial existing rights restriction", async () => {

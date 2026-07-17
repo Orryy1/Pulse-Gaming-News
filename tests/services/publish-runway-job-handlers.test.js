@@ -172,6 +172,44 @@ test("T-90 watchdog never locks a runway when the watchdog is unsafe", async () 
   });
 });
 
+test("a recovered T-90 watchdog fails the queue job until a real lock exists", async () => {
+  await withHandlerStubs({
+    runtime: {
+      async lockRunwayForJob() {
+        return {
+          verdict: "RED",
+          phase: "T-90",
+          reason_codes: ["NO_VALID_GENERATION_FOR_WINDOW"],
+        };
+      },
+    },
+    watchdog: {
+      async runPublishWindowWatchdog() {
+        return {
+          verdict: "green",
+          safe_to_publish_window: true,
+          blockers: [],
+        };
+      },
+      watchdogNeedsRunwayRepair() {
+        return false;
+      },
+    },
+  }, async ({ handlers }) => {
+    await assert.rejects(
+      () => handlers.publish_window_watchdog({
+        payload: {
+          phase: "T-90",
+          window_label: "publish_morning",
+          publish_hour_utc: 9,
+          require_runway_lock: true,
+        },
+      }, { log() {} }),
+      /PUBLISH_RUNWAY_LOCK_REQUIRED/,
+    );
+  });
+});
+
 test("T0 guarded publish consumes only the immutable executor plan", async () => {
   const immutablePlan = {
     ready_for_live_executor_handoff: true,

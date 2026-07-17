@@ -84,6 +84,14 @@ test("missed-window recovery queues only the newest missed window for a fresh Yo
   assert.equal(plan.enqueue_job.idempotency_key, "publish_recovery:2026-07-16:16");
   assert.equal(plan.enqueue_job.max_attempts, 3);
   assert.equal(plan.enqueue_job.payload.missed_window_idempotency_key, "publish:2026-07-16:16");
+  assert.equal(plan.enqueue_job.payload.phase, "T0");
+  assert.equal(plan.enqueue_job.payload.publish_hour_utc, 16);
+  assert.equal(
+    plan.enqueue_job.payload.phase_scheduled_at_utc,
+    "2026-07-16T16:00:00.000Z",
+  );
+  assert.equal(plan.enqueue_job.payload.immutable_runway_required, true);
+  assert.equal(plan.enqueue_job.payload.require_runway_lock, true);
   assert.deepEqual(plan.enqueue_job.payload.selected_action_ids, [
     "fresh-story:youtube_shorts",
   ]);

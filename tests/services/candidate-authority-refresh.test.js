@@ -606,3 +606,22 @@ test("hash-matching but undecodable audio and malformed timestamps remain RED", 
   assert.ok(report.blockers.includes("audio_file_not_decodable"));
   assert.ok(report.blockers.includes("timestamps_file_unreadable"));
 });
+
+test("semantically unreadable critical evidence returns RED instead of crashing", async () => {
+  const fixture = await createVerifiedFixture();
+  await writeJson(path.join(fixture.artifactDir, "render_manifest.json"), null);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.can_auto_publish, false);
+  assert.ok(report.blockers.includes("render_manifest_unreadable"));
+  for (const document of Object.values(report.proposed)) {
+    assert.equal(document.verdict, "RED");
+    assert.equal(document.can_auto_publish, false);
+  }
+});

@@ -3749,3 +3749,74 @@ test("segment validator CLI prints markdown reports without referencing stale lo
   assert.match(result.stdout, /Official Trailer Segment Validator v1/i);
   assert.doesNotMatch(result.stderr, /ReferenceError: markdown is not defined/);
 });
+
+test("segment validator CLI supports explicit reference-only validation without a frame report", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "segment-validator-reference-only-"));
+  const referenceReportPath = path.join(root, "reference-report.json");
+  const missingFrameReportPath = path.join(root, "missing-frame-report.json");
+  const reportStem = `segment-validator-reference-only-${process.pid}-${Date.now()}`;
+  const reportJsonPath = path.join(process.cwd(), "test", "output", `${reportStem}.json`);
+  const reportMdPath = path.join(process.cwd(), "test", "output", `${reportStem}.md`);
+
+  await fs.writeJson(referenceReportPath, {
+    schema_version: 1,
+    plans: [
+      {
+        story_id: "reference-only-story",
+        references: [
+          {
+            story_id: "reference-only-story",
+            entity: "Reference Only",
+            source_family: "official_reference_only_gameplay",
+            source_type: "official_game_site_news_page",
+            provider: "official_intake",
+            source_url: "https://cdn.example.com/reference-only-gameplay.mp4",
+            source_url_kind: "direct_video",
+            source_duration_s: 90,
+            segment_validation_eligible: true,
+          },
+        ],
+      },
+    ],
+  });
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(process.cwd(), "tools", "official-trailer-segment-validator.js"),
+        "--frame-report",
+        missingFrameReportPath,
+        "--no-frame-report",
+        "--reference-report",
+        referenceReportPath,
+        "--story-id",
+        "reference-only-story",
+        "--no-reference-duration-probe",
+        "--dry-run",
+        "--deep-scan",
+        "--report-json",
+        reportJsonPath,
+        "--report-md",
+        reportMdPath,
+        "--json",
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: { ...process.env, PULSE_SKIP_DOTENV: "1" },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const report = await fs.readJson(reportJsonPath);
+    assert.equal(report.frame_report_source, null);
+    assert.equal(report.reference_report_source, referenceReportPath);
+    assert.equal(report.clip_refs_source, "reference_report");
+    assert.ok(report.clip_refs_input_count > 0);
+  } finally {
+    await fs.remove(reportJsonPath);
+    await fs.remove(reportMdPath);
+    await fs.remove(root);
+  }
+});

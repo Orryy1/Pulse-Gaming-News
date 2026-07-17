@@ -2603,6 +2603,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
   const capturedArgCalls = [];
   const childCalls = [];
   const events = [];
+  let failSegmentValidation = false;
 
   try {
     require.cache[goalBatchPath] = {
@@ -2950,6 +2951,42 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
               );
             }
           }
+          if (options.args[0] === "tools/official-trailer-segment-validator.js") {
+            if (failSegmentValidation) {
+              return {
+                ok: false,
+                exit_code: 2,
+                signal: null,
+                timed_out: false,
+                stdout_tail: "",
+                stderr_tail: "reference validation failed",
+              };
+            }
+            const reportJsonIndex = options.args.indexOf("--report-json");
+            const reportJsonPath = reportJsonIndex >= 0 ? options.args[reportJsonIndex + 1] : null;
+            if (reportJsonPath) {
+              await fs.mkdir(path.dirname(reportJsonPath), { recursive: true });
+              await fs.writeFile(
+                reportJsonPath,
+                JSON.stringify({
+                  schema_version: 1,
+                  status: "completed",
+                  summary: {
+                    segments: 8,
+                    segments_validated: 8,
+                    segments_rejected: 0,
+                  },
+                  segments: Array.from({ length: 8 }, (_, index) => ({
+                    story_id: "fresh_xbox_story",
+                    status: "validated",
+                    segment_validated: true,
+                    allowed_for_flash_lane: true,
+                    source_family: `official_halo_motion_${index + 1}`,
+                  })),
+                }),
+              );
+            }
+          }
           if (options.args[0] === "tools/goal-real-motion-materializer.js") {
             const outDirIndex = options.args.indexOf("--out-dir");
             const motionOutDir = outDirIndex >= 0 ? options.args[outDirIndex + 1] : tmp;
@@ -3207,6 +3244,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.ok(segmentValidationCall.args.includes("--apply-local"));
     assert.ok(
+      segmentValidationCall.args.includes("--no-frame-report"),
+      "fresh refill must validate its explicit run-scoped official references without depending on a stale global frame report",
+    );
+    assert.ok(
       segmentValidationCall.args.includes("--checkpoint-report"),
       "fresh refill must checkpoint segment validation so a timeout cannot leave only stale global evidence",
     );
@@ -3300,6 +3341,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "fresh refill should retain enough unique direct-motion clips for longer no-repeat Shorts renders",
     );
     const repairReport = JSON.parse(await fs.readFile(result.repair_evidence.report_path, "utf8"));
+    const repairMarkdown = await fs.readFile(result.repair_evidence.markdown_path, "utf8");
     assert.equal(repairReport.summary.official_source_entries_count, 1);
     assert.equal(repairReport.summary.script_blocked_package_count, 1);
     assert.equal(repairReport.summary.script_rewrite_work_order_count, 1);
@@ -3326,6 +3368,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "expected fresh refill to keep newly discovered storefront direct media rows",
     );
     assert.equal(repairReport.summary.child_process_count, 11);
+    assert.match(repairMarkdown, /segment validation: validated/i);
+    assert.match(repairMarkdown, /real motion materialisation: materialized/i);
     assert.equal(repairReport.summary.real_motion_materialization_status, "materialized");
     assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");
     assert.equal(repairReport.summary.hyperframes_card_sets_completed, 1);
@@ -3382,6 +3426,56 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       candidateStories.map((story) => story.story_id),
       ["fresh_xbox_story"],
       "only direct-motion attempt stories enter full supplemental motion repair; script-blocked and article-only packages must not",
+    );
+
+    failSegmentValidation = true;
+    const failureCallStart = childCalls.length;
+    const failedResult = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 12,
+          rss_per_feed: 4,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          events.push(options.args[0]);
+          childCalls.push(options);
+          if (options.args[0] === "tools/official-trailer-segment-validator.js") {
+            return {
+              ok: false,
+              exit_code: 2,
+              signal: null,
+              timed_out: false,
+              stdout_tail: "",
+              stderr_tail: "reference validation failed",
+            };
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+    const failureCalls = childCalls.slice(failureCallStart);
+    const failedRepairReport = JSON.parse(
+      await fs.readFile(failedResult.repair_evidence.report_path, "utf8"),
+    );
+    assert.equal(
+      failedRepairReport.summary.real_motion_materialization_status,
+      "segment_validation_failed",
+    );
+    assert.equal(
+      failureCalls.some((call) => call.args[0] === "tools/goal-real-motion-materializer.js"),
+      false,
+      "fresh refill must not launch real-motion materialisation after segment validation fails",
+    );
+    assert.equal(
+      failureCalls.filter((call) => call.args[0] === "tools/studio-v4-motion-pack.js").length,
+      1,
+      "fresh refill must not launch the post-validation motion-pack refresh after segment validation fails",
     );
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {

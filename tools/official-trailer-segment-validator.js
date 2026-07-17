@@ -46,6 +46,7 @@ function parseArgs(argv) {
     json: false,
     storyId: null,
     frameReport: DEFAULT_FRAME_REPORT,
+    noFrameReport: false,
     referenceReport: DEFAULT_REFERENCE_REPORT,
     referenceReports: [],
     acquisitionPlan: null,
@@ -84,7 +85,12 @@ function parseArgs(argv) {
     if (arg === "--help" || arg === "-?") args.help = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
-    else if (arg === "--frame-report") args.frameReport = argv[++i] || DEFAULT_FRAME_REPORT;
+    else if (arg === "--frame-report") {
+      args.frameReport = argv[++i] || DEFAULT_FRAME_REPORT;
+      args.noFrameReport = false;
+    } else if (arg === "--no-frame-report") {
+      args.noFrameReport = true;
+    }
     else if (arg === "--reference-report" || arg === "--trailer-references") {
       const referenceReport = argv[++i] || DEFAULT_REFERENCE_REPORT;
       args.referenceReport = referenceReport;
@@ -166,6 +172,7 @@ function printHelp() {
       "",
       "Options:",
       "  --frame-report <p>     Read a controlled frame extraction worker report",
+      "  --no-frame-report      Validate explicit reference/acquisition evidence without a frame report",
       "  --reference-report <p> Read official trailer resolver references for alternate source scanning",
       "  --no-reference-report  Ignore test/output/official_trailer_references_v1.json",
       "  --no-reference-duration-probe",
@@ -274,6 +281,7 @@ function currentReferenceSourceUrls(clipRefs = []) {
 }
 
 async function loadFrameReport(args) {
+  if (args.noFrameReport) return { report: null, filePath: null };
   const filePath = path.resolve(ROOT, args.frameReport);
   if (!(await fs.pathExists(filePath))) {
     throw new Error(`frame report not found: ${filePath}`);
@@ -752,6 +760,11 @@ async function main() {
   });
   const loadedPrevious = await loadOptionalPreviousValidationReport(args);
   const loadedAcquisition = await loadOptionalAcquisitionPlan(args);
+  const clipRefsSource = loadedAcquisition.report
+    ? "flash_lane_acquisition_plan"
+    : loaded.report
+      ? "frame_or_reference_report"
+      : "reference_report";
   const scopedPreviousReport = loadedPrevious.report && args.storyId
     ? {
         ...loadedPrevious.report,
@@ -801,7 +814,7 @@ async function main() {
             reference_report_source: loadedReference.filePath,
             reference_duration_probe: enrichedReference.summary,
             acquisition_plan_source: loadedAcquisition.filePath,
-            clip_refs_source: loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report",
+            clip_refs_source: clipRefsSource,
             clip_refs_input_count: clipRefs.length,
             previous_validation_source: loadedPrevious.filePath,
           };
@@ -832,7 +845,7 @@ async function main() {
   report.reference_report_source = loadedReference.filePath;
   report.reference_duration_probe = enrichedReference.summary;
   report.acquisition_plan_source = loadedAcquisition.filePath;
-  report.clip_refs_source = loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report";
+  report.clip_refs_source = clipRefsSource;
   report.clip_refs_input_count = clipRefs.length;
   report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
   report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;
@@ -857,7 +870,7 @@ async function main() {
     report.reference_report_source = loadedReference.filePath;
     report.reference_duration_probe = enrichedReference.summary;
     report.acquisition_plan_source = loadedAcquisition.filePath;
-    report.clip_refs_source = loadedAcquisition.report ? "flash_lane_acquisition_plan" : "frame_or_reference_report";
+    report.clip_refs_source = clipRefsSource;
     report.clip_refs_input_count = clipRefs.length;
     report.clip_refs_filtered_previous_count = clipRefs.length - filteredClipRefs.length;
     report.clip_refs_filtered_exhausted_source_family_count = exhaustedFilter.skipped.length;

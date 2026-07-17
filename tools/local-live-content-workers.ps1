@@ -49,6 +49,10 @@ function Stop-ContentWorkerProcesses {
 
 $lanes = @(
   @{
+    Id = "local-publish-prep"
+    Kinds = "publish_runway_generate"
+  },
+  @{
     Id = "local-content-runway"
     Kinds = "candidate_supply_monitor,fresh_production_refill"
   },

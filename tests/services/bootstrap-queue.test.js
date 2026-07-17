@@ -66,7 +66,6 @@ test("bootstrap skips missed-window recovery for observation-only or explicitly 
 test("bootstrap queue enables a protected publish lane by default", () => {
   assert.deepEqual(PUBLISH_CRITICAL_JOB_KINDS, [
     "publish_schedule_recovery_monitor",
-    "publish_runway_generate",
     "publish_window_watchdog",
     "publish",
     "instagram_token_refresh",

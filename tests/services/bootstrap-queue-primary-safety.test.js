@@ -335,7 +335,6 @@ test("bootstrap-queue: primary runtime starts a dedicated stale-claim maintenanc
             ["jobs_reap"],
             [
               "publish_schedule_recovery_monitor",
-              "publish_runway_generate",
               "publish_window_watchdog",
               "publish",
               "instagram_token_refresh",

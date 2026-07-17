@@ -136,6 +136,15 @@ test("local sqlite content worker parses explicit kind and worker options", () =
   assert.equal(args.gpu, true);
 });
 
+test("local sqlite content worker allows isolated immutable runway preparation", () => {
+  const args = parseArgs(
+    ["--worker-id", "publish-prep", "--kinds", "publish_runway_generate"],
+    {},
+  );
+
+  assert.deepEqual(args.kinds, ["publish_runway_generate"]);
+});
+
 test("local sqlite content worker uses a long lease for synchronous repair tools", () => {
   assert.equal(parseArgs([], {}).leaseMs, 30 * 60 * 1000);
   assert.equal(

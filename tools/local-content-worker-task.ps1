@@ -14,6 +14,25 @@ $nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
 $logDir = Join-Path $RepoRoot "output/runtime"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
+$evidenceRoot = $RepoRoot
+$outputItem = Get-Item -LiteralPath (Join-Path $RepoRoot "output") -ErrorAction SilentlyContinue
+if ($outputItem -and $outputItem.LinkType -eq "Junction" -and @($outputItem.Target).Count -gt 0) {
+  $outputTarget = [string]@($outputItem.Target)[0]
+  if (-not [System.IO.Path]::IsPathRooted($outputTarget)) {
+    $outputTarget = Join-Path $RepoRoot $outputTarget
+  }
+  $evidenceRoot = Split-Path -Parent (Resolve-Path -LiteralPath $outputTarget).Path
+}
+$evidenceRoot = (Resolve-Path -LiteralPath $evidenceRoot).Path
+$evidenceRootItem = Get-Item -LiteralPath $evidenceRoot
+if (
+  -not $evidenceRootItem.PSIsContainer -or
+  ($evidenceRootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+) {
+  throw "Refusing publish evidence root because it is not a normal local directory: $evidenceRoot"
+}
+$env:PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT = $evidenceRoot
+
 function Set-BackgroundProcessResources {
   param(
     [Parameter(Mandatory = $true)]

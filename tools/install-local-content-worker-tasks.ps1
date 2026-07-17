@@ -14,6 +14,7 @@ if ($Apply -and -not $OperatorConfirmed) {
 
 $taskWrapper = Join-Path $RepoRoot "tools/local-content-worker-task.ps1"
 $lanes = @(
+  @{ Task = "PulseGaming-Content-Publish-Prep"; Id = "local-publish-prep"; Kinds = "publish_runway_generate" },
   @{ Task = "PulseGaming-Content-Runway"; Id = "local-content-runway"; Kinds = "candidate_supply_monitor,fresh_production_refill" },
   @{ Task = "PulseGaming-Content-Repair"; Id = "local-content-repair"; Kinds = "fresh_review_script_repair,safe_auto_repair_runner,local_tts_doctor,local_tts_retry_recovery" },
   @{ Task = "PulseGaming-Content-Ops"; Id = "local-content-ops"; Kinds = "hunt,produce,analytics,scoring_digest,engage,engage_first_hour,blog_rebuild,db_backup,instagram_pending_verify,overnight_produce_sweep,overnight_analytics_backfill,overnight_claude_analyst,overnight_morning_digest" },

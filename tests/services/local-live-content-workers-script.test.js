@@ -13,6 +13,7 @@ test("local live content worker launcher starts durable non-publish worker lanes
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 
   for (const workerId of [
+    "local-publish-prep",
     "local-content-runway",
     "local-content-repair",
     "local-content-ops",
@@ -27,6 +28,7 @@ test("local live content worker launcher starts durable non-publish worker lanes
   assert.match(script, /ReturnValue -ne 0/);
   assert.match(script, /worker_launch_failed/);
   assert.match(script, /worker_started id=\{0\} pid=\{1\}/);
+  assert.match(script, /publish_runway_generate/);
 });
 
 test("local live content worker launcher does not include publish or credential jobs", () => {
@@ -65,6 +67,7 @@ test("content workers reserve foreground capacity for the scheduler and publish 
   assert.match(wrapper, /ProcessPriorityClass\]::BelowNormal/);
   assert.match(wrapper, /ProcessorAffinity/);
   assert.match(wrapper, /PULSE_CONTENT_WORKER_RESOURCE_CLASS\s*=\s*"background"/);
+  assert.match(wrapper, /PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT/);
   assert.match(wrapper, /PULSE_CONTENT_WORKER_THREAD_BUDGET/);
   assert.match(wrapper, /OMP_NUM_THREADS/);
   assert.match(wrapper, /OPENBLAS_NUM_THREADS/);

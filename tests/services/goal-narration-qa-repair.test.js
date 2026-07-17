@@ -275,11 +275,29 @@ test("post-render narration QA binds separate display and spoken evidence to one
       if (word === "4K") return ["4", "K"];
       return [word];
     });
-  const words = spokenTimelineWords.map((word, index, all) => ({
+  const rawWords = spokenTimelineWords.map((word, index, all) => ({
     word,
     start: Number((index * (5.2 / all.length)).toFixed(3)),
     end: Number(((index + 1) * (5.2 / all.length)).toFixed(3)),
   }));
+  const words = rawWords.reduce((rows, word, index) => {
+    if (
+      word.word === "84" &&
+      rawWords[index + 1]?.word === "dollars" &&
+      rawWords[index + 2]?.word === "91"
+    ) {
+      rows.push({
+        word: "$84.91",
+        start: word.start,
+        end: rawWords[index + 2].end,
+        spoken_words: ["84", "dollars", "91"],
+      });
+      return rows;
+    }
+    if (index > 0 && rawWords[index - 1]?.word === "84" && word.word === "dollars") return rows;
+    if (index > 1 && rawWords[index - 2]?.word === "84" && word.word === "91") return rows;
+    return [...rows, word];
+  }, []);
   await fs.writeJson(paths.word_timestamps, {
     words,
     audio_sha256: audioSha256,
@@ -411,6 +429,66 @@ test("timestamp coverage accepts sparse exact words spanning the narration but r
   assert.ok(truncated.audio_timeline_coverage_ratio < 0.8);
   assert.equal(truncated.audio_coverage_sufficient, false);
   assert.equal(truncated.video_coverage_sufficient, false);
+});
+
+test("timestamp repair verifies merged display rows through exact spoken-token provenance", () => {
+  const timestampPayload = {
+    complete: true,
+    words: [
+      { word: "Version", start: 0, end: 0.3 },
+      {
+        word: "1.4",
+        start: 0.31,
+        end: 0.9,
+        spoken_words: ["one", "point", "four"],
+      },
+      { word: "upgrades", start: 0.85, end: 1.2 },
+      {
+        word: "PS5.",
+        start: 1.21,
+        end: 1.8,
+        spoken_words: ["PlayStation", "five."],
+      },
+      { word: "at", start: 1.81, end: 1.95 },
+      { word: "4K.", start: 1.96, end: 2.3 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        strategy: "local_whisper_word_alignment",
+        script_reconciled: true,
+        script_coverage_ratio: 1,
+        script_expected_word_count: 9,
+        script_actual_word_count: 9,
+        script_matched_word_count: 9,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  };
+
+  const repair = _testables.planFlagshipTimestampRepair({
+    timestampPayload,
+    spokenScript: "Version one point four upgrades PlayStation five at 4K.",
+    timestampBindings: {
+      audio_sha256: true,
+      script_sha256: true,
+      spoken_script_sha256: true,
+      captions_sha256: true,
+      flagship_generation_run_id: true,
+    },
+    sourceSha256: "a".repeat(64),
+    audioDurationSeconds: 2.4,
+    videoDurationSeconds: 2.4,
+    acousticSilences: [],
+    generatedAt: "2026-07-17T02:02:00.000Z",
+  });
+
+  assert.equal(repair.repaired, true, JSON.stringify(repair.blockers, null, 2));
+  assert.equal(repair.reason, "authoritative_word_onsets_normalised");
+  assert.equal(repair.payload.words[1].word, "1.4");
+  assert.deepEqual(repair.payload.words[1].spoken_words, ["one", "point", "four"]);
 });
 
 test("post-render narration QA repairs verifier-safe timestamps from word onsets and acoustic speech boundaries", async () => {

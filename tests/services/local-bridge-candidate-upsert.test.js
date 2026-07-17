@@ -133,7 +133,8 @@ async function fixture() {
     blockers: [],
   });
   await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
-    publish_status: "RED",
+    publish_status: "GREEN",
+    can_auto_publish: true,
     outputs: {
       youtube_shorts: {
         title: "Sea of Thieves Custom Seas Could Split Crews",
@@ -168,18 +169,14 @@ async function fixture() {
     cover_frame: { headline: "SEA THIEVES CUSTOM SEAS" },
   });
   await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
-    verdict: "RED",
-    can_auto_publish: false,
-    reason_codes: [
-      "footage:v4_motion_blocked",
-      "media_house:overall_score_below_threshold",
-      "media_house:source_lock_not_verified",
-    ],
-    warnings: ["package_quality_blocks_publish"],
+    verdict: "GREEN",
+    can_auto_publish: true,
+    reason_codes: [],
+    warnings: [],
   });
   await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
-    verdict: "RED",
-    status: "fail",
+    verdict: "GREEN",
+    status: "pass",
     hard_failures: [],
     scores: {
       overall_media_house_score: 91,
@@ -275,15 +272,67 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.voice_quality_report.verdict, "PASS");
   assert.equal(candidate.publish_verdict.verdict, "GREEN");
   assert.equal(candidate.publish_verdict.can_auto_publish, true);
-  assert.equal(candidate.publish_verdict.local_bridge_repaired_from_stale_verdict, true);
-  assert.equal(candidate.publish_verdict.original_publish_verdict.verdict, "RED");
   assert.equal(candidate.pulse_media_house_score.verdict, "GREEN");
   assert.equal(candidate.pulse_media_house_score.status, "pass");
-  assert.equal(candidate.pulse_media_house_score.local_bridge_repaired_from_stale_media_house_score, true);
-  assert.ok(candidate.local_bridge_validation.warnings.includes("stale_publish_verdict_ignored_after_current_package_repair"));
-  assert.ok(candidate.local_bridge_validation.warnings.includes("stale_media_house_score_ignored_after_current_package_repair"));
   assert.equal(candidate.local_bridge_validation.verdict, "pass");
   assert.equal(candidate.local_bridge_validation.evidence.render_bytes, 600_000);
+});
+
+test("buildLocalBridgeCandidate never promotes authoritative RED evidence to GREEN", async () => {
+  const files = await fixture();
+  await fs.writeJson(path.join(files.artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "RED",
+    can_auto_publish: false,
+    outputs: {},
+  });
+  await fs.writeJson(path.join(files.artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    status: "fail",
+    hard_failures: [],
+  });
+  await fs.writeJson(path.join(files.artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    blockers: ["authoritative_package_red"],
+  });
+
+  await assert.rejects(
+    () =>
+      buildLocalBridgeCandidate({
+        artifactDir: files.artifactDir,
+        generatedAt: "2026-06-21T18:40:00.000Z",
+      }),
+    (error) => {
+      assert.match(error.message, /local bridge candidate package is not GREEN/);
+      assert.ok(error.validation.blockers.includes("platform_publish_manifest_not_green"));
+      assert.ok(error.validation.blockers.includes("media_house_score_not_green"));
+      assert.ok(error.validation.blockers.includes("publish_verdict_not_green"));
+      return true;
+    },
+  );
+});
+
+test("buildLocalBridgeCandidate accepts the authoritative post-render caption manifest", async () => {
+  const files = await fixture();
+  const captionDir = path.join(files.artifactDir, "flagship");
+  const captionPath = path.join(captionDir, "captions.srt");
+  await fs.ensureDir(captionDir);
+  await fs.move(path.join(files.artifactDir, "captions.srt"), captionPath);
+  await fs.writeJson(path.join(files.artifactDir, "caption_manifest.json"), {
+    verdict: "PASS",
+    status: "ready",
+    caption_srt_path: "flagship/captions.srt",
+    resolved_caption_srt_path: captionPath,
+    blockers: [],
+  });
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-06-21T18:40:00.000Z",
+  });
+
+  assert.equal(candidate.manual_caption_path, captionPath);
+  assert.equal(candidate.local_bridge_validation.evidence.captions_path, captionPath);
 });
 
 test("buildLocalBridgeCandidate carries narration audio rights into governance preflight", async () => {

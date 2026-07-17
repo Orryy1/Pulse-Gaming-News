@@ -2566,3 +2566,32 @@ test("goal proof package does not overwrite an existing final render with a loca
     ),
   );
 });
+
+test("goal proof package materialises the exact declared final render instead of a placeholder", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-copy-final-"));
+  const sourceDir = path.join(root, "source");
+  const outputDir = path.join(root, "package");
+  const sourceRenderPath = path.join(sourceDir, "decoded-final.mp4");
+  const sourceBytes = Buffer.alloc(8192, 17);
+  await fs.outputFile(sourceRenderPath, sourceBytes);
+  const story = greenStory();
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-17T06:30:00.000Z",
+  });
+  pack.render_manifest = {
+    ...pack.render_manifest,
+    final_publish_render: true,
+    output_path: sourceRenderPath,
+    output: sourceRenderPath,
+  };
+
+  await writeGoalProofPackageArtifacts(pack, { outputDir });
+
+  const materialisedPath = path.join(outputDir, "visual_v4_render.mp4");
+  assert.deepEqual(await fs.readFile(materialisedPath), sourceBytes);
+  const renderManifest = await fs.readJson(path.join(outputDir, "render_manifest.json"));
+  assert.equal(renderManifest.source_output_path, sourceRenderPath);
+  assert.equal(renderManifest.output_path, materialisedPath);
+});

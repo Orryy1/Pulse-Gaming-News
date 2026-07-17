@@ -329,6 +329,36 @@ test("story-specific HyperFrames context card uses short audience-facing copy", 
   );
 });
 
+test("story-specific HyperFrames context card keeps Arknights copy complete and inside the safe width", () => {
+  const contextTemplate = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-context", "index.html"),
+    "utf8",
+  );
+  const specs = buildStoryCardSpecs({
+    id: "arknights-ps5-pro-context",
+    title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights",
+    source_card_label: "PlayStation Blog",
+    source_type: "rss",
+    full_script:
+      "Arknights: Endfield just gave PS5 Pro owners a real before-and-after test. " +
+      "PlayStation Blog says Version 1.4 upgrades PSSR for sharper detail, steadier motion and more consistent frame rates at 4K. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+  const html = applySpecToTemplate(
+    "context",
+    contextTemplate,
+    specs.context,
+    "pulse-gaming",
+  );
+
+  assert.equal(specs.context.number, "ARKNIGHTS");
+  assert.equal(specs.context.sub, "SHARPER DETAIL, STEADIER MOTION");
+  assert.match(html, /\.number\s*\{[\s\S]*?font-size:\s*120px;/);
+  assert.match(html, /\.number\s*\{[\s\S]*?max-width:\s*936px;/);
+  assert.doesNotMatch(specs.context.sub, /ENDFIELD UPGRADE REAL/);
+});
+
 test("story-specific HyperFrames context card preserves a concrete versus-mode balance risk", () => {
   const specs = buildStoryCardSpecs({
     id: "marvel-tokon-balance-risk",

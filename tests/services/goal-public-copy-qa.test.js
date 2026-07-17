@@ -897,6 +897,43 @@ test("goal public copy QA allows spoken-only cadence punctuation without allowin
   assert.ok(changedWord.failures.includes("public_copy:tts_script_diverges_from_narration"));
 });
 
+test("goal public copy QA allows version-number and title-continuity pronunciation without allowing claim drift", () => {
+  const narration =
+    "Arknights: Endfield just gave PS5 Pro owners a real before-and-after test. " +
+    "PlayStation Blog says Version 1.4 upgrades PSSR for sharper detail. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const common = {
+    canonical_subject: "Arknights: Endfield",
+    selected_title: "Arknights: Endfield Gives PS5 Pro A Real Test",
+    first_spoken_line: "Arknights: Endfield just gave PS5 Pro owners a real before-and-after test.",
+    narration_script: narration,
+    full_script: narration,
+    description:
+      "Arknights: Endfield Version 1.4 upgrades PSSR on PS5 Pro. Source: PlayStation Blog.",
+    primary_source: "PlayStation Blog",
+  };
+
+  const pronunciationOnly = evaluateGoalPublicCopy({
+    ...common,
+    tts_script:
+      "Arknights Endfield just gave PlayStation five Pro owners a real before and after test. " +
+      "PlayStation Blog says Version 1 point 4 upgrades PSSR for sharper detail. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+  assert.ok(
+    !pronunciationOnly.failures.includes("public_copy:tts_script_diverges_from_narration"),
+  );
+
+  const changedClaim = evaluateGoalPublicCopy({
+    ...common,
+    tts_script:
+      "Arknights Endfield just gave PlayStation five Pro owners a real before and after test. " +
+      "PlayStation Blog says Version 1 point 5 upgrades PSSR for sharper detail. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+  assert.ok(changedClaim.failures.includes("public_copy:tts_script_diverges_from_narration"));
+});
+
 test("goal public copy QA allows GTA VI safe spoken TTS without changing display copy", () => {
   const narration =
     "GTA VI just turned the console argument into a real buying decision. PlayStation Blog says Grand Theft Auto VI has a new gameplay breakdown for PS5. Follow Pulse Gaming so you never miss a beat.";

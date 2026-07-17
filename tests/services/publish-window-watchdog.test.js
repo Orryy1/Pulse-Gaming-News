@@ -15,6 +15,17 @@ function byName(name) {
   return DEFAULT_SCHEDULES.find((s) => s.name === name);
 }
 
+function executorPlanWithActions(count = 6) {
+  return {
+    mode: "GUARDED_DISPATCH_EXECUTOR_PREFLIGHT",
+    handoff_ready_actions: Array.from({ length: count }, (_, index) => ({
+      action_id: `story-${index + 1}:youtube_shorts`,
+      story_id: `story-${index + 1}`,
+      platform: "youtube_shorts",
+    })),
+  };
+}
+
 test("publish window watchdog turns runtime sentinel RED into a hold verdict", () => {
   const report = buildPublishWindowWatchdogReport({
     generatedAt: "2026-06-14T13:55:00.000Z",
@@ -90,6 +101,172 @@ test("publish window watchdog is GREEN only when runtime, queue and readiness ag
   assert.equal(report.action_runway.ready_for_next_24h_boolean, true);
   assert.equal(report.action_runway.covered_publish_windows_24h, 5);
   assert.equal(report.action_runway.reserve_actions, 1);
+});
+
+test("public publish window watchdog turns RED when raw executor actions have no viable guarded selection", async () => {
+  let selectionChecks = 0;
+  let storyReads = 0;
+  const executorPlan = executorPlanWithActions();
+  const report = await runPublishWindowWatchdog({
+    generatedAt: "2026-07-17T08:30:00.000Z",
+    windowLabel: "publish_morning",
+    postDiscord: false,
+    notifyGreen: false,
+    persistReport: false,
+    schedulerProof: { executorPlan },
+    buildRuntimeSentinel: async () => ({
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+        next_action: "observe_guarded_scheduler_window",
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 6,
+        executor_handoff_action_count: 6,
+        enabled_dry_run_story_count: 6,
+        executor_handoff_story_count: 6,
+        missing_from_executor_count: 0,
+        missing_from_executor_story_count: 0,
+      },
+    }),
+    buildReadiness: () => ({
+      overall_verdict: "green",
+      blockers: [],
+      readiness_scope: {
+        name: "enabled_platform_guarded_handoff",
+        guard_ready: true,
+      },
+    }),
+    buildQueue: () => ({
+      verdict: "pass",
+      blockers: [],
+    }),
+    storyDb: {
+      async getStories() {
+        storyReads += 1;
+        return [];
+      },
+    },
+    selectNextGuardedLiveAction: async ({ executorPlan: selectedPlan, stories }) => {
+      selectionChecks += 1;
+      assert.equal(selectedPlan, executorPlan);
+      assert.deepEqual(stories, []);
+      return {
+        exhausted: true,
+        action_id: null,
+        action: null,
+        reason: "no_unpublished_guarded_actions",
+        skipped_actions: [
+          {
+            action_id: "story-1:youtube_shorts",
+            story_id: "story-1",
+            platform: "youtube_shorts",
+            reason: "already_published",
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(selectionChecks, 1);
+  assert.equal(storyReads, 1);
+  assert.equal(report.executor_handoff_action_count, 6);
+  assert.equal(report.guarded_selection.exhausted, true);
+  assert.equal(report.guarded_selection.reason, "no_unpublished_guarded_actions");
+  assert.equal(report.verdict, "red");
+  assert.equal(report.safe_to_publish_window, false);
+  assert.equal(report.hold_scheduler_or_dispatch, true);
+  assert.ok(
+    report.blockers.includes(
+      "guarded_selection: no_unpublished_guarded_actions",
+    ),
+  );
+  assert.equal(
+    report.next_action,
+    "hold_scheduler_and_repair_guarded_action_selection",
+  );
+  assert.deepEqual(report.safety, {
+    read_only: true,
+    live_publish_attempted: false,
+    db_mutation: false,
+    oauth_or_token_mutation: false,
+    disabled_platforms_counted_live: false,
+  });
+});
+
+test("public publish window watchdog preserves GREEN when guarded selection is viable", async () => {
+  let selectionChecks = 0;
+  let storyReads = 0;
+  const executorPlan = executorPlanWithActions();
+  const report = await runPublishWindowWatchdog({
+    generatedAt: "2026-07-17T08:30:00.000Z",
+    windowLabel: "publish_morning",
+    postDiscord: false,
+    notifyGreen: false,
+    persistReport: false,
+    schedulerProof: { executorPlan },
+    buildRuntimeSentinel: async () => ({
+      verdict: "green",
+      blockers: [],
+      scheduler_window_readiness: {
+        safe_to_observe_next_window: true,
+        hold_scheduler_or_dispatch: false,
+        next_action: "observe_guarded_scheduler_window",
+      },
+      scheduler_proof: {
+        enabled_dry_run_action_count: 6,
+        executor_handoff_action_count: 6,
+        enabled_dry_run_story_count: 6,
+        executor_handoff_story_count: 6,
+        missing_from_executor_count: 0,
+        missing_from_executor_story_count: 0,
+      },
+    }),
+    buildReadiness: () => ({
+      overall_verdict: "green",
+      blockers: [],
+      readiness_scope: {
+        name: "enabled_platform_guarded_handoff",
+        guard_ready: true,
+      },
+    }),
+    buildQueue: () => ({
+      verdict: "pass",
+      blockers: [],
+    }),
+    storyDb: {
+      async getStories() {
+        storyReads += 1;
+        return [{ id: "story-1" }];
+      },
+    },
+    selectNextGuardedLiveAction: async ({ executorPlan: selectedPlan, stories }) => {
+      selectionChecks += 1;
+      assert.equal(selectedPlan, executorPlan);
+      assert.deepEqual(stories, [{ id: "story-1" }]);
+      return {
+        exhausted: false,
+        action_id: "story-1:youtube_shorts",
+        action: {
+          action_id: "story-1:youtube_shorts",
+          story_id: "story-1",
+          platform: "youtube_shorts",
+        },
+        skipped_actions: [],
+      };
+    },
+  });
+
+  assert.equal(selectionChecks, 1);
+  assert.equal(storyReads, 1);
+  assert.equal(report.guarded_selection.exhausted, false);
+  assert.equal(report.guarded_selection.action_id, "story-1:youtube_shorts");
+  assert.equal(report.verdict, "green");
+  assert.equal(report.safe_to_publish_window, true);
+  assert.equal(report.hold_scheduler_or_dispatch, false);
+  assert.deepEqual(report.blockers, []);
 });
 
 test("publish window watchdog uses unique story runway instead of platform action count", () => {
@@ -407,6 +584,16 @@ test("publish window watchdog rechecks after stale executor handoff refresh", as
         verdict: "pass",
         blockers: [],
       }),
+      resolveGuardedSelection: async () => ({
+        exhausted: false,
+        action_id: "fresh-story:youtube_shorts",
+        action: {
+          action_id: "fresh-story:youtube_shorts",
+          story_id: "fresh-story",
+          platform: "youtube_shorts",
+        },
+        skipped_actions: [],
+      }),
       executorHandoffRefresh: {
         guardedDispatchPlanPath,
         executorPlanPath,
@@ -468,6 +655,16 @@ test("publish window watchdog persists its decision report for post-window diagn
         verdict: "review",
         blockers: [],
         advisory: ["recent_failed_jobs_present"],
+      }),
+      resolveGuardedSelection: async () => ({
+        exhausted: false,
+        action_id: "proof-story:youtube_shorts",
+        action: {
+          action_id: "proof-story:youtube_shorts",
+          story_id: "proof-story",
+          platform: "youtube_shorts",
+        },
+        skipped_actions: [],
       }),
     });
     const saved = await fs.readJson(reportOutputPath);

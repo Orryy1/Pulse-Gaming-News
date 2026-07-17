@@ -339,6 +339,14 @@ function scriptSentences(story) {
 }
 
 function contextImpactFromScript(story) {
+  const script = storyScriptText(story);
+  const visualUpgrade = script.match(
+    /\b(sharper detail)\b[\s\S]{0,80}?\b(steadier motion)\b/i,
+  );
+  if (visualUpgrade) {
+    return `${visualUpgrade[1]}, ${visualUpgrade[2]}`.toUpperCase();
+  }
+
   const candidates = scriptSentences(story)
     .map((sentence, index) => {
       const words = sentence.split(/\s+/).filter(Boolean).length;
@@ -913,7 +921,8 @@ function contextNumberFontSize(value) {
   if (text.length >= 22) return 84;
   if (text.length >= 18) return 92;
   if (text.length >= 14) return 100;
-  if (text.length >= 10) return 128;
+  if (text.length >= 10) return 112;
+  if (text.length >= 8) return 120;
   return 152;
 }
 
@@ -947,6 +956,10 @@ function applySpecToTemplate(kind, templateHtml, spec, channelId) {
     html = replaceElementText(html, "label", spec.label);
     html = replaceElementText(html, "sublabel", spec.sublabel);
   } else if (kind === "context") {
+    html = html.replace(
+      /(\.number\s*\{)/,
+      "$1\n        width: 100%;\n        max-width: 936px;\n        overflow-wrap: anywhere;",
+    );
     html = html.replace(
       /(\.number\s*\{[^}]*?font-size:\s*)\d+(px;)/,
       `$1${contextNumberFontSize(spec.number)}$2`,

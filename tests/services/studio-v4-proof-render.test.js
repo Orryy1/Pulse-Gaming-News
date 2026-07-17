@@ -28,6 +28,7 @@ const {
   buildFinalSocialAudioMixFilter,
   buildCreativeTransitionSequence,
   mergeMaterialisedMotionClipCandidates,
+  mergeCurrentHyperframesStoryCardCandidates,
   selectPremiumSceneClips,
   resolveFreshHyperframesPremiumShellGate,
   scenePlanBlockerDiagnostic,
@@ -85,6 +86,108 @@ test("Studio V4 reports every renderer-selected media input for rights reconcili
   );
   assert.equal(evidence.assets[1].scene_count, 2);
   assert.deepEqual(evidence.assets[1].scene_indexes, [0, 1]);
+});
+
+test("Studio V4 interleaves only verified same-story HyperFrames cards into direct motion", () => {
+  const directClips = Array.from({ length: 9 }, (_, index) => ({
+    path: `direct-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    source_family: `official_source_${index + 1}`,
+    durationS: 5,
+  }));
+  const resolvedAssets = {
+    source: { path: "hf-source.mp4", source: "story-specific" },
+    context: { path: "hf-context.mp4", source: "story-specific" },
+    takeaway: { path: "hf-takeaway.mp4", source: "story-specific" },
+  };
+  const durations = {
+    source: 2.6,
+    context: 3.8,
+    takeaway: 4.2,
+  };
+
+  const merged = mergeCurrentHyperframesStoryCardCandidates({
+    clips: directClips,
+    story: { id: "arknights", channel_id: "pulse-gaming" },
+    root: "C:/repo",
+    resolveAssets: () => resolvedAssets,
+    evaluateCard: ({ kind, storyId }) => ({
+      verdict: kind === "context" && storyId !== "arknights" ? "fail" : "pass",
+      blockers: [],
+      evidence: {
+        readabilityContract: {
+          status: "pass",
+          evidence: {
+            readable_text: `${kind.toUpperCase()} STORY PROOF`,
+            planned_visible_duration_s: durations[kind],
+            minimum_visible_duration_s: durations[kind],
+          },
+        },
+      },
+    }),
+  });
+
+  assert.deepEqual(merged.rejected_cards, []);
+  assert.deepEqual(
+    merged.accepted_cards.map((card) => card.kind),
+    ["source", "context", "takeaway"],
+  );
+  assert.deepEqual(
+    merged.clips
+      .map((clip, index) => ({ kind: clip.card_kind, index }))
+      .filter((entry) => entry.kind),
+    [
+      { kind: "source", index: 2 },
+      { kind: "context", index: 6 },
+      { kind: "takeaway", index: 9 },
+    ],
+  );
+
+  const selected = selectPremiumSceneClips(merged.clips);
+  const plan = buildClipScenePlan({
+    clips: selected.clips,
+    durationS: 49.6,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.deepEqual(selected.selected_cards.map((card) => card.kind), [
+    "source",
+    "context",
+    "takeaway",
+  ]);
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.premiumEditRhythm.status, "pass");
+  assert.equal(plan.coveredDurationS >= 49.6 - 0.12, true);
+});
+
+test("Studio V4 refuses failed or cross-story HyperFrames card discovery", () => {
+  const merged = mergeCurrentHyperframesStoryCardCandidates({
+    clips: [{ path: "direct.mp4", durationS: 5 }],
+    story: { id: "expected-story" },
+    resolveAssets: () => ({
+      source: { path: "wrong-story-source.mp4", source: "story-specific" },
+      context: { path: "failed-context.mp4", source: "story-specific" },
+    }),
+    evaluateCard: ({ kind }) => ({
+      verdict: "fail",
+      blockers: [kind === "source"
+        ? "hyperframes_premium_shell_story_mismatch"
+        : "hyperframes_render_not_passed"],
+      evidence: {},
+    }),
+  });
+
+  assert.deepEqual(merged.clips, [{ path: "direct.mp4", durationS: 5 }]);
+  assert.deepEqual(merged.accepted_cards, []);
+  assert.deepEqual(
+    merged.rejected_cards.map((card) => [card.kind, card.blockers[0]]),
+    [
+      ["source", "hyperframes_premium_shell_story_mismatch"],
+      ["context", "hyperframes_render_not_passed"],
+    ],
+  );
 });
 
 test("Studio V4 proof renderer reports current selected HyperFrames sidecars", () => {

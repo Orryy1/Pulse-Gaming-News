@@ -82,6 +82,32 @@ test("caption SRT restores display currency from spoken dollar tokens", () => {
   assert.match(srt, /00:00:04,000/);
 });
 
+test("caption SRT restores display decimals from spoken point tokens", () => {
+  const srt = buildCaptionSrt(
+    "PlayStation Blog says Version 1.4 upgrades PSSR.",
+    5,
+    {
+      words: [
+        { word: "PlayStation", start: 0, end: 0.4 },
+        { word: "Blog", start: 0.4, end: 0.7 },
+        { word: "says", start: 0.7, end: 0.95 },
+        { word: "Version", start: 0.95, end: 1.25 },
+        { word: "1", start: 1.25, end: 1.5 },
+        { word: "point", start: 1.25, end: 1.82 },
+        { word: "4", start: 1.5, end: 1.82 },
+        { word: "upgrades", start: 1.82, end: 2.25 },
+        { word: "PSSR.", start: 2.25, end: 2.75 },
+      ],
+      maxWordsPerPhrase: 3,
+      maxPhraseChars: 24,
+      maxPhraseDurationS: 1.6,
+    },
+  );
+
+  assert.match(srt, /Version 1\.4/);
+  assert.doesNotMatch(srt, /\b1 point\b|\bpoint 4\b/i);
+});
+
 test("caption SRT preserves exact display copy after phonetic titles and decimal currency expansions", () => {
   const script =
     "Black Flag Resynced has nine day-one DLC packs. Steam lists them at $84.91 combined, while the game costs $59.99. If it does not, nine day-one packs turn nostalgia into a pricing fight.";
@@ -677,7 +703,7 @@ test("public copy repair can force a quality rewrite for Hellraiser release-date
   assert.equal(report.changed[0].status, "quality_rewrite_pending_audio_rerender");
   const savedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
   assert.equal(updated.selected_title, "Hellraiser: Revival's October Date Is A Risk");
-  assert.equal(updated.first_spoken_line, "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons.");
+  assert.equal(updated.first_spoken_line, "Hellraiser: Revival picked October 8, and the timing is brutal.");
   assert.match(updated.description, /October 8, 2026/);
   assert.match(updated.narration_script, /Genesis Configuration/);
   assert.match(updated.narration_script, /If the box power lands/);
@@ -2802,7 +2828,7 @@ test("public copy package repair rewrites trailer scorecard blockers with story-
       source: "Xbox",
       claim: "Xbox showed Stranger Than Heaven's Five Eras reveal during Xbox Partner Preview.",
       thumbnail: "STRANGER FIVE ERAS",
-      expected: /every era has to change investigation, fights and movement/i,
+      expected: /five eras need different investigation, fights and movement/i,
       forbidden: /\bThe catch is what matters after the reveal cut\b/i,
     },
     {

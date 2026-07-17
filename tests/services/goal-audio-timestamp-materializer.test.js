@@ -6070,6 +6070,12 @@ test("goal audio materializer repairs zero-duration local Whisper words before c
     timestamps.words.filter((word) => word.end - word.start <= 0.03).length,
     0,
   );
+  assert.equal(
+    timestamps.words.filter((word, index, words) => (
+      index > 0 && Number(word.start) < Number(words[index - 1].end)
+    )).length,
+    0,
+  );
 });
 
 test("goal audio materializer blocks Pulse Gaming ASR brand confusion instead of captioning over it", async () => {
@@ -6217,6 +6223,96 @@ test("normaliseTimestampFile writes display-safe caption tokens for spoken platf
   ]);
 });
 
+test("normaliseTimestampFile preserves spoken lineage while merging decimal caption tokens", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-caption-decimal-lineage-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "Version", start: 0, end: 0.35 },
+      { word: "one", start: 0.36, end: 0.58 },
+      { word: "point", start: 0.59, end: 0.82 },
+      { word: "four", start: 0.83, end: 1.05 },
+      { word: "upgrades", start: 1.06, end: 1.5 },
+      { word: "PlayStation", start: 1.51, end: 1.9 },
+      { word: "five", start: 1.91, end: 2.15 },
+    ],
+    meta: {
+      wordTimestampSource: "local_alignment_normalised",
+      timestampWhisperAlignment: {
+        repaired: true,
+        strategy: "local_whisper_word_alignment",
+        script_expected_word_count: 7,
+        script_actual_word_count: 7,
+        script_matched_word_count: 7,
+      },
+    },
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-17T02:00:00.000Z",
+    text: "Version 1.4 upgrades PS5.",
+    spokenText: "Version one point four upgrades PlayStation five.",
+    provider: "local",
+    alignmentMode: "off",
+  });
+
+  const timestamps = await fs.readJson(timestampPath);
+  assert.deepEqual(
+    timestamps.words.map((word) => word.word),
+    ["Version", "1.4", "upgrades", "PS5"],
+  );
+  assert.deepEqual(timestamps.words[1].spoken_words, ["one", "point", "four"]);
+  assert.deepEqual(timestamps.words[3].spoken_words, ["PlayStation", "five"]);
+  assert.equal(timestamps.meta.timestampDisplayTextRepair.spoken_word_count, 7);
+  assert.deepEqual(timestamps.meta.timestampDisplayTextRepair.replacements, [
+    "one point four->1.4",
+    "PlayStation five->PS5",
+  ]);
+});
+
+test("normaliseTimestampFile merges split alphanumeric display tokens without caption duplication", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-caption-alphanumeric-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "sharp", start: 0, end: 0.25 },
+      { word: "at", start: 0.26, end: 0.4 },
+      { word: "4", start: 0.41, end: 0.58 },
+      { word: "K", start: 0.59, end: 0.72 },
+      { word: "or", start: 0.73, end: 0.85 },
+      { word: "1080", start: 0.86, end: 1.15 },
+      { word: "p", start: 1.16, end: 1.28 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        strategy: "local_whisper_word_alignment",
+      },
+    },
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-17T02:03:00.000Z",
+    text: "Sharp at 4K or 1080p.",
+    spokenText: "Sharp at 4K or 1080p.",
+    provider: "local",
+    alignmentMode: "off",
+  });
+
+  const timestamps = await fs.readJson(timestampPath);
+  assert.deepEqual(
+    timestamps.words.map((word) => word.word),
+    ["sharp", "at", "4K", "or", "1080p"],
+  );
+  assert.deepEqual(timestamps.words[2].spoken_words, ["4", "K"]);
+  assert.deepEqual(timestamps.words[4].spoken_words, ["1080", "p"]);
+  assert.deepEqual(timestamps.meta.timestampDisplayTextRepair.replacements, [
+    "4 K->4K",
+    "1080 p->1080p",
+  ]);
+});
+
 test("normaliseTimestampFile does not clamp long aligned words to stale segment duration metadata", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-stale-duration-"));
   const timestampPath = path.join(root, "timestamps.json");
@@ -6247,6 +6343,37 @@ test("normaliseTimestampFile does not clamp long aligned words to stale segment 
     `expected the last timestamp to keep the long alignment span, got ${normalised.words.at(-1).end}`,
   );
   assert.equal(normalised.meta.timestampDurationClamp, undefined);
+});
+
+test("normaliseTimestampFile rejects duration metadata more than one second behind a padded word timeline", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-stale-padded-duration-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  const words = Array.from({ length: 12 }, (_, index) => ({
+    word: `word${index + 1}`,
+    start: Number((49 + index * 0.4).toFixed(3)),
+    end: Number((49.28 + index * 0.4).toFixed(3)),
+  }));
+  await fs.outputJson(timestampPath, {
+    words,
+    meta: {
+      acoustic: { durationSeconds: 50.08 },
+    },
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-17T02:04:00.000Z",
+    text: words.map((word) => word.word).join(" "),
+    provider: "local",
+    alignmentMode: "off",
+  });
+
+  const normalised = await fs.readJson(timestampPath);
+  assert.equal(normalised.words.at(-1).end, words.at(-1).end);
+  assert.equal(normalised.meta.timestampDurationClamp, undefined);
+  assert.equal(
+    normalised.meta.timestampDurationMetadataIgnored.reason,
+    "metadata_duration_shorter_than_word_timeline",
+  );
 });
 
 test("goal audio materializer writes JSON and Markdown reports", async () => {

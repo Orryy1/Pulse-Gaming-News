@@ -74,6 +74,10 @@ const {
 const {
   runDecodedVisualGate,
 } = require("../lib/studio/v2/forensic-qa-v2");
+const {
+  evaluateHyperframesPremiumShellEvidence,
+  resolveCardAssetsV2,
+} = require("../lib/studio/v2/premium-card-lane-v2");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -1318,6 +1322,148 @@ function mergeMaterialisedMotionClipCandidates(storyClips = [], manifest = {}) {
     merged.push(clip);
   }
   return merged;
+}
+
+const DISCOVERED_HYPERFRAMES_CARD_KINDS = Object.freeze([
+  "source",
+  "context",
+  "takeaway",
+]);
+
+function mergeCurrentHyperframesStoryCardCandidates({
+  clips = [],
+  story = {},
+  root = ROOT,
+  channelId = "",
+  resolveAssets = resolveCardAssetsV2,
+  evaluateCard = evaluateHyperframesPremiumShellEvidence,
+} = {}) {
+  const source = Array.isArray(clips) ? clips.filter(Boolean) : [];
+  const storyId = firstText(story.id, story.story_id);
+  const resolvedChannelId = firstText(
+    channelId,
+    story.channel_id,
+    story.channelId,
+    process.env.CHANNEL,
+    "pulse-gaming",
+  );
+  const existingCards = source.filter((clip) => sceneClipReadableCardKind(clip));
+  if (!storyId || existingCards.length) {
+    return {
+      clips: source,
+      accepted_cards: [],
+      rejected_cards: [],
+      skipped_reason: !storyId ? "story_id_missing" : "story_cards_already_explicit",
+    };
+  }
+
+  const assets = resolveAssets(root, storyId, resolvedChannelId) || {};
+  const acceptedCards = [];
+  const rejectedCards = [];
+  for (const kind of DISCOVERED_HYPERFRAMES_CARD_KINDS) {
+    const descriptor = assets[kind] || {};
+    const cardPath = firstText(descriptor.path);
+    if (!cardPath) continue;
+    const evaluation = evaluateCard({
+      cardPath,
+      kind,
+      storyId,
+      channelId: resolvedChannelId,
+    }) || {};
+    const blockers = Array.isArray(evaluation.blockers)
+      ? evaluation.blockers.filter(Boolean)
+      : [];
+    if (String(evaluation.verdict || "").toLowerCase() !== "pass" || blockers.length) {
+      rejectedCards.push({ kind, path: cardPath, blockers });
+      continue;
+    }
+    const readabilityContract = evaluation.evidence?.readabilityContract || {};
+    const readability = readabilityContract.evidence || readabilityContract;
+    const durationS = Number(
+      readability.planned_visible_duration_s ??
+        readability.visible_duration_s ??
+        readability.duration_s,
+    );
+    const minimumReadableDurationS = Number(
+      readability.minimum_visible_duration_s ??
+        readability.minimum_readable_duration_s ??
+        durationS,
+    );
+    if (!Number.isFinite(durationS) || durationS <= 0) {
+      rejectedCards.push({
+        kind,
+        path: cardPath,
+        blockers: ["hyperframes_readable_hold_duration_missing"],
+      });
+      continue;
+    }
+    acceptedCards.push({
+      id: `hyperframes_${kind}_card_${storyId}`,
+      kind,
+      card_kind: kind,
+      path: cardPath,
+      source_url: `local://pulse-hyperframes/${storyId}/${kind}`,
+      source_type: "hyperframes_premium_shell_card",
+      source_family: `hyperframes_${kind}_card`,
+      motion_family: `hyperframes_${kind}_card`,
+      media_kind: "owned_editorial_motion_graphic",
+      asset_class: `hyperframes_${kind}_card`,
+      readable_text: firstText(readability.readable_text, readability.text, kind),
+      durationS: Number(durationS.toFixed(3)),
+      minimum_readable_duration_s: Number(
+        (Number.isFinite(minimumReadableDurationS) && minimumReadableDurationS > 0
+          ? minimumReadableDurationS
+          : durationS).toFixed(3),
+      ),
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      allowed_use: "owned_editorial_motion_graphic",
+      commercial_use_allowed: true,
+      approval_status: "approved_for_owned_editorial_use",
+      hyperframes_card: true,
+      hyperframes_premium_shell_evidence: evaluation.evidence || {},
+    });
+  }
+
+  if (!acceptedCards.length) {
+    return {
+      clips: source,
+      accepted_cards: [],
+      rejected_cards: rejectedCards,
+      skipped_reason: "no_verified_story_cards",
+    };
+  }
+
+  const insertionPoints = acceptedCards.map((_, index) =>
+    Math.max(
+      1,
+      Math.min(
+        source.length,
+        Math.round(((index + 1) * source.length) / (acceptedCards.length + 1)),
+      ),
+    ),
+  );
+  const merged = [];
+  for (let index = 0; index < source.length; index += 1) {
+    merged.push(source[index]);
+    for (let cardIndex = 0; cardIndex < acceptedCards.length; cardIndex += 1) {
+      if (insertionPoints[cardIndex] === index + 1) {
+        merged.push(acceptedCards[cardIndex]);
+      }
+    }
+  }
+
+  return {
+    clips: merged,
+    accepted_cards: acceptedCards.map((card, index) => ({
+      kind: card.card_kind,
+      path: card.path,
+      duration_s: card.durationS,
+      insertion_after_direct_clip: insertionPoints[index],
+    })),
+    rejected_cards: rejectedCards,
+    skipped_reason: null,
+  };
 }
 
 function sceneClipReadableText(clip = {}, fallbackKind = "") {
@@ -2822,10 +2968,16 @@ async function renderProof({ storyJson, output }) {
   const siblingMotionManifest = await fs.pathExists(siblingMotionManifestPath)
     ? await fs.readJson(siblingMotionManifestPath)
     : {};
-  const clipCandidates = mergeMaterialisedMotionClipCandidates(
+  const materialisedClipCandidates = mergeMaterialisedMotionClipCandidates(
     bridgeClips.length ? bridgeClips : story.video_clips || [],
     siblingMotionManifest,
   );
+  const hyperframesCardDiscovery = mergeCurrentHyperframesStoryCardCandidates({
+    clips: materialisedClipCandidates,
+    story,
+    root: ROOT,
+  });
+  const clipCandidates = hyperframesCardDiscovery.clips;
   const clips = [];
   for (const clip of clipCandidates) {
     const rawPath = sceneClipPath(clip);
@@ -3129,6 +3281,9 @@ async function renderProof({ storyJson, output }) {
         selected_cards: premiumSceneSelection.selected_cards,
         skipped_cards: premiumSceneSelection.skipped_cards,
         clip_count: premiumSceneSelection.clips.length,
+        discovered_story_cards: hyperframesCardDiscovery.accepted_cards,
+        rejected_story_cards: hyperframesCardDiscovery.rejected_cards,
+        discovery_skipped_reason: hyperframesCardDiscovery.skipped_reason,
       },
       direct_motion_visual_selection: {
         version: DIRECT_MOTION_VISUAL_SELECTOR_V5.version,
@@ -3263,6 +3418,7 @@ module.exports = {
   buildOverlayChain,
   buildCreativeTransitionSequence,
   mergeMaterialisedMotionClipCandidates,
+  mergeCurrentHyperframesStoryCardCandidates,
   selectPremiumSceneClips,
   resolveFreshHyperframesPremiumShellGate,
   buildProfessionalSourceDiversityProof,

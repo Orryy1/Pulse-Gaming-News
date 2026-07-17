@@ -64,6 +64,62 @@ test("fresh refill rewrite preserves a concrete ESO Season One argument", () => 
   assert.doesNotMatch(script.full_script, /Source-Proof Risk|Player Test/i);
 });
 
+test("fresh refill rewrite turns Ascend to ZERO into a source-bound 30-second mechanic story", () => {
+  const sourceUrl =
+    "https://news.xbox.com/en-us/2026/07/13/ascend-to-zero-a-time-bending-roguelike-xbox-launch/";
+  const claims = [
+    "The first run starts with 30 seconds on the clock, and taking a lethal hit removes seconds.",
+    "Time-Stop freezes enemies, projectiles and the clock while the player keeps moving.",
+    "When time resumes, the player's Avatar Skill and gadgets fire at once.",
+    "Ascend to ZERO is available on Xbox Series X|S, Xbox on PC and Xbox Cloud, with Xbox Play Anywhere and Xbox Game Pass.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_ascend_to_zero",
+      title: "Ascend to ZERO Jungle Comeback",
+      source: {
+        name: "Xbox Wire",
+        url: sourceUrl,
+        title: "Ascend to ZERO: A Time-Bending Roguelike Sharpened to the Last Second",
+        type: "rss",
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "Ascend to ZERO: A Time-Bending Roguelike Sharpened to the Last Second",
+        claims: claims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+    },
+    manifest: {
+      story_id: "rss_ascend_to_zero",
+      canonical_subject: "Ascend to ZERO",
+      canonical_title: "Ascend to ZERO Jungle Comeback",
+      primary_source: "Xbox Wire",
+      primary_source_url: sourceUrl,
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script, null, 2));
+  assert.equal(script.suggested_title, "Ascend To ZERO Turns Every Second Into A Weapon");
+  assert.equal(script.suggested_thumbnail_text, "30 SECONDS TO BREAK TIME");
+  assert.match(script.full_script, /^Ascend to ZERO gives you 30 seconds to break time\./);
+  assert.match(script.full_script, /lethal hit costs seconds|Time-Stop|projectiles|gadgets fire/i);
+  assert.match(script.full_script, /Xbox Series X and S|Xbox on PC|Xbox Cloud|Game Pass/i);
+  assert.match(script.full_script, /one-more-run obsession|every mistake into frustration/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(
+    script.full_script,
+    /subscription problem|subscription libraries|11\.99|named source|why should players care|watch pile/i,
+  );
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass", JSON.stringify(script.coherence, null, 2));
+});
+
 function tekkenBobJob(artifactDir) {
   return {
     story_id: "rss_4a07e21d3192fd7c",

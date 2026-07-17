@@ -302,6 +302,63 @@ test("goal production render materializer hydrates generic fallback clips from g
   assert.deepEqual(hydrated.provenance, governedEvidence.provenance);
 });
 
+test("goal production render materializer binds duration top-up clips to verified source-master sidecars", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-source-sidecar-"));
+  const sourceDir = path.join(root, "test", "output", "official-youtube");
+  const masterPath = path.join(sourceDir, "OYNqetlubUw.mp4");
+  const clipPath = path.join(root, "output", "video_cache", "segment_direct_motion_4.mp4");
+  const masterBytes = Buffer.from("verified-official-youtube-master");
+  await fs.outputFile(masterPath, masterBytes);
+  await fs.outputFile(clipPath, Buffer.alloc(2048, 4));
+  await fs.outputJson(path.join(sourceDir, "OYNqetlubUw.source-identity.json"), {
+    schema: "pulse_motion_source_identity_sidecar_v1",
+    schema_version: 1,
+    producer: "pulse_source_identity_oembed_verifier_v1",
+    canonical_source_url: "https://www.youtube.com/watch?v=OYNqetlubUw",
+    youtube_video_id: "OYNqetlubUw",
+    channel_identity: {
+      author_name: "Official Publisher",
+      author_url: "https://www.youtube.com/@OfficialPublisher",
+    },
+    source_master_sha256: crypto.createHash("sha256").update(masterBytes).digest("hex"),
+    identity_scope: "source_identity_only",
+    rights_grant: false,
+    evidence: {
+      provider: "youtube_oembed",
+      verified_at: "2026-07-17T04:30:00.000Z",
+      title: "Official gameplay trailer",
+    },
+  });
+
+  const hydrated = await _private.hydrateClipWithTrustedSourceIdentity(
+    {
+      id: "segment_direct_motion_4",
+      path: clipPath,
+      source_url: masterPath,
+      source_type: "official_youtube_channel",
+      source_family: "url:youtube:oynqetlubuw_window_27_4",
+      base_source_family: `url:${masterPath.toLowerCase().replaceAll("\\", "/")}`,
+      media_kind: "direct_video",
+      durationS: 4,
+    },
+    { workspaceRoot: root },
+  );
+
+  assert.equal(hydrated.canonical_source_url, "https://www.youtube.com/watch?v=OYNqetlubUw");
+  assert.equal(hydrated.youtube_video_id, "OYNqetlubUw");
+  assert.equal(
+    hydrated.source_master_sha256,
+    crypto.createHash("sha256").update(masterBytes).digest("hex"),
+  );
+  assert.equal(hydrated.motion_source_identity.status, "resolved");
+  assert.equal(hydrated.motion_source_identity.strict_pass, true);
+  assert.equal(
+    hydrated.motion_source_identity.source_identity_provenance.kind,
+    "pulse_source_identity_sidecar",
+  );
+  assert.equal(hydrated.motion_source_identity.source_identity_provenance.rights_grant, false);
+});
+
 test("goal production render materializer preserves governed subject identity for renderer clips", () => {
   const bridged = _private.rendererBridgeClipFromProductionClip({
     id: "official-denshattack-window",
@@ -515,7 +572,7 @@ test("goal production render materializer selects non-overlapping windows from o
   assert.deepEqual(selected.map((clip) => clip.id), ["fogpiercer-demo-0", "fogpiercer-demo-6"]);
 });
 
-test("goal production render materializer completes rights for selected official storefront scenes", () => {
+test("goal production render materializer does not invent rights for selected storefront scenes", () => {
   const ledger = [{
     asset_id: "owned-card",
     path: "output/generated/owned-card.mp4",
@@ -540,10 +597,9 @@ test("goal production render materializer completes rights for selected official
   ];
 
   const completed = _private.augmentRightsLedgerForSelectedClips(ledger, clips);
-  assert.equal(completed.length, 2);
+  assert.equal(completed.length, 1);
   const steam = completed.find((record) => record.asset_id === "steam-scene-1");
-  assert.equal(steam.licence_basis, "steam_storefront_promotional_editorial_use");
-  assert.deepEqual(steam.allowed_platforms, ["youtube", "instagram", "facebook"]);
+  assert.equal(steam, undefined);
   assert.equal(completed.filter((record) => record.asset_id === "owned-card").length, 1);
 });
 
@@ -1887,6 +1943,81 @@ test("production renderer accepts compact display tokens split by strict Whisper
       return {
         clips: 2,
         rendered_duration_s: 1,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const generation = await fs.readJson(
+    path.join(artifactDir, "flagship", "generation_manifest.json"),
+  );
+  assert.equal(generation.complete, true, JSON.stringify(generation.blockers, null, 2));
+  assert.equal(generation.verdict, "GREEN");
+});
+
+test("production renderer verifies merged display tokens through preserved spoken lineage", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-spoken-lineage-"));
+  const displayScript = "Version 1.4 upgrades PS5.";
+  const spokenScript = "Version one point four upgrades PlayStation five.";
+  const artifactDir = await makePackage(root, "flagship-spoken-lineage", {
+    narration_script: displayScript,
+    spoken_narration_script: spokenScript,
+  });
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    complete: true,
+    words: [
+      { word: "Version", start: 0, end: 0.3 },
+      {
+        word: "1.4",
+        start: 0.31,
+        end: 0.85,
+        spoken_words: ["one", "point", "four"],
+      },
+      { word: "upgrades", start: 0.86, end: 1.2 },
+      {
+        word: "PS5.",
+        start: 1.21,
+        end: 1.8,
+        spoken_words: ["PlayStation", "five."],
+      },
+    ],
+    meta: {
+      display_text: displayScript,
+      spoken_text: spokenScript,
+      transcript: spokenScript,
+    },
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,800\n${displayScript}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  const job = readyJob("flagship-spoken-lineage", artifactDir, {
+    evidence: {
+      ...readyJob("flagship-spoken-lineage", artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-17T02:01:00.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      return {
+        clips: 2,
+        rendered_duration_s: 1.8,
         creative_system_version: "pulse_visual_identity_v5",
         decoded_visual_gate: {
           status: "pass",
@@ -5688,7 +5819,7 @@ test("goal production render materializer prefers real materialised clips over s
   assert.equal(refreshedBenchmark.visual_evidence_profile.generated_only_motion_deck, false);
 });
 
-test("goal production render materializer normalises Steam storefront rights basis during refresh", async () => {
+test("goal production render materializer preserves RED when Steam storefront rights are undocumented", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-steam-rights-"));
   const artifactDir = await makePackage(root, "steam-rights-normalise", {
     canonical_subject: "Game Pass",
@@ -5753,10 +5884,10 @@ test("goal production render materializer normalises Steam storefront rights bas
   });
 
   const repairedRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
-  assert.equal(repairedRights.verdict, "pass");
-  assert.equal(repairedRights.failures.includes("rights:licence_basis_missing"), false);
+  assert.match(repairedRights.verdict, /^(?:fail|red)$/i);
+  assert.equal(repairedRights.failures.includes("rights:licence_basis_missing"), true);
   assert.equal(
-    repairedRights.assets.every((asset) => asset.licence_basis === "steam_storefront_promotional_editorial_use"),
+    repairedRights.assets.every((asset) => !asset.licence_basis && !asset.rights_basis),
     true,
   );
 });

@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -953,6 +954,192 @@ test("goal batch packages hydrate repaired SFX evidence from existing artefacts"
   assert.deepEqual(batch.packages[0].sfx_source_plan.covered_roles, ["impact", "sub_hit", "transition", "ui_tick"]);
   assert.equal(batch.packages[0].director_beat_map.readiness.status, "director_ready");
   assert.doesNotMatch(batch.packages[0].publish_verdict.reason_codes.join("\n"), /sfx_source:missing_role/);
+});
+
+test("goal batch packages hydrate strict non-SFX motion rights into the general rights ledger", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-existing-motion-rights-"));
+  try {
+    const ready = greenStory("existing-motion-rights-one");
+    const artifactDir = path.join(root, ready.id);
+    const motionClip = ready.video_clips[0];
+    const strictMotionRights = {
+      asset_id: motionClip.id,
+      asset_type: "motion",
+      kind: "video",
+      type: "motion_clip",
+      path: motionClip.path,
+      source_url: motionClip.source_url,
+      source_type: motionClip.source_type,
+      source_family: motionClip.source_family,
+      rights_risk_class: "strict_official_motion_transformative_editorial_use",
+      licence_basis: "transformative_editorial_short_form",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube_shorts", "tiktok", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      risk_score: 0.18,
+      evidence_file: "rights/strict-motion-evidence.json",
+      evidence_sha256: "strict-motion-evidence-sha256",
+      evidence_size_bytes: 4096,
+      approval_status: "approved_for_transformative_editorial_use",
+    };
+    await fs.ensureDir(artifactDir);
+    await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+      schema_version: 2,
+      story_id: ready.id,
+      verdict: "pass",
+      records: [strictMotionRights],
+    }, { spaces: 2 });
+
+    const batch = buildGoalBatchPackages({
+      stories: [ready],
+      rightsLedgerByStory: {
+        [ready.id]: rightsFor(ready).filter((record) => record.asset_id !== motionClip.id),
+      },
+      existingArtifactRoot: root,
+      generatedAt: "2026-07-17T10:00:00.000Z",
+    });
+
+    const hydratedMotionRights = batch.packages[0].rights_ledger.records.find(
+      (record) => record.asset_id === motionClip.id,
+    );
+    assert.ok(hydratedMotionRights);
+    assert.equal(hydratedMotionRights.asset_type, "motion");
+    assert.equal(hydratedMotionRights.kind, "video");
+    assert.equal(
+      hydratedMotionRights.rights_risk_class,
+      strictMotionRights.rights_risk_class,
+    );
+    assert.equal(hydratedMotionRights.risk_score, strictMotionRights.risk_score);
+    assert.equal(hydratedMotionRights.evidence_file, strictMotionRights.evidence_file);
+    assert.equal(hydratedMotionRights.evidence_sha256, strictMotionRights.evidence_sha256);
+  } finally {
+    await fs.remove(root);
+  }
+});
+
+test("goal batch packages bind restored motion rights to current bytes instead of stale colliding asset ids", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-current-motion-rights-"));
+  try {
+    const ready = greenStory("current-motion-rights-one");
+    const artifactDir = path.join(root, ready.id);
+    const currentClips = [];
+    await fs.ensureDir(artifactDir);
+    for (let index = 0; index < 5; index += 1) {
+      const clipPath = path.join(artifactDir, `current-window-${index + 1}.mp4`);
+      const bytes = Buffer.alloc(4096 + index, index + 1);
+      await fs.writeFile(clipPath, bytes);
+      currentClips.push({
+        id: index === 0 ? ready.video_clips[0].id : `${ready.id}-current-${index + 1}`,
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: index >= 3
+          ? "https://video.akamai.steamstatic.com/store_trailers/2697940/shared/hls_264_master.m3u8"
+          : `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2697940/extras/current-${index + 1}.webm`,
+        source_type: "platform_storefront",
+        source_family: `${ready.id}_current_family_${index + 1}`,
+        base_source_family: `${ready.id}_current_base_${index + 1}`,
+        media_kind: "direct_video",
+        rights_basis: "official_storefront_promotional_editorial",
+        licence_basis: "official_storefront_promotional_editorial",
+        allowed_use: "transformative_editorial_short_form",
+        allowed_platforms: ["youtube", "instagram", "facebook"],
+        commercial_use_allowed: true,
+        approval_status: "approved_for_transformative_editorial_use",
+        durationS: 4,
+        mediaStartS: index * 4,
+        validated: true,
+        segmentValidationPassed: true,
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        asset_sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+        asset_size_bytes: bytes.length,
+      });
+    }
+    const materialisedPath = path.join(artifactDir, "materialised_motion_clips.json");
+    await fs.writeJson(materialisedPath, {
+      schema_version: 1,
+      story_id: ready.id,
+      status: "ready",
+      clip_count: currentClips.length,
+      distinct_motion_family_count: currentClips.length,
+      direct_video_motion_asset_count: currentClips.length,
+      direct_video_motion_family_count: currentClips.length,
+      clips: currentClips,
+      materialised_clips: currentClips,
+    }, { spaces: 2 });
+    const stalePath = path.join(artifactDir, "stale-window.mp4");
+    await fs.writeFile(stalePath, Buffer.from("stale-media"));
+    await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+      schema_version: 2,
+      story_id: ready.id,
+      verdict: "pass",
+      records: [
+        {
+          asset_id: ready.video_clips[0].id,
+          asset_type: "motion",
+          kind: "video",
+          path: stalePath,
+          source_url: "https://publisher.example/old-unrelated-window.mp4",
+          source_type: "official_trailer",
+          source_family: "stale_family",
+          licence_basis: "official_reference_transformative_short",
+          allowed_use: "transformative_editorial_short_form",
+          allowed_platforms: ["youtube", "instagram", "facebook"],
+          commercial_use_allowed: true,
+          risk_score: 0.18,
+          evidence_file: "rights/stale-window.json",
+          asset_sha256: crypto.createHash("sha256").update(Buffer.from("stale-media")).digest("hex"),
+          asset_size_bytes: Buffer.byteLength("stale-media"),
+          approval_status: "approved_for_transformative_editorial_use",
+        },
+        {
+          asset_id: currentClips[4].id,
+          asset_type: "motion",
+          kind: "video",
+          path: path.join(artifactDir, "old-window-from-same-trailer.mp4"),
+          source_url: currentClips[4].source_url,
+          source_type: "steam_movie",
+          source_family: "old_window_from_same_trailer",
+          licence_basis: "official_storefront_promotional_editorial",
+          allowed_use: "transformative_editorial_short_form",
+          allowed_platforms: ["youtube", "instagram", "facebook"],
+          commercial_use_allowed: true,
+          risk_score: 0.18,
+          evidence_file: "rights/old-window-from-same-trailer.json",
+          approval_status: "approved_for_transformative_editorial_use",
+        },
+      ],
+    }, { spaces: 2 });
+
+    const batch = buildGoalBatchPackages({
+      stories: [ready],
+      rightsLedgerByStory: { [ready.id]: rightsFor(ready) },
+      existingArtifactRoot: root,
+      generatedAt: "2026-07-17T05:00:00.000Z",
+    });
+
+    const current = batch.packages[0].rights_ledger.records.find(
+      (record) => record.asset_id === ready.video_clips[0].id,
+    );
+    assert.ok(current);
+    assert.equal(path.resolve(current.path), path.resolve(currentClips[0].path));
+    assert.equal(current.source_url, currentClips[0].source_url);
+    assert.equal(current.asset_sha256, currentClips[0].asset_sha256);
+    assert.equal(current.asset_size_bytes, currentClips[0].asset_size_bytes);
+    assert.equal(path.resolve(current.evidence_file), path.resolve(materialisedPath));
+    assert.notEqual(path.resolve(current.path), path.resolve(stalePath));
+    const sharedSourceWindow = batch.packages[0].rights_ledger.records.find(
+      (record) => record.asset_id === currentClips[3].id,
+    );
+    assert.ok(sharedSourceWindow);
+    assert.equal(path.resolve(sharedSourceWindow.path), path.resolve(currentClips[3].path));
+    assert.equal(
+      path.resolve(sharedSourceWindow.evidence_file),
+      path.resolve(materialisedPath),
+    );
+  } finally {
+    await fs.remove(root);
+  }
 });
 
 test("goal proof package publish verdict turns RED when transcript scorecard blocks", () => {

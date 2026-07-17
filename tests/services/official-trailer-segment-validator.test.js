@@ -187,6 +187,52 @@ test("official trailer segment validator preserves explicit source rights eviden
   );
 });
 
+test("official trailer segment validator preserves immutable official YouTube source identity", async () => {
+  const sourceSha256 =
+    "3278da3f6179aa3c75adadc1d62d386fa1b36675df0f2fa4ac21a8702908e9cf";
+  const referenceUrl = "https://www.youtube.com/watch?v=CRiqKC0C-z8";
+  const officialChannel = "https://www.youtube.com/@arknightsendfieldEN/";
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        sourceType: "official_youtube_channel",
+        source_family: "youtube:CRiqKC0C-z8",
+        sourceSha256,
+        referenceUrl,
+        youtubeVideoId: "CRiqKC0C-z8",
+        provenance: {
+          source: "official_youtube_channel_download",
+          source_sha256: sourceSha256,
+          reference_url: referenceUrl,
+          youtube_video_id: "CRiqKC0C-z8",
+          official_channel: officialChannel,
+          official_channel_id: "UCowPaVRBzg8CE6K4CB6LJfw",
+        },
+      }),
+    ],
+    { outputRoot: tempOutputRoot("youtube-source-identity-dry-run") },
+  );
+
+  assert.deepEqual(
+    {
+      canonical_source_url: report.segments[0].canonical_source_url,
+      youtube_video_id: report.segments[0].youtube_video_id,
+      source_master_sha256: report.segments[0].source_master_sha256,
+      reference_url: report.segments[0].reference_url,
+      official_channel: report.segments[0].official_channel,
+      official_channel_id: report.segments[0].official_channel_id,
+    },
+    {
+      canonical_source_url: referenceUrl,
+      youtube_video_id: "CRiqKC0C-z8",
+      source_master_sha256: sourceSha256,
+      reference_url: referenceUrl,
+      official_channel: officialChannel,
+      official_channel_id: "UCowPaVRBzg8CE6K4CB6LJfw",
+    },
+  );
+});
+
 test("segment validator CLI scopes batch clip refs from explicit reference reports", () => {
   const refs = buildClipRefsFromReport(
     {

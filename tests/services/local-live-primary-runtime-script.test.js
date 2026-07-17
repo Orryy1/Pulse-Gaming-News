@@ -21,6 +21,33 @@ test("local live primary runtime launcher supports explicit safe restart", () =>
   assert.match(script, /Stop-Process -Id \$pidToStop -Force/);
 });
 
+test("local live primary runtime launcher serialises the complete runtime transition", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(
+    script,
+    /\$runtimeTransitionMutexName\s*=\s*"Local\\PulseGamingPrimaryRuntimeTransition-\{0\}"\s+-f\s+\$Port/,
+  );
+  assert.match(
+    script,
+    /\[System\.Threading\.Mutex\]::new\(\$false,\s*\$runtimeTransitionMutexName\)/,
+  );
+  assert.match(script, /\$runtimeTransitionMutex\.WaitOne\(/);
+  assert.match(script, /catch \[System\.Threading\.AbandonedMutexException\]/);
+  assert.match(
+    script,
+    /finally\s*\{[\s\S]*\$runtimeTransitionMutex\.ReleaseMutex\(\)[\s\S]*\$runtimeTransitionMutex\.Dispose\(\)/,
+  );
+
+  const waitIndex = script.indexOf("$runtimeTransitionMutex.WaitOne(");
+  const listenerIndex = script.indexOf("$existing = Get-NetTCPConnection");
+  const verifiedStartIndex = script.indexOf('Write-Output ("node_started');
+  const releaseIndex = script.indexOf("$runtimeTransitionMutex.ReleaseMutex()");
+  assert.ok(waitIndex < listenerIndex, "mutex must be acquired before listener inspection");
+  assert.ok(listenerIndex < verifiedStartIndex, "listener inspection must precede verified start");
+  assert.ok(verifiedStartIndex < releaseIndex, "mutex must remain held through start verification");
+});
+
 test("local live primary runtime launcher auto-recovers stale matching server runtime", () => {
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 

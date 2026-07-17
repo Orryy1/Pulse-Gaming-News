@@ -36,6 +36,85 @@ function materializeGoalRealMotion(options = {}) {
   });
 }
 
+async function makeGovernedSelectorClip(root, storyId, index) {
+  const clipPath = path.join(
+    root,
+    "output",
+    "video_cache",
+    `${storyId}-selector-${index + 1}.mp4`,
+  );
+  const contents = Buffer.alloc(4096, index + 1);
+  await fs.outputFile(clipPath, contents);
+  const sha256 = crypto.createHash("sha256").update(contents).digest("hex");
+  const sourceUrl = `https://official.example.com/${storyId}/trailer-${index + 1}.mp4`;
+  const baseSourceId = `sha256:${sha256}`;
+  return {
+    id: `selector_direct_motion_${index + 1}`,
+    path: clipPath,
+    local_materialized_path: clipPath,
+    source_url: sourceUrl,
+    canonical_source_url: sourceUrl,
+    source_family: `selector_window_${index + 1}`,
+    base_source_family: `selector_base_${index + 1}`,
+    motion_family: `selector_window_${index + 1}`,
+    source_type: "official_publisher_promotional_video",
+    media_kind: "direct_video",
+    durationS: 5,
+    mediaStartS: index * 6,
+    rights_basis: "official_reference_only",
+    licence_basis: "official_reference_only",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    credit_required: false,
+    evidence_reference: sourceUrl,
+    risk_score: 0.2,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    validated: true,
+    segmentValidationPassed: true,
+    asset_sha256: sha256,
+    asset_size_bytes: contents.length,
+    probed_duration_seconds: 5,
+    video_codec: "h264",
+    width: 1080,
+    height: 1920,
+    materialized_file_evidence: {
+      sha256,
+      size_bytes: contents.length,
+      duration_seconds: 5,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+    base_source_asset_id: baseSourceId,
+    base_source_identity_basis: "source_master_sha256",
+    source_master_sha256: sha256,
+    motion_source_identity: {
+      schema_version: 1,
+      status: "resolved",
+      strict_pass: true,
+      canonical_source_url: sourceUrl,
+      source_master_sha256: sha256,
+      base_source_asset_id: baseSourceId,
+      base_source_identity_basis: "source_master_sha256",
+      blockers: [],
+    },
+    validation_provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: "gameplay_action_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    },
+    provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: "gameplay_action_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+    },
+  };
+}
+
 async function makePackage(root, storyId = "forza-real-motion") {
   const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
   await fs.ensureDir(artifactDir);
@@ -4941,6 +5020,228 @@ test("real motion materializer completes a motion floor by merging governed exis
   assert.equal(preserved.provenance.allowed_for_flash_lane, true);
 });
 
+test("real motion materializer recovers strict selector clips after a partial repair invalidates the footage inventory", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-selector-recovery-"));
+  const storyId = "arknights-selector-recovery";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(path.join(artifactDir, "qa", "direct-motion"));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    status: "blocked",
+    readiness: {
+      status: "blocked",
+      blockers: ["real_motion_clip_minimum_not_met"],
+    },
+    motion_inventory: {
+      production_motion_clips: [],
+      accepted_local_clips: [],
+    },
+  });
+
+  const recoveredClips = [];
+  for (let index = 0; index < 7; index += 1) {
+    recoveredClips.push(await makeGovernedSelectorClip(root, storyId, index));
+  }
+  await fs.outputJson(
+    path.join(artifactDir, "qa", "direct-motion", "final_selection_dense_selector_report.json"),
+    {
+      version: "pulse_direct_motion_visual_selector_v5",
+      policy_tier: "ultimate_professional",
+      blockers: [],
+      input_clip_count: recoveredClips.length,
+      selected_clip_count: recoveredClips.length,
+      clips: recoveredClips,
+      source_diversity: {
+        strict_pass: true,
+        reasons: [],
+        blockers: [],
+      },
+      professional_source_diversity: {
+        status: "pass",
+        strict_pass: true,
+        blockers: [],
+      },
+    },
+  );
+
+  const segmentValidationReport = {
+    segments: Array.from({ length: 3 }, (_, index) => {
+      const directUrl = `https://cdn.official.example.com/arknights/trailer-${index + 1}.mp4`;
+      return {
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "trimmed_segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        source_url: directUrl,
+        canonical_source_url: directUrl,
+        youtube_video_id: `official-${index + 1}`,
+        source_master_sha256: `${index + 8}`.repeat(64).slice(0, 64),
+        source_type: "official_publisher_promotional_video",
+        source_url_kind: "direct_video",
+        provider: "youtube",
+        entity: "Arknights: Endfield",
+        source_family: `official_youtube_window_${index + 1}`,
+        media_start_s: 18 + index * 12,
+        duration_s: 5,
+        source_duration_s: 90,
+        rights_risk_class: "official_publisher_promotional_video",
+        allowed_render_use: "transformative_editorial_short_form",
+        provenance: {
+          source: "official_trailer_segment_validator",
+          base_source_family: `official_youtube_base_${index + 1}`,
+        },
+      };
+    }),
+  };
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["real_motion_clip_minimum_not_met"],
+        actions: [{
+          action_id: "materialise_validated_real_motion_clips",
+          reason_codes: ["real_motion_clip_minimum_not_met"],
+        }],
+      }],
+    },
+    segmentValidationReport,
+    generatedAt: "2026-07-17T00:15:00.000Z",
+    minClips: 10,
+    minFamilies: 10,
+    minBaseSources: 8,
+    strictBaseSourceDiversity: true,
+    maxClips: 3,
+    maxDirectClipsPerBaseSource: 2,
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 9));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(
+    report.summary.materialized_story_count,
+    1,
+    JSON.stringify(report.jobs[0], null, 2),
+  );
+  assert.equal(report.jobs[0].repair_scope, "incremental_motion_completion");
+  assert.equal(report.jobs[0].recovered_selector_clip_count, 7);
+  assert.equal(report.jobs[0].total_motion_clip_count, 10);
+  assert.equal(
+    report.jobs[0].professional_source_diversity.observed_genuine_base_source_count,
+    10,
+  );
+
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.clip_count, 10);
+  assert.equal(materialised.distinct_motion_family_count, 10);
+  assert.ok(
+    materialised.clips.some((clip) => clip.id === "selector_direct_motion_1"),
+    "strict selector clip should be recovered into the authoritative inventory",
+  );
+});
+
+test("real motion materializer refuses incomplete or non-green selector recovery evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-selector-reject-"));
+  const storyId = "arknights-selector-reject";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(path.join(artifactDir, "qa", "direct-motion"));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      production_motion_clips: [],
+      accepted_local_clips: [],
+    },
+  });
+  const incompleteClip = await makeGovernedSelectorClip(root, storyId, 0);
+  delete incompleteClip.materialized_file_evidence.sha256;
+  delete incompleteClip.asset_sha256;
+  await fs.outputJson(
+    path.join(artifactDir, "qa", "direct-motion", "final_selection_dense_selector_report.json"),
+    {
+      policy_tier: "ultimate_professional",
+      blockers: ["independent_visual_review_amber"],
+      selected_clip_count: 1,
+      clips: [incompleteClip],
+      source_diversity: {
+        strict_pass: true,
+        blockers: [],
+      },
+      professional_source_diversity: {
+        status: "pass",
+        strict_pass: true,
+        blockers: [],
+      },
+    },
+  );
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["real_motion_clip_minimum_not_met"],
+        actions: [{
+          action_id: "materialise_validated_real_motion_clips",
+          reason_codes: ["real_motion_clip_minimum_not_met"],
+        }],
+      }],
+    },
+    segmentValidationReport: {
+      segments: [{
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "trimmed_segment_samples_passed",
+        source_url: "https://official.example.com/new.mp4",
+        source_type: "official_publisher_promotional_video",
+        source_url_kind: "direct_video",
+        provider: "official",
+        entity: "Arknights: Endfield",
+        source_family: "new_window",
+        media_start_s: 18,
+        duration_s: 5,
+        source_duration_s: 90,
+        rights_risk_class: "official_publisher_promotional_video",
+        allowed_render_use: "transformative_editorial_short_form",
+        provenance: {
+          source: "official_trailer_segment_validator",
+          base_source_family: "new_base",
+        },
+      }],
+    },
+    generatedAt: "2026-07-17T00:20:00.000Z",
+    minClips: 2,
+    minFamilies: 2,
+    maxClips: 1,
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 9));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+  });
+
+  assert.equal(report.summary.materialized_story_count, 0);
+  assert.equal(report.summary.blocked_story_count, 1);
+  assert.equal(report.jobs[0].recovered_selector_clip_count, 0);
+  assert.ok(report.jobs[0].blockers.includes("real_motion_clip_minimum_not_met"));
+});
+
 test("real motion materializer can use validated segment reports to repair a direct-video gap", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-segment-report-"));
   const storyId = "pokemon-segment-direct-gap";
@@ -6926,6 +7227,68 @@ test("real motion materializer preserves immutable identity fields from validate
   assert.equal(rows[0].canonical_source_url, "https://www.youtube.com/watch?v=Official123");
   assert.equal(rows[0].youtube_video_id, "Official123");
   assert.equal(rows[0].source_master_sha256, masterHash);
+});
+
+test("real motion materializer uses validator-approved trim timing instead of the rejected source window", () => {
+  const rows = candidateRows({
+    storyId: "segment-trim-story",
+    segmentValidationReport: {
+      segments: [{
+        id: "segment-with-approved-trim",
+        story_id: "segment-trim-story",
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        trusted_source_matched: true,
+        source_url: "https://cdn.publisher.example/game/official-trailer.mp4",
+        source_url_kind: "direct_video",
+        source_type: "official_trailer_video",
+        entity: "Trimmed Game",
+        media_start_s: 132,
+        duration_s: 5,
+        trim_recommended: true,
+        recommended_media_start_s: 134.15,
+        recommended_duration_s: 2.85,
+      }],
+    },
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].mediaStartS, 134.15);
+  assert.equal(rows[0].durationS, 2.85);
+  assert.equal(rows[0].provenance.media_start_s, 134.15);
+  assert.equal(rows[0].provenance.duration_s, 2.85);
+  assert.equal(rows[0].provenance.original_media_start_s, 132);
+  assert.equal(rows[0].provenance.original_duration_s, 5);
+  assert.equal(rows[0].provenance.validator_trim_applied, true);
+  assert.match(rows[0].source_family, /window_134_15_2_85$/);
+});
+
+test("real motion materializer rejects malformed validator trim timing instead of falling back to the unsafe window", () => {
+  const rows = candidateRows({
+    storyId: "segment-invalid-trim-story",
+    segmentValidationReport: {
+      segments: [{
+        id: "segment-with-invalid-approved-trim",
+        story_id: "segment-invalid-trim-story",
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        trusted_source_matched: true,
+        source_url: "https://cdn.publisher.example/game/official-trailer.mp4",
+        source_url_kind: "direct_video",
+        source_type: "official_trailer_video",
+        entity: "Trimmed Game",
+        media_start_s: 132,
+        duration_s: 5,
+        trim_recommended: true,
+        recommended_media_start_s: 140,
+        recommended_duration_s: 2.85,
+      }],
+    },
+  });
+
+  assert.equal(rows.length, 0);
 });
 
 test("real motion materializer separates motion-window diversity from strict genuine base-source diversity", async (t) => {

@@ -71,6 +71,55 @@ test("V5 kinetic typography rebalances single-word sentence tails", () => {
   );
 });
 
+test("V5 kinetic typography borrows safe dwell from the previous phrase before a sentence boundary", () => {
+  const scriptText =
+    "Arknights Endfield just gave PS5 Pro owners a real before-and-after test. PlayStation Blog says Version 1.4 upgrades PSSR.";
+  const timestampTokens = [
+    "Arknights",
+    "Endfield",
+    "just",
+    "gave",
+    "PS5",
+    "Pro",
+    "owners",
+    "a",
+    "real",
+    "before",
+    "and",
+    "after",
+    "test.",
+    "PlayStation",
+    "Blog",
+    "says",
+    "Version",
+    "1.4",
+    "upgrades",
+    "PSSR.",
+  ];
+  const words = timestampTokens.map((word, index) => ({
+    word,
+    start: Number((0.2 + index * 0.3714).toFixed(4)),
+    end: Number((0.2 + (index + 1) * 0.3714).toFixed(4)),
+  }));
+  const ass = buildPremiumKineticAss({
+    story: { title: "Arknights Endfield PS5 Pro Upgrade" },
+    words,
+    duration: 8.5,
+    scriptText,
+  });
+  const report = inspectPremiumCaptionCadence(ass);
+
+  assert.equal(report.status, "pass", JSON.stringify(report, null, 2));
+  assert.equal(
+    report.captions.some((caption) => caption.text === "TEST."),
+    false,
+  );
+  assert.equal(
+    report.captions.some((caption) => caption.text === "REAL BEFORE-AND-AFTER TEST."),
+    true,
+  );
+});
+
 test("V5 kinetic typography rebalances a short dangling word before a long currency token", () => {
   const scriptText = "Steam lists them at $84.91 combined, while the base game costs $59.99.";
   const words = [

@@ -2238,6 +2238,357 @@ test("fresh refill direct-media intake keeps official YouTube references as sour
   assert.equal(rows[1].direct_media_url_if_available, "https://cdn.example.com/world-update-22.mp4");
 });
 
+test("fresh production refill escalates zero yield once without creating a retry loop", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-zero-yield-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyPackagesPath = path.join(contractOutDir, "story-packages.json");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const enqueued = [];
+
+  try {
+    await fs.mkdir(contractOutDir, { recursive: true });
+    await fs.writeFile(storyPackagesPath, JSON.stringify([
+      { story_id: "fresh-zero-one", verdict: "RED", blockers: ["footage:v4_motion_blocked"] },
+      { story_id: "fresh-zero-two", verdict: "RED", blockers: ["script:rewrite_required"] },
+    ]));
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main() {
+          return {
+            batch: { summary: { story_count: 2, green_count: 0, red_count: 2 } },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const context = {
+      log() {},
+      async buildFreshReviewLocalPromotionIntake() {
+        return {
+          fresh_source_intake_stories: [
+            {
+              id: "review-local-alternate",
+              title: "A Different Fresh Review Story",
+              local_promotion_intake_only: true,
+              source_published_at: new Date().toISOString(),
+              source_url: "https://example.com/review-local-alternate",
+              rights_eligibility: {
+                eligible: true,
+                status: "eligible",
+              },
+              motion_eligibility: {
+                eligible: true,
+                status: "eligible",
+              },
+            },
+          ],
+        };
+      },
+      repos: {
+        jobs: {
+          enqueue(row) {
+            enqueued.push(row);
+            return row;
+          },
+        },
+      },
+    };
+    const basePayload = {
+      limit: 12,
+      rss_per_feed: 4,
+      out_dir: outDir,
+      contract_out_dir: contractOutDir,
+      repair_evidence: false,
+      skip_existing_ready: false,
+      post_discord_on_zero_yield: false,
+    };
+
+    const first = await mockedHandlers.fresh_production_refill(
+      { id: 901, channel_id: "pulse-gaming", payload: basePayload },
+      context,
+    );
+
+    assert.equal(first.status, "zero_yield_recovery_enqueued");
+    assert.equal(first.green_count, 0);
+    assert.equal(first.zero_yield_incident.detected, true);
+    assert.equal(first.zero_yield_incident.alternate_refill_enqueued, true);
+    assert.deepEqual(
+      enqueued.map((row) => row.kind),
+      ["fresh_production_refill", "safe_auto_repair_runner", "candidate_supply_monitor"],
+    );
+    assert.equal(enqueued[0].payload.zero_yield_attempt, 1);
+    assert.equal(
+      path.resolve(enqueued[0].payload.seed_stories_file),
+      path.resolve(first.zero_yield_incident.alternate_cohort_stories_path),
+    );
+    assert.equal(enqueued[0].payload.reason, "fresh_production_refill_zero_yield_alternate_cohort");
+    assert.deepEqual(
+      enqueued[0].payload.exclude_story_ids.sort(),
+      ["fresh-zero-one", "fresh-zero-two"],
+    );
+    const alternateStories = JSON.parse(
+      await fs.readFile(enqueued[0].payload.seed_stories_file, "utf8"),
+    );
+    assert.deepEqual(
+      alternateStories.map((story) => story.story_id || story.id),
+      ["review-local-alternate"],
+    );
+    assert.equal(first.zero_yield_incident.alternate_cohort_selected_count, 1);
+    assert.match(
+      first.zero_yield_incident.alternate_cohort_selection_fingerprint,
+      /^[a-f0-9]{64}$/,
+    );
+
+    enqueued.length = 0;
+    const second = await mockedHandlers.fresh_production_refill(
+      {
+        id: 902,
+        channel_id: "pulse-gaming",
+        payload: { ...basePayload, zero_yield_attempt: 1 },
+      },
+      context,
+    );
+
+    assert.equal(second.status, "zero_yield_blocked");
+    assert.equal(second.zero_yield_incident.alternate_refill_enqueued, false);
+    assert.deepEqual(
+      enqueued.map((row) => row.kind),
+      ["safe_auto_repair_runner", "candidate_supply_monitor"],
+    );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill does not retry the same RSS lane when no alternate cohort exists", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-no-alternate-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyPackagesPath = path.join(contractOutDir, "story-packages.json");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const enqueued = [];
+
+  try {
+    await fs.mkdir(contractOutDir, { recursive: true });
+    await fs.writeFile(
+      storyPackagesPath,
+      JSON.stringify([
+        {
+          story_id: "fresh-zero-primary",
+          verdict: "RED",
+          blockers: ["footage:v4_motion_blocked"],
+        },
+      ]),
+    );
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main() {
+          return {
+            batch: { summary: { story_count: 1, green_count: 0, red_count: 1 } },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        id: 904,
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 12,
+          rss_per_feed: 4,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+          repair_evidence: false,
+          skip_existing_ready: false,
+          post_discord_on_zero_yield: false,
+        },
+      },
+      {
+        log() {},
+        async buildFreshReviewLocalPromotionIntake() {
+          return { fresh_source_intake_stories: [] };
+        },
+        repos: {
+          jobs: {
+            enqueue(row) {
+              enqueued.push(row);
+              return row;
+            },
+          },
+        },
+      },
+    );
+
+    assert.equal(result.status, "zero_yield_blocked");
+    assert.equal(result.zero_yield_incident.alternate_refill_enqueued, false);
+    assert.equal(result.zero_yield_incident.alternate_cohort_selected_count, 0);
+    assert.deepEqual(
+      enqueued.map((row) => row.kind),
+      ["safe_auto_repair_runner", "candidate_supply_monitor"],
+    );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh production refill treats local package GREEN as zero yield when strict scheduler proof is empty", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-strict-zero-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyPackagesPath = path.join(contractOutDir, "story-packages.json");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const enqueued = [];
+
+  try {
+    await fs.mkdir(contractOutDir, { recursive: true });
+    await fs.writeFile(storyPackagesPath, JSON.stringify([
+      { story_id: "fresh-local-only", verdict: "GREEN", blockers: [] },
+    ]));
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main() {
+          return {
+            batch: { summary: { story_count: 1, green_count: 1, red_count: 0 } },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const context = {
+      log() {},
+      async buildFreshReviewLocalPromotionIntake() {
+        return {
+          fresh_source_intake_stories: [
+            {
+              id: "review-local-strict-alternate",
+              title: "A Strict Alternate Review Story",
+              local_promotion_intake_only: true,
+              source_published_at: new Date().toISOString(),
+              source_url: "https://example.com/review-local-strict-alternate",
+              rights_eligibility: {
+                eligible: true,
+                status: "eligible",
+              },
+              motion_eligibility: {
+                eligible: true,
+                status: "eligible",
+              },
+            },
+          ],
+        };
+      },
+      async evaluateFreshProductionRefillOutcome(input) {
+        assert.equal(input.localPackageGreenCount, 1);
+        assert.equal(input.minimumNewGreenCandidates, 3);
+        return {
+          status: "incident",
+          outcome: "zero_strict_green_yield",
+          strict_green_count: 0,
+          minimum_new_green_candidates: 3,
+          shortfall: 3,
+          target_met: false,
+          attempted_story_ids: ["fresh-local-only"],
+          strict_blockers: ["fresh-local-only:rights:incomplete"],
+          incident_fingerprint: "strict-zero-fingerprint",
+          outputs: {
+            incident_report: path.join(contractOutDir, "incident_report.json"),
+            incident_blockers: path.join(contractOutDir, "incident_blockers.json"),
+          },
+          safety: { publish_authorised: false },
+        };
+      },
+      repos: {
+        jobs: {
+          enqueue(row) {
+            enqueued.push(row);
+            return row;
+          },
+        },
+      },
+    };
+
+    const result = await mockedHandlers.fresh_production_refill(
+      {
+        id: 903,
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 12,
+          rss_per_feed: 4,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+          repair_evidence: false,
+          skip_existing_ready: false,
+          source_minimum_new_green_candidates: 3,
+          post_discord_on_zero_yield: false,
+        },
+      },
+      context,
+    );
+
+    assert.equal(result.status, "zero_yield_recovery_enqueued");
+    assert.equal(result.green_count, 0);
+    assert.equal(result.local_package_green_count, 1);
+    assert.equal(result.strict_outcome.outcome, "zero_strict_green_yield");
+    assert.equal(result.zero_yield_incident.detected, true);
+    assert.deepEqual(
+      enqueued.map((row) => row.kind),
+      ["fresh_production_refill", "safe_auto_repair_runner", "candidate_supply_monitor"],
+    );
+    assert.ok(enqueued.every((row) => row.max_attempts === 1));
+    assert.equal(enqueued[2].payload.enqueue_hunt_on_runway_gap, false);
+    assert.equal(enqueued[2].payload.enqueue_fresh_review_script_repair, false);
+    assert.equal(enqueued[2].payload.enqueue_local_tts_retry_recovery, false);
+    assert.equal(enqueued[2].payload.enqueue_fresh_production_refill, false);
+    assert.equal(enqueued[2].payload.enqueue_repair_on_amber, false);
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh production refill handler builds live-RSS local proof packages", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
@@ -2664,6 +3015,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "--v4-motion-pack-dir",
       path.join(__dirname, "..", "..", "output", "studio-v4", "motion-packs"),
       "--allow-owned-motion-fallback",
+      "--existing-artifact-root",
+      outDir,
       "--story-id",
       "fresh_xbox_story",
     ]);
@@ -2679,7 +3032,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     );
     assert.equal(result.repair_evidence.status, "generated");
     assert.equal(result.repair_evidence.official_source_entries_count, 1);
-    assert.equal(result.repair_evidence.child_processes.length, 10);
+    assert.equal(result.repair_evidence.child_processes.length, 11);
     assert.equal(result.motion_hydrated_refill.status, "completed");
     assert.equal(result.motion_hydrated_refill.green_count, 1);
     assert.match(result.motion_hydrated_refill.outputs.storyPackagesPath, /motion-hydrated[\\/]story-packages\.json$/);
@@ -2751,6 +3104,10 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/goal-real-motion-materializer.js"),
       "expected fresh refill to materialise validated official motion before hydrating packages",
+    );
+    assert.ok(
+      childCalls.some((call) => call.args[0] === "tools/goal-owned-motion-materializer.js"),
+      "expected under-supported stories to enter the strict owned-motion fallback lane",
     );
     assert.ok(
       childCalls.some((call) => call.args[0] === "tools/studio-v2-build-story-cards.js"),
@@ -2968,7 +3325,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       ),
       "expected fresh refill to keep newly discovered storefront direct media rows",
     );
-    assert.equal(repairReport.summary.child_process_count, 10);
+    assert.equal(repairReport.summary.child_process_count, 11);
     assert.equal(repairReport.summary.real_motion_materialization_status, "materialized");
     assert.equal(repairReport.summary.hyperframes_card_evidence_status, "generated");
     assert.equal(repairReport.summary.hyperframes_card_sets_completed, 1);
@@ -4902,6 +5259,16 @@ test("fresh refill HyperFrames card generation targets only real-motion material
         realMotionReportPath: path.join(tmp, "missing.json"),
       }),
       ["legacy-mock-story"],
+    );
+
+    assert.deepEqual(
+      await freshRefillHyperframesStoryIdsAfterMotion({
+        candidateStoryIds: ["owned-ready-story", "motion-blocked-story"],
+        realMotionReportPath: path.join(tmp, "missing-owned-report.json"),
+        ownedMotionReadyStoryIds: ["owned-ready-story"],
+      }),
+      ["owned-ready-story"],
+      "strict owned-motion evidence must advance only the validated story when real-motion evidence is unavailable",
     );
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });

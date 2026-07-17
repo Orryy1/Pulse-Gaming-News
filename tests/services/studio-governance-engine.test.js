@@ -524,6 +524,95 @@ test("Studio Governance Engine prefers enriched rights records over raw ledger a
   assert.equal(report.publish_manifest.publish_status, "GREEN");
 });
 
+test("Studio Governance Engine requires separate rights coverage for distinct windows from one source video", () => {
+  const sourceUrl =
+    "https://video.akamai.steamstatic.com/store_trailers/2697940/official/hls_264_master.m3u8";
+  const clips = [
+    {
+      id: "ascend-window-36",
+      path: "C:/render-cache/ascend-window-36.mp4",
+      source_url: sourceUrl,
+      source_type: "steam_movie",
+      source_family: "ascend_trailer_window_36",
+      mediaStartS: 36,
+      durationS: 5,
+    },
+    {
+      id: "ascend-window-42",
+      path: "C:/render-cache/ascend-window-42.mp4",
+      source_url: sourceUrl,
+      source_type: "steam_movie",
+      source_family: "ascend_trailer_window_42",
+      mediaStartS: 42,
+      durationS: 5,
+    },
+  ];
+  const story = cleanStory({
+    id: "ascend-window-rights",
+    canonical_subject: "Ascend to ZERO",
+    canonical_angle: "thirty-second time-loop combat changes every decision",
+    public_title: "Ascend To ZERO Turns Every Second Into A Weapon",
+    suggested_title: "Ascend To ZERO Turns Every Second Into A Weapon",
+    suggested_thumbnail_text: "30 SECONDS TO SURVIVE",
+    thumbnail_source_label: "Steam",
+    source_card_label: "Steam",
+    primary_source: "Steam",
+    article_url: "https://store.steampowered.com/app/2697940/Ascend_to_ZERO/",
+    description:
+      "Ascend to ZERO turns a thirty-second time loop into a combat decision. Source: Steam.",
+    full_script:
+      "Ascend to ZERO gives you thirty seconds to break time. Steam shows a loop where every attack, dodge and route changes what survives the reset. The payoff is not speed alone. It is learning which risk creates the next opening. Follow Pulse Gaming so you never miss a beat.",
+    downloaded_images: [],
+    video_clips: clips,
+  });
+  const motionRights = (clip) => ({
+    asset_id: clip.id,
+    path: clip.path,
+    source_url: clip.source_url,
+    source_type: clip.source_type,
+    source_family: clip.source_family,
+    licence_basis: "official_storefront_promotional_editorial",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    risk_score: 0.18,
+    evidence_file: `rights/${clip.id}.json`,
+  });
+  const audioRights = {
+    asset_id: `${story.id}-audio`,
+    path: story.audio_path,
+    source_type: "local_tts_voice",
+    licence_basis: "owned_local_voice_model",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    risk_score: 0.05,
+    evidence_file: "rights/local-tts.json",
+  };
+
+  const incomplete = buildStudioGovernanceReport({
+    story,
+    rightsLedger: [motionRights(clips[0]), audioRights],
+    platforms: ["youtube", "instagram", "facebook"],
+    generatedAt: "2026-07-17T05:10:00.000Z",
+  });
+  assert.equal(incomplete.rights_ledger.verdict, "fail");
+  assert.equal(incomplete.rights_ledger.metrics.missing_asset_count, 1);
+  assert.ok(incomplete.rejection_reasons.reason_codes.includes("rights:no_rights_record"));
+
+  const complete = buildStudioGovernanceReport({
+    story,
+    rightsLedger: [motionRights(clips[0]), motionRights(clips[1]), audioRights],
+    platforms: ["youtube", "instagram", "facebook"],
+    generatedAt: "2026-07-17T05:10:00.000Z",
+  });
+  assert.equal(complete.rights_ledger.verdict, "pass");
+  assert.equal(complete.rights_ledger.metrics.missing_asset_count, 0);
+  assert.equal(
+    complete.rights_ledger.records.filter((record) => record.source_url === sourceUrl).length,
+    2,
+  );
+});
+
 test("Studio Governance Engine scopes final V4 rights checks to director-selected render assets", () => {
   const selectedPath = "C:/render-cache/valorant-selected-official-motion.mp4";
   const sameIdUnusedPath = "C:/render-cache/valorant-unused-same-id-motion.mp4";

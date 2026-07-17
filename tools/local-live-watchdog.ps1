@@ -11,6 +11,8 @@ param(
 
 $ErrorActionPreference = "Continue"
 
+. (Join-Path $PSScriptRoot "local-live-watchdog-policy.ps1")
+
 if (-not $RepoRoot) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
@@ -34,12 +36,48 @@ function Write-WatchdogLog {
   Add-Content -LiteralPath $logPath -Value $line
 }
 
-function Get-RuntimeHealth {
+function Get-RuntimeHealthProbe {
   try {
-    return Invoke-RestMethod -Method Get -Uri ("http://127.0.0.1:{0}/api/health" -f $Port) -TimeoutSec $HealthTimeoutSeconds -UseBasicParsing
+    $health = Invoke-RestMethod -Method Get -Uri ("http://127.0.0.1:{0}/api/health" -f $Port) -TimeoutSec $HealthTimeoutSeconds -UseBasicParsing
+    return [pscustomobject]@{
+      outcome = "answered"
+      health = $health
+    }
   } catch {
-    Write-WatchdogLog ("runtime_health_unavailable error={0}" -f $_.Exception.Message)
-    return $null
+    $outcome = "request_failed"
+    if (Test-HealthRequestTimeout -ErrorRecord $_) {
+      $outcome = "timeout"
+    }
+    Write-WatchdogLog ("runtime_health_unavailable outcome={0} error={1}" -f $outcome, $_.Exception.Message)
+    return [pscustomobject]@{
+      outcome = $outcome
+      health = $null
+    }
+  }
+}
+
+function Get-RuntimeListenerOwners {
+  return @(
+    Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+      Where-Object { $_.OwningProcess -and $_.OwningProcess -ne 0 } |
+      Select-Object -ExpandProperty OwningProcess -Unique
+  )
+}
+
+function Get-VerifiedNodeServerOwnerIds {
+  param([int[]]$OwnerIds)
+
+  foreach ($ownerId in @($OwnerIds)) {
+    try {
+      $process = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId" -ErrorAction Stop
+      $isNode = ([string]$process.Name) -ieq "node.exe"
+      $isServer = ([string]$process.CommandLine) -match '(^|[\\/\s"])server\.js($|[\s"])'
+      if ($isNode -and $isServer) {
+        Write-Output ([int]$ownerId)
+      }
+    } catch {
+      Write-WatchdogLog ("runtime_listener_identity_unavailable pid={0} error={1}" -f $ownerId, $_.Exception.Message)
+    }
   }
 }
 
@@ -69,37 +107,68 @@ function Test-InCriticalPublishWindow {
 
 Write-WatchdogLog "watchdog_start repo=$RepoRoot port=$Port interval=${IntervalSeconds}s"
 
-$consecutiveUnhealthy = 0
+$destructiveRestartCount = 0
 
 while ($true) {
   try {
-    $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    if (-not $listener) {
-      $consecutiveUnhealthy = 0
+    $listenerOwners = @(Get-RuntimeListenerOwners)
+    $listenerPresent = $listenerOwners.Count -gt 0
+    $healthOutcome = "request_failed"
+    $sameServerListener = $false
+
+    if ($listenerPresent) {
+      $healthProbe = Get-RuntimeHealthProbe
+      if ($healthProbe.outcome -eq "answered") {
+        if (Test-RuntimeHealth -Health $healthProbe.health) {
+          $healthOutcome = "healthy"
+        } else {
+          $healthOutcome = "answered_invalid_policy"
+        }
+      } else {
+        $healthOutcome = [string]$healthProbe.outcome
+        $postProbeListenerOwners = @(Get-RuntimeListenerOwners)
+        $verifiedNodeServerOwnerIds = @(Get-VerifiedNodeServerOwnerIds -OwnerIds $postProbeListenerOwners)
+        $sameServerListener = Test-SameNodeServerListener `
+          -BeforeOwnerIds $listenerOwners `
+          -AfterOwnerIds $postProbeListenerOwners `
+          -VerifiedNodeServerOwnerIds $verifiedNodeServerOwnerIds
+        $listenerPresent = $postProbeListenerOwners.Count -gt 0
+      }
+    }
+
+    $inCriticalPublishWindow = Test-InCriticalPublishWindow
+    $decision = Resolve-WatchdogRuntimeDecision `
+      -ListenerPresent $listenerPresent `
+      -HealthOutcome $healthOutcome `
+      -SameServerListener $sameServerListener `
+      -DestructiveRestartCount $destructiveRestartCount `
+      -RestartThreshold $UnhealthyRestartThreshold `
+      -InCriticalPublishWindow $inCriticalPublishWindow
+    $destructiveRestartCount = [int]$decision.destructive_restart_count
+
+    if ($decision.action -eq "start") {
       Write-WatchdogLog "runtime_missing starting_primary_runtime"
       Start-Process -FilePath "powershell.exe" `
         -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RepoRoot, "-Port", "$Port") `
         -WorkingDirectory $RepoRoot `
         -WindowStyle Hidden | Out-Null
-    } else {
-      $health = Get-RuntimeHealth
-      if (-not (Test-RuntimeHealth -Health $health)) {
-        $consecutiveUnhealthy += 1
-        if (Test-InCriticalPublishWindow) {
-          Write-WatchdogLog ("runtime_unhealthy_publish_window_guard skip_restart consecutive={0} threshold={1}" -f $consecutiveUnhealthy, $UnhealthyRestartThreshold)
-        } elseif ($consecutiveUnhealthy -lt $UnhealthyRestartThreshold) {
-          Write-WatchdogLog ("runtime_unhealthy_retrying consecutive={0} threshold={1}" -f $consecutiveUnhealthy, $UnhealthyRestartThreshold)
-        } else {
-          Write-WatchdogLog ("runtime_unhealthy starting_primary_runtime consecutive={0}" -f $consecutiveUnhealthy)
-          $consecutiveUnhealthy = 0
-          Start-Process -FilePath "powershell.exe" `
-            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RepoRoot, "-Port", "$Port", "-Restart") `
-            -WorkingDirectory $RepoRoot `
-            -WindowStyle Hidden | Out-Null
-        }
+    } elseif ($decision.action -eq "restart") {
+      Write-WatchdogLog ("runtime_unhealthy starting_primary_runtime classification={0} destructive_restart_count={1}" -f $decision.classification, $destructiveRestartCount)
+      $destructiveRestartCount = 0
+      Start-Process -FilePath "powershell.exe" `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RepoRoot, "-Port", "$Port", "-Restart") `
+        -WorkingDirectory $RepoRoot `
+        -WindowStyle Hidden | Out-Null
+    } elseif ($decision.classification -eq "invalid_runtime_policy") {
+      if ($inCriticalPublishWindow) {
+        Write-WatchdogLog ("runtime_unhealthy_publish_window_guard skip_restart destructive_restart_count={0} threshold={1}" -f $destructiveRestartCount, $UnhealthyRestartThreshold)
       } else {
-        $consecutiveUnhealthy = 0
+        Write-WatchdogLog ("runtime_unhealthy_retrying classification={0} destructive_restart_count={1} threshold={2}" -f $decision.classification, $destructiveRestartCount, $UnhealthyRestartThreshold)
       }
+    } elseif ($decision.classification -eq "overloaded_or_unresponsive") {
+      Write-WatchdogLog ("runtime_classification=overloaded_or_unresponsive action=none pid={0} destructive_restart_count={1}" -f ($listenerOwners -join ","), $destructiveRestartCount)
+    } elseif ($decision.classification -ne "healthy") {
+      Write-WatchdogLog ("runtime_classification={0} action=none destructive_restart_count={1}" -f $decision.classification, $destructiveRestartCount)
     }
 
     $tunnel = Get-CimInstance Win32_Process -Filter "name = 'cloudflared.exe'" |

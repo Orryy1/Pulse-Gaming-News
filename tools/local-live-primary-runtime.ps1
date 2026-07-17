@@ -126,6 +126,23 @@ console.log(JSON.stringify(rows));
   }
 }
 
+$runtimeTransitionMutexName = "Local\PulseGamingPrimaryRuntimeTransition-{0}" -f $Port
+$runtimeTransitionMutex = [System.Threading.Mutex]::new($false, $runtimeTransitionMutexName)
+$runtimeTransitionMutexAcquired = $false
+
+try {
+  try {
+    $runtimeTransitionMutexAcquired = $runtimeTransitionMutex.WaitOne([TimeSpan]::FromMinutes(2))
+  } catch [System.Threading.AbandonedMutexException] {
+    $runtimeTransitionMutexAcquired = $true
+    Write-RuntimeLog ("runtime_transition_mutex_abandoned_acquired name={0} port={1}" -f $runtimeTransitionMutexName, $Port)
+  }
+
+  if (-not $runtimeTransitionMutexAcquired) {
+    Write-RuntimeLog ("runtime_transition_mutex_timeout name={0} port={1}" -f $runtimeTransitionMutexName, $Port)
+    exit 0
+  }
+
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
   Where-Object { $_.OwningProcess -and $_.OwningProcess -ne 0 } |
   Select-Object -ExpandProperty OwningProcess -Unique
@@ -235,3 +252,13 @@ if (
 
 Write-RuntimeLog ("node_started pid={0} port={1} commit_sha={2} branch={3}" -f $startedProcess.Id, $Port, (Get-RuntimeCommitSha -Health $startedHealth), (Get-RuntimeBranchName -Health $startedHealth))
 Write-Output ("node_started pid={0} port={1}" -f $startedProcess.Id, $Port)
+} finally {
+  if ($runtimeTransitionMutexAcquired) {
+    try {
+      $runtimeTransitionMutex.ReleaseMutex()
+    } catch {
+      Write-RuntimeLog ("runtime_transition_mutex_release_failed name={0} port={1} error={2}" -f $runtimeTransitionMutexName, $Port, $_.Exception.Message)
+    }
+  }
+  $runtimeTransitionMutex.Dispose()
+}

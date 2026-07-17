@@ -141,7 +141,7 @@ test("T-90 watchdog locks the exact immutable generation only after a safe watch
   });
 });
 
-test("T-90 watchdog never locks a runway when the watchdog is unsafe", async () => {
+test("T-90 watchdog fails closed without a lock when the watchdog is unsafe", async () => {
   await withHandlerStubs({
     runtime: {
       async lockRunwayForJob() {
@@ -161,14 +161,20 @@ test("T-90 watchdog never locks a runway when the watchdog is unsafe", async () 
       },
     },
   }, async ({ handlers }) => {
-    const result = await handlers.publish_window_watchdog({
-      payload: {
-        phase: "T-90",
-        window_label: "publish_morning",
-        publish_hour_utc: 9,
-      },
-    }, { log() {} });
-    assert.equal(result.runway_lock_status, "not_attempted");
+    await assert.rejects(
+      () =>
+        handlers.publish_window_watchdog(
+          {
+            payload: {
+              phase: "T-90",
+              window_label: "publish_morning",
+              publish_hour_utc: 9,
+            },
+          },
+          { log() {} },
+        ),
+      /PUBLISH_RUNWAY_LOCK_REQUIRED/,
+    );
   });
 });
 

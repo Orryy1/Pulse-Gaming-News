@@ -302,6 +302,42 @@ test("T-180 normalises five concrete documents, captures critical assets and com
   );
 });
 
+test("T-180 propagates an explicit reserve target through reconciliation and immutable binding", async (t) => {
+  const { allowedRoot, coordinator } = await fixture(t);
+  const extraReserveIds = [
+    "reserve-story-6",
+    "reserve-story-7",
+    "reserve-story-8",
+  ];
+  const evidence = await writeEvidenceSet(allowedRoot, {
+    mutate: ({ documents }) => {
+      const extraReserves = extraReserveIds.map(reserveStory);
+      documents.candidate.candidates.push(...extraReserves);
+      documents.candidate.reserve_stories.push(...extraReserves);
+      documents.preflight.reserve_stories.push(...extraReserves);
+    },
+  });
+
+  const generated = await coordinator.generateAtT180({
+    at: new Date(T180),
+    generationId: `${GENERATION_ID}-reserve-8`,
+    evidencePaths: evidence.evidencePaths,
+    targetReserveCount: 8,
+  });
+
+  assert.equal(generated.verdict, "GREEN");
+  assert.equal(generated.reconciliation.targets.runway_story_count, 5);
+  assert.equal(generated.reconciliation.targets.reserve_story_count, 8);
+  assert.equal(generated.reconciliation.summary.reserve_story_count, 8);
+  assert.equal(generated.reserve_story_ids.length, 8);
+  assert.deepEqual(generated.reserve_target, {
+    requested_story_count: 8,
+    effective_story_count: 8,
+    minimum_story_count: 5,
+    maximum_story_count: 25,
+  });
+});
+
 test("mixed source generations and stale source evidence fail before immutable commit", async (t) => {
   const { allowedRoot, storeRoot, coordinator } = await fixture(t);
   const mixed = await writeEvidenceSet(allowedRoot, {

@@ -888,6 +888,8 @@ test("scheduler starts runway checks ninety minutes before every guarded publish
     assert.equal(entry.cron_expr, cron);
     assert.equal(entry.idempotencyTemplate, key);
     assert.equal(entry.payload.enqueue_candidate_refill_on_runway, true);
+    assert.equal(entry.payload.require_runway_lock, true);
+    assert.equal(entry.payload.immutable_runway_required, true);
   }
 });
 
@@ -943,6 +945,145 @@ test("job handler runs publish window watchdog before publish windows", async ()
     else delete require.cache[jobHandlersPath];
     if (originalWatchdog) require.cache[watchdogPath] = originalWatchdog;
     else delete require.cache[watchdogPath];
+  }
+});
+
+test("T-90 watchdog handler fails closed when immutable lock creation fails even without a payload flag", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const watchdogPath = require.resolve("../../lib/ops/publish-window-watchdog");
+  const runwayRuntimePath = require.resolve(
+    "../../lib/ops/publish-runway-job-runtime",
+  );
+  const notifyPath = require.resolve("../../notify");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [watchdogPath, require.cache[watchdogPath]],
+    [runwayRuntimePath, require.cache[runwayRuntimePath]],
+    [notifyPath, require.cache[notifyPath]],
+  ]);
+  try {
+    require.cache[watchdogPath] = {
+      id: watchdogPath,
+      filename: watchdogPath,
+      loaded: true,
+      exports: {
+        async runPublishWindowWatchdog() {
+          return {
+            generated_at: "2026-07-17T12:30:00.000Z",
+            window_label: "publish_afternoon",
+            verdict: "green",
+            safe_to_publish_window: true,
+            blockers: [],
+          };
+        },
+        watchdogNeedsRunwayRepair() {
+          return false;
+        },
+      },
+    };
+    require.cache[runwayRuntimePath] = {
+      id: runwayRuntimePath,
+      filename: runwayRuntimePath,
+      loaded: true,
+      exports: {
+        async lockRunwayForJob() {
+          throw new Error("NO_VALID_GENERATION_FOR_WINDOW");
+        },
+      },
+    };
+    require.cache[notifyPath] = {
+      id: notifyPath,
+      filename: notifyPath,
+      loaded: true,
+      exports: async () => {},
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers } = require("../../lib/job-handlers");
+    await assert.rejects(
+      () =>
+        handlers.publish_window_watchdog(
+          {
+            id: 901,
+            payload: {
+              phase: "T-90",
+              window_label: "publish_afternoon",
+              publish_hour_utc: 14,
+            },
+          },
+          { log() {} },
+        ),
+      /PUBLISH_RUNWAY_LOCK_REQUIRED: NO_VALID_GENERATION_FOR_WINDOW/,
+    );
+  } finally {
+    for (const [id, entry] of originalCache.entries()) {
+      if (entry) require.cache[id] = entry;
+      else delete require.cache[id];
+    }
+  }
+});
+
+test("T-180 generation handler reports requested and effective reserve targets", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const runwayRuntimePath = require.resolve(
+    "../../lib/ops/publish-runway-job-runtime",
+  );
+  const originalHandlers = require.cache[jobHandlersPath];
+  const originalRuntime = require.cache[runwayRuntimePath];
+  try {
+    require.cache[runwayRuntimePath] = {
+      id: runwayRuntimePath,
+      filename: runwayRuntimePath,
+      loaded: true,
+      exports: {
+        async generateRunwayForJob({ job }) {
+          assert.equal(job.payload.target_reserve_count, 8);
+          return {
+            verdict: "GREEN",
+            phase: "T-180",
+            generation: { generation_id: "runway-generation-8" },
+            window: { window_id: "publish-20260717T140000Z" },
+            selected_action_ids: [],
+            reserve_story_ids: Array.from(
+              { length: 8 },
+              (_, index) => `reserve-${index + 1}`,
+            ),
+            reserve_target: {
+              requested_story_count: 8,
+              effective_story_count: 8,
+              minimum_story_count: 5,
+              maximum_story_count: 25,
+            },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+
+    const { handlers } = require("../../lib/job-handlers");
+    const result = await handlers.publish_runway_generate(
+      {
+        payload: {
+          phase: "T-180",
+          target_reserve_count: 8,
+        },
+      },
+      { log() {} },
+    );
+
+    assert.equal(result.requested_reserve_story_count, 8);
+    assert.equal(result.effective_reserve_story_count, 8);
+    assert.deepEqual(result.reserve_target, {
+      requested_story_count: 8,
+      effective_story_count: 8,
+      minimum_story_count: 5,
+      maximum_story_count: 25,
+    });
+  } finally {
+    if (originalHandlers) require.cache[jobHandlersPath] = originalHandlers;
+    else delete require.cache[jobHandlersPath];
+    if (originalRuntime) require.cache[runwayRuntimePath] = originalRuntime;
+    else delete require.cache[runwayRuntimePath];
   }
 });
 

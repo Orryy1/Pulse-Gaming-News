@@ -8,6 +8,7 @@ const fs = require("fs-extra");
 
 const {
   buildRunwaySourceDocuments,
+  generateRunwayForJob,
   phaseTimestampForJob,
   runtimeConfig,
   writeRunwaySourceEvidence,
@@ -143,6 +144,37 @@ test("runtime config keeps clean code and governed shared evidence roots separat
   );
 });
 
+test("runtime config normalises snake-case and camel-case reserve targets within hard bounds", () => {
+  const configFor = (payload) =>
+    runtimeConfig({
+      job: {
+        created_at: "2026-07-17 06:00:00",
+        payload: {
+          phase: "T-180",
+          publish_hour_utc: 9,
+          ...payload,
+        },
+      },
+      repoRoot: os.tmpdir(),
+      now: new Date(AT),
+    });
+
+  assert.deepEqual(configFor({ target_reserve_count: 8 }).reserve_target, {
+    requested_story_count: 8,
+    effective_story_count: 8,
+    minimum_story_count: 5,
+    maximum_story_count: 25,
+  });
+  assert.equal(
+    configFor({ targetReserveCount: 2 }).reserve_target.effective_story_count,
+    5,
+  );
+  assert.equal(
+    configFor({ target_reserve_count: 999 }).reserve_target.effective_story_count,
+    25,
+  );
+});
+
 test("source evidence binds five immediate and five reserve strict-GREEN stories", () => {
   const documents = buildRunwaySourceDocuments({
     ...rawEvidence(),
@@ -170,6 +202,29 @@ test("source evidence binds five immediate and five reserve strict-GREEN stories
     assert.equal(document.generation_id, `source-${GENERATION_ID}`);
     assert.equal(document.window_id, WINDOW_ID);
     assert.equal(document.generated_at, AT);
+  }
+});
+
+test("source evidence honours one explicit reserve target across every canonical document", () => {
+  const documents = buildRunwaySourceDocuments({
+    ...rawEvidence({ candidateCount: 13 }),
+    generationId: GENERATION_ID,
+    windowId: WINDOW_ID,
+    targetReserveCount: 8,
+  });
+
+  assert.equal(documents.candidate.verdict, "GREEN");
+  assert.equal(documents.candidate.candidates.length, 13);
+  assert.equal(documents.candidate.reserve_stories.length, 8);
+  for (const document of Object.values(documents)) {
+    assert.deepEqual(document.publish_runway_targets, {
+      immediate_story_count: 5,
+      requested_reserve_story_count: 8,
+      effective_reserve_story_count: 8,
+      minimum_reserve_story_count: 5,
+      maximum_reserve_story_count: 25,
+      total_story_count: 13,
+    });
   }
 });
 
@@ -212,4 +267,70 @@ test("source evidence is materialised as five concrete JSON files", async (t) =>
   for (const filePath of Object.values(paths)) {
     assert.equal(await fs.pathExists(filePath), true);
   }
+});
+
+test("T-180 runtime reports the requested and effective reserve target end to end", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-runway-runtime-"));
+  t.after(() => fs.remove(root));
+  const canonical = rawEvidence({ candidateCount: 13 });
+  const filenames = {
+    candidateReport: "next_publish_candidates.json",
+    dryRunPlan: "dry_run_publish_plan.json",
+    guardedPlan: "guarded_dispatch_plan.json",
+    executorPlan: "guarded_dispatch_executor_plan.json",
+  };
+  for (let index = 1; index <= 13; index += 1) {
+    const storyRoot = path.join(root, "output", `story-${index}`);
+    await fs.ensureDir(storyRoot);
+    await fs.outputFile(path.join(storyRoot, "canonical.json"), "{}");
+    await fs.outputFile(path.join(storyRoot, "publish.json"), "{}");
+    for (const platform of [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+    ]) {
+      await fs.outputFile(
+        path.join(storyRoot, `${platform}.mp4`),
+        Buffer.alloc(128, index),
+      );
+      await fs.outputFile(
+        path.join(storyRoot, `${platform}.srt`),
+        "1\n00:00:00,000 --> 00:00:01,000\nPulse\n",
+      );
+    }
+  }
+
+  const report = await generateRunwayForJob({
+    job: {
+      created_at: "2026-07-17 06:00:00",
+      payload: {
+        phase: "T-180",
+        publish_hour_utc: 9,
+        window_label: "publish_morning",
+        target_reserve_count: 8,
+        runway_evidence_root: root,
+      },
+    },
+    repoRoot: root,
+    now: new Date(AT),
+    refreshEvidence: async ({ outputDir }) => {
+      await fs.ensureDir(outputDir);
+      for (const [name, filename] of Object.entries(filenames)) {
+        await fs.writeJson(path.join(outputDir, filename), canonical[name], {
+          spaces: 2,
+        });
+      }
+    },
+  });
+
+  assert.deepEqual(report.reserve_target, {
+    requested_story_count: 8,
+    effective_story_count: 8,
+    minimum_story_count: 5,
+    maximum_story_count: 25,
+  });
+  assert.deepEqual(report.runtime.reserve_target, report.reserve_target);
+  assert.equal(report.reconciliation.targets.reserve_story_count, 8);
+  assert.equal(report.reserve_story_ids.length, 8);
+  assert.equal(await fs.pathExists(report.report_path), true);
 });

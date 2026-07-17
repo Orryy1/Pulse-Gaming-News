@@ -94,6 +94,11 @@ test("critical schedule reconciler enqueues prep debt through the canonical queu
       db: {
         prepare(sql) {
           if (/SELECT[\s\S]+FROM jobs/i.test(sql)) {
+            assert.doesNotMatch(
+              sql,
+              /\bresult_summary\b/i,
+              "recovery query must use only columns present in the jobs table",
+            );
             return { all: () => [] };
           }
           if (/UPDATE schedules/i.test(sql)) {

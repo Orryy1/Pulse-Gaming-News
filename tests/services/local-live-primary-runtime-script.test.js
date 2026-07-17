@@ -98,6 +98,9 @@ test("local live primary runtime launcher preserves guarded queue runtime env", 
   assert.match(script, /\$env:PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true"/);
   assert.match(script, /\$env:PULSE_EMERGENCY_KILL_SWITCH = "clear"/);
   assert.match(script, /\$env:TIKTOK_AUTH_CHECK_ENABLED = "true"/);
+  assert.match(script, /\$env:PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT = \$EvidenceRoot/);
+  assert.match(script, /output.*LinkType.*Junction/s);
+  assert.match(script, /Refusing publish evidence root/);
   assert.match(script, /\$env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output\/goal-contract\/guarded_dispatch_executor_plan\.json"/);
 });
 

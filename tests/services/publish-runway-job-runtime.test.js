@@ -9,6 +9,7 @@ const fs = require("fs-extra");
 const {
   buildRunwaySourceDocuments,
   phaseTimestampForJob,
+  runtimeConfig,
   writeRunwaySourceEvidence,
 } = require("../../lib/ops/publish-runway-job-runtime");
 
@@ -98,6 +99,47 @@ test("phase timestamp is derived from the immutable publish hour, not delayed wo
       now: new Date("2026-07-17T06:27:00.000Z"),
     }),
     AT,
+  );
+});
+
+test("runtime config keeps clean code and governed shared evidence roots separate", () => {
+  const repoRoot = path.join(os.tmpdir(), "pulse-clean-runtime");
+  const evidenceRoot = path.join(os.tmpdir(), "pulse-shared-evidence");
+  const config = runtimeConfig({
+    job: {
+      created_at: "2026-07-17 06:00:00",
+      payload: {
+        phase: "T-180",
+        publish_hour_utc: 9,
+      },
+    },
+    env: {
+      PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT: evidenceRoot,
+    },
+    repoRoot,
+    now: new Date(AT),
+  });
+
+  assert.equal(config.repo_root, path.resolve(repoRoot));
+  assert.equal(config.evidence_root, path.resolve(evidenceRoot));
+  assert.equal(
+    config.store_root,
+    path.join(path.resolve(evidenceRoot), "output", "runtime", "publish-runway"),
+  );
+  assert.equal(
+    config.goal_contract_root,
+    path.join(path.resolve(evidenceRoot), "output", "goal-contract"),
+  );
+  assert.equal(
+    config.source_root.startsWith(
+      path.join(
+        path.resolve(evidenceRoot),
+        "output",
+        "runtime",
+        "publish-runway-source",
+      ),
+    ),
+    true,
   );
 });
 

@@ -1,5 +1,6 @@
 param(
   [string]$RepoRoot = "",
+  [string]$EvidenceRoot = "",
   [int]$Port = 3001,
   [switch]$Restart
 )
@@ -8,6 +9,31 @@ $ErrorActionPreference = "Stop"
 
 if (-not $RepoRoot) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
+$RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+
+if (-not $EvidenceRoot) {
+  $EvidenceRoot = [string]$env:PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT
+}
+if (-not $EvidenceRoot) {
+  $outputItem = Get-Item -LiteralPath (Join-Path $RepoRoot "output") -ErrorAction SilentlyContinue
+  if ($outputItem -and $outputItem.LinkType -eq "Junction" -and @($outputItem.Target).Count -gt 0) {
+    $outputTarget = [string]@($outputItem.Target)[0]
+    if (-not [System.IO.Path]::IsPathRooted($outputTarget)) {
+      $outputTarget = Join-Path $RepoRoot $outputTarget
+    }
+    $EvidenceRoot = Split-Path -Parent (Resolve-Path -LiteralPath $outputTarget).Path
+  } else {
+    $EvidenceRoot = $RepoRoot
+  }
+}
+$EvidenceRoot = (Resolve-Path -LiteralPath $EvidenceRoot).Path
+$evidenceRootItem = Get-Item -LiteralPath $EvidenceRoot
+if (
+  -not $evidenceRootItem.PSIsContainer -or
+  ($evidenceRootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+) {
+  throw "Refusing publish evidence root because it is not a normal local directory: $EvidenceRoot"
 }
 
 $logDir = Join-Path $RepoRoot "output/runtime"
@@ -207,6 +233,7 @@ $env:PULSE_PROTECTED_PRIMARY_RUNTIME = "true"
 $env:PULSE_SERVER_GENERAL_QUEUE_RUNNER = "false"
 $env:PULSE_GENERAL_QUEUE_RUNNER = "false"
 $env:PULSE_SERVER_CONTENT_RUNNERS = "false"
+$env:PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT = $EvidenceRoot
 $env:TIKTOK_AUTH_CHECK_ENABLED = "true"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
 $env:PULSE_RESET_SCHEDULES_ON_BOOT = "true"

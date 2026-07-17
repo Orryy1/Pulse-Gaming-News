@@ -194,7 +194,7 @@
     "ops:discord-feedback-ingestion": "node tools/discord-feedback-ingestion.js",
     "ops:candidate-supply": "node tools/candidate-supply-engine.js",
     "ops:fresh-production-refill": "node tools/fresh-production-refill.js",
-    "ops:local-sqlite-content-worker": "node tools/local-sqlite-content-worker.js",
+    "ops:local-sqlite-content-worker": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/local-live-content-workers.ps1",
     "ops:fresh-refill-script-rewrite": "node tools/fresh-refill-script-rewrite.js",
     "ops:fresh-review-script-repair": "node tools/fresh-review-script-repair.js",
     "ops:fresh-review-local-promotion-intake": "node tools/fresh-review-local-promotion-intake.js",

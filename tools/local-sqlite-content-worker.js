@@ -3,9 +3,41 @@
 
 const os = require("node:os");
 
+const CONTENT_WORKER_THREAD_ENV_KEYS = Object.freeze([
+  "OMP_NUM_THREADS",
+  "OPENBLAS_NUM_THREADS",
+  "MKL_NUM_THREADS",
+  "NUMEXPR_NUM_THREADS",
+  "VECLIB_MAXIMUM_THREADS",
+  "VIPS_CONCURRENCY",
+]);
+const CONTENT_WORKER_RESOURCE_ENV_KEYS = Object.freeze([
+  "PULSE_CONTENT_WORKER_RESOURCE_CLASS",
+  "PULSE_CONTENT_WORKER_THREAD_BUDGET",
+  ...CONTENT_WORKER_THREAD_ENV_KEYS,
+  "TOKENIZERS_PARALLELISM",
+]);
+
+function captureResourceEnvironment(env = process.env) {
+  return Object.fromEntries(
+    CONTENT_WORKER_RESOURCE_ENV_KEYS.map((key) => [key, env[key]]),
+  );
+}
+
+function reassertResourceEnvironment(inheritedEnv, env = process.env) {
+  for (const key of CONTENT_WORKER_RESOURCE_ENV_KEYS) {
+    if (inheritedEnv[key] === undefined) delete env[key];
+    else env[key] = inheritedEnv[key];
+  }
+}
+
+const INHERITED_CONTENT_WORKER_RESOURCE_ENV = captureResourceEnvironment();
+
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
   require("dotenv").config({ override: true, quiet: true });
 }
+
+reassertResourceEnvironment(INHERITED_CONTENT_WORKER_RESOURCE_ENV);
 
 const DEFAULT_CONTENT_KINDS = Object.freeze([
   "hunt",
@@ -57,6 +89,54 @@ function assertContentOnlyKinds(kinds) {
   }
 }
 
+function assertContentWorkerResourceContract(env = process.env) {
+  const violations = [];
+  const threadBudget = String(env.PULSE_CONTENT_WORKER_THREAD_BUDGET || "");
+
+  if (env.PULSE_CONTENT_WORKER_RESOURCE_CLASS !== "background") {
+    violations.push("resource class must be background");
+  }
+  if (!/^\d+$/.test(threadBudget) || Number(threadBudget) < 1) {
+    violations.push("thread budget must be a positive integer");
+  } else {
+    for (const key of CONTENT_WORKER_THREAD_ENV_KEYS) {
+      if (String(env[key] || "") !== threadBudget) {
+        violations.push(`${key} must match the thread budget`);
+      }
+    }
+  }
+  if (env.TOKENIZERS_PARALLELISM !== "false") {
+    violations.push("TOKENIZERS_PARALLELISM must be false");
+  }
+
+  if (violations.length) {
+    throw new Error(
+      "Direct live content-worker execution requires the approved Windows wrapper and resource contract. " +
+        `Run npm run ops:local-sqlite-content-worker. Invalid contract: ${violations.join("; ")}`,
+    );
+  }
+}
+
+function createContentWorkerClaimGuard({
+  env = process.env,
+  evaluateQuietPeriod = null,
+} = {}) {
+  if (/^(false|0|no|off)$/i.test(
+    String(env.PULSE_CONTENT_WORKER_QUIET_PERIOD || "").trim(),
+  )) {
+    return null;
+  }
+  const evaluate = evaluateQuietPeriod ||
+    require("../lib/ops/publish-worker-quiet-period").evaluatePublishWorkerQuietPeriod;
+  const beforeMinutes = env.PULSE_CONTENT_WORKER_QUIET_BEFORE_MINUTES;
+  const afterMinutes = env.PULSE_CONTENT_WORKER_QUIET_AFTER_MINUTES;
+  return ({ now = new Date() } = {}) => evaluate({
+    now,
+    beforeMinutes,
+    afterMinutes,
+  });
+}
+
 function parseArgs(argv = process.argv.slice(2), env = process.env) {
   const configuredLeaseMs = Number(env.PULSE_CONTENT_WORKER_LEASE_MS || 30 * 60 * 1000);
   const args = {
@@ -99,11 +179,20 @@ function usage() {
   ].join("\n");
 }
 
-async function main(argv = process.argv.slice(2), io = { stdout: process.stdout, stderr: process.stderr }) {
+async function main(
+  argv = process.argv.slice(2),
+  io = { stdout: process.stdout, stderr: process.stderr },
+  options = {},
+) {
   const args = parseArgs(argv);
   if (args.help) {
     io.stdout.write(`${usage()}\n`);
     return { status: "help", args };
+  }
+  if (options.requireResourceContract) {
+    assertContentWorkerResourceContract(
+      options.resourceEnv || INHERITED_CONTENT_WORKER_RESOURCE_ENV,
+    );
   }
 
   if (!process.env.USE_SQLITE) process.env.USE_SQLITE = "true";
@@ -111,6 +200,9 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
   process.env.PULSE_PUBLISH_CRITICAL_RUNNER = "false";
   process.env.PULSE_MAINTENANCE_RUNNER = "false";
 
+  const claimGuard = options.claimGuard === undefined
+    ? createContentWorkerClaimGuard({ env: process.env })
+    : options.claimGuard;
   const bootstrap = require("../lib/bootstrap-queue");
   const state = await bootstrap.start({
     workerId: args.workerId,
@@ -120,6 +212,7 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
     kinds: args.kinds,
     gpu: args.gpu,
     leaseMs: args.leaseMs,
+    claimGuard,
     autoSeed: false,
     log: (message) => io.stderr.write(`${message}\n`),
   });
@@ -139,7 +232,9 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
 }
 
 if (require.main === module) {
-  main().catch((err) => {
+  main(process.argv.slice(2), { stdout: process.stdout, stderr: process.stderr }, {
+    requireResourceContract: true,
+  }).catch((err) => {
     process.stderr.write(`[local-sqlite-content-worker] ${err.stack || err.message}\n`);
     process.exit(1);
   });
@@ -149,6 +244,8 @@ module.exports = {
   DEFAULT_CONTENT_KINDS,
   FORBIDDEN_CONTENT_WORKER_KINDS,
   assertContentOnlyKinds,
+  assertContentWorkerResourceContract,
+  createContentWorkerClaimGuard,
   parseArgs,
   usage,
   main,

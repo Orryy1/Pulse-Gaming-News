@@ -31,12 +31,16 @@ test("server-owned content lanes reject live publish and credential jobs", () =>
   }
 });
 
-test("primary runtime opts into restricted server-owned content lanes", () => {
+test("primary runtime keeps content lanes out of the scheduler process", () => {
   const root = path.resolve(__dirname, "..", "..");
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   const launcher = fs.readFileSync(path.join(root, "tools", "local-live-primary-runtime.ps1"), "utf8");
   assert.match(server, /function serverContentRunnerLanesEnabled/);
-  assert.match(server, /additionalRunnerLanes:\s*serverContentRunnerLanesEnabled\(process\.env\)/);
+  assert.match(
+    server,
+    /additionalRunnerLanes:\s*PROTECTED_PRIMARY_RUNTIME\.enabled\s*\?\s*\[\]\s*:\s*serverContentRunnerLanesEnabled\(process\.env\)/,
+  );
   assert.match(server, /CONTENT_RUNNER_LANES/);
-  assert.match(launcher, /\$env:PULSE_SERVER_CONTENT_RUNNERS = "true"/);
+  assert.match(launcher, /\$env:PULSE_SERVER_CONTENT_RUNNERS = "false"/);
+  assert.doesNotMatch(launcher, /\$env:PULSE_SERVER_CONTENT_RUNNERS = "true"/);
 });

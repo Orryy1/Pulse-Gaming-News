@@ -24,8 +24,21 @@ const {
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
 const { describeLlmState } = require("./lib/llm-key");
+const {
+  applyProtectedPrimaryRuntime,
+  enqueueProtectedApiJob,
+} = require("./lib/protected-primary-runtime");
 
 dotenv.config({ override: true });
+const PROTECTED_PRIMARY_RUNTIME = applyProtectedPrimaryRuntime({
+  argv: process.argv,
+  env: process.env,
+});
+if (PROTECTED_PRIMARY_RUNTIME.enabled) {
+  console.log(
+    "[server] protected primary runtime enabled - content work is queue-only",
+  );
+}
 const PRIMARY_RUNTIME_HOLD = applyPrimaryRuntimeHold(process.env);
 if (PRIMARY_RUNTIME_HOLD.applied) {
   console.log(
@@ -865,6 +878,7 @@ app.get("/api/health", (req, res) => {
         .toLowerCase() === "clear",
     safe_observation_mode: isSafeObservationMode(process.env),
     primary_runtime_hold: isPrimaryRuntimeHold(process.env),
+    protected_primary_runtime: PROTECTED_PRIMARY_RUNTIME.enabled,
     dispatch: dispatchMode,
     sqlite_db_path: sqliteDbPath ? "(configured)" : null,
     sqlite_db_path_redacted: !!sqliteDbPath,
@@ -1017,6 +1031,34 @@ app.post("/api/approve", requireAuth, rateLimit(30, 60000), (req, res) => {
 let publishState = { status: "idle", message: "" };
 
 app.post("/api/publish", requireAuth, rateLimit(5, 60000), (req, res) => {
+  if (PROTECTED_PRIMARY_RUNTIME.enabled) {
+    try {
+      const repos = require("./lib/repositories").getRepos();
+      const job = enqueueProtectedApiJob({
+        repos,
+        kind: "produce",
+        payload: { source: "api_publish" },
+      });
+      publishState = {
+        status: "queued",
+        message: "Production queued on an isolated content worker",
+        job_id: job.id,
+      };
+      return res.status(202).json({
+        status: "queued",
+        job_id: job.id,
+        kind: job.kind,
+        idempotency_key: job.idempotency_key,
+      });
+    } catch (err) {
+      console.log(`[server] Protected publish enqueue failed: ${err.message}`);
+      return res.status(503).json({
+        error: "content_queue_unavailable",
+        message: err.message,
+      });
+    }
+  }
+
   if (publishState.status === "running") {
     return res.json({ status: "already running" });
   }
@@ -1058,6 +1100,55 @@ app.post(
   requireAuth,
   rateLimit(5, 60000),
   async (req, res) => {
+    if (PROTECTED_PRIMARY_RUNTIME.enabled) {
+      try {
+        const repos = require("./lib/repositories").getRepos();
+        const now = new Date();
+        const huntJob = enqueueProtectedApiJob({
+          repos,
+          kind: "hunt",
+          now,
+          payload: { source: "api_autonomous_run" },
+        });
+        const produceAt = new Date(now.getTime() + 30 * 60 * 1000)
+          .toISOString()
+          .replace("T", " ")
+          .slice(0, 19);
+        const produceJob = enqueueProtectedApiJob({
+          repos,
+          kind: "produce",
+          now,
+          runAt: produceAt,
+          payload: {
+            source: "api_autonomous_run",
+            follows_job_id: huntJob.id,
+          },
+        });
+        return res.status(202).json({
+          status: "queued",
+          jobs: [
+            {
+              job_id: huntJob.id,
+              kind: huntJob.kind,
+              idempotency_key: huntJob.idempotency_key,
+            },
+            {
+              job_id: produceJob.id,
+              kind: produceJob.kind,
+              idempotency_key: produceJob.idempotency_key,
+              run_at: produceJob.run_at,
+            },
+          ],
+        });
+      } catch (err) {
+        console.log(`[server] Autonomous queue enqueue failed: ${err.message}`);
+        return res.status(503).json({
+          error: "content_queue_unavailable",
+          message: err.message,
+        });
+      }
+    }
+
     res.json({ status: "started", message: "Full autonomous cycle initiated" });
 
     try {
@@ -1792,6 +1883,29 @@ app.post(
   requireAuth,
   rateLimit(5, 60000),
   async (req, res) => {
+    if (PROTECTED_PRIMARY_RUNTIME.enabled) {
+      try {
+        const repos = require("./lib/repositories").getRepos();
+        const job = enqueueProtectedApiJob({
+          repos,
+          kind: "hunt",
+          payload: { source: "api_hunter_run" },
+        });
+        return res.status(202).json({
+          status: "queued",
+          job_id: job.id,
+          kind: job.kind,
+          idempotency_key: job.idempotency_key,
+        });
+      } catch (err) {
+        console.log(`[server] Hunter queue enqueue failed: ${err.message}`);
+        return res.status(503).json({
+          error: "content_queue_unavailable",
+          message: err.message,
+        });
+      }
+    }
+
     res.json({ status: "started" });
     await runHunter();
   },
@@ -1840,10 +1954,14 @@ async function startAutonomousScheduler() {
         workerId: `server-${require("os").hostname()}-${process.pid}`,
         runScheduler: true,
         runRunner: true,
-        runGeneralRunner: serverGeneralQueueRunnerEnabled(process.env),
-        additionalRunnerLanes: serverContentRunnerLanesEnabled(process.env)
-          ? CONTENT_RUNNER_LANES
-          : [],
+        runGeneralRunner: PROTECTED_PRIMARY_RUNTIME.enabled
+          ? false
+          : serverGeneralQueueRunnerEnabled(process.env),
+        additionalRunnerLanes: PROTECTED_PRIMARY_RUNTIME.enabled
+          ? []
+          : serverContentRunnerLanesEnabled(process.env)
+            ? CONTENT_RUNNER_LANES
+            : [],
         autoSeed: true,
       });
       schedulerRunning = !!(

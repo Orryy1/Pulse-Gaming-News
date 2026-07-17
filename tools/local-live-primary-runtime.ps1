@@ -71,11 +71,13 @@ function Test-ExpectedPrimaryRuntimeMode {
   $queueDispatch = [string]$Health.runtime.dispatch.mode -eq "queue"
   $safeObservationMode = [bool]$Health.runtime.safe_observation_mode
   $primaryRuntimeHold = [bool]$Health.runtime.primary_runtime_hold
+  $protectedPrimaryRuntime = [bool]$Health.runtime.protected_primary_runtime
   return (
     $schedulerActive -and
     $autoPublish -and
     $jobQueueEnabled -and
     $queueDispatch -and
+    $protectedPrimaryRuntime -and
     -not $safeObservationMode -and
     -not $primaryRuntimeHold
   )
@@ -96,7 +98,7 @@ const db = new Database(dbPath, { readonly: true, fileMustExist: true });
 const rows = db.prepare(`
   SELECT id, kind, claimed_by, lease_until, updated_at
   FROM jobs
-  WHERE kind IN ('publish','publish_window_watchdog')
+  WHERE kind IN ('publish_schedule_recovery_monitor','publish_runway_generate','publish','publish_window_watchdog')
     AND status = 'running'
     AND lease_until IS NOT NULL
     AND datetime(lease_until) > datetime('now')
@@ -201,7 +203,10 @@ $env:PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true"
 $env:PULSE_EMERGENCY_KILL_SWITCH = "clear"
 $env:PULSE_SAFE_OBSERVATION_MODE = "false"
 $env:PULSE_PRIMARY_RUNTIME_HOLD = "false"
-$env:PULSE_SERVER_CONTENT_RUNNERS = "true"
+$env:PULSE_PROTECTED_PRIMARY_RUNTIME = "true"
+$env:PULSE_SERVER_GENERAL_QUEUE_RUNNER = "false"
+$env:PULSE_GENERAL_QUEUE_RUNNER = "false"
+$env:PULSE_SERVER_CONTENT_RUNNERS = "false"
 $env:TIKTOK_AUTH_CHECK_ENABLED = "true"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
 $env:PULSE_RESET_SCHEDULES_ON_BOOT = "true"
@@ -218,7 +223,7 @@ $stderrPath = Join-Path $logDir "pulse-live-primary-runtime.stderr.log"
 
 Write-RuntimeLog ("node_start repo={0} port={1}" -f $RepoRoot, $Port)
 $startedProcess = Start-Process -FilePath $nodeExe `
-  -ArgumentList @("server.js") `
+  -ArgumentList @("server.js", "--protected-primary-runtime") `
   -WorkingDirectory $RepoRoot `
   -WindowStyle Hidden `
   -RedirectStandardOutput $stdoutPath `

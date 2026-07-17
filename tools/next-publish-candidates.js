@@ -6737,6 +6737,7 @@ function parseArgs(argv) {
     fileOnly: false,
     publicationEvidencePath: null,
     publicationEvidenceMaxAgeHours: DEFAULT_PUBLICATION_EVIDENCE_MAX_AGE_HOURS,
+    generatedAt: null,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -6750,6 +6751,10 @@ function parseArgs(argv) {
     else if (arg === "--out-dir") args.outDir = path.resolve(ROOT, argv[++i] || args.outDir);
     else if (arg.startsWith("--out-dir=")) {
       args.outDir = path.resolve(ROOT, arg.slice("--out-dir=".length));
+    }
+    else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
+    else if (arg.startsWith("--generated-at=")) {
+      args.generatedAt = arg.slice("--generated-at=".length) || null;
     }
     else if (arg === "--no-bridge" || arg === "--no-bridge-candidates") {
       args.bridgeCandidatesPath = null;
@@ -7132,7 +7137,7 @@ async function runCli(argv = process.argv) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--out-dir DIR] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--direct-video-work-order PATH|--no-direct-video-work-order] [--source-family-acquisition PATH|--no-source-family-acquisition] [--allow-live-fallback] [--file-only --publication-evidence PATH [--publication-evidence-max-age-hours N]]\n",
+      "Usage: node tools/next-publish-candidates.js [--json] [--limit N] [--analytics PATH] [--out-dir DIR] [--generated-at ISO] [--preflight-qa] [--story-id ID] [--bridge PATH|--no-bridge] [--direct-video-work-order PATH|--no-direct-video-work-order] [--source-family-acquisition PATH|--no-source-family-acquisition] [--allow-live-fallback] [--file-only --publication-evidence PATH [--publication-evidence-max-age-hours N]]\n",
     );
     return { exitCode: 0 };
   }
@@ -7220,6 +7225,7 @@ async function runCli(argv = process.argv) {
     analyticsPath: args.analyticsPath,
     limit: args.limit,
     storyId: args.storyId,
+    generatedAt: args.generatedAt || undefined,
     bridgeManifest: selected.bridge_manifest,
     upstreamAntiSpamReport,
     publishedPlatformEvidence: args.fileOnly

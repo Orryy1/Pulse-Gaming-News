@@ -136,6 +136,85 @@ test("schedules: produce/publish priorities unchanged (regression)", () => {
   }
 });
 
+test("schedules: every publish window has an immutable T-180, T-90 and T0 runway triplet", () => {
+  const triplets = [
+    {
+      label: "publish_morning",
+      hour: 9,
+      generation: ["publish_runway_generate_morning", "0 6 * * *"],
+      lock: ["publish_watchdog_morning", "30 7 * * *"],
+      publish: ["publish_morning", "0 9 * * *"],
+    },
+    {
+      label: "publish_late_morning",
+      hour: 11,
+      generation: ["publish_runway_generate_late_morning", "0 8 * * *"],
+      lock: ["publish_watchdog_late_morning", "30 9 * * *"],
+      publish: ["publish_late_morning", "0 11 * * *"],
+    },
+    {
+      label: "publish_afternoon",
+      hour: 14,
+      generation: ["publish_runway_generate_afternoon", "0 11 * * *"],
+      lock: ["publish_watchdog_afternoon", "30 12 * * *"],
+      publish: ["publish_afternoon", "0 14 * * *"],
+    },
+    {
+      label: "publish_mid_afternoon",
+      hour: 16,
+      generation: ["publish_runway_generate_mid_afternoon", "0 13 * * *"],
+      lock: ["publish_watchdog_mid_afternoon", "30 14 * * *"],
+      publish: ["publish_mid_afternoon", "0 16 * * *"],
+    },
+    {
+      label: "publish_primary",
+      hour: 19,
+      generation: ["publish_runway_generate_primary", "0 16 * * *"],
+      lock: ["publish_watchdog_primary", "30 17 * * *"],
+      publish: ["publish_primary", "0 19 * * *"],
+    },
+  ];
+
+  for (const triplet of triplets) {
+    const generation = byName(triplet.generation[0]);
+    const lock = byName(triplet.lock[0]);
+    const publish = byName(triplet.publish[0]);
+
+    assert.ok(generation, `missing T-180 generation for ${triplet.label}`);
+    assert.equal(generation.kind, "publish_runway_generate");
+    assert.equal(generation.cron_expr, triplet.generation[1]);
+    assert.equal(generation.payload.phase, "T-180");
+    assert.equal(generation.payload.window_label, triplet.label);
+    assert.equal(generation.payload.publish_hour_utc, triplet.hour);
+
+    assert.ok(lock, `missing T-90 lock for ${triplet.label}`);
+    assert.equal(lock.kind, "publish_window_watchdog");
+    assert.equal(lock.cron_expr, triplet.lock[1]);
+    assert.equal(lock.payload.phase, "T-90");
+    assert.equal(lock.payload.window_label, triplet.label);
+    assert.equal(lock.payload.publish_hour_utc, triplet.hour);
+
+    assert.ok(publish, `missing T0 publish for ${triplet.label}`);
+    assert.equal(publish.kind, "publish");
+    assert.equal(publish.cron_expr, triplet.publish[1]);
+    assert.equal(publish.payload.phase, "T0");
+    assert.equal(publish.payload.window_label, triplet.label);
+    assert.equal(publish.payload.publish_hour_utc, triplet.hour);
+  }
+});
+
+test("schedules: guarded recovery monitor checks for missed critical phases every minute", () => {
+  const monitor = byName("publish_schedule_recovery_monitor");
+  assert.ok(monitor);
+  assert.strictEqual(monitor.kind, "publish_schedule_recovery_monitor");
+  assert.strictEqual(monitor.cron_expr, "*/1 * * * *");
+  assert.ok(monitor.priority < byName("publish_morning").priority);
+  assert.strictEqual(
+    monitor.idempotencyTemplate,
+    "publish_schedule_recovery_monitor:{date}:{hour}:{minute}",
+  );
+});
+
 test("schedules: stale-claim reaper outranks publish and repair work", () => {
   const reaper = byName("jobs_reap_stale");
   assert.ok(reaper, "missing jobs_reap_stale schedule");

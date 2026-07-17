@@ -1039,6 +1039,17 @@ test("next publish CLI parses story-specific preflight flags", () => {
   assert.equal(inline.storyId, "1thsxw7");
 });
 
+test("next publish CLI accepts a fixed generated-at for same-run runway evidence", () => {
+  const args = parseArgs([
+    "node",
+    "tools/next-publish-candidates.js",
+    "--generated-at",
+    "2026-07-17T06:00:00.000Z",
+  ]);
+
+  assert.equal(args.generatedAt, "2026-07-17T06:00:00.000Z");
+});
+
 test("next publish CLI defaults to the scheduler bridge candidate overlay", () => {
   const args = parseArgs(["node", "tools/next-publish-candidates.js"]);
 

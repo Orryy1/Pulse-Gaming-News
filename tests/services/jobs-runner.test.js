@@ -134,3 +134,24 @@ test("JobsRunner uses its configured lease for claims and heartbeats", async (t)
     leaseMs: 30 * 60 * 1000,
   });
 });
+
+test("JobsRunner does not claim while its claim guard is closed", async (t) => {
+  const { calls, repos } = fakeRepos();
+  const { JobsRunner } = loadJobsRunnerWithRepos(t, repos);
+  const runner = new JobsRunner({
+    workerId: "local-content-runway",
+    handlers: {},
+    claimGuard: () => ({ allow_claim: false, retry_after_ms: 5000 }),
+    log: () => {},
+  });
+  runner.running = true;
+  let scheduledDelay = null;
+  runner._schedule = (delay) => {
+    scheduledDelay = delay;
+  };
+
+  await runner._tick();
+
+  assert.equal(calls.claims.length, 0);
+  assert.equal(scheduledDelay, 5000);
+});

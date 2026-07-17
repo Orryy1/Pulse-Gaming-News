@@ -65,6 +65,8 @@ test("bootstrap skips missed-window recovery for observation-only or explicitly 
 
 test("bootstrap queue enables a protected publish lane by default", () => {
   assert.deepEqual(PUBLISH_CRITICAL_JOB_KINDS, [
+    "publish_schedule_recovery_monitor",
+    "publish_runway_generate",
     "publish_window_watchdog",
     "publish",
     "instagram_token_refresh",
@@ -164,8 +166,23 @@ test("bootstrap queue keeps restricted worker processes on the general runner pa
 test("server starts queue mode without the unrestricted all-jobs runner by default", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "..", "server.js"), "utf8");
   assert.match(source, /function serverGeneralQueueRunnerEnabled/);
-  assert.match(source, /runGeneralRunner:\s*serverGeneralQueueRunnerEnabled\(process\.env\)/);
+  assert.match(
+    source,
+    /runGeneralRunner:\s*PROTECTED_PRIMARY_RUNTIME\.enabled\s*\?\s*false\s*:\s*serverGeneralQueueRunnerEnabled\(process\.env\)/,
+  );
   assert.match(source, /PULSE_SERVER_GENERAL_QUEUE_RUNNER/);
+});
+
+test("bootstrap forwards a content-worker claim guard to the restricted runner", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "bootstrap-queue.js"),
+    "utf8",
+  );
+  assert.match(source, /claimGuard\s*=\s*null/);
+  assert.match(
+    source,
+    /runner\s*=\s*new JobsRunner\(\{[\s\S]*?leaseMs,[\s\S]*?claimGuard,/,
+  );
 });
 
 test("bootstrap validates restricted additional runners", () => {

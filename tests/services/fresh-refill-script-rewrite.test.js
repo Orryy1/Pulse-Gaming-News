@@ -730,6 +730,7 @@ test("fresh refill viewer script turns a PS5 Pro PSSR update into a concrete pla
   assert.match(script.full_script, /4K/i);
   assert.match(script.full_script, /frame rates/i);
   assert.match(script.full_script, /PS5 Pro owners|players/i);
+  assert.doesNotMatch(script.full_script, /\bthe useful question\b/i);
   assert.doesNotMatch(
     script.full_script,
     /boring-looking update|housekeeping|console updates only become interesting/i,

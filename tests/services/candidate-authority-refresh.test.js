@@ -290,6 +290,41 @@ test("apply atomically replaces all three authority files, creates backups and p
   assert.equal(directoryEntries.some((entry) => entry.endsWith(".tmp")), false);
 });
 
+test("apply atomically creates a missing authority surface and backs up the existing surfaces", async () => {
+  const fixture = await createVerifiedFixture();
+  const missingPath = fixture.authorityPaths[0];
+  const existingPaths = fixture.authorityPaths.slice(1);
+  const existingBefore = await readBuffers(existingPaths);
+  await fs.remove(missingPath);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    apply: true,
+    generatedAt: "2026-07-17T11:30:00.000Z",
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.applied, true);
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.changed_files.length, 3);
+  assert.equal(report.backups.length, 2);
+  assert.deepEqual(report.frozen_hashes.before, report.frozen_hashes.after);
+  assert.equal(report.frozen_hashes.preserved, true);
+
+  const created = await fs.readJson(missingPath);
+  assert.equal(created.verdict, "GREEN");
+  assert.equal(created.can_auto_publish, true);
+  assert.equal(report.backups.some((entry) => entry.path === missingPath), false);
+  for (const [index, existingPath] of existingPaths.entries()) {
+    const backup = report.backups.find((entry) => entry.path === existingPath);
+    assert.ok(backup);
+    assert.deepEqual(await fs.readFile(backup.backup_path), existingBefore[index]);
+  }
+  const directoryEntries = await fs.readdir(fixture.artifactDir);
+  assert.equal(directoryEntries.some((entry) => entry.endsWith(".tmp")), false);
+});
+
 test("a critical warning caps every authority surface at AMBER and disables auto-publish", async () => {
   const fixture = await createVerifiedFixture();
   const narrationPath = path.join(fixture.artifactDir, "narration_manifest.json");

@@ -408,6 +408,26 @@ test("a bare rights PASS is RED and cannot satisfy any authority surface", async
   }
 });
 
+test("a complete rights row with a non-approved verdict is RED", async () => {
+  const fixture = await createVerifiedFixture();
+  const rights = await fs.readJson(fixture.criticalPaths.rightsPath);
+  rights.records[0].approval_status = "NOT_APPROVED";
+  await writeJson(fixture.criticalPaths.rightsPath, rights);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.can_auto_publish, false);
+  assert.ok(report.blockers.includes("rights_record_approval_not_affirmative:clip"));
+  for (const document of Object.values(report.proposed)) {
+    assert.equal(document.can_auto_publish, false);
+  }
+});
+
 test("a rights row with a missing evidence file is RED", async () => {
   const fixture = await createVerifiedFixture();
   const rights = await fs.readJson(fixture.criticalPaths.rightsPath);

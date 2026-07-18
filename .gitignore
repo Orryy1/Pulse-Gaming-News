@@ -44,6 +44,8 @@ tts_server/venv/
 tts_lab/
 tts_lab/chatterbox_venv/
 tts_lab/__pycache__/
+__pycache__/
+*.py[cod]
 
 # --- Local test assets that are never part of the app ---
 test_videos/

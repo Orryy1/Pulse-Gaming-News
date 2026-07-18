@@ -421,6 +421,11 @@ async function materialiseProductionSlot(root, {
     story_id: storyId,
     reviewed_at: "2026-07-15T11:00:00.000Z",
     reviewer: { id: "independent-final-av-reviewer", independent: true },
+    signed_at: "2026-07-15T11:01:00.000Z",
+    signoff: {
+      reviewer_id: "independent-final-av-reviewer",
+      signed_at: "2026-07-15T11:01:00.000Z",
+    },
     artefacts,
     reviewed_artefact_fingerprints: Object.fromEntries(
       Object.entries(artefacts).map(([key, filePath]) => [key, sha256(filePath)]),
@@ -439,7 +444,13 @@ async function materialiseProductionSlot(root, {
       subject_match: true,
     },
     defects: [],
+    status: "GREEN",
     verdict: "GREEN",
+    final_verdict: "GREEN",
+    publish_ready: true,
+    can_publish: true,
+    can_auto_publish: true,
+    blockers: [],
   };
   const [width, height] = size.split("x").map(Number);
   return {

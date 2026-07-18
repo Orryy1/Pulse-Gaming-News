@@ -120,6 +120,7 @@
     "ops:source-identity-sidecar": "node tools/source-identity-sidecar-materializer.js",
     "ops:candidate-evidence-reconciliation": "node tools/candidate-evidence-reconciliation.js",
     "ops:flagship-media-proof": "node tools/flagship-media-evidence-materializer.js",
+    "ops:flagship-script-repair": "node tools/flagship-script-repair.js",
     "ops:goal-final-av-review": "node tools/goal-final-av-review-pack.js",
     "ops:video-temporal-qa": "node tools/video-temporal-qa.js",
     "ops:goal-final-av-signoff": "node tools/goal-final-av-review-signoff.js",

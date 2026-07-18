@@ -184,6 +184,11 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
       "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons. Source-backed copy stays clean.",
     primary_source: "Eurogamer",
     primary_source_url: "https://www.eurogamer.net/hellraiser-revival-release-date-trailer",
+    claim_inventory: {
+      confirmed: ["Hellraiser: Revival is scheduled for 8 October."],
+      unconfirmed: [],
+      prohibited: [],
+    },
   };
   const narrationBytes = Buffer.from(`governed narration for ${storyId}`);
   const timestampBytes = Buffer.from(JSON.stringify([{ word: "Hellraiser", start: 0, end: 0.2 }]));
@@ -217,6 +222,13 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     risk_score: 0.05,
   });
   await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), canonical);
+  await fs.writeJson(path.join(artifactDir, "claim_inventory.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    confirmed: canonical.claim_inventory.confirmed,
+    unconfirmed: canonical.claim_inventory.unconfirmed,
+    prohibited: canonical.claim_inventory.prohibited,
+  });
   await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
     story_id: storyId,
     resolved_narration_audio_path: narrationPath,

@@ -204,6 +204,11 @@ async function makeControlStory(root, storyId, overrides = {}) {
     story_id: storyId,
     selected_title: "Forza Horizon 6 Shows Real Footage",
     narration_script: "Forza Horizon 6 showed real footage from Xbox. The copy stays source backed.",
+    claim_inventory: {
+      confirmed: ["Xbox showed official Forza Horizon 6 footage."],
+      unconfirmed: [],
+      prohibited: [],
+    },
     commercial_intelligence: { disclosure_required: true },
     ...(overrides.canonical || {}),
   };
@@ -212,6 +217,16 @@ async function makeControlStory(root, storyId, overrides = {}) {
   const narrationPath = path.join(artifactDir, "audio", "narration.mp3");
   const timestampsPath = path.join(artifactDir, "audio", "word-timestamps.json");
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), canonical);
+  await fs.outputJson(
+    path.join(artifactDir, "claim_inventory.json"),
+    overrides.claimInventory || {
+      schema_version: 1,
+      story_id: storyId,
+      confirmed: canonical.claim_inventory?.confirmed || [],
+      unconfirmed: canonical.claim_inventory?.unconfirmed || [],
+      prohibited: canonical.claim_inventory?.prohibited || [],
+    },
+  );
   await fs.outputFile(narrationPath, narrationBytes);
   await fs.outputFile(timestampsPath, timestampBytes);
   await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
@@ -687,6 +702,32 @@ test("Goal 19 preserves an authoritative RED on structurally valid canonical evi
 
   assert.equal(report.stories[0].control_inputs.canonical_story_manifest.status, "fail");
   assert.ok(report.stories[0].blockers.includes("control:critical_input_red"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a stale claim inventory that contradicts the canonical manifest", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-stale-claims-"));
+  const story = await makeControlStory(root, "story-stale-claims", {
+    claimInventory: {
+      schema_version: 1,
+      story_id: "story-stale-claims",
+      confirmed: [],
+      unconfirmed: [],
+      prohibited: [],
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18("story-stale-claims"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-18T08:35:00.000Z",
+  });
+
+  assert.equal(report.stories[0].control_inputs.claim_inventory.status, "fail");
+  assert.ok(report.stories[0].blockers.includes("control:claim_inventory_inconsistent"));
   assert.equal(report.stories[0].final_verdict, "RED");
   assert.equal(report.stories[0].can_auto_publish, false);
 });
@@ -1842,6 +1883,54 @@ test("Goal 19 caps pending critical motion evidence at AMBER after passing final
   assert.equal(report.verdict, "PARTIAL");
   assert.equal(candidate.control_inputs.footage_inventory.status, "amber");
   assert.ok(candidate.control_inputs.footage_inventory.warnings.includes("control:critical_input_amber"));
+  assert.equal(candidate.final_verdict, "AMBER");
+  assert.equal(candidate.can_auto_publish, false);
+});
+
+test("Goal 19 caps an authoritative AMBER media-house score at AMBER", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-media-house-amber-"));
+  const story = await makeControlStory(root, "story-media-house-amber", {
+    pulseMediaHouseScore: {
+      verdict: "AMBER",
+      status: "AMBER",
+      hard_failures: [],
+      warnings: [],
+      scores: {
+        title_strength_score: 90,
+        first_frame_score: 90,
+        first_3_seconds_score: 90,
+        script_punch_score: 90,
+        narration_quality_score: 90,
+        motion_density_score: 90,
+        transition_energy_score: 90,
+        sound_design_score: 90,
+        mobile_readability_score: 90,
+        brand_recognition_score: 90,
+        source_lock_score: 90,
+        source_trust_score: 90,
+        commercial_trust_score: 90,
+        ending_payoff_score: 90,
+        competitor_parity_score: 90,
+        competitor_surpass_score: 90,
+        overall_media_house_score: 90,
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18("story-media-house-amber"),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-18T07:10:00.000Z",
+  });
+
+  const candidate = report.stories[0];
+  const mediaHouse = candidate.control_inputs.pulse_media_house_score;
+  assert.equal(report.verdict, "PARTIAL");
+  assert.equal(mediaHouse.status, "amber");
+  assert.ok(mediaHouse.warnings.includes("control:pulse_media_house_score_amber"));
+  assert.ok(mediaHouse.warnings.includes("control:critical_input_amber"));
   assert.equal(candidate.final_verdict, "AMBER");
   assert.equal(candidate.can_auto_publish, false);
 });

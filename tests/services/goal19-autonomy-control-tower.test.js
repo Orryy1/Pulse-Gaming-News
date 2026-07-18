@@ -938,6 +938,137 @@ test("Goal 19 preserves authoritative RED across render, director and affiliate 
   }
 });
 
+test("Goal 19 cannot hide a failed render-bound rights reconciliation behind a GREEN ledger", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-render-rights-red-"));
+  const storyId = "render-rights-red";
+  const story = await makeControlStory(root, storyId);
+  const renderPath = path.join(story.artifact_dir, "render_manifest.json");
+  const rightsPath = path.join(story.artifact_dir, "rights_ledger.json");
+  const render = await fs.readJson(renderPath);
+  const rightsFingerprint = await fingerprintFile(rightsPath);
+  await fs.outputJson(renderPath, {
+    ...render,
+    rights_reconciliation: {
+      verdict: "FAIL",
+      blockers: ["used_asset_rights_coverage_incomplete"],
+      rights_ledger_path: rightsPath,
+      applied_ledger_sha256: rightsFingerprint.sha256,
+      applied_ledger_size_bytes: rightsFingerprint.size_bytes,
+      applied_ledger_verdict: "FAIL",
+      used_asset_count: 3,
+      reconciled_record_count: 2,
+      final_state_verified: true,
+      can_auto_publish: false,
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-18T19:15:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(result.control_inputs.rights_ledger.status, "fail");
+  assert.ok(
+    result.control_inputs.rights_ledger.evidence.failures.includes(
+      "render_rights_reconciliation:used_asset_rights_coverage_incomplete",
+    ),
+  );
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+});
+
+test("Goal 19 rejects a stale render-bound rights ledger fingerprint", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-render-rights-stale-"));
+  const storyId = "render-rights-stale";
+  const story = await makeControlStory(root, storyId);
+  const renderPath = path.join(story.artifact_dir, "render_manifest.json");
+  const rightsPath = path.join(story.artifact_dir, "rights_ledger.json");
+  const render = await fs.readJson(renderPath);
+  const rightsFingerprint = await fingerprintFile(rightsPath);
+  await fs.outputJson(renderPath, {
+    ...render,
+    rights_reconciliation: {
+      verdict: "PASS",
+      blockers: [],
+      warnings: [],
+      rights_ledger_path: rightsPath,
+      applied_ledger_sha256: "0".repeat(64),
+      applied_ledger_size_bytes: rightsFingerprint.size_bytes,
+      applied_ledger_verdict: "PASS",
+      used_asset_count: 3,
+      reconciled_record_count: 3,
+      final_state_verified: true,
+      can_auto_publish: true,
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-18T19:20:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(result.control_inputs.rights_ledger.status, "fail");
+  assert.ok(
+    result.control_inputs.rights_ledger.evidence.failures.includes(
+      "render_rights_reconciliation:ledger_hash_mismatch",
+    ),
+  );
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+});
+
+test("Goal 19 caps an AMBER render-bound rights reconciliation at AMBER", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-render-rights-amber-"));
+  const storyId = "render-rights-amber";
+  const story = await makeControlStory(root, storyId);
+  const renderPath = path.join(story.artifact_dir, "render_manifest.json");
+  const rightsPath = path.join(story.artifact_dir, "rights_ledger.json");
+  const render = await fs.readJson(renderPath);
+  const rightsFingerprint = await fingerprintFile(rightsPath);
+  await fs.outputJson(renderPath, {
+    ...render,
+    rights_reconciliation: {
+      verdict: "AMBER",
+      blockers: [],
+      warnings: ["rights_provenance_requires_review"],
+      rights_ledger_path: rightsPath,
+      applied_ledger_sha256: rightsFingerprint.sha256,
+      applied_ledger_size_bytes: rightsFingerprint.size_bytes,
+      applied_ledger_verdict: "AMBER",
+      used_asset_count: 3,
+      reconciled_record_count: 3,
+      final_state_verified: true,
+      can_auto_publish: false,
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-18T19:25:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(result.control_inputs.rights_ledger.status, "amber");
+  assert.ok(
+    result.control_inputs.rights_ledger.warnings.includes(
+      "render_rights_reconciliation:rights_provenance_requires_review",
+    ),
+  );
+  assert.equal(result.final_verdict, "AMBER");
+  assert.equal(result.can_auto_publish, false);
+});
+
 test("Goal 19 does not require an affiliate manifest when commercial disclosure is explicitly not required", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-no-affiliate-required-"));
   const storyId = "non-commercial-editorial-story";

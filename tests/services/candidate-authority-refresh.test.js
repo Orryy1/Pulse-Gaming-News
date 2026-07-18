@@ -660,6 +660,121 @@ test("an otherwise complete AMBER rights ledger caps authority at AMBER", async 
   }
 });
 
+test("a failed render-bound rights reconciliation overrides a standalone GREEN ledger", async () => {
+  const fixture = await createVerifiedFixture();
+  const renderPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const render = await fs.readJson(renderPath);
+  const rightsStat = await fs.stat(fixture.criticalPaths.rightsPath);
+  const rightsSha256 = sha256(await fs.readFile(fixture.criticalPaths.rightsPath));
+  await writeJson(renderPath, {
+    ...render,
+    rights_reconciliation: {
+      verdict: "FAIL",
+      blockers: ["used_asset_rights_coverage_incomplete"],
+      rights_ledger_path: fixture.criticalPaths.rightsPath,
+      applied_ledger_sha256: rightsSha256,
+      applied_ledger_size_bytes: rightsStat.size,
+      used_asset_count: 2,
+      reconciled_record_count: 1,
+      final_state_verified: true,
+      can_auto_publish: false,
+    },
+  });
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.rights.verdict, "GREEN");
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.can_auto_publish, false);
+  assert.ok(report.blockers.includes("render_rights_reconciliation_not_green"));
+  assert.ok(
+    report.blockers.includes(
+      "render_rights_reconciliation:used_asset_rights_coverage_incomplete",
+    ),
+  );
+  for (const document of Object.values(report.proposed)) {
+    assert.equal(document.can_auto_publish, false);
+  }
+});
+
+test("a render-bound rights reconciliation with a stale ledger hash is RED", async () => {
+  const fixture = await createVerifiedFixture();
+  const renderPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const render = await fs.readJson(renderPath);
+  const rightsStat = await fs.stat(fixture.criticalPaths.rightsPath);
+  await writeJson(renderPath, {
+    ...render,
+    rights_reconciliation: {
+      verdict: "PASS",
+      blockers: [],
+      warnings: [],
+      rights_ledger_path: fixture.criticalPaths.rightsPath,
+      applied_ledger_sha256: "0".repeat(64),
+      applied_ledger_size_bytes: rightsStat.size,
+      applied_ledger_verdict: "PASS",
+      used_asset_count: 1,
+      reconciled_record_count: 1,
+      final_state_verified: true,
+      can_auto_publish: true,
+    },
+  });
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.can_auto_publish, false);
+  assert.ok(
+    report.blockers.includes("render_rights_reconciliation_ledger_hash_mismatch"),
+  );
+});
+
+test("an AMBER render-bound rights reconciliation caps authority at AMBER", async () => {
+  const fixture = await createVerifiedFixture();
+  const renderPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const render = await fs.readJson(renderPath);
+  const rightsStat = await fs.stat(fixture.criticalPaths.rightsPath);
+  const rightsSha256 = sha256(await fs.readFile(fixture.criticalPaths.rightsPath));
+  await writeJson(renderPath, {
+    ...render,
+    rights_reconciliation: {
+      verdict: "AMBER",
+      blockers: [],
+      warnings: ["rights_provenance_requires_review"],
+      rights_ledger_path: fixture.criticalPaths.rightsPath,
+      applied_ledger_sha256: rightsSha256,
+      applied_ledger_size_bytes: rightsStat.size,
+      applied_ledger_verdict: "AMBER",
+      used_asset_count: 1,
+      reconciled_record_count: 1,
+      final_state_verified: true,
+      can_auto_publish: false,
+    },
+  });
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.can_auto_publish, false);
+  assert.deepEqual(report.blockers, []);
+  assert.ok(
+    report.warnings.includes(
+      "render_rights_reconciliation:rights_provenance_requires_review",
+    ),
+  );
+});
+
 test("stale critical fingerprints force RED and replace unrelated legacy blockers", async () => {
   const fixture = await createVerifiedFixture();
   const audioManifestPath = path.join(fixture.artifactDir, "audio_manifest.json");

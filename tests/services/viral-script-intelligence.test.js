@@ -337,7 +337,8 @@ test("viral script intelligence requires a supported concrete monetisation conse
 test("viral script intelligence accepts source-confirmed qualitative price risk", () => {
   const story = {
     id: "black-ops-pricey-ports",
-    title: "Black Ops 1 and 2 Listings Have Fans Fearing Pricey PlayStation Ports",
+    title: "Black Ops Classics Have A Price Problem",
+    source_title: "Black Ops 1 and 2 Listings Have Fans Fearing Pricey PlayStation Ports",
     source_name: "IGN",
     confirmed_claims: [
       "IGN reports PlayStation listings for Black Ops 1 and 2 have fans concerned the ports could be expensive.",

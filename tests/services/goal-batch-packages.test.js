@@ -4571,7 +4571,7 @@ test("goal batch preparation materialises governed no-offer commercial evidence"
   }
 });
 
-test("goal batch packages hydrate revenue stubs from per-story commercial manifests", () => {
+test("goal batch packages reject incomplete offers while preserving source hydration", () => {
   const stories = augmentStoriesWithRevenuePaths(
     [],
     {
@@ -4622,7 +4622,19 @@ test("goal batch packages hydrate revenue stubs from per-story commercial manife
   assert.match(prepared.full_script, /Forza Horizon 6/i);
   assert.match(prepared.full_script, /The Phrasemaker/i);
   assert.notEqual(prepared.public_title, "Forza Horizon 6");
-  assert.equal(prepared.affiliate_disclosure, "Affiliate links may earn us a commission.");
+  assert.equal(prepared.affiliate_disclosure, undefined);
+  assert.equal(prepared.affiliate_link_manifest.decision_status, "governed_no_offer");
+  assert.equal(
+    prepared.affiliate_link_manifest.no_direct_offer_reason,
+    "no_governed_direct_offer_supplied",
+  );
+  assert.equal(prepared.affiliate_link_manifest.primary_link, null);
+  assert.equal(prepared.affiliate_link_manifest.disclosure_required, false);
+  assert.deepEqual(prepared.affiliate_link_manifest.offers, []);
+  assert.deepEqual(
+    prepared.affiliate_link_manifest.rejection_reasons,
+    ["no_governed_direct_offer_supplied"],
+  );
 });
 
 test("goal batch packages do not turn source-only stories into GREEN generated-card videos", () => {
@@ -4834,7 +4846,7 @@ test("goal batch packages restore sibling motion-hydrated materialised clips bef
   }
 });
 
-test("goal batch packages create rights records for restored official V4 motion clips", () => {
+test("goal batch packages record restored official clips but reject one-base-source motion", () => {
   const story = {
     id: "granblue-official-restore",
     title: "Granblue Fantasy: Relink Demo Is The Real Proof",
@@ -4913,10 +4925,17 @@ test("goal batch packages create rights records for restored official V4 motion 
     (record) => record.source_type === "official_game_site_news_page",
   );
   assert.equal(new Set(restoredRights.map((record) => record.asset_id)).size, 8);
-  assert.equal(pack.acceptance_entry.verdict, "GREEN", JSON.stringify({
-    reasons: pack.publish_verdict.reason_codes,
-    premium: pack.pulse_media_house_score?.premium_output_contract,
-  }));
+  assert.equal(pack.acceptance_entry.verdict, "RED");
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes(
+      "footage:distinct_motion_source_assets_minimum_not_met",
+    ),
+    JSON.stringify(pack.publish_verdict.reason_codes),
+  );
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes("media_house:source_lock_not_verified"),
+    JSON.stringify(pack.publish_verdict.reason_codes),
+  );
 });
 
 test("goal batch packages rewrite generic one-detail proof titles before publishing packs", () => {

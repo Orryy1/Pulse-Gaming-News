@@ -64,6 +64,7 @@
     "ops:railway:health": "node tools/railway-health-check.js",
     "ops:system:doctor": "node tools/system-doctor.js",
     "ops:toolchain-doctor": "node tools/production-toolchain-doctor.js",
+    "ops:pinned-ffmpeg-upgrade": "node tools/pinned-ffmpeg-upgrade.js",
     "ops:pinned-ytdlp-upgrade": "node tools/pinned-ytdlp-upgrade.js",
     "ops:queue:inspect": "node tools/queue-inspect.js",
     "ops:pipeline-backlog": "node tools/pipeline-backlog.js",

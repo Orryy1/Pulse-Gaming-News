@@ -1371,6 +1371,43 @@ test("source-bound promoted fresh lanes avoid template scaffolding and mojibake"
   }
 });
 
+test("source-bound fallback turns a physical-release backlash story into a concrete player-trust angle", () => {
+  const story = {
+    id: "rss_wolverine_physical_disc",
+    title:
+      "Marvel's Wolverine Trailer Flooded With Comments as Physical Disc Backlash Against PlayStation Continues",
+    source_type: "rss",
+    subreddit: "GameSpot",
+    article_url:
+      "https://www.gamespot.com/articles/marvels-wolverine-trailer-physical-disc-backlash-playstation/",
+  };
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "GameSpot",
+    runtimeProfile: SHORT_LOCAL_PROFILE,
+    sourceMaterial:
+      "GameSpot reports comments under the new Marvel's Wolverine trailer are dominated by requests for a physical disc release as PlayStation players push back against digital-only launches. Sony has not announced the final retail format.",
+  });
+
+  assert.ok(script);
+  assert.equal(script.editorial_angle?.lane, "physical_release_trust");
+  assert.equal(script.suggested_title, "Marvel's Wolverine Faces A Physical Release Fight");
+  assert.match(script.full_script, /^Marvel's Wolverine\b/);
+  assert.match(script.full_script, /physical disc|physical release/i);
+  assert.match(script.full_script, /digital-only|ownership|retail format/i);
+  assert.match(script.full_script, /Sony has not|not announced/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /one detail worth checking|watch signal|what people install, buy, wishlist or ignore/i,
+  );
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+
+  const quality = buildViralScriptIntelligence({
+    story,
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+});
+
 test("sourceNameFromUrl gives readable publisher names", () => {
   assert.equal(
     sourceNameFromUrl("https://www.rockpapershotgun.com/example"),

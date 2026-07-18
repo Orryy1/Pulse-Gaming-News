@@ -89,7 +89,7 @@ test("video temporal QA CLI writes hash-bound machine and human proof", async ()
   );
 });
 
-test("video temporal QA CLI records a clean centre crop as disambiguation for a branded-shell full-frame match", async () => {
+test("video temporal QA CLI records clean centre motion but keeps a full-frame repeat blocked", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-temporal-shell-"));
   const mp4Path = path.join(root, "final.mp4");
   await fs.outputFile(mp4Path, Buffer.from("shell-disambiguated-media-fixture"));
@@ -147,9 +147,14 @@ test("video temporal QA CLI records a clean centre crop as disambiguation for a 
     },
   );
 
-  assert.strictEqual(result.exitCode, 0);
-  assert.strictEqual(result.report.verdict, "GREEN");
-  assert.strictEqual(result.report.can_publish, true);
+  assert.strictEqual(result.exitCode, 2);
+  assert.strictEqual(result.report.verdict, "RED");
+  assert.strictEqual(result.report.can_publish, false);
+  assert.ok(
+    result.report.blockers.includes(
+      "temporal_video_qa_repeated_motion_detected",
+    ),
+  );
   assert.strictEqual(
     result.report.validation.repeat_reconciliation
       .full_frame_only_disambiguated_by_center_crop,

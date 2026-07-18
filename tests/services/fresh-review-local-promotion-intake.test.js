@@ -58,6 +58,35 @@ test("fresh review local promotion intake converts a repaired row into source-ba
   assert.equal(draft.pinned_comment, "Source: IGN.");
 });
 
+test("fresh review local promotion intake keeps Wolverine's editorial angle out of the canonical game identity", () => {
+  const draft = storyDraftFromReprocessedRow(
+    {
+      id: "rss_wolverine_physical_disc",
+      title: "Marvel's Wolverine's Physical Release Fight",
+      suggested_title: "Marvel's Wolverine's Physical Release Fight",
+      source_name: "IGN",
+      article_url:
+        "https://www.ign.com/articles/marvels-wolverine-trailer-flooded-with-comments-as-physical-disc-backlash-against-playstation-continues",
+      source_type: "rss",
+      source_published_at: "2026-07-18T16:44:48.000Z",
+      full_script:
+        "Marvel's Wolverine just turned its trailer comments into an ownership fight. IGN reports requests for a physical disc release are flooding the comments. Follow Pulse Gaming so you never miss a beat.",
+      script_generation_status: "script_ready",
+    },
+    {
+      title:
+        "Marvel's Wolverine Trailer Flooded With Comments as Physical Disc Backlash Against PlayStation Continues",
+    },
+  );
+
+  assert.equal(draft.canonical_subject, "Marvel's Wolverine");
+  assert.equal(draft.canonical_game, "Marvel's Wolverine");
+  assert.equal(
+    draft.source_title,
+    "Marvel's Wolverine Trailer Flooded With Comments as Physical Disc Backlash Against PlayStation Continues",
+  );
+});
+
 test("fresh review local promotion intake builds local promotion stories without DB or publish side effects", async () => {
   const row = sourceBackedReviewRow();
   const report = await buildFreshReviewLocalPromotionIntake({

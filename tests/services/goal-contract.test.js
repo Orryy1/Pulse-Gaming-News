@@ -234,7 +234,12 @@ async function materialiseFlagshipSlot(root, {
     schema_version: 1,
     story_id: storyId,
     reviewed_at: "2026-07-15T12:00:00.000Z",
+    signed_at: "2026-07-15T12:01:00.000Z",
     reviewer: { id: "independent-av-reviewer", independent: true },
+    signoff: {
+      reviewer_id: "independent-av-reviewer",
+      signed_at: "2026-07-15T12:01:00.000Z",
+    },
     artefacts: {
       final_mp4: mediaPath,
       contact_sheet: contactSheetPath,
@@ -261,6 +266,12 @@ async function materialiseFlagshipSlot(root, {
     defects: [],
     verdict: "GREEN",
     status: "GREEN",
+    final_verdict: "GREEN",
+    publish_ready: true,
+    can_auto_publish: true,
+    blockers: [],
+    failures: [],
+    errors: [],
   });
   const hashes = {
     media: mediaHash,

@@ -471,11 +471,41 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
   assert.equal(await fs.pathExists(report.rights.backup_path), true);
   assert.equal(report.rights.bridge_rights_synced, true);
   assert.equal(await fs.pathExists(report.rights.bridge_backup_path), true);
+  assert.match(
+    report.rights.render_manifest_backup_path,
+    /render_manifest\.json\.pre_candidate_evidence_reconciliation/,
+  );
+  assert.equal(await fs.pathExists(report.rights.render_manifest_backup_path), true);
+  const appliedLedgerBuffer = await fs.readFile(path.join(artifactDir, "rights_ledger.json"));
+  const reconciledRenderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.deepEqual(reconciledRenderManifest.rights_reconciliation, {
+    verdict: "PASS",
+    status: "GREEN",
+    rights_ledger_path: path.join(artifactDir, "rights_ledger.json"),
+    bridge_rights_synced: true,
+    applied: true,
+    used_asset_count: 7,
+    reconciled_record_count: 7,
+    duplicate_record_count_after: 0,
+    blockers: [],
+    applied_ledger_verdict: "GREEN",
+    applied_ledger_record_count: 7,
+    applied_ledger_sha256: sha256(appliedLedgerBuffer),
+    applied_ledger_size_bytes: appliedLedgerBuffer.length,
+    can_auto_publish: true,
+    generated_at: "2026-07-14T21:00:00.000Z",
+    final_state_verified: true,
+    final_state_verification_basis: "stored_rights_ledger_after_candidate_evidence_reconciliation",
+  });
   const bridge = await fs.readJson(bridgePath);
   const bridgeCandidate = bridge.scheduler_bridge_candidates[0];
   assert.equal(bridgeCandidate.status, "AMBER");
   assert.deepEqual(bridgeCandidate.publish_verdict, { verdict: "AMBER", can_auto_publish: false });
   assert.equal(bridgeCandidate.rights_ledger.records.length, 7);
+  assert.deepEqual(
+    bridgeCandidate.render_manifest.rights_reconciliation,
+    reconciledRenderManifest.rights_reconciliation,
+  );
 });
 
 test("candidate evidence reconciliation recognises a verified HyperFrames timeline card as owned media", async () => {
@@ -2171,6 +2201,15 @@ test("candidate evidence reconciliation applies valid rights and fingerprints wi
   assert.deepEqual(candidate.publish_verdict, { verdict: "GREEN", can_auto_publish: true });
   assert.equal(candidate.rights_ledger.verdict, "pass");
   assert.equal(candidate.render_manifest.input_fingerprint.signature.length, 64);
+  const reconciledRenderManifest = await fs.readJson(
+    path.join(fixture.artifactDir, "render_manifest.json"),
+  );
+  assert.equal(reconciledRenderManifest.rights_reconciliation.verdict, "PASS");
+  assert.equal(reconciledRenderManifest.rights_reconciliation.status, "GREEN");
+  assert.deepEqual(
+    candidate.render_manifest.rights_reconciliation,
+    reconciledRenderManifest.rights_reconciliation,
+  );
 });
 
 test("candidate evidence reconciliation rolls back a rights-only apply when the later bridge write fails", async (t) => {

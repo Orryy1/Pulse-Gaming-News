@@ -360,6 +360,47 @@ test("V5 premium direct-motion filter reports professional diversity without cha
   assert.deepEqual(multiSource.blockers, []);
 });
 
+test("V5 direct-motion filter preserves exact clip and source identity in repair evidence", async () => {
+  const clip = {
+    id: "official-gameplay-window-42",
+    path: "C:\\clips\\official-gameplay-window-42.mp4",
+    source_url: "https://www.youtube.com/watch?v=example42",
+    source_family: "official_gameplay_window_42",
+    base_source_family: "youtube:example42",
+    asset_sha256: "a".repeat(64),
+    source_master_sha256: "b".repeat(64),
+  };
+
+  const report = await filterPremiumDirectMotionClips([clip], {
+    outputDir: path.join(os.tmpdir(), "pulse-direct-motion-selector-v5-evidence-test"),
+    inspectClip: async () => ({
+      path: clip.path,
+      eligible: false,
+      reasons: ["direct_motion_dark_low_information_risk"],
+      metrics: { decoded_sample_count: 20 },
+    }),
+  });
+
+  assert.deepEqual(
+    {
+      clip_id: report.rejected[0].clip_id,
+      source_url: report.rejected[0].source_url,
+      source_family: report.rejected[0].source_family,
+      base_source_family: report.rejected[0].base_source_family,
+      asset_sha256: report.rejected[0].asset_sha256,
+      source_master_sha256: report.rejected[0].source_master_sha256,
+    },
+    {
+      clip_id: clip.id,
+      source_url: clip.source_url,
+      source_family: clip.source_family,
+      base_source_family: clip.base_source_family,
+      asset_sha256: clip.asset_sha256,
+      source_master_sha256: clip.source_master_sha256,
+    },
+  );
+});
+
 test("V5 ultimate selector fails when decoded-frame rejections concentrate the surviving source pool", async () => {
   const sourceHash = (character) => character.repeat(64);
   const clips = [

@@ -1122,6 +1122,65 @@ test("fails closed when the selected genuine base sources miss the source job mi
   assert.equal(await fs.pathExists(fixture.workspaceDir), false);
 });
 
+test("fails closed when a repaired flagship selects three scenes from one source at exactly 25 percent share", async (t) => {
+  const fixture = await makeFixture(t);
+  const clips = [];
+  for (let sourceIndex = 0; sourceIndex < 4; sourceIndex += 1) {
+    const sourceMasterSha256 = sha256Buffer(
+      Buffer.from(`concentrated-source-${sourceIndex + 1}`),
+    );
+    for (let sceneIndex = 0; sceneIndex < 3; sceneIndex += 1) {
+      const clipIndex = sourceIndex * 3 + sceneIndex + 1;
+      const clipPath = path.join(
+        path.dirname(fixture.motionManifestPath),
+        `concentrated-source-${sourceIndex + 1}-scene-${sceneIndex + 1}.mp4`,
+      );
+      const clipBytes = Buffer.alloc(640 + clipIndex, clipIndex);
+      await fs.writeFile(clipPath, clipBytes);
+      clips.push({
+        id: `concentrated-source-${sourceIndex + 1}-scene-${sceneIndex + 1}`,
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_family: `concentrated-source-${sourceIndex + 1}-scene-${sceneIndex + 1}`,
+        motion_family: `concentrated-source-${sourceIndex + 1}-scene-${sceneIndex + 1}`,
+        source_master_sha256: sourceMasterSha256,
+        canonical_source_url:
+          `https://media.example.test/concentrated-source-${sourceIndex + 1}.mp4`,
+        sha256: sha256Buffer(clipBytes),
+        media_kind: "direct_video",
+        source_type: "official_trailer",
+        counts_towards_motion_readiness: true,
+        materialized: true,
+      });
+    }
+  }
+
+  const motionManifest = await fs.readJson(fixture.motionManifestPath);
+  motionManifest.clips = clips;
+  motionManifest.materialised_clips = clips;
+  motionManifest.clip_count = clips.length;
+  motionManifest.distinct_motion_family_count = clips.length;
+  await fs.writeJson(fixture.motionManifestPath, motionManifest);
+  await fixture.writeMotionRights(clips);
+
+  const evidence = await fs.readJson(fixture.currentEvidencePath);
+  evidence.selected_materialised_motion_clip_ids = clips.map((clip) => clip.id);
+  evidence.materialised_motion_manifest_sha256 = await sha256File(
+    fixture.motionManifestPath,
+  );
+  await fs.writeJson(fixture.currentEvidencePath, evidence);
+
+  await assert.rejects(
+    () => repairFlagshipRenderWorkOrder({
+      sourceWorkOrderPath: fixture.sourceWorkOrderPath,
+      currentEvidencePath: fixture.currentEvidencePath,
+      workspaceDir: fixture.workspaceDir,
+    }),
+    /selected_professional_source_diversity_blocked:professional_motion_source_concentration_above_floor/,
+  );
+  assert.equal(await fs.pathExists(fixture.workspaceDir), false);
+});
+
 test("does not treat segment source IDs or source-family labels as genuine base identities", async (t) => {
   const fixture = await makeFixture(t);
   const motionManifest = await fs.readJson(fixture.motionManifestPath);

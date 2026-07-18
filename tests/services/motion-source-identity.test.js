@@ -161,7 +161,12 @@ test("sampled visual fingerprints collapse near-identical procedural template va
     },
   ];
 
-  const result = assessProfessionalSourceDiversity({ clips, scenes: clips });
+  const result = assessProfessionalSourceDiversity({
+    clips,
+    scenes: clips,
+    requiredBaseSources: 2,
+    maxSourceShare: 1,
+  });
 
   assert.equal(result.observed_genuine_base_source_count, 2);
   assert.equal(result.status, "pass");
@@ -237,6 +242,25 @@ test("motion source identity canonicalises YouTube aliases and strips tracking n
   assert.deepEqual(reconciled.sources[0].clip_indexes, [0, 1]);
 });
 
+test("motion source identity accepts stable base asset IDs but rejects placeholder IDs", () => {
+  const stable = resolveMotionSourceIdentity({
+    id: "official-scene",
+    base_source_asset_id: "publisher-arknights-endfield-trailer-01",
+  });
+  const placeholder = resolveMotionSourceIdentity({
+    id: "placeholder-scene",
+    base_source_asset_id: "placeholder",
+  });
+
+  assert.equal(stable.resolved, true);
+  assert.equal(
+    stable.base_source_asset_id,
+    "asset:publisher-arknights-endfield-trailer-01",
+  );
+  assert.equal(stable.base_source_identity_basis, "base_source_asset_id");
+  assert.equal(placeholder.resolved, false);
+});
+
 test("motion source identity collapses URL mirrors by master hash and sampled fingerprint", () => {
   const clips = [
     {
@@ -272,7 +296,7 @@ test("motion source identity collapses URL mirrors by master hash and sampled fi
   assert.ok(mirrored.identity_evidence.some((entry) => entry.kind === "youtube_id"));
 });
 
-test("professional source diversity persists scene shares and applies the current concentration rule", () => {
+test("professional source diversity blocks either excessive scene count or source share", () => {
   const clips = [
     {
       id: "source_a_1",
@@ -308,15 +332,35 @@ test("professional source diversity persists scene shares and applies the curren
   assert.deepEqual(blocked.concentration_rule, {
     max_scenes_per_source: PROFESSIONAL_MOTION_SOURCE_POLICY.max_scenes_per_source,
     max_source_share: PROFESSIONAL_MOTION_SOURCE_POLICY.max_source_share,
-    operator: "scene_count > max_scenes_per_source AND scene_share > max_source_share",
+    operator: "scene_count > max_scenes_per_source OR scene_share > max_source_share",
   });
   assert.equal(blocked.per_source_scene_shares[0].scene_count, 3);
   assert.equal(blocked.per_source_scene_shares[0].scene_share, 0.75);
 
-  const balancedScenes = [HASH_A, HASH_B, HASH_C, HASH_D].flatMap((hash, sourceIndex) =>
+  const exactShareEdge = [HASH_A, HASH_B, HASH_C, HASH_D].flatMap((hash, sourceIndex) =>
     Array.from({ length: 3 }, (_, sceneIndex) => ({
       id: `source_${sourceIndex}_scene_${sceneIndex}`,
       path: `source-${sourceIndex}-scene-${sceneIndex}.mp4`,
+      source_master_sha256: hash,
+    })),
+  );
+  const countBlockedAtExactShare = assessProfessionalSourceDiversity({
+    clips: exactShareEdge,
+    scenes: exactShareEdge,
+  });
+
+  assert.equal(countBlockedAtExactShare.per_source_scene_shares[0].scene_share, 0.25);
+  assert.equal(countBlockedAtExactShare.status, "blocked");
+  assert.ok(
+    countBlockedAtExactShare.blockers.includes(
+      "professional_motion_source_concentration_above_floor",
+    ),
+  );
+
+  const balancedScenes = [HASH_A, HASH_B, HASH_C, HASH_D].flatMap((hash, sourceIndex) =>
+    Array.from({ length: 2 }, (_, sceneIndex) => ({
+      id: `balanced_source_${sourceIndex}_scene_${sceneIndex}`,
+      path: `balanced-source-${sourceIndex}-scene-${sceneIndex}.mp4`,
       source_master_sha256: hash,
     })),
   );

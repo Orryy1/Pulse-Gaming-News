@@ -459,3 +459,44 @@ test("V5 ultimate selector fails when decoded-frame rejections concentrate the s
     [{ count: 3, share: 0.375 }],
   );
 });
+
+test("V5 ultimate selector blocks three scenes from one source even at exactly 25 percent share", async () => {
+  const sourceHash = (character) => character.repeat(64);
+  const clips = ["a", "b", "c", "d"].flatMap((character, sourceIndex) =>
+    [1, 2, 3].map((sceneIndex) => ({
+      id: `source_${sourceIndex + 1}_scene_${sceneIndex}`,
+      path: `C:\\clips\\source-${sourceIndex + 1}-scene-${sceneIndex}.mp4`,
+      source_master_sha256: sourceHash(character),
+      source_family: `source_${sourceIndex + 1}_scene_${sceneIndex}`,
+    })),
+  );
+
+  const report = await filterPremiumDirectMotionClips(clips, {
+    outputDir: path.join(os.tmpdir(), "pulse-direct-motion-selector-v5-exact-share-test"),
+    policyTier: "ultimate_professional",
+    inspectClip: async (clip) => ({
+      path: clip.path,
+      eligible: true,
+      reasons: [],
+      metrics: { decoded_sample_count: 20 },
+    }),
+  });
+
+  assert.equal(report.accepted.length, 12);
+  assert.equal(report.professional_source_diversity.status, "blocked");
+  assert.ok(
+    report.blockers.includes("professional_motion_source_concentration_above_floor"),
+  );
+  assert.deepEqual(
+    report.professional_source_diversity.concentrated_sources.map((source) => ({
+      count: source.scene_count,
+      share: source.scene_share,
+    })),
+    [
+      { count: 3, share: 0.25 },
+      { count: 3, share: 0.25 },
+      { count: 3, share: 0.25 },
+      { count: 3, share: 0.25 },
+    ],
+  );
+});

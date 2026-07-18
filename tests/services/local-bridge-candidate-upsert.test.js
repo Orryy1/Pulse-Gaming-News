@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -22,6 +23,52 @@ const GTA_VI_DISPLAY_SCRIPT =
 
 const GTA_VI_SAFE_SPOKEN_SCRIPT =
   "Rockstar just made its next Grand Theft Auto console pitch unusually direct. The useful point is not brand hype. It is what players can actually test: footage clarity, launch timing and whether the PlayStation 5 version looks like the default social feed clip. If the reveal keeps those details clean, PlayStation gets the easy conversation. If it dodges them, every rumour returns and the platform-war noise gets louder. That makes the first clean comparison matter more than any logo. Follow Pulse Gaming so you never miss a beat.";
+
+async function fixtureFingerprint(filePath) {
+  const buffer = await fs.readFile(filePath);
+  return {
+    path: filePath,
+    sha256: crypto.createHash("sha256").update(buffer).digest("hex"),
+    size_bytes: buffer.length,
+  };
+}
+
+async function restampFixtureAuthority(files, refreshedAt = "2026-07-17T09:55:00.000Z") {
+  const canonical = await fs.readJson(
+    path.join(files.artifactDir, "canonical_story_manifest.json"),
+  );
+  const audio = await fs.readJson(path.join(files.artifactDir, "audio_manifest.json"));
+  const render = await fs.readJson(path.join(files.artifactDir, "render_manifest.json"));
+  const authorityRefresh = {
+    schema_version: 1,
+    refreshed_at: refreshedAt,
+    source: "current_independently_verified_artifact_evidence",
+    frozen_hashes: {
+      render: await fixtureFingerprint(render.output_path),
+      audio: await fixtureFingerprint(audio.resolved_narration_audio_path),
+      timestamps: await fixtureFingerprint(audio.resolved_word_timestamps_path),
+      rights: await fixtureFingerprint(path.join(files.artifactDir, "rights_ledger.json")),
+    },
+    monotonic_verdict: true,
+  };
+  const specs = [
+    ["goal_package_summary.json", { verdict: "GREEN", can_auto_publish: true }],
+    ["platform_publish_manifest.json", { publish_status: "GREEN", can_auto_publish: true }],
+    ["publish_verdict.json", { verdict: "GREEN", can_auto_publish: true }],
+  ];
+  for (const [fileName, defaults] of specs) {
+    const filePath = path.join(files.artifactDir, fileName);
+    const current = (await fs.pathExists(filePath)) ? await fs.readJson(filePath) : {};
+    await fs.writeJson(filePath, {
+      ...defaults,
+      ...current,
+      story_id: canonical.story_id,
+      blockers: [],
+      warnings: [],
+      authority_refresh: authorityRefresh,
+    });
+  }
+}
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-bridge-upsert-"));
@@ -205,6 +252,43 @@ async function fixture() {
     blockers: [],
     warnings: [],
   });
+  const authorityRefresh = {
+    schema_version: 1,
+    refreshed_at: "2026-06-21T18:39:00.000Z",
+    source: "current_independently_verified_artifact_evidence",
+    frozen_hashes: {
+      render: await fixtureFingerprint(path.join(artifactDir, "visual_v4_render.mp4")),
+      audio: await fixtureFingerprint(path.join(root, "output", "audio", "story_custom_seas.mp3")),
+      timestamps: await fixtureFingerprint(
+        path.join(root, "output", "audio", "story_custom_seas_timestamps.json"),
+      ),
+      rights: await fixtureFingerprint(path.join(artifactDir, "rights_ledger.json")),
+    },
+    monotonic_verdict: true,
+  };
+  await fs.writeJson(path.join(artifactDir, "goal_package_summary.json"), {
+    story_id: "story_custom_seas",
+    verdict: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    warnings: [],
+    authority_refresh: authorityRefresh,
+  });
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    ...platformManifest,
+    story_id: "story_custom_seas",
+    blockers: [],
+    warnings: [],
+    authority_refresh: authorityRefresh,
+  });
+  const publishVerdict = await fs.readJson(path.join(artifactDir, "publish_verdict.json"));
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    ...publishVerdict,
+    story_id: "story_custom_seas",
+    blockers: [],
+    authority_refresh: authorityRefresh,
+  });
   const bridgePath = path.join(root, "scheduler_bridge_candidates.json");
   await fs.writeJson(bridgePath, {
     scheduler_bridge_candidates: [
@@ -312,6 +396,37 @@ test("buildLocalBridgeCandidate never promotes authoritative RED evidence to GRE
   );
 });
 
+test("buildLocalBridgeCandidate rejects legacy GREEN paperwork without monotonic authority evidence", async () => {
+  const files = await fixture();
+  await fs.remove(path.join(files.artifactDir, "goal_package_summary.json"));
+  const platformManifest = await fs.readJson(
+    path.join(files.artifactDir, "platform_publish_manifest.json"),
+  );
+  delete platformManifest.authority_refresh;
+  await fs.writeJson(
+    path.join(files.artifactDir, "platform_publish_manifest.json"),
+    platformManifest,
+  );
+  const publishVerdict = await fs.readJson(path.join(files.artifactDir, "publish_verdict.json"));
+  delete publishVerdict.authority_refresh;
+  await fs.writeJson(path.join(files.artifactDir, "publish_verdict.json"), publishVerdict);
+
+  await assert.rejects(
+    () =>
+      buildLocalBridgeCandidate({
+        artifactDir: files.artifactDir,
+        generatedAt: "2026-07-17T09:55:00.000Z",
+      }),
+    (error) => {
+      assert.match(error.message, /local bridge candidate package is not GREEN/);
+      assert.ok(error.validation.blockers.includes("goal_package_summary_missing"));
+      assert.ok(error.validation.blockers.includes("publish_verdict_authority_refresh_missing"));
+      assert.ok(error.validation.blockers.includes("platform_publish_manifest_authority_refresh_missing"));
+      return true;
+    },
+  );
+});
+
 test("buildLocalBridgeCandidate accepts the authoritative post-render caption manifest", async () => {
   const files = await fixture();
   const captionDir = path.join(files.artifactDir, "flagship");
@@ -400,6 +515,7 @@ test("buildLocalBridgeCandidate prefers selected render-story clips over stale m
     { asset_id: "selected-c", asset_type: "motion", path: "selected-c.mp4", source_url: "https://media.sea.example/c.mp4", licence_basis: "official_reference_only", allowed_platforms: ["youtube", "instagram", "facebook"] },
     { asset_id: "audio", asset_type: "audio", path: "voice.mp3", licence_basis: "local_tts_generation" },
   ]);
+  await restampFixtureAuthority(files);
 
   const candidate = await buildLocalBridgeCandidate({
     artifactDir: files.artifactDir,
@@ -469,6 +585,7 @@ test("buildLocalBridgeCandidate adds owned rights for selected HyperFrames sourc
     })),
     { asset_id: "audio", asset_type: "audio", path: "voice.mp3" },
   ]);
+  await restampFixtureAuthority(files);
 
   const candidate = await buildLocalBridgeCandidate({
     artifactDir: files.artifactDir,
@@ -511,6 +628,7 @@ test("buildLocalBridgeCandidate keeps concise platform cover headlines instead o
       },
     },
   });
+  await restampFixtureAuthority(files);
 
   const candidate = await buildLocalBridgeCandidate({
     artifactDir: files.artifactDir,
@@ -538,6 +656,7 @@ test("buildLocalBridgeCandidate routes GTA VI narration through the safe spoken 
     spoken_narration_script: GTA_VI_SAFE_SPOKEN_SCRIPT,
     thumbnail_headline: "GTA VI PS5 TEST",
   });
+  await restampFixtureAuthority(files);
 
   const candidate = await buildLocalBridgeCandidate({
     artifactDir: files.artifactDir,
@@ -762,6 +881,7 @@ test("upsertLocalBridgeCandidate persists sanitized selected package evidence wi
       },
     ],
   });
+  await restampFixtureAuthority(files);
 
   const report = await upsertLocalBridgeCandidate({
     bridgePath: files.bridgePath,

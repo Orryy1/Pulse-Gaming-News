@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  metaBinaryUploadHeaders,
   metaBinaryUploadTimeoutMs,
 } = require("../../lib/platforms/meta-binary-upload-policy");
 
@@ -27,11 +28,29 @@ test("Meta reel uploaders stream media and use the shared adaptive timeout", () 
     ["upload_instagram.js", /fs\.createReadStream\(exportedAbs\)/],
   ]) {
     const source = fs.readFileSync(path.join(root, filename), "utf8");
+    assert.match(source, /metaBinaryUploadHeaders/);
     assert.match(source, /metaBinaryUploadTimeoutMs/);
     assert.match(source, expectedStream);
     assert.doesNotMatch(source, /data:\s*videoBuffer/);
     assert.doesNotMatch(source, /timeout:\s*120000/);
   }
+});
+
+test("Meta binary upload headers bind the complete stream length for RUpload", () => {
+  assert.deepEqual(
+    metaBinaryUploadHeaders(80976910, {
+      accessToken: "test-token",
+      contentType: "video/mp4",
+    }),
+    {
+      Authorization: "OAuth test-token",
+      offset: "0",
+      file_size: "80976910",
+      "Content-Length": "80976910",
+      "X-Entity-Length": "80976910",
+      "Content-Type": "video/mp4",
+    },
+  );
 });
 
 test("Meta binary upload timeout accepts bounded platform override", () => {

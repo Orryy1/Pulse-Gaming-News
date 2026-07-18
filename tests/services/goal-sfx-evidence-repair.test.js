@@ -229,6 +229,42 @@ test("goal SFX evidence repair prefers package-scoped Epidemic SFX assets from r
       },
     ],
   });
+  const staleSelectedAssets = [
+    {
+      asset_id: "epidemic-impact",
+      role: "impact",
+      provider_id: "epidemic_sound",
+      source_url: "file://audio/epidemic/sfx/epidemic_impact_editorial_hit.wav",
+      rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+    },
+    {
+      asset_id: "epidemic-transition",
+      role: "transition",
+      provider_id: "epidemic_sound",
+      source_url: "file://audio/epidemic/sfx/epidemic_transition_clean_whoosh.wav",
+      rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+    },
+    {
+      asset_id: "epidemic-ui",
+      role: "ui_tick",
+      provider_id: "epidemic_sound",
+      source_url: "file://audio/epidemic/sfx/epidemic_ui_tick_source_tick.wav",
+      rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+    },
+  ];
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    selected_assets: staleSelectedAssets,
+    source_plan: {
+      readiness: { status: "pass", blockers: [] },
+      required_roles: ["impact", "transition", "ui_tick"],
+      selected_assets: staleSelectedAssets,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact", "transition", "ui_tick"],
+    selected_assets: staleSelectedAssets,
+  });
 
   await repairGoalSfxEvidence({ root });
 
@@ -239,6 +275,109 @@ test("goal SFX evidence repair prefers package-scoped Epidemic SFX assets from r
   );
   assert.deepEqual(sfxManifest.source_plan.required_roles, ["impact", "transition", "ui_tick"]);
   assert.equal(sfxManifest.source_plan.readiness.status, "pass");
+  assert.deepEqual(
+    sfxManifest.source_plan.selected_assets.map((asset) => asset.provider_name),
+    ["Epidemic Sound", "Epidemic Sound", "Epidemic Sound"],
+  );
+  assert.deepEqual(
+    sfxManifest.selected_assets.map((asset) => asset.source_owner),
+    ["Epidemic Sound", "Epidemic Sound", "Epidemic Sound"],
+  );
+
+  const repairedSourcePlan = await fs.readJson(path.join(artifactDir, "sfx_source_plan.json"));
+  assert.deepEqual(
+    repairedSourcePlan.selected_assets.map((asset) => asset.provider_name),
+    ["Epidemic Sound", "Epidemic Sound", "Epidemic Sound"],
+  );
+
+  const repairedRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  const repairedSfxRights = repairedRights.records.filter((record) => record.provider_id === "epidemic_sound");
+  assert.deepEqual(
+    repairedSfxRights.map((record) => record.provider_name),
+    ["Epidemic Sound", "Epidemic Sound", "Epidemic Sound"],
+  );
+  assert.deepEqual(
+    repairedSfxRights.map((record) => record.source_owner),
+    ["Epidemic Sound", "Epidemic Sound", "Epidemic Sound"],
+  );
+});
+
+test("goal SFX evidence repair preserves rendered SFX selection while enriching provider attribution", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-sfx-repair-render-lock-"));
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", "story-rendered");
+  const currentAsset = {
+    asset_id: "impact-a",
+    role: "impact",
+    family: "impact",
+    provider_id: "sonniss",
+    source_url: "file://audio/sonniss/cinematic-impact-hit-a.wav",
+    rights_basis: "sonniss_game_audio_gdc_bundle_license",
+    approval_status: "approved_for_commercial_editorial_use",
+    commercial_use_allowed: true,
+  };
+  const catalogue = ["a", "b", "c"].map((suffix) => ({
+    ...currentAsset,
+    asset_id: `impact-${suffix}`,
+    source_url: `file://audio/sonniss/cinematic-impact-hit-${suffix}.wav`,
+  }));
+  await fs.outputJson(path.join(root, "output", "goal-contract", "story-packages.json"), [
+    { story_id: "story-rendered", artifact_dir: artifactDir },
+  ]);
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact"],
+    selected_assets: [currentAsset],
+  });
+  await fs.outputJson(path.join(root, "output", "goal-contract", "sfx_rights_ledger.json"), {
+    records: catalogue,
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), { sfx_cue_count: 1 });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    sound_transition_plan: {
+      sfx: { cues: [{ target_kind: "hook_slam", family: "impact" }] },
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: [currentAsset],
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    selected_assets: [currentAsset],
+    source_plan: {
+      readiness: { status: "pass", blockers: [] },
+      required_roles: ["impact"],
+      selected_assets: [currentAsset],
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_source_plan.json"), {
+    readiness: { status: "pass", blockers: [] },
+    required_roles: ["impact"],
+    selected_assets: [currentAsset],
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: "story-rendered",
+    render_mode: "final",
+    output: "visual_v4_render.mp4",
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    story_id: "story-rendered",
+    title: "Rendered story",
+    sfx_asset_inventory: [currentAsset],
+    preserved_render_field: "unchanged",
+  });
+  await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), "rendered-media");
+
+  await repairGoalSfxEvidence({ root });
+
+  const sourcePlan = await fs.readJson(path.join(artifactDir, "sfx_source_plan.json"));
+  assert.deepEqual(sourcePlan.selected_assets.map((asset) => asset.asset_id), ["impact-a"]);
+  assert.equal(sourcePlan.selected_assets[0].provider_name, "Sonniss / GameAudioGDC");
+  assert.equal(sourcePlan.selected_assets[0].source_owner, "Sonniss / GameAudioGDC");
+
+  const renderStory = await fs.readJson(path.join(artifactDir, "visual_v4_render_story.json"));
+  assert.equal(renderStory.sfx_asset_inventory[0].asset_id, "impact-a");
+  assert.equal(renderStory.sfx_asset_inventory[0].provider_name, "Sonniss / GameAudioGDC");
+  assert.equal(renderStory.sfx_asset_inventory[0].source_owner, "Sonniss / GameAudioGDC");
+  assert.equal(renderStory.preserved_render_field, "unchanged");
 });
 
 test("goal SFX evidence repair merges the retained Epidemic runtime manifest over stale package SFX", async () => {

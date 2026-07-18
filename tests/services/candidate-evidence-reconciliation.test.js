@@ -979,7 +979,7 @@ test("candidate evidence reconciliation builds a current rights row only for a v
   assert.equal(clip.evidence_file, path.join(artifactDir, "materialised_motion_clips.json"));
 });
 
-test("candidate evidence reconciliation replaces only a provisional renderer row for hash-bound official YouTube motion", async () => {
+test("candidate evidence reconciliation replaces only a provisional renderer row for hash-bound official YouTube motion with bundled identity evidence", async () => {
   const storyId = "verified_official_youtube_motion";
   const artifactDir = await makeArtifactDir("pulse-verified-official-youtube-motion-");
   const clipPath = path.join(artifactDir, "official-youtube-window.mp4");
@@ -1009,7 +1009,7 @@ test("candidate evidence reconciliation replaces only a provisional renderer row
       source_type: "official_youtube_channel",
       source_owner: "Official Publisher",
       source_family: "official_youtube_window_12_4",
-      rights_basis: "official_publisher_promotional_video",
+      rights_basis: "official_publisher_promotional_editorial_use",
       materialized: true,
       validated: true,
       segmentValidationPassed: true,
@@ -1027,11 +1027,21 @@ test("candidate evidence reconciliation replaces only a provisional renderer row
         youtube_video_id: "OfficialVideo1",
         source_master_sha256: sha256(sourceMasterBytes),
         source_identity_provenance: {
+          schema_version: 1,
+          kind: "source_identity_evidence_bundle",
           status: "resolved",
-          channel_identity: {
-            author_name: "Official Publisher",
-            author_url: "https://www.youtube.com/@officialpublisher",
-          },
+          sources: [{
+            schema_version: 1,
+            kind: "pulse_source_identity_sidecar",
+            status: "resolved",
+            canonical_source_url: sourceUrl,
+            youtube_video_id: "OfficialVideo1",
+            source_master_sha256: sha256(sourceMasterBytes),
+            channel_identity: {
+              author_name: "Official Publisher",
+              author_url: "https://www.youtube.com/@officialpublisher",
+            },
+          }],
         },
         blockers: [],
       },
@@ -1048,7 +1058,7 @@ test("candidate evidence reconciliation replaces only a provisional renderer row
       path: clipPath,
       source_url: sourceUrl,
       source_type: "official_youtube_channel",
-      licence_basis: "official_publisher_promotional_video",
+      licence_basis: "official_publisher_promotional_editorial_use",
       commercial_use_allowed: false,
       allowed_platforms: [],
       approval_status: "operator_legal_review_required",

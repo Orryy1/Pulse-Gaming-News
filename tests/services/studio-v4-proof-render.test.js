@@ -12,6 +12,7 @@ const {
   buildClipScenePlan,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
+  repositionAssCaptionsForCardWindows,
   overlayCardWindowsForStory,
   drawtextEscape,
   parseArgs,
@@ -29,6 +30,8 @@ const {
   buildCreativeTransitionSequence,
   mergeMaterialisedMotionClipCandidates,
   mergeCurrentHyperframesStoryCardCandidates,
+  hydrateProofClipSourceIdentities,
+  selectBalancedProfessionalMotionCandidates,
   selectPremiumSceneClips,
   resolveFreshHyperframesPremiumShellGate,
   scenePlanBlockerDiagnostic,
@@ -188,6 +191,45 @@ test("Studio V4 refuses failed or cross-story HyperFrames card discovery", () =>
       ["context", "hyperframes_render_not_passed"],
     ],
   );
+});
+
+test("Studio V4 cannot rediscover cards after the governed shell selection is non-passing", () => {
+  let resolveCalls = 0;
+  let evaluateCalls = 0;
+  const merged = mergeCurrentHyperframesStoryCardCandidates({
+    clips: [{ path: "direct.mp4", durationS: 5 }],
+    story: {
+      id: "governed-story",
+      hyperframes_premium_shell_required: true,
+      premium_shell_verdict: "partial",
+      hyperframes_premium_shell_gate: {
+        verdict: "partial",
+        selectedCardCount: 0,
+        blockers: ["timeline:hyperframes_readability_contract_not_passed"],
+      },
+    },
+    resolveAssets: () => {
+      resolveCalls += 1;
+      return {
+        source: { path: "stale-source.mp4", source: "story-specific" },
+        context: { path: "stale-context.mp4", source: "story-specific" },
+      };
+    },
+    evaluateCard: () => {
+      evaluateCalls += 1;
+      return { verdict: "pass", blockers: [], evidence: {} };
+    },
+  });
+
+  assert.deepEqual(merged.clips, [{ path: "direct.mp4", durationS: 5 }]);
+  assert.deepEqual(merged.accepted_cards, []);
+  assert.deepEqual(merged.rejected_cards, []);
+  assert.equal(
+    merged.skipped_reason,
+    "governed_premium_shell_selection_not_passed",
+  );
+  assert.equal(resolveCalls, 0);
+  assert.equal(evaluateCalls, 0);
 });
 
 test("Studio V4 proof renderer reports current selected HyperFrames sidecars", () => {
@@ -387,9 +429,52 @@ test("Studio V4 proof renderer reports the exact concentrated source and coverag
   assert.match(diagnostic, /missing=0\.18/);
 });
 
+test("Studio V4 scene planning reconciles local section paths to one canonical YouTube source", () => {
+  const clips = [
+    ...[1, 2, 3].map((index) => ({
+      path: `C:\\captures\\section-${index}\\Y4vHLIBS600-window-${index}.mp4`,
+      source_url: `C:\\captures\\section-${index}\\Y4vHLIBS600.mp4`,
+      canonical_source_url: "https://www.youtube.com/watch?v=Y4vHLIBS600",
+      youtube_video_id: "Y4vHLIBS600",
+      source_family: `arcane_window_${index * 6}_5`,
+      media_kind: "direct_video",
+      durationS: 5,
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      validation_source: "official_trailer_segment_validation",
+    })),
+    ...["a", "b", "c", "d", "e"].map((source, index) => ({
+      path: `C:\\captures\\${source}\\window-${index}.mp4`,
+      source_url: `https://official.example/${source}/trailer.mp4`,
+      source_family: `${source}_window_${index * 6}_5`,
+      media_kind: "direct_video",
+      durationS: 5,
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      validation_source: "official_trailer_segment_validation",
+    })),
+  ];
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 38.25,
+    xfadeS: 0.25,
+    maxSceneDurationS: 5,
+  });
+
+  assert.ok(
+    plan.blockers.includes("direct_motion_source_concentration_above_premium_floor"),
+  );
+  assert.deepEqual(plan.directMotionSourceConcentrationMetrics.concentrated_sources, [
+    { key: "youtube:y4vhlibs600", count: 3, ratio: 0.375 },
+  ]);
+});
+
 test("Studio V4 proof renderer builds authoritative professional source-diversity evidence", () => {
   const hashA = "a".repeat(64);
   const hashB = "b".repeat(64);
+  const hashC = "c".repeat(64);
+  const hashD = "d".repeat(64);
   const clips = [
     {
       id: "publisher_master_a",
@@ -420,6 +505,34 @@ test("Studio V4 proof renderer builds authoritative professional source-diversit
       source_master_sha256: hashB,
       source_family: "renamed_b_window_2",
     },
+    {
+      id: "publisher_master_c",
+      path: "c-window-1.mp4",
+      source_url: "https://publisher.example/trailers/c.mp4",
+      source_master_sha256: hashC,
+      source_family: "mutable_c_window_1",
+    },
+    {
+      id: "publisher_mirror_c",
+      path: "c-window-2.mp4",
+      source_url: "https://publisher.example/trailers/c-alt.mp4",
+      source_master_sha256: hashC,
+      source_family: "mutable_c_window_2",
+    },
+    {
+      id: "publisher_master_d",
+      path: "d-window-1.mp4",
+      source_url: "https://publisher.example/trailers/d.mp4",
+      source_master_sha256: hashD,
+      source_family: "mutable_d_window_1",
+    },
+    {
+      id: "publisher_mirror_d",
+      path: "d-window-2.mp4",
+      source_url: "https://publisher.example/trailers/d-alt.mp4",
+      source_master_sha256: hashD,
+      source_family: "mutable_d_window_2",
+    },
   ];
   const scenePlan = {
     scenes: clips.map((clip, index) => ({
@@ -434,12 +547,39 @@ test("Studio V4 proof renderer builds authoritative professional source-diversit
   assert.equal(proof.authoritative, true);
   assert.equal(proof.policy_tier, "ultimate_professional");
   assert.equal(proof.status, "pass");
-  assert.equal(proof.required_genuine_base_source_count, 2);
-  assert.equal(proof.observed_genuine_base_source_count, 2);
+  assert.equal(proof.required_genuine_base_source_count, 3);
+  assert.equal(proof.observed_genuine_base_source_count, 4);
   assert.deepEqual(proof.unresolved_clips, []);
-  assert.deepEqual(proof.per_source_scene_shares.map((source) => source.scene_count), [2, 2]);
-  assert.equal(proof.identity_evidence.length, 2);
+  assert.deepEqual(proof.per_source_scene_shares.map((source) => source.scene_count), [2, 2, 2, 2]);
+  assert.equal(proof.identity_evidence.length, 4);
   assert.deepEqual(proof.blockers, []);
+});
+
+test("Studio V4 proof renderer preserves an explicit upstream genuine-source floor", () => {
+  const clips = ["a", "b"].map((source) => ({
+    id: `publisher_${source}`,
+    path: `${source}.mp4`,
+    source_url: `https://publisher.example/${source}.mp4`,
+    source_master_sha256: source.repeat(64),
+  }));
+  const scenePlan = {
+    scenes: clips.map((clip, index) => ({
+      index,
+      path: clip.path,
+      readableCardKind: null,
+    })),
+  };
+
+  const proof = buildProfessionalSourceDiversityProof({
+    clips,
+    scenePlan,
+    requiredBaseSources: 5,
+  });
+
+  assert.equal(proof.required_genuine_base_source_count, 5);
+  assert.equal(proof.observed_genuine_base_source_count, 2);
+  assert.equal(proof.status, "blocked");
+  assert.ok(proof.blockers.includes("professional_genuine_base_source_minimum_not_met"));
 });
 
 test("Studio V4 proof renderer fails professional proof closed on family-only scene identity", () => {
@@ -466,6 +606,222 @@ test("Studio V4 proof renderer fails professional proof closed on family-only sc
   assert.equal(proof.unresolved_clips.length, 3);
   assert.ok(proof.blockers.includes("professional_motion_source_identity_unresolved"));
   assert.ok(proof.blockers.includes("professional_genuine_base_source_minimum_not_met"));
+});
+
+test("Studio V4 proof renderer hydrates SHA-bound source identity before the professional gate", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-source-identity-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const masterDir = path.join(root, "test", "output", "official-masters");
+  const masterPath = path.join(masterDir, "OfficialVideo123.mp4");
+  fs.mkdirSync(masterDir, { recursive: true });
+  fs.writeFileSync(masterPath, Buffer.from("verified master bytes"));
+  fs.writeFileSync(
+    path.join(masterDir, "OfficialVideo123.info.json"),
+    JSON.stringify({
+      id: "OfficialVideo123",
+      webpage_url: "https://www.youtube.com/watch?v=OfficialVideo123",
+      extractor: "youtube",
+      extractor_key: "Youtube",
+      uploader: "Official Publisher",
+      channel: "Official Publisher",
+      uploader_url: "https://www.youtube.com/@officialpublisher",
+      title: "Official Game Trailer",
+    }),
+  );
+
+  const [hydrated, unresolved] = await hydrateProofClipSourceIdentities(
+    [
+      {
+        id: "official-window",
+        path: path.join(root, "output", "video_cache", "window.mp4"),
+        source_url: masterPath,
+        media_kind: "direct_video",
+      },
+      {
+        id: "path-only-window",
+        path: path.join(root, "output", "video_cache", "path-only.mp4"),
+        source_url: path.join(root, "test", "output", "missing-master.mp4"),
+        media_kind: "direct_video",
+      },
+    ],
+    { root },
+  );
+
+  assert.equal(hydrated.youtube_video_id, "OfficialVideo123");
+  assert.equal(
+    hydrated.canonical_source_url,
+    "https://www.youtube.com/watch?v=OfficialVideo123",
+  );
+  assert.match(hydrated.source_master_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(hydrated.source_identity_provenance.kind, "yt_dlp_info_sidecar");
+  assert.deepEqual(hydrated.source_identity_conflicts, []);
+  assert.equal(unresolved.youtube_video_id, undefined);
+  assert.equal(unresolved.source_master_sha256, undefined);
+});
+
+test("Studio V4 proof renderer caps a visually valid reserve pool at two scenes per source", () => {
+  const clips = [];
+  for (const [sourceIndex, character] of ["a", "b", "c", "d"].entries()) {
+    for (let windowIndex = 0; windowIndex < 4; windowIndex += 1) {
+      clips.push({
+        id: `source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+        path: `source-${sourceIndex + 1}-window-${windowIndex + 1}.mp4`,
+        source_master_sha256: character.repeat(64),
+        source_family: `mutable_${sourceIndex + 1}_${windowIndex + 1}`,
+        media_kind: "direct_video",
+      });
+    }
+    if (sourceIndex === 1) {
+      clips.push({
+        id: "source_card",
+        path: "hf_source_card_story.mp4",
+        media_kind: "generated_card",
+        source_type: "hyperframes_premium_shell_card",
+        card_type: "source",
+      });
+    }
+  }
+
+  const selection = selectBalancedProfessionalMotionCandidates(clips);
+
+  assert.equal(selection.status, "pass");
+  assert.deepEqual(selection.blockers, []);
+  assert.equal(selection.selected_direct_motion_clip_count, 8);
+  assert.equal(selection.dropped_direct_motion_clip_count, 8);
+  assert.equal(selection.clips.filter((clip) => clip.card_type === "source").length, 1);
+  assert.deepEqual(
+    selection.professional_source_diversity.per_source_scene_shares.map(
+      (source) => source.scene_count,
+    ),
+    [2, 2, 2, 2],
+  );
+  assert.equal(selection.professional_source_diversity.status, "pass");
+});
+
+test("Studio V4 proof renderer reconciles alternate hashes from one YouTube source before balancing", () => {
+  const clips = [
+    ...["a", "b", "c"].map((hash, index) => ({
+      id: `shared_trailer_window_${index + 1}`,
+      path: `shared-trailer-window-${index + 1}.mp4`,
+      source_master_sha256: hash.repeat(64),
+      youtube_video_id: "SharedTrailer123",
+      canonical_source_url: "https://www.youtube.com/watch?v=SharedTrailer123",
+      media_kind: "direct_video",
+      durationS: 5,
+    })),
+    ...["d", "e", "f"].flatMap((hash, sourceIndex) =>
+      [1, 2].map((windowIndex) => ({
+        id: `source_${sourceIndex + 2}_window_${windowIndex}`,
+        path: `source-${sourceIndex + 2}-window-${windowIndex}.mp4`,
+        source_master_sha256: hash.repeat(64),
+        media_kind: "direct_video",
+        durationS: 5,
+      })),
+    ),
+  ];
+
+  const selection = selectBalancedProfessionalMotionCandidates(clips, {
+    requiredBaseSources: 4,
+    targetDurationS: 35,
+  });
+
+  assert.equal(selection.status, "pass", JSON.stringify(selection, null, 2));
+  assert.equal(selection.selected_direct_motion_clip_count, 8);
+  assert.equal(selection.dropped_direct_motion_clip_count, 1);
+  assert.equal(
+    selection.professional_source_diversity.observed_genuine_base_source_count,
+    4,
+  );
+  assert.ok(
+    selection.professional_source_diversity.per_source_scene_shares.every(
+      (source) => source.scene_count <= 2,
+    ),
+  );
+  assert.equal(
+    selection.clips.filter(
+      (clip) => clip.youtube_video_id === "SharedTrailer123",
+    ).length,
+    2,
+  );
+});
+
+test("Studio V4 proof renderer only selects complete source layers from an imbalanced reserve pool", () => {
+  const sourceCounts = [3, 3, 1, 1];
+  const clips = sourceCounts.flatMap((count, sourceIndex) =>
+    Array.from({ length: count }, (_, windowIndex) => ({
+      id: `source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+      path: `source-${sourceIndex + 1}-window-${windowIndex + 1}.mp4`,
+      source_master_sha256: String.fromCharCode(97 + sourceIndex).repeat(64),
+      source_family: `source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+      media_kind: "direct_video",
+    })),
+  );
+
+  const selection = selectBalancedProfessionalMotionCandidates(clips);
+
+  assert.equal(selection.status, "pass", JSON.stringify(selection, null, 2));
+  assert.equal(selection.selected_direct_motion_clip_count, 4);
+  assert.equal(selection.dropped_direct_motion_clip_count, 4);
+  assert.deepEqual(
+    selection.professional_source_diversity.per_source_scene_shares.map(
+      (source) => source.scene_count,
+    ),
+    [1, 1, 1, 1],
+  );
+  assert.equal(selection.professional_source_diversity.status, "pass");
+});
+
+test("Studio V4 proof renderer uses a balanced partial source layer when narration coverage needs it", () => {
+  const sourceCounts = [2, 2, 2, 2, 2, 1];
+  const clips = sourceCounts.flatMap((count, sourceIndex) =>
+    Array.from({ length: count }, (_, windowIndex) => ({
+      id: `source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+      path: `source-${sourceIndex + 1}-window-${windowIndex + 1}.mp4`,
+      source_master_sha256: String.fromCharCode(97 + sourceIndex).repeat(64),
+      source_family: `source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+      media_kind: "direct_video",
+      durationS: windowIndex === 0 && sourceIndex < 5 ? 3 : 5,
+    })),
+  );
+
+  const selection = selectBalancedProfessionalMotionCandidates(clips, {
+    requiredBaseSources: 6,
+    targetDurationS: 51.04,
+  });
+
+  assert.equal(selection.status, "pass", JSON.stringify(selection, null, 2));
+  assert.equal(selection.selected_direct_motion_clip_count, 11);
+  assert.equal(selection.dropped_direct_motion_clip_count, 0);
+  assert.deepEqual(
+    selection.professional_source_diversity.per_source_scene_shares.map(
+      (source) => source.scene_count,
+    ),
+    [2, 2, 2, 2, 2, 1],
+  );
+  assert.equal(selection.professional_source_diversity.status, "pass");
+});
+
+test("Studio V4 proof renderer does not hide unresolved reserve identities while balancing", () => {
+  const clips = [
+    ...["a", "b", "c", "d"].map((character, index) => ({
+      id: `resolved_${index + 1}`,
+      path: `resolved-${index + 1}.mp4`,
+      source_master_sha256: character.repeat(64),
+      media_kind: "direct_video",
+    })),
+    {
+      id: "unresolved",
+      path: "unresolved.mp4",
+      source_family: "mutable_family_only",
+      media_kind: "direct_video",
+    },
+  ];
+
+  const selection = selectBalancedProfessionalMotionCandidates(clips);
+
+  assert.equal(selection.status, "blocked");
+  assert.ok(selection.blockers.includes("professional_motion_source_identity_unresolved"));
+  assert.equal(selection.unresolved_candidate_count, 1);
 });
 
 test("Studio V4 proof renderer allows balanced second windows when coverage needs them", () => {
@@ -1753,6 +2109,20 @@ test("Studio V4 proof renderer adds full-bleed per-scene motion without blurred 
   assert.doesNotMatch(composite, /boxblur|fgsrc|force_original_aspect_ratio=decrease|overlay=/);
 });
 
+test("Studio V4 proof renderer preserves the authored safe frame for full-screen HyperFrames cards", () => {
+  const filters = buildSceneCompositeFilterParts({
+    index: 3,
+    durationS: 2.6,
+    readableCardKind: "source",
+    premiumCardV5: true,
+  });
+  const composite = filters.join(";");
+
+  assert.match(composite, /scale=1080:1920:flags=lanczos/);
+  assert.match(composite, /trim=duration=2\.60/);
+  assert.doesNotMatch(composite, /scale=1260:2240|crop=w=1080:h=1920|sin\(t\*|cos\(t\*/);
+});
+
 test("Studio V4 proof renderer accepts explicit direct-motion dwell overrides", () => {
   const previousDwell = process.env.STUDIO_V4_DIRECT_CLIP_MAX_VISIBLE_DWELL_S;
   const previousScenes = process.env.STUDIO_V4_DIRECT_CLIP_MAX_SCENES;
@@ -2249,6 +2619,67 @@ test("Studio V4 proof renderer keeps flash captions above lower-third and bottom
   assert.match(ass, /Style: Pop,Impact,82,/);
   assert.match(ass, /\\move\(540,1378,540,1342,0,130\)/);
   assert.doesNotMatch(ass, /\\move\(540,1484,540,1450,0,130\)/);
+});
+
+test("Studio V4 proof renderer moves captions away from full-screen HyperFrames card copy", () => {
+  assert.equal(typeof repositionAssCaptionsForCardWindows, "function");
+  const ass = [
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    "Dialogue: 0,0:00:10.80,0:00:12.20,Pop,,0,0,0,,{\\an2\\move(540,1372,540,1346,0,170)}CARD WINDOW WORDS",
+    "Dialogue: 0,0:00:13.80,0:00:15.20,Pop,,0,0,0,,{\\an2\\move(540,1372,540,1346,0,170)}NORMAL WORDS",
+  ].join("\n");
+
+  const result = repositionAssCaptionsForCardWindows(ass, [
+    { kind: "source", start_s: 11.16, end_s: 13.76 },
+  ]);
+
+  assert.match(
+    result.ass,
+    /0:00:10\.80,0:00:12\.20.*\\move\(540,1574,540,1548,0,170\).*CARD WINDOW WORDS/,
+  );
+  assert.match(
+    result.ass,
+    /0:00:13\.80,0:00:15\.20.*\\move\(540,1372,540,1346,0,170\).*NORMAL WORDS/,
+  );
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.repositioned_caption_count, 1);
+  assert.deepEqual(result.card_kinds, ["source"]);
+});
+
+test("Studio V4 overlay keeps its outro slate off a full-screen takeaway card", () => {
+  const chain = buildOverlayChain({
+    story: {
+      id: "takeaway-caption-safety",
+      title: "Paleo Pines Just Fixed Its Rarest Dinosaur Grind",
+      canonical_subject: "Paleo Pines",
+      primary_source: "Steam News",
+    },
+    inputLabel: "base",
+    outputLabel: "overlayBase",
+    durationS: 55.16,
+    fontOpt: "font='Arial'",
+    cardVisibleWindows: [
+      { kind: "takeaway", start_s: 51.04, end_s: 55.14 },
+    ],
+  });
+
+  assert.match(
+    chain,
+    /drawtext=text='NEVER MISS A BEAT'.*enable='between\(t,52\.36,55\.16\)\*not\(between\(t,51\.04,55\.14\)\)'/,
+  );
+  assert.match(
+    chain,
+    /drawbox=x=96:y=1410:w=888:h=210:.*enable='between\(t,51\.04,55\.14\)'/,
+  );
+  assert.match(
+    chain,
+    /drawbox=x=0:y=0:w=44:h=ih:color=0x0B0F19@0\.72:t=fill:enable='not\(between\(t,51\.04,55\.14\)\)'/,
+  );
+  assert.match(
+    chain,
+    /drawtext=text='PULSE \/\/ GAMING \/\/ PG\/NWS'.*enable='not\(between\(t,51\.04,55\.14\)\)'/,
+  );
 });
 
 test("Studio V4 proof renderer masks baked-in source text zones before overlays", () => {
@@ -2935,7 +3366,7 @@ test("Studio V4 proof renderer reports current SFX, voice and visual design poli
   assert.match(source, /visual_design_policy_version:\s*STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION/);
   assert.equal(STUDIO_V4_SFX_MIX_POLICY_VERSION, "source_lock_news_tick_v6");
   assert.equal(STUDIO_V4_VOICE_MIX_POLICY_VERSION, "local_voice_levelled_v2");
-  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "pulse_signature_repeat_free_v13");
+  assert.equal(STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION, "pulse_signature_repeat_free_v14");
 });
 
 test("Studio V4 overlay applies identity-aware living motion behind readable content", () => {
@@ -2957,6 +3388,10 @@ test("Studio V4 overlay applies identity-aware living motion behind readable con
   });
 
   assert.match(chain, /drawtext=text='PATCH'/);
+  assert.match(
+    chain,
+    /drawtext=text='PATCH'.*:shadowy=3:enable='between\(t,3\.3,4\.9\)'/,
+  );
   assert.match(chain, /sin\(t\*/);
   assert.match(chain, /color=0x64D2FF@0\.0/);
   assert.match(chain, /PULSE \/\/ BRIEF/);

@@ -9,6 +9,9 @@ const {
   buildLocalPrimaryReadiness,
   formatLocalPrimaryReadinessMarkdown,
 } = require("../lib/ops/local-primary-readiness");
+const {
+  resolveLocalReadinessOutputDir,
+} = require("../lib/ops/local-readiness-evidence-root");
 
 function findDuplicateEnvKeys(envPath) {
   if (!fs.pathExistsSync(envPath)) return [];
@@ -30,7 +33,7 @@ async function main() {
   dotenv.config({ override: true });
   const args = process.argv.slice(2);
   const jsonOnly = args.includes("--json");
-  const outputDir = path.join(process.cwd(), "test", "output");
+  const outputDir = resolveLocalReadinessOutputDir({ cwd: process.cwd() });
   const duplicateEnvKeys = findDuplicateEnvKeys(path.join(process.cwd(), ".env"));
   const report = await buildLocalPrimaryReadiness({ duplicateEnvKeys });
 

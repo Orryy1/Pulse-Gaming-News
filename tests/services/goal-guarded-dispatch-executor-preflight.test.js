@@ -529,6 +529,49 @@ test("executor preflight accepts duration-feasible one-card HyperFrames shorts",
   assert.deepEqual(report.blocked_selected_actions, []);
 });
 
+test("executor preflight honours an explicit zero-card direct-motion substitution contract", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-direct-motion-"));
+  const files = await evidenceFiles(root);
+  await fs.writeJson(path.join(path.dirname(files.canonical), "render_manifest.json"), {
+    story_id: "story-one",
+    rendered_duration_s: 52.733,
+    hyperframes_premium_shell_required: true,
+    premium_shell_verdict: "pass",
+    premium_shell_selected_card_count: 0,
+    hyperframes_card_count: 0,
+    hyperframes_premium_shell_gate: {
+      verdict: "pass",
+      requiredSelectedCardCount: 0,
+      selectedCardCount: 0,
+      passCount: 5,
+      cardsOmittedForDirectMotion: true,
+      selectionMode: "direct_motion_substitution",
+      blockers: [],
+    },
+    clip_scene_plan: {
+      scenes: [
+        { sourceRootKey: "official-trailer-a" },
+        { sourceRootKey: "official-trailer-b" },
+        { sourceRootKey: "official-gameplay-c" },
+      ],
+    },
+  });
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: guardedDispatchPlan(files),
+    platformStatusMatrix: platformStatusMatrix(),
+    selectedActionIds: ["story-one:youtube_shorts"],
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.handoff_ready_action_count, 1);
+  assert.deepEqual(report.blocked_selected_actions, []);
+});
+
 test("executor preflight accepts two balanced windows from the same visual source root", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-balanced-repeat-"));
   const files = await evidenceFiles(root);

@@ -532,6 +532,80 @@ test("viral script intelligence does not borrow conflict framing from an unrelat
   assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
 });
 
+test("viral script intelligence ignores related-story metadata when classifying the canonical story", () => {
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "persona-related-story-metadata",
+      title: "Netflix Persona Has One Huge Trap",
+      source_name: "Polygon",
+      confirmed_claims: [
+        "Polygon reports Atlus and Sega are adapting Persona as a live-action Netflix series.",
+        "Related stories: Black Flag Resynced faces microtransaction criticism.",
+      ],
+    },
+    script:
+      "Persona going live-action on Netflix is a dangerous swing. " +
+      "Polygon reports Atlus and Sega are adapting Persona for a new series. " +
+      "Fans now have to judge whether the characters and quiet social moments survive outside a game. " +
+      "The debate is whether Netflix understands the friendships before chasing supernatural spectacle. " +
+      "If the relationships work, the impossible choices can still land with players. " +
+      "If the show copies only the imagery, Persona becomes expensive cosplay. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+});
+
+test("viral script intelligence accepts a confirmed no-price-rise decision as concrete evidence", () => {
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "palworld-price-steady",
+      title: "Palworld 1.0 Just Dodged The Price Backlash",
+      source_name: "Eurogamer",
+      confirmed_claims: [
+        "Eurogamer reports Pocketpair will not raise Palworld's price for the full release.",
+      ],
+    },
+    script:
+      "Palworld 1.0 will launch without a price rise. " +
+      "Eurogamer reports Pocketpair will not raise Palworld's price for the full release. " +
+      "That keeps the comeback argument on the update rather than a new charge. " +
+      "Lapsed players still need a reason to reinstall and new players need a reason not to wait. " +
+      "The debate is whether a steady price makes the full release feel generous or merely familiar. " +
+      "If version 1.0 feels cleaner, the second launch gets a real chance. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+});
+
+test("viral script intelligence accepts a source-confirmed standard-edition consequence", () => {
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "black-flag-standard-edition",
+      title: "Black Flag Resynced Steam Backlash Put Ubisoft On Defence",
+      source_name: "Kotaku",
+      confirmed_claims: [
+        "Ubisoft says the standard edition is the full complete experience.",
+        "Negative Steam reviews criticised microtransactions and paid DLC.",
+      ],
+    },
+    script:
+      "Black Flag Resynced's paid-content backlash forced Ubisoft to defend the standard edition. " +
+      "Kotaku reports Ubisoft calls the standard edition the full experience after negative reviews criticised microtransactions and paid DLC. " +
+      "Players are asking whether the base game feels complete before another payment appears. " +
+      "The debate is whether the extras stay optional or reshape progression around the store. " +
+      "If normal play delivers the full pirate loop, the outrage can fade. " +
+      "If it keeps pointing towards paid content, complete will sound like marketing. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
+  assert.equal(result.blockers.includes("monetisation_conflict_missing_supported_detail"), false);
+});
+
 test("viral script intelligence rejects unsupported universal claims", () => {
   const script =
     "Moonfall's $2.99 skin bundle has put its storefront under fire. " +
@@ -1574,4 +1648,34 @@ test("viral script intelligence approves save-loss patch scripts with concrete p
   assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
   assert.ok(result.viral_score >= 75, JSON.stringify(result.scores));
   assert.deepEqual(result.blockers, []);
+});
+
+test("viral script intelligence recognises a concrete player-visible comparison burden as relatable stakes", () => {
+  const script =
+    "Arknights: Endfield just exposed the only PS5 Pro question that matters. " +
+    "Can you see the upgrade while the game is moving? " +
+    "PlayStation Blog says Version 1.4 upgrades PSSR for sharper detail, steadier motion and more consistent frame rates at 4K. " +
+    "A paused screenshot proves almost nothing. " +
+    "The real test is a crowded fight, with effects flying and the camera moving. " +
+    "If characters stay crisp, backgrounds hold together and frame rates stay steady, Pro mode earns its place. " +
+    "PSSR can sharpen the image, but it cannot prove how the full game feels, so one patch does not settle everything. " +
+    "But it can answer the expensive question. " +
+    "Watch the busiest scene. " +
+    "Does the upgrade stay obvious without a side-by-side comparison, or disappear the moment normal play begins? " +
+    "If players need a magnifying glass, the promise has failed. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "arknights-ps5-pro",
+      title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+      source_name: "PlayStation Blog",
+    },
+    script,
+  });
+
+  assert.ok(
+    !result.blockers.includes("missing_relatable_stakes"),
+    JSON.stringify(result, null, 2),
+  );
 });

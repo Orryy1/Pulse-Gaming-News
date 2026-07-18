@@ -48,6 +48,26 @@ test("caption SRT uses word timestamps instead of evenly distributing full sente
   assert.doesNotMatch(srt, /Paul Skaming/);
 });
 
+test("caption SRT displays Denshattack as one official title token", () => {
+  const srt = buildCaptionSrt(
+    "Denshattack asks one ridiculous question.",
+    3,
+    {
+      words: [
+        { word: "Densha", start: 0, end: 0.64 },
+        { word: "Attack", start: 0.64, end: 1.1 },
+        { word: "asks", start: 1.1, end: 1.36 },
+        { word: "one", start: 1.36, end: 1.58 },
+        { word: "ridiculous", start: 1.58, end: 2.18 },
+        { word: "question.", start: 2.18, end: 2.76 },
+      ],
+    },
+  );
+
+  assert.match(srt, /Denshattack asks/);
+  assert.doesNotMatch(srt, /Densha Attack/i);
+});
+
 test("caption SRT restores display currency from spoken dollar tokens", () => {
   const srt = buildCaptionSrt(
     "Steam lists the packs at $84.91, while the game costs $59.99.",
@@ -2204,6 +2224,7 @@ test("public copy package repair keeps GTA preorder platform copy out of deal fi
     generatedAt: "2026-06-22T17:45:00.000Z",
   });
 
+  assert.equal(report.changed.length, 1, JSON.stringify(report, null, 2));
   assert.equal(report.changed[0].status, "platform_pack_synced", JSON.stringify(report, null, 2));
   const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
   const platformCopy = JSON.stringify(platformManifest.outputs);
@@ -6295,4 +6316,74 @@ test("public copy repair turns test-framed stories into consequence hooks instea
   assert.match(repaired.manifest.first_spoken_line, /Game Pass|card battles|deckbuilding/i);
   assert.notEqual(repaired.manifest.first_spoken_line, "Beastro Has A Cozy Deckbuilding Test.");
   assert.doesNotMatch(repaired.manifest.narration_script, /^Beastro Has A Cozy Deckbuilding Test\./);
+});
+
+test("public copy repair replaces stale MARVEL Tokon demo metadata with the current roster angle", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-copy-tokon-platform-sync-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  const narrationScript = [
+    "MARVEL Tokon has 20 playable fighters.",
+    "But the number that could make or break it is four.",
+    "PlayStation Blog says matches are four versus four.",
+    "If swaps stay clear, Tokon can offer serious team depth without the usual fighting game entry wall.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" ");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_8908c3f0f1125398",
+    canonical_subject: "MARVEL Tokon",
+    canonical_game: "MARVEL Tokon",
+    selected_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    short_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    thumbnail_headline: "MARVEL TOKON'S FOUR FIGHTER TEST",
+    first_spoken_line: "MARVEL Tokon has 20 playable fighters.",
+    narration_script: narrationScript,
+    full_script: narrationScript,
+    description:
+      "MARVEL Tokon has one proof point players can judge immediately: the demo. It can win wishlists fast or expose the problem before launch. Source: PlayStation Blog.",
+    primary_source: "PlayStation Blog",
+    source_card_label: "PlayStation Blog",
+    confirmed_claims: [
+      "MARVEL Tokon has 20 playable fighters.",
+      "Matches are four versus four.",
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "visual_v4_render_story.json"), {
+    title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+    narration_script: narrationScript,
+    video_clips: ["clip-a.mp4", "clip-b.mp4"],
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    story_id: "rss_8908c3f0f1125398",
+    outputs: {
+      youtube_shorts: {
+        title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+        description:
+          "MARVEL Tokon has one proof point players can judge immediately: the demo. It can win wishlists fast or expose the problem before launch. Source: PlayStation Blog.",
+      },
+      instagram_reels: {
+        caption:
+          "MARVEL Tokon has one proof point players can judge immediately: the demo. Source: PlayStation Blog.",
+      },
+    },
+  });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: "rss_8908c3f0f1125398", artifact_dir: artifactDir }],
+    generatedAt: "2026-07-18T15:45:00.000Z",
+  });
+  const platformManifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const platformCopy = JSON.stringify(platformManifest.outputs);
+  const workbench = buildAudioRegenerationWorkbench(report, {
+    localTts: { ready: true, verdict: "green" },
+  });
+  const renderWorkOrder = await buildProductionRerenderWorkOrder(report);
+
+  assert.equal(report.changed.length, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.changed[0].status, "platform_pack_synced", JSON.stringify(report, null, 2));
+  assert.match(platformManifest.outputs.youtube_shorts.description, /20 playable fighters|four versus four/i);
+  assert.match(platformManifest.outputs.instagram_reels.caption, /20 playable fighters|four versus four/i);
+  assert.doesNotMatch(platformCopy, /\bdemo\b|\bwishlists?\b|\bBlade\b|\bLoki\b|\bDeadpool\b/i);
+  assert.deepEqual(workbench.jobs, []);
+  assert.deepEqual(renderWorkOrder.jobs, []);
 });

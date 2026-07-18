@@ -91,24 +91,34 @@ async function listLocalTestManifestMp4s(manifestPath = defaultLocalTestManifest
 }
 
 async function listStrictDryRunPlanMp4s(planPath = defaultStrictDryRunPlanPath()) {
+  const scope = await loadStrictDryRunPlanScope(planPath);
+  return scope.video_paths;
+}
+
+async function loadStrictDryRunPlanScope(planPath = defaultStrictDryRunPlanPath()) {
   try {
     const resolved = path.resolve(planPath);
-    if (!(await fs.pathExists(resolved))) return [];
+    if (!(await fs.pathExists(resolved))) {
+      return { present: false, video_paths: [] };
+    }
     const plan = await fs.readJson(resolved);
     const actions = Array.isArray(plan.actions) ? plan.actions : [];
-    return [
-      ...new Set(
-        actions
-          .filter((action) =>
-            ["would_publish", "would_queue_when_enabled"].includes(String(action?.action || "")),
-          )
-          .map((action) => action?.video_path || action?.exported_path || action?.media_path)
-          .filter((file) => typeof file === "string" && /\.mp4$/i.test(file))
-          .map((file) => path.resolve(file)),
-      ),
-    ];
+    return {
+      present: true,
+      video_paths: [
+        ...new Set(
+          actions
+            .filter((action) =>
+              ["would_publish", "would_queue_when_enabled"].includes(String(action?.action || "")),
+            )
+            .map((action) => action?.video_path || action?.exported_path || action?.media_path)
+            .filter((file) => typeof file === "string" && /\.mp4$/i.test(file))
+            .map((file) => path.resolve(file)),
+        ),
+      ],
+    };
   } catch (_) {
-    return [];
+    return { present: false, video_paths: [] };
   }
 }
 
@@ -148,13 +158,14 @@ async function main() {
     localTestManifestPath: args.localTestManifestPath || defaultLocalTestManifestPath(),
     includeLocalTestManifest: args.includeLocalTestManifest,
   });
-  const strictDryRunActiveVideoPaths = await listStrictDryRunPlanMp4s(
+  const strictDryRunScope = await loadStrictDryRunPlanScope(
     args.strictDryRunPlanPath || defaultStrictDryRunPlanPath(),
   );
+  const strictDryRunActiveVideoPaths = strictDryRunScope.video_paths;
   const localTestActiveVideoPaths = args.includeLocalTestManifest
     ? await listLocalTestManifestMp4s(args.localTestManifestPath || defaultLocalTestManifestPath())
     : [];
-  const activeVideoPaths = strictDryRunActiveVideoPaths.length
+  const activeVideoPaths = strictDryRunScope.present
     ? strictDryRunActiveVideoPaths
     : localTestActiveVideoPaths;
   const files = mergeAuditFilesWithActivePaths(discoveredFiles, activeVideoPaths);
@@ -162,7 +173,12 @@ async function main() {
     finalDir,
     outputDirs: [...new Set([outDir, OUT, TEST_OUT])],
   });
-  const report = buildFinalVoiceAudit({ files, reportsByStoryId, activeVideoPaths });
+  const report = buildFinalVoiceAudit({
+    files,
+    reportsByStoryId,
+    activeVideoPaths,
+    scopeToActiveManifest: strictDryRunScope.present || activeVideoPaths.length > 0,
+  });
   const jsonPath = path.join(outDir, "final_voice_audit.json");
   const mdPath = path.join(outDir, "final_voice_audit.md");
   await fs.writeJson(jsonPath, report, { spaces: 2 });
@@ -193,6 +209,7 @@ module.exports = {
   listAuditMp4s,
   listLocalTestManifestMp4s,
   listMp4s,
+  loadStrictDryRunPlanScope,
   listStrictDryRunPlanMp4s,
   mergeAuditFilesWithActivePaths,
 };

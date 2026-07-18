@@ -842,6 +842,45 @@ test("transcript audience audit accepts canonical game aliases in viewer narrati
   });
 });
 
+test("transcript audience audit accepts an unmistakable title prefix before a colon", async () => {
+  await withTempDir(async (root) => {
+    const dir = path.join(root, "output", "goal-proof", "batch", "arknights-endfield-prefix");
+    await fs.ensureDir(dir);
+    const script =
+      "The new Arknights game just exposed the PS5 Pro question that matters. " +
+      "Can you actually see the upgrade while playing? " +
+      "PlayStation Blog says Version 1.4 upgrades PSSR for sharper detail, steadier motion and more consistent frame rates at 4K. " +
+      "Use a crowded fight as the test because characters, backgrounds and frame rates all have to stay coherent. " +
+      "Follow Pulse Gaming so you never miss a beat.";
+    await fs.writeJson(path.join(dir, "canonical_story_manifest.json"), {
+      story_id: "arknights-endfield-prefix",
+      canonical_subject: "Arknights: Endfield",
+      selected_title: "Arknights: Endfield Exposes The PS5 Pro Upgrade Players Can Test",
+      primary_source: "PlayStation Blog",
+      narration_script: script,
+    });
+    await fs.writeJson(path.join(dir, "source_manifest.json"), {
+      primary_source: {
+        name: "PlayStation Blog",
+        url: "https://blog.playstation.com/",
+      },
+    });
+    await fs.writeJson(path.join(dir, "narration_manifest.json"), {
+      final_transcript: script,
+    });
+
+    const report = await auditGeneratedTranscripts({ root });
+
+    assert.equal(report.summary.total, 1);
+    const row = report.stories[0];
+    assert.equal(
+      row.blockers.includes("mass_audience:tts_transcript_subject_drift"),
+      false,
+      row.blockers.join(", "),
+    );
+  });
+});
+
 test("transcript audience audit accepts MARVEL Tokon Fighting Souls spoken without colon pause", async () => {
   await withTempDir(async (root) => {
     const dir = path.join(root, "output", "goal-proof", "batch", "marvel-tokon-roster");

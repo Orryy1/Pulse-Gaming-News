@@ -228,7 +228,7 @@ test("context card HTML shrinks long number labels before HyperFrames inspect", 
     "pulse-gaming",
   );
 
-  assert.match(html, /font-size:\s*128px/);
+  assert.match(html, /font-size:\s*112px/);
   assert.match(html, /DRAGONWILDS/);
 });
 

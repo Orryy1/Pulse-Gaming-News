@@ -1,4 +1,5 @@
 const fs = require("fs-extra");
+const crypto = require("node:crypto");
 const path = require("path");
 const axios = require("axios");
 const dotenv = require("dotenv");
@@ -29,6 +30,7 @@ const {
   safePublicExcerpt,
 } = require("./lib/public-metadata-qa");
 const {
+  metaBinaryUploadHeaders,
   metaBinaryUploadTimeoutMs,
 } = require("./lib/platforms/meta-binary-upload-policy");
 
@@ -53,6 +55,24 @@ const SECRET_PATTERNS = [
 
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+async function sha256File(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", reject);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+async function buildVersionedInstagramVideoUrl(baseVideoUrl, videoPath) {
+  const url = new URL(baseVideoUrl);
+  url.searchParams.set("platform", "instagram_reels");
+  url.searchParams.set("delivery", "range-v1");
+  url.searchParams.set("v", await sha256File(videoPath));
+  return url.toString();
 }
 
 function buildInstagramReelCaption(story = {}, channelOverride = null) {
@@ -377,12 +397,10 @@ async function uploadReel(story) {
         const uploadResp = await axios({
           method: "POST",
           url: uploadUrl,
-          headers: {
-            Authorization: `OAuth ${accessToken}`,
-            offset: "0",
-            file_size: fileSize.toString(),
-            "Content-Type": "video/mp4",
-          },
+          headers: metaBinaryUploadHeaders(fileSize, {
+            accessToken,
+            contentType: "video/mp4",
+          }),
           data: fs.createReadStream(exportedAbs),
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
@@ -542,23 +560,33 @@ async function uploadReelViaUrl(story) {
   // carry a recognised video extension, even when Content-Type is
   // correct (Graph error 2207052 / 2207076). Server-side route
   // strips the extension and still finds the story by id.
-  const videoUrl = `${publicBaseUrl}/api/download/${story.id}.mp4`;
+  const videoUrl = await buildVersionedInstagramVideoUrl(
+    `${publicBaseUrl}/api/download/${story.id}.mp4`,
+    exportedAbs,
+  );
 
   const caption = buildInstagramReelCaption(story);
 
   console.log(`[instagram] URL fallback: creating container with ${videoUrl}`);
 
   // Create container with video_url (Instagram fetches the video)
-  const initResponse = await axios.post(
-    `https://graph.facebook.com/v21.0/${accountId}/media`,
-    {
-      media_type: "REELS",
-      video_url: videoUrl,
-      caption,
-      share_to_feed: true,
-      access_token: accessToken,
-    },
-  );
+  let initResponse;
+  try {
+    initResponse = await axios.post(
+      `https://graph.facebook.com/v21.0/${accountId}/media`,
+      {
+        media_type: "REELS",
+        video_url: videoUrl,
+        caption,
+        share_to_feed: true,
+        access_token: accessToken,
+      },
+    );
+  } catch (err) {
+    throw new Error(
+      `Instagram URL container creation failed: ${formatInstagramStatusCheckError(err)}`,
+    );
+  }
 
   const containerId = initResponse.data.id;
   console.log(`[instagram] URL container created: ${containerId}`);
@@ -767,6 +795,7 @@ module.exports = {
   IG_REEL_PROCESSING_POLL_MS,
   IG_STORY_PROCESSING_MAX_ATTEMPTS,
   IG_STORY_PROCESSING_POLL_MS,
+  buildVersionedInstagramVideoUrl,
   buildInstagramPendingProcessingTimeoutError,
   isInstagramPendingProcessingTimeout,
   shouldAttemptInstagramUrlFallback,

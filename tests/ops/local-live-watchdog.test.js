@@ -43,7 +43,19 @@ function evaluatePolicy(argumentsScript) {
   return JSON.parse(result.stdout.trim());
 }
 
-test("local live watchdog treats a timeout with the same server listener as overload without advancing restart count", () => {
+test("local live watchdog counts a timeout from the same verified server before restarting", () => {
+  const decision = evaluatePolicy(
+    "Resolve-WatchdogRuntimeDecision -ListenerPresent $true -HealthOutcome timeout " +
+      "-SameServerListener $true -DestructiveRestartCount 0 -RestartThreshold 3 " +
+      "-InCriticalPublishWindow $false",
+  );
+
+  assert.equal(decision.classification, "overloaded_or_unresponsive");
+  assert.equal(decision.action, "retry");
+  assert.equal(decision.destructive_restart_count, 1);
+});
+
+test("local live watchdog restarts the same verified server after repeated timeouts", () => {
   const decision = evaluatePolicy(
     "Resolve-WatchdogRuntimeDecision -ListenerPresent $true -HealthOutcome timeout " +
       "-SameServerListener $true -DestructiveRestartCount 2 -RestartThreshold 3 " +
@@ -51,8 +63,8 @@ test("local live watchdog treats a timeout with the same server listener as over
   );
 
   assert.equal(decision.classification, "overloaded_or_unresponsive");
-  assert.equal(decision.action, "none");
-  assert.equal(decision.destructive_restart_count, 2);
+  assert.equal(decision.action, "restart");
+  assert.equal(decision.destructive_restart_count, 3);
 });
 
 test("local live watchdog recognises timeout error records without misclassifying other failures", () => {
@@ -90,6 +102,31 @@ test("local live watchdog overload evidence requires an unchanged verified node 
   assert.equal(evidence.unverified, false);
 });
 
+test("local live watchdog accepts only a fresh operator-confirmed restart request for the exact listener PID", () => {
+  const evidence = evaluatePolicy(
+    "$now = [DateTimeOffset]::Parse('2026-07-18T18:00:00Z'); " +
+      "$valid = [pscustomobject]@{" +
+        "schema_version = 1; request_id = 'range-v1'; operator_confirmed = $true; " +
+        "expected_pid = 44340; requested_at_utc = '2026-07-18T17:59:00Z'; " +
+        "expires_at_utc = '2026-07-18T18:09:00Z'; reason = 'load_public_media_range_v1'" +
+      "}; " +
+      "$wrongPid = $valid.PSObject.Copy(); $wrongPid.expected_pid = 44341; " +
+      "$expired = $valid.PSObject.Copy(); $expired.expires_at_utc = '2026-07-18T17:59:59Z'; " +
+      "[pscustomobject]@{" +
+        "valid = (Resolve-WatchdogOperatorRestartRequest -Request $valid -ListenerOwnerIds @(44340) -NowUtc $now); " +
+        "wrong_pid = (Resolve-WatchdogOperatorRestartRequest -Request $wrongPid -ListenerOwnerIds @(44340) -NowUtc $now); " +
+        "expired = (Resolve-WatchdogOperatorRestartRequest -Request $expired -ListenerOwnerIds @(44340) -NowUtc $now)" +
+      "}",
+  );
+
+  assert.equal(evidence.valid.approved, true);
+  assert.equal(evidence.valid.expected_pid, 44340);
+  assert.equal(evidence.wrong_pid.approved, false);
+  assert.equal(evidence.wrong_pid.classification, "listener_pid_mismatch");
+  assert.equal(evidence.expired.approved, false);
+  assert.equal(evidence.expired.classification, "expired");
+});
+
 test("local live watchdog starts a missing listener without a destructive restart", () => {
   const decision = evaluatePolicy(
     "Resolve-WatchdogRuntimeDecision -ListenerPresent $false -HealthOutcome request_failed " +
@@ -114,6 +151,68 @@ test("local live watchdog reaches restart threshold on an answered invalid runti
   assert.equal(decision.destructive_restart_count, 3);
 });
 
+test("local live watchdog rejects a protected primary with missing build identity", () => {
+  const evidence = evaluatePolicy(
+    "$health = [pscustomobject]@{" +
+      "status = 'ok'; schedulerActive = $true; " +
+      "build = [pscustomobject]@{ commit_sha = $null; branch = $null }; " +
+      "deployment = [pscustomobject]@{ mode = 'local'; primary = $true }; " +
+      "runtime = [pscustomobject]@{" +
+        "auto_publish = $true; use_job_queue_explicit = 'true'; " +
+        "guarded_live_dispatch_enabled = $true; emergency_kill_switch_clear = $true; " +
+        "protected_primary_runtime = $true; safe_observation_mode = $false; " +
+        "primary_runtime_hold = $false; dispatch = [pscustomobject]@{ mode = 'queue' }" +
+      "}" +
+    "}; " +
+    "[pscustomobject]@{ healthy = (Test-WatchdogRuntimeHealth -Health $health) }",
+  );
+
+  assert.equal(evidence.healthy, false);
+});
+
+test("local live watchdog accepts only an identified protected queue primary", () => {
+  const evidence = evaluatePolicy(
+    "$health = [pscustomobject]@{" +
+      "status = 'ok'; schedulerActive = $true; " +
+      "build = [pscustomobject]@{ commit_sha = 'abcdef1234567890'; branch = 'codex/live' }; " +
+      "deployment = [pscustomobject]@{ mode = 'local'; primary = $true }; " +
+      "runtime = [pscustomobject]@{" +
+        "auto_publish = $true; use_job_queue_explicit = 'true'; " +
+        "guarded_live_dispatch_enabled = $true; emergency_kill_switch_clear = $true; " +
+        "protected_primary_runtime = $true; safe_observation_mode = $false; " +
+        "primary_runtime_hold = $false; dispatch = [pscustomobject]@{ mode = 'queue' }" +
+      "}" +
+    "}; " +
+    "[pscustomobject]@{ healthy = (Test-WatchdogRuntimeHealth -Health $health) }",
+  );
+
+  assert.equal(evidence.healthy, true);
+});
+
+test("local live watchdog restarts an unchanged verified server after repeated connection failures", () => {
+  const decision = evaluatePolicy(
+    "Resolve-WatchdogRuntimeDecision -ListenerPresent $true " +
+      "-HealthOutcome request_failed -SameServerListener $true " +
+      "-DestructiveRestartCount 2 -RestartThreshold 3 -InCriticalPublishWindow $false",
+  );
+
+  assert.equal(decision.classification, "unresponsive_server");
+  assert.equal(decision.action, "restart");
+  assert.equal(decision.destructive_restart_count, 3);
+});
+
+test("local live watchdog does not kill an unverified listener after a connection failure", () => {
+  const decision = evaluatePolicy(
+    "Resolve-WatchdogRuntimeDecision -ListenerPresent $true " +
+      "-HealthOutcome request_failed -SameServerListener $false " +
+      "-DestructiveRestartCount 2 -RestartThreshold 3 -InCriticalPublishWindow $false",
+  );
+
+  assert.equal(decision.classification, "health_probe_failed");
+  assert.equal(decision.action, "none");
+  assert.equal(decision.destructive_restart_count, 2);
+});
+
 test("local live watchdog rechecks server listener ownership and applies the tested policy", () => {
   const source = fs.readFileSync(watchdogPath, "utf8");
 
@@ -121,10 +220,14 @@ test("local live watchdog rechecks server listener ownership and applies the tes
   assert.match(source, /Test-HealthRequestTimeout -ErrorRecord/);
   assert.match(source, /function Get-RuntimeListenerOwners/);
   assert.match(source, /function Get-VerifiedNodeServerOwnerIds/);
+  assert.match(source, /Test-WatchdogRuntimeHealth -Health/);
   assert.match(source, /Test-SameNodeServerListener/);
   assert.match(source, /Resolve-WatchdogRuntimeDecision/);
   assert.match(source, /overloaded_or_unresponsive/);
   assert.match(source, /\$decision\.action\s+-eq\s+"restart"/);
+  assert.match(source, /pulse-runtime-restart-request\.json/);
+  assert.match(source, /Resolve-WatchdogOperatorRestartRequest/);
+  assert.match(source, /PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH/);
 });
 
 test("local live watchdog checks runtime health and polls quickly enough for publish windows", () => {
@@ -156,4 +259,27 @@ test("local live watchdog keeps non-publish content workers alive", () => {
   assert.match(source, /content_workers_check ensuring_content_workers/);
   assert.match(source, /-File",\s*\$contentWorkersScript/);
   assert.doesNotMatch(source, /content_workers_check[\s\S]{0,400}"-Restart"/);
+});
+
+test("local live watchdog can supervise workers from one checkout while restarting the protected runtime checkout", () => {
+  const source = fs.readFileSync(watchdogPath, "utf8");
+
+  assert.match(source, /\[string\]\$RuntimeRepoRoot\s*=\s*""/);
+  assert.match(source, /\$RuntimeRepoRoot\s*=\s*\$RepoRoot/);
+  assert.match(
+    source,
+    /\$runtimeScript\s*=\s*Join-Path\s+\$RuntimeRepoRoot\s+"tools\/local-live-primary-runtime\.ps1"/,
+  );
+  assert.match(
+    source,
+    /"-RepoRoot",\s*\$RuntimeRepoRoot,\s*"-Port"/,
+  );
+  assert.match(
+    source,
+    /-WorkingDirectory\s+\$RuntimeRepoRoot/,
+  );
+  assert.match(
+    source,
+    /\$contentWorkersScript\s*=\s*Join-Path\s+\$RepoRoot\s+"tools\/local-live-content-workers\.ps1"/,
+  );
 });

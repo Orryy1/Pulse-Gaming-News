@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -154,15 +155,39 @@ test("goal production render materializer CLI refreshes flagship inventory witho
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-inventory-cli-"));
   const storyId = "flagship-inventory-cli";
   const artifactDir = path.join(root, "package");
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
   const assetPath = path.join(artifactDir, "platform-native.mp4");
+  const finalVideoBytes = Buffer.alloc(4096, 2);
+  await fs.outputFile(finalVideoPath, finalVideoBytes);
   await fs.outputFile(assetPath, Buffer.alloc(4096, 3));
+  const rendererSelectedInputs = {
+    schema_version: 1,
+    authoritative: true,
+    producer_id: "pulse-gaming-studio-v4-renderer",
+    assets: [
+      {
+        asset_id: "platform-native-instagram_reels",
+        kind: "platform_native",
+        path: assetPath,
+        source_url: `local://pulse-gaming/${storyId}/platform-native/instagram_reels`,
+      },
+    ],
+  };
   await fs.outputJson(path.join(artifactDir, "flagship", "generation_manifest.json"), {
     story_id: storyId,
     complete: true,
     verdict: "GREEN",
     artifacts: {
-      final_video: { path: "visual_v4_render.mp4", sha256: "a".repeat(64) },
+      final_video: {
+        path: "visual_v4_render.mp4",
+        sha256: crypto.createHash("sha256").update(finalVideoBytes).digest("hex"),
+        bytes: finalVideoBytes.length,
+      },
     },
+    renderer_selected_inputs: rendererSelectedInputs,
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    selected_input_assets: rendererSelectedInputs,
   });
   const rightsRow = {
     asset_id: "platform-native-instagram_reels",

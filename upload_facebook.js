@@ -37,6 +37,7 @@ const {
   safePublicExcerpt,
 } = require("./lib/public-metadata-qa");
 const {
+  metaBinaryUploadHeaders,
   metaBinaryUploadTimeoutMs,
 } = require("./lib/platforms/meta-binary-upload-policy");
 const {
@@ -179,12 +180,10 @@ async function uploadReel(story) {
           axios({
             method: "POST",
             url: uploadUrl,
-            headers: {
-              Authorization: `OAuth ${accessToken}`,
-              offset: "0",
-              file_size: fileSize.toString(),
-              "Content-Type": "application/octet-stream",
-            },
+            headers: metaBinaryUploadHeaders(fileSize, {
+              accessToken,
+              contentType: "application/octet-stream",
+            }),
             data: fs.createReadStream(delivery.path),
             maxContentLength: Infinity,
             maxBodyLength: Infinity,

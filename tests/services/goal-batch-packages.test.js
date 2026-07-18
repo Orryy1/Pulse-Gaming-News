@@ -30,6 +30,7 @@ const {
 } = require("../../tools/goal-batch-packages");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 const { buildViralScriptIntelligence } = require("../../lib/viral-script-intelligence");
+const { buildSourceFingerprint } = require("../../lib/refill-zero-yield-quarantine");
 
 test("goal batch CLI accepts one canonical story manifest as its stories file", () => {
   const story = {
@@ -50,6 +51,24 @@ test("goal batch CLI separates existing evidence input from regenerated output",
 
   assert.equal(args.outDir, "output/fresh-proof");
   assert.equal(args.existingArtifactRoot, "output/source-proof");
+});
+
+test("goal batch CLI accepts durable zero-yield exclusions and a deeper RSS cursor", () => {
+  const args = parseGoalBatchArgs([
+    "--zero-yield-quarantine",
+    "output/runtime/refill-zero-yield-quarantine.json",
+    "--exclude-story-id",
+    "rss_one,rss_two",
+    "--exclude-source-fingerprint",
+    "fingerprint-one",
+    "--rss-offset-per-feed",
+    "6",
+  ]);
+
+  assert.match(args.zeroYieldQuarantineFile, /refill-zero-yield-quarantine\.json$/);
+  assert.deepEqual(args.excludedStoryIds, ["rss_one", "rss_two"]);
+  assert.deepEqual(args.excludedSourceFingerprints, ["fingerprint-one"]);
+  assert.equal(args.rssOffsetPerFeed, 6);
 });
 
 test("goal batch editorial QA prefers display narration over pronunciation-only TTS text", () => {
@@ -1295,6 +1314,39 @@ test("goal batch live RSS selection excludes already-published story IDs from fr
   assert.deepEqual(selected.map((story) => story.id), ["fresh-halo-demo"]);
 });
 
+test("goal batch live RSS selection excludes a quarantined source fingerprint even when its story id changes", () => {
+  const failed = {
+    id: "rss_old_id",
+    title: "Battlefield 6 Shows New Multiplayer Gameplay",
+    canonical_subject: "Battlefield 6",
+    source_name: "EA",
+    source_type: "official",
+    url: "https://www.ea.com/games/battlefield/battlefield-6/news/multiplayer?utm_source=rss",
+    approved_direct_media_url: "https://media.contentapi.ea.com/battlefield-6.mp4",
+  };
+  const selected = selectStoriesForGoalBatch({
+    liveRssStories: [
+      {
+        ...failed,
+        id: "rss_new_id",
+        url: "https://www.ea.com/games/battlefield/battlefield-6/news/multiplayer",
+      },
+      {
+        id: "rss_heave_ho_2",
+        title: "Heave Ho 2 Reveals Its Co-op Sequel",
+        canonical_subject: "Heave Ho 2",
+        source_name: "Devolver Digital",
+        source_type: "official",
+        url: "https://www.devolverdigital.com/games/heave-ho-2",
+        approved_direct_media_url: "https://cdn.example.com/heave-ho-2.mp4",
+      },
+    ],
+    excludedSourceFingerprints: [buildSourceFingerprint(failed)],
+  });
+
+  assert.deepEqual(selected.map((story) => story.id), ["rss_heave_ho_2"]);
+});
+
 test("goal batch live RSS selection skips near-repeat published story clusters before heavy repair", () => {
   const selected = selectStoriesForGoalBatch({
     liveRssStories: [
@@ -1791,6 +1843,21 @@ test("goal batch live RSS only mode blocks stale backlog revenue fallback", () =
   assert.equal(args.liveRssOnly, true);
   assert.equal(shouldFillRevenuePathsForGoalBatch(args), false);
   assert.equal(shouldFillRevenuePathsForGoalBatch(parseGoalBatchArgs(["--live-rss"])), true);
+});
+
+test("goal batch explicit seed files never substitute unrelated revenue fallback stories", () => {
+  const args = parseGoalBatchArgs([
+    "--stories-file",
+    "output/alternate-cohort/selected-stories.json",
+    "--limit",
+    "1",
+  ]);
+
+  assert.equal(
+    shouldFillRevenuePathsForGoalBatch(args),
+    false,
+    "an empty or excluded seeded cohort must remain empty instead of packaging an unrelated backlog story",
+  );
 });
 
 test("goal batch CLI defaults to retained licensed SFX evidence", () => {
@@ -2479,6 +2546,51 @@ test("goal batch package proof keeps evidence-backed named-character cover headl
   assert.ok(!native.platformNativeEvidence.failures.some(
     (failure) => failure.reason === "weak_cover_headline",
   ));
+});
+
+test("platform-native packs do not invent a retro angle from ordinary combat and exploration evidence", () => {
+  const script =
+    "Arknights Endfield just gave PlayStation 5 Pro owners a real before-and-after test. PlayStation Blog says Version 1.4 upgrades PSSR for sharper detail, steadier motion and more consistent frame rates at 4K. Character materials should stay cleaner during exploration and combat. The update is live with two new regions, new operators and fresh challenge modes. Follow Pulse Gaming so you never miss a beat.";
+  const native = buildPlatformNativePublishPacks({
+    story: {
+      id: "rss_a6f055abed9a1488",
+      canonical_subject: "Arknights: Endfield",
+      canonical_game: "Arknights: Endfield",
+      primary_source: "PlayStation Blog",
+      source_name: "PlayStation Blog",
+      full_script: script,
+      duration_seconds: 52,
+    },
+    canonical: {
+      canonical_subject: "Arknights: Endfield",
+      canonical_game: "Arknights: Endfield",
+      selected_title: "Arknights Endfield's PS5 Pro Upgrade Has A Real Test",
+      title: "Arknights Endfield's PS5 Pro Upgrade Has A Real Test",
+      primary_source: "PlayStation Blog",
+      first_spoken_line:
+        "Arknights Endfield just gave PlayStation 5 Pro owners a real before-and-after test.",
+      narration_script: script,
+      description:
+        "Arknights: Endfield Version 1.4 upgrades PSSR on PS5 Pro. The real test is whether sharper detail and steadier performance survive fast combat, not paused screenshots. Source: PlayStation Blog.",
+      confirmed_claims: [
+        "PlayStation Blog says upgraded PSSR targets sharper visuals and smoother performance on PS5 Pro.",
+      ],
+      thumbnail_headline: "PS5 PRO REAL UPGRADE",
+      duration_seconds: 52,
+    },
+  });
+  const publicCopy = [
+    native.outputs.youtube_shorts.description,
+    native.outputs.instagram_reels.caption,
+    native.outputs.facebook_reels.page_caption,
+  ].join("\n");
+  const facebookFraming = native.outputs.facebook_reels.explanatory_framing;
+
+  assert.match(publicCopy, /PSSR|PS5 Pro|4K/i);
+  assert.doesNotMatch(publicCopy, /\bretro trust problem\b|\bretro\b/i);
+  assert.match(native.outputs.youtube_shorts.description, /\b(?:players|owners)\b/i);
+  assert.match(facebookFraming, /Arknights: Endfield.*(?:PS5|PlayStation 5) Pro/i);
+  assert.doesNotMatch(facebookFraming, /\bmatters because\b/i);
 });
 
 test("platform-native packs keep Doom Chain Spear DLC copy specific", () => {
@@ -5201,6 +5313,23 @@ test("goal batch package extracts named subjects from awkward feed headlines", (
   assert.match(starWarsRacer.full_script, /roguelite racer/i);
   assert.match(starWarsRacer.full_script, /Players have to decide whether to wishlist/i);
   assert.doesNotMatch(`${expanse.full_script}\n${composer.full_script}\n${nintendo.full_script}`, /\bIt should stay|^Nintendo, You Better Not Be|^Xbox has/m);
+});
+
+test("goal batch preparation upgrades strict-prefix canonical fields to the full colonised game title", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "rss_a6f055abed9a1488",
+    title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights",
+    canonical_game: "Arknights",
+    source_name: "PlayStation",
+    source_type: "rss",
+    article_url:
+      "https://blog.playstation.com/2026/07/17/arknights-endfield-ps5-pro-upgrade/",
+    full_script: "",
+  });
+
+  assert.equal(prepared.canonical_subject, "Arknights: Endfield");
+  assert.equal(prepared.canonical_game, "Arknights: Endfield");
 });
 
 test("goal batch package prefers GTA VI entity over editorial headline fragments", () => {

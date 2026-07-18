@@ -2,7 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const {
@@ -11,6 +13,7 @@ const {
   IG_REEL_PROCESSING_POLL_MS,
   IG_STORY_PROCESSING_MAX_ATTEMPTS,
   IG_STORY_PROCESSING_POLL_MS,
+  buildVersionedInstagramVideoUrl,
   buildInstagramPendingProcessingTimeoutError,
   formatInstagramContainerStatus,
   formatInstagramStatusCheckError,
@@ -213,6 +216,28 @@ test("Instagram URL fallback is only for transport/upload failures, not rejected
       statusSummary: { status_code: "IN_PROGRESS" },
     }),
   ), false);
+});
+
+test("Instagram URL fallback uses an immutable fingerprint for the exact platform variant", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-instagram-url-"));
+  const videoPath = path.join(tempDir, "instagram-variant.mp4");
+  const bytes = Buffer.from("exact-instagram-platform-variant");
+  fs.writeFileSync(videoPath, bytes);
+
+  try {
+    const expectedHash = crypto.createHash("sha256").update(bytes).digest("hex");
+    const url = await buildVersionedInstagramVideoUrl(
+      "https://pulse.example/api/download/story-one.mp4",
+      videoPath,
+    );
+
+    assert.equal(
+      url,
+      `https://pulse.example/api/download/story-one.mp4?platform=instagram_reels&delivery=range-v1&v=${expectedHash}`,
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("publish summary renders IG pending processing as pending, not generic failure", () => {

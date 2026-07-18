@@ -89,6 +89,74 @@ test("video temporal QA CLI writes hash-bound machine and human proof", async ()
   );
 });
 
+test("video temporal QA CLI records a clean centre crop as disambiguation for a branded-shell full-frame match", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-temporal-shell-"));
+  const mp4Path = path.join(root, "final.mp4");
+  await fs.outputFile(mp4Path, Buffer.from("shell-disambiguated-media-fixture"));
+
+  const result = await runCli(
+    [
+      "node",
+      "tools/video-temporal-qa.js",
+      "--mp4",
+      mp4Path,
+      "--story-id",
+      "arknights-shell-proof",
+      "--out-dir",
+      path.join(root, "proof"),
+    ],
+    {
+      runVideoQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+        evidence: {
+          decode: {
+            complete: true,
+            video_stream: true,
+            audio_stream: true,
+          },
+          temporal: {
+            analysis_scope: "full_frame",
+            scan_complete: true,
+            coverage_ratio: 0.9956,
+            sampled_frame_count: 106,
+            repeated_motion_sequences: [
+              {
+                first_start_seconds: 1.5,
+                repeat_start_seconds: 41.5,
+                duration_seconds: 2,
+                mean_hash_distance: 3.25,
+              },
+            ],
+            repeated_motion_seconds: 2,
+            cadence: { choppy: false },
+            supplemental_center_crop: {
+              analysis_scope: "center_crop",
+              scan_complete: true,
+              coverage_ratio: 0.9956,
+              sampled_frame_count: 106,
+              repeated_motion_sequences: [],
+              repeated_motion_seconds: 0,
+              cadence: { choppy: false },
+            },
+          },
+        },
+      }),
+      stdout: { write() {} },
+    },
+  );
+
+  assert.strictEqual(result.exitCode, 0);
+  assert.strictEqual(result.report.verdict, "GREEN");
+  assert.strictEqual(result.report.can_publish, true);
+  assert.strictEqual(
+    result.report.validation.repeat_reconciliation
+      .full_frame_only_disambiguated_by_center_crop,
+    true,
+  );
+});
+
 test("video temporal QA CLI remains non-publishable when decoded cadence fails", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-temporal-qa-red-"));
   const mp4Path = path.join(root, "final.mp4");

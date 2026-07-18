@@ -1,5 +1,6 @@
 param(
   [string]$RepoRoot = "",
+  [string]$RuntimeRepoRoot = "",
   [ValidateSet("Plan", "Install")]
   [string]$Mode = "Plan",
   [int]$Port = 3001,
@@ -17,6 +18,11 @@ if (-not $RepoRoot) {
 } else {
   $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 }
+if (-not $RuntimeRepoRoot) {
+  $RuntimeRepoRoot = $RepoRoot
+} else {
+  $RuntimeRepoRoot = (Resolve-Path -LiteralPath $RuntimeRepoRoot).Path
+}
 
 if (-not $OutputDirectory) {
   $OutputDirectory = Join-Path $RepoRoot "output/runtime"
@@ -25,7 +31,7 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 $doctorScript = Join-Path $RepoRoot "tools/machine-boot-supervision-doctor.ps1"
 $watchdogScript = Join-Path $RepoRoot "tools/local-live-watchdog.ps1"
-$runtimeEntrypoint = Join-Path $RepoRoot "tools/local-live-primary-runtime.ps1"
+$runtimeEntrypoint = Join-Path $RuntimeRepoRoot "tools/local-live-primary-runtime.ps1"
 $statusPath = Join-Path $OutputDirectory "machine_boot_supervision_status.json"
 $missedWindowEvidencePath = Join-Path $OutputDirectory "machine_boot_missed_window_evidence.json"
 $planPath = Join-Path $OutputDirectory "machine_boot_supervision_install_plan.json"
@@ -99,6 +105,8 @@ $doctorArguments = @(
   $doctorScript,
   "-RepoRoot",
   $RepoRoot,
+  "-RuntimeRepoRoot",
+  $RuntimeRepoRoot,
   "-TaskName",
   $TaskName,
   "-Port",
@@ -119,10 +127,11 @@ if ($LASTEXITCODE -ne 0) {
 $status = (($doctorOutput -join [Environment]::NewLine) | ConvertFrom-Json)
 
 $taskArguments = (
-  '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -RepoRoot "{1}" -Port {2}' -f
+  '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -RepoRoot "{1}" -Port {2} -RuntimeRepoRoot "{3}"' -f
     $watchdogScript,
     $RepoRoot,
-    $Port
+    $Port,
+    $RuntimeRepoRoot
 )
 
 $blockers = @()
@@ -140,9 +149,10 @@ if ([int]$status.competing_startup_shortcut_count -gt 0 -and -not $MigrateLegacy
 }
 
 $installCommand = (
-  'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -RepoRoot "{1}" -Mode Install -OperatorConfirmed{2}' -f
+  'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -RepoRoot "{1}" -RuntimeRepoRoot "{2}" -Mode Install -OperatorConfirmed{3}' -f
     $PSCommandPath,
     $RepoRoot,
+    $RuntimeRepoRoot,
     $(if ([int]$status.competing_startup_shortcut_count -gt 0) { " -MigrateLegacyStartupOwners" } else { "" })
 )
 
@@ -153,6 +163,8 @@ $plan = [ordered]@{
   os_mutation_performed = $false
   installed = $false
   task_started_immediately = $false
+  supervisor_repo_root = $RepoRoot
+  runtime_repo_root = $RuntimeRepoRoot
   task = [ordered]@{
     name = $TaskName
     trigger = "AtStartup"

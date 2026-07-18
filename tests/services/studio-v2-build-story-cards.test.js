@@ -18,6 +18,9 @@ const {
   buildCardBackdropMap,
   scoreStoryBackdropCandidate,
 } = require("../../tools/studio-v2-build-story-cards");
+const {
+  PREMIUM_CARD_TIMING_V5_VERSION,
+} = require("../../lib/studio/v4/premium-card-timing-policy");
 
 test("premium HyperFrames cards rotate distinct backdrops across selected editorial beats", () => {
   const map = buildCardBackdropMap([
@@ -171,8 +174,8 @@ test("story-specific HyperFrames cards reject copy that cannot be read inside th
     contract.evidence.required_visible_duration_s >
       contract.evidence.maximum_visible_duration_s,
   );
-  assert.equal(contract.evidence.minimum_visible_duration_s, 5.2);
-  assert.match(html, /data-duration="5\.2"/);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 3.8);
+  assert.match(html, /data-duration="3\.8"/);
 });
 
 test("story-specific HyperFrames cards fit long flagship text inside vertical safe margins", () => {
@@ -236,6 +239,7 @@ test("story-specific HyperFrames cards keep short source cards momentum-friendly
   const contract = hyperframesCardReadabilityContractForSpec("source", spec);
 
   assert.equal(contract.status, "pass");
+  assert.equal(contract.contract_version, PREMIUM_CARD_TIMING_V5_VERSION);
   assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
   assert.equal(contract.evidence.minimum_visible_duration_s, 1.9);
   assert.equal(contract.evidence.planned_visible_duration_s, 2.6);
@@ -291,6 +295,42 @@ test("story-specific HyperFrames source card preserves PlayStation source labels
   );
 });
 
+test("story-specific HyperFrames source card uses canonical primary-source identity", () => {
+  const specs = buildStoryCardSpecs({
+    id: "arknights-primary-source",
+    title: "Arknights Endfield PSSR Upgrade",
+    primary_source: "PlayStation Blog",
+    source_type: "rss",
+  });
+
+  assert.equal(specs.source.label, "PLAYSTATION BLOG");
+  assert.equal(
+    hyperframesCardReadabilityContractForSpec("source", specs.source).evidence.readable_text,
+    "PLAYSTATION BLOG NEWS SOURCE",
+  );
+});
+
+test("story-specific HyperFrames source card names the canonical source owner and official Steam channel", () => {
+  const specs = buildStoryCardSpecs({
+    id: "paleo-pines-official-steam-source",
+    title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+    canonical_subject: "Paleo Pines",
+    canonical_game: "Paleo Pines",
+    primary_source: "Paleo Pines",
+    source_card_label: "Paleo Pines",
+    primary_source_url:
+      "https://steamstore-a.akamaihd.net/news/externalpost/steam_community_announcements/1837955055363384",
+    source_type: "official",
+  });
+
+  assert.equal(specs.source.label, "PALEO PINES");
+  assert.equal(specs.source.sublabel, "OFFICIAL STEAM ANNOUNCEMENT");
+  assert.equal(
+    hyperframesCardReadabilityContractForSpec("source", specs.source).evidence.readable_text,
+    "PALEO PINES OFFICIAL STEAM ANNOUNCEMENT",
+  );
+});
+
 test("story-specific HyperFrames source card fits long publisher names without clipping", () => {
   const templateHtml = fs.readFileSync(
     path.join(__dirname, "..", "..", "experiments", "hf-source", "index.html"),
@@ -307,6 +347,34 @@ test("story-specific HyperFrames source card fits long publisher names without c
   assert.match(html, /\.label\s*\{[^}]*max-width:\s*920px;/s);
   assert.match(html, /\.label\s*\{[^}]*font-size:\s*72px;/s);
   assert.match(html, /id="label"[\s\S]*BANDAI NAMCO ENTERTAINMENT AMERICA/);
+});
+
+test("story-specific HyperFrames context card keeps Paleo Pines inside the declared safe width", () => {
+  const contextTemplate = fs.readFileSync(
+    path.join(__dirname, "..", "..", "experiments", "hf-context", "index.html"),
+    "utf8",
+  );
+  const specs = buildStoryCardSpecs({
+    id: "paleo-pines-context-safe-width",
+    title: "Paleo Pines Just Ended Its Worst Dinosaur Grind",
+    canonical_subject: "Paleo Pines",
+    source_card_label: "Official Steam News",
+    source_type: "official",
+    full_script:
+      "Paleo Pines just fixed one of its most exhausting hunts. " +
+      "A blind grind now has a finish line. Follow Pulse Gaming so you never miss a beat.",
+  });
+  const html = applySpecToTemplate(
+    "context",
+    contextTemplate,
+    specs.context,
+    "pulse-gaming",
+  );
+
+  assert.equal(specs.context.number, "PALEO PINES");
+  assert.match(html, /\.stage\s*\{[\s\S]*?padding:\s*0 72px;/);
+  assert.match(html, /\.number\s*\{[\s\S]*?max-width:\s*936px;/);
+  assert.match(html, /\.number\s*\{[\s\S]*?font-size:\s*112px;/);
 });
 
 test("story-specific HyperFrames context card uses short audience-facing copy", () => {
@@ -394,7 +462,7 @@ test("story-specific HyperFrames cards use canonical subjects and honest editori
 
   assert.equal(specs.context.number, "DENSHATTACK");
   assert.equal(specs.context.sub, "TRAIN KICKFLIPS");
-  assert.equal(specs.quote.quoteText, "The controls have to sell the next ten hours.");
+  assert.equal(specs.quote.quoteText, "The controls must sell the next ten hours.");
   assert.equal(specs.quote.attribution, "PULSE GAMING");
   assert.equal(specs.quote.attributionSub, "editorial take");
   assert.doesNotMatch(specs.quote.quoteText, /Why Denshattack/i);
@@ -422,12 +490,49 @@ test("story-specific HyperFrames cards turn narration into concrete editorial be
     .map((bullet) => `${bullet.strong} ${bullet.copy}`)
     .join(" ");
 
-  assert.equal(specs.context.sub, "A BLIND GRIND NOW HAS A FINISH LINE");
+  assert.equal(specs.context.sub, "BLIND GRIND GETS A FINISH LINE");
+  assert.equal(specs.quote.quoteText, "A blind grind now has a finish line.");
   assert.deepEqual(specs.takeaway.headlineWords, ["GOAL", "NOT", "LOTTERY"]);
   assert.doesNotMatch(timelineText, /source checked|main detail|next step|official follow-up/i);
   assert.match(timelineText, /skin tracker/i);
   assert.match(timelineText, /four items/i);
   assert.match(timelineText, /guaranteed combination/i);
+  for (const [kind, spec] of Object.entries(specs)) {
+    assert.equal(
+      hyperframesCardReadabilityContractForSpec(kind, spec).status,
+      "pass",
+      `${kind} should fit the current V5 momentum budget`,
+    );
+  }
+});
+
+test("story-specific HyperFrames cards keep dense update copy inside the V5 momentum budget", () => {
+  const specs = buildStoryCardSpecs({
+    id: "arknights-ps5-pro-card-budget",
+    title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights: Endfield",
+    source_card_label: "PlayStation Blog",
+    source_type: "rss",
+    full_script:
+      "Arknights: Endfield just gave PS5 Pro owners a real before-and-after test. " +
+      "Version 1.4 upgrades PSSR for sharper detail, steadier motion and more consistent frame rates at 4K. " +
+      "Character materials should stay cleaner in combat while busy environments hold together. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  for (const [kind, spec] of Object.entries(specs)) {
+    assert.equal(
+      hyperframesCardReadabilityContractForSpec(kind, spec).status,
+      "pass",
+      `${kind} should fit the current V5 momentum budget`,
+    );
+  }
+  assert.ok(specs.quote.quoteText.split(/\s+/).length <= 9);
+  const timelineWords = hyperframesCardReadabilityContractForSpec(
+    "timeline",
+    specs.timeline,
+  ).evidence.word_count;
+  assert.ok(timelineWords <= 10);
 });
 
 test("story-specific HyperFrames takeaway turns controversy into an editorial payoff and reserves follow CTA for outro", () => {
@@ -508,7 +613,7 @@ test("Black Flag pricing cards preserve decimal facts, source attribution and th
   assert.equal(specs.context.sub, "DLC costs more than the game");
   assert.equal(specs.context.micro, "$84.91 VS $59.99");
   assert.ok(strongFacts.includes("NINE DLC PACKS"), JSON.stringify(specs.timeline));
-  assert.ok(strongFacts.includes("$84.91 VS $59.99"), JSON.stringify(specs.timeline));
+  assert.ok(strongFacts.includes("$84.91/$59.99"), JSON.stringify(specs.timeline));
   assert.ok(strongFacts.includes("$4.99 MAP PACK"), JSON.stringify(specs.timeline));
   assert.ok(!strongFacts.includes("91 COMBINED"));
   assert.ok(!strongFacts.includes("99 MAP"));
@@ -527,7 +632,8 @@ test("Black Flag pricing cards preserve decimal facts, source attribution and th
     specs.timeline,
   );
   assert.equal(timelineReadability.status, "pass");
-  assert.ok(timelineReadability.evidence.word_count <= 13);
+  assert.deepEqual(timelineReadability.blockers, []);
+  assert.ok(timelineReadability.evidence.word_count <= 10);
 });
 
 test("story-specific HyperFrames readability evidence keeps every animated quote word", () => {
@@ -563,9 +669,42 @@ test("timeline readability excludes decorative sequence numbers from its copy bu
 
   const contract = hyperframesCardReadabilityContractFromHtml("timeline", html);
 
-  assert.equal(contract.status, "pass");
+  assert.equal(contract.status, "fail");
   assert.equal(contract.evidence.word_count, 12);
-  assert.equal(contract.evidence.required_visible_duration_s, 5.0);
+  assert.ok(
+    contract.evidence.required_visible_duration_s >
+      contract.evidence.maximum_visible_duration_s,
+  );
+});
+
+test("timeline readability does not count punctuation-only HTML separators as words", () => {
+  const spec = {
+    heading: "ARKNIGHTS ENDFIELD PS5",
+    bullets: [
+      { strong: "VERIFIED DETAIL", copy: "playstation blog" },
+      { strong: "PLAYER IMPACT", copy: "" },
+    ],
+  };
+  const authored = hyperframesCardReadabilityContractForSpec("timeline", spec);
+  const decodedHtml = `
+    <div id="heading">ARKNIGHTS ENDFIELD PS5</div>
+    <ul id="bullets">
+      <li><span class="num">01</span><strong>VERIFIED DETAIL</strong>, playstation blog</li>
+      <li><span class="num">02</span><strong>PLAYER IMPACT</strong></li>
+    </ul>
+    <div data-duration="3.7"></div>
+  `;
+  const inspected = hyperframesCardReadabilityContractFromHtml(
+    "timeline",
+    decodedHtml,
+  );
+
+  assert.equal(authored.evidence.word_count, 9);
+  assert.equal(authored.evidence.planned_visible_duration_s, 3.7);
+  assert.equal(inspected.evidence.word_count, 9);
+  assert.equal(inspected.evidence.required_visible_duration_s, 3.7);
+  assert.equal(inspected.status, "pass");
+  assert.deepEqual(inspected.blockers, []);
 });
 
 test("story-specific HyperFrames quote timing includes the visible attribution", () => {
@@ -576,5 +715,22 @@ test("story-specific HyperFrames quote timing includes the visible attribution",
 
   assert.equal(contract.evidence.readable_text, "The controls have to sell the next ten hours. PULSE GAMING");
   assert.equal(contract.evidence.word_count, 11);
-  assert.equal(contract.evidence.planned_visible_duration_s, 4.8);
+  assert.equal(contract.status, "fail");
+  assert.equal(contract.evidence.planned_visible_duration_s, 3.8);
+  assert.ok(
+    contract.evidence.required_visible_duration_s >
+      contract.evidence.maximum_visible_duration_s,
+  );
+});
+
+test("story-specific HyperFrames quote timing keeps a concise nine-word proof readable", () => {
+  const contract = hyperframesCardReadabilityContractForSpec("quote", {
+    quoteText: "Version 1.4 makes motion sharper and steadier.",
+    attribution: "PLAYSTATION BLOG",
+  });
+
+  assert.equal(contract.evidence.word_count, 9);
+  assert.equal(contract.status, "pass");
+  assert.ok(contract.evidence.planned_visible_duration_s >= 3.4);
+  assert.ok(contract.evidence.planned_visible_duration_s <= 3.8);
 });

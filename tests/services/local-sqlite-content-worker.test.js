@@ -226,7 +226,10 @@ test("inherited content worker resource limits are reasserted after dotenv overr
 });
 
 test("content worker exposes and passes a default-on pre-publish quiet-period claim guard", (t) => {
-  const guard = createContentWorkerClaimGuard({ env: {} });
+  const guard = createContentWorkerClaimGuard({
+    env: {},
+    kinds: ["fresh_production_refill"],
+  });
   assert.equal(typeof guard, "function");
   assert.equal(
     guard({ now: new Date("2026-07-17T08:50:00.000Z") }).allow_claim,
@@ -235,6 +238,7 @@ test("content worker exposes and passes a default-on pre-publish quiet-period cl
   assert.equal(
     createContentWorkerClaimGuard({
       env: { PULSE_CONTENT_WORKER_QUIET_PERIOD: "false" },
+      kinds: ["fresh_production_refill"],
     }),
     null,
   );
@@ -260,6 +264,17 @@ test("content worker exposes and passes a default-on pre-publish quiet-period cl
   const decision = JSON.parse(guardLine.slice("CLAIM_GUARD=".length));
   assert.equal(decision.allow_claim, false);
   assert.equal(decision.reason, "guarded_publish_window_quiet_period");
+});
+
+test("candidate monitor worker remains active during the pre-publish quiet period", () => {
+  const guard = createContentWorkerClaimGuard({
+    env: {},
+    kinds: ["candidate_supply_monitor"],
+  });
+
+  const decision = guard({ now: new Date("2026-07-17T08:50:00.000Z") });
+  assert.equal(decision.allow_claim, true);
+  assert.equal(decision.reason, "guarded_publish_window_safe_kinds");
 });
 
 test("local sqlite content worker npm command uses the supervised Windows launcher", () => {

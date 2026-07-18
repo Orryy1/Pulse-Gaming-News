@@ -77,6 +77,71 @@ test("fresh buffer promotion preserves an explicit game subject over platform-so
   assert.match(canonical.tts_script, /Follow Pulse Gaming so you never miss a beat\.$/);
 });
 
+test("fresh buffer promotion preserves Arknights: Endfield as the exact source-search subject", () => {
+  const generatedAt = "2026-07-17T14:00:00.000Z";
+  const story = draftStory({
+    id: "rss_a6f055abed9a1488",
+    title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    selected_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights",
+    canonical_game: "Arknights",
+    primary_source: {
+      name: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/",
+      type: "official_platform_news",
+    },
+    primary_source_url:
+      "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/",
+    source_published_at: "2026-07-15T00:00:00.000Z",
+    confirmed_claims: [
+      "PlayStation Blog says Arknights: Endfield version 1.4 adds upgraded PSSR support on PS5 Pro.",
+    ],
+    narration_script:
+      "Arknights: Endfield just gave PS5 Pro owners a real before-and-after test. PlayStation Blog says version 1.4 adds upgraded PSSR support. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [story],
+    generatedAt,
+  });
+  const canonical = buildCanonicalStoryManifest(story, generatedAt);
+
+  assert.equal(report.candidates[0].canonical_subject, "Arknights: Endfield");
+  assert.equal(canonical.canonical_subject, "Arknights: Endfield");
+  assert.equal(canonical.canonical_game, "Arknights: Endfield");
+});
+
+test("fresh buffer promotion accepts canonical string source names with a separate source URL", () => {
+  const generatedAt = "2026-07-17T20:35:00.000Z";
+  const story = draftStory({
+    id: "rss_a6f055abed9a1488",
+    title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    selected_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights",
+    canonical_game: "Arknights",
+    primary_source: "PlayStation Blog",
+    primary_source_url:
+      "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/",
+    source_published_at: "2026-07-15T17:00:37.000Z",
+    confirmed_claims: [
+      "PlayStation Blog says Arknights: Endfield version 1.4 adds upgraded PSSR support on PS5 Pro.",
+    ],
+  });
+
+  const report = buildFreshGreenBufferLocalPromotionReport({
+    stories: [story],
+    generatedAt,
+  });
+  const canonical = buildCanonicalStoryManifest(story, generatedAt);
+  const source = buildSourceManifest(story, new Date(generatedAt));
+
+  assert.equal(report.candidates[0].primary_source.name, "PlayStation Blog");
+  assert.equal(report.candidates[0].source_coherence_gate, "pass");
+  assert.equal(canonical.primary_source, "PlayStation Blog");
+  assert.equal(source.primary_source.name, "PlayStation Blog");
+  assert.doesNotMatch(report.candidates[0].blockers.join("\n"), /primary_source_name_or_url_missing/);
+});
+
 test("fresh buffer promotion preserves a specific source-labelled editorial description", () => {
   const story = draftStory({
     id: "fresh_paleo_pines_major_update_20260713",
@@ -275,6 +340,105 @@ test("fresh buffer promotion refresh preserves current render and SFX evidence f
     JSON.parse(fs.readFileSync(path.join(packageDir, "audio", "word_timestamps.json"), "utf8")),
     { words: [{ word: "Halo", start: 0, end: 0.4 }] },
   );
+});
+
+test("fresh buffer promotion preserves source-locked motion but invalidates script-dependent proof after a rewrite", async () => {
+  const generatedAt = "2026-07-17T20:00:00.000Z";
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-buffer-script-refresh-"));
+  const originalStory = draftStory({
+    id: "arknights_script_refresh",
+    title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    selected_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights: Endfield",
+    canonical_game: "Arknights: Endfield",
+    primary_source: {
+      name: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/",
+      type: "official_source",
+    },
+    primary_source_url:
+      "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/",
+    source_published_at: "2026-07-15T17:00:37.000Z",
+    narration_script:
+      "Arknights: Endfield just gave PS5 Pro owners a real before-and-after test. PlayStation Blog says Version 1.4 upgrades PSSR for sharper detail, steadier motion and more consistent frame rates at 4K. That matters because an expensive console upgrade only earns its pitch when players can see the difference during movement, not just in a paused screenshot. Character materials should stay cleaner in combat while busy environments hold together instead of smearing when the camera moves. PSSR cannot fix weak art direction or unstable game code, so the patch still has to prove itself across a full session. For PS5 Pro owners, this patch earns its name only if normal play looks noticeably clearer. If Version 1.4 keeps Arknights: Endfield sharp at 4K without sacrificing responsiveness, this becomes a genuine reason to use the Pro mode rather than another settings-menu promise. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  await writeFreshGreenBufferLocalPromotionArtifacts(
+    buildFreshGreenBufferLocalPromotionReport({
+      stories: [originalStory],
+      generatedAt,
+    }),
+    { outputDir: outDir },
+  );
+
+  const packageDir = path.join(outDir, "packages", originalStory.id);
+  const motionFiles = {
+    "materialised_motion_clips.json": JSON.stringify({
+      status: "ready",
+      clips: [{ path: "official-clip-01.mp4", source_family: "official-trailer-a" }],
+    }),
+    "owned_motion_manifest.json": JSON.stringify({
+      status: "ready",
+      clips: [{ path: "official-clip-01.mp4", source_family: "official-trailer-a" }],
+    }),
+    "distinct_motion_family_report.json": JSON.stringify({
+      status: "pass",
+      distinct_motion_family_count: 5,
+    }),
+    "footage_inventory.json": JSON.stringify({
+      clips: [{ path: "official-clip-01.mp4", source_family: "official-trailer-a" }],
+    }),
+  };
+  for (const [fileName, content] of Object.entries(motionFiles)) {
+    fs.writeFileSync(path.join(packageDir, fileName), content);
+  }
+
+  fs.writeFileSync(path.join(packageDir, "audio_manifest.json"), JSON.stringify({ verdict: "pass" }));
+  fs.writeFileSync(path.join(packageDir, "caption_manifest.json"), JSON.stringify({ verdict: "pass" }));
+  fs.writeFileSync(path.join(packageDir, "captions.srt"), "stale captions");
+  fs.writeFileSync(path.join(packageDir, "render_manifest.json"), JSON.stringify({ verdict: "pass" }));
+  fs.writeFileSync(path.join(packageDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 3));
+  const audioDir = path.join(packageDir, "audio");
+  fs.mkdirSync(audioDir, { recursive: true });
+  fs.writeFileSync(path.join(audioDir, "narration.mp3"), Buffer.alloc(8192, 7));
+  fs.writeFileSync(
+    path.join(audioDir, "word_timestamps.json"),
+    JSON.stringify({ words: [{ word: "stale", start: 0, end: 0.4 }] }),
+  );
+
+  const rewrittenStory = {
+    ...originalStory,
+    narration_script:
+      "Arknights: Endfield may have exposed the test every PS5 Pro patch should pass. Version 1.4 upgrades PSSR, and Hypergryph says it sharpens character materials, steadies motion and holds higher frame rates at 4K. The important part is not a prettier screenshot. It is whether fine detail survives when combat gets busy and the camera starts moving. That is where upscaling earns its praise or reveals its flaws. PS5 Pro owners should watch three things: cleaner outfits, less shimmer in environments and fewer frame-rate dips. If all three hold during normal play, this is a meaningful Pro upgrade. If they only look good in still comparisons, it is another settings-menu promise. Version 1.4 is live now, so players can test the claim for themselves. Is sharper 4K enough to justify Pro mode? Follow Pulse Gaming so you never miss a beat.",
+  };
+  await writeFreshGreenBufferLocalPromotionArtifacts(
+    buildFreshGreenBufferLocalPromotionReport({
+      stories: [rewrittenStory],
+      generatedAt: "2026-07-17T20:10:00.000Z",
+    }),
+    { outputDir: outDir },
+  );
+
+  for (const [fileName, content] of Object.entries(motionFiles)) {
+    const filePath = path.join(packageDir, fileName);
+    assert.equal(fs.existsSync(filePath), true, `${fileName} should survive a script-only refresh`);
+    assert.equal(fs.readFileSync(filePath, "utf8"), content);
+  }
+  for (const fileName of [
+    "audio_manifest.json",
+    "caption_manifest.json",
+    "captions.srt",
+    "render_manifest.json",
+    "visual_v4_render.mp4",
+    path.join("audio", "narration.mp3"),
+    path.join("audio", "word_timestamps.json"),
+  ]) {
+    assert.equal(
+      fs.existsSync(path.join(packageDir, fileName)),
+      false,
+      `${fileName} must be invalidated after a script rewrite`,
+    );
+  }
 });
 
 test("fresh buffer promotion CLI is registered and defaults to overnight output", () => {
@@ -825,6 +989,17 @@ test("fresh buffer local render work order consumes current materialised motion 
   assert.equal(workOrder.jobs[0].evidence.real_visual_motion_family_count, 5);
   assert.equal(workOrder.jobs[0].evidence.narration_audio_path, audioPath);
   assert.equal(workOrder.jobs[0].evidence.word_timestamps_path, timestampPath);
+  assert.equal(
+    workOrder.jobs[0].target_render_manifest.visual_design_policy_version,
+    "pulse_signature_repeat_free_v14",
+  );
+  const renderAction = workOrder.jobs[0].actions.find(
+    (action) => action.action_id === "run_visual_v4_production_render",
+  );
+  assert.equal(
+    renderAction.target_render_manifest.visual_design_policy_version,
+    "pulse_signature_repeat_free_v14",
+  );
 });
 
 test("fresh buffer local render work order honours validated V4 official reveal motion readiness", async () => {

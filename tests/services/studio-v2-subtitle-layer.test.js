@@ -353,6 +353,24 @@ test("realignTimestampsToScript repairs local Whisper brand-name misrecognition"
   assert.equal(aligned[2].end, 41.94);
 });
 
+test("realignTimestampsToScript preserves Denshattack display spelling while the voice uses two words", () => {
+  const aligned = realignTimestampsToScript("Denshattack asks one ridiculous question.", [
+    { word: "Densha", start: 0, end: 0.64 },
+    { word: "Attack", start: 0.64, end: 1.1 },
+    { word: "asks", start: 1.1, end: 1.36 },
+    { word: "one", start: 1.36, end: 1.58 },
+    { word: "ridiculous", start: 1.58, end: 2.18 },
+    { word: "question.", start: 2.18, end: 2.76 },
+  ]);
+
+  assert.deepEqual(
+    aligned.map((word) => word.word),
+    ["Denshattack", "asks", "one", "ridiculous", "question."],
+  );
+  assert.equal(aligned[0].start, 0);
+  assert.equal(aligned[0].end, 1.1);
+});
+
 test("realignTimestampsToScript skips one-word ASR duplicates when the next timestamp matches", () => {
   const aligned = realignTimestampsToScript("clean reads and players breaking builds", [
     { word: "clean", start: 29.72, end: 29.8 },

@@ -1194,6 +1194,59 @@ test("goal proof package normalises conversational GTA 6 source headlines before
   );
 });
 
+test("goal proof package does not misread playable fighters as a playable demo", () => {
+  const story = greenStory();
+  story.id = "marvel-tokon-playable-fighters-pack";
+  story.canonical_subject = "MARVEL Tokon";
+  story.canonical_game = "MARVEL Tokon";
+  story.canonical_angle = "four-versus-four roster readability";
+  story.public_title = "MARVEL Tokon Turns Its Roster Into A Meta Fight";
+  story.title = "MARVEL Tokon Turns Its Roster Into A Meta Fight";
+  story.primary_source = "PlayStation Blog";
+  story.source_name = "PlayStation Blog";
+  story.description =
+    "MARVEL Tokon has 20 playable fighters and four-versus-four matches.";
+  story.full_script =
+    "MARVEL Tokon has 20 playable fighters. Four-versus-four teams make readable swaps the launch test. The roster sells the fantasy, but clear team fights will sell the game. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-18T15:35:00.000Z",
+  });
+
+  const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.doesNotMatch(description, /\b(?:demo|wishlists?)\b/i);
+  assert.doesNotMatch(description, /\b(?:Blade|Loki|Deadpool)\b/i);
+  assert.match(description, /\b(?:roster|four-versus-four|readable|matchups|team)\b/i);
+});
+
+test("goal proof package replaces stale demo metadata when current narration has a roster angle", () => {
+  const story = greenStory();
+  story.id = "marvel-tokon-stale-demo-description-pack";
+  story.canonical_subject = "MARVEL Tokon";
+  story.canonical_game = "MARVEL Tokon";
+  story.canonical_angle = "four-versus-four roster readability";
+  story.public_title = "MARVEL Tokon Turns Its Roster Into A Meta Fight";
+  story.title = "MARVEL Tokon Turns Its Roster Into A Meta Fight";
+  story.primary_source = "PlayStation Blog";
+  story.source_name = "PlayStation Blog";
+  story.description =
+    "MARVEL Tokon has one proof point players can judge immediately: the demo. It can win wishlists fast or expose the problem before launch.";
+  story.full_script =
+    "MARVEL Tokon has 20 playable fighters. Four-versus-four teams make readable swaps the launch test. The roster sells the fantasy, but clear team fights will sell the game. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: rightsForGreenStory(story),
+    generatedAt: "2026-07-18T15:36:00.000Z",
+  });
+
+  const description = pack.platform_publish_manifest.outputs.youtube_shorts.description;
+  assert.doesNotMatch(description, /\b(?:demo|wishlists?)\b/i);
+  assert.match(description, /\bfour-versus-four roster\b/i);
+});
+
 test("goal proof package repairs generic canonical subjects before platform packaging", () => {
   const story = greenStory();
   story.id = "ninja-theory-generic-subject-pack";

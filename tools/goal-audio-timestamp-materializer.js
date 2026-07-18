@@ -71,6 +71,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
+  if (args.enforceTargetCadence) args.padTargetCadence = true;
   return args;
 }
 
@@ -87,7 +88,7 @@ function usage() {
     "  --story-id <id>       Generate only this story; repeatable",
     "  --provider <auto|local|elevenlabs>  Narration provider preference; auto uses the provider selected by the workbench",
     "  --tts-rate <number>    Explicit speaking-rate override for regenerated narration",
-    "  --enforce-target-cadence  Reject regenerated narration outside the target cadence",
+    "  --enforce-target-cadence  Repair fast native cadence with bounded pauses, then reject if still unsafe",
     "  --pad-target-cadence      Insert bounded sentence pauses to repair fast cadence without stretching speech",
     "  --local-tts-timeout-ms <n>       Explicit bounded local TTS request timeout",
     "  --local-tts-request-attempts <n> Explicit bounded local TTS request attempts",

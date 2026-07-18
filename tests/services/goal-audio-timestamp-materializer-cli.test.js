@@ -67,6 +67,17 @@ test("goal audio timestamp materializer CLI parses local batch arguments", () =>
   assert.equal(args.json, true);
 });
 
+test("target cadence enforcement repairs fast native takes before rejecting them", () => {
+  const args = parseArgs([
+    "--provider",
+    "local",
+    "--enforce-target-cadence",
+  ]);
+
+  assert.equal(args.enforceTargetCadence, true);
+  assert.equal(args.padTargetCadence, true);
+});
+
 test("goal audio timestamp materializer CLI scopes inspect-only runs to requested stories", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-cli-scope-"));
   const workbenchPath = path.join(root, "audio_timestamp_workbench.json");

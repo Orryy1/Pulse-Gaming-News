@@ -19,6 +19,7 @@ const {
   listMp4s,
   defaultOutDir,
   listAuditMp4s,
+  loadStrictDryRunPlanScope,
   listStrictDryRunPlanMp4s,
   mergeAuditFilesWithActivePaths,
 } = require("../../tools/final-voice-audit");
@@ -144,6 +145,23 @@ test("final voice audit does not report GREEN when no MP4s were inspected", () =
   assert.ok(report.inspection_blockers.includes("no_final_mp4s_inspected"));
   const md = renderFinalVoiceAuditMarkdown(report);
   assert.match(md, /no_final_mp4s_inspected/);
+});
+
+test("final voice audit keeps an explicitly empty publish scope separate from quarantined debt", () => {
+  const oldVideo = "D:/pulse-data/media/output/final/rss_old_bad.mp4";
+  const report = buildFinalVoiceAudit({
+    files: [oldVideo],
+    activeVideoPaths: [],
+    scopeToActiveManifest: true,
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.readiness_scope, "active_manifest");
+  assert.equal(report.active_row_count, 0);
+  assert.equal(report.quarantined_row_count, 1);
+  assert.deepEqual(report.active_inspection_blockers, [
+    "no_active_manifest_mp4s_inspected",
+  ]);
 });
 
 test("final voice audit derives story IDs from nested proof render paths", () => {
@@ -693,6 +711,20 @@ test("final voice audit CLI can source active videos from strict dry-run plan", 
   const files = await listStrictDryRunPlanMp4s(planPath);
 
   assert.deepEqual(files, [activeMp4]);
+});
+
+test("final voice audit CLI treats an existing zero-action strict plan as authoritative", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "final-voice-empty-dry-run-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  await fs.writeJson(planPath, {
+    safety: { live_publish_attempted: false, production_db_mutated: false },
+    actions: [],
+  });
+
+  const scope = await loadStrictDryRunPlanScope(planPath);
+
+  assert.equal(scope.present, true);
+  assert.deepEqual(scope.video_paths, []);
 });
 
 test("final voice audit CLI inspects strict dry-run active videos even when normal discovery misses them", () => {

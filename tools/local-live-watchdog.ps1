@@ -1,5 +1,6 @@
 param(
   [string]$RepoRoot = "",
+  [string]$RuntimeRepoRoot = "",
   [int]$Port = 3001,
   [int]$IntervalSeconds = 15,
   [int]$HealthTimeoutSeconds = 5,
@@ -15,12 +16,20 @@ $ErrorActionPreference = "Continue"
 
 if (-not $RepoRoot) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+} else {
+  $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+}
+if (-not $RuntimeRepoRoot) {
+  $RuntimeRepoRoot = $RepoRoot
+} else {
+  $RuntimeRepoRoot = (Resolve-Path -LiteralPath $RuntimeRepoRoot).Path
 }
 
 $logDir = Join-Path $RepoRoot "output/runtime"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "pulse-live-watchdog.log"
-$runtimeScript = Join-Path $RepoRoot "tools/local-live-primary-runtime.ps1"
+$restartRequestPath = Join-Path $logDir "pulse-runtime-restart-request.json"
+$runtimeScript = Join-Path $RuntimeRepoRoot "tools/local-live-primary-runtime.ps1"
 $tunnelScript = Join-Path $RepoRoot "tools/local-live-cloudflared-tunnel.ps1"
 $contentWorkersScript = Join-Path $RepoRoot "tools/local-live-content-workers.ps1"
 
@@ -81,16 +90,6 @@ function Get-VerifiedNodeServerOwnerIds {
   }
 }
 
-function Test-RuntimeHealth {
-  param($Health)
-  if (-not $Health) { return $false }
-  $statusOk = ([string]$Health.status) -eq "ok"
-  $schedulerActive = [bool]$Health.schedulerActive
-  $autoPublish = [bool]($Health.runtime -and $Health.runtime.auto_publish)
-  $queueMode = [string]($Health.runtime.dispatch.mode) -eq "queue"
-  return ($statusOk -and $schedulerActive -and $autoPublish -and $queueMode)
-}
-
 function Test-InCriticalPublishWindow {
   $nowUtc = (Get-Date).ToUniversalTime()
   $minuteOfDay = [int]$nowUtc.TimeOfDay.TotalMinutes
@@ -105,7 +104,7 @@ function Test-InCriticalPublishWindow {
   return $false
 }
 
-Write-WatchdogLog "watchdog_start repo=$RepoRoot port=$Port interval=${IntervalSeconds}s"
+Write-WatchdogLog "watchdog_start repo=$RepoRoot runtime_repo=$RuntimeRepoRoot port=$Port interval=${IntervalSeconds}s"
 
 $destructiveRestartCount = 0
 
@@ -116,10 +115,50 @@ while ($true) {
     $healthOutcome = "request_failed"
     $sameServerListener = $false
 
+    if (Test-Path -LiteralPath $restartRequestPath -PathType Leaf) {
+      try {
+        $restartRequest = Get-Content -LiteralPath $restartRequestPath -Raw | ConvertFrom-Json
+        $operatorRestart = Resolve-WatchdogOperatorRestartRequest `
+          -Request $restartRequest `
+          -ListenerOwnerIds $listenerOwners `
+          -NowUtc ([DateTimeOffset]::UtcNow)
+        if ($operatorRestart.approved) {
+          Write-WatchdogLog ("operator_restart_requested pid={0} reason={1}" -f $operatorRestart.expected_pid, $operatorRestart.reason)
+          $previousRestartOverride = [Environment]::GetEnvironmentVariable(
+            "PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH",
+            "Process"
+          )
+          try {
+            $env:PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH = "true"
+            Start-Process -FilePath "powershell.exe" `
+              -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RuntimeRepoRoot, "-Port", "$Port", "-Restart") `
+              -WorkingDirectory $RuntimeRepoRoot `
+              -WindowStyle Hidden | Out-Null
+          } finally {
+            if ($null -eq $previousRestartOverride) {
+              Remove-Item Env:\PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH -ErrorAction SilentlyContinue
+            } else {
+              $env:PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH = $previousRestartOverride
+            }
+          }
+          Remove-Item -LiteralPath $restartRequestPath -Force
+          $destructiveRestartCount = 0
+          Start-Sleep -Seconds $IntervalSeconds
+          continue
+        }
+
+        Write-WatchdogLog ("operator_restart_request_rejected classification={0}" -f $operatorRestart.classification)
+        Remove-Item -LiteralPath $restartRequestPath -Force
+      } catch {
+        Write-WatchdogLog ("operator_restart_request_invalid error={0}" -f $_.Exception.Message)
+        Remove-Item -LiteralPath $restartRequestPath -Force -ErrorAction SilentlyContinue
+      }
+    }
+
     if ($listenerPresent) {
       $healthProbe = Get-RuntimeHealthProbe
       if ($healthProbe.outcome -eq "answered") {
-        if (Test-RuntimeHealth -Health $healthProbe.health) {
+        if (Test-WatchdogRuntimeHealth -Health $healthProbe.health) {
           $healthOutcome = "healthy"
         } else {
           $healthOutcome = "answered_invalid_policy"
@@ -149,15 +188,15 @@ while ($true) {
     if ($decision.action -eq "start") {
       Write-WatchdogLog "runtime_missing starting_primary_runtime"
       Start-Process -FilePath "powershell.exe" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RepoRoot, "-Port", "$Port") `
-        -WorkingDirectory $RepoRoot `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RuntimeRepoRoot, "-Port", "$Port") `
+        -WorkingDirectory $RuntimeRepoRoot `
         -WindowStyle Hidden | Out-Null
     } elseif ($decision.action -eq "restart") {
       Write-WatchdogLog ("runtime_unhealthy starting_primary_runtime classification={0} destructive_restart_count={1}" -f $decision.classification, $destructiveRestartCount)
       $destructiveRestartCount = 0
       Start-Process -FilePath "powershell.exe" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RepoRoot, "-Port", "$Port", "-Restart") `
-        -WorkingDirectory $RepoRoot `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RuntimeRepoRoot, "-Port", "$Port", "-Restart") `
+        -WorkingDirectory $RuntimeRepoRoot `
         -WindowStyle Hidden | Out-Null
     } elseif ($decision.classification -eq "invalid_runtime_policy") {
       if ($inCriticalPublishWindow) {
@@ -165,8 +204,10 @@ while ($true) {
       } else {
         Write-WatchdogLog ("runtime_unhealthy_retrying classification={0} destructive_restart_count={1} threshold={2}" -f $decision.classification, $destructiveRestartCount, $UnhealthyRestartThreshold)
       }
+    } elseif ($decision.classification -eq "unresponsive_server") {
+      Write-WatchdogLog ("runtime_unhealthy_retrying classification={0} destructive_restart_count={1} threshold={2}" -f $decision.classification, $destructiveRestartCount, $UnhealthyRestartThreshold)
     } elseif ($decision.classification -eq "overloaded_or_unresponsive") {
-      Write-WatchdogLog ("runtime_classification=overloaded_or_unresponsive action=none pid={0} destructive_restart_count={1}" -f ($listenerOwners -join ","), $destructiveRestartCount)
+      Write-WatchdogLog ("runtime_unhealthy_retrying classification=overloaded_or_unresponsive pid={0} destructive_restart_count={1} threshold={2}" -f ($listenerOwners -join ","), $destructiveRestartCount, $UnhealthyRestartThreshold)
     } elseif ($decision.classification -ne "healthy") {
       Write-WatchdogLog ("runtime_classification={0} action=none destructive_restart_count={1}" -f $decision.classification, $destructiveRestartCount)
     }
@@ -183,7 +224,7 @@ while ($true) {
 
     Write-WatchdogLog "content_workers_check ensuring_content_workers"
     Start-Process -FilePath "powershell.exe" `
-      -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $contentWorkersScript, "-RepoRoot", $RepoRoot) `
+      -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $contentWorkersScript, "-RepoRoot", $RepoRoot, "-RuntimeRepoRoot", $RuntimeRepoRoot) `
       -WorkingDirectory $RepoRoot `
       -WindowStyle Hidden | Out-Null
   } catch {

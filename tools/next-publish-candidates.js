@@ -5494,13 +5494,6 @@ function sourceUrlFamilyKey(value = "") {
 
 function directMotionReadinessFamily(clip = {}, index = 0) {
   if (typeof clip === "string") return path.basename(cleanText(clip), path.extname(cleanText(clip)));
-  const sourceKey = sourceUrlFamilyKey(
-    clip.source_url ||
-      clip.url ||
-      clip.original_source_url ||
-      clip.reference_url ||
-      clip.source,
-  );
   const mediaKind = cleanText(clip.media_kind || clip.source_url_kind || clip.source_kind || clip.source_type).toLowerCase();
   const directMotion =
     mediaKind.includes("direct_video") ||
@@ -5509,6 +5502,24 @@ function directMotionReadinessFamily(clip = {}, index = 0) {
     mediaKind.includes("official_platform_product_page") ||
     mediaKind.includes("licensed_direct_media") ||
     /\.(?:mp4|mov|webm|mkv)(?:$|[?#])/i.test(cleanText(clip.path || clip.media_path || clip.local_path || clip.source_url || clip.url));
+  if (directMotion) {
+    const immutableIdentity = cleanText(
+      clip.base_source_asset_id ||
+        clip.source_master_sha256 ||
+        clip.youtube_video_id ||
+        clip.provenance?.base_source_asset_id ||
+        clip.provenance?.source_master_sha256 ||
+        clip.provenance?.youtube_video_id,
+    ).toLowerCase();
+    if (immutableIdentity) return `source:${immutableIdentity}`;
+  }
+  const sourceKey = sourceUrlFamilyKey(
+    clip.source_url ||
+      clip.url ||
+      clip.original_source_url ||
+      clip.reference_url ||
+      clip.source,
+  );
   if (directMotion && sourceKey) return sourceKey;
   const baseFamily = cleanText(
     clip.base_source_family ||
@@ -6150,7 +6161,7 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
 }
 
 function preflightBlockerIsNonSupersedableVisualLoop(blocker = "") {
-  return /(?:final_render_reuses_visual_units|clip_scene_plan_not_repeat_free|direct_motion_base_source_repeated|direct_motion_source_concentration_above_premium_floor|direct_motion_base_source_overused|repeated_direct_motion_segment|repeated_card_family|readable_card_kind_repeated|card_visible_dwell_too_short|card_visible_dwell_missing|card_visible_window_below_readable_floor|rendered_card_window_dwell_too_short|card_clip_dwell_too_short|card_clip_dwell_missing|director_card_dwell_too_short|readable_card_scene_duration_below_minimum|overlay_card_window_below_readable_floor|motion_scene_duration_exceeds_source_duration)/i.test(
+  return /(?:final_render_reuses_visual_units|clip_scene_plan_not_repeat_free|direct_motion_base_source_repeated|direct_motion_source_concentration_above_premium_floor|direct_motion_base_source_overused|repeated_direct_motion_segment|repeated_motion_sequence|repeated_card_family|readable_card_kind_repeated|choppy_temporal_cadence|temporal_scan_(?:missing|incomplete)|card_visible_dwell_too_short|card_visible_dwell_missing|card_visible_window_below_readable_floor|rendered_card_window_dwell_too_short|card_clip_dwell_too_short|card_clip_dwell_missing|director_card_dwell_too_short|readable_card_scene_duration_below_minimum|overlay_card_window_below_readable_floor|motion_scene_duration_exceeds_source_duration)/i.test(
     cleanText(blocker),
   );
 }
@@ -7099,12 +7110,17 @@ async function readBridgeCandidateManifest(pathname) {
       };
     }
     const value = await fs.readJson(resolved);
-    const shapeValid = Array.isArray(value) || Array.isArray(value?.candidates);
+    const shapeValid =
+      Array.isArray(value) ||
+      Array.isArray(value?.candidates) ||
+      Array.isArray(value?.scheduler_bridge_candidates);
     const candidates = Array.isArray(value)
       ? value
       : Array.isArray(value?.candidates)
         ? value.candidates
-        : [];
+        : Array.isArray(value?.scheduler_bridge_candidates)
+          ? value.scheduler_bridge_candidates
+          : [];
     return {
       candidates,
       requested: true,

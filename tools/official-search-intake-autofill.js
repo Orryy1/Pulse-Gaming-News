@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const {
   buildOfficialSearchIntakeAutofillReport,
+  defaultSearchYoutubeMetadata,
   renderOfficialSearchIntakeAutofillMarkdown,
 } = require("../lib/official-search-intake-autofill");
 
@@ -65,8 +66,8 @@ function printHelp() {
       "                           Minimum exact/strong match score, default 0.9",
       "  --json                   Print JSON instead of Markdown",
       "",
-      "This command only fetches official Steam storefront metadata and writes local reports/templates.",
-      "It never downloads videos, uses yt-dlp, mutates the DB, touches OAuth, restarts services or posts.",
+      "This command fetches official-site/Steam metadata and verified official-channel YouTube metadata.",
+      "YouTube search uses yt-dlp flat metadata only. It never downloads videos, mutates the DB, touches OAuth, restarts services or posts.",
     ].join("\n") + "\n",
   );
 }
@@ -118,6 +119,7 @@ async function main() {
   const report = await buildOfficialSearchIntakeAutofillReport({
     entries,
     existingEntries,
+    searchYoutubeMetadata: defaultSearchYoutubeMetadata,
     timeoutMs: args.timeoutMs,
     minimumSteamScore: args.minimumSteamScore,
   });

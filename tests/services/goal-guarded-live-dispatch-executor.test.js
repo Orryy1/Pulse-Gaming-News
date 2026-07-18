@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const fs = require("fs-extra");
 const os = require("node:os");
@@ -272,6 +273,8 @@ test("guarded live dispatch executor falls back to Instagram URL upload after el
   let binaryCalls = 0;
   let fallbackCalls = 0;
   let persisted = null;
+  let publiclyServedPath = null;
+  const callOrder = [];
   const platformPostCalls = [];
   const generatedAt = "2026-07-02T16:00:00.000Z";
 
@@ -292,6 +295,7 @@ test("guarded live dispatch executor falls back to Instagram URL upload after el
           /Instagram binary upload failed/.test(String(err?.message || "")),
         uploadShort: async () => {
           binaryCalls += 1;
+          callOrder.push("binary");
           const err = new Error(
             'Instagram binary upload failed (400): {"debug_info":{"retriable":false,"type":"ProcessingFailedError","message":"Request processing failed"}}',
           );
@@ -300,7 +304,13 @@ test("guarded live dispatch executor falls back to Instagram URL upload after el
         },
         uploadReelViaUrl: async (uploadedStory) => {
           fallbackCalls += 1;
+          callOrder.push("url_fallback");
           assert.equal(uploadedStory.exported_path, "output/final/story-one/instagram_reels.mp4");
+          assert.equal(
+            publiclyServedPath,
+            uploadedStory.exported_path,
+            "the guarded executor must persist the exact Instagram variant before Meta fetches the public URL",
+          );
           return { platform: "instagram", mediaId: "ig_url_ok_1" };
         },
       },
@@ -308,6 +318,8 @@ test("guarded live dispatch executor falls back to Instagram URL upload after el
     db: {
       upsertStory: async (nextStory) => {
         persisted = nextStory;
+        publiclyServedPath = nextStory.exported_path;
+        callOrder.push("persist");
       },
     },
     platformPosts: {
@@ -331,6 +343,7 @@ test("guarded live dispatch executor falls back to Instagram URL upload after el
   assert.equal(report.actions[0].external_id, "ig_url_ok_1");
   assert.equal(binaryCalls, 1);
   assert.equal(fallbackCalls, 1);
+  assert.deepEqual(callOrder, ["binary", "persist", "url_fallback", "persist"]);
   assert.equal(persisted.instagram_media_id, "ig_url_ok_1");
   assert.equal(persisted.instagram_error, null);
   assert.deepEqual(platformPostCalls, [
@@ -1929,6 +1942,82 @@ test("guarded live dispatch executor blocks non-native managed TTS rates before 
     "last_second_local_tts_speed_failed",
     "tts_speaking_rate_non_native:1.10",
   ]);
+});
+
+test("guarded live dispatch executor accepts a hash-bound ElevenLabs provider-native generation rate", async (t) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-provider-native-managed-rate-"));
+  t.after(() => fs.remove(tmp));
+  const audioPath = path.join(tmp, "story-one.mp3");
+  const timestampsPath = path.join(tmp, "story-one_timestamps.json");
+  const audioBytes = Buffer.from("provider-native-elevenlabs-audio");
+  await fs.writeFile(audioPath, audioBytes);
+  await fs.writeJson(timestampsPath, {
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+        speakingRate: 0.95,
+        rateControl: {
+          schemaVersion: 1,
+          method: "provider_native_voice_settings_speed",
+          requestField: "voice_settings.speed",
+          appliedAtGeneration: true,
+          requestedRate: 0.95,
+          effectiveRate: 0.95,
+          postGenerationTempoStretch: false,
+          requestVoiceSettingsSha256: "a".repeat(64),
+          generatedAudioSha256: crypto
+            .createHash("sha256")
+            .update(audioBytes)
+            .digest("hex"),
+        },
+      },
+    },
+    words: [{ word: "Arknights", start: 0, end: 0.2 }],
+  });
+
+  let uploadCalls = 0;
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          word_timestamps_path: timestampsPath,
+          video_path: path.join(tmp, "youtube.mp4"),
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "Arknights Endfield Puts PS5 Pro Under Pressure",
+        audio_path: audioPath,
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "youtube", videoId: "yt_provider_native" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.upload_attempt_count, 1);
+  assert.equal(uploadCalls, 1);
 });
 
 test("guarded live dispatch executor blocks GTA VI split ASR stutter evidence before upload", async (t) => {

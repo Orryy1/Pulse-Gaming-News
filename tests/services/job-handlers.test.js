@@ -5,11 +5,16 @@ const assert = require("node:assert/strict");
 
 const {
   handleGuardedLiveDispatchPublish,
+  buildFreshRefillDirectMediaDiscoveryInput,
   buildFreshRefillOfficialSourceEvidence,
   buildFreshRefillScriptRewriteWorkOrder,
+  freshRefillAudioTimestampMaterializerTimeoutMs,
   freshRefillHyperframesStoryIdsAfterMotion,
+  freshRefillHyperframesCardTimeoutMs,
   freshRefillMaterializedAudioStoryIdsFromReport,
   freshRefillNarrationProviderPreference,
+  freshRefillOfficialYoutubeMotionRows,
+  freshRefillOfficialYoutubeMotionChildArgs,
   freshRefillPlatformVariantChildArgs,
   guardedPublishFailureMessage,
   guardedPublishResultShouldFailJob,
@@ -290,6 +295,216 @@ test("fresh refill source evidence preserves official YouTube watch references a
   assert.ok(intake.accepted_references.every((reference) => reference.segment_validation_eligible === false));
 });
 
+test("fresh refill source evidence preserves legacy official YouTube local masters with public source identity", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-youtube-local-master-"));
+  const artifactDir = path.join(tmp, "rss_arknights_endfield");
+  const outputDir = path.join(tmp, "repair");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+  const japanMaster = path.join(tmp, "arknights_official_japan_expo_0FMTc3h1VoI.mp4");
+  const homecomingMaster = path.join(tmp, "arknights_official_homecoming_xxURfVAVSfE.mp4");
+  const arcaneMaster = path.join(tmp, "arknights_official_arcane_story_Jeh2M3HWnpI_720.mp4");
+
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_arknights_endfield",
+    selected_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights: Endfield",
+    canonical_game: "Arknights: Endfield",
+    narration_script:
+      "Arknights: Endfield just gave PS5 Pro owners a real before-and-after test. Follow Pulse Gaming so you never miss a beat.",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: {
+      name: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro/",
+      type: "rss",
+    },
+    direct_media_candidates: [
+      {
+        direct_media_url: japanMaster,
+        source_title: "Arknights: Endfield Japan Expo trailer",
+        source_family: "url:youtube:0fmtc3h1voi_window_20_15_2_85",
+        source_type: "official_youtube_channel",
+        source_owner: "Arknights: Endfield",
+      },
+      {
+        direct_media_url: homecomingMaster,
+        source_title: "Arknights: Endfield Homecoming trailer",
+        source_family: "url:youtube:xxurfvavsfe_window_132_5",
+        source_type: "official_youtube_channel",
+        source_owner: "Arknights: Endfield",
+      },
+      {
+        direct_media_url: arcaneMaster,
+        source_title: "Arknights: Endfield Arcane story trailer",
+        source_family: "url:youtube:jeh2m3hwnpi_window_134_15_2_85",
+        source_type: "official_youtube_channel",
+        source_owner: "Arknights: Endfield",
+      },
+    ],
+  }, { spaces: 2 });
+  await fs.writeJson(storyPackagesPath, [
+    {
+      story_id: "rss_arknights_endfield",
+      artifact_dir: artifactDir,
+    },
+  ], { spaces: 2 });
+
+  const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+  const entries = await fs.readJson(result.officialSourceEntriesPath);
+  const candidateStories = await fs.readJson(result.candidateStoriesPath);
+
+  assert.equal(entries.length, 3);
+  assert.deepEqual(entries.map((entry) => entry.source_type), [
+    "official_youtube_channel_url",
+    "official_youtube_channel_url",
+    "official_youtube_channel_url",
+  ]);
+  assert.deepEqual(entries.map((entry) => entry.official_source_url), [
+    "https://www.youtube.com/watch?v=0FMTc3h1VoI",
+    "https://www.youtube.com/watch?v=xxURfVAVSfE",
+    "https://www.youtube.com/watch?v=Jeh2M3HWnpI",
+  ]);
+  assert.deepEqual(entries.map((entry) => entry.direct_media_url_if_available), [
+    japanMaster,
+    homecomingMaster,
+    arcaneMaster,
+  ]);
+  assert.deepEqual(entries.map((entry) => entry.local_operator_file_path), [
+    japanMaster,
+    homecomingMaster,
+    arcaneMaster,
+  ]);
+  assert.equal(candidateStories.length, 1);
+  assert.deepEqual(
+    candidateStories[0].direct_media_candidates.map((candidate) => ({
+      direct_media_url: candidate.direct_media_url,
+      source_type: candidate.source_type,
+      youtube_video_id: candidate.youtube_video_id,
+    })),
+    [
+      {
+        direct_media_url: japanMaster,
+        source_type: "official_youtube_channel",
+        youtube_video_id: "0FMTc3h1VoI",
+      },
+      {
+        direct_media_url: homecomingMaster,
+        source_type: "official_youtube_channel",
+        youtube_video_id: "xxURfVAVSfE",
+      },
+      {
+        direct_media_url: arcaneMaster,
+        source_type: "official_youtube_channel",
+        youtube_video_id: "Jeh2M3HWnpI",
+      },
+    ],
+  );
+});
+
+test("fresh refill source evidence preserves source-backed claims needed by strict public-copy QA", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-source-claims-"));
+  const artifactDir = path.join(tmp, "rss_arknights_source_claims");
+  const outputDir = path.join(tmp, "repair");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro/";
+  const detailedClaim =
+    "The upgraded PSSR delivers sharper image quality, improved temporal stability and higher frame rates at 4K.";
+  const unrelatedFooter =
+    "Like this PlayStation 5 Learn more Latest News Share of the Week and other unrelated stories.";
+
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_arknights_source_claims",
+    selected_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights: Endfield",
+    primary_source: "PlayStation Blog",
+    primary_source_url: sourceUrl,
+    source_published_at: "2026-07-15T17:00:37.000Z",
+    narration_script:
+      "Arknights: Endfield's upgraded PSSR sharpens image quality and steadies motion at 4K. " +
+      "If Arknights: Endfield stays sharp in motion, the upgrade passes its real test.",
+    confirmed_claims: [
+      "Arknights: Endfield received a Version 1.4 update.",
+      unrelatedFooter,
+    ],
+    claim_inventory: {
+      confirmed: [
+        "Arknights: Endfield received a Version 1.4 update.",
+        unrelatedFooter,
+      ],
+      unconfirmed: [],
+      prohibited: [],
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: {
+      name: "PlayStation Blog",
+      url: sourceUrl,
+      type: "official_or_major_source",
+      published_at: "2026-07-15T17:00:37.000Z",
+    },
+    source_evidence: {
+      status: "pass",
+      source_url: sourceUrl,
+      claims: [
+        {
+          text: detailedClaim,
+          source_url: sourceUrl,
+          evidence_text: detailedClaim,
+          origin: "source_body",
+        },
+        {
+          text: unrelatedFooter,
+          source_url: sourceUrl,
+          evidence_text: unrelatedFooter,
+          origin: "source_body",
+        },
+      ],
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(storyPackagesPath, [{
+    story_id: "rss_arknights_source_claims",
+    artifact_dir: artifactDir,
+  }], { spaces: 2 });
+
+  const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+  const candidateStories = await fs.readJson(result.candidateStoriesPath);
+  const story = candidateStories[0];
+
+  assert.ok(story.confirmed_claims.includes(detailedClaim));
+  assert.ok(story.claim_inventory.confirmed.includes(detailedClaim));
+  assert.equal(story.confirmed_claims.includes(unrelatedFooter), false);
+  assert.equal(story.claim_inventory.confirmed.includes(unrelatedFooter), false);
+  assert.equal(
+    (story.narration_script.match(/Arknights:\s*Endfield/gi) || []).length,
+    1,
+  );
+  assert.match(story.narration_script, /If the game stays sharp in motion/);
+  assert.equal(story.full_script, story.narration_script);
+  assert.equal(story.caption_display_text, story.narration_script);
+  assert.deepEqual(story.source_evidence, {
+    status: "pass",
+    source_url: sourceUrl,
+    claims: [
+      {
+        text: detailedClaim,
+        source_url: sourceUrl,
+        evidence_text: detailedClaim,
+        origin: "source_body",
+      },
+      {
+        text: unrelatedFooter,
+        source_url: sourceUrl,
+        evidence_text: unrelatedFooter,
+        origin: "source_body",
+      },
+    ],
+  });
+});
+
 test("fresh refill source evidence keeps candidate stories that need supplemental official search", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-supplemental-"));
   const artifactDir = path.join(tmp, "rss_marvel_tokon");
@@ -333,6 +548,113 @@ test("fresh refill source evidence keeps candidate stories that need supplementa
   assert.equal(intake.summary.rejected, 0);
 });
 
+test("fresh refill direct-media input prefers a hash-bound official YouTube master over metadata-only evidence", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-youtube-motion-"));
+  const sourceEntriesPath = path.join(tmp, "official-source-entries.json");
+  const officialSearchAutofillTemplatePath = path.join(tmp, "official-search.json");
+  const officialYoutubeMotionTemplatePath = path.join(tmp, "official-youtube-motion.json");
+  const outputPath = path.join(tmp, "merged.json");
+  const referenceUrl = "https://www.youtube.com/watch?v=EfwGJH-etgk";
+  const shared = {
+    story_id: "rss_arknights_endfield",
+    entity: "Arknights: Endfield",
+    source_type: "official_youtube_channel_url",
+    official_source_url: referenceUrl,
+    source_title: "Arknights: Endfield Beta Test Trailer",
+    source_owner: "Arknights: Endfield",
+    source_family: "official_youtube_EfwGJH-etgk",
+    source_verified: true,
+    official_channel_url: "https://www.youtube.com/@arknightsendfieldEN",
+    youtube_video_id: "EfwGJH-etgk",
+  };
+  await fs.writeJson(sourceEntriesPath, []);
+  await fs.writeJson(officialSearchAutofillTemplatePath, {
+    schema_version: 1,
+    entries: [{
+      ...shared,
+      segment_validation_eligible: false,
+      autonomous_use_approved: false,
+    }],
+  });
+  await fs.writeJson(officialYoutubeMotionTemplatePath, {
+    schema_version: 1,
+    entries: [{
+      ...shared,
+      local_operator_file_path: path.join(tmp, "EfwGJH-etgk.mp4"),
+      source_url_kind: "local_video_file",
+      segment_validation_eligible: true,
+      autonomous_use_approved: true,
+      provenance: {
+        source: "official_youtube_channel_download",
+        reference_url: referenceUrl,
+        source_sha256: "a".repeat(64),
+        source_identity_sha256: "b".repeat(64),
+      },
+    }],
+  });
+
+  const result = await buildFreshRefillDirectMediaDiscoveryInput({
+    sourceEntriesPath,
+    officialSearchAutofillTemplatePath,
+    officialYoutubeMotionTemplatePath,
+    outputPath,
+  });
+  const merged = await fs.readJson(outputPath);
+
+  assert.equal(result.official_youtube_motion_entry_count, 1);
+  assert.equal(result.merged_entry_count, 1);
+  assert.equal(merged[0].source_url_kind, "local_video_file");
+  assert.equal(merged[0].segment_validation_eligible, true);
+  assert.equal(merged[0].provenance.source_sha256, "a".repeat(64));
+});
+
+test("fresh refill materialises only verified official YouTube metadata before discovery", () => {
+  const rows = freshRefillOfficialYoutubeMotionRows({
+    entries: [
+      {
+        story_id: "rss_arknights_endfield",
+        source_type: "official_youtube_channel_url",
+        source_verified: true,
+        youtube_video_id: "EfwGJH-etgk",
+        official_channel_url: "https://www.youtube.com/@arknightsendfieldEN",
+      },
+      {
+        story_id: "rss_ign_reupload",
+        source_type: "official_youtube_channel_url",
+        source_verified: false,
+        youtube_video_id: "badmedia123",
+      },
+      {
+        story_id: "rss_storefront",
+        source_type: "platform_storefront",
+        source_verified: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(rows.map((row) => row.story_id), ["rss_arknights_endfield"]);
+  assert.deepEqual(
+    freshRefillOfficialYoutubeMotionChildArgs({
+      inputPath: "output/refill/official-search.json",
+      outputDir: "output/refill/official-youtube-motion",
+      outputJsonPath: "output/refill/official-youtube-motion.json",
+      outputTemplatePath: "output/refill/official-youtube-motion-template.json",
+    }),
+    [
+      "tools/official-youtube-motion-materializer.js",
+      "--input",
+      "output/refill/official-search.json",
+      "--output-dir",
+      "output/refill/official-youtube-motion",
+      "--output-json",
+      "output/refill/official-youtube-motion.json",
+      "--output-template",
+      "output/refill/official-youtube-motion-template.json",
+      "--json",
+    ],
+  );
+});
+
 test("fresh refill hyperframes follow-up handles materialized motion reports", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-hyperframes-"));
   const reportPath = path.join(tmp, "real_motion_materialization_report.json");
@@ -361,6 +683,31 @@ test("fresh refill hyperframes follow-up handles materialized motion reports", a
   });
 
   assert.deepEqual(ids, ["rss_marvel_tokon"]);
+});
+
+test("fresh refill HyperFrames card generation allows a complete six-card render", () => {
+  assert.equal(freshRefillHyperframesCardTimeoutMs(undefined), 6 * 60 * 1000);
+  assert.equal(freshRefillHyperframesCardTimeoutMs("420000"), 420000);
+  assert.equal(freshRefillHyperframesCardTimeoutMs("invalid"), 6 * 60 * 1000);
+});
+
+test("fresh refill audio materialization allows bounded CPU Whisper retries to finish", () => {
+  assert.equal(
+    freshRefillAudioTimestampMaterializerTimeoutMs(undefined),
+    30 * 60 * 1000,
+  );
+  assert.equal(
+    freshRefillAudioTimestampMaterializerTimeoutMs("2700000"),
+    45 * 60 * 1000,
+  );
+  assert.equal(
+    freshRefillAudioTimestampMaterializerTimeoutMs("7200000"),
+    60 * 60 * 1000,
+  );
+  assert.equal(
+    freshRefillAudioTimestampMaterializerTimeoutMs("invalid"),
+    30 * 60 * 1000,
+  );
 });
 
 test("guarded publish handler preserves failed platform error in thrown job message", async () => {

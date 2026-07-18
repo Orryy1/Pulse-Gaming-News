@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -220,6 +221,44 @@ test("approved voice path rejects non-native managed TTS speaking rates", () => 
   assert.equal(result.verdict, "rejected");
   assert.ok(result.blockers.includes("managed_tts_non_native_rate_applied"));
   assert.equal(result.rate_adjustment.rate, 1.1);
+});
+
+test("approved voice path accepts a bounded ElevenLabs provider-native generation rate with hash-bound provenance", () => {
+  const bytes = "provider-native-elevenlabs-audio";
+  const audioPath = audioFile("elevenlabs-provider-native-095.mp3", bytes);
+  const result = evaluateApprovedVoicePath({
+    narration: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      audioPath,
+      transcript:
+        "Arknights Endfield puts its new graphics upgrade under pressure. Follow Pulse Gaming so you never miss a beat.",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+        speakingRate: 0.95,
+        rateControl: {
+          schemaVersion: 1,
+          method: "provider_native_voice_settings_speed",
+          requestField: "voice_settings.speed",
+          appliedAtGeneration: true,
+          requestedRate: 0.95,
+          effectiveRate: 0.95,
+          postGenerationTempoStretch: false,
+          requestVoiceSettingsSha256: "a".repeat(64),
+          generatedAudioSha256: crypto
+            .createHash("sha256")
+            .update(bytes)
+            .digest("hex"),
+        },
+      },
+    },
+  });
+
+  assert.equal(result.verdict, "approved_for_studio_v2_proof");
+  assert.deepEqual(result.blockers, []);
+  assert.equal(result.rate_adjustment.provider_native_verified, true);
+  assert.equal(result.rate_adjustment.rate, 0.95);
 });
 
 test("approved voice path rejects old local Liam proofs without mastering evidence", () => {

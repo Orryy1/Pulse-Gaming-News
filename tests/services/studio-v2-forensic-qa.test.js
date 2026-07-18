@@ -18,6 +18,7 @@ const {
   hammingDistance,
   filterRepeatPairsByIgnoreRanges,
   buildVisualRepeatIgnoreRanges,
+  buildValidatedReadableCardRanges,
   analyseRenderedFrameTaste,
   analyseRenderConsistency,
   analyseReportTextHygiene,
@@ -460,6 +461,81 @@ test("analyseRenderedFrameTaste fails rendered rating and title slates", async (
   assert.equal(result.badFrames[0].reason, "white_text_on_dark_card");
 });
 
+test("analyseRenderedFrameTaste routes only duration-valid editorial card frames to card QA", async () => {
+  const intentionalReadableCardRanges = buildValidatedReadableCardRanges({
+    sceneList: [
+      { type: "clip", duration: 16 },
+      {
+        type: "card.source",
+        duration: 2.6,
+        readableCardKind: "source",
+        minimumReadableDurationS: 1.6,
+        maximumVisibleDurationS: 3.1,
+      },
+      { type: "clip", duration: 4 },
+    ],
+  });
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "intentional-source-card.jpg",
+        timeS: 17,
+        prescan: {
+          text_overlay_likelihood: 0.36,
+          white_text_on_dark_likelihood: 0.82,
+          edge_density: 0.08,
+          saturation_mean: 0.08,
+          bright_pixel_ratio: 0.08,
+          dark_pixel_ratio: 0.81,
+        },
+      },
+    ],
+    intentionalReadableCardRanges,
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.deepEqual(intentionalReadableCardRanges, [
+    {
+      startS: 16,
+      endS: 18.6,
+      kind: "source",
+      reason: "validated_readable_editorial_card",
+    },
+  ]);
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+  assert.equal(result.samples[0].reason, "validated_readable_editorial_card_taste_routed");
+});
+
+test("analyseRenderedFrameTaste never excuses a black frame inside an editorial card window", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "black-source-card.jpg",
+        timeS: 17,
+        black_frame: true,
+        prescan: {
+          black_frame: true,
+          text_overlay_likelihood: 0,
+        },
+      },
+    ],
+    intentionalReadableCardRanges: [
+      {
+        startS: 16,
+        endS: 18.6,
+        kind: "source",
+        reason: "validated_readable_editorial_card",
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.blackFrameCount, 1);
+  assert.equal(result.badFrames[0].reason, "black_frame");
+});
+
 test("analyseRenderedFrameTaste ignores colourful subtitle overlay false positives", async () => {
   const result = await analyseRenderedFrameTaste({
     frames: [
@@ -467,12 +543,12 @@ test("analyseRenderedFrameTaste ignores colourful subtitle overlay false positiv
         path: "captioned-gameplay.jpg",
         timeS: 18.5,
         prescan: {
-          text_overlay_likelihood: 0.05,
-          white_text_on_dark_likelihood: 0.58,
-          edge_density: 0.12,
-          saturation_mean: 0.52,
-          bright_pixel_ratio: 0.027,
-          dark_pixel_ratio: 0.62,
+          text_overlay_likelihood: 0.053,
+          white_text_on_dark_likelihood: 0.666,
+          edge_density: 0.227,
+          saturation_mean: 0.429,
+          bright_pixel_ratio: 0.11,
+          dark_pixel_ratio: 0.47,
         },
       },
     ],
@@ -482,6 +558,95 @@ test("analyseRenderedFrameTaste ignores colourful subtitle overlay false positiv
   assert.equal(result.verdict, "pass");
   assert.equal(result.badFrameCount, 0);
   assert.equal(result.samples[0].reason, "subtitle_overlay_taste_ignored");
+});
+
+test("analyseRenderedFrameTaste ignores a colourful centred game subject with subtitle text", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [
+      {
+        path: "captioned-centred-character.jpg",
+        timeS: 22,
+        prescan: {
+          text_overlay_likelihood: 0.0425531914893617,
+          white_text_on_dark_likelihood: 0.5986758714350384,
+          edge_density: 0.13128112267994568,
+          saturation_mean: 0.525283891964464,
+          bright_pixel_ratio: 0.047532820280669984,
+          dark_pixel_ratio: 0.5464010864644635,
+          central_luminance_oval: 0.6073639398272973,
+          central_bright_pixel_ratio: 0.06897735072065889,
+          central_dark_pixel_ratio: 0.45555936856554563,
+        },
+      },
+    ],
+    prescanFrame: async (frame) => frame.prescan,
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+  assert.equal(result.samples[0].reason, "subtitle_overlay_taste_ignored");
+});
+
+test("analyseRenderedFrameTaste uses a verified subtitle cue to reject the Arknights rendered-frame false positive", async () => {
+  const frame = {
+    path: "arknights-captioned-underwater-motion.jpg",
+    timeS: 35,
+    prescan: {
+      text_overlay_likelihood: 0.0425531914893617,
+      white_text_on_dark_likelihood: 0.5572657311000453,
+      edge_density: 0.12347215934812132,
+      saturation_mean: 0.8059252341578115,
+      bright_pixel_ratio: 0.027387958352195565,
+      dark_pixel_ratio: 0.5091670439112721,
+      central_luminance_oval: 0.4149781891793853,
+      central_bright_pixel_ratio: 0.014927934111187372,
+      central_dark_pixel_ratio: 0.5734385724090597,
+    },
+  };
+
+  const result = await analyseRenderedFrameTaste({
+    frames: [frame],
+    subtitleCueRanges: [{
+      startS: 34.52,
+      endS: 35.41,
+      text: "THE FULL GAME FEELS, SO",
+    }],
+    prescanFrame: async (candidate) => candidate.prescan,
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+  assert.equal(result.samples[0].reason, "verified_subtitle_overlay_taste_ignored");
+});
+
+test("analyseRenderedFrameTaste keeps the Arknights frame metrics blocked without a verified subtitle cue", async () => {
+  const result = await analyseRenderedFrameTaste({
+    frames: [{
+      path: "unverified-white-text-on-dark-motion.jpg",
+      timeS: 35,
+      prescan: {
+        text_overlay_likelihood: 0.0425531914893617,
+        white_text_on_dark_likelihood: 0.5572657311000453,
+        edge_density: 0.12347215934812132,
+        saturation_mean: 0.8059252341578115,
+        bright_pixel_ratio: 0.027387958352195565,
+        dark_pixel_ratio: 0.5091670439112721,
+        central_luminance_oval: 0.4149781891793853,
+        central_bright_pixel_ratio: 0.014927934111187372,
+        central_dark_pixel_ratio: 0.5734385724090597,
+      },
+    }],
+    subtitleCueRanges: [{
+      startS: 36,
+      endS: 37,
+      text: "A DIFFERENT CUE",
+    }],
+    prescanFrame: async (candidate) => candidate.prescan,
+  });
+
+  assert.equal(result.verdict, "fail");
+  assert.equal(result.badFrameCount, 1);
+  assert.equal(result.badFrames[0].reason, "white_text_on_dark_card");
 });
 
 test("analyseRenderedFrameTaste ignores ambiguous promotional-slate heuristics on rendered gameplay", async () => {

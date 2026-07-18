@@ -29,8 +29,10 @@ const {
   shellSidecarPathForCard,
 } = require("../lib/studio/v2/premium-card-lane-v2");
 const {
+  PREMIUM_CARD_TIMING_V5_VERSION,
   V5_READABLE_CARD_TIMING,
   V5_SOURCE_CARD_TIMING,
+  readableWordCount,
   v5CardTimingContract,
 } = require("../lib/studio/v4/premium-card-timing-policy");
 const {
@@ -125,10 +127,16 @@ function clampWords(value, maxWords) {
   return `${words.slice(0, maxWords).join(" ")}...`;
 }
 
-function clampQuoteText(value, { maxWords = 12, maxChars = 96 } = {}) {
-  return fitQuoteText(value, {
-    maxWords: Math.min(Number(maxWords) || 12, 11),
-    maxChars: Math.min(Number(maxChars) || 96, 84),
+function clampQuoteText(value, { maxWords = 9, maxChars = 76 } = {}) {
+  const compact = normaliseText(value)
+    .replace(
+      /^.+?\s+just\s+gave\s+(.+?)\s+a\s+real\s+before-and-after\s+test\.?$/i,
+      "$1 gets a real before-and-after test.",
+    )
+    .replace(/\b(?:has|have)\s+to\b/gi, "must");
+  return fitQuoteText(compact, {
+    maxWords: Math.min(Number(maxWords) || 9, 9),
+    maxChars: Math.min(Number(maxChars) || 76, 76),
     maxCharsPerLine: 28,
     maxLines: 3,
     maxTokenChars: 22,
@@ -179,10 +187,11 @@ function hyperframesCardReadabilityContractForSpec(kind, spec = {}) {
   }
   return {
     status: blockers.length ? "fail" : "pass",
+    contract_version: PREMIUM_CARD_TIMING_V5_VERSION,
     blockers,
     evidence: {
       readable_text: readableText,
-      word_count: readableText ? readableText.split(/\s+/).filter(Boolean).length : 0,
+      word_count: readableWordCount(readableText),
       planned_visible_duration_s: planned,
       minimum_visible_duration_s: minimum,
       maximum_visible_duration_s: maximum,
@@ -205,15 +214,70 @@ function applyReadableDurationToTemplate(html, durationS) {
   );
 }
 
+function sourceValue(value) {
+  if (typeof value === "string") return normaliseText(value);
+  if (!value || typeof value !== "object") return "";
+  return normaliseText(
+    value.name ||
+      value.label ||
+      value.publisher ||
+      value.source_name ||
+      value.title,
+  );
+}
+
+function sourceUrl(story) {
+  return [
+    story?.primary_source_url,
+    story?.source_url,
+    story?.article_url,
+    story?.url,
+    story?.primary_source?.url,
+    story?.primarySource?.url,
+    story?.official_source?.url,
+  ]
+    .map(sourceValue)
+    .find(Boolean) || "";
+}
+
+function sourceIdentityFromUrl(value) {
+  const raw = normaliseText(value);
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.toLowerCase();
+    const isSteamHost =
+      host === "store.steampowered.com" ||
+      host === "steamcommunity.com" ||
+      host === "steamstore-a.akamaihd.net";
+    if (
+      isSteamHost &&
+      /\b(?:news|announcement|announcements|externalpost)\b/.test(
+        pathname.replace(/[/_-]+/g, " "),
+      )
+    ) {
+      return "Steam News";
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
 function sourceLabel(story) {
-  const raw =
-    story?.source_card_label ||
-    story?.sourceCardLabel ||
-    story?.subreddit ||
-    story?.source ||
-    story?.publisher ||
-    story?.source_name ||
-    "Verified source";
+  const raw = [
+    story?.source_card_label,
+    story?.sourceCardLabel,
+    story?.primary_source,
+    story?.primarySource,
+    story?.subreddit,
+    story?.source,
+    story?.publisher,
+    story?.source_name,
+  ]
+    .map(sourceValue)
+    .find(Boolean) || "Verified source";
   const clean = normaliseText(raw)
     .replace(/^r\//i, "")
     .replace(/\bRockPaperShotgun\b/gi, "Rock Paper Shotgun")
@@ -227,6 +291,13 @@ function sourceLabel(story) {
     .replace(/\s+/g, " ")
     .trim();
   return clean ? clean.toUpperCase() : "VERIFIED SOURCE";
+}
+
+function sourceSublabel(story, label) {
+  if (sourceIdentityFromUrl(sourceUrl(story)) === "Steam News") {
+    return "OFFICIAL STEAM ANNOUNCEMENT";
+  }
+  return story?.source_type === "reddit" ? "REDDIT THREAD" : "NEWS SOURCE";
 }
 
 function storyText(story) {
@@ -321,6 +392,7 @@ function editorialKeyLine(story) {
       if (/\b(?:has to|have to|must|only matters|real test|could|would|risk|problem|catch)\b/i.test(text)) {
         score += 4;
       }
+      if (/\bfinish line\b/i.test(text)) score += 6;
       if (/\d/.test(text)) score += 2;
       if (/\?$/.test(text)) score -= 3;
       if (/\b(?:official|source|reports?|trailer)\b/i.test(text)) score -= 2;
@@ -364,6 +436,7 @@ function contextImpactFromScript(story) {
     .sort((left, right) => right.score - left.score || left.index - right.index);
   if (!candidates.length || candidates[0].score < 7) return "";
   return normaliseText(candidates[0].sentence)
+    .replace(/^A\s+blind\s+grind\s+now\s+has\b/i, "Blind grind gets")
     .replace(/[.!?]+$/, "")
     .toUpperCase();
 }
@@ -421,15 +494,28 @@ function compactFactCopy(sentence, strong) {
   return clampWords(sentence, 4).replace(/[.!?]+$/, "").toLowerCase();
 }
 
-function fitTimelineBulletsToMomentumBudget(bullets, heading, maximumWords = 13) {
+function compactTimelineStrong(value) {
+  return clampWords(value, 3)
+    .toUpperCase()
+    .replace(
+      /(\$?\d+(?:\.\d+)?)\s+VS\s+(\$?\d+(?:\.\d+)?)/,
+      "$1/$2",
+    );
+}
+
+function fitTimelineBulletsToMomentumBudget(bullets, heading, maximumWords = 10) {
   const compact = bullets.map((bullet) => ({
-    strong: clampWords(bullet.strong, 3).toUpperCase(),
+    strong: compactTimelineStrong(bullet.strong),
     copy: normaliseText(bullet.copy),
   }));
-  const fixedWords = [heading, ...compact.map((bullet) => bullet.strong)]
+  const fixedWordCount = (rows) => [heading, ...rows.map((bullet) => bullet.strong)]
     .join(" ")
     .split(/\s+/)
     .filter(Boolean).length;
+  while (compact.length > 2 && fixedWordCount(compact) > maximumWords) {
+    compact.pop();
+  }
+  const fixedWords = fixedWordCount(compact);
   let remainingWords = Math.max(0, maximumWords - fixedWords);
   return compact.map((bullet) => {
     const copyWords = bullet.copy.split(/\s+/).filter(Boolean);
@@ -585,7 +671,7 @@ function buildStoryCardSpecsBase(story) {
     source: {
       kicker: "SOURCE",
       label,
-      sublabel: story?.source_type === "reddit" ? "REDDIT THREAD" : "NEWS SOURCE",
+      sublabel: sourceSublabel(story, label),
     },
     context: {
       kicker: "WHY IT MATTERS",
@@ -1180,10 +1266,11 @@ function hyperframesCardReadabilityContractFromHtml(kind, html = "") {
   }
   return {
     status: blockers.length ? "fail" : "pass",
+    contract_version: PREMIUM_CARD_TIMING_V5_VERSION,
     blockers,
     evidence: {
       readable_text: readableText,
-      word_count: readableText ? readableText.split(/\s+/).filter(Boolean).length : 0,
+      word_count: readableWordCount(readableText),
       planned_visible_duration_s: planned,
       minimum_visible_duration_s: minimum,
       maximum_visible_duration_s: maximum,
@@ -1294,6 +1381,7 @@ async function writeHyperframesPremiumShellEvidence({
   ];
   const shell = {
     schema_version: 1,
+    timing_policy_version: PREMIUM_CARD_TIMING_V5_VERSION,
     generated_at: new Date().toISOString(),
     story_id: storyId,
     card_kind: kind,
@@ -1302,6 +1390,7 @@ async function writeHyperframesPremiumShellEvidence({
     project_dir: relPath(projectDir),
     hyperframes_premium_shell: {
       status: blockers.length ? "fail" : "pass",
+      timing_policy_version: PREMIUM_CARD_TIMING_V5_VERSION,
       shell_type: "story_specific_card",
       story_id: storyId,
       card_kind: kind,

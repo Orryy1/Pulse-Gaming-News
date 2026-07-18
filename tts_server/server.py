@@ -43,6 +43,7 @@ import sys
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -422,6 +423,60 @@ SERVICE_STATE: Dict[str, object] = {
 _prewarm_lock = threading.Lock()
 _prewarm_thread: Optional[threading.Thread] = None
 
+# VoxCPMEngine is a shared, stateful GPU model and is not safe to run from
+# multiple FastAPI worker threads at once. Keep load and synthesis inside one
+# process-wide lane while health requests remain responsive.
+_inference_lock = threading.Lock()
+_inference_state_lock = threading.Lock()
+INFERENCE_STATE: Dict[str, object] = {
+    "active": False,
+    "active_operation": None,
+    "active_since": None,
+    "waiting": 0,
+    "completed": 0,
+    "last_operation": None,
+    "last_duration_ms": None,
+}
+
+
+@contextmanager
+def _serial_inference(operation: str):
+    queued_at = time.monotonic()
+    with _inference_state_lock:
+        INFERENCE_STATE["waiting"] = int(INFERENCE_STATE["waiting"]) + 1
+    _inference_lock.acquire()
+    started_at = time.monotonic()
+    with _inference_state_lock:
+        INFERENCE_STATE["waiting"] = max(0, int(INFERENCE_STATE["waiting"]) - 1)
+        INFERENCE_STATE["active"] = True
+        INFERENCE_STATE["active_operation"] = operation
+        INFERENCE_STATE["active_since"] = time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ",
+            time.gmtime(),
+        )
+    waited_ms = int((started_at - queued_at) * 1000)
+    if waited_ms > 0:
+        log.info(
+            f"[inference-gate] operation={operation} waited_ms={waited_ms}"
+        )
+    try:
+        yield
+    finally:
+        duration_ms = int((time.monotonic() - started_at) * 1000)
+        with _inference_state_lock:
+            INFERENCE_STATE["active"] = False
+            INFERENCE_STATE["active_operation"] = None
+            INFERENCE_STATE["active_since"] = None
+            INFERENCE_STATE["completed"] = int(INFERENCE_STATE["completed"]) + 1
+            INFERENCE_STATE["last_operation"] = operation
+            INFERENCE_STATE["last_duration_ms"] = duration_ms
+        _inference_lock.release()
+
+
+def _inference_state_snapshot() -> Dict[str, object]:
+    with _inference_state_lock:
+        return dict(INFERENCE_STATE)
+
 
 def _heartbeat(tag: str) -> None:
     """Stamp SERVICE_STATE so /health surfaces liveness for the prewarm
@@ -452,28 +507,29 @@ def _run_engine_load_watchdogged(voice_id: str, watchdog_s: int) -> Dict[str, ob
 
     def _target() -> None:
         try:
-            _heartbeat(f"load-begin:{voice_id}")
-            _mark_phase("load_begin", voice_id=voice_id)
-            eng = _get_engine(voice_id)
-            _mark_phase("engine_resolved", voice_id=voice_id)
-            # VoxCPMEngine defers the HF weight load to first synth().
-            # Force it here so the prewarm actually pays the cost; the
-            # observed safetensors deadlock happens inside this call.
-            if hasattr(eng, "load"):
-                _heartbeat(f"engine-load-call:{voice_id}")
-                _mark_phase("engine_load_call", voice_id=voice_id)
-                # Flush stdout/stderr so any prints inside VoxCPM that
-                # precede the hang are on disk before we cross into
-                # potentially-blocking native code.
-                try:
-                    sys.stdout.flush()
-                    sys.stderr.flush()
-                except Exception:
-                    pass
-                eng.load()
-                _mark_phase("engine_load_return", voice_id=voice_id)
-            _heartbeat(f"load-end:{voice_id}")
-            _mark_phase("load_end", voice_id=voice_id)
+            with _serial_inference(f"load:{voice_id}"):
+                _heartbeat(f"load-begin:{voice_id}")
+                _mark_phase("load_begin", voice_id=voice_id)
+                eng = _get_engine(voice_id)
+                _mark_phase("engine_resolved", voice_id=voice_id)
+                # VoxCPMEngine defers the HF weight load to first synth().
+                # Force it here so the prewarm actually pays the cost; the
+                # observed safetensors deadlock happens inside this call.
+                if hasattr(eng, "load"):
+                    _heartbeat(f"engine-load-call:{voice_id}")
+                    _mark_phase("engine_load_call", voice_id=voice_id)
+                    # Flush stdout/stderr so any prints inside VoxCPM that
+                    # precede the hang are on disk before we cross into
+                    # potentially-blocking native code.
+                    try:
+                        sys.stdout.flush()
+                        sys.stderr.flush()
+                    except Exception:
+                        pass
+                    eng.load()
+                    _mark_phase("engine_load_return", voice_id=voice_id)
+                _heartbeat(f"load-end:{voice_id}")
+                _mark_phase("load_end", voice_id=voice_id)
             result["status"] = "ok"
         except Exception as e:
             _mark_phase("load_exception", voice_id=voice_id,
@@ -831,6 +887,7 @@ def health():
         "boot_id": BOOT_ID,
         "pid": BOOT_PID,
         "diag_dir": str(BOOT_DIAG_DIR),
+        "inference": _inference_state_snapshot(),
     }
 
 
@@ -1011,27 +1068,27 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
 
     rate = (req.voice_settings.speaking_rate if req.voice_settings else None) or 1.0
 
-    engine = _get_engine(voice_id)
     alias = VOICES_MAP.get(voice_id, {}).get("alias", voice_id)
-    log.info(f"Synth [{alias}]: '{text[:60]}...' (rate={rate})")
+    with _serial_inference(f"synth:{alias}"):
+        engine = _get_engine(voice_id)
+        log.info(f"Synth [{alias}]: '{text[:60]}...' (rate={rate})")
 
-    try:
-        audio_f32 = engine.synth(text, speaking_rate=rate, seed=req.seed)
-    except Exception as e:
-        log.exception("Synth failed")
-        raise HTTPException(500, f"Synth failed: {e}")
-    finally:
-        gc.collect()
         try:
-            import torch  # noqa: WPS433
+            audio_f32 = engine.synth(text, speaking_rate=rate, seed=req.seed)
+        except Exception as e:
+            log.exception("Synth failed")
+            raise HTTPException(500, f"Synth failed: {e}")
+        finally:
+            gc.collect()
+            try:
+                import torch  # noqa: WPS433
 
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception as cache_error:
-            log.warning(f"CUDA cache release failed: {cache_error}")
-    voice_diagnostics = getattr(engine, "last_voice_diagnostics", None)
-
-    sample_rate = engine.sample_rate
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception as cache_error:
+                log.warning(f"CUDA cache release failed: {cache_error}")
+        voice_diagnostics = getattr(engine, "last_voice_diagnostics", None)
+        sample_rate = engine.sample_rate
 
     # Encode to MP3 in memory via pydub (uses ffmpeg under the hood)
     try:

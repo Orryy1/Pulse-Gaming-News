@@ -9,6 +9,9 @@ const {
   renderGoalRealMotionMarkdown,
   writeGoalRealMotionReport,
 } = require("../lib/goal-real-motion-materializer");
+const {
+  inspectDirectMotionClip,
+} = require("../lib/studio/v5/direct-motion-visual-selector");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -28,6 +31,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     maxDirectClipsPerBaseSource: null,
     minBaseSources: 0,
     strictBaseSourceDiversity: false,
+    premiumVisualSelection: false,
     refreshReady: false,
     refreshWindowPlanPath: null,
     excludedClipIds: [],
@@ -54,6 +58,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     }
     else if (arg === "--min-base-sources") args.minBaseSources = Number(argv[++i] || 0);
     else if (arg === "--strict-base-source-diversity") args.strictBaseSourceDiversity = true;
+    else if (arg === "--premium-visual-selection") args.premiumVisualSelection = true;
     else if (arg === "--refresh-ready") args.refreshReady = true;
     else if (arg === "--refresh-window-plan") args.refreshWindowPlanPath = argv[++i] || null;
     else if (arg === "--exclude-clip-id") args.excludedClipIds.push(argv[++i] || "");
@@ -85,6 +90,7 @@ function usage() {
     "  --max-direct-clips-per-base-source <n>  Maximum clips from the same direct-video base source",
     "  --min-base-sources <n>  Required genuine immutable base-source identities",
     "  --strict-base-source-diversity  Enforce the ultimate professional identity tier",
+    "  --premium-visual-selection  Reject weak frames before clips consume source slots",
     "  --refresh-ready         Refresh requested ready stories from the current motion pack",
     "  --refresh-window-plan <path>  Materialise exact governed replacement windows from JSON",
     "  --exclude-clip-id <id>  Exclude a known-bad package clip during refresh; repeatable",
@@ -117,6 +123,16 @@ async function main(argv = process.argv.slice(2)) {
     maxDirectClipsPerBaseSource: args.maxDirectClipsPerBaseSource,
     minBaseSources: args.minBaseSources,
     strictBaseSourceDiversity: args.strictBaseSourceDiversity,
+    clipVisualEligibility: args.premiumVisualSelection
+      ? (clip, context = {}) =>
+          inspectDirectMotionClip(clip, {
+            outputDir: path.join(
+              path.resolve(args.outDir),
+              "premium-motion-visual-selection",
+              String(context.storyId || "unknown-story").replace(/[^a-z0-9_-]+/gi, "_"),
+            ),
+          })
+      : undefined,
     segmentValidationReport,
     artifactRoot: args.artifactRoot,
     includeReadyStories: args.refreshReady,

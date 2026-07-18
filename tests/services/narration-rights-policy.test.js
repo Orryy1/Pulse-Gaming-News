@@ -19,6 +19,10 @@ test("narration rights policy emits a complete commercial-use record for local n
     path: "output/audio/fresh-story.mp3",
     source_url: "local://pulse-local-tts/fresh-story",
     source_type: "local_tts_voice",
+    creator: "Pulse Gaming",
+    source_owner: "Pulse Gaming",
+    provider_id: "pulse_local_tts",
+    provider_name: "Pulse Local TTS",
     licence_basis: "owned_local_voice_model",
     allowed_use: "short_form_editorial_narration",
     allowed_platforms: [
@@ -49,6 +53,10 @@ test("narration rights policy records ElevenLabs provenance without exposing cre
   assert.equal(record.asset_id, "story_with_spaces_audio_path");
   assert.equal(record.source_url, "elevenlabs://pulse-gaming/story_with_spaces");
   assert.equal(record.source_type, "elevenlabs_tts_voice");
+  assert.equal(record.creator, "Pulse Gaming via ElevenLabs");
+  assert.equal(record.source_owner, "Pulse Gaming");
+  assert.equal(record.provider_id, "elevenlabs");
+  assert.equal(record.provider_name, "ElevenLabs");
   assert.equal(record.licence_basis, "elevenlabs_commercial_tts_generation");
   assert.equal(record.evidence_reference, "rights/elevenlabs-commercial-tts.json");
   assert.equal(record.commercial_use_allowed, true);

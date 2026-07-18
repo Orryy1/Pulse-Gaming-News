@@ -14,6 +14,10 @@ const {
   resolveCardAssetsV2,
   shellSidecarPathForCard,
 } = require("../../lib/studio/v2/premium-card-lane-v2");
+const {
+  PREMIUM_CARD_TIMING_V5_VERSION,
+  v5CardTimingContract,
+} = require("../../lib/studio/v4/premium-card-timing-policy");
 
 function cardScenes() {
   return [
@@ -33,12 +37,21 @@ async function writePassingShellSidecar(
     channelId = "pulse-gaming",
     readableText = `${kind} proof card`,
     wordCount = 3,
-    plannedVisibleDurationS = 12,
-    minimumVisibleDurationS = plannedVisibleDurationS,
+    plannedVisibleDurationS = null,
+    minimumVisibleDurationS = null,
     maximumVisibleDurationS = null,
+    timingContractVersion = PREMIUM_CARD_TIMING_V5_VERSION,
     unifiedCheck = false,
   } = {},
 ) {
+  const timing = v5CardTimingContract(kind, readableText);
+  const planned = plannedVisibleDurationS ?? timing.planned_visible_duration_s;
+  const minimum = minimumVisibleDurationS ?? (
+    timing.kind === "source"
+      ? timing.minimum_visible_duration_s
+      : timing.planned_visible_duration_s
+  );
+  const maximum = maximumVisibleDurationS ?? timing.maximum_visible_duration_s;
   await fs.writeJson(
     shellSidecarPathForCard(cardPath),
     {
@@ -87,14 +100,14 @@ async function writePassingShellSidecar(
         },
         readability_contract: {
           status: "pass",
+          contract_version: timingContractVersion,
           evidence: {
             readable_text: readableText,
             word_count: wordCount,
-            planned_visible_duration_s: plannedVisibleDurationS,
-            minimum_visible_duration_s: minimumVisibleDurationS,
-            ...(maximumVisibleDurationS == null
-              ? {}
-              : { max_readable_card_duration_s: maximumVisibleDurationS }),
+            planned_visible_duration_s: planned,
+            minimum_visible_duration_s: minimum,
+            maximum_visible_duration_s: maximum,
+            max_readable_card_duration_s: maximum,
           },
         },
       },
@@ -124,9 +137,9 @@ test("premium card lane v2 accepts the current unified HyperFrames check contrac
               maximumVisibleDurationS: 3.1,
             }
           : {
-              plannedVisibleDurationS: 4.2,
+              plannedVisibleDurationS: 3.4,
               minimumVisibleDurationS: 3.4,
-              maximumVisibleDurationS: 5.2,
+              maximumVisibleDurationS: 3.8,
             }),
       });
     }
@@ -412,7 +425,7 @@ test("premium card lane v2 rejects shell sidecars without readable hold proof", 
   }
 });
 
-test("premium card lane v2 accepts V5 proof-card holds without reimposing old 12s dwell", async () => {
+test("premium card lane v2 rejects legacy card timing that exceeds the current momentum ceiling", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-shell-legacy-dwell-"));
   try {
     const outDir = path.join(root, "test", "output");
@@ -423,7 +436,10 @@ test("premium card lane v2 accepts V5 proof-card holds without reimposing old 12
       await writePassingShellSidecar(cardPath, {
         storyId: "story-1",
         kind,
-        plannedVisibleDurationS: 6.5,
+        plannedVisibleDurationS: kind === "source" ? 2.6 : 5.2,
+        minimumVisibleDurationS: kind === "source" ? 1.9 : 3.4,
+        maximumVisibleDurationS: kind === "source" ? 3.1 : 5.2,
+        timingContractVersion: "pulse_card_timing_v3",
       });
     }
 
@@ -435,8 +451,17 @@ test("premium card lane v2 accepts V5 proof-card holds without reimposing old 12
     });
 
     assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 3.4);
-    assert.equal(result.premiumLane.verdict, "pass");
-    assert.deepEqual(result.premiumLane.hyperframesPremiumShellGate.blockers, []);
+    assert.equal(result.premiumLane.verdict, "partial");
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "context:hyperframes_card_timing_contract_stale:pulse_card_timing_v3:pulse_card_timing_v4",
+      ),
+    );
+    assert.ok(
+      result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
+        "context:hyperframes_readable_hold_above_momentum_ceiling",
+      ),
+    );
   } finally {
     await fs.remove(root).catch(() => {});
   }

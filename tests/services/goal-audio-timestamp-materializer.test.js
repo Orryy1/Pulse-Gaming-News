@@ -63,6 +63,60 @@ test("strict Whisper promotion requires fresh repaired alignment evidence", () =
   );
 });
 
+test("managed TTS materialisation rebinds provider-native rate evidence to the final postprocessed audio", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-managed-rate-final-hash-"));
+  const audioPath = path.join(root, "narration.mp3");
+  const timestampPath = path.join(root, "word_timestamps.json");
+  const finalBytes = Buffer.from("final postprocessed narration audio");
+  await fs.writeFile(audioPath, finalBytes);
+  await fs.writeJson(timestampPath, {
+    meta: {
+      provider: "elevenlabs",
+      source: "elevenlabs-production-path",
+      elevenlabs: {
+        voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+        modelId: "eleven_multilingual_v2",
+        speakingRate: 0.95,
+        rateControl: {
+          schemaVersion: 1,
+          method: "provider_native_voice_settings_speed",
+          requestField: "voice_settings.speed",
+          appliedAtGeneration: true,
+          requestedRate: 0.95,
+          effectiveRate: 0.95,
+          postGenerationTempoStretch: false,
+          requestVoiceSettingsSha256: "a".repeat(64),
+          generatedAudioSha256: "b".repeat(64),
+        },
+      },
+    },
+    words: [{ word: "Arknights", start: 0, end: 0.2 }],
+  });
+
+  const result = await _testables.finaliseManagedTtsRateControlEvidence({
+    audioPath,
+    timestampPath,
+    generatedAt: "2026-07-18T01:30:00.000Z",
+    narrationSilenceCompaction: {
+      repaired: true,
+      strategy: "generated_narration_silence_compaction",
+      excessive_silence_count: 1,
+    },
+  });
+  const payload = await fs.readJson(timestampPath);
+  const control = payload.meta.elevenlabs.rateControl;
+  const expectedHash = crypto.createHash("sha256").update(finalBytes).digest("hex");
+
+  assert.equal(result.rebound, true);
+  assert.equal(control.providerResponseAudioSha256, "b".repeat(64));
+  assert.equal(control.generatedAudioSha256, expectedHash);
+  assert.equal(control.finalMaterializedAudioSha256, expectedHash);
+  assert.equal(control.postGenerationTempoStretch, false);
+  assert.deepEqual(control.postGenerationOperations, [
+    "generated_narration_silence_compaction",
+  ]);
+});
+
 test("spoken-text selection rejects a TTS derivative that collapsed sentence punctuation", () => {
   const narration =
     "Palworld changed the argument. Players now judge a finished game. The launch trailer promises scale. The payoff is whether the endgame lasts. Follow Pulse Gaming so you never miss a beat.";
@@ -332,6 +386,47 @@ test("audio materializer adds bounded broadcast breath groups when native gaps a
   assert.equal(result.target_reached, true);
 });
 
+test("audio materializer distributes target-cadence padding without repetitive long pauses", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-distributed-cadence-pad-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const words = Array.from({ length: 140 }, (_, index) => ({
+    word: `word${index + 1}${(index + 1) % 10 === 0 ? "." : ""}`,
+    start: Number((index * 0.334).toFixed(3)),
+    end: Number((index * 0.334 + 0.16).toFixed(3)),
+  }));
+
+  const result = await _testables.padTimestampedNarrationSentencePauses(
+    audioPath,
+    words,
+    {
+      targetWpm: 162,
+      execFileImpl: async (_command, args) => {
+        await fs.outputFile(args.at(-1), Buffer.alloc(4096, 2));
+      },
+    },
+  );
+  const shifted = _testables.shiftWordTimestampsForInsertedSilence(
+    { words },
+    result.insertions,
+  ).payload.words;
+  const longPauseBuckets = new Map();
+  for (let index = 1; index < shifted.length; index += 1) {
+    const gap = Number((shifted[index].start - shifted[index - 1].end).toFixed(3));
+    if (gap < 0.45) continue;
+    const bucket = (Math.round(gap * 10) / 10).toFixed(1);
+    longPauseBuckets.set(bucket, (longPauseBuckets.get(bucket) || 0) + 1);
+  }
+  const dominantLongPauseCount = Math.max(0, ...longPauseBuckets.values());
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.target_reached, true);
+  assert.ok(
+    dominantLongPauseCount <= 4,
+    `repetitive long pauses remained: ${JSON.stringify(Object.fromEntries(longPauseBuckets))}`,
+  );
+});
+
 test("audio materializer shifts strict Whisper timestamps after deterministic silence insertion", () => {
   const payload = {
     words: [
@@ -459,6 +554,22 @@ test("audio materializer detects a protected game-title pause independently of s
   );
 
   assert.deepEqual(reasons, ["narration_audio_protected_title_pause_too_long"]);
+});
+
+test("audio materializer accepts a bounded natural gap inside a protected game title", () => {
+  const reasons = _testables.protectedTitlePauseReasons(
+    {
+      ready: true,
+      words: [
+        { word: "Ascend", start: 0, end: 0.32 },
+        { word: "to", start: 0.586, end: 0.786 },
+        { word: "ZERO", start: 0.786, end: 1.086 },
+      ],
+    },
+    ["Ascend to ZERO"],
+  );
+
+  assert.deepEqual(reasons, []);
 });
 
 test("audio materializer repairs aligned cadence before promoting generated narration", async () => {
@@ -609,6 +720,27 @@ test("goal audio materializer generates local audio, word timestamps and updates
   assert.equal(manifest.package_audio_stabilized, true);
   assert.equal(manifest.voice_provider, "local_tts");
   assert.equal(manifest.safety.local_only, true);
+  const expectedAudioSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(manifest.resolved_narration_audio_path))
+    .digest("hex");
+  const expectedTimestampSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(manifest.resolved_word_timestamps_path))
+    .digest("hex");
+  assert.equal(manifest.narration_audio_sha256, expectedAudioSha256);
+  assert.equal(manifest.word_timestamps_sha256, expectedTimestampSha256);
+  assert.equal(
+    manifest.narration_audio_size_bytes,
+    (await fs.stat(manifest.resolved_narration_audio_path)).size,
+  );
+  assert.equal(
+    manifest.word_timestamps_size_bytes,
+    (await fs.stat(manifest.resolved_word_timestamps_path)).size,
+  );
+  const canonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  assert.equal(canonical.narration_audio_sha256, expectedAudioSha256);
+  assert.equal(canonical.word_timestamps_sha256, expectedTimestampSha256);
   assert.equal(report.safety.no_publish_triggered, true);
 });
 
@@ -3134,6 +3266,27 @@ test("goal audio materializer coverage reconciles split game compounds and the o
   assert.equal(reconciled.words[4].word, "Xbox");
 });
 
+test("goal audio materializer coverage reconciles Whisper's spoken Wuling split without hiding insertions", () => {
+  const scriptText =
+    "Two operators arrive before the Wuling finale and a crowded fight.";
+  const words = [
+    "Two", "operators", "arrive", "before", "the", "woo", "-ling", "finale", "and", "a", "crowded", "fight",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(reconciled.ok, true);
+  assert.equal(reconciled.words[5].word, "Wuling");
+});
+
 test("goal audio materializer split-compound repair still rejects unrelated inserted words", () => {
   const scriptText = "Fogpiercer is a deckbuilder where positioning matters.";
   const words = [
@@ -4445,6 +4598,16 @@ test("goal audio materializer adds ElevenLabs narration to the rights ledger", a
     story_id: "story-elevenlabs-rights",
     verdict: "pass",
     records: [],
+    used_assets: [
+      {
+        asset_id: "story-elevenlabs-rights_audio_path",
+        asset_type: "narration_audio",
+        kind: "audio",
+        path: "flagship/stale_final_audio.mp3",
+        asset_sha256: "0".repeat(64),
+        asset_size_bytes: 123,
+      },
+    ],
   });
 
   const report = await materializeGoalAudioTimestamps({
@@ -4478,6 +4641,17 @@ test("goal audio materializer adds ElevenLabs narration to the rights ledger", a
   assert.equal(audioRecord.licence_basis, "elevenlabs_commercial_tts_generation");
   assert.equal(audioRecord.path, "audio/narration.mp3");
   assert.equal(audioRecord.commercial_use_allowed, true);
+  const packagedAudio = await fs.readFile(path.join(artifactDir, "audio", "narration.mp3"));
+  assert.equal(
+    audioRecord.asset_sha256,
+    crypto.createHash("sha256").update(packagedAudio).digest("hex"),
+  );
+  assert.equal(audioRecord.asset_size_bytes, packagedAudio.length);
+  assert.equal(
+    rights.used_assets[0].path,
+    "flagship/stale_final_audio.mp3",
+    "audio materialisation must not promote stale final-render inventory",
+  );
 });
 
 test("goal audio materializer can use ElevenLabs readiness from environment when legacy workbench lacks it", async () => {
@@ -4857,6 +5031,196 @@ test("goal audio materializer pads an existing pair that cadence QA marks too fa
   assert.equal(report.jobs[0].cadence_pause_padding.inserted_silence_seconds, 1.5);
 });
 
+test("goal audio materializer pads a hash-bound strict Whisper pair without rerunning ASR", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-pad-strict-bound-"));
+  const script = "Marvel Tokon has twenty playable fighters. Follow Pulse Gaming so you never miss a beat.";
+  const storyId = "story-pad-strict-bound";
+  const artifactDir = await makePackage(root, storyId, {
+    selected_title: "Marvel Tokon's Roster Has One Big Risk",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", `${storyId}.mp3`);
+  const timestampPath = path.join(root, "output", "audio", `${storyId}_timestamps.json`);
+  const words = whisperWordsFromScript(script);
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words,
+    complete: true,
+    meta: {
+      transcript: script,
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        strategy: "local_whisper_word_alignment",
+        script_reconciled: true,
+        script_coverage_ratio: 1,
+        script_opening_covered: true,
+        script_inserted_actual_word_count: 0,
+        script_trailing_actual_word_count: 0,
+      },
+    },
+  });
+  const sourceAudioSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(audioPath))
+    .digest("hex");
+  const sourceTimestampSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(timestampPath))
+    .digest("hex");
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "FAIL",
+    audio_size_bytes: 4096,
+    word_timestamp_count: words.length,
+    audio_sha256: sourceAudioSha256,
+    word_timestamps_sha256: sourceTimestampSha256,
+    blockers: ["voice_cadence:wpm_too_fast"],
+    cadence: {
+      status: "fail",
+      spoken_wpm: 179,
+      blockers: ["voice_cadence:wpm_too_fast"],
+    },
+  });
+  let alignmentCalls = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    alignmentMode: "whisper",
+    nativeCadencePausePadding: true,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob(storyId, artifactDir)],
+    },
+    generatedAt: "2026-07-17T22:10:00.000Z",
+    generateTtsForStory: async () => {
+      throw new Error("voice regeneration should not run for a current strict pair");
+    },
+    padTimestampedNarrationSentencePauses: async (stagedAudioPath) => {
+      await fs.outputFile(stagedAudioPath, Buffer.alloc(8192, 2));
+      return {
+        repaired: true,
+        strategy: "timestamp_guided_sentence_pause_padding",
+        insertions: [0.5, 1, 1.5, 2, 2.5].map((at) => ({
+          at,
+          inserted: 0.3,
+          type: "sentence",
+        })),
+        inserted_silence_seconds: 1.5,
+        target_reached: true,
+      };
+    },
+    alignWordsWithAudio: async () => {
+      alignmentCalls += 1;
+      throw new Error("strict hash-bound padding must not rerun stochastic ASR");
+    },
+    getAudioDuration: async () => 5.5,
+    detectSilencesForAudio: async () => [],
+  });
+
+  assert.equal(alignmentCalls, 0, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.jobs[0].status, "materialized_existing_cadence_padding");
+  const timestamps = await fs.readJson(timestampPath);
+  assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
+  assert.equal(timestamps.meta.timestampWhisperAlignment.repaired, true);
+  assert.equal(
+    timestamps.meta.timestampWhisperAlignment.postprocess,
+    "deterministic_silence_insertion_timestamp_shift",
+  );
+  assert.equal(
+    timestamps.meta.cadencePauseSourceAlignment.strict_whisper_alignment_verified,
+    true,
+  );
+  assert.equal(
+    timestamps.meta.cadencePauseSourceAlignment.source_audio_sha256,
+    sourceAudioSha256,
+  );
+  assert.equal(
+    timestamps.meta.cadencePauseSourceAlignment.source_word_timestamps_sha256,
+    sourceTimestampSha256,
+  );
+  assert.match(
+    timestamps.meta.cadencePauseSourceAlignment.transformed_audio_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  assert.notEqual(
+    timestamps.meta.cadencePauseSourceAlignment.transformed_audio_sha256,
+    sourceAudioSha256,
+  );
+});
+
+test("explicit target-cadence padding repairs an existing advisory pair without regenerating speech", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-pad-advisory-"));
+  const script = "Castlevania rejects random resets. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-pad-advisory", {
+    selected_title: "Castlevania Belmont's Curse Rejects The Roguelite Formula",
+    narration_script: script,
+  });
+  const audioPath = path.join(root, "output", "audio", "story-pad-advisory.mp3");
+  const timestampPath = path.join(root, "output", "audio", "story-pad-advisory_timestamps.json");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(script),
+    complete: true,
+    meta: { transcript: script, wordTimestampSource: "local_whisper_word_alignment" },
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    warnings: ["voice_cadence:wpm_outside_target_range"],
+    cadence: {
+      status: "warn",
+      spoken_wpm: 167.7,
+      blockers: [],
+      warnings: ["voice_cadence:wpm_outside_target_range"],
+      thresholds: { max_target_wpm: 162 },
+    },
+  });
+  let paddingCalls = 0;
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    alignmentMode: "whisper",
+    nativeCadencePausePadding: true,
+    workbenchReport: {
+      local_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-pad-advisory", artifactDir)],
+    },
+    generatedAt: "2026-07-17T09:30:00.000Z",
+    generateTtsForStory: async () => {
+      throw new Error("explicit padding must preserve the accepted existing voice");
+    },
+    padTimestampedNarrationSentencePauses: async () => {
+      paddingCalls += 1;
+      return {
+        repaired: true,
+        strategy: "timestamp_guided_sentence_pause_padding",
+        insertions: [
+          { at: 1.2, inserted: 0.2, type: "sentence" },
+          { at: 3.5, inserted: 0.2, type: "sentence" },
+        ],
+        inserted_silence_seconds: 0.4,
+        target_reached: true,
+      };
+    },
+    alignWordsWithAudio: async ({ scriptText }) => ({
+      ok: true,
+      source: "local_whisper_word_alignment",
+      model: "fixture",
+      words: whisperWordsFromScript(scriptText),
+      transcript: scriptText,
+      language: "en",
+      segments: 1,
+    }),
+    getAudioDuration: async () => 5.5,
+    detectSilencesForAudio: async () => [],
+  });
+
+  assert.equal(paddingCalls, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.jobs[0].status, "materialized_existing_cadence_padding");
+  assert.equal(report.jobs[0].provider, "existing_local_audio");
+});
+
 test("goal audio materializer regenerates existing pairs that current voice cadence QA rejects", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-stale-voice-cadence-"));
   const script =
@@ -5026,12 +5390,12 @@ test("goal audio materializer repairs a fast one-take cadence with sentence paus
       return {
         repaired: true,
         strategy: "timestamp_guided_sentence_pause_padding",
-        boundary_count: 12,
-        inserted_silence_seconds: 6.996,
-        insertions: Array.from({ length: 12 }, (_, index) => ({
-          at_seconds: 3 + index * 3.5,
-          inserted_seconds: 0.583,
-          type: "sentence",
+        boundary_count: 35,
+        inserted_silence_seconds: 7,
+        insertions: Array.from({ length: 35 }, (_, index) => ({
+          at_seconds: Number(((2 + index * 4) * 0.32 + 0.22).toFixed(3)),
+          inserted_seconds: 0.2,
+          type: "breath",
         })),
       };
     },
@@ -5113,12 +5477,12 @@ test("goal audio materializer explicitly pads an ElevenLabs warning-speed take i
       return {
         repaired: true,
         strategy: "timestamp_guided_sentence_pause_padding",
-        boundary_count: 12,
+        boundary_count: 25,
         inserted_silence_seconds: 5,
-        insertions: Array.from({ length: 12 }, (_, index) => ({
-          at_seconds: 3 + index * 3.5,
-          inserted_seconds: 0.417,
-          type: "sentence",
+        insertions: Array.from({ length: 25 }, (_, index) => ({
+          at_seconds: Number(((4 + index * 5) * 0.365 + 0.2425).toFixed(3)),
+          inserted_seconds: 0.2,
+          type: "breath",
         })),
       };
     },
@@ -6129,6 +6493,144 @@ test("goal audio materializer blocks Pulse Gaming ASR brand confusion instead of
   );
 });
 
+test("goal audio materializer blocks protected game-title ASR substitution before caption reconciliation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-title-confusion-"));
+  const narration =
+    "Arknights: Endfield just gave PS5 Pro a real motion test. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-title-confusion", {
+    canonical_game: "Arknights: Endfield",
+    canonical_subject: "Arknights: Endfield",
+    selected_title: "Arknights: Endfield Tests PS5 Pro",
+    narration_script: narration,
+  });
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-title-confusion", artifactDir)],
+    },
+    generatedAt: "2026-07-18T09:00:00.000Z",
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => {
+      const transcript =
+        "Arknights Enfield just gave PlayStation five Pro a real motion test. Follow Pulse Gaming so you never miss a beat.";
+      return {
+        ok: true,
+        source: "local_whisper_word_alignment",
+        model: "small.en",
+        transcript,
+        words: whisperWordsFromScript(transcript),
+      };
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        alignment: charAlignment(text),
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 0);
+  assert.equal(report.summary.failed_count, 1);
+  assert.equal(report.jobs[0].status, "failed");
+  assert.match(report.jobs[0].error, /whisper_protected_title_phrase_mismatch/);
+  assert.equal(
+    report.jobs[0].timestamp_whisper_alignment.error,
+    "whisper_protected_title_phrase_mismatch",
+  );
+  assert.equal(
+    report.jobs[0].timestamp_whisper_alignment.expected_phrase,
+    "Arknights: Endfield",
+  );
+  assert.match(
+    report.jobs[0].timestamp_whisper_alignment.actual_phrase,
+    /Arknights Enfield/i,
+  );
+});
+
+test("normaliseTimestampFile accepts exact split or merged protected title words", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-protected-title-compound-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  const displayText = "Arknights: Endfield gives PS5 Pro a real motion test.";
+  const spokenText = "Arknights End Field gives PlayStation five Pro a real motion test.";
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(spokenText),
+    meta: {},
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-18T09:05:00.000Z",
+    text: displayText,
+    spokenText,
+    protectedTitles: ["Arknights: Endfield"],
+    provider: "elevenlabs",
+    audioPath: path.join(root, "narration.mp3"),
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => {
+      const transcript = "Arknights Endfield gives PlayStation five Pro a real motion test.";
+      return {
+        ok: true,
+        source: "local_whisper_word_alignment",
+        model: "small.en",
+        transcript,
+        words: whisperWordsFromScript(transcript),
+      };
+    },
+  });
+
+  const result = await fs.readJson(timestampPath);
+  assert.equal(result.meta.timestampWhisperAlignment.repaired, true);
+  assert.equal(result.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
+  assert.equal(
+    result.words.slice(0, 2).map((word) => word.word).join(" "),
+    "Arknights: Endfield",
+  );
+});
+
+test("normaliseTimestampFile accepts the bounded Arknite's ASR spelling but still uses canonical display copy", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-protected-title-asr-alias-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  const displayText = "Arknights: Endfield gives PS5 Pro a real motion test.";
+  const spokenText = "Arknights End Field gives PlayStation five Pro a real motion test.";
+  await fs.outputJson(timestampPath, {
+    words: whisperWordsFromScript(spokenText),
+    meta: {},
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-18T09:10:00.000Z",
+    text: displayText,
+    spokenText,
+    protectedTitles: ["Arknights: Endfield"],
+    provider: "elevenlabs",
+    audioPath: path.join(root, "narration.mp3"),
+    alignmentMode: "whisper",
+    alignWordsWithAudio: async () => {
+      const transcript =
+        "Arknite's End Field gives PlayStation five Pro a real motion test.";
+      return {
+        ok: true,
+        source: "local_whisper_word_alignment",
+        model: "base.en",
+        transcript,
+        words: whisperWordsFromScript(transcript),
+      };
+    },
+  });
+
+  const result = await fs.readJson(timestampPath);
+  assert.equal(result.meta.timestampWhisperAlignment.repaired, true);
+  assert.equal(result.meta.timestampWhisperAlignment.script_inserted_actual_word_count, 0);
+  assert.equal(
+    result.words.slice(0, 2).map((word) => word.word).join(" "),
+    "Arknights: Endfield",
+  );
+});
+
 test("normaliseTimestampFile gives Whisper canonical display copy while reconciling the TTS alias", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-canonical-whisper-prompt-"));
   const timestampPath = path.join(root, "timestamps.json");
@@ -6223,6 +6725,46 @@ test("normaliseTimestampFile writes display-safe caption tokens for spoken platf
   ]);
 });
 
+test("normaliseTimestampFile restores a branded number word when ASR emits a digit", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-caption-branded-number-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "Ascend", start: 0, end: 0.32 },
+      { word: "to", start: 0.34, end: 0.52 },
+      { word: "0", start: 0.54, end: 0.86 },
+      { word: "turns", start: 0.88, end: 1.2 },
+      { word: "time", start: 1.22, end: 1.54 },
+      { word: "against", start: 1.56, end: 1.98 },
+      { word: "you.", start: 2, end: 2.28 },
+      { word: "That", start: 2.3, end: 2.54 },
+      { word: "creates", start: 2.56, end: 2.9 },
+      { word: "one", start: 2.92, end: 3.12 },
+      { word: "more", start: 3.14, end: 3.36 },
+      { word: "go", start: 3.38, end: 3.56 },
+      { word: "tension.", start: 3.58, end: 3.94 },
+    ],
+    meta: {},
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-17T13:30:00.000Z",
+    text: "Ascend to ZERO turns time against you. That creates one-more-go tension.",
+    spokenText: "Ascend to ZERO turns time against you. That creates one more go tension.",
+    alignmentMode: "off",
+  });
+
+  const timestamps = await fs.readJson(timestampPath);
+  assert.equal(
+    timestamps.words.slice(0, 7).map((word) => word.word).join(" "),
+    "Ascend to ZERO turns time against you.",
+  );
+  assert.ok(
+    timestamps.meta.timestampDisplayTextRepair.replacements.includes("0->ZERO"),
+    JSON.stringify(timestamps.meta.timestampDisplayTextRepair),
+  );
+});
+
 test("normaliseTimestampFile preserves spoken lineage while merging decimal caption tokens", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-caption-decimal-lineage-"));
   const timestampPath = path.join(root, "timestamps.json");
@@ -6268,6 +6810,49 @@ test("normaliseTimestampFile preserves spoken lineage while merging decimal capt
     "one point four->1.4",
     "PlayStation five->PS5",
   ]);
+});
+
+test("normaliseTimestampFile preserves a pronunciation alias while captions use the canonical brand spelling", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-caption-brand-alias-"));
+  const timestampPath = path.join(root, "timestamps.json");
+  await fs.outputJson(timestampPath, {
+    words: [
+      { word: "PSSR.", start: 0, end: 0.35 },
+      { word: "Hypergriff", start: 0.36, end: 0.7 },
+      { word: "says", start: 0.71, end: 0.9 },
+      { word: "that", start: 0.91, end: 1.08 },
+      { word: "means", start: 1.09, end: 1.36 },
+      { word: "sharper", start: 1.37, end: 1.7 },
+      { word: "outfits.", start: 1.71, end: 2.1 },
+    ],
+    meta: {
+      wordTimestampSource: "local_whisper_word_alignment",
+      timestampWhisperAlignment: {
+        repaired: true,
+        strategy: "local_whisper_word_alignment",
+      },
+    },
+  });
+
+  await normaliseTimestampFile(timestampPath, {
+    generatedAt: "2026-07-18T03:15:00.000Z",
+    text: "PSSR. Hypergryph says that means sharper outfits.",
+    spokenText: "PSSR. Hypergriff says that means sharper outfits.",
+    provider: "elevenlabs",
+    alignmentMode: "off",
+  });
+
+  const timestamps = await fs.readJson(timestampPath);
+  assert.equal(
+    timestamps.words.map((word) => word.word).join(" "),
+    "PSSR. Hypergryph says that means sharper outfits.",
+  );
+  assert.deepEqual(timestamps.words[1].spoken_words, ["Hypergriff"]);
+  assert.ok(
+    timestamps.meta.timestampDisplayTextRepair.replacements.includes(
+      "Hypergriff->Hypergryph",
+    ),
+  );
 });
 
 test("normaliseTimestampFile merges split alphanumeric display tokens without caption duplication", async () => {

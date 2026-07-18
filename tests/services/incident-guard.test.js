@@ -281,6 +281,65 @@ test("incident guard accepts evidence-backed named-character cover headlines", (
   assert.ok(!report.disaster_upload_blockers.includes("incident:thumbnail_title_script_mismatch"));
 });
 
+test("incident guard accepts an evidence-backed platform upgrade cover headline", () => {
+  const script =
+    "Arknights: Endfield just exposed the PS5 Pro question that matters. PlayStation Blog says Version 1.4 upgrades PSSR for sharper detail, steadier motion and more consistent frame rates at 4K. The real test is whether that upgrade survives crowded combat.";
+  const report = evaluateIncidentGuard({
+    story_id: "arknights-ps5-pro",
+    canonical_story_manifest: {
+      story_id: "arknights-ps5-pro",
+      canonical_subject: "Arknights: Endfield",
+      canonical_game: "Arknights: Endfield",
+      selected_title: "Arknights: Endfield Exposes The PS5 Pro Upgrade Players Can Test",
+      thumbnail_headline: "PS5 PRO: REAL UPGRADE?",
+      first_spoken_line: "Arknights: Endfield just exposed the PS5 Pro question that matters.",
+      narration_script: script,
+      full_script: script,
+      tts_script: script,
+      description: "Arknights: Endfield now has a measurable PS5 Pro upgrade. Source: PlayStation Blog.",
+      primary_source: {
+        name: "PlayStation Blog",
+        url: "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro/",
+      },
+      confirmed_claims: [
+        "Arknights: Endfield Version 1.4 upgrades PSSR on PS5 Pro.",
+        "The upgrade targets sharper detail, steadier motion and more consistent frame rates at 4K.",
+      ],
+    },
+    render_manifest: {
+      final_publish_render: true,
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      visual_count: 8,
+    },
+    ...cleanVisualEvidence("Arknights: Endfield"),
+    sfx_manifest: cleanSfxEvidence(),
+    publish_verdict: { verdict: "GREEN" },
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts", "instagram_reels"] },
+      outputs: {
+        youtube_shorts: {
+          title: "Arknights: Endfield Exposes The PS5 Pro Upgrade Players Can Test",
+        },
+        instagram_reels: {
+          caption: "Arknights: Endfield makes its PS5 Pro upgrade measurable.",
+        },
+      },
+    },
+    file_evidence: {
+      mp4_ready: true,
+      captions_ready: true,
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_families_ready: true,
+    },
+  });
+
+  assert.ok(!report.disaster_upload_blockers.includes("incident:thumbnail_title_script_mismatch"));
+});
+
 test("incident guard blocks stale current-news wording on old event dates", () => {
   const report = evaluateIncidentGuard({
     story_id: "crimson-desert-stale-live",

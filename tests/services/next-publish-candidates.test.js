@@ -17,6 +17,7 @@ const {
   combinePreflightQa,
   formatNextPublishCandidatesMarkdown,
   parseArgs,
+  readBridgeCandidateManifest,
   resolveUpstreamBenchmarkReportPath,
   runCli,
   runPreflightQaForStory,
@@ -1070,6 +1071,29 @@ test("next publish CLI defaults to the scheduler bridge candidate overlay", () =
     path.join(process.cwd(), "output", "goal-20", "goal20_readiness_report.json"),
   );
   assert.equal(args.upstreamAntiSpamReportPath, DEFAULT_UPSTREAM_ANTI_SPAM_REPORT_PATH);
+});
+
+test("next publish candidate reader accepts the bridge upsert manifest shape", async (t) => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-upsert-shape-"));
+  t.after(async () => {
+    await fs.remove(tmpDir);
+  });
+  const bridgePath = path.join(tmpDir, "scheduler_bridge_candidates.json");
+  await fs.outputJson(bridgePath, {
+    scheduler_bridge_candidates: [
+      baseStory({
+        id: "upserted_bridge_story",
+        story_id: "upserted_bridge_story",
+      }),
+    ],
+  });
+
+  const manifest = await readBridgeCandidateManifest(bridgePath);
+
+  assert.equal(manifest.status, "loaded");
+  assert.equal(manifest.shape_valid, true);
+  assert.equal(manifest.candidate_count, 1);
+  assert.equal(manifest.candidates[0].id, "upserted_bridge_story");
 });
 
 test("next publish CLI keeps json output off stderr for automation consumers", async (t) => {
@@ -2335,6 +2359,62 @@ test("attachPreflightQa does not supersede scheduler rights blockers with a GREE
   assert.equal(report.candidates[0].preflight_qa.status, "blocked");
   assert.equal(report.candidates[0].status, "review");
   assert.equal(report.candidates[0].preflight_qa.superseded_preflight_qa, undefined);
+});
+
+test("attachPreflightQa never supersedes decoded repeated-motion blockers with a GREEN proof package", async () => {
+  const artifactDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-temporal-loop-no-supersede-"),
+  );
+  const storyId = "temporal-loop-no-supersede";
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  await writeCurrentGreenProofPackage(artifactDir, storyId, finalVideoPath);
+  const story = baseStory({
+    id: storyId,
+    approved: true,
+    auto_approved: true,
+    scheduler_bridge_source: "local_bridge_candidate_upsert",
+    scheduler_bridge_artifact_dir: artifactDir,
+    exported_path: finalVideoPath,
+    duration_lane: "normal_production",
+    duration_seconds: 44,
+    min_video_duration_seconds: 35,
+    max_video_duration_seconds: 60,
+  });
+  const report = buildNextPublishCandidatesReport([story], {
+    generatedAt: "2026-07-18T12:00:00.000Z",
+  });
+  const dependencies = passSchedulerPreflightDependencies();
+  dependencies.runVideoQa = async () => ({
+    result: "fail",
+    failures: ["repeated_motion_sequence (1 sequences, 2.00s)"],
+    warnings: [],
+    evidence: {
+      temporal: {
+        scan_complete: true,
+        repeated_motion_seconds: 2,
+        repeated_motion_sequences: [
+          {
+            first_start_seconds: 2,
+            repeat_start_seconds: 18,
+            duration_seconds: 2,
+          },
+        ],
+        cadence: { choppy: false },
+      },
+    },
+  });
+
+  await attachPreflightQa(report, [story], dependencies);
+
+  const candidate = report.candidates[0];
+  assert.equal(candidate.preflight_qa.status, "blocked");
+  assert.equal(candidate.status, "review");
+  assert.equal(candidate.preflight_qa.superseded_preflight_qa, undefined);
+  assert.equal(candidate.scheduler_quarantine?.status, "held");
+  assert.equal(candidate.scheduler_quarantine?.reason, "visual_motion_loop_or_overuse");
+  assert.ok(
+    candidate.preflight_qa.checks.video.evidence.temporal.repeated_motion_sequences.length > 0,
+  );
 });
 
 test("next publish candidates keep all 2.4-second placeholder renders blocked", async () => {
@@ -4204,6 +4284,92 @@ test("bridge preflight blocks repeated direct-video windows from one source URL"
       "incident_guard:visual_evidence:insufficient_real_visual_source_families",
     ),
   );
+});
+
+test("next publish preflight counts distinct YouTube video identities as distinct motion families", async () => {
+  const scores = {
+    motion_density_score: 92,
+    first_3_seconds_hook_score: 88,
+    source_lock_quality_score: 86,
+    caption_legibility_score: 94,
+    card_hierarchy_score: 84,
+    media_house_polish_score: 90,
+  };
+  const clips = ["official-one", "official-two", "official-three"].map((videoId, index) => ({
+    id: `arknights_window_${index + 1}`,
+    path: `D:/pulse-data/media/motion/arknights_window_${index + 1}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=${videoId}`,
+    youtube_video_id: videoId,
+    source_master_sha256: String(index + 1).repeat(64),
+    base_source_asset_id: `sha256:${String(index + 1).repeat(64)}`,
+    source_family: `youtube:${videoId}`,
+    media_kind: "direct_video",
+    source_type: "official_publisher_trailer_segment",
+    entity: "Arknights: Endfield",
+    rights_risk_class: "official_reference_transformative_editorial_use",
+    licence_basis: "official_reference_transformative_editorial_use",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+  }));
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "bridge_distinct_youtube_sources",
+      title: "Arknights: Endfield Makes PS5 Pro Easier To Judge",
+      selected_title: "Arknights: Endfield Makes PS5 Pro Easier To Judge",
+      canonical_subject: "Arknights: Endfield",
+      first_spoken_line: "Arknights: Endfield just made its PS5 Pro upgrade measurable.",
+      suggested_thumbnail_text: "ARKNIGHTS PS5 PRO TEST",
+      description: "Arknights: Endfield now has a measurable PS5 Pro upgrade. Source: PlayStation Blog.",
+      full_script:
+        "Arknights: Endfield just made its PS5 Pro upgrade measurable. PlayStation Blog says sharper detail and steadier motion are the test.",
+      scheduler_bridge_source: "goal_production_cutover",
+      render_lane: "visual_v4_production",
+      render_quality_class: "premium",
+      qa_visual_count: 3,
+      visual_v4_render_bridge_clip_count: 3,
+      exported_path: "D:/pulse-data/media/output/final/bridge_distinct_youtube_sources.mp4",
+      audio_path: "D:/pulse-data/media/output/audio/bridge_distinct_youtube_sources.mp3",
+      timestamps_path: "D:/pulse-data/media/output/audio/bridge_distinct_youtube_sources_timestamps.json",
+      manual_caption_path: "D:/pulse-data/media/output/captions/bridge_distinct_youtube_sources.srt",
+      primary_source: "PlayStation Blog",
+      primary_source_url: "https://blog.playstation.com/arknights-endfield-ps5-pro/",
+      publish_verdict: { verdict: "GREEN" },
+      platform_publish_manifest: {
+        publish_status: "GREEN",
+        platform_native_evidence: { verdict: "pass", checked_platforms: ["youtube_shorts"] },
+        outputs: {
+          youtube_shorts: { title: "Arknights: Endfield Makes PS5 Pro Easier To Judge" },
+        },
+      },
+      visual_quality_report: {
+        result: "pass",
+        scores,
+        frame_rules: {
+          first_frame_subject: "Arknights: Endfield",
+          first_frame_text: "ARKNIGHTS PS5 PRO TEST",
+          source_locks_readable: true,
+        },
+        failures: [],
+      },
+      media_house_benchmark: { result: "pass", scores, failures: [] },
+      sfx_manifest: bridgeSfxEvidence(),
+      rights_ledger: clips.map((clip) => ({
+        ...clip,
+        asset_type: "direct_video_motion_clip",
+        allowed_use: "transformative_editorial_reference",
+      })),
+      visual_v4_bridge_video_clips: clips,
+      video_clips: clips,
+    }),
+    {
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPlatformVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runStudioGovernancePreflight: async () => ({ result: "pass", failures: [], warnings: [] }),
+    },
+  );
+
+  assert.ok(!preflight.blockers.includes("incident_guard:incident:distinct_motion_families_missing"));
 });
 
 test("attachPreflightQa marks candidates with read-only QA evidence", async () => {

@@ -8,6 +8,9 @@ const {
   buildLocalPostingReadiness,
   formatLocalPostingReadinessMarkdown,
 } = require("../lib/ops/local-posting-readiness");
+const {
+  resolveLocalReadinessOutputDir,
+} = require("../lib/ops/local-readiness-evidence-root");
 
 function readJsonIfExists(filePath) {
   try {
@@ -45,7 +48,7 @@ async function main() {
   }
 
   const root = process.cwd();
-  const outDir = path.join(root, "test", "output");
+  const outDir = resolveLocalReadinessOutputDir({ cwd: root });
   const report = buildLocalPostingReadiness({
     cutoverPlan: readJsonIfExists(path.join(outDir, "local_cutover_plan.json")),
     primaryReadiness: readJsonIfExists(path.join(outDir, "local_primary_readiness.json")),

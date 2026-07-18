@@ -70,10 +70,17 @@ const {
 const {
   PROFESSIONAL_MOTION_SOURCE_POLICY,
   assessProfessionalSourceDiversity,
+  reconcileMotionSourceIdentities,
+  resolveMotionSourceIdentity,
 } = require("../lib/studio/motion-source-identity");
 const {
   runDecodedVisualGate,
 } = require("../lib/studio/v2/forensic-qa-v2");
+const {
+  _private: {
+    materializedSourceIdentityFields,
+  },
+} = require("../lib/goal-real-motion-materializer");
 const {
   evaluateHyperframesPremiumShellEvidence,
   resolveCardAssetsV2,
@@ -105,6 +112,10 @@ const SAFE_RIGHT_PX = 42;
 const SAFE_BOTTOM_PX = 92;
 const INSTAGRAM_TOP_CHROME_SAFE_PX = 240;
 const SOCIAL_AUDIO_SAMPLE_RATE = 48000;
+const CARD_CAPTION_SAFE_ZONE_VERSION = "hyperframes_card_caption_safe_zone_v1";
+const CARD_CAPTION_START_Y_PX = 1574;
+const CARD_CAPTION_END_Y_PX = 1548;
+const CARD_CAPTION_PLATE_Y_PX = 1410;
 
 const SFX_ROLE_ORDER = ["ui_tick", "transition"];
 const FALLBACK_SFX_CUE_LIMIT = 1;
@@ -249,6 +260,72 @@ function drawtextEscape(value) {
 
 function assPathFilter(filePath) {
   return filePath.replace(/\\/g, "/").replace(/:/g, "\\\\:");
+}
+
+function assTimestampSeconds(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d+):(\d{2}):(\d{2}(?:\.\d+)?)$/);
+  if (!match) return null;
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+function repositionAssCaptionsForCardWindows(ass = "", cardVisibleWindows = []) {
+  const windows = (Array.isArray(cardVisibleWindows) ? cardVisibleWindows : [])
+    .map((window) => ({
+      kind: String(window?.kind || "card").trim() || "card",
+      start_s: Number(window?.start_s),
+      end_s: Number(window?.end_s),
+    }))
+    .filter(
+      (window) =>
+        Number.isFinite(window.start_s) &&
+        Number.isFinite(window.end_s) &&
+        window.end_s > window.start_s,
+    );
+  const cardKinds = new Set();
+  const blockers = [];
+  let overlappingCaptionCount = 0;
+  let repositionedCaptionCount = 0;
+  const lines = String(ass || "").split(/\r?\n/);
+  const output = lines.map((line, index) => {
+    if (!line.startsWith("Dialogue:")) return line;
+    const timing = line.match(/^Dialogue:\s*\d+,([^,]+),([^,]+),/);
+    const startS = assTimestampSeconds(timing?.[1]);
+    const endS = assTimestampSeconds(timing?.[2]);
+    if (!Number.isFinite(startS) || !Number.isFinite(endS)) return line;
+    const overlaps = windows.filter(
+      (window) => endS > window.start_s && startS < window.end_s,
+    );
+    if (!overlaps.length) return line;
+    overlappingCaptionCount += 1;
+    for (const window of overlaps) cardKinds.add(window.kind);
+    const repositioned = line.replace(
+      /\\move\(([^,]+),[^,]+,([^,]+),[^,]+,0,([^)]+)\)/,
+      `\\move($1,${CARD_CAPTION_START_Y_PX},$2,${CARD_CAPTION_END_Y_PX},0,$3)`,
+    );
+    if (repositioned === line) {
+      blockers.push(`caption_card_safe_move_missing:${index + 1}`);
+      return line;
+    }
+    repositionedCaptionCount += 1;
+    return repositioned;
+  });
+
+  return {
+    version: CARD_CAPTION_SAFE_ZONE_VERSION,
+    verdict: blockers.length ? "fail" : "pass",
+    blockers,
+    card_kinds: [...cardKinds].sort(),
+    card_window_count: windows.length,
+    overlapping_caption_count: overlappingCaptionCount,
+    repositioned_caption_count: repositionedCaptionCount,
+    normal_caption_end_y_px: 1346,
+    card_caption_start_y_px: CARD_CAPTION_START_Y_PX,
+    card_caption_end_y_px: CARD_CAPTION_END_Y_PX,
+    card_caption_plate_y_px: CARD_CAPTION_PLATE_Y_PX,
+    ass: output.join("\n"),
+  };
 }
 
 function resolvePathMaybeRoot(value) {
@@ -1127,6 +1204,33 @@ function sceneClipSourceRootKey(clip = {}) {
   if (!clip) return "";
   const isObject = typeof clip === "object";
   const sidecar = isObject ? readSceneClipSidecar(clip) : null;
+  const youtubeVideoId = isObject
+    ? firstText(
+        clip.youtube_video_id,
+        clip.youtubeVideoId,
+        sidecar?.youtube_video_id,
+        sidecar?.youtubeVideoId,
+      )
+    : "";
+  if (youtubeVideoId) return `youtube:${youtubeVideoId.toLowerCase()}`;
+  const canonicalUrl = isObject
+    ? firstText(
+        clip.canonical_source_url,
+        clip.canonicalSourceUrl,
+        clip.reference_url,
+        clip.referenceUrl,
+        sidecar?.canonical_source_url,
+        sidecar?.canonicalSourceUrl,
+        sidecar?.reference_url,
+        sidecar?.referenceUrl,
+      )
+    : "";
+  if (canonicalUrl) {
+    const youtubeKey = youtubeSceneAssetKey(canonicalUrl);
+    if (youtubeKey) return youtubeKey;
+    const steamKey = steamTrailerSceneAssetKey(canonicalUrl);
+    if (steamKey) return steamKey;
+  }
   const url = isObject
     ? firstText(
         clip.source_url,
@@ -1324,6 +1428,173 @@ function mergeMaterialisedMotionClipCandidates(storyClips = [], manifest = {}) {
   return merged;
 }
 
+async function hydrateProofClipSourceIdentities(
+  clips = [],
+  {
+    root = ROOT,
+    resolveIdentity = materializedSourceIdentityFields,
+  } = {},
+) {
+  return Promise.all(
+    (Array.isArray(clips) ? clips : []).map(async (clip) => {
+      if (!clip || typeof clip !== "object") return clip;
+      const identity = await resolveIdentity(clip, { root });
+      return {
+        ...clip,
+        ...identity,
+        source_identity_conflicts: [...new Set([
+          ...(Array.isArray(clip.source_identity_conflicts)
+            ? clip.source_identity_conflicts
+            : []),
+          ...(Array.isArray(identity.source_identity_conflicts)
+            ? identity.source_identity_conflicts
+            : []),
+        ].filter(Boolean))],
+      };
+    }),
+  );
+}
+
+function selectBalancedProfessionalMotionCandidates(
+  clips = [],
+  {
+    requiredBaseSources = PROFESSIONAL_MOTION_SOURCE_POLICY.min_genuine_base_sources,
+    maxCandidateLayers = 3,
+    policyMaxScenesPerSource = PROFESSIONAL_MOTION_SOURCE_POLICY.max_scenes_per_source,
+    maxSourceShare = PROFESSIONAL_MOTION_SOURCE_POLICY.max_source_share,
+    targetDurationS = null,
+  } = {},
+) {
+  const source = Array.isArray(clips) ? clips.filter(Boolean) : [];
+  const cards = [];
+  const groups = new Map();
+  const unresolved = [];
+  const directRows = [];
+  source.forEach((clip, index) => {
+    if (sceneClipReadableCardKind(clip)) {
+      cards.push({ clip, index });
+      return;
+    }
+    directRows.push({ clip, index });
+  });
+  const reconciliation = reconcileMotionSourceIdentities(
+    directRows.map((row) => row.clip),
+  );
+  directRows.forEach(({ clip, index }, directIndex) => {
+    const identity = reconciliation.assignments[directIndex];
+    if (
+      identity?.resolved !== true ||
+      !String(identity.base_source_asset_id || "").trim()
+    ) {
+      unresolved.push({
+        clip_index: index,
+        clip_id: firstText(clip?.id, clip?.clip_id),
+        path: sceneClipPath(clip),
+        blockers: identity?.blockers || ["professional_motion_source_identity_unresolved"],
+      });
+      return;
+    }
+    const key = identity.base_source_asset_id;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ clip, index, identity });
+  });
+
+  const selectedDirectRows = [];
+  const candidateLayerLimit = Math.max(
+    1,
+    Math.min(
+      Math.floor(Number(maxCandidateLayers) || 1),
+      Math.floor(Number(policyMaxScenesPerSource) || 1),
+    ),
+  );
+  const groupedRows = [...groups.values()];
+  const targetDuration = Number(targetDurationS);
+  const selectedCoverageS = () => {
+    const rawDurationS = selectedDirectRows.reduce((sum, row) => {
+      const durationS = sceneClipSourceDurationS(row.clip);
+      return sum + (Number.isFinite(durationS) ? durationS : 0);
+    }, 0);
+    return Number(
+      Math.max(0, rawDurationS - XFADE_S * Math.max(0, selectedDirectRows.length - 1)).toFixed(3),
+    );
+  };
+  for (let round = 0; round < candidateLayerLimit; round += 1) {
+    if (!groupedRows.length) break;
+    const layer = groupedRows.map((rows) => rows[round]).filter(Boolean);
+    if (!layer.length) break;
+    const completeLayer = layer.length === groupedRows.length;
+    const coverageNeedsPartialLayer =
+      Number.isFinite(targetDuration) &&
+      targetDuration > 0 &&
+      selectedCoverageS() + 0.12 < targetDuration;
+    if (!completeLayer && !coverageNeedsPartialLayer) break;
+    selectedDirectRows.push(...layer);
+  }
+  const selectedDirectIndexes = new Set(selectedDirectRows.map((row) => row.index));
+  const selectedDirect = selectedDirectRows.map((row) => row.clip);
+  const selected = [];
+  const cardSpacing = cards.length
+    ? Math.max(1, Math.ceil(selectedDirect.length / (cards.length + 1)))
+    : Number.MAX_SAFE_INTEGER;
+  let nextCard = 0;
+  for (let index = 0; index < selectedDirect.length; index += 1) {
+    selected.push(selectedDirect[index]);
+    if (
+      nextCard < cards.length &&
+      (index + 1) % cardSpacing === 0
+    ) {
+      selected.push(cards[nextCard].clip);
+      nextCard += 1;
+    }
+  }
+  while (nextCard < cards.length) {
+    selected.push(cards[nextCard].clip);
+    nextCard += 1;
+  }
+  const professionalSourceDiversity = assessProfessionalSourceDiversity({
+    clips: selectedDirect,
+    scenes: selectedDirect,
+    requiredBaseSources,
+    maxScenesPerSource: policyMaxScenesPerSource,
+    maxSourceShare,
+  });
+  const blockers = [...new Set([
+    ...(unresolved.length ? ["professional_motion_source_identity_unresolved"] : []),
+    ...unresolved.flatMap((entry) => entry.blockers || []),
+    ...professionalSourceDiversity.blockers,
+  ])];
+  const dropped = source
+    .map((clip, index) => ({ clip, index }))
+    .filter(
+      ({ index }) =>
+        !cards.some((card) => card.index === index) &&
+        !selectedDirectIndexes.has(index),
+    )
+    .map(({ clip, index }) => ({
+      clip_index: index,
+      clip_id: firstText(clip?.id, clip?.clip_id),
+      path: sceneClipPath(clip),
+      reason: unresolved.some((entry) => entry.clip_index === index)
+        ? "professional_motion_source_identity_unresolved"
+        : "professional_source_candidate_pool_balanced",
+    }));
+
+  return {
+    schema_version: 1,
+    version: "pulse_professional_motion_candidate_balancer_v1",
+    status: blockers.length ? "blocked" : "pass",
+    strict_pass: blockers.length === 0,
+    clips: selected,
+    selected_direct_motion_clip_count: selectedDirect.length,
+    dropped_direct_motion_clip_count: dropped.length,
+    unresolved_candidate_count: unresolved.length,
+    unresolved_candidates: unresolved,
+    dropped_candidates: dropped,
+    professional_source_diversity: professionalSourceDiversity,
+    blockers,
+  };
+}
+
 const DISCOVERED_HYPERFRAMES_CARD_KINDS = Object.freeze([
   "source",
   "context",
@@ -1354,6 +1625,35 @@ function mergeCurrentHyperframesStoryCardCandidates({
       accepted_cards: [],
       rejected_cards: [],
       skipped_reason: !storyId ? "story_id_missing" : "story_cards_already_explicit",
+    };
+  }
+
+  const governedShellGate =
+    story.hyperframes_premium_shell_gate ||
+    story.premium_shell_gate ||
+    story.premiumLane?.hyperframesPremiumShellGate ||
+    null;
+  if (governedShellGate && typeof governedShellGate === "object") {
+    const verdict = String(
+      governedShellGate.verdict ||
+        governedShellGate.status ||
+        story.premium_shell_verdict ||
+        "",
+    ).trim().toLowerCase();
+    const selectedCardCount = Number(
+      governedShellGate.selectedCardCount ??
+        governedShellGate.selected_card_count ??
+        story.premium_shell_selected_card_count ??
+        0,
+    );
+    return {
+      clips: source,
+      accepted_cards: [],
+      rejected_cards: [],
+      skipped_reason:
+        verdict !== "pass" || !Number.isFinite(selectedCardCount) || selectedCardCount <= 0
+          ? "governed_premium_shell_selection_not_passed"
+          : "governed_premium_shell_cards_missing_from_renderer_inputs",
     };
   }
 
@@ -1596,7 +1896,11 @@ function directMotionSourceConcentration(entries = []) {
   };
 }
 
-function buildProfessionalSourceDiversityProof({ clips = [], scenePlan = {} } = {}) {
+function buildProfessionalSourceDiversityProof({
+  clips = [],
+  scenePlan = {},
+  requiredBaseSources = null,
+} = {}) {
   const clipByPath = new Map();
   for (const clip of Array.isArray(clips) ? clips.filter(Boolean) : []) {
     const clipPath = sceneClipPath(clip);
@@ -1624,10 +1928,14 @@ function buildProfessionalSourceDiversityProof({ clips = [], scenePlan = {} } = 
       };
     });
 
+  const explicitMinimum = Number(requiredBaseSources);
+  const effectiveMinimum = Number.isFinite(explicitMinimum) && explicitMinimum > 0
+    ? Math.max(PROFESSIONAL_MOTION_SOURCE_POLICY.min_genuine_base_sources, Math.floor(explicitMinimum))
+    : PROFESSIONAL_MOTION_SOURCE_POLICY.min_genuine_base_sources;
   const proof = assessProfessionalSourceDiversity({
     clips: selectedDirectScenes,
     scenes: selectedDirectScenes,
-    requiredBaseSources: PROFESSIONAL_MOTION_SOURCE_POLICY.min_genuine_base_sources,
+    requiredBaseSources: effectiveMinimum,
     maxScenesPerSource: MAX_DIRECT_MOTION_SCENES_PER_SOURCE_ROOT,
     maxSourceShare: MAX_DIRECT_MOTION_SOURCE_CONCENTRATION_RATIO,
   });
@@ -2710,13 +3018,21 @@ function buildOverlayChain({
   const cardExclusions = cardVisibleWindows
     .filter((window) => Number.isFinite(Number(window?.start_s)) && Number.isFinite(Number(window?.end_s)))
     .map((window) => `not(between(t,${t(window.start_s)},${t(window.end_s)}))`);
+  const nonCardOverlayEnable = cardExclusions.join("*");
+  const nonCardOverlayEnableSuffix = nonCardOverlayEnable
+    ? `:enable='${nonCardOverlayEnable}'`
+    : "";
   const cardCaptionPlateEnable = cardVisibleWindows
     .filter((window) => Number.isFinite(Number(window?.start_s)) && Number.isFinite(Number(window?.end_s)))
     .map((window) => `between(t,${t(window.start_s)},${t(window.end_s)})`)
     .join("+");
-  const livingGhostEnable = cardExclusions.length
-    ? `:enable='${cardExclusions.join("*")}'`
-    : "";
+  const livingGhostWindow =
+    `between(t,${t(livingMotion.editorial.ghost_start_s)},${t(livingMotion.editorial.ghost_end_s)})`;
+  const livingGhostEnable = `:enable='${
+    cardExclusions.length
+      ? [livingGhostWindow, ...cardExclusions].join("*")
+      : livingGhostWindow
+  }'`;
   const enableFor = (window, { avoidCardWindows = false } = {}) => {
     const base = `between(t,${t(window.start_s)},${t(window.end_s)})`;
     return avoidCardWindows && cardExclusions.length
@@ -2727,26 +3043,26 @@ function buildOverlayChain({
   const headlineEnable = enableFor(headlineWindow, { avoidCardWindows: true });
   const proofPrimaryEnable = enableFor(proofPrimaryWindow, { avoidCardWindows: true });
   const proofSecondaryEnable = enableFor(proofSecondaryWindow, { avoidCardWindows: true });
-  const outroEnable = enableFor(signature.outro);
+  const outroEnable = enableFor(signature.outro, { avoidCardWindows: true });
   const progressStart = (window, offsetS) => t(Number(window.start_s || 0) + offsetS);
   const segmentLabel = drawtextEscape(signature.segment.display_label);
   const creativeSegmentLabel = drawtextEscape(pulseIdentity.segment_name.toUpperCase());
   const livingGhostWord = drawtextEscape(livingMotion.ghost_word);
   return [
-    `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill,drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill,drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill,drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill`,
-    `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
-    `drawbox=x=iw-${sideMaskWidth}:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill`,
-    `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=${pulseBrandAccent}@0.30:t=fill`,
-    `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=${pulseBrandAccent}@0.95:t=fill`,
-    `drawbox=x=${accentRailX + 5}:y=0:w=2:h=ih:color=${pulsePrimary}@0.95:t=fill`,
-    `drawbox=x=${accentRailX + 7}:y='mod(t*480+420\\,2000)-80':w=2:h=80:color=${pulseSignalCyan}@0.78:t=fill`,
-    `drawbox=x='-260+mod(t*${livingMotion.sweeps.primary_speed_px_s}\\,1540)':y=0:w=210:h=ih:color=white@${livingMotion.sweeps.primary_opacity.toFixed(3)}:t=fill`,
-    `drawbox=x='940-mod(t*${livingMotion.sweeps.accent_speed_px_s}\\,1220)':y=0:w=92:h=ih:color=${identityAccent}@${livingMotion.sweeps.accent_opacity.toFixed(3)}:t=fill`,
-    `drawbox=x=54:y='560+sin(t*0.21)*34':w=972:h=1:color=${identityAccent}@0.24:t=fill`,
+    `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=iw-${sideMaskWidth}:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=${pulseBrandAccent}@0.30:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=${accentRailX}:y='mod(t*480\\,2080)-160':w=4:h=160:color=${pulseBrandAccent}@0.95:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=${accentRailX + 5}:y=0:w=2:h=ih:color=${pulsePrimary}@0.95:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=${accentRailX + 7}:y='mod(t*480+420\\,2000)-80':w=2:h=80:color=${pulseSignalCyan}@0.78:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x='-260+mod(t*${livingMotion.sweeps.primary_speed_px_s}\\,1540)':y=0:w=210:h=ih:color=white@${livingMotion.sweeps.primary_opacity.toFixed(3)}:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x='940-mod(t*${livingMotion.sweeps.accent_speed_px_s}\\,1220)':y=0:w=92:h=ih:color=${identityAccent}@${livingMotion.sweeps.accent_opacity.toFixed(3)}:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=54:y='560+sin(t*0.21)*34':w=972:h=1:color=${identityAccent}@0.24:t=fill${nonCardOverlayEnableSuffix}`,
     `drawtext=text='${livingGhostWord}':${fontOpt}:fontcolor=${identityAccent}@${livingMotion.editorial.ghost_opacity.toFixed(3)}:fontsize=${livingMotion.editorial.ghost_font_size_px}:x='-24+sin(t*${livingMotion.editorial.ghost_rate})*${livingMotion.editorial.ghost_drift_x_px}':y=${livingMotion.editorial.ghost_y_px}:shadowcolor=black@0.16:shadowx=3:shadowy=3${livingGhostEnable}`,
     ...(cardCaptionPlateEnable ? [
-      `drawbox=x=96:y=1248:w=888:h=210:color=0x07090D@0.66:t=fill:enable='${cardCaptionPlateEnable}'`,
-      `drawbox=x=96:y=1248:w=888:h=3:color=${identityAccent}@0.82:t=fill:enable='${cardCaptionPlateEnable}'`,
+      `drawbox=x=96:y=${CARD_CAPTION_PLATE_Y_PX}:w=888:h=210:color=0x07090D@0.66:t=fill:enable='${cardCaptionPlateEnable}'`,
+      `drawbox=x=96:y=${CARD_CAPTION_PLATE_Y_PX}:w=888:h=3:color=${identityAccent}@0.82:t=fill:enable='${cardCaptionPlateEnable}'`,
     ] : []),
     ...(suppressOpeningStoryCard ? [] : [
     `drawbox=x=${openingCardX}:y=${openingCardY}:w=${openingCardW}:h=${openingCardH}:color=0x111827@0.58:t=fill:enable='${openingEnable}'`,
@@ -2782,10 +3098,10 @@ function buildOverlayChain({
     `drawtext=text='PLAYER IMPACT':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: proofSecondaryEnable }),
     ]),
-    `drawbox=x=w-286:y=h-126:w=244:h=60:color=0x0D0D0F@0.58:t=fill`,
-    `drawbox=x=w-286:y=h-126:w=6:h=60:color=${identityAccent}@0.95:t=fill`,
-    `drawbox=x=w-280:y=h-126:w=238:h=2:color=${pulseSecondary}@0.78:t=fill`,
-    `drawtext=text='PULSE // GAMING // ${drawtextEscape(pulseIdentity.code)}':${metaFontOpt}:fontcolor=white@0.92:fontsize=22:x=w-tw-58:y=h-108:shadowcolor=black@0.70:shadowx=2:shadowy=2`,
+    `drawbox=x=w-286:y=h-126:w=244:h=60:color=0x0D0D0F@0.58:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=w-286:y=h-126:w=6:h=60:color=${identityAccent}@0.95:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawbox=x=w-280:y=h-126:w=238:h=2:color=${pulseSecondary}@0.78:t=fill${nonCardOverlayEnableSuffix}`,
+    `drawtext=text='PULSE // GAMING // ${drawtextEscape(pulseIdentity.code)}':${metaFontOpt}:fontcolor=white@0.92:fontsize=22:x=w-tw-58:y=h-108:shadowcolor=black@0.70:shadowx=2:shadowy=2${nonCardOverlayEnableSuffix}`,
     `drawbox=x=70:y=310:w=940:h=178:color=0x0D0D0F@0.74:t=fill:enable='${outroEnable}'`,
     `drawbox=x=70:y=310:w=940:h=5:color=${identityAccent}@0.95:t=fill:enable='${outroEnable}'`,
     `drawbox=x=70:y=483:w=940:h=3:color=${pulseSecondary}@0.78:t=fill:enable='${outroEnable}'`,
@@ -2801,6 +3117,12 @@ function buildSceneCompositeFilterParts(scene = {}, livingMotion = null) {
   const i = Number.isFinite(index) && index >= 0 ? Math.floor(index) : 0;
   const duration = Number(scene.durationS);
   const durationS = Number.isFinite(duration) && duration > 0 ? duration.toFixed(2) : "1.00";
+  const readableCardKind = String(scene.readableCardKind || "").trim();
+  if (readableCardKind) {
+    return [
+      `[${i}:v]scale=1080:1920:flags=lanczos,trim=duration=${durationS},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p,setsar=1[v${i}]`,
+    ];
+  }
   const motion = livingMotion || resolveLivingMotionGrammar({});
   const depth = motion.depth;
 
@@ -2988,24 +3310,56 @@ async function renderProof({ storyJson, output }) {
     }
   }
   if (!clips.length) throw new Error("no local V4 clips available");
+  const identityHydratedClips = await hydrateProofClipSourceIdentities(clips, {
+    root: ROOT,
+  });
 
   const durationS = ffprobeDuration(audioPath);
   if (!Number.isFinite(durationS) || durationS <= 0) {
     throw new Error(`invalid audio duration: ${audioPath}`);
   }
-  const directMotionVisualSelection = await filterPremiumDirectMotionClips(clips, {
+  const visualEligibilitySelection = await filterPremiumDirectMotionClips(
+    identityHydratedClips,
+    {
     outputDir: path.join(
       TEST_OUT,
       "v5-direct-motion-visual",
       String(story.id || "story").replace(/[^a-z0-9_-]+/gi, "_"),
     ),
-    policyTier: "ultimate_professional",
-  });
-  if (directMotionVisualSelection.blockers.length) {
+      policyTier: "normal_strict_green",
+    },
+  );
+  if (visualEligibilitySelection.blockers.length) {
     throw new Error(
-      `direct_motion_visual_selector_blocked:${directMotionVisualSelection.blockers.join(",")}`,
+      `direct_motion_visual_selector_blocked:${visualEligibilitySelection.blockers.join(",")}`,
     );
   }
+  const professionalCandidateSelection =
+    selectBalancedProfessionalMotionCandidates(visualEligibilitySelection.clips, {
+      requiredBaseSources: story.required_genuine_base_source_count,
+      targetDurationS: durationS,
+    });
+  if (professionalCandidateSelection.blockers.length) {
+    throw new Error(
+      `direct_motion_visual_selector_blocked:${professionalCandidateSelection.blockers.join(",")}`,
+    );
+  }
+  const directMotionVisualSelection = {
+    ...visualEligibilitySelection,
+    policy_tier: "ultimate_professional",
+    clips: professionalCandidateSelection.clips,
+    source_diversity: {
+      ...visualEligibilitySelection.source_diversity,
+      strict_pass: professionalCandidateSelection.strict_pass,
+      reasons: professionalCandidateSelection.blockers,
+      professional_source_diversity:
+        professionalCandidateSelection.professional_source_diversity,
+    },
+    professional_source_diversity:
+      professionalCandidateSelection.professional_source_diversity,
+    professional_candidate_selection: professionalCandidateSelection,
+    blockers: professionalCandidateSelection.blockers,
+  };
   const premiumSceneSelection = selectPremiumSceneClips(directMotionVisualSelection.clips);
   const scenePlan = buildClipScenePlan({
     clips: premiumSceneSelection.clips,
@@ -3016,6 +3370,7 @@ async function renderProof({ storyJson, output }) {
   const professionalSourceDiversity = buildProfessionalSourceDiversityProof({
     clips: premiumSceneSelection.clips,
     scenePlan,
+    requiredBaseSources: story.required_genuine_base_source_count,
   });
   if (professionalSourceDiversity.status !== "pass") {
     throw new Error(
@@ -3040,12 +3395,22 @@ async function renderProof({ storyJson, output }) {
     scriptText,
     strictEndCoverage: false,
   });
-  const ass = buildPremiumKineticAss({
+  const rawAss = buildPremiumKineticAss({
     story,
     words,
     duration: durationS,
     scriptText,
   });
+  const captionCardSafeZone = repositionAssCaptionsForCardWindows(
+    rawAss,
+    scenePlan.cardVisibleWindows,
+  );
+  if (captionCardSafeZone.verdict !== "pass") {
+    throw new Error(
+      `caption_card_safe_zone_blocked:${captionCardSafeZone.blockers.join(",")}`,
+    );
+  }
+  const ass = captionCardSafeZone.ass;
   const captionCadence = inspectPremiumCaptionCadence(ass);
   if (captionCadence.status !== "pass") {
     throw new Error(`kinetic_typography_gate_blocked:${captionCadence.blockers.join(",")}`);
@@ -3225,12 +3590,14 @@ async function renderProof({ storyJson, output }) {
     mp4Path: outputPath,
     outputDir: path.join(path.dirname(outputPath), "qa", "decoded-visual"),
     frameIntervalS: 1,
+    subtitlePath: assPath,
     renderReport: {
       sceneList: scenePlan.scenes.map((scene) => ({
         ...scene,
         duration: scene.durationS,
         type: scene.type || scene.sceneType,
       })),
+      card_visible_windows: scenePlan.cardVisibleWindows,
     },
   });
   if (decodedVisualGate.status !== "pass") {
@@ -3310,6 +3677,10 @@ async function renderProof({ storyJson, output }) {
     decoded_visual_gate: decodedVisualGate,
     kinetic_typography_version: KINETIC_TYPOGRAPHY_V5.version,
     kinetic_typography_gate: captionCadence,
+    caption_card_safe_zone: {
+      ...captionCardSafeZone,
+      ass: undefined,
+    },
     pulse_signature_version: PULSE_SIGNATURE_VERSION,
     pulse_signature_contract: buildPulseSignatureContract({
       story,
@@ -3416,8 +3787,11 @@ module.exports = {
   scenePlanBlockerDiagnostic,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
+  repositionAssCaptionsForCardWindows,
   buildCreativeTransitionSequence,
   mergeMaterialisedMotionClipCandidates,
+  hydrateProofClipSourceIdentities,
+  selectBalancedProfessionalMotionCandidates,
   mergeCurrentHyperframesStoryCardCandidates,
   selectPremiumSceneClips,
   resolveFreshHyperframesPremiumShellGate,

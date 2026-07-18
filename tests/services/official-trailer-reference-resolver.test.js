@@ -937,6 +937,70 @@ test("official trailer resolver records Steam HLS/DASH movie references as refer
   assert.equal(plan.references[0].segment_validation_eligible, true);
 });
 
+test("official trailer resolver preserves hash-bound local official YouTube masters", async () => {
+  const localMaster =
+    "C:/workspace/output/official-youtube-motion/arknights/EfwGJH-etgk.mp4";
+  const sourceSha256 =
+    "3278da3f6179aa3c75adadc1d62d386fa1b36675df0f2fa4ac21a8702908e9cf";
+  const plan = await buildOfficialTrailerReferencePlan(
+    baseStory({
+      id: "arknights-endfield-gap",
+      title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+      canonical_subject: "Arknights: Endfield",
+      canonical_game: "Arknights: Endfield",
+    }),
+    {
+      officialSourceIntakeReport: {
+        output_template: {
+          entries: [
+            {
+              story_id: "arknights-endfield-gap",
+              entity: "Arknights: Endfield",
+              source_type: "official_youtube_channel_url",
+              source_owner: "Arknights: Endfield",
+              source_title: "Arknights: Endfield Beta Test Trailer",
+              official_source_url:
+                "https://www.youtube.com/watch?v=EfwGJH-etgk",
+              official_channel_url:
+                "https://www.youtube.com/@arknightsendfieldEN",
+              youtube_video_id: "EfwGJH-etgk",
+              local_operator_file_path: localMaster,
+              source_verified: true,
+              downloads_allowed: true,
+              segment_validation_eligible: true,
+              allowed_render_use: "transformative_editorial_short_form",
+              rights_risk_class: "official_publisher_promotional_editorial",
+              provenance: {
+                source: "official_youtube_channel_download",
+                official_channel:
+                  "https://www.youtube.com/@arknightsendfieldEN",
+                reference_url:
+                  "https://www.youtube.com/watch?v=EfwGJH-etgk",
+                youtube_video_id: "EfwGJH-etgk",
+                source_sha256: sourceSha256,
+              },
+            },
+          ],
+        },
+      },
+      steamLookup: async () => {
+        throw new Error("local official YouTube master must not require Steam lookup");
+      },
+    },
+  );
+
+  assert.equal(plan.references.length, 1);
+  assert.equal(plan.references[0].source_url, localMaster);
+  assert.equal(plan.references[0].source_url_kind, "local_video_file");
+  assert.equal(plan.references[0].segment_validation_eligible, true);
+  assert.equal(plan.references[0].downloads_allowed, true);
+  assert.equal(
+    plan.references[0].provenance.source,
+    "official_youtube_channel_download",
+  );
+  assert.equal(plan.references[0].provenance.source_sha256, sourceSha256);
+});
+
 test("official trailer resolver excludes Steam movie references that are rating-board material", async () => {
   const plan = await buildOfficialTrailerReferencePlan(
     baseStory({

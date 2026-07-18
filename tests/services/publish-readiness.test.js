@@ -1072,6 +1072,25 @@ test("buildLocalPostingReadinessPillar: refreshes stale local posting evidence b
   }
 });
 
+test("local posting readiness refreshes recent evidence when a runtime health probe failed", () => {
+  assert.equal(
+    pr.localPostingPillarNeedsArtifactRefresh({
+      verdict: "red",
+      raw: {
+        readiness: {
+          local_health: false,
+          public_health: true,
+        },
+        artifact_freshness: {
+          stale_count: 0,
+          missing_count: 0,
+        },
+      },
+    }),
+    true,
+  );
+});
+
 test("pillarLocalPostingReadiness: passes fresh tunnel evidence into aggregate report", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-local-posting-tunnel-"));
   const cutoverPath = path.join(dir, "local_cutover_plan.json");
@@ -1135,6 +1154,83 @@ test("pillarLocalPostingReadiness: passes fresh tunnel evidence into aggregate r
     assert.match(pillar.reason, /safe observation mode/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarLocalPostingReadiness reads shared evidence root instead of checkout-local test output", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-shared-readiness-root-"));
+  const liveRoot = path.join(root, "pulse-gaming-live");
+  const evidenceRoot = path.join(root, "pulse-gaming");
+  const outputDir = path.join(evidenceRoot, "test", "output");
+  const health = {
+    ok: true,
+    status: 200,
+    json: {
+      deployment: { mode: "local", primary: true },
+      runtime: { auto_publish: true, safe_observation_mode: false },
+    },
+  };
+  try {
+    fs.mkdirSync(liveRoot, { recursive: true });
+    fs.mkdirSync(outputDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(outputDir, "local_cutover_plan.json"),
+      JSON.stringify({
+        verdict: "green",
+        env: { flags: { primary: true, use_job_queue: true, auto_publish: true } },
+        health: { local: health, public: health },
+        cloudflared: { tunnel_info: "Active connections: 1" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(outputDir, "local_primary_readiness.json"),
+      JSON.stringify({
+        checks: {
+          primary_enabled: true,
+          use_job_queue_enabled: true,
+          auto_publish_enabled: true,
+        },
+        health: { local: health, public: health },
+        duplicate_env_keys: [],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(outputDir, "local_tunnel_readiness.json"),
+      JSON.stringify({
+        verdict: "green",
+        tunnel: { status: "active" },
+        health: { local: health, public: health },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(outputDir, "local_tts_overnight_report.json"),
+      JSON.stringify({ verdict: "green", proof_batch: { voice_ready_count: 19 } }),
+    );
+    fs.writeFileSync(
+      path.join(outputDir, "local_tts_doctor.json"),
+      JSON.stringify({
+        verdict: "green",
+        before: {
+          ready: true,
+          voice: { loaded: true, refResolved: true },
+        },
+      }),
+    );
+
+    const pillar = pr.pillarLocalPostingReadiness({
+      cwd: liveRoot,
+      env: { PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT: evidenceRoot },
+      now: Date.now(),
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.ok(
+      pillar.raw.artifact_freshness.artifacts.every((artifact) =>
+        artifact.path.startsWith(outputDir),
+      ),
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -3847,6 +3943,72 @@ test("pillarFinalVoiceAudit: strict dry-run active paths override stale local-te
     assert.equal(pillar.verdict, "green");
     assert.equal(pillar.raw.active_scope_source, "strict_dry_run_plan");
     assert.equal(pillar.raw.active_pass_count, 1);
+    assert.equal(pillar.raw.quarantined_reject_count, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pillarFinalVoiceAudit: an existing zero-action strict plan does not revive stale local-test rows", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-final-voice-empty-dry-run-"));
+  const auditPath = path.join(dir, "final_voice_audit.json");
+  const manifestPath = path.join(dir, "local_test_video_manifest.json");
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  const staleVideo = path.join(dir, "stale", "visual_v4_render.mp4");
+  try {
+    fs.mkdirSync(path.dirname(staleVideo), { recursive: true });
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        videos: [{ story_id: "stale-story", video_path: staleVideo }],
+      }),
+    );
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+        actions: [],
+      }),
+    );
+    fs.writeFileSync(
+      auditPath,
+      JSON.stringify({
+        generated_at: "2026-05-31T10:00:00.000Z",
+        rows: [
+          {
+            story_id: "stale-story",
+            mp4_path: staleVideo,
+            verdict: "reject",
+            blockers: ["managed_tts_non_native_rate_applied"],
+            warnings: [],
+          },
+        ],
+        safety: {
+          read_only: true,
+          mutates_media: false,
+          mutates_production_db: false,
+          mutates_tokens: false,
+          posts_to_platforms: false,
+        },
+      }),
+    );
+
+    const pillar = pr.pillarFinalVoiceAudit({
+      auditPath,
+      localTestManifestPath: manifestPath,
+      strictDryRunPlanPath: planPath,
+      now: Date.parse("2026-05-31T10:30:00.000Z"),
+    });
+
+    assert.equal(pillar.verdict, "amber");
+    assert.equal(pillar.raw.active_scope_source, "strict_dry_run_plan");
+    assert.equal(pillar.raw.active_row_count, 0);
     assert.equal(pillar.raw.quarantined_reject_count, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

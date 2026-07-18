@@ -206,6 +206,38 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
   assert.equal(explicitProofRate.speed, 1.2);
 });
 
+test("Pulse ElevenLabs alignment metadata records hash-bound provider-native speed provenance", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const { buildTtsAlignmentMeta } = require("../../audio");
+
+  const meta = buildTtsAlignmentMeta({
+    provider: "elevenlabs",
+    voiceId: "TX3LPaxmHKxFdv7VOQHJ",
+    text: "Arknights Endfield puts its graphics upgrade under pressure.",
+    resolvedVoiceSettings: {
+      stability: 0.55,
+      similarity_boost: 0.85,
+      style: 0.35,
+      speaking_rate: 0.95,
+      speed: 0.95,
+    },
+    requestVoiceSettingsSha256: "a".repeat(64),
+    generatedAudioSha256: "b".repeat(64),
+  });
+
+  assert.deepEqual(meta.elevenlabs.rateControl, {
+    schemaVersion: 1,
+    method: "provider_native_voice_settings_speed",
+    requestField: "voice_settings.speed",
+    appliedAtGeneration: true,
+    requestedRate: 0.95,
+    effectiveRate: 0.95,
+    postGenerationTempoStretch: false,
+    requestVoiceSettingsSha256: "a".repeat(64),
+    generatedAudioSha256: "b".repeat(64),
+  });
+});
+
 test("Pulse local TTS refuses sub-native production speed caps by default", () => {
   process.env.PULSE_SKIP_DOTENV = "true";
   const {

@@ -85,6 +85,43 @@ test("local primary readiness is green only when local and public health agree",
   assert.equal(report.recommendation, "local_primary_ready_for_controlled_start");
 });
 
+test("local primary readiness retries a transient localhost timeout before blocking", async () => {
+  const calls = [];
+  const report = await buildLocalPrimaryReadiness({
+    env: {
+      DEPLOYMENT_MODE: "local",
+      PULSE_PRIMARY_INSTANCE: "true",
+      USE_SQLITE: "true",
+      USE_JOB_QUEUE: "true",
+      AUTO_PUBLISH: "true",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      MEDIA_ROOT: "D:/pulse-data/media",
+      SQLITE_DB_PATH: "D:/pulse-data/pulse.db",
+      PORT: "3001",
+    },
+    healthProbeDelayMs: 0,
+    fetchJsonImpl: async (url) => {
+      calls.push(url);
+      if (url.includes("127.0.0.1") && calls.filter((value) => value === url).length === 1) {
+        return { ok: false, status: null, error: "timeout" };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: {
+          status: "ok",
+          deployment: { mode: "local", primary: true },
+        },
+      };
+    },
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.health.local.ok, true);
+  assert.equal(report.health.local.probe_attempts, 2);
+  assert.ok(calls.includes("http://127.0.0.1:3001/api/health"));
+});
+
 test("local primary readiness blocks public localhost URLs", async () => {
   const report = await buildLocalPrimaryReadiness({
     env: {

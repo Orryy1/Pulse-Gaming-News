@@ -30,6 +30,8 @@ function health(overrides = {}) {
         guarded_live_dispatch_enabled: true,
         emergency_kill_switch_clear: true,
         safe_observation_mode: false,
+        primary_runtime_hold: false,
+        protected_primary_runtime: true,
         controlled_restart_no_scheduler_mode: false,
         dispatch: {
           mode: "queue",
@@ -94,6 +96,110 @@ test("runtime sentinel passes only when live owner, commit and scheduler mode ma
   assert.match(md, /Runtime Ownership Sentinel/);
   assert.match(md, /Verdict: GREEN/);
   assert.match(md, /Port owner PID: 34076/);
+});
+
+test("runtime sentinel accepts an uninspectable SYSTEM node owner only with exact dual-health attestation", () => {
+  const report = buildRuntimeOwnershipSentinel({
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: health(),
+    publicHealth: health(),
+    processSnapshot: {
+      port: 3001,
+      port_owner_pid: 52644,
+      processes: [
+        { pid: 52644, name: "node.exe", command_line: "" },
+        { pid: 31436, name: "cloudflared.exe", command_line: "" },
+      ],
+      query_status: "ok",
+    },
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.deepEqual(report.blockers, []);
+  assert.ok(
+    report.advisory.some((line) =>
+      /SYSTEM-owned node command line is unavailable/i.test(line),
+    ),
+  );
+});
+
+test("runtime sentinel keeps an inspectable wrong node owner red despite healthy endpoints", () => {
+  const report = buildRuntimeOwnershipSentinel({
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: health(),
+    publicHealth: health(),
+    processSnapshot: {
+      port: 3001,
+      port_owner_pid: 52644,
+      processes: [
+        { pid: 52644, name: "node.exe", command_line: "node unrelated-worker.js" },
+        { pid: 31436, name: "cloudflared.exe", command_line: "cloudflared tunnel run pulse" },
+      ],
+      query_status: "ok",
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(report.blockers.some((line) => /not node server\.js/i.test(line)));
+});
+
+test("runtime sentinel does not use process attestation when either health surface drifts", () => {
+  const driftedPublic = health({
+    json: {
+      build: {
+        commit_sha: "1111111111111111",
+        commit_short: "1111111",
+        branch: "codex/wrong",
+      },
+    },
+  });
+  const report = buildRuntimeOwnershipSentinel({
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: health(),
+    publicHealth: driftedPublic,
+    processSnapshot: {
+      port: 3001,
+      port_owner_pid: 52644,
+      processes: [
+        { pid: 52644, name: "node.exe", command_line: "" },
+        { pid: 31436, name: "cloudflared.exe", command_line: "" },
+      ],
+      query_status: "ok",
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(report.blockers.some((line) => /port 3001 owner PID 52644 is not node server\.js/i.test(line)));
 });
 
 test("runtime sentinel fails red when queue auto-publish is not guarded-live armed", () => {

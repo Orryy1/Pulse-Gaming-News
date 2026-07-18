@@ -9,6 +9,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  buildRendererStoryJson,
   materializeGoalProductionRenders,
   refreshFlagshipInventoryEvidence,
   refreshFinalRenderQualityOnly,
@@ -29,6 +30,10 @@ const {
 const {
   assessProfessionalSourceDiversity,
 } = require("../../lib/studio/motion-source-identity");
+const {
+  PREMIUM_CARD_TIMING_V5_VERSION,
+  v5CardTimingContract,
+} = require("../../lib/studio/v4/premium-card-timing-policy");
 
 function passingPostRenderForensicInputs(overrides = {}) {
   const clips = Array.from({ length: 3 }, (_, index) => ({
@@ -439,11 +444,11 @@ test("goal production render materializer clamps lingering narrative cards to th
     _private.readableHyperframesCardDurationS({
       kind: "takeaway",
       readability: {
-        minimum_visible_duration_s: 6.4,
-        planned_visible_duration_s: 6.4,
+        minimum_visible_duration_s: 4.2,
+        planned_visible_duration_s: 4.2,
       },
     }),
-    5.2,
+    3.8,
   );
   assert.equal(
     _private.readableHyperframesCardDurationS({
@@ -511,6 +516,42 @@ test("goal production render materializer preserves two validated windows from f
   }
   assert.equal(roots.size, 4);
   assert.ok([...roots.values()].every((count) => count === 2));
+});
+
+test("goal production render materializer honours an explicit validated gameplay opener", () => {
+  const clips = Array.from({ length: 6 }, (_, index) => ({
+    id: `densh-validated-${index + 1}`,
+    path: `output/video_cache/densh-validated-${index + 1}.mp4`,
+    local_materialized_path: `output/video_cache/densh-validated-${index + 1}.mp4`,
+    source_url: `C:/proof/densh-official-${index + 1}.mp4`,
+    source_type: "official_publisher_youtube",
+    source_kind: "video_file",
+    base_source_family: `densh-official-root-${index + 1}`,
+    source_family: `densh-official-root-${index + 1}_window_0_5`,
+    motion_family: `densh-official-root-${index + 1}_window_0_5`,
+    media_kind: "direct_video",
+    counts_towards_motion_readiness: true,
+    validated: true,
+    durationS: 5,
+  }));
+
+  const selected = _private.preferredMaterialisedClips({
+    materialisedMotion: {
+      status: "ready",
+      clips,
+      materialised_clips: clips,
+    },
+    job: {
+      repair_lane: "visual_first_frame_rerender",
+      preferred_opening_motion_clip_id: "densh-validated-4",
+    },
+  });
+
+  assert.equal(selected[0].id, "densh-validated-4");
+  assert.deepEqual(
+    [...new Set(selected.map((clip) => clip.id))].sort(),
+    clips.map((clip) => clip.id).sort(),
+  );
 });
 
 test("goal production render materializer never classifies an official source card as direct motion", () => {
@@ -614,17 +655,63 @@ test("goal production render materializer never invents commercial rights for lo
     rights_basis: "official_source_transformative_editorial_local_proof_only",
     rights_grant: false,
     rights_status: "operator_legal_review_required",
-    usage_scope: "local_proof_only",
+    usage_scope: "declared_licensed_scope",
   }]);
 
   assert.equal(completed.length, 1);
   assert.equal(completed[0].commercial_use_allowed, false);
   assert.deepEqual(completed[0].allowed_platforms, []);
   assert.equal(completed[0].approval_status, "operator_legal_review_required");
+  assert.equal(completed[0].rights_status, "operator_legal_review_required");
+  assert.equal(completed[0].usage_scope, "local_proof_only");
   assert.equal(completed[0].risk_score, 1);
   assert.equal(
     completed[0].rights_decision_basis,
     "provisional_renderer_local_proof_pending_policy_reconciliation",
+  );
+});
+
+test("goal production render materializer carries a hash-bound source identity creator into selected clip rights", () => {
+  const sidecarPath = "output/source-masters/OfficialTrailer1.source-identity.json";
+  const completed = _private.augmentRightsLedgerForSelectedClips([], [{
+    id: "official-trailer-verified-window",
+    path: "output/video_cache/official-trailer-verified-window.mp4",
+    source_url: "output/source-masters/OfficialTrailer1.mp4",
+    canonical_source_url: "https://www.youtube.com/watch?v=OfficialTrailer1",
+    source_type: "official_youtube_channel_url",
+    source_family: "official_trailer_window_10_4",
+    media_kind: "direct_video",
+    rights_basis: "official_direct_media",
+    licence_basis: "official_direct_media",
+    rights_grant: false,
+    sha256: "a".repeat(64),
+    size_bytes: 4096,
+    source_identity_provenance: {
+      kind: "pulse_source_identity_sidecar",
+      status: "resolved",
+      schema: "pulse_motion_source_identity_sidecar_v1",
+      producer: "pulse_source_identity_oembed_verifier_v1",
+      sidecar_path: sidecarPath,
+      sidecar_sha256: "b".repeat(64),
+      channel_identity: {
+        author_name: "Official Publisher",
+        author_url: "https://www.youtube.com/@OfficialPublisher",
+      },
+    },
+  }]);
+
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].creator, "Official Publisher");
+  assert.equal(completed[0].source_channel, "Official Publisher");
+  assert.equal(
+    completed[0].source_channel_url,
+    "https://www.youtube.com/@OfficialPublisher",
+  );
+  assert.equal(completed[0].source_info_path, sidecarPath);
+  assert.equal(completed[0].source_info_sha256, "b".repeat(64));
+  assert.equal(
+    completed[0].source_url,
+    "https://www.youtube.com/watch?v=OfficialTrailer1",
   );
 });
 
@@ -687,6 +774,179 @@ test("goal production render materializer preserves a current hash-bound reconci
   assert.equal(
     completed.records[0].reconciliation_basis,
     "current_validated_official_materialised_clip",
+  );
+});
+
+test("goal production render materializer preserves a same-run reconciled rights row when the renderer omits fingerprints", () => {
+  const generatedAt = "2026-07-18T00:15:45.613Z";
+  const clipPath = "output/video_cache/same-run-official-window.mp4";
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    can_auto_publish: false,
+    records: [{
+      asset_id: "same-run-official-window",
+      path: clipPath,
+      asset_sha256: "a".repeat(64),
+      asset_size_bytes: 16384,
+      source_url: "https://www.youtube.com/watch?v=SameRunOfficial1",
+      source_type: "official_youtube_channel",
+      source_owner: "Official Publisher",
+      licence_basis: "official_publisher_promotional_video",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      rights_status: "approved_under_transformative_editorial_policy",
+      usage_scope: "transformative_editorial_short_form",
+      rights_verdict: "GREEN",
+      rights_decision_basis: "validated_official_direct_media_editorial_policy",
+      reconciliation_basis: "current_validated_official_materialised_clip",
+      reconciled_at: generatedAt,
+      risk_score: 0.28,
+      evidence_file: "output/current/materialised_motion_clips.json",
+      evidence_sha256: "b".repeat(64),
+      evidence_size_bytes: 4096,
+    }],
+  }, [{
+    id: "same-run-official-window",
+    path: clipPath,
+    source_url: "https://www.youtube.com/watch?v=SameRunOfficial1",
+    source_type: "official_youtube_channel",
+    source_family: "official_window_20_4",
+    media_kind: "direct_video",
+    rights_basis: "official_publisher_promotional_video",
+    rights_grant: false,
+    rights_status: "operator_legal_review_required",
+    usage_scope: "local_proof_only",
+  }], {
+    allowMissingClipFingerprint: true,
+    expectedReconciledAt: generatedAt,
+  });
+
+  assert.equal(completed.verdict, "PASS");
+  assert.equal(completed.result, "PASS");
+  assert.deepEqual(completed.blockers, []);
+  assert.equal(completed.records[0].asset_sha256, "a".repeat(64));
+  assert.equal(completed.records[0].commercial_use_allowed, true);
+  assert.equal(completed.records[0].rights_verdict, "GREEN");
+  assert.equal(completed.records[0].reconciled_at, generatedAt);
+});
+
+test("goal production render materializer preserves a same-run exact-current rights reconciliation row", () => {
+  const generatedAt = "2026-07-18T17:45:32.541Z";
+  const clipPath = "output/video_cache/exact-current-official-window.mp4";
+  const clipSha256 = "c".repeat(64);
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    can_auto_publish: false,
+    records: [{
+      asset_id: "exact-current-official-window",
+      path: clipPath,
+      asset_sha256: clipSha256,
+      asset_size_bytes: 24576,
+      source_url: "https://www.youtube.com/watch?v=ExactCurrent1",
+      source_type: "official_youtube_channel_url",
+      source_owner: "Official Publisher",
+      licence_basis: "official_publisher_promotional_editorial_use",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      rights_status: "approved",
+      usage_scope: "declared_licensed_scope",
+      rights_verdict: "GREEN",
+      rights_decision_basis: "declared_asset_rights_record",
+      reconciliation_basis: "exact_current_asset_record",
+      reconciled_at: generatedAt,
+      risk_score: 0.28,
+      evidence_file: "output/current/materialised_motion_clips.json",
+      evidence_sha256: "d".repeat(64),
+      evidence_size_bytes: 4096,
+    }],
+  }, [{
+    id: "exact-current-official-window",
+    path: clipPath,
+    source_url: "https://www.youtube.com/watch?v=ExactCurrent1",
+    source_type: "official_youtube_channel_url",
+    source_family: "official_window_20_4",
+    media_kind: "direct_video",
+    rights_basis: "official_publisher_promotional_editorial_use",
+    rights_grant: false,
+    sha256: clipSha256,
+    size_bytes: 24576,
+  }], {
+    allowMissingClipFingerprint: true,
+    expectedReconciledAt: generatedAt,
+  });
+
+  assert.equal(completed.verdict, "PASS");
+  assert.equal(completed.result, "PASS");
+  assert.deepEqual(completed.blockers, []);
+  assert.equal(completed.records[0].asset_sha256, clipSha256);
+  assert.equal(completed.records[0].commercial_use_allowed, true);
+  assert.equal(completed.records[0].rights_verdict, "GREEN");
+  assert.equal(completed.records[0].reconciliation_basis, "exact_current_asset_record");
+});
+
+test("goal production render materializer rejects a stale reconciled rights row when the renderer omits fingerprints", () => {
+  const clipPath = "output/video_cache/stale-official-window.mp4";
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    can_auto_publish: false,
+    records: [{
+      asset_id: "stale-official-window",
+      path: clipPath,
+      asset_sha256: "a".repeat(64),
+      asset_size_bytes: 16384,
+      source_url: "https://www.youtube.com/watch?v=StaleOfficial1",
+      source_type: "official_youtube_channel",
+      source_owner: "Official Publisher",
+      licence_basis: "official_publisher_promotional_video",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      rights_status: "approved_under_transformative_editorial_policy",
+      usage_scope: "transformative_editorial_short_form",
+      rights_verdict: "GREEN",
+      rights_decision_basis: "validated_official_direct_media_editorial_policy",
+      reconciliation_basis: "current_validated_official_materialised_clip",
+      reconciled_at: "2026-07-17T23:55:00.000Z",
+      risk_score: 0.28,
+      evidence_file: "output/current/materialised_motion_clips.json",
+      evidence_sha256: "b".repeat(64),
+      evidence_size_bytes: 4096,
+    }],
+  }, [{
+    id: "stale-official-window",
+    path: clipPath,
+    source_url: "https://www.youtube.com/watch?v=StaleOfficial1",
+    source_type: "official_youtube_channel",
+    source_family: "official_window_20_4",
+    media_kind: "direct_video",
+    rights_basis: "official_publisher_promotional_video",
+    rights_grant: false,
+    rights_status: "operator_legal_review_required",
+    usage_scope: "local_proof_only",
+  }], {
+    allowMissingClipFingerprint: true,
+    expectedReconciledAt: "2026-07-18T00:15:45.613Z",
+  });
+
+  assert.equal(completed.verdict, "RED");
+  assert.equal(completed.result, "RED");
+  assert.ok(completed.blockers.includes("selected_asset_commercial_rights_unverified"));
+  assert.equal(completed.records[0].commercial_use_allowed, false);
+  assert.equal(completed.records[0].rights_verdict, "RED");
+  assert.equal(
+    completed.records[0].rights_decision_basis,
+    "provisional_renderer_local_proof_pending_policy_reconciliation",
   );
 });
 
@@ -803,6 +1063,243 @@ test("goal production render materializer preserves governed owned-card rights o
   assert.equal(completed.records[0].rights_verdict, "pass");
   assert.equal(completed.records[0].risk_score, 0);
   assert.equal(completed.records[0].sha256, "c".repeat(64));
+  assert.equal(completed.records[0].creator, "Pulse Gaming");
+  assert.equal(completed.records[0].source_channel, "Pulse Gaming");
+  assert.equal(completed.records[0].source_channel_url, "local://pulse-gaming");
+});
+
+test("goal production render materializer reconciles a renderer-selected generated card to one hash-bound rights asset", () => {
+  const pathValue = "output/generated/hf_source_card_story-1.mp4";
+  const assetSha256 = "d".repeat(64);
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    can_auto_publish: false,
+    records: [{
+      asset_id: "story-1_video_06",
+      asset_type: "owned_generated_motion_graphic",
+      kind: "video",
+      path: pathValue,
+      source_url: "local://pulse-hyperframes/story-1/source",
+      source_type: "internally_generated_motion_graphic",
+      source_family: "hyperframes_source_card",
+      creator: "Pulse Gaming",
+      source_owner: "Pulse Gaming",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      allowed_use: "owned_editorial_motion_graphic",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      credit_required: false,
+      risk_score: 0.02,
+      approval_status: "approved_for_owned_editorial_use",
+      rights_verdict: "GREEN",
+      asset_sha256: assetSha256,
+      asset_size_bytes: 817203,
+      evidence_file: "output/generated/hf_source_card_story-1.shell.json",
+      evidence_sha256: "e".repeat(64),
+      evidence_size_bytes: 2906,
+      reconciliation_basis: "current_owned_generated_card_sidecar",
+    }],
+  }, [{
+    id: "hyperframes_source_card_story-1",
+    asset_id: "hyperframes_source_card_story-1",
+    kind: "generated_card",
+    path: pathValue,
+    source_url: "local://pulse-hyperframes/story-1/source",
+    source_type: "internally_generated_motion_graphic",
+    source_family: "hyperframes_source_card",
+    media_kind: "motion_clip",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    rights_grant: true,
+    commercial_use_allowed: true,
+    approval_status: "approved_for_owned_editorial_use",
+    duration_s: 2.6,
+  }]);
+
+  assert.equal(completed.records.length, 1);
+  assert.equal(completed.records[0].asset_id, "hyperframes_source_card_story-1");
+  assert.equal(completed.records[0].asset_sha256, assetSha256);
+  assert.equal(completed.records[0].asset_size_bytes, 817203);
+  assert.deepEqual(completed.blockers, []);
+  assert.equal(completed.verdict, "PASS");
+  assert.equal(completed.result, "PASS");
+});
+
+test("goal production render materializer preserves exact used-asset ids and native platform keys", () => {
+  const cardPath = "output/generated/hf_source_card_story-1.mp4";
+  const cardSha256 = "d".repeat(64);
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    used_assets: [{
+      asset_id: "story-1_video_04",
+      kind: "video",
+      path: cardPath,
+      asset_sha256: cardSha256,
+      asset_size_bytes: 817203,
+    }],
+    records: [{
+      asset_id: "story-1_video_04",
+      id: "story-1_video_04",
+      asset_type: "owned_generated_motion_graphic",
+      kind: "video",
+      path: cardPath,
+      source_url: "local://pulse-hyperframes/story-1/source",
+      source_type: "internally_generated_motion_graphic",
+      source_family: "hyperframes_source_card",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      allowed_use: "owned_editorial_motion_graphic",
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+      commercial_use_allowed: true,
+      credit_required: false,
+      risk_score: 0.02,
+      approval_status: "approved_for_owned_editorial_use",
+      rights_status: "approved",
+      rights_verdict: "GREEN",
+      asset_sha256: cardSha256,
+      asset_size_bytes: 817203,
+      evidence_file: "output/generated/hf_source_card_story-1.shell.json",
+      evidence_sha256: "e".repeat(64),
+      evidence_size_bytes: 2906,
+      reconciliation_basis: "current_owned_generated_card_sidecar",
+    }],
+  }, [{
+    id: "hyperframes_premium_shell_source_1",
+    asset_id: "hyperframes_premium_shell_source_1",
+    kind: "generated_card",
+    path: cardPath,
+    source_url: "local://pulse-hyperframes/story-1/source",
+    source_type: "internally_generated_motion_graphic",
+    source_family: "hyperframes_source_card",
+    media_kind: "motion_clip",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    rights_grant: true,
+    commercial_use_allowed: true,
+    approval_status: "approved_for_owned_editorial_use",
+    sha256: cardSha256,
+    size_bytes: 817203,
+    duration_s: 2.6,
+  }]);
+
+  assert.equal(completed.records.length, 1);
+  assert.equal(completed.records[0].asset_id, "story-1_video_04");
+  assert.equal(completed.records[0].id, "story-1_video_04");
+  assert.deepEqual(
+    completed.records[0].allowed_platforms,
+    ["youtube_shorts", "instagram_reels", "facebook_reels"],
+  );
+  assert.deepEqual(completed.blockers, []);
+  assert.equal(completed.verdict, "PASS");
+});
+
+test("goal production render materializer canonicalises platforms on preserved official rights rows", () => {
+  const clipPath = "output/video_cache/current-official-window.mp4";
+  const clipSha256 = "a".repeat(64);
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    records: [{
+      asset_id: "current-official-window",
+      path: clipPath,
+      asset_sha256: clipSha256,
+      asset_size_bytes: 16384,
+      source_url: "https://www.youtube.com/watch?v=CurrentOfficial1",
+      source_type: "official_youtube_channel",
+      licence_basis: "official_publisher_promotional_video",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+      commercial_use_allowed: true,
+      approval_status: "approved_for_transformative_editorial_use",
+      rights_status: "approved_under_transformative_editorial_policy",
+      usage_scope: "transformative_editorial_short_form",
+      rights_verdict: "GREEN",
+      rights_decision_basis: "validated_official_direct_media_editorial_policy",
+      reconciliation_basis: "current_validated_official_materialised_clip",
+      risk_score: 0.28,
+      evidence_file: "output/current/materialised_motion_clips.json",
+      evidence_sha256: "b".repeat(64),
+      evidence_size_bytes: 4096,
+    }],
+  }, [{
+    id: "current-official-window",
+    path: clipPath,
+    source_url: "https://www.youtube.com/watch?v=CurrentOfficial1",
+    source_type: "official_youtube_channel",
+    source_family: "official_window_20_4",
+    media_kind: "direct_video",
+    rights_basis: "official_publisher_promotional_video",
+    rights_grant: false,
+    sha256: clipSha256,
+    size_bytes: 16384,
+  }]);
+
+  assert.deepEqual(
+    completed.records[0].allowed_platforms,
+    ["youtube_shorts", "instagram_reels", "facebook_reels"],
+  );
+  assert.equal(completed.verdict, "PASS");
+});
+
+test("goal production render materializer keeps renderer-selected HyperFrames identities in the final scene plan", () => {
+  const cardPath = "output/generated/hf_source_card_story-1.mp4";
+  const directPaths = [
+    "output/video_cache/direct-1.mp4",
+    "output/video_cache/direct-2.mp4",
+  ];
+  const clips = _private.renderedScenePlanClipObjects({
+    renderManifest: {
+      clip_scene_plan: {
+        scenes: [
+          {
+            path: directPaths[0],
+            durationS: 2.6,
+            baseSourceKey: "official_direct_1",
+          },
+          {
+            path: cardPath,
+            durationS: 2.6,
+            baseSourceKey: "hyperframes_source_card",
+            readableCardKind: "source",
+          },
+          {
+            path: directPaths[1],
+            durationS: 2.6,
+            baseSourceKey: "official_direct_2",
+          },
+        ],
+      },
+    },
+    fallbackClips: [
+      {
+        id: "direct-1",
+        asset_id: "direct-1",
+        path: directPaths[0],
+        source_family: "official_direct_1",
+      },
+      {
+        id: "direct-2",
+        asset_id: "direct-2",
+        path: directPaths[1],
+        source_family: "official_direct_2",
+      },
+    ],
+    selectedInputAssets: [{
+      asset_id: "hyperframes_source_card_story-1",
+      kind: "generated_card",
+      path: cardPath,
+      source_url: "local://pulse-hyperframes/story-1/source",
+    }],
+  });
+
+  assert.equal(clips.length, 3);
+  assert.equal(clips[1].id, "hyperframes_source_card_story-1");
+  assert.equal(clips[1].asset_id, "hyperframes_source_card_story-1");
+  assert.equal(clips[1].source_url, "local://pulse-hyperframes/story-1/source");
 });
 
 test("goal production render materializer treats Steam HLS and DASH delivery as one trailer root", () => {
@@ -1225,6 +1722,76 @@ function licensedSfxAssets() {
   ];
 }
 
+async function writeReadyEpidemicRuntimeManifest(root) {
+  const roles = ["impact", "transition", "ui_tick", "riser", "sub_hit", "glitch"];
+  const selectedAssets = [];
+  const rightsRecords = [];
+  const safelistEvidencePath = path.join(
+    root,
+    "output",
+    "epidemic-implementation",
+    "safelist_evidence",
+    "epidemic_safelist_evidence.json",
+  );
+  await fs.outputJson(safelistEvidencePath, {
+    provider_id: "epidemic_sound",
+    status: "safelisted",
+  });
+  for (const [index, role] of roles.entries()) {
+    const assetId = `epidemic-${role}`;
+    const assetPath = path.join(root, "audio", "epidemic", "sfx", `${role}.wav`);
+    await fs.outputFile(assetPath, Buffer.alloc(2048, index + 90));
+    selectedAssets.push({
+      asset_id: assetId,
+      role,
+      family: role,
+      provider_id: "epidemic_sound",
+      provider_name: "Epidemic Sound",
+      source_url: assetPath,
+      rights_basis: "epidemic_sound_active_subscription_safelisted_channel",
+      approval_status: "approved_for_commercial_editorial_use",
+    });
+    rightsRecords.push({
+      asset_id: assetId,
+      asset_type: "sfx",
+      role,
+      family: role,
+      provider_id: "epidemic_sound",
+      provider_name: "Epidemic Sound",
+      path: assetPath,
+      source_url: assetPath,
+      source_type: "licensed_sfx_library_file",
+      licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+      allowed_use: "finished_editorial_video_only",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      credit_required: false,
+      approval_status: "approved_for_commercial_editorial_use",
+      risk_score: 0.08,
+      evidence_reference: safelistEvidencePath,
+      raw_redistribution_allowed: false,
+    });
+  }
+  const manifestPath = path.join(
+    root,
+    "output",
+    "epidemic-implementation",
+    "epidemic_sfx_runtime_manifest.json",
+  );
+  await fs.outputJson(manifestPath, {
+    schema_version: 1,
+    provider_id: "epidemic_sound",
+    provider_name: "Epidemic Sound",
+    readiness: { status: "ready", blockers: [] },
+    required_roles: roles,
+    covered_roles: roles,
+    selected_assets: selectedAssets,
+    variant_assets_by_role: {},
+    rights_records: rightsRecords,
+  });
+  return { manifestPath, selectedAssets, rightsRecords };
+}
+
 function readyJob(storyId, artifactDir, overrides = {}) {
   return {
     story_id: storyId,
@@ -1305,10 +1872,16 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
-  const isSource = kind === "source";
-  const minimumDurationS = Number(overrides.minimumDurationS || (isSource ? 1.6 : 3.6));
-  const plannedDurationS = Number(overrides.plannedDurationS || (isSource ? 2.6 : 4.1));
-  const maxDurationS = Number(overrides.maxDurationS || (isSource ? 3.1 : 5.2));
+  const timing = v5CardTimingContract(kind, readableText);
+  const minimumDurationS = Number(
+    overrides.minimumDurationS ?? timing.minimum_visible_duration_s,
+  );
+  const plannedDurationS = Number(
+    overrides.plannedDurationS ?? timing.planned_visible_duration_s,
+  );
+  const maxDurationS = Number(
+    overrides.maxDurationS ?? timing.maximum_visible_duration_s,
+  );
   await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
@@ -1345,6 +1918,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
       },
       readability_contract: {
         status: "pass",
+        contract_version: PREMIUM_CARD_TIMING_V5_VERSION,
         evidence: {
           readable_text: readableText,
           word_count: readableText.split(/\s+/).filter(Boolean).length,
@@ -1463,6 +2037,126 @@ test("goal production render materializer renders ready jobs and writes a final 
     }),
   );
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
+});
+
+test("goal production render materializer hydrates a materially ready canonical Epidemic SFX runtime", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-epidemic-sfx-"));
+  const storyId = "story-epidemic-sfx";
+  const artifactDir = await makePackage(root, storyId);
+  await fs.remove(path.join(artifactDir, "sfx_manifest.json"));
+  const runtime = await writeReadyEpidemicRuntimeManifest(root);
+  let renderedStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob(storyId, artifactDir)] },
+    generatedAt: "2026-07-18T13:20:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderedStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 91));
+      return {
+        story_id: renderedStory.story_id,
+        output,
+        clips: renderedStory.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 24,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.ok(renderedStory);
+  assert.deepEqual(
+    renderedStory.sfx_asset_inventory.map((asset) => asset.asset_id).sort(),
+    runtime.selectedAssets.map((asset) => asset.asset_id).sort(),
+  );
+  assert.equal(
+    renderedStory.sfx_asset_inventory.every(
+      (asset) =>
+        asset.provider_id === "epidemic_sound" &&
+        asset.commercial_use_allowed === true,
+    ),
+    true,
+  );
+  assert.equal(renderedStory.sfx_runtime_manifest_source, "epidemic_sfx_runtime_manifest");
+  assert.equal(renderedStory.sound_transition_plan.readiness.verdict, "pass");
+  assert.deepEqual(
+    renderedStory.visual_v4_director_plan.readiness.blockers.filter((blocker) =>
+      blocker.startsWith("sfx_source:"),
+    ),
+    [],
+  );
+
+  const packageManifest = await fs.readJson(path.join(artifactDir, "sfx_manifest.json"));
+  assert.deepEqual(
+    packageManifest.source_plan.selected_assets.map((asset) => asset.asset_id).sort(),
+    renderedStory.sfx_asset_inventory.map((asset) => asset.asset_id).sort(),
+  );
+  const packageRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  const rightsById = new Map(
+    packageRights.records.map((record) => [record.asset_id, record]),
+  );
+  for (const asset of renderedStory.sfx_asset_inventory) {
+    const rights = rightsById.get(asset.asset_id);
+    assert.ok(rights, `missing SFX rights for ${asset.asset_id}`);
+    assert.equal(rights.commercial_use_allowed, true);
+    assert.equal(rights.approval_status, "approved_for_commercial_editorial_use");
+  }
+});
+
+test("goal production render materializer cannot let a stale director map override current proof-card copy", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-current-proof-"));
+  const storyId = "arknights-current-proof";
+  const artifactDir = await makePackage(root, storyId, {
+    canonical_subject: "Arknights: Endfield",
+    selected_title: "Arknights: Endfield Puts PS5 Pro Under Pressure",
+    thumbnail_headline: "PS5 PRO STRESS TEST",
+    canonical_angle: "source_locked_update",
+    primary_source: "PlayStation Blog",
+    narration_script:
+      "Arknights: Endfield just turned its PS5 Pro update into a hardware stress test. Upgraded PSSR promises sharper detail and steadier frame rates.",
+    full_script:
+      "Arknights: Endfield just turned its PS5 Pro update into a hardware stress test. Upgraded PSSR promises sharper detail and steadier frame rates.",
+    first_spoken_line:
+      "Arknights: Endfield just turned its PS5 Pro update into a hardware stress test.",
+    description:
+      "Arknights: Endfield puts upgraded PSSR and PS5 Pro performance under pressure.",
+  });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    shot_plan: [
+      {
+        kind: "proof_card",
+        label: "ACCESSORY LISTED",
+        detail: "CHECK PRICE + PLATFORM",
+      },
+    ],
+  });
+
+  const { story } = await buildRendererStoryJson(
+    readyJob(storyId, artifactDir),
+    {
+      workspaceRoot: root,
+      generatedAt: "2026-07-18T02:00:00.000Z",
+    },
+  );
+  const currentProof = story.visual_v4_director_plan.shot_plan.find(
+    (shot) => shot.kind === "proof_card",
+  );
+
+  assert.equal(currentProof.label, "PS5 PRO STRESS TEST");
+  assert.equal(currentProof.detail, "SHARPER DETAIL");
+  assert.equal(story.proof_card_primary, currentProof.label);
+  assert.equal(story.proof_card_secondary, currentProof.detail);
+  assert.doesNotMatch(
+    `${story.proof_card_primary} ${story.proof_card_secondary}`,
+    /ACCESSORY LISTED|CHECK PRICE|BUY NOW|SHOP|PRE-?ORDER/i,
+  );
 });
 
 test("goal production render materializer preserves verified base-source identity through the public render interface", async () => {
@@ -2231,11 +2925,24 @@ test("production renderer writes an immutable used-asset inventory with file-bac
       captions_path: path.join(artifactDir, "captions.srt"),
     },
   });
+  let rightsReconciliationCall = null;
 
   const report = await materializeGoalProductionRenders({
     workspaceRoot: root,
     workOrder: { jobs: [job] },
     generatedAt: "2026-07-15T08:15:00.000Z",
+    reconcileRightsEvidence: async (options) => {
+      rightsReconciliationCall = options;
+      assert.equal(await fs.pathExists(path.join(artifactDir, "render_manifest.json")), true);
+      assert.equal(await fs.pathExists(path.join(artifactDir, "narration_manifest.json")), true);
+      assert.equal(await fs.pathExists(path.join(artifactDir, "flagship", "inventory.json")), false);
+      return {
+        verdict: "PASS",
+        applied: true,
+        blockers: [],
+        reconciled_record_count: rightsRows.length,
+      };
+    },
     renderProof: async ({ output }) => {
       await fs.outputFile(output, Buffer.alloc(4096, 12));
       return {
@@ -2264,6 +2971,14 @@ test("production renderer writes an immutable used-asset inventory with file-bac
   });
 
   assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  assert.equal(rightsReconciliationCall.apply, true);
+  assert.equal(rightsReconciliationCall.storyId, storyId);
+  assert.equal(rightsReconciliationCall.workspaceRoot, root);
+  assert.equal(report.jobs[0].rights_reconciliation.verdict, "PASS");
+  assert.equal(
+    await fs.pathExists(path.join(artifactDir, "flagship", "rights_reconciliation_report.json")),
+    true,
+  );
   const inventoryPath = path.join(artifactDir, "flagship", "inventory.json");
   const inventory = await fs.readJson(inventoryPath);
   assert.equal(inventory.complete, true, JSON.stringify(inventory.blockers, null, 2));
@@ -2285,6 +3000,243 @@ test("production renderer writes an immutable used-asset inventory with file-bac
     assert.deepEqual(evidence.allowed_platforms, asset.allowed_platforms);
     assert.match(evidence.source_ledger_sha256, /^[a-f0-9]{64}$/);
   }
+});
+
+test("post-render rights reconciliation cannot report PASS when the applied ledger is RED", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-production-render-rights-monotonic-"),
+  );
+  const storyId = "flagship-rights-monotonic";
+  const artifactDir = await makePackage(root, storyId);
+  const rightsRows = [
+    {
+      asset_id: "clip-one",
+      kind: "video",
+      path: path.join(artifactDir, "clip-1.mp4"),
+      source_url: "https://official.example/trailer-one",
+      licence_basis: "transformative_editorial_short_form",
+      commercial_use_allowed: true,
+      approval_status: "approved",
+      allowed_platforms: [
+        "youtube_shorts",
+        "instagram_reels",
+        "facebook_reels",
+      ],
+    },
+    {
+      asset_id: "narration",
+      kind: "narration",
+      path: path.join(artifactDir, "audio.mp3"),
+      source_url: "local://pulse-gaming/narration",
+      licence_basis: "owned_local_voice_model",
+      commercial_use_allowed: true,
+      approval_status: "approved",
+      allowed_platforms: [
+        "youtube_shorts",
+        "instagram_reels",
+        "facebook_reels",
+      ],
+    },
+  ];
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "PASS",
+    records: rightsRows,
+    blockers: [],
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob(storyId, artifactDir)] },
+    generatedAt: "2026-07-18T09:30:00.000Z",
+    reconcileRightsEvidence: async () => {
+      await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+        verdict: "RED",
+        records: rightsRows.map((record, index) => ({
+          ...record,
+          commercial_use_allowed: index === 0
+            ? false
+            : record.commercial_use_allowed,
+        })),
+        blockers: ["selected_asset_commercial_rights_unverified"],
+      });
+      return {
+        verdict: "PASS",
+        applied: true,
+        blockers: [],
+        reconciled_record_count: rightsRows.length,
+      };
+    },
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      return {
+        clips: 1,
+        rendered_duration_s: 1,
+        selected_input_assets: {
+          schema_version: 1,
+          authoritative: true,
+          producer_id: "pulse-gaming-studio-v4-renderer",
+          assets: rightsRows.map(
+            ({ asset_id, kind, path: filePath, source_url }) => ({
+              asset_id,
+              kind,
+              path: filePath,
+              source_url,
+            }),
+          ),
+        },
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  assert.equal(report.jobs[0].rights_reconciliation.verdict, "FAIL");
+  assert.equal(report.jobs[0].rights_reconciliation.can_auto_publish, false);
+  assert.ok(
+    report.jobs[0].rights_reconciliation.blockers.includes(
+      "post_render_rights_ledger_not_green",
+    ),
+  );
+  const persisted = await fs.readJson(
+    path.join(artifactDir, "flagship", "rights_reconciliation_report.json"),
+  );
+  assert.equal(persisted.verdict, "FAIL");
+  assert.equal(persisted.can_auto_publish, false);
+});
+
+test("production renderer downgrades a stored PASS when later quality refresh leaves the final rights ledger RED", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-production-render-rights-final-state-"),
+  );
+  const storyId = "flagship-rights-final-state";
+  const artifactDir = await makePackage(root, storyId);
+  const clipPaths = [
+    path.join(artifactDir, "clip-1.mp4"),
+    path.join(artifactDir, "clip-2.mp4"),
+    path.join(artifactDir, "clip-3.mp4"),
+  ];
+  await fs.outputFile(clipPaths[2], Buffer.alloc(2048, 4));
+  const rightsRows = clipPaths.map((clipPath, index) => ({
+    asset_id: `clip-${index + 1}`,
+    kind: "video",
+    path: clipPath,
+    source_url: `https://official.example/trailer-${index + 1}`,
+    licence_basis: "transformative_editorial_short_form",
+    commercial_use_allowed: true,
+    approval_status: "approved",
+    rights_status: "approved",
+    allowed_platforms: [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+    ],
+    risk_score: 0.2,
+    credit_required: false,
+  }));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "PASS",
+    result: "PASS",
+    records: rightsRows,
+    blockers: [],
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [readyJob(storyId, artifactDir, {
+        evidence: {
+          ...readyJob(storyId, artifactDir).evidence,
+          materialised_motion_clip_count: clipPaths.length,
+          distinct_motion_family_count: clipPaths.length,
+          materialised_motion_clip_paths: clipPaths,
+        },
+      })],
+    },
+    generatedAt: "2026-07-18T09:35:00.000Z",
+    reconcileRightsEvidence: async () => ({
+      verdict: "PASS",
+      applied: true,
+      blockers: [],
+      reconciled_record_count: rightsRows.length,
+    }),
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      const scenes = rightsRows.map((row, index) => ({
+        id: row.asset_id,
+        asset_id: row.asset_id,
+        path: row.path,
+        source_url: row.source_url,
+        source_family: `official-source-${index + 1}`,
+        media_kind: "direct_video",
+        durationS: 4,
+        licence_basis: index === 0
+          ? "official_source_transformative_editorial_local_proof_only"
+          : row.licence_basis,
+        rights_basis: index === 0
+          ? "official_source_transformative_editorial_local_proof_only"
+          : row.licence_basis,
+        rights_grant: index !== 0,
+        commercial_use_allowed: index === 0 ? false : true,
+        rights_status: index === 0
+          ? "operator_legal_review_required"
+          : "approved",
+        usage_scope: index === 0
+          ? "local_proof_only"
+          : "declared_licensed_scope",
+      }));
+      return {
+        clips: scenes.length,
+        rendered_duration_s: 12,
+        selected_input_assets: {
+          schema_version: 1,
+          authoritative: true,
+          producer_id: "pulse-gaming-studio-v4-renderer",
+          assets: scenes,
+        },
+        clip_scene_plan: {
+          repeatFree: true,
+          blockers: [],
+          repeatedBaseSources: [],
+          repeatedReadableCardKinds: [],
+          scenes,
+          cardVisibleWindows: [],
+        },
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  const finalLedger = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(finalLedger.verdict, "RED");
+  assert.equal(finalLedger.can_auto_publish, false);
+  assert.ok(
+    finalLedger.blockers.includes("selected_asset_commercial_rights_unverified"),
+  );
+  assert.equal(report.jobs[0].rights_reconciliation.verdict, "FAIL");
+  assert.equal(report.jobs[0].rights_reconciliation.can_auto_publish, false);
+  assert.ok(
+    report.jobs[0].rights_reconciliation.blockers.includes(
+      "post_render_rights_ledger_not_green",
+    ),
+  );
+  const persisted = await fs.readJson(
+    path.join(artifactDir, "flagship", "rights_reconciliation_report.json"),
+  );
+  assert.equal(persisted.verdict, "FAIL");
+  assert.equal(persisted.can_auto_publish, false);
+  assert.equal(persisted.final_state_verified, true);
+  assert.match(persisted.applied_ledger_sha256, /^[a-f0-9]{64}$/);
 });
 
 test("flagship inventory refresh captures platform variants materialised after the master render", async () => {
@@ -2373,6 +3325,18 @@ test("flagship inventory refresh captures platform variants materialised after t
   assert.equal(inventory.used_assets[0].asset_id, platformVariant.asset_id);
   assert.equal(inventory.used_assets[0].source_url, platformVariant.source_url);
   assert.equal(inventory.used_assets[0].creator, "Pulse Gaming");
+  const refreshedRenderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  assert.equal(refreshedRenderManifest.flagship_inventory_evidence.complete, true);
+  assert.equal(refreshedRenderManifest.flagship_inventory_evidence.verdict, "GREEN");
+  assert.equal(
+    refreshedRenderManifest.flagship_inventory_evidence.inventory_sha256,
+    refreshed.inventory_sha256,
+  );
+  assert.equal(refreshedRenderManifest.flagship_inventory_evidence.used_asset_count, 1);
+  assert.equal(
+    refreshedRenderManifest.flagship_inventory_refreshed_at,
+    "2026-07-15T09:30:00.000Z",
+  );
   const sidecar = await fs.readJson(
     path.join(artifactDir, inventory.used_assets[0].evidence_file),
   );
@@ -2583,6 +3547,74 @@ test("flagship inventory refresh refuses creator fallbacks outside the verifier 
     await fs.pathExists(path.join(flagshipDir, "rights", `${assetId}.json`)),
     false,
   );
+});
+
+test("flagship inventory treats matched-asset pointers as indexes rather than duplicate rights rows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-rights-pointer-"));
+  const storyId = "flagship-rights-pointer";
+  const assetId = `${storyId}_audio_path`;
+  const artifactDir = path.join(root, "package");
+  const flagshipDir = path.join(artifactDir, "flagship");
+  const assetPath = path.join(artifactDir, "audio.mp3");
+  await fs.outputFile(assetPath, Buffer.alloc(4096, 4));
+  await fs.outputJson(path.join(flagshipDir, "generation_manifest.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    artifacts: {},
+  });
+  const sourceRecord = {
+    asset_id: assetId,
+    kind: "narration",
+    path: assetPath,
+    source_url: `elevenlabs://pulse-gaming/${storyId}`,
+    creator: "Pulse Gaming",
+    licence_basis: "owned_local_voice_model",
+    commercial_use_allowed: true,
+    approval_status: "approved",
+    allowed_platforms: ["youtube_shorts"],
+    risk_score: 0.08,
+    credit_required: false,
+  };
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [sourceRecord],
+    matched_assets: [{
+      asset_id: assetId,
+      path: assetPath,
+      rights_record_id: assetId,
+    }],
+    blockers: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    selected_input_assets: {
+      schema_version: 1,
+      authoritative: true,
+      producer_id: "pulse-gaming-studio-v4-renderer",
+      assets: [{
+        asset_id: assetId,
+        kind: sourceRecord.kind,
+        path: sourceRecord.path,
+        source_url: sourceRecord.source_url,
+      }],
+    },
+  });
+
+  const refreshed = await refreshFlagshipInventoryEvidence({
+    artifactDir,
+    storyId,
+    generatedAt: "2026-07-15T09:36:00.000Z",
+  });
+
+  assert.equal(refreshed.status, "inventory_refreshed");
+  assert.equal(
+    refreshed.blockers.includes(`used_asset_rights_record_duplicate:${assetId}`),
+    false,
+  );
+  const inventory = await fs.readJson(path.join(flagshipDir, "inventory.json"));
+  assert.equal(inventory.verdict, "GREEN");
+  assert.equal(inventory.used_assets.length, 1);
 });
 
 test("production renderer fails flagship rights closed across duplicate asset aliases", async () => {
@@ -3387,12 +4419,306 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.equal(sourceCard.durationS, 2.6);
   assert.equal(sourceCard.duration_s, 2.6);
   assert.equal(sourceCard.maximum_visible_duration_s, 3.1);
-  assert.ok(readableCards.every((clip) => clip.durationS >= 3.6 && clip.duration_s >= 3.6));
+  assert.ok(
+    readableCards.every(
+      (clip) =>
+        clip.durationS >= 3.4 &&
+        clip.duration_s >= 3.4 &&
+        clip.durationS <= 3.8 &&
+        clip.duration_s <= 3.8,
+    ),
+  );
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.equal(manifest.hyperframes_premium_shell_required, true);
   assert.equal(manifest.hyperframes_card_count, 3);
   assert.equal(manifest.premium_shell_verdict, "pass");
   assert.equal(manifest.premium_shell_pass_count, 5);
+});
+
+test("goal production render materializer keeps optional rejected HyperFrames cards advisory when the passing set meets the contract", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-optional-reject-"));
+  const storyId = "story-hf-optional-reject";
+  const artifactDir = await makePackage(root, storyId);
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, storyId, kind),
+  ));
+  const timelineSidecarPath = path.join(
+    root,
+    "test",
+    "output",
+    `hf_timeline_card_${storyId}.shell.json`,
+  );
+  const timelineSidecar = await fs.readJson(timelineSidecarPath);
+  timelineSidecar.hyperframes_premium_shell.readability_contract.status = "fail";
+  timelineSidecar.hyperframes_premium_shell.readability_contract.evidence.planned_visible_duration_s = 3.2;
+  timelineSidecar.hyperframes_premium_shell.readability_contract.evidence.minimum_visible_duration_s = 3.8;
+  await fs.writeJson(timelineSidecarPath, timelineSidecar, { spaces: 2 });
+
+  const job = readyJob(storyId, artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-optional-reject-motion");
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-05-22T07:07:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        hyperframes_premium_shell_required: renderStory.hyperframes_premium_shell_required,
+        hyperframes_card_count: renderStory.hyperframes_card_count,
+        hyperframes_premium_shell_gate: renderStory.hyperframes_premium_shell_gate,
+        premium_shell_verdict: renderStory.premium_shell_verdict,
+        premium_shell_pass_count: renderStory.premium_shell_pass_count,
+        premium_shell_required_pass_count: renderStory.premium_shell_required_pass_count,
+        premium_shell_blockers: renderStory.premium_shell_blockers,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(renderStory.premium_shell_verdict, "pass");
+  assert.equal(renderStory.premium_shell_pass_count, 4);
+  assert.equal(renderStory.hyperframes_card_count, 3);
+  assert.deepEqual(renderStory.premium_shell_blockers, []);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.checks.timeline.verdict, "fail");
+  assert.ok(
+    renderStory.hyperframes_premium_shell_gate.rejectedCardIssues.includes(
+      "timeline:hyperframes_readability_contract_not_passed",
+    ),
+  );
+  assert.ok(
+    renderStory.hyperframes_premium_shell_gate.rejectedCardIssues.includes(
+      "timeline:hyperframes_readable_hold_too_short",
+    ),
+  );
+  assert.ok(
+    renderStory.visual_v4_bridge_video_clips.every(
+      (clip) => clip.source_family !== "hyperframes_timeline_card",
+    ),
+  );
+});
+
+test("goal production render materializer reports zero selected cards when premium direct motion substitutes for the shell", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-direct-substitute-"));
+  const storyId = "story-hf-direct-substitute";
+  const artifactDir = await makePackage(root, storyId);
+  await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
+    writePassingHyperframesCard(root, storyId, kind),
+  ));
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 47.55,
+      spoken_wpm: 154,
+    },
+  });
+  const directClips = Array.from({ length: 8 }, (_, index) => ({
+    id: `direct-substitute-${index + 1}`,
+    path: path.join(artifactDir, `direct-substitute-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `direct-substitute-${index + 1}.mp4`),
+    source_url: `https://www.youtube.com/watch?v=OfficialDirect${index + 1}`,
+    source_type: "official_youtube_channel",
+    source_kind: "video_file",
+    source_family: `official_direct_${index + 1}_window_0_7`,
+    motion_family: `official_direct_${index + 1}_window_0_7`,
+    media_kind: "direct_video",
+    counts_towards_motion_readiness: true,
+    validated: true,
+    durationS: 7,
+  }));
+  await Promise.all(
+    directClips.map((clip, index) =>
+      fs.outputFile(clip.path, Buffer.alloc(2048, 90 + index)),
+    ),
+  );
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: directClips,
+    materialised_clips: directClips,
+  });
+  const job = readyJob(storyId, artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: directClips.length,
+      distinct_motion_family_count: directClips.length,
+      materialised_motion_clip_paths: directClips.map((clip) => clip.path),
+    },
+  });
+  let renderStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-18T05:05:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 4));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 47.55,
+        size_bytes: 4096,
+        hyperframes_premium_shell_required: renderStory.hyperframes_premium_shell_required,
+        hyperframes_card_count: renderStory.hyperframes_card_count,
+        hyperframes_premium_shell_gate: renderStory.hyperframes_premium_shell_gate,
+        premium_shell_verdict: renderStory.premium_shell_verdict,
+        premium_shell_pass_count: renderStory.premium_shell_pass_count,
+        premium_shell_required_pass_count: renderStory.premium_shell_required_pass_count,
+        premium_shell_blockers: renderStory.premium_shell_blockers,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  assert.equal(
+    renderStory.visual_v4_bridge_video_clips.some(
+      (clip) => clip.source_type === "hyperframes_premium_shell_card",
+    ),
+    false,
+  );
+  assert.equal(renderStory.hyperframes_available_card_count, 5);
+  assert.equal(renderStory.hyperframes_card_count, 0);
+  assert.equal(renderStory.premium_shell_selected_card_count, 0);
+  assert.equal(renderStory.premium_shell_required_selected_card_count, 0);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.selectedCardCount, 0);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 0);
+  assert.equal(
+    renderStory.hyperframes_premium_shell_gate.selectionMode,
+    "direct_motion_substitution",
+  );
+  assert.equal(renderStory.hyperframes_premium_shell_gate.cardsOmittedForDirectMotion, true);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.verdict, "pass");
+  assert.equal(renderStory.premium_shell_verdict, "pass");
+  assert.deepEqual(renderStory.premium_shell_blockers, []);
+});
+
+test("goal production render preserves a governed source-only card plan over stale passing shell cards", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-governed-plan-"));
+  const storyId = "story-governed-shell";
+  const artifactDir = await makePackage(root, storyId, {
+    primary_source: "GameSpot",
+    source_card_label: "GameSpot",
+  });
+  const cardPaths = {};
+  for (const kind of ["source", "context", "timeline", "quote", "takeaway"]) {
+    cardPaths[kind] = await writePassingHyperframesCard(root, storyId, kind, {
+      readableText: kind === "source" ? "GAMESPOT SOURCE" : `${kind} stale historical card`,
+    });
+  }
+
+  const directClips = Array.from({ length: 11 }, (_, index) => {
+    const rootIndex = index % 6;
+    return {
+      id: `governed-direct-${index + 1}`,
+      kind: "direct_motion",
+      path: path.join(artifactDir, `governed-direct-${index + 1}.mp4`),
+      source_url: `https://www.youtube.com/watch?v=GovernedSource${rootIndex + 1}`,
+      source_type: "official_youtube_channel",
+      source_family: `youtube:governed_source_${rootIndex + 1}_window_${index * 5}_5`,
+      base_source_family: `youtube:governed_source_${rootIndex + 1}`,
+      media_kind: "direct_video",
+      durationS: 5,
+      duration_s: 5,
+      counts_towards_motion_readiness: true,
+    };
+  });
+  await Promise.all(
+    directClips.map((clip, index) => fs.outputFile(clip.path, Buffer.alloc(2048, 60 + index))),
+  );
+  const governedSourceCard = {
+    id: "governed-source-card",
+    kind: "generated_card",
+    card_type: "source",
+    path: cardPaths.source,
+    source_url: `local://hyperframes/${storyId}/source`,
+    source_type: "hyperframes_premium_shell_card",
+    source_family: "hyperframes_source_card",
+    media_kind: "generated_card",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    durationS: 2.6,
+    duration_s: 2.6,
+    counts_towards_motion_readiness: true,
+  };
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: [...directClips.slice(0, 4), governedSourceCard, ...directClips.slice(4)],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: "audio.mp3",
+    word_timestamps_path: "timestamps.json",
+    technical_duration_seconds: 49.76,
+  });
+  const job = readyJob(storyId, artifactDir);
+  job.evidence = {
+    ...job.evidence,
+    materialised_motion_clip_count: 12,
+    distinct_motion_family_count: 12,
+    selected_materialised_motion_clip_ids: [
+      ...directClips.slice(0, 4).map((clip) => clip.id),
+      governedSourceCard.id,
+      ...directClips.slice(4).map((clip) => clip.id),
+    ],
+    materialised_motion_clip_paths: [
+      ...directClips.slice(0, 4).map((clip) => clip.path),
+      governedSourceCard.path,
+      ...directClips.slice(4).map((clip) => clip.path),
+    ],
+  };
+  job.actions[0].target_render_manifest = {
+    ...job.actions[0].target_render_manifest,
+    hyperframes_premium_shell_required: true,
+    hyperframes_premium_shell_required_pass_count: 4,
+  };
+  assert.deepEqual(
+    _private.governedReadableShellCardPaths({
+      materialisedMotion: {
+        status: "ready",
+        clips: [...directClips.slice(0, 4), governedSourceCard, ...directClips.slice(4)],
+      },
+      job,
+    }),
+    [governedSourceCard.path],
+  );
+  assert.equal(
+    _private.governedDenseDirectMotionSupportsSourceOnly({
+      clips: directClips,
+      audioDurationS: 49.76,
+      wordTimestampSource: "local_whisper_word_alignment",
+    }),
+    true,
+  );
+
+  const { story } = await buildRendererStoryJson(job, {
+    workspaceRoot: root,
+    generatedAt: "2026-07-17T12:50:00.000Z",
+  });
+  const shellClips = story.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+
+  assert.equal(story.hyperframes_available_card_count, 5);
+  assert.equal(story.hyperframes_card_count, 1);
+  assert.equal(story.premium_shell_selected_card_count, 1);
+  assert.equal(story.premium_shell_required_selected_card_count, 1);
+  assert.equal(story.hyperframes_premium_shell_gate.selectedCardCount, 1);
+  assert.equal(story.hyperframes_premium_shell_gate.requiredSelectedCardCount, 1);
+  assert.equal(story.hyperframes_premium_shell_gate.selectionMode, "governed_dense_motion_source_only");
+  assert.equal(story.premium_shell_verdict, "pass");
+  assert.deepEqual(story.premium_shell_blockers, []);
+  assert.equal(shellClips.length, 1);
+  assert.equal(shellClips[0].source_family, "hyperframes_source_card");
+  assert.ok(!story.video_clips.includes(cardPaths.context));
+  assert.ok(!story.video_clips.includes(cardPaths.takeaway));
 });
 
 test("goal production render materializer rejects a stale HyperFrames source-card label before render", async () => {
@@ -3545,10 +4871,10 @@ test("goal production render materializer preserves readable HyperFrames card dw
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "source"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "context"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "takeaway", {
-      readableText: "GTA VI cover art is live but the price and edition decision is not",
-      minimumDurationS: 6.4,
-      plannedDurationS: 6.4,
-      maxDurationS: 6.4,
+      readableText: "GTA VI editions remain unknown",
+      minimumDurationS: 3.8,
+      plannedDurationS: 3.8,
+      maxDurationS: 3.8,
     }),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "quote"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "timeline"),
@@ -3583,10 +4909,10 @@ test("goal production render materializer preserves readable HyperFrames card dw
   const takeawayCard = renderStory.visual_v4_bridge_video_clips.find(
     (clip) => clip.source_family === "hyperframes_takeaway_card",
   );
-  assert.equal(takeawayCard.durationS, 5.2);
-  assert.equal(takeawayCard.minimum_readable_duration_s, 5.2);
-  assert.equal(takeawayCard.maximum_visible_duration_s, 5.2);
-  assert.match(takeawayCard.text, /price and edition decision/i);
+  assert.equal(takeawayCard.durationS, 3.8);
+  assert.equal(takeawayCard.minimum_readable_duration_s, 3.8);
+  assert.equal(takeawayCard.maximum_visible_duration_s, 3.8);
+  assert.match(takeawayCard.text, /editions remain unknown/i);
 });
 
 test("goal production render materializer preserves validated official trailer windows from the same source", async () => {
@@ -3847,7 +5173,14 @@ test("goal production render materializer limits HyperFrames cards to a readable
   const sourceCards = cardClips.filter((clip) => clip.source_family === "hyperframes_source_card");
   const readableCards = cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
   assert.ok(sourceCards.every((clip) => clip.durationS === 2.6 && clip.minimum_readable_duration_s <= 2.6));
-  assert.ok(readableCards.every((clip) => clip.durationS >= 3.6 && clip.minimum_readable_duration_s >= 3.6));
+  assert.ok(
+    readableCards.every(
+      (clip) =>
+        clip.durationS >= 3.4 &&
+        clip.minimum_readable_duration_s >= 3.4 &&
+        clip.durationS <= 3.8,
+    ),
+  );
   assert.deepEqual(
     [...new Set(cardClips.map((clip) => clip.source_family))],
     cardClips.map((clip) => clip.source_family),
@@ -3858,9 +5191,7 @@ test("goal production render materializer limits HyperFrames cards by narration 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-duration-budget-"));
   const artifactDir = await makePackage(root, "story-hf-duration-budget");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-duration-budget", kind, {
-      ...(kind === "source" ? {} : { minimumDurationS: 4.1, plannedDurationS: 4.1 }),
-    }),
+    writePassingHyperframesCard(root, "story-hf-duration-budget", kind),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -3949,11 +5280,7 @@ test("goal production render materializer applies the V5 card budget to a 52 sec
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-v4-budget-"));
   const artifactDir = await makePackage(root, "story-hf-v4-budget");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-v4-budget", kind, {
-      ...(kind === "source"
-        ? {}
-        : { minimumDurationS: 6, plannedDurationS: 6, maxDurationS: 6.4 }),
-    }),
+    writePassingHyperframesCard(root, "story-hf-v4-budget", kind),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -4019,7 +5346,7 @@ test("goal production render materializer applies the V5 card budget to a 52 sec
   const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
     (clip) => clip.source_type === "hyperframes_premium_shell_card",
   );
-  assert.equal(cardClips.length, 2);
+  assert.equal(cardClips.length, 3);
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationRatio, 0.25);
   assert.equal(renderStory.hyperframes_premium_shell_gate.maxReadableCardDurationS, 12.977);
   assert.ok(
@@ -4032,9 +5359,7 @@ test("goal production render materializer keeps selected HyperFrames dwell withi
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-dwell-extension-"));
   const artifactDir = await makePackage(root, "story-hf-dwell-extension");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-dwell-extension", kind, {
-      ...(kind === "source" ? {} : { minimumDurationS: 4.1, plannedDurationS: 4.1, maxDurationS: 6.4 }),
-    }),
+    writePassingHyperframesCard(root, "story-hf-dwell-extension", kind),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -4106,13 +5431,13 @@ test("goal production render materializer keeps selected HyperFrames dwell withi
     (clip) => clip.source_type === "hyperframes_premium_shell_card",
   );
   assert.equal(directClipCount, 6);
-  assert.equal(cardClips.length, 2);
+  assert.equal(cardClips.length, 3);
   const sourceCard = cardClips.find((clip) => clip.source_family === "hyperframes_source_card");
   const readableCards = cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
   assert.ok(sourceCard.durationS >= 1.6);
   assert.ok(sourceCard.durationS <= 3.1);
-  assert.ok(readableCards.every((clip) => clip.durationS >= 4.1));
-  assert.ok(readableCards.every((clip) => clip.durationS <= 6.4));
+  assert.ok(readableCards.every((clip) => clip.durationS >= 3.4));
+  assert.ok(readableCards.every((clip) => clip.durationS <= 3.8));
   assert.ok(
     cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0) <=
       42.028 * 0.25 + 0.01,
@@ -4127,9 +5452,7 @@ test("goal production render materializer tops up balanced direct windows when H
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-coverage-topup-"));
   const artifactDir = await makePackage(root, "story-hf-coverage-topup");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-coverage-topup", kind, {
-      ...(kind === "source" ? {} : { minimumDurationS: 4.1, plannedDurationS: 4.1 }),
-    }),
+    writePassingHyperframesCard(root, "story-hf-coverage-topup", kind),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -4360,9 +5683,7 @@ test("goal production render materializer does not stack legacy owned cards on p
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-no-stack-"));
   const artifactDir = await makePackage(root, "story-hf-no-stack");
   await Promise.all(["source", "context", "timeline", "quote", "takeaway"].map((kind) =>
-    writePassingHyperframesCard(root, "story-hf-no-stack", kind, {
-      ...(kind === "source" ? {} : { minimumDurationS: 4.1, plannedDurationS: 4.1 }),
-    }),
+    writePassingHyperframesCard(root, "story-hf-no-stack", kind),
   ));
   await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
     verdict: "PASS",
@@ -4612,9 +5933,11 @@ test("goal production render materializer rechecks repaired motion with decoded 
   const rejectedClip = clips[4];
   const selectorCalls = [];
   const renderCalls = [];
+  const job = readyJob("repaired-motion-qa", artifactDir);
+  job.evidence.required_genuine_base_source_count = 5;
   const report = await materializeGoalProductionRenders({
     workspaceRoot: root,
-    workOrder: { jobs: [readyJob("repaired-motion-qa", artifactDir)] },
+    workOrder: { jobs: [job] },
     generatedAt: "2026-07-16T09:11:00.000Z",
     force: true,
     directMotionFilter: async (selectedClips, options) => {
@@ -4660,14 +5983,283 @@ test("goal production render materializer rechecks repaired motion with decoded 
 
   assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
   assert.equal(selectorCalls.length, 1);
-  assert.equal(selectorCalls[0].options.policyTier, "ultimate_professional");
+  assert.equal(selectorCalls[0].options.policyTier, "normal_strict_green");
   assert.equal(renderCalls[0].video_clips.includes(rejectedClip.path), false);
   assert.equal(renderCalls[0].visual_v4_bridge_video_clips.length, 7);
+  assert.equal(renderCalls[0].required_genuine_base_source_count, 5);
   const persisted = await fs.readJson(
     path.join(artifactDir, "qa", "direct-motion", "final_selection_dense_selector_report.json"),
   );
+  assert.equal(persisted.policy_tier, "ultimate_professional");
+  assert.equal(persisted.professional_candidate_selection.status, "pass");
   assert.equal(persisted.rejected.length, 1);
   assert.equal(persisted.rejected[0].path, rejectedClip.path);
+});
+
+test("goal production render materializer balances visually accepted motion before professional source preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-balanced-preflight-"));
+  const storyId = "balanced-professional-preflight";
+  const artifactDir = await makePackage(root, storyId);
+  const sourceCounts = [3, 3, 1, 1];
+  const clips = sourceCounts.flatMap((count, sourceIndex) =>
+    Array.from({ length: count }, (_, windowIndex) => {
+      const clipPath = path.join(
+        artifactDir,
+        `source-${sourceIndex + 1}-window-${windowIndex + 1}.mp4`,
+      );
+      return {
+        id: `source-${sourceIndex + 1}-window-${windowIndex + 1}`,
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: `https://www.youtube.com/watch?v=source-${sourceIndex + 1}`,
+        source_type: "official_publisher_trailer_segment",
+        source_family: `source_${sourceIndex + 1}_window_${windowIndex + 1}`,
+        base_source_family: `youtube:source-${sourceIndex + 1}`,
+        source_master_sha256: String.fromCharCode(97 + sourceIndex).repeat(64),
+        media_kind: "direct_video",
+        rights_basis: "official_publisher_editorial_reference",
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        durationS: 5,
+      };
+    }),
+  );
+  await Promise.all(
+    clips.map((clip, index) => fs.outputFile(clip.path, Buffer.alloc(2048, index + 60))),
+  );
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    repaired_at: "2026-07-18T12:00:00.000Z",
+    clips,
+  });
+
+  let selectorPolicyTier = null;
+  let renderStory = null;
+  const baseJob = readyJob(storyId, artifactDir);
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob(storyId, artifactDir, {
+          evidence: {
+            ...baseJob.evidence,
+            materialised_motion_clip_count: clips.length,
+            distinct_motion_family_count: 4,
+            materialised_motion_clip_paths: clips.map((clip) => clip.path),
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-07-18T12:01:00.000Z",
+    force: true,
+    directMotionFilter: async (selectedClips, options) => {
+      selectorPolicyTier = options.policyTier;
+      return {
+        version: "pulse_direct_motion_visual_selector_v5",
+        policy_tier: options.policyTier,
+        clips: selectedClips,
+        accepted: selectedClips.map((clip) => ({
+          path: clip.path,
+          eligible: true,
+          reasons: [],
+          metrics: { decoded_sample_count: 20 },
+        })),
+        rejected: [],
+        blockers: [],
+      };
+    },
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 12));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 40,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.equal(selectorPolicyTier, "normal_strict_green");
+  const directClips = renderStory.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.media_kind === "direct_video",
+  );
+  assert.equal(directClips.length, 4);
+  assert.deepEqual(
+    [...new Set(directClips.map((clip) => clip.base_source_asset_id))].sort(),
+    ["a", "b", "c", "d"].map((character) => `sha256:${character.repeat(64)}`),
+  );
+  const persisted = await fs.readJson(
+    path.join(artifactDir, "qa", "direct-motion", "final_selection_dense_selector_report.json"),
+  );
+  assert.equal(persisted.professional_candidate_selection.status, "pass");
+  assert.equal(
+    persisted.professional_source_diversity
+      .required_genuine_base_source_count,
+    3,
+  );
+  assert.equal(persisted.visually_accepted_clip_count, 8);
+  assert.equal(persisted.selected_clip_count, 4);
+  const sourceDiversityPath = path.join(
+    artifactDir,
+    "qa",
+    "direct-motion",
+    "final_selection_dense_selector_report.json",
+  );
+  const generation = await fs.readJson(
+    path.join(artifactDir, "flagship", "generation_manifest.json"),
+  );
+  assert.equal(generation.genuine_base_source_diversity.verdict, "GREEN");
+  assert.equal(
+    generation.genuine_base_source_diversity
+      .minimum_required_genuine_base_source_count,
+    3,
+  );
+  assert.equal(
+    generation.genuine_base_source_diversity
+      .observed_genuine_base_source_count,
+    4,
+  );
+  assert.equal(
+    generation.genuine_base_source_diversity_evidence.path,
+    "qa/direct-motion/final_selection_dense_selector_report.json",
+  );
+  assert.equal(
+    generation.genuine_base_source_diversity_evidence.sha256,
+    crypto
+      .createHash("sha256")
+      .update(await fs.readFile(sourceDiversityPath))
+      .digest("hex"),
+  );
+});
+
+test("goal production render materializer audits alternate source windows before professional source preflight", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-source-alternate-"));
+  const storyId = "professional-source-alternate";
+  const artifactDir = await makePackage(root, storyId);
+  const clips = [];
+  for (let sourceIndex = 0; sourceIndex < 6; sourceIndex += 1) {
+    const windowCount = sourceIndex === 0 ? 3 : 2;
+    for (let windowIndex = 0; windowIndex < windowCount; windowIndex += 1) {
+      const clipPath = path.join(
+        artifactDir,
+        `source-${sourceIndex + 1}-window-${windowIndex + 1}.mp4`,
+      );
+      clips.push({
+        id: `source-${sourceIndex + 1}-window-${windowIndex + 1}`,
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: `https://www.youtube.com/watch?v=source-${sourceIndex + 1}`,
+        source_type: "official_publisher_trailer_segment",
+        source_family: `source_${sourceIndex + 1}_window_${windowIndex * 6}_5`,
+        base_source_family: `youtube:source-${sourceIndex + 1}`,
+        source_master_sha256: String.fromCharCode(97 + sourceIndex).repeat(64),
+        media_kind: "direct_video",
+        rights_basis: "official_publisher_editorial_reference",
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        durationS: 5,
+      });
+    }
+  }
+  await Promise.all(
+    clips.map((clip, index) => fs.outputFile(clip.path, Buffer.alloc(2048, index + 80))),
+  );
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    repaired_at: "2026-07-18T12:10:00.000Z",
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 54.448,
+      spoken_wpm: 162,
+    },
+  });
+
+  const rejectedLeadPaths = new Set(
+    clips
+      .filter((clip) => clip.id === "source-1-window-1" || clip.id === "source-1-window-2")
+      .map((clip) => clip.path),
+  );
+  const alternatePath = clips.find((clip) => clip.id === "source-1-window-3").path;
+  let selectorPaths = [];
+  let renderStory = null;
+  const baseJob = readyJob(storyId, artifactDir);
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob(storyId, artifactDir, {
+          evidence: {
+            ...baseJob.evidence,
+            required_genuine_base_source_count: 6,
+            materialised_motion_clip_count: clips.length,
+            distinct_motion_family_count: clips.length,
+            materialised_motion_clip_paths: clips.map((clip) => clip.path),
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-07-18T12:11:00.000Z",
+    force: true,
+    directMotionFilter: async (selectedClips, options) => {
+      selectorPaths = selectedClips.map((clip) => clip.path);
+      const acceptedClips = selectedClips.filter((clip) => !rejectedLeadPaths.has(clip.path));
+      const rejectedClips = selectedClips.filter((clip) => rejectedLeadPaths.has(clip.path));
+      return {
+        version: "pulse_direct_motion_visual_selector_v5",
+        policy_tier: options.policyTier,
+        clips: acceptedClips,
+        accepted: acceptedClips.map((clip) => ({
+          path: clip.path,
+          eligible: true,
+          reasons: [],
+          metrics: { decoded_sample_count: 20 },
+        })),
+        rejected: rejectedClips.map((clip) => ({
+          path: clip.path,
+          eligible: false,
+          reasons: ["direct_motion_frame_taste_failed"],
+          metrics: { decoded_sample_count: 20, failed_taste_sample_count: 1 },
+        })),
+        blockers: [],
+      };
+    },
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 13));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 40,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.equal(selectorPaths.includes(alternatePath), true);
+  assert.ok(renderStory);
+  assert.equal(
+    renderStory.visual_v4_bridge_video_clips.some((clip) => clip.path === alternatePath),
+    true,
+  );
+  const persisted = await fs.readJson(
+    path.join(artifactDir, "qa", "direct-motion", "final_selection_dense_selector_report.json"),
+  );
+  assert.equal(persisted.professional_candidate_selection.status, "pass");
+  assert.ok(
+    persisted.professional_candidate_selection.selected_direct_motion_clip_count > 6,
+  );
+  assert.equal(
+    persisted.professional_source_diversity.observed_genuine_base_source_count,
+    6,
+  );
 });
 
 test("goal production render materializer restores readable card coverage after final motion QA rejects a clip", async () => {
@@ -5458,6 +7050,100 @@ test("goal production render quality refresh scores the final rendered scene pla
   assert.equal(refreshedBenchmark.visual_evidence_profile.motion_asset_count >= 6, true);
   const refreshedManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.deepEqual(refreshedManifest.clip_scene_plan.scenes.map((scene) => scene.path), clipScenePlan.scenes.map((scene) => scene.path));
+});
+
+test("goal production render quality refresh reconciles stale scorecards and fails closed without a canonical script", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-current-script-reconciliation-"));
+  const storyId = "current-script-reconciliation";
+  const currentScript = "This gaming story is a source-backed update.";
+  const artifactDir = await makePackage(root, storyId, {
+    narration_script: currentScript,
+    first_spoken_line: currentScript,
+  });
+  await fs.outputFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(4096, 32));
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    rendered_duration_s: 38,
+    clips: 3,
+  });
+  const clips = Array.from({ length: 3 }, (_, index) => ({
+    id: `current-script-motion-${index + 1}`,
+    asset_id: `current-script-motion-${index + 1}`,
+    path: path.join(artifactDir, `current-script-motion-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `current-script-motion-${index + 1}.mp4`),
+    source_url: `https://video.akamai.steamstatic.com/current-script/${index + 1}.mp4`,
+    source_type: "steam_movie",
+    source_family: `current_script_motion_family_${index + 1}`,
+    media_kind: "direct_video",
+    licence_basis: "official_storefront_reference_editorial_use",
+    rights_basis: "official_storefront_reference_editorial_use",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_commercial_editorial_use",
+    counts_towards_motion_readiness: true,
+  }));
+  for (const clip of clips) await fs.outputFile(clip.path, Buffer.alloc(2048, 33));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: clips,
+  });
+  await fs.outputJson(path.join(artifactDir, "script_scorecard.json"), {
+    story_id: storyId,
+    verdict: "viral_ready",
+    viral_score: 99,
+    blockers: [],
+    evidence_source: "stale_work_order_scorecard",
+  });
+
+  const refresh = await refreshFinalRenderQualityOnly({
+    storyId,
+    artifactDir,
+    generatedAt: "2026-07-17T14:00:00.000Z",
+  });
+
+  assert.equal(refresh.status, "quality_refreshed");
+  const refreshedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(refreshedScorecard.execution_mode, "viral_script_intelligence_v1");
+  assert.equal(refreshedScorecard.story_id, storyId);
+  assert.equal(refreshedScorecard.verdict, "rewrite_required");
+  assert.ok(refreshedScorecard.viral_score < 75);
+  assert.ok(refreshedScorecard.blockers.includes("internal_audience_scaffold"));
+  assert.equal(refreshedScorecard.evidence_source, undefined);
+
+  const refreshedForensics = await fs.readJson(path.join(artifactDir, "forensic_qa_report.json"));
+  assert.equal(refreshedForensics.checks.script, refreshedScorecard.verdict);
+  assert.ok(refreshedForensics.blockers.includes("script_scorecard_not_passed"));
+  for (const blocker of refreshedScorecard.blockers) {
+    assert.ok(refreshedForensics.blockers.includes(blocker));
+  }
+
+  const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
+  const canonicalWithoutScript = await fs.readJson(canonicalPath);
+  delete canonicalWithoutScript.narration_script;
+  await fs.writeJson(canonicalPath, canonicalWithoutScript, { spaces: 2 });
+  await fs.remove(path.join(artifactDir, "script_scorecard.json"));
+
+  await refreshFinalRenderQualityOnly({
+    storyId,
+    artifactDir,
+    generatedAt: "2026-07-17T14:05:00.000Z",
+  });
+
+  const failClosedScorecard = await fs.readJson(path.join(artifactDir, "script_scorecard.json"));
+  assert.equal(failClosedScorecard.verdict, "rewrite_required");
+  assert.equal(failClosedScorecard.viral_score, 0);
+  assert.deepEqual(failClosedScorecard.blockers, ["canonical_script_missing"]);
+  const failClosedForensics = await fs.readJson(path.join(artifactDir, "forensic_qa_report.json"));
+  assert.equal(failClosedForensics.checks.script, failClosedScorecard.verdict);
+  assert.ok(failClosedForensics.blockers.includes("script_scorecard_not_passed"));
+  assert.ok(failClosedForensics.blockers.includes("canonical_script_missing"));
 });
 
 test("goal production render materializer cannot mint final GREEN from legacy bare QA sidecars", async () => {

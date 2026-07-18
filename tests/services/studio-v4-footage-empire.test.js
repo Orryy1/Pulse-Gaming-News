@@ -1208,3 +1208,34 @@ test("Footage Empire does not treat a Switch 2 game port as hardware product mot
   assert.equal(plan.motion_budget.required_official_product_motion_scenes, 0);
   assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
 });
+
+test("Footage Empire does not treat a PS5 Pro game software upgrade as hardware product motion", () => {
+  const story = {
+    id: "arknights-endfield-ps5-pro-upgrade",
+    canonical_subject: "Arknights: Endfield",
+    canonical_game: "Arknights: Endfield",
+    title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    suggested_thumbnail_text: "PS5 PRO TEST",
+    full_script:
+      "Arknights: Endfield now has PS5 Pro graphics and performance modes. Players can judge sharper image quality against smoother action without this becoming a story about buying the console itself.",
+  };
+  const localMotionClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `arknights-endfield-motion-${index + 1}`,
+    source_family: `arknights-endfield-official-${index + 1}`,
+    path: `C:\\media\\arknights-endfield-${index + 1}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=arknights-endfield-${index + 1}`,
+    source_type: "official_publisher_trailer_segment",
+    media_kind: "direct_video",
+    rights_risk_class: "official_promotional_video_transformative_editorial_use",
+    durationS: 5,
+    validated: true,
+  }));
+
+  const plan = buildFootageEmpirePlan({ story, localMotionClips });
+
+  assert.equal(plan.motion_budget.product_motion_story, false);
+  assert.equal(plan.motion_budget.required_official_product_motion_scenes, 0);
+  assert.equal(plan.motion_budget.required_official_product_motion_families, 0);
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
+  assert.ok(!plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"));
+});

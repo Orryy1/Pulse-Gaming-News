@@ -89,6 +89,8 @@ async function main(argv = process.argv.slice(2)) {
   if (args.apply) {
     storyPackageRefresh = await refreshStoryPackageEntriesFromArtifacts(originalStoryPackages, {
       storyIds: Array.from(requestedStoryIds),
+      persistArtifactSummaries: true,
+      artifactSummaryBackupRoot: args.backupRoot,
     });
     await fs.writeJson(storyPackagesPath, storyPackageRefresh.story_packages, { spaces: 2 });
     report.story_package_refresh = {

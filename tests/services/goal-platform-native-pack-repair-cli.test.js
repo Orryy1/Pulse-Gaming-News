@@ -53,7 +53,10 @@ test("platform-native pack repair CLI can apply to one selected story id", async
   assert.equal(report.summary.story_count, 1);
   assert.equal(report.summary.repaired_count, 1);
   assert.equal(await fs.pathExists(path.join(storyOneDir, "platform_publish_manifest.json")), true);
+  assert.equal(await fs.pathExists(path.join(storyOneDir, "goal_package_summary.json")), true);
+  assert.equal(report.story_package_refresh.summary.persisted_artifact_summary_count, 1);
   assert.equal(await fs.pathExists(path.join(storyTwoDir, "platform_publish_manifest.json")), false);
+  assert.equal(await fs.pathExists(path.join(storyTwoDir, "goal_package_summary.json")), false);
 });
 
 test("platform-native pack repair CLI parses story selectors", () => {

@@ -1080,3 +1080,35 @@ test("Visual V4 Director uses story-specific proof cards instead of generic sour
     assert.notEqual(proof.label, "SOURCE LOCKED");
   }
 });
+
+test("Visual V4 Director does not turn hardware performance reporting into an accessory advert", () => {
+  const updateStory = {
+    id: "arknights-endfield-ps5-pro",
+    canonical_subject: "Arknights: Endfield",
+    canonical_angle: "source_locked_update",
+    title: "Arknights: Endfield Turns PS5 Pro Into A Hardware Stress Test",
+    source_name: "PlayStation Blog",
+    full_script:
+      "Arknights: Endfield just turned its PS5 Pro update into a hardware stress test. PlayStation Blog says upgraded PSSR brings sharper detail and steadier frame rates, but gameplay still has to deliver. Follow Pulse Gaming so you never miss a beat.",
+    affiliate_pack_id: null,
+  };
+  const footagePlan = buildFootageEmpirePlan({
+    story: updateStory,
+    trustedFootageReport: trustedReport(),
+    localMotionClips: localClips(8),
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: updateStory,
+    footagePlan,
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const proof = plan.shot_plan.find((shot) => shot.kind === "proof_card");
+  const publicCopy = `${proof?.label || ""} ${proof?.detail || ""}`;
+
+  assert.ok(proof);
+  assert.doesNotMatch(
+    publicCopy,
+    /ACCESSORY LISTED|CHECK PRICE|BUY NOW|SHOP|PRE-?ORDER/i,
+  );
+  assert.match(publicCopy, /PS5 PRO|PERFORMANCE|GAMEPLAY|SHARPER|FRAME|MOTION/i);
+});

@@ -1767,6 +1767,15 @@ test("platform-native repair refreshes stale story-package RED summary from GREE
 test("platform-native repair keeps RED while replacing stale package blockers with current evidence", async () => {
   const { storyPackages } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "goal_package_summary.json"), {
+    story_id: "story-native",
+    verdict: "RED",
+    blockers: [
+      "render:final_publish_render_missing",
+      "audio:narration_audio_missing",
+      "captions:word_timestamps_missing",
+    ],
+  });
   await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
     verdict: "RED",
     can_auto_publish: false,
@@ -1795,6 +1804,7 @@ test("platform-native repair keeps RED while replacing stale package blockers wi
     },
   ], {
     storyIds: ["story-native"],
+    persistArtifactSummaries: true,
   });
 
   assert.equal(refreshed.summary.updated_count, 1);
@@ -1808,6 +1818,13 @@ test("platform-native repair keeps RED while replacing stale package blockers wi
     reason_codes: ["control:final_av_review_reviewer_id_missing"],
     blockers: ["control:final_av_review_reviewer_id_missing"],
   });
+  const expectedLocalSummary = { ...refreshed.story_packages[0] };
+  delete expectedLocalSummary.artifact_dir;
+  assert.deepEqual(
+    await fs.readJson(path.join(artifactDir, "goal_package_summary.json")),
+    expectedLocalSummary,
+  );
+  assert.equal(refreshed.summary.persisted_artifact_summary_count, 1);
   assert.equal(refreshed.rows[0].updated, true);
   assert.equal(refreshed.safety.no_publish_triggered, true);
 });

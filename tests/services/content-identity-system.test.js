@@ -31,6 +31,16 @@ test("content identity system classifies the core Pulse editorial formats", () =
   }
 });
 
+test("content identity system preserves a canonical update angle in a thin render workorder", () => {
+  const identity = resolveContentIdentity({
+    id: "thin-render-update",
+    title: "Arknights: Endfield Puts PS5 Pro's 4K Promise Under Pressure",
+    canonical_angle: "source_locked_update",
+  });
+
+  assert.equal(identity.id, "game_update");
+});
+
 test("every Pulse content identity has a complete recognisable production signature", () => {
   const required = [
     "breaking_alert",

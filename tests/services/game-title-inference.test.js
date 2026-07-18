@@ -54,7 +54,14 @@ test("headline inference extracts mid-sentence subjects after release-age framin
 test("headline inference still accepts real colon-separated game title candidates", () => {
   assert.deepEqual(
     inferHeadlineGameCandidates("LEGO Batman: Legacy of the Dark Knight PC specs revealed"),
-    ["LEGO Batman", "Legacy of the Dark Knight"],
+    ["LEGO Batman: Legacy of the Dark Knight"],
+  );
+});
+
+test("headline inference preserves a compound colonised game title before possessive news framing", () => {
+  assert.deepEqual(
+    inferHeadlineGameCandidates("Arknights: Endfield's PS5 Pro Upgrade Has A Real Test"),
+    ["Arknights: Endfield"],
   );
 });
 

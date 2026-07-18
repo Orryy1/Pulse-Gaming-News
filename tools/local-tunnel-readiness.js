@@ -10,9 +10,12 @@ const {
   formatLocalTunnelReadinessMarkdown,
 } = require("../lib/ops/local-tunnel-readiness");
 const { fetchJson } = require("../lib/ops/local-primary-readiness");
+const {
+  resolveLocalReadinessOutputDir,
+} = require("../lib/ops/local-readiness-evidence-root");
 
 const ROOT = path.resolve(__dirname, "..");
-const OUT = path.join(ROOT, "test", "output");
+const OUT = resolveLocalReadinessOutputDir({ cwd: ROOT });
 
 function parseArgs(argv = process.argv) {
   const args = {

@@ -48,6 +48,28 @@ test("RSS proof ingest parses source-backed feed entries into goal-proof stories
   assert.equal(stories.some((story) => /Dashcam/i.test(story.title)), false);
 });
 
+test("RSS proof ingest can advance past an exhausted leading cohort", () => {
+  const xml = `
+    <rss><channel>
+      <item><title>Halo Campaign Evolved Update One</title><link>https://example.com/halo-1</link></item>
+      <item><title>Halo Campaign Evolved Update Two</title><link>https://example.com/halo-2</link></item>
+      <item><title>Battlefield 6 Shows New Gameplay</title><link>https://example.com/battlefield-6</link></item>
+      <item><title>Heave Ho 2 Reveals Co-op Gameplay</title><link>https://example.com/heave-ho-2</link></item>
+    </channel></rss>
+  `;
+
+  const items = parseRssProofItems(xml, {
+    feed: { name: "Official feed", url: "https://example.com/feed" },
+    maxItems: 2,
+    offsetItems: 2,
+  });
+
+  assert.deepEqual(items.map((item) => item.url), [
+    "https://example.com/battlefield-6",
+    "https://example.com/heave-ho-2",
+  ]);
+});
+
 test("RSS proof ingest preserves materialisable video enclosures for source-motion-first refill", () => {
   const xml = `
     <rss><channel>

@@ -14,6 +14,9 @@ const {
   prepareTtsAlignmentForWrite,
   requestTtsWithRetry,
   resolveTtsOutputFormat,
+  resolveTtsModelIdForProvider,
+  resolveTtsPronunciationDictionaryLocators,
+  resolveTtsSeedForProvider,
   resolveTtsProvider,
   resolveTtsTimeoutMs,
   resolveTtsVoiceIdForProvider,
@@ -21,6 +24,145 @@ const {
   shouldAutoPromoteRuntimePlanToExtendedShort,
   shouldUseDynamicPacingForProvider,
 } = require("../../audio");
+
+test("resolveTtsModelIdForProvider: allows an explicit governed ElevenLabs v3 run without changing defaults", () => {
+  assert.equal(
+    resolveTtsModelIdForProvider(
+      "elevenlabs",
+      { ELEVENLABS_MODEL_ID: "eleven_v3" },
+      { voiceModel: "eleven_multilingual_v2" },
+    ),
+    "eleven_v3",
+  );
+  assert.equal(
+    resolveTtsModelIdForProvider(
+      "elevenlabs",
+      {},
+      { voiceModel: "eleven_multilingual_v2" },
+    ),
+    "eleven_multilingual_v2",
+  );
+  assert.equal(
+    resolveTtsModelIdForProvider(
+      "local",
+      { ELEVENLABS_MODEL_ID: "eleven_v3" },
+      { voiceModel: "eleven_multilingual_v2" },
+    ),
+    null,
+  );
+  assert.throws(
+    () => resolveTtsModelIdForProvider(
+      "elevenlabs",
+      { ELEVENLABS_MODEL_ID: "unverified_future_model" },
+      { voiceModel: "eleven_multilingual_v2" },
+    ),
+    /unsupported_elevenlabs_tts_model/,
+  );
+});
+
+test("resolveTtsPronunciationDictionaryLocators: validates and preserves governed ElevenLabs locator order", () => {
+  const locators = [
+    {
+      pronunciation_dictionary_id: "pulse-gaming-titles",
+      version_id: "arknights-endfield-v1",
+    },
+    {
+      pronunciation_dictionary_id: "pulse-gaming-brands",
+      version_id: "hypergryph-v1",
+    },
+  ];
+
+  assert.deepEqual(
+    resolveTtsPronunciationDictionaryLocators(
+      "elevenlabs",
+      {
+        PULSE_ELEVENLABS_PRONUNCIATION_DICTIONARY_LOCATORS: JSON.stringify(locators),
+      },
+    ),
+    locators,
+  );
+  assert.deepEqual(
+    resolveTtsPronunciationDictionaryLocators(
+      "local",
+      {
+        PULSE_ELEVENLABS_PRONUNCIATION_DICTIONARY_LOCATORS: JSON.stringify(locators),
+      },
+    ),
+    [],
+  );
+  assert.deepEqual(
+    resolveTtsPronunciationDictionaryLocators("elevenlabs", {}),
+    [],
+  );
+  assert.throws(
+    () => resolveTtsPronunciationDictionaryLocators(
+      "elevenlabs",
+      {
+        PULSE_ELEVENLABS_PRONUNCIATION_DICTIONARY_LOCATORS: "{not-json",
+      },
+    ),
+    /invalid_elevenlabs_pronunciation_dictionary_locators_json/,
+  );
+  assert.throws(
+    () => resolveTtsPronunciationDictionaryLocators(
+      "elevenlabs",
+      {
+        PULSE_ELEVENLABS_PRONUNCIATION_DICTIONARY_LOCATORS: JSON.stringify([
+          {
+            pronunciation_dictionary_id: "missing-version",
+          },
+        ]),
+      },
+    ),
+    /invalid_elevenlabs_pronunciation_dictionary_locator/,
+  );
+  assert.throws(
+    () => resolveTtsPronunciationDictionaryLocators(
+      "elevenlabs",
+      {
+        PULSE_ELEVENLABS_PRONUNCIATION_DICTIONARY_LOCATORS: JSON.stringify([
+          ...locators,
+          {
+            pronunciation_dictionary_id: "third",
+            version_id: "third-v1",
+          },
+          {
+            pronunciation_dictionary_id: "fourth",
+            version_id: "fourth-v1",
+          },
+        ]),
+      },
+    ),
+    /too_many_elevenlabs_pronunciation_dictionary_locators/,
+  );
+});
+
+test("resolveTtsSeedForProvider: validates a reproducible ElevenLabs seed without affecting local TTS", () => {
+  assert.equal(
+    resolveTtsSeedForProvider("elevenlabs", { PULSE_ELEVENLABS_SEED: "20260718" }),
+    20260718,
+  );
+  assert.equal(resolveTtsSeedForProvider("elevenlabs", {}), null);
+  assert.equal(
+    resolveTtsSeedForProvider("local", { PULSE_ELEVENLABS_SEED: "20260718" }),
+    null,
+  );
+  assert.throws(
+    () => resolveTtsSeedForProvider("elevenlabs", { PULSE_ELEVENLABS_SEED: "-1" }),
+    /invalid_elevenlabs_tts_seed/,
+  );
+  assert.throws(
+    () => resolveTtsSeedForProvider("elevenlabs", { PULSE_ELEVENLABS_SEED: "4.2" }),
+    /invalid_elevenlabs_tts_seed/,
+  );
+  assert.throws(
+    () => resolveTtsSeedForProvider(
+      "elevenlabs",
+      { PULSE_ELEVENLABS_SEED: "4294967296" },
+    ),
+    /invalid_elevenlabs_tts_seed/,
+  );
+});
 
 test("buildTtsRequestPayload: local generation defers final alignment to strict Whisper", () => {
   const local = buildTtsRequestPayload({
@@ -40,6 +182,72 @@ test("buildTtsRequestPayload: local generation defers final alignment to strict 
   assert.equal(local.alignment_mode, "fallback");
   assert.equal(managed.alignment_mode, undefined);
   assert.equal(managed.model_id, "eleven_multilingual_v2");
+});
+
+test("buildTtsRequestPayload: sends governed pronunciation dictionary locators only to ElevenLabs", () => {
+  const locators = [
+    {
+      pronunciation_dictionary_id: "pulse-gaming-titles",
+      version_id: "arknights-endfield-v1",
+    },
+  ];
+  const managed = buildTtsRequestPayload({
+    provider: "elevenlabs",
+    text: "Arknights End Field just gave PlayStation five Pro a brutal test.",
+    resolvedVoiceSettings: { speaking_rate: 1 },
+    outputFormat: "mp3_44100_128",
+    modelId: "eleven_v3",
+    pronunciationDictionaryLocators: locators,
+  });
+  const local = buildTtsRequestPayload({
+    provider: "local",
+    text: "Arknights End Field just gave PlayStation five Pro a brutal test.",
+    resolvedVoiceSettings: { speaking_rate: 1 },
+    outputFormat: "mp3_44100_256",
+    pronunciationDictionaryLocators: locators,
+  });
+
+  assert.deepEqual(managed.pronunciation_dictionary_locators, locators);
+  assert.equal(local.pronunciation_dictionary_locators, undefined);
+});
+
+test("buildTtsRequestPayload: sends the governed seed only to ElevenLabs", () => {
+  const managed = buildTtsRequestPayload({
+    provider: "elevenlabs",
+    text: "Arknights End Field.",
+    resolvedVoiceSettings: { speaking_rate: 1 },
+    outputFormat: "mp3_44100_128",
+    modelId: "eleven_v3",
+    seed: 20260718,
+  });
+  const local = buildTtsRequestPayload({
+    provider: "local",
+    text: "Arknights End Field.",
+    resolvedVoiceSettings: { speaking_rate: 1 },
+    outputFormat: "mp3_44100_256",
+    seed: 20260718,
+  });
+
+  assert.equal(managed.seed, 20260718);
+  assert.equal(local.seed, undefined);
+});
+
+test("buildTtsRequestPayload: ElevenLabs sends the documented provider-native speed field only", () => {
+  const managed = buildTtsRequestPayload({
+    provider: "elevenlabs",
+    text: "Pulse Gaming managed narration.",
+    resolvedVoiceSettings: {
+      stability: 0.55,
+      similarity_boost: 0.85,
+      speaking_rate: 0.95,
+      speed: 0.95,
+    },
+    outputFormat: "mp3_44100_128",
+    modelId: "eleven_multilingual_v2",
+  });
+
+  assert.equal(managed.voice_settings.speed, 0.95);
+  assert.equal(managed.voice_settings.speaking_rate, undefined);
 });
 
 test("isRetryableLocalTtsError: recognises transient local socket resets", () => {

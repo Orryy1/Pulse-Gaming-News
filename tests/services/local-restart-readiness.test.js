@@ -277,6 +277,30 @@ test("Windows scheduler hygiene flags Pulse tasks that launch visible python con
   );
 });
 
+test("Windows scheduler hygiene accepts a non-interactive hidden PowerShell watchdog", () => {
+  const hygiene = buildWindowsSchedulerHygiene({
+    platform: "win32",
+    cwd: ROOT,
+    scheduledTasks: [
+      {
+        task_name: "PulseGaming-LiveWatchdog-Supervisor",
+        task_path: "\\",
+        state: "Ready",
+        execute:
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        arguments:
+          '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\\Users\\MORR\\gaming-studio\\pulse-gaming\\tools\\local-live-watchdog.ps1"',
+        working_directory:
+          "C:\\Users\\MORR\\gaming-studio\\pulse-gaming",
+      },
+    ],
+  });
+
+  assert.equal(hygiene.relevant_task_count, 1);
+  assert.equal(hygiene.visible_console_risk_count, 0);
+  assert.deepEqual(hygiene.risk_task_names, []);
+});
+
 test("Windows scheduler hygiene flags the whole Orryy scheduler namespace", () => {
   const hygiene = buildWindowsSchedulerHygiene({
     platform: "win32",
@@ -595,6 +619,84 @@ test("local restart readiness keeps a transient localhost timeout non-red when t
   assert.equal(report.verdict, "amber");
   assert.doesNotMatch(report.blockers.join("; "), /localhost \/api\/health/);
   assert.match(report.warnings.join("; "), /localhost health timed out/i);
+});
+
+test("local restart readiness retries a transient health timeout before classifying the runtime", async () => {
+  const calls = [];
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    currentBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/test",
+    },
+    fetchJsonImpl: async (url, options) => {
+      calls.push({ url, timeoutMs: options.timeoutMs });
+      if (url.startsWith("http://127.0.0.1") && calls.length === 1) {
+        return { ok: false, status: null, json: null, error: "timeout" };
+      }
+      return healthy("abcdef1234567890");
+    },
+    healthProbeAttempts: 3,
+    healthProbeDelayMs: 0,
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.running.local.ok, true);
+  assert.equal(report.running.local.probe_attempts, 2);
+  assert.equal(report.running.public.probe_attempts, 1);
+  assert.deepEqual(
+    calls.map((call) => call.url),
+    [
+      "http://127.0.0.1:3001/api/health",
+      "http://127.0.0.1:3001/api/health",
+      "https://pulse.orryy.com/api/health",
+    ],
+  );
+});
+
+test("local restart readiness compares health with the explicitly approved protected runtime checkout", async () => {
+  const protectedRoot = "C:\\protected\\pulse-gaming-live";
+  const gitCalls = [];
+  const report = await buildLocalRestartReadiness({
+    cwd: ROOT,
+    env: {
+      PORT: "3001",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com",
+      DEPLOYMENT_MODE: "local",
+      PULSE_APPROVED_RUNTIME_REPO_ROOT: protectedRoot,
+      PUBLISH_REQUIRE_WINDOW: "true",
+      PUBLISH_REQUIRE_MIN_GAP: "true",
+      PUBLISH_REQUIRE_DAILY_CAP: "true",
+    },
+    execFileSyncImpl: (_command, args, options) => {
+      gitCalls.push({ args, cwd: options.cwd });
+      if (args.join(" ") === "rev-parse HEAD") return "abcdef1234567890\n";
+      if (args.join(" ") === "rev-parse --abbrev-ref HEAD") return "codex/test\n";
+      throw new Error(`unexpected git call: ${args.join(" ")}`);
+    },
+    localHealth: healthy("abcdef1234567890"),
+    publicHealth: healthy("abcdef1234567890"),
+    cadenceReport: cleanCadence(),
+    gitStatus: { clean: true, changed_count: 0, changed_files: [] },
+    windowsSchedulerHygiene: cleanSchedulerHygiene(),
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.expected_runtime_repo_root, protectedRoot);
+  assert.equal(report.expected_build.commit_sha, "abcdef1234567890");
+  assert.ok(gitCalls.length >= 2);
+  assert.ok(gitCalls.every((call) => call.cwd === protectedRoot));
 });
 
 test("local restart readiness is green when build, health, cadence and gates are clean", async () => {

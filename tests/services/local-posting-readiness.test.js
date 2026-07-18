@@ -187,6 +187,65 @@ test("local posting readiness prefers fresh tunnel health over stale cutover hea
   assert.ok(report.blockers.includes("running local server reports primary=false"));
 });
 
+test("local posting readiness prefers a successful cutover probe over failed primary and tunnel snapshots", () => {
+  const healthyRuntime = {
+    ok: true,
+    status: 200,
+    json: {
+      deployment: { mode: "local", primary: true },
+      runtime: { auto_publish: true, safe_observation_mode: false },
+    },
+  };
+  const timeout = {
+    ok: false,
+    status: null,
+    error: "This operation was aborted",
+  };
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "green",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: true,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Active connections: 1" },
+      health: {
+        local: healthyRuntime,
+        public: healthyRuntime,
+      },
+    },
+    primaryReadiness: {
+      checks: {
+        primary_enabled: true,
+        use_job_queue_enabled: true,
+        auto_publish_enabled: true,
+      },
+      health: {
+        local: timeout,
+        public: timeout,
+      },
+    },
+    tunnelReadiness: {
+      verdict: "red",
+      tunnel: { status: "active" },
+      health: {
+        local: timeout,
+        public: timeout,
+      },
+    },
+    ttsReport: greenTts(),
+  });
+
+  assert.equal(report.verdict, "green");
+  assert.equal(report.readiness.local_health, true);
+  assert.equal(report.readiness.public_health, true);
+  assert.ok(!report.blockers.includes("local server is not healthy on localhost:3001"));
+});
+
 test("local posting readiness blocks safe observation runtime even when env flags are enabled", () => {
   const report = buildLocalPostingReadiness({
     cutoverPlan: {

@@ -120,6 +120,7 @@ function assertContentWorkerResourceContract(env = process.env) {
 function createContentWorkerClaimGuard({
   env = process.env,
   evaluateQuietPeriod = null,
+  kinds = [],
 } = {}) {
   if (/^(false|0|no|off)$/i.test(
     String(env.PULSE_CONTENT_WORKER_QUIET_PERIOD || "").trim(),
@@ -130,10 +131,11 @@ function createContentWorkerClaimGuard({
     require("../lib/ops/publish-worker-quiet-period").evaluatePublishWorkerQuietPeriod;
   const beforeMinutes = env.PULSE_CONTENT_WORKER_QUIET_BEFORE_MINUTES;
   const afterMinutes = env.PULSE_CONTENT_WORKER_QUIET_AFTER_MINUTES;
-  return ({ now = new Date() } = {}) => evaluate({
+  return ({ now = new Date(), kinds: claimedKinds = kinds } = {}) => evaluate({
     now,
     beforeMinutes,
     afterMinutes,
+    kinds: claimedKinds,
   });
 }
 
@@ -201,7 +203,7 @@ async function main(
   process.env.PULSE_MAINTENANCE_RUNNER = "false";
 
   const claimGuard = options.claimGuard === undefined
-    ? createContentWorkerClaimGuard({ env: process.env })
+    ? createContentWorkerClaimGuard({ env: process.env, kinds: args.kinds })
     : options.claimGuard;
   const bootstrap = require("../lib/bootstrap-queue");
   const state = await bootstrap.start({

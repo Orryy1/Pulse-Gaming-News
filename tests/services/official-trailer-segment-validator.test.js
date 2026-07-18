@@ -233,6 +233,173 @@ test("official trailer segment validator preserves immutable official YouTube so
   );
 });
 
+test("official YouTube publisher masters retain provenance and qualify for strict cinematic validation", async () => {
+  const outputRoot = tempOutputRoot("official-youtube-publisher-cinematic-motion");
+  await cleanTempRoot(outputRoot);
+  const sourceSha256 = "a".repeat(64);
+  const identitySha256 = "b".repeat(64);
+  const referenceUrl = "https://www.youtube.com/watch?v=PpyzMnjSuZo";
+  const officialChannel = "https://www.youtube.com/@arknightsendfieldEN";
+  const sourcePath = path.join(outputRoot, "PpyzMnjSuZo.mp4");
+  const sourceIdentityPath = path.join(outputRoot, "PpyzMnjSuZo.source-identity.json");
+  const referenceReport = {
+    plans: [
+      {
+        story_id: "rss_arknights_endfield",
+        references: [
+          {
+            story_id: "rss_arknights_endfield",
+            entity: "Arknights: Endfield",
+            source_url: sourcePath,
+            source_type: "official_youtube_channel_url",
+            source_family: "youtube_PpyzMnjSuZo_arknights_endfield_gameplay_preview",
+            source_title: "Arknights: Endfield Official Gameplay Preview",
+            source_owner: "Arknights: Endfield",
+            source_duration_s: 70,
+            source_verified: true,
+            downloads_allowed: true,
+            youtube_video_id: "PpyzMnjSuZo",
+            official_channel_url: officialChannel,
+            source_sha256: sourceSha256,
+            allowed_render_use: "transformative_editorial_short_form",
+            allowed_platforms: [
+              "youtube_shorts",
+              "instagram_reels",
+              "facebook_reels",
+            ],
+            commercial_use_allowed: true,
+            provenance: {
+              source: "official_youtube_channel_download",
+              official_channel: officialChannel,
+              reference_url: referenceUrl,
+              youtube_video_id: "PpyzMnjSuZo",
+              source_sha256: sourceSha256,
+              source_identity_path: sourceIdentityPath,
+              source_identity_sha256: identitySha256,
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const refs = buildClipRefsFromReport(
+    null,
+    referenceReport,
+    "rss_arknights_endfield",
+    {
+      candidateWindowsPerSource: 1,
+      includeExploratoryWindows: true,
+      exploratoryStartSeconds: [6],
+      exploratoryDurationS: 3,
+      allowEarlyExploratoryWindows: true,
+      maxSegments: 1,
+    },
+  );
+
+  assert.equal(refs.length, 1);
+  assert.equal(refs[0].provenance.reference_title, "Arknights: Endfield Official Gameplay Preview");
+  assert.equal(refs[0].provenance.official_channel, officialChannel);
+  assert.equal(refs[0].provenance.source_identity_path, sourceIdentityPath);
+  assert.equal(refs[0].provenance.source_identity_sha256, identitySha256);
+  assert.equal(refs[0].provenance.source_verified, true);
+  assert.equal(refs[0].provenance.commercial_use_allowed, true);
+  assert.equal(
+    refs[0].provenance.allowed_render_use,
+    "transformative_editorial_short_form",
+  );
+
+  let call = 0;
+  const report = await runOfficialTrailerSegmentValidation(refs, {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      call += 1;
+      return {
+        ...passingQa(outputPath),
+        content_hash: `official-youtube-cinematic-${call}`,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.13,
+          saturation_mean: 0.72,
+          dark_pixel_ratio: 0.35,
+          bright_pixel_ratio: 0,
+          letterbox_bar_ratio: 0.15,
+        },
+        visual_taste: {
+          verdict: "pass",
+          reason: "taste_passed",
+          score: 99,
+          tags: ["colourful"],
+        },
+      };
+    },
+  });
+
+  assert.equal(
+    report.summary.segments_validated,
+    1,
+    JSON.stringify(report.segments[0], null, 2),
+  );
+  assert.equal(
+    report.segments[0].validation_reason,
+    "official_storefront_cinematic_motion_samples_passed",
+  );
+  assert.equal(
+    report.segments[0].segment_motion_class,
+    "official_storefront_cinematic_motion",
+  );
+
+  const incompleteIdentityReport = await runOfficialTrailerSegmentValidation(
+    refs.map((ref) => ({
+      ...ref,
+      source_identity_sha256: null,
+      sourceIdentitySha256: null,
+      provenance: {
+        ...ref.provenance,
+        source_identity_sha256: null,
+        sourceIdentitySha256: null,
+        original_provenance: {
+          ...(ref.provenance?.original_provenance || {}),
+          source_identity_sha256: null,
+          sourceIdentitySha256: null,
+        },
+      },
+    })),
+    {
+      applyLocal: true,
+      outputRoot: path.join(outputRoot, "incomplete-identity"),
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => ({
+        ...passingQa(outputPath),
+        content_hash: `incomplete-identity-${path.basename(outputPath)}`,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.13,
+          saturation_mean: 0.72,
+          dark_pixel_ratio: 0.35,
+          bright_pixel_ratio: 0,
+          letterbox_bar_ratio: 0.15,
+        },
+        visual_taste: {
+          verdict: "pass",
+          reason: "taste_passed",
+          score: 99,
+          tags: ["colourful"],
+        },
+      }),
+    },
+  );
+
+  assert.equal(incompleteIdentityReport.summary.segments_validated, 0);
+  assert.equal(incompleteIdentityReport.summary.segments_rejected, 1);
+  assert.equal(incompleteIdentityReport.segments[0].segment_validated, false);
+});
+
 test("segment validator CLI scopes batch clip refs from explicit reference reports", () => {
   const refs = buildClipRefsFromReport(
     {

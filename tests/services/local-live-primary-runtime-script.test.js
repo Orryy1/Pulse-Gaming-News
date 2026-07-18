@@ -59,6 +59,31 @@ test("local live primary runtime launcher auto-recovers stale matching server ru
   assert.match(script, /branch/);
 });
 
+test("local live primary runtime launcher resolves Git when SYSTEM PATH omits it", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /function Resolve-GitExecutable/);
+  assert.match(script, /Get-Command "git\.exe"/);
+  assert.match(script, /\$env:ProgramFiles/);
+  assert.match(script, /Git[\\/]cmd[\\/]git\.exe/);
+  assert.match(script, /Test-Path -LiteralPath \$candidate -PathType Leaf/);
+  assert.match(script, /& \$gitExecutable -C \$RepoRoot rev-parse HEAD/);
+  assert.match(script, /& \$gitExecutable -C \$RepoRoot rev-parse --abbrev-ref HEAD/);
+});
+
+test("local live primary runtime launcher reads Git HEAD without changing SYSTEM safe-directory config", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /function Resolve-GitDirectory/);
+  assert.match(script, /function Resolve-RepositoryIdentity/);
+  assert.match(script, /Get-Content -LiteralPath \$headPath -Raw/);
+  assert.match(script, /refs\/heads\//);
+  assert.match(script, /packed-refs/);
+  assert.match(script, /\$repositoryIdentity = Resolve-RepositoryIdentity -RepositoryRoot \$RepoRoot/);
+  assert.doesNotMatch(script, /safe\.directory/);
+  assert.doesNotMatch(script, /git config --global/);
+});
+
 test("local live primary runtime launcher replaces matching-commit observation mode", () => {
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 
@@ -102,6 +127,30 @@ test("local live primary runtime launcher preserves guarded queue runtime env", 
   assert.match(script, /output.*LinkType.*Junction/s);
   assert.match(script, /Refusing publish evidence root/);
   assert.match(script, /\$env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output\/goal-contract\/guarded_dispatch_executor_plan\.json"/);
+});
+
+test("local live primary runtime launcher isolates guarded publish work from the HTTP process", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /\$env:PULSE_MISSED_WINDOW_RECOVERY = "false"/);
+  assert.match(script, /\$env:PULSE_PUBLISH_CRITICAL_RUNNER = "false"/);
+  assert.match(script, /local-publish-critical-worker\.js/);
+  assert.match(script, /pulse-live-publish-critical/);
+  assert.match(script, /publish_schedule_recovery_monitor,publish_window_watchdog,publish/);
+  assert.match(script, /publish_critical_worker_started/);
+  assert.match(script, /publish_critical_worker_noop_current/);
+});
+
+test("local live primary runtime launcher can safely replace an uninspectable Windows node owner", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /Test-HealthProvesProtectedPrimaryRuntime/);
+  assert.match(script, /\$process\.Name -ieq "node\.exe"/);
+  assert.match(script, /\$process\.CommandLine -notmatch "server\\\.js"/);
+  assert.match(script, /\$Health\.deployment\.mode -eq "local"/);
+  assert.match(script, /\$Health\.deployment\.primary/);
+  assert.match(script, /\$Health\.runtime\.protected_primary_runtime/);
+  assert.match(script, /Refusing to stop PID/);
 });
 
 test("local live primary runtime launcher detaches and verifies the Node child", () => {

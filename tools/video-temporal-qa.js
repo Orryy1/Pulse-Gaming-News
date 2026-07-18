@@ -5,6 +5,7 @@ const fsNative = require("node:fs");
 const path = require("node:path");
 const fs = require("fs-extra");
 const {
+  reconcileTemporalRepeatScopes,
   runVideoQa,
   validateTemporalVideoQaReport,
 } = require("../lib/services/video-qa");
@@ -84,10 +85,14 @@ function reconcileVerdict(qa = {}) {
   if (decode.video_stream !== true) blockers.push("decoded_video_stream_not_proven");
   if (decode.audio_stream !== true) blockers.push("decoded_audio_stream_not_proven");
   if (temporal.scan_complete !== true) blockers.push("temporal_scan_incomplete");
+  const repeatReconciliation = reconcileTemporalRepeatScopes(temporal);
   if (!Array.isArray(temporal.repeated_motion_sequences)) {
     blockers.push("repeated_motion_evidence_missing");
-  } else if (temporal.repeated_motion_sequences.length > 0) {
+  } else if (repeatReconciliation.blocking_full_frame_repeat) {
     blockers.push("repeated_motion_sequences_detected");
+  }
+  if (repeatReconciliation.center_crop_repeat_detected) {
+    blockers.push("repeated_motion_sequences_detected_center_crop");
   }
   if (temporal.cadence?.choppy !== false) blockers.push("clean_temporal_cadence_not_proven");
 

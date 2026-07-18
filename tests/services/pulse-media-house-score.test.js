@@ -536,6 +536,36 @@ test("generic platform descriptions fail even without source-admin boilerplate",
   assert.equal(report.shorts_attention_report.status, "blocked");
 });
 
+test("platform descriptions fail when a stale demo template contradicts the current story angle", () => {
+  const base = strongStory();
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...base.canonical,
+      canonical_subject: "MARVEL Tokon",
+      selected_title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+      first_spoken_line: "MARVEL Tokon has 20 playable fighters.",
+      narration_script:
+        "MARVEL Tokon has 20 playable fighters. Four-versus-four teams make readable swaps the launch test. The roster sells the fantasy, but clear team fights will sell the game. Follow Pulse Gaming so you never miss a beat.",
+    },
+    platformManifest: {
+      outputs: {
+        youtube_shorts: {
+          title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+          description:
+            "MARVEL Tokon has one proof point players can judge immediately: the demo. It can win wishlists fast or expose the problem before launch. Source: PlayStation Blog.",
+          cover_frame: { headline: "MARVEL'S 4V4 META FIGHT" },
+        },
+      },
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(
+    report.hard_failures.includes("media_house:platform_copy_story_angle_mismatch"),
+    report.hard_failures.join(", "),
+  );
+});
+
 test("plain Shorts titles fail even when source and subject are present", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     canonical: {

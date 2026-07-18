@@ -246,6 +246,17 @@ test("Black Flag Resynced stays one continuous spoken title", () => {
   );
 });
 
+test("Arknights Endfield uses a continuous provider-safe spoken alias", () => {
+  assert.equal(
+    applyGamingPronunciation("Arknights: Endfield just gave PS5 Pro a real test."),
+    "Arknights End Field just gave PlayStation five Pro a real test.",
+  );
+  assert.equal(
+    applyGamingPronunciation("Arknights Endfield keeps moving."),
+    "Arknights End Field keeps moving.",
+  );
+});
+
 test("colon-separated game titles lose the TTS pause but keep the title words", () => {
   assert.equal(
     applyGamingPronunciation("The Expanse: Osiris Reborn shows real gameplay."),
@@ -354,6 +365,13 @@ test("PlayStation hardware acronyms expand for local narration clarity", () => {
   assert.equal(
     applyGamingPronunciation("PS4 support stays visible."),
     "PlayStation four support stays visible.",
+  );
+});
+
+test("Hypergryph uses the approved stable spoken alias without changing display copy", () => {
+  assert.equal(
+    applyGamingPronunciation("Hypergryph says the patch improves PSSR."),
+    "Hypergriff says the patch improves PSSR.",
   );
 });
 

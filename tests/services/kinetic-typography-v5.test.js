@@ -115,7 +115,7 @@ test("V5 kinetic typography borrows safe dwell from the previous phrase before a
     false,
   );
   assert.equal(
-    report.captions.some((caption) => caption.text === "REAL BEFORE-AND-AFTER TEST."),
+    report.captions.some((caption) => caption.text === "A REAL BEFORE-AND-AFTER TEST."),
     true,
   );
 });
@@ -173,4 +173,91 @@ test("V5 kinetic typography never lets dangling-tail repair exceed the premium w
     report.metrics.maximum_words_per_caption <= KINETIC_TYPOGRAPHY_V5.max_words_per_phrase,
     true,
   );
+});
+
+test("V5 kinetic typography never leaves articles or connectors at a caption tail", () => {
+  const scriptText =
+    "It also adds two regions, two operators, the story finale, a roguelike mode and a two-player challenge.";
+  const words = scriptText.split(/\s+/).map((word, index) => ({
+    word,
+    start: Number((index * 0.32).toFixed(2)),
+    end: Number((index * 0.32 + 0.28).toFixed(2)),
+  }));
+  const ass = buildPremiumKineticAss({
+    story: { title: "Arknights: Endfield Version 1.4" },
+    words,
+    duration: 8,
+    scriptText,
+  });
+  const report = inspectPremiumCaptionCadence(ass);
+
+  assert.equal(report.status, "pass", JSON.stringify(report, null, 2));
+  assert.equal(
+    report.captions.some((caption) =>
+      /\b(?:A|AN|THE|AND|OR|TO|OF|FOR|WITH|IN|ON)$/.test(caption.text),
+    ),
+    false,
+  );
+});
+
+test("V5 kinetic typography reflows following phrases when a dangling article cannot fit directly", () => {
+  const scriptText =
+    "That matters because an expensive console upgrade only earns its pitch when players can see the difference during movement, not just in a paused screenshot.";
+  const timestamps = [
+    ["That", 0, 0.12],
+    ["matters", 0.12, 0.5],
+    ["because", 0.5, 0.84],
+    ["an", 0.84, 1.02],
+    ["expensive", 1.02, 1.28],
+    ["console", 1.28, 1.72],
+    ["upgrade", 1.72, 2.2],
+    ["only", 2.2, 2.58],
+    ["earns", 2.58, 2.92],
+    ["its", 2.92, 3.12],
+    ["pitch", 3.12, 3.34],
+    ["when", 3.34, 3.58],
+    ["players", 3.58, 3.86],
+    ["can", 3.86, 4.08],
+    ["see", 4.08, 4.28],
+    ["the", 4.28, 4.4],
+    ["difference", 4.4, 4.66],
+    ["during", 4.66, 4.9],
+    ["movement,", 4.9, 5.16],
+    ["not", 5.56, 5.76],
+    ["just", 5.76, 5.96],
+    ["in", 5.96, 6.14],
+    ["a", 6.14, 6.22],
+    ["paused", 6.22, 6.42],
+    ["screenshot.", 6.42, 6.8],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const ass = buildPremiumKineticAss({
+    story: { title: "Arknights: Endfield Version 1.4" },
+    words: timestamps,
+    duration: 7,
+    scriptText,
+  });
+  const report = inspectPremiumCaptionCadence(ass);
+
+  assert.equal(report.status, "pass", JSON.stringify(report, null, 2));
+  assert.equal(
+    report.captions.some((caption) =>
+      /\b(?:A|AN|THE|AND|OR|TO|OF|FOR|WITH|IN|ON)$/.test(caption.text),
+    ),
+    false,
+  );
+  assert.ok(
+    report.captions.some((caption) => caption.text === "AN EXPENSIVE CONSOLE UPGRADE"),
+  );
+});
+
+test("V5 caption cadence rejects a dangling function word even when dwell is sufficient", () => {
+  const ass = [
+    "[Events]",
+    "Dialogue: 0,0:00:00.00,0:00:01.00,Pop,,0,0,0,,STORY FINALE, A",
+    "Dialogue: 0,0:00:01.00,0:00:02.00,Pop,,0,0,0,,ROGUELIKE MODE",
+  ].join("\n");
+  const report = inspectPremiumCaptionCadence(ass);
+
+  assert.equal(report.status, "fail");
+  assert.ok(report.blockers.includes("caption_dangling_function_word_tail"));
 });

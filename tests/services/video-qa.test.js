@@ -340,6 +340,84 @@ test("validateTemporalVideoQaReport requires exact GREEN evidence bound to the c
   assert.deepStrictEqual(validation.blockers, []);
 });
 
+test("validateTemporalVideoQaReport blocks a full-frame shell match even when centre motion is clean", () => {
+  const validation = validateTemporalVideoQaReport(
+    {
+      story_id: "arknights",
+      verdict: "GREEN",
+      can_publish: true,
+      blockers: [],
+      warnings: [],
+      final_media: {
+        sha256: "a".repeat(64),
+        size_bytes: 1024,
+      },
+      evidence: {
+        decode: {
+          complete: true,
+          video_stream: true,
+          audio_stream: true,
+        },
+        temporal: {
+          analysis_scope: "full_frame",
+          scan_complete: true,
+          coverage_ratio: 0.9956,
+          sampled_frame_count: 106,
+          repeated_motion_sequences: [
+            {
+              first_start_seconds: 1.5,
+              repeat_start_seconds: 41.5,
+              duration_seconds: 2,
+              mean_hash_distance: 3.25,
+            },
+          ],
+          repeated_motion_seconds: 2,
+          cadence: { choppy: false },
+          supplemental_center_crop: {
+            analysis_scope: "center_crop",
+            scan_complete: true,
+            coverage_ratio: 0.9956,
+            sampled_frame_count: 106,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: { choppy: false },
+          },
+        },
+      },
+      source_result: {
+        result: "pass",
+        failures: [],
+        warnings: [],
+      },
+    },
+    {
+      storyId: "arknights",
+      renderSha256: "a".repeat(64),
+      renderSizeBytes: 1024,
+    },
+  );
+
+  assert.strictEqual(validation.verdict, "RED");
+  assert.strictEqual(validation.valid, false);
+  assert.ok(
+    validation.blockers.includes("temporal_video_qa_repeated_motion_detected"),
+  );
+  assert.ok(
+    validation.blockers.includes(
+      "temporal_video_qa_repeated_motion_seconds_nonzero",
+    ),
+  );
+  assert.strictEqual(
+    validation.evidence.repeat_reconciliation
+      .full_frame_only_disambiguated_by_center_crop,
+    true,
+  );
+  assert.strictEqual(
+    validation.evidence.repeat_reconciliation.blocking_full_frame_repeat,
+    true,
+  );
+});
+
 test("validateTemporalVideoQaReport rejects stale hashes and repeated or choppy media", () => {
   const validation = validateTemporalVideoQaReport(
     {
@@ -737,6 +815,58 @@ test("classifyVideoQa blocks sustained choppy temporal cadence", () => {
 
   assert.strictEqual(r.result, "fail");
   assert.ok(r.failures.some((f) => f.startsWith("choppy_temporal_cadence")));
+});
+
+test("classifyVideoQa blocks a shell-only full-frame repeat even when the complete centre crop is clean", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 52.7,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    requireTemporalScan: true,
+    temporalAnalysis: {
+      analysis_scope: "full_frame",
+      scan_complete: true,
+      coverage_ratio: 0.9956,
+      sampled_frame_count: 106,
+      repeated_motion_seconds: 2,
+      repeated_motion_sequences: [
+        {
+          first_start_seconds: 1.5,
+          repeat_start_seconds: 41.5,
+          duration_seconds: 2,
+          mean_hash_distance: 3.25,
+        },
+      ],
+      cadence: { choppy: false },
+      supplemental_center_crop: {
+        analysis_scope: "center_crop",
+        scan_complete: true,
+        coverage_ratio: 0.9956,
+        sampled_frame_count: 106,
+        repeated_motion_seconds: 0,
+        repeated_motion_sequences: [],
+        cadence: { choppy: false },
+      },
+    },
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(
+    r.failures.some((failure) =>
+      failure.startsWith("repeated_motion_sequence"),
+    ),
+  );
+  assert.strictEqual(
+    r.evidence.temporal_repeat_reconciliation
+      .full_frame_only_disambiguated_by_center_crop,
+    true,
+  );
+  assert.strictEqual(
+    r.evidence.temporal_repeat_reconciliation.blocking_repeat_detected,
+    true,
+  );
 });
 
 test("classifyVideoQa blocks repetition detected only by the centre-crop temporal scan", () => {

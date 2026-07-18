@@ -124,6 +124,83 @@ test("official search autofill adds trusted official media pages for known publi
   assert.match(entry.evidence_of_officialness, /Rockstar Games official media page/);
 });
 
+test("official search autofill accepts only verified exact-entity official YouTube channel metadata", async () => {
+  const youtubeCalls = [];
+  const report = await buildOfficialSearchIntakeAutofillReport({
+    entries: [
+      {
+        story_id: "arknights-endfield-gap",
+        entity: "Arknights: Endfield",
+        query: "Arknights: Endfield official gameplay trailer",
+        accepted_sources: ["official publisher channel"],
+      },
+    ],
+    generatedAt: "2026-07-17T15:10:00.000Z",
+    fetchJson: async () => ({ ok: true, status: 200, json: { items: [] } }),
+    searchYoutubeMetadata: async ({ query, entity, ytDlpPath }) => {
+      youtubeCalls.push({ query, entity, ytDlpPath });
+      return [
+        {
+          id: "wrongOutlet1",
+          title: "Arknights: Endfield Version 1.4 Trailer",
+          channel: "IGN",
+          uploader_url: "https://www.youtube.com/@IGN",
+          channel_is_verified: true,
+          duration: 90,
+        },
+        {
+          id: "xxURfVAVSfE",
+          title:
+            "Arknights: Endfield Companionship Celebration & Core Chapter [Homecoming] Version Trailer",
+          channel: "Arknights: Endfield",
+          uploader_url: "https://www.youtube.com/@arknightsendfieldEN",
+          channel_is_verified: true,
+          duration: 388,
+        },
+      ];
+    },
+  });
+
+  assert.deepEqual(youtubeCalls, [
+    {
+      query: "Arknights: Endfield official gameplay trailer",
+      entity: "Arknights: Endfield",
+      ytDlpPath: undefined,
+    },
+  ]);
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(report.summary.youtube_metadata_searches, 1);
+  assert.equal(report.safety.video_downloads_started, false);
+  assert.equal(report.safety.render_readiness_claimed, false);
+  assert.equal(report.safety.youtube_metadata_search_started, true);
+  assert.equal(report.safety.yt_dlp_started, false);
+
+  const row = report.rows[0];
+  assert.equal(row.provider, "youtube_verified_official_channel_metadata");
+  assert.equal(row.matched_video_id, "xxURfVAVSfE");
+  const entry = report.output_template.entries[0];
+  assert.equal(entry.story_id, "arknights-endfield-gap");
+  assert.equal(entry.entity, "Arknights: Endfield");
+  assert.equal(entry.source_type, "official_youtube_channel_url");
+  assert.equal(entry.source_owner, "Arknights: Endfield");
+  assert.equal(entry.youtube_video_id, "xxURfVAVSfE");
+  assert.equal(
+    entry.official_source_url,
+    "https://www.youtube.com/watch?v=xxURfVAVSfE",
+  );
+  assert.equal(
+    entry.official_channel_url,
+    "https://www.youtube.com/@arknightsendfieldEN",
+  );
+  assert.equal(entry.source_verified, true);
+  assert.equal(entry.downloads_allowed, false);
+  assert.equal(entry.autonomous_use_approved, false);
+  assert.equal(
+    entry.candidate_generation_policy,
+    "verified_official_youtube_metadata_reference_only_materialization_required",
+  );
+});
+
 test("official search autofill rejects weak Steam result matches", async () => {
   const report = await buildOfficialSearchIntakeAutofillReport({
     entries: [

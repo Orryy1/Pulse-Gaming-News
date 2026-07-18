@@ -10,6 +10,11 @@ const {
   writeGoalBatchPackages,
 } = require("../lib/goal-batch-packages");
 const { fetchRssProofStories } = require("../lib/goal-rss-proof-ingest");
+const {
+  buildSourceFingerprint,
+  buildZeroYieldExclusions,
+  readZeroYieldQuarantine,
+} = require("../lib/refill-zero-yield-quarantine");
 const pulseGamingChannel = require("../channels/pulse-gaming");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -33,6 +38,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     videoCacheDir: path.join(ROOT, "output", "video_cache"),
     sfxAssetsPath: path.join(ROOT, "output", "goal-contract", "sfx_asset_inventory.json"),
     sfxRightsLedgerPath: path.join(ROOT, "output", "goal-contract", "sfx_rights_ledger.json"),
+    storiesFileExplicit: false,
     limit: 30,
     outDir: path.join(ROOT, "output", "goal-proof", "batch"),
     existingArtifactRoot: null,
@@ -41,8 +47,12 @@ function parseArgs(argv = process.argv.slice(2)) {
     liveRss: false,
     liveRssOnly: false,
     rssPerFeed: 8,
+    rssOffsetPerFeed: 0,
     dbStories: false,
     storyIds: [],
+    excludedStoryIds: [],
+    excludedSourceFingerprints: [],
+    zeroYieldQuarantineFile: "",
     includePublished: false,
     allowOwnedMotionFallback: false,
     json: false,
@@ -50,7 +60,10 @@ function parseArgs(argv = process.argv.slice(2)) {
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--stories-file") args.storiesFile = argv[++i] || args.storiesFile;
+    if (arg === "--stories-file") {
+      args.storiesFile = argv[++i] || args.storiesFile;
+      args.storiesFileExplicit = true;
+    }
     else if (arg === "--revenue-paths") args.revenuePathsFile = argv[++i] || args.revenuePathsFile;
     else if (arg === "--v4-motion-pack-dir") args.v4MotionPackDir = argv[++i] || args.v4MotionPackDir;
     else if (arg === "--video-cache-dir") args.videoCacheDir = argv[++i] || args.videoCacheDir;
@@ -69,11 +82,23 @@ function parseArgs(argv = process.argv.slice(2)) {
       args.liveRssOnly = true;
     }
     else if (arg === "--rss-per-feed") args.rssPerFeed = Number(argv[++i] || args.rssPerFeed);
+    else if (arg === "--rss-offset-per-feed") {
+      args.rssOffsetPerFeed = Number(argv[++i] || args.rssOffsetPerFeed);
+    }
     else if (arg === "--db-stories") args.dbStories = true;
     else if (arg === "--include-published") args.includePublished = true;
     else if (arg === "--allow-owned-motion-fallback") args.allowOwnedMotionFallback = true;
     else if (arg === "--story-id" || arg === "--story" || arg === "--story-ids") {
       args.storyIds.push(...normaliseStoryIds(argv[++i] || ""));
+    }
+    else if (arg === "--exclude-story-id" || arg === "--exclude-story-ids") {
+      args.excludedStoryIds.push(...normaliseStoryIds(argv[++i] || ""));
+    }
+    else if (arg === "--exclude-source-fingerprint") {
+      args.excludedSourceFingerprints.push(...normaliseStoryIds(argv[++i] || ""));
+    }
+    else if (arg === "--zero-yield-quarantine") {
+      args.zeroYieldQuarantineFile = argv[++i] || "";
     }
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -105,9 +130,16 @@ function usage() {
     "  --live-rss                 Prepend current source-backed RSS proof candidates from Pulse Gaming feeds",
     "  --live-rss-only            Use only current gated live-RSS candidates; prevents stale backlog/revenue fill",
     "  --rss-per-feed <n>          Defaults to 8 when --live-rss is set",
+    "  --rss-offset-per-feed <n>   Skip an exhausted leading cohort in every RSS feed",
     "  --db-stories               Read story rows from the configured local DB instead of daily_news.json",
     "  --include-published        Allow live-RSS packaging of stories that already have public publish evidence",
     "  --story-id <id[,id]>        Package only the named story IDs; may be repeated",
+    "  --exclude-story-id <id[,id]>",
+    "                              Exclude failed story IDs from unattended refill",
+    "  --exclude-source-fingerprint <hash[,hash]>",
+    "                              Exclude failed source identities even when story IDs change",
+    "  --zero-yield-quarantine <path>",
+    "                              Load durable rolling story/source exclusions from JSON",
     "  --allow-owned-motion-fallback",
     "                              Use governed owned source-card motion when direct footage is unavailable",
     "  --json",
@@ -786,6 +818,7 @@ function selectStoriesForGoalBatch({
   useDbStories = false,
   storyIds = [],
   excludedStoryIds = [],
+  excludedSourceFingerprints = [],
   excludedPublishedStories = [],
   now = new Date(),
   sourceAgePolicyHours = 168,
@@ -793,6 +826,7 @@ function selectStoriesForGoalBatch({
 } = {}) {
   const wanted = new Set(normaliseStoryIds(storyIds));
   const excluded = new Set(normaliseStoryIds(excludedStoryIds));
+  const excludedSources = new Set(normaliseStoryIds(excludedSourceFingerprints));
   const sourceStories = useDbStories ? asStoryArray(dbStories) : asStoryArray(baseStories);
   const liveRssSelection = wanted.size
     ? prioritiseLiveRssStoriesForMotion(liveRssStories)
@@ -809,7 +843,9 @@ function selectStoriesForGoalBatch({
   let merged = dedupeStoriesById([...repeatFilteredLiveRssSelection, ...sourceStories]).filter((story) => {
     if (wanted.size) return true;
     const id = storyIdFor(story);
-    return !id || !excluded.has(id);
+    const sourceFingerprint = buildSourceFingerprint(story);
+    return (!id || !excluded.has(id)) &&
+      (!sourceFingerprint || !excludedSources.has(sourceFingerprint));
   });
   if (!wanted.size && requireMaterializableDirectMedia && merged.length === 0) {
     const repairFallbackSelection = filterNearRepeatFreshStoryClusters(
@@ -821,7 +857,9 @@ function selectStoriesForGoalBatch({
     );
     merged = dedupeStoriesById([...repairFallbackSelection, ...sourceStories]).filter((story) => {
       const id = storyIdFor(story);
-      return !id || !excluded.has(id);
+      const sourceFingerprint = buildSourceFingerprint(story);
+      return (!id || !excluded.has(id)) &&
+        (!sourceFingerprint || !excludedSources.has(sourceFingerprint));
     });
   }
   if (!wanted.size) return merged;
@@ -829,7 +867,11 @@ function selectStoriesForGoalBatch({
 }
 
 function shouldFillRevenuePathsForGoalBatch(args = {}) {
-  return normaliseStoryIds(args.storyIds).length === 0 && args.liveRssOnly !== true;
+  return (
+    normaliseStoryIds(args.storyIds).length === 0 &&
+    args.liveRssOnly !== true &&
+    args.storiesFileExplicit !== true
+  );
 }
 
 async function loadMotionPackByStory(dirPath) {
@@ -887,10 +929,24 @@ async function main(argv = process.argv.slice(2)) {
     ? []
     : asStoryArray(await fs.readJson(path.resolve(args.storiesFile)));
   const dbStories = args.dbStories ? await require("../lib/db").getStories() : [];
+  const zeroYieldQuarantine = args.zeroYieldQuarantineFile
+    ? await readZeroYieldQuarantine(path.resolve(args.zeroYieldQuarantineFile), {
+        now: args.generatedAt ? new Date(args.generatedAt) : new Date(),
+      })
+    : null;
+  const zeroYieldExclusions = buildZeroYieldExclusions(zeroYieldQuarantine, {
+    now: args.generatedAt ? new Date(args.generatedAt) : new Date(),
+  });
+  const rssOffsetPerFeed = Math.max(
+    0,
+    Number(args.rssOffsetPerFeed || 0),
+    Number(zeroYieldExclusions.rss_offset_per_feed || 0),
+  );
   const liveRssStories = args.liveRss
     ? await fetchRssProofStories({
         feeds: pulseGamingChannel.rssFeeds || [],
         perFeed: args.rssPerFeed,
+        offsetPerFeed: rssOffsetPerFeed,
       })
     : [];
   const revenuePaths = await fs.pathExists(path.resolve(args.revenuePathsFile))
@@ -907,10 +963,19 @@ async function main(argv = process.argv.slice(2)) {
   const motionPackByStory = await loadMotionPackByStory(args.v4MotionPackDir);
   const sfxAssetInventory = await readJsonIfPresent(args.sfxAssetsPath, []);
   const sfxRightsLedger = await readJsonIfPresent(args.sfxRightsLedgerPath, []);
-  const excludedStoryIds =
+  const excludedStoryIds = [
+    ...args.excludedStoryIds,
+    ...zeroYieldExclusions.story_ids,
+    ...(
     args.liveRssOnly && !args.includePublished
       ? Array.from(await loadPublishedStoryIdsForGoalBatch())
-      : [];
+      : []
+    ),
+  ];
+  const excludedSourceFingerprints = [
+    ...args.excludedSourceFingerprints,
+    ...zeroYieldExclusions.source_fingerprints,
+  ];
   const excludedPublishedStories =
     args.liveRssOnly && !args.includePublished
       ? await loadPublishedStoriesForGoalBatch()
@@ -922,6 +987,7 @@ async function main(argv = process.argv.slice(2)) {
     useDbStories: args.dbStories,
     storyIds: args.storyIds,
     excludedStoryIds,
+    excludedSourceFingerprints,
     excludedPublishedStories,
     requireMaterializableDirectMedia: args.liveRssOnly === true,
   });

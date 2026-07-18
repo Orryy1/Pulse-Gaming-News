@@ -10,6 +10,9 @@ const {
   formatLocalCutoverPlanMarkdown,
 } = require("../lib/ops/local-cutover-plan");
 const { fetchJson } = require("../lib/ops/local-primary-readiness");
+const {
+  resolveLocalReadinessOutputDir,
+} = require("../lib/ops/local-readiness-evidence-root");
 
 function readIfExists(filePath) {
   try {
@@ -38,7 +41,7 @@ function runCloudflaredInfo(tunnelId) {
 async function main() {
   const args = process.argv.slice(2);
   const jsonOnly = args.includes("--json");
-  const outputDir = path.join(process.cwd(), "test", "output");
+  const outputDir = resolveLocalReadinessOutputDir({ cwd: process.cwd() });
   const envText = readIfExists(path.join(process.cwd(), ".env"));
   const defaultConfigPath = path.join(
     process.env.USERPROFILE || "",

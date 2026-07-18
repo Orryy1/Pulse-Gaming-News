@@ -24,6 +24,9 @@ const {
   formatLocalGpuPressure,
   inspectLocalGpuPressure,
 } = require("../lib/studio/local-gpu-pressure");
+const {
+  resolveLocalReadinessOutputDir,
+} = require("../lib/ops/local-readiness-evidence-root");
 
 function parseArgs(argv = process.argv.slice(2)) {
   return {
@@ -83,7 +86,7 @@ async function runDefaultGenerationSmoke({ voiceId, baseUrl }) {
 }
 
 async function writeReport(report) {
-  const outDir = path.join("test", "output");
+  const outDir = resolveLocalReadinessOutputDir({ cwd: process.cwd() });
   await fs.ensureDir(outDir);
   const jsonPath = path.join(outDir, "local_tts_doctor.json");
   const mdPath = path.join(outDir, "local_tts_doctor.md");

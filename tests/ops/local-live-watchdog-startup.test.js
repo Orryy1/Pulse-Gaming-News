@@ -10,6 +10,7 @@ const test = require("node:test");
 const ROOT = path.resolve(__dirname, "..", "..");
 const installerPath = path.join(ROOT, "tools", "install-local-live-watchdog-startup.ps1");
 const doctorPath = path.join(ROOT, "tools", "machine-boot-supervision-doctor.ps1");
+const watchdogPath = path.join(ROOT, "tools", "local-live-watchdog.ps1");
 const powershell = path.join(
   process.env.SystemRoot || "C:\\Windows",
   "System32",
@@ -18,7 +19,44 @@ const powershell = path.join(
   "powershell.exe",
 );
 
+function writeTunnelFixture(directory) {
+  const credentialsPath = path.join(directory, "cloudflared-credentials.json");
+  const configPath = path.join(directory, "cloudflared-pulse.yml");
+  fs.writeFileSync(credentialsPath, "{}\n");
+  fs.writeFileSync(
+    configPath,
+    [
+      "tunnel: pulse-test",
+      `credentials-file: ${credentialsPath.replaceAll("\\", "/")}`,
+      "ingress:",
+      "  - hostname: pulse.orryy.com",
+      "    service: http://localhost:3001",
+      "  - service: http_status:404",
+      "",
+    ].join("\n"),
+  );
+  return configPath;
+}
+
+function approvedWatchdogProcess() {
+  return {
+    pid: 44732,
+    parent_pid: 45248,
+    name: "powershell.exe",
+    executable_path: powershell,
+    command_line: [
+      powershell,
+      "-NoProfile",
+      "-ExecutionPolicy Bypass",
+      `-File "${watchdogPath}"`,
+      `-RepoRoot "${ROOT}"`,
+      "-Port 3001",
+    ].join(" "),
+  };
+}
+
 function writeProbeFixture(directory, overrides = {}) {
+  writeTunnelFixture(directory);
   const fixture = {
     generated_at_utc: "2026-07-17T18:30:00.000Z",
     now_utc: "2026-07-17T18:30:00.000Z",
@@ -55,6 +93,7 @@ function writeProbeFixture(directory, overrides = {}) {
       },
     ],
     supervision_start_times_utc: ["2026-07-17T17:50:00.000Z"],
+    logoff_events_utc: [],
     runtime_health: {
       status: "ok",
       scheduler_active: true,
@@ -62,6 +101,11 @@ function writeProbeFixture(directory, overrides = {}) {
       use_job_queue: true,
       dispatch_mode: "queue",
     },
+    tunnel_runtime: {
+      status: "running",
+      matching_process_count: 1,
+    },
+    watchdog_processes: [approvedWatchdogProcess()],
     probe_errors: [],
     ...overrides,
   };
@@ -132,6 +176,31 @@ test("startup installer defaults to a no-mutation AtStartup plan and reports com
   assert.ok(fs.existsSync(path.join(temp, "machine_boot_missed_window_evidence.json")));
 });
 
+test("startup installer records a separately protected runtime checkout in the watchdog action", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-boot-runtime-root-"));
+  const fixturePath = writeProbeFixture(temp);
+
+  const result = runPowerShell(installerPath, [
+    "-RepoRoot",
+    ROOT,
+    "-RuntimeRepoRoot",
+    ROOT,
+    "-ProbeFixturePath",
+    fixturePath,
+    "-OutputDirectory",
+    temp,
+  ]);
+  const plan = parseJsonOutput(result);
+
+  assert.equal(path.resolve(plan.supervisor_repo_root), ROOT);
+  assert.equal(path.resolve(plan.runtime_repo_root), ROOT);
+  assert.match(plan.task.arguments, /-RuntimeRepoRoot/);
+  assert.match(
+    plan.task.arguments,
+    new RegExp(ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
+  );
+});
+
 test("machine boot doctor records reboot-gap missed windows without exposing secret values", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-boot-doctor-red-"));
   const fixturePath = writeProbeFixture(temp);
@@ -143,6 +212,8 @@ test("machine boot doctor records reboot-gap missed windows without exposing sec
     ROOT,
     "-ProbeFixturePath",
     fixturePath,
+    "-TunnelConfigPath",
+    path.join(temp, "cloudflared-pulse.yml"),
     "-StatusPath",
     statusPath,
     "-MissedWindowEvidencePath",
@@ -184,14 +255,29 @@ test("machine boot doctor returns GREEN only for one hidden noninteractive AtSta
         task_path: "\\",
         state: "Running",
         triggers: ["AtStartup"],
-        execute:
-          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-        arguments:
-          '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\\pulse\\tools\\local-live-watchdog.ps1" -RepoRoot "C:\\pulse" -Port 3001',
-        working_directory: "C:\\pulse",
+        execute: powershell,
+        arguments: [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-WindowStyle Hidden",
+          "-ExecutionPolicy Bypass",
+          `-File "${watchdogPath}"`,
+          `-RepoRoot "${ROOT}"`,
+          "-Port 3001",
+          `-TunnelConfigPath "${path.join(temp, "cloudflared-pulse.yml")}"`,
+        ].join(" "),
+        working_directory: ROOT,
         user_id: "SYSTEM",
         logon_type: "ServiceAccount",
         run_level: "Highest",
+        settings: {
+          multiple_instances: "IgnoreNew",
+          start_when_available: true,
+          restart_count: 999,
+          restart_interval: "PT1M",
+          execution_time_limit: "PT0S",
+        },
         last_run_time_utc: "2026-07-17T06:31:00.000Z",
         last_task_result: 267009,
       },
@@ -205,6 +291,8 @@ test("machine boot doctor returns GREEN only for one hidden noninteractive AtSta
     ROOT,
     "-ProbeFixturePath",
     fixturePath,
+    "-TunnelConfigPath",
+    path.join(temp, "cloudflared-pulse.yml"),
     "-StatusPath",
     path.join(temp, "status.json"),
     "-MissedWindowEvidencePath",
@@ -230,18 +318,33 @@ test("machine boot doctor keeps historical missed windows advisory after future 
       {
         task_name: "PulseGaming-LiveWatchdog-Supervisor",
         task_path: "\\",
-        state: "Ready",
+        state: "Running",
         triggers: ["AtStartup"],
-        execute:
-          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-        arguments:
-          '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\\pulse\\tools\\local-live-watchdog.ps1" -RepoRoot "C:\\pulse" -Port 3001',
-        working_directory: "C:\\pulse",
+        execute: powershell,
+        arguments: [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-WindowStyle Hidden",
+          "-ExecutionPolicy Bypass",
+          `-File "${watchdogPath}"`,
+          `-RepoRoot "${ROOT}"`,
+          "-Port 3001",
+          `-TunnelConfigPath "${path.join(temp, "cloudflared-pulse.yml")}"`,
+        ].join(" "),
+        working_directory: ROOT,
         user_id: "SYSTEM",
         logon_type: "ServiceAccount",
         run_level: "Highest",
+        settings: {
+          multiple_instances: "IgnoreNew",
+          start_when_available: true,
+          restart_count: 999,
+          restart_interval: "PT1M",
+          execution_time_limit: "PT0S",
+        },
         last_run_time_utc: "2026-07-17T15:50:00.000Z",
-        last_task_result: 0,
+        last_task_result: 267009,
       },
     ],
     startup_shortcuts: [],
@@ -253,6 +356,8 @@ test("machine boot doctor keeps historical missed windows advisory after future 
     ROOT,
     "-ProbeFixturePath",
     fixturePath,
+    "-TunnelConfigPath",
+    path.join(temp, "cloudflared-pulse.yml"),
     "-StatusPath",
     path.join(temp, "status.json"),
     "-MissedWindowEvidencePath",

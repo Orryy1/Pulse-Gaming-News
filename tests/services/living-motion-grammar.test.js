@@ -36,10 +36,16 @@ test("living motion stays restrained, readable and free of decorative orb langua
     assert.ok(treatment.depth.foreground_drift_x_px <= 24);
     assert.ok(treatment.depth.foreground_drift_y_px >= 6);
     assert.ok(treatment.depth.foreground_drift_y_px <= 18);
-    assert.ok(treatment.editorial.ghost_opacity >= 0.04);
-    assert.ok(treatment.editorial.ghost_opacity <= 0.10);
+    assert.ok(treatment.editorial.ghost_opacity >= 0.03);
+    assert.ok(treatment.editorial.ghost_opacity <= 0.045);
     assert.ok(treatment.editorial.ghost_font_size_px >= 150);
-    assert.ok(treatment.editorial.ghost_font_size_px <= 220);
+    assert.ok(treatment.editorial.ghost_font_size_px <= 180);
+    assert.ok(treatment.editorial.ghost_start_s >= 3);
+    assert.ok(
+      treatment.editorial.ghost_end_s - treatment.editorial.ghost_start_s <= 1.8,
+      `${identity.id} status word lingers too long`,
+    );
+    assert.equal(treatment.editorial.persistent_status_word, false);
     assert.ok(
       treatment.editorial.ghost_y_px + treatment.editorial.ghost_font_size_px <= 1240,
       `${identity.id} ghost word enters the caption-safe band`,

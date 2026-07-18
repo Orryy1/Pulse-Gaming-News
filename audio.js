@@ -1,4 +1,5 @@
 const axios = require("axios");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
@@ -79,6 +80,11 @@ const {
   masterTtsAudioFile,
   shouldMasterTtsAudio,
 } = require("./lib/audio-quality");
+
+const ELEVENLABS_TTS_MODEL_ALLOWLIST = new Set([
+  "eleven_multilingual_v2",
+  "eleven_v3",
+]);
 
 function isTruthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || ""));
@@ -305,10 +311,15 @@ function buildTtsAlignmentMeta({
   existingMeta = {},
   provider,
   voiceId,
+  modelId = null,
+  seed = null,
+  pronunciationDictionaryLocators = [],
   baseUrl,
   text,
   resolvedVoiceSettings = {},
   voiceDiagnostics = null,
+  requestVoiceSettingsSha256 = null,
+  generatedAudioSha256 = null,
 } = {}) {
   const normalisedProvider = String(provider || "").toLowerCase();
   const isLocal = normalisedProvider === "local";
@@ -353,13 +364,117 @@ function buildTtsAlignmentMeta({
     elevenlabs: !isLocal
       ? {
           voiceId,
-          modelId: brand.voiceModel || "eleven_multilingual_v2",
+          modelId:
+            modelId ||
+            resolveTtsModelIdForProvider(normalisedProvider, process.env, brand),
+          seed,
           speakingRate: resolvedVoiceSettings.speaking_rate,
+          pronunciationDictionaryLocators,
+          pronunciationDictionaryLocatorsSha256:
+            pronunciationDictionaryLocators.length > 0
+              ? crypto
+                  .createHash("sha256")
+                  .update(JSON.stringify(pronunciationDictionaryLocators))
+                  .digest("hex")
+              : null,
+          rateControl:
+            /^[a-f0-9]{64}$/i.test(String(requestVoiceSettingsSha256 || "")) &&
+            /^[a-f0-9]{64}$/i.test(String(generatedAudioSha256 || ""))
+              ? {
+                  schemaVersion: 1,
+                  method: "provider_native_voice_settings_speed",
+                  requestField: "voice_settings.speed",
+                  appliedAtGeneration: true,
+                  requestedRate: resolvedVoiceSettings.speaking_rate,
+                  effectiveRate: resolvedVoiceSettings.speaking_rate,
+                  postGenerationTempoStretch: false,
+                  requestVoiceSettingsSha256: String(requestVoiceSettingsSha256).toLowerCase(),
+                  generatedAudioSha256: String(generatedAudioSha256).toLowerCase(),
+                }
+              : null,
         }
       : null,
     ttsMetadataVersion: 2,
     stampedAt: new Date().toISOString(),
   };
+}
+
+function resolveTtsModelIdForProvider(provider, env = process.env, brandConfig = brand) {
+  if (String(provider || "").toLowerCase() === "local") return null;
+  const modelId = firstNonBlank(
+    env.PULSE_ELEVENLABS_MODEL_ID,
+    env.ELEVENLABS_TTS_MODEL_ID,
+    env.ELEVENLABS_MODEL_ID,
+    brandConfig?.voiceModel,
+    "eleven_multilingual_v2",
+  );
+  if (!ELEVENLABS_TTS_MODEL_ALLOWLIST.has(modelId)) {
+    throw new Error(`unsupported_elevenlabs_tts_model:${modelId}`);
+  }
+  return modelId;
+}
+
+function resolveTtsPronunciationDictionaryLocators(provider, env = process.env) {
+  if (String(provider || "").toLowerCase() === "local") return [];
+  const configured =
+    env.PULSE_ELEVENLABS_PRONUNCIATION_DICTIONARY_LOCATORS ??
+    env.ELEVENLABS_PRONUNCIATION_DICTIONARY_LOCATORS;
+  if (configured == null || String(configured).trim() === "") return [];
+
+  let parsed;
+  try {
+    parsed = Array.isArray(configured) ? configured : JSON.parse(String(configured));
+  } catch {
+    throw new Error("invalid_elevenlabs_pronunciation_dictionary_locators_json");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("invalid_elevenlabs_pronunciation_dictionary_locators_json");
+  }
+  if (parsed.length > 3) {
+    throw new Error(
+      `too_many_elevenlabs_pronunciation_dictionary_locators:${parsed.length}:max_3`,
+    );
+  }
+
+  const seen = new Set();
+  return parsed.map((locator, index) => {
+    const pronunciationDictionaryId = String(
+      locator?.pronunciation_dictionary_id || "",
+    ).trim();
+    const versionId = String(locator?.version_id || "").trim();
+    if (
+      !/^[A-Za-z0-9_-]{3,128}$/.test(pronunciationDictionaryId) ||
+      !/^[A-Za-z0-9_-]{3,128}$/.test(versionId)
+    ) {
+      throw new Error(`invalid_elevenlabs_pronunciation_dictionary_locator:${index}`);
+    }
+    const key = `${pronunciationDictionaryId}:${versionId}`;
+    if (seen.has(key)) {
+      throw new Error(`duplicate_elevenlabs_pronunciation_dictionary_locator:${index}`);
+    }
+    seen.add(key);
+    return {
+      pronunciation_dictionary_id: pronunciationDictionaryId,
+      version_id: versionId,
+    };
+  });
+}
+
+function resolveTtsSeedForProvider(provider, env = process.env) {
+  if (String(provider || "").toLowerCase() === "local") return null;
+  const configured =
+    env.PULSE_ELEVENLABS_SEED ??
+    env.ELEVENLABS_TTS_SEED;
+  if (configured == null || String(configured).trim() === "") return null;
+  const raw = String(configured).trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`invalid_elevenlabs_tts_seed:${raw}`);
+  }
+  const seed = Number(raw);
+  if (!Number.isSafeInteger(seed) || seed < 0 || seed > 4_294_967_295) {
+    throw new Error(`invalid_elevenlabs_tts_seed:${raw}`);
+  }
+  return seed;
 }
 
 function resolveTtsVoiceIdForProvider(provider, env = process.env, brandConfig = brand) {
@@ -395,12 +510,21 @@ function buildTtsRequestPayload({
   resolvedVoiceSettings,
   outputFormat,
   modelId,
+  seed = null,
+  pronunciationDictionaryLocators = [],
   env = process.env,
 } = {}) {
   const normalisedProvider = String(provider || "").toLowerCase();
+  const requestVoiceSettings = { ...(resolvedVoiceSettings || {}) };
+  if (normalisedProvider !== "local") {
+    if (requestVoiceSettings.speed == null && requestVoiceSettings.speaking_rate != null) {
+      requestVoiceSettings.speed = requestVoiceSettings.speaking_rate;
+    }
+    delete requestVoiceSettings.speaking_rate;
+  }
   const payload = {
     text,
-    voice_settings: resolvedVoiceSettings,
+    voice_settings: requestVoiceSettings,
     output_format: outputFormat,
   };
   if (normalisedProvider === "local") {
@@ -410,6 +534,10 @@ function buildTtsRequestPayload({
     payload.alignment_mode = requestedAlignment === "forced" ? "forced" : "fallback";
   } else if (modelId) {
     payload.model_id = modelId;
+    if (seed != null) payload.seed = seed;
+    if (pronunciationDictionaryLocators.length > 0) {
+      payload.pronunciation_dictionary_locators = pronunciationDictionaryLocators;
+    }
   }
   return payload;
 }
@@ -1421,6 +1549,10 @@ async function generateTTS(text, outputPath, rateOverride, providerOverride = nu
   }
 
   const voiceId = resolveTtsVoiceIdForProvider(provider, process.env, brand);
+  const modelId = resolveTtsModelIdForProvider(provider, process.env, brand);
+  const seed = resolveTtsSeedForProvider(provider, process.env);
+  const pronunciationDictionaryLocators =
+    resolveTtsPronunciationDictionaryLocators(provider, process.env);
   const baseUrl =
     provider === "local"
       ? process.env.LOCAL_TTS_URL || "http://127.0.0.1:8765"
@@ -1439,11 +1571,15 @@ async function generateTTS(text, outputPath, rateOverride, providerOverride = nu
     text,
     resolvedVoiceSettings,
     outputFormat: resolveTtsOutputFormat(provider, process.env),
-    modelId: provider !== "local"
-      ? brand.voiceModel || "eleven_multilingual_v2"
-      : null,
+    modelId,
+    seed,
+    pronunciationDictionaryLocators,
     env: process.env,
   });
+  const requestVoiceSettingsSha256 = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(data.voice_settings || {}))
+    .digest("hex");
 
   if (provider === "local") {
     const localTtsHealth = await fetchLocalTtsHealth({
@@ -1496,6 +1632,10 @@ async function generateTTS(text, outputPath, rateOverride, providerOverride = nu
       `[audio] Voice mastered for crisp social playback: ${outputPath} (${voiceMastering.targetLufs} LUFS target)`,
     );
   }
+  const generatedAudioSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(writeTarget))
+    .digest("hex");
 
   const voiceDiagnostics = normaliseLocalVoiceDiagnostics(
     response.data.voice_diagnostics || response.data.voiceDiagnostics,
@@ -1514,10 +1654,15 @@ async function generateTTS(text, outputPath, rateOverride, providerOverride = nu
     existingMeta: alignment.meta || {},
     provider,
     voiceId,
+    modelId,
+    seed,
+    pronunciationDictionaryLocators,
     baseUrl,
     text,
     resolvedVoiceSettings,
     voiceDiagnostics,
+    requestVoiceSettingsSha256,
+    generatedAudioSha256,
   });
   if (preparedAlignment.repair?.repaired) {
     alignment.meta.timestampRepair = {
@@ -2033,6 +2178,10 @@ module.exports.isRetryableLocalTtsError = isRetryableLocalTtsError;
 module.exports.requestTtsWithRetry = requestTtsWithRetry;
 module.exports.normaliseLocalVoiceDiagnostics = normaliseLocalVoiceDiagnostics;
 module.exports.resolveTtsVoiceIdForProvider = resolveTtsVoiceIdForProvider;
+module.exports.resolveTtsModelIdForProvider = resolveTtsModelIdForProvider;
+module.exports.resolveTtsPronunciationDictionaryLocators =
+  resolveTtsPronunciationDictionaryLocators;
+module.exports.resolveTtsSeedForProvider = resolveTtsSeedForProvider;
 module.exports.resolveTtsProvider = resolveTtsProvider;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
 module.exports.clearAudioGenerationState = clearAudioGenerationState;

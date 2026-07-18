@@ -85,6 +85,56 @@ test("alternate cohort selection excludes attempted IDs and never relabels a sam
   assert.equal(report.safety.publish_authorised, false);
 });
 
+test("alternate cohort selection excludes active story and source quarantine entries", () => {
+  const quarantinedSource = eligibleCandidate({
+    story_id: "quarantined-source-original",
+    source_url: "https://example.com/quarantined-source",
+  });
+  const report = selectAlternateCohortCandidates({
+    excludedStoryIds: ["quarantined-story"],
+    excludedSourceFingerprints: [
+      require("../../lib/refill-zero-yield-quarantine")
+        .buildSourceFingerprint(quarantinedSource),
+    ],
+    reviewLocalPromotionCandidates: [
+      eligibleCandidate({
+        story_id: "quarantined-story",
+        source_url: "https://example.com/another-source",
+      }),
+      eligibleCandidate({
+        story_id: "same-source-new-id",
+        source_url: quarantinedSource.source_url,
+      }),
+      eligibleCandidate({
+        story_id: "clean-alternate",
+        source_url: "https://example.com/clean-alternate",
+      }),
+    ],
+    now: new Date("2026-07-17T04:00:00.000Z"),
+  });
+
+  assert.deepEqual(
+    report.candidates.map((candidate) => candidate.story_id),
+    ["clean-alternate"],
+  );
+  assert.deepEqual(
+    report.excluded.map((candidate) => ({
+      story_id: candidate.story_id,
+      reason_codes: candidate.reason_codes,
+    })),
+    [
+      {
+        story_id: "quarantined-story",
+        reason_codes: ["zero_yield_quarantine:story_id"],
+      },
+      {
+        story_id: "same-source-new-id",
+        reason_codes: ["zero_yield_quarantine:source"],
+      },
+    ],
+  );
+});
+
 test("alternate cohort selection rejects stale review candidates", () => {
   const report = selectAlternateCohortCandidates({
     reviewLocalPromotionCandidates: [

@@ -13,6 +13,7 @@ const {
 test("server-owned content lanes cover durable supply, repair, operations and learning", () => {
   assert.deepEqual(CONTENT_RUNNER_LANES.map((lane) => lane.id), [
     "content-runway",
+    "content-refill",
     "content-repair",
     "content-ops",
     "content-learning",
@@ -20,6 +21,14 @@ test("server-owned content lanes cover durable supply, repair, operations and le
   assert.ok(CONTENT_RUNNER_LANES.flatMap((lane) => lane.kinds).includes("fresh_production_refill"));
   assert.ok(CONTENT_RUNNER_LANES.flatMap((lane) => lane.kinds).includes("autonomous_feedback_monitor"));
   assert.doesNotThrow(() => assertSafeContentRunnerLanes(CONTENT_RUNNER_LANES));
+});
+
+test("runway monitoring cannot be serialised behind expensive production refill", () => {
+  const runway = CONTENT_RUNNER_LANES.find((lane) => lane.id === "content-runway");
+  const refill = CONTENT_RUNNER_LANES.find((lane) => lane.id === "content-refill");
+
+  assert.deepEqual(runway?.kinds, ["candidate_supply_monitor"]);
+  assert.deepEqual(refill?.kinds, ["fresh_production_refill"]);
 });
 
 test("server-owned content lanes reject live publish and credential jobs", () => {

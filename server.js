@@ -1589,8 +1589,29 @@ app.get(
     }
 
     const stat = fs.statSync(filePath);
+    const {
+      buildPublicMediaRangePlan,
+      readPublicMediaBody,
+    } = require("./lib/public-media-range");
+    const delivery = buildPublicMediaRangePlan({
+      method: req.method,
+      rangeHeader: req.headers.range,
+      size: stat.size,
+    });
+
+    res.status(delivery.statusCode);
     res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Length", delivery.contentLength);
+    if (delivery.contentRange) {
+      res.setHeader("Content-Range", delivery.contentRange);
+    }
+    res.setHeader(
+      "Cache-Control",
+      req.query.v
+        ? "public, max-age=31536000, immutable"
+        : "private, no-store, max-age=0",
+    );
     // IG/FB URL-fetch fallbacks dislike `attachment` disposition on
     // video URLs — they want `inline` (or no disposition at all) so
     // their crawler treats the response as a streamable video, not a
@@ -1600,8 +1621,9 @@ app.get(
       "Content-Disposition",
       `inline; filename="pulse-gaming-${rawId}.mp4"`,
     );
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    if (!delivery.stream) return res.end();
+    const body = await readPublicMediaBody(filePath, delivery);
+    res.end(body);
   } catch (err) {
     console.log(`[server] ERROR downloading: ${err.message}`);
     res.status(500).json({ error: "Download failed" });

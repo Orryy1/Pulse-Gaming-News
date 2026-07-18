@@ -1041,6 +1041,62 @@ test("Visual V4 motion pack refuses repeat windows from the same base source fam
   );
 });
 
+test("Visual V4 motion pack refuses downloaded sections from the same canonical YouTube source", () => {
+  const sharedYoutubeId = "SharedOfficial123";
+  const sharedCanonicalUrl = `https://www.youtube.com/watch?v=${sharedYoutubeId}`;
+  const pack = buildVisualV4MotionPack({
+    story: forzaStory(),
+    trustedFootageReport: trustedReport("forza-v4-pack", [
+      "youtube_window_a",
+      "youtube_window_b",
+      "xbox",
+      "forza",
+      "ign",
+    ]),
+    segmentValidationReport: segmentReport([
+      {
+        ...segment({
+          family: "youtube_window_a",
+          index: 1,
+          sourceUrl: "C:\\clips\\official-section-mid.mp4",
+          start: 18,
+          sourceType: "official_youtube_channel_url",
+        }),
+        youtube_video_id: sharedYoutubeId,
+        canonical_source_url: sharedCanonicalUrl,
+      },
+      {
+        ...segment({
+          family: "youtube_window_b",
+          index: 2,
+          sourceUrl: "C:\\clips\\official-section-late.mp4",
+          start: 64.5,
+          sourceType: "official_youtube_channel_url",
+        }),
+        youtube_video_id: sharedYoutubeId,
+        canonical_source_url: sharedCanonicalUrl,
+      },
+      segment({ family: "xbox", index: 3 }),
+      segment({ family: "forza", index: 4 }),
+      segment({ family: "ign", index: 5 }),
+    ]),
+    generatedAt: "2026-07-17T19:15:00.000Z",
+  });
+
+  assert.equal(pack.clips.length, 4);
+  assert.equal(
+    pack.clips.filter((clip) => clip.provenance?.youtube_video_id === sharedYoutubeId).length,
+    1,
+  );
+  assert.ok(
+    pack.rejected_candidates.some(
+      (candidate) =>
+        candidate.reason === "source_asset_already_used" &&
+        candidate.youtube_video_id === sharedYoutubeId,
+    ),
+  );
+});
+
 test("Visual V4 motion pack does not pad repeat slots with short trimmed montage cuts", () => {
   const families = ["steam", "xbox", "forza", "twistedvoxel", "gamesradar", "ign"];
   const pack = buildVisualV4MotionPack({

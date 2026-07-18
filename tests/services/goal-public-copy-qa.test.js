@@ -3,7 +3,10 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
+const {
+  evaluateGoalPublicCopy,
+  pronunciationScriptDiverges,
+} = require("../../lib/goal-public-copy-qa");
 
 test("goal public copy QA passes a sharp source-safe gaming story", () => {
   const report = evaluateGoalPublicCopy({
@@ -934,6 +937,19 @@ test("goal public copy QA allows version-number and title-continuity pronunciati
   assert.ok(changedClaim.failures.includes("public_copy:tts_script_diverges_from_narration"));
 });
 
+test("pronunciation-only comparison accepts spoken number aliases and approved brand aliases", () => {
+  const display =
+    "Arknights: Endfield says Version 1.4 upgrades PSSR, according to Hypergryph.";
+  const spoken =
+    "Arknights Endfield says Version one point four upgrades PSSR, according to Hypergriff.";
+
+  assert.equal(pronunciationScriptDiverges(display, spoken), false);
+  assert.equal(
+    pronunciationScriptDiverges(display, spoken.replace("four", "five")),
+    true,
+  );
+});
+
 test("goal public copy QA allows GTA VI safe spoken TTS without changing display copy", () => {
   const narration =
     "GTA VI just turned the console argument into a real buying decision. PlayStation Blog says Grand Theft Auto VI has a new gameplay breakdown for PS5. Follow Pulse Gaming so you never miss a beat.";
@@ -1460,6 +1476,24 @@ test("goal public copy QA accepts the spoken Denshattack pronunciation alias", (
       "Denshattack turns a full-size train into a stunt machine. Source: Xbox Wire.",
     primary_source: "Xbox Wire",
     primary_source_url: "https://news.xbox.com/en-us/example/denshattack/",
+  });
+
+  assert.equal(report.verdict, "pass", report.failures.join(", "));
+});
+
+test("goal public copy QA accepts singular frame-rate narration backed by plural source evidence", () => {
+  const report = evaluateGoalPublicCopy({
+    canonical_subject: "Arknights: Endfield",
+    selected_title: "Arknights: Endfield Puts PS5 Pro Under Pressure",
+    first_spoken_line: "Arknights: Endfield just turned into a PS5 Pro hardware stress test.",
+    narration_script:
+      "Arknights: Endfield just turned into a PS5 Pro hardware stress test. Hypergryph says upgraded PSSR can maintain a higher frame rate at 4K.",
+    description:
+      "Arknights: Endfield is testing upgraded PSSR on PS5 Pro. Source: PlayStation Blog.",
+    primary_source: "PlayStation Blog",
+    confirmed_claims: [
+      "Hypergryph says PS5 Pro can more consistently maintain higher frame rates at 4K with upgraded PSSR.",
+    ],
   });
 
   assert.equal(report.verdict, "pass", report.failures.join(", "));

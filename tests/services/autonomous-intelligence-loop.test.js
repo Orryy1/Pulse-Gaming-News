@@ -2163,6 +2163,20 @@ test("fresh refill supplemental search prefers corrected canonical subject over 
   );
 });
 
+test("fresh refill supplemental search preserves a colonised game subtitle from the public title", () => {
+  const { freshRefillSupplementalSearchEntity } = require("../../lib/job-handlers");
+
+  assert.equal(
+    freshRefillSupplementalSearchEntity({
+      canonical_subject: "Arknights",
+      canonical_game: "Arknights",
+      title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+      selected_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    }),
+    "Arknights: Endfield",
+  );
+});
+
 test("fresh refill official discovery runs from source-family search rows even without accepted source entries", () => {
   const { freshRefillShouldRunOfficialDiscovery } = require("../../lib/job-handlers");
 
@@ -2280,9 +2294,18 @@ test("fresh production refill escalates zero yield once without creating a retry
             {
               id: "review-local-alternate",
               title: "A Different Fresh Review Story",
+              canonical_game: "Different Fresh Review Story",
               local_promotion_intake_only: true,
               source_published_at: new Date().toISOString(),
               source_url: "https://example.com/review-local-alternate",
+              direct_media_candidates: [
+                {
+                  direct_media_url:
+                    "https://cdn.example.com/different-fresh-review-story.mp4",
+                  game_title: "Different Fresh Review Story",
+                  source_family: "different_fresh_review_story_gameplay",
+                },
+              ],
               rights_eligibility: {
                 eligible: true,
                 status: "eligible",
@@ -2309,6 +2332,11 @@ test("fresh production refill escalates zero yield once without creating a retry
       rss_per_feed: 4,
       out_dir: outDir,
       contract_out_dir: contractOutDir,
+      zero_yield_quarantine_path: path.join(
+        tmp,
+        "runtime",
+        "zero-yield-quarantine.json",
+      ),
       repair_evidence: false,
       skip_existing_ready: false,
       post_discord_on_zero_yield: false,
@@ -2375,6 +2403,130 @@ test("fresh production refill escalates zero yield once without creating a retry
   }
 });
 
+test("sequential parent refills durably quarantine a zero-yield source and rotate intake", async () => {
+  const jobHandlersPath = require.resolve("../../lib/job-handlers");
+  const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-quarantine-"));
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+  const storyPackagesPath = path.join(contractOutDir, "story-packages.json");
+  const quarantinePath = path.join(tmp, "runtime", "zero-yield-quarantine.json");
+  const originalCache = new Map([
+    [jobHandlersPath, require.cache[jobHandlersPath]],
+    [goalBatchPath, require.cache[goalBatchPath]],
+  ]);
+  const capturedArgs = [];
+  const enqueued = [];
+
+  try {
+    await fs.mkdir(contractOutDir, { recursive: true });
+    require.cache[goalBatchPath] = {
+      id: goalBatchPath,
+      filename: goalBatchPath,
+      loaded: true,
+      exports: {
+        async main(args) {
+          capturedArgs.push([...args]);
+          const quarantineArgIndex = args.indexOf("--zero-yield-quarantine");
+          const quarantine =
+            quarantineArgIndex >= 0
+              ? JSON.parse(
+                  await fs.readFile(args[quarantineArgIndex + 1], "utf8").catch(() => "{}"),
+                )
+              : {};
+          const failedSourceIsQuarantined = (quarantine.entries || []).some(
+            (entry) => (entry.story_ids || []).includes("failed-source-one"),
+          );
+          const story = failedSourceIsQuarantined
+            ? {
+                story_id: "fresh-source-two",
+                title: "A Different Fresh Story",
+                source_url: "https://official.example.com/fresh-source-two",
+                source_name: "Official Two",
+                verdict: "RED",
+                blockers: ["motion:materialisation_pending"],
+              }
+            : {
+                story_id: "failed-source-one",
+                title: "The First Failed Story",
+                source_url: "https://official.example.com/failed-source-one?utm_source=rss",
+                source_name: "Official One",
+                verdict: "RED",
+                blockers: ["motion:materialisation_pending"],
+              };
+          await fs.writeFile(storyPackagesPath, JSON.stringify([story]));
+          return {
+            batch: { summary: { story_count: 1, green_count: 0, red_count: 1 } },
+            outputs: { storyPackagesPath },
+          };
+        },
+      },
+    };
+    delete require.cache[jobHandlersPath];
+    const { handlers: mockedHandlers } = require("../../lib/job-handlers");
+    const context = {
+      log() {},
+      repos: {
+        jobs: {
+          enqueue(row) {
+            enqueued.push(row);
+            return { id: enqueued.length, status: "pending", ...row };
+          },
+        },
+      },
+    };
+    const payload = {
+      limit: 12,
+      rss_per_feed: 4,
+      out_dir: outDir,
+      contract_out_dir: contractOutDir,
+      zero_yield_attempt: 1,
+      zero_yield_quarantine_path: quarantinePath,
+      repair_evidence: false,
+      skip_existing_ready: false,
+      post_discord_on_zero_yield: false,
+    };
+
+    const first = await mockedHandlers.fresh_production_refill(
+      { id: 910, channel_id: "pulse-gaming", payload },
+      context,
+    );
+    const second = await mockedHandlers.fresh_production_refill(
+      { id: 911, channel_id: "pulse-gaming", payload },
+      context,
+    );
+
+    assert.equal(first.zero_yield_incident.quarantine.active_entry_count, 1);
+    assert.equal(
+      path.resolve(first.zero_yield_incident.quarantine.path),
+      path.resolve(quarantinePath),
+    );
+    assert.deepEqual(second.zero_yield_incident.attempted_story_ids, [
+      "fresh-source-two",
+    ]);
+    const secondQuarantineIndex = capturedArgs[1].indexOf(
+      "--zero-yield-quarantine",
+    );
+    assert.notEqual(secondQuarantineIndex, -1);
+    assert.equal(
+      path.resolve(capturedArgs[1][secondQuarantineIndex + 1]),
+      path.resolve(quarantinePath),
+    );
+    const persisted = JSON.parse(await fs.readFile(quarantinePath, "utf8"));
+    assert.ok(
+      persisted.entries.some((entry) =>
+        entry.story_ids.includes("failed-source-one"),
+      ),
+    );
+  } finally {
+    for (const [cachePath, entry] of originalCache.entries()) {
+      if (entry) require.cache[cachePath] = entry;
+      else delete require.cache[cachePath];
+    }
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("fresh production refill does not retry the same RSS lane when no alternate cohort exists", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
@@ -2424,6 +2576,11 @@ test("fresh production refill does not retry the same RSS lane when no alternate
           rss_per_feed: 4,
           out_dir: outDir,
           contract_out_dir: contractOutDir,
+          zero_yield_quarantine_path: path.join(
+            tmp,
+            "runtime",
+            "zero-yield-quarantine.json",
+          ),
           repair_evidence: false,
           skip_existing_ready: false,
           post_discord_on_zero_yield: false,
@@ -2502,9 +2659,18 @@ test("fresh production refill treats local package GREEN as zero yield when stri
             {
               id: "review-local-strict-alternate",
               title: "A Strict Alternate Review Story",
+              canonical_game: "Strict Alternate Review Story",
               local_promotion_intake_only: true,
               source_published_at: new Date().toISOString(),
               source_url: "https://example.com/review-local-strict-alternate",
+              direct_media_candidates: [
+                {
+                  direct_media_url:
+                    "https://cdn.example.com/strict-alternate-review-story.mp4",
+                  game_title: "Strict Alternate Review Story",
+                  source_family: "strict_alternate_review_story_gameplay",
+                },
+              ],
               rights_eligibility: {
                 eligible: true,
                 status: "eligible",
@@ -2556,6 +2722,11 @@ test("fresh production refill treats local package GREEN as zero yield when stri
           rss_per_feed: 4,
           out_dir: outDir,
           contract_out_dir: contractOutDir,
+          zero_yield_quarantine_path: path.join(
+            tmp,
+            "runtime",
+            "zero-yield-quarantine.json",
+          ),
           repair_evidence: false,
           skip_existing_ready: false,
           source_minimum_new_green_candidates: 3,
@@ -3035,6 +3206,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       outDir,
       "--contract-out-dir",
       contractOutDir,
+      "--zero-yield-quarantine",
+      path.join(process.cwd(), "output", "runtime", "refill-zero-yield-quarantine.json"),
     ]);
     assert.deepEqual(capturedArgCalls[1], [
       "--stories-file",
@@ -3049,6 +3222,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       path.join(outDir, "motion-hydrated"),
       "--contract-out-dir",
       path.join(contractOutDir, "motion-hydrated"),
+      "--zero-yield-quarantine",
+      path.join(process.cwd(), "output", "runtime", "refill-zero-yield-quarantine.json"),
       "--v4-motion-pack-dir",
       path.join(__dirname, "..", "..", "output", "studio-v4", "motion-packs"),
       "--allow-owned-motion-fallback",
@@ -3252,6 +3427,22 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "fresh refill must checkpoint segment validation so a timeout cannot leave only stale global evidence",
     );
     assert.ok(segmentValidationCall.args.includes("--deep-scan"));
+    assert.equal(
+      segmentValidationCall.args.includes("--allow-early-exploratory-windows"),
+      true,
+      "fresh refill should inspect QA-guarded early gameplay windows in bounded official masters",
+    );
+    const exploratoryStartsIndex = segmentValidationCall.args.indexOf("--exploratory-starts");
+    assert.notEqual(
+      exploratoryStartsIndex,
+      -1,
+      "fresh refill should provide an explicit bounded scan schedule",
+    );
+    assert.equal(
+      segmentValidationCall.args[exploratoryStartsIndex + 1],
+      "6,12,18,24,30,36,42,48,54,60",
+      "fresh refill should cover early, middle and later official footage without sampling title-card intros",
+    );
     assert.equal(segmentValidationCall.args.includes("--include-frame-anchored-windows"), true);
     assert.equal(segmentValidationCall.args.includes("--no-reference-duration-probe"), false);
     assert.equal(
@@ -4474,6 +4665,11 @@ test("fresh production refill handler can run from a seeded official story file"
   const outDir = path.join(tmp, "goal-proof-batch");
   const contractOutDir = path.join(tmp, "goal-contract");
   const seedStoriesFile = path.join(tmp, "official-direct-media-seeds.json");
+  const zeroYieldQuarantinePath = path.join(
+    tmp,
+    "runtime",
+    "zero-yield-quarantine.json",
+  );
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [goalBatchPath, require.cache[goalBatchPath]],
@@ -4537,6 +4733,7 @@ test("fresh production refill handler can run from a seeded official story file"
           seed_stories_file: seedStoriesFile,
           out_dir: outDir,
           contract_out_dir: contractOutDir,
+          zero_yield_quarantine_path: zeroYieldQuarantinePath,
         },
       },
       {
@@ -4553,6 +4750,8 @@ test("fresh production refill handler can run from a seeded official story file"
       outDir,
       "--contract-out-dir",
       contractOutDir,
+      "--zero-yield-quarantine",
+      zeroYieldQuarantinePath,
     ]);
     assert.equal(result.status, "completed");
     assert.equal(result.story_count, 1);

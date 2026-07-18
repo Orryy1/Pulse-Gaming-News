@@ -11,9 +11,12 @@ const {
 const {
   loadLocalTtsProofReports,
 } = require("../lib/studio/local-tts-proof-report-loader");
+const {
+  resolveLocalReadinessOutputDir,
+} = require("../lib/ops/local-readiness-evidence-root");
 
 const ROOT = path.resolve(__dirname, "..");
-const OUT = path.join(ROOT, "test", "output");
+const OUT = resolveLocalReadinessOutputDir({ cwd: ROOT });
 
 function shouldWriteRootReport({ argv = process.argv.slice(2), env = process.env } = {}) {
   return (
@@ -29,7 +32,7 @@ async function readJsonIfExists(filePath) {
 
 async function runLocalTtsOvernightReport({
   root = ROOT,
-  outDir = path.join(root, "test", "output"),
+  outDir = resolveLocalReadinessOutputDir({ cwd: root }),
   writeRootReport = false,
 } = {}) {
   await fs.ensureDir(outDir);

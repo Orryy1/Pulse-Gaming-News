@@ -34,10 +34,22 @@ test("content worker task installer is confirmation gated and restartable", () =
 });
 
 test("content worker tasks cover all non-publish lanes", () => {
-  for (const lane of ["Publish-Prep", "runway", "repair", "ops", "learning"]) {
+  for (const lane of ["Publish-Prep", "runway", "refill", "repair", "ops", "learning"]) {
     assert.match(script, new RegExp(`PulseGaming-Content-${lane}`, "i"));
   }
   assert.match(script, /publish_runway_generate/);
+  assert.match(
+    script,
+    /Id = "local-content-runway"; Kinds = "candidate_supply_monitor"/,
+  );
+  assert.match(
+    script,
+    /Id = "local-content-refill"; Kinds = "fresh_production_refill"/,
+  );
+  assert.doesNotMatch(
+    script,
+    /Kinds = "candidate_supply_monitor,fresh_production_refill"/,
+  );
   assert.match(host, /local-live-content-workers\.ps1/);
   assert.match(script, /local-content-worker-task\.ps1/);
   assert.match(script, /powershell\.exe/);

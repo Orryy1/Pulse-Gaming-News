@@ -39,6 +39,8 @@ if (
 $logDir = Join-Path $RepoRoot "output/runtime"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "pulse-live-primary-runtime.log"
+$publishCriticalWorkerScript = Join-Path $RepoRoot "tools/local-publish-critical-worker.js"
+$publishCriticalWorkerId = "pulse-live-publish-critical"
 
 function Write-RuntimeLog {
   param([string]$Message)
@@ -50,16 +52,191 @@ function Write-RuntimeLog {
   }
 }
 
+function Get-PublishCriticalWorkerProcesses {
+  $escapedScript = [regex]::Escape([System.IO.Path]::GetFullPath($publishCriticalWorkerScript))
+  return @(
+    Get-CimInstance Win32_Process -Filter "name = 'node.exe'" -ErrorAction SilentlyContinue |
+      Where-Object {
+        $commandLine = [string]$_.CommandLine
+        $commandLine -and
+        $commandLine -match $escapedScript -and
+        $commandLine -match ('--worker-id(?:=|\s+)"?{0}"?(?:\s|$)' -f [regex]::Escape($publishCriticalWorkerId))
+      }
+  )
+}
+
+function Ensure-PublishCriticalWorker {
+  param([string]$NodeExecutable)
+
+  if (-not (Test-Path -LiteralPath $publishCriticalWorkerScript -PathType Leaf)) {
+    throw "Guarded publish worker script missing: $publishCriticalWorkerScript"
+  }
+
+  $existingWorkers = @(Get-PublishCriticalWorkerProcesses)
+  if ($existingWorkers.Count -gt 0) {
+    $preferredWorker = @($existingWorkers | Sort-Object CreationDate -Descending) | Select-Object -First 1
+    foreach ($duplicateWorker in $existingWorkers) {
+      if ($duplicateWorker.ProcessId -eq $preferredWorker.ProcessId) { continue }
+      Stop-Process -Id $duplicateWorker.ProcessId -Force -ErrorAction SilentlyContinue
+      Write-RuntimeLog ("publish_critical_worker_duplicate_stopped pid={0}" -f $duplicateWorker.ProcessId)
+    }
+    Write-RuntimeLog ("publish_critical_worker_noop_current pid={0}" -f $preferredWorker.ProcessId)
+    return $preferredWorker.ProcessId
+  }
+
+  $env:AUTO_PUBLISH = "true"
+  $env:USE_JOB_QUEUE = "true"
+  $env:USE_SQLITE = "true"
+  $env:SQLITE_DB_PATH = "D:/pulse-data/pulse.db"
+  $env:PULSE_PRIMARY_INSTANCE = "true"
+  $env:PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true"
+  $env:PULSE_EMERGENCY_KILL_SWITCH = "clear"
+  $env:PULSE_PUBLISH_CRITICAL_RUNNER = "false"
+  $env:PULSE_MAINTENANCE_RUNNER = "false"
+
+  $workerStdoutPath = Join-Path $logDir "pulse-live-publish-critical.stdout.log"
+  $workerStderrPath = Join-Path $logDir "pulse-live-publish-critical.stderr.log"
+  $worker = Start-Process -FilePath $NodeExecutable `
+    -ArgumentList @($publishCriticalWorkerScript, "--worker-id", $publishCriticalWorkerId) `
+    -WorkingDirectory $RepoRoot `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $workerStdoutPath `
+    -RedirectStandardError $workerStderrPath `
+    -PassThru
+  Start-Sleep -Seconds 2
+  $worker.Refresh()
+  if ($worker.HasExited) {
+    throw "Guarded publish worker exited during startup. Inspect $workerStderrPath"
+  }
+  Write-RuntimeLog ("publish_critical_worker_started pid={0} kinds=publish_schedule_recovery_monitor,publish_window_watchdog,publish" -f $worker.Id)
+  return $worker.Id
+}
+
+function Resolve-GitExecutable {
+  $command = Get-Command "git.exe" -ErrorAction SilentlyContinue
+  if ($command -and $command.Source) {
+    return [string]$command.Source
+  }
+
+  $candidates = @()
+  if ($env:ProgramFiles) {
+    $candidates += Join-Path $env:ProgramFiles "Git/cmd/git.exe"
+  }
+  if (${env:ProgramFiles(x86)}) {
+    $candidates += Join-Path ${env:ProgramFiles(x86)} "Git/cmd/git.exe"
+  }
+  if ($env:ProgramW6432) {
+    $candidates += Join-Path $env:ProgramW6432 "Git/cmd/git.exe"
+  }
+
+  foreach ($candidate in @($candidates | Select-Object -Unique)) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      return [string]$candidate
+    }
+  }
+  return $null
+}
+
+function Resolve-GitDirectory {
+  param([string]$RepositoryRoot)
+
+  $dotGitPath = Join-Path $RepositoryRoot ".git"
+  $dotGitItem = Get-Item -LiteralPath $dotGitPath -Force -ErrorAction SilentlyContinue
+  if (-not $dotGitItem) {
+    return $null
+  }
+  if ($dotGitItem.PSIsContainer) {
+    return [string]$dotGitItem.FullName
+  }
+
+  $pointer = [string](Get-Content -LiteralPath $dotGitPath -Raw -ErrorAction SilentlyContinue)
+  if ($pointer -notmatch '(?im)^\s*gitdir:\s*(.+?)\s*$') {
+    return $null
+  }
+  $gitDirectory = [string]$Matches[1]
+  if (-not [System.IO.Path]::IsPathRooted($gitDirectory)) {
+    $gitDirectory = Join-Path $RepositoryRoot $gitDirectory
+  }
+  $resolved = Resolve-Path -LiteralPath $gitDirectory -ErrorAction SilentlyContinue
+  return $(if ($resolved) { [string]$resolved.Path } else { $null })
+}
+
+function Resolve-RepositoryIdentity {
+  param([string]$RepositoryRoot)
+
+  $gitDirectory = Resolve-GitDirectory -RepositoryRoot $RepositoryRoot
+  if (-not $gitDirectory) {
+    return $null
+  }
+
+  $headPath = Join-Path $gitDirectory "HEAD"
+  $head = [string](Get-Content -LiteralPath $headPath -Raw -ErrorAction SilentlyContinue)
+  $head = $head.Trim()
+  $commit = ""
+  $branch = ""
+
+  if ($head -match '^ref:\s*(.+)$') {
+    $refName = [string]$Matches[1]
+    if ($refName.StartsWith("refs/heads/")) {
+      $branch = $refName.Substring("refs/heads/".Length)
+    }
+
+    $looseRefPath = Join-Path $gitDirectory $refName
+    if (Test-Path -LiteralPath $looseRefPath -PathType Leaf) {
+      $commit = ([string](Get-Content -LiteralPath $looseRefPath -Raw)).Trim()
+    } else {
+      $packedRefsPath = Join-Path $gitDirectory "packed-refs"
+      if (Test-Path -LiteralPath $packedRefsPath -PathType Leaf) {
+        $escapedRef = [regex]::Escape($refName)
+        foreach ($line in Get-Content -LiteralPath $packedRefsPath) {
+          if ([string]$line -match ("^([a-fA-F0-9]{{40,64}})\s+{0}$" -f $escapedRef)) {
+            $commit = [string]$Matches[1]
+            break
+          }
+        }
+      }
+    }
+  } elseif ($head -match '^[a-fA-F0-9]{40,64}$') {
+    $commit = $head
+    $branch = "HEAD"
+  }
+
+  if (
+    $commit -notmatch '^[a-fA-F0-9]{40,64}$' -or
+    [string]::IsNullOrWhiteSpace($branch)
+  ) {
+    return $null
+  }
+
+  return [pscustomobject]@{
+    commit_sha = $commit
+    branch = $branch
+  }
+}
+
 Set-Location -LiteralPath $RepoRoot
 
 $commitSha = ""
 $branchName = ""
+$gitExecutable = Resolve-GitExecutable
 try {
-  $commitSha = (& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()
-  $branchName = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null).Trim()
+  if ($gitExecutable) {
+    $commitSha = (& $gitExecutable -C $RepoRoot rev-parse HEAD 2>$null).Trim()
+    $branchName = (& $gitExecutable -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null).Trim()
+  }
 } catch {
   $commitSha = ""
   $branchName = ""
+}
+$repositoryIdentity = Resolve-RepositoryIdentity -RepositoryRoot $RepoRoot
+if (-not $commitSha -and $repositoryIdentity) {
+  $commitSha = [string]$repositoryIdentity.commit_sha
+}
+if (-not $branchName -and $repositoryIdentity) {
+  $branchName = [string]$repositoryIdentity.branch
+}
+if (-not $commitSha -or -not $branchName) {
+  throw "Refusing protected primary runtime start without repository commit and branch identity."
 }
 
 function Get-RuntimeHealth {
@@ -106,6 +283,20 @@ function Test-ExpectedPrimaryRuntimeMode {
     $protectedPrimaryRuntime -and
     -not $safeObservationMode -and
     -not $primaryRuntimeHold
+  )
+}
+
+function Test-HealthProvesProtectedPrimaryRuntime {
+  param($Health)
+  if (-not $Health -or -not $Health.runtime -or -not $Health.deployment) { return $false }
+  return (
+    $Health.deployment.mode -eq "local" -and
+    [bool]$Health.deployment.primary -and
+    [bool]$Health.runtime.protected_primary_runtime -and
+    [bool]$Health.schedulerActive -and
+    [bool]$Health.runtime.auto_publish -and
+    ([string]$Health.runtime.use_job_queue_explicit).ToLowerInvariant() -eq "true" -and
+    [string]$Health.runtime.dispatch.mode -eq "queue"
   )
 }
 
@@ -193,6 +384,11 @@ if ($existing -and -not $Restart) {
     Write-RuntimeLog ("existing_listener_noop_unverified port={0} pid={1}" -f $Port, ($existing -join ","))
     exit 0
   } else {
+    $nodeCommand = Get-Command "node.exe" -ErrorAction SilentlyContinue
+    if (-not $nodeCommand) {
+      $nodeCommand = Get-Command "node" -ErrorAction Stop
+    }
+    [void](Ensure-PublishCriticalWorker -NodeExecutable $nodeCommand.Source)
     Write-RuntimeLog ("existing_listener_noop_current port={0} pid={1} commit_sha={2} branch={3}" -f $Port, ($existing -join ","), $existingCommitSha, $existingBranchName)
     exit 0
   }
@@ -206,10 +402,20 @@ if ($existing -and $Restart) {
     exit 0
   }
 
+  $runtimeHealthForStop = Get-RuntimeHealth -RuntimePort $Port
   foreach ($pidToStop in $existing) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId=$pidToStop"
-    if (-not $process.CommandLine -or $process.CommandLine -notmatch "server\.js") {
+    $commandLineRejectsServer = -not $process.CommandLine -or $process.CommandLine -notmatch "server\.js"
+    $commandLineProvesServer = $process -and -not $commandLineRejectsServer
+    $healthProvesProtectedPrimary =
+      $process -and
+      $process.Name -ieq "node.exe" -and
+      (Test-HealthProvesProtectedPrimaryRuntime -Health $runtimeHealthForStop)
+    if (-not $commandLineProvesServer -and -not $healthProvesProtectedPrimary) {
       throw "Refusing to stop PID $pidToStop on port $Port because it is not node server.js: $($process.CommandLine)"
+    }
+    if (-not $commandLineProvesServer) {
+      Write-RuntimeLog ("stopping_health_attested_uninspectable_runtime port={0} pid={1}" -f $Port, $pidToStop)
     }
     Write-RuntimeLog ("stopping_existing_runtime port={0} pid={1}" -f $Port, $pidToStop)
     Stop-Process -Id $pidToStop -Force
@@ -233,6 +439,8 @@ $env:PULSE_PROTECTED_PRIMARY_RUNTIME = "true"
 $env:PULSE_SERVER_GENERAL_QUEUE_RUNNER = "false"
 $env:PULSE_GENERAL_QUEUE_RUNNER = "false"
 $env:PULSE_SERVER_CONTENT_RUNNERS = "false"
+$env:PULSE_MISSED_WINDOW_RECOVERY = "false"
+$env:PULSE_PUBLISH_CRITICAL_RUNNER = "false"
 $env:PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT = $EvidenceRoot
 $env:TIKTOK_AUTH_CHECK_ENABLED = "true"
 $env:PULSE_GUARDED_EXECUTOR_PLAN_PATH = "output/goal-contract/guarded_dispatch_executor_plan.json"
@@ -283,6 +491,7 @@ if (
 }
 
 Write-RuntimeLog ("node_started pid={0} port={1} commit_sha={2} branch={3}" -f $startedProcess.Id, $Port, (Get-RuntimeCommitSha -Health $startedHealth), (Get-RuntimeBranchName -Health $startedHealth))
+[void](Ensure-PublishCriticalWorker -NodeExecutable $nodeExe)
 Write-Output ("node_started pid={0} port={1}" -f $startedProcess.Id, $Port)
 } finally {
   if ($runtimeTransitionMutexAcquired) {

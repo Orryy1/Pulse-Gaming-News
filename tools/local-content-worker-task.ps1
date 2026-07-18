@@ -4,11 +4,16 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$WorkerId,
   [Parameter(Mandatory = $true)]
-  [string]$Kinds
+  [string]$Kinds,
+  [string]$RuntimeRepoRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path $RepoRoot).Path
+if (-not $RuntimeRepoRoot) {
+  $RuntimeRepoRoot = $RepoRoot
+}
+$RuntimeRepoRoot = (Resolve-Path -LiteralPath $RuntimeRepoRoot).Path
 $workerScript = Join-Path $RepoRoot "tools/local-sqlite-content-worker.js"
 $nodeExe = (Get-Command "node.exe" -ErrorAction Stop).Source
 $logDir = Join-Path $RepoRoot "output/runtime"
@@ -32,6 +37,7 @@ if (
   throw "Refusing publish evidence root because it is not a normal local directory: $evidenceRoot"
 }
 $env:PULSE_PUBLISH_RUNWAY_EVIDENCE_ROOT = $evidenceRoot
+$env:PULSE_APPROVED_RUNTIME_REPO_ROOT = $RuntimeRepoRoot
 
 function Set-BackgroundProcessResources {
   param(

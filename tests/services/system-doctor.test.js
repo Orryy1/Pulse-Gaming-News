@@ -64,6 +64,37 @@ test("system doctor still reviews when neither gh auth nor credential fallback e
   assert.ok(report.findings.includes("github_cli_not_authenticated"));
 });
 
+test("system doctor probes the configured local public runtime and retries a transient failure", async () => {
+  const healthUrls = [];
+  const report = await buildSystemDoctorReport({
+    env: {
+      DEPLOYMENT_MODE: "local",
+      LOCAL_PUBLIC_URL: "https://pulse.orryy.com/",
+    },
+    commandRunner: commandRunnerWithGithub({ ghAuthOk: true }),
+    packageReader: () => ({
+      scripts: { "ops:railway:health": "node tools/railway-health-check.js" },
+    }),
+    healthFetcher: async (url) => {
+      healthUrls.push(url);
+      return healthUrls.length === 1
+        ? { ok: false, status: null, error: "timeout" }
+        : { ok: true, status: 200, body: { status: "ok" } };
+    },
+    healthProbeAttempts: 3,
+    healthProbeDelayMs: 0,
+  });
+
+  assert.deepEqual(healthUrls, [
+    "https://pulse.orryy.com/api/health",
+    "https://pulse.orryy.com/api/health",
+  ]);
+  assert.equal(report.productionHealth.ok, true);
+  assert.equal(report.productionHealth.probeAttempts, 2);
+  assert.ok(report.green.includes("production_health_ok"));
+  assert.ok(!report.blockers.includes("production_health_unavailable_or_not_ok"));
+});
+
 test("github credential fallback detector never returns the credential value", () => {
   const result = inspectGithubCredentialFallback(
     commandRunnerWithGithub({ credentialPassword: "credential_value_for_unit_test" }),

@@ -13,7 +13,7 @@ const {
 test("premium card timing gives source verification enough time to register without stalling", () => {
   const timing = v5CardTimingContract("source", "ROCKSTAR GAMES OFFICIAL TRAILER");
 
-  assert.equal(PREMIUM_CARD_TIMING_V5_VERSION, "pulse_card_timing_v3");
+  assert.equal(PREMIUM_CARD_TIMING_V5_VERSION, "pulse_card_timing_v4");
   assert.deepEqual(timing, {
     kind: "source",
     minimum_visible_duration_s: 1.9,
@@ -33,9 +33,10 @@ test("premium card timing keeps proof beats readable without allowing momentum-k
 
   assert.equal(shortProof.minimum_visible_duration_s, 3.4);
   assert.ok(shortProof.planned_visible_duration_s >= 3.4);
-  assert.ok(shortProof.planned_visible_duration_s <= 5.2);
-  assert.equal(shortProof.maximum_visible_duration_s, 5.2);
-  assert.equal(longProof.planned_visible_duration_s, 5.0);
+  assert.ok(shortProof.planned_visible_duration_s <= 3.8);
+  assert.equal(shortProof.maximum_visible_duration_s, 3.8);
+  assert.equal(longProof.planned_visible_duration_s, 3.8);
+  assert.equal(longProof.content_fits_maximum, false);
 });
 
 test("premium card timing reports when readable copy exceeds the momentum ceiling", () => {
@@ -44,7 +45,7 @@ test("premium card timing reports when readable copy exceeds the momentum ceilin
     "BLACK FLAG RESYNCED NINE DLC PACKS AT LAUNCH EIGHTY FOUR DOLLARS VERSUS FIFTY NINE DOLLARS FOUR DOLLAR MAP PACK REVEALS EVERY COLLECTIBLE LOCATION",
   );
 
-  assert.equal(timing.planned_visible_duration_s, 5.2);
+  assert.equal(timing.planned_visible_duration_s, 3.8);
   assert.ok(timing.required_visible_duration_s > timing.maximum_visible_duration_s);
   assert.equal(timing.content_fits_maximum, false);
 });

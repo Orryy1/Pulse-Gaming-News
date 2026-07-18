@@ -1045,8 +1045,8 @@ test("goal dry-run publisher blocks source cards that overstay and kill pacing",
       end_s: 20,
       duration_s: 12,
       text: "THE PRICE DEBATE JUST GOT LOUDER argument_card",
-      minimum_required_duration_s: 4,
-      maximum_allowed_duration_s: 5.2,
+      minimum_required_duration_s: 3.4,
+      maximum_allowed_duration_s: 3.8,
       source: "",
     },
   ]);
@@ -1266,8 +1266,8 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         overlay_card_windows: [],
         card_visible_windows: [
           { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
-          { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 16.5, duration_s: 4.2 },
-          { id: "proof_primary", kind: "proof_card", start_s: 16.8, end_s: 21, duration_s: 4.2 },
+          { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 15.9, duration_s: 3.6 },
+          { id: "proof_primary", kind: "proof_card", start_s: 16.2, end_s: 19.8, duration_s: 3.6 },
         ],
       },
     },
@@ -1683,7 +1683,7 @@ test("goal dry-run publisher checks actual rendered HyperFrames windows before o
         ],
         card_visible_windows: [
           { id: "scene_4_source", kind: "source", text: "XBOX WIRE SOURCE LOCK", start_s: 15, end_s: 18.2, duration_s: 3.2 },
-          { id: "scene_5_quote", kind: "quote", text: "CAMPAIGN EVOLVED NEEDS CONTEXT", start_s: 18.45, end_s: 21.9, duration_s: 3.45 },
+          { id: "scene_5_quote", kind: "quote", text: "CAMPAIGN EVOLVED NEEDS CONTEXT", start_s: 18.45, end_s: 21.65, duration_s: 3.2 },
         ],
       },
     },
@@ -1715,7 +1715,7 @@ test("goal dry-run publisher checks actual rendered HyperFrames windows before o
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
       (window) => window.duration_s,
     ),
-    [3.45],
+    [3.2],
   );
 });
 
@@ -1837,10 +1837,10 @@ test("goal dry-run publisher blocks long proof cards that do not have enough rea
           {
             id: "proof_primary",
             kind: "proof_card",
-            text: "PREORDERS STILL NEED PRICE, EDITIONS AND PLATFORM DETAIL",
+            text: "PREORDERS STILL NEED PRICE, EDITIONS, PLATFORM DETAIL AND RELEASE TIMING BEFORE LAUNCH",
             start_s: 4,
-            end_s: 8.25,
-            duration_s: 4.25,
+            end_s: 7.8,
+            duration_s: 3.8,
           },
         ],
       },
@@ -1870,7 +1870,7 @@ test("goal dry-run publisher blocks long proof cards that do not have enough rea
   assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
   assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
   assert.equal(
-    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows[0].minimum_required_duration_s > 4.25,
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows[0].minimum_required_duration_s > 3.8,
     true,
   );
 });
@@ -3072,12 +3072,13 @@ test("goal dry-run platform preflight does not report GREEN when disabled platfo
 test("goal dry-run publisher blocks repeated title patterns beyond the batch cap", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-repeat-"));
   const storyPackages = [];
+  const subjects = ["Alpha Protocol", "Bravely Default", "Chrono Trigger", "Delta Force"];
   for (let index = 0; index < 4; index += 1) {
     storyPackages.push(await makeStoryPackage(
       root,
       `repeat-${index + 1}`,
       "GREEN",
-      `Game ${index + 1} May Have A Price Problem`,
+      `${subjects[index]} May Have A Reveal Problem`,
     ));
   }
 
@@ -3086,13 +3087,24 @@ test("goal dry-run publisher blocks repeated title patterns beyond the batch cap
     generatedAt: "2026-05-22T01:45:00.000Z",
   });
 
-  assert.equal(plan.summary.ready_story_count, 3);
+  assert.equal(
+    plan.summary.ready_story_count,
+    3,
+    JSON.stringify(
+      plan.blocked_stories.map((story) => ({
+        story_id: story.story_id,
+        blockers: story.blockers,
+      })),
+      null,
+      2,
+    ),
+  );
   assert.equal(plan.summary.blocked_story_count, 1);
   assert.equal(plan.summary.planned_action_count, 21);
   assert.equal(plan.overall_verdict, "RED");
   assert.equal(plan.ready_for_unattended_publish, false);
   assert.ok(plan.readiness_reasons.includes("stories_blocked"));
-  assert.ok(plan.blocked_stories[0].blockers.includes("title_pattern_repeated:May Have A Price Problem"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("title_pattern_repeated:May Have A Reveal Problem"));
 });
 
 test("goal dry-run publisher blocks exact duplicate public titles", async () => {

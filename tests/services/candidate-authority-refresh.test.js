@@ -340,6 +340,146 @@ test("apply atomically replaces all three authority files, creates backups and p
   assert.equal(directoryEntries.some((entry) => entry.endsWith(".tmp")), false);
 });
 
+test("apply atomically refreshes an explicitly bound story-package aggregate", async () => {
+  const fixture = await createVerifiedFixture();
+  const aggregatePath = path.join(path.dirname(fixture.artifactDir), "story-packages.json");
+  const untouchedRow = {
+    story_id: "untouched_story",
+    verdict: "AMBER",
+    can_auto_publish: false,
+  };
+  await writeJson(aggregatePath, [
+    {
+      story_id: STORY_ID,
+      artifact_dir: fixture.artifactDir,
+      verdict: "RED",
+      can_auto_publish: false,
+      blockers: ["stale_aggregate_blocker"],
+      publish_verdict: {
+        verdict: "RED",
+        can_auto_publish: false,
+        blockers: ["stale_aggregate_blocker"],
+      },
+    },
+    untouchedRow,
+  ]);
+  const aggregateBefore = await fs.readFile(aggregatePath);
+
+  const dryRun = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    aggregatePaths: [aggregatePath],
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(dryRun.verdict, "GREEN");
+  assert.equal(dryRun.aggregate_updates.length, 1);
+  assert.equal(dryRun.aggregate_updates[0].matched_count, 1);
+  assert.equal(dryRun.aggregate_updates[0].proposed_story.verdict, "GREEN");
+  assert.equal(dryRun.aggregate_updates[0].proposed_story.can_auto_publish, true);
+  assert.deepEqual(
+    dryRun.aggregate_updates[0].proposed_story.publish_verdict.blockers,
+    [],
+  );
+  assert.deepEqual(await fs.readFile(aggregatePath), aggregateBefore);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    aggregatePaths: [aggregatePath],
+    apply: true,
+    generatedAt: "2026-07-17T11:15:00.000Z",
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.applied, true);
+  assert.equal(report.changed_files.length, 4);
+  assert.equal(report.backups.length, 4);
+  const aggregate = await fs.readJson(aggregatePath);
+  assert.equal(aggregate[0].verdict, "GREEN");
+  assert.equal(aggregate[0].can_auto_publish, true);
+  assert.deepEqual(aggregate[0].blockers, []);
+  assert.equal(aggregate[0].publish_verdict.verdict, "GREEN");
+  assert.equal(aggregate[0].publish_verdict.can_auto_publish, true);
+  assert.deepEqual(aggregate[1], untouchedRow);
+  const aggregateBackup = report.backups.find((entry) => entry.path === aggregatePath);
+  assert.ok(aggregateBackup);
+  assert.deepEqual(await fs.readFile(aggregateBackup.backup_path), aggregateBefore);
+});
+
+test("aggregate refresh propagates AMBER evidence and cannot leave stale GREEN publish authority", async () => {
+  const fixture = await createVerifiedFixture();
+  const aggregatePath = path.join(path.dirname(fixture.artifactDir), "story-packages.json");
+  const narrationPath = path.join(fixture.artifactDir, "narration_manifest.json");
+  const narration = await fs.readJson(narrationPath);
+  await writeJson(narrationPath, {
+    ...narration,
+    warnings: ["voice_cadence_requires_review"],
+  });
+  await writeJson(aggregatePath, [{
+    story_id: STORY_ID,
+    artifact_dir: fixture.artifactDir,
+    verdict: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    warnings: [],
+    publish_verdict: {
+      verdict: "GREEN",
+      can_auto_publish: true,
+      blockers: [],
+      warnings: [],
+    },
+  }]);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    aggregatePaths: [aggregatePath],
+    apply: true,
+    generatedAt: "2026-07-17T11:20:00.000Z",
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.can_auto_publish, false);
+  const aggregate = await fs.readJson(aggregatePath);
+  assert.equal(aggregate[0].verdict, "AMBER");
+  assert.equal(aggregate[0].can_auto_publish, false);
+  assert.deepEqual(aggregate[0].warnings, ["narration:voice_cadence_requires_review"]);
+  assert.equal(aggregate[0].publish_verdict.verdict, "AMBER");
+  assert.equal(aggregate[0].publish_verdict.can_auto_publish, false);
+});
+
+test("apply rejects an ambiguous aggregate before changing any authority surface", async () => {
+  const fixture = await createVerifiedFixture();
+  const aggregatePath = path.join(path.dirname(fixture.artifactDir), "story-packages.json");
+  await writeJson(aggregatePath, [
+    { story_id: STORY_ID, verdict: "RED", can_auto_publish: false },
+    { story_id: STORY_ID, verdict: "GREEN", can_auto_publish: true },
+  ]);
+  const authorityBefore = await readBuffers(fixture.authorityPaths);
+  const aggregateBefore = await fs.readFile(aggregatePath);
+
+  await assert.rejects(
+    refreshCandidateAuthority({
+      artifactDir: fixture.artifactDir,
+      storyId: STORY_ID,
+      aggregatePaths: [aggregatePath],
+      apply: true,
+      generatedAt: "2026-07-17T11:25:00.000Z",
+      probeMedia: async () => ({ decodable: true }),
+    }),
+    (error) => {
+      assert.equal(error.code, "AUTHORITY_AGGREGATE_INVALID");
+      assert.match(error.message, /authority_aggregate_story_duplicate/);
+      return true;
+    },
+  );
+
+  assert.deepEqual(await readBuffers(fixture.authorityPaths), authorityBefore);
+  assert.deepEqual(await fs.readFile(aggregatePath), aggregateBefore);
+});
+
 test("apply atomically creates a missing authority surface and backs up the existing surfaces", async () => {
   const fixture = await createVerifiedFixture();
   const missingPath = fixture.authorityPaths[0];
@@ -683,10 +823,16 @@ test("candidate authority refresh CLI defaults to dry-run and requires explicit 
   const dryRun = parseArgs([
     "--artifact-dir", "output/story",
     "--story-id", "story",
+    "--aggregate", "output/goal-contract/story-packages.json",
+    "--aggregate=output/goal-contract/secondary-story-packages.json",
     "--json",
   ]);
   assert.equal(dryRun.apply, false);
   assert.equal(dryRun.json, true);
+  assert.deepEqual(dryRun.aggregatePaths, [
+    "output/goal-contract/story-packages.json",
+    "output/goal-contract/secondary-story-packages.json",
+  ]);
 
   const apply = parseArgs([
     "--artifact-dir=output/story",

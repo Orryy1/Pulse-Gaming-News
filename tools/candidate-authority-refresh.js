@@ -11,6 +11,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     artifactDir: "",
     storyId: "",
+    aggregatePaths: [],
     generatedAt: "",
     apply: false,
     json: false,
@@ -22,6 +23,10 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg.startsWith("--artifact-dir=")) args.artifactDir = arg.slice("--artifact-dir=".length);
     else if (arg === "--story-id") args.storyId = argv[++index] || "";
     else if (arg.startsWith("--story-id=")) args.storyId = arg.slice("--story-id=".length);
+    else if (arg === "--aggregate") args.aggregatePaths.push(argv[++index] || "");
+    else if (arg.startsWith("--aggregate=")) {
+      args.aggregatePaths.push(arg.slice("--aggregate=".length));
+    }
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || "";
     else if (arg.startsWith("--generated-at=")) args.generatedAt = arg.slice("--generated-at=".length);
     else if (arg === "--apply") args.apply = true;
@@ -49,6 +54,7 @@ function usage() {
     "Options:",
     "  --artifact-dir <dir>   Candidate artefact directory",
     "  --story-id <id>        Exact candidate story ID",
+    "  --aggregate <path>      Atomically refresh the matching aggregate row; repeatable",
     "  --generated-at <ISO>   Deterministic evidence timestamp",
     "  --apply                Apply the atomic authority-only transaction",
     "  --json                 Print the complete machine-readable report",
@@ -104,6 +110,8 @@ async function main(argv = process.argv.slice(2)) {
   const report = await refreshCandidateAuthority({
     artifactDir: path.resolve(process.cwd(), args.artifactDir),
     storyId: args.storyId,
+    aggregatePaths: args.aggregatePaths.filter(Boolean).map((aggregatePath) =>
+      path.resolve(process.cwd(), aggregatePath)),
     apply: args.apply,
     ...(args.generatedAt ? { generatedAt: new Date(args.generatedAt).toISOString() } : {}),
   });

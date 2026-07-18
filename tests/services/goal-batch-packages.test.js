@@ -2237,7 +2237,7 @@ test("goal batch package proof preparation preserves a specific Digimon Switch 2
   assert.doesNotMatch(prepared.full_script, /watch pile|named source|background noise/i);
 });
 
-test("goal batch package proof preparation writes specific Xbox console price scripts", () => {
+test("goal batch package proof preparation keeps directionless Xbox price evidence review-held", () => {
   const prepared = prepareStoryForGoalProof(
     {
       id: "rss_xbox_console_price_update",
@@ -2265,13 +2265,14 @@ test("goal batch package proof preparation writes specific Xbox console price sc
   assert.match(prepared.full_script, /^Xbox console prices just turned hardware into a trust test\./i);
   assert.match(prepared.full_script, /Xbox Wire says Microsoft has updated Xbox console prices/i);
   assert.match(prepared.full_script, /buy now, wait for a bundle or look at PC and used hardware instead/i);
+  assert.doesNotMatch(prepared.full_script, /\b(?:higher|lower|increased|decreased)\s+(?:hardware\s+)?prices?\b/i);
   assert.doesNotMatch(prepared.full_script, /new player-facing detail|content push|player test|background noise/i);
   assert.equal(
     buildViralScriptIntelligence({
       story: { ...prepared, title: prepared.public_title },
       script: prepared.full_script,
     }).verdict,
-    "viral_ready",
+    "rewrite_required",
   );
 });
 
@@ -3035,6 +3036,9 @@ test("goal batch package proof preparation writes concrete scripts for fresh ref
         source_name: "IGN",
         article_url:
           "https://www.ign.com/articles/call-of-duty-black-ops-1-and-2-listings-have-fans-fearing-pricey-playstation-ports",
+        confirmed_claims: [
+          "IGN reports PlayStation listings for Black Ops 1 and 2 have fans concerned the ports could be expensive.",
+        ],
         full_script:
           "Black Ops 1 and 2 just turned nostalgia into a price test. IGN reports PlayStation listings for the two classic Black Ops games have fans watching for whether these ports land as sensible re-releases or expensive nostalgia. Follow Pulse Gaming so you never miss a beat.",
       },
@@ -3190,7 +3194,7 @@ test("goal batch package proof preparation rewrites generic collectible and retr
           "The Hot New Nintendo Collectibles Has A Player-Return Problem. Kotaku says The Hot New Nintendo Collectibles Are 35mm Film Slides From Super Mario 64. Follow Pulse Gaming so you never miss a beat.",
       },
       expectedTitle: "Super Mario 64 Film Slides Are A Collector Test",
-      requiredScript: [/Super Mario 64/i, /35mm film slides/i, /collector|collectors/i, /scarcity|piece of gaming history/i],
+      requiredScript: [/Super Mario 64/i, /35mm film slides/i, /collector|collectors/i, /gaming history worth owning/i],
     },
     {
       story: {

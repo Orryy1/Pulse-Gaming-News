@@ -334,6 +334,49 @@ test("viral script intelligence requires a supported concrete monetisation conse
   assert.equal(result.blockers.includes("monetisation_conflict_missing_from_hook"), false);
 });
 
+test("viral script intelligence accepts source-confirmed qualitative price risk", () => {
+  const story = {
+    id: "black-ops-pricey-ports",
+    title: "Black Ops 1 and 2 Listings Have Fans Fearing Pricey PlayStation Ports",
+    source_name: "IGN",
+    confirmed_claims: [
+      "IGN reports PlayStation listings for Black Ops 1 and 2 have fans concerned the ports could be expensive.",
+    ],
+  };
+  const script =
+    "Black Ops 1 and 2 just turned nostalgia into a price argument. " +
+    "IGN says PlayStation listings for the classic games have fans watching whether these ports are sensible re-releases or expensive convenience. " +
+    "Players want old campaigns to remain easy to access without paying modern premium prices again. " +
+    "If Activision prices the package cleanly, it gets a preservation win. " +
+    "If not, nostalgia becomes the backlash. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({ story, script });
+
+  assert.equal(
+    result.blockers.includes("monetisation_conflict_missing_from_hook"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+  assert.equal(
+    result.blockers.includes("monetisation_conflict_missing_supported_detail"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+
+  const unsupported = buildViralScriptIntelligence({
+    story: {
+      ...story,
+      confirmed_claims: ["IGN reports PlayStation listings for Black Ops 1 and 2."],
+    },
+    script,
+  });
+  assert.ok(
+    unsupported.blockers.includes("monetisation_conflict_missing_supported_detail"),
+    JSON.stringify(unsupported, null, 2),
+  );
+});
+
 test("viral script intelligence product-matches monetisation prices and counts", () => {
   const story = {
     id: "starward-context-bound-monetisation-evidence",
@@ -915,6 +958,48 @@ for (const item of [
     );
   });
 }
+
+test("viral script intelligence does not treat editorial standards as unsupported universal facts", () => {
+  const cases = [
+    {
+      title: "Invincible VS Turns Its Roster Into A Meta Fight",
+      source_name: "Xbox Wire",
+      script:
+        "Invincible VS just made the roster question sharper. " +
+        "Xbox Wire says Universa and The Immortal are joining the roster. " +
+        "That matters because tag fighters live or die on matchups, not names on a reveal card. " +
+        "Universa should change screen control. The Immortal should change pressure and survivability. " +
+        "The payoff is simple: every new character has to prove the fights will stay readable when the screen gets chaotic. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    {
+      title: "Steam Next Fest Turns Demos Into A Trust Fight",
+      source_name: "Steam",
+      script:
+        "One bad ten-minute demo can bury a good game. " +
+        "Steam Next Fest is live, but the fight starts after players hit install. " +
+        "A weak demo exposes every rough edge before the game has a second chance. " +
+        "That turns each demo into a trust fight players decide in minutes. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+  ];
+
+  for (const item of cases) {
+    const result = buildViralScriptIntelligence({
+      story: {
+        id: item.title,
+        title: item.title,
+        source_name: item.source_name,
+      },
+      script: item.script,
+    });
+    assert.equal(
+      result.blockers.includes("unsupported_universal_claim"),
+      false,
+      JSON.stringify(result, null, 2),
+    );
+  }
+});
 
 test("viral script intelligence approves concrete gameplay-first rewrite", () => {
   const script =

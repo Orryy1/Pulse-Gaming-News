@@ -53,6 +53,45 @@ test("V5 direct-motion selector preserves clean detailed gameplay", () => {
   assert.equal(report.metrics.text_heavy_sample_count, 0);
 });
 
+test("V5 direct-motion selector rejects sustained dark low-information source intervals", () => {
+  const report = scoreDirectMotionVisualSamples([
+    {
+      dark_pixel_ratio: 0.66,
+      central_dark_pixel_ratio: 0.63,
+      bright_pixel_ratio: 0.005,
+      edge_density: 0.043,
+      saturation_mean: 0.79,
+      text_overlay_likelihood: 0,
+      trailer_frame_taste: { verdict: "pass", tags: ["colourful"] },
+    },
+    {
+      dark_pixel_ratio: 0.61,
+      central_dark_pixel_ratio: 0.58,
+      bright_pixel_ratio: 0.007,
+      edge_density: 0.049,
+      saturation_mean: 0.78,
+      text_overlay_likelihood: 0,
+      trailer_frame_taste: { verdict: "pass", tags: ["colourful"] },
+    },
+    {
+      dark_pixel_ratio: 0.18,
+      central_dark_pixel_ratio: 0.14,
+      bright_pixel_ratio: 0.12,
+      edge_density: 0.22,
+      saturation_mean: 0.55,
+      text_overlay_likelihood: 0,
+      trailer_frame_taste: {
+        verdict: "pass",
+        tags: ["detail_rich", "colourful", "gameplay_candidate"],
+      },
+    },
+  ]);
+
+  assert.equal(report.eligible, false);
+  assert.ok(report.reasons.includes("direct_motion_dark_low_information_risk"));
+  assert.equal(report.metrics.dark_low_information_sample_count, 2);
+});
+
 test("V5 direct-motion selector rejects portrait-cropped embedded text without banning gameplay HUD", () => {
   const croppedTrailerText = scoreDirectMotionVisualSamples([
     {
@@ -155,6 +194,39 @@ test("V5 direct-motion selector rejects oversized cropped edge glyphs missed by 
   assert.equal(report.metrics.portrait_crop_text_risk_sample_count, 1);
 });
 
+test("V5 direct-motion selector rejects oversized embedded title bands cropped through portrait footage", () => {
+  const report = scoreDirectMotionVisualSamples([
+    {
+      width: 540,
+      height: 960,
+      aspect_ratio: 0.5625,
+      text_overlay_likelihood: 0.17,
+      central_bright_pixel_ratio: 0.09,
+      edge_density: 0.27,
+      letterbox_bar_ratio: 0,
+      white_text_on_dark_likelihood: 0,
+      border: {
+        edge_touch_ratio: 0.04,
+        bright_edge_ratio: 0.05,
+        dark_edge_ratio: 0.003,
+        text_cutoff_risk_score: 0.24,
+      },
+      trailer_frame_taste: {
+        verdict: "pass",
+        tags: ["detail_rich", "colourful", "gameplay_candidate"],
+      },
+    },
+  ]);
+
+  assert.equal(report.eligible, false);
+  assert.ok(
+    report.reasons.includes(
+      "direct_motion_portrait_crop_embedded_text_truncation_risk",
+    ),
+  );
+  assert.equal(report.metrics.portrait_crop_text_risk_sample_count, 1);
+});
+
 test("V5 direct-motion selector fails closed when no decoded samples exist", () => {
   const report = scoreDirectMotionVisualSamples([]);
 
@@ -162,13 +234,13 @@ test("V5 direct-motion selector fails closed when no decoded samples exist", () 
   assert.ok(report.reasons.includes("direct_motion_visual_samples_missing"));
 });
 
-test("V5 direct-motion selector samples densely enough to catch sub-second transition slates", () => {
+test("V5 direct-motion selector samples the opening boundary and catches sub-second transition slates", () => {
   const times = premiumSampleTimes(5);
   const gaps = times.slice(1).map((time, index) => time - times[index]);
 
   assert.equal(times.length >= 20, true);
   assert.equal(Math.max(...gaps) <= 0.25, true);
-  assert.equal(times[0] <= 0.5, true);
+  assert.equal(times[0] <= 0.1, true);
   assert.equal(times.at(-1) >= 4.5, true);
 });
 
@@ -270,19 +342,79 @@ test("V5 premium direct-motion filter reports professional diversity without cha
   );
 
   const multiSource = await filterPremiumDirectMotionClips(
-    [
-      ...sharedWindows,
-      {
-        path: "C:\\clips\\official_gameplay_capture_window_24_5.mp4",
-        source_family: "official_gameplay_capture_window_24_5",
-        base_source_family: "official_gameplay_capture",
-        source_url: "https://publisher.example/official-gameplay-capture.mp4",
-      },
-    ],
+    ["trailer", "gameplay", "systems", "launch"].map((source, index) => ({
+      path: `C:\\clips\\official_${source}_window_${(index + 1) * 8}_5.mp4`,
+      source_family: `official_${source}_window_${(index + 1) * 8}_5`,
+      base_source_family: `official_${source}`,
+      source_url: `https://publisher.example/official-${source}.mp4`,
+    })),
     { ...options, policyTier: "ultimate_professional" },
   );
 
   assert.equal(multiSource.source_diversity.strict_pass, true);
   assert.equal(multiSource.professional_source_diversity.status, "pass");
+  assert.equal(
+    multiSource.professional_source_diversity.observed_genuine_base_source_count,
+    4,
+  );
   assert.deepEqual(multiSource.blockers, []);
+});
+
+test("V5 ultimate selector fails when decoded-frame rejections concentrate the surviving source pool", async () => {
+  const sourceHash = (character) => character.repeat(64);
+  const clips = [
+    ...[1, 2, 3].map((index) => ({
+      id: `arcane_${index}`,
+      path: `C:\\clips\\arcane-window-${index}.mp4`,
+      source_master_sha256: sourceHash("a"),
+      youtube_video_id: "Y4vHLIBS600",
+      source_family: `arcane_window_${index}`,
+      visually_eligible: true,
+    })),
+    ...[1, 2].map((index) => ({
+      id: `homecoming_${index}`,
+      path: `C:\\clips\\homecoming-window-${index}.mp4`,
+      source_master_sha256: sourceHash("b"),
+      youtube_video_id: "xxURfVAVSfE",
+      source_family: `homecoming_window_${index}`,
+      visually_eligible: true,
+    })),
+    ...["c", "d", "e"].map((character, index) => ({
+      id: `other_${index + 1}`,
+      path: `C:\\clips\\other-window-${index + 1}.mp4`,
+      source_master_sha256: sourceHash(character),
+      source_family: `other_window_${index + 1}`,
+      visually_eligible: true,
+    })),
+    ...["f", "1"].map((character, index) => ({
+      id: `rejected_${index + 1}`,
+      path: `C:\\clips\\rejected-window-${index + 1}.mp4`,
+      source_master_sha256: sourceHash(character),
+      source_family: `rejected_window_${index + 1}`,
+      visually_eligible: false,
+    })),
+  ];
+  const report = await filterPremiumDirectMotionClips(clips, {
+    outputDir: path.join(os.tmpdir(), "pulse-direct-motion-selector-v5-concentration-test"),
+    policyTier: "ultimate_professional",
+    inspectClip: async (clip) => ({
+      path: clip.path,
+      eligible: clip.visually_eligible === true,
+      reasons: clip.visually_eligible === true ? [] : ["direct_motion_frame_taste_failed"],
+      metrics: { decoded_sample_count: 20 },
+    }),
+  });
+
+  assert.equal(report.accepted.length, 8);
+  assert.equal(report.professional_source_diversity.status, "blocked");
+  assert.ok(
+    report.blockers.includes("professional_motion_source_concentration_above_floor"),
+  );
+  assert.deepEqual(
+    report.professional_source_diversity.concentrated_sources.map((source) => ({
+      count: source.scene_count,
+      share: source.scene_share,
+    })),
+    [{ count: 3, share: 0.375 }],
+  );
 });

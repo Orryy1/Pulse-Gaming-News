@@ -27,6 +27,9 @@ const {
 const {
   resolveLocalReadinessOutputDir,
 } = require("../lib/ops/local-readiness-evidence-root");
+const {
+  DEFAULT_LOCAL_PROOF_TTS_TIMEOUT_MS,
+} = require("../lib/ops/local-proof-tts-limits");
 
 function parseArgs(argv = process.argv.slice(2)) {
   return {
@@ -41,14 +44,22 @@ function smokeFailureMessage(error) {
   return String(error?.message || error || "unknown_generation_smoke_failure").trim();
 }
 
+function resolveLocalTtsSmokeTimeoutMs(env = process.env) {
+  const value = Number(
+    env.LOCAL_TTS_DOCTOR_SMOKE_TIMEOUT_MS ||
+      env.LOCAL_TTS_SMOKE_TIMEOUT_MS ||
+      env.LOCAL_TTS_TIMEOUT_MS ||
+      DEFAULT_LOCAL_PROOF_TTS_TIMEOUT_MS,
+  );
+  return Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : DEFAULT_LOCAL_PROOF_TTS_TIMEOUT_MS;
+}
+
 async function runDefaultGenerationSmoke({ voiceId, baseUrl }) {
   process.env.TTS_PROVIDER = "local";
   process.env.LOCAL_TTS_URL = baseUrl || process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL;
-  process.env.LOCAL_TTS_TIMEOUT_MS =
-    process.env.LOCAL_TTS_DOCTOR_SMOKE_TIMEOUT_MS ||
-    process.env.LOCAL_TTS_SMOKE_TIMEOUT_MS ||
-    process.env.LOCAL_TTS_TIMEOUT_MS ||
-    "180000";
+  process.env.LOCAL_TTS_TIMEOUT_MS = String(resolveLocalTtsSmokeTimeoutMs(process.env));
   process.env.LOCAL_TTS_REQUEST_ATTEMPTS =
     process.env.LOCAL_TTS_DOCTOR_SMOKE_ATTEMPTS ||
     process.env.LOCAL_TTS_SMOKE_ATTEMPTS ||
@@ -320,6 +331,7 @@ if (require.main === module) {
 
 module.exports = {
   parseArgs,
+  resolveLocalTtsSmokeTimeoutMs,
   runDoctor,
   runDefaultGenerationSmoke,
   smokeFailureMessage,

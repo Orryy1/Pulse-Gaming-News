@@ -8,6 +8,7 @@ const path = require("node:path");
 
 const {
   parseArgs,
+  resolveLocalTtsSmokeTimeoutMs,
   runDoctor,
   writeReport,
 } = require("../../tools/local-tts-doctor");
@@ -15,6 +16,14 @@ const {
 test("local TTS doctor parses generation smoke checks", () => {
   assert.equal(parseArgs(["--restart", "--prewarm", "--smoke"]).smoke, true);
   assert.equal(parseArgs(["--restart", "--prewarm"]).smoke, false);
+});
+
+test("local TTS doctor gives resident local generation the ten minute proof budget", () => {
+  assert.equal(resolveLocalTtsSmokeTimeoutMs({}), 600000);
+  assert.equal(
+    resolveLocalTtsSmokeTimeoutMs({ LOCAL_TTS_DOCTOR_SMOKE_TIMEOUT_MS: "720000" }),
+    720000,
+  );
 });
 
 test("local TTS doctor downgrades green health when generation smoke fails", async () => {

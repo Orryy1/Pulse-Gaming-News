@@ -5246,6 +5246,151 @@ async function schedulerRightsRecordAssessment({
   };
 }
 
+async function schedulerRenderRightsReconciliationAssessment({
+  renderManifest = {},
+  rightsArtifact = {},
+  artifactDir = "",
+  fingerprintCache = new Map(),
+} = {}) {
+  const reconciliation =
+    renderManifest?.rights_reconciliation &&
+    typeof renderManifest.rights_reconciliation === "object" &&
+    !Array.isArray(renderManifest.rights_reconciliation)
+      ? renderManifest.rights_reconciliation
+      : null;
+  if (!reconciliation || Object.keys(reconciliation).length === 0) {
+    return {
+      failures: [],
+      warnings: [],
+      evidence: { present: false },
+    };
+  }
+
+  const failures = [];
+  const warnings = [];
+  const status = statusText(
+    reconciliation.verdict ||
+      reconciliation.final_verdict ||
+      reconciliation.status ||
+      reconciliation.result,
+  );
+  const amberStatuses = new Set(["AMBER", "WARN", "WARNING", "REVIEW", "HUMAN_REVIEW"]);
+  if (!status) failures.push("render_rights_reconciliation_status_missing");
+  else if (authoritativeStatusIsRed(status)) {
+    failures.push("render_rights_reconciliation_not_green");
+  } else if (amberStatuses.has(status)) {
+    warnings.push("render_rights_reconciliation:critical_status_amber");
+  } else if (!["PASS", "GREEN"].includes(status)) {
+    failures.push("render_rights_reconciliation_not_green");
+  }
+
+  failures.push(
+    ...authoritativeEvidenceFailures(reconciliation)
+      .map((failure) => `render_rights_reconciliation:${failure}`),
+  );
+  warnings.push(
+    ...parseFailureList(reconciliation.warnings)
+      .map(cleanText)
+      .filter(Boolean)
+      .map((warning) => `render_rights_reconciliation:${warning}`),
+  );
+
+  const appliedLedgerStatus = statusText(reconciliation.applied_ledger_verdict);
+  if (authoritativeStatusIsRed(appliedLedgerStatus)) {
+    failures.push("render_rights_reconciliation_applied_ledger_not_green");
+  } else if (amberStatuses.has(appliedLedgerStatus)) {
+    warnings.push("render_rights_reconciliation:applied_ledger_amber");
+  } else if (!["PASS", "GREEN"].includes(appliedLedgerStatus)) {
+    failures.push("render_rights_reconciliation_applied_ledger_status_missing");
+  }
+
+  const canonicalLedgerPath = rightsArtifact.path || path.join(artifactDir, "rights_ledger.json");
+  const declaredLedgerPath = cleanText(reconciliation.rights_ledger_path);
+  if (!declaredLedgerPath) {
+    failures.push("render_rights_reconciliation_ledger_path_missing");
+  } else if (
+    schedulerAssetPathKey(declaredLedgerPath, artifactDir) !==
+    schedulerAssetPathKey(canonicalLedgerPath, artifactDir)
+  ) {
+    failures.push("render_rights_reconciliation_ledger_path_mismatch");
+  }
+
+  let actualFingerprint = null;
+  try {
+    actualFingerprint = await schedulerFileFingerprint(
+      canonicalLedgerPath,
+      fingerprintCache,
+    );
+  } catch {
+    failures.push("render_rights_reconciliation_ledger_unreadable");
+  }
+  const expectedHash = normaliseSha256(reconciliation.applied_ledger_sha256);
+  const expectedSize = Number(reconciliation.applied_ledger_size_bytes);
+  if (!/^[a-f0-9]{64}$/.test(expectedHash)) {
+    failures.push("render_rights_reconciliation_ledger_hash_missing");
+  } else if (actualFingerprint && expectedHash !== actualFingerprint.sha256) {
+    failures.push("render_rights_reconciliation_ledger_hash_mismatch");
+  }
+  if (!Number.isFinite(expectedSize) || expectedSize <= 0) {
+    failures.push("render_rights_reconciliation_ledger_size_missing");
+  } else if (actualFingerprint && expectedSize !== actualFingerprint.size_bytes) {
+    failures.push("render_rights_reconciliation_ledger_size_mismatch");
+  }
+
+  if (reconciliation.final_state_verified !== true) {
+    failures.push("render_rights_reconciliation_final_state_not_verified");
+  }
+  const usedAssetCount = Number(reconciliation.used_asset_count);
+  const reconciledRecordCount = Number(reconciliation.reconciled_record_count);
+  const duplicateRecordCount = Number(
+    reconciliation.duplicate_record_count_after ??
+      reconciliation.duplicate_record_count,
+  );
+  if (!Number.isFinite(usedAssetCount) || usedAssetCount <= 0) {
+    failures.push("render_rights_reconciliation_used_asset_count_missing");
+  }
+  if (!Number.isFinite(reconciledRecordCount) || reconciledRecordCount <= 0) {
+    failures.push("render_rights_reconciliation_record_count_missing");
+  }
+  if (
+    Number.isFinite(usedAssetCount) &&
+    Number.isFinite(reconciledRecordCount) &&
+    usedAssetCount !== reconciledRecordCount
+  ) {
+    failures.push("render_rights_reconciliation_coverage_incomplete");
+  }
+  if (Number.isFinite(duplicateRecordCount) && duplicateRecordCount > 0) {
+    failures.push("render_rights_reconciliation_duplicate_records");
+  }
+  if (["PASS", "GREEN"].includes(status) && reconciliation.can_auto_publish !== true) {
+    failures.push("render_rights_reconciliation_auto_publish_not_approved");
+  }
+
+  return {
+    failures: [...new Set(failures)],
+    warnings: [...new Set(warnings)],
+    evidence: {
+      present: true,
+      status,
+      rights_ledger_path: canonicalLedgerPath,
+      expected_ledger_sha256: expectedHash || null,
+      expected_ledger_size_bytes:
+        Number.isFinite(expectedSize) && expectedSize > 0 ? expectedSize : null,
+      actual_ledger_sha256: actualFingerprint?.sha256 || null,
+      actual_ledger_size_bytes: actualFingerprint?.size_bytes || null,
+      used_asset_count:
+        Number.isFinite(usedAssetCount) && usedAssetCount > 0 ? usedAssetCount : null,
+      reconciled_record_count:
+        Number.isFinite(reconciledRecordCount) && reconciledRecordCount > 0
+          ? reconciledRecordCount
+          : null,
+      duplicate_record_count:
+        Number.isFinite(duplicateRecordCount) ? duplicateRecordCount : null,
+      final_state_verified: reconciliation.final_state_verified === true,
+    },
+  };
+}
+
 async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
   const artifactDir = artifactDirForStory(story);
   if (!artifactDir) {
@@ -5312,6 +5457,17 @@ async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
     targetPlatforms,
   });
   const failures = [];
+  const warnings = [];
+  const fingerprintCache = new Map();
+  const renderRightsReconciliation =
+    await schedulerRenderRightsReconciliationAssessment({
+      renderManifest: objectValue(renderArtifact.value, {}),
+      rightsArtifact,
+      artifactDir,
+      fingerprintCache,
+    });
+  failures.push(...renderRightsReconciliation.failures);
+  warnings.push(...renderRightsReconciliation.warnings);
   if (packageArtifact.present && !packageArtifact.valid) {
     failures.push("authoritative_goal_package_summary_invalid");
   } else if (authoritativePackageEvidenceIsRed(packageArtifact.value, targetPlatforms)) {
@@ -5339,7 +5495,6 @@ async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
   if (duplicateRecordCount > 0) failures.push("duplicate_rights_records");
   let coveredAssetCount = 0;
   const assignedRecordIndexes = new Set();
-  const fingerprintCache = new Map();
   for (const asset of usedAssets) {
     const assetPathKey = schedulerAssetPathKey(asset.path, artifactDir);
     const matches = records
@@ -5380,15 +5535,16 @@ async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
     failures.push("used_asset_rights_coverage_incomplete");
   }
   return {
-    result: failures.length ? "fail" : "pass",
+    result: failures.length ? "fail" : warnings.length ? "warn" : "pass",
     failures: [...new Set(failures)],
-    warnings: [],
+    warnings: [...new Set(warnings)],
     evidence: {
       rights_ledger_path: rightsArtifact.path,
       used_asset_count: usedAssets.length,
       covered_asset_count: coveredAssetCount,
       duplicate_record_count: duplicateRecordCount,
       target_platforms: targetPlatforms,
+      render_rights_reconciliation: renderRightsReconciliation.evidence,
     },
   };
 }

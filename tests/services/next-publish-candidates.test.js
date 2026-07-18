@@ -441,6 +441,32 @@ async function makeSchedulerRightsPackage({
   };
 }
 
+async function bindSchedulerRightsToStableEvidence(fixture) {
+  const evidencePath = path.join(fixture.artifactDir, "rights_source_evidence.json");
+  const evidenceBytes = Buffer.from(
+    JSON.stringify({
+      story_id: fixture.story.id,
+      status: "verified",
+      source: "stable_test_rights_evidence",
+    }),
+  );
+  await fs.writeFile(evidencePath, evidenceBytes);
+  const ledger = await fs.readJson(fixture.rightsPath);
+  ledger.records = ledger.records.map((record) => ({
+    ...record,
+    evidence_file: evidencePath,
+    evidence_sha256: sha256(evidenceBytes),
+    evidence_size_bytes: evidenceBytes.length,
+  }));
+  await fs.writeJson(fixture.rightsPath, ledger);
+  const ledgerBytes = await fs.readFile(fixture.rightsPath);
+  return {
+    ledger,
+    sha256: sha256(ledgerBytes),
+    size_bytes: ledgerBytes.length,
+  };
+}
+
 async function writeCurrentGreenProofPackage(artifactDir, storyId, videoPath) {
   const now = "2026-06-23T22:30:00.000Z";
   const narrationPath = path.join(artifactDir, "audio", "narration.mp3");
@@ -2060,6 +2086,123 @@ test("scheduler preflight passes complete one-to-one rights records for current 
   assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
   assert.equal(preflight.checks.scheduler_rights.evidence.used_asset_count, 3);
   assert.equal(preflight.checks.scheduler_rights.evidence.covered_asset_count, 3);
+});
+
+test("scheduler preflight cannot hide failed render-bound rights behind a GREEN ledger", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-render-rights-failed",
+  });
+  const ledgerFingerprint = await bindSchedulerRightsToStableEvidence(fixture);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    rights_reconciliation: {
+      verdict: "FAIL",
+      applied_ledger_verdict: "RED",
+      rights_ledger_path: fixture.rightsPath,
+      applied_ledger_sha256: ledgerFingerprint.sha256,
+      applied_ledger_size_bytes: ledgerFingerprint.size_bytes,
+      used_asset_count: 3,
+      reconciled_record_count: 2,
+      duplicate_record_count_after: 0,
+      final_state_verified: true,
+      can_auto_publish: false,
+      blockers: ["used_asset_rights_coverage_incomplete"],
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes(
+      "scheduler_rights:render_rights_reconciliation_not_green",
+    ),
+  );
+  assert.ok(
+    preflight.blockers.includes(
+      "scheduler_rights:render_rights_reconciliation:used_asset_rights_coverage_incomplete",
+    ),
+  );
+});
+
+test("scheduler preflight rejects a stale render-bound rights ledger fingerprint", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-render-rights-stale-ledger",
+  });
+  const ledgerFingerprint = await bindSchedulerRightsToStableEvidence(fixture);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    rights_reconciliation: {
+      verdict: "PASS",
+      applied_ledger_verdict: "pass",
+      rights_ledger_path: fixture.rightsPath,
+      applied_ledger_sha256: "0".repeat(64),
+      applied_ledger_size_bytes: ledgerFingerprint.size_bytes,
+      used_asset_count: 3,
+      reconciled_record_count: 3,
+      duplicate_record_count_after: 0,
+      final_state_verified: true,
+      can_auto_publish: true,
+      blockers: [],
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes(
+      "scheduler_rights:render_rights_reconciliation_ledger_hash_mismatch",
+    ),
+  );
+});
+
+test("scheduler preflight preserves render-bound rights AMBER as a warning", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-render-rights-amber",
+  });
+  const ledgerFingerprint = await bindSchedulerRightsToStableEvidence(fixture);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    rights_reconciliation: {
+      verdict: "AMBER",
+      applied_ledger_verdict: "AMBER",
+      rights_ledger_path: fixture.rightsPath,
+      applied_ledger_sha256: ledgerFingerprint.sha256,
+      applied_ledger_size_bytes: ledgerFingerprint.size_bytes,
+      used_asset_count: 3,
+      reconciled_record_count: 3,
+      duplicate_record_count_after: 0,
+      final_state_verified: true,
+      can_auto_publish: false,
+      blockers: [],
+      warnings: ["rights_provenance_requires_review"],
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "warn");
+  assert.ok(
+    preflight.checks.scheduler_rights.warnings.includes(
+      "render_rights_reconciliation:rights_provenance_requires_review",
+    ),
+  );
 });
 
 test("scheduler preflight requires rights for enabled platform-native final assets", async () => {
@@ -9623,11 +9766,11 @@ test("runPreflightQaForStory trusts clean final scene-plan motion over stale emb
     clips: 6,
     card_visible_windows: [
       { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
-      { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
+      { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 7.8, duration_s: 3.8 },
     ],
     overlay_card_windows: [
       { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
-      { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 8.2, duration_s: 4.2 },
+      { id: "headline_card", kind: "proof_card", start_s: 4, end_s: 7.8, duration_s: 3.8 },
     ],
     clip_scene_plan: {
       repeat_free: true,

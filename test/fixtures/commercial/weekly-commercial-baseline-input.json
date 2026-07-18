@@ -1,0 +1,160 @@
+{
+  "revenue_entries": [],
+  "cost_entries": [],
+  "planning_scenarios": [
+    {
+      "id": "first-evidence-backed-sponsor-booking",
+      "label": "First evidence-backed sponsor booking",
+      "target_period": "2026-07-20/2026-07-26",
+      "metrics": {
+        "booked_revenue_gbp": 50
+      },
+      "confidence": "low",
+      "evidence": [
+        {
+          "evidence_type": "operator_target_basis",
+          "evidence_class": "planning",
+          "source_uri": "output/goal-25/sponsor_pricing_bands.json",
+          "confidence": "low"
+        }
+      ]
+    }
+  ],
+  "source_context": [
+    {
+      "domain": "revenue_paths",
+      "source_kind": "code",
+      "source_uri": "lib/revenue-path-engine.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "planning_and_tracking_only",
+      "finding": "Revenue paths model commercial routes and tracking, not realised income."
+    },
+    {
+      "domain": "revenue_paths",
+      "source_kind": "test",
+      "source_uri": "tests/services/revenue-path-engine.test.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "planning_and_tracking_only",
+      "finding": "Tests cover governed revenue routes rather than payment recognition."
+    },
+    {
+      "domain": "revenue_paths",
+      "source_kind": "local_artefact_collection",
+      "source_uri": "output/revenue",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "planning_and_tracking_only",
+      "finding": "Current manifests keep fantasy revenue projections null."
+    },
+    {
+      "domain": "affiliate",
+      "source_kind": "code",
+      "source_uri": "lib/goal15-affiliate-intelligence-engine.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "zeroed_attribution_context_only",
+      "finding": "Affiliate attribution is deliberately zeroed until network reporting exists."
+    },
+    {
+      "domain": "affiliate",
+      "source_kind": "test",
+      "source_uri": "tests/services/goal15-affiliate-intelligence-engine.test.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "zeroed_attribution_context_only",
+      "finding": "Affiliate safety and tracking tests do not provide settlement evidence."
+    },
+    {
+      "domain": "affiliate",
+      "source_kind": "local_artefact",
+      "source_uri": "output/goal-15/revenue_attribution.json",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "zeroed_attribution_context_only",
+      "finding": "The current attribution artefact reports GBP 0 while waiting for affiliate network reporting."
+    },
+    {
+      "domain": "sponsor",
+      "source_kind": "code",
+      "source_uri": "lib/goal25-sponsor-readiness-pack.js",
+      "evidence_class": "planning",
+      "confidence": "high",
+      "accounting_treatment": "target_basis_only",
+      "finding": "Sponsor pricing is draft operator-review material and outreach remains unsent."
+    },
+    {
+      "domain": "sponsor",
+      "source_kind": "test",
+      "source_uri": "tests/services/goal25-sponsor-readiness-pack.test.js",
+      "evidence_class": "planning",
+      "confidence": "high",
+      "accounting_treatment": "target_basis_only",
+      "finding": "Sponsor readiness tests cover safe draft generation, not contracts or cash."
+    },
+    {
+      "domain": "sponsor",
+      "source_kind": "local_artefact",
+      "source_uri": "output/goal-25/sponsor_pricing_bands.json",
+      "evidence_class": "planning",
+      "confidence": "high",
+      "accounting_treatment": "target_basis_only",
+      "finding": "Draft GBP pricing bands are excluded from realised and booked revenue."
+    },
+    {
+      "domain": "cost_profit",
+      "source_kind": "code",
+      "source_uri": "lib/multi-vertical-cost-profit-dashboard.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "prior_snapshot_not_authoritative",
+      "finding": "The prior dashboard accepts caller-supplied realised revenue without primary-document qualification."
+    },
+    {
+      "domain": "cost_profit",
+      "source_kind": "test",
+      "source_uri": "tests/services/multi-vertical-cost-profit-dashboard.test.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "prior_snapshot_not_authoritative",
+      "finding": "Existing tests prove arithmetic but use synthetic realised revenue values."
+    },
+    {
+      "domain": "cost_profit",
+      "source_kind": "local_artefact",
+      "source_uri": "output/multi-vertical-cost-profit/cost_profit_dashboard.json",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "prior_snapshot_not_authoritative",
+      "finding": "The current local cost and profit snapshot contains zero renders, cost, revenue and profit."
+    },
+    {
+      "domain": "experiment",
+      "source_kind": "code",
+      "source_uri": "lib/goal12-experimentation-engine.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "performance_context_only",
+      "finding": "Experiments remain controlled planning until comparable observed metrics exist."
+    },
+    {
+      "domain": "experiment",
+      "source_kind": "test",
+      "source_uri": "tests/services/goal12-experimentation-engine.test.js",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "performance_context_only",
+      "finding": "Experiment tests govern variants and winners, not accounting recognition."
+    },
+    {
+      "domain": "experiment",
+      "source_kind": "local_artefact",
+      "source_uri": "output/goal-12/winner_report.json",
+      "evidence_class": "secondary",
+      "confidence": "high",
+      "accounting_treatment": "performance_context_only",
+      "finding": "The current winner report is blocked pending variant metrics."
+    }
+  ]
+}

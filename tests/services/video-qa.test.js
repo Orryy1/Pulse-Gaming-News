@@ -9,6 +9,9 @@ const {
   parseFreezedetectOutput,
   parseFramehashOutput,
   repeatedFrameHashPairs,
+  parseTemporalFrameBuffer,
+  analyzeTemporalFrames,
+  validateTemporalVideoQaReport,
   DEFAULT_MIN_DURATION_SECONDS,
   DEFAULT_MIN_RETENTION_SHORT_SECONDS,
   DEFAULT_MIN_NORMAL_PRODUCTION_SECONDS,
@@ -111,6 +114,342 @@ test("repeatedFrameHashPairs ignores adjacent repeats but catches later visual l
   ]);
 });
 
+function temporalFrame(index, hash) {
+  return {
+    index,
+    time_seconds: index / 6,
+    hash,
+  };
+}
+
+function passingTemporalAnalysis(durationSeconds = 50) {
+  return {
+    analysis_scope: "full_frame",
+    scan_complete: true,
+    sample_fps: 6,
+    sampled_frame_count: durationSeconds * 6,
+    coverage_ratio: 1,
+    repeated_motion_sequences: [],
+    repeated_motion_seconds: 0,
+    cadence: {
+      choppy: false,
+      overall_near_static_ratio: 0,
+      max_window_near_static_ratio: 0,
+    },
+    supplemental_center_crop: {
+      analysis_scope: "center_crop",
+      scan_complete: true,
+      sample_fps: 6,
+      sampled_frame_count: durationSeconds * 6,
+      coverage_ratio: 1,
+      repeated_motion_sequences: [],
+      repeated_motion_seconds: 0,
+      cadence: {
+        choppy: false,
+        overall_near_static_ratio: 0,
+        max_window_near_static_ratio: 0,
+      },
+    },
+  };
+}
+
+function grayFrameFromHash(hashValue) {
+  const frame = Buffer.alloc(9 * 8);
+  const hash = BigInt.asUintN(64, BigInt(hashValue));
+  for (let row = 0; row < 8; row += 1) {
+    let value = 128;
+    frame[row * 9] = value;
+    for (let column = 0; column < 8; column += 1) {
+      const bitIndex = 63 - (row * 8 + column);
+      const bit = (hash >> BigInt(bitIndex)) & 1n;
+      value += bit === 1n ? -2 : 2;
+      frame[row * 9 + column + 1] = value;
+    }
+  }
+  return frame;
+}
+
+function healthyTemporalBuffer(frameCount) {
+  return Buffer.concat(
+    Array.from({ length: frameCount }, (_, index) =>
+      grayFrameFromHash(
+        BigInt.asUintN(
+          64,
+          BigInt(index + 1) * 0x9e3779b97f4a7c15n ^
+            BigInt(index + 11) * 0xbf58476d1ce4e5b9n,
+        ),
+      ),
+    ),
+  );
+}
+
+test("parseTemporalFrameBuffer decodes every fixed-size greyscale sample into a perceptual hash", () => {
+  const frameA = Buffer.from([
+    9, 8, 7, 6, 5, 4, 3, 2, 1,
+    1, 2, 3, 4, 5, 6, 7, 8, 9,
+    9, 8, 7, 6, 5, 4, 3, 2, 1,
+    1, 2, 3, 4, 5, 6, 7, 8, 9,
+    9, 8, 7, 6, 5, 4, 3, 2, 1,
+    1, 2, 3, 4, 5, 6, 7, 8, 9,
+    9, 8, 7, 6, 5, 4, 3, 2, 1,
+    1, 2, 3, 4, 5, 6, 7, 8, 9,
+  ]);
+  const frameB = Buffer.from(frameA.map((value) => 255 - value));
+  const frames = parseTemporalFrameBuffer(Buffer.concat([frameA, frameB]), {
+    sampleFps: 6,
+  });
+
+  assert.strictEqual(frames.length, 2);
+  assert.strictEqual(frames[0].time_seconds, 0);
+  assert.strictEqual(frames[1].time_seconds, 1 / 6);
+  assert.match(frames[0].hash, /^[0-9a-f]{16}$/);
+  assert.notStrictEqual(frames[0].hash, frames[1].hash);
+});
+
+test("analyzeTemporalFrames detects a repeated dynamic clip sequence across the full timeline", () => {
+  const first = Array.from({ length: 12 }, (_, index) =>
+    temporalFrame(index, (0x1000000000000000n + BigInt(index * 0x10101)).toString(16)),
+  );
+  const middle = Array.from({ length: 24 }, (_, offset) =>
+    temporalFrame(12 + offset, (0x2000000000000000n + BigInt(offset * 0x30103)).toString(16)),
+  );
+  const repeat = first.map((frame, offset) =>
+    temporalFrame(36 + offset, frame.hash),
+  );
+
+  const report = analyzeTemporalFrames([...first, ...middle, ...repeat], {
+    sampleFps: 6,
+    minRepeatedSequenceSeconds: 1.5,
+    minRepeatedSequenceGapSeconds: 3,
+  });
+
+  assert.strictEqual(report.scan_complete, true);
+  assert.ok(report.repeated_motion_sequences.length >= 1);
+  assert.ok(report.repeated_motion_seconds >= 1.5);
+  assert.ok(
+    report.repeated_motion_sequences.some(
+      (row) => row.first_start_seconds === 0 && row.repeat_start_seconds === 6,
+    ),
+  );
+});
+
+test("analyzeTemporalFrames does not misclassify one brief static editorial card as global choppiness", () => {
+  const frames = Array.from({ length: 180 }, (_, index) => {
+    const hash =
+      index >= 72 && index < 80
+        ? "aaaaaaaaaaaaaaaa"
+        : (0x1000000000000000n + BigInt(index * 0x100001)).toString(16);
+    return temporalFrame(index, hash);
+  });
+
+  const report = analyzeTemporalFrames(frames, {
+    sampleFps: 6,
+    expectedDurationSeconds: 30,
+  });
+
+  assert.strictEqual(report.cadence.choppy, false);
+  assert.ok(report.cadence.overall_near_static_ratio < 0.1);
+});
+
+test("analyzeTemporalFrames marks sustained repeated-frame cadence as choppy", () => {
+  const frames = Array.from({ length: 180 }, (_, index) => {
+    const sourceIndex = Math.floor(index / 4);
+    return temporalFrame(
+      index,
+      (0x3000000000000000n + BigInt(sourceIndex * 0x100001)).toString(16),
+    );
+  });
+
+  const report = analyzeTemporalFrames(frames, {
+    sampleFps: 6,
+    expectedDurationSeconds: 30,
+  });
+
+  assert.strictEqual(report.cadence.choppy, true);
+  assert.ok(report.cadence.overall_near_static_ratio >= 0.7);
+  assert.ok(report.cadence.max_window_near_static_ratio >= 0.7);
+});
+
+test("analyzeTemporalFrames measures static cadence even when the video is shorter than one cadence window", () => {
+  const frames = Array.from({ length: 14 }, (_, index) =>
+    temporalFrame(index, "aaaaaaaaaaaaaaaa"),
+  );
+
+  const report = analyzeTemporalFrames(frames, {
+    sampleFps: 6,
+    expectedDurationSeconds: 2.4,
+  });
+
+  assert.strictEqual(report.scan_complete, true);
+  assert.strictEqual(report.cadence.max_window_near_static_ratio, 1);
+  assert.strictEqual(report.cadence.choppy, true);
+});
+
+test("validateTemporalVideoQaReport requires exact GREEN evidence bound to the current render", () => {
+  const validation = validateTemporalVideoQaReport(
+    {
+      story_id: "arknights",
+      verdict: "GREEN",
+      can_publish: true,
+      blockers: [],
+      warnings: [],
+      final_media: {
+        sha256: "a".repeat(64),
+        size_bytes: 1024,
+      },
+      evidence: {
+        decode: {
+          complete: true,
+          video_stream: true,
+          audio_stream: true,
+        },
+        temporal: {
+          analysis_scope: "full_frame",
+          scan_complete: true,
+          coverage_ratio: 1,
+          sampled_frame_count: 300,
+          repeated_motion_sequences: [],
+          repeated_motion_seconds: 0,
+          cadence: { choppy: false },
+          supplemental_center_crop: {
+            analysis_scope: "center_crop",
+            scan_complete: true,
+            coverage_ratio: 1,
+            sampled_frame_count: 300,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: { choppy: false },
+          },
+        },
+      },
+      source_result: {
+        result: "pass",
+        failures: [],
+        warnings: [],
+      },
+    },
+    {
+      storyId: "arknights",
+      renderSha256: "a".repeat(64),
+      renderSizeBytes: 1024,
+    },
+  );
+
+  assert.strictEqual(validation.verdict, "GREEN");
+  assert.strictEqual(validation.valid, true);
+  assert.deepStrictEqual(validation.blockers, []);
+});
+
+test("validateTemporalVideoQaReport rejects stale hashes and repeated or choppy media", () => {
+  const validation = validateTemporalVideoQaReport(
+    {
+      story_id: "arknights",
+      verdict: "GREEN",
+      can_publish: true,
+      blockers: [],
+      warnings: [],
+      final_media: {
+        sha256: "b".repeat(64),
+        size_bytes: 2048,
+      },
+      evidence: {
+        decode: {
+          complete: true,
+          video_stream: true,
+          audio_stream: true,
+        },
+        temporal: {
+          analysis_scope: "full_frame",
+          scan_complete: true,
+          coverage_ratio: 1,
+          sampled_frame_count: 300,
+          repeated_motion_sequences: [
+            {
+              first_start_seconds: 3,
+              repeat_start_seconds: 20,
+              duration_seconds: 2,
+            },
+          ],
+          repeated_motion_seconds: 2,
+          cadence: { choppy: true },
+          supplemental_center_crop: {
+            analysis_scope: "center_crop",
+            scan_complete: true,
+            coverage_ratio: 1,
+            sampled_frame_count: 300,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: { choppy: false },
+          },
+        },
+      },
+      source_result: {
+        result: "pass",
+        failures: [],
+        warnings: [],
+      },
+    },
+    {
+      storyId: "arknights",
+      renderSha256: "a".repeat(64),
+      renderSizeBytes: 1024,
+    },
+  );
+
+  assert.strictEqual(validation.verdict, "RED");
+  assert.strictEqual(validation.valid, false);
+  assert.ok(validation.blockers.includes("temporal_video_qa_render_hash_mismatch"));
+  assert.ok(validation.blockers.includes("temporal_video_qa_render_size_mismatch"));
+  assert.ok(validation.blockers.includes("temporal_video_qa_repeated_motion_detected"));
+  assert.ok(validation.blockers.includes("temporal_video_qa_choppy_cadence"));
+});
+
+test("validateTemporalVideoQaReport rejects a crop-only GREEN report", () => {
+  const validation = validateTemporalVideoQaReport(
+    {
+      story_id: "arknights",
+      verdict: "GREEN",
+      can_publish: true,
+      blockers: [],
+      warnings: [],
+      final_media: {
+        sha256: "a".repeat(64),
+        size_bytes: 1024,
+      },
+      evidence: {
+        decode: {
+          complete: true,
+          video_stream: true,
+          audio_stream: true,
+        },
+        temporal: {
+          analysis_scope: "center_crop",
+          scan_complete: true,
+          coverage_ratio: 1,
+          sampled_frame_count: 300,
+          repeated_motion_sequences: [],
+          repeated_motion_seconds: 0,
+          cadence: { choppy: false },
+        },
+      },
+      source_result: {
+        result: "pass",
+        failures: [],
+        warnings: [],
+      },
+    },
+    {
+      storyId: "arknights",
+      renderSha256: "a".repeat(64),
+      renderSizeBytes: 1024,
+    },
+  );
+
+  assert.strictEqual(validation.verdict, "RED");
+  assert.ok(validation.blockers.includes("temporal_video_qa_full_frame_scope_missing"));
+  assert.ok(validation.blockers.includes("temporal_video_qa_center_crop_scope_missing"));
+});
+
 test("buildVideoQaOptionsForStory only permits short retention edits when metadata says so", () => {
   const blocked = classifyVideoQa({ durationSeconds: 35.2, blackSegments: [] });
   assert.strictEqual(blocked.result, "fail");
@@ -123,6 +462,8 @@ test("buildVideoQaOptionsForStory only permits short retention edits when metada
   const allowed = classifyVideoQa({
     durationSeconds: 35.2,
     blackSegments: [],
+    decodeEvidence: { complete: true, video_stream: true, audio_stream: true },
+    temporalAnalysis: passingTemporalAnalysis(35.2),
     ...options,
   });
 
@@ -143,11 +484,15 @@ test("buildVideoQaOptionsForStory permits governed normal-production V4 shorts f
   const allowed = classifyVideoQa({
     durationSeconds: 37.28,
     blackSegments: [],
+    decodeEvidence: { complete: true, video_stream: true, audio_stream: true },
+    temporalAnalysis: passingTemporalAnalysis(37.28),
     ...options,
   });
   const overlong = classifyVideoQa({
     durationSeconds: 64,
     blackSegments: [],
+    decodeEvidence: { complete: true, video_stream: true, audio_stream: true },
+    temporalAnalysis: passingTemporalAnalysis(64),
     ...options,
   });
 
@@ -312,6 +657,130 @@ test("classifyVideoQa blocks non-adjacent repeated frame hashes", () => {
   );
 });
 
+test("classifyVideoQa fails closed when the full-duration temporal scan is missing", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 44,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    requireTemporalScan: true,
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.includes("temporal_scan_missing"));
+});
+
+test("classifyVideoQa fails closed when the final audio and video streams were not fully decoded", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 44,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    requireDecodeScan: true,
+    decodeEvidence: {
+      complete: false,
+      video_stream: true,
+      audio_stream: false,
+      error: "audio_stream_missing",
+    },
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.includes("media_decode_failed:audio_stream_missing"));
+});
+
+test("classifyVideoQa blocks perceptually repeated motion sequences", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 44,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    temporalAnalysis: {
+      scan_complete: true,
+      repeated_motion_seconds: 2,
+      repeated_motion_sequences: [
+        {
+          first_start_seconds: 2,
+          repeat_start_seconds: 18,
+          duration_seconds: 2,
+        },
+      ],
+      cadence: { choppy: false },
+    },
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.some((f) => f.startsWith("repeated_motion_sequence")));
+});
+
+test("classifyVideoQa blocks sustained choppy temporal cadence", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 44,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    temporalAnalysis: {
+      scan_complete: true,
+      repeated_motion_seconds: 0,
+      repeated_motion_sequences: [],
+      cadence: {
+        choppy: true,
+        overall_near_static_ratio: 0.74,
+        max_window_near_static_ratio: 0.89,
+      },
+    },
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.some((f) => f.startsWith("choppy_temporal_cadence")));
+});
+
+test("classifyVideoQa blocks repetition detected only by the centre-crop temporal scan", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 44,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    requireTemporalScan: true,
+    temporalAnalysis: {
+      analysis_scope: "full_frame",
+      scan_complete: true,
+      coverage_ratio: 1,
+      sampled_frame_count: 264,
+      repeated_motion_seconds: 0,
+      repeated_motion_sequences: [],
+      cadence: { choppy: false },
+      supplemental_center_crop: {
+        analysis_scope: "center_crop",
+        scan_complete: true,
+        coverage_ratio: 1,
+        sampled_frame_count: 264,
+        repeated_motion_seconds: 2,
+        repeated_motion_sequences: [
+          {
+            first_start_seconds: 2,
+            repeat_start_seconds: 18,
+            duration_seconds: 2,
+          },
+        ],
+        cadence: { choppy: false },
+      },
+    },
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(
+    r.failures.some((failure) =>
+      failure.startsWith("repeated_motion_sequence_center_crop"),
+    ),
+  );
+});
+
 // ---------- runVideoQa: mocked exec ----------
 
 function stubExec(handlers) {
@@ -339,9 +808,23 @@ test("runVideoQa: file not on disk → fail", async () => {
   assert.ok(r.failures.includes("mp4_not_on_disk"));
 });
 
-test("runVideoQa: ffprobe missing → skip, not fail", async () => {
+test("runVideoQa: ffprobe missing fails closed by default", async () => {
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
+    exec: stubExec(() => {
+      const e = new Error("spawn ffprobe ENOENT");
+      e.code = "ENOENT";
+      throw e;
+    }),
+  });
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.includes("ffprobe_missing"));
+});
+
+test("runVideoQa: explicit developer-only tool-missing override remains a soft skip", async () => {
+  const r = await runVideoQa("/tmp/x.mp4", {
+    fs: fakeFs({ "/tmp/x.mp4": true }),
+    allowToolMissingSkip: true,
     exec: stubExec(() => {
       const e = new Error("spawn ffprobe ENOENT");
       e.code = "ENOENT";
@@ -356,6 +839,8 @@ test("runVideoQa: healthy video (50s, no black) → pass", async () => {
   let callCount = 0;
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
+    disableDecodeScan: true,
+    disableTemporalScan: true,
     exec: stubExec((cmd) => {
       callCount++;
       if (cmd.includes("ffprobe")) {
@@ -372,6 +857,8 @@ test("runVideoQa: healthy video (50s, no black) → pass", async () => {
 test("runVideoQa: short video (15s) + mid black → fail with both reasons", async () => {
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
+    disableDecodeScan: true,
+    disableTemporalScan: true,
     exec: stubExec((cmd) => {
       if (cmd.includes("ffprobe")) {
         return { stdout: "duration=15.00\n", stderr: "" };
@@ -390,6 +877,8 @@ test("runVideoQa: short video (15s) + mid black → fail with both reasons", asy
 test("runVideoQa parses full-render freeze and black evidence from ffmpeg output", async () => {
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
+    disableDecodeScan: true,
+    disableTemporalScan: true,
     minDuration: 35,
     maxDuration: 60,
     exec: stubExec((cmd) => {
@@ -419,6 +908,8 @@ test("runVideoQa parses full-render freeze and black evidence from ffmpeg output
 test("runVideoQa: opening-only black (1s) → warn", async () => {
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
+    disableDecodeScan: true,
+    disableTemporalScan: true,
     exec: stubExec((cmd) => {
       if (cmd.includes("ffprobe")) {
         return { stdout: "duration=50.0\n", stderr: "" };
@@ -439,6 +930,8 @@ test("runVideoQa: ffmpeg blackdetect exit code non-zero but output parseable →
   // blackdetect output. The helper must read err.stderr / err.stdout.
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
+    disableDecodeScan: true,
+    disableTemporalScan: true,
     exec: stubExec((cmd) => {
       if (cmd.includes("ffprobe")) {
         return { stdout: "duration=50.0\n", stderr: "" };
@@ -458,6 +951,8 @@ test("runVideoQa: ffmpeg blackdetect exit code non-zero but output parseable →
 test("runVideoQa blocks repeated non-adjacent frame hashes from the repeat scan", async () => {
   const r = await runVideoQa("/tmp/x.mp4", {
     fs: fakeFs({ "/tmp/x.mp4": true }),
+    disableDecodeScan: true,
+    disableTemporalScan: true,
     minDuration: 35,
     maxDuration: 60,
     exec: stubExec((cmd) => {
@@ -481,6 +976,86 @@ test("runVideoQa blocks repeated non-adjacent frame hashes from the repeat scan"
 
   assert.strictEqual(r.result, "fail");
   assert.ok(r.failures.some((f) => f.startsWith("repeated_frame_hashes")));
+});
+
+test("runVideoQa decodes a complete temporal signature stream by default", async () => {
+  let callCount = 0;
+  const temporalCommands = [];
+  const r = await runVideoQa("/tmp/x.mp4", {
+    fs: fakeFs({ "/tmp/x.mp4": true }),
+    minDuration: 35,
+    maxDuration: 60,
+    exec: stubExec((cmd) => {
+      callCount += 1;
+      if (cmd.includes("ffprobe")) {
+        return { stdout: "duration=50.00\n", stderr: "" };
+      }
+      if (cmd.includes("rawvideo")) {
+        temporalCommands.push(cmd);
+        return {
+          stdout: healthyTemporalBuffer(300),
+          stderr: Buffer.alloc(0),
+        };
+      }
+      return { stdout: "", stderr: "" };
+    }),
+  });
+
+  assert.strictEqual(r.result, "pass", r.failures?.join(", "));
+  assert.strictEqual(callCount, 6);
+  assert.strictEqual(temporalCommands.length, 2);
+  assert.ok(
+    temporalCommands.some(
+      (command) =>
+        command.includes("force_original_aspect_ratio=decrease") &&
+        !command.includes("crop="),
+    ),
+    temporalCommands.join("\n"),
+  );
+  assert.ok(
+    temporalCommands.some((command) => command.includes("crop=")),
+    temporalCommands.join("\n"),
+  );
+  assert.strictEqual(r.evidence.decode.complete, true);
+  assert.strictEqual(r.evidence.decode.video_stream, true);
+  assert.strictEqual(r.evidence.decode.audio_stream, true);
+  assert.strictEqual(r.evidence.temporal.scan_complete, true);
+  assert.strictEqual(r.evidence.temporal.sampled_frame_count, 300);
+  assert.strictEqual(r.evidence.temporal.coverage_ratio, 1);
+  assert.strictEqual(r.evidence.temporal.cadence.choppy, false);
+  assert.strictEqual(r.evidence.temporal.analysis_scope, "full_frame");
+  assert.strictEqual(
+    r.evidence.temporal.supplemental_center_crop.analysis_scope,
+    "center_crop",
+  );
+  assert.strictEqual(
+    r.evidence.temporal.supplemental_center_crop.scan_complete,
+    true,
+  );
+});
+
+test("runVideoQa blocks a final MP4 when full audio-video decode fails", async () => {
+  const r = await runVideoQa("/tmp/x.mp4", {
+    fs: fakeFs({ "/tmp/x.mp4": true }),
+    disableRepeatedFrameScan: true,
+    disableTemporalScan: true,
+    exec: stubExec((cmd) => {
+      if (cmd.includes("ffprobe")) {
+        return { stdout: "duration=50.00\n", stderr: "" };
+      }
+      if (cmd.includes("-map 0:v:0") && cmd.includes("-map 0:a:0")) {
+        const error = new Error("audio stream decode failed");
+        error.code = 1;
+        error.stderr = "Error while decoding stream #0:1";
+        throw error;
+      }
+      return { stdout: "", stderr: "" };
+    }),
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(r.failures.some((failure) => failure.startsWith("media_decode_failed")));
+  assert.strictEqual(r.evidence.decode.complete, false);
 });
 
 // ---------- defaults ----------

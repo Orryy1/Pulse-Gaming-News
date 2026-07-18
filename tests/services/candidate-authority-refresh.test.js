@@ -90,6 +90,50 @@ async function createVerifiedFixture() {
     },
     blockers: [],
   });
+  const temporalQaPath = path.join(artifactDir, "temporal_video_qa_report.json");
+  await writeJson(temporalQaPath, {
+    schema_version: 1,
+    story_id: STORY_ID,
+    verdict: "GREEN",
+    can_publish: true,
+    blockers: [],
+    warnings: [],
+    final_media: {
+      path: renderPath,
+      sha256: fingerprints.render,
+      size_bytes: (await fs.stat(renderPath)).size,
+    },
+    evidence: {
+      decode: {
+        complete: true,
+        video_stream: true,
+        audio_stream: true,
+        },
+        temporal: {
+          analysis_scope: "full_frame",
+          scan_complete: true,
+          coverage_ratio: 1,
+          sampled_frame_count: 300,
+          repeated_motion_sequences: [],
+          repeated_motion_seconds: 0,
+          cadence: { choppy: false },
+          supplemental_center_crop: {
+            analysis_scope: "center_crop",
+            scan_complete: true,
+            coverage_ratio: 1,
+            sampled_frame_count: 300,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: { choppy: false },
+          },
+        },
+      },
+    source_result: {
+      result: "pass",
+      failures: [],
+      warnings: [],
+    },
+  });
   await writeJson(path.join(artifactDir, "final_av_review.json"), {
     story_id: STORY_ID,
     verdict: "GREEN",
@@ -173,7 +217,13 @@ async function createVerifiedFixture() {
       path.join(artifactDir, "platform_publish_manifest.json"),
       path.join(artifactDir, "publish_verdict.json"),
     ],
-    criticalPaths: { renderPath, audioPath, timestampPath, rightsPath },
+    criticalPaths: {
+      renderPath,
+      audioPath,
+      timestampPath,
+      rightsPath,
+      temporalQaPath,
+    },
   };
 }
 
@@ -513,6 +563,92 @@ test("stale caption timestamp evidence forces RED", async () => {
   assert.equal(report.verdict, "RED");
   assert.equal(report.can_auto_publish, false);
   assert.ok(report.blockers.includes("caption_timestamps_hash_mismatch"));
+});
+
+test("missing temporal video QA evidence forces every authority surface RED", async () => {
+  const fixture = await createVerifiedFixture();
+  await fs.remove(fixture.criticalPaths.temporalQaPath);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.can_auto_publish, false);
+  assert.ok(report.blockers.includes("temporal_video_qa_report_missing"));
+  assert.equal(report.proposed.publish_verdict.verdict, "RED");
+  assert.equal(report.proposed.platform_publish_manifest.can_auto_publish, false);
+});
+
+test("temporal video QA bound to a stale render hash forces authority RED", async () => {
+  const fixture = await createVerifiedFixture();
+  const temporal = await fs.readJson(fixture.criticalPaths.temporalQaPath);
+  await writeJson(fixture.criticalPaths.temporalQaPath, {
+    ...temporal,
+    final_media: {
+      ...temporal.final_media,
+      sha256: "f".repeat(64),
+    },
+  });
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.can_auto_publish, false);
+  assert.ok(report.blockers.includes("temporal_video_qa_render_hash_mismatch"));
+});
+
+test("post-render captions verify the frozen timestamp file named by the caption manifest", async () => {
+  const fixture = await createVerifiedFixture();
+  const frozenTimestampPath = path.join(
+    fixture.artifactDir,
+    "flagship",
+    "generation_word_timestamps.json",
+  );
+  await writeJson(frozenTimestampPath, {
+    words: [{ word: "Pulse", start: 0, end: 0.3 }],
+    generation_run_id: "flagship-run",
+  });
+  const frozenTimestampSha256 = sha256(await fs.readFile(frozenTimestampPath));
+  const captionPath = path.join(fixture.artifactDir, "caption_manifest.json");
+  const caption = await fs.readJson(captionPath);
+  delete caption.word_timestamps_sha256;
+  await writeJson(captionPath, {
+    ...caption,
+    schema_version: 2,
+    producer_id: "pulse-gaming-post-render-narration-qa",
+    word_timestamps_path: "flagship/generation_word_timestamps.json",
+    lineage: {
+      source_word_timestamps_sha256: sha256(
+        await fs.readFile(fixture.criticalPaths.timestampPath),
+      ),
+      frozen_word_timestamps_sha256: frozenTimestampSha256,
+    },
+  });
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.can_auto_publish, true);
+  assert.deepEqual(report.blockers, []);
+  assert.equal(
+    report.frozen_hashes.before.caption_timestamps.sha256,
+    frozenTimestampSha256,
+  );
+  assert.equal(
+    report.critical_paths.caption_timestamps,
+    frozenTimestampPath,
+  );
 });
 
 test("critical evidence changing during dry-run forces every proposed authority surface RED", async () => {

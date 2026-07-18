@@ -5302,7 +5302,7 @@ test("goal dry-run publisher blocks non-GREEN or incomplete packages", async () 
   assert.ok(plan.blocked_stories[1].blockers.includes("missing_artefact:captions.srt"));
 });
 
-test("goal dry-run publisher lets current scheduler preflight override stale package publish verdict debt", async () => {
+test("goal dry-run publisher never promotes an authoritative RED verdict from scheduler preflight", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-stale-publish-verdict-"));
   const storyPackage = await makeStoryPackage(
     root,
@@ -5332,17 +5332,23 @@ test("goal dry-run publisher lets current scheduler preflight override stale pac
     platformOperationalConfig: enabledCorePlatformsOnly(),
   });
 
-  assert.equal(plan.summary.ready_story_count, 1);
-  assert.equal(plan.summary.blocked_story_count, 0);
-  assert.equal(plan.ready_stories[0].story_id, "stale-verdict-story");
-  assert.deepEqual(plan.ready_stories[0].warnings, []);
-  assert.equal(
-    plan.incident_guard_report.stories[0].disaster_upload_blockers.includes("incident:control_tower_verdict_not_green"),
-    false,
-  );
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  const blocked = plan.blocked_stories[0];
+  assert.equal(blocked.story_id, "stale-verdict-story");
+  assert.ok(blocked.blockers.includes("publish_verdict_not_green"));
+  assert.ok(blocked.blockers.includes("incident:control_tower_verdict_not_green"));
+  assert.equal(blocked.publish_verdict.verdict, "RED");
+  assert.equal(blocked.publish_verdict.can_auto_publish, false);
+  assert.equal(blocked.stale_publish_verdict_promoted_by_scheduler_preflight, false);
+  assert.deepEqual(blocked.publish_verdict.reason_codes, [
+    "footage:v4_motion_blocked",
+    "media_house:shorts_feed_competition_weak",
+    "media_house:source_lock_not_verified",
+  ]);
 });
 
-test("goal dry-run publisher uses separate candidate report before stale verdict inspection", async () => {
+test("goal dry-run publisher never promotes an authoritative RED verdict from a separate candidate report", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-candidate-report-stale-verdict-"));
   const storyPackage = await makeStoryPackage(
     root,
@@ -5376,13 +5382,14 @@ test("goal dry-run publisher uses separate candidate report before stale verdict
     platformOperationalConfig: enabledCorePlatformsOnly(),
   });
 
-  assert.equal(plan.summary.ready_story_count, 1);
-  assert.equal(plan.summary.blocked_story_count, 0);
-  assert.equal(plan.ready_stories[0].story_id, "candidate-report-stale-verdict");
-  assert.equal(
-    plan.incident_guard_report.stories[0].disaster_upload_blockers.includes("incident:control_tower_verdict_not_green"),
-    false,
-  );
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  const blocked = plan.blocked_stories[0];
+  assert.equal(blocked.story_id, "candidate-report-stale-verdict");
+  assert.ok(blocked.blockers.includes("publish_verdict_not_green"));
+  assert.ok(blocked.blockers.includes("incident:control_tower_verdict_not_green"));
+  assert.equal(blocked.publish_verdict.verdict, "RED");
+  assert.equal(blocked.stale_publish_verdict_promoted_by_scheduler_preflight, false);
 });
 
 test("goal dry-run publisher quarantines stale duplicate when a publish-ready replacement exists", async () => {

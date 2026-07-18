@@ -116,6 +116,7 @@
     "ops:candidate-evidence-reconciliation": "node tools/candidate-evidence-reconciliation.js",
     "ops:flagship-media-proof": "node tools/flagship-media-evidence-materializer.js",
     "ops:goal-final-av-review": "node tools/goal-final-av-review-pack.js",
+    "ops:video-temporal-qa": "node tools/video-temporal-qa.js",
     "ops:goal04-source-holds": "node tools/goal04-human-held-source-consolidation.js",
     "ops:goal04-operator-source-queue": "node tools/goal04-operator-source-intake-queue.js",
     "ops:goal04-source-submission-preflight": "node tools/goal04-operator-source-submission-preflight.js",

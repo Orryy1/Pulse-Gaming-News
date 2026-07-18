@@ -285,6 +285,49 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     }),
     safety: { no_publish_triggered: true },
   });
+  await fs.writeJson(path.join(artifactDir, "temporal_video_qa_report.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "GREEN",
+    can_publish: true,
+    blockers: [],
+    warnings: [],
+    final_media: {
+      path: finalMp4Path,
+      sha256: sha256(finalMediaFixture.finalMediaBytes),
+      size_bytes: finalMediaFixture.finalMediaBytes.length,
+    },
+    evidence: {
+      decode: {
+        complete: true,
+        video_stream: true,
+        audio_stream: true,
+      },
+      temporal: {
+        analysis_scope: "full_frame",
+        scan_complete: true,
+        coverage_ratio: 1,
+        sampled_frame_count: 6,
+        repeated_motion_sequences: [],
+        repeated_motion_seconds: 0,
+        cadence: { choppy: false },
+        supplemental_center_crop: {
+          analysis_scope: "center_crop",
+          scan_complete: true,
+          coverage_ratio: 1,
+          sampled_frame_count: 6,
+          repeated_motion_sequences: [],
+          repeated_motion_seconds: 0,
+          cadence: { choppy: false },
+        },
+      },
+    },
+    source_result: {
+      result: "pass",
+      failures: [],
+      warnings: [],
+    },
+  });
   await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), passGate());
   await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), passGate({ result: "pass" }));
   await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {

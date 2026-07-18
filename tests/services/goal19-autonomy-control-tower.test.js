@@ -423,6 +423,95 @@ async function makeControlStory(root, storyId, overrides = {}) {
     };
     await fs.writeJson(decodedForensicReportPath, decodedForensicReport, { spaces: 2 });
   }
+  if (overrides.temporalVideoQa !== false) {
+    const finalMediaBytes = await fs.pathExists(finalMp4Path)
+      ? await fs.readFile(finalMp4Path)
+      : Buffer.alloc(0);
+    const defaultTemporalVideoQa = {
+      schema_version: 1,
+      story_id: storyId,
+      verdict: "GREEN",
+      can_publish: true,
+      blockers: [],
+      warnings: [],
+      final_media: {
+        path: finalMp4Path,
+        sha256: finalMediaBytes.length ? sha256(finalMediaBytes) : null,
+        size_bytes: finalMediaBytes.length,
+      },
+      evidence: {
+        decode: {
+          complete: true,
+          video_stream: true,
+          audio_stream: true,
+        },
+        temporal: {
+          analysis_scope: "full_frame",
+          scan_complete: true,
+          coverage_ratio: 1,
+          sampled_frame_count: 300,
+          repeated_motion_sequences: [],
+          repeated_motion_seconds: 0,
+          cadence: { choppy: false },
+          supplemental_center_crop: {
+            analysis_scope: "center_crop",
+            scan_complete: true,
+            coverage_ratio: 1,
+            sampled_frame_count: 300,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: { choppy: false },
+          },
+        },
+      },
+      source_result: {
+        result: "pass",
+        failures: [],
+        warnings: [],
+      },
+    };
+    const temporalOverride = overrides.temporalVideoQa || {};
+    await fs.writeJson(
+      path.join(artifactDir, "temporal_video_qa_report.json"),
+      {
+        ...defaultTemporalVideoQa,
+        ...temporalOverride,
+        final_media: {
+          ...defaultTemporalVideoQa.final_media,
+          ...(temporalOverride.final_media || {}),
+        },
+        evidence: {
+          ...defaultTemporalVideoQa.evidence,
+          ...(temporalOverride.evidence || {}),
+          decode: {
+            ...defaultTemporalVideoQa.evidence.decode,
+            ...(temporalOverride.evidence?.decode || {}),
+          },
+          temporal: {
+            ...defaultTemporalVideoQa.evidence.temporal,
+            ...(temporalOverride.evidence?.temporal || {}),
+            cadence: {
+              ...defaultTemporalVideoQa.evidence.temporal.cadence,
+              ...(temporalOverride.evidence?.temporal?.cadence || {}),
+            },
+            supplemental_center_crop: {
+              ...defaultTemporalVideoQa.evidence.temporal.supplemental_center_crop,
+              ...(temporalOverride.evidence?.temporal?.supplemental_center_crop || {}),
+              cadence: {
+                ...defaultTemporalVideoQa.evidence.temporal.supplemental_center_crop.cadence,
+                ...(temporalOverride.evidence?.temporal?.supplemental_center_crop?.cadence || {}),
+              },
+            },
+          },
+        },
+        source_result: {
+          ...defaultTemporalVideoQa.source_result,
+          ...(temporalOverride.source_result || {}),
+        },
+      },
+      { spaces: 2 },
+    );
+  }
   if (overrides.finalAvReview !== false) {
     const artefacts = {
       final_mp4: finalMp4Path,
@@ -571,6 +660,12 @@ test("Goal 19 requires a valid final AV review control input before GREEN", asyn
   });
 
   assert.ok(REQUIRED_CONTROL_INPUTS.includes("final_av_review"));
+  assert.ok(REQUIRED_CONTROL_INPUTS.includes("temporal_video_qa"));
+  assert.equal(report.stories[0].control_inputs.temporal_video_qa.status, "pass");
+  assert.equal(
+    report.stories[0].control_inputs.temporal_video_qa.evidence.render_hash_matches,
+    true,
+  );
   const finalAvReview = report.stories[0].control_inputs.final_av_review;
   assert.equal(finalAvReview.status, "pass");
   assert.equal(finalAvReview.evidence.fingerprints_verified, true);
@@ -581,6 +676,61 @@ test("Goal 19 requires a valid final AV review control input before GREEN", asyn
   assert.equal(finalAvReview.evidence.contact_sheet_binding.independently_verified_frame_hashes, true);
   assert.equal(report.stories[0].final_verdict, "GREEN");
   assert.equal(report.stories[0].can_auto_publish, true);
+});
+
+test("Goal 19 returns RED when temporal video QA evidence is missing", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-temporal-missing-"));
+  const story = await makeControlStory(root, "story-temporal-missing", {
+    temporalVideoQa: false,
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+  });
+
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+  assert.ok(report.stories[0].blockers.includes("control:temporal_video_qa_not_pass"));
+  assert.ok(report.stories[0].blockers.includes("temporal_video_qa_report_missing"));
+});
+
+test("Goal 19 returns RED when temporal video QA is stale, choppy or repeated", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-temporal-red-"));
+  const story = await makeControlStory(root, "story-temporal-red", {
+    temporalVideoQa: {
+      final_media: { sha256: "f".repeat(64) },
+      evidence: {
+        temporal: {
+          repeated_motion_sequences: [
+            {
+              first_start_seconds: 3,
+              repeat_start_seconds: 20,
+              duration_seconds: 2,
+            },
+          ],
+          repeated_motion_seconds: 2,
+          cadence: { choppy: true },
+        },
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+  });
+
+  const temporal = report.stories[0].control_inputs.temporal_video_qa;
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+  assert.ok(temporal.blockers.includes("temporal_video_qa_render_hash_mismatch"));
+  assert.ok(temporal.blockers.includes("temporal_video_qa_repeated_motion_detected"));
+  assert.ok(temporal.blockers.includes("temporal_video_qa_choppy_cadence"));
 });
 
 test("Goal 19 returns RED when final_av_review.json is missing", async () => {

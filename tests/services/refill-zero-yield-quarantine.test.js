@@ -52,7 +52,7 @@ test("zero-yield quarantine persists story and source exclusions across sequenti
     exclusions.source_fingerprints.sort(),
     stories.map(buildSourceFingerprint).sort(),
   );
-  assert.equal(exclusions.rss_offset_per_feed, 2);
+  assert.equal(exclusions.rss_offset_per_feed, 0);
 
   const second = recordZeroYieldCohort(loaded, {
     stories: [{
@@ -88,6 +88,30 @@ test("zero-yield quarantine expires stale entries rather than permanently suppre
   assert.deepEqual(exclusions.story_ids, []);
   assert.deepEqual(exclusions.source_fingerprints, []);
   assert.equal(exclusions.rss_offset_per_feed, 0);
+});
+
+test("zero-yield quarantine never skips fresh rows across every RSS feed", () => {
+  const document = recordZeroYieldCohort(null, {
+    stories: Array.from({ length: 15 }, (_, index) => ({
+      id: `failed_story_${index}`,
+      title: `Failed Story ${index}`,
+      url: `https://failed-source.example/stories/${index}`,
+      source_name: "Failed Source",
+    })),
+    now: new Date("2026-07-17T04:00:00.000Z"),
+  });
+
+  const exclusions = buildZeroYieldExclusions(document, {
+    now: new Date("2026-07-17T05:00:00.000Z"),
+  });
+
+  assert.equal(exclusions.story_ids.length, 15);
+  assert.equal(exclusions.source_fingerprints.length, 15);
+  assert.equal(
+    exclusions.rss_offset_per_feed,
+    0,
+    "exact story and source exclusions must not shift unrelated feeds past their newest items",
+  );
 });
 
 test("zero-yield quarantine gives source-less rows distinct story-scoped fingerprints", () => {

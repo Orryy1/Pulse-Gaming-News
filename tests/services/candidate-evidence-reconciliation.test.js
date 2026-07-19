@@ -2498,6 +2498,110 @@ test("candidate evidence reconciliation keeps an otherwise GREEN package RED whi
   assert.equal(report.publish_readiness, "RED");
 });
 
+test("candidate evidence reconciliation rejects a stale or failed decoded-visual gate", async () => {
+  const storyId = "stale_decoded_visual_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-stale-decoded-visual-",
+    storyId,
+  });
+  await addNarrationRightsFixture(fixture, storyId);
+  const decodedVisualPath = path.join(
+    fixture.artifactDir,
+    "qa",
+    "decoded-visual",
+    `${storyId}_decoded_visual_gate.json`,
+  );
+  await fs.outputJson(decodedVisualPath, {
+    version: "decoded_visual_gate_v5",
+    story_id: storyId,
+    status: "fail",
+    decoded_media_evidence: false,
+    blockers: ["decoded_visual_media_unreadable"],
+    mp4_path: path.join(fixture.artifactDir, "stale.partial.mp4"),
+    mp4_sha256: "0".repeat(64),
+    final_output_binding_verified: false,
+  });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.authority.verdict, "FAIL");
+  assert.ok(
+    report.authority.blockers.includes("authoritative_decoded_visual_gate_red"),
+  );
+  assert.ok(
+    report.authority.reported_failures.includes(
+      "decoded_visual_gate:decoded_visual_status_not_green",
+    ),
+  );
+  assert.ok(
+    report.authority.reported_failures.includes(
+      "decoded_visual_gate:decoded_visual_render_hash_mismatch",
+    ),
+  );
+  assert.equal(report.verdict, "FAIL");
+  assert.equal(report.publish_readiness, "RED");
+});
+
+test("candidate evidence reconciliation accepts a decoded-visual gate bound to the current render", async () => {
+  const storyId = "current_decoded_visual_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-current-decoded-visual-",
+    storyId,
+  });
+  await addNarrationRightsFixture(fixture, storyId);
+  const finalVideoPath = path.join(fixture.artifactDir, "visual_v4_render.mp4");
+  await fs.outputJson(
+    path.join(
+      fixture.artifactDir,
+      "qa",
+      "decoded-visual",
+      `${storyId}_decoded_visual_gate.json`,
+    ),
+    {
+      version: "decoded_visual_gate_v5",
+      story_id: storyId,
+      status: "pass",
+      decoded_media_evidence: true,
+      blockers: [],
+      mp4_path: finalVideoPath,
+      mp4_sha256: sha256(await fs.readFile(finalVideoPath)),
+      final_output_binding_verified: true,
+    },
+  );
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(
+    report.authority.blockers.includes("authoritative_decoded_visual_gate_red"),
+    false,
+  );
+  const source = report.authority.sources.find(
+    (row) => row.key === "decoded_visual_gate",
+  );
+  assert.equal(source.present, true);
+  assert.equal(source.valid, true);
+  assert.equal(source.authoritative_red, false);
+  assert.deepEqual(source.reported_failures, []);
+});
+
 test("candidate evidence reconciliation rejects a stale canonical-copy hash even when audio and timestamps match", async () => {
   const artifactDir = await makeArtifactDir("pulse-stale-canonical-copy-");
   const audioPath = path.join(artifactDir, "audio", "narration.mp3");

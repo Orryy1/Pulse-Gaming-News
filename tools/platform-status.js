@@ -2,7 +2,6 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
-require("dotenv").config({ override: true, quiet: true });
 const {
   buildPlatformOperationalConfig,
   buildPlatformStatus,
@@ -11,6 +10,26 @@ const {
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
+
+function parseArgs(argv = process.argv.slice(2)) {
+  const args = {
+    help: false,
+  };
+  for (const arg of argv) {
+    if (arg === "--help" || arg === "-h") args.help = true;
+    else throw new Error(`Unknown argument: ${arg}`);
+  }
+  return args;
+}
+
+function usage() {
+  return [
+    "Usage: npm run ops:platform:status -- [options]",
+    "",
+    "Options:",
+    "  --help, -h  Show this help without loading credentials or opening SQLite",
+  ].join("\n");
+}
 
 async function readJsonIfExists(filePath) {
   try {
@@ -21,9 +40,15 @@ async function readJsonIfExists(filePath) {
   }
 }
 
-async function main() {
+async function main(argv = process.argv.slice(2), deps = {}) {
+  const args = parseArgs(argv);
+  if (args.help) {
+    (deps.stdout || process.stdout).write(`${usage()}\n`);
+    return { help: true };
+  }
+  (deps.dotenv || require("dotenv")).config({ override: true, quiet: true });
   await fs.ensureDir(OUT);
-  const db = require("../lib/db");
+  const db = deps.db || require("../lib/db");
   const stories = await db.getStories();
   let platformPosts = [];
   try {
@@ -39,7 +64,7 @@ async function main() {
   const report = buildPlatformStatus({
     stories,
     platformPosts,
-    platformConfig: buildPlatformOperationalConfig(process.env),
+    platformConfig: buildPlatformOperationalConfig(deps.env || process.env),
     platformReadinessDoctor: await readJsonIfExists(path.join(OUT, "platform_readiness_doctor.json")),
   });
   const jsonPath = path.join(OUT, "platform_status.json");
@@ -49,9 +74,18 @@ async function main() {
   console.log(`[platform-status] stories=${report.storyCount}`);
   console.log(`[platform-status] json=${path.relative(ROOT, jsonPath)}`);
   console.log(`[platform-status] md=${path.relative(ROOT, mdPath)}`);
+  return { report, jsonPath, mdPath };
 }
 
-main().catch((err) => {
-  console.error(err.message || err);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.message || err);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  main,
+  parseArgs,
+  usage,
+};

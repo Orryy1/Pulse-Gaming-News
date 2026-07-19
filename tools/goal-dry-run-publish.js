@@ -708,7 +708,12 @@ function resolveLocalSqlitePath(root) {
   return path.join(root, "data", "pulse.db");
 }
 
-async function readPublishedPlatformEvidence(root, storyPackages = [], explicitPath = null) {
+async function readPublishedPlatformEvidence(
+  root,
+  storyPackages = [],
+  explicitPath = null,
+  options = {},
+) {
   if (explicitPath) {
     const filePath = path.resolve(root, explicitPath);
     if (!(await fs.pathExists(filePath))) return null;
@@ -717,7 +722,9 @@ async function readPublishedPlatformEvidence(root, storyPackages = [], explicitP
   const storyIds = storyIdsFromPackages(storyPackages);
   if (!storyIds.length) return null;
   const sourceUrlHashes = await sourceUrlHashesFromPackages(storyPackages);
-  const dbPath = resolveLocalSqlitePath(root);
+  const dbPath = options.dbPath
+    ? path.resolve(root, options.dbPath)
+    : resolveLocalSqlitePath(root);
   if (!(await fs.pathExists(dbPath))) return null;
   let Database = null;
   try {

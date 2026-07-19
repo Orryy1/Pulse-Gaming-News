@@ -2,9 +2,7 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
-require("dotenv").config({ override: true, quiet: true });
 
-const { inspectTokenStatus } = require("../upload_tiktok");
 const { buildPlatformOperationalConfig } = require("../lib/ops/platform-status");
 const {
   buildTikTokAuthDoctorReport,
@@ -12,22 +10,32 @@ const {
 const {
   buildTikTokAutomationReport,
 } = require("../lib/platforms/tiktok-automation-report");
-const {
-  buildPlatformReadinessDoctor,
-  renderPlatformReadinessDoctorMarkdown,
-} = require("../lib/ops/platform-readiness-doctor");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 
-function getArg(name) {
-  const index = process.argv.indexOf(name);
+function getArg(name, argv = process.argv.slice(2)) {
+  const index = argv.indexOf(name);
   if (index === -1) return null;
-  return process.argv[index + 1] || null;
+  return argv[index + 1] || null;
 }
 
-function hasFlag(name) {
-  return process.argv.includes(name);
+function hasFlag(name, argv = process.argv.slice(2)) {
+  return argv.includes(name);
+}
+
+function usage() {
+  return [
+    "Usage: npm run ops:platform-doctor -- [options]",
+    "",
+    "Options:",
+    "  --strict-dry-run-plan <path>",
+    "  --instagram-error <message>",
+    "  --facebook-manual-proof",
+    "  --facebook-manual-proof-note <note>",
+    "  --write-root-md",
+    "  --help, -h  Show this help without loading credentials or token code",
+  ].join("\n");
 }
 
 async function readJsonIfExists(filePath) {
@@ -182,7 +190,18 @@ function buildCurrentTikTokAutomationReport({
   return hasDispatchEvidence(current) ? current : existingAutomationReport || current;
 }
 
-async function main() {
+async function main(argv = process.argv.slice(2), deps = {}) {
+  if (argv.includes("--help") || argv.includes("-h")) {
+    (deps.stdout || process.stdout).write(`${usage()}\n`);
+    return { help: true };
+  }
+  (deps.dotenv || require("dotenv")).config({ override: true, quiet: true });
+  const inspectTokenStatus =
+    deps.inspectTokenStatus || require("../upload_tiktok").inspectTokenStatus;
+  const {
+    buildPlatformReadinessDoctor,
+    renderPlatformReadinessDoctorMarkdown,
+  } = deps.platformReadinessDoctor || require("../lib/ops/platform-readiness-doctor");
   await fs.ensureDir(OUT);
   const tiktokTokenStatus = await inspectTokenStatus();
   const existingTikTokAutomationReport = await readJsonIfExists(
@@ -193,7 +212,7 @@ async function main() {
     path.join(OUT, "tiktok-fresh-dispatch", "tiktok_fresh_dispatch_pack.json"),
   );
   const strictDryRunPlan = await readJsonIfExists(
-    getArg("--strict-dry-run-plan") ||
+    getArg("--strict-dry-run-plan", argv) ||
       path.join(ROOT, "output", "goal-contract", "dry_run_publish_plan.json"),
   );
   const tiktokAutomationReport = buildCurrentTikTokAutomationReport({
@@ -206,20 +225,22 @@ async function main() {
   const facebookEligibilityReport = await readJsonIfExists(
     path.join(OUT, "facebook_reels_eligibility.json"),
   );
-  const instagramLastError = getArg("--instagram-error") || process.env.PLATFORM_DOCTOR_INSTAGRAM_ERROR || null;
+  const env = deps.env || process.env;
+  const instagramLastError =
+    getArg("--instagram-error", argv) || env.PLATFORM_DOCTOR_INSTAGRAM_ERROR || null;
   const facebookManualProof = {
     observed:
-      hasFlag("--facebook-manual-proof") ||
-      String(process.env.FACEBOOK_REELS_MANUAL_PROOF || "").toLowerCase() === "true",
+      hasFlag("--facebook-manual-proof", argv) ||
+      String(env.FACEBOOK_REELS_MANUAL_PROOF || "").toLowerCase() === "true",
     note:
-      getArg("--facebook-manual-proof-note") ||
-      process.env.FACEBOOK_REELS_MANUAL_PROOF_NOTE ||
+      getArg("--facebook-manual-proof-note", argv) ||
+      env.FACEBOOK_REELS_MANUAL_PROOF_NOTE ||
       null,
   };
   const report = buildPlatformReadinessDoctor({
     tiktokTokenStatus,
     tiktokAutomationReport,
-    platformConfig: buildPlatformOperationalConfig(process.env),
+    platformConfig: buildPlatformOperationalConfig(env),
     instagramLastError,
     facebookManualProof,
     facebookEligibilityReport,
@@ -228,8 +249,8 @@ async function main() {
   const mdPath = path.join(OUT, "platform_readiness_doctor.md");
   const rootPath = path.join(ROOT, "PLATFORM_READINESS_DOCTOR.md");
   const writeRootMarkdown =
-    hasFlag("--write-root-md") ||
-    String(process.env.PLATFORM_DOCTOR_WRITE_ROOT_MD || "").toLowerCase() === "true";
+    hasFlag("--write-root-md", argv) ||
+    String(env.PLATFORM_DOCTOR_WRITE_ROOT_MD || "").toLowerCase() === "true";
   const markdown = renderPlatformReadinessDoctorMarkdown(report);
   await fs.writeJson(jsonPath, report, { spaces: 2 });
   await fs.writeFile(mdPath, markdown, "utf8");
@@ -243,6 +264,7 @@ async function main() {
     console.log(`[platform-doctor] root_md=${path.relative(ROOT, rootPath)}`);
   }
   console.log("[platform-doctor] no OAuth, token mutation, uploads or posts");
+  return { report, jsonPath, mdPath, rootPath: writeRootMarkdown ? rootPath : null };
 }
 
 if (require.main === module) {
@@ -257,4 +279,5 @@ module.exports = {
   freshDispatchPackFromStrictDryRunPlan,
   main,
   strictDryRunTikTokActions,
+  usage,
 };

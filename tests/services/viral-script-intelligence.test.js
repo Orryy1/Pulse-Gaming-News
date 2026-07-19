@@ -142,6 +142,67 @@ test("viral script intelligence approves a source-safe angle with concrete numbe
   assert.equal(result.cta.count, 1);
 });
 
+test("viral script intelligence blocks a headline metric that lands after the opening beat", () => {
+  const story = {
+    id: "black-flag-headline-metric",
+    title: "Black Flag Sold 3 Million. The Third Million Matters",
+    source_name: "Ubisoft",
+    confirmed_claims: [
+      "Ubisoft reports that Assassin's Creed Black Flag Resynced sold more than 3 million copies during its first week.",
+      "Ubisoft reports that 2 million copies were sold on day one.",
+    ],
+  };
+  const delayedScript =
+    "Ubisoft says Assassin's Creed Black Flag Resynced sold more than 3 million copies in its first week. " +
+    "But the launch-day number hides the better story. " +
+    "Ubisoft says 2 million landed on day one and more than 1 million followed over the next six days. " +
+    "That steady second wave makes this more than a launch-day spike. " +
+    "The risk is Ubisoft learning that safe remakes matter more than ambitious ones. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const improvedScript =
+    "Ubisoft says Black Flag Resynced sold 3 million copies in one week. " +
+    "The third million is the part Ubisoft should study. " +
+    "Two million landed on day one and more than 1 million followed over the next six days. " +
+    "That steady second wave makes this more than a launch-day spike. " +
+    "The risk is Ubisoft learning that safe remakes matter more than ambitious ones. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const delayed = buildViralScriptIntelligence({ story, script: delayedScript });
+  const improved = buildViralScriptIntelligence({ story, script: improvedScript });
+  const sequelNumber = buildViralScriptIntelligence({
+    story: {
+      id: "gta-six-title-number",
+      title: "GTA 6 Trailer Changes The Launch Debate",
+      source_name: "Rockstar Games",
+    },
+    script:
+      "Rockstar Games has turned GTA 6's trailer into a launch debate. " +
+      "The new footage puts its open world and character pairing under a brighter spotlight. " +
+      "That gives players something concrete to judge before release. " +
+      "The risk is the trailer promising a world the final game cannot sustain. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.ok(
+    delayed.blockers.includes("headline_metric_lands_after_opening_beat"),
+    JSON.stringify(delayed, null, 2),
+  );
+  assert.equal(
+    improved.blockers.includes("headline_metric_lands_after_opening_beat"),
+    false,
+    JSON.stringify(improved, null, 2),
+  );
+  assert.ok(
+    delayed.scores.hook_strength < improved.scores.hook_strength,
+    JSON.stringify({ delayed: delayed.scores, improved: improved.scores }, null, 2),
+  );
+  assert.equal(
+    sequelNumber.blockers.includes("headline_metric_lands_after_opening_beat"),
+    false,
+    JSON.stringify(sequelNumber, null, 2),
+  );
+});
+
 test("viral script intelligence blocks unattributed magnitude claims and invented audience behaviour", () => {
   const script =
     "Ubisoft's new Black Flag sold 3 million copies in one week. " +

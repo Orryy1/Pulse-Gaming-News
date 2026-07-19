@@ -35,11 +35,13 @@ test("flagship script repair parses plan and explicit apply modes", () => {
     "--artifact-dir", "story",
     "--work-order", "work-order.json",
     "--patch", "patch.json",
+    "--workspace", "isolated-workspace",
     "--apply",
     "--operator-confirmed",
   ]);
   assert.equal(apply.apply, true);
   assert.equal(apply.operatorConfirmed, true);
+  assert.equal(apply.workspaceDir, "isolated-workspace");
 });
 
 test("flagship script repair refuses one-sided mutation authority", async () => {

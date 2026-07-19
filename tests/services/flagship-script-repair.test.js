@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  cloneFlagshipScriptRepairWorkspace,
   repairFlagshipScriptWorkspace,
   validateFlagshipScriptPatch,
 } = require("../../lib/flagship-script-repair");
@@ -241,5 +242,105 @@ test("flagship script repair invalidates stale media and writes a local audio wo
   assert.equal(workbench.jobs[0].status, "requires_audio_timestamp_generation");
   assert.equal(workbench.jobs[0].artifact_dir, artifactDir);
   assert.equal(result.report.status, "READY_FOR_LOCAL_AUDIO_REGENERATION");
+  assert.equal(result.report.publish_authorised, false);
+});
+
+test("flagship script repair clones into an isolated workspace without destroying decoded source evidence", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-flagship-script-clone-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const sourceArtifactDir = path.join(root, "source", "artifacts", STORY_ID);
+  const sourceWorkOrderPath = path.join(root, "source", "render_input_work_order.json");
+  const workspaceDir = path.join(root, "isolated-repair");
+  await fs.mkdir(path.join(sourceArtifactDir, "audio"), { recursive: true });
+  await fs.mkdir(path.join(sourceArtifactDir, "flagship"), { recursive: true });
+  await fs.writeFile(path.join(sourceArtifactDir, "visual_v4_render.mp4"), "decoded-source-video");
+  await fs.writeFile(path.join(sourceArtifactDir, "flagship", "final_audio.mp3"), "decoded-source-audio");
+  await fs.writeFile(path.join(sourceArtifactDir, "materialised_motion_clips.json"), JSON.stringify({
+    story_id: STORY_ID,
+    clips: [{ id: "motion-1", path: "motion.mp4" }],
+  }));
+  await fs.writeFile(path.join(sourceArtifactDir, "claim_inventory.json"), JSON.stringify({
+    schema_version: 1,
+    story_id: STORY_ID,
+    confirmed: ["Stale claim."],
+    unconfirmed: [],
+    prohibited: [],
+  }));
+  await fs.writeFile(path.join(sourceArtifactDir, "rights_ledger.json"), JSON.stringify({
+    story_id: STORY_ID,
+    status: "blocked",
+    verdict: "RED",
+    records: [{ asset_id: "motion-1", status: "approved" }],
+  }));
+  await fs.writeFile(path.join(sourceArtifactDir, "canonical_story_manifest.json"), JSON.stringify({
+    story_id: STORY_ID,
+    canonical_subject: "Ascend",
+    canonical_game: "Ascend",
+    canonical_company: "",
+    confirmed_claims: [
+      "The first run starts with thirty seconds on the clock.",
+      "Taking a lethal hit removes seconds from the clock.",
+    ],
+    narration_script: "Old narration.",
+    tts_script: "Old narration.",
+  }));
+  await fs.writeFile(sourceWorkOrderPath, JSON.stringify({
+    schema_version: 1,
+    mode: "LOCAL_PROOF",
+    jobs: [{
+      story_id: STORY_ID,
+      artifact_dir: sourceArtifactDir,
+      status: "ready_for_final_render_job",
+      blockers: [],
+      evidence: {
+        narration_ready: true,
+        word_timestamps_ready: true,
+        narration_audio_path: path.join(sourceArtifactDir, "flagship", "final_audio.mp3"),
+      },
+      actions: [{
+        action_id: "run_visual_v4_production_render",
+        status: "ready_after_inputs",
+        output_expectations: [],
+      }],
+    }],
+  }));
+
+  const result = await cloneFlagshipScriptRepairWorkspace({
+    sourceArtifactDir,
+    sourceWorkOrderPath,
+    workspaceDir,
+    patch: patch(),
+    generatedAt: "2026-07-19T22:45:00.000Z",
+  });
+  const targetArtifactDir = path.join(workspaceDir, "artifacts", STORY_ID);
+  const targetCanonical = JSON.parse(
+    await fs.readFile(path.join(targetArtifactDir, "canonical_story_manifest.json"), "utf8"),
+  );
+  const targetWorkOrder = JSON.parse(await fs.readFile(result.workOrderPath, "utf8"));
+
+  assert.equal(
+    await fs.readFile(path.join(sourceArtifactDir, "visual_v4_render.mp4"), "utf8"),
+    "decoded-source-video",
+    "source decoded media must remain untouched",
+  );
+  assert.equal(
+    await fs.readFile(path.join(sourceArtifactDir, "flagship", "final_audio.mp3"), "utf8"),
+    "decoded-source-audio",
+    "source decoded audio must remain untouched",
+  );
+  await assert.rejects(
+    fs.stat(path.join(targetArtifactDir, "visual_v4_render.mp4")),
+    /ENOENT/,
+  );
+  assert.equal(
+    await fs.stat(path.join(targetArtifactDir, "materialised_motion_clips.json")).then(() => true),
+    true,
+  );
+  assert.equal(targetCanonical.narration_script, SCRIPT);
+  assert.equal(targetWorkOrder.jobs.length, 1);
+  assert.equal(targetWorkOrder.jobs[0].artifact_dir, targetArtifactDir);
+  assert.equal(targetWorkOrder.jobs[0].status, "blocked_on_render_inputs");
+  assert.equal(result.report.source_artifact_dir, sourceArtifactDir);
+  assert.equal(result.report.source_evidence_preserved, true);
   assert.equal(result.report.publish_authorised, false);
 });

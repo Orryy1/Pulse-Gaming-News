@@ -6,6 +6,7 @@ const { parseArgs: parseNodeArgs } = require("node:util");
 const fs = require("fs-extra");
 
 const {
+  cloneFlagshipScriptRepairWorkspace,
   repairFlagshipScriptWorkspace,
   validateFlagshipScriptPatch,
 } = require("../lib/flagship-script-repair");
@@ -18,6 +19,7 @@ function parseArgs(argv = []) {
       "artifact-dir": { type: "string" },
       "work-order": { type: "string" },
       patch: { type: "string" },
+      workspace: { type: "string" },
       "generated-at": { type: "string" },
       apply: { type: "boolean", default: false },
       "operator-confirmed": { type: "boolean", default: false },
@@ -29,6 +31,7 @@ function parseArgs(argv = []) {
     artifactDir: values["artifact-dir"] || "",
     workOrderPath: values["work-order"] || "",
     patchPath: values.patch || "",
+    workspaceDir: values.workspace || "",
     generatedAt: values["generated-at"] || new Date().toISOString(),
     apply: values.apply === true,
     operatorConfirmed: values["operator-confirmed"] === true,
@@ -45,6 +48,7 @@ function usage() {
     "  --artifact-dir <path>   Governed story artefact directory",
     "  --work-order <path>     Render input work order containing the story",
     "  --patch <path>          Reviewed JSON script patch",
+    "  --workspace <dir>       Clone into a new isolated repair workspace",
     "",
     "Plan-only by default. Mutation requires both:",
     "  --apply --operator-confirmed",
@@ -116,12 +120,20 @@ async function main(argv = process.argv.slice(2), {
   let result;
   if (args.apply) {
     const patch = await fs.readJson(path.resolve(args.patchPath));
-    result = await repairFlagshipScriptWorkspace({
-      artifactDir: args.artifactDir,
-      workOrderPath: args.workOrderPath,
-      patch,
-      generatedAt: args.generatedAt,
-    });
+    result = args.workspaceDir
+      ? await cloneFlagshipScriptRepairWorkspace({
+        sourceArtifactDir: args.artifactDir,
+        sourceWorkOrderPath: args.workOrderPath,
+        workspaceDir: args.workspaceDir,
+        patch,
+        generatedAt: args.generatedAt,
+      })
+      : await repairFlagshipScriptWorkspace({
+        artifactDir: args.artifactDir,
+        workOrderPath: args.workOrderPath,
+        patch,
+        generatedAt: args.generatedAt,
+      });
   } else {
     result = {
       report: await buildPlan(args),

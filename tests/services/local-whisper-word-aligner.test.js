@@ -313,7 +313,40 @@ test("alignWordsWithLocalWhisper keeps Windows Whisper attached while writing ev
   });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(spawnOptions.stdio, ["ignore", "inherit", "inherit"]);
+  assert.deepEqual(spawnOptions.stdio, ["ignore", "inherit", "pipe"]);
+});
+
+test("alignWordsWithLocalWhisper preserves bounded stderr when a spawned Whisper process fails", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-whisper-stderr-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  let spawnOptions = null;
+
+  const result = await alignWordsWithLocalWhisper({
+    audioPath,
+    model: "tiny.en",
+    device: "cpu",
+    allowCpuFallback: false,
+    useWindowsPowerShellBoundary: false,
+    spawnImpl: (_python, _args, options) => {
+      spawnOptions = options;
+      const child = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = () => {};
+      process.nextTick(() => {
+        child.stderr.emit("data", Buffer.from("Traceback: CUDA worker unavailable\n"));
+        child.stderr.emit("data", Buffer.from("RuntimeError: inference exited\n"));
+        child.emit("close", 1, null);
+      });
+      return child;
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(spawnOptions.stdio, ["ignore", "inherit", "pipe"]);
+  assert.match(result.error, /whisper_alignment_process_failed:code=1/);
+  assert.match(result.stderr, /CUDA worker unavailable/);
+  assert.match(result.stderr, /RuntimeError: inference exited/);
 });
 
 test("alignWordsWithLocalWhisper retries on CPU when the shared GPU process exits without evidence", async () => {

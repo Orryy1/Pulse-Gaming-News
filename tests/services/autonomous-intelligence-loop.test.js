@@ -3195,6 +3195,9 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       },
     );
 
+    const expectedZeroYieldQuarantinePath =
+      require("../../lib/refill-zero-yield-quarantine")
+        .resolveZeroYieldQuarantinePath({ root: process.cwd() });
     assert.deepEqual(capturedArgCalls[0], [
       "--live-rss",
       "--live-rss-only",
@@ -3207,7 +3210,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "--contract-out-dir",
       contractOutDir,
       "--zero-yield-quarantine",
-      path.join(process.cwd(), "output", "runtime", "refill-zero-yield-quarantine.json"),
+      expectedZeroYieldQuarantinePath,
     ]);
     assert.deepEqual(capturedArgCalls[1], [
       "--stories-file",
@@ -3223,7 +3226,7 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       "--contract-out-dir",
       path.join(contractOutDir, "motion-hydrated"),
       "--zero-yield-quarantine",
-      path.join(process.cwd(), "output", "runtime", "refill-zero-yield-quarantine.json"),
+      expectedZeroYieldQuarantinePath,
       "--v4-motion-pack-dir",
       path.join(__dirname, "..", "..", "output", "studio-v4", "motion-packs"),
       "--allow-owned-motion-fallback",

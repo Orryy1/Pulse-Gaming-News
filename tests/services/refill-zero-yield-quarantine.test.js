@@ -11,6 +11,7 @@ const {
   buildZeroYieldExclusions,
   readZeroYieldQuarantine,
   recordZeroYieldCohort,
+  resolveZeroYieldQuarantinePath,
   writeZeroYieldQuarantine,
 } = require("../../lib/refill-zero-yield-quarantine");
 
@@ -173,5 +174,126 @@ test("zero-yield quarantine drops the corrupt legacy empty-source bucket", () =>
       rss_offset_per_feed: 0,
       active_entry_count: 0,
     },
+  );
+});
+
+test("zero-yield quarantine never lets test or non-production fixture ids suppress live refill candidates", () => {
+  const now = new Date("2026-07-19T23:30:00.000Z");
+  const document = {
+    schema_version: 1,
+    generated_at: now.toISOString(),
+    entries: [
+      {
+        source_fingerprint: buildSourceFingerprint({ id: "fresh_plan_story" }),
+        story_ids: ["fresh_plan_story"],
+        source_name: null,
+        source_url: null,
+        expires_at: "2026-07-20T11:30:00.000Z",
+        failure_count: 1,
+      },
+      {
+        source_fingerprint: buildSourceFingerprint({ id: "persona-netflix-story" }),
+        story_ids: ["persona-netflix-story"],
+        source_name: null,
+        source_url: null,
+        expires_at: "2026-07-20T11:30:00.000Z",
+        failure_count: 1,
+      },
+      {
+        source_fingerprint: buildSourceFingerprint({ id: "rss_gta_vi_article_story" }),
+        story_ids: ["rss_gta_vi_article_story"],
+        source_name: null,
+        source_url: null,
+        expires_at: "2026-07-20T11:30:00.000Z",
+        failure_count: 1,
+      },
+      {
+        source_fingerprint: buildSourceFingerprint({ id: "rss_albion_keepers" }),
+        story_ids: ["rss_albion_keepers"],
+        source_name: null,
+        source_url: null,
+        expires_at: "2026-07-20T11:30:00.000Z",
+        failure_count: 1,
+      },
+      {
+        source_fingerprint: buildSourceFingerprint({
+          id: "fresh_halo_campaign_evolved_demo_reference_only",
+        }),
+        story_ids: ["fresh_halo_campaign_evolved_demo_reference_only"],
+        source_name: null,
+        source_url: null,
+        expires_at: "2026-07-20T11:30:00.000Z",
+        failure_count: 1,
+      },
+      {
+        source_fingerprint: buildSourceFingerprint({
+          id: "rss_8908c3f0f1125398",
+        }),
+        story_ids: ["rss_8908c3f0f1125398"],
+        source_name: null,
+        source_url: null,
+        expires_at: "2026-07-20T11:30:00.000Z",
+        failure_count: 1,
+      },
+    ],
+  };
+
+  const exclusions = buildZeroYieldExclusions(document, { now });
+
+  assert.deepEqual(exclusions.story_ids, ["rss_8908c3f0f1125398"]);
+  assert.equal(exclusions.source_fingerprints.length, 1);
+  assert.equal(exclusions.active_entry_count, 1);
+
+  const recorded = recordZeroYieldCohort(null, {
+    stories: [
+      { id: "fresh_plan_story" },
+      { id: "rss_8908c3f0f1125398" },
+    ],
+    now,
+  });
+  assert.deepEqual(
+    recorded.entries.flatMap((entry) => entry.story_ids),
+    ["rss_8908c3f0f1125398"],
+  );
+});
+
+test("zero-yield quarantine defaults isolate Node test workers from the live runtime artifact", () => {
+  const root = path.join("C:", "pulse");
+
+  assert.equal(
+    resolveZeroYieldQuarantinePath({
+      root,
+      nodeTestContext: "child-v8",
+      processId: 4242,
+    }),
+    path.resolve(
+      root,
+      "test",
+      "output",
+      "runtime",
+      "refill-zero-yield-quarantine-4242.json",
+    ),
+  );
+  assert.equal(
+    resolveZeroYieldQuarantinePath({
+      root,
+      nodeTestContext: "",
+      processId: 4242,
+    }),
+    path.resolve(
+      root,
+      "output",
+      "runtime",
+      "refill-zero-yield-quarantine.json",
+    ),
+  );
+  assert.equal(
+    resolveZeroYieldQuarantinePath({
+      root,
+      explicitPath: path.join("custom", "quarantine.json"),
+      nodeTestContext: "child-v8",
+      processId: 4242,
+    }),
+    path.resolve(root, "custom", "quarantine.json"),
   );
 });

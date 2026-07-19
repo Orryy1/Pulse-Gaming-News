@@ -221,6 +221,10 @@ test("goal batch CLI exposes live RSS proof mode without enabling it by default"
 
 test("RSS proof ingest extracts useful game subjects from long article titles", () => {
   assert.equal(
+    _private.titleSubjectFallback("Castlevania: Belmont's Curse hands-on report"),
+    "Castlevania: Belmont's Curse",
+  );
+  assert.equal(
     _private.titleSubjectFallback(
       "Assassin's Creed Black Flag Resynced director has teased more on cut modern-day sections",
     ),

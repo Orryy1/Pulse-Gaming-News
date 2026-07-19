@@ -618,6 +618,40 @@ test("a complete rights row with a non-approved verdict is RED", async () => {
   }
 });
 
+test("unbound official YouTube motion policy evidence cannot refresh authority to GREEN", async () => {
+  const fixture = await createVerifiedFixture();
+  const rights = await fs.readJson(fixture.criticalPaths.rightsPath);
+  rights.records[0] = {
+    ...rights.records[0],
+    source_url: "https://www.youtube.com/watch?v=Q-oBTia5gKI",
+    youtube_video_id: "Q-oBTia5gKI",
+    source_type: "official_publisher_gameplay_clip",
+    evidence_kind: "source_identity",
+    transformative_rights_evidence_verified: false,
+    rights_grant: false,
+  };
+  await writeJson(fixture.criticalPaths.rightsPath, rights);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.can_auto_publish, false);
+  assert.ok(
+    report.blockers.includes(
+      "rights:transformative_rights_policy_evidence_missing_or_unbound",
+    ),
+    JSON.stringify(report.blockers),
+  );
+  assert.equal(report.rights.verdict, "RED");
+  for (const document of Object.values(report.proposed)) {
+    assert.equal(document.can_auto_publish, false);
+  }
+});
+
 test("a rights row with a missing evidence file is RED", async () => {
   const fixture = await createVerifiedFixture();
   const rights = await fs.readJson(fixture.criticalPaths.rightsPath);

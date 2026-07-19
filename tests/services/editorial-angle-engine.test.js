@@ -196,6 +196,32 @@ test("generic angle generation does not duplicate an existing generated title su
   assert.doesNotMatch(angle.title, /Needs One Real Proof Point Needs One Real Proof Point/i);
 });
 
+test("PS5 Pro PSSR stories use a concrete feed title instead of the tired real-test template", () => {
+  const story = {
+    id: "rss_a6f055abed9a1488",
+    title: "Arknights: Endfield gets upgraded PSSR on PS5 Pro",
+    canonical_subject: "Arknights: Endfield",
+    canonical_game: "Arknights: Endfield",
+    source_type: "rss",
+    article_url:
+      "https://blog.playstation.com/2026/07/15/arknights-endfield-on-ps5-pro-upgraded-pssr-launches-with-version-1-4/",
+  };
+  const sourceMaterial =
+    "PlayStation Blog says Arknights: Endfield Version 1.4 upgrades PSSR on PS5 Pro for sharper detail, steadier motion and more consistent frame rates at 4K.";
+
+  const angle = buildEditorialAngle(story, {
+    sourceName: "PlayStation Blog",
+    sourceMaterial,
+  });
+
+  assert.equal(angle.lane, "ps5_pro_visual_upgrade");
+  assert.match(angle.title, /Arknights: Endfield/i);
+  assert.match(angle.title, /\bPS5 Pro\b/i);
+  assert.match(angle.title, /\b4K\b/i);
+  assert.match(angle.title, /\b(?:pressure|promise|combat|motion)\b/i);
+  assert.doesNotMatch(angle.title, /\bhas (?:a|an|one|the) .{0,44}(?:trust test|risk|problem|test)\b/i);
+});
+
 test("Black Flag Resynced backlash gets a concrete monetisation angle instead of motion-proof scaffolding", () => {
   const story = {
     id: "rss_black_flag_resynced_backlash",

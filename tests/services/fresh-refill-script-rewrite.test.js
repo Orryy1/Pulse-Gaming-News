@@ -725,7 +725,10 @@ test("fresh refill viewer script turns a PS5 Pro PSSR update into a concrete pla
   });
 
   assert.equal(script.verdict, "viral_ready", JSON.stringify(script.quality, null, 2));
-  assert.match(script.suggested_title, /Arknights: Endfield/i);
+  assert.equal(
+    script.suggested_title,
+    "Arknights: Endfield Puts PS5 Pro's 4K Promise Under Pressure",
+  );
   assert.match(script.full_script, /PSSR/i);
   assert.match(script.full_script, /4K/i);
   assert.match(script.full_script, /frame rates/i);

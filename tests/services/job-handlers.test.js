@@ -7,6 +7,7 @@ const {
   handleGuardedLiveDispatchPublish,
   buildFreshRefillDirectMediaDiscoveryInput,
   buildFreshRefillOfficialSourceEvidence,
+  buildFreshRefillRepairPackageFilter,
   buildFreshRefillScriptRewriteWorkOrder,
   freshRefillAudioTimestampMaterializerTimeoutMs,
   freshRefillHyperframesStoryIdsAfterMotion,
@@ -231,6 +232,63 @@ test("fresh refill script work orders attach official source claims before rewri
   assert.match(workOrder.jobs[0].source.body, /Pliszka/);
   assert.equal(workOrder.jobs[0].source_evidence.claims[0].origin, "source_body");
   assert.equal(workOrder.jobs[0].source_evidence.source_text_sha256, "a".repeat(64));
+});
+
+test("fresh refill routes feed title template fatigue into source-bound rewrite before render repair", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-title-fatigue-"));
+  const artifactDir = path.join(tmp, "rss_arknights");
+  const outputDir = path.join(tmp, "repair");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "rss_arknights",
+    selected_title: "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    canonical_subject: "Arknights: Endfield",
+    narration_script:
+      "Arknights: Endfield just gave PS5 Pro owners a before-and-after test. Follow Pulse Gaming so you never miss a beat.",
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: {
+      name: "PlayStation Blog",
+      url: "https://blog.playstation.com/arknights-endfield-ps5-pro/",
+      type: "official_platform_news",
+      published_at: "2026-07-15T17:00:37.000Z",
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
+    verdict: "viral_ready",
+    blockers: [],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    hard_failures: ["media_house:shorts_feed_competition_weak"],
+    shorts_feed_competition_report: {
+      status: "blocked",
+      blockers: ["feed_title_template_fatigue"],
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(storyPackagesPath, [{
+    story_id: "rss_arknights",
+    artifact_dir: artifactDir,
+    blockers: ["media_house:shorts_feed_competition_weak"],
+  }], { spaces: 2 });
+
+  const filtered = await buildFreshRefillRepairPackageFilter({
+    storyPackagesPath,
+    outputDir,
+  });
+  const rewrite = await buildFreshRefillScriptRewriteWorkOrder({
+    quarantinedRows: filtered.quarantinedRows,
+    outputDir,
+  });
+  const workOrder = await fs.readJson(rewrite.workOrderPath);
+
+  assert.equal(filtered.eligibleRows.length, 0);
+  assert.equal(filtered.quarantinedRows.length, 1);
+  assert.deepEqual(filtered.quarantinedRows[0].reasons, ["feed_title_template_fatigue"]);
+  assert.equal(workOrder.jobs.length, 1);
+  assert.deepEqual(workOrder.jobs[0].reasons, ["feed_title_template_fatigue"]);
+  assert.equal(workOrder.jobs[0].repair_lane, "source_bound_script_rewrite");
 });
 
 test("fresh refill source evidence preserves official YouTube watch references as reference-only sources", async () => {

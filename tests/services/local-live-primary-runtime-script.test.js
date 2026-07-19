@@ -163,3 +163,18 @@ test("local live primary runtime launcher detaches and verifies the Node child",
   assert.match(script, /started_runtime_failed_health_check/);
   assert.doesNotMatch(script, /& node server\.js/);
 });
+
+test("local live primary runtime launcher redirects only through a validated clean selection", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /\[switch\]\$RuntimeSelectionPlanOnly/);
+  assert.match(script, /approved-runtime-selection\.js/);
+  assert.match(script, /pulse-approved-runtime-selection\.json/);
+  assert.match(script, /approved_runtime_selection_validation_failed/);
+  assert.match(script, /approved_runtime_selection_redirect/);
+  assert.match(script, /runtime_entrypoint/);
+  assert.match(script, /runtime_repo_root/);
+  assert.match(script, /evidence_root/);
+  assert.match(script, /-EvidenceRoot/);
+  assert.match(script, /-Restart/);
+});

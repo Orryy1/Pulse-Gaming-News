@@ -2,7 +2,8 @@ param(
   [string]$RepoRoot = "",
   [string]$EvidenceRoot = "",
   [int]$Port = 3001,
-  [switch]$Restart
+  [switch]$Restart,
+  [switch]$RuntimeSelectionPlanOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -211,6 +212,81 @@ function Resolve-RepositoryIdentity {
   return [pscustomobject]@{
     commit_sha = $commit
     branch = $branch
+  }
+}
+
+$runtimeSelectionTool = Join-Path $RepoRoot "tools/approved-runtime-selection.js"
+$runtimeSelectionPath = Join-Path $RepoRoot "output/runtime/pulse-approved-runtime-selection.json"
+$runtimeSelection = $null
+if (Test-Path -LiteralPath $runtimeSelectionPath -PathType Leaf) {
+  if (-not (Test-Path -LiteralPath $runtimeSelectionTool -PathType Leaf)) {
+    throw "approved_runtime_selection_tool_missing"
+  }
+  $selectionNodeCommand = Get-Command "node.exe" -ErrorAction SilentlyContinue
+  if (-not $selectionNodeCommand) {
+    $selectionNodeCommand = Get-Command "node" -ErrorAction Stop
+  }
+  $selectionGitExecutable = Resolve-GitExecutable
+  if (-not $selectionGitExecutable) {
+    throw "approved_runtime_selection_git_missing"
+  }
+  $runtimeSelectionRaw = & $selectionNodeCommand.Source `
+    $runtimeSelectionTool `
+    "--supervisor-root" $RepoRoot `
+    "--default-evidence-root" $EvidenceRoot `
+    "--git-executable" $selectionGitExecutable `
+    "--json"
+  if ($LASTEXITCODE -ne 0 -or -not $runtimeSelectionRaw) {
+    throw "approved_runtime_selection_validation_failed"
+  }
+  $runtimeSelection = (($runtimeSelectionRaw -join [Environment]::NewLine) | ConvertFrom-Json)
+}
+
+if ($RuntimeSelectionPlanOnly) {
+  if ($runtimeSelection) {
+    $runtimeSelection | ConvertTo-Json -Depth 8
+  } else {
+    [ordered]@{
+      schema_version = 1
+      configured = $false
+      selection_path = $runtimeSelectionPath
+    } | ConvertTo-Json -Depth 8
+  }
+  exit 0
+}
+
+if ($runtimeSelection -and [bool]$runtimeSelection.configured) {
+  $selectedRuntimeRoot = (Resolve-Path -LiteralPath ([string]$runtimeSelection.runtime_repo_root)).Path
+  if (-not $selectedRuntimeRoot.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    Write-RuntimeLog (
+      "approved_runtime_selection_redirect repo={0} selected_repo={1} commit_sha={2} branch={3} reason={4}" -f
+        $RepoRoot,
+        $selectedRuntimeRoot,
+        $runtimeSelection.commit_sha,
+        $runtimeSelection.branch,
+        $runtimeSelection.reason
+    )
+    $powershellExe = Join-Path $env:SystemRoot "System32/WindowsPowerShell/v1.0/powershell.exe"
+    $redirectArguments = @(
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      [string]$runtimeSelection.runtime_entrypoint,
+      "-RepoRoot",
+      $selectedRuntimeRoot,
+      "-EvidenceRoot",
+      [string]$runtimeSelection.evidence_root,
+      "-Port",
+      "$Port"
+    )
+    if ($Restart) {
+      $redirectArguments += "-Restart"
+    }
+    & $powershellExe @redirectArguments
+    exit $LASTEXITCODE
   }
 }
 

@@ -64,6 +64,67 @@ test("fresh refill rewrite preserves a concrete ESO Season One argument", () => 
   assert.doesNotMatch(script.full_script, /Source-Proof Risk|Player Test/i);
 });
 
+test("fresh refill rewrite keeps a Castlevania hands-on distinct from a public demo", () => {
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/17/castlevania-belmonts-curse-hands-on-report/";
+  const claims = [
+    "Castlevania: Belmont's Curse is set in ruined 1499 Paris and stars Rose Belmont.",
+    "The game has a fixed explorable map with secret walls rather than roguelite permadeath or procedurally generated levels.",
+    "Rose can wall jump, swing with the Arcana Whip and use seven different weapon types.",
+    "Defeated bosses join Rose's tarot deck as Arcana that unlock spells, skills and traversal abilities.",
+    "Castlevania: Belmont's Curse launches on PlayStation 5 on October 15.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_castlevania_belmonts_curse",
+      title: "Castlevania: Belmont's Curse hands-on report",
+      source: {
+        name: "PlayStation Blog",
+        url: sourceUrl,
+        title: "Castlevania: Belmont's Curse hands-on report",
+        type: "rss",
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "Castlevania: Belmont's Curse hands-on report",
+        claims: claims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+    },
+    manifest: {
+      story_id: "rss_castlevania_belmonts_curse",
+      canonical_subject: "Castlevania: Belmont's Curse",
+      canonical_title: "Castlevania: Belmont's Curse hands-on report",
+      primary_source: "PlayStation Blog",
+      primary_source_url: sourceUrl,
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script, null, 2));
+  assert.equal(
+    script.suggested_title,
+    "Castlevania: Belmont's Curse Turns Bosses Into Map Powers",
+  );
+  assert.equal(script.suggested_thumbnail_text, "BOSSES BECOME POWERS");
+  assert.match(
+    script.full_script,
+    /^Castlevania Belmont's Curse makes every boss rewrite the map\./,
+  );
+  assert.match(script.full_script, /Rose Belmont|1499 Paris|seven weapon types/i);
+  assert.match(script.full_script, /tarot deck|Arcana|traversal/i);
+  assert.match(script.full_script, /October 15/i);
+  assert.doesNotMatch(script.full_script, /\bdemo\b|\bexpansion\b|players can test|reinstall/i);
+  assert.doesNotMatch(script.full_script, /Castlevania:\s+Belmont/);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.deepEqual(script.quality.blockers, []);
+  assert.equal(script.coherence.result, "pass", JSON.stringify(script.coherence, null, 2));
+});
+
 test("fresh refill rewrite turns Ascend to ZERO into a source-bound 30-second mechanic story", () => {
   const sourceUrl =
     "https://news.xbox.com/en-us/2026/07/13/ascend-to-zero-a-time-bending-roguelike-xbox-launch/";

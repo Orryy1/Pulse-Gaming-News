@@ -70,6 +70,55 @@ test("published commercial reconciliation traces a newly published story without
   assert.ok(trace.external_evidence_blockers.includes("commercial_clicks_not_recorded"));
   assert.ok(trace.external_evidence_blockers.includes("primary_revenue_evidence_missing"));
   assert.ok(trace.external_evidence_blockers.includes("fully_loaded_cost_evidence_missing"));
+  assert.equal(result.report.evidence_action_queue.status, "operator_evidence_required");
+  assert.equal(result.report.evidence_action_queue.open_work_order_count, 8);
+  assert.equal(result.report.evidence_action_queue.revenue_work_order_count, 6);
+  assert.equal(result.report.evidence_action_queue.cost_work_order_count, 2);
+
+  const youtubeReceivable = result.report.evidence_action_queue.work_orders.find(
+    (workOrder) =>
+      workOrder.scope.story_id === storyId &&
+      workOrder.scope.platform === "youtube" &&
+      workOrder.accounting_target.stage === "platform_receivable",
+  );
+  assert.deepEqual(youtubeReceivable.scope, {
+    story_id: storyId,
+    platform: "youtube",
+    cohort_id: "2026-07-13/2026-07-19",
+    external_id: "S572jH28pz4",
+  });
+  assert.deepEqual(
+    youtubeReceivable.required_primary_evidence.accepted_evidence_types,
+    ["platform_earnings_statement"],
+  );
+  assert.match(
+    youtubeReceivable.required_primary_evidence.source,
+    /YouTube Studio|Google AdSense/,
+  );
+  assert.match(youtubeReceivable.operator_action, /platform_receivable revenue ledger entry/);
+  assert.match(youtubeReceivable.operator_action, /leave the amount unavailable/i);
+
+  const directCost = result.report.evidence_action_queue.work_orders.find(
+    (workOrder) =>
+      workOrder.scope.story_id === storyId &&
+      workOrder.accounting_target.cost_type === "direct_production",
+  );
+  assert.deepEqual(directCost.scope, {
+    story_id: storyId,
+    platform: null,
+    cohort_id: "2026-07-13/2026-07-19",
+    external_id: null,
+  });
+  assert.deepEqual(
+    directCost.required_primary_evidence.accepted_evidence_types,
+    ["card_statement", "provider_invoice", "provider_usage_statement", "receipt"],
+  );
+  assert.match(directCost.operator_action, /Do not enter a value/i);
+  assert.equal(Object.hasOwn(directCost, "amount_gbp"), false);
+  assert.deepEqual(
+    trace.missing_evidence_work_order_ids,
+    result.report.evidence_action_queue.work_orders.map((workOrder) => workOrder.id),
+  );
 
   const commercial = await fs.readJson(trace.commercial.manifest_path);
   const revenue = await fs.readJson(trace.revenue.manifest_path);
@@ -87,6 +136,9 @@ test("published commercial reconciliation traces a newly published story without
   assert.equal(learning.tracked_stories[0].external_ids.facebook_reel, "2879704252400118");
   assert.equal(await fs.pathExists(result.artefacts.json_path), true);
   assert.equal(await fs.pathExists(result.artefacts.markdown_path), true);
+  assert.equal(await fs.pathExists(result.artefacts.evidence_action_queue_path), true);
+  const actionQueue = await fs.readJson(result.artefacts.evidence_action_queue_path);
+  assert.deepEqual(actionQueue, result.report.evidence_action_queue);
 });
 
 function published(storyId, platform, externalId, externalUrl = null) {

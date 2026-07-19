@@ -46,6 +46,20 @@ function buildBuffer(dim, paint) {
   return buf;
 }
 
+function buildRectBuffer(width, height, paint) {
+  const buf = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 3;
+      const [r, g, b] = paint(x, y, width, height);
+      buf[i] = r;
+      buf[i + 1] = g;
+      buf[i + 2] = b;
+    }
+  }
+  return buf;
+}
+
 test("computeSignalsFromSample: all-skin centre yields high skin_tone_ratio", () => {
   const dim = 32;
   const buf = buildBuffer(dim, () => [220, 180, 150]);
@@ -106,6 +120,125 @@ test("computeSignalsFromSample: striped horizontal contrast lifts text_overlay_l
   );
   const sig = v.computeSignalsFromSample(buf, dim);
   assert.ok(sig.text_overlay_likelihood > 0.3);
+});
+
+test("computeLowerBandOverlaySignalsFromSample: footer glyphs are detected without rejecting clean gameplay", () => {
+  const width = 270;
+  const height = 480;
+  const clean = buildRectBuffer(width, height, (x, y) => [
+    34 + ((x * 3 + y) % 70),
+    72 + ((x + y * 2) % 80),
+    96 + ((x * 2 + y * 3) % 90),
+  ]);
+  const withFooter = buildRectBuffer(width, height, (x, y) => {
+    if (y >= 448 && y <= 459 && x >= 28 && x <= 242) {
+      const glyphStroke =
+        ((x - 28) % 13 <= 2 && (y - 448) % 7 <= 5) ||
+        ((y - 448) % 6 <= 1 && (x - 28) % 13 <= 9);
+      return glyphStroke ? [238, 238, 238] : [18, 20, 24];
+    }
+    return [
+      34 + ((x * 3 + y) % 70),
+      72 + ((x + y * 2) % 80),
+      96 + ((x * 2 + y * 3) % 90),
+    ];
+  });
+
+  const cleanSignals = v.computeLowerBandOverlaySignalsFromSample(
+    clean,
+    width,
+    height,
+  );
+  const footerSignals = v.computeLowerBandOverlaySignalsFromSample(
+    withFooter,
+    width,
+    height,
+  );
+
+  assert.equal(cleanSignals.lower_band_overlay_likelihood < 0.12, true);
+  assert.equal(footerSignals.lower_band_overlay_likelihood >= 0.12, true);
+  assert.equal(footerSignals.lower_band_overlay_span_rows >= 5, true);
+});
+
+test("computeLowerBandOverlaySignalsFromSample: thin legal text survives the production footer-band scan", () => {
+  const width = 540;
+  const height = 96;
+  const footerBand = buildRectBuffer(width, height, (x, y) => {
+    const inTextLine = y >= 43 && y <= 61 && x >= 54 && x <= 486;
+    const glyphStroke =
+      inTextLine &&
+      (((x - 54) % 18 <= 2 && (y - 43) % 11 <= 8) ||
+        ((y - 43) % 9 <= 1 && (x - 54) % 18 <= 13));
+    if (glyphStroke) return [235, 235, 235];
+    return [
+      96 + ((x + y) % 32),
+      58 + ((x * 2 + y) % 25),
+      28 + ((x + y * 3) % 18),
+    ];
+  });
+
+  const signals = v.computeLowerBandOverlaySignalsFromSample(
+    footerBand,
+    width,
+    height,
+    { sampleIsLowerBand: true },
+  );
+
+  assert.equal(signals.lower_band_overlay_likelihood >= 0.12, true);
+  assert.equal(signals.lower_band_overlay_span_rows >= 5, true);
+});
+
+test("computeLowerBandOverlaySignalsFromSample: broad scene bands are not mistaken for footer glyphs", () => {
+  const width = 540;
+  const height = 96;
+  const sceneBand = buildRectBuffer(width, height, (x, y) => {
+    const inBrightSceneBand =
+      y >= 42 &&
+      y <= 53 &&
+      x >= 40 &&
+      x <= 500;
+    if (inBrightSceneBand) return [232, 232, 232];
+    return [
+      42 + ((x + y) % 28),
+      58 + ((x * 2 + y) % 34),
+      72 + ((x + y * 3) % 38),
+    ];
+  });
+
+  const signals = v.computeLowerBandOverlaySignalsFromSample(
+    sceneBand,
+    width,
+    height,
+    { sampleIsLowerBand: true },
+  );
+
+  assert.equal(signals.lower_band_overlay_likelihood < 0.12, true);
+  assert.equal(signals.lower_band_overlay_span_rows, 0);
+});
+
+test("computeLowerBandOverlaySignalsFromSample: sparse repeated scene edges are not mistaken for text", () => {
+  const width = 540;
+  const height = 96;
+  const repeatedEdges = buildRectBuffer(width, height, (x, y) => {
+    const inEdgeBand = y >= 38 && y <= 57;
+    const narrowBrightEdge = inEdgeBand && x >= 30 && x <= 510 && x % 10 <= 1;
+    if (narrowBrightEdge) return [236, 236, 236];
+    return [
+      38 + ((x + y) % 24),
+      62 + ((x * 2 + y) % 30),
+      82 + ((x + y * 3) % 34),
+    ];
+  });
+
+  const signals = v.computeLowerBandOverlaySignalsFromSample(
+    repeatedEdges,
+    width,
+    height,
+    { sampleIsLowerBand: true },
+  );
+
+  assert.equal(signals.lower_band_overlay_likelihood < 0.12, true);
+  assert.equal(signals.lower_band_overlay_span_rows, 0);
 });
 
 test("computeSignalsFromSample: white CTA text on black raises promo-card likelihood", () => {

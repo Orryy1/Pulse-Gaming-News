@@ -60,7 +60,11 @@ test("render input work order maps queued blockers to exact local actions", () =
   });
 
   assert.equal(workOrder.summary.story_count, 2);
-  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1);
+  assert.equal(
+    workOrder.summary.ready_for_final_render_job_count,
+    1,
+    JSON.stringify(workOrder, null, 2),
+  );
   assert.equal(workOrder.summary.blocked_on_render_inputs_count, 1);
   assert.equal(workOrder.summary.audio_timestamp_jobs, 1);
   assert.equal(workOrder.summary.real_motion_materialisation_jobs, 1);
@@ -1426,6 +1430,118 @@ test("render input work order forces rerender when repaired package inputs super
   assert.equal(workOrder.jobs[0].evidence.narration_audio_path, "output/audio/fresh-input-story.mp3");
   assert.equal(workOrder.jobs[0].evidence.word_timestamps_path, "output/audio/fresh-input-story_timestamps.json");
   assert.equal(workOrder.jobs[0].actions[0].target_render_manifest.hyperframes_premium_shell_required, true);
+});
+
+test("render input work order uses the actual local-proof MP4 time when its manifest timestamp is missing", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-proof-render-time-"));
+  const artifactDir = path.join(tmpDir, "story");
+  const renderPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const oldRenderTime = new Date("2026-07-19T01:00:00.000Z");
+  const repairedInputTime = new Date("2026-07-19T02:00:00.000Z");
+  await fs.ensureDir(artifactDir);
+  await fs.outputFile(renderPath, Buffer.alloc(4096, 7));
+  await fs.utimes(renderPath, oldRenderTime, oldRenderTime);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "black-flag-local-proof",
+    canonical_subject: "Assassin's Creed IV Black Flag Resynced",
+    selected_title: "Black Flag Sold 3 Million. The Second Wave Is The Real Win",
+    title: "Black Flag Sold 3 Million. The Second Wave Is The Real Win",
+    description:
+      "Assassin's Creed IV Black Flag Resynced has passed three million sales. " +
+      "The sharper signal is where those players arrived from and what that means for Ubisoft's remake strategy.",
+    first_spoken_line: "Black Flag just proved nostalgia was only half the story.",
+    narration_script:
+      "Black Flag just proved nostalgia was only half the story. " +
+      "Three million sales reveal a second wave of players discovering its pirate sandbox.",
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    materialized_at: repairedInputTime.toISOString(),
+    narration_audio_path: "output/audio/black-flag-local-proof.mp3",
+    word_timestamps_path: "output/audio/black-flag-local-proof_timestamps.json",
+    voice_provider: "elevenlabs",
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: "black-flag-local-proof",
+    generated_at: repairedInputTime.toISOString(),
+    status: "ready",
+    clip_count: 9,
+    distinct_motion_family_count: 9,
+    clips: [],
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-19T02:01:00.000Z",
+      blocked: [{
+        story_id: "black-flag-local-proof",
+        title: "Black Flag Sold 3 Million. The Second Wave Is The Real Win",
+        artifact_dir: artifactDir,
+        render_manifest: {
+          renderer: "visual_v4_local_proof",
+          visual_tier: "local_proof_motion_graphic",
+          final_publish_render: false,
+          output: renderPath,
+          output_path: renderPath,
+          quality_gate_status: "materialised_final_verification_failed",
+        },
+        visual_evidence_profile: {
+          asset_count: 9,
+          motion_asset_count: 9,
+          real_media_asset_count: 9,
+          direct_video_motion_asset_count: 9,
+          direct_video_motion_family_count: 5,
+          generated_only_motion_deck: false,
+          blockers: [],
+        },
+        selected_render_evidence: {
+          has_selected_render_assets: true,
+          direct_video_motion_asset_count: 9,
+          direct_video_motion_family_count: 5,
+          generated_only_motion_deck: false,
+          blockers: [],
+        },
+        status: "blocked",
+        blockers: [
+          "missing_input:platform_publish_manifest.json",
+          "benchmark_not_pass",
+        ],
+      }],
+    },
+    generatedAt: "2026-07-19T02:02:00.000Z",
+  });
+
+  assert.equal(
+    workOrder.summary.ready_for_final_render_job_count,
+    1,
+    JSON.stringify(workOrder, null, 2),
+  );
+  assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
+  assert.equal(workOrder.jobs[0].force_final_render, true);
+  assert.deepEqual(
+    workOrder.jobs[0].actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(
+    workOrder.jobs[0].actions[0].target_render_manifest.renderer,
+    "visual_v4_production",
+  );
+  assert.equal(
+    workOrder.jobs[0].actions[0].target_render_manifest.visual_tier,
+    "production_v4_motion",
+  );
+  assert.equal(
+    workOrder.jobs[0].actions[0].target_render_manifest.final_publish_render,
+    true,
+  );
+  assert.equal(
+    workOrder.jobs[0].evidence.repaired_package_input_freshness.render_time_source,
+    "render_output_mtime",
+  );
+  assert.equal(
+    workOrder.jobs[0].evidence.repaired_package_input_freshness.motion_manifest_newer_than_render,
+    true,
+  );
 });
 
 test("render input work order routes non-ASR local timestamps through the audio alignment lane", () => {

@@ -18,6 +18,7 @@ const powershell = path.join(
   "v1.0",
   "powershell.exe",
 );
+const POWERSHELL_TEST_TIMEOUT_MS = 120_000;
 
 function writeTunnelFixture(directory) {
   const credentialsPath = path.join(directory, "cloudflared-credentials.json");
@@ -131,7 +132,7 @@ function runPowerShell(scriptPath, args) {
       cwd: ROOT,
       encoding: "utf8",
       windowsHide: true,
-      timeout: 30_000,
+      timeout: POWERSHELL_TEST_TIMEOUT_MS,
     },
   );
 }

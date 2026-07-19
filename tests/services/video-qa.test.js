@@ -11,6 +11,7 @@ const {
   repeatedFrameHashPairs,
   parseTemporalFrameBuffer,
   analyzeTemporalFrames,
+  reconcileTemporalRepeatScopes,
   validateTemporalVideoQaReport,
   DEFAULT_MIN_DURATION_SECONDS,
   DEFAULT_MIN_RETENTION_SHORT_SECONDS,
@@ -251,6 +252,51 @@ test("analyzeTemporalFrames does not misclassify one brief static editorial card
   assert.ok(report.cadence.overall_near_static_ratio < 0.1);
 });
 
+test("analyzeTemporalFrames exposes an isolated three-second visual stall without calling the whole video choppy", () => {
+  const frames = Array.from({ length: 360 }, (_, index) => {
+    const hash =
+      index >= 120 && index < 138
+        ? "aaaaaaaaaaaaaaaa"
+        : (0x1000000000000000n + BigInt(index * 0x100001)).toString(16);
+    return temporalFrame(index, hash);
+  });
+
+  const report = analyzeTemporalFrames(frames, {
+    sampleFps: 6,
+    expectedDurationSeconds: 60,
+  });
+
+  assert.strictEqual(report.cadence.choppy, false);
+  assert.strictEqual(report.cadence.local_stall_detected, true);
+  assert.strictEqual(report.cadence.local_stall_start_seconds, 20);
+  assert.strictEqual(report.cadence.local_stall_end_seconds, 23);
+  assert.ok(report.cadence.overall_near_static_ratio < 0.1);
+  assert.strictEqual(report.cadence.max_window_near_static_ratio, 1);
+});
+
+test("temporal reconciliation never calls decoded local stalls clean cadence", () => {
+  const reconciliation = reconcileTemporalRepeatScopes({
+    repeated_motion_sequences: [],
+    repeated_motion_seconds: 0,
+    cadence: {
+      choppy: false,
+      local_stall_detected: true,
+    },
+    supplemental_center_crop: {
+      analysis_scope: "center_crop",
+      scan_complete: true,
+      repeated_motion_sequences: [],
+      repeated_motion_seconds: 0,
+      cadence: {
+        choppy: false,
+        local_stall_detected: true,
+      },
+    },
+  });
+
+  assert.strictEqual(reconciliation.clean_cadence, false);
+});
+
 test("analyzeTemporalFrames marks sustained repeated-frame cadence as choppy", () => {
   const frames = Array.from({ length: 180 }, (_, index) => {
     const sourceIndex = Math.floor(index / 4);
@@ -338,6 +384,78 @@ test("validateTemporalVideoQaReport requires exact GREEN evidence bound to the c
   assert.strictEqual(validation.verdict, "GREEN");
   assert.strictEqual(validation.valid, true);
   assert.deepStrictEqual(validation.blockers, []);
+});
+
+test("validateTemporalVideoQaReport rejects an otherwise GREEN report with a decoded local stall", () => {
+  const validation = validateTemporalVideoQaReport(
+    {
+      story_id: "black-flag",
+      verdict: "GREEN",
+      can_publish: true,
+      blockers: [],
+      warnings: [],
+      final_media: {
+        sha256: "a".repeat(64),
+        size_bytes: 1024,
+      },
+      evidence: {
+        decode: {
+          complete: true,
+          video_stream: true,
+          audio_stream: true,
+        },
+        temporal: {
+          analysis_scope: "full_frame",
+          scan_complete: true,
+          coverage_ratio: 1,
+          sampled_frame_count: 350,
+          repeated_motion_sequences: [],
+          repeated_motion_seconds: 0,
+          cadence: {
+            choppy: false,
+            local_stall_detected: true,
+            local_stall_start_seconds: 32,
+            local_stall_end_seconds: 35,
+          },
+          supplemental_center_crop: {
+            analysis_scope: "center_crop",
+            scan_complete: true,
+            coverage_ratio: 1,
+            sampled_frame_count: 350,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: {
+              choppy: false,
+              local_stall_detected: true,
+              local_stall_start_seconds: 32,
+              local_stall_end_seconds: 35,
+            },
+          },
+        },
+      },
+      source_result: {
+        result: "pass",
+        failures: [],
+        warnings: [],
+      },
+    },
+    {
+      storyId: "black-flag",
+      renderSha256: "a".repeat(64),
+      renderSizeBytes: 1024,
+    },
+  );
+
+  assert.strictEqual(validation.verdict, "RED");
+  assert.strictEqual(validation.valid, false);
+  assert.ok(
+    validation.blockers.includes("temporal_video_qa_local_stall_detected"),
+  );
+  assert.ok(
+    validation.blockers.includes(
+      "temporal_video_qa_center_crop_local_stall_detected",
+    ),
+  );
 });
 
 test("validateTemporalVideoQaReport blocks a full-frame shell match even when centre motion is clean", () => {
@@ -815,6 +933,52 @@ test("classifyVideoQa blocks sustained choppy temporal cadence", () => {
 
   assert.strictEqual(r.result, "fail");
   assert.ok(r.failures.some((f) => f.startsWith("choppy_temporal_cadence")));
+});
+
+test("classifyVideoQa blocks an isolated decoded visual stall even when overall cadence is active", () => {
+  const r = classifyVideoQa({
+    durationSeconds: 58.3,
+    minDuration: 35,
+    maxDuration: 60,
+    blackSegments: [],
+    freezeSegments: [],
+    temporalAnalysis: {
+      analysis_scope: "full_frame",
+      scan_complete: true,
+      repeated_motion_seconds: 0,
+      repeated_motion_sequences: [],
+      cadence: {
+        choppy: false,
+        local_stall_detected: true,
+        local_stall_start_seconds: 32,
+        local_stall_end_seconds: 35,
+        overall_near_static_ratio: 0.2521,
+        max_window_near_static_ratio: 0.7647,
+      },
+      supplemental_center_crop: {
+        analysis_scope: "center_crop",
+        scan_complete: true,
+        repeated_motion_seconds: 0,
+        repeated_motion_sequences: [],
+        cadence: {
+          choppy: false,
+          local_stall_detected: true,
+          local_stall_start_seconds: 32,
+          local_stall_end_seconds: 35,
+          overall_near_static_ratio: 0.106,
+          max_window_near_static_ratio: 0.7059,
+        },
+      },
+    },
+  });
+
+  assert.strictEqual(r.result, "fail");
+  assert.ok(
+    r.failures.some((failure) =>
+      failure.startsWith("stalled_visual_window"),
+    ),
+    `got: ${r.failures.join(", ")}`,
+  );
 });
 
 test("classifyVideoQa blocks a shell-only full-frame repeat even when the complete centre crop is clean", () => {

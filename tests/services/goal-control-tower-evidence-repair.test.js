@@ -14,6 +14,7 @@ const {
 } = require("../../lib/goal-control-tower-evidence-repair");
 const {
   buildGoal19AutonomyControlTower,
+  checkRightsLedger,
 } = require("../../lib/goal19-autonomy-control-tower");
 const { fingerprintFile } = require("../../lib/human-review-artefact-fingerprints");
 
@@ -263,6 +264,13 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     readiness: { status: "director_ready", blockers: [] },
     shot_plan: [{ id: "hook", kind: "motion_clip" }],
   });
+  const rendererSelectedAssets = rightsRecords.map((record) => ({
+    asset_id: record.asset_id,
+    kind: record.source_type === "governed_narration_audio" ? "narration" : "video",
+    path: path.resolve(artifactDir, record.path),
+    asset_sha256: record.asset_sha256,
+    asset_size_bytes: record.asset_size_bytes,
+  }));
   await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
     story_id: storyId,
     final_publish_render: true,
@@ -271,7 +279,7 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     clip_scene_plan: {
       scenes: rightsRecords.slice(0, 5).map((record) => ({
         asset_id: record.asset_id,
-        path: record.path,
+        path: path.resolve(artifactDir, record.path),
       })),
     },
     input_evidence: {
@@ -283,6 +291,15 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
       audio: narrationBytes,
       timestamps: timestampBytes,
     }),
+    selected_input_assets: {
+      schema_version: 2,
+      authoritative: true,
+      complete: true,
+      producer_id: "pulse-gaming-studio-v4-renderer",
+      asset_count: rendererSelectedAssets.length,
+      assets: rendererSelectedAssets,
+      blockers: [],
+    },
     safety: { no_publish_triggered: true },
   });
   await fs.writeJson(path.join(artifactDir, "temporal_video_qa_report.json"), {
@@ -482,6 +499,16 @@ function policyProof(storyId) {
 test("control tower evidence repair promotes passed local proof into package-level Goal19 inputs", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-control-evidence-"));
   const story = await makeControlTowerPackage(root, "story-hellraiser");
+  const packageRights = await checkRightsLedger(
+    await fs.readJson(path.join(story.artifact_dir, "rights_ledger.json")),
+    await fs.readJson(path.join(story.artifact_dir, "platform_publish_manifest.json")),
+    await fs.readJson(path.join(story.artifact_dir, "footage_inventory.json")),
+    await fs.readJson(path.join(story.artifact_dir, "render_manifest.json")),
+    {},
+    root,
+    story.artifact_dir,
+  );
+  assert.equal(packageRights.status, "pass", JSON.stringify(packageRights, null, 2));
 
   const before = await buildGoal19AutonomyControlTower({
     storyPackages: [story],

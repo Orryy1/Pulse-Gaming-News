@@ -375,11 +375,81 @@ function versusModeBalanceRisk(story, title) {
   return `${mode[1]}V${mode[2]} BALANCE RISK`;
 }
 
+function compactNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  return Number.isInteger(number)
+    ? String(number)
+    : String(Number(number.toFixed(2)));
+}
+
+function salesMomentumCardSignals(story) {
+  const script = storyScriptText(story);
+  const confirmedClaims = [
+    ...(Array.isArray(story?.confirmed_claims) ? story.confirmed_claims : []),
+    ...(Array.isArray(story?.claim_inventory?.confirmed)
+      ? story.claim_inventory.confirmed
+      : []),
+  ]
+    .map((claim) => normaliseText(claim?.claim || claim?.text || claim))
+    .filter(Boolean)
+    .join(" ");
+  const evidence = normaliseText(`${script} ${confirmedClaims}`);
+  const firstWeek = evidence.match(
+    /\b(?:sold|sales(?:\s+(?:reached|hit))?)\s+(?:more\s+than\s+|over\s+)?(\d+(?:\.\d+)?)\s+million\b[^.!?]{0,80}\b(?:one|first)\s+week\b/i,
+  );
+  const dayOne = evidence.match(
+    /\b(\d+(?:\.\d+)?)\s+million\b[^.!?]{0,50}\b(?:sold\s+)?(?:on\s+)?day\s+one\b/i,
+  );
+  if (!firstWeek || !dayOne) return null;
+
+  const total = Number(firstWeek[1]);
+  const launch = Number(dayOne[1]);
+  const secondWave = Number((total - launch).toFixed(2));
+  if (
+    !Number.isFinite(total) ||
+    !Number.isFinite(launch) ||
+    !Number.isFinite(secondWave) ||
+    total <= 0 ||
+    launch <= 0 ||
+    secondWave <= 0
+  ) {
+    return null;
+  }
+
+  const nextDays = evidence.match(
+    /\b(?:another\s+(?:one\s+)?million|\d+(?:\.\d+)?\s+million)\b[^.!?]{0,60}\bnext\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+days?\b/i,
+  );
+  const nextDayCount = nextDays ? nextDays[1].toUpperCase() : "";
+  const totalLabel = compactNumber(total);
+  const launchLabel = compactNumber(launch);
+  const secondWaveLabel = compactNumber(secondWave);
+  const secondWaveStrong = nextDayCount
+    ? `${secondWaveLabel}M NEXT ${nextDayCount} DAYS`
+    : `${secondWaveLabel}M AFTER DAY ONE`;
+
+  return {
+    contextNumber: `${totalLabel} MILLION`,
+    contextSub: `${secondWaveLabel}M AFTER DAY ONE`,
+    contextMicro: "FIRST-WEEK SALES",
+    timelineBullets: [
+      { strong: `${launchLabel}M DAY ONE`, copy: "" },
+      { strong: secondWaveStrong, copy: "" },
+    ],
+    quoteText:
+      secondWave === 1
+        ? "The second-wave million is the real test."
+        : "The second-wave sales are the real test.",
+  };
+}
+
 function editorialKeyLine(story) {
   const explicit = normaliseText(
     story?.card_key_line || story?.editorial_key_line || story?.pull_quote,
   );
   if (explicit) return clampQuoteText(explicit);
+  const salesMomentum = salesMomentumCardSignals(story);
+  if (salesMomentum) return salesMomentum.quoteText;
 
   const candidates = storyScriptText(story)
     .split(/(?<=[.!?])\s+/)
@@ -495,6 +565,10 @@ function compactFactCopy(sentence, strong) {
 }
 
 function compactTimelineStrong(value) {
+  const normalised = normaliseText(value).toUpperCase();
+  if (/^\d+(?:\.\d+)?M NEXT (?:ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN|\d+) DAYS?$/.test(normalised)) {
+    return normalised;
+  }
   return clampWords(value, 3)
     .toUpperCase()
     .replace(
@@ -658,15 +732,27 @@ function buildStoryCardSpecsBase(story) {
   }
 
   const headlineWords = headlineWordsFromTitle(title);
+  const salesMomentum = salesMomentumCardSignals(story);
   const canonicalSubject = normaliseText(
     story?.card_context_number || story?.canonical_subject || story?.canonical_game,
   );
-  const contextNumber = canonicalSubject || headlineWords[0] || "UPDATE";
+  const contextNumber =
+    normaliseText(story?.card_context_number) ||
+    salesMomentum?.contextNumber ||
+    canonicalSubject ||
+    headlineWords[0] ||
+    "UPDATE";
   const contextSub = normaliseText(story?.card_context_sub) ||
+    salesMomentum?.contextSub ||
     versusModeBalanceRisk(story, title) ||
     contextImpactFromScript(story) ||
     contextSubFromTitle(title, contextNumber);
-  const timelineBullets = concreteTimelineBullets(story, title, label);
+  const timelineBullets = salesMomentum
+    ? fitTimelineBulletsToMomentumBudget(
+        salesMomentum.timelineBullets,
+        headlineWords.join(" "),
+      )
+    : concreteTimelineBullets(story, title, label);
   return {
     source: {
       kicker: "SOURCE",
@@ -677,7 +763,10 @@ function buildStoryCardSpecsBase(story) {
       kicker: "WHY IT MATTERS",
       number: contextNumber.toUpperCase(),
       sub: contextSub,
-      micro: normaliseText(story?.card_context_micro).toUpperCase() || "PLAYER IMPACT",
+      micro:
+        normaliseText(story?.card_context_micro).toUpperCase() ||
+        salesMomentum?.contextMicro ||
+        "PLAYER IMPACT",
     },
     timeline: {
       kicker: "WHAT WE KNOW",
@@ -772,6 +861,9 @@ function storyVideoClipPaths(story = {}) {
 function scoreStoryBackdropCandidate({ brightness, entropy, sharpness, prescan = {} } = {}) {
   const reasons = [];
   const textOverlayLikelihood = Number(prescan.text_overlay_likelihood || 0);
+  const lowerBandOverlayLikelihood = Number(
+    prescan.lower_band_overlay_likelihood || 0,
+  );
   const tasteTags = Array.isArray(prescan.trailer_frame_taste?.tags)
     ? prescan.trailer_frame_taste.tags
     : [];
@@ -780,6 +872,12 @@ function scoreStoryBackdropCandidate({ brightness, entropy, sharpness, prescan =
   if (Number(entropy) < 1.5) reasons.push("backdrop_low_detail");
   if (textOverlayLikelihood >= 0.22 || tasteTags.includes("text_heavy")) {
     reasons.push("baked_trailer_text_risk");
+  }
+  if (
+    lowerBandOverlayLikelihood >= 0.12 ||
+    tasteTags.includes("lower_band_text_overlay")
+  ) {
+    reasons.push("baked_lower_band_overlay_risk");
   }
   if (String(prescan.trailer_frame_taste?.verdict || "") === "fail") {
     reasons.push("backdrop_frame_taste_failed");
@@ -790,6 +888,70 @@ function scoreStoryBackdropCandidate({ brightness, entropy, sharpness, prescan =
     reasons,
     score: Number((Number(entropy || 0) * 4 + Number(sharpness || 0) * 6 - exposurePenalty - textOverlayLikelihood * 80).toFixed(3)),
     text_overlay_likelihood: textOverlayLikelihood,
+    lower_band_overlay_likelihood: lowerBandOverlayLikelihood,
+  };
+}
+
+function storyBackdropFfmpegFilter({ cropLegalFooter = false } = {}) {
+  const transforms = [];
+  if (cropLegalFooter) {
+    transforms.push("crop=iw:trunc(ih*0.90/2)*2:0:0");
+  }
+  transforms.push(
+    "scale=1080:1920:force_original_aspect_ratio=increase",
+    "crop=1080:1920",
+    "format=yuvj420p",
+  );
+  return transforms.join(",");
+}
+
+async function extractAndScoreStoryBackdropCandidate({
+  clipPath,
+  candidatePath,
+  clipIndex,
+  sampleS,
+  cropLegalFooter = false,
+} = {}) {
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-ss",
+    String(sampleS),
+    "-i",
+    clipPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    storyBackdropFfmpegFilter({ cropLegalFooter }),
+    "-threads",
+    "1",
+    "-q:v",
+    "2",
+    candidatePath,
+  ]);
+  const stats = await sharp(candidatePath).stats();
+  const channels = stats.channels.slice(0, 3);
+  const brightness =
+    channels.reduce((sum, channel) => sum + Number(channel.mean || 0), 0) /
+    Math.max(1, channels.length);
+  const prescan = await prescanImage(candidatePath, {
+    sourceTypeHint: "trailer",
+  });
+  const score = scoreStoryBackdropCandidate({
+    brightness,
+    entropy: stats.entropy,
+    sharpness: stats.sharpness,
+    prescan,
+  });
+  return {
+    path: candidatePath,
+    source_clip_path: clipPath,
+    clip_index: clipIndex,
+    sample_s: sampleS,
+    repair: cropLegalFooter ? "crop_legal_footer_bottom_10_percent" : null,
+    ...score,
   };
 }
 
@@ -813,40 +975,27 @@ async function materialiseStoryBackdropsFromClips({
         `clip_${clipIndex + 1}_${String(sampleS).replace(".", "_")}.jpg`,
       );
       try {
-        execFileSync("ffmpeg", [
-          "-y",
-          "-hide_banner",
-          "-loglevel",
-          "error",
-          "-ss",
-          String(sampleS),
-          "-i",
-          clips[clipIndex],
-          "-frames:v",
-          "1",
-          "-vf",
-          "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
-          "-q:v",
-          "2",
+        const candidate = await extractAndScoreStoryBackdropCandidate({
+          clipPath: clips[clipIndex],
           candidatePath,
-        ]);
-        const stats = await sharp(candidatePath).stats();
-        const channels = stats.channels.slice(0, 3);
-        const brightness = channels.reduce((sum, channel) => sum + Number(channel.mean || 0), 0) /
-          Math.max(1, channels.length);
-        const prescan = await prescanImage(candidatePath, { sourceTypeHint: "trailer" });
-        const score = scoreStoryBackdropCandidate({
-          brightness,
-          entropy: stats.entropy,
-          sharpness: stats.sharpness,
-          prescan,
+          clipIndex,
+          sampleS,
         });
-        candidates.push({
-          path: candidatePath,
-          clip_index: clipIndex,
-          sample_s: sampleS,
-          ...score,
-        });
+        candidates.push(candidate);
+        if (candidate.reasons.includes("baked_lower_band_overlay_risk")) {
+          const repairedPath = candidatePath.replace(
+            /\.jpg$/i,
+            "_footer_crop.jpg",
+          );
+          const repaired = await extractAndScoreStoryBackdropCandidate({
+            clipPath: clips[clipIndex],
+            candidatePath: repairedPath,
+            clipIndex,
+            sampleS,
+            cropLegalFooter: true,
+          });
+          candidates.push(repaired);
+        }
       } catch {
         // Another approved clip/sample may still provide the governed backdrop.
       }
@@ -864,10 +1013,12 @@ async function materialiseStoryBackdropsFromClips({
     usedClipIndexes.add(candidate.clip_index);
     if (selected.length >= count) break;
   }
-  for (const candidate of eligible) {
-    if (selected.includes(candidate)) continue;
-    selected.push(candidate);
-    if (selected.length >= count) break;
+  if (selected.length < count) {
+    for (const candidate of eligible) {
+      if (selected.includes(candidate)) continue;
+      selected.push(candidate);
+      if (selected.length >= count) break;
+    }
   }
 
   const backdropPaths = [];
@@ -956,6 +1107,47 @@ async function loadStoryFromFile(storyFile, storyId) {
   }
   const id = normaliseText(row.story_id || row.storyId || row.id || storyId);
   if (!id) throw new Error(`Story id missing in ${storyFile}`);
+  const existingMotion = [
+    ...(Array.isArray(row.visual_v4_bridge_video_clips)
+      ? row.visual_v4_bridge_video_clips
+      : []),
+    ...(Array.isArray(row.video_clips) ? row.video_clips : []),
+  ];
+  let siblingMotion = [];
+  let siblingMotionEvidenceSource = "";
+  if (!existingMotion.length) {
+    const siblingMotionPath = path.join(
+      path.dirname(path.resolve(storyFile)),
+      "materialised_motion_clips.json",
+    );
+    if (await fs.pathExists(siblingMotionPath)) {
+      const manifest = await fs.readJson(siblingMotionPath).catch(() => null);
+      const manifestStoryId = normaliseText(
+        manifest?.story_id || manifest?.storyId || id,
+      );
+      const status = normaliseText(
+        manifest?.status || manifest?.verdict,
+      ).toLowerCase();
+      if (
+        manifest &&
+        manifestStoryId === id &&
+        /^(?:ready|pass|passed|green)$/.test(status)
+      ) {
+        siblingMotion = (Array.isArray(manifest.clips) ? manifest.clips : [])
+          .filter((clip) => {
+            const clipPath = normaliseText(
+              typeof clip === "string"
+                ? clip
+                : clip?.path || clip?.local_path || clip?.clip_path || clip?.video_path,
+            );
+            return clipPath && fs.existsSync(clipPath);
+          });
+        if (siblingMotion.length) {
+          siblingMotionEvidenceSource = path.basename(siblingMotionPath);
+        }
+      }
+    }
+  }
   return {
     ...row,
     storyId: id,
@@ -963,6 +1155,12 @@ async function loadStoryFromFile(storyFile, storyId) {
     title: normaliseText(row.title || row.selected_title || row.canonical_title || row.canonical_subject),
     subreddit: row.subreddit || row.primary_source || row.source_name || row.publisher,
     full_script: row.full_script || row.narration_script,
+    ...(siblingMotion.length
+      ? {
+          visual_v4_bridge_video_clips: siblingMotion,
+          card_backdrop_motion_evidence_source: siblingMotionEvidenceSource,
+        }
+      : {}),
   };
 }
 

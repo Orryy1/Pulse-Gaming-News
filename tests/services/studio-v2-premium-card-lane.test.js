@@ -132,14 +132,14 @@ test("premium card lane v2 accepts the current unified HyperFrames check contrac
           ? {
               readableText: "KOTAKU NEWS SOURCE",
               wordCount: 3,
-              plannedVisibleDurationS: 2.6,
+              plannedVisibleDurationS: 2.4,
               minimumVisibleDurationS: 1.9,
-              maximumVisibleDurationS: 3.1,
+              maximumVisibleDurationS: 2.8,
             }
           : {
-              plannedVisibleDurationS: 3.4,
-              minimumVisibleDurationS: 3.4,
-              maximumVisibleDurationS: 3.8,
+              plannedVisibleDurationS: 2.2,
+              minimumVisibleDurationS: 2.2,
+              maximumVisibleDurationS: 2.8,
             }),
       });
     }
@@ -450,11 +450,11 @@ test("premium card lane v2 rejects legacy card timing that exceeds the current m
       channelId: "pulse-gaming",
     });
 
-    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 3.4);
+    assert.equal(MIN_HYPERFRAMES_READABLE_HOLD_S, 2.2);
     assert.equal(result.premiumLane.verdict, "partial");
     assert.ok(
       result.premiumLane.hyperframesPremiumShellGate.blockers.includes(
-        "context:hyperframes_card_timing_contract_stale:pulse_card_timing_v3:pulse_card_timing_v4",
+        "context:hyperframes_card_timing_contract_stale:pulse_card_timing_v3:pulse_card_timing_v5",
       ),
     );
     assert.ok(
@@ -467,7 +467,7 @@ test("premium card lane v2 rejects legacy card timing that exceeds the current m
   }
 });
 
-test("premium card lane v2 accepts a concise source lock under its V5 1.9-3.1s contract", async () => {
+test("premium card lane v2 accepts a concise source lock under its V5 1.9-2.8s contract", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-hf-source-lock-"));
   try {
     const outDir = path.join(root, "test", "output");
@@ -482,9 +482,9 @@ test("premium card lane v2 accepts a concise source lock under its V5 1.9-3.1s c
           ? {
               readableText: "BANDAI NAMCO ENTERTAINMENT AMERICA NEWS SOURCE",
               wordCount: 6,
-              plannedVisibleDurationS: 2.2,
+              plannedVisibleDurationS: 2.8,
               minimumVisibleDurationS: 1.9,
-              maximumVisibleDurationS: 3.1,
+              maximumVisibleDurationS: 2.8,
             }
           : {}),
       });
@@ -526,11 +526,11 @@ test("premium card lane v2 rejects cards that are faster than Pulse readable dwe
     shell.hyperframes_premium_shell.readability_contract = {
       status: "pass",
       evidence: {
-        readable_text:
-          "PLAYERS NEED PRICE, EDITIONS, PLATFORM DETAIL AND A REAL REASON TO CARE",
-        word_count: 12,
-        planned_visible_duration_s: 2.4,
-        minimum_visible_duration_s: 2.4,
+        readable_text: "PLAYSTATION BLOG",
+        word_count: 2,
+        planned_visible_duration_s: 1.6,
+        minimum_visible_duration_s: 1.6,
+        maximum_visible_duration_s: 2.8,
       },
     };
     await fs.writeJson(sourceSidecar, shell, { spaces: 2 });

@@ -482,7 +482,7 @@ test("Visual V4 Director gives every card-like beat readable dwell time", () => 
     JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
   );
   assert.equal(
-    sourceLocks.every((shot) => Number(shot.durationS) === 2.6),
+    sourceLocks.every((shot) => Number(shot.durationS) === 2.4),
     true,
     JSON.stringify(cardLike.map((shot) => ({ id: shot.id, kind: shot.kind, durationS: shot.durationS }))),
   );
@@ -706,6 +706,50 @@ test("Visual V4 Director counts official trailer segment windows as distinct ren
   assert.equal(new Set(motionShots.map((shot) => shot.source_family)).size, 8);
   assert.equal(new Set(motionShots.map((shot) => shot.base_source_family)).size, 8);
   assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 8);
+});
+
+test("Visual V4 Director schedules every source needed by a stricter ten-source flagship budget", () => {
+  const officialSources = Array.from({ length: 10 }, (_, index) => ({
+    id: `black-flag-official-source-${index + 1}`,
+    source_family: `black_flag_official_family_${index + 1}`,
+    base_source_family: `youtube:BlackFlagOfficial${index + 1}`,
+    source_url: `https://www.youtube.com/watch?v=BlackFlagOfficial${index + 1}`,
+    source_type: "official_publisher_gameplay_clip",
+    media_kind: "direct_video",
+    path: `C:\\media\\black-flag-source-${index + 1}.mp4`,
+    durationS: 5.8,
+    validated: true,
+  }));
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "black-flag-ten-source-flagship",
+      title: "Black Flag Resynced Has A Three-Million-Player Signal",
+    },
+    footagePlan: {
+      readiness: { status: "ready", blockers: [] },
+      motion_budget: {
+        required_motion_scenes: 5,
+        available_motion_clips: officialSources.length,
+        required_distinct_families: 5,
+        required_distinct_source_assets: 10,
+        available_distinct_motion_families: officialSources.length,
+        available_distinct_source_assets: officialSources.length,
+        max_static_card_ratio: 0.22,
+        max_static_card_seconds: 12,
+        target_motion_ratio: 0.68,
+      },
+      motion_inventory: { accepted_local_clips: officialSources },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter((shot) => shot.kind === "motion_clip");
+
+  assert.equal(plan.readiness.status, "director_ready");
+  assert.equal(motionShots.length, 10);
+  assert.equal(new Set(motionShots.map((shot) => shot.base_source_family)).size, 10);
+  assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 10);
 });
 
 test("Visual V4 Director treats generated segment variants from one V4 clip as one source asset", () => {

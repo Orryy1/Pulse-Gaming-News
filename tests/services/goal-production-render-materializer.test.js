@@ -364,6 +364,43 @@ test("goal production render materializer binds duration top-up clips to verifie
   assert.equal(hydrated.motion_source_identity.source_identity_provenance.rights_grant, false);
 });
 
+test("goal production render materializer preserves current segment visual fingerprints for renderer dedupe", () => {
+  const visualContentFingerprint = {
+    algorithm: "temporal-dhash-9x8-v1",
+    signature:
+      "c8282c315614de2f:a032b8b89b412c2b:2822747854aa865b:a0a0e0bc8fa2b3a8:080000182f263301",
+    hashes: [
+      "c8282c315614de2f",
+      "a032b8b89b412c2b",
+      "2822747854aa865b",
+      "a0a0e0bc8fa2b3a8",
+      "080000182f263301",
+    ],
+    sample_count: 5,
+  };
+  const bridged = _private.rendererBridgeClipFromProductionClip({
+    id: "underwater-window-5-5",
+    path: "output/video_cache/underwater-window-5-5.mp4",
+    source_url: "output/source-masters/underwater-treasure.mp4",
+    canonical_source_url: "https://www.youtube.com/watch?v=JVFiaHxxqCo",
+    youtube_video_id: "JVFiaHxxqCo",
+    source_master_sha256: "8".repeat(64),
+    sampled_visual_fingerprint: `sha256:${"c".repeat(64)}`,
+    visual_content_fingerprint: visualContentFingerprint,
+    source_type: "official_publisher_gameplay_clip",
+    source_family: "underwater_treasure_window_5_5",
+    media_kind: "direct_video",
+    mediaStartS: 5.5,
+    durationS: 5,
+  });
+
+  assert.deepEqual(bridged.visual_content_fingerprint, visualContentFingerprint);
+  assert.notEqual(
+    bridged.visual_content_fingerprint.signature,
+    bridged.sampled_visual_fingerprint,
+  );
+});
+
 test("goal production render materializer preserves governed subject identity for renderer clips", () => {
   const bridged = _private.rendererBridgeClipFromProductionClip({
     id: "official-denshattack-window",
@@ -2159,12 +2196,60 @@ test("goal production render materializer cannot let a stale director map overri
   );
 });
 
+test("goal production render materializer turns sales evidence into viewer-facing card copy", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-sales-card-"));
+  const storyId = "black-flag-sales-signal";
+  const artifactDir = await makePackage(root, storyId, {
+    canonical_subject: "Black Flag Resynced",
+    selected_title: "Black Flag Sold 3 Million. The Second Wave Is The Real Win",
+    thumbnail_headline: "3 MILLION IN A WEEK",
+    canonical_angle: "second_wave_sales_signal",
+    primary_source: "Ubisoft",
+    confirmed_claims: [
+      "Ubisoft says Black Flag Resynced sold 3 million copies in one week.",
+      "Ubisoft says 2 million sold on day one and another million followed across the next six days.",
+    ],
+    narration_script:
+      "Ubisoft says Black Flag Resynced sold 3 million copies in one week. Two million sold on day one. Another million followed across the next six days.",
+    full_script:
+      "Ubisoft says Black Flag Resynced sold 3 million copies in one week. Two million sold on day one. Another million followed across the next six days.",
+    first_spoken_line:
+      "Ubisoft says Black Flag Resynced sold 3 million copies in one week.",
+    description:
+      "Black Flag Resynced reached 3 million sales in one week, including another million after day one.",
+  });
+  await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
+    shot_plan: [
+      {
+        kind: "proof_card",
+        label: "BLACK FLAG RESYNCED PROOF",
+        detail: "UBISOFT",
+      },
+    ],
+  });
+
+  const { story } = await buildRendererStoryJson(
+    readyJob(storyId, artifactDir),
+    {
+      workspaceRoot: root,
+      generatedAt: "2026-07-19T07:00:00.000Z",
+    },
+  );
+
+  assert.equal(story.proof_card_primary, "3 MILLION IN ONE WEEK");
+  assert.equal(story.proof_card_secondary, "1M AFTER DAY ONE");
+  assert.doesNotMatch(
+    `${story.proof_card_primary} ${story.proof_card_secondary}`,
+    /\b(?:PROOF|SOURCE LOCKED|CLAIM CHECKED)\b/i,
+  );
+});
+
 test("goal production render materializer preserves verified base-source identity through the public render interface", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-source-identity-"));
   const artifactDir = await makePackage(root, "source-identity-story");
   const clips = [];
 
-  for (let sourceIndex = 1; sourceIndex <= 3; sourceIndex += 1) {
+  for (let sourceIndex = 1; sourceIndex <= 4; sourceIndex += 1) {
     const sourceMasterSha256 = crypto
       .createHash("sha256")
       .update(`verified-source-${sourceIndex}`)
@@ -2248,7 +2333,7 @@ test("goal production render materializer preserves verified base-source identit
     requiredBaseSources: 3,
   });
   assert.equal(diversity.status, "pass");
-  assert.equal(diversity.observed_genuine_base_source_count, 3);
+  assert.equal(diversity.observed_genuine_base_source_count, 4);
   assert.equal(diversity.unresolved_clips.length, 0);
 });
 
@@ -2330,6 +2415,60 @@ test("production renderer writes hash-bound same-run flagship generation evidenc
     renderManifest.flagship_generation_evidence.manifest_path,
     path.join(evidenceDir, "generation_manifest.json"),
   );
+});
+
+test("production renderer regenerates an implicit stale caption sidecar from current timestamps", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-stale-caption-"));
+  const script = "Lego Batman has more Arkham DNA than it first looks.";
+  const artifactDir = await makePackage(root, "flagship-stale-caption", {
+    narration_script: script,
+  });
+  const timestampWords = script.split(/\s+/).map((word, index) => ({
+    word,
+    start: Number((index * 0.2).toFixed(2)),
+    end: Number(((index + 1) * 0.2).toFixed(2)),
+  }));
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    words: timestampWords,
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,000\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    verdict: "pass",
+    caption_srt_path: "captions.srt",
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob("flagship-stale-caption", artifactDir)] },
+    generatedAt: "2026-07-15T08:00:30.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 10));
+      return {
+        clips: 2,
+        rendered_duration_s: timestampWords.at(-1).end,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const flagshipDir = path.join(artifactDir, "flagship");
+  const generation = await fs.readJson(path.join(flagshipDir, "generation_manifest.json"));
+  const captions = await fs.readFile(path.join(flagshipDir, "captions.srt"), "utf8");
+  assert.equal(generation.verdict, "GREEN", JSON.stringify(generation.blockers, null, 2));
+  assert.equal(generation.complete, true);
+  assert.equal(generation.blockers.includes("captions_timeline_does_not_cover_final_narration"), false);
+  assert.match(captions, /00:00:02,000/);
 });
 
 test("production renderer preserves collocated timestamp input and freezes bound evidence separately", async () => {
@@ -2926,12 +3065,14 @@ test("production renderer writes an immutable used-asset inventory with file-bac
     },
   });
   let rightsReconciliationCall = null;
+  let rightsReconciliationCallCount = 0;
 
   const report = await materializeGoalProductionRenders({
     workspaceRoot: root,
     workOrder: { jobs: [job] },
     generatedAt: "2026-07-15T08:15:00.000Z",
     reconcileRightsEvidence: async (options) => {
+      rightsReconciliationCallCount += 1;
       rightsReconciliationCall = options;
       assert.equal(await fs.pathExists(path.join(artifactDir, "render_manifest.json")), true);
       assert.equal(await fs.pathExists(path.join(artifactDir, "narration_manifest.json")), true);
@@ -2971,10 +3112,14 @@ test("production renderer writes an immutable used-asset inventory with file-bac
   });
 
   assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs, null, 2));
+  assert.equal(rightsReconciliationCallCount, 2);
   assert.equal(rightsReconciliationCall.apply, true);
   assert.equal(rightsReconciliationCall.storyId, storyId);
   assert.equal(rightsReconciliationCall.workspaceRoot, root);
   assert.equal(report.jobs[0].rights_reconciliation.verdict, "PASS");
+  assert.equal(report.jobs[0].rights_reconciliation.status, "GREEN");
+  assert.equal(report.jobs[0].rights_reconciliation.can_auto_publish, true);
+  assert.equal(report.jobs[0].rights_reconciliation.final_state_verified, true);
   assert.equal(
     await fs.pathExists(path.join(artifactDir, "flagship", "rights_reconciliation_report.json")),
     true,
@@ -5994,6 +6139,127 @@ test("goal production render materializer rechecks repaired motion with decoded 
   assert.equal(persisted.professional_candidate_selection.status, "pass");
   assert.equal(persisted.rejected.length, 1);
   assert.equal(persisted.rejected[0].path, rejectedClip.path);
+});
+
+test("goal production render materializer preserves accepted footer-crop derivatives", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-production-render-footer-crop-derivatives-"),
+  );
+  const storyId = "footer-crop-derivatives";
+  const artifactDir = await makePackage(root, storyId);
+  const originalClips = Array.from({ length: 4 }, (_, index) => ({
+    id: `official-source-${index + 1}-window`,
+    path: path.join(artifactDir, `official-source-${index + 1}-window.mp4`),
+    local_materialized_path: path.join(
+      artifactDir,
+      `official-source-${index + 1}-window.mp4`,
+    ),
+    source_url: `https://www.youtube.com/watch?v=footer-source-${index + 1}`,
+    source_type: "official_publisher_trailer_segment",
+    source_family: `official_source_${index + 1}_window_0_4`,
+    base_source_family: `youtube:footer-source-${index + 1}`,
+    source_master_sha256: String.fromCharCode(97 + index).repeat(64),
+    media_kind: "direct_video",
+    rights_basis: "official_publisher_editorial_reference",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    durationS: 4,
+  }));
+  const repairedClips = originalClips.map((clip, index) => ({
+    ...clip,
+    path: path.join(artifactDir, `official-source-${index + 1}-footer-crop.mp4`),
+    local_materialized_path: path.join(
+      artifactDir,
+      `official-source-${index + 1}-footer-crop.mp4`,
+    ),
+    original_path: clip.path,
+    asset_sha256: String.fromCharCode(100 + index).repeat(64),
+    visual_repair: {
+      status: "pass",
+      kind: "crop_legal_footer_bottom_10_percent",
+      source_path: clip.path,
+    },
+  }));
+  await Promise.all(
+    [...originalClips, ...repairedClips].map((clip, index) =>
+      fs.outputFile(clip.path, Buffer.alloc(2048, index + 90)),
+    ),
+  );
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    repaired_at: "2026-07-19T05:30:00.000Z",
+    clips: originalClips,
+  });
+
+  const baseJob = readyJob(storyId, artifactDir);
+  let renderStory = null;
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: {
+      jobs: [
+        readyJob(storyId, artifactDir, {
+          evidence: {
+            ...baseJob.evidence,
+            required_genuine_base_source_count: 3,
+            materialised_motion_clip_count: originalClips.length,
+            distinct_motion_family_count: originalClips.length,
+            materialised_motion_clip_paths: originalClips.map((clip) => clip.path),
+          },
+        }),
+      ],
+    },
+    generatedAt: "2026-07-19T05:31:00.000Z",
+    force: true,
+    directMotionFilter: async () => ({
+      version: "pulse_direct_motion_visual_selector_v5",
+      policy_tier: "normal_strict_green",
+      clips: repairedClips,
+      accepted: repairedClips.map((clip) => ({
+        path: clip.path,
+        eligible: true,
+        reasons: [],
+        metrics: { decoded_sample_count: 20 },
+        visual_repair: clip.visual_repair,
+      })),
+      rejected: [],
+      repairs: repairedClips.map((clip) => clip.visual_repair),
+      blockers: [],
+    }),
+    renderProof: async ({ storyJson, output }) => {
+      renderStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 14));
+      return {
+        story_id: renderStory.story_id,
+        output,
+        clips: renderStory.video_clips.length,
+        rendered_duration_s: 40,
+        size_bytes: 4096,
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.ok(renderStory);
+  assert.deepEqual(
+    renderStory.visual_v4_bridge_video_clips.map((clip) => clip.path),
+    repairedClips.map((clip) => clip.path),
+  );
+  assert.equal(
+    renderStory.visual_v4_bridge_video_clips.every(
+      (clip) => clip.visual_repair?.kind === "crop_legal_footer_bottom_10_percent",
+    ),
+    true,
+  );
+  const persisted = await fs.readJson(
+    path.join(
+      artifactDir,
+      "qa",
+      "direct-motion",
+      "final_selection_dense_selector_report.json",
+    ),
+  );
+  assert.equal(persisted.professional_candidate_selection.status, "pass");
+  assert.equal(persisted.selected_clip_count, repairedClips.length);
 });
 
 test("goal production render materializer balances visually accepted motion before professional source preflight", async () => {

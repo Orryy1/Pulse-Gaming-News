@@ -1585,6 +1585,107 @@ test("real motion materializer restores package evidence from an already materia
   assert.equal(familyReport.summary.clip_count, 6);
 });
 
+test("real motion materializer restores package evidence from a strict governed selector after central invalidation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-selector-restore-"));
+  const storyId = "black-flag-selector-restore";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(path.join(artifactDir, "qa", "direct-motion"));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    story_id: storyId,
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: storyId,
+    status: "blocked",
+    clips: [],
+    blockers: ["stale_ready_central_motion_pack_unvalidated"],
+  });
+
+  const policyPath = path.join(root, "rights", "publisher-video-policy.html");
+  const policyBytes = Buffer.from("Official publisher video policy evidence");
+  await fs.outputFile(policyPath, policyBytes);
+  const policySha256 = crypto.createHash("sha256").update(policyBytes).digest("hex");
+  const clips = [];
+  for (let index = 0; index < 6; index += 1) {
+    clips.push({
+      ...await makeGovernedSelectorClip(root, storyId, index),
+      evidence_reference: "",
+      evidence_file: policyPath,
+      rights_evidence_file: policyPath,
+      evidence_sha256: policySha256,
+      rights_evidence_sha256: policySha256,
+      evidence_size_bytes: policyBytes.length,
+      rights_evidence_size_bytes: policyBytes.length,
+      rights_grant: true,
+    });
+  }
+  await fs.outputJson(
+    path.join(artifactDir, "qa", "direct-motion", "final_selection_dense_selector_report.json"),
+    {
+      version: "pulse_direct_motion_visual_selector_v5",
+      policy_tier: "ultimate_professional",
+      blockers: [],
+      selected_clip_count: clips.length,
+      clips,
+      source_diversity: {
+        strict_pass: true,
+        reasons: [],
+        blockers: [],
+      },
+      professional_source_diversity: {
+        status: "pass",
+        strict_pass: true,
+        blockers: [],
+      },
+    },
+  );
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        title: "Black Flag Resynced Crosses Three Million Sales",
+        artifact_dir: artifactDir,
+        status: "blocked_on_render_inputs",
+        blockers: ["materialised_motion_clips_missing"],
+        actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+      }],
+    },
+    generatedAt: "2026-07-19T20:20:00.000Z",
+    minClips: 6,
+    minFamilies: 6,
+    maxClips: 6,
+    minBaseSources: 6,
+    strictBaseSourceDiversity: true,
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.summary.materialized_clip_count, 6);
+  assert.equal(report.jobs[0].repair_scope, "selector_materialized_motion_restore");
+  assert.equal(report.jobs[0].recovered_selector_clip_count, 6);
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 6);
+  assert.equal(materialised.distinct_motion_family_count, 6);
+  assert.equal(
+    materialised.professional_source_diversity.observed_genuine_base_source_count,
+    6,
+  );
+  assert.ok(
+    materialised.clips.every((clip) => clip.motion_source_identity?.strict_pass === true),
+  );
+});
+
 test("real motion materializer rejects stale immutable evidence on restored clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-stale-restore-evidence-"));
   const storyId = "stale-restore-evidence";
@@ -1670,7 +1771,7 @@ test("real motion materializer rejects stale immutable evidence on restored clip
   assert.ok(report.jobs[0].blockers.includes("materialized_clip_evidence_mismatch"));
   assert.equal(
     report.jobs[0].failed[0].error,
-    "materialized_clip_evidence_mismatch:sha256,size_bytes,duration_seconds,video_codec,width,height",
+    "materialized_clip_evidence_mismatch:sha256,size_bytes",
   );
   const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(manifest.status, "blocked");
@@ -3896,6 +3997,277 @@ test("real motion rights reconciliation does not invent commercial permission fo
   );
 });
 
+test("real motion rights reconciliation keeps equal windows from different YouTube videos distinct", () => {
+  const common = {
+    media_kind: "direct_video",
+    source_owner: "Official Publisher",
+    source_type: "official_publisher_gameplay_clip",
+    licence_basis: "publisher_video_policy_transformative_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    credit_required: true,
+    risk_score: 0.2,
+    mediaStartS: 12.5,
+    durationS: 6.9,
+  };
+  const clips = [
+    {
+      ...common,
+      id: "official-video-a-window",
+      path: "C:/pulse/materialized/official-video-a-window.mp4",
+      source_url: "https://www.youtube.com/watch?v=OfficialVidA",
+      evidence_reference: "C:/pulse/rights/publisher-video-policy.html",
+      materialized_file_evidence: {
+        sha256: "a".repeat(64),
+        size_bytes: 4096,
+        duration_seconds: 6.9,
+        video_codec: "h264",
+        width: 1080,
+        height: 1920,
+      },
+    },
+    {
+      ...common,
+      id: "official-video-b-window",
+      path: "C:/pulse/materialized/official-video-b-window.mp4",
+      source_url: "https://www.youtube.com/watch?v=OfficialVidB",
+      evidence_reference: "C:/pulse/rights/publisher-video-policy.html",
+      materialized_file_evidence: {
+        sha256: "b".repeat(64),
+        size_bytes: 4096,
+        duration_seconds: 6.9,
+        video_codec: "h264",
+        width: 1080,
+        height: 1920,
+      },
+    },
+  ];
+
+  const existingRecords = clips.map((clip) => ({
+    asset_id: clip.id,
+    asset_type: "motion_clip",
+    kind: "video",
+    path: clip.path,
+    source_url: clip.source_url,
+    source_owner: clip.source_owner,
+    source_type: clip.source_type,
+    licence_basis: clip.licence_basis,
+    allowed_use: clip.allowed_use,
+    allowed_platforms: clip.allowed_platforms,
+    commercial_use_allowed: clip.commercial_use_allowed,
+    credit_required: clip.credit_required,
+    evidence_reference: clip.evidence_reference,
+    risk_score: clip.risk_score,
+    source_media_start_s: clip.mediaStartS,
+    source_window_duration_s: clip.durationS,
+    approval_status: "approved_for_transformative_editorial_use",
+  }));
+  const result = reconcileMaterializedRightsRecords(clips, {
+    verdict: "pass",
+    records: existingRecords,
+  });
+
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.records.length, 2);
+  assert.deepEqual(
+    result.records.map((record) => record.asset_id).sort(),
+    ["official-video-a-window", "official-video-b-window"],
+  );
+});
+
+test("real motion rights reconciliation carries an explicit source policy grant to a new window", () => {
+  const canonicalSourceUrl = "https://www.youtube.com/watch?v=PolicyVideo1";
+  const sourceMasterSha256 = "c".repeat(64);
+  const policyPath = "C:/pulse/rights/publisher-video-policy.html";
+  const policySha256 = "d".repeat(64);
+  const common = {
+    media_kind: "direct_video",
+    source_owner: "Official Publisher",
+    source_type: "official_publisher_gameplay_clip",
+    canonical_source_url: canonicalSourceUrl,
+    youtube_video_id: "PolicyVideo1",
+    source_master_sha256: sourceMasterSha256,
+    licence_basis: "publisher_video_policy_transformative_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    credit_required: true,
+    risk_score: 0.2,
+    evidence_sha256: policySha256,
+    rights_evidence_sha256: policySha256,
+  };
+  const original = {
+    ...common,
+    id: "policy-source-window-original",
+    path: "C:/pulse/materialized/policy-source-window-original.mp4",
+    source_url: canonicalSourceUrl,
+    mediaStartS: 12.5,
+    durationS: 6.9,
+    evidence_reference: policyPath,
+    evidence_file: policyPath,
+    rights_evidence_file: policyPath,
+    rights_grant: true,
+    materialized_file_evidence: {
+      sha256: "e".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 6.9,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const refreshed = {
+    ...common,
+    id: "policy-source-window-refreshed",
+    path: "C:/pulse/materialized/policy-source-window-refreshed.mp4",
+    source_url: "C:/pulse/masters/PolicyVideo1.mp4",
+    mediaStartS: 5.5,
+    durationS: 5,
+    evidence_reference: "",
+    rights_evidence_file: policyPath,
+    materialized_file_evidence: {
+      sha256: "f".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 5,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const originalRights = {
+    asset_id: original.id,
+    asset_type: "motion_clip",
+    kind: "video",
+    ...original,
+    source_media_start_s: original.mediaStartS,
+    source_window_duration_s: original.durationS,
+    asset_sha256: original.materialized_file_evidence.sha256,
+  };
+  const incompleteRefreshedRights = {
+    ...originalRights,
+    asset_id: refreshed.id,
+    id: refreshed.id,
+    path: refreshed.path,
+    source_url: refreshed.source_url,
+    source_media_start_s: refreshed.mediaStartS,
+    source_window_duration_s: refreshed.durationS,
+    asset_sha256: refreshed.materialized_file_evidence.sha256,
+    evidence_file: undefined,
+    rights_evidence_file: policyPath,
+    rights_grant: undefined,
+  };
+
+  const result = reconcileMaterializedRightsRecords(
+    [original, refreshed],
+    {
+      verdict: "pass",
+      records: [originalRights, incompleteRefreshedRights],
+      assets: [{
+        ...originalRights,
+        evidence_file: undefined,
+      }],
+    },
+  );
+
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.records.length, 2);
+  const refreshedRights = result.records.find(
+    (record) => record.asset_id === refreshed.id,
+  );
+  assert.ok(refreshedRights);
+  assert.equal(refreshedRights.evidence_file, policyPath);
+  assert.equal(refreshedRights.evidence_sha256, policySha256);
+  assert.equal(refreshedRights.rights_grant, true);
+  assert.equal(refreshedRights.asset_sha256, refreshed.materialized_file_evidence.sha256);
+  assert.equal(refreshedRights.source_media_start_s, 5.5);
+});
+
+test("real motion rights reconciliation canonicalises local-master and watch-url evidence references for one verified source", () => {
+  const canonicalSourceUrl = "https://www.youtube.com/watch?v=PolicyVideo1";
+  const localMasterPath = "C:/pulse/masters/PolicyVideo1.mp4";
+  const sourceMasterSha256 = "c".repeat(64);
+  const policyPath = "C:/pulse/rights/publisher-video-policy.html";
+  const policySha256 = "d".repeat(64);
+  const common = {
+    media_kind: "direct_video",
+    source_owner: "Official Publisher",
+    source_type: "official_publisher_gameplay_clip",
+    canonical_source_url: canonicalSourceUrl,
+    youtube_video_id: "PolicyVideo1",
+    source_master_sha256: sourceMasterSha256,
+    licence_basis: "publisher_video_policy_transformative_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    commercial_use_allowed: true,
+    credit_required: true,
+    risk_score: 0.2,
+    evidence_file: policyPath,
+    rights_evidence_file: policyPath,
+    evidence_sha256: policySha256,
+    rights_evidence_sha256: policySha256,
+    rights_grant: true,
+  };
+  const watchUrlWindow = {
+    ...common,
+    id: "policy-source-watch-url-window",
+    path: "C:/pulse/materialized/policy-source-watch-url-window.mp4",
+    source_url: canonicalSourceUrl,
+    evidence_reference: canonicalSourceUrl,
+    mediaStartS: 12.5,
+    durationS: 5,
+    materialized_file_evidence: {
+      sha256: "e".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 5,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const localMasterWindow = {
+    ...common,
+    id: "policy-source-local-master-window",
+    path: "C:/pulse/materialized/policy-source-local-master-window.mp4",
+    source_url: localMasterPath,
+    evidence_reference: localMasterPath,
+    mediaStartS: 0,
+    durationS: 5,
+    materialized_file_evidence: {
+      sha256: "f".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 5,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const existingRecords = [watchUrlWindow, localMasterWindow].map((clip) => ({
+    asset_id: clip.id,
+    asset_type: "motion_clip",
+    kind: "video",
+    ...clip,
+    source_media_start_s: clip.mediaStartS,
+    source_window_duration_s: clip.durationS,
+    asset_sha256: clip.materialized_file_evidence.sha256,
+  }));
+
+  const result = reconcileMaterializedRightsRecords(
+    [watchUrlWindow, localMasterWindow],
+    {
+      verdict: "pass",
+      records: existingRecords,
+      assets: existingRecords,
+    },
+  );
+
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.records.length, 2);
+  assert.ok(result.records.every((record) => record.evidence_file === policyPath));
+  assert.ok(result.records.every((record) => record.evidence_sha256 === policySha256));
+  assert.ok(result.records.every((record) => record.rights_grant === true));
+});
+
 test("real motion rights reconciliation still rejects conflicting provenance for the same source window", () => {
   const sourceUrl = "https://cdn.example.com/official/ascend-to-zero-launch-trailer.mp4";
   const clip = {
@@ -3942,6 +4314,61 @@ test("real motion rights reconciliation still rejects conflicting provenance for
   assert.equal(result.failures.length, 1);
   assert.equal(result.failures[0].reason, "rights_evidence_contradiction");
   assert.match(result.failures[0].error, /validation_provenance/);
+});
+
+test("real motion rights reconciliation treats enabled platform aliases as equivalent", () => {
+  const clip = {
+    id: "platform-alias-window",
+    media_kind: "direct_video",
+    path: "C:/pulse/materialized/platform-alias-window.mp4",
+    source_url: "https://cdn.example.com/official/platform-alias-trailer.mp4",
+    source_owner: "Official Publisher",
+    source_type: "official_publisher_promotional_video",
+    licence_basis: "official_publisher_promotional_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube", "instagram", "facebook"],
+    commercial_use_allowed: true,
+    credit_required: true,
+    evidence_reference: "https://publisher.example/platform-alias-trailer",
+    risk_score: 0.2,
+    mediaStartS: 14,
+    durationS: 5,
+    materialized_file_evidence: {
+      sha256: "8".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 5,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const existingRecord = {
+    asset_id: clip.id,
+    asset_type: "motion_clip",
+    kind: "video",
+    ...clip,
+    allowed_platforms: [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+    ],
+    source_media_start_s: clip.mediaStartS,
+    source_window_duration_s: clip.durationS,
+    asset_sha256: clip.materialized_file_evidence.sha256,
+  };
+
+  const result = reconcileMaterializedRightsRecords([clip], {
+    verdict: "pass",
+    records: [existingRecord],
+    assets: [existingRecord],
+  });
+
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(result.records[0].allowed_platforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
 });
 
 test("real motion rights reconciliation upgrades a generic official row from strict same-window publisher evidence", () => {
@@ -6242,6 +6669,129 @@ test("real motion materializer completes a motion floor by merging governed exis
   assert.equal(preserved.validated, true);
   assert.equal(preserved.provenance.segment_validated, true);
   assert.equal(preserved.provenance.allowed_for_flash_lane, true);
+});
+
+test("real motion materializer excludes rejected existing clips during incremental replacement", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-incremental-exclusion-"));
+  const storyId = "black-flag-incremental-exclusion";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+
+  const existingClips = [];
+  for (let index = 0; index < 5; index += 1) {
+    const clipPath = path.join(
+      root,
+      "output",
+      "video_cache",
+      `${storyId}-existing-${index + 1}.mp4`,
+    );
+    const sourceUrl =
+      `https://video.akamai.steamstatic.com/store_trailers/2697940/source-${index + 1}.m3u8`;
+    await fs.outputFile(clipPath, Buffer.alloc(4096, index + 1));
+    existingClips.push({
+      id: `existing-motion-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: sourceUrl,
+      source_family: `existing_official_window_${index + 1}`,
+      base_source_family: `existing_official_source_${index + 1}`,
+      motion_family: `existing_official_window_${index + 1}`,
+      source_type: "steam_movie",
+      media_kind: "direct_video",
+      durationS: 5,
+      mediaStartS: 12 + index * 6,
+      rights_basis: "official_direct_media",
+      ...commercialEditorialRights(sourceUrl),
+      counts_towards_motion_readiness: true,
+      materialized: true,
+      validated: true,
+      segmentValidationPassed: true,
+      provenance: {
+        source: "official_trailer_segment_validation",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "gameplay_action_samples_passed",
+      },
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    readiness: {
+      status: "blocked",
+      blockers: ["visual_motion_repeat_repair_required"],
+    },
+    motion_inventory: {
+      accepted_local_clips: existingClips,
+      production_motion_clips: existingClips,
+      distinct_source_families: existingClips.map((clip) => clip.source_family),
+    },
+  });
+
+  const replacementSource =
+    "https://video.akamai.steamstatic.com/store_trailers/2697940/replacement.m3u8";
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["visual_motion_repeat_repair_required"],
+        actions: [{
+          action_id: "materialise_validated_real_motion_clips",
+          reason_codes: ["visual_motion_repeat_repair_required"],
+        }],
+      }],
+    },
+    segmentValidationReport: {
+      segments: [{
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "replacement_segment_samples_passed",
+        segment_motion_class: "gameplay_action",
+        source_url: replacementSource,
+        source_type: "steam_movie",
+        source_url_kind: "direct_video",
+        provider: "steam",
+        entity: "Assassin's Creed Black Flag",
+        source_family: "replacement_official_window",
+        media_start_s: 48,
+        duration_s: 5,
+        source_duration_s: 90,
+        rights_risk_class: "official_publisher_promotional_video",
+        allowed_render_use: "transformative_editorial_short_form",
+        ...commercialEditorialRights(replacementSource),
+      }],
+    },
+    generatedAt: "2026-07-19T21:15:00.000Z",
+    minClips: 5,
+    minFamilies: 5,
+    maxClips: 1,
+    excludedClipIds: ["existing-motion-2"],
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 29));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.jobs[0].repair_scope, "incremental_motion_completion");
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.clip_count, 5);
+  assert.equal(
+    materialised.clips.some((clip) => clip.id === "existing-motion-2"),
+    false,
+  );
+  assert.ok(
+    materialised.clips.some((clip) => clip.source_url === replacementSource),
+  );
 });
 
 test("real motion materializer recovers strict selector clips after a partial repair invalidates the footage inventory", async () => {
@@ -8748,6 +9298,7 @@ test("real motion materializer separates motion-window diversity from strict gen
       source_type: "official_steam_trailer_video",
       source_kind: "direct_video",
       provider: "steam",
+      evidence_reference: sharedUrl,
       source_family: `shared_trailer_window_${index + 1}`,
       base_source_family: "shared_trailer",
       mediaStartS: index * 6,
@@ -9094,4 +9645,337 @@ test("real motion materializer writes source acquisition work orders for blocked
   assert.equal(workOrder.jobs[2].repair_lane, "real_motion_depth_acquisition");
   assert.equal(workOrder.safety.no_publish_triggered, true);
   assert.equal(workOrder.safety.no_oauth_or_token_change, true);
+});
+
+test("real motion refresh trims planned windows from the hash-bound local source master", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-local-master-refresh-"));
+  const storyId = "black-flag-local-master-refresh";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Assassin's Creed IV Black Flag Resynced",
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    story_id: storyId,
+    verdict: "pass",
+    records: [],
+  });
+
+  const clips = [];
+  const sourceMasterPaths = [];
+  for (let sourceIndex = 0; sourceIndex < 5; sourceIndex += 1) {
+    const youtubeVideoId = `OfficialBlackFlag${sourceIndex + 1}`;
+    const canonicalSourceUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
+    const sourceMasterPath = path.join(
+      root,
+      "output",
+      "official-source-masters",
+      `${youtubeVideoId}.mp4`,
+    );
+    const sourceMasterBytes = Buffer.alloc(12288, sourceIndex + 71);
+    await fs.outputFile(sourceMasterPath, sourceMasterBytes);
+    sourceMasterPaths.push(sourceMasterPath);
+    const sourceMasterSha256 = crypto
+      .createHash("sha256")
+      .update(sourceMasterBytes)
+      .digest("hex");
+    const existingWindowCount = sourceIndex === 0 ? 1 : 2;
+    for (let windowIndex = 0; windowIndex < existingWindowCount; windowIndex += 1) {
+      const mediaStartS = 5 + windowIndex * 12;
+      const clipPath = path.join(
+        root,
+        "output",
+        "governed-segments",
+        `black-flag-source-${sourceIndex + 1}-window-${windowIndex + 1}.mp4`,
+      );
+      const clipBytes = Buffer.alloc(8192, sourceIndex + 81 + windowIndex * 9);
+      await fs.outputFile(clipPath, clipBytes);
+      const clipSha256 = crypto.createHash("sha256").update(clipBytes).digest("hex");
+      clips.push({
+        id: `black-flag-source-${sourceIndex + 1}-window-${windowIndex + 1}`,
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: canonicalSourceUrl,
+        canonical_source_url: canonicalSourceUrl,
+        youtube_video_id: youtubeVideoId,
+        source_master_path: sourceMasterPath,
+        source_master_sha256: sourceMasterSha256,
+        motion_source_identity: {
+          canonical_source_url: canonicalSourceUrl,
+          youtube_video_id: youtubeVideoId,
+          source_master_sha256: sourceMasterSha256,
+          source_identity_conflicts: [],
+        },
+        source_duration_s: 80,
+        source_family: `black_flag_source_${sourceIndex + 1}_window_${mediaStartS}`,
+        base_source_family: `youtube_${youtubeVideoId}`,
+        source_type: "official_publisher_gameplay_clip",
+        source_kind: "local_video_file",
+        media_kind: "direct_video",
+        durationS: 5,
+        mediaStartS,
+        licence_basis: "publisher_video_policy_transformative_editorial_use",
+        allowed_use: "transformative_editorial_short_form",
+        allowed_platforms: [...ENABLED_LIVE_PLATFORM_RIGHTS],
+        commercial_use_allowed: true,
+        credit_required: true,
+        evidence_reference: canonicalSourceUrl,
+        evidence_file: path.join(root, "rights", "publisher-video-policy.html"),
+        rights_evidence_file: path.join(root, "rights", "publisher-video-policy.html"),
+        evidence_sha256: "f".repeat(64),
+        rights_evidence_sha256: "f".repeat(64),
+        evidence_size_bytes: 4096,
+        rights_evidence_size_bytes: 4096,
+        rights_grant: true,
+        risk_score: 0.2,
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        validated: true,
+        segmentValidationPassed: true,
+        asset_sha256: clipSha256,
+        asset_size_bytes: clipBytes.length,
+        probed_duration_seconds: 5,
+        materialized_file_evidence: {
+          sha256: clipSha256,
+          size_bytes: clipBytes.length,
+          duration_seconds: 5,
+        },
+        provenance: {
+          source: "official_trailer_segment_validation",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          validation_reason: "official_gameplay_samples_passed",
+          base_source_family: `youtube_${youtubeVideoId}`,
+          source_duration_s: 80,
+        },
+      });
+    }
+  }
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: clips,
+      production_motion_clips: clips,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: storyId,
+    status: "ready",
+    clips,
+  });
+
+  const ffmpegInputs = [];
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        title: "Black Flag Resynced Crosses Three Million Sales",
+        artifact_dir: artifactDir,
+        status: "ready_for_final_render_job",
+        actions: [{ action_id: "run_visual_v4_production_render" }],
+      }],
+    },
+    storyIds: [storyId],
+    includeReadyStories: true,
+    minClips: 10,
+    minFamilies: 5,
+    maxClips: 10,
+    maxDirectClipsPerBaseSource: 2,
+    strictBaseSourceDiversity: true,
+    minBaseSources: 5,
+    refreshWindowPlan: {
+      story_id: storyId,
+      windows: [{
+        id: "black-flag-source-1-window-14",
+        source_clip_id: "black-flag-source-1-window-1",
+        source_family: "black_flag_source_1_window_14",
+        media_start_s: 14,
+        duration_s: 5,
+      }],
+    },
+    generatedAt: "2026-07-18T20:45:00.000Z",
+    execFileSync: (_bin, args) => {
+      const inputIndex = args.indexOf("-i");
+      if (inputIndex >= 0) ffmpegInputs.push(path.resolve(args[inputIndex + 1]));
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(8192, 91));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 5 : null),
+    materializedClipProbe: (filePath) => {
+      const isPortraitDerivative = path.resolve(filePath).startsWith(
+        path.join(root, "output", "video_cache") + path.sep,
+      );
+      return {
+        available: true,
+        decodable: true,
+        duration_seconds: 5,
+        video: {
+          codec: "h264",
+          width: isPortraitDerivative ? 1080 : 1920,
+          height: isPortraitDerivative ? 1920 : 1080,
+        },
+      };
+    },
+    materializedClipDecode: () => ({
+      available: true,
+      decodable: true,
+      full_clip: true,
+    }),
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  assert.deepEqual(ffmpegInputs, [path.resolve(sourceMasterPaths[0])]);
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  const refreshed = materialised.clips.find(
+    (clip) => clip.id === "black-flag-source-1-window-14",
+  );
+  assert.ok(refreshed);
+  assert.equal(refreshed.canonical_source_url, clips[0].canonical_source_url);
+  assert.equal(refreshed.youtube_video_id, clips[0].youtube_video_id);
+  assert.equal(refreshed.source_master_sha256, clips[0].source_master_sha256);
+  assert.equal(refreshed.mediaStartS, 14);
+  assert.equal(refreshed.durationS, 5);
+  assert.equal(refreshed.evidence_file, clips[0].evidence_file);
+  assert.equal(refreshed.rights_evidence_file, clips[0].rights_evidence_file);
+  assert.equal(refreshed.evidence_sha256, clips[0].evidence_sha256);
+  assert.equal(refreshed.rights_evidence_sha256, clips[0].rights_evidence_sha256);
+  assert.equal(refreshed.rights_grant, true);
+  const repairedExisting = materialised.clips.find(
+    (clip) => clip.id === "black-flag-source-2-window-1",
+  );
+  assert.equal(repairedExisting.materialized_file_evidence.video_codec, "h264");
+  assert.equal(repairedExisting.materialized_file_evidence.width, 1920);
+  assert.equal(repairedExisting.materialized_file_evidence.height, 1080);
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  const motionRights = rights.records.filter(
+    (record) => record.asset_type === "motion_clip",
+  );
+  assert.equal(motionRights.length, 10);
+  assert.deepEqual(
+    motionRights.map((record) => record.asset_id).sort(),
+    materialised.clips.map((clip) => clip.id).sort(),
+  );
+  assert.ok(
+    motionRights.every((record) => record.evidence_file === clips[0].evidence_file),
+    JSON.stringify(motionRights, null, 2),
+  );
+  assert.ok(
+    motionRights.every((record) => record.evidence_sha256 === clips[0].evidence_sha256),
+    JSON.stringify(motionRights, null, 2),
+  );
+  assert.ok(
+    motionRights.every((record) => record.rights_grant === true),
+    JSON.stringify(motionRights, null, 2),
+  );
+});
+
+test("real motion materializer re-evaluates hash-bound clips invalidated only by a rights contradiction", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-real-motion-rights-recovery-"),
+  );
+  const storyId = "rights-recovery-after-code-fix";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Black Flag Resynced",
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    story_id: storyId,
+    verdict: "pass",
+    records: [],
+  });
+
+  const clips = await Promise.all(
+    Array.from({ length: 5 }, (_, index) =>
+      makeGovernedSelectorClip(root, storyId, index),
+    ),
+  );
+  const invalidatedClips = clips.map((clip) => ({
+    ...clip,
+    counts_towards_motion_readiness: false,
+  }));
+  const blockers = ["rights_evidence_contradiction"];
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: storyId,
+    status: "blocked",
+    ready: false,
+    motion_ready: false,
+    blockers,
+    readiness: {
+      status: "v4_motion_blocked",
+      ready: false,
+      motion_ready: false,
+      can_publish: false,
+      blockers,
+    },
+    clips: invalidatedClips,
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    status: "blocked",
+    ready: false,
+    motion_ready: false,
+    readiness: {
+      status: "v4_motion_blocked",
+      ready: false,
+      motion_ready: false,
+      can_publish: false,
+      blockers,
+    },
+    motion_inventory: {
+      status: "blocked",
+      ready: false,
+      motion_ready: false,
+      accepted_local_clips: invalidatedClips,
+      production_motion_clips: invalidatedClips,
+    },
+  });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        title: "Black Flag Resynced Crosses Three Million Sales",
+        artifact_dir: artifactDir,
+        status: "ready_for_final_render_job",
+        actions: [{ action_id: "run_visual_v4_production_render" }],
+      }],
+    },
+    storyIds: [storyId],
+    includeReadyStories: true,
+    minClips: 5,
+    minFamilies: 5,
+    maxClips: 5,
+    minBaseSources: 5,
+    strictBaseSourceDiversity: true,
+    generatedAt: "2026-07-19T06:30:00.000Z",
+    clipVisualFingerprint: async (clip) => clip.id,
+  });
+
+  assert.equal(
+    report.summary.materialized_story_count,
+    1,
+    JSON.stringify(report.jobs[0]),
+  );
+  const materialised = await fs.readJson(
+    path.join(artifactDir, "materialised_motion_clips.json"),
+  );
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 5);
+  assert.ok(
+    materialised.clips.every(
+      (clip) => clip.counts_towards_motion_readiness === true,
+    ),
+  );
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(rights.verdict, "pass");
+  assert.equal(
+    rights.records.filter((record) => record.asset_type === "motion_clip").length,
+    5,
+  );
 });

@@ -200,6 +200,79 @@ test("video temporal QA CLI remains non-publishable when decoded cadence fails",
   assert.strictEqual(result.report.can_publish, false);
 });
 
+test("video temporal QA CLI reports the exact decoded local-stall window", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-temporal-local-stall-"));
+  const mp4Path = path.join(root, "final.mp4");
+  const outDir = path.join(root, "proof");
+  await fs.outputFile(mp4Path, Buffer.from("locally-stalled-media-fixture"));
+
+  const result = await runCli(
+    [
+      "node",
+      "tools/video-temporal-qa.js",
+      "--mp4",
+      mp4Path,
+      "--story-id",
+      "black-flag",
+      "--out-dir",
+      outDir,
+    ],
+    {
+      runVideoQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+        evidence: {
+          decode: {
+            complete: true,
+            video_stream: true,
+            audio_stream: true,
+          },
+          temporal: {
+            analysis_scope: "full_frame",
+            scan_complete: true,
+            coverage_ratio: 1,
+            sampled_frame_count: 350,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: {
+              choppy: false,
+              local_stall_detected: true,
+              local_stall_start_seconds: 50.333,
+              local_stall_end_seconds: 53.333,
+            },
+            supplemental_center_crop: {
+              analysis_scope: "center_crop",
+              scan_complete: true,
+              coverage_ratio: 1,
+              sampled_frame_count: 350,
+              repeated_motion_sequences: [],
+              repeated_motion_seconds: 0,
+              cadence: {
+                choppy: false,
+                local_stall_detected: true,
+                local_stall_start_seconds: 50.333,
+                local_stall_end_seconds: 53.333,
+              },
+            },
+          },
+        },
+      }),
+      stdout: { write() {} },
+    },
+  );
+
+  assert.strictEqual(result.exitCode, 2);
+  assert.strictEqual(result.report.verdict, "RED");
+  assert.ok(
+    result.report.blockers.includes("temporal_video_qa_local_stall_detected"),
+  );
+  assert.match(
+    await fs.readFile(path.join(outDir, "temporal_video_qa_report.md"), "utf8"),
+    /Local visual stall: YES \(50\.33-53\.33s\)/,
+  );
+});
+
 test("video temporal QA CLI cannot emit GREEN from crop-incomplete temporal proof", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-temporal-qa-scope-red-"));
   const mp4Path = path.join(root, "final.mp4");

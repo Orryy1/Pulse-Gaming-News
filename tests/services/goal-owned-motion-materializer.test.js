@@ -702,9 +702,28 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
     primary_source: "Xbox Wire",
     source_card_label: "Xbox Wire",
   });
+  const staleSharedCardPath = path.join(
+    root,
+    "test",
+    "output",
+    "hf_source_card_readable-package.mp4",
+  );
+  await fs.outputFile(staleSharedCardPath, Buffer.alloc(4096, 23));
   await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
     story_id: "readable-package",
-    motion_inventory: { accepted_local_clips: [] },
+    motion_inventory: {
+      accepted_local_clips: [{
+        id: "hyperframes_premium_shell_source_legacy",
+        path: staleSharedCardPath,
+        source_url: "local://hyperframes/readable-package/source",
+        source_type: "hyperframes_premium_shell_card",
+        source_family: "hyperframes_source_card",
+        motion_family: "hyperframes_source_card",
+        media_kind: "owned_editorial_motion_graphic",
+        rights_basis: "official_direct_media",
+        counts_towards_motion_readiness: true,
+      }],
+    },
   });
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { records: [] });
 
@@ -735,12 +754,29 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
 
   assert.equal(report.summary.materialized_clip_count, 17);
   assert.equal(calls.length, 17);
+  const packageMotionDir = path.join(artifactDir, "owned-motion", "generated");
+  assert.ok(
+    report.stories[0].materialized.every((result) =>
+      path.resolve(result.path).startsWith(`${path.resolve(packageMotionDir)}${path.sep}`),
+    ),
+  );
+  assert.ok(
+    report.stories[0].materialized.every((result) =>
+      !path.resolve(result.path).startsWith(
+        `${path.resolve(root, "output", "generated-motion")}${path.sep}`,
+      ),
+    ),
+  );
   const durations = calls.map((call) => call.args[call.args.indexOf("-t") + 1]);
   assert.equal(durations.filter((duration) => duration === "12.00").length, 4);
   assert.equal(durations.filter((duration) => Number(duration) <= 6).length, 13);
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
   assert.equal(materialised.clip_count, 17);
+  assert.equal(
+    materialised.clips.some((clip) => clip.id === "hyperframes_premium_shell_source_legacy"),
+    false,
+  );
   assert.equal(
     materialised.clips
       .filter((clip) => clip.generator_design_role === "primary_procedural_motion")
@@ -1010,7 +1046,21 @@ test("owned motion materializer preserves existing official direct-video clips w
     direct_video_motion_asset_count: directClips.length,
     direct_video_motion_family_count: directClips.length,
   });
-  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { records: [] });
+  const directRightsRecords = directClips.map((clip) => ({
+    asset_id: clip.id,
+    path: clip.path,
+    source_url: clip.source_url,
+    source_type: clip.source_type,
+    licence_basis: "official_promotional_media_transformative_editorial_use",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    commercial_use_allowed: true,
+    approval_status: "approved_for_transformative_editorial_use",
+  }));
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    records: [],
+    rights_ledger: directRightsRecords,
+    assets: directRightsRecords,
+  });
 
   const calls = [];
   const report = await materializeGoalOwnedMotionClips({
@@ -1062,6 +1112,10 @@ test("owned motion materializer preserves existing official direct-video clips w
   const ownedManifest = await fs.readJson(path.join(artifactDir, "owned_motion_manifest.json"));
   assert.equal(ownedManifest.summary.asset_count, 17);
   assert.equal(ownedManifest.assets.every((asset) => asset.source_type === "internally_generated_motion_graphic"), true);
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.ok(directClips.every((clip) =>
+    rights.records.some((record) => record.asset_id === clip.id),
+  ));
 });
 
 test("owned motion materializer preserves stale-count validated official game website direct clips", async () => {

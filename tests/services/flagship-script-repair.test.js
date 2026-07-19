@@ -168,7 +168,15 @@ test("flagship script repair invalidates stale media and writes a local audio wo
         word_timestamps_sha256: "b".repeat(64),
         word_timestamps_size_bytes: 2,
       },
-      actions: [],
+      force_final_render: true,
+      actions: [{
+        action_id: "run_visual_v4_production_render",
+        status: "ready_after_inputs",
+        output_expectations: [],
+        target_render_manifest: {
+          renderer: "visual_v4_production",
+        },
+      }],
     }],
   }));
 
@@ -210,6 +218,26 @@ test("flagship script repair invalidates stale media and writes a local audio wo
   ]);
   assert.equal(workOrder.jobs[0].evidence.narration_ready, false);
   assert.equal(workOrder.jobs[0].evidence.narration_audio_sha256, undefined);
+  assert.deepEqual(
+    workOrder.jobs[0].actions[0].output_expectations,
+    [
+      "final_publish_render=true",
+      "visual_tier=production_v4_motion",
+    ],
+  );
+  assert.equal(
+    workOrder.jobs[0].actions[0].target_render_manifest.final_publish_render,
+    true,
+  );
+  assert.equal(
+    workOrder.jobs[0].actions[0].target_render_manifest.visual_tier,
+    "production_v4_motion",
+  );
+  assert.equal(workOrder.jobs[0].target_render_manifest.final_publish_render, true);
+  assert.equal(
+    workOrder.jobs[0].target_render_manifest.visual_tier,
+    "production_v4_motion",
+  );
   assert.equal(workbench.jobs[0].status, "requires_audio_timestamp_generation");
   assert.equal(workbench.jobs[0].artifact_dir, artifactDir);
   assert.equal(result.report.status, "READY_FOR_LOCAL_AUDIO_REGENERATION");

@@ -242,7 +242,7 @@ test("Black Flag Resynced stays one continuous spoken title", () => {
     applyGamingPronunciation(
       "Nine day one DLC packs for Assassin's Creed Black Flag Resynced cost more than the game.",
     ),
-    "Nine day one DLC packs for Assassin's Creed Black Flag reesynced cost more than the game.",
+    "Nine day one DLC packs for Assassin's Creed Black Flag re synced cost more than the game.",
   );
 });
 

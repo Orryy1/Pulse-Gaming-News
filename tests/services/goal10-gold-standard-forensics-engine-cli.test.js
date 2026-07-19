@@ -33,6 +33,8 @@ function referenceLibraryFixture() {
 
 async function makeStory(root, storyId) {
   const artifactDir = path.join(root, storyId);
+  const route = `/p/${storyId}`;
+  const platforms = ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"];
   await fs.ensureDir(artifactDir);
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: storyId,
@@ -93,9 +95,44 @@ async function makeStory(root, storyId) {
     platform_native_evidence: { verdict: "pass" },
   });
   await fs.outputJson(path.join(artifactDir, "affiliate_link_manifest.json"), {
-    disclosure_required: true,
-    landing_page_route: "/p/story",
-    landing_page_attribution: { link_tracking: [{ platform: "youtube" }] },
+    story_id: storyId,
+    vertical: "gaming",
+    commercial_intent_type: "no_safe_commercial_intent",
+    no_direct_offer_reason: "story_does_not_naturally_support_affiliate",
+    primary_link: null,
+    fallback_links: [],
+    candidate_links: [],
+    offers: [],
+    disclosure_required: false,
+    affiliate_tracking_map: {
+      story_id: storyId,
+      primary_offer_id: null,
+      story_page: null,
+      platforms: {},
+      fallback_offer_ids: [],
+    },
+    landing_page_route: route,
+    landing_page_attribution: {
+      verdict: "pass",
+      platforms: Object.fromEntries(platforms.map((platform) => [
+        platform,
+        {
+          tracking_key: `${storyId}:${platform}:story_page`,
+          landing_page_url: `${route}?utm_source=${platform}&utm_medium=social&utm_campaign=${storyId}`,
+          offer_tracking_url: null,
+          disclosure_required: false,
+        },
+      ])),
+      link_tracking: platforms.map((platform) => ({
+        platform,
+        offer_id: null,
+        tracking_key: `${storyId}:${platform}:story_page`,
+        landing_page_url: `${route}?utm_source=${platform}&utm_medium=social&utm_campaign=${storyId}`,
+        offer_tracking_url: null,
+        disclosure_required: false,
+      })),
+      safety: { source_first_story_page: true },
+    },
   });
   return { story_id: storyId, artifact_dir: artifactDir };
 }

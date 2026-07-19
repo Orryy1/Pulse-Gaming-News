@@ -53,6 +53,35 @@ test("V5 direct-motion selector preserves clean detailed gameplay", () => {
   assert.equal(report.metrics.text_heavy_sample_count, 0);
 });
 
+test("V5 direct-motion selector fails closed when a decoded sample could not be analysed", () => {
+  const report = scoreDirectMotionVisualSamples([
+    {
+      width: 540,
+      height: 960,
+      aspect_ratio: 0.5625,
+      edge_density: 0.24,
+      text_overlay_likelihood: 0,
+      trailer_frame_taste: {
+        verdict: "pass",
+        tags: ["detail_rich", "gameplay_candidate"],
+      },
+    },
+    {
+      width: null,
+      height: null,
+      edge_density: null,
+      text_overlay_likelihood: null,
+      trailer_frame_taste: null,
+      error: "sharp_decode:Input file is missing",
+      border_error: "border_scan:Input file is missing",
+    },
+  ]);
+
+  assert.equal(report.eligible, false);
+  assert.ok(report.reasons.includes("direct_motion_visual_analysis_failed"));
+  assert.equal(report.metrics.analysis_error_sample_count, 1);
+});
+
 test("V5 direct-motion selector rejects sustained dark low-information source intervals", () => {
   const report = scoreDirectMotionVisualSamples([
     {
@@ -90,6 +119,48 @@ test("V5 direct-motion selector rejects sustained dark low-information source in
   assert.equal(report.eligible, false);
   assert.ok(report.reasons.includes("direct_motion_dark_low_information_risk"));
   assert.equal(report.metrics.dark_low_information_sample_count, 2);
+});
+
+test("V5 direct-motion selector rejects sustained colourful but empty portrait crops", () => {
+  const emptySeaFrames = Array.from({ length: 7 }, () => ({
+    width: 540,
+    height: 960,
+    aspect_ratio: 0.5625,
+    dark_pixel_ratio: 0.12,
+    central_dark_pixel_ratio: 0.1,
+    bright_pixel_ratio: 0.08,
+    edge_density: 0.04,
+    saturation_mean: 0.72,
+    text_overlay_likelihood: 0,
+    trailer_frame_taste: { verdict: "pass", tags: ["colourful"] },
+  }));
+  const detailedGameplay = {
+    width: 540,
+    height: 960,
+    aspect_ratio: 0.5625,
+    dark_pixel_ratio: 0.16,
+    central_dark_pixel_ratio: 0.12,
+    bright_pixel_ratio: 0.14,
+    edge_density: 0.24,
+    saturation_mean: 0.58,
+    text_overlay_likelihood: 0,
+    trailer_frame_taste: {
+      verdict: "pass",
+      tags: ["detail_rich", "colourful", "gameplay_candidate"],
+    },
+  };
+
+  const report = scoreDirectMotionVisualSamples([
+    ...emptySeaFrames,
+    detailedGameplay,
+  ]);
+
+  assert.equal(report.eligible, false);
+  assert.ok(
+    report.reasons.includes("direct_motion_portrait_low_information_risk"),
+  );
+  assert.equal(report.metrics.portrait_low_information_sample_count, 7);
+  assert.equal(report.metrics.longest_portrait_low_information_run, 7);
 });
 
 test("V5 direct-motion selector rejects portrait-cropped embedded text without banning gameplay HUD", () => {
@@ -399,6 +470,195 @@ test("V5 direct-motion filter preserves exact clip and source identity in repair
       source_master_sha256: clip.source_master_sha256,
     },
   );
+});
+
+test("V5 direct-motion filter repairs footer-only overlays and rechecks the derivative", async () => {
+  const clip = {
+    id: "official-gameplay-window-footer",
+    path: "C:\\clips\\official-gameplay-window-footer.mp4",
+    source_url: "https://www.youtube.com/watch?v=footer42",
+    source_family: "official_gameplay_window_footer",
+    base_source_family: "youtube:footer42",
+    source_master_sha256: "a".repeat(64),
+  };
+  const repairedClip = {
+    ...clip,
+    path: "C:\\repairs\\official-gameplay-window-footer.footer-crop.mp4",
+    local_materialized_path:
+      "C:\\repairs\\official-gameplay-window-footer.footer-crop.mp4",
+    asset_sha256: "b".repeat(64),
+    visual_repair: {
+      kind: "crop_legal_footer_bottom_10_percent",
+      source_path: clip.path,
+    },
+  };
+  const inspectedPaths = [];
+  const report = await filterPremiumDirectMotionClips([clip], {
+    outputDir: path.join(os.tmpdir(), "pulse-direct-motion-selector-v5-footer-repair-test"),
+    inspectClip: async (candidate) => {
+      inspectedPaths.push(candidate.path);
+      if (candidate.path === clip.path) {
+        return {
+          path: candidate.path,
+          eligible: false,
+          reasons: ["direct_motion_frame_taste_failed"],
+          samples: [
+            {
+              trailer_frame_taste: {
+                verdict: "fail",
+                reason: "lower_band_text_overlay",
+                tags: ["detail_rich", "lower_band_text_overlay"],
+              },
+            },
+          ],
+          metrics: {
+            decoded_sample_count: 20,
+            failed_taste_sample_count: 1,
+          },
+        };
+      }
+      return {
+        path: candidate.path,
+        eligible: true,
+        reasons: [],
+        samples: [
+          {
+            trailer_frame_taste: {
+              verdict: "pass",
+              reason: "taste_passed",
+              tags: ["detail_rich", "gameplay_candidate"],
+            },
+          },
+        ],
+        metrics: {
+          decoded_sample_count: 20,
+          failed_taste_sample_count: 0,
+        },
+      };
+    },
+    repairClip: async (candidate, repairContext) => {
+      assert.equal(candidate.path, clip.path);
+      assert.equal(repairContext.repair_kind, "crop_legal_footer_bottom_10_percent");
+      return repairedClip;
+    },
+  });
+
+  assert.deepEqual(inspectedPaths, [clip.path, repairedClip.path]);
+  assert.equal(report.accepted.length, 1);
+  assert.equal(report.rejected.length, 0);
+  assert.equal(report.clips[0].path, repairedClip.path);
+  assert.equal(report.accepted[0].path, repairedClip.path);
+  assert.equal(report.accepted[0].visual_repair.status, "pass");
+  assert.equal(
+    report.accepted[0].visual_repair.kind,
+    "crop_legal_footer_bottom_10_percent",
+  );
+  assert.equal(report.repairs.length, 1);
+  assert.equal(report.repairs[0].status, "pass");
+});
+
+test("V5 direct-motion filter reports a failed derivative inspection even when materialisation succeeded", async () => {
+  const clip = {
+    id: "official-gameplay-window-footer-still-bad",
+    path: "C:\\clips\\official-gameplay-window-footer-still-bad.mp4",
+    source_url: "https://www.youtube.com/watch?v=footer-bad",
+    source_family: "official_gameplay_window_footer_still_bad",
+    base_source_family: "youtube:footer-bad",
+    source_master_sha256: "a".repeat(64),
+  };
+  const repairedClip = {
+    ...clip,
+    path: "C:\\repairs\\official-gameplay-window-footer-still-bad.footer-crop.mp4",
+    local_materialized_path:
+      "C:\\repairs\\official-gameplay-window-footer-still-bad.footer-crop.mp4",
+    asset_sha256: "b".repeat(64),
+    visual_repair: {
+      status: "pass",
+      kind: "crop_legal_footer_bottom_10_percent",
+      source_path: clip.path,
+    },
+  };
+  const report = await filterPremiumDirectMotionClips([clip], {
+    outputDir: path.join(
+      os.tmpdir(),
+      "pulse-direct-motion-selector-v5-footer-repair-failed-test",
+    ),
+    inspectClip: async (candidate) => ({
+      path: candidate.path,
+      eligible: false,
+      reasons: ["direct_motion_frame_taste_failed"],
+      samples: [
+        {
+          trailer_frame_taste: {
+            verdict: "fail",
+            reason: "lower_band_text_overlay",
+            tags: ["detail_rich", "lower_band_text_overlay"],
+          },
+        },
+      ],
+      metrics: {
+        decoded_sample_count: 20,
+        failed_taste_sample_count: 1,
+      },
+    }),
+    repairClip: async () => repairedClip,
+  });
+
+  assert.equal(report.accepted.length, 0);
+  assert.equal(report.rejected.length, 1);
+  assert.equal(report.repairs.length, 1);
+  assert.equal(report.repairs[0].status, "failed");
+  assert.equal(report.rejected[0].visual_repair.status, "failed");
+  assert.deepEqual(report.repairs[0].post_repair_reasons, [
+    "direct_motion_frame_taste_failed",
+  ]);
+});
+
+test("V5 direct-motion filter never auto-crops unrelated visual failures", async () => {
+  const clip = {
+    id: "official-gameplay-dark-window",
+    path: "C:\\clips\\official-gameplay-dark-window.mp4",
+    source_url: "https://www.youtube.com/watch?v=dark42",
+    source_master_sha256: "c".repeat(64),
+  };
+  let repairCalls = 0;
+  const report = await filterPremiumDirectMotionClips([clip], {
+    outputDir: path.join(os.tmpdir(), "pulse-direct-motion-selector-v5-no-repair-test"),
+    inspectClip: async () => ({
+      path: clip.path,
+      eligible: false,
+      reasons: [
+        "direct_motion_frame_taste_failed",
+        "direct_motion_dark_low_information_risk",
+      ],
+      samples: [
+        {
+          trailer_frame_taste: {
+            verdict: "fail",
+            reason: "dark_low_information_frame",
+            tags: ["dark_low_information"],
+          },
+        },
+      ],
+      metrics: {
+        decoded_sample_count: 20,
+        failed_taste_sample_count: 1,
+      },
+    }),
+    repairClip: async () => {
+      repairCalls += 1;
+      return clip;
+    },
+  });
+
+  assert.equal(repairCalls, 0);
+  assert.equal(report.accepted.length, 0);
+  assert.equal(report.rejected.length, 1);
+  assert.equal(report.repairs.length, 0);
+  assert.deepEqual(report.rejected[0].reasons, [
+    "direct_motion_frame_taste_failed",
+    "direct_motion_dark_low_information_risk",
+  ]);
 });
 
 test("V5 ultimate selector fails when decoded-frame rejections concentrate the surviving source pool", async () => {

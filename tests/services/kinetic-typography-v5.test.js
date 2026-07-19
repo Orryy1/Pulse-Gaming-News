@@ -261,3 +261,75 @@ test("V5 caption cadence rejects a dangling function word even when dwell is suf
   assert.equal(report.status, "fail");
   assert.ok(report.blockers.includes("caption_dangling_function_word_tail"));
 });
+
+test("V5 kinetic typography reflows a connector into two readable following phrases", () => {
+  const scriptText =
+    "Sales still do not prove long-term retention, and these figures come from Ubisoft.";
+  const words = [
+    ["Sales", 0, 0.36],
+    ["still", 0.36, 0.8],
+    ["do", 0.8, 1],
+    ["not", 1.047, 1.187],
+    ["prove", 1.187, 1.467],
+    ["long-term", 1.467, 2.007],
+    ["retention,", 2.007, 2.327],
+    ["and", 2.947, 3.087],
+    ["these", 3.134, 3.314],
+    ["figures", 3.314, 3.694],
+    ["come", 3.694, 4.014],
+    ["from", 4.014, 4.214],
+    ["Ubisoft.", 4.214, 4.454],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const ass = buildPremiumKineticAss({
+    story: { title: "Black Flag Sold 3 Million" },
+    words,
+    duration: 5,
+    scriptText,
+  });
+  const report = inspectPremiumCaptionCadence(ass);
+
+  assert.equal(report.status, "pass", JSON.stringify(report, null, 2));
+  assert.equal(
+    report.captions.some((caption) => caption.text === "LONG-TERM RETENTION, AND"),
+    false,
+  );
+  assert.ok(report.captions.some((caption) => caption.text === "AND THESE FIGURES"));
+  assert.ok(report.captions.some((caption) => caption.text === "COME FROM UBISOFT."));
+});
+
+test("V5 kinetic typography repairs a multi-word phrase below the premium dwell floor", () => {
+  const scriptText =
+    "But the second-wave million suggests the game did more than cash in on its name.";
+  const words = [
+    ["But", 0, 0.08],
+    ["the", 0.08, 0.2],
+    ["second-wave", 0.2, 0.747],
+    ["million", 0.747, 1.027],
+    ["suggests", 1.027, 1.407],
+    ["the", 1.407, 1.767],
+    ["game", 1.767, 1.987],
+    ["did", 1.987, 2.207],
+    ["more", 2.254, 2.494],
+    ["than", 2.494, 2.674],
+    ["cash", 2.674, 2.894],
+    ["in", 2.894, 3.234],
+    ["on", 3.234, 3.354],
+    ["its", 3.354, 3.474],
+    ["name.", 3.474, 3.754],
+  ].map(([word, start, end]) => ({ word, start, end }));
+  const ass = buildPremiumKineticAss({
+    story: { title: "Black Flag Sold 3 Million" },
+    words,
+    duration: 4.2,
+    scriptText,
+  });
+  const report = inspectPremiumCaptionCadence(ass);
+
+  assert.equal(report.status, "pass", JSON.stringify(report, null, 2));
+  assert.equal(
+    report.metrics.minimum_caption_dwell_s >= KINETIC_TYPOGRAPHY_V5.min_phrase_duration_s,
+    true,
+  );
+  assert.ok(report.captions.some((caption) => caption.text === "SUGGESTS THE GAME"));
+  assert.ok(report.captions.some((caption) => caption.text === "DID MORE THAN CASH"));
+});

@@ -117,6 +117,26 @@ function reconcileVerdict(qa = {}) {
 function formatMarkdown(report = {}) {
   const temporal = report.evidence?.temporal || {};
   const cadence = temporal.cadence || {};
+  const centerCadence = temporal.supplemental_center_crop?.cadence || {};
+  const localStall =
+    cadence.local_stall_detected === true ||
+    centerCadence.local_stall_detected === true;
+  const localStallStart = Number(
+    cadence.local_stall_detected === true
+      ? cadence.local_stall_start_seconds
+      : centerCadence.local_stall_start_seconds,
+  );
+  const localStallEnd = Number(
+    cadence.local_stall_detected === true
+      ? cadence.local_stall_end_seconds
+      : centerCadence.local_stall_end_seconds,
+  );
+  const localStallWindow =
+    localStall &&
+    Number.isFinite(localStallStart) &&
+    Number.isFinite(localStallEnd)
+      ? ` (${localStallStart.toFixed(2)}-${localStallEnd.toFixed(2)}s)`
+      : "";
   return [
     "# Temporal Video QA",
     "",
@@ -129,6 +149,7 @@ function formatMarkdown(report = {}) {
     `- Temporal coverage: ${temporal.coverage_ratio ?? 0}`,
     `- Repeated motion sequences: ${temporal.repeated_motion_sequences?.length ?? "missing"}`,
     `- Choppy cadence: ${cadence.choppy === true ? "YES" : cadence.choppy === false ? "NO" : "UNKNOWN"}`,
+    `- Local visual stall: ${localStall ? "YES" : "NO"}${localStallWindow}`,
     `- Blockers: ${report.blockers?.length ? report.blockers.join(", ") : "none"}`,
     `- Warnings: ${report.warnings?.length ? report.warnings.join(", ") : "none"}`,
     "",

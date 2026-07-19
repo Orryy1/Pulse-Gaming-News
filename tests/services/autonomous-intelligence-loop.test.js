@@ -3331,8 +3331,8 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
     assert.equal(storyCardCall.args[storyCardCall.args.indexOf("--story-id") + 1], "fresh_xbox_story");
     assert.equal(
       storyCardCall.timeoutMs,
-      180000,
-      "fresh refill HyperFrames card generation must use a bounded per-story timeout so one card build cannot stall the refill worker",
+      360000,
+      "fresh refill HyperFrames card generation must use the realistic bounded per-story timeout so one card build cannot stall the refill worker",
     );
     assert.match(
       storyCardCall.args[storyCardCall.args.indexOf("--story-file") + 1],

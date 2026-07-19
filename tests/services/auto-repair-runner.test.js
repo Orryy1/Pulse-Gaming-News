@@ -99,6 +99,66 @@ test("auto repair runner builds a lane-filtered dry-run plan with safety classif
   assert.match(runPlan.items[0].validation_command, /next-publish-candidates/);
 });
 
+test("auto repair runner executes identical story repair commands only once", () => {
+  const command =
+    "npm run ops:goal-audio-timestamps -- --story-id story-1 --work-order output/work-order.json --out-dir output/audio-proof --json";
+  const runPlan = buildAutoRepairRunPlan({
+    schema_version: 1,
+    generated_at: "2026-07-18T21:00:00.000Z",
+    mode: "LOCAL_AUTO_REPAIR_PLAN",
+    items: [
+      {
+        story_id: "story-1",
+        title: "One Story",
+        repair_lane: "final_narration_and_word_timestamp_repair",
+        blocker_type: "generate_final_narration_audio_and_word_timestamps",
+        recommended_command: command,
+        expected_output: ["output/audio/story-1.mp3"],
+        auto_repairable: true,
+      },
+      {
+        story_id: "story-1",
+        title: "One Story",
+        repair_lane: "caption_file_repair",
+        blocker_type: "generate_caption_file",
+        recommended_command: command,
+        expected_output: ["output/audio/story-1_timestamps.json"],
+        auto_repairable: true,
+      },
+      {
+        story_id: "story-1",
+        title: "One Story",
+        repair_lane: "audio_manifest_repair",
+        blocker_type: "repair_audio_manifest",
+        recommended_command: command,
+        required_artefact_path: "output/proof/story-1/audio_manifest.json",
+        auto_repairable: true,
+      },
+    ],
+  });
+
+  assert.equal(runPlan.summary.source_auto_repairable_items, 3);
+  assert.equal(runPlan.summary.selected_items, 1);
+  assert.equal(runPlan.summary.duplicate_commands_collapsed, 2);
+  assert.deepEqual(runPlan.items[0].covered_repair_lanes, [
+    "final_narration_and_word_timestamp_repair",
+    "caption_file_repair",
+    "audio_manifest_repair",
+  ]);
+  assert.deepEqual(runPlan.items[0].covered_blocker_types, [
+    "generate_final_narration_audio_and_word_timestamps",
+    "generate_caption_file",
+    "repair_audio_manifest",
+  ]);
+  assert.deepEqual(runPlan.items[0].expected_output, [
+    "output/audio/story-1.mp3",
+    "output/audio/story-1_timestamps.json",
+  ]);
+  assert.deepEqual(runPlan.items[0].required_artefact_paths, [
+    "output/proof/story-1/audio_manifest.json",
+  ]);
+});
+
 test("auto repair runner accepts publish-unblock repair orchestration output", () => {
   const runPlan = buildAutoRepairRunPlan({
     schema_version: 1,

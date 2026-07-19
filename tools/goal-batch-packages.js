@@ -55,6 +55,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     zeroYieldQuarantineFile: "",
     includePublished: false,
     allowOwnedMotionFallback: false,
+    targetPlatforms: null,
     json: false,
     help: false,
   };
@@ -88,6 +89,12 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--db-stories") args.dbStories = true;
     else if (arg === "--include-published") args.includePublished = true;
     else if (arg === "--allow-owned-motion-fallback") args.allowOwnedMotionFallback = true;
+    else if (arg === "--platforms") {
+      args.targetPlatforms = String(argv[++i] || "")
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+    }
     else if (arg === "--story-id" || arg === "--story" || arg === "--story-ids") {
       args.storyIds.push(...normaliseStoryIds(argv[++i] || ""));
     }
@@ -142,6 +149,7 @@ function usage() {
     "                              Load durable rolling story/source exclusions from JSON",
     "  --allow-owned-motion-fallback",
     "                              Use governed owned source-card motion when direct footage is unavailable",
+    "  --platforms <csv>          Rights gate scope for explicitly enabled publish platforms",
     "  --json",
   ].join("\n");
 }
@@ -1003,6 +1011,7 @@ async function main(argv = process.argv.slice(2)) {
     videoCacheDir: path.resolve(args.videoCacheDir),
     existingArtifactRoot: path.resolve(args.existingArtifactRoot || args.outDir),
     allowOwnedMotionFallback: args.allowOwnedMotionFallback,
+    targetPlatforms: args.targetPlatforms,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const outputs = await writeGoalBatchPackages(batch, {

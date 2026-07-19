@@ -126,6 +126,28 @@ async function materialiseRightsFixture(artifactDir, ledger = {}) {
   return ledger;
 }
 
+async function rendererSelectedInputFixture({
+  artifactDir,
+  assetId,
+  kind,
+  declaredPath,
+}) {
+  const assetPath = path.isAbsolute(declaredPath)
+    ? declaredPath
+    : path.resolve(artifactDir, declaredPath);
+  if (!(await fs.pathExists(assetPath))) {
+    await fs.outputFile(assetPath, Buffer.from(`renderer-selected:${assetId}`));
+  }
+  const bytes = await fs.readFile(assetPath);
+  return {
+    asset_id: assetId,
+    kind,
+    path: declaredPath,
+    asset_sha256: sha256(bytes),
+    asset_size_bytes: bytes.length,
+  };
+}
+
 async function extractSampledFrameHashes(finalMp4Path, sampleTimes) {
   const frames = [];
   for (const timeSeconds of sampleTimes) {
@@ -290,6 +312,20 @@ async function makeControlStory(root, storyId, overrides = {}) {
     await materialiseRightsFixture(artifactDir, rightsLedger);
   }
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), rightsLedger);
+  const rendererSelectedAssets = await Promise.all([
+    ...usedMotion.map((clip, index) => rendererSelectedInputFixture({
+      artifactDir,
+      assetId: clip.asset_id || clip.id || clip.clip_id || `motion-${index + 1}`,
+      kind: "video",
+      declaredPath: clip.path || clip.local_path || `motion/motion-${index + 1}.mp4`,
+    })),
+    rendererSelectedInputFixture({
+      artifactDir,
+      assetId: `${storyId}_audio_path`,
+      kind: "narration",
+      declaredPath: narrationPath,
+    }),
+  ]);
   await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), overrides.directorPlan || {
     readiness: { status: "ready", blockers: [] },
     shot_plan: [{ id: "hook", kind: "motion_clip" }],
@@ -314,6 +350,15 @@ async function makeControlStory(root, storyId, overrides = {}) {
       audio: narrationBytes,
       timestamps: timestampBytes,
     }),
+    selected_input_assets: {
+      schema_version: 2,
+      authoritative: true,
+      complete: true,
+      producer_id: "pulse-gaming-studio-v4-renderer",
+      asset_count: rendererSelectedAssets.length,
+      assets: rendererSelectedAssets,
+      blockers: [],
+    },
     safety: { no_publish_triggered: true },
   });
   if (overrides.sfxManifest) {
@@ -1019,6 +1064,36 @@ test("Goal 19 rejects a stale render-bound rights ledger fingerprint", async () 
   assert.ok(
     result.control_inputs.rights_ledger.evidence.failures.includes(
       "render_rights_reconciliation:ledger_hash_mismatch",
+    ),
+  );
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+});
+
+test("Goal 19 rejects a stale renderer-selected visual input fingerprint", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-render-input-stale-"));
+  const storyId = "render-input-stale";
+  const story = await makeControlStory(root, storyId);
+  const renderPath = path.join(story.artifact_dir, "render_manifest.json");
+  const render = await fs.readJson(renderPath);
+  render.selected_input_assets.assets[0].asset_sha256 = "0".repeat(64);
+  await fs.writeJson(renderPath, render, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-19T05:00:00.000Z",
+  });
+
+  const result = report.stories[0];
+  const selectedInputs =
+    result.control_inputs.rights_ledger.evidence.renderer_selected_inputs;
+  assert.equal(result.control_inputs.rights_ledger.status, "fail");
+  assert.ok(
+    selectedInputs.failures.includes(
+      "renderer_selected_inputs:asset_hash_mismatch:clip-a",
     ),
   );
   assert.equal(result.final_verdict, "RED");

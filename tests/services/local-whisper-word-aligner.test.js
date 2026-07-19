@@ -96,6 +96,44 @@ test("alignWordsWithLocalWhisper passes configured Whisper device", async () => 
   assert.equal(calls[0].args.includes("--prompt"), false);
 });
 
+test("alignWordsWithLocalWhisper routes a faster-whisper model spec through the VAD backend", async () => {
+  const calls = [];
+  const result = await alignWordsWithLocalWhisper({
+    audioPath: "C:\\media\\black-flag.mp3",
+    scriptText: "Black Flag Resynced sold three million copies.",
+    model: "faster-whisper:base.en",
+    device: "cpu",
+    execFileImpl: async (python, args) => {
+      calls.push({ python, args });
+      return {
+        stdout: JSON.stringify({
+          model: "faster-whisper:base.en",
+          backend: "faster-whisper",
+          language: "en",
+          text: "Black Flag Resynced sold three million copies.",
+          segments: [{
+            text: "Black Flag Resynced sold three million copies.",
+            words: [
+              { word: "Black", start: 0, end: 0.2 },
+              { word: "Flag", start: 0.22, end: 0.4 },
+              { word: "Resynced", start: 0.42, end: 0.8 },
+            ],
+          }],
+        }),
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.model, "faster-whisper:base.en");
+  assert.equal(result.backend, "faster-whisper");
+  assert.equal(calls.length, 1);
+  const modelIndex = calls[0].args.indexOf("--model");
+  const backendIndex = calls[0].args.indexOf("--backend");
+  assert.equal(calls[0].args[modelIndex + 1], "base.en");
+  assert.equal(calls[0].args[backendIndex + 1], "faster-whisper");
+});
+
 test("alignWordsWithLocalWhisper prefers a canonical recognition prompt over a TTS-only alias", async () => {
   const calls = [];
   const result = await alignWordsWithLocalWhisper({

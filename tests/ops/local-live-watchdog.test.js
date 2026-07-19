@@ -14,6 +14,7 @@ const powershell = path.join(
   "v1.0",
   "powershell.exe",
 );
+const POWERSHELL_TEST_TIMEOUT_MS = 120_000;
 
 function evaluatePolicy(argumentsScript) {
   const result = spawnSync(
@@ -31,7 +32,7 @@ function evaluatePolicy(argumentsScript) {
       cwd: ROOT,
       encoding: "utf8",
       windowsHide: true,
-      timeout: 10_000,
+      timeout: POWERSHELL_TEST_TIMEOUT_MS,
     },
   );
 

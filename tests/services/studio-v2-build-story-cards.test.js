@@ -14,10 +14,13 @@ const {
   applySpecToTemplate,
   hyperframesCardReadabilityContractForSpec,
   hyperframesCardReadabilityContractFromHtml,
+  loadStoryFromFile,
   materialiseStoryBackdropFromClips,
+  materialiseStoryBackdropsFromClips,
   buildCardBackdropMap,
   scoreStoryBackdropCandidate,
 } = require("../../tools/studio-v2-build-story-cards");
+const { prescanImage } = require("../../lib/visual-content-prescan");
 const {
   PREMIUM_CARD_TIMING_V5_VERSION,
 } = require("../../lib/studio/v4/premium-card-timing-policy");
@@ -50,6 +53,22 @@ test("story-specific HyperFrames backdrop scoring rejects baked trailer text", (
   assert.ok(report.reasons.includes("baked_trailer_text_risk"));
 });
 
+test("story-specific HyperFrames backdrop scoring rejects narrow baked footer labels", () => {
+  const report = scoreStoryBackdropCandidate({
+    brightness: 105,
+    entropy: 7.4,
+    sharpness: 12,
+    prescan: {
+      text_overlay_likelihood: 0,
+      lower_band_overlay_likelihood: 0.18,
+      trailer_frame_taste: { verdict: "pass", tags: ["detail_rich"] },
+    },
+  });
+
+  assert.equal(report.eligible, false);
+  assert.ok(report.reasons.includes("baked_lower_band_overlay_risk"));
+});
+
 test("story-specific HyperFrames cards extract a relevant backdrop from approved motion", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-hf-motion-backdrop-"));
   const blackPath = path.join(root, "black.mp4");
@@ -74,6 +93,101 @@ test("story-specific HyperFrames cards extract a relevant backdrop from approved
   const stats = await sharp(backdropPath).stats();
   const brightness = stats.channels.slice(0, 3).reduce((sum, channel) => sum + channel.mean, 0) / 3;
   assert.equal(brightness > 20, true);
+});
+
+test("story-specific HyperFrames cards repair a baked legal footer before selecting the backdrop", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-hf-footer-repair-"));
+  const framePath = path.join(root, "footer-labelled-frame.png");
+  const motionPath = path.join(root, "footer-labelled-motion.mp4");
+  const glyphs = Array.from({ length: 28 }, (_, index) => {
+    const x = 360 + index * 44;
+    return [
+      `<rect x="${x}" y="1000" width="8" height="42"/>`,
+      `<rect x="${x}" y="1000" width="30" height="7"/>`,
+      `<rect x="${x}" y="1018" width="24" height="6"/>`,
+    ].join("");
+  }).join("");
+  await sharp(Buffer.from(`
+    <svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#174a70"/>
+          <stop offset="1" stop-color="#72a0a8"/>
+        </linearGradient>
+      </defs>
+      <rect width="1920" height="1080" fill="url(#sky)"/>
+      <circle cx="420" cy="420" r="210" fill="#c4693c"/>
+      <circle cx="1500" cy="500" r="280" fill="#2e6a59"/>
+      <path d="M0 820 L420 520 L780 850 L1120 430 L1600 820 L1920 610 L1920 1080 L0 1080 Z" fill="#23433f"/>
+      <path d="M120 860 L620 610 L1020 880 L1510 590 L1880 870" fill="none" stroke="#d7a34c" stroke-width="34"/>
+      <g fill="#f1f1ed">${glyphs}</g>
+    </svg>
+  `)).png().toFile(framePath);
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-loop",
+    "1",
+    "-i",
+    framePath,
+    "-t",
+    "2",
+    "-r",
+    "30",
+    "-pix_fmt",
+    "yuv420p",
+    motionPath,
+  ]);
+
+  const backdrops = await materialiseStoryBackdropsFromClips({
+    story: { video_clips: [motionPath] },
+    storyId: "footer-labelled-motion",
+    outputDir: path.join(root, "backdrops"),
+    count: 1,
+  });
+
+  assert.equal(backdrops.length, 1);
+  const prescan = await prescanImage(backdrops[0], {
+    sourceTypeHint: "trailer",
+  });
+  assert.equal(prescan.lower_band_overlay_likelihood < 0.12, true);
+  assert.notEqual(prescan.trailer_frame_taste?.reason, "lower_band_text_overlay");
+});
+
+test("story card loader hydrates matching ready sibling motion for backdrop generation", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-hf-sibling-motion-"));
+  const storyId = "official_black_flag_three_million_20260717";
+  const canonicalPath = path.join(root, "canonical_story_manifest.json");
+  const firstClip = path.join(root, "black-flag-parkour.mp4");
+  const secondClip = path.join(root, "black-flag-naval.mp4");
+  fs.writeFileSync(firstClip, Buffer.alloc(2048, 1));
+  fs.writeFileSync(secondClip, Buffer.alloc(2048, 2));
+  fs.writeFileSync(canonicalPath, JSON.stringify({
+    story_id: storyId,
+    selected_title: "Black Flag Sold 3 Million",
+    canonical_subject: "Black Flag Resynced",
+  }));
+  fs.writeFileSync(
+    path.join(root, "materialised_motion_clips.json"),
+    JSON.stringify({
+      status: "ready",
+      story_id: storyId,
+      clips: [
+        { id: "parkour", path: firstClip, source_family: "black_flag_parkour" },
+        { id: "naval", path: secondClip, source_family: "black_flag_naval" },
+      ],
+    }),
+  );
+
+  const loaded = await loadStoryFromFile(canonicalPath, storyId);
+
+  assert.deepEqual(
+    loaded.visual_v4_bridge_video_clips.map((clip) => clip.path),
+    [firstClip, secondClip],
+  );
+  assert.equal(loaded.card_backdrop_motion_evidence_source, "materialised_motion_clips.json");
 });
 
 test("story-specific HyperFrames cards run the authoritative browser check before render", () => {
@@ -174,8 +288,8 @@ test("story-specific HyperFrames cards reject copy that cannot be read inside th
     contract.evidence.required_visible_duration_s >
       contract.evidence.maximum_visible_duration_s,
   );
-  assert.equal(contract.evidence.minimum_visible_duration_s, 3.8);
-  assert.match(html, /data-duration="3\.8"/);
+  assert.equal(contract.evidence.minimum_visible_duration_s, 2.8);
+  assert.match(html, /data-duration="2\.8"/);
 });
 
 test("story-specific HyperFrames cards fit long flagship text inside vertical safe margins", () => {
@@ -242,8 +356,8 @@ test("story-specific HyperFrames cards keep short source cards momentum-friendly
   assert.equal(contract.contract_version, PREMIUM_CARD_TIMING_V5_VERSION);
   assert.equal(contract.evidence.readable_text, "ROCKSTAR TRAILER");
   assert.equal(contract.evidence.minimum_visible_duration_s, 1.9);
-  assert.equal(contract.evidence.planned_visible_duration_s, 2.6);
-  assert.equal(contract.evidence.maximum_visible_duration_s, 3.1);
+  assert.equal(contract.evidence.planned_visible_duration_s, 2.4);
+  assert.equal(contract.evidence.maximum_visible_duration_s, 2.8);
   assert.equal(contract.evidence.min_readable_card_duration_s, 1.9);
 });
 
@@ -506,6 +620,60 @@ test("story-specific HyperFrames cards turn narration into concrete editorial be
   }
 });
 
+test("Black Flag sales cards turn first-week momentum into concise evidence and payoff", () => {
+  const specs = buildStoryCardSpecs({
+    id: "official_black_flag_three_million_20260717",
+    title: "Black Flag Sold 3 Million. The Second Wave Is The Real Win",
+    canonical_subject: "Black Flag Resynced",
+    primary_source: "Ubisoft",
+    source_card_label: "Ubisoft",
+    source_type: "official",
+    claim_inventory: {
+      confirmed: [
+        "Ubisoft reports that Assassin's Creed Black Flag Resynced sold more than 3 million copies during its first week.",
+        "Ubisoft reports that 2 million copies were sold on day one.",
+        "Ubisoft says Steam user reviews improved to Very Positive during the launch week.",
+      ],
+    },
+    full_script:
+      "Ubisoft's new Black Flag sold 3 million copies in one week. " +
+      "Ubisoft says 2 million sold on day one. " +
+      "Another million followed across the next six days, after reviews, streams and word of mouth had time to shape the verdict. " +
+      "Steam reviews reached Very Positive. " +
+      "The second-wave million suggests the game did more than cash in on its name. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(specs.source.label, "UBISOFT");
+  assert.equal(specs.context.number, "3 MILLION");
+  assert.equal(specs.context.sub, "1M AFTER DAY ONE");
+  assert.equal(specs.context.micro, "FIRST-WEEK SALES");
+  assert.deepEqual(
+    specs.timeline.bullets.map((bullet) => bullet.strong),
+    ["2M DAY ONE", "1M NEXT SIX DAYS"],
+  );
+  assert.equal(specs.quote.quoteText, "The second-wave million is the real test.");
+  assert.deepEqual(specs.takeaway.headlineWords, [
+    "SECOND",
+    "WAVE",
+    "BEATS",
+    "LAUNCH",
+    "HYPE",
+  ]);
+  assert.equal(specs.takeaway.cta, "WORD OF MOUTH WON");
+  assert.doesNotMatch(
+    JSON.stringify(specs),
+    /SOLD MILLION SECOND|VERIFIED DETAIL|PLAYER IMPACT|WHAT CHANGES FOR PLAYERS/i,
+  );
+  for (const [kind, spec] of Object.entries(specs)) {
+    assert.equal(
+      hyperframesCardReadabilityContractForSpec(kind, spec).status,
+      "pass",
+      `${kind} should fit the current V5 momentum budget`,
+    );
+  }
+});
+
 test("story-specific HyperFrames cards keep dense update copy inside the V5 momentum budget", () => {
   const specs = buildStoryCardSpecs({
     id: "arknights-ps5-pro-card-budget",
@@ -692,7 +860,7 @@ test("timeline readability does not count punctuation-only HTML separators as wo
       <li><span class="num">01</span><strong>VERIFIED DETAIL</strong>, playstation blog</li>
       <li><span class="num">02</span><strong>PLAYER IMPACT</strong></li>
     </ul>
-    <div data-duration="3.7"></div>
+    <div data-duration="2.7"></div>
   `;
   const inspected = hyperframesCardReadabilityContractFromHtml(
     "timeline",
@@ -700,9 +868,9 @@ test("timeline readability does not count punctuation-only HTML separators as wo
   );
 
   assert.equal(authored.evidence.word_count, 9);
-  assert.equal(authored.evidence.planned_visible_duration_s, 3.7);
+  assert.equal(authored.evidence.planned_visible_duration_s, 2.7);
   assert.equal(inspected.evidence.word_count, 9);
-  assert.equal(inspected.evidence.required_visible_duration_s, 3.7);
+  assert.equal(inspected.evidence.required_visible_duration_s, 2.7);
   assert.equal(inspected.status, "pass");
   assert.deepEqual(inspected.blockers, []);
 });
@@ -716,7 +884,7 @@ test("story-specific HyperFrames quote timing includes the visible attribution",
   assert.equal(contract.evidence.readable_text, "The controls have to sell the next ten hours. PULSE GAMING");
   assert.equal(contract.evidence.word_count, 11);
   assert.equal(contract.status, "fail");
-  assert.equal(contract.evidence.planned_visible_duration_s, 3.8);
+  assert.equal(contract.evidence.planned_visible_duration_s, 2.8);
   assert.ok(
     contract.evidence.required_visible_duration_s >
       contract.evidence.maximum_visible_duration_s,
@@ -731,6 +899,6 @@ test("story-specific HyperFrames quote timing keeps a concise nine-word proof re
 
   assert.equal(contract.evidence.word_count, 9);
   assert.equal(contract.status, "pass");
-  assert.ok(contract.evidence.planned_visible_duration_s >= 3.4);
-  assert.ok(contract.evidence.planned_visible_duration_s <= 3.8);
+  assert.ok(contract.evidence.planned_visible_duration_s >= 2.2);
+  assert.ok(contract.evidence.planned_visible_duration_s <= 2.8);
 });

@@ -740,6 +740,234 @@ test("candidate evidence reconciliation recognises the current combined HyperFra
   assert.equal(sourceRecord.provider_id, "pulse_hyperframes");
 });
 
+test("candidate evidence reconciliation refuses to rebind an overwritten visual asset without a render-bound fingerprint", async () => {
+  const storyId = "overwritten_hyperframes_card";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-overwritten-hyperframes-card-",
+    storyId,
+  });
+  const { rightsPath } = await addNarrationRightsFixture(fixture, storyId);
+  const sourceCard = path.join(fixture.artifactDir, `hf_source_card_${storyId}.mp4`);
+  const sidecarPath = sourceCard.replace(/\.mp4$/i, ".shell.json");
+  const originalBytes = Buffer.from("original HyperFrames source card used by the render");
+  await fs.outputFile(sourceCard, originalBytes);
+  await fs.outputJson(sidecarPath, {
+    schema_version: 1,
+    story_id: storyId,
+    card_kind: "source",
+    output_path: sourceCard,
+    hyperframes_premium_shell: {
+      status: "pass",
+      story_id: storyId,
+      card_kind: "source",
+      output_path: sourceCard,
+      checks: {
+        check: { status: "pass" },
+        render: { status: "pass" },
+      },
+      visual_identity: { status: "pass", blockers: [] },
+      animation_contract: { status: "pass", blockers: [] },
+      readability_contract: { status: "pass", blockers: [] },
+      creative_identity_contract: { status: "pass", blockers: [] },
+      blockers: [],
+    },
+  });
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.clip_scene_plan = {
+    scenes: [{
+      path: sourceCard,
+      sourceRootKey: `hyperframes/${storyId}/source`,
+      readableCardKind: "source",
+      premiumCardV5: true,
+    }],
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  const rights = await fs.readJson(rightsPath);
+  rights.push(completeRights({
+    asset_id: "hyperframes_premium_shell_source_1",
+    path: sourceCard,
+    source_url: `local://pulse-hyperframes/${storyId}/source`,
+    source_type: "internally_generated_motion_graphic",
+    source_family: "hyperframes_source_card",
+    source_owner: "Pulse Gaming",
+    provider_id: "pulse_hyperframes",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    allowed_use: "owned_editorial_motion_graphic",
+    approval_status: "approved_for_owned_editorial_use",
+    evidence_file: sidecarPath,
+    asset_sha256: sha256(originalBytes),
+    asset_size_bytes: originalBytes.length,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  await fs.writeFile(sourceCard, Buffer.from("overwritten card bytes from a later render"));
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.verdict, "FAIL");
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.equal(report.current_evidence.same_run_verified, false);
+  assert.ok(
+    report.rights.blockers.includes(
+      "render_selected_asset_fingerprint_missing_or_mismatch:hyperframes_premium_shell_source_1",
+    ),
+  );
+  assert.equal(
+    report.rights.proposed_ledger.records.some(
+      (record) => record.asset_id === "hyperframes_premium_shell_source_1",
+    ),
+    false,
+  );
+
+  const currentBytes = await fs.readFile(sourceCard);
+  renderManifest.selected_input_assets = {
+    schema_version: 1,
+    authoritative: true,
+    producer_id: "pulse-gaming-studio-v4-renderer",
+    assets: [{
+      asset_id: "hyperframes_premium_shell_source_1",
+      kind: "video",
+      path: sourceCard,
+      asset_sha256: sha256(currentBytes),
+      asset_size_bytes: currentBytes.length,
+    }],
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+
+  const renderBoundReport = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(
+    renderBoundReport.rights.verdict,
+    "PASS",
+    JSON.stringify(renderBoundReport.rights, null, 2),
+  );
+  assert.equal(renderBoundReport.current_evidence.same_run_verified, true);
+  const rebound = renderBoundReport.rights.proposed_ledger.records.find(
+    (record) => record.asset_id === "hyperframes_premium_shell_source_1",
+  );
+  assert.equal(rebound.asset_sha256, sha256(currentBytes));
+  assert.equal(rebound.asset_size_bytes, currentBytes.length);
+});
+
+test("candidate evidence reconciliation uses the authoritative renderer asset identity instead of a legacy scene id", async () => {
+  const storyId = "authoritative_renderer_card_identity";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-authoritative-renderer-card-identity-",
+    storyId,
+  });
+  const { rightsPath } = await addNarrationRightsFixture(fixture, storyId);
+  const sourceCard = path.join(fixture.artifactDir, `hf_source_card_${storyId}.mp4`);
+  const sidecarPath = sourceCard.replace(/\.mp4$/i, ".shell.json");
+  const cardBytes = Buffer.from("current renderer-selected HyperFrames source card");
+  await fs.outputFile(sourceCard, cardBytes);
+  await fs.outputJson(sidecarPath, {
+    schema_version: 1,
+    story_id: storyId,
+    card_kind: "source",
+    output_path: sourceCard,
+    hyperframes_premium_shell: {
+      status: "pass",
+      story_id: storyId,
+      card_kind: "source",
+      output_path: sourceCard,
+      checks: {
+        check: { status: "pass" },
+        render: { status: "pass" },
+      },
+      visual_identity: { status: "pass", blockers: [] },
+      animation_contract: { status: "pass", blockers: [] },
+      readability_contract: { status: "pass", blockers: [] },
+      creative_identity_contract: { status: "pass", blockers: [] },
+      blockers: [],
+    },
+  });
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.clip_scene_plan = {
+    scenes: [{
+      path: sourceCard,
+      sourceRootKey: `hyperframes/${storyId}/source`,
+      readableCardKind: "source",
+      premiumCardV5: true,
+    }],
+  };
+  renderManifest.selected_input_assets = {
+    schema_version: 2,
+    authoritative: true,
+    producer_id: "pulse-gaming-studio-v4-renderer",
+    assets: [{
+      asset_id: "hyperframes_premium_shell_source_1",
+      kind: "generated_card",
+      path: sourceCard,
+      source_url: `local://hyperframes/${storyId}/source`,
+      asset_sha256: sha256(cardBytes),
+      asset_size_bytes: cardBytes.length,
+    }],
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  const rights = await fs.readJson(rightsPath);
+  rights.push(completeRights({
+    asset_id: `${storyId}_video_04`,
+    path: sourceCard,
+    source_url: `local://pulse-hyperframes/${storyId}/source`,
+    source_type: "internally_generated_motion_graphic",
+    source_family: "hyperframes_source_card",
+    source_owner: "Pulse Gaming",
+    provider_id: "pulse_hyperframes",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    allowed_use: "owned_editorial_motion_graphic",
+    approval_status: "approved_for_owned_editorial_use",
+    evidence_file: sidecarPath,
+    asset_sha256: sha256(cardBytes),
+    asset_size_bytes: cardBytes.length,
+  }));
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.equal(
+    report.rights.proposed_ledger.records.some(
+      (record) => record.asset_id === `${storyId}_video_04`,
+    ),
+    false,
+  );
+  const card = report.rights.proposed_ledger.records.find(
+    (record) => record.asset_id === "hyperframes_premium_shell_source_1",
+  );
+  assert.ok(card);
+  assert.equal(card.path, sourceCard);
+  assert.equal(card.asset_sha256, sha256(cardBytes));
+});
+
 test("candidate evidence reconciliation derives a missing creator from strict official-channel identity", async () => {
   const storyId = "strict_official_channel_creator";
   const artifactDir = await makeArtifactDir("pulse-strict-official-channel-creator-");
@@ -970,6 +1198,84 @@ test("candidate evidence reconciliation accepts a narration manifest mirror only
   assert.equal(narration.asset_sha256, sha256(audio));
   assert.equal(narration.narration_manifest_audio_mirror_path, mirrorPath);
   assert.equal(narration.narration_manifest_audio_mirror_verified, true);
+});
+
+test("candidate evidence reconciliation prefers an authoritative same-run flagship narration over stale package audio", async () => {
+  const storyId = "authoritative_same_run_narration";
+  const artifactDir = await makeArtifactDir("pulse-authoritative-narration-");
+  const staleAudioPath = path.join(artifactDir, "audio", "narration.mp3");
+  const flagshipAudioPath = path.join(artifactDir, "flagship", "final_audio.mp3");
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const bridgePath = path.join(artifactDir, "scheduler_bridge_candidates.json");
+  const runId = `production-render:${storyId}:2026-07-15T14:20:00.000Z`;
+  const flagshipAudio = Buffer.from("authoritative same-run narration");
+  await fs.outputFile(staleAudioPath, Buffer.from("stale package narration"));
+  await fs.outputFile(flagshipAudioPath, flagshipAudio);
+  await fs.outputFile(finalVideoPath, Buffer.from("decodable final"));
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    output_path: finalVideoPath,
+    input_fingerprint: {
+      audio_sha256: sha256(flagshipAudio),
+    },
+    flagship_generation_evidence: {
+      complete: true,
+      verdict: "GREEN",
+      run_id: runId,
+    },
+    clip_scene_plan: { scenes: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    story_id: storyId,
+    provider: "elevenlabs",
+    resolved_narration_audio_path: staleAudioPath,
+    narration_audio_size_bytes: Buffer.byteLength("stale package narration"),
+  });
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+    story_id: storyId,
+    producer_id: "pulse-gaming-post-render-narration-qa",
+    provider: "elevenlabs",
+    authoritative: true,
+    verdict: "PASS",
+    status: "ready",
+    run_id: runId,
+    resolved_audio_path: flagshipAudioPath,
+    audio_sha256: sha256(flagshipAudio),
+    lineage: {
+      final_audio_sha256: sha256(flagshipAudio),
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), { outputs: {} });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), []);
+  await fs.outputJson(path.join(artifactDir, "flagship", "inventory.json"), {
+    story_id: storyId,
+    used_assets: [],
+  });
+  await fs.outputJson(bridgePath, {
+    scheduler_bridge_candidates: [{ story_id: storyId }],
+  });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    generatedAt: "2026-07-15T14:21:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.deepEqual(report.rights.blockers, []);
+  const narration = report.rights.proposed_ledger.records.find((record) => record.kind === "narration");
+  assert.equal(narration.path, flagshipAudioPath);
+  assert.equal(narration.asset_sha256, sha256(flagshipAudio));
+  assert.equal(narration.asset_size_bytes, flagshipAudio.length);
 });
 
 test("candidate evidence reconciliation rejects a narration mirror with different bytes", async () => {
@@ -1208,6 +1514,167 @@ test("candidate evidence reconciliation replaces only a provisional renderer row
   assert.equal(
     clip.rights_decision_basis,
     "validated_official_direct_media_editorial_policy",
+  );
+});
+
+test("candidate evidence reconciliation accepts a hash-bound official publisher clip backed by a captured video policy", async () => {
+  const storyId = "publisher_policy_official_youtube_motion";
+  const artifactDir = await makeArtifactDir("pulse-publisher-policy-youtube-motion-");
+  const clipPath = path.join(artifactDir, "publisher-gameplay-window.mp4");
+  const sourceMasterPath = path.join(artifactDir, "publisher-gameplay-master.mp4");
+  const identityPath = path.join(artifactDir, "publisher-gameplay.source-identity.json");
+  const policyPath = path.join(artifactDir, "publisher-video-policy.html");
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const sourceUrl = "https://www.youtube.com/watch?v=PublisherGameplay1";
+  const sourceMasterBytes = Buffer.from("hash-bound publisher gameplay master");
+  const clipBytes = Buffer.from("validated publisher gameplay window");
+  await fs.outputFile(clipPath, clipBytes);
+  await fs.outputFile(sourceMasterPath, sourceMasterBytes);
+  await fs.outputFile(policyPath, "<html>Commercial editorial video policy snapshot</html>");
+  await fs.outputFile(finalVideoPath, Buffer.from("decodable final"));
+  const identity = {
+    schema: "pulse_motion_source_identity_sidecar_v1",
+    schema_version: 1,
+    producer: "pulse_source_identity_oembed_verifier_v1",
+    canonical_source_url: sourceUrl,
+    youtube_video_id: "PublisherGameplay1",
+    source_master_sha256: sha256(sourceMasterBytes),
+    channel_identity: {
+      author_name: "Official Game Channel",
+      author_url: "https://www.youtube.com/@officialgamechannel",
+    },
+    identity_scope: "source_identity_only",
+    rights_grant: false,
+  };
+  await fs.outputJson(identityPath, identity);
+  const identityBytes = await fs.readFile(identityPath);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Publisher Game",
+    primary_source: "Official Publisher",
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    output_path: finalVideoPath,
+    clip_scene_plan: { scenes: [{ path: clipPath }] },
+    selected_input_assets: {
+      schema_version: 2,
+      authoritative: true,
+      producer_id: "pulse-gaming-studio-v4-renderer",
+      assets: [{
+        asset_id: "publisher-gameplay-window",
+        kind: "video",
+        path: clipPath,
+        source_url: sourceMasterPath,
+        asset_sha256: sha256(clipBytes),
+        asset_size_bytes: clipBytes.length,
+      }],
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    clips: [{
+      id: "publisher-gameplay-window",
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: sourceMasterPath,
+      canonical_source_url: sourceUrl,
+      youtube_video_id: "PublisherGameplay1",
+      source_type: "official_publisher_gameplay_clip",
+      source_owner: "Official Publisher",
+      source_family: "publisher_gameplay_window_0_6",
+      rights_basis: "publisher_video_policy_transformative_editorial_use",
+      licence_basis: "publisher_video_policy_transformative_editorial_use",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+      commercial_use_allowed: true,
+      credit_required: true,
+      evidence_reference: policyPath,
+      risk_score: 0.18,
+      materialized: true,
+      validated: true,
+      segmentValidationPassed: true,
+      provenance: {
+        source: "official_trailer_segment_validation",
+        segment_validated: true,
+        validation_reason: "hash_bound_official_source_and_policy_evidence_passed",
+      },
+      source_master_path: sourceMasterPath,
+      source_master_sha256: sha256(sourceMasterBytes),
+      motion_source_identity: {
+        status: "resolved",
+        strict_pass: true,
+        canonical_source_url: sourceUrl,
+        youtube_video_id: "PublisherGameplay1",
+        source_master_sha256: sha256(sourceMasterBytes),
+        source_identity_provenance: {
+          schema_version: 1,
+          kind: "pulse_source_identity_sidecar",
+          status: "resolved",
+          sidecar_path: identityPath,
+          sidecar_sha256: sha256(identityBytes),
+          canonical_source_url: sourceUrl,
+          youtube_video_id: "PublisherGameplay1",
+          source_master_sha256: sha256(sourceMasterBytes),
+          identity_scope: "source_identity_only",
+          rights_grant: false,
+        },
+        blockers: [],
+      },
+    }],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {});
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {});
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {},
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "RED",
+    records: [{
+      asset_id: "publisher-gameplay-window",
+      path: clipPath,
+      source_url: sourceMasterPath,
+      source_type: "official_publisher_gameplay_clip",
+      licence_basis: "publisher_video_policy_transformative_editorial_use",
+      commercial_use_allowed: false,
+      allowed_platforms: [],
+      approval_status: "operator_legal_review_required",
+      rights_status: "operator_legal_review_required",
+      usage_scope: "local_proof_only",
+      rights_verdict: "RED",
+      status: "RED",
+      rights_grant: false,
+      risk_score: 1,
+      evidence_file: "materialised_motion_clips.json",
+      rights_decision_basis:
+        "provisional_renderer_local_proof_pending_policy_reconciliation",
+    }],
+  });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.deepEqual(report.rights.blockers, []);
+  const clip = report.rights.proposed_ledger.records[0];
+  assert.equal(clip.asset_id, "publisher-gameplay-window");
+  assert.equal(clip.source_url, sourceUrl);
+  assert.equal(clip.source_owner, "Official Game Channel");
+  assert.equal(clip.rights_verdict, "GREEN");
+  assert.equal(clip.commercial_use_allowed, true);
+  assert.equal(
+    clip.reconciliation_basis,
+    "current_validated_official_materialised_clip",
   );
 });
 
@@ -2334,6 +2801,42 @@ test("candidate evidence reconciliation atomically rebinds flagship rights sidec
   ), true);
 });
 
+test("candidate evidence reconciliation rebuilds an explicitly RED flagship inventory after current rights converge", async () => {
+  const storyId = "flagship_rights_stale_inventory_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-flagship-rights-stale-inventory-",
+    storyId,
+  });
+  const { evidencePath } = await addFlagshipNarrationSidecarFixture(fixture, storyId);
+  const inventoryPath = path.join(fixture.artifactDir, "flagship", "inventory.json");
+  const inventory = await fs.readJson(inventoryPath);
+  inventory.complete = false;
+  inventory.verdict = "RED";
+  inventory.blockers = ["rights_ledger_not_passed"];
+  inventory.used_assets[0].allowed_platforms = ["youtube_shorts"];
+  await fs.writeJson(inventoryPath, inventory, { spaces: 2 });
+  const sidecar = await fs.readJson(evidencePath);
+  sidecar.allowed_platforms = ["youtube_shorts"];
+  await fs.writeJson(evidencePath, sidecar, { spaces: 2 });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: true,
+    generatedAt: "2026-07-19T12:15:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.equal(report.rights.applied, true);
+  assert.equal(report.rights.flagship_sidecar_bindings.rebuild_required, true);
+  assert.equal(report.rights.flagship_sidecar_bindings.verified_count, 0);
+  assert.deepEqual(report.rights.flagship_sidecar_bindings.blockers, []);
+});
+
 test("candidate evidence reconciliation rolls back a rights-only apply when the later bridge write fails", async (t) => {
   const storyId = "rights_transaction_rollback_candidate";
   const fixture = await makeFingerprintFixture({
@@ -2364,10 +2867,75 @@ test("candidate evidence reconciliation rolls back a rights-only apply when the 
   assert.equal(report.rights.applied, false);
   assert.equal(report.rights.bridge_rights_synced, false);
   assert.ok(report.rights.blockers.includes("local_file_transaction_failed"));
+  assert.equal(
+    report.rights.proposed_render_rights_reconciliation.verdict,
+    "FAIL",
+  );
+  assert.equal(
+    report.rights.proposed_render_rights_reconciliation.status,
+    "RED",
+  );
+  assert.equal(
+    report.rights.proposed_render_rights_reconciliation.applied,
+    false,
+  );
+  assert.equal(
+    report.rights.proposed_render_rights_reconciliation.can_auto_publish,
+    false,
+  );
+  assert.equal(
+    report.rights.proposed_render_rights_reconciliation.final_state_verified,
+    false,
+  );
+  assert.ok(
+    report.rights.proposed_render_rights_reconciliation.blockers.includes(
+      "local_file_transaction_failed",
+    ),
+  );
   assert.equal(report.transaction.committed, false);
   assert.equal(report.transaction.rolled_back, true);
   const after = await captureFiles(paths);
   assert.deepEqual(after, before);
+});
+
+test("candidate evidence reconciliation can apply rights twice with one generated timestamp without backup collisions", async () => {
+  const storyId = "same_run_rights_reconciliation_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-same-run-rights-reconciliation-",
+    storyId,
+  });
+  await addFlagshipNarrationSidecarFixture(fixture, storyId);
+  const options = {
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: true,
+    generatedAt: "2026-07-19T13:15:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  };
+
+  const first = await reconcileCandidateEvidence(options);
+  const second = await reconcileCandidateEvidence(options);
+
+  assert.equal(first.rights.verdict, "PASS", JSON.stringify(first.rights, null, 2));
+  assert.equal(second.rights.verdict, "PASS", JSON.stringify(second.rights, null, 2));
+  assert.equal(first.transaction.committed, true);
+  assert.equal(second.transaction.committed, true);
+  assert.notEqual(first.rights.backup_path, second.rights.backup_path);
+  assert.notEqual(
+    first.rights.render_manifest_backup_path,
+    second.rights.render_manifest_backup_path,
+  );
+  assert.equal(first.rights.flagship_sidecar_bindings.rebound_count, 1);
+  assert.equal(second.rights.flagship_sidecar_bindings.rebound_count, 0);
+  assert.equal(await fs.pathExists(first.rights.backup_path), true);
+  assert.equal(await fs.pathExists(second.rights.backup_path), true);
+  assert.equal(
+    second.rights.blockers.includes("local_file_transaction_failed"),
+    false,
+  );
 });
 
 test("candidate evidence reconciliation rolls back a fingerprint-only apply when the later bridge write fails", async (t) => {

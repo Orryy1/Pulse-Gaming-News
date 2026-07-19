@@ -216,7 +216,7 @@ test("Goal 07 director brain accepts current narrative proof beats and emits rol
   evidenceProof.label = longProofText;
   const validation = validateDirectorPlan(evidencePlan);
 
-  assert.equal(validation.metrics.card_timing_contract_version, "pulse_card_timing_v3");
+  assert.equal(validation.metrics.card_timing_contract_version, "pulse_card_timing_v4");
   assert.deepEqual(validation.metrics.card_timing_evidence, [
     {
       id: "source_lock",
@@ -226,7 +226,7 @@ test("Goal 07 director brain accepts current narrative proof beats and emits rol
       minimum_visible_duration_s: 1.9,
       target_visible_duration_s: 2.6,
       maximum_visible_duration_s: 3.1,
-      contract_version: "pulse_card_timing_v3",
+      contract_version: "pulse_card_timing_v4",
       status: "pass",
     },
     {
@@ -235,9 +235,9 @@ test("Goal 07 director brain accepts current narrative proof beats and emits rol
       role: "proof",
       duration_s: 5.1,
       minimum_visible_duration_s: 3.4,
-      target_visible_duration_s: 5.1,
+      target_visible_duration_s: 3.8,
       maximum_visible_duration_s: 5.8,
-      contract_version: "pulse_card_timing_v3",
+      contract_version: "pulse_card_timing_v4",
       status: "pass",
     },
   ]);

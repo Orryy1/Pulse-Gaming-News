@@ -1239,3 +1239,82 @@ test("Footage Empire does not treat a PS5 Pro game software upgrade as hardware 
   assert.ok(!plan.readiness.blockers.includes("official_product_motion_clip_minimum_not_met"));
   assert.ok(!plan.readiness.blockers.includes("official_product_motion_family_minimum_not_met"));
 });
+
+test("Footage Empire preserves governed source identity, validation and rights lineage for later refresh", () => {
+  const sourceMasterSha256 = "a".repeat(64);
+  const evidenceSha256 = "b".repeat(64);
+  const sourceMasterPath = "C:\\media\\official-black-flag-master.mp4";
+  const canonicalSourceUrl = "https://www.youtube.com/watch?v=OfficialBlackFlag123";
+  const clip = {
+    id: "black-flag-underwater-window",
+    path: "C:\\media\\black-flag-underwater-window.mp4",
+    local_materialized_path: "C:\\media\\black-flag-underwater-window.mp4",
+    source_url: canonicalSourceUrl,
+    canonical_source_url: canonicalSourceUrl,
+    youtube_video_id: "OfficialBlackFlag123",
+    source_master_path: sourceMasterPath,
+    source_master_sha256: sourceMasterSha256,
+    source_duration_s: 82.4,
+    source_family: "black_flag_underwater_window_12_5",
+    base_source_family: "youtube_OfficialBlackFlag123",
+    source_type: "official_publisher_gameplay_clip",
+    source_kind: "local_video_file",
+    media_kind: "direct_video",
+    mediaStartS: 12.5,
+    durationS: 6.9,
+    validated: true,
+    segmentValidationPassed: true,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    asset_sha256: "c".repeat(64),
+    asset_size_bytes: 8313398,
+    sampled_visual_fingerprint: "sha256:visual-window-fingerprint",
+    licence_basis: "publisher_video_policy_transformative_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    commercial_use_allowed: true,
+    credit_required: true,
+    approval_status: "approved_for_transformative_editorial_use",
+    rights_status: "approved",
+    evidence_reference: canonicalSourceUrl,
+    evidence_sha256: evidenceSha256,
+    provenance: {
+      source: "official_trailer_segment_validation",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      validation_reason: "official_gameplay_samples_passed",
+      base_source_family: "youtube_OfficialBlackFlag123",
+    },
+  };
+
+  const plan = buildFootageEmpirePlan({
+    story: {
+      id: "black-flag-source-lineage",
+      title: "Black Flag Resynced Crosses Three Million Sales",
+      full_script:
+        "Black Flag Resynced sold three million copies in a week, according to Ubisoft.",
+    },
+    localMotionClips: [clip],
+  });
+
+  const retained = plan.motion_inventory.accepted_local_clips[0];
+  assert.equal(retained.canonical_source_url, canonicalSourceUrl);
+  assert.equal(retained.youtube_video_id, "OfficialBlackFlag123");
+  assert.equal(retained.source_master_path, sourceMasterPath);
+  assert.equal(retained.source_master_sha256, sourceMasterSha256);
+  assert.equal(retained.source_duration_s, 82.4);
+  assert.equal(retained.local_materialized_path, clip.local_materialized_path);
+  assert.equal(retained.media_kind, "direct_video");
+  assert.equal(retained.segmentValidationPassed, true);
+  assert.equal(retained.counts_towards_motion_readiness, true);
+  assert.equal(retained.materialized, true);
+  assert.equal(retained.asset_sha256, clip.asset_sha256);
+  assert.equal(retained.asset_size_bytes, clip.asset_size_bytes);
+  assert.equal(retained.licence_basis, clip.licence_basis);
+  assert.deepEqual(retained.allowed_platforms, clip.allowed_platforms);
+  assert.equal(retained.commercial_use_allowed, true);
+  assert.equal(retained.approval_status, clip.approval_status);
+  assert.equal(retained.rights_status, clip.rights_status);
+  assert.equal(retained.provenance.segment_validated, true);
+  assert.equal(retained.provenance.allowed_for_flash_lane, true);
+});

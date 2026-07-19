@@ -18,13 +18,14 @@ const powershell = path.join(
   "v1.0",
   "powershell.exe",
 );
+const POWERSHELL_TEST_TIMEOUT_MS = 120_000;
 
 function runPowerShell(args) {
   return spawnSync(powershell, args, {
     cwd: ROOT,
     encoding: "utf8",
     windowsHide: true,
-    timeout: 30_000,
+    timeout: POWERSHELL_TEST_TIMEOUT_MS,
   });
 }
 

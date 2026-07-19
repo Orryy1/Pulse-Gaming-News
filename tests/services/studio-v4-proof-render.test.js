@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -16,6 +17,7 @@ const {
   overlayCardWindowsForStory,
   drawtextEscape,
   parseArgs,
+  resolveProofOutputDir,
   renderNarrationScriptText,
   resolveReadableMediaPath,
   resolveStoryMusicCueMix,
@@ -48,14 +50,30 @@ const {
 const { buildKineticAss } = require("../../lib/studio/v2/subtitle-layer-v2");
 const proofRenderLib = require("../../lib/studio/v4/proof-render");
 
-test("Studio V4 reports every renderer-selected media input for rights reconciliation", () => {
+test("Studio V4 fingerprints every renderer-selected media input for rights reconciliation", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-selected-inputs-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = {
+    narration: path.join(root, "narration.mp3"),
+    clip: path.join(root, "window-1.mp4"),
+    bed: path.join(root, "bed.mp3"),
+    sting: path.join(root, "sting.wav"),
+    hit: path.join(root, "hit.wav"),
+  };
+  const bytesByPath = new Map(
+    Object.entries(files).map(([key, filePath]) => {
+      const bytes = Buffer.from(`renderer-selected-${key}`);
+      fs.writeFileSync(filePath, bytes);
+      return [filePath, bytes];
+    }),
+  );
   const evidence = buildSelectedInputAssetEvidence({
     story: { id: "story-1" },
-    audioPath: "C:/media/narration.mp3",
+    audioPath: files.narration,
     selectedClips: [
       {
         id: "official-window-1",
-        path: "C:/media/window-1.mp4",
+        path: files.clip,
         source_url: "https://official.example/trailer",
         mediaStartS: 12,
         durationS: 4,
@@ -63,32 +81,61 @@ test("Studio V4 reports every renderer-selected media input for rights reconcili
     ],
     scenePlan: {
       scenes: [
-        { path: "C:/media/window-1.mp4", durationS: 4 },
-        { path: "C:/media/window-1.mp4", durationS: 3 },
+        { path: files.clip, durationS: 4 },
+        { path: files.clip, durationS: 3 },
       ],
     },
     musicCueMix: {
-      bed: { asset_id: "music-bed", path: "C:/media/bed.mp3" },
-      sting: { asset_id: "music-sting", path: "C:/media/sting.wav" },
+      bed: { asset_id: "music-bed", path: files.bed },
+      sting: { asset_id: "music-sting", path: files.sting },
     },
     sfxCueMix: [
-      { asset_id: "sfx-hit", path: "C:/media/hit.wav", role: "impact" },
+      { asset_id: "sfx-hit", path: files.hit, role: "impact" },
     ],
   });
 
   assert.equal(evidence.authoritative, true);
+  assert.equal(evidence.complete, true);
+  assert.deepEqual(evidence.blockers, []);
   assert.deepEqual(
     evidence.assets.map((asset) => [asset.asset_id, asset.kind, asset.path]),
     [
-      ["story-1_audio_path", "narration", "C:/media/narration.mp3"],
-      ["official-window-1", "video", "C:/media/window-1.mp4"],
-      ["music-bed", "music", "C:/media/bed.mp3"],
-      ["music-sting", "music", "C:/media/sting.wav"],
-      ["sfx-hit", "sfx", "C:/media/hit.wav"],
+      ["story-1_audio_path", "narration", files.narration],
+      ["official-window-1", "video", files.clip],
+      ["music-bed", "music", files.bed],
+      ["music-sting", "music", files.sting],
+      ["sfx-hit", "sfx", files.hit],
     ],
   );
   assert.equal(evidence.assets[1].scene_count, 2);
   assert.deepEqual(evidence.assets[1].scene_indexes, [0, 1]);
+  for (const asset of evidence.assets) {
+    const bytes = bytesByPath.get(asset.path);
+    assert.equal(
+      asset.asset_sha256,
+      crypto.createHash("sha256").update(bytes).digest("hex"),
+    );
+    assert.equal(asset.asset_size_bytes, bytes.length);
+  }
+});
+
+test("Studio V4 selected-input evidence fails closed on a missing file", () => {
+  const missingPath = path.join(
+    os.tmpdir(),
+    `pulse-missing-selected-input-${process.pid}-${Date.now()}.mp4`,
+  );
+  const evidence = buildSelectedInputAssetEvidence({
+    story: { id: "missing-input-story" },
+    audioPath: missingPath,
+  });
+
+  assert.equal(evidence.authoritative, true);
+  assert.equal(evidence.complete, false);
+  assert.deepEqual(evidence.blockers, [
+    "renderer_selected_input_file_missing_or_unreadable:missing-input-story_audio_path",
+  ]);
+  assert.equal(evidence.assets[0].asset_sha256, null);
+  assert.equal(evidence.assets[0].asset_size_bytes, null);
 });
 
 test("Studio V4 interleaves only verified same-story HyperFrames cards into direct motion", () => {
@@ -1492,6 +1539,35 @@ test("Studio V4 renderer merges fresh materialised motion into stale story clip 
   ]);
 });
 
+test("Studio V4 renderer keeps a repaired direct-motion derivative instead of its unsafe original", () => {
+  const repaired = {
+    id: "official-trailer-window-01",
+    path: "footer-crop-repairs/official-trailer-window-01.mp4",
+    original_path: "official-trailer-window-01.mp4",
+    media_kind: "direct_video",
+    visual_repair: {
+      status: "pass",
+      kind: "crop_legal_footer_bottom_10_percent",
+      source_path: "official-trailer-window-01.mp4",
+    },
+  };
+
+  const merged = mergeMaterialisedMotionClipCandidates([repaired], {
+    status: "pass",
+    clips: [
+      {
+        id: "official-trailer-window-01",
+        path: "official-trailer-window-01.mp4",
+        media_kind: "direct_video",
+      },
+    ],
+  });
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].path, repaired.path);
+  assert.equal(merged[0].visual_repair.kind, "crop_legal_footer_bottom_10_percent");
+});
+
 test("Studio V4 proof renderer blocks repeated HyperFrames card kinds", () => {
   const plan = buildClipScenePlan({
     clips: [
@@ -2240,6 +2316,7 @@ test("Studio V4 proof renderer omits unreadable overlay card windows that do not
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
+  const isolatedProofOutputDir = "output/proof-runs/black-flag-v25";
   const args = parseArgs([
     "node",
     "tools/studio-v4-proof-render.js",
@@ -2247,11 +2324,18 @@ test("Studio V4 proof renderer CLI stays local and story-json driven", () => {
     "test/output/story.json",
     "--output",
     "test/output/out.mp4",
+    "--proof-output-dir",
+    isolatedProofOutputDir,
     "--json",
   ]);
 
   assert.equal(args.storyJson, "test/output/story.json");
   assert.equal(args.output, "test/output/out.mp4");
+  assert.equal(args.proofOutputDir, isolatedProofOutputDir);
+  assert.equal(
+    resolveProofOutputDir(args.proofOutputDir),
+    path.resolve(path.join(__dirname, "..", ".."), isolatedProofOutputDir),
+  );
   assert.equal(args.json, true);
 });
 
@@ -3460,8 +3544,9 @@ test("Studio V4 overlay chain adds newsroom-grade labels and layered glass rails
   assert.doesNotMatch(chain, /PULSE \/\/ NEWSWIRE/);
   assert.doesNotMatch(chain, /drawtext=text='VERIFY'/);
   assert.match(chain, /PULSE \/\/ BRIEF/);
-  assert.match(chain, /PULSE PROOF/);
-  assert.match(chain, /PLAYER IMPACT/);
+  assert.match(chain, /KEY SIGNAL/);
+  assert.match(chain, /WHY IT MATTERS/);
+  assert.doesNotMatch(chain, /PULSE PROOF|PLAYER IMPACT/);
   assert.match(chain, /color=0x0B0F19@0\.72/);
   assert.match(chain, /color=0xFF6B1A@0\.95/);
   assert.match(chain, /color=0x43D7FF@0\.78/);
@@ -3629,8 +3714,9 @@ test("Studio V4 overlay chain suppresses only the opening card during first-fram
   assert.doesNotMatch(chain, /color=0x111827@0\.58:t=fill:enable='between\(t,0,3\.3\)'/);
   assert.doesNotMatch(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,0,3\.3\)/);
   assert.match(chain, /drawtext=text='GTA 6 PRICE RISK'.*between\(t,4\.0,8\.6\)/);
-  assert.match(chain, /PULSE PROOF/);
-  assert.match(chain, /PLAYER IMPACT/);
+  assert.match(chain, /KEY SIGNAL/);
+  assert.match(chain, /WHY IT MATTERS/);
+  assert.doesNotMatch(chain, /PULSE PROOF|PLAYER IMPACT/);
   assert.match(chain, /PULSE GAMING/);
 });
 

@@ -27,8 +27,8 @@ test("Pulse signature contract makes platform stories recognisable without delay
   assert.equal(contract.opening.start_s, 0);
   assert.ok(contract.opening.duration_s <= 1.8);
   assert.equal(contract.persistent_mark.label, "PULSE // GAMING");
-  assert.equal(contract.proof_label, "PULSE PROOF");
-  assert.equal(contract.impact_label, "PLAYER IMPACT");
+  assert.equal(contract.proof_label, "KEY SIGNAL");
+  assert.equal(contract.impact_label, "WHY IT MATTERS");
   assert.equal(contract.outro.brand_line, "PULSE GAMING");
   assert.equal(contract.outro.catch_line, "NEVER MISS A BEAT");
   assert.ok(contract.outro.start_s >= 40);
@@ -60,8 +60,9 @@ test("Studio V4 output carries the Pulse signature from opening through outro", 
   assert.ok(opening.duration_s <= 2.8);
   assert.match(chain, /PULSE \/\/ GAMING/);
   assert.match(chain, /PULSE \/\/ PLATFORM/);
-  assert.match(chain, /PULSE PROOF/);
-  assert.match(chain, /PLAYER IMPACT/);
+  assert.match(chain, /KEY SIGNAL/);
+  assert.match(chain, /WHY IT MATTERS/);
+  assert.doesNotMatch(chain, /PULSE PROOF|PLAYER IMPACT/);
   assert.match(chain, /NEVER MISS A BEAT/);
   assert.match(chain, /0xFF6B1A@0\.95/);
   assert.match(chain, /0x38BDF8@0\.78/);

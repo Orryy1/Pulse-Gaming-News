@@ -728,6 +728,24 @@ test("goal audio materializer generates local audio, word timestamps and updates
     .createHash("sha256")
     .update(await fs.readFile(manifest.resolved_word_timestamps_path))
     .digest("hex");
+  assert.equal(report.jobs[0].audio_path, manifest.narration_audio_path);
+  assert.equal(
+    report.jobs[0].word_timestamps_path,
+    manifest.word_timestamps_path,
+  );
+  assert.equal(
+    report.jobs[0].resolved_audio_path,
+    manifest.resolved_narration_audio_path,
+  );
+  assert.equal(
+    report.jobs[0].resolved_word_timestamps_path,
+    manifest.resolved_word_timestamps_path,
+  );
+  assert.equal(report.jobs[0].audio_sha256, expectedAudioSha256);
+  assert.equal(
+    report.jobs[0].word_timestamps_sha256,
+    expectedTimestampSha256,
+  );
   assert.equal(manifest.narration_audio_sha256, expectedAudioSha256);
   assert.equal(manifest.word_timestamps_sha256, expectedTimestampSha256);
   assert.equal(
@@ -4905,7 +4923,7 @@ test("goal audio materializer repairs excessive pauses in-place before regenerat
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
 });
 
-test("goal audio materializer compacts cadence when timestamps mask acoustic silence", async () => {
+test("goal audio materializer realigns timestamps without mutating audio when timestamps mask acoustic silence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-mask-silence-"));
   const script = "Marvel Tokon has twenty playable fighters. Follow Pulse Gaming so you never miss a beat.";
   const artifactDir = await makePackage(root, "story-mask-silence", {
@@ -4914,7 +4932,8 @@ test("goal audio materializer compacts cadence when timestamps mask acoustic sil
   });
   const audioPath = path.join(root, "output", "audio", "story-mask-silence.mp3");
   const timestampPath = path.join(root, "output", "audio", "story-mask-silence_timestamps.json");
-  await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+  const audioBytes = Buffer.alloc(4096, 1);
+  await fs.outputFile(audioPath, audioBytes);
   await fs.outputJson(timestampPath, {
     words: whisperWordsFromScript(script),
     meta: { transcript: script, wordTimestampSource: "local_whisper_word_alignment" },
@@ -4927,37 +4946,98 @@ test("goal audio materializer compacts cadence when timestamps mask acoustic sil
       blockers: ["voice_cadence:timestamp_masks_acoustic_silence"],
     },
   });
-  let compactCalls = 0;
+  const previousModels = process.env.LOCAL_WHISPER_MODELS;
+  const previousModel = process.env.LOCAL_WHISPER_MODEL;
+  const previousFallbackModel = process.env.LOCAL_WHISPER_FALLBACK_MODEL;
+  const previousAcousticFallbackModel =
+    process.env.LOCAL_WHISPER_ACOUSTIC_FALLBACK_MODEL;
+  delete process.env.LOCAL_WHISPER_MODELS;
+  delete process.env.LOCAL_WHISPER_MODEL;
+  delete process.env.LOCAL_WHISPER_FALLBACK_MODEL;
+  delete process.env.LOCAL_WHISPER_ACOUSTIC_FALLBACK_MODEL;
+  const modelCalls = [];
+  const alignedWords = script.split(/\s+/).map((word, index) => ({
+    word,
+    start: Number((index * 0.36).toFixed(2)),
+    end: Number((index * 0.36 + 0.24).toFixed(2)),
+  }));
 
-  const report = await materializeGoalAudioTimestamps({
-    workspaceRoot: root,
-    alignmentMode: "whisper",
-    workbenchReport: {
-      local_tts: { verdict: "green", ready: true },
-      jobs: [workbenchJob("story-mask-silence", artifactDir)],
-    },
-    generatedAt: "2026-07-15T15:10:00.000Z",
-    generateTtsForStory: async () => {
-      throw new Error("voice regeneration should not run when bounded silence compaction succeeds");
-    },
-    compactGeneratedNarrationSilence: async () => {
-      compactCalls += 1;
-      return { repaired: true, strategy: "bounded_generated_narration_silence_compaction" };
-    },
-    alignWordsWithAudio: async ({ scriptText }) => ({
-      ok: true,
-      source: "local_whisper_word_alignment",
-      model: "fixture",
-      words: whisperWordsFromScript(scriptText),
-      transcript: scriptText,
-      language: "en",
-      segments: 1,
-    }),
-  });
+  try {
+    const report = await materializeGoalAudioTimestamps({
+      workspaceRoot: root,
+      alignmentMode: "whisper",
+      workbenchReport: {
+        local_tts: { verdict: "green", ready: true },
+        jobs: [workbenchJob("story-mask-silence", artifactDir)],
+      },
+      generatedAt: "2026-07-15T15:10:00.000Z",
+      generateTtsForStory: async () => {
+        throw new Error("voice regeneration should not run for a timestamp-only defect");
+      },
+      compactGeneratedNarrationSilence: async () => {
+        throw new Error("audio silence compaction must not repair timestamp masking");
+      },
+      compactTimestampedNarrationPauses: async () => {
+        throw new Error("timestamp masking must not be treated as an audible pause defect");
+      },
+      getAudioDuration: async () => 5.3,
+      detectSilencesForAudio: async () => [{
+        start: 2,
+        end: 2.5,
+        duration: 0.5,
+      }],
+      alignWordsWithAudio: async ({ model, scriptText }) => {
+        modelCalls.push(model);
+        const words = alignedWords.map((word) => ({ ...word }));
+        if (model === "tiny.en") {
+          words[6] = { word: "Follow", start: 1.95, end: 2.55 };
+        }
+        return {
+          ok: true,
+          source: "local_whisper_word_alignment",
+          model,
+          words,
+          transcript: scriptText,
+          language: "en",
+          segments: 1,
+        };
+      },
+    });
 
-  assert.equal(compactCalls, 1, JSON.stringify(report.jobs[0]));
-  assert.equal(report.summary.materialized_count, 1);
-  assert.equal(report.jobs[0].status, "materialized_existing_cadence_compaction");
+    assert.deepEqual(modelCalls, ["tiny.en", "faster-whisper:base.en"]);
+    assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
+    assert.equal(report.jobs[0].status, "materialized_existing_asr_alignment");
+    assert.equal(
+      report.jobs[0].reason,
+      "existing_pair_timestamp_mask_repaired_without_audio_change",
+    );
+    assert.deepEqual(await fs.readFile(audioPath), audioBytes);
+    const timestamps = await fs.readJson(timestampPath);
+    assert.equal(
+      timestamps.meta.timestampWhisperAlignment.model,
+      "faster-whisper:base.en",
+    );
+    assert.equal(timestamps.meta.timestampWhisperAlignment.model_attempts, 2);
+    const voiceQuality = await fs.readJson(path.join(artifactDir, "voice_quality_report.json"));
+    assert.equal(voiceQuality.cadence.acoustic_silence_profile.timestamp_masked_silence_count, 0);
+    assert.equal(
+      voiceQuality.blockers.includes("voice_cadence:timestamp_masks_acoustic_silence"),
+      false,
+    );
+  } finally {
+    if (previousModels == null) delete process.env.LOCAL_WHISPER_MODELS;
+    else process.env.LOCAL_WHISPER_MODELS = previousModels;
+    if (previousModel == null) delete process.env.LOCAL_WHISPER_MODEL;
+    else process.env.LOCAL_WHISPER_MODEL = previousModel;
+    if (previousFallbackModel == null) delete process.env.LOCAL_WHISPER_FALLBACK_MODEL;
+    else process.env.LOCAL_WHISPER_FALLBACK_MODEL = previousFallbackModel;
+    if (previousAcousticFallbackModel == null) {
+      delete process.env.LOCAL_WHISPER_ACOUSTIC_FALLBACK_MODEL;
+    } else {
+      process.env.LOCAL_WHISPER_ACOUSTIC_FALLBACK_MODEL =
+        previousAcousticFallbackModel;
+    }
+  }
 });
 
 test("goal audio materializer pads an existing pair that cadence QA marks too fast", async () => {

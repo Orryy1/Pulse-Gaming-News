@@ -382,7 +382,7 @@ function rightsFor(story) {
   ];
 }
 
-test("goal batch packages summarise GREEN and blocked story packages honestly", () => {
+test("goal batch packages keep declared but unmaterialised motion packages RED", () => {
   const ready = greenStory("green-one");
   const weak = { id: "weak-one", title: "This gaming story", full_script: "This gaming story has a source-backed update." };
   const batch = buildGoalBatchPackages({
@@ -392,8 +392,12 @@ test("goal batch packages summarise GREEN and blocked story packages honestly", 
   });
 
   assert.equal(batch.summary.story_count, 2);
-  assert.equal(batch.summary.green_count, 1);
-  assert.equal(batch.story_packages[0].verdict, "GREEN");
+  assert.equal(batch.summary.green_count, 0);
+  assert.equal(batch.summary.red_count, 2);
+  assert.equal(batch.story_packages[0].verdict, "RED");
+  assert.ok(
+    batch.story_packages[0].blockers.includes("media_house:direct_motion_not_verified"),
+  );
   assert.equal(batch.story_packages[1].verdict, "RED");
 });
 
@@ -907,8 +911,13 @@ test("goal batch packages carry SFX inventory rights into governance", () => {
   assert.ok(
     batch.packages[0].rights_ledger.matched_assets.some((asset) => asset.asset_id === "boom-impact-01"),
   );
-  assert.equal(batch.story_packages[0].verdict, "GREEN");
-  assert.equal(batch.packages[0].publish_verdict.verdict, "GREEN");
+  assert.equal(batch.story_packages[0].verdict, "RED");
+  assert.equal(batch.packages[0].publish_verdict.verdict, "RED");
+  assert.ok(
+    batch.packages[0].publish_verdict.reason_codes.includes(
+      "media_house:direct_motion_not_verified",
+    ),
+  );
   assert.doesNotMatch(
     batch.packages[0].publish_verdict.reason_codes.join("\n"),
     /rights:no_rights_record/,
@@ -937,11 +946,16 @@ test("goal batch packages hydrate shared licensed SFX evidence before director s
     generatedAt: "2026-05-21T20:05:00.000Z",
   });
 
-  assert.equal(batch.story_packages[0].verdict, "GREEN");
+  assert.equal(batch.story_packages[0].verdict, "RED");
   assert.equal(batch.packages[0].director_beat_map.readiness.status, "director_ready");
   assert.equal(batch.packages[0].sfx_source_plan.readiness.status, "pass");
   assert.deepEqual(batch.packages[0].sfx_source_plan.covered_roles, ["impact", "sub_hit", "transition", "ui_tick"]);
-  assert.equal(batch.packages[0].publish_verdict.verdict, "GREEN");
+  assert.equal(batch.packages[0].publish_verdict.verdict, "RED");
+  assert.ok(
+    batch.packages[0].publish_verdict.reason_codes.includes(
+      "media_house:direct_motion_not_verified",
+    ),
+  );
 });
 
 test("goal batch packages hydrate repaired SFX evidence from existing artefacts", async () => {
@@ -1161,6 +1175,7 @@ test("goal batch packages bind restored motion rights to current bytes instead o
     assert.equal(current.asset_sha256, currentClips[0].asset_sha256);
     assert.equal(current.asset_size_bytes, currentClips[0].asset_size_bytes);
     assert.equal(path.resolve(current.evidence_file), path.resolve(materialisedPath));
+    assert.equal(current.rights_grant, undefined);
     assert.notEqual(path.resolve(current.path), path.resolve(stalePath));
     const sharedSourceWindow = batch.packages[0].rights_ledger.records.find(
       (record) => record.asset_id === currentClips[3].id,
@@ -1849,6 +1864,15 @@ test("goal batch CLI parses shared SFX evidence paths", () => {
 
   assert.equal(args.sfxAssetsPath, "output/goal-contract/sfx_asset_inventory.json");
   assert.equal(args.sfxRightsLedgerPath, "output/goal-contract/sfx_rights_ledger.json");
+});
+
+test("goal batch CLI accepts an explicit enabled-platform rights scope", () => {
+  const args = parseGoalBatchArgs([
+    "--platforms",
+    "youtube,instagram,facebook",
+  ]);
+
+  assert.deepEqual(args.targetPlatforms, ["youtube", "instagram", "facebook"]);
 });
 
 test("goal batch live RSS only mode blocks stale backlog revenue fallback", () => {
@@ -4717,7 +4741,7 @@ test("goal batch packages do not turn source-only stories into GREEN generated-c
   assert.ok(batch.story_packages[0].blockers.includes("footage:v4_motion_blocked"));
 });
 
-test("goal batch packages hydrate existing Visual V4 motion packs instead of using generated cards", () => {
+test("goal batch packages hydrate declared Visual V4 motion but keep unmaterialised references RED", () => {
   const story = {
     id: "forza-rich-restore",
     title: "Forza Horizon 6 Steam Peak Exposes Xbox's Early-Access Bet",
@@ -4796,11 +4820,14 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
   assert.equal(pack.footage_inventory.readiness.status, "v4_motion_ready");
   assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips.length, 8);
   assert.equal(pack.footage_inventory.motion_inventory.accepted_local_clips[0].source_type, "official_trailer_segment");
-  assert.equal(pack.acceptance_entry.verdict, "GREEN", JSON.stringify({
+  assert.equal(pack.acceptance_entry.verdict, "RED", JSON.stringify({
     reasons: pack.publish_verdict.reason_codes,
     premium: pack.pulse_media_house_score?.premium_output_contract,
   }));
-  assert.equal(batch.summary.green_count, 1);
+  assert.ok(
+    pack.publish_verdict.reason_codes.includes("media_house:direct_motion_not_verified"),
+  );
+  assert.equal(batch.summary.green_count, 0);
 });
 
 test("goal batch packages restore sibling motion-hydrated materialised clips before proof packaging", () => {
@@ -4905,6 +4932,126 @@ test("goal batch packages restore sibling motion-hydrated materialised clips bef
     assert.equal(pack.publish_verdict.reason_codes.includes("media_house:source_lock_not_verified"), false);
     assert.deepEqual(pack.publish_verdict.reason_codes, []);
     assert.equal(batch.summary.green_count, 1);
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
+test("goal batch restoration retains richer seed source identity and validator provenance", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-motion-lineage-"));
+  try {
+    const story = greenStory("motion-lineage-story");
+    const clips = Array.from({ length: 8 }, (_, index) => {
+      const youtubeVideoId = `OfficialMotionLineage${index + 1}`;
+      const canonicalSourceUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
+      const clipPath = path.join(tempDir, "clips", `clip-${index + 1}.mp4`);
+      const sourceMasterPath = path.join(tempDir, "masters", `${youtubeVideoId}.mp4`);
+      fs.ensureFileSync(clipPath);
+      fs.writeFileSync(clipPath, Buffer.alloc(4096, index + 31));
+      fs.ensureFileSync(sourceMasterPath);
+      fs.writeFileSync(sourceMasterPath, Buffer.alloc(8192, index + 41));
+      return {
+        id: `motion-lineage-window-${index + 1}`,
+        clip_id: `motion-lineage-window-${index + 1}`,
+        type: "motion_clip",
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: canonicalSourceUrl,
+        canonical_source_url: canonicalSourceUrl,
+        youtube_video_id: youtubeVideoId,
+        source_master_path: sourceMasterPath,
+        source_master_sha256: String(index + 1).repeat(64),
+        source_duration_s: 80,
+        source_family: `motion_lineage_source_${index + 1}_window_5`,
+        base_source_family: `youtube_${youtubeVideoId}`,
+        source_type: "official_publisher_gameplay_clip",
+        source_kind: "local_video_file",
+        media_kind: "direct_video",
+        mediaStartS: 5,
+        durationS: 5,
+        validated: true,
+        segmentValidationPassed: true,
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        licence_basis: "publisher_video_policy_transformative_editorial_use",
+        allowed_use: "transformative_editorial_short_form",
+        allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+        commercial_use_allowed: true,
+        credit_required: true,
+        risk_score: 0.18,
+        evidence_reference: `C:/pulse/rights/publisher-policy-${index + 1}.html`,
+        rights_evidence_file: `C:/pulse/rights/publisher-policy-${index + 1}.html`,
+        rights_evidence_sha256: "a".repeat(64),
+        rights_evidence_size_bytes: 4096,
+        provenance: {
+          source: "official_trailer_segment_validation",
+          segment_validated: true,
+          allowed_for_flash_lane: true,
+          validation_reason: "official_gameplay_samples_passed",
+          base_source_family: `youtube_${youtubeVideoId}`,
+        },
+      };
+    });
+    story.video_clips = clips;
+    story.visual_v4_local_motion_clips = clips;
+    story.motion_clips = clips;
+
+    const artifactDir = path.join(tempDir, story.id);
+    fs.ensureDirSync(artifactDir);
+    const simplified = clips.map((clip) => ({
+      id: clip.id,
+      path: clip.path,
+      local_materialized_path: clip.path,
+      source_url: clip.source_url,
+      source_family: clip.source_family,
+      base_source_family: clip.base_source_family,
+      type: "motion_clip",
+      source_type: clip.source_type,
+      durationS: clip.durationS,
+      mediaStartS: clip.mediaStartS,
+      validated: true,
+      counts_towards_motion_readiness: true,
+      materialized: true,
+    }));
+    fs.writeJsonSync(path.join(artifactDir, "materialised_motion_clips.json"), {
+      schema_version: 1,
+      story_id: story.id,
+      status: "ready",
+      clip_count: simplified.length,
+      distinct_motion_family_count: simplified.length,
+      direct_video_motion_asset_count: simplified.length,
+      direct_video_motion_family_count: simplified.length,
+      distinct_motion_families: simplified.map((clip) => clip.source_family),
+      clips: simplified,
+      materialised_clips: simplified,
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-07-18T21:18:00.000Z",
+    });
+
+    const retained = batch.packages[0].footage_inventory.motion_inventory
+      .accepted_local_clips[0];
+    assert.equal(retained.canonical_source_url, clips[0].canonical_source_url);
+    assert.equal(retained.youtube_video_id, clips[0].youtube_video_id);
+    assert.equal(retained.source_master_path, clips[0].source_master_path);
+    assert.equal(retained.source_master_sha256, clips[0].source_master_sha256);
+    assert.equal(retained.source_duration_s, 80);
+    assert.equal(retained.segmentValidationPassed, true);
+    assert.equal(retained.provenance.segment_validated, true);
+    assert.equal(retained.provenance.allowed_for_flash_lane, true);
+    assert.equal(retained.licence_basis, clips[0].licence_basis);
+    assert.equal(retained.allowed_use, clips[0].allowed_use);
+    assert.deepEqual(retained.allowed_platforms, clips[0].allowed_platforms);
+    assert.equal(retained.commercial_use_allowed, true);
+    assert.equal(retained.credit_required, true);
+    assert.equal(retained.risk_score, clips[0].risk_score);
+    assert.equal(retained.evidence_reference, clips[0].evidence_reference);
+    assert.equal(retained.rights_evidence_file, clips[0].rights_evidence_file);
+    assert.equal(retained.rights_evidence_sha256, clips[0].rights_evidence_sha256);
   } finally {
     fs.removeSync(tempDir);
   }

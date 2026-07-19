@@ -208,6 +208,32 @@ function normalise(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+test("goal proof rights gate evaluates only explicitly enabled publish platforms", () => {
+  const candidate = greenStory();
+  const enabledPlatforms = ["youtube", "instagram", "facebook"];
+  const enabledOnlyRights = rightsForGreenStory(candidate).map((record) => ({
+    ...record,
+    allowed_platforms: enabledPlatforms,
+  }));
+
+  const defaultPack = buildGoalProofPackage({
+    story: candidate,
+    rightsLedger: enabledOnlyRights,
+    generatedAt: "2026-07-18T21:45:00.000Z",
+  });
+  const enabledOnlyPack = buildGoalProofPackage({
+    story: candidate,
+    rightsLedger: enabledOnlyRights,
+    platforms: enabledPlatforms,
+    generatedAt: "2026-07-18T21:45:00.000Z",
+  });
+
+  assert.equal(defaultPack.rights_ledger.verdict, "fail");
+  assert.ok(defaultPack.rights_ledger.failures.includes("rights:platform_not_allowed"));
+  assert.equal(enabledOnlyPack.rights_ledger.verdict, "pass");
+  assert.deepEqual(enabledOnlyPack.rights_ledger.failures, []);
+});
+
 test("goal proof package gives DOOM Chain Spear a concrete combat title instead of reinstall fallback", () => {
   const story = greenStory();
   story.id = "doom-chain-spear-combat-pack";
@@ -344,7 +370,7 @@ test("goal proof package treats an empty primary-link placeholder as no offer", 
   assert.equal(affiliate.landing_page_attribution.verdict, "pass");
 });
 
-test("goal proof package produces a GREEN acceptance entry only when every core gate passes", () => {
+test("goal proof package keeps declared but unmaterialised motion RED", () => {
   const story = greenStory();
   const pack = buildGoalProofPackage({
     story,
@@ -352,8 +378,11 @@ test("goal proof package produces a GREEN acceptance entry only when every core 
     generatedAt: "2026-05-21T19:46:00.000Z",
   });
 
-  assert.equal(pack.acceptance_entry.verdict, "GREEN");
-  assert.equal(pack.pulse_media_house_score.premium_output_contract.status, "pass");
+  assert.equal(pack.acceptance_entry.verdict, "RED");
+  assert.ok(
+    pack.acceptance_entry.blockers.includes("media_house:direct_motion_not_verified"),
+  );
+  assert.equal(pack.pulse_media_house_score.premium_output_contract.status, "blocked");
   assert.equal(pack.pulse_media_house_score.premium_output_contract.checks.final_render.status, "pass");
   assert.equal(pack.pulse_media_house_score.premium_output_contract.checks.caption_display.status, "pass");
   assert.equal(pack.acceptance_entry.story_id, "forza-green-proof");
@@ -2551,7 +2580,7 @@ test("goal proof package writes explicit materialised motion clip evidence", asy
   assert.equal(motion.clips[1].local_materialized_path, clipB);
 });
 
-test("goal proof package demotes a claimed GREEN when materialised final media is only local proof", async () => {
+test("goal proof package keeps declared-only motion RED when final media is only local proof", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-proof-complete-"));
   const story = greenStory();
   const pack = buildGoalProofPackage({
@@ -2560,7 +2589,10 @@ test("goal proof package demotes a claimed GREEN when materialised final media i
     generatedAt: "2026-05-21T23:40:00.000Z",
   });
 
-  assert.equal(pack.acceptance_entry.verdict, "GREEN");
+  assert.equal(pack.acceptance_entry.verdict, "RED");
+  assert.ok(
+    pack.acceptance_entry.blockers.includes("media_house:direct_motion_not_verified"),
+  );
   await writeGoalProofPackageArtifacts(pack, { outputDir: tmp });
 
   for (const basename of pack.acceptance_entry.artefacts) {

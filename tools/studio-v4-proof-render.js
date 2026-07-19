@@ -197,6 +197,7 @@ function parseArgs(argv = process.argv) {
   const args = {
     storyJson: null,
     output: null,
+    proofOutputDir: null,
     json: false,
     help: false,
   };
@@ -205,6 +206,7 @@ function parseArgs(argv = process.argv) {
     if (arg === "--help" || arg === "-?") args.help = true;
     else if (arg === "--story-json") args.storyJson = argv[++i] || null;
     else if (arg === "--output") args.output = argv[++i] || null;
+    else if (arg === "--proof-output-dir") args.proofOutputDir = argv[++i] || null;
     else if (arg === "--json") args.json = true;
   }
   return args;
@@ -241,11 +243,17 @@ function printHelp() {
   process.stdout.write(
     [
       "Usage: node tools/studio-v4-proof-render.js --story-json <path> [--output <mp4>] [--json]",
+      "       [--proof-output-dir <directory>]",
       "",
       "Local proof render only. Reads a V4 render-ready story JSON, local audio and local materialized motion clips.",
       "It does not publish, touch OAuth tokens or mutate production database rows.",
     ].join("\n") + "\n",
   );
+}
+
+function resolveProofOutputDir(proofOutputDir) {
+  const requested = String(proofOutputDir || "").trim();
+  return requested ? resolvePathMaybeRoot(requested) : TEST_OUT;
 }
 
 function drawtextEscape(value) {
@@ -361,6 +369,7 @@ function buildSelectedInputAssetEvidence({
 } = {}) {
   const assets = [];
   const byPath = new Map();
+  const blockers = [];
   const add = (asset = {}) => {
     const assetPath = String(asset.path || "").trim();
     const key = selectedInputPathKey(assetPath);
@@ -374,10 +383,32 @@ function buildSelectedInputAssetEvidence({
       ])].sort((left, right) => left - right);
       return;
     }
+    let assetSha256 = null;
+    let assetSizeBytes = null;
+    try {
+      const stat = fs.statSync(assetPath);
+      if (!stat.isFile() || stat.size <= 0) {
+        throw new Error("selected input is not a non-empty file");
+      }
+      assetSha256 = crypto
+        .createHash("sha256")
+        .update(fs.readFileSync(assetPath))
+        .digest("hex");
+      assetSizeBytes = stat.size;
+    } catch {
+      blockers.push(
+        `renderer_selected_input_file_missing_or_unreadable:${selectedInputAssetId(
+          asset.asset_id,
+          `selected_input_${assets.length + 1}`,
+        )}`,
+      );
+    }
     const row = {
       asset_id: selectedInputAssetId(asset.asset_id, `selected_input_${assets.length + 1}`),
       kind: String(asset.kind || "asset").trim() || "asset",
       path: assetPath,
+      asset_sha256: assetSha256,
+      asset_size_bytes: assetSizeBytes,
       source_url: String(asset.source_url || "").trim() || null,
       media_start_s: Number.isFinite(Number(asset.media_start_s)) ? Number(asset.media_start_s) : null,
       duration_s: Number.isFinite(Number(asset.duration_s)) ? Number(asset.duration_s) : null,
@@ -438,11 +469,13 @@ function buildSelectedInputAssetEvidence({
   }
 
   return {
-    schema_version: 1,
+    schema_version: 2,
     authoritative: true,
     producer_id: "pulse-gaming-studio-v4-renderer",
     asset_count: assets.length,
     assets,
+    complete: blockers.length === 0 && assets.length > 0,
+    blockers,
   };
 }
 
@@ -1403,6 +1436,27 @@ function selectPremiumSceneClips(clips = []) {
   };
 }
 
+function materialisedMotionClipIdentityKeys(clip) {
+  const keys = [];
+  if (clip && typeof clip === "object") {
+    const stableId = firstText(clip.id, clip.asset_id, clip.clip_id)
+      .toLowerCase();
+    if (stableId) keys.push(`id:${stableId}`);
+  }
+  const paths = [
+    sceneClipPath(clip),
+    clip && typeof clip === "object" ? clip.original_path : "",
+    clip && typeof clip === "object" ? clip.visual_repair?.source_path : "",
+  ];
+  for (const candidatePath of paths) {
+    const normalisedPath = firstText(candidatePath)
+      .replace(/\\/g, "/")
+      .toLowerCase();
+    if (normalisedPath) keys.push(`path:${normalisedPath}`);
+  }
+  return [...new Set(keys)];
+}
+
 function mergeMaterialisedMotionClipCandidates(storyClips = [], manifest = {}) {
   const base = Array.isArray(storyClips) ? storyClips.filter(Boolean) : [];
   const status = String(manifest?.status || "").trim().toLowerCase();
@@ -1411,18 +1465,20 @@ function mergeMaterialisedMotionClipCandidates(storyClips = [], manifest = {}) {
     ...(Array.isArray(manifest.clips) ? manifest.clips : []),
     ...(Array.isArray(manifest.materialised_clips) ? manifest.materialised_clips : []),
   ];
-  const seen = new Set(
-    base
-      .map((clip) => sceneClipPath(clip).replace(/\\/g, "/").toLowerCase())
-      .filter(Boolean),
-  );
+  const seen = new Set(base.flatMap(materialisedMotionClipIdentityKeys));
   const merged = base.slice();
   for (const clip of candidates) {
     const mediaKind = String(clip?.media_kind || clip?.mediaKind || "").trim().toLowerCase();
     const clipPath = sceneClipPath(clip);
-    const key = clipPath.replace(/\\/g, "/").toLowerCase();
-    if (mediaKind !== "direct_video" || !key || seen.has(key)) continue;
-    seen.add(key);
+    const identityKeys = materialisedMotionClipIdentityKeys(clip);
+    if (
+      mediaKind !== "direct_video" ||
+      !clipPath ||
+      identityKeys.some((key) => seen.has(key))
+    ) {
+      continue;
+    }
+    for (const key of identityKeys) seen.add(key);
     merged.push(clip);
   }
   return merged;
@@ -3048,6 +3104,8 @@ function buildOverlayChain({
   const segmentLabel = drawtextEscape(signature.segment.display_label);
   const creativeSegmentLabel = drawtextEscape(pulseIdentity.segment_name.toUpperCase());
   const livingGhostWord = drawtextEscape(livingMotion.ghost_word);
+  const proofLabel = drawtextEscape(signature.proof_label);
+  const impactLabel = drawtextEscape(signature.impact_label);
   return [
     `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill${nonCardOverlayEnableSuffix}`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill${nonCardOverlayEnableSuffix}`,
@@ -3090,12 +3148,12 @@ function buildOverlayChain({
     `drawbox=x=76:y=812:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofPrimaryEnable}'`,
     `drawbox=x=76:y=812:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofPrimaryEnable}'`,
     `drawbox=x=76:y=812:w='if(lt(t\\,${progressStart(proofPrimaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofPrimaryWindow, 0.18)})/0.28)':h=5:color=${pulseSecondary}@0.92:t=fill:enable='${proofPrimaryEnable}'`,
-    `drawtext=text='PULSE PROOF':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=98:y=824:enable='${proofPrimaryEnable}'`,
+    `drawtext=text='${proofLabel}':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=98:y=824:enable='${proofPrimaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_primary, { fontOpt, fontcolor: "white", enable: proofPrimaryEnable }),
     `drawbox=x=96:y=1010:w=690:h=140:color=0x0B0F19@0.46:t=fill:enable='${proofSecondaryEnable}'`,
     `drawbox=x=96:y=1010:w=690:h=140:color=0xF8FAFC@0.14:t=2:enable='${proofSecondaryEnable}'`,
     `drawbox=x=96:y=1144:w='if(lt(t\\,${progressStart(proofSecondaryWindow, 0.18)})\\,1\\,1+(690-1)*(t-${progressStart(proofSecondaryWindow, 0.18)})/0.32)':h=5:color=${pulseSecondary}@0.92:t=fill:enable='${proofSecondaryEnable}'`,
-    `drawtext=text='PLAYER IMPACT':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
+    `drawtext=text='${impactLabel}':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: proofSecondaryEnable }),
     ]),
     `drawbox=x=w-286:y=h-126:w=244:h=60:color=0x0D0D0F@0.58:t=fill${nonCardOverlayEnableSuffix}`,
@@ -3269,10 +3327,11 @@ async function verifyRenderedProofMedia(filePath, {
   };
 }
 
-async function renderProof({ storyJson, output }) {
+async function renderProof({ storyJson, output, proofOutputDir }) {
   if (!storyJson) throw new Error("missing --story-json");
   const storyPath = resolvePathMaybeRoot(storyJson);
   const story = await fs.readJson(storyPath);
+  const proofOut = resolveProofOutputDir(proofOutputDir);
   const audioPath = await resolveReadableMediaPath(story.audio_path);
   const timestampsPath = await resolveReadableMediaPath(
     story.timestamps_path ||
@@ -3322,7 +3381,7 @@ async function renderProof({ storyJson, output }) {
     identityHydratedClips,
     {
     outputDir: path.join(
-      TEST_OUT,
+      proofOut,
       "v5-direct-motion-visual",
       String(story.id || "story").replace(/[^a-z0-9_-]+/gi, "_"),
     ),
@@ -3383,7 +3442,7 @@ async function renderProof({ storyJson, output }) {
         scenePlanBlockerDiagnostic(scenePlan, { targetDurationS: durationS }),
     );
   }
-  const assPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof.ass`);
+  const assPath = path.join(proofOut, `${story.id || "story"}_studio_v4_proof.ass`);
   const timestampData = await fs.readJson(timestampsPath);
   const timestampValidation = validateProofTimestampPayload(timestampData, {
     wordTimestampSource: story.word_timestamp_source,
@@ -3415,7 +3474,7 @@ async function renderProof({ storyJson, output }) {
   if (captionCadence.status !== "pass") {
     throw new Error(`kinetic_typography_gate_blocked:${captionCadence.blockers.join(",")}`);
   }
-  await fs.ensureDir(TEST_OUT);
+  await fs.ensureDir(proofOut);
   await fs.writeFile(assPath, ass, "utf8");
 
   const outputPath = output
@@ -3530,7 +3589,7 @@ async function renderProof({ storyJson, output }) {
   filterParts.push(...audioMixInputs);
   filterParts.push(buildFinalSocialAudioMixFilter(mixLabels));
 
-  const filterPath = path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof_filter.txt`);
+  const filterPath = path.join(proofOut, `${story.id || "story"}_studio_v4_proof_filter.txt`);
   await fs.writeFile(filterPath, filterParts.join(";\n"), "utf8");
 
   ffmpegArgs.push(
@@ -3610,7 +3669,10 @@ async function renderProof({ storyJson, output }) {
     inputPath: outputPath,
     durationS: finalDuration || durationS,
   }));
-  const audioSegmentReportPath = path.join(TEST_OUT, `${story.id || "story"}_audio_segment_loudness_report.json`);
+  const audioSegmentReportPath = path.join(
+    proofOut,
+    `${story.id || "story"}_audio_segment_loudness_report.json`,
+  );
   await fs.writeJson(audioSegmentReportPath, audioSegmentLoudness, { spaces: 2 });
   const stat = await fs.stat(outputPath);
   const freshHyperframesPremiumShellGate = resolveFreshHyperframesPremiumShellGate({
@@ -3629,6 +3691,7 @@ async function renderProof({ storyJson, output }) {
     story_id: story.id || null,
     title: story.title || null,
     output: path.relative(ROOT, outputPath).replace(/\\/g, "/"),
+    proof_output_dir: path.relative(ROOT, proofOut).replace(/\\/g, "/"),
     ass: path.relative(ROOT, assPath).replace(/\\/g, "/"),
     filter: path.relative(ROOT, filterPath).replace(/\\/g, "/"),
     clips: scenePlan.scenes.length,
@@ -3754,7 +3817,7 @@ async function renderProof({ storyJson, output }) {
     no_publish_side_effects: true,
     no_db_mutation: true,
   };
-  await fs.writeJson(path.join(TEST_OUT, `${story.id || "story"}_studio_v4_proof_report.json`), report, {
+  await fs.writeJson(path.join(proofOut, `${story.id || "story"}_studio_v4_proof_report.json`), report, {
     spaces: 2,
   });
   return report;
@@ -3782,6 +3845,7 @@ if (require.main === module) {
 module.exports = {
   loadDotenvForCli,
   parseArgs,
+  resolveProofOutputDir,
   buildOverlayLayout,
   buildClipScenePlan,
   scenePlanBlockerDiagnostic,

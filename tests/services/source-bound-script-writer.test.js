@@ -1408,6 +1408,52 @@ test("source-bound fallback turns a physical-release backlash story into a concr
   assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
 });
 
+test("source-bound fallback turns Black Flag's 3 million sales milestone into a retention story", () => {
+  const story = {
+    id: "official_black_flag_three_million_20260717",
+    title: "Assassin's Creed Black Flag Resynced Sells Over 3 Million Copies in a Week",
+    source_type: "official",
+    source_name: "Ubisoft",
+    article_url:
+      "https://news.ubisoft.com/en-us/article/3FcqYa0y8K39sboBSUfXzk/assassins-creed-black-flag-resynced-sells-over-3-million-copies-in-a-week",
+  };
+  const script = buildSourceBoundFallbackScript(story, {
+    sourceName: "Ubisoft",
+    runtimeProfile: SHORT_LOCAL_PROFILE,
+    sourceMaterial:
+      "Ubisoft reports Assassin's Creed Black Flag Resynced sold more than 3 million copies in one week after selling 2 million on day one. Steam user reviews improved to Very Positive while post-launch fixes and New Game Plus were announced.",
+  });
+
+  assert.ok(script);
+  assert.equal(script.editorial_angle?.lane, "black_flag_sales_momentum");
+  assert.equal(
+    script.suggested_title,
+    "Black Flag Sold 3 Million. The Second Wave Is The Real Win",
+  );
+  assert.match(
+    script.full_script,
+    /^Ubisoft's new Black Flag sold 3 million copies in its launch week\./,
+  );
+  assert.doesNotMatch(script.full_script, /\bBlack Flag Resynced sold\b/i);
+  assert.match(script.full_script, /3 million copies/i);
+  assert.match(script.full_script, /2 million copies (?:sold )?on day one/i);
+  assert.match(script.full_script, /Very Positive/i);
+  assert.match(script.full_script, /retention|staying power|momentum/i);
+  assert.match(script.full_script, /word of mouth/i);
+  assert.match(script.full_script, /publisher-reported|publisher's number/i);
+  assert.doesNotMatch(
+    script.full_script,
+    /one detail worth checking|watch signal|what people install, buy, wishlist or ignore/i,
+  );
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+
+  const quality = buildViralScriptIntelligence({
+    story,
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
+});
+
 test("sourceNameFromUrl gives readable publisher names", () => {
   assert.equal(
     sourceNameFromUrl("https://www.rockpapershotgun.com/example"),

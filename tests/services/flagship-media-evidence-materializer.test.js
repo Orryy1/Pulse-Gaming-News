@@ -320,6 +320,25 @@ async function replaceBoundTimeline(fixture, {
   }, { spaces: 2 });
 }
 
+function replaceFixtureMediaDuration(fixture, durationSeconds) {
+  const runFfmpeg = (args) => execFileSync("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-y", ...args,
+  ], { stdio: "ignore", windowsHide: true });
+  runFfmpeg([
+    "-f", "lavfi", "-i", `color=c=0x112233:s=1080x1920:r=5:d=${durationSeconds}`,
+    "-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:duration=${durationSeconds}`,
+    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest",
+    "-movflags", "+faststart", "-brand", "mp42",
+    path.join(fixture.packageDir, "final/final.mp4"),
+  ]);
+  runFfmpeg([
+    "-f", "lavfi", "-i", `sine=frequency=660:sample_rate=48000:duration=${durationSeconds}`,
+    "-c:a", "pcm_s16le", "-ar", "48000", "-ac", "1",
+    path.join(fixture.packageDir, "audio/narration.wav"),
+  ]);
+}
+
 test("materialises independently verified local evidence and preserves generated-card backdrop lineage", async () => {
   const fixture = await makeFixture();
   const report = await materializeFlagshipMediaEvidence({
@@ -663,6 +682,62 @@ test("accepts deterministic spoken currency timestamps bound to numeric display 
   assert.equal(report.verdict, "GREEN");
 });
 
+test("accepts complete word timestamps with natural inter-word pauses across the programme", async () => {
+  const fixture = await makeFixture();
+  const scriptText = "Pulse Gaming reports fresh news.";
+  await replaceBoundTimeline(fixture, {
+    scriptText,
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: `1\n00:00:00,000 --> 00:00:01,000\n${scriptText}\n`,
+    words: [
+      { word: "Pulse", start: 0.02, end: 0.12 },
+      { word: "Gaming", start: 0.22, end: 0.32 },
+      { word: "reports", start: 0.42, end: 0.52 },
+      { word: "fresh", start: 0.62, end: 0.72 },
+      { word: "news", start: 0.86, end: 0.96 },
+    ],
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, true, JSON.stringify(report.blockers, null, 2));
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.final_outputs.word_timestamps.coverage_ratio, 0.94);
+  assert.equal(report.final_outputs.word_timestamps.speech_occupancy_ratio, 0.5);
+});
+
+test("RED: rejects a timestamp track that hides an excessive internal narration gap", async () => {
+  const fixture = await makeFixture();
+  replaceFixtureMediaDuration(fixture, 3);
+  const scriptText = "Pulse Gaming reports news.";
+  await replaceBoundTimeline(fixture, {
+    scriptText,
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: `1\n00:00:00,000 --> 00:00:03,000\n${scriptText}\n`,
+    words: [
+      { word: "Pulse", start: 0, end: 0.2 },
+      { word: "Gaming", start: 0.3, end: 0.5 },
+      { word: "reports", start: 2.1, end: 2.3 },
+      { word: "news", start: 2.8, end: 2.95 },
+    ],
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, false);
+  assert.ok(report.blockers.includes("word_timestamps_internal_gap_excessive"));
+  assert.equal(report.final_outputs.word_timestamps.max_internal_gap_seconds, 1.6);
+  assert.equal(report.final_outputs.word_timestamps.max_internal_gap_after_word, 2);
+});
+
 test("accepts governed title-pronunciation timestamps bound to official display copy", async () => {
   const fixture = await makeFixture();
   const scriptText = "Black Flag Resynced has nine day-one DLC packs.";
@@ -686,6 +761,32 @@ test("accepts governed title-pronunciation timestamps bound to official display 
 
   assert.equal(report.complete, true, JSON.stringify(report.blockers, null, 2));
   assert.equal(report.verdict, "GREEN");
+});
+
+test("accepts Whisper-split title hardware tokens through the governed pronunciation profile", async () => {
+  const fixture = await makeFixture();
+  const scriptText = "Arknights: Endfield just gave PS5 Pro a real test.";
+  const timestampWords = "Arknights: Endfield just gave PS 5 Pro a real test.".split(/\s+/);
+  await replaceBoundTimeline(fixture, {
+    scriptText,
+    captionsRelativePath: "captions/captions.srt",
+    captionsText: `1\n00:00:00,000 --> 00:00:01,000\n${scriptText}\n`,
+    words: timestampWords.map((word, index) => ({
+      word,
+      start: Number((index / timestampWords.length).toFixed(3)),
+      end: Number(((index + 1) / timestampWords.length).toFixed(3)),
+    })),
+  });
+
+  const report = await materializeFlagshipMediaEvidence({
+    packageDir: fixture.packageDir,
+    inventory: fixture.inventory,
+    outputDir: fixture.outputDir,
+  });
+
+  assert.equal(report.complete, true, JSON.stringify(report.blockers, null, 2));
+  assert.equal(report.verdict, "GREEN");
+  assert.ok(!report.blockers.includes("word_timestamps_current_script_mismatch"));
 });
 
 test("accepts compact resolution captions bound to split spoken timestamp tokens", async () => {

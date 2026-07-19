@@ -252,6 +252,10 @@ test("Arknights Endfield uses a continuous provider-safe spoken alias", () => {
     "Arknights End Field just gave PlayStation five Pro a real test.",
   );
   assert.equal(
+    applyGamingPronunciation("Arknights: Endfield just gave PS 5 Pro a real test."),
+    "Arknights End Field just gave PlayStation five Pro a real test.",
+  );
+  assert.equal(
     applyGamingPronunciation("Arknights Endfield keeps moving."),
     "Arknights End Field keeps moving.",
   );

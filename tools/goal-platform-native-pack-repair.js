@@ -5,6 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 const {
+  DEFAULT_ENABLED_RIGHTS_PLATFORMS,
   repairPlatformNativePacks,
   refreshStoryPackageEntriesFromArtifacts,
 } = require("../lib/goal-platform-native-pack-repair");
@@ -17,6 +18,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     outDir: path.join(ROOT, "output", "goal-contract"),
     backupRoot: path.join(ROOT, "output", "goal-contract", "native-pack-repair-backups"),
     storyIds: [],
+    rightsPlatforms: [...DEFAULT_ENABLED_RIGHTS_PLATFORMS],
     generatedAt: null,
     apply: false,
     json: false,
@@ -29,11 +31,22 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--backup-root") args.backupRoot = argv[++i] || args.backupRoot;
     else if (arg === "--story-id") args.storyIds.push(argv[++i] || "");
     else if (arg === "--story-ids") args.storyIds.push(...String(argv[++i] || "").split(","));
+    else if (arg === "--rights-platform") args.rightsPlatforms.push(argv[++i] || "");
+    else if (arg === "--rights-platforms") {
+      args.rightsPlatforms = String(argv[++i] || "").split(",");
+    }
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
     else if (arg === "--apply") args.apply = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
+  }
+  args.storyIds = args.storyIds.map((value) => String(value || "").trim()).filter(Boolean);
+  args.rightsPlatforms = [
+    ...new Set(args.rightsPlatforms.map((value) => String(value || "").trim()).filter(Boolean)),
+  ];
+  if (!args.rightsPlatforms.length) {
+    throw new Error("--rights-platforms requires at least one platform");
   }
   return args;
 }
@@ -49,6 +62,7 @@ function usage() {
     "  --story-packages <path>",
     "  --story-id <id>        Limit repair to a single story; repeatable",
     "  --story-ids <csv>      Limit repair to a comma-separated story list",
+    "  --rights-platforms <csv>  Rights scope (default: YouTube, Instagram, Facebook)",
     "  --out-dir <dir>",
     "  --backup-root <dir>",
     "  --generated-at <iso>",
@@ -84,6 +98,7 @@ async function main(argv = process.argv.slice(2)) {
     generatedAt,
     apply: args.apply,
     backupRoot: args.backupRoot,
+    rightsPlatforms: args.rightsPlatforms,
   });
   let storyPackageRefresh = null;
   if (args.apply) {
@@ -91,6 +106,7 @@ async function main(argv = process.argv.slice(2)) {
       storyIds: Array.from(requestedStoryIds),
       persistArtifactSummaries: true,
       artifactSummaryBackupRoot: args.backupRoot,
+      rightsPlatforms: args.rightsPlatforms,
     });
     await fs.writeJson(storyPackagesPath, storyPackageRefresh.story_packages, { spaces: 2 });
     report.story_package_refresh = {

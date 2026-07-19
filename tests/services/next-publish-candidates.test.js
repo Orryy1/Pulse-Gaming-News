@@ -2125,6 +2125,65 @@ test("scheduler preflight accepts a current GREEN render-bound rights reconcilia
   );
 });
 
+test("scheduler preflight rejects embedded GREEN rights when official YouTube policy evidence is unbound", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-render-rights-unbound-youtube-policy",
+  });
+  const ledger = await fs.readJson(fixture.rightsPath);
+  ledger.records = ledger.records.map((record) =>
+    record.asset_id === "scene-01"
+      ? {
+          ...record,
+          kind: "video",
+          source_url: "https://www.youtube.com/watch?v=Q-oBTia5gKI",
+          youtube_video_id: "Q-oBTia5gKI",
+          source_type: "official_publisher_gameplay_clip",
+          evidence_kind: "source_identity",
+          transformative_rights_evidence_verified: false,
+          source_identity_rights_grant: false,
+          rights_grant: false,
+          approval_status: "approved_for_transformative_editorial_use",
+          verdict: "GREEN",
+        }
+      : record,
+  );
+  await fs.writeJson(fixture.rightsPath, ledger);
+  const ledgerFingerprint = await bindSchedulerRightsToStableEvidence(fixture);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    rights_reconciliation: {
+      verdict: "PASS",
+      applied_ledger_verdict: "pass",
+      rights_ledger_path: fixture.rightsPath,
+      applied_ledger_sha256: ledgerFingerprint.sha256,
+      applied_ledger_size_bytes: ledgerFingerprint.size_bytes,
+      used_asset_count: 3,
+      reconciled_record_count: 3,
+      duplicate_record_count_after: 0,
+      final_state_verified: true,
+      can_auto_publish: true,
+      blockers: [],
+      warnings: [],
+    },
+  });
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "blocked");
+  assert.ok(
+    preflight.blockers.includes(
+      "scheduler_rights:transformative_rights_policy_evidence_missing_or_unbound",
+    ),
+    JSON.stringify(preflight.blockers),
+  );
+  assert.equal(preflight.checks.scheduler_rights.evidence.covered_asset_count, 2);
+});
+
 test("scheduler preflight cannot hide failed render-bound rights behind a GREEN ledger", async () => {
   const fixture = await makeSchedulerRightsPackage({
     storyId: "scheduler-render-rights-failed",

@@ -38,6 +38,9 @@ const {
   hasSplitGtaViRomanNarration: approvedVoiceHasSplitGtaViRomanNarration,
 } = require("../lib/studio/v2/approved-voice-path");
 const { canonicalHash } = require("../lib/services/url-canonical");
+const {
+  officialYoutubeTransformativeRightsBlockers,
+} = require("../lib/rights-evidence-policy");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "goal-contract");
@@ -5164,6 +5167,7 @@ async function schedulerRightsRecordAssessment({
   fingerprintCache = new Map(),
 } = {}) {
   const failures = [];
+  failures.push(...officialYoutubeTransformativeRightsBlockers(record, asset));
   if (!cleanText(record.asset_id || record.id)) failures.push("rights_record_incomplete");
   if (!schedulerRightsBasis(record)) failures.push("rights_record_incomplete");
   if (record.commercial_use_allowed !== true) failures.push("rights_record_incomplete");

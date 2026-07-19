@@ -188,7 +188,17 @@ test("Goal 06 rights ledger blocks empty, scalar and bare-pass ledgers", async (
 test("Goal 06 rights ledger accepts equivalent aliases for every targeted live platform", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-platform-aliases-"));
   const asset = finalUsedAsset("story-platform-aliases-clip", "a".repeat(64));
-  const storyPackage = await makePackage(root, "story-platform-aliases", finalUsedLedger([asset]));
+  const storyPackage = await makePackage(
+    root,
+    "story-platform-aliases",
+    finalUsedLedger([asset], [
+      finalUsedRecord(asset, {
+        evidence_kind: "publisher_video_policy",
+        transformative_rights_evidence_verified: true,
+        rights_grant: true,
+      }),
+    ]),
+  );
 
   const report = await buildGoal06RightsLedger({
     workspaceRoot: root,

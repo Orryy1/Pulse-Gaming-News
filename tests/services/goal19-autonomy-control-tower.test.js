@@ -1240,6 +1240,71 @@ test("Goal 19 rejects a bare passing rights verdict without used-asset records",
   assert.ok(report.stories[0].blockers.includes("control:rights_ledger_not_pass"));
 });
 
+test("Goal 19 rejects embedded GREEN rights when official YouTube policy evidence is unbound", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-unbound-youtube-policy-"));
+  const story = await makeControlStory(root, "story-unbound-youtube-policy");
+  const ledgerPath = path.join(story.artifact_dir, "rights_ledger.json");
+  const ledger = await fs.readJson(ledgerPath);
+  ledger.records = ledger.records.map((record) =>
+    record.asset_id === "clip-a"
+      ? {
+          ...record,
+          kind: "video",
+          source_url: "https://www.youtube.com/watch?v=Q-oBTia5gKI",
+          youtube_video_id: "Q-oBTia5gKI",
+          source_type: "official_publisher_gameplay_clip",
+          evidence_kind: "source_identity",
+          transformative_rights_evidence_verified: false,
+          source_identity_rights_grant: false,
+          rights_grant: false,
+          approval_status: "approved_for_transformative_editorial_use",
+          verdict: "GREEN",
+        }
+      : record,
+  );
+  await fs.writeJson(ledgerPath, ledger, { spaces: 2 });
+  const ledgerBytes = await fs.readFile(ledgerPath);
+  const renderManifestPath = path.join(story.artifact_dir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    rights_reconciliation: {
+      verdict: "PASS",
+      applied_ledger_verdict: "pass",
+      rights_ledger_path: ledgerPath,
+      applied_ledger_sha256: sha256(ledgerBytes),
+      applied_ledger_size_bytes: ledgerBytes.length,
+      used_asset_count: ledger.records.length,
+      reconciled_record_count: ledger.records.length,
+      duplicate_record_count_after: 0,
+      final_state_verified: true,
+      can_auto_publish: true,
+      blockers: [],
+      warnings: [],
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-19T15:30:00.000Z",
+  });
+
+  const result = report.stories[0];
+  const rights = result.control_inputs.rights_ledger;
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(rights.status, "fail");
+  assert.ok(
+    rights.evidence.incomplete_record_reasons.includes(
+      "rights:transformative_rights_policy_evidence_missing_or_unbound",
+    ),
+    JSON.stringify(rights.evidence.incomplete_record_reasons),
+  );
+});
+
 test("Goal 19 rejects rights records that do not cover every used motion asset", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-incomplete-rights-"));
   const story = await makeControlStory(root, "story-incomplete-rights", {
@@ -2720,4 +2785,59 @@ test("Goal 19 returns GREEN only with independently verified critical inputs", a
     result.control_inputs.rights_ledger.evidence.matched_asset_count,
     result.control_inputs.rights_ledger.evidence.used_asset_count,
   );
+});
+
+test("Goal 19 treats a held canonical publish status as an authoritative RED veto", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-canonical-held-"));
+  const story = await makeControlStory(root, "story-canonical-held", {
+    canonical: {
+      publish_status: "held_for_audio_render_and_av_regeneration",
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-19T08:02:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(result.control_inputs.canonical_story_manifest.status, "fail");
+  assert.ok(result.control_inputs.canonical_story_manifest.blockers.includes(
+    "control:critical_input_red",
+  ));
+});
+
+test("Goal 19 rejects an explicitly thin premium render shell", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-thin-shell-"));
+  const story = await makeControlStory(root, "story-thin-shell");
+  const renderManifestPath = path.join(story.artifact_dir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    premium_shell_verdict: "thin",
+    premium_shell_blockers: [
+      "source:hyperframes_card_timing_contract_stale:pulse_card_timing_v4:pulse_card_timing_v5",
+    ],
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-19T08:03:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(result.control_inputs.render_qa.status, "fail");
+  assert.ok(result.control_inputs.render_qa.evidence.failures.includes(
+    "render:premium_shell_not_green:thin",
+  ));
 });

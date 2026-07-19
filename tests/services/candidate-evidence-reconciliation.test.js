@@ -271,6 +271,8 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
   const clipOne = path.join(artifactDir, "clip-01.mp4");
   const clipTwo = path.join(artifactDir, "clip-02.mp4");
   const sourceMasterOne = path.join(artifactDir, "official-master-01.mp4");
+  const policyPath = path.join(artifactDir, "publisher-video-policy.html");
+  const policyBytes = Buffer.from("<html>Publisher transformative editorial video policy</html>");
   const sourceCard = path.join(artifactDir, "hf_source_card_black_flag.mp4");
   const contextCard = path.join(artifactDir, "hf_context_card_black_flag.mp4");
   const contextCardSidecar = contextCard.replace(/\.mp4$/i, ".shell.json");
@@ -283,6 +285,7 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
   await fs.outputFile(clipOne, Buffer.from("official clip one"));
   await fs.outputFile(clipTwo, Buffer.from("official clip two"));
   await fs.outputFile(sourceMasterOne, Buffer.from("official source master one"));
+  await fs.outputFile(policyPath, policyBytes);
   await fs.outputFile(sourceCard, Buffer.from("owned source card"));
   await fs.outputFile(contextCard, Buffer.from("owned context card"));
   await fs.outputJson(contextCardSidecar, {
@@ -396,9 +399,20 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
       id: "black_flag_clip_02",
       path: clipOne,
       local_materialized_path: clipTwo,
+      approval_status: undefined,
       mediaStartS: 32,
     }),
-    completeRights({ asset_id: "black_flag_clip_01", path: clipOne }),
+    completeRights({
+      asset_id: "black_flag_clip_01",
+      path: clipOne,
+      licence_basis: "publisher_video_policy_transformative_editorial_use",
+      evidence_file: policyPath,
+      evidence_kind: "publisher_video_policy",
+      evidence_sha256: sha256(policyBytes),
+      evidence_size_bytes: policyBytes.length,
+      transformative_rights_evidence_verified: true,
+      rights_grant: true,
+    }),
     completeRights({
       asset_id: "hyperframes_premium_shell_source_1",
       path: path.join(artifactDir, "stale", "hf_source_card_black_flag.mp4"),
@@ -409,13 +423,13 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
       allowed_use: "owned_editorial_motion_graphic",
       approval_status: "approved_for_owned_editorial_use",
     }),
-    {
+    completeRights({
       asset_id: "black_flag_clip_02",
       path: clipTwo,
       source_url: "https://publisher.example/trailer",
       source_type: "official_publisher_trailer_segment",
       source_family: "publisher_trailer",
-    },
+    }),
     completeRights({
       asset_id: "official_black_flag_resynced_launch_20260710_elevenlabs_narration",
       path: path.join(artifactDir, "stale", "narration.mp3"),
@@ -458,7 +472,7 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
     targetPlatforms: TARGET_PLATFORMS,
   });
 
-  assert.equal(report.verdict, "PASS");
+  assert.equal(report.verdict, "PASS", JSON.stringify(report, null, 2));
   assert.equal(report.rights.verdict, "PASS");
   assert.equal(report.rights.used_asset_count, 7);
   assert.equal(report.rights.reconciled_record_count, 7);
@@ -1393,16 +1407,18 @@ test("candidate evidence reconciliation builds a current rights row only for a v
   assert.equal(clip.evidence_file, path.join(artifactDir, "materialised_motion_clips.json"));
 });
 
-test("candidate evidence reconciliation replaces only a provisional renderer row for hash-bound official YouTube motion with bundled identity evidence", async () => {
+test("candidate evidence reconciliation keeps hash-bound official YouTube motion RED when identity evidence has no bound rights policy", async () => {
   const storyId = "verified_official_youtube_motion";
   const artifactDir = await makeArtifactDir("pulse-verified-official-youtube-motion-");
   const clipPath = path.join(artifactDir, "official-youtube-window.mp4");
   const sourceMasterPath = path.join(artifactDir, "official-youtube-master.mp4");
+  const policyPath = path.join(artifactDir, "publisher-video-policy.html");
   const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
   const sourceUrl = "https://www.youtube.com/watch?v=OfficialVideo1";
   const sourceMasterBytes = Buffer.from("hash-bound official youtube master");
   await fs.outputFile(clipPath, Buffer.from("verified official youtube window"));
   await fs.outputFile(sourceMasterPath, sourceMasterBytes);
+  await fs.outputFile(policyPath, "<html>Unbound publisher video policy snapshot</html>");
   await fs.outputFile(finalVideoPath, Buffer.from("decodable final"));
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: storyId,
@@ -1423,7 +1439,13 @@ test("candidate evidence reconciliation replaces only a provisional renderer row
       source_type: "official_youtube_channel",
       source_owner: "Official Publisher",
       source_family: "official_youtube_window_12_4",
-      rights_basis: "official_publisher_promotional_editorial_use",
+      rights_basis: "publisher_video_policy_transformative_editorial_use",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: TARGET_PLATFORMS,
+      commercial_use_allowed: true,
+      credit_required: false,
+      evidence_reference: policyPath,
+      risk_score: 0.18,
       materialized: true,
       validated: true,
       segmentValidationPassed: true,
@@ -1455,6 +1477,8 @@ test("candidate evidence reconciliation replaces only a provisional renderer row
               author_name: "Official Publisher",
               author_url: "https://www.youtube.com/@officialpublisher",
             },
+            identity_scope: "source_identity_only",
+            rights_grant: false,
           }],
         },
         blockers: [],
@@ -1499,22 +1523,15 @@ test("candidate evidence reconciliation replaces only a provisional renderer row
     targetPlatforms: TARGET_PLATFORMS,
   });
 
-  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
-  assert.deepEqual(report.rights.blockers, []);
-  const clip = report.rights.proposed_ledger.records[0];
-  assert.equal(clip.asset_id, "official-youtube-window");
-  assert.equal(clip.source_url, sourceUrl);
-  assert.equal(clip.youtube_video_id, "OfficialVideo1");
-  assert.equal(clip.source_master_sha256, sha256(sourceMasterBytes));
-  assert.equal(clip.approval_status, "approved_for_transformative_editorial_use");
-  assert.equal(clip.commercial_use_allowed, true);
-  assert.equal(clip.rights_verdict, "GREEN");
-  assert.notEqual(String(clip.status || "").toUpperCase(), "RED");
-  assert.equal(clip.reconciliation_basis, "current_validated_official_materialised_clip");
-  assert.equal(
-    clip.rights_decision_basis,
-    "validated_official_direct_media_editorial_policy",
+  assert.equal(report.verdict, "FAIL", JSON.stringify(report, null, 2));
+  assert.equal(report.publish_readiness, "RED");
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      "transformative_rights_policy_evidence_missing_or_unbound:official-youtube-window",
+    ),
   );
+  assert.equal(report.rights.proposed_ledger.records.length, 0);
 });
 
 test("candidate evidence reconciliation accepts a hash-bound official publisher clip backed by a captured video policy", async () => {
@@ -1528,9 +1545,10 @@ test("candidate evidence reconciliation accepts a hash-bound official publisher 
   const sourceUrl = "https://www.youtube.com/watch?v=PublisherGameplay1";
   const sourceMasterBytes = Buffer.from("hash-bound publisher gameplay master");
   const clipBytes = Buffer.from("validated publisher gameplay window");
+  const policyBytes = Buffer.from("<html>Commercial editorial video policy snapshot</html>");
   await fs.outputFile(clipPath, clipBytes);
   await fs.outputFile(sourceMasterPath, sourceMasterBytes);
-  await fs.outputFile(policyPath, "<html>Commercial editorial video policy snapshot</html>");
+  await fs.outputFile(policyPath, policyBytes);
   await fs.outputFile(finalVideoPath, Buffer.from("decodable final"));
   const identity = {
     schema: "pulse_motion_source_identity_sidecar_v1",
@@ -1589,6 +1607,9 @@ test("candidate evidence reconciliation accepts a hash-bound official publisher 
       commercial_use_allowed: true,
       credit_required: true,
       evidence_reference: policyPath,
+      evidence_kind: "publisher_video_policy",
+      evidence_sha256: sha256(policyBytes),
+      evidence_size_bytes: policyBytes.length,
       risk_score: 0.18,
       materialized: true,
       validated: true,
@@ -1672,10 +1693,38 @@ test("candidate evidence reconciliation accepts a hash-bound official publisher 
   assert.equal(clip.source_owner, "Official Game Channel");
   assert.equal(clip.rights_verdict, "GREEN");
   assert.equal(clip.commercial_use_allowed, true);
+  assert.equal(clip.rights_grant, true);
+  assert.equal(clip.source_identity_rights_grant, false);
+  assert.equal(clip.transformative_rights_evidence_verified, true);
+  assert.equal(clip.evidence_file, policyPath);
+  assert.equal(clip.evidence_kind, "publisher_video_policy");
+  assert.equal(clip.evidence_sha256, sha256(policyBytes));
+  assert.equal(clip.evidence_size_bytes, policyBytes.length);
   assert.equal(
     clip.reconciliation_basis,
     "current_validated_official_materialised_clip",
   );
+
+  await fs.appendFile(policyPath, "\nchanged after declaration");
+  const stalePolicyReport = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(stalePolicyReport.verdict, "FAIL");
+  assert.equal(stalePolicyReport.publish_readiness, "RED");
+  assert.ok(
+    stalePolicyReport.rights.blockers.includes(
+      "transformative_rights_policy_evidence_fingerprint_mismatch:publisher-gameplay-window",
+    ),
+  );
+  assert.equal(stalePolicyReport.rights.proposed_ledger.records.length, 0);
 });
 
 test("candidate evidence reconciliation replaces only a provisional renderer row for hash-bound official Steam motion", async () => {

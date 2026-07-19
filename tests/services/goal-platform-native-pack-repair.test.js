@@ -2266,3 +2266,133 @@ test("platform-native repair derives Facebook Reels duration from render manifes
   assert.deepEqual(facebookEvidence.missing_fields, []);
   assert.equal(platformManifest.platform_native_evidence.verdict, "pass");
 });
+
+test("platform-native repair scopes rights to enabled live platforms by default", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.outputJson(path.join(artifactDir, "rights", "official-black-flag-policy.json"), {
+    policy: "publisher permits transformative editorial video use",
+  });
+  const asset = {
+    asset_id: "story-native-final",
+    kind: "video",
+    path: "visual_v4_render.mp4",
+    source_url: "https://www.youtube.com/watch?v=official-black-flag",
+    source_type: "official_publisher_trailer_segment",
+    asset_sha256: "a".repeat(64),
+  };
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    schema_version: 2,
+    verdict: "pass",
+    used_assets: [asset],
+    records: [{
+      ...asset,
+      licence_basis: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+      commercial_use_allowed: true,
+      risk_score: 0.2,
+      evidence_file: "rights/official-black-flag-policy.json",
+      evidence_kind: "publisher_video_policy",
+      transformative_rights_evidence_verified: true,
+      rights_grant: true,
+    }],
+    metrics: {
+      used_asset_count: 1,
+      rights_record_count: 1,
+      missing_asset_count: 0,
+    },
+  });
+
+  const report = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-19T08:00:00.000Z",
+    apply: false,
+  });
+  const refreshed = await refreshStoryPackageEntriesFromArtifacts(storyPackages, {
+    storyIds: ["story-native"],
+    finalAvReviewValidator: trustedFinalAvReviewValidator,
+  });
+
+  assert.equal(report.items[0].target_rights_status, "ready");
+  assert.deepEqual(report.items[0].target_rights_blockers, []);
+  assert.equal(refreshed.rows[0].rights_status, "ready");
+  assert.deepEqual(refreshed.rows[0].rights_blockers, []);
+});
+
+test("platform-native repair rejects source-identity evidence for official YouTube motion", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  const asset = {
+    asset_id: "story-native-final",
+    kind: "video",
+    path: "visual_v4_render.mp4",
+    source_url: "https://www.youtube.com/watch?v=official-black-flag",
+    source_type: "official_publisher_trailer_segment",
+    asset_sha256: "a".repeat(64),
+  };
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    schema_version: 2,
+    verdict: "pass",
+    used_assets: [asset],
+    records: [{
+      ...asset,
+      licence_basis: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+      commercial_use_allowed: true,
+      risk_score: 0.2,
+      evidence_file: "rights/official-black-flag-source-identity.json",
+      evidence_kind: "source_identity",
+      transformative_rights_evidence_verified: false,
+      source_identity_rights_grant: false,
+      rights_grant: false,
+    }],
+    metrics: {
+      used_asset_count: 1,
+      rights_record_count: 1,
+      missing_asset_count: 0,
+    },
+  });
+
+  const report = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-19T08:01:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(report.items[0].target_rights_status, "blocked");
+  assert.ok(
+    report.items[0].target_rights_blockers.includes(
+      "rights:transformative_rights_policy_evidence_missing_or_unbound",
+    ),
+    JSON.stringify(report.items[0].target_rights_blockers),
+  );
+});
+
+test("platform-native repair preserves a specific consequence title using changes", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "story-native",
+    canonical_subject: "Black Flag Resynced",
+    canonical_game: "Black Flag Resynced",
+    canonical_angle: "the third million changes the sales story",
+    selected_title: "Black Flag Sold 3 Million. The Third Million Changes The Story",
+    thumbnail_headline: "THE THIRD MILLION MATTERS",
+    first_spoken_line: "Ubisoft's new Black Flag sold 3 million copies in one week.",
+    narration_script:
+      "Ubisoft's new Black Flag sold 3 million copies in one week. The third million changes the sales story.",
+    primary_source: "Ubisoft",
+  });
+
+  const report = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-19T08:01:00.000Z",
+    apply: false,
+  });
+
+  assert.equal(
+    report.items[0].target_youtube_title,
+    "Black Flag Sold 3 Million. The Third Million Changes The Story",
+  );
+  assert.doesNotMatch(report.items[0].target_youtube_title, /source-proof/i);
+});

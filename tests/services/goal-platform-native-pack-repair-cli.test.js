@@ -60,7 +60,19 @@ test("platform-native pack repair CLI can apply to one selected story id", async
 });
 
 test("platform-native pack repair CLI parses story selectors", () => {
-  const args = parseArgs(["--story-id", "one", "--story-ids", "two,three"]);
+  const args = parseArgs([
+    "--story-id",
+    "one",
+    "--story-ids",
+    "two,three",
+    "--rights-platforms",
+    "youtube_shorts,instagram_reels,facebook_reels",
+  ]);
 
   assert.deepEqual(args.storyIds, ["one", "two", "three"]);
+  assert.deepEqual(args.rightsPlatforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
 });

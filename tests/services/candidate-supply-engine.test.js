@@ -1126,8 +1126,9 @@ test("candidate supply carries hydrated source metadata on motion-only scorecard
         status: "ready",
         readiness: { status: "v4_motion_ready", blockers: [] },
         clips: Array.from({ length: 6 }, (_, index) => ({
-          source_family: `official-family-${index}`,
-          source_url: `https://example.com/motion-${index}.mp4`,
+          source_family: `motion-source-fields-official-${index}`,
+          source_url: `https://example.com/motion-source-fields-${index}.mp4`,
+          title: `Motion Source Fields Official Gameplay ${index + 1}`,
           media_kind: "direct_video",
           counts_towards_motion_readiness: true,
         })),
@@ -1349,6 +1350,96 @@ test("candidate supply excludes synthetic premium evaluation motion packs from l
       warning.startsWith("motion_ready_source_metadata_repair_required:"),
     ),
     false,
+  );
+});
+
+test("candidate supply demotes motion-ready packs that mix the story with unrelated game footage", () => {
+  const now = new Date("2026-07-19T23:30:00.000Z");
+  const storyId = "rss_8908c3f0f1125398";
+  const report = buildCandidateSupplyReport({
+    stories: [
+      {
+        id: storyId,
+        title: "GTA VI Launch Details",
+        canonical_subject: "Grand Theft Auto VI",
+        source_name: "PlayStation Blog",
+        source_type: "rss",
+        url: "https://blog.playstation.com/2026/07/19/gta-vi-launch-details/",
+        timestamp: "2026-07-19T22:30:00.000Z",
+        source_published_at: "2026-07-19T22:30:00.000Z",
+      },
+    ],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 0, returned: 0, pending_audio: 0 },
+      candidates: [],
+    },
+    motionCapacityReports: [
+      {
+        packs: [
+          {
+            story_id: storyId,
+            readiness_status: "v4_motion_ready",
+            motion_ready: true,
+            current_motion_clips: 6,
+            required_motion_clips: 5,
+            current_motion_families: 6,
+            required_motion_families: 4,
+            direct_media_ready: 6,
+            actionable_direct_media_ready: 6,
+            blockers: [],
+            clips: [
+              {
+                source_url: "https://media.rockstargames.com/VI/trailer-1.mp4",
+                source_family: "grand_theft_auto_vi_trailer_1",
+                title: "Grand Theft Auto VI Trailer 1",
+                media_kind: "direct_video",
+              },
+              {
+                source_url: "https://media.rockstargames.com/VI/trailer-2.mp4",
+                source_family: "grand_theft_auto_vi_trailer_2",
+                title: "Grand Theft Auto VI Trailer 2",
+                media_kind: "direct_video",
+              },
+              ...Array.from({ length: 4 }, (_, index) => ({
+                source_url: `https://gmedia.playstation.com/marvel-tokon-${index + 1}.mp4`,
+                source_family: `marvel_tokon_fighting_souls_${index + 1}`,
+                title: `MARVEL Tokon Fighting Souls Clip ${index + 1}`,
+                media_kind: "direct_video",
+              })),
+            ],
+          },
+        ],
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 10,
+      sourceSafeCandidates: 6,
+      v4ReadyCandidates: 3,
+      freshSourceBackedStories: 10,
+      publishWindows24h: 5,
+    },
+  });
+
+  const scorecard = report.priority_scorecards.find(
+    (item) => item.story_id === storyId,
+  );
+  assert.ok(scorecard);
+  assert.equal(scorecard.motion_capacity.motion_ready, false);
+  assert.equal(scorecard.motion_capacity.current_motion_clips, 2);
+  assert.equal(scorecard.motion_capacity.current_motion_families, 2);
+  assert.equal(scorecard.motion_capacity.rejected_cross_title_clip_count, 4);
+  assert.ok(
+    scorecard.motion_capacity.blockers.includes(
+      "source_motion_coherence:cross_title_contamination",
+    ),
+  );
+  assert.equal(
+    scorecard.motion_capacity.clips.every((clip) =>
+      /grand_theft_auto_vi/.test(clip.source_family)),
+    true,
   );
 });
 

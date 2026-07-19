@@ -7673,6 +7673,32 @@ test("media-house preflight scores current artifact platform manifest over stale
       },
     },
   });
+  await fs.writeJson(path.join(tmp, "render_manifest.json"), {
+    final_publish_render: true,
+    output_path: path.join(tmp, "visual_v4_render.mp4"),
+    file_size_bytes: 18000000,
+  });
+  await fs.writeJson(path.join(tmp, "caption_manifest.json"), {
+    status: "ready",
+    verdict: "PASS",
+    display_text:
+      "Gears of War E-Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install. The catch is what players have to delete before launch night. Follow Pulse Gaming so you never miss a beat.",
+    checks: {
+      caption_file_verified: true,
+      display_script_verified: true,
+      display_alignment_exact: true,
+    },
+  });
+  await fs.writeJson(path.join(tmp, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: Array.from({ length: 5 }, (_, index) => ({
+      id: `gears-current-motion-${index + 1}`,
+      path: path.join(tmp, `gears-current-motion-${index + 1}.mp4`),
+      source_family: `official_gears_current_${index + 1}`,
+      media_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+    })),
+  });
 
   const preflight = await runPreflightQaForStory(
     baseStory({

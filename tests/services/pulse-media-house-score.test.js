@@ -83,6 +83,29 @@ function strongStory(overrides = {}) {
         },
       },
     },
+    renderManifest: {
+      final_publish_render: true,
+      output_path: "C:\\media\\forza-horizon-6-final.mp4",
+      file_size_bytes: 18000000,
+    },
+    captionQa: {
+      status: "pass",
+      display_text: canonical.narration_script,
+    },
+    materialisedMotionClips: {
+      status: "ready",
+      clips: Array.from({ length: 5 }, (_, index) => ({
+        id: `forza-motion-${index + 1}`,
+        path: `C:\\media\\forza-motion-${index + 1}.mp4`,
+        source_family: `official_forza_family_${index + 1}`,
+        media_kind: "direct_video",
+        counts_towards_motion_readiness: true,
+      })),
+      distinct_motion_families: Array.from(
+        { length: 5 },
+        (_, index) => `official_forza_family_${index + 1}`,
+      ),
+    },
     uniqueness: { verdict: "pass", failures: [] },
     benchmark: { result: "pass", failures: [] },
     ...overrides,
@@ -152,6 +175,44 @@ test("ultimate professional source diversity accepts complete authoritative base
     report.hard_failures.includes("media_house:professional_source_diversity_not_verified"),
     false,
   );
+  assert.equal(report.verdict, "GREEN");
+});
+
+test("ultimate professional source diversity accepts producer-style SHA identities", () => {
+  const firstHash = "1".repeat(64);
+  const secondHash = "2".repeat(64);
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "ultimate_professional",
+    professional_source_diversity: {
+      policy_tier: "ultimate_professional",
+      authoritative: true,
+      status: "pass",
+      required_genuine_base_source_count: 2,
+      observed_genuine_base_source_count: 2,
+      unresolved_clips: [],
+      blockers: [],
+      identity_evidence: [
+        {
+          base_source_asset_id: `sha256:${firstHash}`,
+          base_source_identity_basis: "master_sha256",
+          identity_evidence: [
+            { kind: "master_sha256", alias: `sha256:${firstHash}` },
+          ],
+        },
+        {
+          base_source_asset_id: `sha256:${secondHash}`,
+          base_source_identity_basis: "master_sha256",
+          identity_evidence: [
+            { kind: "master_sha256", alias: `sha256:${secondHash}` },
+          ],
+        },
+      ],
+    },
+  }));
+
+  assert.equal(report.professional_source_diversity_report.status, "pass");
+  assert.equal(report.professional_source_diversity_report.complete_identity_record_count, 2);
+  assert.equal(report.professional_source_diversity_report.distinct_verified_base_identity_count, 2);
   assert.equal(report.verdict, "GREEN");
 });
 
@@ -1127,6 +1188,17 @@ test("repeated direct-motion segments cannot pass as premium output", () => {
   assert.ok(report.premium_output_contract.blockers.includes("premium_output:motion_family_dominance"));
 });
 
+test("missing direct-motion evidence cannot pass as premium output", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    materialisedMotionClips: {},
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:direct_motion_not_verified"));
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:direct_motion_not_verified"));
+  assert.equal(report.premium_output_contract.checks.direct_motion_repeats.status, "blocked");
+});
+
 test("multi-game stories cannot use one game's footage for the entire video", () => {
   const clips = Array.from({ length: 8 }, (_, index) => ({
     id: `palworld-${index + 1}`,
@@ -1170,6 +1242,17 @@ test("local proof renders cannot masquerade as final publish renders", () => {
   assert.ok(report.premium_output_contract.blockers.includes("premium_output:final_publish_render_not_proven"));
 });
 
+test("missing final-render evidence cannot pass the media-house gate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    renderManifest: {},
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:final_publish_render_not_proven"));
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:final_publish_render_not_proven"));
+  assert.equal(report.premium_output_contract.checks.final_render.status, "blocked");
+});
+
 test("bad caption display for GTA and years blocks premium output", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     captionQa: {
@@ -1181,6 +1264,17 @@ test("bad caption display for GTA and years blocks premium output", () => {
   assert.equal(report.verdict, "RED");
   assert.ok(report.hard_failures.includes("media_house:caption_display_not_platform_native"));
   assert.ok(report.premium_output_contract.blockers.includes("premium_output:caption_display_not_platform_native"));
+});
+
+test("missing caption-display evidence cannot pass the media-house gate", () => {
+  const report = buildPulseMediaHouseScore(strongStory({
+    captionQa: {},
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.hard_failures.includes("media_house:caption_display_not_verified"));
+  assert.ok(report.premium_output_contract.blockers.includes("premium_output:caption_display_not_verified"));
+  assert.equal(report.premium_output_contract.checks.caption_display.status, "blocked");
 });
 
 test("Footage Empire v2 red evidence blocks source-locked media-house approval", () => {

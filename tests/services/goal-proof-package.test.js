@@ -19,6 +19,8 @@ const story = require("../../test/fixtures/goal/mixtape-governance-story.json");
 const rightsLedger = require("../../test/fixtures/goal/mixtape-rights-ledger.json");
 
 function greenStory() {
+  const narrationScript =
+    "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.";
   const clips = Array.from({ length: 7 }, (_, index) => ({
     id: `forza-clip-${index + 1}`,
     type: "official_trailer_clip",
@@ -122,6 +124,7 @@ function greenStory() {
     render_manifest: {
       final_publish_render: true,
       output_path: "output/final/forza-green-proof.mp4",
+      file_size_bytes: 18000000,
       duration_seconds: 48.2,
       quality_gate_status: "post_render_forensics_passed",
       post_render_forensic_result: "pass",
@@ -144,8 +147,17 @@ function greenStory() {
       word_timestamp_source: "local_whisper_word_alignment",
       word_timestamp_count: 3,
     },
-    full_script:
-      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.",
+    caption_manifest: {
+      status: "ready",
+      verdict: "PASS",
+      display_text: narrationScript,
+      checks: {
+        caption_file_verified: true,
+        display_script_verified: true,
+        display_alignment_exact: true,
+      },
+    },
+    full_script: narrationScript,
     video_clips: clips,
     sfx_asset_inventory: sfxAssets,
     affiliate_link_manifest: {
@@ -341,6 +353,9 @@ test("goal proof package produces a GREEN acceptance entry only when every core 
   });
 
   assert.equal(pack.acceptance_entry.verdict, "GREEN");
+  assert.equal(pack.pulse_media_house_score.premium_output_contract.status, "pass");
+  assert.equal(pack.pulse_media_house_score.premium_output_contract.checks.final_render.status, "pass");
+  assert.equal(pack.pulse_media_house_score.premium_output_contract.checks.caption_display.status, "pass");
   assert.equal(pack.acceptance_entry.story_id, "forza-green-proof");
   assert.equal(pack.sfx_manifest.source_plan.readiness.status, "pass");
   assert.ok(pack.acceptance_entry.artefacts.includes("script_scorecard.json"));

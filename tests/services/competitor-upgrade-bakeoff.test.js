@@ -45,15 +45,21 @@ test("competitor upgrade bakeoff compares 30 stories and keeps stronger Pulse-or
   }));
   assert.equal(report.summary.candidate_count, 30);
   assert.ok(report.summary.upgraded_beats_baseline_count >= 10);
+  assert.equal(report.summary.upgraded_green_candidate_count, 0);
+  assert.equal(report.production_readiness.verdict, "RED");
+  assert.equal(report.production_readiness.can_auto_publish, false);
+  assert.equal(report.upgraded_green_candidates.candidates.length, 0);
+  assert.equal(report.upgraded_preproduction_candidates.candidates.length, 30);
+  assert.equal(report.next_render_queue.queue.length, 30);
   assert.equal(report.safety.no_copied_assets, true);
-  assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.original_pulse_branded === true), true);
-  assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.source_manifest), true);
-  assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.rights_ledger), true);
-  assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.ai_disclosure), true);
-  assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.caption_manifest), true);
-  assert.equal(report.upgraded_green_candidates.candidates.every((candidate) => candidate.platform_packs), true);
+  assert.equal(report.upgraded_preproduction_candidates.candidates.every((candidate) => candidate.original_pulse_branded === true), true);
+  assert.equal(report.upgraded_preproduction_candidates.candidates.every((candidate) => candidate.source_manifest), true);
+  assert.equal(report.upgraded_preproduction_candidates.candidates.every((candidate) => candidate.rights_ledger), true);
+  assert.equal(report.upgraded_preproduction_candidates.candidates.every((candidate) => candidate.ai_disclosure), true);
+  assert.equal(report.upgraded_preproduction_candidates.candidates.every((candidate) => candidate.caption_manifest), true);
+  assert.equal(report.upgraded_preproduction_candidates.candidates.every((candidate) => candidate.platform_packs), true);
   assert.equal(
-    report.upgraded_green_candidates.candidates.every((candidate) =>
+    report.upgraded_preproduction_candidates.candidates.every((candidate) =>
       candidate.director_beat_map.shot_plan
         .filter((shot) => /source_lock/i.test(`${shot.id || ""} ${shot.kind || ""}`))
         .every((shot) => Number(shot.durationS || 0) <= 3.5),

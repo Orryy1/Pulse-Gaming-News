@@ -279,6 +279,8 @@ test("goal batch title rules avoid fatigued Has A Test template for Dune PS5 sto
 });
 
 function greenStory(id = "green-one") {
+  const narrationScript =
+    "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.";
   const clips = Array.from({ length: 7 }, (_, index) => ({
     id: `${id}-clip-${index + 1}`,
     path: `output/video/${id}-clip-${index + 1}.mp4`,
@@ -308,6 +310,7 @@ function greenStory(id = "green-one") {
     render_manifest: {
       final_publish_render: true,
       output_path: `output/final/${id}.mp4`,
+      file_size_bytes: 18000000,
       duration_seconds: 48.2,
       quality_gate_status: "post_render_forensics_passed",
       post_render_forensic_result: "pass",
@@ -329,8 +332,17 @@ function greenStory(id = "green-one") {
       word_timestamp_source: "local_whisper_word_alignment",
       word_timestamp_count: 3,
     },
-    full_script:
-      "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports 178,009 concurrent Steam players and a 92 Metacritic aggregate. The catch is that this happened before the standard launch, with some players paying $120. That split matters because paid early demand proves attention, but it does not prove the wider audience is already locked in. If the cheaper wave holds, this becomes a real momentum story instead of a premium-week screenshot. Follow Pulse Gaming so you never miss a beat.",
+    caption_manifest: {
+      status: "ready",
+      verdict: "PASS",
+      display_text: narrationScript,
+      checks: {
+        caption_file_verified: true,
+        display_script_verified: true,
+        display_alignment_exact: true,
+      },
+    },
+    full_script: narrationScript,
     video_clips: clips,
     sfx_asset_inventory: licensedSfxAssets(),
     affiliate_link_manifest: { story_id: id, vertical: "gaming", disclosure_required: false },
@@ -407,6 +419,7 @@ test("goal batch packages hydrate existing final render and audio evidence befor
     fs.writeJsonSync(path.join(storyDir, "render_manifest.json"), {
       final_publish_render: true,
       output_path: renderPath,
+      file_size_bytes: fs.statSync(renderPath).size,
       quality_gate_status: "post_render_forensics_passed",
       post_render_forensic_result: "pass",
       rendered_duration_s: 48.2,
@@ -418,6 +431,7 @@ test("goal batch packages hydrate existing final render and audio evidence befor
       word_timestamp_source: "local_whisper_word_alignment",
       word_timestamp_count: story.word_timestamps.length,
     });
+    fs.writeJsonSync(path.join(storyDir, "caption_manifest.json"), story.caption_manifest);
 
     const batch = buildGoalBatchPackages({
       stories: [story],
@@ -430,6 +444,7 @@ test("goal batch packages hydrate existing final render and audio evidence befor
     assert.equal(pack.render_manifest.final_publish_render, true);
     assert.equal(pack.audio_manifest.narration_audio_path, audioPath);
     assert.equal(pack.audio_manifest.word_timestamps_path, timestampsPath);
+    assert.equal(pack.caption_manifest.checks.display_alignment_exact, true);
     assert.ok(!pack.publish_verdict.reason_codes.includes("render:final_publish_render_missing"));
     assert.ok(!pack.publish_verdict.reason_codes.includes("audio:narration_audio_missing"));
     assert.ok(!pack.publish_verdict.reason_codes.includes("captions:word_timestamps_missing"));
@@ -2210,6 +2225,41 @@ test("goal batch package proof preparation writes ASR-safe Black Flag Resynced t
       story: { ...prepared, title: prepared.public_title },
       script: prepared.full_script,
     }).verdict,
+    "viral_ready",
+  );
+});
+
+test("goal batch package rewrites Black Flag sales stories without generic store-test fallback", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "official_black_flag_three_million_20260717",
+    title: "Assassin's Creed Black Flag Resynced Sells Over 3 Million Copies in a Week",
+    canonical_subject: "Black Flag Resynced",
+    canonical_game: "Black Flag Resynced",
+    source_name: "Ubisoft",
+    source_type: "official",
+    article_url:
+      "https://news.ubisoft.com/en-us/article/3FcqYa0y8K39sboBSUfXzk/assassins-creed-black-flag-resynced-sells-over-3-million-copies-in-a-week",
+    confirmed_claims: [
+      "Ubisoft reports that Assassin's Creed Black Flag Resynced sold more than 3 million copies during its first week.",
+      "Ubisoft reports that 2 million copies were sold on day one.",
+      "Ubisoft says Steam user reviews improved to Very Positive during the launch week.",
+      "Ubisoft says post-launch fixes and New Game Plus were announced.",
+    ],
+    full_script:
+      "Black Flag Resynced has one detail worth checking before it becomes background noise. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.match(prepared.full_script, /3 million copies/i);
+  assert.match(prepared.full_script, /2 million copies (?:sold )?on day one/i);
+  assert.match(prepared.full_script, /Very Positive/i);
+  assert.match(prepared.full_script, /word of mouth/i);
+  assert.match(prepared.full_script, /publisher-reported|publisher's number/i);
+  assert.doesNotMatch(
+    prepared.full_script,
+    /live store test|trailer budget|does this city seem readable|Assassin's Creed it sold/i,
+  );
+  assert.equal(
+    buildViralScriptIntelligence({ story: prepared, script: prepared.full_script }).verdict,
     "viral_ready",
   );
 });
@@ -4680,6 +4730,7 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
     render_manifest: {
       final_publish_render: true,
       output_path: "output/final/forza-rich-restore.mp4",
+      file_size_bytes: 18000000,
       duration_seconds: 48.2,
       quality_gate_status: "post_render_forensics_passed",
       post_render_forensic_result: "pass",
@@ -4704,6 +4755,17 @@ test("goal batch packages hydrate existing Visual V4 motion packs instead of usi
     sfx_asset_inventory: licensedSfxAssets(),
     full_script:
       "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports a major Steam peak during Premium Edition early access. The catch is whether that paid-access crowd turns into wider demand once the cheaper route opens. That split matters because a premium spike proves attention, but not long-term retention. If the standard launch holds, this becomes a real Xbox momentum story instead of a one-week Steam screenshot. Follow Pulse Gaming so you never miss a beat.",
+    caption_manifest: {
+      status: "ready",
+      verdict: "PASS",
+      display_text:
+        "Forza Horizon 6 just gave Xbox the paid access warning it needed. GamesRadar+ reports a major Steam peak during Premium Edition early access. The catch is whether that paid-access crowd turns into wider demand once the cheaper route opens. That split matters because a premium spike proves attention, but not long-term retention. If the standard launch holds, this becomes a real Xbox momentum story instead of a one-week Steam screenshot. Follow Pulse Gaming so you never miss a beat.",
+      checks: {
+        caption_file_verified: true,
+        display_script_verified: true,
+        display_alignment_exact: true,
+      },
+    },
   };
   const clips = Array.from({ length: 8 }, (_, index) => ({
     id: `v4-motion-${index + 1}`,
@@ -4768,6 +4830,7 @@ test("goal batch packages restore sibling motion-hydrated materialised clips bef
     fs.writeJsonSync(path.join(artifactDir, "render_manifest.json"), {
       final_publish_render: true,
       output_path: renderPath,
+      file_size_bytes: fs.statSync(renderPath).size,
       quality_gate_status: "post_render_forensics_passed",
       post_render_forensic_result: "pass",
       rendered_duration_s: 48.2,
@@ -4779,6 +4842,7 @@ test("goal batch packages restore sibling motion-hydrated materialised clips bef
       word_timestamp_source: "local_whisper_word_alignment",
       word_timestamp_count: story.word_timestamps.length,
     });
+    fs.writeJsonSync(path.join(artifactDir, "caption_manifest.json"), story.caption_manifest);
     fs.writeJsonSync(path.join(artifactDir, "materialised_motion_clips.json"), {
       status: "missing",
       clip_count: 0,

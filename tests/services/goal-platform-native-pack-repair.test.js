@@ -1,16 +1,46 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFile } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { promisify } = require("node:util");
 
 const {
   repairPlatformNativePacks: repairPlatformNativePacksProduction,
   refreshStoryPackageEntriesFromArtifacts,
 } = require("../../lib/goal-platform-native-pack-repair");
 const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
+
+const execFileAsync = promisify(execFile);
+let strictFinalMediaBytesPromise;
+
+async function strictFinalMediaBytes() {
+  if (!strictFinalMediaBytesPromise) {
+    strictFinalMediaBytesPromise = (async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-native-pack-valid-media-"));
+      const output = path.join(root, "valid-final.mp4");
+      try {
+        await execFileAsync("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-f", "lavfi", "-i", "testsrc2=size=270x480:rate=8",
+          "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=48000",
+          "-t", "43.5",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "64k", "-shortest", "-movflags", "+faststart",
+          output,
+        ], { timeout: 60000, windowsHide: true });
+        return await fs.readFile(output);
+      } finally {
+        await fs.remove(root);
+      }
+    })();
+  }
+  return strictFinalMediaBytesPromise;
+}
 
 const trustedFinalAvReviewValidator = async () => ({
   valid: true,
@@ -24,6 +54,10 @@ function repairPlatformNativePacks(options = {}) {
     finalAvReviewValidator: trustedFinalAvReviewValidator,
     ...options,
   });
+}
+
+function fileSha256(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
 async function legacyArtifact() {
@@ -262,7 +296,7 @@ test("platform-native pack repair preserves vivid concrete canonical headlines",
   }
 });
 
-test("platform-native pack repair clears stale RED publish status after GREEN governance", async () => {
+test("platform-native pack repair does not clear RED from paperwork-only GREEN governance", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;
 
@@ -299,8 +333,20 @@ test("platform-native pack repair clears stale RED publish status after GREEN go
 
   assert.equal(dryRun.summary.repairable_count, 1);
   assert.equal(dryRun.items[0].current_publish_status, "RED");
-  assert.equal(dryRun.items[0].target_publish_status, "GREEN");
-  assert.equal(dryRun.items[0].publish_status_stale, true);
+  assert.equal(
+    dryRun.items[0].target_publish_status,
+    "RED",
+    JSON.stringify(dryRun.items[0], null, 2),
+  );
+  assert.equal(dryRun.items[0].target_can_auto_publish, false);
+  assert.equal(dryRun.items[0].target_final_render_ready, false);
+  assert.equal(dryRun.items[0].target_rights_status, "blocked");
+  assert.ok(
+    dryRun.items[0].target_publish_verdict.reason_codes.includes(
+      "rights:rights_ledger_missing",
+    ),
+  );
+  assert.equal(dryRun.items[0].publish_status_stale, false);
 
   const applied = await repairPlatformNativePacks({
     storyPackages,
@@ -311,7 +357,8 @@ test("platform-native pack repair clears stale RED publish status after GREEN go
 
   assert.equal(applied.summary.repaired_count, 1);
   const repaired = await fs.readJson(manifestPath);
-  assert.equal(repaired.publish_status, "GREEN");
+  assert.equal(repaired.publish_status, "RED");
+  assert.equal(repaired.can_auto_publish, false);
   assert.equal(repaired.platform_native_evidence.verdict, "pass");
   assert.equal(repaired.no_publish_triggered, true);
   assert.equal(await fs.pathExists(applied.repairs[0].backup_files.platform_publish_manifest), true);
@@ -371,6 +418,28 @@ test("platform-native pack repair cannot promote a pending final AV review", asy
 test("platform-native pack repair stamps GREEN publish controls from final render and media-house pass", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;
+  const finalRenderPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const narrationAudioPath = path.join(artifactDir, "narration.wav");
+  const wordTimestampsPath = path.join(artifactDir, "word_timestamps.json");
+  const motionClips = Array.from({ length: 5 }, (_, index) => ({
+    id: `hellraiser-motion-${index + 1}`,
+    path: path.join(artifactDir, `hellraiser-motion-${index + 1}.mp4`),
+    source_family: `official_hellraiser_${index + 1}`,
+    media_kind: "direct_video",
+    counts_towards_motion_readiness: true,
+  }));
+  await Promise.all([
+    fs.outputFile(finalRenderPath, Buffer.alloc(8192, 17)),
+    fs.outputFile(narrationAudioPath, Buffer.alloc(4096, 23)),
+    fs.writeJson(wordTimestampsPath, [
+      { word: "Hellraiser", start: 0, end: 0.42 },
+      { word: "Revival", start: 0.43, end: 0.78 },
+      { word: "picked", start: 0.79, end: 1.04 },
+    ]),
+    ...motionClips.map((clip, index) =>
+      fs.outputFile(clip.path, Buffer.alloc(2048, index + 1))
+    ),
+  ]);
   storyPackages[0].verdict = "local_proof_pending";
   await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: "story-native",
@@ -388,6 +457,8 @@ test("platform-native pack repair stamps GREEN publish controls from final rende
     first_spoken_line: "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons.",
     narration_script:
       "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons. Eurogamer says the new trailer locks the game for PS5, Xbox Series X/S and PC, with Saber leaning hard into Pinhead, the Genesis Configuration and first-person gore. That timing is smart because horror fans will look twice in October, but it also raises the bar. Players are not judging whether Hellraiser can be nasty. They are judging whether the combat, the puzzle box powers and the Labyrinth tension can hold up when the licence stops doing the work. If the box power lands, this could be October's weird wildcard. If it feels stiff, the date becomes the problem. Follow Pulse Gaming so you never miss a beat.",
+    caption_display_text:
+      "Hellraiser: Revival picked October 8, and that is brave for all the wrong reasons. Eurogamer says the new trailer locks the game for PS5, Xbox Series X/S and PC, with Saber leaning hard into Pinhead, the Genesis Configuration and first-person gore. That timing is smart because horror fans will look twice in October, but it also raises the bar. Players are not judging whether Hellraiser can be nasty. They are judging whether the combat, the puzzle box powers and the Labyrinth tension can hold up when the licence stops doing the work. If the box power lands, this could be October's weird wildcard. If it feels stiff, the date becomes the problem. Follow Pulse Gaming so you never miss a beat.",
     description:
       "Hellraiser: Revival is set for October 8, 2026 on PS5, Xbox Series X/S and PC after a new trailer. Source: Eurogamer.",
     primary_source: "Eurogamer",
@@ -400,8 +471,39 @@ test("platform-native pack repair stamps GREEN publish controls from final rende
   await fs.writeJson(path.join(artifactDir, "affiliate_link_manifest.json"), {});
   await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
     final_publish_render: true,
-    output: "visual_v4_render.mp4",
+    output_path: finalRenderPath,
+    file_size_bytes: (await fs.stat(finalRenderPath)).size,
     rendered_duration_s: 43.5,
+    quality_gate_status: "post_render_forensics_passed",
+    post_render_forensic_result: "pass",
+    post_render_forensic_blockers: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "ready",
+    verdict: "PASS",
+    checks: {
+      caption_file_verified: true,
+      display_script_verified: true,
+      display_alignment_exact: true,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: motionClips,
+    distinct_motion_families: Array.from(
+      { length: 5 },
+      (_, index) => `official_hellraiser_${index + 1}`,
+    ),
+  });
+  await fs.writeJson(path.join(artifactDir, "footage_inventory.json"), {
+    readiness: {
+      status: "v4_motion_ready",
+      blockers: [],
+    },
+    motion_budget: {
+      required_motion_scenes: 5,
+      required_distinct_families: 4,
+    },
   });
   await fs.writeJson(path.join(artifactDir, "script_scorecard.json"), {
     verdict: "viral_ready",
@@ -429,10 +531,14 @@ test("platform-native pack repair stamps GREEN publish controls from final rende
     readiness: { status: "director_ready", blockers: [] },
     shot_plan: [{ id: "hook", kind: "motion_clip" }],
   });
-  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+  const completeAudioManifest = {
     voice_status: "materialized",
-    word_timestamp_count: 120,
-  });
+    narration_audio_path: narrationAudioPath,
+    word_timestamps_path: wordTimestampsPath,
+    word_timestamp_source: "local_whisper_word_alignment",
+    word_timestamp_count: 3,
+  };
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), completeAudioManifest);
   await fs.writeJson(path.join(artifactDir, "audio_segment_loudness_report.json"), { status: "pass", failures: [] });
   await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), {
     result: "pass",
@@ -454,15 +560,132 @@ test("platform-native pack repair stamps GREEN publish controls from final rende
     landing_page_slug: "hellraiser-revival-rss-cb82aef32f0c73e9",
   });
 
-  const dryRun = await repairPlatformNativePacks({
+  const unreadableMediaDryRun = await repairPlatformNativePacks({
     storyPackages,
     generatedAt: "2026-06-22T02:05:00.000Z",
     apply: false,
   });
 
+  assert.equal(unreadableMediaDryRun.items[0].target_publish_verdict.verdict, "RED");
+  assert.equal(unreadableMediaDryRun.items[0].target_publish_status, "RED");
+  assert.equal(unreadableMediaDryRun.items[0].target_can_auto_publish, false);
+  assert.equal(unreadableMediaDryRun.items[0].target_final_render_ready, false);
+  assert.ok(
+    unreadableMediaDryRun.items[0].target_final_render_blockers.includes(
+      "render:final_publish_render_not_decodable",
+    ),
+  );
+
+  const validFinalMedia = await strictFinalMediaBytes();
+  await fs.writeFile(finalRenderPath, validFinalMedia);
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output_path: finalRenderPath,
+    file_size_bytes: validFinalMedia.length,
+    rendered_duration_s: 43.5,
+    quality_gate_status: "post_render_forensics_passed",
+    post_render_forensic_result: "pass",
+    post_render_forensic_blockers: [],
+  });
+  const missingRightsDryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-22T02:05:10.000Z",
+    apply: false,
+  });
+
+  assert.equal(missingRightsDryRun.items[0].target_final_render_ready, true);
+  assert.equal(missingRightsDryRun.items[0].target_rights_status, "blocked");
+  assert.equal(missingRightsDryRun.items[0].target_publish_verdict.verdict, "RED");
+  assert.ok(
+    missingRightsDryRun.items[0].target_publish_verdict.reason_codes.includes(
+      "rights:rights_ledger_missing",
+    ),
+  );
+  assert.equal(missingRightsDryRun.items[0].target_publish_status, "RED");
+
+  const rightsRecords = motionClips.map((clip) => {
+    const assetHash = fileSha256(clip.path);
+    return {
+      asset_id: clip.id,
+      kind: "motion_clip",
+      path: clip.path,
+      source_url: `https://publisher.example/hellraiser/${clip.id}.mp4`,
+      source_type: "official_trailer_segment",
+      licence_basis: "official_source_editorial_use",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      evidence_file: path.join(artifactDir, "rights", `${clip.id}.json`),
+      rights_risk_class: "official_editorial",
+      risk_score: 0.1,
+      asset_sha256: assetHash,
+    };
+  });
+  for (const record of rightsRecords) {
+    await fs.outputJson(record.evidence_file, {
+      asset_id: record.asset_id,
+      source_url: record.source_url,
+      licence_basis: record.licence_basis,
+    });
+  }
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    story_id: "story-native",
+    used_assets: rightsRecords.map((record) => ({
+      asset_id: record.asset_id,
+      kind: record.kind,
+      path: record.path,
+      source_url: record.source_url,
+      source_type: record.source_type,
+      asset_sha256: record.asset_sha256,
+    })),
+    records: rightsRecords,
+    missing_assets: [],
+    metrics: {
+      asset_count: rightsRecords.length,
+      rights_record_count: rightsRecords.length,
+      missing_asset_count: 0,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    ...completeAudioManifest,
+    narration_audio_path: null,
+  });
+  const strictVerdictDryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-22T02:05:20.000Z",
+    apply: false,
+  });
+
+  assert.equal(strictVerdictDryRun.items[0].target_media_house_verdict, "GREEN");
+  assert.equal(strictVerdictDryRun.items[0].target_final_render_ready, true);
+  assert.equal(strictVerdictDryRun.items[0].target_publish_verdict.verdict, "RED");
+  assert.ok(
+    strictVerdictDryRun.items[0].target_publish_verdict.reason_codes.includes(
+      "audio:narration_audio_missing",
+    ),
+  );
+  assert.equal(strictVerdictDryRun.items[0].target_publish_status, "RED");
+  assert.equal(strictVerdictDryRun.items[0].target_can_auto_publish, false);
+
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), completeAudioManifest);
+  const dryRun = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-06-22T02:05:40.000Z",
+    apply: false,
+  });
+
   assert.equal(dryRun.summary.repairable_count, 1);
   assert.equal(dryRun.items[0].target_native_verdict, "pass");
-  assert.equal(dryRun.items[0].target_publish_status, "GREEN");
+  assert.equal(
+    dryRun.items[0].target_publish_verdict.verdict,
+    "GREEN",
+    JSON.stringify(dryRun.items[0], null, 2),
+  );
+  assert.equal(
+    dryRun.items[0].target_publish_status,
+    "GREEN",
+    JSON.stringify(dryRun.items[0], null, 2),
+  );
   assert.equal(dryRun.items[0].target_can_auto_publish, true);
   assert.equal(dryRun.items[0].can_auto_publish_stale, true);
 
@@ -514,6 +737,59 @@ test("platform-native pack repair refreshes stale media-house score artefacts", 
   assert.ok(!score.hard_failures.includes("media_house:first_frame_or_thumbnail_not_attention_led"));
   assert.ok(applied.repairs[0].repaired_files.includes(path.join(artifactDir, "pulse_media_house_score.json")));
   assert.equal(await fs.pathExists(applied.repairs[0].backup_files.pulse_media_house_score), true);
+});
+
+test("platform-native score refresh consumes current render, caption and motion evidence", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
+  const canonical = await fs.readJson(canonicalPath);
+  canonical.narration_script =
+    "Forza Horizon 6 just exposed Xbox's paid early-access bet. Steam demand now shows whether players will pay before Game Pass opens the door. Follow Pulse Gaming so you never miss a beat.";
+  canonical.caption_display_text = canonical.narration_script;
+  await fs.writeJson(canonicalPath, canonical, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    file_size_bytes: 18000000,
+  });
+  await fs.writeJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "ready",
+    verdict: "PASS",
+    checks: {
+      caption_file_verified: true,
+      display_script_verified: true,
+      display_alignment_exact: true,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: Array.from({ length: 5 }, (_, index) => ({
+      id: `forza-motion-${index + 1}`,
+      path: path.join(artifactDir, `forza-motion-${index + 1}.mp4`),
+      source_family: `official_forza_${index + 1}`,
+      media_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+    })),
+    distinct_motion_families: Array.from(
+      { length: 5 },
+      (_, index) => `official_forza_${index + 1}`,
+    ),
+  });
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    generatedAt: "2026-07-18T22:20:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-current-media-evidence"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const score = await fs.readJson(path.join(artifactDir, "pulse_media_house_score.json"));
+  assert.equal(score.premium_output_contract.checks.final_render.status, "pass");
+  assert.equal(score.premium_output_contract.checks.final_render.evidence.final_publish_render, true);
+  assert.equal(score.premium_output_contract.checks.caption_display.evidence.checked, true);
+  assert.equal(score.premium_output_contract.checks.direct_motion_repeats.evidence.clip_count, 5);
 });
 
 test("platform-native pack repair refreshes stale media-house score even when packs are already native", async () => {
@@ -1728,7 +2004,7 @@ test("platform-native repair turns Star Wars Monopoly family stakes into attenti
   assert.ok(!dryRun.items[0].target_media_house_hard_failures.includes("media_house:shorts_feed_competition_weak"));
 });
 
-test("platform-native repair refreshes stale story-package RED summary from GREEN artefacts", async () => {
+test("platform-native repair does not promote a story summary from paperwork-only GREEN artefacts", async () => {
   const { storyPackages } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;
   await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
@@ -1758,10 +2034,110 @@ test("platform-native repair refreshes stale story-package RED summary from GREE
   });
 
   assert.equal(refreshed.summary.updated_count, 1);
-  assert.equal(refreshed.story_packages[0].verdict, "GREEN");
-  assert.deepEqual(refreshed.story_packages[0].blockers, []);
+  assert.equal(refreshed.story_packages[0].verdict, "RED");
+  assert.ok(
+    refreshed.story_packages[0].blockers.includes(
+      "render:final_publish_render_flag_missing",
+    ),
+  );
+  assert.ok(
+    refreshed.story_packages[0].blockers.includes(
+      "rights:rights_ledger_missing",
+    ),
+  );
+  assert.ok(
+    refreshed.story_packages[0].blockers.includes(
+      "control:final_av_review_missing",
+    ),
+  );
   assert.equal(refreshed.rows[0].updated, true);
   assert.equal(refreshed.safety.no_db_mutation, true);
+});
+
+test("platform-native repair promotes a story summary only from material strict-GREEN evidence", async () => {
+  const { storyPackages } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+  const finalRenderPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const finalMedia = await strictFinalMediaBytes();
+  await fs.writeFile(finalRenderPath, finalMedia);
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    final_publish_render: true,
+    output_path: finalRenderPath,
+    file_size_bytes: finalMedia.length,
+    rendered_duration_s: 43.5,
+    quality_gate_status: "post_render_forensics_passed",
+    post_render_forensic_result: "pass",
+  });
+  const assetHash = fileSha256(finalRenderPath);
+  const evidencePath = path.join(artifactDir, "rights", "final-render.json");
+  await fs.outputJson(evidencePath, {
+    asset_id: "strict-final-render",
+    source: "owned governed fixture",
+  });
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    story_id: "story-native",
+    used_assets: [{
+      asset_id: "strict-final-render",
+      kind: "final_render",
+      path: finalRenderPath,
+      source_type: "owned_governed_render",
+      asset_sha256: assetHash,
+    }],
+    records: [{
+      asset_id: "strict-final-render",
+      kind: "final_render",
+      path: finalRenderPath,
+      source_type: "owned_governed_render",
+      licence_basis: "owned_editorial_production",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "tiktok", "instagram", "facebook", "x", "threads", "pinterest"],
+      evidence_file: evidencePath,
+      rights_risk_class: "owned",
+      risk_score: 0,
+      asset_sha256: assetHash,
+    }],
+    missing_assets: [],
+    metrics: {
+      asset_count: 1,
+      rights_record_count: 1,
+      missing_asset_count: 0,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "GREEN",
+    can_auto_publish: true,
+    reason_codes: [],
+    blockers: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    publish_status: "GREEN",
+    can_auto_publish: true,
+    platform_native_evidence: { verdict: "pass", failures: [] },
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "GREEN",
+    hard_failures: [],
+  });
+
+  const refreshed = await refreshStoryPackageEntriesFromArtifacts([
+    {
+      story_id: "story-native",
+      verdict: "RED",
+      blockers: ["stale_package_summary"],
+      artifact_dir: artifactDir,
+    },
+  ], {
+    storyIds: ["story-native"],
+    finalAvReviewValidator: trustedFinalAvReviewValidator,
+  });
+
+  assert.equal(refreshed.summary.updated_count, 1);
+  assert.equal(refreshed.story_packages[0].verdict, "GREEN");
+  assert.deepEqual(refreshed.story_packages[0].blockers, []);
+  assert.equal(refreshed.rows[0].final_render_ready, true);
+  assert.equal(refreshed.rows[0].rights_status, "ready");
+  assert.equal(refreshed.rows[0].final_av_review_verdict, "GREEN");
 });
 
 test("platform-native repair keeps RED while replacing stale package blockers with current evidence", async () => {
@@ -1809,15 +2185,22 @@ test("platform-native repair keeps RED while replacing stale package blockers wi
 
   assert.equal(refreshed.summary.updated_count, 1);
   assert.equal(refreshed.story_packages[0].verdict, "RED");
-  assert.deepEqual(refreshed.story_packages[0].blockers, [
+  for (const blocker of [
     "control:final_av_review_reviewer_id_missing",
-  ]);
-  assert.deepEqual(refreshed.story_packages[0].publish_verdict, {
-    verdict: "RED",
-    can_auto_publish: false,
-    reason_codes: ["control:final_av_review_reviewer_id_missing"],
-    blockers: ["control:final_av_review_reviewer_id_missing"],
-  });
+    "render:final_publish_render_flag_missing",
+    "rights:rights_ledger_missing",
+    "control:final_av_review_missing",
+    "publish_verdict:red",
+  ]) {
+    assert.ok(refreshed.story_packages[0].blockers.includes(blocker));
+    assert.ok(refreshed.story_packages[0].publish_verdict.reason_codes.includes(blocker));
+  }
+  assert.equal(refreshed.story_packages[0].publish_verdict.verdict, "RED");
+  assert.equal(refreshed.story_packages[0].publish_verdict.can_auto_publish, false);
+  assert.deepEqual(
+    refreshed.story_packages[0].publish_verdict.blockers,
+    refreshed.story_packages[0].blockers,
+  );
   const expectedLocalSummary = { ...refreshed.story_packages[0] };
   delete expectedLocalSummary.artifact_dir;
   assert.deepEqual(

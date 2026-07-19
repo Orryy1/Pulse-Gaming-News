@@ -6136,7 +6136,70 @@ async function incidentGuardPreflightForStory(story = {}) {
 
 async function mediaHousePreflightForStory(story = {}) {
   const { buildPulseMediaHouseScore } = require("../lib/pulse-media-house-score");
-  const platformManifest = await platformManifestForMediaHousePreflight(story);
+  const [
+    platformManifest,
+    currentRenderArtifact,
+    currentCaptionArtifact,
+    currentMotionArtifact,
+    currentFootageArtifact,
+    currentDistinctMotionArtifact,
+  ] = await Promise.all([
+    platformManifestForMediaHousePreflight(story),
+    readArtifactJsonObjectForStory(story, "render_manifest.json"),
+    readArtifactJsonObjectForStory(story, "caption_manifest.json"),
+    readArtifactJsonObjectForStory(story, "materialised_motion_clips.json"),
+    readArtifactJsonObjectForStory(story, "footage_inventory.json"),
+    readArtifactJsonObjectForStory(story, "distinct_motion_family_report.json"),
+  ]);
+  const currentArtifactOrEmbedded = (current, embedded) =>
+    Object.keys(current || {}).length ? current : objectValue(embedded, {});
+  const renderManifest = currentArtifactOrEmbedded(
+    currentRenderArtifact,
+    story.render_manifest || story.renderManifest,
+  );
+  const captionManifest = currentArtifactOrEmbedded(
+    currentCaptionArtifact,
+    story.caption_manifest || story.captionManifest || story.caption_qa || story.captionQa,
+  );
+  const materialisedMotionClips = currentArtifactOrEmbedded(
+    currentMotionArtifact,
+    story.materialised_motion_clips_manifest ||
+      story.materialised_motion_clips ||
+      story.materialized_motion_clips,
+  );
+  const footageEmpireV2 = currentArtifactOrEmbedded(
+    currentFootageArtifact,
+    story.footage_empire_v2 || story.footageEmpireV2 || story.footage_empire,
+  );
+  const distinctMotionFamily = currentArtifactOrEmbedded(
+    currentDistinctMotionArtifact,
+    story.distinct_motion_family_report ||
+      story.distinctMotionFamilyReport ||
+      story.distinct_motion_family,
+  );
+  const captionEvidenceVerified =
+    ["pass", "ready", "green"].includes(
+      cleanText(captionManifest.status || captionManifest.verdict).toLowerCase(),
+    ) &&
+    captionManifest.checks?.caption_file_verified === true &&
+    captionManifest.checks?.display_script_verified === true &&
+    captionManifest.checks?.display_alignment_exact === true;
+  const captionQa = captionEvidenceVerified
+    ? {
+        ...captionManifest,
+        display_text: cleanText(
+          captionManifest.display_text ||
+            captionManifest.transcript ||
+            story.caption_display_text ||
+            story.display_script ||
+            story.full_script,
+        ),
+      }
+    : {};
+  const professionalSourceDiversity =
+    materialisedMotionClips.professional_source_diversity ||
+    materialisedMotionClips.professionalSourceDiversity ||
+    {};
   const score = buildPulseMediaHouseScore({
     story_id: cleanText(story.id || story.story_id),
     canonical: {
@@ -6162,13 +6225,13 @@ async function mediaHousePreflightForStory(story = {}) {
     benchmark: objectValue(story.benchmark_report || story.media_house_benchmark || story.benchmarkReport, {}),
     uniqueness: objectValue(story.uniqueness_report || story.uniqueness, {}),
     competitorSimilarity: objectValue(story.competitor_similarity_report || story.competitorSimilarity, {}),
-    footageEmpireV2: objectValue(story.footage_empire_v2 || story.footageEmpireV2 || story.footage_empire, {}),
-    distinctMotionFamily: objectValue(
-      story.distinct_motion_family_report ||
-        story.distinctMotionFamilyReport ||
-        story.distinct_motion_family ||
-        {},
-    ),
+    footageEmpireV2,
+    distinctMotionFamily,
+    renderManifest,
+    captionQa,
+    materialisedMotionClips,
+    source_diversity_tier: professionalSourceDiversity.policy_tier,
+    professional_source_diversity: professionalSourceDiversity,
   });
   const failures = asArray(score.hard_failures).map((failure) =>
     cleanText(failure).replace(/^media_house:/, ""),

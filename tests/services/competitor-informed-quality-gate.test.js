@@ -72,8 +72,10 @@ async function warningFinalMediaBytes() {
 async function makeGateStory(root, storyId, overrides = {}) {
   const artifactDir = path.join(root, storyId);
   await fs.ensureDir(artifactDir);
+  let finalMediaBytes = null;
   if (overrides.finalMedia !== false) {
-    await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), await validFinalMediaBytes());
+    finalMediaBytes = await validFinalMediaBytes();
+    await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), finalMediaBytes);
   }
   const canonical = {
     story_id: storyId,
@@ -166,6 +168,35 @@ async function makeGateStory(root, storyId, overrides = {}) {
       },
     },
   });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), overrides.renderManifest || {
+    final_publish_render: true,
+    output_path: path.join(artifactDir, "visual_v4_render.mp4"),
+    file_size_bytes: finalMediaBytes?.length || 0,
+  });
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), overrides.captionManifest || {
+    verdict: "PASS",
+    status: "ready",
+    display_text: canonical.narration_script,
+    checks: {
+      caption_file_verified: true,
+      display_script_verified: true,
+      display_alignment_exact: true,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), overrides.materialisedMotionClips || {
+    status: "ready",
+    clips: Array.from({ length: 5 }, (_, index) => ({
+      id: `${storyId}-motion-${index + 1}`,
+      path: path.join(artifactDir, `motion-${index + 1}.mp4`),
+      source_family: `official_${storyId}_${index + 1}`,
+      media_kind: "direct_video",
+      counts_towards_motion_readiness: true,
+    })),
+    distinct_motion_families: Array.from(
+      { length: 5 },
+      (_, index) => `official_${storyId}_${index + 1}`,
+    ),
+  });
   await fs.outputJson(path.join(artifactDir, "benchmark_report.json"), overrides.benchmark || passGate({ result: "pass" }));
   await fs.outputJson(path.join(artifactDir, "uniqueness_report.json"), overrides.uniqueness || passGate());
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), passGate());
@@ -186,6 +217,19 @@ test("competitor-informed quality gate passes strong Pulse-original packages and
   assert.equal(report.verdict, "PASS");
   assert.equal(report.summary.green_story_count, 1);
   assert.equal(report.stories[0].pulse_media_house_score.verdict, "GREEN");
+  assert.equal(report.stories[0].pulse_media_house_score.premium_output_contract.status, "pass");
+  assert.equal(
+    report.stories[0].pulse_media_house_score.premium_output_contract.checks.final_render.evidence.final_publish_render,
+    true,
+  );
+  assert.equal(
+    report.stories[0].pulse_media_house_score.premium_output_contract.checks.caption_display.evidence.checked,
+    true,
+  );
+  assert.equal(
+    report.stories[0].pulse_media_house_score.premium_output_contract.checks.direct_motion_repeats.evidence.clip_count,
+    5,
+  );
   assert.equal(await fs.pathExists(path.join(story.artifact_dir, "pulse_media_house_score.json")), true);
 });
 
@@ -227,10 +271,14 @@ test("competitor-informed quality gate blocks a large corrupt MP4", async () => 
 test("competitor-informed quality gate preserves independent media warnings as AMBER", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-media-warning-"));
   const story = await makeGateStory(root, "media-warning", { finalMedia: false });
-  await fs.writeFile(
-    path.join(story.artifact_dir, "visual_v4_render.mp4"),
-    await warningFinalMediaBytes(),
-  );
+  const finalVideoPath = path.join(story.artifact_dir, "visual_v4_render.mp4");
+  const finalVideoBytes = await warningFinalMediaBytes();
+  await fs.writeFile(finalVideoPath, finalVideoBytes);
+  await fs.writeJson(path.join(story.artifact_dir, "render_manifest.json"), {
+    final_publish_render: true,
+    output_path: finalVideoPath,
+    file_size_bytes: finalVideoBytes.length,
+  });
 
   const report = await buildCompetitorInformedQualityGate({
     storyPackages: [story],
@@ -368,6 +416,44 @@ test("competitor-informed quality gate applies Footage Empire v2 source-lock evi
   assert.equal(report.verdict, "BLOCKED");
   assert.ok(report.stories[0].blockers.includes("media_house:source_lock_not_verified"));
   assert.equal(report.stories[0].pulse_media_house_score.source_lock_report.status, "blocked");
+  assert.equal(report.stories[0].source_material.footage_empire_v2_present, true);
+});
+
+test("competitor-informed quality gate cannot let aggregate GREEN mask package-local footage RED", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-quality-gate-local-footage-red-"));
+  const story = await makeGateStory(root, "local-footage-red-story");
+  await fs.outputJson(path.join(story.artifact_dir, "footage_inventory.json"), {
+    verdict: "RED",
+    blockers: ["trusted_footage_story_mismatch_or_missing"],
+    readiness: {
+      status: "v4_motion_blocked",
+      blockers: ["trusted_footage_story_mismatch_or_missing"],
+    },
+  });
+
+  const report = await buildCompetitorInformedQualityGate({
+    storyPackages: [story],
+    outputDir: path.join(root, "out"),
+    workspaceRoot: root,
+    generatedAt: "2026-07-18T23:00:00.000Z",
+    footageEmpireReport: {
+      verdict: "GREEN",
+      rows: [{
+        story_id: "local-footage-red-story",
+        verdict: "GREEN",
+        readiness: { status: "v4_motion_ready", blockers: [] },
+        blockers: [],
+      }],
+    },
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(report.stories[0].blockers.includes("media_house:source_lock_not_verified"));
+  assert.ok(
+    report.stories[0].pulse_media_house_score.source_lock_report.blockers.includes(
+      "trusted_footage_story_mismatch_or_missing",
+    ),
+  );
   assert.equal(report.stories[0].source_material.footage_empire_v2_present, true);
 });
 

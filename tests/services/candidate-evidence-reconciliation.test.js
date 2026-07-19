@@ -170,6 +170,84 @@ async function addNarrationRightsFixture(fixture, storyId) {
   return { audioPath, rightsPath };
 }
 
+async function addFlagshipNarrationSidecarFixture(fixture, storyId) {
+  const audioManifest = await fs.readJson(path.join(fixture.artifactDir, "audio_manifest.json"));
+  const audioPath = audioManifest.resolved_narration_audio_path;
+  const audioBytes = await fs.readFile(audioPath);
+  const rightsPath = path.join(fixture.artifactDir, "rights_ledger.json");
+  const evidenceRelativePath = "flagship/rights/narration.json";
+  const evidencePath = path.join(fixture.artifactDir, evidenceRelativePath);
+  const assetId = `${storyId}_audio_path`;
+  const sourceUrl = `elevenlabs://pulse-gaming/${storyId}`;
+  const creator = "Pulse Gaming via ElevenLabs";
+  const licenceBasis = "elevenlabs_commercial_tts_generation";
+  const initialRecord = completeRights({
+    asset_id: assetId,
+    path: audioPath,
+    source_url: sourceUrl,
+    source_type: "elevenlabs_generated_narration",
+    source_owner: "Pulse Gaming",
+    licence_basis: licenceBasis,
+    allowed_platforms: TARGET_PLATFORMS,
+    rights_verdict: "GREEN",
+    evidence_file: "narration_manifest.json",
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "narration_manifest.json"), {
+    story_id: storyId,
+    provider: "elevenlabs",
+    resolved_audio_path: audioPath,
+    status: "ready",
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  await fs.outputJson(rightsPath, {
+    schema_version: 1,
+    verdict: "PASS",
+    blockers: [],
+    records: [initialRecord],
+  });
+  const initialLedgerBytes = await fs.readFile(rightsPath);
+  const storedInitialLedger = await fs.readJson(rightsPath);
+  await fs.outputJson(evidencePath, {
+    schema_version: 1,
+    asset_id: assetId,
+    asset_sha256: sha256(audioBytes),
+    source_url: sourceUrl,
+    creator,
+    licence_basis: licenceBasis,
+    commercial_use_allowed: true,
+    rights_verdict: "GREEN",
+    allowed_platforms: TARGET_PLATFORMS,
+    source_ledger_path: "rights_ledger.json",
+    source_ledger_sha256: sha256(initialLedgerBytes),
+    source_record_sha256: sha256(Buffer.from(stableJson(storedInitialLedger.records), "utf8")),
+  });
+  await fs.outputJson(path.join(fixture.artifactDir, "flagship", "inventory.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    used_assets: [{
+      asset_id: assetId,
+      kind: "narration",
+      path: path.relative(fixture.artifactDir, audioPath),
+      source_url: sourceUrl,
+      creator,
+      licence_basis: licenceBasis,
+      commercial_use_allowed: true,
+      rights_verdict: "GREEN",
+      allowed_platforms: TARGET_PLATFORMS,
+      evidence_file: evidenceRelativePath,
+    }],
+  });
+  return {
+    assetId,
+    audioPath,
+    evidencePath,
+    initialLedgerBytes,
+    rightsPath,
+  };
+}
+
 async function captureFiles(paths) {
   return Promise.all(paths.map((filePath) => fs.readFile(filePath)));
 }
@@ -2212,15 +2290,62 @@ test("candidate evidence reconciliation applies valid rights and fingerprints wi
   );
 });
 
+test("candidate evidence reconciliation atomically rebinds flagship rights sidecars to the reconciled ledger", async () => {
+  const storyId = "flagship_rights_sidecar_rebind_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-flagship-rights-sidecar-rebind-",
+    storyId,
+  });
+  const {
+    assetId,
+    evidencePath,
+    initialLedgerBytes,
+    rightsPath,
+  } = await addFlagshipNarrationSidecarFixture(fixture, storyId);
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: true,
+    generatedAt: "2026-07-19T12:00:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.verdict, "PASS");
+  assert.equal(report.rights.applied, true);
+  assert.equal(report.rights.flagship_sidecar_bindings.discovered_count, 1);
+  assert.equal(report.rights.flagship_sidecar_bindings.rebound_count, 1);
+  assert.deepEqual(report.rights.flagship_sidecar_bindings.blockers, []);
+  const reconciledLedgerBytes = await fs.readFile(rightsPath);
+  const reconciledLedger = await fs.readJson(rightsPath);
+  const reconciledRecord = reconciledLedger.records.filter((record) => record.asset_id === assetId);
+  const reboundEvidence = await fs.readJson(evidencePath);
+  assert.equal(reboundEvidence.source_ledger_sha256, sha256(reconciledLedgerBytes));
+  assert.equal(
+    reboundEvidence.source_record_sha256,
+    sha256(Buffer.from(stableJson(reconciledRecord), "utf8")),
+  );
+  assert.notEqual(reboundEvidence.source_ledger_sha256, sha256(initialLedgerBytes));
+  assert.equal(await fs.pathExists(
+    report.rights.flagship_sidecar_bindings.rebound[0].backup_path,
+  ), true);
+});
+
 test("candidate evidence reconciliation rolls back a rights-only apply when the later bridge write fails", async (t) => {
   const storyId = "rights_transaction_rollback_candidate";
   const fixture = await makeFingerprintFixture({
     prefix: "pulse-rights-transaction-rollback-",
     storyId,
   });
-  const { rightsPath } = await addNarrationRightsFixture(fixture, storyId);
+  const {
+    evidencePath,
+    rightsPath,
+  } = await addFlagshipNarrationSidecarFixture(fixture, storyId);
   const renderPath = path.join(fixture.artifactDir, "render_manifest.json");
-  const paths = [rightsPath, renderPath, fixture.bridgePath];
+  const paths = [rightsPath, renderPath, evidencePath, fixture.bridgePath];
   const before = await captureFiles(paths);
   failNextRenameTo(t, fixture.bridgePath);
 

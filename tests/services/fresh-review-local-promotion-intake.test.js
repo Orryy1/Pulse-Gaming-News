@@ -8,6 +8,9 @@ const {
   qualityFailuresForDraft,
   storyDraftFromReprocessedRow,
 } = require("../../lib/fresh-review-local-promotion-intake");
+const {
+  selectAlternateCohortCandidates,
+} = require("../../lib/ops/alternate-cohort-candidate-selector");
 const { parseArgs } = require("../../tools/fresh-review-local-promotion-intake");
 const packageJson = require("../../package.json");
 
@@ -468,6 +471,111 @@ test("fresh review local promotion intake falls back to hydrated motion-ready so
   assert.equal(report.repair_results[0].source, "motion_capacity_scorecard");
   assert.equal(report.safety.no_db_mutation, true);
   assert.equal(report.safety.no_publish_triggered, true);
+});
+
+test("fresh refill keeps a distinct motion-ready alternate when a script-only draft cannot pass motion coherence", async () => {
+  const now = new Date("2026-07-19T22:00:00.000Z");
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [
+      sourceBackedReviewRow({
+        id: "rss_wolverine_script_only",
+        story_id: "rss_wolverine_script_only",
+        title: "Marvel's Wolverine Trailer Draws Physical Edition Questions",
+        description:
+          "IGN reports Marvel's Wolverine viewers are asking about a physical edition.",
+        article_url:
+          "https://www.ign.com/articles/marvels-wolverine-physical-edition-questions",
+        source_published_at: "2026-07-19T18:00:00.000Z",
+      }),
+    ],
+    plan: {
+      summary: { selected_count: 1 },
+      source_bound_rewrite_work_orders: [
+        { story_id: "rss_wolverine_script_only" },
+      ],
+    },
+    motionScorecards: [
+      {
+        story_id: "rss_castlevania_motion_ready",
+        title: "Castlevania Belmont's Curse Turns Bosses Into Map Powers",
+        source: "motion_capacity_report",
+        source_safe: true,
+        source_age_state: "fresh",
+        age_hours: 5,
+        source_name: "PlayStation Blog",
+        source_url:
+          "https://blog.playstation.com/2026/07/19/castlevania-belmonts-curse-gameplay/",
+        source_published_at: "2026-07-19T17:00:00.000Z",
+        canonical_subject: "Castlevania Belmont's Curse",
+        canonical_game: "Castlevania Belmont's Curse",
+        confirmed_claims: [
+          "PlayStation Blog shows Castlevania Belmont's Curse gameplay.",
+        ],
+        motion_capacity: {
+          motion_ready: true,
+          operator_required: false,
+          current_motion_clips: 6,
+          current_motion_families: 6,
+        },
+        direct_media_candidates: [
+          {
+            direct_media_url:
+              "https://cdn.playstation.com/castlevania-belmonts-curse-gameplay.mp4",
+            label: "Castlevania Belmont's Curse Gameplay",
+            source_family: "castlevania_belmonts_curse_gameplay",
+            source_type: "official_direct_media",
+          },
+        ],
+        repeat_or_stale_risk_reasons: [
+          "not_scheduler_candidate",
+          "publish_ready_false",
+        ],
+      },
+    ],
+    limit: 2,
+    now,
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_wolverine_script_only",
+        title: "Marvel's Wolverine Has An Ownership Question",
+        suggested_title: "Marvel's Wolverine Has An Ownership Question",
+        canonical_subject: "Marvel's Wolverine",
+        source_name: "IGN",
+        article_url:
+          "https://www.ign.com/articles/marvels-wolverine-physical-edition-questions",
+        source_type: "rss",
+        source_published_at: "2026-07-19T18:00:00.000Z",
+        confirmed_claims: [
+          "IGN reports Marvel's Wolverine viewers are asking about a physical edition.",
+        ],
+        full_script:
+          "Marvel's Wolverine just turned one trailer into an ownership question. IGN reports viewers are asking whether Insomniac's game will receive a physical edition. That matters because collectors want to know what they can actually own before launch marketing accelerates. The report does not confirm an edition, price or release date, so the useful signal is the demand itself. If PlayStation confirms a disc, the argument cools quickly. If it stays silent, every new trailer keeps the same concern alive. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
+  });
+
+  const selection = selectAlternateCohortCandidates({
+    reviewLocalPromotionCandidates: report.fresh_source_intake_stories,
+    maxCandidates: 2,
+    now,
+  });
+
+  assert.equal(report.summary.local_promotion_story_count, 2);
+  assert.equal(report.summary.motion_scorecard_promotion_count, 1);
+  assert.deepEqual(
+    selection.candidates.map((candidate) => candidate.story_id),
+    ["rss_castlevania_motion_ready"],
+  );
+  assert.ok(
+    selection.excluded.some(
+      (candidate) =>
+        candidate.story_id === "rss_wolverine_script_only" &&
+        candidate.reason_codes.includes(
+          "source_motion_coherence:subject_match_unproven",
+        ),
+    ),
+  );
 });
 
 test("fresh review local promotion intake replaces generic source manifest labels with publisher names", async () => {

@@ -1289,6 +1289,69 @@ test("candidate supply does not recommend motion promotion when only motion-only
   assert.equal(report.next_action, "refresh_fresh_source_intake_and_promote_new_green_candidates_before_expiring_backlog");
 });
 
+test("candidate supply excludes synthetic premium evaluation motion packs from live repair priorities", () => {
+  const now = new Date("2026-07-19T22:30:00.000Z");
+  const report = buildCandidateSupplyReport({
+    stories: [],
+    candidateReport: {
+      generated_at: now.toISOString(),
+      totals: { stories_seen: 0, returned: 0, pending_audio: 0 },
+      candidates: [],
+    },
+    motionCapacityReports: [
+      {
+        packs: [
+          {
+            story_id: "rss_0a96ca6670ac4b12_premium_eval",
+            title: "Synthetic premium evaluation",
+            readiness_status: "v4_motion_ready",
+            motion_ready: true,
+            current_motion_clips: 5,
+            required_motion_clips: 5,
+            current_motion_families: 5,
+            required_motion_families: 4,
+            direct_media_ready: 5,
+            actionable_direct_media_ready: 5,
+            clips: [
+              {
+                source_url: "C:/repo/test/output/synthetic-source.mp4",
+                source_family: "synthetic-family-1",
+                media_kind: "direct_video",
+              },
+            ],
+            blockers: [],
+          },
+        ],
+      },
+    ],
+    channelConfig: {},
+    now,
+    targets: {
+      greenReadyCandidates: 10,
+      sourceSafeCandidates: 6,
+      v4ReadyCandidates: 3,
+      freshSourceBackedStories: 10,
+      publishWindows24h: 5,
+    },
+  });
+
+  assert.equal(report.summary.motion_capacity_stories, 0);
+  assert.equal(report.summary.motion_capacity_source_metadata_repairable_candidates, 0);
+  assert.equal(
+    report.priority_scorecards.some(
+      (item) => item.story_id === "rss_0a96ca6670ac4b12_premium_eval",
+    ),
+    false,
+  );
+  assert.notEqual(report.next_action, "repair_source_metadata_for_motion_ready_candidates");
+  assert.equal(
+    report.warnings.some((warning) =>
+      warning.startsWith("motion_ready_source_metadata_repair_required:"),
+    ),
+    false,
+  );
+});
+
 test("candidate supply report treats current transcript backlog as refill pressure", () => {
   const now = new Date("2026-06-16T22:00:00.000Z");
   const candidateReport = {

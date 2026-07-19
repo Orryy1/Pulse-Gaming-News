@@ -171,6 +171,7 @@ test("local live primary runtime launcher redirects only through a validated cle
   assert.match(script, /approved-runtime-selection\.js/);
   assert.match(script, /pulse-approved-runtime-selection\.json/);
   assert.match(script, /approved_runtime_selection_validation_failed/);
+  assert.match(script, /pulse-approved-runtime-selection\.stderr\.log/);
   assert.match(script, /approved_runtime_selection_redirect/);
   assert.match(script, /runtime_entrypoint/);
   assert.match(script, /runtime_repo_root/);

@@ -230,13 +230,21 @@ if (Test-Path -LiteralPath $runtimeSelectionPath -PathType Leaf) {
   if (-not $selectionGitExecutable) {
     throw "approved_runtime_selection_git_missing"
   }
+  $runtimeSelectionErrorPath = Join-Path $logDir "pulse-approved-runtime-selection.stderr.log"
   $runtimeSelectionRaw = & $selectionNodeCommand.Source `
     $runtimeSelectionTool `
     "--supervisor-root" $RepoRoot `
     "--default-evidence-root" $EvidenceRoot `
     "--git-executable" $selectionGitExecutable `
-    "--json"
+    "--json" 2> $runtimeSelectionErrorPath
   if ($LASTEXITCODE -ne 0 -or -not $runtimeSelectionRaw) {
+    $runtimeSelectionError = [string](
+      Get-Content -LiteralPath $runtimeSelectionErrorPath -Tail 1 -ErrorAction SilentlyContinue
+    )
+    Write-RuntimeLog (
+      "approved_runtime_selection_validation_failed error={0}" -f
+        $(if ($runtimeSelectionError) { $runtimeSelectionError.Trim() } else { "unknown" })
+    )
     throw "approved_runtime_selection_validation_failed"
   }
   $runtimeSelection = (($runtimeSelectionRaw -join [Environment]::NewLine) | ConvertFrom-Json)

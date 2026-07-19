@@ -8,6 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const {
+  buildGitArgs,
   resolveApprovedRuntimeSelection,
 } = require("../../lib/ops/approved-runtime-selection");
 
@@ -87,6 +88,18 @@ test("approved runtime selection accepts only a clean exact-commit checkout shar
   assert.equal(result.branch, fixture.branch);
   assert.equal(result.tracked_worktree_clean, true);
   assert.equal(result.shared_output_verified, true);
+});
+
+test("approved runtime selection scopes SYSTEM Git trust to the selected checkout", () => {
+  const runtimeRoot = path.resolve("C:/pulse-runtime-fixture");
+  assert.deepEqual(buildGitArgs(runtimeRoot, ["rev-parse", "HEAD"]), [
+    "-c",
+    `safe.directory=${runtimeRoot}`,
+    "-C",
+    runtimeRoot,
+    "rev-parse",
+    "HEAD",
+  ]);
 });
 
 test("approved runtime selection fails closed when tracked runtime code is dirty", () => {

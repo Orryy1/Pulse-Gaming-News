@@ -3924,6 +3924,26 @@ test("candidate evidence reconciliation applies a safe demotion when stale store
     fixture.artifactDir,
     "forensic_qa_report.json",
   );
+  const benchmarkReportPath = path.join(
+    fixture.artifactDir,
+    "benchmark_report.json",
+  );
+  const visualQualityReportPath = path.join(
+    fixture.artifactDir,
+    "visual_quality_report.json",
+  );
+  const temporalReportPath = path.join(
+    fixture.artifactDir,
+    "qa",
+    "temporal-v48",
+    "temporal_video_qa_report.json",
+  );
+  const olderTemporalReportPath = path.join(
+    fixture.artifactDir,
+    "qa",
+    "temporal-v33",
+    "temporal_video_qa_report.json",
+  );
   const renderManifest = await fs.readJson(renderManifestPath);
   renderManifest.selected_input_assets = {
     authoritative: true,
@@ -3940,6 +3960,12 @@ test("candidate evidence reconciliation applies a safe demotion when stale store
     can_auto_publish: true,
     blockers: [],
   };
+  renderManifest.quality_gate_status = "post_render_forensics_passed";
+  renderManifest.post_render_forensic_result = "pass";
+  renderManifest.post_render_forensic_blockers = [];
+  renderManifest.status = "GREEN";
+  renderManifest.publish_status = "GREEN";
+  renderManifest.publish_ready = true;
   await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
   await fs.outputJson(flagshipRightsReportPath, {
     schema_version: 1,
@@ -3965,6 +3991,59 @@ test("candidate evidence reconciliation applies a safe demotion when stale store
       rights: "pass",
     },
     blockers: [],
+  }, { spaces: 2 });
+  await fs.outputJson(benchmarkReportPath, {
+    schema_version: 1,
+    verdict: "GREEN",
+    status: "GREEN",
+    result: "pass",
+    publish_status: "GREEN",
+    publish_ready: true,
+    scores: {
+      rights_risk_score: 100,
+      media_house_polish_score: 95,
+    },
+    failures: [],
+    warnings: [],
+  }, { spaces: 2 });
+  await fs.outputJson(visualQualityReportPath, {
+    schema_version: 1,
+    verdict: "GREEN",
+    status: "GREEN",
+    result: "pass",
+    publish_status: "GREEN",
+    publish_ready: true,
+    scores: {
+      rights_risk_score: 100,
+      media_house_polish_score: 95,
+    },
+    failures: [],
+    warnings: [],
+  }, { spaces: 2 });
+  await fs.outputJson(temporalReportPath, {
+    schema_version: 1,
+    mode: "LOCAL_TEMPORAL_VIDEO_QA",
+    verdict: "GREEN",
+    status: "GREEN",
+    can_publish: true,
+    publish_ready: true,
+    blockers: [],
+    warnings: [],
+    evidence: {
+      temporal: {
+        scan_complete: true,
+        repeated_motion_sequences: [],
+        cadence: { choppy: false },
+      },
+    },
+  }, { spaces: 2 });
+  await fs.outputJson(olderTemporalReportPath, {
+    schema_version: 1,
+    mode: "LOCAL_TEMPORAL_VIDEO_QA",
+    verdict: "AMBER",
+    can_publish: true,
+    blockers: [],
+    warnings: ["legacy_sampling_rate"],
   }, { spaces: 2 });
   await fs.outputJson(
     rightsPath,
@@ -4046,6 +4125,19 @@ test("candidate evidence reconciliation applies a safe demotion when stale store
     storedRenderManifest.rights_reconciliation.can_auto_publish,
     false,
   );
+  assert.equal(
+    storedRenderManifest.quality_gate_status,
+    "post_render_forensics_failed",
+  );
+  assert.equal(storedRenderManifest.post_render_forensic_result, "fail");
+  assert.equal(storedRenderManifest.status, "RED");
+  assert.equal(storedRenderManifest.publish_status, "RED");
+  assert.equal(storedRenderManifest.publish_ready, false);
+  assert.ok(
+    storedRenderManifest.post_render_forensic_blockers.includes(
+      "post_render_rights_reconciliation_not_green",
+    ),
+  );
   const storedFlagshipRightsReport = await fs.readJson(
     flagshipRightsReportPath,
   );
@@ -4070,6 +4162,50 @@ test("candidate evidence reconciliation applies a safe demotion when stale store
       "post_render_rights_reconciliation_not_green",
     ),
   );
+  const storedBenchmarkReport = await fs.readJson(benchmarkReportPath);
+  assert.equal(storedBenchmarkReport.result, "fail");
+  assert.equal(storedBenchmarkReport.verdict, "RED");
+  assert.equal(storedBenchmarkReport.status, "RED");
+  assert.equal(storedBenchmarkReport.publish_status, "RED");
+  assert.equal(storedBenchmarkReport.publish_ready, false);
+  assert.equal(storedBenchmarkReport.scores.rights_risk_score, 0);
+  assert.equal(storedBenchmarkReport.can_publish, false);
+  assert.equal(storedBenchmarkReport.can_auto_publish, false);
+  assert.ok(
+    storedBenchmarkReport.failures.includes(
+      "post_render_rights_reconciliation_not_green",
+    ),
+  );
+  const storedVisualQualityReport = await fs.readJson(
+    visualQualityReportPath,
+  );
+  assert.equal(storedVisualQualityReport.result, "fail");
+  assert.equal(storedVisualQualityReport.verdict, "RED");
+  assert.equal(storedVisualQualityReport.status, "RED");
+  assert.equal(storedVisualQualityReport.publish_status, "RED");
+  assert.equal(storedVisualQualityReport.publish_ready, false);
+  assert.equal(storedVisualQualityReport.scores.rights_risk_score, 0);
+  assert.equal(storedVisualQualityReport.can_publish, false);
+  const storedTemporalReport = await fs.readJson(temporalReportPath);
+  assert.equal(storedTemporalReport.temporal_scope_verdict, "GREEN");
+  assert.equal(storedTemporalReport.verdict, "RED");
+  assert.equal(storedTemporalReport.status, "RED");
+  assert.equal(storedTemporalReport.can_publish, false);
+  assert.equal(storedTemporalReport.publish_ready, false);
+  assert.ok(
+    storedTemporalReport.blockers.includes(
+      "post_render_rights_reconciliation_not_green",
+    ),
+  );
+  const storedOlderTemporalReport = await fs.readJson(
+    olderTemporalReportPath,
+  );
+  assert.equal(storedOlderTemporalReport.temporal_scope_verdict, "AMBER");
+  assert.equal(storedOlderTemporalReport.verdict, "RED");
+  assert.equal(storedOlderTemporalReport.can_publish, false);
+  assert.deepEqual(storedOlderTemporalReport.warnings, [
+    "legacy_sampling_rate",
+  ]);
 });
 
 test("candidate evidence reconciliation accepts and fingerprints generation-bound ElevenLabs flagship rights evidence", async () => {

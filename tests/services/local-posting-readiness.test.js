@@ -487,6 +487,61 @@ test("local posting readiness does not block completed publishing when local TTS
   );
 });
 
+test("local posting readiness keeps fresh narration blocked but permits strict completed-render dispatch when local TTS is quarantined", () => {
+  const report = buildLocalPostingReadiness({
+    cutoverPlan: {
+      verdict: "green",
+      env: {
+        duplicate_keys: [],
+        flags: {
+          primary: true,
+          use_job_queue: true,
+          auto_publish: true,
+        },
+      },
+      cloudflared: { tunnel_info: "Active connections: 2" },
+      health: {
+        local: { ok: true, status: 200 },
+        public: { ok: true, status: 200 },
+      },
+    },
+    primaryReadiness: {
+      checks: {
+        primary_enabled: true,
+        use_job_queue_enabled: true,
+        auto_publish_enabled: true,
+      },
+      health: {
+        local: { ok: true, status: 200 },
+        public: { ok: true, status: 200 },
+      },
+    },
+    ttsReport: { verdict: "RED", proof_batch: { voice_ready_count: 4 } },
+    ttsDoctorReport: {
+      verdict: "red",
+      action: "quarantine_native_crash",
+      failure_code: "native_inference_access_violation",
+      reason: "native access violation remains quarantined",
+      before: {
+        ready: false,
+        voice: { alias: "liam", loaded: false, refResolved: false },
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "amber");
+  assert.equal(report.status, "completed_render_dispatch_ready_generation_blocked");
+  assert.equal(report.readiness.local_tts_green, false);
+  assert.equal(report.readiness.fresh_narration_generation_ready, false);
+  assert.equal(report.readiness.completed_render_dispatch_only, true);
+  assert.ok(!report.blockers.includes("local Liam TTS readiness is not green"));
+  assert.ok(
+    report.warnings.some((warning) =>
+      /only completed candidates with independent strict media evidence may dispatch/.test(warning),
+    ),
+  );
+});
+
 test("local posting readiness markdown is operator readable", () => {
   const report = buildLocalPostingReadiness({
     cutoverPlan: {

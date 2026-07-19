@@ -101,8 +101,11 @@ test("RSS proof ingest preserves materialisable video enclosures for source-moti
       direct_media_url_if_available:
         "https://assets.xbox.com/halo-campaign-evolved/gameplay-deep-dive.mp4",
       source_type: "rss_video_enclosure",
-      source_family: "rss_video_enclosure_xbox_wire",
+      source_family: "rss_video_enclosure_xbox_wire_halo_campaign_evolved",
       source_url: "https://news.xbox.com/en-us/2026/07/07/halo-campaign-evolved-gameplay/",
+      title: "Halo Campaign Evolved Shows New Gameplay In Official Xbox Deep Dive",
+      canonical_subject: "Halo Campaign Evolved",
+      canonical_game: "Halo Campaign Evolved",
     },
   ]);
 });
@@ -286,11 +289,23 @@ test("RSS proof ingest prefers clean game and product subjects over manifest fra
       description: "Path of Exile 2 changes the ARPG loot hunt.",
       timestamp: "2026-06-20T01:00:00.000Z",
     },
+    {
+      title: "Castlevania: Belmont’s Curse hands-on report",
+      url: "https://blog.playstation.com/2026/07/17/castlevania-belmonts-curse-hands-on-report/",
+      source_name: "PlayStation Blog",
+      description: "Castlevania: Belmont’s Curse gameplay details.",
+      timestamp: "2026-07-17T07:00:36.000Z",
+    },
   ]);
 
   assert.deepEqual(
     stories.map((story) => story.canonical_subject),
-    ["Steam Controller", "PUBG", "Path of Exile 2"],
+    [
+      "Steam Controller",
+      "PUBG",
+      "Path of Exile 2",
+      "Castlevania: Belmont's Curse",
+    ],
   );
 });
 

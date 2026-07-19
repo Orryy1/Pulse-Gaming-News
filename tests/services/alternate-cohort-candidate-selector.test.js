@@ -485,6 +485,48 @@ test("alternate cohort selection rejects cross-title contamination inside direct
   );
 });
 
+test("alternate cohort selection preserves rich identity when a scalar URL duplicates direct media", () => {
+  const directMediaUrl =
+    "https://blog.playstation.com/uploads/2028/07/87805ad10edbcfdafebbd99f155a3cb0f88f09d1.mp4";
+  const report = selectAlternateCohortCandidates({
+    reviewLocalPromotionCandidates: [
+      eligibleCandidate({
+        story_id: "castlevania-opaque-rss-media",
+        title: "Castlevania: Belmont's Curse Hands-on Report",
+        canonical_subject: "Castlevania: Belmont's Curse",
+        canonical_game: "Castlevania: Belmont's Curse",
+        approved_direct_media_url: directMediaUrl,
+        direct_media_candidates: [
+          {
+            label: "Castlevania: Belmont's Curse Hands-on Report",
+            title: "Castlevania: Belmont's Curse Hands-on Report",
+            canonical_subject: "Castlevania: Belmont's Curse",
+            canonical_game: "Castlevania: Belmont's Curse",
+            source_family:
+              "rss_video_enclosure_playstation_blog_castlevania_belmont_s_curse",
+            direct_media_url: directMediaUrl,
+            source_type: "rss_video_enclosure",
+          },
+        ],
+      }),
+    ],
+    now: new Date("2026-07-17T04:00:00.000Z"),
+  });
+
+  assert.deepEqual(
+    report.candidates.map((candidate) => candidate.story_id),
+    ["castlevania-opaque-rss-media"],
+  );
+  assert.equal(
+    report.candidates[0].source_motion_coherence.matched_media_count,
+    1,
+  );
+  assert.equal(
+    report.candidates[0].source_motion_coherence.unrelated_media_count,
+    0,
+  );
+});
+
 test("alternate cohort selection fails closed when direct media cannot prove a subject match", () => {
   const report = selectAlternateCohortCandidates({
     reviewLocalPromotionCandidates: [

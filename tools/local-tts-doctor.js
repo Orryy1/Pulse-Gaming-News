@@ -30,12 +30,16 @@ const {
 const {
   DEFAULT_LOCAL_PROOF_TTS_TIMEOUT_MS,
 } = require("../lib/ops/local-proof-tts-limits");
+const {
+  inspectLocalTtsNativeCrash,
+} = require("../lib/studio/local-tts-native-crash");
 
 function parseArgs(argv = process.argv.slice(2)) {
   return {
     restart: argv.includes("--restart"),
     prewarm: argv.includes("--prewarm"),
     smoke: argv.includes("--smoke"),
+    forceNativeCrashRetry: argv.includes("--force-native-crash-retry"),
     writeReport: !argv.includes("--no-report"),
   };
 }
@@ -123,6 +127,8 @@ async function runDoctor(options = {}) {
   const waitForHealth = deps.waitForLocalTtsHealth || waitForLocalTtsHealth;
   const prewarmVoice = deps.prewarmLocalTtsVoice || prewarmLocalTtsVoice;
   const inspectGpu = deps.inspectLocalGpuPressure || inspectLocalGpuPressure;
+  const inspectNativeCrash =
+    deps.inspectLocalTtsNativeCrash || inspectLocalTtsNativeCrash;
   const runGenerationSmoke = deps.runGenerationSmoke || runDefaultGenerationSmoke;
   const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
   const baseUrl = process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL;
@@ -131,10 +137,25 @@ async function runDoctor(options = {}) {
     voiceId,
     timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
   });
-  const plan = classifyAction(before, {
-    allowRestart: options.restart === true,
-    allowPrewarm: options.prewarm === true,
-  });
+  const preexistingNativeCrash =
+    before?.status === "unreachable"
+      ? await inspectNativeCrash({ cwd: process.cwd(), startedAtMs: 0 })
+      : null;
+  const nativeCrashQuarantined =
+    preexistingNativeCrash?.detected === true &&
+    options.forceNativeCrashRetry !== true;
+  const plan = nativeCrashQuarantined
+    ? {
+        action: "quarantine_native_crash",
+        verdict: "red",
+        reason:
+          "local TTS remains quarantined after a native access violation; " +
+          "prove a compatibility change before forcing another retry",
+      }
+    : classifyAction(before, {
+        allowRestart: options.restart === true,
+        allowPrewarm: options.prewarm === true,
+      });
 
   const report = {
     generated_at: new Date().toISOString(),
@@ -150,6 +171,7 @@ async function runDoctor(options = {}) {
     start_attempts: [],
     prewarm: null,
     generation_smoke: null,
+    native_crash: preexistingNativeCrash,
     gpu: null,
     report_paths: null,
   };
@@ -205,15 +227,25 @@ async function runDoctor(options = {}) {
   }
 
   const finalSummary = report.after || before;
-  const finalPlan = classifyAction(finalSummary, {
-    allowRestart: false,
-    allowPrewarm: false,
-  });
-  const finalFailure = classifyFailure(finalSummary);
-  report.verdict = finalPlan.verdict;
-  report.action = finalPlan.action;
-  report.failure_code = finalFailure.code;
-  report.reason = finalPlan.reason;
+  if (nativeCrashQuarantined) {
+    report.verdict = "red";
+    report.action = "quarantine_native_crash";
+    report.failure_code =
+      preexistingNativeCrash.failure_code || "native_inference_access_violation";
+    report.reason =
+      "local TTS remains quarantined after a native access violation; " +
+      "prove a compatibility change before forcing another retry";
+  } else {
+    const finalPlan = classifyAction(finalSummary, {
+      allowRestart: false,
+      allowPrewarm: false,
+    });
+    const finalFailure = classifyFailure(finalSummary);
+    report.verdict = finalPlan.verdict;
+    report.action = finalPlan.action;
+    report.failure_code = finalFailure.code;
+    report.reason = finalPlan.reason;
+  }
 
   report.gpu = await inspectGpu({ env: process.env, localTtsHealth: finalSummary });
   console.log(`[tts-doctor] gpu ${formatLocalGpuPressure(report.gpu)}`);
@@ -225,6 +257,7 @@ async function runDoctor(options = {}) {
   }
 
   if (options.smoke === true && report.verdict === "green") {
+    const smokeStartedAtMs = Date.now();
     try {
       report.generation_smoke = await runGenerationSmoke({ voiceId, baseUrl });
       console.log(
@@ -232,17 +265,32 @@ async function runDoctor(options = {}) {
       );
     } catch (err) {
       const message = smokeFailureMessage(err);
+      report.native_crash = await inspectNativeCrash({
+        cwd: process.cwd(),
+        startedAtMs: smokeStartedAtMs,
+        error: err,
+      });
       report.generation_smoke = {
         ok: false,
         provider: "local",
         error: message,
       };
       report.verdict = "red";
-      report.action = options.restart === true ? "restart" : "manual_restart_required";
-      report.failure_code = "generation_smoke_failed";
-      report.reason = `local TTS generation smoke failed: ${message}`;
+      if (report.native_crash?.detected === true) {
+        report.action = "quarantine_native_crash";
+        report.failure_code =
+          report.native_crash.failure_code || "native_inference_access_violation";
+        report.reason =
+          `local TTS hit a native access violation during VoxCPM CUDA inference; ` +
+          `automatic restart is suppressed pending compatibility repair`;
+      } else {
+        report.action =
+          options.restart === true ? "restart" : "manual_restart_required";
+        report.failure_code = "generation_smoke_failed";
+        report.reason = `local TTS generation smoke failed: ${message}`;
+      }
       console.log(`[tts-doctor] smoke failed ${message}`);
-      if (options.restart === true) {
+      if (options.restart === true && report.native_crash?.detected !== true) {
         report.started = await startServer({
           allowRecentBootBypassWhenNoListener: true,
         });

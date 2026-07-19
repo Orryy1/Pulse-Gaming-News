@@ -16,6 +16,10 @@ const {
 test("local TTS doctor parses generation smoke checks", () => {
   assert.equal(parseArgs(["--restart", "--prewarm", "--smoke"]).smoke, true);
   assert.equal(parseArgs(["--restart", "--prewarm"]).smoke, false);
+  assert.equal(
+    parseArgs(["--force-native-crash-retry"]).forceNativeCrashRetry,
+    true,
+  );
 });
 
 test("local TTS doctor gives resident local generation the ten minute proof budget", () => {
@@ -226,6 +230,138 @@ test("local TTS doctor retries generation smoke after an allowed restart", async
   assert.equal(report.generation_smoke.ok, true);
 });
 
+test("local TTS doctor quarantines a native inference crash without restarting it", async () => {
+  let startCount = 0;
+  let smokeCount = 0;
+  const report = await runDoctor({
+    restart: true,
+    prewarm: false,
+    smoke: true,
+    setExitCode: false,
+    writeReport: false,
+    deps: {
+      async fetchLocalTtsHealth() {
+        return {
+          ok: true,
+          status: "ok",
+          phase: "ready",
+          ready: true,
+          engineCount: 1,
+          voice: {
+            alias: "Sleepy Liam",
+            loaded: true,
+            refResolved: true,
+            reference: { id: "accepted", referenceHash: "hash" },
+          },
+          reasons: [],
+        };
+      },
+      classifyLocalTtsDoctorAction(summary) {
+        return summary.ok
+          ? {
+              action: "none",
+              verdict: "green",
+              reason: "local TTS is ready with the accepted voice loaded",
+            }
+          : {
+              action: "manual_restart_required",
+              verdict: "red",
+              reason: "not ready",
+            };
+      },
+      classifyLocalTtsHealthFailure() {
+        return { code: null };
+      },
+      async inspectLocalGpuPressure() {
+        return { ok: true, reason: "gpu ok" };
+      },
+      async runGenerationSmoke() {
+        smokeCount += 1;
+        throw new Error("local_tts_generation_failed:connection_reset");
+      },
+      async inspectLocalTtsNativeCrash() {
+        return {
+          detected: true,
+          failure_code: "native_inference_access_violation",
+          signature: "Windows fatal exception: access violation",
+          stage: "voxcpm_cuda_inference",
+          evidence_path: "tts_server/diag/faulthandler.test.log",
+          upstream_issue_url: "https://github.com/OpenBMB/VoxCPM/issues/300",
+        };
+      },
+      async startLocalTtsServer() {
+        startCount += 1;
+        return { pid: 24682, spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" } };
+      },
+    },
+  });
+
+  assert.equal(smokeCount, 1);
+  assert.equal(startCount, 0);
+  assert.equal(report.verdict, "red");
+  assert.equal(report.action, "quarantine_native_crash");
+  assert.equal(report.failure_code, "native_inference_access_violation");
+  assert.equal(report.native_crash.detected, true);
+  assert.match(report.reason, /native access violation/i);
+});
+
+test("local TTS doctor keeps a crashed offline runtime quarantined before start", async () => {
+  let startCount = 0;
+  const report = await runDoctor({
+    restart: true,
+    prewarm: true,
+    smoke: true,
+    setExitCode: false,
+    writeReport: false,
+    deps: {
+      async fetchLocalTtsHealth() {
+        return {
+          ok: false,
+          status: "unreachable",
+          phase: "unknown",
+          ready: false,
+          engineCount: 0,
+          voice: { loaded: false, refResolved: false, present: false },
+          reasons: ["health endpoint unreachable"],
+        };
+      },
+      async inspectLocalTtsNativeCrash() {
+        return {
+          detected: true,
+          failure_code: "native_inference_access_violation",
+          signature: "Windows fatal exception: access violation",
+          stage: "voxcpm_cuda_inference",
+          evidence_path: "tts_server/diag/faulthandler.test.log",
+        };
+      },
+      async startLocalTtsServer() {
+        startCount += 1;
+        return { pid: 24683, spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" } };
+      },
+      async waitForLocalTtsHealth() {
+        return {
+          ok: false,
+          status: "unreachable",
+          phase: "unknown",
+          ready: false,
+          engineCount: 0,
+          voice: { loaded: false, refResolved: false, present: false },
+          reasons: ["health endpoint unreachable"],
+        };
+      },
+      async inspectLocalGpuPressure() {
+        return { ok: true, reason: "gpu ok" };
+      },
+    },
+  });
+
+  assert.equal(startCount, 0);
+  assert.equal(report.verdict, "red");
+  assert.equal(report.action, "quarantine_native_crash");
+  assert.equal(report.failure_code, "native_inference_access_violation");
+  assert.equal(report.native_crash.detected, true);
+});
+
 test("local TTS doctor prewarms an unloaded voice before retrying smoke after restart", async () => {
   let fetchCount = 0;
   let prewarmCount = 0;
@@ -361,6 +497,9 @@ test("local TTS doctor retries once when the first allowed start dies before bin
     deps: {
       async fetchLocalTtsHealth() {
         return unreachable;
+      },
+      async inspectLocalTtsNativeCrash() {
+        return { detected: false };
       },
       async startLocalTtsServer() {
         startCount += 1;

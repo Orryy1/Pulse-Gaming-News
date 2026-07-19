@@ -32,8 +32,13 @@ const {
 } = require("../../lib/studio/motion-source-identity");
 const {
   PREMIUM_CARD_TIMING_V5_VERSION,
+  V5_READABLE_CARD_TIMING,
+  V5_SOURCE_CARD_TIMING,
   v5CardTimingContract,
 } = require("../../lib/studio/v4/premium-card-timing-policy");
+const {
+  PREMIUM_EDIT_RHYTHM_V5,
+} = require("../../lib/studio/v5/premium-edit-rhythm");
 
 function passingPostRenderForensicInputs(overrides = {}) {
   const clips = Array.from({ length: 3 }, (_, index) => ({
@@ -485,14 +490,14 @@ test("goal production render materializer clamps lingering narrative cards to th
         planned_visible_duration_s: 4.2,
       },
     }),
-    3.8,
+    V5_READABLE_CARD_TIMING.maximum_visible_duration_s,
   );
   assert.equal(
     _private.readableHyperframesCardDurationS({
       kind: "source",
       readability: { planned_visible_duration_s: 9 },
     }),
-    2.6,
+    V5_SOURCE_CARD_TIMING.planned_visible_duration_s,
   );
 });
 
@@ -1284,6 +1289,8 @@ test("goal production render materializer canonicalises platforms on preserved o
 
 test("goal production render materializer keeps renderer-selected HyperFrames identities in the final scene plan", () => {
   const cardPath = "output/generated/hf_source_card_story-1.mp4";
+  const cardSha256 = "f".repeat(64);
+  const cardSizeBytes = 817203;
   const directPaths = [
     "output/video_cache/direct-1.mp4",
     "output/video_cache/direct-2.mp4",
@@ -1330,6 +1337,8 @@ test("goal production render materializer keeps renderer-selected HyperFrames id
       kind: "generated_card",
       path: cardPath,
       source_url: "local://pulse-hyperframes/story-1/source",
+      asset_sha256: cardSha256,
+      asset_size_bytes: cardSizeBytes,
     }],
   });
 
@@ -1337,6 +1346,97 @@ test("goal production render materializer keeps renderer-selected HyperFrames id
   assert.equal(clips[1].id, "hyperframes_source_card_story-1");
   assert.equal(clips[1].asset_id, "hyperframes_source_card_story-1");
   assert.equal(clips[1].source_url, "local://pulse-hyperframes/story-1/source");
+  assert.equal(clips[1].asset_sha256, cardSha256);
+  assert.equal(clips[1].asset_size_bytes, cardSizeBytes);
+  assert.equal(clips[1].rights_grant, true);
+  assert.equal(clips[1].commercial_use_allowed, true);
+  assert.equal(clips[1].source_owner, "Pulse Gaming");
+  assert.equal(clips[1].creator, "Pulse Gaming");
+  assert.deepEqual(
+    clips[1].allowed_platforms,
+    ["youtube_shorts", "instagram_reels", "facebook_reels"],
+  );
+});
+
+test("goal production render materializer preserves owned-card entitlement evidence in final rights rows", () => {
+  const cardPath = "output/generated/hf_source_card_story-1.mp4";
+  const sidecarPath = "output/generated/hf_source_card_story-1.shell.json";
+  const cardSha256 = "a".repeat(64);
+  const sidecarSha256 = "b".repeat(64);
+  const selectedAssets = [{
+    asset_id: "renderer-owned-source-card",
+    kind: "generated_card",
+    path: cardPath,
+    source_url: "local://pulse-hyperframes/story-1/source",
+    asset_sha256: cardSha256,
+    asset_size_bytes: 817203,
+    rights_grant: true,
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    allowed_use: "owned_editorial_motion_graphic",
+    source_type: "internally_generated_motion_graphic",
+    source_family: "hyperframes_source_card",
+    source_owner: "Pulse Gaming",
+    creator: "Pulse Gaming",
+    provider_id: "pulse_hyperframes",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_owned_editorial_use",
+    rights_status: "approved",
+    usage_scope: "owned_editorial_commercial_distribution",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    credit_required: false,
+    risk_score: 0.02,
+    evidence_kind: "owned_generated_hyperframes_shell_sidecar",
+    evidence_file: sidecarPath,
+    evidence_sha256: sidecarSha256,
+    evidence_size_bytes: 2906,
+  }];
+  const clips = _private.renderedScenePlanClipObjects({
+    renderReport: {
+      clip_scene_plan: {
+        scenes: [
+          {
+            id: "legacy-card-scene-id",
+            path: cardPath,
+            readableCardKind: "source",
+            sourceRootKey: "hyperframes_source_card",
+            durationS: 2.4,
+          },
+          {
+            id: "direct-one",
+            path: "output/video/direct-one.mp4",
+            sourceRootKey: "official-one",
+            durationS: 5,
+          },
+          {
+            id: "direct-two",
+            path: "output/video/direct-two.mp4",
+            sourceRootKey: "official-two",
+            durationS: 5,
+          },
+        ],
+      },
+    },
+    selectedInputAssets: selectedAssets,
+  });
+  const completed = _private.augmentRightsLedgerForSelectedClips(
+    { verdict: "pass", result: "pass", records: [] },
+    clips,
+  );
+  const card = completed.records.find(
+    (record) => record.asset_id === "renderer-owned-source-card",
+  );
+
+  assert.ok(card);
+  assert.equal(card.rights_grant, true);
+  assert.equal(card.allowed_use, "owned_editorial_motion_graphic");
+  assert.equal(card.approval_status, "approved_for_owned_editorial_use");
+  assert.equal(card.source_owner, "Pulse Gaming");
+  assert.equal(card.provider_id, "pulse_hyperframes");
+  assert.equal(card.evidence_kind, "owned_generated_hyperframes_shell_sidecar");
+  assert.equal(card.evidence_file, sidecarPath);
+  assert.equal(card.evidence_sha256, sidecarSha256);
+  assert.equal(card.evidence_size_bytes, 2906);
 });
 
 test("goal production render materializer treats Steam HLS and DASH delivery as one trailer root", () => {
@@ -1904,6 +2004,109 @@ async function makePackage(root, storyId = "story-final", canonicalOverrides = {
   return artifactDir;
 }
 
+async function writePendingStrictElevenLabsReceipt({
+  artifactDir,
+  storyId,
+  requestText,
+  audioBytes,
+} = {}) {
+  const evidenceDir = path.join(artifactDir, "rights", "evidence");
+  const rawAudioPath = path.join(evidenceDir, "raw-provider-audio.bin");
+  const receiptPath = path.join(evidenceDir, "elevenlabs-generation-receipt.json");
+  const audioSha256 = crypto.createHash("sha256").update(audioBytes).digest("hex");
+  await fs.outputFile(rawAudioPath, audioBytes);
+  await fs.outputJson(receiptPath, {
+    schema: "pulse_elevenlabs_generation_receipt_v1",
+    schema_version: 1,
+    story_id: storyId,
+    asset_id: `${storyId}_audio_path`,
+    verdict: "AMBER",
+    generation_verdict: "GREEN",
+    final_media_lineage_status: "PENDING",
+    commercial_use_allowed: false,
+    provider: {
+      id: "elevenlabs",
+      model_id: "eleven_multilingual_v2",
+    },
+    policy_evidence: {
+      jurisdiction: "UK_EEA",
+      paid_plan_required: true,
+      documents: [{ sha256: "a".repeat(64), size_bytes: 100 }],
+    },
+    account_entitlement: {
+      paid_at_generation: true,
+    },
+    generation: {
+      request_id: "request-render-boundary",
+      history_item_id: "history-render-boundary",
+      request_text_sha256: crypto
+        .createHash("sha256")
+        .update(requestText)
+        .digest("hex"),
+      raw_provider_audio_path: path
+        .relative(artifactDir, rawAudioPath)
+        .replace(/\\/g, "/"),
+      raw_provider_audio_sha256: audioSha256,
+      raw_provider_audio_size_bytes: audioBytes.length,
+    },
+    generation_checks: {
+      entitlement_brackets_generation: true,
+      paid_subscription_pre_generation: true,
+      paid_subscription_post_generation: true,
+      model_is_production_tts: true,
+      official_model_snapshot_verified: true,
+      policy_files_verified: true,
+      official_policy_files_verified: true,
+      request_id_matches_history: true,
+      history_item_identity_present: true,
+      history_date_present: true,
+      history_model_matches: true,
+      history_voice_matches: true,
+      history_text_matches: true,
+      history_audio_matches_raw_response: true,
+      no_secret_fields: true,
+      no_personal_fields: true,
+      no_invoice_fields: true,
+      every_generation_condition_proven: true,
+    },
+    generation_blockers: [],
+    blockers: ["final_media_lineage_pending"],
+    mastering_lineage: {
+      raw_provider_audio_sha256: audioSha256,
+      raw_provider_audio_size_bytes: audioBytes.length,
+      mastered_audio_sha256: audioSha256,
+      mastered_audio_size_bytes: audioBytes.length,
+      transform_status: "COMPLETE",
+    },
+    licence_basis: "elevenlabs_commercial_tts_generation",
+    allowed_platforms: [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+    ],
+  });
+  const timestampsPath = path.join(artifactDir, "timestamps.json");
+  const timestamps = await fs.readJson(timestampsPath);
+  timestamps.meta = {
+    ...(timestamps.meta || {}),
+    elevenlabsGenerationRights: {
+      schemaVersion: 1,
+      receiptPath: path
+        .relative(artifactDir, receiptPath)
+        .replace(/\\/g, "/"),
+      rawProviderAudioSha256: audioSha256,
+      rawProviderAudioSizeBytes: audioBytes.length,
+      masteredAudioSha256: audioSha256,
+      masteredAudioSizeBytes: audioBytes.length,
+      requestId: "request-render-boundary",
+      historyItemId: "history-render-boundary",
+      finalMediaLineageStatus: "PENDING",
+    },
+  };
+  await fs.outputJson(timestampsPath, timestamps);
+  return receiptPath;
+}
+
 async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) {
   const outDir = path.join(root, "test", "output");
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
@@ -2069,11 +2272,110 @@ test("goal production render materializer renders ready jobs and writes a final 
     manifest.overlay_card_windows.every((window) => {
       const kind = String(window.kind || window.id || "").toLowerCase();
       const duration = Number(window.duration_s);
-      if (/source/.test(kind)) return duration === 2.6;
-      return duration >= 2.6 && duration <= 4.2;
+      if (/source/.test(kind)) {
+        return duration === V5_SOURCE_CARD_TIMING.planned_visible_duration_s;
+      }
+      return (
+        duration >= V5_READABLE_CARD_TIMING.minimum_visible_duration_s &&
+        duration <= V5_READABLE_CARD_TIMING.maximum_visible_duration_s
+      );
     }),
   );
   assert.equal(manifest.safety.no_local_proof_promoted_to_final, true);
+});
+
+test("goal production render materializer finalises strict ElevenLabs rights against the exact promoted media", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-production-render-elevenlabs-lineage-"),
+  );
+  const storyId = "story-strict-elevenlabs-lineage";
+  const requestText = "Black Flag crossed three million sales.";
+  const artifactDir = await makePackage(root, storyId, {
+    canonical_subject: "Assassin's Creed IV Black Flag",
+    selected_title: "Black Flag Crosses Three Million Sales",
+    narration_script: requestText,
+    first_spoken_line: requestText,
+  });
+  const audioBytes = Buffer.alloc(2048, 67);
+  await fs.outputFile(path.join(artifactDir, "audio.mp3"), audioBytes);
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    meta: {
+      text: requestText,
+      transcript: requestText,
+    },
+    words: [
+      { word: "Black", start: 0, end: 0.2 },
+      { word: "Flag", start: 0.2, end: 0.4 },
+      { word: "crossed", start: 0.4, end: 0.7 },
+      { word: "three", start: 0.7, end: 0.9 },
+      { word: "million", start: 0.9, end: 1.2 },
+      { word: "sales.", start: 1.2, end: 1.5 },
+    ],
+  });
+  await writePendingStrictElevenLabsReceipt({
+    artifactDir,
+    storyId,
+    requestText,
+    audioBytes,
+  });
+  const finalVideoBytes = Buffer.alloc(4096, 73);
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [readyJob(storyId, artifactDir)] },
+    generatedAt: "2026-07-20T00:10:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      const story = await fs.readJson(storyJson);
+      await fs.outputFile(output, finalVideoBytes);
+      return {
+        story_id: story.id,
+        output,
+        clips: story.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: finalVideoBytes.length,
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 24,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  const evidencePath = path.join(
+    artifactDir,
+    "rights",
+    "elevenlabs-commercial-tts.json",
+  );
+  assert.equal(await fs.pathExists(evidencePath), true);
+  const evidence = await fs.readJson(evidencePath);
+  const generationManifest = await fs.readJson(
+    path.join(artifactDir, "flagship", "generation_manifest.json"),
+  );
+  assert.equal(evidence.verdict, "GREEN", JSON.stringify(evidence.blockers));
+  assert.equal(evidence.story_id, storyId);
+  assert.equal(
+    evidence.lineage.final_video_sha256,
+    generationManifest.artifacts.final_video.sha256,
+  );
+  assert.equal(
+    evidence.lineage.final_audio_sha256,
+    generationManifest.artifacts.final_audio.sha256,
+  );
+  assert.equal(
+    evidence.lineage.word_timestamps_sha256,
+    generationManifest.artifacts.word_timestamps.sha256,
+  );
+  assert.equal(
+    evidence.lineage.captions_sha256,
+    generationManifest.artifacts.captions.sha256,
+  );
+  assert.equal(
+    report.jobs[0].elevenlabs_generation_rights_evidence.verdict,
+    "GREEN",
+  );
 });
 
 test("goal production render materializer hydrates a materially ready canonical Epidemic SFX runtime", async () => {
@@ -2145,6 +2447,114 @@ test("goal production render materializer hydrates a materially ready canonical 
     assert.equal(rights.commercial_use_allowed, true);
     assert.equal(rights.approval_status, "approved_for_commercial_editorial_use");
   }
+});
+
+test("goal production render materializer finds the canonical Epidemic SFX runtime above a nested episode workspace", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-nested-epidemic-sfx-"));
+  const storyId = "story-nested-epidemic-sfx";
+  const artifactDir = await makePackage(root, storyId);
+  const episodeWorkspace = path.join(
+    root,
+    "output",
+    "fresh-green-refill",
+    "episode-render-workspace",
+  );
+  await fs.ensureDir(episodeWorkspace);
+  await fs.remove(path.join(artifactDir, "sfx_manifest.json"));
+  const runtime = await writeReadyEpidemicRuntimeManifest(root);
+  let renderedStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: episodeWorkspace,
+    workOrder: { jobs: [readyJob(storyId, artifactDir)] },
+    generatedAt: "2026-07-19T18:00:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderedStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 92));
+      return {
+        story_id: renderedStory.story_id,
+        output,
+        clips: renderedStory.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 24,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.ok(renderedStory);
+  assert.deepEqual(
+    renderedStory.sfx_asset_inventory.map((asset) => asset.asset_id).sort(),
+    runtime.selectedAssets.map((asset) => asset.asset_id).sort(),
+  );
+  assert.equal(
+    renderedStory.sfx_runtime_manifest_path,
+    runtime.manifestPath,
+  );
+  assert.equal(
+    renderedStory.visual_v4_director_plan.readiness.blockers.some((blocker) =>
+      blocker.startsWith("sfx_source:"),
+    ),
+    false,
+  );
+});
+
+test("goal production render materializer resolves relative Epidemic rights evidence from the repository root", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-relative-epidemic-rights-"));
+  const storyId = "story-relative-epidemic-rights";
+  const artifactDir = await makePackage(root, storyId);
+  const episodeWorkspace = path.join(
+    root,
+    "output",
+    "fresh-green-refill",
+    "nested-render-workspace",
+  );
+  await fs.ensureDir(episodeWorkspace);
+  await fs.remove(path.join(artifactDir, "sfx_manifest.json"));
+  const runtime = await writeReadyEpidemicRuntimeManifest(root);
+  const runtimeManifest = await fs.readJson(runtime.manifestPath);
+  runtimeManifest.rights_records = runtimeManifest.rights_records.map((record) => ({
+    ...record,
+    evidence_reference: path.relative(root, record.evidence_reference),
+  }));
+  await fs.writeJson(runtime.manifestPath, runtimeManifest, { spaces: 2 });
+  let renderedStory = null;
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: episodeWorkspace,
+    workOrder: { jobs: [readyJob(storyId, artifactDir)] },
+    generatedAt: "2026-07-19T18:30:00.000Z",
+    renderProof: async ({ storyJson, output }) => {
+      renderedStory = await fs.readJson(storyJson);
+      await fs.outputFile(output, Buffer.alloc(4096, 93));
+      return {
+        story_id: renderedStory.story_id,
+        output,
+        clips: renderedStory.video_clips.length,
+        rendered_duration_s: 24,
+        size_bytes: 4096,
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 24,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1, JSON.stringify(report.jobs));
+  assert.ok(renderedStory);
+  assert.equal(renderedStory.sfx_runtime_manifest_source, "epidemic_sfx_runtime_manifest");
+  assert.equal(renderedStory.sfx_asset_inventory.length, runtime.selectedAssets.length);
+  assert.equal(renderedStory.sfx_source_plan.readiness.status, "pass");
+  assert.deepEqual(renderedStory.sfx_source_plan.readiness.blockers, []);
 });
 
 test("goal production render materializer cannot let a stale director map override current proof-card copy", async () => {
@@ -4561,16 +4971,19 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   );
   const sourceCard = shellClips.find((clip) => clip.source_family === "hyperframes_source_card");
   const readableCards = shellClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
-  assert.equal(sourceCard.durationS, 2.6);
-  assert.equal(sourceCard.duration_s, 2.6);
-  assert.equal(sourceCard.maximum_visible_duration_s, 3.1);
+  assert.equal(sourceCard.durationS, V5_SOURCE_CARD_TIMING.planned_visible_duration_s);
+  assert.equal(sourceCard.duration_s, V5_SOURCE_CARD_TIMING.planned_visible_duration_s);
+  assert.equal(
+    sourceCard.maximum_visible_duration_s,
+    V5_SOURCE_CARD_TIMING.maximum_visible_duration_s,
+  );
   assert.ok(
     readableCards.every(
       (clip) =>
-        clip.durationS >= 3.4 &&
-        clip.duration_s >= 3.4 &&
-        clip.durationS <= 3.8 &&
-        clip.duration_s <= 3.8,
+        clip.durationS >= V5_READABLE_CARD_TIMING.minimum_visible_duration_s &&
+        clip.duration_s >= V5_READABLE_CARD_TIMING.minimum_visible_duration_s &&
+        clip.durationS <= V5_READABLE_CARD_TIMING.maximum_visible_duration_s &&
+        clip.duration_s <= V5_READABLE_CARD_TIMING.maximum_visible_duration_s,
     ),
   );
   const manifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
@@ -5017,9 +5430,9 @@ test("goal production render materializer preserves readable HyperFrames card dw
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "context"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "takeaway", {
       readableText: "GTA VI editions remain unknown",
-      minimumDurationS: 3.8,
-      plannedDurationS: 3.8,
-      maxDurationS: 3.8,
+      minimumDurationS: 2.7,
+      plannedDurationS: 2.7,
+      maxDurationS: 2.7,
     }),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "quote"),
     writePassingHyperframesCard(root, "story-hf-readable-dwell", "timeline"),
@@ -5054,9 +5467,9 @@ test("goal production render materializer preserves readable HyperFrames card dw
   const takeawayCard = renderStory.visual_v4_bridge_video_clips.find(
     (clip) => clip.source_family === "hyperframes_takeaway_card",
   );
-  assert.equal(takeawayCard.durationS, 3.8);
-  assert.equal(takeawayCard.minimum_readable_duration_s, 3.8);
-  assert.equal(takeawayCard.maximum_visible_duration_s, 3.8);
+  assert.equal(takeawayCard.durationS, 2.7);
+  assert.equal(takeawayCard.minimum_readable_duration_s, 2.7);
+  assert.equal(takeawayCard.maximum_visible_duration_s, 2.7);
   assert.match(takeawayCard.text, /editions remain unknown/i);
 });
 
@@ -5317,13 +5730,19 @@ test("goal production render materializer limits HyperFrames cards to a readable
   assert.equal(renderStory.hyperframes_available_card_count, 5);
   const sourceCards = cardClips.filter((clip) => clip.source_family === "hyperframes_source_card");
   const readableCards = cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
-  assert.ok(sourceCards.every((clip) => clip.durationS === 2.6 && clip.minimum_readable_duration_s <= 2.6));
+  assert.ok(
+    sourceCards.every(
+      (clip) =>
+        clip.durationS === V5_SOURCE_CARD_TIMING.planned_visible_duration_s &&
+        clip.minimum_readable_duration_s <= V5_SOURCE_CARD_TIMING.planned_visible_duration_s,
+    ),
+  );
   assert.ok(
     readableCards.every(
       (clip) =>
-        clip.durationS >= 3.4 &&
-        clip.minimum_readable_duration_s >= 3.4 &&
-        clip.durationS <= 3.8,
+        clip.durationS >= V5_READABLE_CARD_TIMING.minimum_visible_duration_s &&
+        clip.minimum_readable_duration_s >= V5_READABLE_CARD_TIMING.minimum_visible_duration_s &&
+        clip.durationS <= V5_READABLE_CARD_TIMING.maximum_visible_duration_s,
     ),
   );
   assert.deepEqual(
@@ -5404,10 +5823,10 @@ test("goal production render materializer limits HyperFrames cards by narration 
   const cardClips = renderStory.visual_v4_bridge_video_clips.filter(
     (clip) => clip.source_type === "hyperframes_premium_shell_card",
   );
-  assert.equal(cardClips.length, 2);
-  assert.equal(renderStory.hyperframes_card_count, 2);
+  assert.equal(cardClips.length, 3);
+  assert.equal(renderStory.hyperframes_card_count, 3);
   assert.equal(renderStory.hyperframes_available_card_count, 5);
-  assert.equal(renderStory.premium_shell_required_selected_card_count, 2);
+  assert.equal(renderStory.premium_shell_required_selected_card_count, 3);
   assert.equal(renderStory.premium_shell_verdict, "pass");
   assert.deepEqual(renderStory.premium_shell_blockers, []);
   assert.equal(
@@ -5418,7 +5837,7 @@ test("goal production render materializer limits HyperFrames cards by narration 
   assert.ok(
     renderStory.hyperframes_premium_shell_gate.selectedCardDurationS <= 34.6 * 0.25 + 0.01,
   );
-  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 2);
+  assert.equal(renderStory.hyperframes_premium_shell_gate.requiredSelectedCardCount, 3);
 });
 
 test("goal production render materializer applies the V5 card budget to a 52 second narration", async () => {
@@ -5579,10 +5998,18 @@ test("goal production render materializer keeps selected HyperFrames dwell withi
   assert.equal(cardClips.length, 3);
   const sourceCard = cardClips.find((clip) => clip.source_family === "hyperframes_source_card");
   const readableCards = cardClips.filter((clip) => clip.source_family !== "hyperframes_source_card");
-  assert.ok(sourceCard.durationS >= 1.6);
-  assert.ok(sourceCard.durationS <= 3.1);
-  assert.ok(readableCards.every((clip) => clip.durationS >= 3.4));
-  assert.ok(readableCards.every((clip) => clip.durationS <= 3.8));
+  assert.ok(sourceCard.durationS >= V5_SOURCE_CARD_TIMING.minimum_visible_duration_s);
+  assert.ok(sourceCard.durationS <= V5_SOURCE_CARD_TIMING.maximum_visible_duration_s);
+  assert.ok(
+    readableCards.every(
+      (clip) => clip.durationS >= V5_READABLE_CARD_TIMING.minimum_visible_duration_s,
+    ),
+  );
+  assert.ok(
+    readableCards.every(
+      (clip) => clip.durationS <= V5_READABLE_CARD_TIMING.maximum_visible_duration_s,
+    ),
+  );
   assert.ok(
     cardClips.reduce((sum, clip) => sum + Number(clip.durationS || 0), 0) <=
       42.028 * 0.25 + 0.01,
@@ -6641,7 +7068,7 @@ test("goal production render materializer restores readable card coverage after 
   assert.equal(directClips.length, 7);
   assert.equal(directClips.some((clip) => clip.path === rejectedClip.path), false);
   assert.ok(cardClips.length >= 1);
-  assert.ok(cardClips.length <= 2);
+  assert.ok(cardClips.length <= PREMIUM_EDIT_RHYTHM_V5.max_generated_card_scene_count);
   assert.ok(
     renderStory.hyperframes_premium_shell_gate.selectedCardDurationS > 0,
   );

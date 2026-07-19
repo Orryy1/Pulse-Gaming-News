@@ -742,6 +742,34 @@ test("Goal 19 returns RED when temporal video QA evidence is missing", async () 
   assert.ok(report.stories[0].blockers.includes("temporal_video_qa_report_missing"));
 });
 
+test("Goal 19 accepts a nested temporal QA report bound to the current render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-temporal-nested-"));
+  const story = await makeControlStory(root, "story-temporal-nested");
+  const canonicalPath = path.join(story.artifact_dir, "temporal_video_qa_report.json");
+  const nestedPath = path.join(
+    story.artifact_dir,
+    "qa",
+    "temporal-current",
+    "temporal_video_qa_report.json",
+  );
+  await fs.ensureDir(path.dirname(nestedPath));
+  await fs.move(canonicalPath, nestedPath);
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+  });
+
+  assert.equal(report.stories[0].control_inputs.temporal_video_qa.status, "pass");
+  assert.equal(
+    report.stories[0].control_inputs.temporal_video_qa.evidence.render_hash_matches,
+    true,
+  );
+  assert.ok(!report.stories[0].blockers.includes("temporal_video_qa_report_missing"));
+});
+
 test("Goal 19 returns RED when temporal video QA is stale, choppy or repeated", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-temporal-red-"));
   const story = await makeControlStory(root, "story-temporal-red", {
@@ -2052,6 +2080,89 @@ test("Goal 19 does not treat unselected rights inventory as final-render usage",
   assert.equal(rights.evidence.used_asset_count, 3);
   assert.equal(rights.evidence.matched_asset_count, 3);
   assert.deepEqual(rights.evidence.missing_asset_ids, []);
+});
+
+test("Goal 19 ignores unrendered SFX alternatives when renderer inputs are authoritative", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-unused-sfx-alternatives-"));
+  const story = await makeControlStory(root, "story-unused-sfx-alternatives", {
+    sfxManifest: {
+      source_plan: {
+        selected_assets: [{
+          asset_id: "unused-sfx-alternative",
+          path: path.join(root, "audio", "unused-sfx-alternative.wav"),
+          source_url: "licensed-sfx://unused-sfx-alternative",
+        }],
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-19T20:20:00.000Z",
+  });
+
+  const rights = report.stories[0].control_inputs.rights_ledger;
+  assert.equal(rights.status, "pass");
+  assert.deepEqual(rights.evidence.missing_asset_ids, []);
+  assert.equal(rights.evidence.used_asset_count, 3);
+});
+
+test("Goal 19 rejects a rights ledger whose declared used assets exceed the authoritative renderer inputs", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-excess-used-rights-"));
+  const story = await makeControlStory(root, "story-excess-used-rights");
+  const artifactDir = story.artifact_dir;
+  const rightsPath = path.join(artifactDir, "rights_ledger.json");
+  const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  const rightsLedger = await fs.readJson(rightsPath);
+  const unusedSfxPath = path.join(artifactDir, "audio", "unused-library-sfx.wav");
+  await fs.outputFile(unusedSfxPath, Buffer.from("unused licensed library SFX"));
+  const unusedSfxRecord = {
+    asset_id: "unused-library-sfx",
+    kind: "sfx",
+    path: unusedSfxPath,
+    source_url: "licensed-sfx://unused-library-sfx",
+    source_type: "licensed_sfx",
+    source_owner: "Licensed SFX provider",
+    licence_basis: "licensed_commercial_editorial_use",
+    allowed_platforms: ["youtube_shorts", "tiktok"],
+    commercial_use_allowed: true,
+    evidence_file: "rights/unused-library-sfx.json",
+    approval_status: "approved_for_transformative_editorial_use",
+    verdict: "GREEN",
+    risk_score: 0.1,
+  };
+  rightsLedger.records.push(unusedSfxRecord);
+  rightsLedger.used_assets = [
+    ...renderManifest.selected_input_assets.assets.map((asset) => ({
+      asset_id: asset.asset_id,
+      kind: asset.kind,
+      path: asset.path,
+    })),
+    {
+      asset_id: unusedSfxRecord.asset_id,
+      kind: unusedSfxRecord.kind,
+      path: unusedSfxRecord.path,
+    },
+  ];
+  await materialiseRightsFixture(artifactDir, rightsLedger);
+  await fs.writeJson(rightsPath, rightsLedger, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(story.story_id),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-19T20:30:00.000Z",
+  });
+
+  const rights = report.stories[0].control_inputs.rights_ledger;
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(rights.status, "fail");
+  assert.ok(rights.evidence.failures.includes("rights:declared_used_asset_set_mismatch"));
+  assert.deepEqual(rights.evidence.extraneous_declared_used_asset_ids, ["unused-library-sfx"]);
 });
 
 test("Goal 19 emits RED final verdicts when Goal 18 is blocked", async () => {

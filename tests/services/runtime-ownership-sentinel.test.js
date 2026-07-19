@@ -98,7 +98,7 @@ test("runtime sentinel passes only when live owner, commit and scheduler mode ma
   assert.match(md, /Port owner PID: 34076/);
 });
 
-test("runtime sentinel accepts an uninspectable SYSTEM node owner only with exact dual-health attestation", () => {
+test("runtime sentinel accepts an opaque node port owner only with matching protected-primary health surfaces", () => {
   const report = buildRuntimeOwnershipSentinel({
     expectedBuild: {
       commit_sha: "abcdef1234567890",
@@ -128,9 +128,98 @@ test("runtime sentinel accepts an uninspectable SYSTEM node owner only with exac
   assert.deepEqual(report.blockers, []);
   assert.ok(
     report.advisory.some((line) =>
-      /SYSTEM-owned node command line is unavailable/i.test(line),
+      /node command line is unavailable/i.test(line),
     ),
   );
+});
+
+test("runtime sentinel fails closed when an opaque port owner conflicts with another server process", () => {
+  const report = buildRuntimeOwnershipSentinel({
+    expectedBuild: {
+      commit_sha: "abcdef1234567890",
+      commit_short: "abcdef1",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: health(),
+    publicHealth: health(),
+    processSnapshot: {
+      port: 3001,
+      port_owner_pid: 11776,
+      processes: [
+        { pid: 11776, name: "node.exe", command_line: "" },
+        { pid: 22000, name: "node.exe", command_line: "node server.js" },
+        { pid: 6732, name: "cloudflared.exe", command_line: "" },
+      ],
+      query_status: "ok",
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(
+    report.blockers.some((line) =>
+      /opaque.*conflicting node server\.js process PID 22000/i.test(line),
+    ),
+  );
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, false);
+});
+
+test("runtime sentinel separates an unreadable Windows command line from legitimate commit drift", () => {
+  const runningHealth = health();
+  runningHealth.json.build = {
+    commit_sha: "1111111111111111111111111111111111111111",
+    commit_short: "1111111",
+    branch: "codex/live",
+  };
+  const report = buildRuntimeOwnershipSentinel({
+    expectedBuild: {
+      commit_sha: "2222222222222222222222222222222222222222",
+      commit_short: "2222222",
+      branch: "codex/live",
+    },
+    env: {
+      PORT: "3001",
+      AUTO_PUBLISH: "true",
+      USE_JOB_QUEUE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    localHealth: runningHealth,
+    publicHealth: runningHealth,
+    processSnapshot: {
+      port: 3001,
+      port_owner_pid: 11776,
+      processes: [
+        { pid: 11776, name: "node.exe", command_line: "" },
+        { pid: 6732, name: "cloudflared.exe", command_line: "" },
+      ],
+      query_status: "ok",
+    },
+    execFileSyncImpl() {
+      return "lib/job-handlers.js\n";
+    },
+  });
+
+  assert.equal(report.verdict, "red");
+  assert.ok(
+    report.blockers.some((line) =>
+      /runtime-relevant files changed/i.test(line),
+    ),
+  );
+  assert.equal(
+    report.blockers.some((line) => /owner PID 11776 is not node server\.js/i.test(line)),
+    false,
+  );
+  assert.ok(
+    report.advisory.some((line) =>
+      /node command line is unavailable/i.test(line),
+    ),
+  );
+  assert.equal(report.scheduler_window_readiness.safe_to_observe_next_window, false);
 });
 
 test("runtime sentinel keeps an inspectable wrong node owner red despite healthy endpoints", () => {

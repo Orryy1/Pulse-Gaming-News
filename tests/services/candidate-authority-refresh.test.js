@@ -871,6 +871,52 @@ test("missing temporal video QA evidence forces every authority surface RED", as
   assert.equal(report.proposed.platform_publish_manifest.can_auto_publish, false);
 });
 
+test("authority refresh discovers the versioned temporal report bound to the current render", async () => {
+  const fixture = await createVerifiedFixture();
+  const temporal = await fs.readJson(fixture.criticalPaths.temporalQaPath);
+  const validVersionedPath = path.join(
+    fixture.artifactDir,
+    "qa",
+    "temporal-v48",
+    "temporal_video_qa_report.json",
+  );
+  const staleVersionedPath = path.join(
+    fixture.artifactDir,
+    "qa",
+    "temporal-v99",
+    "temporal_video_qa_report.json",
+  );
+  await writeJson(validVersionedPath, {
+    ...temporal,
+    generated_at: "2026-07-19T19:06:58.239Z",
+  });
+  await writeJson(staleVersionedPath, {
+    ...temporal,
+    generated_at: "2030-01-01T00:00:00.000Z",
+    final_media: {
+      ...temporal.final_media,
+      sha256: "f".repeat(64),
+    },
+  });
+  await fs.remove(fixture.criticalPaths.temporalQaPath);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.can_auto_publish, true);
+  assert.equal(
+    report.critical_paths.temporal_qa_report,
+    validVersionedPath,
+  );
+  assert.equal(report.temporal_video_qa.valid, true);
+  assert.equal(report.blockers.includes("temporal_video_qa_report_missing"), false);
+  assert.equal(report.blockers.includes("temporal_video_qa_render_hash_mismatch"), false);
+});
+
 test("temporal video QA bound to a stale render hash forces authority RED", async () => {
   const fixture = await createVerifiedFixture();
   const temporal = await fs.readJson(fixture.criticalPaths.temporalQaPath);

@@ -1028,7 +1028,12 @@ function resolveVoiceSettingsForProvider(
   env = process.env,
 ) {
   const settings = Object.assign({}, baseSettings || {});
-  if (rateOverride !== undefined) {
+  const hasExplicitRateOverride =
+    rateOverride !== undefined &&
+    rateOverride !== null &&
+    rateOverride !== "" &&
+    Number.isFinite(Number(rateOverride));
+  if (hasExplicitRateOverride) {
     settings.speaking_rate = rateOverride;
   }
   if (String(provider || "").toLowerCase() === "local") {
@@ -1038,7 +1043,9 @@ function resolveVoiceSettingsForProvider(
     );
   } else {
     const requestedSpeed = finiteNumber(settings.speaking_rate ?? settings.speed, 1.0);
-    const managedRate = allowManagedTtsSpeedEffects(env)
+    // A finite per-render override is already an explicit opt-in. Keep
+    // unrequested brand/config speed changes behind the managed pacing gate.
+    const managedRate = hasExplicitRateOverride || allowManagedTtsSpeedEffects(env)
       ? clamp(requestedSpeed, 0.7, 1.2)
       : 1.0;
     settings.speaking_rate = managedRate;

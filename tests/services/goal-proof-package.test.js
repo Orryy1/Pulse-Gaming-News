@@ -2440,6 +2440,52 @@ test("goal proof package gives the current Denshattack story attention-led nativ
   );
 });
 
+test("goal proof package never exposes an internal canonical-angle slug in native copy", () => {
+  const blackFlagStory = greenStory();
+  blackFlagStory.id = "official_black_flag_three_million_20260717";
+  blackFlagStory.canonical_subject = "Assassin's Creed Black Flag Resynced";
+  blackFlagStory.canonical_game = "Assassin's Creed Black Flag Resynced";
+  blackFlagStory.canonical_angle = "black_flag_sales_momentum";
+  blackFlagStory.title =
+    "Black Flag Sold 3 Million. The Third Million Changes The Story";
+  blackFlagStory.public_title = blackFlagStory.title;
+  blackFlagStory.selected_title = blackFlagStory.title;
+  blackFlagStory.suggested_thumbnail_text = "THE THIRD MILLION MATTERS";
+  blackFlagStory.thumbnail_headline = "THE THIRD MILLION MATTERS";
+  blackFlagStory.source_name = "Ubisoft";
+  blackFlagStory.primary_source = "Ubisoft";
+  blackFlagStory.article_url =
+    "https://www.ubisoft.com/en-gb/game/assassins-creed/news/black-flag-resynced-sales";
+  blackFlagStory.description =
+    "Black Flag sold 3 million copies in one week, but the final million may matter most. Ubisoft says 2 million sold on the first day and the rest followed across the next six days. Now New Game Plus and player recommendations face the real test. Source: Ubisoft.";
+  blackFlagStory.full_script =
+    "Ubisoft's new Black Flag sold 3 million copies in one week. The third million changes the sales story. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story: blackFlagStory,
+    rightsLedger: rightsForGreenStory(blackFlagStory),
+    generatedAt: "2026-07-19T20:45:00.000Z",
+  });
+
+  const nativeCopy = JSON.stringify(pack.platform_publish_manifest.outputs);
+  assert.doesNotMatch(nativeCopy, /black_flag_sales_momentum/i);
+  assert.match(pack.youtube_publish_pack.description, /3 million copies/i);
+  assert.match(pack.instagram_publish_pack.caption, /final million|third million/i);
+  assert.match(pack.facebook_publish_pack.page_caption, /New Game Plus|recommendations/i);
+  assert.ok(
+    !pack.platform_publish_manifest.platform_native_evidence.failures.some(
+      (failure) => failure.reason === "plain_platform_description",
+    ),
+    JSON.stringify(pack.platform_publish_manifest.platform_native_evidence.failures),
+  );
+  assert.ok(
+    !pack.pulse_media_house_score.hard_failures.some((failure) =>
+      /title_lacks_curiosity_gap|platform_title_too_plain/.test(failure),
+    ),
+    JSON.stringify(pack.pulse_media_house_score.hard_failures),
+  );
+});
+
 test("goal proof package preserves a concrete Fogpiercer train-deck cover", () => {
   const fogpiercerStory = greenStory();
   fogpiercerStory.id = "fresh_fogpiercer_game_pass_20260717";

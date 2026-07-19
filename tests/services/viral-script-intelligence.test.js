@@ -142,6 +142,47 @@ test("viral script intelligence approves a source-safe angle with concrete numbe
   assert.equal(result.cta.count, 1);
 });
 
+test("viral script intelligence blocks unattributed magnitude claims and invented audience behaviour", () => {
+  const script =
+    "Ubisoft's new Black Flag sold 3 million copies in one week. " +
+    "But the third million is the number that matters. " +
+    "Ubisoft says 2 million sold on day one. " +
+    "The rest arrived across the next six days, after buyers had time to watch reviews, compare streams and decide whether the remake deserved their money. " +
+    "That second wave matters. " +
+    "Very Positive Steam reviews, recent fixes and confirmed New Game Plus are promising signals, not proof players will stay. " +
+    "The question is whether Black Flag is a blueprint for future remakes or a one-game exception. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "black-flag-first-party-sales",
+      title: "Black Flag Sold 3 Million. The Third Million Changes The Story",
+      source_name: "Ubisoft",
+      primary_source_url:
+        "https://news.ubisoft.com/en-us/article/black-flag-resynced-sells-over-3-million-copies",
+      confirmed_claims: [
+        "Ubisoft reports that Assassin's Creed Black Flag Resynced sold more than 3 million copies during its first week.",
+        "Ubisoft reports that 2 million copies were sold on day one.",
+        "Ubisoft says Steam user reviews improved to Very Positive during the launch week.",
+        "Ubisoft says post-launch fixes and New Game Plus were announced.",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "rewrite_required", JSON.stringify(result, null, 2));
+  assert.deepEqual(result.fact_lock.numeric_claims.slice(0, 2), ["3 million", "2 million"]);
+  assert.ok(
+    result.blockers.includes("unattributed_first_party_numeric_claim"),
+    JSON.stringify(result, null, 2),
+  );
+  assert.ok(
+    result.blockers.includes("unsupported_audience_behaviour_inference"),
+    JSON.stringify(result, null, 2),
+  );
+  assert.ok(result.scores.source_safety < 55, JSON.stringify(result.scores));
+});
+
 test("viral script intelligence allows concise non-numeric scripts unless a specific compression risk is present", () => {
   const script =
     "The Expanse: Osiris Reborn finally has the thing licensed games usually hide: real gameplay. " +

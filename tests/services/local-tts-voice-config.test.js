@@ -181,7 +181,7 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
   const eleven = resolveVoiceSettingsForProvider(
     "elevenlabs",
     { speaking_rate: 1.1 },
-    1.68,
+    undefined,
     {},
   );
   assert.equal(eleven.speaking_rate, 1.0);
@@ -193,8 +193,8 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
     0.92,
     {},
   );
-  assert.equal(slowerEleven.speaking_rate, 1.0);
-  assert.equal(slowerEleven.speed, 1.0);
+  assert.equal(slowerEleven.speaking_rate, 0.92);
+  assert.equal(slowerEleven.speed, 0.92);
 
   const explicitProofRate = resolveVoiceSettingsForProvider(
     "elevenlabs",
@@ -204,6 +204,31 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
   );
   assert.equal(explicitProofRate.speaking_rate, 1.2);
   assert.equal(explicitProofRate.speed, 1.2);
+});
+
+test("Pulse explicit ElevenLabs rate override uses provider-native speed without enabling dynamic pacing", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const {
+    resolveVoiceSettingsForProvider,
+  } = require("../../audio");
+
+  const explicitRate = resolveVoiceSettingsForProvider(
+    "elevenlabs",
+    { speaking_rate: 1.1 },
+    0.85,
+    {},
+  );
+  assert.equal(explicitRate.speaking_rate, 0.85);
+  assert.equal(explicitRate.speed, 0.85);
+
+  const implicitRate = resolveVoiceSettingsForProvider(
+    "elevenlabs",
+    { speaking_rate: 0.85 },
+    undefined,
+    {},
+  );
+  assert.equal(implicitRate.speaking_rate, 1.0);
+  assert.equal(implicitRate.speed, 1.0);
 });
 
 test("Pulse ElevenLabs alignment metadata records hash-bound provider-native speed provenance", () => {

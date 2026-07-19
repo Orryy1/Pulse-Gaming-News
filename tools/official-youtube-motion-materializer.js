@@ -48,7 +48,10 @@ function parseArgs(argv = process.argv) {
     } else if (arg === "--output-template") {
       args.outputTemplate = argv[++index] || args.outputTemplate;
     } else if (arg === "--start-seconds") {
-      args.startSeconds = Math.max(0, Number(argv[++index]) || DEFAULT_START_SECONDS);
+      const value = Number(argv[++index]);
+      args.startSeconds = Number.isFinite(value)
+        ? Math.max(0, value)
+        : DEFAULT_START_SECONDS;
     } else if (arg === "--end-seconds") {
       args.endSeconds = Math.max(
         args.startSeconds + 20,

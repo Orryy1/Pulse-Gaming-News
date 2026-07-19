@@ -25,6 +25,10 @@ const ACCEPTED_SLEEPY_LIAM = {
   referenceHash: "a".repeat(40),
 };
 
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
 test("canonical audio selection ignores stale caption and spoken derivatives", () => {
   const narration =
     "Ascend to ZERO lets you freeze time, but can its bosses make that power feel dangerous? Follow Pulse Gaming so you never miss a beat.";
@@ -844,6 +848,134 @@ test("goal audio materializer passes an explicit TTS rate to narration generatio
   assert.equal(calls[0].rate, 0.92);
 });
 
+test("goal audio materializer routes real ElevenLabs generation through strict receipt capture", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-audio-materializer-strict-elevenlabs-"),
+  );
+  const artifactDir = await makePackage(root, "story-strict-elevenlabs");
+  const calls = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    ttsRate: 0.94,
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-strict-elevenlabs", artifactDir)],
+    },
+    generatedAt: "2026-07-19T23:30:00.000Z",
+    generateStrictElevenLabsNarration: async ({
+      artifactDir: receivedArtifactDir,
+      storyId,
+      text,
+      outputPath,
+      requestSettings,
+    }) => {
+      calls.push({
+        artifactDir: receivedArtifactDir,
+        storyId,
+        text,
+        outputPath,
+        requestSettings,
+      });
+      const rawAudio = Buffer.alloc(4096, 7);
+      const rawAudioSha256 = sha256(rawAudio);
+      const receiptPath = path.join(
+        receivedArtifactDir,
+        "rights",
+        "evidence",
+        "elevenlabs-generation-receipt.json",
+      );
+      await fs.outputFile(outputPath, rawAudio);
+      await fs.outputJson(receiptPath, {
+        schema: "pulse_elevenlabs_generation_receipt_v1",
+        schema_version: 1,
+        story_id: storyId,
+        asset_id: `${storyId}_audio_path`,
+        generation_verdict: "GREEN",
+        generation_blockers: [],
+        generation: {
+          raw_provider_audio_sha256: rawAudioSha256,
+          raw_provider_audio_size_bytes: rawAudio.length,
+        },
+        mastering_lineage: {
+          raw_provider_audio_sha256: rawAudioSha256,
+          raw_provider_audio_size_bytes: rawAudio.length,
+          mastered_audio_sha256: rawAudioSha256,
+          mastered_audio_size_bytes: rawAudio.length,
+          transform_status: "COMPLETE",
+        },
+      });
+      await fs.outputJson(outputPath.replace(/\.mp3$/i, "_timestamps.json"), {
+        alignment: charAlignmentWithStep(text, 0.07),
+        meta: {
+          provider: "elevenlabs",
+          elevenlabsGenerationRights: {
+            receiptPath: "rights/evidence/elevenlabs-generation-receipt.json",
+            rawProviderAudioSha256: rawAudioSha256,
+            rawProviderAudioSizeBytes: rawAudio.length,
+            masteredAudioSha256: rawAudioSha256,
+            masteredAudioSizeBytes: rawAudio.length,
+            finalMediaLineageStatus: "PENDING",
+          },
+        },
+      });
+      return {
+        verdict: "AMBER",
+        receiptPath,
+      };
+    },
+    compactGeneratedNarrationSilence: async (audioPath) => {
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 9));
+      return {
+        repaired: true,
+        strategy: "test_governed_silence_compaction",
+      };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].artifactDir, artifactDir);
+  assert.equal(calls[0].storyId, "story-strict-elevenlabs");
+  assert.equal(calls[0].requestSettings.speaking_rate, 0.94);
+  assert.equal(path.isAbsolute(calls[0].outputPath), true);
+  assert.equal(report.jobs[0].provider, "elevenlabs");
+  const timestamps = await fs.readJson(
+    path.join(artifactDir, "audio", "word_timestamps.json"),
+  );
+  assert.equal(
+    timestamps.meta.elevenlabsGenerationRights.receiptPath,
+    "rights/evidence/elevenlabs-generation-receipt.json",
+  );
+  const finalAudio = await fs.readFile(
+    path.join(artifactDir, "audio", "narration.mp3"),
+  );
+  const finalAudioSha256 = sha256(finalAudio);
+  assert.equal(
+    timestamps.meta.elevenlabsGenerationRights.masteredAudioSha256,
+    finalAudioSha256,
+  );
+  assert.equal(
+    timestamps.meta.elevenlabsGenerationRights.masteredAudioSizeBytes,
+    finalAudio.length,
+  );
+  const receipt = await fs.readJson(
+    path.join(
+      artifactDir,
+      "rights",
+      "evidence",
+      "elevenlabs-generation-receipt.json",
+    ),
+  );
+  assert.equal(receipt.mastering_lineage.mastered_audio_sha256, finalAudioSha256);
+  assert.equal(receipt.mastering_lineage.mastered_audio_size_bytes, finalAudio.length);
+  assert.equal(
+    receipt.mastering_lineage.post_generation_transform_status,
+    "COMPLETE",
+  );
+});
+
 test("goal audio materializer cleans cached spoken scripts before TTS generation", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-clean-spoken-"));
   const artifactDir = await makePackage(root, "story-clean-spoken", {
@@ -1594,7 +1726,10 @@ test("goal audio materializer quarantines the final failed managed ElevenLabs ta
   assert.equal(manifest.story_id, storyId);
   assert.equal(manifest.provider, "elevenlabs");
   assert.equal(manifest.attempt, 3);
-  assert.equal(manifest.request.word_count, script.split(/\s+/).length);
+  assert.equal(
+    manifest.request.word_count,
+    manifest.request.text.split(/\s+/).length,
+  );
   assert.match(manifest.request.text_sha256, /^[a-f0-9]{64}$/);
   assert.equal(manifest.settings.alignment_mode, "whisper");
   assert.equal(manifest.settings.model_id, "eleven_multilingual_v2");
@@ -3138,6 +3273,60 @@ test("goal audio materializer coverage accepts the joined Resynced TTS alias wit
     assert.equal(unsafeCoverage.inserted_actual_word_count, 1);
     assert.equal(unsafeCoverage.inserted_actual_tokens[0].norm, "actually");
   }
+});
+
+test("goal audio materializer coverage reconciles the governed re synced alias when ASR returns Resynced", () => {
+  const scriptText =
+    "Ubisoft says Assassin's Creed Black Flag re synced sold more than 3 million copies. Follow Pulse Gaming so you never miss a beat.";
+  const words = [
+    "Ubisoft",
+    "says",
+    "Assassin's",
+    "Creed",
+    "Black",
+    "Flag",
+    "Resynced",
+    "sold",
+    "more",
+    "than",
+    "3",
+    "million",
+    "copies.",
+    "Follow",
+    "Pulse",
+    "Gaming",
+    "so",
+    "you",
+    "never",
+    "miss",
+    "a",
+    "beat.",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.16).toFixed(3)),
+    end: Number((index * 0.16 + 0.12).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+  const reconciled = _testables.reconcileWhisperWordsToScript({ words, scriptText });
+
+  assert.equal(coverage.ok, true, JSON.stringify(coverage, null, 2));
+  assert.equal(coverage.inserted_actual_word_count, 0, JSON.stringify(coverage, null, 2));
+  assert.equal(coverage.unmatched_expected_word_count, 0, JSON.stringify(coverage, null, 2));
+  assert.equal(reconciled.ok, true, JSON.stringify(reconciled, null, 2));
+  assert.equal(reconciled.words[6].word, "re synced");
+
+  const unsafeWords = words.toSpliced(7, 0, {
+    word: "actually",
+    start: 1.06,
+    end: 1.14,
+  });
+  const unsafeCoverage = _testables.analyseWhisperScriptCoverage({
+    words: unsafeWords,
+    scriptText,
+  });
+  assert.equal(unsafeCoverage.inserted_actual_word_count, 1);
+  assert.equal(unsafeCoverage.inserted_actual_tokens[0].norm, "actually");
 });
 
 test("goal audio materializer treats Whisper cardinal and ordinal numeral spellings as exact speech", () => {

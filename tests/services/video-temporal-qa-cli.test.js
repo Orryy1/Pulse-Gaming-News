@@ -327,3 +327,61 @@ test("video temporal QA CLI arguments fail closed without an MP4", () => {
     /--mp4 is required/,
   );
 });
+
+test("video temporal QA defaults proof beside the authoritative final MP4", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-temporal-authority-path-"));
+  const mp4Path = path.join(root, "visual_v4_render.mp4");
+  await fs.outputFile(mp4Path, Buffer.from("authoritative-temporal-media-fixture"));
+
+  const result = await runCli(
+    [
+      "node",
+      "tools/video-temporal-qa.js",
+      "--mp4",
+      mp4Path,
+      "--story-id",
+      "black-flag-v31",
+    ],
+    {
+      runVideoQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+        evidence: {
+          decode: {
+            complete: true,
+            video_stream: true,
+            audio_stream: true,
+          },
+          temporal: {
+            analysis_scope: "full_frame",
+            scan_complete: true,
+            coverage_ratio: 1,
+            sampled_frame_count: 300,
+            repeated_motion_sequences: [],
+            repeated_motion_seconds: 0,
+            cadence: { choppy: false },
+            supplemental_center_crop: {
+              analysis_scope: "center_crop",
+              scan_complete: true,
+              coverage_ratio: 1,
+              sampled_frame_count: 300,
+              repeated_motion_sequences: [],
+              repeated_motion_seconds: 0,
+              cadence: { choppy: false },
+            },
+          },
+        },
+      }),
+      stdout: { write() {} },
+    },
+  );
+
+  assert.equal(result.jsonPath, path.join(root, "temporal_video_qa_report.json"));
+  assert.equal(result.markdownPath, path.join(root, "temporal_video_qa_report.md"));
+  assert.equal(await fs.pathExists(result.jsonPath), true);
+  assert.equal(
+    await fs.pathExists(path.join(root, "qa", "temporal-video", "temporal_video_qa_report.json")),
+    false,
+  );
+});

@@ -178,7 +178,7 @@ async function runCli(argv = process.argv, deps = {}) {
   const stat = await fsApi.stat(mp4Path);
   const sha256 = await sha256File(mp4Path, deps);
   const outDir = path.resolve(
-    args.outDir || path.join(path.dirname(mp4Path), "qa", "temporal-video"),
+    args.outDir || path.dirname(mp4Path),
   );
 
   const qa = await runQa(mp4Path, {

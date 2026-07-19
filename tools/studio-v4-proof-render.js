@@ -359,6 +359,100 @@ function selectedInputAssetId(value, fallback) {
   return text.replace(/[^a-z0-9._-]+/gi, "_").replace(/^_+|_+$/g, "").slice(0, 160);
 }
 
+function fingerprintLocalFileSync(filePath) {
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile() || stat.size <= 0) {
+    throw new Error("selected input evidence is not a non-empty file");
+  }
+  return {
+    sha256: crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex"),
+    size_bytes: stat.size,
+  };
+}
+
+function selectedHyperframesOwnershipEvidence({
+  story = {},
+  asset = {},
+  assetPath = "",
+} = {}) {
+  if (String(asset.kind || "").trim() !== "generated_card") return null;
+  const cardKind = String(asset.card_kind || "").trim().toLowerCase();
+  const identityText = [
+    assetPath,
+    asset.source_url,
+    asset.source_type,
+    asset.source_family,
+    asset.media_kind,
+    cardKind,
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (!cardKind || !/(?:hyperframes|hf[_-])/.test(identityText)) return null;
+  const storyId = String(story.id || story.story_id || "").trim();
+  const channelId = String(story.channel_id || story.channel || "pulse-gaming").trim();
+  const evaluation = evaluateHyperframesPremiumShellEvidence({
+    cardPath: assetPath,
+    kind: cardKind,
+    storyId,
+    channelId,
+  });
+  if (
+    String(evaluation?.verdict || "").toLowerCase() !== "pass" ||
+    (Array.isArray(evaluation?.blockers) && evaluation.blockers.length)
+  ) {
+    return null;
+  }
+  const sidecarPath = String(evaluation?.evidence?.sidecarPath || "").trim();
+  if (!sidecarPath || !fs.existsSync(sidecarPath)) return null;
+  let sidecar;
+  try {
+    sidecar = JSON.parse(fs.readFileSync(sidecarPath, "utf8"));
+  } catch {
+    return null;
+  }
+  const outputReference = String(
+    sidecar?.hyperframes_premium_shell?.output_path ||
+      sidecar?.output_path ||
+      "",
+  ).trim();
+  const outputCandidates = outputReference
+    ? [
+        path.isAbsolute(outputReference) ? outputReference : path.resolve(ROOT, outputReference),
+        path.isAbsolute(outputReference)
+          ? outputReference
+          : path.resolve(path.dirname(sidecarPath), outputReference),
+      ]
+    : [];
+  if (
+    !outputCandidates.some(
+      (candidate) => selectedInputPathKey(candidate) === selectedInputPathKey(assetPath),
+    )
+  ) {
+    return null;
+  }
+  const evidenceFingerprint = fingerprintLocalFileSync(sidecarPath);
+  return {
+    rights_grant: true,
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    allowed_use: "owned_editorial_motion_graphic",
+    source_type: "internally_generated_motion_graphic",
+    source_family: `hyperframes_${cardKind}_card`,
+    source_owner: "Pulse Gaming",
+    creator: "Pulse Gaming",
+    provider_id: "pulse_hyperframes",
+    commercial_use_allowed: true,
+    approval_status: "approved_for_owned_editorial_use",
+    rights_status: "approved",
+    usage_scope: "owned_editorial_commercial_distribution",
+    allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    credit_required: false,
+    risk_score: 0.02,
+    evidence_kind: "owned_generated_hyperframes_shell_sidecar",
+    evidence_file: sidecarPath,
+    evidence_sha256: evidenceFingerprint.sha256,
+    evidence_size_bytes: evidenceFingerprint.size_bytes,
+  };
+}
+
 function buildSelectedInputAssetEvidence({
   story = {},
   audioPath = "",
@@ -370,6 +464,7 @@ function buildSelectedInputAssetEvidence({
   const assets = [];
   const byPath = new Map();
   const blockers = [];
+  const storyId = selectedInputAssetId(story.id || story.story_id, "story");
   const add = (asset = {}) => {
     const assetPath = String(asset.path || "").trim();
     const key = selectedInputPathKey(assetPath);
@@ -403,6 +498,28 @@ function buildSelectedInputAssetEvidence({
         )}`,
       );
     }
+    const ownedCardEvidence = selectedHyperframesOwnershipEvidence({
+      story,
+      asset,
+      assetPath,
+    });
+    if (
+      asset.kind === "generated_card" &&
+      /(?:hyperframes|hf[_-])/.test(
+        [assetPath, asset.source_url, asset.source_type, asset.source_family]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase(),
+      ) &&
+      !ownedCardEvidence
+    ) {
+      blockers.push(
+        `renderer_selected_owned_card_rights_evidence_missing:${selectedInputAssetId(
+          asset.asset_id,
+          `selected_input_${assets.length + 1}`,
+        )}`,
+      );
+    }
     const row = {
       asset_id: selectedInputAssetId(asset.asset_id, `selected_input_${assets.length + 1}`),
       kind: String(asset.kind || "asset").trim() || "asset",
@@ -415,12 +532,12 @@ function buildSelectedInputAssetEvidence({
       role: String(asset.role || "").trim() || null,
       scene_count: Number(asset.scene_count || 0),
       scene_indexes: Array.isArray(asset.scene_indexes) ? [...asset.scene_indexes] : [],
+      ...(ownedCardEvidence || {}),
     };
     assets.push(row);
     byPath.set(key, row);
   };
 
-  const storyId = selectedInputAssetId(story.id || story.story_id, "story");
   add({
     asset_id: `${storyId}_audio_path`,
     kind: "narration",
@@ -435,11 +552,21 @@ function buildSelectedInputAssetEvidence({
   );
   for (const [index, scene] of (Array.isArray(scenePlan.scenes) ? scenePlan.scenes : []).entries()) {
     const clip = clipByPath.get(selectedInputPathKey(scene.path)) || {};
+    const cardKind = String(
+      scene.readableCardKind ||
+        scene.readable_card_kind ||
+        clip.card_kind ||
+        sceneClipReadableCardKind(clip),
+    ).trim().toLowerCase();
     add({
       asset_id: clip.id || clip.asset_id || scene.id || `render_scene_${index + 1}`,
       kind: clip.media_kind === "owned_editorial_motion_graphic" ? "generated_card" : "video",
       path: scene.path,
       source_url: clip.source_url || clip.canonical_source_url || null,
+      source_type: clip.source_type || null,
+      source_family: clip.source_family || clip.motion_family || null,
+      media_kind: clip.media_kind || null,
+      card_kind: cardKind || null,
       media_start_s: clip.mediaStartS ?? clip.media_start_s ?? clip.start_s,
       duration_s: clip.durationS ?? clip.duration_s ?? scene.durationS,
       role: "visual_scene",
@@ -1873,16 +2000,7 @@ function sceneClipUsesV5PremiumCard(clip = {}) {
 function readableCardMinimumDurationS({ readableText = "", explicitMinimumS = null, readableCardKind = "" } = {}) {
   const kind = String(readableCardKind || "").trim().toLowerCase();
   if (kind === "source" || kind === "source_lock") {
-    const explicit = Number(explicitMinimumS);
-    return Number(
-      Math.min(
-        SOURCE_LOCK_OVERLAY_CARD_DURATION_S,
-        Math.max(
-          Number.isFinite(explicit) && explicit > 0 ? explicit : SOURCE_LOCK_OVERLAY_CARD_DURATION_S,
-          1.2,
-        ),
-      ).toFixed(2),
-    );
+    return Number(SOURCE_LOCK_OVERLAY_CARD_DURATION_S.toFixed(2));
   }
   const explicit = Number(explicitMinimumS);
   return Number(
@@ -2293,12 +2411,12 @@ function buildClipScenePlan({
       durationS: Number(plannedDurations[index].toFixed(2)),
       plannedDurationS: Number(plannedDurations[index].toFixed(2)),
     }));
-  let coveredDurationS = 0;
-  for (const entry of sceneEntries) {
-    coveredDurationS = Number(
-      (coveredDurationS + entry.plannedDurationS - (coveredDurationS > 0 ? xfadeS : 0)).toFixed(2),
-    );
-  }
+  const coveredDurationS = Number(
+    (
+      sceneEntries.reduce((sum, entry) => sum + entry.plannedDurationS, 0) -
+      xfadeS * Math.max(0, sceneEntries.length - 1)
+    ).toFixed(3),
+  );
   const sourceDurationOverruns = repeatFree
     ? sceneEntries
         .filter((entry) => Number.isFinite(entry.sourceDurationS))
@@ -3107,7 +3225,7 @@ function buildOverlayChain({
   const proofLabel = drawtextEscape(signature.proof_label);
   const impactLabel = drawtextEscape(signature.impact_label);
   return [
-    `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame,drawbox=x=0:y=0:w=iw:h=230:color=black@0.34:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=138:w=iw:h=164:color=black@0.56:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0.52:t=fill${nonCardOverlayEnableSuffix},drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0.66:t=fill${nonCardOverlayEnableSuffix}`,
+    `[${inputLabel}]eq=brightness='if(lt(t\\,3.3)\\,0.055\\,-0.015)':contrast=1.10:saturation=1.20:eval=frame`,
     `drawbox=x=0:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill${nonCardOverlayEnableSuffix}`,
     `drawbox=x=iw-${sideMaskWidth}:y=0:w=${sideMaskWidth}:h=ih:color=0x0B0F19@${sideMaskAlpha}:t=fill${nonCardOverlayEnableSuffix}`,
     `drawbox=x=${accentRailX}:y=0:w=4:h=ih:color=${pulseBrandAccent}@0.30:t=fill${nonCardOverlayEnableSuffix}`,

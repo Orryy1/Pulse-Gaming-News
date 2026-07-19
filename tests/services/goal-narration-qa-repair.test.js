@@ -378,6 +378,12 @@ test("post-render narration QA binds separate display and spoken evidence to one
   assert.equal(captions.display_word_count, 12);
   assert.equal(captions.spoken_word_count, 13);
   assert.equal(voice.word_timestamp_count, 13);
+  assert.equal(captions.timestamp_row_count, words.length);
+  assert.equal(captions.spoken_word_timestamp_count, 13);
+  assert.equal(voice.timestamp_row_count, words.length);
+  assert.equal(voice.spoken_word_timestamp_count, 13);
+  assert.equal(narration.timestamp_row_count, words.length);
+  assert.equal(narration.spoken_word_timestamp_count, 13);
   assert.equal(voice.cadence.word_count, 12);
   assert.equal(voice.cadence.status, "pass");
   assert.equal(

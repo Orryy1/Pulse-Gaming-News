@@ -10,7 +10,7 @@ const {
   writeGoalRealMotionReport,
 } = require("../lib/goal-real-motion-materializer");
 const {
-  inspectDirectMotionClip,
+  filterPremiumDirectMotionClips,
 } = require("../lib/studio/v5/direct-motion-visual-selector");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -124,14 +124,39 @@ async function main(argv = process.argv.slice(2)) {
     minBaseSources: args.minBaseSources,
     strictBaseSourceDiversity: args.strictBaseSourceDiversity,
     clipVisualEligibility: args.premiumVisualSelection
-      ? (clip, context = {}) =>
-          inspectDirectMotionClip(clip, {
+      ? async (clip, context = {}) => {
+          const selection = await filterPremiumDirectMotionClips([clip], {
             outputDir: path.join(
               path.resolve(args.outDir),
               "premium-motion-visual-selection",
               String(context.storyId || "unknown-story").replace(/[^a-z0-9_-]+/gi, "_"),
             ),
-          })
+          });
+          const accepted = selection.accepted[0] || null;
+          const rejected = selection.rejected[0] || null;
+          const selectedClip = selection.clips[0] || null;
+          const selectedPath = String(
+            selectedClip?.local_materialized_path || selectedClip?.path || "",
+          ).trim();
+          const originalPath = String(
+            clip?.local_materialized_path || clip?.path || "",
+          ).trim();
+          const replacementClip =
+            selectedClip &&
+            selectedPath &&
+            originalPath &&
+            path.resolve(selectedPath) !== path.resolve(originalPath)
+              ? selectedClip
+              : null;
+          return {
+            eligible: Boolean(accepted && selectedClip),
+            reasons: accepted?.reasons || rejected?.reasons || selection.blockers,
+            metrics: accepted?.metrics || rejected?.metrics,
+            replacement_clip: replacementClip,
+            visual_repair: accepted?.visual_repair || rejected?.visual_repair || null,
+            repairs: selection.repairs,
+          };
+        }
       : undefined,
     segmentValidationReport,
     artifactRoot: args.artifactRoot,

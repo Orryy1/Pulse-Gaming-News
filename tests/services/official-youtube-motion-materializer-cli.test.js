@@ -45,3 +45,17 @@ test("official YouTube motion materializer CLI exposes bounded local-only inputs
     /official-youtube-motion-materializer\.js/,
   );
 });
+
+test("official YouTube motion materializer CLI preserves a zero-second acquisition start", () => {
+  const args = parseArgs([
+    "node",
+    "tools/official-youtube-motion-materializer.js",
+    "--start-seconds",
+    "0",
+    "--end-seconds",
+    "20",
+  ]);
+
+  assert.equal(args.startSeconds, 0);
+  assert.equal(args.endSeconds, 20);
+});

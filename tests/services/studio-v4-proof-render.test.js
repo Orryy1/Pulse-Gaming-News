@@ -47,6 +47,9 @@ const {
   STUDIO_V4_VOICE_MIX_POLICY_VERSION,
   STUDIO_V4_VISUAL_DESIGN_POLICY_VERSION,
 } = require("../../lib/studio/v4/render-policy");
+const {
+  PREMIUM_CARD_TIMING_V5_VERSION,
+} = require("../../lib/studio/v4/premium-card-timing-policy");
 const { buildKineticAss } = require("../../lib/studio/v2/subtitle-layer-v2");
 const proofRenderLib = require("../../lib/studio/v4/proof-render");
 
@@ -117,6 +120,115 @@ test("Studio V4 fingerprints every renderer-selected media input for rights reco
     );
     assert.equal(asset.asset_size_bytes, bytes.length);
   }
+});
+
+test("Studio V4 binds an owned HyperFrames card to hash-bound ownership evidence", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-owned-card-rights-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const storyId = "owned-card-rights-story";
+  const narrationPath = path.join(root, "narration.mp3");
+  const cardPath = path.join(root, `hf_source_card_${storyId}.mp4`);
+  const sidecarPath = cardPath.replace(/\.mp4$/i, ".shell.json");
+  fs.writeFileSync(narrationPath, Buffer.from("narration"));
+  fs.writeFileSync(cardPath, Buffer.from("owned HyperFrames card bytes"));
+  fs.writeFileSync(sidecarPath, JSON.stringify({
+    schema_version: 1,
+    story_id: storyId,
+    card_kind: "source",
+    channel_id: "pulse-gaming",
+    output_path: cardPath,
+    hyperframes_premium_shell: {
+      status: "pass",
+      story_id: storyId,
+      card_kind: "source",
+      channel_id: "pulse-gaming",
+      output_path: cardPath,
+      checks: {
+        lint: { status: "pass" },
+        validate: { status: "pass" },
+        inspect: { status: "pass" },
+        render: { status: "pass" },
+      },
+      visual_identity: {
+        status: "pass",
+        blockers: [],
+        evidence: {
+          vertical_reel_viewport: true,
+          tracked_clip: true,
+          html_path: "index.html",
+          hyperframes_config_path: "hyperframes.json",
+        },
+      },
+      animation_contract: {
+        status: "pass",
+        blockers: [],
+        evidence: {
+          timeline_registry: true,
+          paused_gsap_timeline: true,
+          main_timeline_registered: true,
+          timeline_animation_steps: 4,
+        },
+      },
+      readability_contract: {
+        status: "pass",
+        blockers: [],
+        contract_version: PREMIUM_CARD_TIMING_V5_VERSION,
+        evidence: {
+          readable_text: "OFFICIAL SOURCE",
+          word_count: 2,
+          planned_visible_duration_s: 2.4,
+          minimum_visible_duration_s: 2.4,
+          max_readable_card_duration_s: 2.4,
+        },
+      },
+      creative_identity_contract: { status: "pass", blockers: [] },
+      blockers: [],
+    },
+  }));
+
+  const evidence = buildSelectedInputAssetEvidence({
+    story: { id: storyId },
+    audioPath: narrationPath,
+    selectedClips: [{
+      id: "renderer-selected-owned-card",
+      path: cardPath,
+      source_url: `local://pulse-hyperframes/${storyId}/source`,
+      source_type: "hyperframes_premium_shell_card",
+      source_family: "hyperframes_source_card",
+      media_kind: "owned_editorial_motion_graphic",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      allowed_use: "owned_editorial_motion_graphic",
+      durationS: 2.4,
+    }],
+    scenePlan: {
+      scenes: [{
+        path: cardPath,
+        durationS: 2.4,
+        readableCardKind: "source",
+      }],
+    },
+  });
+
+  const card = evidence.assets.find((asset) => asset.path === cardPath);
+  const sidecarBytes = fs.readFileSync(sidecarPath);
+  assert.ok(card);
+  assert.equal(card.kind, "generated_card");
+  assert.equal(card.rights_grant, true);
+  assert.equal(card.rights_basis, "owned_generated_editorial_motion_graphic");
+  assert.equal(card.licence_basis, "owned_generated_editorial_motion_graphic");
+  assert.equal(card.allowed_use, "owned_editorial_motion_graphic");
+  assert.equal(card.source_owner, "Pulse Gaming");
+  assert.equal(card.provider_id, "pulse_hyperframes");
+  assert.equal(card.commercial_use_allowed, true);
+  assert.equal(card.approval_status, "approved_for_owned_editorial_use");
+  assert.equal(card.evidence_kind, "owned_generated_hyperframes_shell_sidecar");
+  assert.equal(card.evidence_file, sidecarPath);
+  assert.equal(
+    card.evidence_sha256,
+    crypto.createHash("sha256").update(sidecarBytes).digest("hex"),
+  );
+  assert.equal(card.evidence_size_bytes, sidecarBytes.length);
 });
 
 test("Studio V4 selected-input evidence fails closed on a missing file", () => {
@@ -1677,8 +1789,8 @@ test("Studio V4 proof renderer keeps HyperFrames source cards momentum-friendly"
 
   assert.equal(plan.blockers.includes("readable_card_scene_duration_below_minimum"), false);
   assert.equal(plan.cardVisibleWindows[0].kind, "source");
-  assert.equal(plan.cardVisibleWindows[0].duration_s, 2.6);
-  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.6);
+  assert.equal(plan.cardVisibleWindows[0].duration_s, 2.4);
+  assert.equal(plan.cardVisibleWindows[0].minimum_readable_duration_s, 2.4);
   assert.equal(plan.blockers.includes("source_lock_card_at_episode_end"), false);
   assert.notEqual(plan.scenes.at(-1).readableCardKind, "source");
 });
@@ -1876,6 +1988,75 @@ test("Studio V4 proof renderer reduces crossfade for exact-fit short direct clip
   assert.equal(plan.scenes.length, 8);
   assert.equal(plan.xfadeS < 0.25, true);
   assert.equal(plan.coveredDurationS + 0.12 >= 38.82, true);
+});
+
+test("Studio V4 proof renderer does not accumulate scene coverage rounding across a flagship cut", () => {
+  const directClips = Array.from({ length: 10 }, (_, index) => ({
+    path: `black-flag-direct-clip-${index + 1}.mp4`,
+    source_url: `https://www.youtube.com/watch?v=BlackFlagOfficial${index + 1}`,
+    source_type: "official_youtube_channel_url",
+    media_kind: "direct_video",
+    source_family: `youtube:black-flag-${index + 1}_window_0_5`,
+    base_source_family: `youtube:black-flag-${index + 1}`,
+    durationS: 5,
+  }));
+  const cards = [
+    {
+      path: "black-flag-source-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_source_card",
+      card_kind: "source",
+      text: "UBISOFT NEWS SOURCE",
+      durationS: 2.8,
+      minimum_readable_duration_s: 1.9,
+    },
+    {
+      path: "black-flag-takeaway-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_takeaway_card",
+      card_kind: "takeaway",
+      text: "PLAYER IMPACT WHAT CHANGES FOR PLAYERS",
+      durationS: 2.8,
+      minimum_readable_duration_s: 2.2,
+    },
+    {
+      path: "black-flag-context-card.mp4",
+      source_type: "hyperframes_premium_shell_card",
+      media_kind: "owned_editorial_motion_graphic",
+      source_family: "hyperframes_context_card",
+      card_kind: "context",
+      text: "3 MILLION 1M AFTER DAY ONE FIRST-WEEK SALES",
+      durationS: 2.8,
+      minimum_readable_duration_s: 2.5,
+    },
+  ];
+  const cardsByPosition = new Map([
+    [3, cards[0]],
+    [5, cards[1]],
+    [10, cards[2]],
+  ]);
+  let directIndex = 0;
+  const clips = Array.from({ length: 13 }, (_, index) => {
+    if (cardsByPosition.has(index)) return cardsByPosition.get(index);
+    const clip = directClips[directIndex];
+    directIndex += 1;
+    return clip;
+  });
+
+  const plan = buildClipScenePlan({
+    clips,
+    durationS: 57.465,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+    maxScenes: 16,
+  });
+
+  assert.equal(plan.premiumEditRhythm.status, "pass");
+  assert.equal(plan.scenes.length, 13);
+  assert.equal(plan.blockers.includes("approved_scene_duration_below_audio_duration"), false);
+  assert.equal(plan.coveredDurationS + 0.12 >= 57.465, true);
 });
 
 test("Studio V4 proof renderer can use two windows per official trailer when needed for audio coverage", () => {
@@ -2258,7 +2439,7 @@ test("Studio V4 proof renderer reports readable overlay card windows", () => {
   assert.deepEqual(
     windows.map((window) => [window.id, window.kind, window.duration_s]),
     [
-      ["opening_source_lock", "source_lock", 2.6],
+      ["opening_source_lock", "source_lock", 2.4],
       ["proof_primary", "proof_card", 2.6],
       ["proof_secondary", "proof_card", 2.6],
     ],
@@ -2766,7 +2947,7 @@ test("Studio V4 overlay keeps its outro slate off a full-screen takeaway card", 
   );
 });
 
-test("Studio V4 proof renderer masks baked-in source text zones before overlays", () => {
+test("Studio V4 proof renderer preserves full-bleed motion instead of adding global dark bands", () => {
   const chain = buildOverlayChain({
     story: {
       id: "source-text-risk",
@@ -2780,9 +2961,11 @@ test("Studio V4 proof renderer masks baked-in source text zones before overlays"
     fontOpt: "font='Arial'",
   });
 
-  assert.match(chain, /drawbox=x=0:y=138:w=iw:h=164:color=black@0\.56:t=fill/);
-  assert.match(chain, /drawbox=x=0:y=ih-430:w=iw:h=430:color=black@0\.52:t=fill/);
-  assert.match(chain, /drawbox=x=0:y=ih-315:w=iw:h=315:color=black@0\.66:t=fill/);
+  assert.doesNotMatch(chain, /drawbox=x=0:y=0:w=iw:h=230:color=black@/);
+  assert.doesNotMatch(chain, /drawbox=x=0:y=138:w=iw:h=164:color=black@/);
+  assert.doesNotMatch(chain, /drawbox=x=0:y=ih-430:w=iw:h=430:color=black@/);
+  assert.doesNotMatch(chain, /drawbox=x=0:y=ih-315:w=iw:h=315:color=black@/);
+  assert.match(chain, /drawbox=x=76:y=812:w=690:h=140:color=0x0B0F19@0\.46/);
 });
 
 test("Studio V4 proof renderer masks vertical frame edges before text audits", () => {
@@ -3626,7 +3809,7 @@ test("Studio V4 overlay chain avoids large flat text cards over real footage", (
   });
 
   assert.doesNotMatch(chain, /w=9[0-9]{2}:h=2[0-9]{2}:color=0x111827@0\.7[0-9]:t=fill/);
-  assert.match(chain, /:t=2:enable='between\(t,0,2\.6\)'/);
+  assert.match(chain, /:t=2:enable='between\(t,0,2\.4\)'/);
   assert.match(chain, /0x43D7FF@0\.92/);
   assert.match(chain, /0xF8FAFC@0\.88/);
 });

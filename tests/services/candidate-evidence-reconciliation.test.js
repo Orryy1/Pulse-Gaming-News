@@ -721,6 +721,34 @@ test("candidate evidence reconciliation recognises the current combined HyperFra
       blockers: [],
     },
   });
+  const rightsPath = path.join(fixture.artifactDir, "rights_ledger.json");
+  const existingRights = await fs.readJson(rightsPath);
+  const sourceCardBytes = await fs.readFile(sourceCard);
+  await fs.writeJson(rightsPath, [...existingRights, {
+    asset_id: "renderer-owned-source-card",
+    asset_type: "owned_generated_motion_graphic",
+    path: sourceCard,
+    source_url: `local://pulse-hyperframes/${storyId}/source`,
+    source_type: "internally_generated_motion_graphic",
+    source_family: "hyperframes_source_card",
+    source_owner: "Pulse Gaming",
+    creator: "Pulse Gaming",
+    provider_id: "pulse_hyperframes",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    rights_grant: false,
+    allowed_use: "local_proof_only",
+    allowed_platforms: [],
+    commercial_use_allowed: false,
+    credit_required: false,
+    approval_status: "operator_legal_review_required",
+    rights_status: "operator_legal_review_required",
+    usage_scope: "local_proof_only",
+    rights_verdict: "RED",
+    evidence_file: "final_clip_scene_plan",
+    asset_sha256: sha256(sourceCardBytes),
+    asset_size_bytes: sourceCardBytes.length,
+  }], { spaces: 2 });
   const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
   const renderManifest = await fs.readJson(renderManifestPath);
   renderManifest.clip_scene_plan = {
@@ -752,6 +780,13 @@ test("candidate evidence reconciliation recognises the current combined HyperFra
   assert.equal(sourceRecord.evidence_file, sidecarPath);
   assert.equal(sourceRecord.source_owner, "Pulse Gaming");
   assert.equal(sourceRecord.provider_id, "pulse_hyperframes");
+  assert.equal(sourceRecord.rights_grant, true);
+  assert.equal(sourceRecord.allowed_use, "owned_editorial_motion_graphic");
+  assert.equal(sourceRecord.approval_status, "approved_for_owned_editorial_use");
+  assert.equal(sourceRecord.evidence_kind, "owned_generated_hyperframes_shell_sidecar");
+  const sidecarBytes = await fs.readFile(sidecarPath);
+  assert.equal(sourceRecord.evidence_sha256, sha256(sidecarBytes));
+  assert.equal(sourceRecord.evidence_size_bytes, sidecarBytes.length);
 });
 
 test("candidate evidence reconciliation refuses to rebind an overwritten visual asset without a render-bound fingerprint", async () => {
@@ -3100,6 +3135,103 @@ test("candidate evidence reconciliation prefers a materialised local SFX path ov
   assert.equal(sfxRecord.source_url, sourceUrl);
 });
 
+test("candidate evidence reconciliation excludes unused SFX alternatives from authoritative renderer lineage", async () => {
+  const storyId = "authoritative_renderer_sfx_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-authoritative-renderer-sfx-",
+    storyId,
+  });
+  const { audioPath, rightsPath } = await addNarrationRightsFixture(fixture, storyId);
+  const usedSfxPath = path.join(fixture.artifactDir, "audio", "used-impact.wav");
+  const unusedSfxPath = path.join(fixture.artifactDir, "audio", "unused-impact.wav");
+  await fs.outputFile(usedSfxPath, Buffer.from("used licensed impact"));
+  await fs.outputFile(unusedSfxPath, Buffer.from("unused licensed impact"));
+  const sfxManifestPath = path.join(fixture.artifactDir, "sfx_manifest.json");
+  await fs.writeJson(sfxManifestPath, {
+    source_plan: {
+      selected_assets: [
+        {
+          asset_id: "used-impact",
+          provider_id: "licensed_provider",
+          family: "impact",
+          source_url: "https://audio.example/used-impact.wav",
+          local_materialized_path: usedSfxPath,
+        },
+        {
+          asset_id: "unused-impact",
+          provider_id: "licensed_provider",
+          family: "impact",
+          source_url: "https://audio.example/unused-impact.wav",
+          local_materialized_path: unusedSfxPath,
+        },
+      ],
+    },
+  }, { spaces: 2 });
+  const rights = await fs.readJson(rightsPath);
+  rights.push(
+    completeRights({
+      asset_id: "used-impact",
+      path: usedSfxPath,
+      source_url: "https://audio.example/used-impact.wav",
+      source_type: "licensed_sfx",
+      source_family: "impact",
+      evidence_file: sfxManifestPath,
+    }),
+    completeRights({
+      asset_id: "unused-impact",
+      path: unusedSfxPath,
+      source_url: "https://audio.example/unused-impact.wav",
+      source_type: "licensed_sfx",
+      source_family: "impact",
+      evidence_file: sfxManifestPath,
+    }),
+  );
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  const usedSfxBytes = await fs.readFile(usedSfxPath);
+  renderManifest.selected_input_assets = {
+    schema_version: 2,
+    authoritative: true,
+    complete: true,
+    asset_count: 1,
+    blockers: [],
+    assets: [{
+      asset_id: "used-impact",
+      kind: "sfx",
+      path: usedSfxPath,
+      asset_sha256: sha256(usedSfxBytes),
+      asset_size_bytes: usedSfxBytes.length,
+    }],
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.equal(report.rights.used_asset_count, 2);
+  assert.deepEqual(
+    report.rights.proposed_ledger.used_assets.map((asset) => asset.asset_id).sort(),
+    [`${storyId}_audio_path`, "used-impact"].sort(),
+  );
+  assert.equal(
+    report.rights.proposed_ledger.used_assets.some((asset) => asset.asset_id === "unused-impact"),
+    false,
+  );
+  assert.equal(
+    report.rights.proposed_ledger.records.find((record) => record.kind === "narration").path,
+    audioPath,
+  );
+});
+
 test("candidate evidence reconciliation binds Epidemic SFX to an exact local rights ledger record", async () => {
   const storyId = "epidemic_sfx_candidate";
   const fixture = await makeFingerprintFixture({
@@ -3315,4 +3447,917 @@ test("candidate evidence reconciliation includes every renderer-selected music b
   assert.ok(music.every((record) => record.source_owner === "Epidemic Sound"));
   assert.ok(music.every((record) => record.provider_id === "epidemic_sound"));
   assert.ok(music.every((record) => record.evidence_file === globalMusicRightsPath));
+});
+
+test("candidate evidence reconciliation excludes unrendered SFX alternatives from the used-asset ledger", async () => {
+  const storyId = "renderer_selected_sfx_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-renderer-selected-sfx-",
+    storyId,
+  });
+  await addNarrationRightsFixture(fixture, storyId);
+  const workspaceRoot = path.join(fixture.artifactDir, "workspace");
+  const providerLedgerPath = path.join(
+    workspaceRoot,
+    "output",
+    "epidemic-sound-intake",
+    "epidemic_rights_ledger.json",
+  );
+  const renderedSfxPath = path.join(fixture.artifactDir, "audio", "rendered-impact.wav");
+  const unusedSfxPath = path.join(fixture.artifactDir, "audio", "unused-riser.wav");
+  await fs.outputFile(renderedSfxPath, Buffer.from("rendered licensed impact"));
+  await fs.outputFile(unusedSfxPath, Buffer.from("unused licensed riser"));
+  const renderedAssetId = "epidemic_rendered_impact";
+  const unusedAssetId = "epidemic_unused_riser";
+  await fs.outputJson(providerLedgerPath, {
+    records: [
+      completeRights({
+        asset_id: renderedAssetId,
+        kind: "sfx",
+        path: renderedSfxPath,
+        source_url: `file://${renderedSfxPath.replace(/\\/g, "/")}`,
+        source_type: "licensed_sfx_library_file",
+        source_family: "impact",
+        source_owner: "Epidemic Sound",
+        provider_id: "epidemic_sound",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        evidence_reference: providerLedgerPath,
+      }),
+      completeRights({
+        asset_id: unusedAssetId,
+        kind: "sfx",
+        path: unusedSfxPath,
+        source_url: `file://${unusedSfxPath.replace(/\\/g, "/")}`,
+        source_type: "licensed_sfx_library_file",
+        source_family: "riser",
+        source_owner: "Epidemic Sound",
+        provider_id: "epidemic_sound",
+        licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+        evidence_reference: providerLedgerPath,
+      }),
+    ],
+  }, { spaces: 2 });
+  const rightsPath = path.join(fixture.artifactDir, "rights_ledger.json");
+  const packageRights = await fs.readJson(rightsPath);
+  packageRights.push(
+    completeRights({
+      asset_id: renderedAssetId,
+      kind: "sfx",
+      path: renderedSfxPath,
+      source_url: `file://${renderedSfxPath.replace(/\\/g, "/")}`,
+      source_type: "licensed_sfx_library_file",
+      source_family: "impact",
+      source_owner: "Epidemic Sound",
+      provider_id: "epidemic_sound",
+      licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+      evidence_reference: providerLedgerPath,
+    }),
+    completeRights({
+      asset_id: unusedAssetId,
+      kind: "sfx",
+      path: unusedSfxPath,
+      source_url: `file://${unusedSfxPath.replace(/\\/g, "/")}`,
+      source_type: "licensed_sfx_library_file",
+      source_family: "riser",
+      source_owner: "Epidemic Sound",
+      provider_id: "epidemic_sound",
+      licence_basis: "epidemic_sound_active_subscription_safelisted_channel",
+      evidence_reference: providerLedgerPath,
+    }),
+  );
+  await fs.writeJson(rightsPath, packageRights, { spaces: 2 });
+  await fs.writeJson(path.join(fixture.artifactDir, "sfx_manifest.json"), {
+    source_plan: {
+      selected_assets: [
+        {
+          asset_id: renderedAssetId,
+          provider_id: "epidemic_sound",
+          role: "impact",
+          family: "impact",
+          local_materialized_path: renderedSfxPath,
+        },
+        {
+          asset_id: unusedAssetId,
+          provider_id: "epidemic_sound",
+          role: "riser",
+          family: "riser",
+          local_materialized_path: unusedSfxPath,
+        },
+      ],
+    },
+  }, { spaces: 2 });
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [{
+      asset_id: renderedAssetId,
+      kind: "sfx",
+      role: "impact",
+      path: renderedSfxPath,
+    }],
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    workspaceRoot,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  const sfxAssetIds = report.rights.proposed_ledger.records
+    .filter((record) => record.kind === "sfx")
+    .map((record) => record.asset_id);
+  assert.deepEqual(sfxAssetIds, [renderedAssetId]);
+  assert.equal(
+    report.rights.proposed_ledger.used_assets.some(
+      (asset) => asset.asset_id === unusedAssetId,
+    ),
+    false,
+  );
+});
+
+test("candidate evidence reconciliation blocks strict flagship ElevenLabs narration without file-backed commercial rights", async () => {
+  const storyId = "strict_flagship_missing_tts_rights";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-strict-flagship-tts-rights-",
+    storyId,
+  });
+  await addNarrationRightsFixture(fixture, storyId);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [],
+  };
+  renderManifest.flagship_generation_evidence = {
+    complete: true,
+    verdict: "GREEN",
+    run_id: "strict-rights-run",
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      `narration_commercial_rights_evidence_missing:${storyId}_audio_path`,
+    ),
+    JSON.stringify(report.rights, null, 2),
+  );
+});
+
+test("candidate evidence reconciliation blocks AMBER ElevenLabs commercial-rights evidence for a strict flagship", async () => {
+  const storyId = "strict_flagship_amber_tts_rights";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-strict-flagship-amber-tts-rights-",
+    storyId,
+  });
+  await addNarrationRightsFixture(fixture, storyId);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [],
+  };
+  renderManifest.flagship_generation_evidence = {
+    complete: true,
+    verdict: "GREEN",
+    run_id: "strict-rights-run",
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  await fs.outputJson(
+    path.join(fixture.artifactDir, "rights", "elevenlabs-commercial-tts.json"),
+    {
+      schema: "pulse_elevenlabs_commercial_tts_evidence_v2",
+      schema_version: 2,
+      story_id: storyId,
+      asset_id: `${storyId}_audio_path`,
+      provider: "elevenlabs",
+      status: "AMBER",
+      verdict: "AMBER",
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      `narration_commercial_rights_evidence_not_green:${storyId}_audio_path`,
+    ),
+    JSON.stringify(report.rights, null, 2),
+  );
+});
+
+test("candidate evidence reconciliation binds strict ElevenLabs rights evidence to the current narration bytes", async () => {
+  const storyId = "strict_flagship_stale_tts_rights";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-strict-flagship-stale-tts-rights-",
+    storyId,
+  });
+  const { audioPath } = await addNarrationRightsFixture(fixture, storyId);
+  const audioBytes = await fs.readFile(audioPath);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [],
+  };
+  renderManifest.flagship_generation_evidence = {
+    complete: true,
+    verdict: "GREEN",
+    run_id: "strict-rights-run",
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  await fs.outputJson(
+    path.join(fixture.artifactDir, "rights", "elevenlabs-commercial-tts.json"),
+    {
+      schema: "pulse_elevenlabs_commercial_tts_evidence_v2",
+      schema_version: 2,
+      story_id: storyId,
+      asset_id: `${storyId}_audio_path`,
+      provider: "elevenlabs",
+      model_id: "eleven_multilingual_v2",
+      beta_service: false,
+      status: "GREEN",
+      verdict: "GREEN",
+      audio_path: audioPath,
+      audio_sha256: "0".repeat(64),
+      audio_size_bytes: audioBytes.length,
+      licence_basis: "elevenlabs_commercial_tts_generation",
+      commercial_use_allowed: true,
+      allowed_platforms: TARGET_PLATFORMS,
+      subscription_evidence: {
+        source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+        tier: "creator",
+        status: "active",
+        paid_plan: true,
+        secrets_recorded: false,
+      },
+      official_policy_urls: [
+        "https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform",
+        "https://elevenlabs.io/terms-of-use-eu",
+      ],
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      `narration_commercial_rights_audio_fingerprint_mismatch:${storyId}_audio_path`,
+    ),
+    JSON.stringify(report.rights, null, 2),
+  );
+});
+
+test("candidate evidence reconciliation rejects free-tier ElevenLabs evidence for commercial flagship narration", async () => {
+  const storyId = "strict_flagship_free_tts_rights";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-strict-flagship-free-tts-rights-",
+    storyId,
+  });
+  const { audioPath } = await addNarrationRightsFixture(fixture, storyId);
+  const audioBytes = await fs.readFile(audioPath);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [],
+  };
+  renderManifest.flagship_generation_evidence = {
+    complete: true,
+    verdict: "GREEN",
+    run_id: "strict-rights-run",
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  await fs.outputJson(
+    path.join(fixture.artifactDir, "rights", "elevenlabs-commercial-tts.json"),
+    {
+      schema: "pulse_elevenlabs_commercial_tts_evidence_v2",
+      schema_version: 2,
+      story_id: storyId,
+      asset_id: `${storyId}_audio_path`,
+      provider: "elevenlabs",
+      model_id: "eleven_multilingual_v2",
+      beta_service: false,
+      status: "GREEN",
+      verdict: "GREEN",
+      audio_path: audioPath,
+      audio_sha256: sha256(audioBytes),
+      audio_size_bytes: audioBytes.length,
+      licence_basis: "elevenlabs_commercial_tts_generation",
+      commercial_use_allowed: true,
+      allowed_platforms: TARGET_PLATFORMS,
+      subscription_evidence: {
+        source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+        tier: "free",
+        status: "active",
+        paid_plan: false,
+        secrets_recorded: false,
+      },
+      official_policy_urls: [
+        "https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform",
+        "https://elevenlabs.io/terms-of-use-eu",
+      ],
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      `narration_commercial_rights_paid_entitlement_missing:${storyId}_audio_path`,
+    ),
+    JSON.stringify(report.rights, null, 2),
+  );
+});
+
+test("candidate evidence reconciliation rejects current-only ElevenLabs entitlement for strict flagship narration", async () => {
+  const storyId = "strict_flagship_green_tts_rights";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-strict-flagship-green-tts-rights-",
+    storyId,
+  });
+  const { audioPath } = await addNarrationRightsFixture(fixture, storyId);
+  const audioBytes = await fs.readFile(audioPath);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [],
+  };
+  renderManifest.flagship_generation_evidence = {
+    complete: true,
+    verdict: "GREEN",
+    run_id: "strict-rights-run",
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  const commercialRightsEvidencePath = path.join(
+    fixture.artifactDir,
+    "rights",
+    "elevenlabs-commercial-tts.json",
+  );
+  await fs.outputJson(
+    commercialRightsEvidencePath,
+    {
+      schema: "pulse_elevenlabs_commercial_tts_evidence_v2",
+      schema_version: 2,
+      story_id: storyId,
+      asset_id: `${storyId}_audio_path`,
+      provider: "elevenlabs",
+      model_id: "eleven_multilingual_v2",
+      beta_service: false,
+      status: "GREEN",
+      verdict: "GREEN",
+      audio_path: audioPath,
+      audio_sha256: sha256(audioBytes),
+      audio_size_bytes: audioBytes.length,
+      licence_basis: "elevenlabs_commercial_tts_generation",
+      commercial_use_allowed: true,
+      allowed_platforms: TARGET_PLATFORMS,
+      subscription_evidence: {
+        source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+        retrieved_at: "2026-07-19T19:45:00.000Z",
+        tier: "creator",
+        status: "active",
+        paid_plan: true,
+        secrets_recorded: false,
+      },
+      official_policy_urls: [
+        "https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform",
+        "https://elevenlabs.io/terms-of-use-eu",
+      ],
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+  const commercialRightsEvidenceBytes = await fs.readFile(
+    commercialRightsEvidencePath,
+  );
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      `narration_commercial_rights_generation_lineage_incomplete:${storyId}_audio_path`,
+    ),
+    JSON.stringify(report.rights, null, 2),
+  );
+});
+
+test("candidate evidence reconciliation applies a safe demotion when stale stored rights are GREEN", async () => {
+  const storyId = "strict_flagship_stale_stored_green_rights";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-strict-flagship-stale-stored-green-rights-",
+    storyId,
+  });
+  const { audioPath, rightsPath } = await addNarrationRightsFixture(
+    fixture,
+    storyId,
+  );
+  const audioBytes = await fs.readFile(audioPath);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const flagshipRightsReportPath = path.join(
+    fixture.artifactDir,
+    "flagship",
+    "rights_reconciliation_report.json",
+  );
+  const forensicQaPath = path.join(
+    fixture.artifactDir,
+    "forensic_qa_report.json",
+  );
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [],
+  };
+  renderManifest.flagship_generation_evidence = {
+    complete: true,
+    verdict: "GREEN",
+    run_id: "strict-rights-demotion-run",
+  };
+  renderManifest.rights_reconciliation = {
+    verdict: "PASS",
+    status: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  await fs.outputJson(flagshipRightsReportPath, {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "PASS",
+    status: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    proposed_render_rights_reconciliation: {
+      verdict: "PASS",
+      status: "GREEN",
+      can_auto_publish: true,
+      blockers: [],
+    },
+  }, { spaces: 2 });
+  await fs.outputJson(forensicQaPath, {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "post_render_forensics_passed",
+    result: "pass",
+    checks: {
+      render: "pass",
+      rights: "pass",
+    },
+    blockers: [],
+  }, { spaces: 2 });
+  await fs.outputJson(
+    rightsPath,
+    {
+      schema_version: 2,
+      story_id: storyId,
+      verdict: "pass",
+      used_assets: [{
+        asset_id: `${storyId}_audio_path`,
+        kind: "narration",
+        path: audioPath,
+        asset_sha256: sha256(audioBytes),
+        asset_size_bytes: audioBytes.length,
+      }],
+      records: [completeRights({
+        asset_id: `${storyId}_audio_path`,
+        path: audioPath,
+        source_url: `elevenlabs://pulse-gaming/${storyId}`,
+        source_type: "elevenlabs_generated_narration",
+        licence_basis: "elevenlabs_commercial_tts_generation",
+        evidence_file: "narration_manifest.json",
+      })],
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+  await fs.outputJson(
+    path.join(fixture.artifactDir, "rights", "elevenlabs-commercial-tts.json"),
+    {
+      schema: "pulse_elevenlabs_commercial_tts_evidence_v2",
+      schema_version: 2,
+      story_id: storyId,
+      asset_id: `${storyId}_audio_path`,
+      provider: "elevenlabs",
+      status: "GREEN",
+      verdict: "GREEN",
+      audio_sha256: sha256(audioBytes),
+      audio_size_bytes: audioBytes.length,
+      subscription_evidence: {
+        source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+        retrieved_at: "2026-07-19T20:00:00.000Z",
+        tier: "pro",
+        status: "active",
+        paid_plan: true,
+        secrets_recorded: false,
+      },
+      blockers: [],
+    },
+    { spaces: 2 },
+  );
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: true,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.verdict, "FAIL");
+  assert.equal(report.apply_preflight.passed, false);
+  assert.equal(report.apply_preflight.writes_allowed, true);
+  assert.equal(report.apply_preflight.write_mode, "SAFE_DEMOTION_ONLY");
+  assert.equal(report.transaction.committed, true);
+  assert.equal(report.rights.demotion_applied, true);
+  const storedLedger = await fs.readJson(rightsPath);
+  assert.equal(storedLedger.verdict, "fail");
+  assert.ok(
+    storedLedger.blockers.includes(
+      `narration_commercial_rights_generation_lineage_incomplete:${storyId}_audio_path`,
+    ),
+  );
+  const storedRenderManifest = await fs.readJson(renderManifestPath);
+  assert.equal(storedRenderManifest.rights_reconciliation.verdict, "FAIL");
+  assert.equal(storedRenderManifest.rights_reconciliation.status, "RED");
+  assert.equal(
+    storedRenderManifest.rights_reconciliation.can_auto_publish,
+    false,
+  );
+  const storedFlagshipRightsReport = await fs.readJson(
+    flagshipRightsReportPath,
+  );
+  assert.equal(storedFlagshipRightsReport.verdict, "FAIL");
+  assert.equal(storedFlagshipRightsReport.status, "RED");
+  assert.equal(storedFlagshipRightsReport.can_auto_publish, false);
+  assert.equal(
+    storedFlagshipRightsReport.proposed_render_rights_reconciliation.verdict,
+    "FAIL",
+  );
+  assert.ok(
+    storedFlagshipRightsReport.blockers.includes(
+      `narration_commercial_rights_generation_lineage_incomplete:${storyId}_audio_path`,
+    ),
+  );
+  const storedForensicQa = await fs.readJson(forensicQaPath);
+  assert.equal(storedForensicQa.verdict, "post_render_forensics_failed");
+  assert.equal(storedForensicQa.result, "fail");
+  assert.equal(storedForensicQa.checks.rights, "fail");
+  assert.ok(
+    storedForensicQa.blockers.includes(
+      "post_render_rights_reconciliation_not_green",
+    ),
+  );
+});
+
+test("candidate evidence reconciliation accepts and fingerprints generation-bound ElevenLabs flagship rights evidence", async () => {
+  const storyId = "strict_flagship_v3_green_tts_rights";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-strict-flagship-v3-green-tts-rights-",
+    storyId,
+  });
+  const { audioPath } = await addNarrationRightsFixture(fixture, storyId);
+  const audioBytes = await fs.readFile(audioPath);
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    authoritative: true,
+    assets: [],
+  };
+  renderManifest.flagship_generation_evidence = {
+    complete: true,
+    verdict: "GREEN",
+    run_id: "strict-rights-v3-run",
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+  const commercialRightsEvidencePath = path.join(
+    fixture.artifactDir,
+    "rights",
+    "elevenlabs-commercial-tts.json",
+  );
+  const commercialPolicyPath = path.join(
+    fixture.artifactDir,
+    "rights",
+    "evidence",
+    "elevenlabs-commercial-rights.html",
+  );
+  const termsPolicyPath = path.join(
+    fixture.artifactDir,
+    "rights",
+    "evidence",
+    "elevenlabs-terms-eu.html",
+  );
+  const billingPolicyPath = path.join(
+    fixture.artifactDir,
+    "rights",
+    "evidence",
+    "elevenlabs-billing.html",
+  );
+  const modelEvidencePath = path.join(
+    fixture.artifactDir,
+    "rights",
+    "evidence",
+    "elevenlabs-models.json",
+  );
+  const generationReceiptPath = path.join(
+    fixture.artifactDir,
+    "rights",
+    "evidence",
+    "elevenlabs-generation-receipt.json",
+  );
+  const commercialPolicyBytes = Buffer.from("official commercial rights policy");
+  const termsPolicyBytes = Buffer.from("official UK and EEA terms");
+  const billingPolicyBytes = Buffer.from("official paid-plan billing policy");
+  const modelEvidenceBytes = Buffer.from(
+    JSON.stringify({
+      model_id: "eleven_multilingual_v2",
+      can_do_text_to_speech: true,
+      requires_alpha_access: false,
+    }),
+  );
+  await fs.outputFile(commercialPolicyPath, commercialPolicyBytes);
+  await fs.outputFile(termsPolicyPath, termsPolicyBytes);
+  await fs.outputFile(billingPolicyPath, billingPolicyBytes);
+  await fs.outputFile(modelEvidencePath, modelEvidenceBytes);
+  const subscriptionSnapshot = {
+    source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+    retrieved_at: "2026-07-19T19:44:59.000Z",
+    tier: "creator",
+    status: "active",
+    paid_plan: true,
+    secrets_recorded: false,
+    sanitised_snapshot_sha256: "1".repeat(64),
+  };
+  const rawProviderAudioSha256 = "2".repeat(64);
+  await fs.outputJson(
+    generationReceiptPath,
+    {
+      schema: "pulse_elevenlabs_generation_receipt_v1",
+      schema_version: 1,
+      story_id: storyId,
+      asset_id: `${storyId}_audio_path`,
+      generation_verdict: "GREEN",
+      generation_blockers: [],
+      generation: {
+        request_id: "request-123",
+        history_item_id: "history-123",
+        raw_provider_audio_sha256: rawProviderAudioSha256,
+        raw_provider_audio_size_bytes: 4096,
+      },
+      mastering_lineage: {
+        raw_provider_audio_sha256: rawProviderAudioSha256,
+        raw_provider_audio_size_bytes: 4096,
+        mastered_audio_sha256: sha256(audioBytes),
+        mastered_audio_size_bytes: audioBytes.length,
+        transform_status: "COMPLETE",
+        post_generation_transform_status: "COMPLETE",
+      },
+    },
+    { spaces: 2 },
+  );
+  const generationReceiptBytes = await fs.readFile(generationReceiptPath);
+  await fs.outputJson(
+    commercialRightsEvidencePath,
+    {
+      schema: "pulse_elevenlabs_commercial_tts_evidence_v3",
+      schema_version: 3,
+      story_id: storyId,
+      asset_id: `${storyId}_audio_path`,
+      captured_at: "2026-07-19T19:45:03.000Z",
+      status: "GREEN",
+      verdict: "GREEN",
+      provider: {
+        id: "elevenlabs",
+        model_id: "eleven_multilingual_v2",
+        model_snapshot_path: "rights/evidence/elevenlabs-models.json",
+        model_snapshot_sha256: sha256(modelEvidenceBytes),
+        model_snapshot_size_bytes: modelEvidenceBytes.length,
+        model_evidence: {
+          source_endpoint: "https://api.elevenlabs.io/v1/models",
+          retrieved_at: "2026-07-19T19:44:58.000Z",
+          text_to_speech: true,
+          requires_alpha_access: false,
+        },
+      },
+      policy_evidence: {
+        jurisdiction: "UK_EEA",
+        paid_plan_required: true,
+        beta_service_production_forbidden: true,
+        documents: [
+          {
+            url: "https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform",
+            retrieved_at: "2026-07-19T19:44:58.000Z",
+            materialised_path: "rights/evidence/elevenlabs-commercial-rights.html",
+            sha256: sha256(commercialPolicyBytes),
+            size_bytes: commercialPolicyBytes.length,
+          },
+          {
+            url: "https://elevenlabs.io/terms-of-use-eu",
+            retrieved_at: "2026-07-19T19:44:58.000Z",
+            materialised_path: "rights/evidence/elevenlabs-terms-eu.html",
+            sha256: sha256(termsPolicyBytes),
+            size_bytes: termsPolicyBytes.length,
+          },
+          {
+            url: "https://elevenlabs.io/docs/overview/administration/billing",
+            retrieved_at: "2026-07-19T19:44:58.000Z",
+            materialised_path: "rights/evidence/elevenlabs-billing.html",
+            sha256: sha256(billingPolicyBytes),
+            size_bytes: billingPolicyBytes.length,
+          },
+        ],
+      },
+      account_entitlement: {
+        pre_generation: subscriptionSnapshot,
+        post_generation: {
+          ...subscriptionSnapshot,
+          retrieved_at: "2026-07-19T19:45:03.000Z",
+          sanitised_snapshot_sha256: "6".repeat(64),
+        },
+        paid_at_generation: true,
+        secrets_recorded: false,
+      },
+      generation: {
+        request_id: "request-123",
+        history_item_id: "history-123",
+        history_date_unix: 1784490301,
+        request_started_at: "2026-07-19T19:45:00.000Z",
+        response_received_at: "2026-07-19T19:45:02.000Z",
+        voice_id_sha256: "7".repeat(64),
+        request_text_sha256: "8".repeat(64),
+        request_settings_sha256: "9".repeat(64),
+        raw_provider_audio_sha256: rawProviderAudioSha256,
+        raw_provider_audio_size_bytes: 4096,
+        history_audio_sha256: rawProviderAudioSha256,
+        history_audio_size_bytes: 4096,
+      },
+      lineage: {
+        spoken_script_sha256: "a".repeat(64),
+        raw_provider_audio_sha256: rawProviderAudioSha256,
+        mastered_audio_input_sha256: rawProviderAudioSha256,
+        mastered_audio_output_sha256: sha256(audioBytes),
+        final_audio_sha256: sha256(audioBytes),
+        word_timestamps_sha256: "b".repeat(64),
+        captions_sha256: "c".repeat(64),
+        final_video_sha256: "d".repeat(64),
+        sizes_bytes: {
+          raw_provider_audio: 4096,
+          mastered_audio_input: 4096,
+          mastered_audio_output: audioBytes.length,
+          final_audio: audioBytes.length,
+          word_timestamps: 100,
+          captions: 100,
+          final_video: 4096,
+        },
+      },
+      generation_receipt: {
+        path: "rights/evidence/elevenlabs-generation-receipt.json",
+        sha256: sha256(generationReceiptBytes),
+        size_bytes: generationReceiptBytes.length,
+      },
+      licence_basis: "elevenlabs_commercial_tts_generation",
+      commercial_use_allowed: true,
+      allowed_platforms: TARGET_PLATFORMS,
+      checks: {
+        entitlement_brackets_generation: true,
+        request_id_matches_history: true,
+        history_audio_matches_raw_response: true,
+        lineage_hash_chain_complete: true,
+        mastering_receipt_binding_complete: true,
+        current_story_and_audio_match: true,
+        policy_files_verified: true,
+        model_is_production_tts: true,
+        no_secret_fields: true,
+      },
+      blockers: [],
+      safety: {
+        secrets_recorded: false,
+        personal_account_fields_recorded: false,
+        invoice_fields_recorded: false,
+      },
+    },
+    { spaces: 2 },
+  );
+  const commercialRightsEvidenceBytes = await fs.readFile(
+    commercialRightsEvidencePath,
+  );
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  const narration = report.rights.proposed_ledger.records.find(
+    (record) => record.kind === "narration",
+  );
+  assert.equal(
+    narration.commercial_rights_evidence_file,
+    commercialRightsEvidencePath,
+  );
+  assert.equal(
+    narration.commercial_rights_evidence_sha256,
+    sha256(commercialRightsEvidenceBytes),
+  );
+  assert.equal(
+    narration.commercial_rights_evidence_size_bytes,
+    commercialRightsEvidenceBytes.length,
+  );
+  assert.equal(narration.subscription_tier_at_generation, "creator");
+  assert.equal(narration.subscription_status_at_generation, "active");
+  assert.equal(narration.elevenlabs_request_id, "request-123");
+  assert.equal(narration.elevenlabs_history_item_id, "history-123");
+  assert.equal(narration.elevenlabs_raw_provider_audio_sha256, rawProviderAudioSha256);
+
+  await fs.outputJson(generationReceiptPath, {
+    schema: "pulse_elevenlabs_generation_receipt_v1",
+    schema_version: 1,
+    story_id: storyId,
+    asset_id: `${storyId}_audio_path`,
+    generation_verdict: "AMBER",
+    generation_blockers: ["tampered_after_generation"],
+  });
+  const tamperedReport = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+  assert.equal(tamperedReport.rights.verdict, "FAIL");
+  assert.ok(
+    tamperedReport.rights.blockers.some((blocker) =>
+      blocker.includes("generation_receipt_missing_or_stale"),
+    ),
+    JSON.stringify(tamperedReport.rights.blockers),
+  );
 });

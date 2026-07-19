@@ -648,6 +648,65 @@ test("public evaluator rejects rights ledgers without recomputable asset and evi
   }
 });
 
+test("public evaluator derives canonical v2 rights completeness only from fully bound records and files", async () => {
+  const candidate = clone(portfolio);
+  const ledger = await fs.readJson(candidate.slots.short_1.rights_lineage.path);
+  const ledgerPath = path.join(root, "canonical-v2-rights-lineage.json");
+  delete ledger.complete;
+  ledger.schema_version = 2;
+  ledger.verdict = "pass";
+  ledger.metrics = {
+    used_asset_count: ledger.used_assets.length,
+    rights_record_count: ledger.records.length,
+    missing_asset_count: 0,
+    duplicate_record_count: 0,
+  };
+  ledger.blockers = [];
+  ledger.reconciliation = {
+    current_files_hashed: true,
+    used_asset_record_coverage: `${ledger.used_assets.length}/${ledger.records.length}`,
+  };
+  await fs.writeJson(ledgerPath, ledger, { spaces: 2 });
+  candidate.slots.short_1.rights_lineage.path = ledgerPath;
+  candidate.slots.short_1.rights_lineage.sha256 = sha256(ledgerPath);
+
+  const report = await evaluateFlagshipMediaPortfolio(candidate);
+
+  assert.equal(
+    report.slots.short_1.blockers.includes("rights_lineage_content_incomplete"),
+    false,
+  );
+  assert.equal(report.slots.short_1.rights_lineage.complete, true);
+  assert.equal(report.slots.short_1.rights_lineage.recomputed_asset_hash_count, 1);
+  assert.equal(report.slots.short_1.rights_lineage.recomputed_evidence_hash_count, 1);
+});
+
+test("public evaluator rejects a canonical rights pass without reconciliation proof", async () => {
+  const candidate = clone(portfolio);
+  const ledger = await fs.readJson(candidate.slots.short_1.rights_lineage.path);
+  const ledgerPath = path.join(root, "unreconciled-v2-rights-lineage.json");
+  delete ledger.complete;
+  delete ledger.reconciliation;
+  ledger.schema_version = 2;
+  ledger.verdict = "pass";
+  ledger.metrics = {
+    used_asset_count: ledger.used_assets.length,
+    rights_record_count: ledger.records.length,
+    missing_asset_count: 0,
+    duplicate_record_count: 0,
+  };
+  ledger.blockers = [];
+  await fs.writeJson(ledgerPath, ledger, { spaces: 2 });
+  candidate.slots.short_1.rights_lineage.path = ledgerPath;
+  candidate.slots.short_1.rights_lineage.sha256 = sha256(ledgerPath);
+
+  const report = await evaluateFlagshipMediaPortfolio(candidate);
+
+  assert.ok(report.slots.short_1.blockers.includes("rights_lineage_content_incomplete"));
+  assert.equal(report.slots.short_1.rights_lineage.complete, false);
+  assert.equal(report.slots.short_1.rights_lineage.content_completeness_basis, null);
+});
+
 test("public evaluator recomputes rights asset and licence-evidence hashes after tampering", async () => {
   const candidate = clone(portfolio);
   const ledger = await fs.readJson(candidate.slots.short_1.rights_lineage.path);

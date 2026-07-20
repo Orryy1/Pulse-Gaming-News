@@ -18,6 +18,7 @@ const {
   materialiseStoryBackdropFromClips,
   materialiseStoryBackdropsFromClips,
   buildCardBackdropMap,
+  resolveStoryCardOutputRoot,
   scoreStoryBackdropCandidate,
 } = require("../../tools/studio-v2-build-story-cards");
 const { prescanImage } = require("../../lib/visual-content-prescan");
@@ -212,6 +213,151 @@ test("story-specific HyperFrames cards run the authoritative browser check befor
   assert.ok(renderIndex < shellIndex, "shell evidence must be written after render");
   assert.doesNotMatch(body, /runHyperframes\(\["validate"\]/);
   assert.doesNotMatch(body, /runHyperframes\(\["inspect"/);
+});
+
+test("story card CLI writes rendered cards and shell reports beneath --out-dir", () => {
+  const root = path.resolve(__dirname, "..", "..");
+  const storyId = `governed-out-dir-${process.pid}`;
+  const fixtureRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-story-card-out-dir-"),
+  );
+  const fakeBin = path.join(fixtureRoot, "bin");
+  const storyFile = path.join(fixtureRoot, "stories.json");
+  const relativeOutDir = path.join("output", "story-card-out-dir-test", storyId);
+  const absoluteOutDir = path.join(root, relativeOutDir);
+  const projectSlugs = [
+    "hf-source",
+    "hf-context",
+    "hf-timeline",
+    "hf-quote",
+    "hf-takeaway",
+    "hf-outro",
+  ];
+
+  try {
+    fs.mkdirSync(fakeBin, { recursive: true });
+    if (process.platform === "win32") {
+      fs.writeFileSync(
+        path.join(fakeBin, "npx.cmd"),
+        [
+          "@echo off",
+          'if not "%2"=="render" exit /b 0',
+          ":scan",
+          'if "%1"=="" exit /b 1',
+          'if "%1"=="-o" goto write',
+          "shift",
+          "goto scan",
+          ":write",
+          "shift",
+          'type nul > "%~1"',
+          "exit /b 0",
+          "",
+        ].join("\r\n"),
+      );
+    } else {
+      const fakeNpx = path.join(fakeBin, "npx");
+      fs.writeFileSync(
+        fakeNpx,
+        [
+          "#!/bin/sh",
+          '[ "$2" = "render" ] || exit 0',
+          "shift 2",
+          'while [ "$#" -gt 0 ]; do',
+          '  if [ "$1" = "-o" ]; then',
+          "    shift",
+          '    : > "$1"',
+          "    exit 0",
+          "  fi",
+          "  shift",
+          "done",
+          "exit 1",
+          "",
+        ].join("\n"),
+      );
+      fs.chmodSync(fakeNpx, 0o755);
+    }
+    fs.writeFileSync(
+      storyFile,
+      JSON.stringify([
+        {
+          story_id: storyId,
+          selected_title: "Black Flag Sold Three Million",
+          canonical_subject: "Black Flag Resynced",
+          primary_source: "Ubisoft",
+          source_type: "official",
+          narration_script:
+            "Black Flag sold three million copies in one week. The second wave is the real test.",
+        },
+      ]),
+    );
+
+    execFileSync(
+      process.execPath,
+      [
+        "tools/studio-v2-build-story-cards.js",
+        "--story-id",
+        storyId,
+        "--story-file",
+        storyFile,
+        "--out-dir",
+        relativeOutDir,
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
+        },
+        stdio: "pipe",
+      },
+    );
+
+    const generated = fs.readdirSync(absoluteOutDir);
+    assert.equal(
+      generated.filter((name) => name.endsWith(".mp4")).length,
+      6,
+    );
+    assert.equal(
+      generated.filter((name) => name.endsWith(".shell.json")).length,
+      6,
+    );
+    assert.equal(
+      generated.every((name) =>
+        fs.existsSync(path.join(absoluteOutDir, name)),
+      ),
+      true,
+    );
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    fs.rmSync(absoluteOutDir, { recursive: true, force: true });
+    for (const slug of projectSlugs) {
+      fs.rmSync(path.join(root, "experiments", `${slug}-${storyId}`), {
+        recursive: true,
+        force: true,
+      });
+    }
+  }
+});
+
+test("story card output roots preserve the legacy default and reject repository escapes", () => {
+  const root = path.resolve(__dirname, "..", "..");
+
+  assert.equal(
+    resolveStoryCardOutputRoot(),
+    path.join(root, "test", "output"),
+  );
+  assert.equal(
+    resolveStoryCardOutputRoot(path.join("output", "production-cards")),
+    path.join(root, "output", "production-cards"),
+  );
+  assert.throws(
+    () => resolveStoryCardOutputRoot(path.join("..", "outside-pulse")),
+    /inside the Pulse Gaming repository/i,
+  );
+  assert.throws(
+    () => resolveStoryCardOutputRoot(root),
+    /cannot be the repository root/i,
+  );
 });
 
 test("quote-card attribution uses a full-opacity masked reveal so contrast never dips during animation", () => {

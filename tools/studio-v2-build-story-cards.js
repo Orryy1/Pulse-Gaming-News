@@ -48,6 +48,24 @@ const DEFAULT_CHANNEL = "pulse-gaming";
 const MIN_READABLE_HYPERFRAMES_CARD_DURATION_S = V5_READABLE_CARD_TIMING.minimum_visible_duration_s;
 const MAX_READABLE_HYPERFRAMES_CARD_DURATION_S = V5_READABLE_CARD_TIMING.maximum_visible_duration_s;
 
+function resolveStoryCardOutputRoot(outDir = TEST_OUT) {
+  const resolved = path.resolve(ROOT, outDir || TEST_OUT);
+  const relative = path.relative(ROOT, resolved);
+  if (!relative) {
+    throw new Error("Story card output directory cannot be the repository root");
+  }
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error(
+      "Story card output directory must stay inside the Pulse Gaming repository",
+    );
+  }
+  return resolved;
+}
+
 const CARD_KINDS = [
   "source",
   "context",
@@ -1664,9 +1682,19 @@ async function buildProjectForCard({
   return projectDir;
 }
 
-async function renderCard({ kind, storyId, channelId, projectDir, inspect }) {
-  await fs.ensureDir(TEST_OUT);
-  const outPath = path.join(TEST_OUT, outputNameForCard(kind, storyId, channelId));
+async function renderCard({
+  kind,
+  storyId,
+  channelId,
+  projectDir,
+  outputRoot = TEST_OUT,
+  inspect,
+}) {
+  await fs.ensureDir(outputRoot);
+  const outPath = path.join(
+    outputRoot,
+    outputNameForCard(kind, storyId, channelId),
+  );
   const checks = {};
   console.log(`[story-cards] check ${path.basename(projectDir)}`);
   checks.check = runHyperframes(["check", "."], projectDir);
@@ -1699,6 +1727,7 @@ async function buildStoryCards({
   storyId,
   story,
   channelId = process.env.CHANNEL || DEFAULT_CHANNEL,
+  outDir = TEST_OUT,
   render = true,
   inspect = true,
 } = {}) {
@@ -1706,12 +1735,14 @@ async function buildStoryCards({
     throw new Error("storyId required");
   }
   const id = storyId || story.storyId || story.id;
+  const outputRoot = resolveStoryCardOutputRoot(outDir);
   const loadedStory = story || (await loadStoryForCards(id));
   const specs = buildStoryCardSpecs(loadedStory);
   const fallbackBackdropPath = pickStoryBackdrop(loadedStory);
   const materialisedBackdrops = await materialiseStoryBackdropsFromClips({
     story: loadedStory,
     storyId: id,
+    outputDir: path.join(outputRoot, "hf-backdrops"),
   });
   const backdropMap = buildCardBackdropMap(materialisedBackdrops, fallbackBackdropPath);
   const backdropPath = backdropMap.source || fallbackBackdropPath || null;
@@ -1727,7 +1758,7 @@ async function buildStoryCards({
     });
     outputs[kind] = {
       projectDir,
-      outPath: path.join(TEST_OUT, outputNameForCard(kind, id, channelId)),
+      outPath: path.join(outputRoot, outputNameForCard(kind, id, channelId)),
     };
     if (render) {
       const rendered = await renderCard({
@@ -1735,6 +1766,7 @@ async function buildStoryCards({
         storyId: id,
         channelId,
         projectDir,
+        outputRoot,
         inspect,
       });
       outputs[kind].outPath = rendered.outPath;
@@ -1746,6 +1778,7 @@ async function buildStoryCards({
   return {
     storyId: id,
     channelId,
+    outputRoot,
     specs,
     backdropPath,
     backdropMap,
@@ -1758,6 +1791,7 @@ async function main() {
   let storyId = "";
   let storyFile = "";
   let channelId = process.env.CHANNEL || DEFAULT_CHANNEL;
+  let outDir = TEST_OUT;
   const positional = [];
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -1767,6 +1801,8 @@ async function main() {
     else if (arg.startsWith("--story-file=")) storyFile = arg.slice("--story-file=".length);
     else if (arg === "--channel-id") channelId = args[++i] || channelId;
     else if (arg.startsWith("--channel-id=")) channelId = arg.slice("--channel-id=".length);
+    else if (arg === "--out-dir") outDir = args[++i] || outDir;
+    else if (arg.startsWith("--out-dir=")) outDir = arg.slice("--out-dir=".length);
     else if (!arg.startsWith("--")) positional.push(arg);
   }
   storyId = storyId || positional[0] || "";
@@ -1774,7 +1810,7 @@ async function main() {
   const noInspect = args.includes("--no-inspect");
   if (!storyId) {
     throw new Error(
-      "Usage: node tools/studio-v2-build-story-cards.js <storyId|--story-id id> [--story-file file] [--no-render] [--no-inspect]",
+      "Usage: node tools/studio-v2-build-story-cards.js <storyId|--story-id id> [--story-file file] [--out-dir dir] [--no-render] [--no-inspect]",
     );
   }
 
@@ -1783,6 +1819,7 @@ async function main() {
     storyId,
     story,
     channelId,
+    outDir,
     render: !noRender,
     inspect: !noInspect,
   });
@@ -1791,6 +1828,7 @@ async function main() {
   console.log("[story-cards] DONE");
   console.log(`  story:    ${result.storyId}`);
   console.log(`  channel:  ${result.channelId}`);
+  console.log(`  out dir:  ${path.relative(ROOT, result.outputRoot)}`);
   console.log(
     `  backdrop: ${result.backdropPath ? path.relative(ROOT, result.backdropPath) : "template default"}`,
   );
@@ -1809,6 +1847,7 @@ if (require.main === module) {
 module.exports = {
   buildStoryCards,
   buildStoryCardSpecs,
+  resolveStoryCardOutputRoot,
   writeHyperframesPremiumShellEvidence,
   clampQuoteText,
   loadStoryFromFile,

@@ -63,6 +63,7 @@ function narrationRightsRecord(storyId, allowedPlatforms = ["youtube_shorts", "t
 const execFileAsync = promisify(execFile);
 let validFinalMediaFixturePromise;
 let alternativeFinalMediaFixturePromise;
+let appendedUnrelatedVariantFixturePromise;
 
 function sha256(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
@@ -260,6 +261,41 @@ async function alternativeFinalMediaFixture() {
     })();
   }
   return alternativeFinalMediaFixturePromise;
+}
+
+async function appendedUnrelatedVariantFixture() {
+  if (!appendedUnrelatedVariantFixturePromise) {
+    appendedUnrelatedVariantFixturePromise = (async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-appended-variant-"));
+      const sourcePath = path.join(root, "source.mp4");
+      const unrelatedPath = path.join(root, "unrelated.mp4");
+      const outputPath = path.join(root, "appended-unrelated.mp4");
+      try {
+        const source = await validFinalMediaFixture();
+        const unrelated = await alternativeFinalMediaFixture();
+        await fs.ensureDir(root);
+        await fs.writeFile(sourcePath, source.finalMediaBytes);
+        await fs.writeFile(unrelatedPath, unrelated);
+        await execFileAsync("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-i", sourcePath,
+          "-i", unrelatedPath,
+          "-filter_complex",
+          "[0:v]setpts=PTS-STARTPTS[v0];[0:a]asetpts=PTS-STARTPTS[a0];" +
+            "[1:v]setpts=PTS-STARTPTS[v1];[1:a]asetpts=PTS-STARTPTS[a1];" +
+            "[v0][a0][v1][a1]concat=n=2:v=1:a=1[v][a]",
+          "-map", "[v]", "-map", "[a]",
+          "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
+          outputPath,
+        ], { timeout: 30000, windowsHide: true });
+        return await fs.readFile(outputPath);
+      } finally {
+        await fs.remove(root);
+      }
+    })();
+  }
+  return appendedUnrelatedVariantFixturePromise;
 }
 
 async function makeControlStory(root, storyId, overrides = {}) {
@@ -1315,7 +1351,7 @@ test("Goal 19 caps an AMBER render-bound rights reconciliation at AMBER", async 
     upstreamFirewallReport: readyGoal18(storyId),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-18T19:25:00.000Z",
+    generatedAt: "2026-07-20T09:04:00.000Z",
   });
 
   const result = report.stories[0];
@@ -2331,7 +2367,7 @@ test("Goal 19 emits RED final verdicts when Goal 18 is blocked", async () => {
     upstreamFirewallReport: blockedGoal18("story-upstream"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-05-26T04:07:13.497Z",
+    generatedAt: "2026-07-20T09:04:10.000Z",
   });
 
   assert.equal(report.verdict, "BLOCKED");
@@ -2365,7 +2401,7 @@ test("Goal 19 caps a Goal 18 report-level AMBER at final AMBER", async () => {
     },
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-20T00:15:00.000Z",
+    generatedAt: "2026-07-20T09:04:20.000Z",
   });
 
   const result = report.stories[0];
@@ -2401,7 +2437,7 @@ test("Goal 19 caps a READY Goal 18 story row with warnings at final AMBER", asyn
     },
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-20T00:16:00.000Z",
+    generatedAt: "2026-07-20T09:04:30.000Z",
   });
 
   const result = report.stories[0];
@@ -2435,7 +2471,7 @@ test("Goal 19 excludes upstream-skipped stories from active control tower blocke
     },
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-05-29T01:36:00.000Z",
+    generatedAt: "2026-07-20T09:04:40.000Z",
   });
 
   const skipped = report.stories.find((story) => story.story_id === "story-skipped");
@@ -2488,7 +2524,7 @@ test("Goal 19 accepts final viral script verdicts and materialised footage evide
     upstreamFirewallReport: readyGoal18("story-local-contract"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-05-29T01:37:00.000Z",
+    generatedAt: "2026-07-20T09:04:50.000Z",
   });
 
   assert.equal(report.verdict, "PASS");
@@ -2632,7 +2668,7 @@ test("Goal 19 caps pending critical motion evidence at AMBER after passing final
     upstreamFirewallReport: readyGoal18("story-pending-motion"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-15T00:30:00.000Z",
+    generatedAt: "2026-07-20T09:05:00.000Z",
   });
 
   const candidate = report.stories[0];
@@ -2678,7 +2714,7 @@ test("Goal 19 caps an authoritative AMBER media-house score at AMBER", async () 
     upstreamFirewallReport: readyGoal18("story-media-house-amber"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-18T07:10:00.000Z",
+    generatedAt: "2026-07-20T09:05:10.000Z",
   });
 
   const candidate = report.stories[0];
@@ -2898,7 +2934,7 @@ test("Goal 19 preserves Pulse Media-House AMBER and disables auto-publish", asyn
     upstreamFirewallReport: readyGoal18("story-media-house-amber"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-14T20:57:00.000Z",
+    generatedAt: "2026-07-20T09:05:20.000Z",
   });
 
   assert.equal(report.verdict, "PARTIAL");
@@ -2930,7 +2966,7 @@ test("Goal 19 caps the final verdict at AMBER when a critical input has warnings
     upstreamFirewallReport: readyGoal18("story-critical-warning"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-14T20:58:00.000Z",
+    generatedAt: "2026-07-20T09:05:30.000Z",
   });
 
   assert.equal(report.stories[0].control_inputs.benchmark_report.status, "amber");
@@ -3139,6 +3175,69 @@ test("Goal 19 rejects aligned platform evidence that is stale for the current co
   assert.equal(report.stories[0].can_auto_publish, false);
 });
 
+test("Goal 19 rejects platform evidence generated materially after the control-tower run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-future-"));
+  const storyId = "story-platform-future";
+  const story = await makeControlStory(root, storyId);
+  const future = "2026-07-27T09:00:00.000Z";
+
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.generated_at = future;
+  manifest.outputs.youtube_shorts.generated_at = future;
+  manifest.outputs.youtube_shorts.platform_variant_render.generated_at = future;
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const scorecardPath = path.join(story.artifact_dir, "platform_variant_scorecard.json");
+  const scorecard = await fs.readJson(scorecardPath);
+  scorecard.generated_at = future;
+  scorecard.platform_variant_materialized_at = future;
+  scorecard.variants.youtube_shorts.generated_at = future;
+  await fs.writeJson(scorecardPath, scorecard, { spaces: 2 });
+
+  const verdictPath = path.join(story.artifact_dir, "publish_verdict.json");
+  const verdict = await fs.readJson(verdictPath);
+  verdict.generated_at = future;
+  await fs.writeJson(verdictPath, verdict, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:00.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:manifest_generated_in_future"));
+  assert.ok(failures.includes("platform_pack:verdict_generated_in_future"));
+  assert.ok(failures.includes("platform_pack:variant_scorecard_generated_in_future"));
+  assert.ok(failures.includes("platform_pack:youtube_shorts:variant_generated_in_future"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+});
+
+test("Goal 19 rejects top-level platform output metadata that disagrees with its receipt", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-output-receipt-"));
+  const storyId = "story-platform-output-receipt";
+  const story = await makeControlStory(root, storyId);
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts.variant_size_bytes += 1;
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:00.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:youtube_shorts:output_receipt_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+});
+
 test("Goal 19 rejects an unrelated decodable MP4 with self-consistent derivation metadata", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-unrelated-media-"));
   const storyId = "story-platform-unrelated-media";
@@ -3173,6 +3272,47 @@ test("Goal 19 rejects an unrelated decodable MP4 with self-consistent derivation
 
   const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
   assert.ok(failures.includes("platform_pack:youtube_shorts:variant_derivation_unproven"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a variant that matches the master intro but appends unrelated footage", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-appended-media-"));
+  const storyId = "story-platform-appended-media";
+  const story = await makeControlStory(root, storyId);
+  const variantPath = path.join(story.artifact_dir, "platform", "youtube-shorts.mp4");
+  const variantBytes = await appendedUnrelatedVariantFixture();
+  await fs.writeFile(variantPath, variantBytes);
+
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const receipt = manifest.outputs.youtube_shorts.platform_variant_render;
+  manifest.outputs.youtube_shorts.variant_sha256 = sha256(variantBytes);
+  manifest.outputs.youtube_shorts.variant_size_bytes = variantBytes.length;
+  receipt.output_sha256 = sha256(variantBytes);
+  receipt.output_size_bytes = variantBytes.length;
+  receipt.transformation_mode = "transcode";
+  receipt.passthrough_approved = false;
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const scorecardPath = path.join(story.artifact_dir, "platform_variant_scorecard.json");
+  const scorecard = await fs.readJson(scorecardPath);
+  scorecard.variants.youtube_shorts = receipt;
+  await fs.writeJson(scorecardPath, scorecard, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:18.000Z",
+  });
+
+  const variant = report.stories[0].control_inputs.platform_pack.evidence.variants[0];
+  assert.ok(
+    variant.failures.includes("platform_pack:youtube_shorts:variant_derivation_unproven"),
+    JSON.stringify(variant, null, 2),
+  );
   assert.equal(report.stories[0].final_verdict, "RED");
   assert.equal(report.stories[0].can_auto_publish, false);
 });
@@ -3496,7 +3636,7 @@ test("Goal 19 keeps a critical final_verdict AMBER when status also says ready",
     upstreamFirewallReport: readyGoal18("story-masked-amber"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-14T21:11:00.000Z",
+    generatedAt: "2026-07-20T09:05:40.000Z",
   });
 
   assert.equal(report.stories[0].control_inputs.pulse_media_house_score.status, "amber");
@@ -3578,7 +3718,7 @@ test("Goal 19 caps authoritative story-package AMBER or warnings at final AMBER"
       upstreamFirewallReport: readyGoal18(story.story_id),
       workspaceRoot: root,
       outputDir: path.join(root, `${item.story_id}-out`),
-      generatedAt: "2026-07-15T09:23:00.000Z",
+      generatedAt: "2026-07-20T09:05:50.000Z",
     });
 
     const result = report.stories[0];
@@ -3641,7 +3781,7 @@ test("Goal 19 returns AMBER when safe output still needs human approval", async 
     upstreamFirewallReport: readyGoal18("story-amber"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-05-26T04:07:13.497Z",
+    generatedAt: "2026-07-20T09:06:00.000Z",
   });
 
   assert.equal(report.verdict, "PARTIAL");
@@ -3661,7 +3801,7 @@ test("Goal 19 writes required control tower artefacts", async () => {
     upstreamFirewallReport: readyGoal18("story-write"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-05-26T04:07:13.497Z",
+    generatedAt: "2026-07-20T09:06:10.000Z",
   });
   const written = await writeGoal19AutonomyControlTower(report, { outputDir: path.join(root, "out") });
 
@@ -3683,7 +3823,7 @@ test("Goal 19 returns GREEN only with independently verified critical inputs", a
     upstreamFirewallReport: readyGoal18("story-verified-green"),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
-    generatedAt: "2026-07-14T21:03:00.000Z",
+    generatedAt: "2026-07-20T09:03:00.000Z",
   });
 
   const result = report.stories[0];

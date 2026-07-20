@@ -18,6 +18,7 @@ const {
 const pulseGamingChannel = require("../channels/pulse-gaming");
 
 const ROOT = path.resolve(__dirname, "..");
+const MAX_LIVE_RSS_FETCH_PER_FEED = 30;
 
 function dotenvSkipped() {
   return /^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""));
@@ -112,6 +113,154 @@ function parseArgs(argv = process.argv.slice(2)) {
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return args;
+}
+
+function buildLiveRssFetchPlan({
+  requestedPerFeed = 8,
+  requestedOffsetPerFeed = 0,
+  zeroYieldExclusions = {},
+} = {}) {
+  const requested = Math.max(
+    1,
+    Math.min(
+      MAX_LIVE_RSS_FETCH_PER_FEED,
+      Math.floor(Number(requestedPerFeed || 8) || 8),
+    ),
+  );
+  const activeQuarantineCount = Math.max(
+    0,
+    Math.floor(Number(zeroYieldExclusions.active_entry_count || 0) || 0),
+    asStoryArray(zeroYieldExclusions.story_ids).length,
+    asStoryArray(zeroYieldExclusions.source_fingerprints).length,
+  );
+  const uncappedFetchCount = requested + activeQuarantineCount;
+  const fetchPerFeed = Math.min(
+    MAX_LIVE_RSS_FETCH_PER_FEED,
+    uncappedFetchCount,
+  );
+  return {
+    requested_per_feed: requested,
+    fetch_per_feed: fetchPerFeed,
+    offset_per_feed: Math.max(
+      0,
+      Math.floor(
+        Math.max(
+          Number(requestedOffsetPerFeed || 0),
+          Number(zeroYieldExclusions.rss_offset_per_feed || 0),
+        ),
+      ),
+    ),
+    quarantine_active_entry_count: activeQuarantineCount,
+    quarantine_headroom_per_feed: fetchPerFeed - requested,
+    capped: uncappedFetchCount > MAX_LIVE_RSS_FETCH_PER_FEED,
+  };
+}
+
+function buildLiveRssIntakeReport({
+  generatedAt = new Date().toISOString(),
+  liveRssStories = [],
+  selectedStories = [],
+  quarantinedStoryIds = [],
+  quarantinedSourceFingerprints = [],
+  excludedStoryIds = [],
+  excludedSourceFingerprints = [],
+  fetchPlan = {},
+} = {}) {
+  const selectedIds = new Set(
+    asStoryArray(selectedStories).map(storyIdFor).filter(Boolean),
+  );
+  const quarantinedIds = new Set(normaliseStoryIds(quarantinedStoryIds));
+  const quarantinedSources = new Set(
+    normaliseStoryIds(quarantinedSourceFingerprints),
+  );
+  const excludedIds = new Set(normaliseStoryIds(excludedStoryIds));
+  const excludedSources = new Set(
+    normaliseStoryIds(excludedSourceFingerprints),
+  );
+  const rows = asStoryArray(liveRssStories).map((story) => {
+    const id = storyIdFor(story);
+    const sourceFingerprint = buildSourceFingerprint(story);
+    const selected = Boolean(id && selectedIds.has(id));
+    const motionGate = liveRssMotionGate(story);
+    const repairGate = liveRssRepairIntakeGate(story, motionGate);
+    const materializable = liveRssMaterializableDirectMediaEvidence(story);
+    let classification = "selected";
+    let reasonCodes = [];
+    if (!selected && id && quarantinedIds.has(id)) {
+      classification = "quarantine_blocked";
+      reasonCodes = ["zero_yield_quarantine:story_id"];
+    } else if (
+      !selected &&
+      sourceFingerprint &&
+      quarantinedSources.has(sourceFingerprint)
+    ) {
+      classification = "quarantine_blocked";
+      reasonCodes = ["zero_yield_quarantine:source"];
+    } else if (
+      !selected &&
+      (
+        (id && excludedIds.has(id)) ||
+        (sourceFingerprint && excludedSources.has(sourceFingerprint))
+      )
+    ) {
+      classification = "repeat_published_or_dedupe_blocked";
+      reasonCodes = ["not_selected:excluded_published_or_dedupe"];
+    } else if (!selected && !motionGate.pass && !repairGate.pass) {
+      classification = "motion_gate_blocked";
+      reasonCodes = [
+        ...motionGate.reasons,
+        ...repairGate.reasons,
+      ];
+    } else if (!selected && !materializable && !repairGate.pass) {
+      classification = "motion_gate_blocked";
+      reasonCodes = [
+        "materializable_direct_media_missing",
+        ...repairGate.reasons,
+      ];
+    } else if (!selected) {
+      classification = "repeat_published_or_dedupe_blocked";
+      reasonCodes = ["not_selected:repeat_published_or_dedupe"];
+    }
+    return {
+      story_id: id || null,
+      title: String(story.title || "").trim() || null,
+      source_name:
+        String(
+          story.source_name ||
+            story.primary_source ||
+            story.subreddit ||
+            "",
+        ).trim() || null,
+      status: selected ? "selected" : "blocked",
+      classification,
+      reason_codes: [...new Set(reasonCodes.filter(Boolean))],
+      motion_gate: motionGate,
+      repair_gate: repairGate,
+      materializable_direct_media: materializable,
+      source_fingerprint: sourceFingerprint || null,
+    };
+  });
+  return {
+    schema_version: 1,
+    generated_at: new Date(generatedAt).toISOString(),
+    mode: "LIVE_RSS_INTAKE_DIAGNOSTIC",
+    fetch_plan: fetchPlan,
+    summary: {
+      fetched_count: rows.length,
+      selected_count: rows.filter((row) => row.status === "selected").length,
+      quarantine_blocked_count: rows.filter(
+        (row) => row.classification === "quarantine_blocked",
+      ).length,
+      motion_blocked_count: rows.filter(
+        (row) => row.classification === "motion_gate_blocked",
+      ).length,
+      repeat_published_or_dedupe_blocked_count: rows.filter(
+        (row) =>
+          row.classification === "repeat_published_or_dedupe_blocked",
+      ).length,
+    },
+    rows,
+  };
 }
 
 function usage() {
@@ -933,28 +1082,29 @@ async function main(argv = process.argv.slice(2)) {
     return { help: true };
   }
   loadDotenvForCli();
+  const generatedAt = args.generatedAt || new Date().toISOString();
   const baseStories = args.dbStories || args.liveRssOnly
     ? []
     : asStoryArray(await fs.readJson(path.resolve(args.storiesFile)));
   const dbStories = args.dbStories ? await require("../lib/db").getStories() : [];
   const zeroYieldQuarantine = args.zeroYieldQuarantineFile
     ? await readZeroYieldQuarantine(path.resolve(args.zeroYieldQuarantineFile), {
-        now: args.generatedAt ? new Date(args.generatedAt) : new Date(),
+        now: new Date(generatedAt),
       })
     : null;
   const zeroYieldExclusions = buildZeroYieldExclusions(zeroYieldQuarantine, {
-    now: args.generatedAt ? new Date(args.generatedAt) : new Date(),
+    now: new Date(generatedAt),
   });
-  const rssOffsetPerFeed = Math.max(
-    0,
-    Number(args.rssOffsetPerFeed || 0),
-    Number(zeroYieldExclusions.rss_offset_per_feed || 0),
-  );
+  const liveRssFetchPlan = buildLiveRssFetchPlan({
+    requestedPerFeed: args.rssPerFeed,
+    requestedOffsetPerFeed: args.rssOffsetPerFeed,
+    zeroYieldExclusions,
+  });
   const liveRssStories = args.liveRss
     ? await fetchRssProofStories({
         feeds: pulseGamingChannel.rssFeeds || [],
-        perFeed: args.rssPerFeed,
-        offsetPerFeed: rssOffsetPerFeed,
+        perFeed: liveRssFetchPlan.fetch_per_feed,
+        offsetPerFeed: liveRssFetchPlan.offset_per_feed,
       })
     : [];
   const revenuePaths = await fs.pathExists(path.resolve(args.revenuePathsFile))
@@ -1002,6 +1152,19 @@ async function main(argv = process.argv.slice(2)) {
   const stories = augmentStoriesWithRevenuePaths(selectedStories, revenuePathsWithManifests, args.limit, {
     fillRevenuePaths: shouldFillRevenuePathsForGoalBatch(args),
   });
+  const liveRssIntakeReport = args.liveRss
+    ? buildLiveRssIntakeReport({
+        generatedAt,
+        liveRssStories,
+        selectedStories,
+        quarantinedStoryIds: zeroYieldExclusions.story_ids,
+        quarantinedSourceFingerprints:
+          zeroYieldExclusions.source_fingerprints,
+        excludedStoryIds,
+        excludedSourceFingerprints,
+        fetchPlan: liveRssFetchPlan,
+      })
+    : null;
   const batch = buildGoalBatchPackages({
     stories,
     limit: args.limit,
@@ -1012,12 +1175,24 @@ async function main(argv = process.argv.slice(2)) {
     existingArtifactRoot: path.resolve(args.existingArtifactRoot || args.outDir),
     allowOwnedMotionFallback: args.allowOwnedMotionFallback,
     targetPlatforms: args.targetPlatforms,
-    generatedAt: args.generatedAt || new Date().toISOString(),
+    generatedAt,
   });
   const outputs = await writeGoalBatchPackages(batch, {
     outputDir: args.outDir,
     contractOutDir: args.contractOutDir,
   });
+  if (liveRssIntakeReport) {
+    const liveRssIntakeReportPath = path.join(
+      path.resolve(args.contractOutDir),
+      "live-rss-intake-report.json",
+    );
+    await fs.ensureDir(path.dirname(liveRssIntakeReportPath));
+    await fs.writeJson(liveRssIntakeReportPath, liveRssIntakeReport, {
+      spaces: 2,
+    });
+    outputs.liveRssIntakeReportPath = liveRssIntakeReportPath;
+    outputs.liveRssIntakeSummary = liveRssIntakeReport.summary;
+  }
   if (args.json) console.log(JSON.stringify({ summary: outputs.summary || batch.summary, outputs }, null, 2));
   else {
     const summary = outputs.summary || batch.summary;
@@ -1037,6 +1212,8 @@ if (require.main === module) {
 
 module.exports = {
   asStoryArray,
+  buildLiveRssFetchPlan,
+  buildLiveRssIntakeReport,
   loadRevenueManifestByStory,
   loadMotionPackByStory,
   filterLiveRssStoriesForMotion,

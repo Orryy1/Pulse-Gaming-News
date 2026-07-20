@@ -64,6 +64,68 @@ function candidate(id, overrides = {}) {
   };
 }
 
+test("candidate supply separates raw fresh discovery from authoritative scheduler eligibility", () => {
+  const now = new Date("2026-07-19T23:30:21.517Z");
+  const stories = Array.from({ length: 4 }, (_, index) => ({
+    id: `rss_raw_fresh_${index + 1}`,
+    title: `Fresh gaming headline ${index + 1}`,
+    source_type: "rss",
+    subreddit: "IGN",
+    url: `https://www.ign.com/articles/fresh-gaming-headline-${index + 1}`,
+    created_at: new Date(
+      now.getTime() - ((index + 1) * 60 * 60 * 1000),
+    ).toISOString(),
+  }));
+
+  const report = buildCandidateSupplyReport({
+    stories,
+    candidateReport: {
+      totals: {
+        stories_seen: 0,
+        returned: 0,
+        pending_audio: 0,
+      },
+      candidates: [],
+    },
+    now,
+    targets: {
+      freshSourceBackedStories: 10,
+      greenReadyCandidates: 10,
+      sourceSafeCandidates: 6,
+      v4ReadyCandidates: 3,
+    },
+  });
+
+  assert.equal(report.summary.fresh_source_backed_stories_24h, 4);
+  assert.equal(
+    report.summary.fresh_source_backed_scheduler_candidate_count,
+    0,
+  );
+  assert.deepEqual(
+    report.fresh_source_backed_intake_truth.rows.map((row) => ({
+      story_id: row.story_id,
+      scheduler_candidate: row.scheduler_candidate,
+      reason: row.reason,
+    })),
+    stories.map((story) => ({
+      story_id: story.id,
+      scheduler_candidate: false,
+      reason: "not_in_authoritative_candidate_report",
+    })),
+  );
+  assert.ok(
+    report.fresh_source_backed_intake_truth.warnings.includes(
+      "fresh_source_backed_discovered_but_not_scheduler_candidates:4",
+    ),
+  );
+  assert.equal(
+    report.warnings.includes(
+      "fresh_source_backed_discovered_but_not_scheduler_candidates:4",
+    ),
+    false,
+  );
+});
+
 test("buildOfficialSourceWatchlist combines official, media, event and discovery sources", () => {
   const watchlist = buildOfficialSourceWatchlist({
     rssFeeds: [{ name: "IGN", url: "https://feeds.feedburner.com/ign/all" }],

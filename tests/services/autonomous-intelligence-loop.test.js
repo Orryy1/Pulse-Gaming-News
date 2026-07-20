@@ -2589,7 +2589,23 @@ test("fresh production refill does not retry the same RSS lane when no alternate
       {
         log() {},
         async buildFreshReviewLocalPromotionIntake() {
-          return { fresh_source_intake_stories: [] };
+          return {
+            summary: {
+              repair_plan_selected_count: 1,
+              local_promotion_story_count: 0,
+            },
+            fresh_source_intake_stories: [],
+            repair_results: [
+              {
+                story_id: "rss_script_quality_held",
+                script_generation_status: "script_ready",
+                output_story_ready: false,
+                quality_failures: [
+                  "local_intake:generic_player_question_script",
+                ],
+              },
+            ],
+          };
         },
         repos: {
           jobs: {
@@ -2605,6 +2621,22 @@ test("fresh production refill does not retry the same RSS lane when no alternate
     assert.equal(result.status, "zero_yield_blocked");
     assert.equal(result.zero_yield_incident.alternate_refill_enqueued, false);
     assert.equal(result.zero_yield_incident.alternate_cohort_selected_count, 0);
+    const alternateReport = JSON.parse(
+      await fs.readFile(
+        result.zero_yield_incident.alternate_cohort_report_path,
+        "utf8",
+      ),
+    );
+    assert.deepEqual(alternateReport.intake_repair_results, [
+      {
+        story_id: "rss_script_quality_held",
+        script_generation_status: "script_ready",
+        output_story_ready: false,
+        quality_failures: [
+          "local_intake:generic_player_question_script",
+        ],
+      },
+    ]);
     assert.deepEqual(
       enqueued.map((row) => row.kind),
       ["safe_auto_repair_runner", "candidate_supply_monitor"],

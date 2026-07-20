@@ -19,6 +19,8 @@ const { buildGoalProofPackage, buildPlatformNativePublishPacks } = require("../.
 const { buildPulseMediaHouseScore } = require("../../lib/pulse-media-house-score");
 const {
   asStoryArray,
+  buildLiveRssFetchPlan,
+  buildLiveRssIntakeReport,
   parseArgs: parseGoalBatchArgs,
   filterLiveRssStoriesForMotion,
   loadPublishedStoryIdsForGoalBatch,
@@ -69,6 +71,96 @@ test("goal batch CLI accepts durable zero-yield exclusions and a deeper RSS curs
   assert.deepEqual(args.excludedStoryIds, ["rss_one", "rss_two"]);
   assert.deepEqual(args.excludedSourceFingerprints, ["fingerprint-one"]);
   assert.equal(args.rssOffsetPerFeed, 6);
+});
+
+test("goal batch live RSS fetch keeps the newest rows while reading past active quarantine entries", () => {
+  const plan = buildLiveRssFetchPlan({
+    requestedPerFeed: 10,
+    requestedOffsetPerFeed: 0,
+    zeroYieldExclusions: {
+      active_entry_count: 19,
+      story_ids: Array.from({ length: 19 }, (_, index) => `rss_quarantined_${index}`),
+    },
+  });
+
+  assert.deepEqual(plan, {
+    requested_per_feed: 10,
+    fetch_per_feed: 29,
+    offset_per_feed: 0,
+    quarantine_active_entry_count: 19,
+    quarantine_headroom_per_feed: 19,
+    capped: false,
+  });
+});
+
+test("goal batch live RSS intake report records selected, quarantined, published and motion-blocked rows", () => {
+  const selectedStory = {
+    id: "rss_battlefield_gameplay",
+    title: "Battlefield 6 Shows New Multiplayer Gameplay",
+    canonical_subject: "Battlefield 6",
+    source_name: "EA",
+    source_type: "official",
+    url: "https://www.ea.com/games/battlefield/battlefield-6/news/multiplayer",
+    approved_direct_media_url: "https://media.ea.com/battlefield-6-gameplay.mp4",
+  };
+  const quarantinedStory = {
+    ...selectedStory,
+    id: "rss_quarantined_gameplay",
+    title: "Battlefield 6 Shows Its Campaign Gameplay",
+  };
+  const weakStory = {
+    id: "rss_xbox_strategy",
+    title: "Xbox Explains Its Changing Exclusive Strategy",
+    source_name: "IGN",
+    source_type: "rss",
+    url: "https://www.ign.com/articles/xbox-exclusive-strategy",
+  };
+  const publishedStory = {
+    ...selectedStory,
+    id: "rss_published_gameplay",
+    title: "Battlefield 6 Multiplayer Gameplay Already Published",
+  };
+
+  const report = buildLiveRssIntakeReport({
+    generatedAt: "2026-07-19T23:32:15.221Z",
+    liveRssStories: [
+      selectedStory,
+      quarantinedStory,
+      weakStory,
+      publishedStory,
+    ],
+    selectedStories: [selectedStory],
+    quarantinedStoryIds: [quarantinedStory.id],
+    quarantinedSourceFingerprints: [],
+    excludedStoryIds: [quarantinedStory.id, publishedStory.id],
+    fetchPlan: {
+      requested_per_feed: 10,
+      fetch_per_feed: 11,
+      offset_per_feed: 0,
+      quarantine_active_entry_count: 1,
+      quarantine_headroom_per_feed: 1,
+      capped: false,
+    },
+  });
+
+  assert.equal(report.summary.fetched_count, 4);
+  assert.equal(report.summary.selected_count, 1);
+  assert.equal(report.summary.quarantine_blocked_count, 1);
+  assert.equal(report.summary.motion_blocked_count, 1);
+  assert.equal(report.rows[0].status, "selected");
+  assert.deepEqual(report.rows[1].reason_codes, [
+    "zero_yield_quarantine:story_id",
+  ]);
+  assert.ok(
+    report.rows[2].reason_codes.includes("direct_motion_signal_missing"),
+  );
+  assert.equal(
+    report.rows[3].classification,
+    "repeat_published_or_dedupe_blocked",
+  );
+  assert.deepEqual(report.rows[3].reason_codes, [
+    "not_selected:excluded_published_or_dedupe",
+  ]);
 });
 
 test("goal batch editorial QA prefers display narration over pronunciation-only TTS text", () => {

@@ -98,6 +98,15 @@ test("platform variant materializer creates probe-backed overlong platform varia
   assert.match(youtube.variant_video_path, /visual_v4_render_youtube_shorts\.mp4$/);
   assert.equal(youtube.platform_variant_render.status, "ready");
   assert.equal(await fs.pathExists(youtube.variant_video_path), true);
+
+  const scorecard = await fs.readJson(
+    path.join(storyPackage.artifact_dir, "platform_variant_scorecard.json"),
+  );
+  assert.equal(scorecard.verdict, "GREEN");
+  assert.equal(scorecard.status, "GREEN");
+  assert.equal(scorecard.producer_id, "pulse-goal-platform-variant-materializer");
+  assert.equal(scorecard.story_id, storyPackage.story_id);
+  assert.equal(scorecard.generated_at, "2026-05-23T00:22:00.000Z");
 });
 
 test("platform variant materializer writes resolvable variant paths for relative artifact dirs", async () => {

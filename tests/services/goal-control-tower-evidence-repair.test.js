@@ -302,7 +302,11 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     };
   }
   await fs.writeJson(path.join(artifactDir, "platform_variant_scorecard.json"), {
+    verdict: "GREEN",
+    status: "GREEN",
+    producer_id: "pulse-goal-platform-variant-materializer",
     story_id: storyId,
+    generated_at: "2026-06-22T02:10:00.000Z",
     variants: platformVariantReceipts,
     platform_variant_materialized_at: "2026-06-22T02:10:00.000Z",
   });

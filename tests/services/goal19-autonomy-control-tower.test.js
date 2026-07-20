@@ -2194,6 +2194,73 @@ test("Goal 19 emits RED final verdicts when Goal 18 is blocked", async () => {
   assert.equal(report.rejection_reasons.stories[0].upstream_reasons.length, 2);
 });
 
+test("Goal 19 caps a Goal 18 report-level AMBER at final AMBER", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-upstream-report-amber-"));
+  const story = await makeControlStory(root, "story-upstream-report-amber");
+  const upstreamWarning = "goal18:operator_review_pending";
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: {
+      verdict: "AMBER",
+      warnings: [upstreamWarning],
+      stories: readyGoal18(story.story_id).stories,
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T00:15:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(report.verdict, "PARTIAL");
+  assert.equal(report.direct_control_tower_verdict, "PASS");
+  assert.equal(result.final_verdict, "AMBER");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(result.direct_control_tower_status, "pass");
+  assert.equal(result.upstream_status, "amber");
+  assert.deepEqual(result.upstream_blockers, []);
+  assert.ok(result.upstream_warnings.includes(upstreamWarning));
+  assert.equal(report.publish_verdict.stories[0].can_auto_publish, false);
+  assert.ok(report.publish_verdict.stories[0].upstream_warnings.includes(upstreamWarning));
+  assert.ok(report.rejection_reasons.stories[0].upstream_warnings.includes(upstreamWarning));
+});
+
+test("Goal 19 caps a READY Goal 18 story row with warnings at final AMBER", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-upstream-row-amber-"));
+  const story = await makeControlStory(root, "story-upstream-row-amber");
+  const upstreamWarning = "goal18:story_evidence_review_pending";
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: {
+      verdict: "GREEN",
+      warnings: [],
+      stories: [{
+        story_id: story.story_id,
+        status: "ready",
+        blockers: [],
+        warnings: [upstreamWarning],
+      }],
+    },
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T00:16:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(report.verdict, "PARTIAL");
+  assert.equal(report.direct_control_tower_verdict, "PASS");
+  assert.equal(result.final_verdict, "AMBER");
+  assert.equal(result.can_auto_publish, false);
+  assert.equal(result.direct_control_tower_status, "pass");
+  assert.equal(result.upstream_status, "amber");
+  assert.deepEqual(result.upstream_blockers, []);
+  assert.ok(result.upstream_warnings.includes(upstreamWarning));
+  assert.equal(report.publish_verdict.stories[0].can_auto_publish, false);
+  assert.ok(report.publish_verdict.stories[0].upstream_warnings.includes(upstreamWarning));
+  assert.ok(report.rejection_reasons.stories[0].upstream_warnings.includes(upstreamWarning));
+});
+
 test("Goal 19 excludes upstream-skipped stories from active control tower blockers", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-skipped-"));
   const readyStory = await makeControlStory(root, "story-ready");

@@ -2108,7 +2108,7 @@ async function writePendingStrictElevenLabsReceipt({
 }
 
 async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) {
-  const outDir = path.join(root, "test", "output");
+  const outDir = overrides.outputDir || path.join(root, "test", "output");
   const cardPath = path.join(outDir, `hf_${kind}_card_${storyId}.mp4`);
   const sidecarPath = cardPath.replace(/\.[^.]+$/i, ".shell.json");
   const readableText = overrides.readableText || `${kind} proof card`;
@@ -2122,7 +2122,7 @@ async function writePassingHyperframesCard(root, storyId, kind, overrides = {}) 
   const maxDurationS = Number(
     overrides.maxDurationS ?? timing.maximum_visible_duration_s,
   );
-  await fs.outputFile(cardPath, Buffer.alloc(2048, 8));
+  await fs.outputFile(cardPath, Buffer.alloc(2048, overrides.byteValue ?? 8));
   await fs.outputJson(sidecarPath, {
     story_id: storyId,
     card_kind: kind,
@@ -4991,6 +4991,51 @@ test("goal production render materializer feeds passing HyperFrames shell cards 
   assert.equal(manifest.hyperframes_card_count, 3);
   assert.equal(manifest.premium_shell_verdict, "pass");
   assert.equal(manifest.premium_shell_pass_count, 5);
+});
+
+test("goal production render materializer prefers governed package-local HyperFrames cards over stale test output cards", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hf-package-local-"));
+  const storyId = "story-hf-package-local";
+  const artifactDir = await makePackage(root, storyId, {
+    source_card_label: "GameSpot",
+  });
+  const governedCardDir = path.join(artifactDir, "flagship", "cards");
+  const staleCardDir = path.join(root, "test", "output");
+
+  for (const kind of ["source", "context", "timeline", "quote", "takeaway"]) {
+    await writePassingHyperframesCard(root, storyId, kind, {
+      readableText: kind === "source" ? "GAMESPOT SOURCE" : `${kind} stale historical card`,
+      byteValue: 7,
+    });
+  }
+  for (const kind of ["source", "context", "timeline", "quote", "takeaway", "outro"]) {
+    await writePassingHyperframesCard(root, storyId, kind, {
+      outputDir: governedCardDir,
+      readableText: kind === "source" ? "GAMESPOT SOURCE" : `${kind} current governed card`,
+      byteValue: 9,
+    });
+  }
+
+  const job = readyJob(storyId, artifactDir);
+  await addMotionEvidence(artifactDir, job, 7, "hf-package-local-motion");
+  const { story } = await buildRendererStoryJson(job, {
+    workspaceRoot: root,
+    generatedAt: "2026-07-20T01:30:00.000Z",
+  });
+  const selectedCards = story.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+
+  assert.equal(story.hyperframes_available_card_count, 5);
+  assert.equal(selectedCards.length, 3);
+  assert.ok(
+    selectedCards.every((clip) => path.dirname(clip.path) === governedCardDir),
+    JSON.stringify(selectedCards, null, 2),
+  );
+  assert.equal(
+    selectedCards.some((clip) => path.dirname(clip.path) === staleCardDir),
+    false,
+  );
 });
 
 test("goal production render materializer keeps optional rejected HyperFrames cards advisory when the passing set meets the contract", async () => {

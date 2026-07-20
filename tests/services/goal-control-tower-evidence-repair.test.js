@@ -238,6 +238,7 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     risk_score: 0.05,
   });
   const platformVariants = {};
+  const platformVariantReceipts = {};
   for (const platform of ["youtube_shorts", "instagram_reels", "facebook_reels"]) {
     const variantRelativePath = `platform/${platform}.mp4`;
     const variantPath = path.join(artifactDir, variantRelativePath);
@@ -267,13 +268,44 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
       evidence_size_bytes: evidenceBytes.length,
       risk_score: 0.05,
     });
+    const receipt = {
+      status: "ready",
+      producer_id: "pulse-goal-platform-variant-materializer",
+      materialization_run_id: `render-run-${storyId}:${platform}:2026-06-22T02:10:00.000Z`,
+      story_id: storyId,
+      platform,
+      encoder_profile:
+        platform === "instagram_reels"
+          ? "instagram_reels_meta_safe_h264_aac_v3"
+          : platform === "facebook_reels"
+            ? "facebook_reels_meta_safe_h264_aac_v1"
+            : "standard_short_form_h264_aac_v1",
+      transformation_mode: "validated_passthrough",
+      passthrough_approved: true,
+      source_video_path: finalMp4Path,
+      source_video_sha256: sha256(finalMediaFixture.finalMediaBytes),
+      source_video_size_bytes: finalMediaFixture.finalMediaBytes.length,
+      source_render_run_id: `render-run-${storyId}`,
+      output_path: variantRelativePath,
+      output_sha256: sha256(finalMediaFixture.finalMediaBytes),
+      output_size_bytes: finalMediaFixture.finalMediaBytes.length,
+      duration_s: 1,
+      generated_at: "2026-06-22T02:10:00.000Z",
+    };
+    platformVariantReceipts[platform] = receipt;
     platformVariants[platform] = {
       variant_video_path: variantRelativePath,
       variant_sha256: sha256(finalMediaFixture.finalMediaBytes),
       variant_size_bytes: finalMediaFixture.finalMediaBytes.length,
       source_render_sha256: sha256(finalMediaFixture.finalMediaBytes),
+      platform_variant_render: receipt,
     };
   }
+  await fs.writeJson(path.join(artifactDir, "platform_variant_scorecard.json"), {
+    story_id: storyId,
+    variants: platformVariantReceipts,
+    platform_variant_materialized_at: "2026-06-22T02:10:00.000Z",
+  });
   await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), canonical);
   await fs.writeJson(path.join(artifactDir, "claim_inventory.json"), {
     schema_version: 1,

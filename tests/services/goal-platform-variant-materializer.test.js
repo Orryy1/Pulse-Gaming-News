@@ -194,11 +194,25 @@ test("platform variant materializer creates Instagram-safe variants for in-windo
   const instagram = manifest.outputs.instagram_reels;
   assert.match(instagram.variant_video_path, /visual_v4_render_instagram_reels\.mp4$/);
   assert.equal(instagram.platform_variant_render.encoder_profile, "instagram_reels_meta_safe_h264_aac_v3");
+  assert.equal(
+    instagram.platform_variant_render.producer_id,
+    "pulse-goal-platform-variant-materializer",
+  );
+  assert.match(
+    instagram.platform_variant_render.materialization_run_id,
+    /:instagram_reels:/,
+  );
+  assert.equal(instagram.platform_variant_render.transformation_mode, "transcode");
+  assert.equal(instagram.platform_variant_render.passthrough_approved, false);
 
   const youtube = manifest.outputs.youtube_shorts;
   assert.match(youtube.variant_video_path, /visual_v4_render_youtube_shorts\.mp4$/);
   assert.equal(youtube.platform_variant_render.status, "ready");
   assert.equal(youtube.platform_variant_render.encoder_profile, "standard_short_form_h264_aac_v1");
+  assert.equal(
+    youtube.platform_variant_render.producer_id,
+    "pulse-goal-platform-variant-materializer",
+  );
   assert.equal(await fs.pathExists(youtube.variant_video_path), true);
 });
 

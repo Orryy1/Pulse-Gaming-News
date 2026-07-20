@@ -498,6 +498,25 @@ async function makeControlStory(root, storyId, overrides = {}) {
         story_id: storyId,
         generated_at: platformGeneratedAt,
         source_render_run_id: renderRunId,
+        platform_variant_render: {
+          status: "ready",
+          producer_id: "pulse-goal-platform-variant-materializer",
+          materialization_run_id: `platform-variant-${storyId}`,
+          story_id: storyId,
+          platform: "youtube_shorts",
+          encoder_profile: "standard_short_form_h264_aac_v1",
+          transformation_mode: "validated_passthrough",
+          passthrough_approved: true,
+          source_video_path: finalMp4Path,
+          source_video_sha256: sha256(finalMediaFixture.finalMediaBytes),
+          source_video_size_bytes: finalMediaFixture.finalMediaBytes.length,
+          source_render_run_id: renderRunId,
+          output_path: defaultPlatformVariantPath,
+          output_sha256: sha256(finalMediaFixture.finalMediaBytes),
+          output_size_bytes: finalMediaFixture.finalMediaBytes.length,
+          duration_s: finalMediaFixture.durationS,
+          generated_at: platformGeneratedAt,
+        },
       },
     },
     governance_gates: {
@@ -514,6 +533,15 @@ async function makeControlStory(root, storyId, overrides = {}) {
     path.join(artifactDir, "platform_publish_manifest.json"),
     overrides.platformManifest || defaultPlatformManifest,
   );
+  await fs.outputJson(path.join(artifactDir, "platform_variant_scorecard.json"), {
+    story_id: storyId,
+    variants: {
+      youtube_shorts:
+        (overrides.platformManifest || defaultPlatformManifest).outputs?.youtube_shorts
+          ?.platform_variant_render || {},
+    },
+    platform_variant_materialized_at: platformGeneratedAt,
+  });
   await fs.outputJson(path.join(artifactDir, "analytics_ingest_plan.json"), overrides.analyticsRisk || {
     dry_run_only: true,
     risk_status: "clear",
@@ -2983,6 +3011,58 @@ test("Goal 19 rejects metadata-only outputs for an enabled platform", async () =
   );
   assert.equal(result.final_verdict, "RED");
   assert.equal(result.can_auto_publish, false);
+});
+
+test("Goal 19 rejects a self-attested variant without materializer evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-self-attested-"));
+  const storyId = "story-platform-self-attested";
+  const story = await makeControlStory(root, storyId);
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(manifestPath);
+  delete platformManifest.outputs.youtube_shorts.platform_variant_render;
+  await fs.writeJson(manifestPath, platformManifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:10.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(
+    failures.includes("platform_pack:youtube_shorts:materialization_evidence_missing"),
+  );
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects master-identical bytes without explicit validated passthrough proof", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-master-copy-"));
+  const storyId = "story-platform-master-copy";
+  const story = await makeControlStory(root, storyId);
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(manifestPath);
+  const receipt = platformManifest.outputs.youtube_shorts.platform_variant_render;
+  receipt.transformation_mode = "transcode";
+  receipt.passthrough_approved = false;
+  await fs.writeJson(manifestPath, platformManifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:20.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(
+    failures.includes("platform_pack:youtube_shorts:master_identical_without_passthrough_proof"),
+  );
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
 });
 
 test("Goal 19 rejects a package that omits a platform enabled by independent authority", async () => {

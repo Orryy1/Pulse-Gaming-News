@@ -182,10 +182,13 @@ test("platform variant materializer creates Instagram-safe variants for in-windo
     probeDuration: async () => 39.2,
   });
 
-  assert.equal(report.summary.variant_job_count, 1);
-  assert.equal(report.summary.materialized_count, 1);
-  assert.deepEqual(rendered.map((item) => item.platform), ["instagram_reels"]);
-  assert.equal(rendered[0].targetDurationS, 39.2);
+  assert.equal(report.summary.variant_job_count, 2);
+  assert.equal(report.summary.materialized_count, 2);
+  assert.deepEqual(rendered.map((item) => item.platform), [
+    "youtube_shorts",
+    "instagram_reels",
+  ]);
+  assert.equal(rendered.find((item) => item.platform === "instagram_reels").targetDurationS, 39.2);
 
   const manifest = await fs.readJson(path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"));
   const instagram = manifest.outputs.instagram_reels;
@@ -193,7 +196,10 @@ test("platform variant materializer creates Instagram-safe variants for in-windo
   assert.equal(instagram.platform_variant_render.encoder_profile, "instagram_reels_meta_safe_h264_aac_v3");
 
   const youtube = manifest.outputs.youtube_shorts;
-  assert.equal(youtube.variant_video_path, undefined);
+  assert.match(youtube.variant_video_path, /visual_v4_render_youtube_shorts\.mp4$/);
+  assert.equal(youtube.platform_variant_render.status, "ready");
+  assert.equal(youtube.platform_variant_render.encoder_profile, "standard_short_form_h264_aac_v1");
+  assert.equal(await fs.pathExists(youtube.variant_video_path), true);
 });
 
 test("platform variant materializer resolves and hash-verifies governed flagship captions", async () => {
@@ -218,8 +224,8 @@ test("platform variant materializer resolves and hash-verifies governed flagship
     probeDuration: async () => 41.2,
   });
 
-  assert.equal(report.summary.variant_job_count, 1);
-  assert.equal(report.summary.materialized_count, 1);
+  assert.equal(report.summary.variant_job_count, 2);
+  assert.equal(report.summary.materialized_count, 2);
   assert.equal(report.summary.failed_count, 0);
   const manifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
   assert.match(manifest.outputs.instagram_reels.variant_captions_path, /captions_instagram_reels\.srt$/);
@@ -249,10 +255,16 @@ test("platform variant materializer prefers an explicit target window over a num
     probeDuration: async () => 48.348,
   });
 
-  assert.equal(report.summary.variant_job_count, 1);
-  assert.equal(report.summary.materialized_count, 1);
-  assert.deepEqual(rendered.map((item) => item.platform), ["instagram_reels"]);
-  assert.equal(rendered[0].targetDurationS, 48.348);
+  assert.equal(report.summary.variant_job_count, 2);
+  assert.equal(report.summary.materialized_count, 2);
+  assert.deepEqual(rendered.map((item) => item.platform), [
+    "youtube_shorts",
+    "instagram_reels",
+  ]);
+  assert.equal(
+    rendered.find((item) => item.platform === "instagram_reels").targetDurationS,
+    48.348,
+  );
 
   const updated = await fs.readJson(manifestPath);
   assert.equal(updated.outputs.instagram_reels.platform_variant_render.encoder_profile, "instagram_reels_meta_safe_h264_aac_v3");

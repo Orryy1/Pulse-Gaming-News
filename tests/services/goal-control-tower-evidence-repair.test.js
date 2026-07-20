@@ -389,6 +389,16 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
   await fs.writeJson(path.join(artifactDir, "visual_quality_report.json"), passGate());
   await fs.writeJson(path.join(artifactDir, "benchmark_report.json"), passGate({ result: "pass" }));
   await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    story_id: storyId,
+    generated_at: "2026-06-22T02:09:30.000Z",
+    source_render_run_id: `render-run-${storyId}`,
+    final_video_report: {
+      path: finalMp4Path,
+      sha256: sha256(finalMediaFixture.finalMediaBytes),
+      size_bytes: finalMediaFixture.finalMediaBytes.length,
+      decodable: true,
+      media_qa_status: "pass",
+    },
     verdict: "GREEN",
     status: "pass",
     hard_failures: [],

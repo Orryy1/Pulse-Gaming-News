@@ -2257,7 +2257,12 @@ test("goal batch package proof preparation writes specific current Star Fox laun
   assert.match(prepared.full_script, /Switch 2 release is available on June 25/i);
   assert.match(prepared.full_script, /focused arcade loop/i);
   assert.match(prepared.full_script, /nostalgia will not protect it/i);
+  assert.match(
+    prepared.full_script,
+    /For players, the question is whether to buy a focused arcade loop now or wait for reviews/i,
+  );
   assert.doesNotMatch(prepared.full_script, /content push|more than maintenance|one clear detail|player test|Nintendo says Star Fox Has/i);
+  assert.doesNotMatch(prepared.full_script, /because modern games have trained them/i);
   assert.equal(
     buildViralScriptIntelligence({
       story: { ...prepared, title: prepared.public_title },
@@ -2370,9 +2375,13 @@ test("goal batch package rewrites Black Flag sales stories without generic store
   assert.match(prepared.full_script, /Very Positive/i);
   assert.match(prepared.full_script, /word of mouth/i);
   assert.match(prepared.full_script, /publisher-reported|publisher's number/i);
+  assert.match(
+    prepared.full_script,
+    /^Ubisoft says its new Black Flag sold 3 million copies in its launch week\./i,
+  );
   assert.doesNotMatch(
     prepared.full_script,
-    /live store test|trailer budget|does this city seem readable|Assassin's Creed it sold/i,
+    /live store test|trailer budget|does this city seem readable|Assassin's Creed it sold|^Ubisoft's new Black Flag sold/i,
   );
   assert.equal(
     buildViralScriptIntelligence({ story: prepared, script: prepared.full_script }).verdict,
@@ -2575,9 +2584,13 @@ test("goal batch package proof preparation gives Invincible VS roster stories en
   assert.match(prepared.full_script, /Universa should change screen control/i);
   assert.match(prepared.full_script, /The Immortal should change pressure/i);
   assert.match(prepared.full_script, /screen gets chaotic/i);
+  assert.match(
+    prepared.full_script,
+    /The pre-launch decision is simple: wishlist for dangerous team combinations, or wait for proof that the fights stay readable\./i,
+  );
   assert.ok(prepared.full_script.split(/\s+/).length >= 95, prepared.full_script);
   assert.doesNotMatch(prepared.public_title, /trust problem|character trust/i);
-  assert.doesNotMatch(prepared.full_script, /another character graphic/i);
+  assert.doesNotMatch(prepared.full_script, /another character graphic|wishlist now because/i);
   assert.equal(
     buildViralScriptIntelligence({
       story: { ...prepared, title: prepared.public_title },
@@ -2595,10 +2608,10 @@ test("goal batch package proof preparation gives Invincible VS roster stories en
   const instagram = pack.platform_publish_manifest.outputs.instagram_reels;
   const x = pack.platform_publish_manifest.outputs.x;
   const pinterest = pack.platform_publish_manifest.outputs.pinterest;
-  assert.match(youtube.description, /wishlist now|readable fights|tag fighters/i);
-  assert.match(instagram.caption, /wishlist now|readable fights|tag fighters/i);
-  assert.match(x.hot_take_post, /wishlist now|readable fights|tag fighters|matchups/i);
-  assert.match(pinterest.pin_description, /wishlist now|readable fights|tag fighters|matchups/i);
+  assert.match(youtube.description, /fights will stay readable/i);
+  assert.match(instagram.caption, /fights will stay readable/i);
+  assert.match(x.hot_take_post, /fights will stay readable/i);
+  assert.match(pinterest.pin_description, /fights will stay readable/i);
   assert.doesNotMatch(youtube.description, /character trust problem|behind-the-scenes/i);
   assert.doesNotMatch(`${x.hot_take_post} ${pinterest.pin_description}`, /music_licence_preservation|source_locked_update/i);
   assert.ok(

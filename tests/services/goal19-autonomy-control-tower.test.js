@@ -2897,6 +2897,39 @@ test("Goal 19 rejects a stale platform-native fingerprint or source-render bindi
   assert.equal(report.stories[0].can_auto_publish, false);
 });
 
+test("Goal 19 does not require metadata-only derivatives for deferred platforms", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-deferred-"));
+  const storyId = "story-platform-deferred";
+  const story = await makeControlStory(root, storyId);
+  const platformManifestPath = path.join(
+    story.artifact_dir,
+    "platform_publish_manifest.json",
+  );
+  const platformManifest = await fs.readJson(platformManifestPath);
+  delete platformManifest.enabled_platforms;
+  platformManifest.outputs.tiktok = {
+    caption: "Prepared derivative metadata; platform remains deferred.",
+  };
+  await fs.writeJson(platformManifestPath, platformManifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:03:00.000Z",
+  });
+
+  const platformPack = report.stories[0].control_inputs.platform_pack;
+  assert.equal(platformPack.status, "pass");
+  assert.equal(platformPack.evidence.required_platform_count, 1);
+  assert.deepEqual(
+    platformPack.evidence.variants.map((variant) => variant.platform),
+    ["youtube"],
+  );
+  assert.equal(report.stories[0].final_verdict, "GREEN");
+});
+
 test("Goal 19 keeps a critical final_verdict AMBER when status also says ready", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-masked-amber-"));
   const story = await makeControlStory(root, "story-masked-amber", {

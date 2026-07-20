@@ -196,6 +196,61 @@ test("generic angle generation does not duplicate an existing generated title su
   assert.doesNotMatch(angle.title, /Needs One Real Proof Point Needs One Real Proof Point/i);
 });
 
+test("deep-intake headlines use named event angles instead of the generic source-signal scaffold", () => {
+  const cases = [
+    {
+      title:
+        "Modern Warfare 4 offers first look at Kill Block ahead of multiplayer gameplay debut this week",
+      expectedGame: "Modern Warfare 4",
+      expectedLane: "multiplayer_first_look",
+      expectedTitle: "Modern Warfare 4 Kill Block Sets Up The Multiplayer Reveal",
+    },
+    {
+      title:
+        "The Duskbloods' promised playtest is happening next month on Switch 2, and it sure looks like getting in will be hard",
+      expectedGame: "The Duskbloods",
+      expectedLane: "limited_playtest_access",
+      expectedTitle: "The Duskbloods Switch 2 Playtest May Be Hard To Enter",
+    },
+    {
+      title:
+        "Starfield \"remains an important part of our future\" says Bethesda, as developer pledges continued support for sci-fi RPG",
+      expectedGame: "Starfield",
+      expectedLane: "continued_support_roadmap",
+      expectedTitle: "Starfield Still Matters To Bethesda But The Roadmap Is Missing",
+    },
+  ];
+
+  for (const item of cases) {
+    const story = {
+      id: `deep-intake-${item.expectedLane}`,
+      title: item.title,
+      source_title: item.title,
+      source_type: "rss",
+      article_url: "https://www.eurogamer.net/deep-intake-story",
+    };
+    const angle = buildEditorialAngle(story, {
+      sourceName: "Eurogamer",
+      sourceMaterial: item.title,
+    });
+    const script = buildAngleFirstScript(story, {
+      sourceName: "Eurogamer",
+      sourceMaterial: item.title,
+      runtimeProfile: LOCAL_PROFILE,
+    });
+
+    assert.equal(angle.facts.gameTitle, item.expectedGame);
+    assert.equal(angle.lane, item.expectedLane);
+    assert.equal(angle.title, item.expectedTitle);
+    assert.ok(script);
+    assert.match(script.full_script, new RegExp(item.expectedGame.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+    assert.doesNotMatch(
+      `${script.suggested_title} ${script.full_script}`,
+      /Needs One Real Proof Point|background noise|watch signal|named source|why should players care now|source-backed update|install, wishlist, return or wait|source package/i,
+    );
+  }
+});
+
 test("PS5 Pro PSSR stories use a concrete feed title instead of the tired real-test template", () => {
   const story = {
     id: "rss_a6f055abed9a1488",

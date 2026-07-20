@@ -198,6 +198,40 @@ test("audio materializer compacts sub-second narration gaps that mask stretched 
   assert.equal((await fs.stat(audioPath)).size, 3072);
 });
 
+test("audio materializer preserves a professional target cadence while compacting provider pauses", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-cadence-aware-compact-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const silences = Array.from({ length: 12 }, (_, index) => ({
+    start: 2 + index * 4.5,
+    end: 3.1 + index * 4.5,
+    duration: 1.1,
+  }));
+  let silenceProbeCalls = 0;
+
+  const result = await _testables.compactGeneratedNarrationSilence(audioPath, {
+    provider: "elevenlabs",
+    scriptText: Array.from({ length: 142 }, (_, index) => `word${index + 1}`).join(" "),
+    targetCompactedWpm: 150,
+    detectSilencesForAudio: async () => {
+      silenceProbeCalls += 1;
+      return silenceProbeCalls === 1 ? silences : [];
+    },
+    getAudioDuration: async (candidatePath) => (candidatePath === audioPath ? 62.462 : 56.8),
+    execFileImpl: async (_command, args) => {
+      await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
+      return { stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.target_compacted_wpm, 150);
+  assert.equal(result.pre_compaction_spoken_wpm, 136.4);
+  assert.ok(result.retained_silence_s > 0.6, JSON.stringify(result));
+  assert.ok(result.projected_post_compaction_spoken_wpm <= 150.1, JSON.stringify(result));
+  assert.equal(result.post_compaction_spoken_wpm, 150);
+});
+
 test("audio materializer rejects a false compaction success when oversized gaps remain", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-verify-"));
   const audioPath = path.join(root, "narration.mp3");

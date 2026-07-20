@@ -386,8 +386,8 @@ test("classifyReprocessedStory separates script-ready from still-review rows", (
 
 test("isPersistableScriptReady prevents apply-local from writing review placeholders", () => {
   const readyScript =
-    "Forza Horizon 6's paid crowd just sent a loud warning. " +
-    "GamesRadar reports that Forza Horizon 6 posted 130,000 Steam players before the standard audience fully arrived. " +
+    "Forza Horizon 6 hit 130,000 Steam players before its standard launch. " +
+    "GamesRadar reports that this paid early crowd arrived before the standard audience fully opened. " +
     "The uncomfortable detail is not just the number. " +
     "It is who counted: people willing to move early, pay attention and in some cases spend $120 before the cheap wave lands. " +
     "That makes the launch harder to dismiss as trailer hype, because paid early demand carries more weight than wishlist noise. " +

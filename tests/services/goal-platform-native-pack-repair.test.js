@@ -2221,10 +2221,13 @@ test("platform-native repair derives Facebook Reels duration from render manifes
     story_id: "story_duration_from_render",
     canonical_subject: "Mina the Hollower",
     selected_title: "Mina The Hollower Ending Points At The Sequel Risk",
+    canonical_angle: "the ending turns sequel setup into a player-trust risk",
     primary_source: { name: "GameSpot" },
     first_spoken_line: "Mina the Hollower may have hidden its sequel problem inside the ending.",
     narration_script:
-      "Mina the Hollower may have hidden its sequel problem inside the ending. Follow Pulse Gaming so you never miss a beat.",
+      "Mina the Hollower may have hidden its sequel problem inside the ending. GameSpot reports the final reveal withholds closure and redirects the central conflict into sequel setup. That gives players a concrete reason to debate whether the ending earns its mystery or simply postpones the payoff. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Mina the Hollower's ending withholds the central conflict's payoff, forcing players to decide whether the sequel setup earns its mystery or breaks their trust.",
     thumbnail_headline: "MINA SEQUEL RISK",
   });
   await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {

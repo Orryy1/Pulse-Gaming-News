@@ -21,6 +21,7 @@ function officialSourceEvidence(claim, sourceUrl) {
   return {
     status: "pass",
     source_url: sourceUrl,
+    source_text_sha256: "a".repeat(64),
     claims: [{
       text: claim,
       evidence_text: claim,
@@ -31,13 +32,30 @@ function officialSourceEvidence(claim, sourceUrl) {
 }
 
 test("fresh refill rewrite preserves a concrete ESO Season One argument", () => {
+  const sourceUrl = "https://www.elderscrollsonline.com/en-us/news/post/70123";
+  const claims = [
+    "The Elder Scrolls Online Season One adds eight new Thieves Guild story quests in Glenumbra.",
+    "The Elder Scrolls Online Daggerfall Thieves Den adds access to heists, daily quests and a new Mythic reward.",
+    "Every Elder Scrolls Online player receives a free Tamriel Tome reward track, with optional paid upgrades.",
+  ];
   const script = buildFreshRefillViewerScript({
     job: {
       story_id: "rss_eso_season_one",
       title: "Season One: Return of the Thieves Guild is Now Live in The Elder Scrolls Online",
       source: {
         name: "The Elder Scrolls Online",
-        url: "https://www.elderscrollsonline.com/en-us/news/post/70123",
+        url: sourceUrl,
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
+        claims: claims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
       },
     },
     manifest: {
@@ -45,12 +63,8 @@ test("fresh refill rewrite preserves a concrete ESO Season One argument", () => 
       canonical_subject: "The Elder Scrolls Online",
       canonical_title: "The Elder Scrolls Online's Thieves Guild Has A Paid Catch",
       primary_source: "The Elder Scrolls Online",
-      primary_source_url: "https://www.elderscrollsonline.com/en-us/news/post/70123",
-      confirmed_claims: [
-        "Season One adds eight new Thieves Guild story quests in Glenumbra.",
-        "The Daggerfall Thieves Den adds access to heists, daily quests and a new Mythic reward.",
-        "Every player receives a free Tamriel Tome reward track, with optional paid upgrades.",
-      ],
+      primary_source_url: sourceUrl,
+      confirmed_claims: claims,
     },
   });
 
@@ -87,6 +101,7 @@ test("fresh refill rewrite keeps a Castlevania hands-on distinct from a public d
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         headline: "Castlevania: Belmont's Curse hands-on report",
         claims: claims.map((text) => ({
           text,
@@ -147,6 +162,7 @@ test("fresh refill rewrite turns Ascend to ZERO into a source-bound 30-second me
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         headline: "Ascend to ZERO: A Time-Bending Roguelike Sharpened to the Last Second",
         claims: claims.map((text) => ({
           text,
@@ -182,16 +198,20 @@ test("fresh refill rewrite turns Ascend to ZERO into a source-bound 30-second me
 });
 
 function tekkenBobJob(artifactDir) {
+  const sourceUrl = "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer";
+  const claim =
+    "Tekken 8 is adding Bob to its roster and players seem pretty hyped, despite the fighting game's mounting struggles";
   return {
     story_id: "rss_4a07e21d3192fd7c",
     title: "Tekken 8 Finally Shows Real Gameplay",
     artifact_dir: artifactDir,
     source: {
       name: "Eurogamer",
-      url: "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer",
+      url: sourceUrl,
       type: "rss",
       published_at: "Mon, 29 Jun 2026 11:23:29 +0000",
     },
+    source_evidence: officialSourceEvidence(claim, sourceUrl),
     current_script: GENERIC_SCRIPT,
     scorecard_verdict: "rewrite_required",
     scorecard_blockers: [
@@ -411,6 +431,10 @@ test("fresh refill viewer script gives Forza Metacritic stories a concrete viral
 });
 
 test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concrete early", () => {
+  const sourceUrl =
+    "https://blog.playstation.com/2026/06/28/blade-loki-deadpool-announced-for-marvel-tokon-fighting-souls/";
+  const confirmedClaim =
+    "Blade, Loki and Deadpool were announced for MARVEL Tokon: Fighting Souls";
   const script = buildFreshRefillViewerScript({
     job: {
       story_id: "rss_228f6f28b62f8426",
@@ -418,17 +442,18 @@ test("fresh refill viewer script keeps Marvel Tokon roster gameplay copy concret
       artifact_dir: path.join(TEST_ROOT, "unused"),
       source: {
         name: "PlayStation Blog",
-        url: "https://blog.playstation.com/2026/06/28/blade-loki-deadpool-announced-for-marvel-tokon-fighting-souls/",
+        url: sourceUrl,
         type: "rss",
       },
+      source_evidence: officialSourceEvidence(confirmedClaim, sourceUrl),
       current_script:
         "PlayStation Blog says Blade, Loki, Deadpool announced for MARVEL Tokon: Fighting Souls.",
     },
     manifest: {
       story_id: "rss_228f6f28b62f8426",
-      confirmed_claims: [
-        "Blade, Loki and Deadpool were announced for MARVEL Tokon: Fighting Souls",
-      ],
+      canonical_subject: "MARVEL Tokon",
+      primary_source_url: sourceUrl,
+      confirmed_claims: [confirmedClaim],
     },
   });
 
@@ -457,6 +482,7 @@ test("fresh refill viewer script does not turn Phantom Blade in a roundup into T
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         headline: "19 unmissable PS5 games still releasing in 2026",
         claims: [
           {
@@ -653,6 +679,281 @@ test("fresh refill viewer script blocks title-only claims even when generated co
   assert.ok(script.quality.blockers.includes("source_claim_scope_mismatch"));
 });
 
+test("fresh refill rewrite preserves deep-intake RSS subjects while title-only evidence stays blocked", () => {
+  const cases = [
+    {
+      id: "rss_4942106080444c3f",
+      generatedTitle: "Modern Warfare 4 offers first Has A Footage Readability Test",
+      sourceTitle:
+        "Modern Warfare 4 offers first look at Kill Block ahead of multiplayer gameplay debut this week",
+      expectedSubject: "Modern Warfare 4",
+      expectedTitle: "Modern Warfare 4 Kill Block Sets Up The Multiplayer Reveal",
+      expectedDetail: /Kill Block|multiplayer gameplay/i,
+    },
+    {
+      id: "rss_cdcacb1cb384bc88",
+      generatedTitle: "The Duskbloods' promised playtest Has A Source-Proof Risk",
+      sourceTitle:
+        "The Duskbloods' promised playtest is happening next month on Switch 2, and it sure looks like getting in will be hard",
+      expectedSubject: "The Duskbloods",
+      expectedTitle: "The Duskbloods Switch 2 Playtest May Be Hard To Enter",
+      expectedDetail: /next month|Switch 2|entry|access/i,
+    },
+    {
+      id: "rss_c6d840ce53fa5956",
+      generatedTitle: "Starfield \"remains important part of Has A Studio Risk",
+      sourceTitle:
+        "Starfield \"remains an important part of our future\" says Bethesda, as developer pledges continued support for sci-fi RPG",
+      expectedSubject: "Starfield",
+      expectedTitle: "Starfield Still Matters To Bethesda But The Roadmap Is Missing",
+      expectedDetail: /continued support|roadmap|future/i,
+    },
+  ];
+
+  for (const item of cases) {
+    const script = buildFreshRefillViewerScript({
+      job: {
+        story_id: item.id,
+        title: item.generatedTitle,
+        source: {
+          name: "Eurogamer",
+          url: `https://www.eurogamer.net/${item.id}`,
+          type: "rss",
+          title: "",
+        },
+      },
+      manifest: {
+        story_id: item.id,
+        canonical_subject: item.generatedTitle.replace(/\s+Has A .+$/, ""),
+        canonical_title: item.generatedTitle,
+        title_candidates: [item.generatedTitle, item.sourceTitle],
+        confirmed_claims: [item.sourceTitle],
+        claim_inventory: { confirmed: [item.sourceTitle] },
+      },
+    });
+
+    assert.equal(script.verdict, "blocked", JSON.stringify(script, null, 2));
+    assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+    assert.ok(script.quality.blockers.includes("source_claim_scope_mismatch"));
+    assert.equal(script.story.source_title, item.sourceTitle);
+    assert.equal(script.story.canonical_subject, item.expectedSubject);
+    assert.equal(script.suggested_title, item.expectedTitle);
+    assert.match(script.full_script, item.expectedDetail);
+    assert.doesNotMatch(
+      `${script.suggested_title} ${script.full_script}`,
+      /Needs One Real Proof Point|background noise|watch signal|named source|why should players care now|source-backed update|install, wishlist, return or wait|source package/i,
+    );
+  }
+});
+
+test("fresh refill rewrite promotes deep-intake subjects only with structured source evidence", () => {
+  const cases = [
+    {
+      id: "rss_4942106080444c3f",
+      generatedTitle: "Modern Warfare 4 offers first Has A Footage Readability Test",
+      sourceTitle:
+        "Modern Warfare 4 offers first look at Kill Block ahead of multiplayer gameplay debut this week",
+      expectedSubject: "Modern Warfare 4",
+      expectedTitle: "Modern Warfare 4 Kill Block Sets Up The Multiplayer Reveal",
+    },
+    {
+      id: "rss_cdcacb1cb384bc88",
+      generatedTitle: "The Duskbloods' promised playtest Has A Source-Proof Risk",
+      sourceTitle:
+        "The Duskbloods' promised playtest is happening next month on Switch 2, and it sure looks like getting in will be hard",
+      expectedSubject: "The Duskbloods",
+      expectedTitle: "The Duskbloods Switch 2 Playtest May Be Hard To Enter",
+    },
+    {
+      id: "rss_c6d840ce53fa5956",
+      generatedTitle: "Starfield \"remains important part of Has A Studio Risk",
+      sourceTitle:
+        "Starfield \"remains an important part of our future\" says Bethesda, as developer pledges continued support for sci-fi RPG",
+      expectedSubject: "Starfield",
+      expectedTitle: "Starfield Still Matters To Bethesda But The Roadmap Is Missing",
+    },
+  ];
+
+  for (const item of cases) {
+    const sourceUrl = `https://www.eurogamer.net/${item.id}`;
+    const script = buildFreshRefillViewerScript({
+      job: {
+        story_id: item.id,
+        title: item.generatedTitle,
+        source: {
+          name: "Eurogamer",
+          url: sourceUrl,
+          type: "rss",
+          title: "",
+        },
+        source_evidence: {
+          status: "pass",
+          source_url: sourceUrl,
+          source_text_sha256: "a".repeat(64),
+          headline: item.sourceTitle,
+          claims: [
+            {
+              text: item.sourceTitle,
+              evidence_text: item.sourceTitle,
+              source_url: sourceUrl,
+              origin: "source_body",
+            },
+          ],
+        },
+      },
+      manifest: {
+        story_id: item.id,
+        canonical_subject: item.generatedTitle.replace(/\s+Has A .+$/, ""),
+        canonical_title: item.generatedTitle,
+        confirmed_claims: [item.sourceTitle],
+      },
+    });
+
+    assert.equal(script.verdict, "viral_ready", JSON.stringify(script, null, 2));
+    assert.equal(script.story.canonical_subject, item.expectedSubject);
+    assert.equal(script.suggested_title, item.expectedTitle);
+    assert.equal(script.coherence.result, "pass", JSON.stringify(script.coherence, null, 2));
+    assert.deepEqual(script.quality.blockers, []);
+    assert.doesNotMatch(
+      `${script.suggested_title} ${script.full_script}`,
+      /Needs One Real Proof Point|background noise|watch signal|named source|why should players care now|source-backed update|install, wishlist, return or wait|source package/i,
+    );
+  }
+});
+
+test("fresh refill rewrite blocks failed structured evidence even when legacy claims look plausible", () => {
+  const sourceUrl = "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer";
+  const confirmedClaim =
+    "Tekken 8 is adding Bob to its roster and players seem pretty hyped, despite the fighting game's mounting struggles";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      ...tekkenBobJob(path.join(TEST_ROOT, "unused-failed-source-evidence")),
+      source_evidence: {
+        status: "blocked",
+        reason: "official_source_page_fetch_failed",
+        source_url: sourceUrl,
+        headline: "Tekken 8 adds Bob",
+        source_text_sha256: "a".repeat(64),
+        claims: [{
+          text: confirmedClaim,
+          evidence_text: confirmedClaim,
+          source_url: sourceUrl,
+          origin: "source_body",
+        }],
+      },
+    },
+    manifest: canonicalManifest(),
+  });
+
+  assert.equal(script.verdict, "blocked", JSON.stringify(script, null, 2));
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.ok(script.quality.blockers.includes("source_evidence_not_passed"));
+});
+
+test("fresh refill rewrite blocks passed source evidence without a capture hash", () => {
+  const sourceUrl = "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer";
+  const confirmedClaim =
+    "Tekken 8 is adding Bob to its roster and players seem pretty hyped, despite the fighting game's mounting struggles";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      ...tekkenBobJob(path.join(TEST_ROOT, "unused-unhashed-source-evidence")),
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "Tekken 8 adds Bob",
+        claims: [{
+          text: confirmedClaim,
+          evidence_text: confirmedClaim,
+          source_url: sourceUrl,
+          origin: "source_body",
+        }],
+      },
+    },
+    manifest: canonicalManifest(),
+  });
+
+  assert.equal(script.verdict, "blocked", JSON.stringify(script, null, 2));
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.ok(script.quality.blockers.includes("source_evidence_hash_missing"));
+});
+
+test("fresh refill rewrite blocks claims copied from a different source URL", () => {
+  const sourceUrl = "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer";
+  const confirmedClaim =
+    "Tekken 8 is adding Bob to its roster and players seem pretty hyped, despite the fighting game's mounting struggles";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      ...tekkenBobJob(path.join(TEST_ROOT, "unused-mismatched-source-url")),
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "Tekken 8 adds Bob",
+        source_text_sha256: "a".repeat(64),
+        claims: [{
+          text: confirmedClaim,
+          evidence_text: confirmedClaim,
+          source_url: "https://example.com/unrelated-story",
+          origin: "source_body",
+        }],
+      },
+    },
+    manifest: canonicalManifest(),
+  });
+
+  assert.equal(script.verdict, "blocked", JSON.stringify(script, null, 2));
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.ok(script.quality.blockers.includes("source_claim_url_mismatch"));
+});
+
+test("fresh refill rewrite blocks unrelated claims even when they use the canonical source URL", () => {
+  const sourceUrl = "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer";
+  const unrelatedClaim =
+    "Persona is being adapted as a live-action Netflix series with Atlus and Sega involved.";
+  const script = buildFreshRefillViewerScript({
+    job: {
+      ...tekkenBobJob(path.join(TEST_ROOT, "unused-unrelated-source-claim")),
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        headline: "Tekken 8 adds Bob",
+        source_text_sha256: "a".repeat(64),
+        claims: [{
+          text: unrelatedClaim,
+          evidence_text: unrelatedClaim,
+          source_url: sourceUrl,
+          origin: "source_body",
+        }],
+      },
+    },
+    manifest: canonicalManifest(),
+  });
+
+  assert.equal(script.verdict, "blocked", JSON.stringify(script, null, 2));
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.ok(script.quality.blockers.includes("source_claim_subject_mismatch"));
+});
+
+test("fresh refill rewrite blocks unrelated legacy claims from unlocking a story", () => {
+  const manifest = canonicalManifest();
+  manifest.confirmed_claims = [
+    "Persona is being adapted as a live-action Netflix series with Atlus and Sega involved.",
+  ];
+  manifest.claim_inventory = {
+    confirmed: [...manifest.confirmed_claims],
+  };
+  const script = buildFreshRefillViewerScript({
+    job: {
+      ...tekkenBobJob(path.join(TEST_ROOT, "unused-unrelated-legacy-claim")),
+      source_evidence: undefined,
+    },
+    manifest,
+  });
+
+  assert.equal(script.verdict, "blocked", JSON.stringify(script, null, 2));
+  assert.equal(script.reason, "rewritten_angle_not_supported_by_source_claims");
+  assert.ok(script.quality.blockers.includes("source_claim_scope_mismatch"));
+});
+
 test("fresh refill viewer script uses official source-body evidence for Starward", () => {
   const sourceUrl = "https://news.xbox.com/en-us/2026/07/09/meet-the-star-operator-1/";
   const evidenceSentences = [
@@ -673,6 +974,7 @@ test("fresh refill viewer script uses official source-body evidence for Starward
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         claims: evidenceSentences.map((text) => ({
           text,
           evidence_text: text,
@@ -720,6 +1022,7 @@ test("fresh refill viewer script cannot let related-story footer text replace th
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         claims: evidenceSentences.map((text) => ({
           text,
           evidence_text: text,
@@ -768,6 +1071,7 @@ test("fresh refill viewer script turns a PS5 Pro PSSR update into a concrete pla
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         claims: evidenceSentences.map((text) => ({
           text,
           evidence_text: text,
@@ -818,6 +1122,7 @@ test("fresh refill viewer script blocks generic review-signal fallback copy", ()
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         claims: [{
           text: evidence,
           evidence_text: evidence,
@@ -1098,6 +1403,11 @@ test("fresh refill viewer script writes Black Flag Resynced narration that is AS
 });
 
 test("fresh refill viewer script does not replace Black Flag monetisation coverage with stale PS5 Pro copy", () => {
+  const sourceUrl = "https://kotaku.com/black-flag-resynced-microtransactions";
+  const claims = [
+    "Ubisoft says Assassin's Creed Black Flag Resynced's standard edition is the full complete experience.",
+    "Negative Assassin's Creed Black Flag Resynced Steam reviews criticised microtransactions and paid DLC.",
+  ];
   const script = buildFreshRefillViewerScript({
     job: {
       story_id: "rss_black_flag_backlash",
@@ -1105,8 +1415,19 @@ test("fresh refill viewer script does not replace Black Flag monetisation covera
       artifact_dir: path.join(TEST_ROOT, "unused"),
       source: {
         name: "Kotaku",
-        url: "https://kotaku.com/black-flag-resynced-microtransactions",
+        url: sourceUrl,
         type: "rss",
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
+        claims: claims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
       },
       current_script:
         "Kotaku reports Ubisoft says the standard edition is the full complete experience after negative Steam reviews criticised microtransactions and paid DLC.",
@@ -1114,10 +1435,8 @@ test("fresh refill viewer script does not replace Black Flag monetisation covera
     manifest: {
       story_id: "rss_black_flag_backlash",
       canonical_subject: "Assassin's Creed Black Flag Resynced",
-      confirmed_claims: [
-        "Ubisoft says the standard edition is the full complete experience.",
-        "Negative Steam reviews criticised microtransactions and paid DLC.",
-      ],
+      primary_source_url: sourceUrl,
+      confirmed_claims: claims,
     },
   });
 
@@ -1184,6 +1503,7 @@ test("fresh refill viewer script quarantines multi-game listicles until one stor
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         headline: "19 unmissable PS5 games still releasing in 2026",
         claims: [
           {
@@ -1555,6 +1875,14 @@ test("fresh refill script rewrite dry-run leaves local proof files unchanged", a
   assert.equal(report.summary.applied_count, 0);
   assert.equal(report.summary.would_apply_count, 1);
   assert.equal(report.output_dir, path.join(TEST_ROOT, "dry-run", "report"));
+  assert.match(report.items[0].full_script, /^Tekken 8 bringing Bob back/i);
+  assert.equal(
+    report.items[0].source_evidence.source_url,
+    "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer",
+  );
+  assert.equal(report.items[0].source_evidence.source_text_sha256, "a".repeat(64));
+  assert.equal(report.items[0].source_evidence.selected_claims.length, 1);
+  assert.match(report.items[0].source_evidence.selected_claims[0].text, /Tekken 8.*Bob/i);
   assert.equal(await fs.readFile(manifestPath, "utf8"), before);
 });
 
@@ -1729,6 +2057,10 @@ test("fresh refill script rewrite persists a narrowed canonical subject before m
     ],
   }, { spaces: 2 });
   await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), { outputs: {} }, { spaces: 2 });
+  const sourceUrl =
+    "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/";
+  const confirmedClaim =
+    "PlayStation Blog says Blade, Loki and Deadpool are joining MARVEL Tokon: Fighting Souls.";
   await fs.writeJson(workOrderPath, {
     jobs: [{
       story_id: "rss_marvel_tokon_listicle",
@@ -1736,11 +2068,12 @@ test("fresh refill script rewrite persists a narrowed canonical subject before m
       artifact_dir: artifactDir,
       source: {
         name: "PlayStation Blog",
-        url: "https://blog.playstation.com/2026/07/14/19-unmissable-ps5-games-still-releasing-in-2026/",
+        url: sourceUrl,
         type: "rss",
       },
+      source_evidence: officialSourceEvidence(confirmedClaim, sourceUrl),
       current_script:
-        "PlayStation Blog says Blade, Loki and Deadpool are joining MARVEL Tokon: Fighting Souls.",
+        confirmedClaim,
     }],
   }, { spaces: 2 });
 
@@ -1804,6 +2137,7 @@ test("fresh refill script rewrite replaces stale claims with its focused source-
       source_evidence: {
         status: "pass",
         source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
         headline: "19 unmissable PS5 games still releasing in 2026",
         claims: evidenceClaims.map((text) => ({
           text,

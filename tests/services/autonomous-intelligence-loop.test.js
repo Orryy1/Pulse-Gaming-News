@@ -5324,6 +5324,7 @@ test("fresh production refill full repair auto-applies safe source-bound script 
 test("fresh production refill full repair reports source-drift script blockers as replace-story work", async () => {
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const goalBatchPath = require.resolve("../../tools/goal-batch-packages");
+  const officialSourceEvidencePath = require.resolve("../../lib/official-source-page-evidence");
   const repoRoot = path.resolve(__dirname, "..", "..");
   const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-source-drift-"));
   const outDir = path.join(tmp, "goal-proof-batch");
@@ -5333,6 +5334,7 @@ test("fresh production refill full repair reports source-drift script blockers a
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [goalBatchPath, require.cache[goalBatchPath]],
+    [officialSourceEvidencePath, require.cache[officialSourceEvidencePath]],
   ]);
   const childCalls = [];
 
@@ -5412,6 +5414,25 @@ test("fresh production refill full repair reports source-drift script blockers a
         },
       },
     };
+    require.cache[officialSourceEvidencePath] = {
+      id: officialSourceEvidencePath,
+      filename: officialSourceEvidencePath,
+      loaded: true,
+      exports: {
+        async fetchOfficialSourcePageEvidence({ url }) {
+          return {
+            status: "blocked",
+            reason: "official_source_http_403",
+            source_url: url,
+            headline: "",
+            source_text: "",
+            source_text_sha256: null,
+            claims: [],
+            confirmed_event_window: null,
+          };
+        },
+      },
+    };
     delete require.cache[jobHandlersPath];
 
     const { handlers: mockedHandlers } = require("../../lib/job-handlers");
@@ -5436,6 +5457,8 @@ test("fresh production refill full repair reports source-drift script blockers a
 
     assert.equal(result.repair_evidence.summary.script_rewrite_blocked_count, 1);
     assert.deepEqual(result.repair_evidence.summary.script_rewrite_blocked_reasons, [
+      "source_evidence_not_passed",
+      "source_claim_scope_mismatch",
       "switch_2_screen_angle_missing_source_support",
       "ghosting_claim_missing_source_support",
       "oled_claim_missing_source_support",
@@ -5452,7 +5475,10 @@ test("fresh production refill full repair reports source-drift script blockers a
       result.repair_evidence.summary.script_rewrite_blocked_reasons,
     );
     const markdown = await fs.readFile(result.repair_evidence.markdown_path, "utf8");
-    assert.match(markdown, /script rewrite blocked reasons: switch_2_screen_angle_missing_source_support/);
+    assert.match(
+      markdown,
+      /script rewrite blocked reasons: source_evidence_not_passed, source_claim_scope_mismatch, switch_2_screen_angle_missing_source_support/,
+    );
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;

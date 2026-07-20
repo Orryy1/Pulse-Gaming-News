@@ -203,6 +203,49 @@ test("viral script intelligence blocks a headline metric that lands after the op
   );
 });
 
+test("viral script intelligence does not demand gameplay detail from a sourced remake sales story", () => {
+  const script =
+    "Ubisoft says its Black Flag remake sold over 3 million copies in one week. " +
+    "Two million landed on day one. " +
+    "But it wasn't the launch-day number that changed the story. " +
+    "More than 1 million additional copies sold across the following six days. " +
+    "That does not prove players stayed. " +
+    "It does show demand continued after launch-day hype faded. " +
+    "During the same week, Steam reviews climbed to Very Positive, fixes arrived and New Game Plus was announced. " +
+    "For players deciding whether to buy, that makes waiting less risky, not the remake essential. " +
+    "The bigger question is what Ubisoft learns. " +
+    "If strong second-wave sales justify more ambitious remakes, this could raise the bar. " +
+    "If executives only see safe nostalgia, it could lower it. " +
+    "The next Assassin's Creed remake will show which lesson won: improve the original, or keep polishing the past. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "black-flag-remake-sales",
+      title: "Black Flag Sold 3 Million. The Third Million Changes The Story",
+      source_name: "Ubisoft",
+      confirmed_claims: [
+        "Ubisoft reports that Assassin's Creed Black Flag Resynced sold more than 3 million copies during its first week.",
+        "Ubisoft reports that 2 million copies were sold on day one.",
+        "Ubisoft reports that more than 1 million additional copies were sold over the following six days.",
+        "Ubisoft says Steam user reviews improved to Very Positive during the launch week.",
+        "Ubisoft says post-launch fixes and New Game Plus were announced.",
+      ],
+    },
+    script,
+  });
+
+  assert.equal(result.verdict, "viral_ready", JSON.stringify(result, null, 2));
+  assert.ok(result.viral_score >= 90, JSON.stringify(result.scores, null, 2));
+  assert.equal(
+    result.blockers.includes("missing_early_concrete_source_detail"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+  assert.deepEqual(result.blockers, []);
+  assert.deepEqual(result.warnings, []);
+});
+
 test("viral script intelligence blocks unattributed magnitude claims and invented audience behaviour", () => {
   const script =
     "Ubisoft's new Black Flag sold 3 million copies in one week. " +

@@ -1432,7 +1432,7 @@ test("source-bound fallback turns Black Flag's 3 million sales milestone into a 
   );
   assert.match(
     script.full_script,
-    /^Ubisoft's new Black Flag sold 3 million copies in its launch week\./,
+    /^Ubisoft says its new Black Flag sold 3 million copies in its launch week\./,
   );
   assert.doesNotMatch(script.full_script, /\bBlack Flag Resynced sold\b/i);
   assert.match(script.full_script, /3 million copies/i);

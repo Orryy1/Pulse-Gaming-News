@@ -956,8 +956,8 @@ test("goal dry-run publisher blocks HyperFrames cards that are too fast to read"
   });
   await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.2 },
-      { id: "source_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.35 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 1.6 },
+      { id: "source_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.1 },
     ],
   });
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
@@ -1035,7 +1035,7 @@ test("goal dry-run publisher blocks source cards that overstay and kill pacing",
       duration_s: 6,
       text: "SOURCE: ROCKSTAR GAMES opening_source_lock",
       minimum_required_duration_s: 1.9,
-      maximum_allowed_duration_s: 3.1,
+      maximum_allowed_duration_s: 2.8,
       source: "",
     },
     {
@@ -1045,8 +1045,8 @@ test("goal dry-run publisher blocks source cards that overstay and kill pacing",
       end_s: 20,
       duration_s: 12,
       text: "THE PRICE DEBATE JUST GOT LOUDER argument_card",
-      minimum_required_duration_s: 3.4,
-      maximum_allowed_duration_s: 3.8,
+      minimum_required_duration_s: 2.3,
+      maximum_allowed_duration_s: 2.8,
       source: "",
     },
   ]);
@@ -1212,8 +1212,8 @@ test("goal dry-run publisher blocks unreadable source and proof cards even witho
   });
   await fs.outputJson(path.join(artifactDir, "director_beat_map.json"), {
     shot_plan: [
-      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 2.2 },
-      { id: "source_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.35 },
+      { id: "source_lock", kind: "source_lock", startS: 2.75, durationS: 1.6 },
+      { id: "source_proof_card", kind: "proof_card", startS: 4.45, durationS: 2.1 },
     ],
   });
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
@@ -1237,7 +1237,7 @@ test("goal dry-run publisher blocks unreadable source and proof cards even witho
   assert.equal(plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_card_count, 0);
   assert.equal(
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_too_fast_card_shots.length,
-    1,
+    2,
   );
 });
 
@@ -1266,8 +1266,8 @@ test("goal dry-run publisher accepts readable rendered card windows over stale d
         overlay_card_windows: [],
         card_visible_windows: [
           { id: "opening_source_lock", kind: "source_lock", start_s: 0, end_s: 2.6, duration_s: 2.6 },
-          { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 15.9, duration_s: 3.6 },
-          { id: "proof_primary", kind: "proof_card", start_s: 16.2, end_s: 19.8, duration_s: 3.6 },
+          { id: "headline_card", kind: "proof_card", start_s: 12.3, end_s: 14.9, duration_s: 2.6 },
+          { id: "proof_primary", kind: "proof_card", start_s: 16.2, end_s: 19, duration_s: 2.8 },
         ],
       },
     },
@@ -1682,8 +1682,8 @@ test("goal dry-run publisher checks actual rendered HyperFrames windows before o
           { id: "proof_primary", kind: "proof_card", start_s: 24.6, end_s: 36.6, duration_s: 12 },
         ],
         card_visible_windows: [
-          { id: "scene_4_source", kind: "source", text: "XBOX WIRE SOURCE LOCK", start_s: 15, end_s: 18.2, duration_s: 3.2 },
-          { id: "scene_5_quote", kind: "quote", text: "CAMPAIGN EVOLVED NEEDS CONTEXT", start_s: 18.45, end_s: 21.65, duration_s: 3.2 },
+          { id: "scene_4_source", kind: "source", text: "XBOX WIRE SOURCE LOCK", start_s: 15, end_s: 17.1, duration_s: 2.1 },
+          { id: "scene_5_quote", kind: "quote", text: "CAMPAIGN EVOLVED NEEDS CONTEXT", start_s: 18.45, end_s: 20.55, duration_s: 2.1 },
         ],
       },
     },
@@ -1715,7 +1715,7 @@ test("goal dry-run publisher checks actual rendered HyperFrames windows before o
     plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows.map(
       (window) => window.duration_s,
     ),
-    [3.2],
+    [2.1],
   );
 });
 
@@ -1811,7 +1811,7 @@ test("goal dry-run publisher blocks too-fast generated card clips even when over
   );
 });
 
-test("goal dry-run publisher blocks long proof cards that do not have enough readable dwell", async () => {
+test("goal dry-run publisher blocks proof copy that cannot fit inside the momentum ceiling", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-long-card-dwell-"));
   const storyPackage = await makeStoryPackage(
     root,
@@ -1867,10 +1867,11 @@ test("goal dry-run publisher blocks long proof cards that do not have enough rea
 
   assert.equal(plan.summary.ready_story_count, 0);
   assert.equal(plan.summary.blocked_story_count, 1);
-  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:rendered_card_window_dwell_too_short"));
-  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_short"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("hyperframes:card_visible_dwell_too_long"));
+  assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:card_visible_dwell_too_long"));
   assert.equal(
-    plan.blocked_stories[0].incident_guard.evidence.file_evidence.rendered_too_fast_card_windows[0].minimum_required_duration_s > 3.8,
+    plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_too_slow_source_card_windows[0].minimum_required_duration_s >
+      plan.blocked_stories[0].incident_guard.evidence.file_evidence.hyperframes_too_slow_source_card_windows[0].maximum_allowed_duration_s,
     true,
   );
 });
@@ -4031,7 +4032,7 @@ test("goal dry-run publisher keeps dead-end repair lanes visible on stories alre
   assert.equal(plan.summary.ready_story_count, 1);
   assert.equal(plan.summary.held_story_count, 1);
   assert.equal(plan.held_stories[0].story_id, "image-post-preheld");
-  assert.equal(plan.held_stories[0].status, "quarantined_before_scheduler_preflight");
+  assert.equal(plan.held_stories[0].status, "quarantined_by_repair_work_order");
   assert.ok(plan.held_stories[0].hold_reasons.includes("preflight_candidate_missing"));
   assert.ok(plan.held_stories[0].hold_reasons.includes("dead_end_repair_work_order"));
   assert.ok(plan.held_stories[0].hold_reasons.includes("operator_required"));
@@ -4221,7 +4222,7 @@ test("goal dry-run publisher holds generated-only benchmark failures for operato
     root,
     "source-review-needed",
     "GREEN",
-    "Super Mario RPG Drops To $15",
+    "Street Fighter 6 Just Revealed A Rushdown Problem",
   );
 
   const plan = await buildGoalDryRunPublishPlan({

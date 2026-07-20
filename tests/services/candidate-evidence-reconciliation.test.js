@@ -2908,6 +2908,20 @@ test("candidate evidence reconciliation applies valid rights and fingerprints wi
     licence_basis: "operator_licensed_elevenlabs_commercial_generation",
     evidence_file: "narration_manifest.json",
   })]);
+  const flagshipRightsReportPath = path.join(
+    fixture.artifactDir,
+    "flagship",
+    "rights_reconciliation_report.json",
+  );
+  await fs.outputJson(flagshipRightsReportPath, {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "FAIL",
+    status: "RED",
+    applied: false,
+    blockers: ["stale_pre_reconciliation_report"],
+    can_auto_publish: false,
+  });
 
   const report = await reconcileCandidateEvidence({
     artifactDir: fixture.artifactDir,
@@ -2941,6 +2955,18 @@ test("candidate evidence reconciliation applies valid rights and fingerprints wi
   assert.equal(reconciledRenderManifest.rights_reconciliation.status, "GREEN");
   assert.deepEqual(
     candidate.render_manifest.rights_reconciliation,
+    reconciledRenderManifest.rights_reconciliation,
+  );
+  const refreshedFlagshipRightsReport = await fs.readJson(
+    flagshipRightsReportPath,
+  );
+  assert.equal(refreshedFlagshipRightsReport.verdict, "PASS");
+  assert.equal(refreshedFlagshipRightsReport.status, "GREEN");
+  assert.equal(refreshedFlagshipRightsReport.applied, true);
+  assert.equal(refreshedFlagshipRightsReport.can_auto_publish, true);
+  assert.deepEqual(refreshedFlagshipRightsReport.blockers, []);
+  assert.deepEqual(
+    refreshedFlagshipRightsReport.proposed_render_rights_reconciliation,
     reconciledRenderManifest.rights_reconciliation,
   );
 });
@@ -3080,6 +3106,60 @@ test("candidate evidence reconciliation rolls back a rights-only apply when the 
       "local_file_transaction_failed",
     ),
   );
+  assert.equal(report.transaction.committed, false);
+  assert.equal(report.transaction.rolled_back, true);
+  const after = await captureFiles(paths);
+  assert.deepEqual(after, before);
+});
+
+test("candidate evidence reconciliation rolls back every rights file when the flagship report write fails", async (t) => {
+  const storyId = "rights_report_transaction_rollback_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-rights-report-transaction-rollback-",
+    storyId,
+  });
+  const {
+    evidencePath,
+    rightsPath,
+  } = await addFlagshipNarrationSidecarFixture(fixture, storyId);
+  const renderPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const flagshipRightsReportPath = path.join(
+    fixture.artifactDir,
+    "flagship",
+    "rights_reconciliation_report.json",
+  );
+  await fs.outputJson(flagshipRightsReportPath, {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "FAIL",
+    status: "RED",
+    blockers: ["stale_report"],
+    can_auto_publish: false,
+  });
+  const paths = [
+    rightsPath,
+    renderPath,
+    flagshipRightsReportPath,
+    evidencePath,
+    fixture.bridgePath,
+  ];
+  const before = await captureFiles(paths);
+  failNextRenameTo(t, flagshipRightsReportPath);
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: true,
+    generatedAt: "2026-07-19T12:30:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.verdict, "FAIL");
+  assert.equal(report.rights.applied, false);
+  assert.ok(report.rights.blockers.includes("local_file_transaction_failed"));
   assert.equal(report.transaction.committed, false);
   assert.equal(report.transaction.rolled_back, true);
   const after = await captureFiles(paths);
@@ -4575,6 +4655,146 @@ test("candidate evidence reconciliation accepts and fingerprints generation-boun
   assert.equal(narration.elevenlabs_request_id, "request-123");
   assert.equal(narration.elevenlabs_history_item_id, "history-123");
   assert.equal(narration.elevenlabs_raw_provider_audio_sha256, rawProviderAudioSha256);
+
+  const decodedPcmSha256 = "e".repeat(64);
+  const decodedReceipt = await fs.readJson(generationReceiptPath);
+  decodedReceipt.generation.history_audio_sha256 = "f".repeat(64);
+  decodedReceipt.generation.history_audio_size_bytes = 4200;
+  decodedReceipt.generation.audio_identity_method =
+    "decoded_pcm_s16le_44100_mono_sha256";
+  decodedReceipt.generation.compressed_bytes_match = false;
+  decodedReceipt.generation.raw_provider_audio_decoded_pcm_sha256 =
+    decodedPcmSha256;
+  decodedReceipt.generation.raw_provider_audio_decoded_pcm_size_bytes = 8192;
+  decodedReceipt.generation.history_audio_decoded_pcm_sha256 =
+    decodedPcmSha256;
+  decodedReceipt.generation.history_audio_decoded_pcm_size_bytes = 8192;
+  decodedReceipt.generation.decoded_pcm_sample_rate_hz = 44100;
+  decodedReceipt.generation.decoded_pcm_channels = 1;
+  decodedReceipt.generation.decoded_pcm_sample_format = "s16le";
+  await fs.outputJson(generationReceiptPath, decodedReceipt, { spaces: 2 });
+  const decodedReceiptBytes = await fs.readFile(generationReceiptPath);
+  const decodedEvidence = await fs.readJson(commercialRightsEvidencePath);
+  decodedEvidence.generation = {
+    ...decodedEvidence.generation,
+    ...decodedReceipt.generation,
+  };
+  decodedEvidence.generation_receipt.sha256 = sha256(decodedReceiptBytes);
+  decodedEvidence.generation_receipt.size_bytes = decodedReceiptBytes.length;
+  await fs.outputJson(
+    commercialRightsEvidencePath,
+    decodedEvidence,
+    { spaces: 2 },
+  );
+
+  const decodedPcmEquivalentReport = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+  assert.equal(
+    decodedPcmEquivalentReport.rights.verdict,
+    "PASS",
+    JSON.stringify(decodedPcmEquivalentReport.rights, null, 2),
+  );
+
+  const stringNumericReceipt = await fs.readJson(generationReceiptPath);
+  stringNumericReceipt.generation.decoded_pcm_sample_rate_hz = "44100";
+  await fs.outputJson(
+    generationReceiptPath,
+    stringNumericReceipt,
+    { spaces: 2 },
+  );
+  const stringNumericReceiptBytes = await fs.readFile(generationReceiptPath);
+  const stringNumericEvidence = await fs.readJson(
+    commercialRightsEvidencePath,
+  );
+  stringNumericEvidence.generation_receipt.sha256 = sha256(
+    stringNumericReceiptBytes,
+  );
+  stringNumericEvidence.generation_receipt.size_bytes =
+    stringNumericReceiptBytes.length;
+  await fs.outputJson(
+    commercialRightsEvidencePath,
+    stringNumericEvidence,
+    { spaces: 2 },
+  );
+  const stringNumericReport = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+  assert.equal(stringNumericReport.rights.verdict, "FAIL");
+  assert.ok(
+    stringNumericReport.rights.blockers.some((blocker) =>
+      blocker.includes("generation_receipt_binding_invalid"),
+    ),
+    JSON.stringify(stringNumericReport.rights.blockers),
+  );
+
+  await fs.outputJson(generationReceiptPath, decodedReceipt, { spaces: 2 });
+  const restoredDecodedReceiptBytes = await fs.readFile(generationReceiptPath);
+  const restoredDecodedEvidence = await fs.readJson(
+    commercialRightsEvidencePath,
+  );
+  restoredDecodedEvidence.generation_receipt.sha256 = sha256(
+    restoredDecodedReceiptBytes,
+  );
+  restoredDecodedEvidence.generation_receipt.size_bytes =
+    restoredDecodedReceiptBytes.length;
+  await fs.outputJson(
+    commercialRightsEvidencePath,
+    restoredDecodedEvidence,
+    { spaces: 2 },
+  );
+
+  const missingTypedBooleanReceipt = await fs.readJson(generationReceiptPath);
+  delete missingTypedBooleanReceipt.generation.compressed_bytes_match;
+  await fs.outputJson(
+    generationReceiptPath,
+    missingTypedBooleanReceipt,
+    { spaces: 2 },
+  );
+  const missingTypedBooleanReceiptBytes = await fs.readFile(
+    generationReceiptPath,
+  );
+  const missingTypedBooleanEvidence = await fs.readJson(
+    commercialRightsEvidencePath,
+  );
+  missingTypedBooleanEvidence.generation_receipt.sha256 = sha256(
+    missingTypedBooleanReceiptBytes,
+  );
+  missingTypedBooleanEvidence.generation_receipt.size_bytes =
+    missingTypedBooleanReceiptBytes.length;
+  await fs.outputJson(
+    commercialRightsEvidencePath,
+    missingTypedBooleanEvidence,
+    { spaces: 2 },
+  );
+  const missingTypedBooleanReport = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+  assert.equal(missingTypedBooleanReport.rights.verdict, "FAIL");
+  assert.ok(
+    missingTypedBooleanReport.rights.blockers.some((blocker) =>
+      blocker.includes("generation_receipt_binding_invalid"),
+    ),
+    JSON.stringify(missingTypedBooleanReport.rights.blockers),
+  );
 
   await fs.outputJson(generationReceiptPath, {
     schema: "pulse_elevenlabs_generation_receipt_v1",

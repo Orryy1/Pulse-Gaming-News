@@ -307,6 +307,396 @@ async function makeFixture(t) {
   };
 }
 
+async function writePendingElevenLabsGenerationReceipt({
+  artifactDir,
+  storyId,
+  narrationPath,
+  timestampsPath,
+  requestStartedAt = "2026-07-15T12:00:00.000Z",
+  responseReceivedAt = "2026-07-15T12:01:00.000Z",
+} = {}) {
+  const evidenceDir = path.join(artifactDir, "rights", "evidence");
+  const receiptPath = path.join(evidenceDir, "elevenlabs-generation-receipt.json");
+  const rawAudioPath = path.join(evidenceDir, "raw-provider-audio.bin");
+  const modelSnapshotPath = path.join(evidenceDir, "model-snapshot.json");
+  const subscriptionPrePath = path.join(evidenceDir, "subscription-pre.json");
+  const subscriptionPostPath = path.join(evidenceDir, "subscription-post.json");
+  const policyBillingPath = path.join(evidenceDir, "policy-01.bin");
+  const policyTermsPath = path.join(evidenceDir, "policy-02.html");
+  const narrationBytes = await fs.readFile(narrationPath);
+  const narrationSha256 = sha256Buffer(narrationBytes);
+  const rawAudioBytes = Buffer.from(narrationBytes);
+  const rawAudioSha256 = sha256Buffer(rawAudioBytes);
+  const requestId = "request-pre-render-rights";
+  const historyItemId = "history-pre-render-rights";
+  const timestampDocument = await fs.readJson(timestampsPath);
+  const spokenText = timestampDocument.meta?.spoken_text || "Current evidence";
+
+  await fs.ensureDir(evidenceDir);
+  await fs.writeFile(rawAudioPath, rawAudioBytes);
+  await fs.writeJson(modelSnapshotPath, {
+    source_endpoint: "https://api.elevenlabs.io/v1/models",
+    retrieved_at: "2026-07-15T11:58:00.000Z",
+    model_id: "eleven_multilingual_v2",
+    text_to_speech: true,
+    requires_alpha_access: false,
+    requires_beta_access: false,
+    deprecated: false,
+    regular_production_model: true,
+    secrets_recorded: false,
+  });
+  await fs.writeJson(subscriptionPrePath, {
+    source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+    retrieved_at: "2026-07-15T11:59:00.000Z",
+    tier: "pro",
+    status: "active",
+    paid_plan: true,
+    secrets_recorded: false,
+  });
+  await fs.writeJson(subscriptionPostPath, {
+    source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+    retrieved_at: "2026-07-15T12:02:00.000Z",
+    tier: "pro",
+    status: "active",
+    paid_plan: true,
+    secrets_recorded: false,
+  });
+  await fs.writeFile(policyBillingPath, "ElevenLabs billing policy evidence");
+  await fs.writeFile(policyTermsPath, "ElevenLabs UK and EEA terms evidence");
+
+  const modelSnapshotStat = await fs.stat(modelSnapshotPath);
+  const subscriptionPreStat = await fs.stat(subscriptionPrePath);
+  const subscriptionPostStat = await fs.stat(subscriptionPostPath);
+  const policyBillingStat = await fs.stat(policyBillingPath);
+  const policyTermsStat = await fs.stat(policyTermsPath);
+  await fs.writeJson(receiptPath, {
+    schema: "pulse_elevenlabs_generation_receipt_v1",
+    schema_version: 1,
+    story_id: storyId,
+    asset_id: `${storyId}_audio_path`,
+    verdict: "AMBER",
+    generation_verdict: "GREEN",
+    final_media_lineage_status: "PENDING",
+    commercial_use_allowed: false,
+    provider: {
+      id: "elevenlabs",
+      model_id: "eleven_multilingual_v2",
+      model_snapshot_path: "rights/evidence/model-snapshot.json",
+      model_snapshot_sha256: await sha256File(modelSnapshotPath),
+      model_snapshot_size_bytes: modelSnapshotStat.size,
+      model_evidence: {
+        source_endpoint: "https://api.elevenlabs.io/v1/models",
+        retrieved_at: "2026-07-15T11:58:00.000Z",
+        text_to_speech: true,
+        requires_alpha_access: false,
+      },
+    },
+    policy_evidence: {
+      jurisdiction: "UK_EEA",
+      paid_plan_required: true,
+      beta_service_production_forbidden: true,
+      documents: [
+        {
+          url: "https://elevenlabs.io/docs/overview/administration/billing",
+          retrieved_at: "2026-07-15T11:58:30.000Z",
+          materialised_path: "rights/evidence/policy-01.bin",
+          sha256: await sha256File(policyBillingPath),
+          size_bytes: policyBillingStat.size,
+        },
+        {
+          url: "https://elevenlabs.io/terms-of-use-eu",
+          retrieved_at: "2026-07-15T11:58:31.000Z",
+          materialised_path: "rights/evidence/policy-02.html",
+          sha256: await sha256File(policyTermsPath),
+          size_bytes: policyTermsStat.size,
+        },
+      ],
+    },
+    account_entitlement: {
+      source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+      pre_generation: {
+        source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+        retrieved_at: "2026-07-15T11:59:00.000Z",
+        tier: "pro",
+        status: "active",
+        paid_plan: true,
+        secrets_recorded: false,
+        evidence_path: "rights/evidence/subscription-pre.json",
+        evidence_sha256: await sha256File(subscriptionPrePath),
+        evidence_size_bytes: subscriptionPreStat.size,
+      },
+      post_generation: {
+        source_endpoint: "https://api.elevenlabs.io/v1/user/subscription",
+        retrieved_at: "2026-07-15T12:02:00.000Z",
+        tier: "pro",
+        status: "active",
+        paid_plan: true,
+        secrets_recorded: false,
+        evidence_path: "rights/evidence/subscription-post.json",
+        evidence_sha256: await sha256File(subscriptionPostPath),
+        evidence_size_bytes: subscriptionPostStat.size,
+      },
+      paid_at_generation: true,
+      secrets_recorded: false,
+    },
+    generation: {
+      request_started_at: requestStartedAt,
+      response_received_at: responseReceivedAt,
+      request_id: requestId,
+      history_item_id: historyItemId,
+      history_date_unix: 1_752_577_260,
+      voice_id_sha256: "1".repeat(64),
+      request_text_sha256: sha256Buffer(Buffer.from(spokenText, "utf8")),
+      request_settings_sha256: "2".repeat(64),
+      raw_provider_audio_path: "rights/evidence/raw-provider-audio.bin",
+      raw_provider_audio_sha256: rawAudioSha256,
+      raw_provider_audio_size_bytes: rawAudioBytes.length,
+      history_audio_sha256: rawAudioSha256,
+      history_audio_size_bytes: rawAudioBytes.length,
+    },
+    generation_checks: {
+      entitlement_brackets_generation: true,
+      paid_subscription_pre_generation: true,
+      paid_subscription_post_generation: true,
+      model_is_production_tts: true,
+      official_model_snapshot_verified: true,
+      policy_files_verified: true,
+      official_policy_files_verified: true,
+      request_id_matches_history: true,
+      history_item_identity_present: true,
+      history_date_present: true,
+      history_model_matches: true,
+      history_voice_matches: true,
+      history_text_matches: true,
+      history_audio_matches_raw_response: true,
+      no_secret_fields: true,
+      no_personal_fields: true,
+      no_invoice_fields: true,
+      every_generation_condition_proven: true,
+    },
+    generation_blockers: [],
+    blockers: ["final_media_lineage_pending"],
+    mastering_lineage: {
+      raw_provider_audio_sha256: rawAudioSha256,
+      raw_provider_audio_size_bytes: rawAudioBytes.length,
+      mastered_audio_sha256: narrationSha256,
+      mastered_audio_size_bytes: narrationBytes.length,
+      transform_status: "COMPLETE",
+      post_generation_transform_status: "COMPLETE",
+    },
+    licence_basis: "elevenlabs_commercial_tts_generation",
+    allowed_platforms: [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+    ],
+    safety: {
+      secrets_recorded: false,
+      personal_account_fields_recorded: false,
+      invoice_fields_recorded: false,
+      oauth_mutated: false,
+      token_mutated: false,
+      billing_mutated: false,
+      publishing_triggered: false,
+      database_mutated: false,
+    },
+  }, { spaces: 2 });
+
+  timestampDocument.meta = {
+    ...(timestampDocument.meta || {}),
+    provider: "elevenlabs",
+    elevenlabsGenerationRights: {
+      schemaVersion: 1,
+      receiptPath: "rights/evidence/elevenlabs-generation-receipt.json",
+      rawProviderAudioSha256: rawAudioSha256,
+      rawProviderAudioSizeBytes: rawAudioBytes.length,
+      masteredAudioSha256: narrationSha256,
+      masteredAudioSizeBytes: narrationBytes.length,
+      requestId,
+      historyItemId,
+      finalMediaLineageStatus: "PENDING",
+      postGenerationTransformStatus: "COMPLETE",
+    },
+  };
+  await fs.writeJson(timestampsPath, timestampDocument, { spaces: 2 });
+  return receiptPath;
+}
+
+async function writeGovernedFlagshipCards({
+  artifactDir,
+  storyId,
+  generatedAt = "2026-07-15T12:10:00.000Z",
+} = {}) {
+  const kinds = ["source", "context", "timeline", "quote", "takeaway", "outro"];
+  const cardsDir = path.join(artifactDir, "flagship", "cards");
+  await fs.ensureDir(cardsDir);
+  for (const [index, kind] of kinds.entries()) {
+    const cardPath = path.join(cardsDir, `hf_${kind}_card_${storyId}.mp4`);
+    await fs.writeFile(cardPath, Buffer.alloc(4_096 + index, 0x41 + index));
+    await fs.writeJson(cardPath.replace(/\.mp4$/i, ".shell.json"), {
+      schema_version: 1,
+      timing_policy_version: "pulse_card_timing_v5",
+      generated_at: generatedAt,
+      story_id: storyId,
+      card_kind: kind,
+      channel_id: "pulse-gaming",
+      output_path: cardPath,
+      project_dir: `experiments/hf-${kind}-${storyId}`,
+      hyperframes_premium_shell: {
+        status: "pass",
+        timing_policy_version: "pulse_card_timing_v5",
+        story_id: storyId,
+        card_kind: kind,
+        channel_id: "pulse-gaming",
+        output_path: cardPath,
+        checks: {
+          check: { status: "pass" },
+          render: { status: "pass" },
+        },
+        animation_contract: {
+          status: "pass",
+          blockers: [],
+          evidence: {
+            timeline_registry: true,
+            paused_gsap_timeline: true,
+            main_timeline_registered: true,
+            timeline_animation_steps: 3,
+          },
+        },
+        visual_identity: {
+          status: "pass",
+          blockers: [],
+          evidence: {
+            vertical_reel_viewport: true,
+            tracked_clip: true,
+            html_path: `experiments/hf-${kind}-${storyId}/index.html`,
+            hyperframes_config_path: `experiments/hf-${kind}-${storyId}/hyperframes.json`,
+          },
+        },
+        readability_contract: {
+          status: "pass",
+          contract_version: "pulse_card_timing_v5",
+          evidence: {
+            readable_text: kind === "source" ? "UBISOFT NEWS SOURCE" : "CURRENT EVIDENCE",
+            word_count: kind === "source" ? 3 : 2,
+            planned_visible_duration_s: 2.4,
+            minimum_visible_duration_s: 1.9,
+            maximum_visible_duration_s: 2.8,
+            max_readable_card_duration_s: 2.8,
+          },
+        },
+        blockers: [],
+      },
+    }, { spaces: 2 });
+  }
+  await fs.outputFile(
+    path.join(cardsDir, "hf-backdrops", storyId, "stale.jpg"),
+    "must-not-copy",
+  );
+  return kinds;
+}
+
+test("revalidates and preserves only generation-bound package-local flagship cards", async (t) => {
+  const fixture = await makeFixture(t);
+  const kinds = await writeGovernedFlagshipCards({
+    artifactDir: fixture.sourceArtifactDir,
+    storyId: fixture.storyId,
+  });
+  const sourceCardHashes = Object.fromEntries(await Promise.all(kinds.map(async (kind) => {
+    const cardPath = path.join(
+      fixture.sourceArtifactDir,
+      "flagship",
+      "cards",
+      `hf_${kind}_card_${fixture.storyId}.mp4`,
+    );
+    return [kind, await sha256File(cardPath)];
+  })));
+
+  const result = await repairFlagshipRenderWorkOrder({
+    sourceWorkOrderPath: fixture.sourceWorkOrderPath,
+    currentEvidencePath: fixture.currentEvidencePath,
+    workspaceDir: fixture.workspaceDir,
+    generatedAt: "2026-07-15T12:20:00.000Z",
+    cardProbeVideo: async () => ({
+      decodable: true,
+      duration_seconds: 2.4,
+      format_name: "mov,mp4,m4a,3gp,3g2,mj2",
+      video: {
+        codec: "h264",
+        width: 1080,
+        height: 1920,
+      },
+    }),
+  });
+
+  assert.equal(result.report.preserved_flagship_card_evidence.verdict, "GREEN");
+  assert.equal(result.report.preserved_flagship_card_evidence.status, "copied");
+  assert.equal(result.report.preserved_flagship_card_evidence.cards.length, kinds.length);
+  assert.match(
+    result.report.preserved_flagship_card_evidence.generation_id,
+    /^flagship-card-generation-[a-f0-9]{64}$/,
+  );
+
+  const targetCardsDir = path.join(
+    fixture.workspaceDir,
+    "artifacts",
+    fixture.storyId,
+    "flagship",
+    "cards",
+  );
+  const targetEntries = await fs.readdir(targetCardsDir);
+  assert.equal(targetEntries.filter((entry) => entry.endsWith(".mp4")).length, kinds.length);
+  assert.equal(targetEntries.filter((entry) => entry.endsWith(".shell.json")).length, kinds.length);
+  assert.equal(
+    await fs.pathExists(path.join(targetCardsDir, "hf-backdrops")),
+    false,
+    "unvalidated backdrop content must not survive the evidence copy",
+  );
+
+  for (const kind of kinds) {
+    const targetCardPath = path.join(
+      targetCardsDir,
+      `hf_${kind}_card_${fixture.storyId}.mp4`,
+    );
+    const targetSidecar = await fs.readJson(
+      targetCardPath.replace(/\.mp4$/i, ".shell.json"),
+    );
+    assert.equal(await sha256File(targetCardPath), sourceCardHashes[kind]);
+    assert.equal(targetSidecar.output_path, targetCardPath);
+    assert.equal(
+      targetSidecar.hyperframes_premium_shell.output_path,
+      targetCardPath,
+    );
+    assert.equal(
+      targetSidecar.generation_id,
+      result.report.preserved_flagship_card_evidence.generation_id,
+    );
+    assert.equal(targetSidecar.card_evidence_copy.source_sha256, sourceCardHashes[kind]);
+    assert.equal(targetSidecar.card_evidence_copy.target_sha256, sourceCardHashes[kind]);
+  }
+
+  const evidencePath = path.join(
+    fixture.workspaceDir,
+    "artifacts",
+    fixture.storyId,
+    "flagship_card_evidence.json",
+  );
+  const storedEvidence = await fs.readJson(evidencePath);
+  assert.deepEqual(storedEvidence, result.report.preserved_flagship_card_evidence);
+  assert.equal(
+    await fs.pathExists(path.join(
+      fixture.sourceArtifactDir,
+      "flagship",
+      "cards",
+      "hf-backdrops",
+      fixture.storyId,
+      "stale.jpg",
+    )),
+    true,
+    "source evidence must remain unchanged",
+  );
+});
+
 test("clones one ready render job and binds current file-backed evidence inside an isolated workspace", async (t) => {
   const fixture = await makeFixture(t);
   const canonicalPath = path.join(
@@ -854,8 +1244,8 @@ test("clones current narration lineage and invalidates stale derived media evide
   const staleProductionReportDir = path.join(fixture.sourceArtifactDir, "production-report");
   const staleDecodedVisualDir = path.join(fixture.sourceArtifactDir, "qa", "decoded-visual");
   const displayScript = "Black Flag Resynced is back.";
-  const staleSpokenScript = "Black Flag resynced is back.";
-  const currentSpokenScript = "Black Flag reesynced is back.";
+  const staleSpokenScript = "Black Flag re synced is back.";
+  const currentSpokenScript = "Black Flag Resynced is back.";
 
   await fs.writeJson(canonicalPath, {
     story_id: fixture.storyId,
@@ -913,7 +1303,7 @@ test("clones current narration lineage and invalidates stale derived media evide
     words: [
       { word: "Black", start: 0, end: 0.2 },
       { word: "Flag", start: 0.2, end: 0.4 },
-      { word: "reesynced", start: 0.4, end: 0.7 },
+      { word: "Resynced", start: 0.4, end: 0.7 },
       { word: "is", start: 0.7, end: 0.8 },
       { word: "back.", start: 0.8, end: 1.0 },
     ],
@@ -1859,6 +2249,206 @@ test("reconciles a co-located script-repair transition ledger without requiring 
     rights.flagship_rights_reconciliation.narration_transition,
     "script_repair_narration_regenerated",
   );
+});
+
+test("reconciles candidate-derived pre-render narration blockers only through a strict pending ElevenLabs receipt", async (t) => {
+  const fixture = await makeFixture(t);
+  const currentPackageDir = path.join(fixture.root, "candidate-derived-transition-package");
+  const currentMotionManifestPath = path.join(currentPackageDir, "materialised_motion_clips.json");
+  const currentRightsPath = path.join(currentPackageDir, "rights_ledger.json");
+  await fs.copy(fixture.sourceArtifactDir, currentPackageDir);
+  await fs.copy(fixture.motionManifestPath, currentMotionManifestPath);
+
+  const sourceRights = await fs.readJson(path.join(fixture.sourceArtifactDir, "rights_ledger.json"));
+  const motionRights = await fs.readJson(
+    path.join(path.dirname(fixture.motionManifestPath), "rights_ledger.json"),
+  );
+  const transitionedClip = fixture.clips[0];
+  const transitionedClipStat = await fs.stat(transitionedClip.path);
+  const transitionedClipSha256 = await sha256File(transitionedClip.path);
+  const transitionedRecord = motionRights.records.find(
+    (record) => record.asset_id === transitionedClip.id,
+  );
+  const transitionedUse = motionRights.used_assets.find(
+    (used) => used.asset_id === transitionedClip.id,
+  );
+  const staleTransitionPath = path.join(fixture.root, "prior-render", "clip.mp4");
+  for (const entry of [transitionedRecord, transitionedUse]) {
+    entry.path = staleTransitionPath;
+    entry.asset_sha256 = "5".repeat(64);
+    entry.asset_size_bytes = 1024;
+  }
+  transitionedRecord.materialized_file_evidence = {
+    schema_version: 1,
+    sha256: transitionedClipSha256,
+    size_bytes: transitionedClipStat.size,
+  };
+  const narrationRecord = sourceRights.records.find(
+    (record) => record.asset_id === `${fixture.storyId}_audio_path`,
+  );
+  const transitionBlocker =
+    "narration_and_render_regeneration_required_after_script_repair";
+  const candidateDerivedBlockers = [
+    `narration_commercial_rights_evidence_not_green:${fixture.storyId}_audio_path`,
+    "used_asset_rights_coverage_incomplete",
+    `flagship_rights_sidecar_source_record_missing:${fixture.storyId}_audio_path`,
+    transitionBlocker,
+  ];
+  await fs.writeJson(currentRightsPath, {
+    schema_version: 2,
+    story_id: fixture.storyId,
+    verdict: "RED",
+    status: "blocked",
+    blockers: candidateDerivedBlockers,
+    failures: [],
+    script_repair_invalidated_at: "2026-07-15T11:55:00.000Z",
+    narration_rights_updated_at: "2026-07-15T12:05:00.000Z",
+    records: [narrationRecord, ...motionRights.records],
+    used_assets: motionRights.used_assets,
+    matched_assets: [{
+      asset_id: narrationRecord.asset_id,
+      kind: narrationRecord.kind,
+      path: narrationRecord.path,
+      source_url: narrationRecord.source_url,
+      rights_record_id: narrationRecord.asset_id,
+      licence_basis: narrationRecord.licence_basis,
+      asset_sha256: narrationRecord.asset_sha256,
+      asset_size_bytes: narrationRecord.asset_size_bytes,
+    }],
+    metrics: {
+      used_asset_count: motionRights.used_assets.length + 1,
+      rights_record_count: motionRights.used_assets.length,
+      missing_asset_count: 1,
+      duplicate_record_count: 0,
+    },
+    reconciliation: {
+      current_files_hashed: true,
+      authoritative_publish_verdict_unchanged: true,
+      safe_demotion_applied: true,
+      safe_demotion_reason:
+        "current_evidence_failed_and_stale_stored_rights_were_not_publishable",
+    },
+  }, { spaces: 2 });
+  const originalRights = await fs.readJson(currentRightsPath);
+
+  const narrationTimestamp = new Date("2026-07-15T12:06:00.000Z");
+  await fs.utimes(fixture.narrationPath, narrationTimestamp, narrationTimestamp);
+  const pendingReceiptPath = await writePendingElevenLabsGenerationReceipt({
+    artifactDir: currentPackageDir,
+    storyId: fixture.storyId,
+    narrationPath: fixture.narrationPath,
+    timestampsPath: fixture.timestampsPath,
+  });
+  const pendingReceipt = await fs.readJson(pendingReceiptPath);
+  pendingReceipt.generation.history_audio_sha256 = "3".repeat(64);
+  pendingReceipt.generation.history_audio_size_bytes += 1;
+  pendingReceipt.generation.audio_identity_method =
+    "decoded_pcm_s16le_44100_mono_sha256";
+  pendingReceipt.generation.compressed_bytes_match = false;
+  pendingReceipt.generation.raw_provider_audio_decoded_pcm_sha256 = "4".repeat(64);
+  pendingReceipt.generation.raw_provider_audio_decoded_pcm_size_bytes = 4096;
+  pendingReceipt.generation.history_audio_decoded_pcm_sha256 = "4".repeat(64);
+  pendingReceipt.generation.history_audio_decoded_pcm_size_bytes = 4096;
+  pendingReceipt.generation.decoded_pcm_sample_rate_hz = 44100;
+  pendingReceipt.generation.decoded_pcm_channels = 1;
+  pendingReceipt.generation.decoded_pcm_sample_format = "s16le";
+  await fs.writeJson(pendingReceiptPath, pendingReceipt, { spaces: 2 });
+  fixture.currentEvidence.word_timestamps_sha256 = await sha256File(fixture.timestampsPath);
+  fixture.currentEvidence.word_timestamps_size_bytes = (await fs.stat(fixture.timestampsPath)).size;
+  await fs.writeJson(fixture.currentEvidencePath, fixture.currentEvidence, { spaces: 2 });
+
+  const narrationStat = await fs.stat(fixture.narrationPath);
+  const timestampsStat = await fs.stat(fixture.timestampsPath);
+  const motionStat = await fs.stat(currentMotionManifestPath);
+  const cliArgs = [
+    "--work-order", fixture.sourceWorkOrderPath,
+    "--current-package", currentPackageDir,
+    "--motion-manifest", currentMotionManifestPath,
+    "--narration-audio", fixture.narrationPath,
+    "--narration-sha256", await sha256File(fixture.narrationPath),
+    "--narration-size", String(narrationStat.size),
+    "--word-timestamps", fixture.timestampsPath,
+    "--timestamps-sha256", await sha256File(fixture.timestampsPath),
+    "--timestamps-size", String(timestampsStat.size),
+    "--motion-sha256", await sha256File(currentMotionManifestPath),
+    "--motion-size", String(motionStat.size),
+    "--workspace", fixture.workspaceDir,
+    "--generated-at", "2026-07-15T13:08:00.000Z",
+    "--json",
+  ];
+  const result = await runRepairCli(cliArgs, { stdout: () => {} });
+
+  const repaired = await fs.readJson(result.workOrderPath);
+  const repairedRights = await fs.readJson(
+    path.join(repaired.jobs[0].artifact_dir, "rights_ledger.json"),
+  );
+  const copiedReceipt = await fs.readJson(
+    path.join(
+      repaired.jobs[0].artifact_dir,
+      "rights",
+      "evidence",
+      "elevenlabs-generation-receipt.json",
+    ),
+  );
+
+  assert.equal(result.report.status, "READY_FOR_LOCAL_RENDER");
+  assert.equal(result.report.publish_authorised, false);
+  assert.equal(repairedRights.verdict, "AMBER");
+  assert.equal(repairedRights.status, "ready_for_local_render");
+  assert.deepEqual(repairedRights.blockers, [transitionBlocker]);
+  assert.equal(repairedRights.can_auto_publish, false);
+  assert.equal(repairedRights.final_media_lineage_status, "PENDING");
+  assert.equal(repairedRights.final_media_commercial_use_allowed, false);
+  assert.equal(
+    repairedRights.flagship_rights_reconciliation.narration_transition,
+    "script_repair_narration_regenerated_pending_final_media",
+  );
+  assert.equal(
+    repairedRights.flagship_rights_reconciliation.generation_receipt_verdict,
+    "AMBER",
+  );
+  assert.equal(copiedReceipt.generation_verdict, "GREEN");
+  assert.equal(copiedReceipt.commercial_use_allowed, false);
+  assert.deepEqual(copiedReceipt.blockers, ["final_media_lineage_pending"]);
+  assert.deepEqual(await fs.readJson(currentRightsPath), originalRights);
+
+  const staleMotionRights = await fs.readJson(currentRightsPath);
+  staleMotionRights.records.find(
+    (record) => record.asset_id === transitionedClip.id,
+  ).materialized_file_evidence.sha256 = "6".repeat(64);
+  await fs.writeJson(currentRightsPath, staleMotionRights, { spaces: 2 });
+  const staleMotionWorkspaceDir = path.join(
+    fixture.root,
+    "stale-motion-transition-workspace",
+  );
+  const staleMotionCliArgs = [...cliArgs];
+  staleMotionCliArgs[staleMotionCliArgs.indexOf("--workspace") + 1] =
+    staleMotionWorkspaceDir;
+  await assert.rejects(
+    () => runRepairCli(staleMotionCliArgs, { stdout: () => {} }),
+    /selected_motion_rights_path_mismatch:fresh-clip-1/,
+  );
+  assert.equal(await fs.pathExists(staleMotionWorkspaceDir), false);
+  await fs.writeJson(currentRightsPath, originalRights, { spaces: 2 });
+
+  const unsafeReceiptPath = path.join(
+    currentPackageDir,
+    "rights",
+    "evidence",
+    "elevenlabs-generation-receipt.json",
+  );
+  const unsafeReceipt = await fs.readJson(unsafeReceiptPath);
+  unsafeReceipt.generation_checks.every_generation_condition_proven = false;
+  await fs.writeJson(unsafeReceiptPath, unsafeReceipt, { spaces: 2 });
+  const unsafeWorkspaceDir = path.join(fixture.root, "unsafe-receipt-workspace");
+  const unsafeCliArgs = [...cliArgs];
+  unsafeCliArgs[unsafeCliArgs.indexOf("--workspace") + 1] = unsafeWorkspaceDir;
+
+  await assert.rejects(
+    () => runRepairCli(unsafeCliArgs, { stdout: () => {} }),
+    /generation_receipt_checks_incomplete/,
+  );
+  assert.equal(await fs.pathExists(unsafeWorkspaceDir), false);
 });
 
 test("accepts a package-scoped source ledger without a top-level story ID only when the exact narration asset binds the story", async (t) => {

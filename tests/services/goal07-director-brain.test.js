@@ -164,11 +164,12 @@ function readyDirectorPlan(storyId = "story-director") {
 }
 
 test("Goal 07 director brain enforces the current V5 source-lock range", () => {
-  for (const [durationS, expectedStatus] of [
-    [1.6, "too_short"],
-    [1.9, "pass"],
-    [2.6, "pass"],
-    [3.1, "pass"],
+  for (const [durationS, expectedStatus, expectedBlockers] of [
+    [1.6, "too_short", ["director:card_dwell_too_short", "director:source_lock_dwell_too_short"]],
+    [1.9, "pass", []],
+    [2.6, "pass", []],
+    [2.8, "pass", []],
+    [2.9, "too_long", ["director:card_dwell_too_long", "director:source_lock_dwell_too_long"]],
   ]) {
     const plan = readyDirectorPlan(`story-source-${durationS}`);
     plan.shot_plan.find((shot) => shot.kind === "source_lock").durationS = durationS;
@@ -184,9 +185,7 @@ test("Goal 07 director brain enforces the current V5 source-lock range", () => {
     assert.equal(evidence.status, expectedStatus, `source lock at ${durationS}s`);
     assert.deepEqual(
       sourceTimingBlockers,
-      expectedStatus === "too_short"
-        ? ["director:card_dwell_too_short", "director:source_lock_dwell_too_short"]
-        : [],
+      expectedBlockers,
       `source lock blockers at ${durationS}s`,
     );
   }
@@ -216,7 +215,7 @@ test("Goal 07 director brain accepts current narrative proof beats and emits rol
   evidenceProof.label = longProofText;
   const validation = validateDirectorPlan(evidencePlan);
 
-  assert.equal(validation.metrics.card_timing_contract_version, "pulse_card_timing_v4");
+  assert.equal(validation.metrics.card_timing_contract_version, "pulse_card_timing_v5");
   assert.deepEqual(validation.metrics.card_timing_evidence, [
     {
       id: "source_lock",
@@ -224,9 +223,9 @@ test("Goal 07 director brain accepts current narrative proof beats and emits rol
       role: "source",
       duration_s: 2.6,
       minimum_visible_duration_s: 1.9,
-      target_visible_duration_s: 2.6,
-      maximum_visible_duration_s: 3.1,
-      contract_version: "pulse_card_timing_v4",
+      target_visible_duration_s: 2.5,
+      maximum_visible_duration_s: 2.8,
+      contract_version: "pulse_card_timing_v5",
       status: "pass",
     },
     {
@@ -234,10 +233,10 @@ test("Goal 07 director brain accepts current narrative proof beats and emits rol
       kind: "proof_card",
       role: "proof",
       duration_s: 5.1,
-      minimum_visible_duration_s: 3.4,
-      target_visible_duration_s: 3.8,
+      minimum_visible_duration_s: 2.2,
+      target_visible_duration_s: 2.8,
       maximum_visible_duration_s: 5.8,
-      contract_version: "pulse_card_timing_v4",
+      contract_version: "pulse_card_timing_v5",
       status: "pass",
     },
   ]);
@@ -301,7 +300,7 @@ test("Goal 07 director brain blocks source and proof cards that are too quick to
   const shortCards = readyDirectorPlan("story-short-card-dwell");
   for (const shot of shortCards.shot_plan) {
     if (shot.kind === "source_lock") shot.durationS = 1.6;
-    if (shot.kind === "proof_card") shot.durationS = 3.3;
+    if (shot.kind === "proof_card") shot.durationS = 2.1;
   }
   const storyPackage = await makePackage(root, "story-short-card-dwell", shortCards);
 

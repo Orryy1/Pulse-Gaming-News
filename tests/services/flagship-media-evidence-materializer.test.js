@@ -741,7 +741,7 @@ test("RED: rejects a timestamp track that hides an excessive internal narration 
 test("accepts governed title-pronunciation timestamps bound to official display copy", async () => {
   const fixture = await makeFixture();
   const scriptText = "Black Flag Resynced has nine day-one DLC packs.";
-  const spokenWords = "Black Flag reesynced has nine day one DLC packs".split(/\s+/);
+  const spokenWords = "Black Flag Resynced has nine day one DLC packs".split(/\s+/);
   await replaceBoundTimeline(fixture, {
     scriptText,
     captionsRelativePath: "captions/captions.srt",

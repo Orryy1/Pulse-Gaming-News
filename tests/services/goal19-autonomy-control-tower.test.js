@@ -62,6 +62,7 @@ function narrationRightsRecord(storyId, allowedPlatforms = ["youtube_shorts", "t
 
 const execFileAsync = promisify(execFile);
 let validFinalMediaFixturePromise;
+let alternativeFinalMediaFixturePromise;
 
 function sha256(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
@@ -235,6 +236,30 @@ async function validFinalMediaFixture() {
     })();
   }
   return validFinalMediaFixturePromise;
+}
+
+async function alternativeFinalMediaFixture() {
+  if (!alternativeFinalMediaFixturePromise) {
+    alternativeFinalMediaFixturePromise = (async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-alt-media-"));
+      const output = path.join(root, "unrelated-short.mp4");
+      try {
+        await execFileAsync("ffmpeg", [
+          "-hide_banner", "-loglevel", "error", "-y",
+          "-f", "lavfi", "-i", "color=c=red:size=540x960:rate=30:duration=1",
+          "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=48000:duration=1",
+          "-t", "1",
+          "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+          "-c:a", "aac", "-b:a", "96k", "-shortest", "-movflags", "+faststart",
+          output,
+        ], { timeout: 30000, windowsHide: true });
+        return await fs.readFile(output);
+      } finally {
+        await fs.remove(root);
+      }
+    })();
+  }
+  return alternativeFinalMediaFixturePromise;
 }
 
 async function makeControlStory(root, storyId, overrides = {}) {
@@ -534,7 +559,11 @@ async function makeControlStory(root, storyId, overrides = {}) {
     overrides.platformManifest || defaultPlatformManifest,
   );
   await fs.outputJson(path.join(artifactDir, "platform_variant_scorecard.json"), {
+    verdict: "GREEN",
+    status: "GREEN",
+    producer_id: "pulse-goal-platform-variant-materializer",
     story_id: storyId,
+    generated_at: platformGeneratedAt,
     variants: {
       youtube_shorts:
         (overrides.platformManifest || defaultPlatformManifest).outputs?.youtube_shorts
@@ -3034,6 +3063,116 @@ test("Goal 19 rejects a self-attested variant without materializer evidence", as
   assert.ok(
     failures.includes("platform_pack:youtube_shorts:materialization_evidence_missing"),
   );
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 treats an authoritative RED platform-variant scorecard as a veto", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-scorecard-red-"));
+  const storyId = "story-platform-scorecard-red";
+  const story = await makeControlStory(root, storyId);
+  const scorecardPath = path.join(story.artifact_dir, "platform_variant_scorecard.json");
+  const scorecard = await fs.readJson(scorecardPath);
+  scorecard.verdict = "RED";
+  scorecard.status = "blocked";
+  scorecard.failures = ["platform_variant_scorecard:independent_review_failed"];
+  await fs.writeJson(scorecardPath, scorecard, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:15.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:variant_scorecard_authoritative_red"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a platform-variant scorecard bound to another story or stale generation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-scorecard-stale-"));
+  const storyId = "story-platform-scorecard-stale";
+  const story = await makeControlStory(root, storyId);
+  const scorecardPath = path.join(story.artifact_dir, "platform_variant_scorecard.json");
+  const scorecard = await fs.readJson(scorecardPath);
+  scorecard.story_id = "another-story";
+  scorecard.generated_at = "2026-07-20T07:59:59.000Z";
+  scorecard.platform_variant_materialized_at = "2026-07-20T07:59:59.000Z";
+  await fs.writeJson(scorecardPath, scorecard, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:16.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:variant_scorecard_story_id_mismatch"));
+  assert.ok(failures.includes("platform_pack:variant_scorecard_generated_before_render"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects aligned platform evidence that is stale for the current control-tower run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-expired-"));
+  const storyId = "story-platform-expired";
+  const story = await makeControlStory(root, storyId);
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-22T09:00:00.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:manifest_evidence_expired"));
+  assert.ok(failures.includes("platform_pack:verdict_evidence_expired"));
+  assert.ok(failures.includes("platform_pack:youtube_shorts:variant_evidence_expired"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects an unrelated decodable MP4 with self-consistent derivation metadata", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-unrelated-media-"));
+  const storyId = "story-platform-unrelated-media";
+  const story = await makeControlStory(root, storyId);
+  const variantPath = path.join(story.artifact_dir, "platform", "youtube-shorts.mp4");
+  const unrelatedBytes = await alternativeFinalMediaFixture();
+  await fs.writeFile(variantPath, unrelatedBytes);
+
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const receipt = manifest.outputs.youtube_shorts.platform_variant_render;
+  manifest.outputs.youtube_shorts.variant_sha256 = sha256(unrelatedBytes);
+  manifest.outputs.youtube_shorts.variant_size_bytes = unrelatedBytes.length;
+  receipt.output_sha256 = sha256(unrelatedBytes);
+  receipt.output_size_bytes = unrelatedBytes.length;
+  receipt.transformation_mode = "transcode";
+  receipt.passthrough_approved = false;
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const scorecardPath = path.join(story.artifact_dir, "platform_variant_scorecard.json");
+  const scorecard = await fs.readJson(scorecardPath);
+  scorecard.variants.youtube_shorts = receipt;
+  await fs.writeJson(scorecardPath, scorecard, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:17.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:youtube_shorts:variant_derivation_unproven"));
   assert.equal(report.stories[0].final_verdict, "RED");
   assert.equal(report.stories[0].can_auto_publish, false);
 });

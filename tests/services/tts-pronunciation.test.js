@@ -351,6 +351,15 @@ test("two-part colon game titles lose the TTS pause without flattening source la
   );
 });
 
+test("explanatory colons remain intact outside game titles", () => {
+  assert.equal(
+    applyGamingPronunciation(
+      "The next Assassin's Creed remake will show which lesson won: improve the original, or keep polishing the past.",
+    ),
+    "The next Assassin's Creed remake will show which lesson won: improve the original, or keep polishing the past.",
+  );
+});
+
 test("canonical game titles lose spoken punctuation without changing surrounding prose", () => {
   assert.equal(
     applyGamingPronunciation(

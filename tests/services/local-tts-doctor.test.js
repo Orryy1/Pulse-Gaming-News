@@ -362,6 +362,110 @@ test("local TTS doctor keeps a crashed offline runtime quarantined before start"
   assert.equal(report.native_crash.detected, true);
 });
 
+test("local TTS doctor preserves native-crash quarantine when a later boot log is empty", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-tts-quarantine-"));
+  const previousCwd = process.cwd();
+  const diagDir = path.join(dir, "tts_server", "diag");
+  const reportDir = path.join(dir, "test", "output");
+  const historicEvidencePath = path.join(diagDir, "faulthandler.crashed.log");
+  const latestEvidencePath = path.join(diagDir, "faulthandler.latest.log");
+  const unreachable = {
+    ok: false,
+    status: "unreachable",
+    phase: "unknown",
+    ready: false,
+    engineCount: 0,
+    voice: { loaded: false, refResolved: false, present: false },
+    reasons: ["health endpoint unreachable"],
+  };
+  let startCount = 0;
+
+  await fs.ensureDir(diagDir);
+  await fs.ensureDir(reportDir);
+  await fs.writeFile(
+    historicEvidencePath,
+    [
+      "Windows fatal exception: access violation",
+      "voxcpm_engine.py",
+      "solve_euler",
+    ].join("\n"),
+    "utf8",
+  );
+  await fs.writeFile(latestEvidencePath, "", "utf8");
+  await fs.writeJson(path.join(diagDir, "boot_state.json"), {
+    phase: "module_imported",
+    faulthandler_log: latestEvidencePath,
+  });
+  await fs.writeJson(path.join(reportDir, "local_tts_doctor.json"), {
+    verdict: "red",
+    action: "quarantine_native_crash",
+    failure_code: "native_inference_access_violation",
+    native_crash: {
+      detected: true,
+      failure_code: "native_inference_access_violation",
+      signature: "Windows fatal exception: access violation",
+      stage: "voxcpm_cuda_inference",
+      evidence_path: historicEvidencePath,
+    },
+  });
+
+  process.chdir(dir);
+  try {
+    const report = await runDoctor({
+      restart: true,
+      prewarm: true,
+      smoke: true,
+      setExitCode: false,
+      writeReport: false,
+      deps: {
+        async fetchLocalTtsHealth() {
+          return unreachable;
+        },
+        classifyLocalTtsDoctorAction(summary, options = {}) {
+          if (summary.status === "unreachable" && options.allowRestart) {
+            return {
+              action: "restart",
+              verdict: "red",
+              reason: "local TTS restart requested",
+            };
+          }
+          return {
+            action: "manual_restart_required",
+            verdict: "red",
+            reason: "local TTS is unreachable",
+          };
+        },
+        classifyLocalTtsHealthFailure() {
+          return { code: "local_tts_unreachable" };
+        },
+        async startLocalTtsServer() {
+          startCount += 1;
+          return {
+            pid: 24684,
+            spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" },
+          };
+        },
+        async waitForLocalTtsHealth() {
+          return unreachable;
+        },
+        async inspectLocalGpuPressure() {
+          return { ok: true, reason: "gpu ok" };
+        },
+      },
+    });
+
+    assert.equal(startCount, 0);
+    assert.equal(report.verdict, "red");
+    assert.equal(report.action, "quarantine_native_crash");
+    assert.equal(report.failure_code, "native_inference_access_violation");
+    assert.equal(report.native_crash.detected, true);
+    assert.equal(report.native_crash.evidence_path, historicEvidencePath);
+  } finally {
+    process.chdir(previousCwd);
+    await fs.remove(dir);
+  }
+});
+
 test("local TTS doctor prewarms an unloaded voice before retrying smoke after restart", async () => {
   let fetchCount = 0;
   let prewarmCount = 0;
@@ -500,6 +604,9 @@ test("local TTS doctor retries once when the first allowed start dies before bin
       },
       async inspectLocalTtsNativeCrash() {
         return { detected: false };
+      },
+      async readPersistedNativeCrash() {
+        return null;
       },
       async startLocalTtsServer() {
         startCount += 1;

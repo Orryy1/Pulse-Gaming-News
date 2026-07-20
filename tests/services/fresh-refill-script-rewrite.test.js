@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const test = require("node:test");
 const fs = require("fs-extra");
 const path = require("node:path");
@@ -10,6 +11,9 @@ const {
   buildFreshRefillViewerScript,
   runFreshRefillScriptRewrite,
 } = require("../../lib/ops/fresh-refill-script-rewrite");
+const {
+  buildFreshRefillScriptRewriteWorkOrder,
+} = require("../../lib/job-handlers");
 const { auditMassAudienceClarity } = require("../../lib/ops/transcript-audience-audit");
 
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -1884,6 +1888,158 @@ test("fresh refill script rewrite dry-run leaves local proof files unchanged", a
   assert.equal(report.items[0].source_evidence.selected_claims.length, 1);
   assert.match(report.items[0].source_evidence.selected_claims[0].text, /Tekken 8.*Bob/i);
   assert.equal(await fs.readFile(manifestPath, "utf8"), before);
+});
+
+test("fresh refill title-only repair preserves approved narration and scopes roundup claims", async () => {
+  const caseRoot = path.join(TEST_ROOT, "title-only-preserves-approved-script");
+  const artifactDir = path.join(caseRoot, "artifact");
+  const workOrderDir = path.join(caseRoot, "work-order");
+  const reportDir = path.join(caseRoot, "report");
+  const sourceUrl =
+    "https://news.xbox.com/en-us/2026/07/17/next-week-on-xbox-new-games-for-july-20-to-24/";
+  const approvedTitle = "Xbox Is Getting A Survival Game Where Your Base Flies";
+  const approvedScript =
+    "Forever Skies solves a familiar survival problem. Your whole base can fly. Xbox Wire says the Deluxe Edition arrives on Xbox Series X and S on July 24. You build, fly and upgrade a high-tech airship above an Earth wrecked by ecological disaster. Then you land, scavenge resources and hunt viruses to cure a mysterious illness. That creates a better question than how big the map is. What happens when your home can leave it? A flying base could spare players from abandoning hours of building just to reach the next useful area. But mobility raises the standard. Its launch will show whether new ruins change the airship, or just refill another crafting list. After each trip home, does your base feel transformed? If it does, Forever Skies could make staying put feel like the risky choice. Follow Pulse Gaming so you never miss a beat.";
+  const claim = (text) => ({
+    text,
+    evidence_text: text,
+    source_url: sourceUrl,
+    origin: "source_body",
+  });
+
+  await fs.remove(caseRoot);
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+    {
+      story_id: "official_forever_skies_xbox_20260717",
+      canonical_subject: "Forever Skies",
+      canonical_game: "Forever Skies",
+      canonical_title: "Forever Skies Has A Source-Proof Risk",
+      selected_title: "Forever Skies Has A Source-Proof Risk",
+      public_title: "Forever Skies Has A Source-Proof Risk",
+      short_title: approvedTitle,
+      title_candidates: [approvedTitle],
+      primary_source: "Xbox Wire",
+      primary_source_url: sourceUrl,
+      narration_script: approvedScript,
+      full_script: approvedScript,
+      tts_script: approvedScript,
+      spoken_narration_script: approvedScript,
+      display_script: approvedScript,
+      caption_display_text: approvedScript,
+      confirmed_claims: [
+        "Forever Skies Deluxe Edition arrives on Xbox Series X|S on July 24.",
+        "Players build, fly, upgrade and customise a high-tech airship.",
+        "Players scavenge resources and hunt viruses to cure a mysterious illness.",
+      ],
+      suggested_thumbnail_text: "YOUR BASE CAN FLY",
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "source_manifest.json"),
+    {
+      primary_source: {
+        name: "Xbox Wire",
+        url: sourceUrl,
+        type: "official_platform_newsroom",
+        published_at: "2026-07-17T12:00:00.000Z",
+      },
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "script_scorecard.json"),
+    { verdict: "viral_ready", blockers: [], failures: [], viral_score: 94 },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+    { outputs: {} },
+    { spaces: 2 },
+  );
+
+  const workOrder = await buildFreshRefillScriptRewriteWorkOrder({
+    quarantinedRows: [
+      {
+        story_id: "official_forever_skies_xbox_20260717",
+        artifact_dir: artifactDir,
+        title: "Forever Skies Has A Source-Proof Risk",
+        reasons: ["feed_title_template_fatigue"],
+      },
+    ],
+    outputDir: workOrderDir,
+    sourceEvidenceFetcher: async () => ({
+      status: "pass",
+      source_url: sourceUrl,
+      source_text_sha256: "d".repeat(64),
+      headline: "Next Week on Xbox: New Games for July 20 to 24",
+      source_text: [
+        "Avatar Legends costs $49.99 and opens pre-orders.",
+        "Planet Builder asks players to build a base and move across new regions.",
+        "Anomaly Hunter arrives on Xbox Series X and S with Play Anywhere on July 24.",
+        "Forever Skies Deluxe Edition arrives on Xbox Series X|S on July 24.",
+        "Build, fly, upgrade and customise your high-tech airship.",
+        "Scavenge resources and hunt viruses to cure a mysterious illness.",
+        "Another game posted a major Steam player spike during early access.",
+        "Sky Colony asks players to build a flying base and hunt for resources.",
+      ].join(" "),
+      claims: [
+        claim("Avatar Legends costs $49.99 and opens pre-orders."),
+        claim("Planet Builder asks players to build a base and move across new regions."),
+        claim("Anomaly Hunter arrives on Xbox Series X and S with Play Anywhere on July 24."),
+        claim("Forever Skies Deluxe Edition arrives on Xbox Series X|S on July 24."),
+        claim("Build, fly, upgrade and customise your high-tech airship."),
+        claim("Scavenge resources and hunt viruses to cure a mysterious illness."),
+        claim("Another game posted a major Steam player spike during early access."),
+        claim("Sky Colony asks players to build a flying base and hunt for resources."),
+      ],
+    }),
+  });
+  const workOrderJson = await fs.readJson(workOrder.workOrderPath);
+  const job = workOrderJson.jobs[0];
+
+  assert.equal(job.repair_lane, "source_bound_title_repair");
+  assert.equal(job.preserve_current_script, true);
+  assert.equal(
+    job.current_script_sha256,
+    createHash("sha256").update(approvedScript).digest("hex"),
+  );
+  assert.ok(job.candidate_titles.includes(approvedTitle));
+  assert.deepEqual(
+    job.source_evidence.claims.map((row) => row.text),
+    [
+      "Forever Skies Deluxe Edition arrives on Xbox Series X|S on July 24.",
+      "Build, fly, upgrade and customise your high-tech airship.",
+      "Scavenge resources and hunt viruses to cure a mysterious illness.",
+    ],
+  );
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath: workOrder.workOrderPath,
+    outDir: reportDir,
+    applyLocal: true,
+  });
+  const manifest = await fs.readJson(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+  );
+  const platform = await fs.readJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+  );
+
+  assert.equal(report.summary.applied_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(report.items[0].new_title, approvedTitle);
+  assert.equal(report.items[0].full_script, approvedScript);
+  assert.equal(manifest.selected_title, approvedTitle);
+  assert.equal(manifest.narration_script, approvedScript);
+  assert.equal(manifest.tts_script, approvedScript);
+  assert.equal(platform.outputs.youtube_shorts.title, approvedTitle);
+  assert.doesNotMatch(
+    `${manifest.selected_title} ${manifest.narration_script}`,
+    /paid crowd|Steam player spike|\$49|cheap wave|watch pile/i,
+  );
 });
 
 test("fresh refill script rewrite story filter applies only the requested story", async () => {

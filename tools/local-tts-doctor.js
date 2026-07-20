@@ -118,6 +118,36 @@ async function writeReport(report) {
   return reportPaths;
 }
 
+async function readPersistedNativeCrash({ cwd = process.cwd() } = {}) {
+  const reportPath = path.join(
+    resolveLocalReadinessOutputDir({ cwd }),
+    "local_tts_doctor.json",
+  );
+  let report = null;
+  try {
+    report = await fs.readJson(reportPath);
+  } catch {
+    return null;
+  }
+
+  const nativeCrash = report?.native_crash;
+  const failureCode =
+    nativeCrash?.failure_code || report?.failure_code || null;
+  if (
+    report?.action !== "quarantine_native_crash" ||
+    nativeCrash?.detected !== true ||
+    failureCode !== "native_inference_access_violation"
+  ) {
+    return null;
+  }
+
+  return {
+    ...nativeCrash,
+    failure_code: failureCode,
+    persisted_from: path.resolve(reportPath),
+  };
+}
+
 async function runDoctor(options = {}) {
   const deps = options.deps || {};
   const fetchHealth = deps.fetchLocalTtsHealth || fetchLocalTtsHealth;
@@ -129,6 +159,8 @@ async function runDoctor(options = {}) {
   const inspectGpu = deps.inspectLocalGpuPressure || inspectLocalGpuPressure;
   const inspectNativeCrash =
     deps.inspectLocalTtsNativeCrash || inspectLocalTtsNativeCrash;
+  const readPersistedCrash =
+    deps.readPersistedNativeCrash || readPersistedNativeCrash;
   const runGenerationSmoke = deps.runGenerationSmoke || runDefaultGenerationSmoke;
   const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
   const baseUrl = process.env.LOCAL_TTS_URL || DEFAULT_LOCAL_TTS_URL;
@@ -137,10 +169,18 @@ async function runDoctor(options = {}) {
     voiceId,
     timeoutMs: Number(process.env.LOCAL_TTS_HEALTH_TIMEOUT_MS || 5000),
   });
-  const preexistingNativeCrash =
-    before?.status === "unreachable"
-      ? await inspectNativeCrash({ cwd: process.cwd(), startedAtMs: 0 })
-      : null;
+  let preexistingNativeCrash = null;
+  if (before?.status === "unreachable") {
+    preexistingNativeCrash = await inspectNativeCrash({
+      cwd: process.cwd(),
+      startedAtMs: 0,
+    });
+    if (preexistingNativeCrash?.detected !== true) {
+      preexistingNativeCrash = await readPersistedCrash({
+        cwd: process.cwd(),
+      });
+    }
+  }
   const nativeCrashQuarantined =
     preexistingNativeCrash?.detected === true &&
     options.forceNativeCrashRetry !== true;

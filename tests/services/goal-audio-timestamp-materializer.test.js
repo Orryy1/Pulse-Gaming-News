@@ -232,6 +232,34 @@ test("audio materializer preserves a professional target cadence while compactin
   assert.equal(result.post_compaction_spoken_wpm, 150);
 });
 
+test("audio materializer tolerates MP3 frame residue at the compacted silence boundary", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-codec-tolerance-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  let silenceProbeCalls = 0;
+
+  const result = await _testables.compactGeneratedNarrationSilence(audioPath, {
+    provider: "elevenlabs",
+    maxSilenceS: 0.75,
+    detectSilencesForAudio: async () => {
+      silenceProbeCalls += 1;
+      return silenceProbeCalls === 1
+        ? [{ start: 4, end: 4.82, duration: 0.82 }]
+        : [{ start: 4, end: 4.759, duration: 0.759 }];
+    },
+    getAudioDuration: async (candidatePath) => (candidatePath === audioPath ? 10 : 9.3),
+    execFileImpl: async (_command, args) => {
+      await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
+      return { stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.remaining_excessive_silence_count, 0);
+  assert.equal(result.verification_tolerance_s, 0.03);
+  assert.equal((await fs.stat(audioPath)).size, 3072);
+});
+
 test("audio materializer rejects a false compaction success when oversized gaps remain", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-silence-verify-"));
   const audioPath = path.join(root, "narration.mp3");
@@ -578,6 +606,43 @@ test("audio materializer compacts pauses inside protected game titles without fl
   assert.match(calls[0].args.join(" "), /atrim=start=1\.150/);
 });
 
+test("audio materializer uses measured waveform silence for protected title cuts", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-title-waveform-pause-"));
+  const audioPath = path.join(root, "narration.mp3");
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  const calls = [];
+
+  const result = await _testables.compactTimestampedNarrationPauses(
+    audioPath,
+    [
+      { word: "Shift", start: 0, end: 0.42 },
+      { word: "At", start: 1.22, end: 1.34 },
+      { word: "Midnight", start: 1.34, end: 1.8 },
+      { word: "has", start: 1.8, end: 2.08 },
+    ],
+    {
+      maxGapS: 99,
+      protectedTitles: ["Shift At Midnight"],
+      maxProtectedTitleGapS: 0.3,
+      protectedTitleGapS: 0.08,
+      detectedSilences: [
+        { start: 0.433, end: 1.552, duration: 1.119 },
+      ],
+      execFileImpl: async (command, args) => {
+        calls.push({ command, args });
+        await fs.outputFile(args.at(-1), Buffer.alloc(3072, 2));
+        return { stdout: "", stderr: "" };
+      },
+    },
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.protected_title_cut_count, 1);
+  assert.equal(result.waveform_bounded_cut_count, 1);
+  assert.match(calls[0].args.join(" "), /atrim=start=0\.000:end=0\.473/);
+  assert.match(calls[0].args.join(" "), /atrim=start=1\.512/);
+});
+
 test("audio materializer detects a protected game-title pause independently of sentence cadence", () => {
   const reasons = _testables.protectedTitlePauseReasons(
     {
@@ -608,6 +673,64 @@ test("audio materializer accepts a bounded natural gap inside a protected game t
   );
 
   assert.deepEqual(reasons, []);
+});
+
+test("audio materializer trims Whisper word spans away from measured silence", () => {
+  const result = _testables.repairTimestampMaskedSilenceSpans(
+    [
+      { word: "24th.", start: 10.46, end: 11.68 },
+      { word: "You", start: 11.68, end: 11.8 },
+      { word: "it?", start: 28.28, end: 28.48 },
+      { word: "A", start: 28.48, end: 29.32 },
+      { word: "flying", start: 29.32, end: 29.7 },
+    ],
+    [
+      {
+        word: "24th.",
+        word_start_seconds: 10.46,
+        word_end_seconds: 11.68,
+        silence_start_seconds: 11.182,
+        silence_end_seconds: 11.689,
+      },
+      {
+        word: "A",
+        word_start_seconds: 28.48,
+        word_end_seconds: 29.32,
+        silence_start_seconds: 28.5,
+        silence_end_seconds: 29.243,
+      },
+    ],
+  );
+
+  assert.equal(result.repaired, true);
+  assert.equal(result.repaired_word_count, 2);
+  assert.equal(result.words[0].end, 11.182);
+  assert.equal(result.words[3].start, 29.243);
+  assert.equal(result.words[1].start, 11.68);
+  assert.equal(result.words[4].start, 29.32);
+});
+
+test("audio materializer does not guess which side owns an ambiguous masked word span", () => {
+  const result = _testables.repairTimestampMaskedSilenceSpans(
+    [
+      { word: "Follow", start: 1.95, end: 2.55 },
+    ],
+    [
+      {
+        word: "Follow",
+        word_start_seconds: 1.95,
+        word_end_seconds: 2.55,
+        silence_start_seconds: 2,
+        silence_end_seconds: 2.5,
+      },
+    ],
+  );
+
+  assert.equal(result.repaired, false);
+  assert.equal(result.repaired_word_count, 0);
+  assert.deepEqual(result.words, [
+    { word: "Follow", start: 1.95, end: 2.55 },
+  ]);
 });
 
 test("audio materializer repairs aligned cadence before promoting generated narration", async () => {
@@ -6853,6 +6976,68 @@ test("goal audio materializer blocks protected game-title ASR substitution befor
     report.jobs[0].timestamp_whisper_alignment.actual_phrase,
     /Arknights Enfield/i,
   );
+});
+
+test("goal audio materializer repairs provider title pauses before global compaction and Whisper", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-provider-title-pause-"));
+  const narration =
+    "Shift At Midnight has one awful problem. Follow Pulse Gaming so you never miss a beat.";
+  const artifactDir = await makePackage(root, "story-provider-title-pause", {
+    canonical_game: "Shift At Midnight",
+    canonical_subject: "Shift At Midnight",
+    selected_title: "Shift At Midnight Turns The Night Shift Into Horror",
+    narration_script: narration,
+  });
+  const events = [];
+
+  const report = await materializeGoalAudioTimestamps({
+    workspaceRoot: root,
+    provider: "elevenlabs",
+    workbenchReport: {
+      elevenlabs_tts: { verdict: "green", ready: true },
+      jobs: [workbenchJob("story-provider-title-pause", artifactDir)],
+    },
+    generatedAt: "2026-07-20T08:00:00.000Z",
+    alignmentMode: "whisper",
+    compactTimestampedNarrationPauses: async (_audioPath, _words, options) => {
+      events.push(options.maxGapS > 10 ? "provider-title" : "aligned");
+      return { repaired: false, reason: "test_noop" };
+    },
+    compactGeneratedNarrationSilence: async () => {
+      events.push("global");
+      return { repaired: false, reason: "test_noop" };
+    },
+    alignWordsWithAudio: async () => {
+      events.push("whisper");
+      return {
+        ok: true,
+        source: "local_whisper_word_alignment",
+        model: "small.en",
+        transcript: narration,
+        words: whisperWordsFromScript(narration),
+      };
+    },
+    generateTtsForStory: async ({ text, outputPath }) => {
+      const audioPath = path.join(root, outputPath);
+      await fs.outputFile(audioPath, Buffer.alloc(4096, 1));
+      const providerWords = whisperWordsFromScript(text).map((word, index) =>
+        index === 0
+          ? word
+          : {
+              ...word,
+              start: Number((word.start + 0.8).toFixed(2)),
+              end: Number((word.end + 0.8).toFixed(2)),
+            },
+      );
+      await fs.outputJson(path.join(root, outputPath.replace(/\.mp3$/i, "_timestamps.json")), {
+        words: providerWords,
+      });
+      return { ok: true };
+    },
+  });
+
+  assert.equal(report.summary.materialized_count, 1, JSON.stringify(report.jobs[0]));
+  assert.deepEqual(events.slice(0, 3), ["provider-title", "global", "whisper"]);
 });
 
 test("normaliseTimestampFile accepts exact split or merged protected title words", async () => {

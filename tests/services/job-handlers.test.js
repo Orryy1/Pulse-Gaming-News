@@ -234,7 +234,7 @@ test("fresh refill script work orders attach official source claims before rewri
   assert.equal(workOrder.jobs[0].source_evidence.source_text_sha256, "a".repeat(64));
 });
 
-test("fresh refill routes feed title template fatigue into source-bound rewrite before render repair", async () => {
+test("fresh refill routes title-only fatigue into a hash-bound title repair before render repair", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-title-fatigue-"));
   const artifactDir = path.join(tmp, "rss_arknights");
   const outputDir = path.join(tmp, "repair");
@@ -288,7 +288,18 @@ test("fresh refill routes feed title template fatigue into source-bound rewrite 
   assert.deepEqual(filtered.quarantinedRows[0].reasons, ["feed_title_template_fatigue"]);
   assert.equal(workOrder.jobs.length, 1);
   assert.deepEqual(workOrder.jobs[0].reasons, ["feed_title_template_fatigue"]);
-  assert.equal(workOrder.jobs[0].repair_lane, "source_bound_script_rewrite");
+  assert.equal(workOrder.jobs[0].repair_lane, "source_bound_title_repair");
+  assert.equal(workOrder.jobs[0].preserve_current_script, true);
+  assert.equal(workOrder.jobs[0].current_script, [
+    "Arknights: Endfield just gave PS5 Pro owners a before-and-after test.",
+    "Follow Pulse Gaming so you never miss a beat.",
+  ].join(" "));
+  assert.match(workOrder.jobs[0].current_script_sha256, /^[a-f0-9]{64}$/);
+  assert.ok(
+    workOrder.jobs[0].candidate_titles.includes(
+      "Arknights: Endfield's PS5 Pro Upgrade Has A Real Test",
+    ),
+  );
 });
 
 test("fresh refill source evidence preserves official YouTube watch references as reference-only sources", async () => {

@@ -318,6 +318,15 @@ test("cleanForTTS: reads protected game titles continuously regardless of punctu
   );
 });
 
+test("cleanForTTS: preserves explanatory colons outside game titles", () => {
+  assert.equal(
+    cleanForTTS(
+      "The next Assassin's Creed remake will show which lesson won: improve the original, or keep polishing the past.",
+    ),
+    "The next Assassin's Creed remake will show which lesson won: improve the original, or keep polishing the past.",
+  );
+});
+
 test("cleanForTTS: removes hyphen pause from Gears of War E-Day while keeping the title together", () => {
   assert.equal(
     cleanForTTS("Gears of War E-Day finally has new footage."),

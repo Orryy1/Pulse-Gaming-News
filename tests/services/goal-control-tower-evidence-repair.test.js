@@ -222,6 +222,43 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     evidence_size_bytes: narrationEvidenceBytes.length,
     risk_score: 0.05,
   });
+  const platformVariants = {};
+  for (const platform of ["youtube_shorts", "instagram_reels", "facebook_reels"]) {
+    const variantRelativePath = `platform/${platform}.mp4`;
+    const variantPath = path.join(artifactDir, variantRelativePath);
+    const evidenceRelativePath = `rights/platform-native-${platform}.json`;
+    const evidencePath = path.join(artifactDir, evidenceRelativePath);
+    await fs.outputFile(variantPath, finalMediaFixture.finalMediaBytes);
+    await fs.outputJson(evidencePath, {
+      asset_id: `platform-native-${platform}`,
+      decision: "approved_for_platform_native_transcode",
+      source_render_sha256: sha256(finalMediaFixture.finalMediaBytes),
+    }, { spaces: 2 });
+    const evidenceBytes = await fs.readFile(evidencePath);
+    rightsRecords.push({
+      asset_id: `platform-native-${platform}`,
+      path: variantRelativePath,
+      source_type: "platform_native_derivative",
+      source_owner: "Pulse Gaming",
+      licence_basis: "derived_platform_variant_of_fully_rights_covered_final_render",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      evidence_file: evidenceRelativePath,
+      approval_status: "approved_for_platform_native_transcode",
+      verdict: "GREEN",
+      asset_sha256: sha256(finalMediaFixture.finalMediaBytes),
+      asset_size_bytes: finalMediaFixture.finalMediaBytes.length,
+      evidence_sha256: sha256(evidenceBytes),
+      evidence_size_bytes: evidenceBytes.length,
+      risk_score: 0.05,
+    });
+    platformVariants[platform] = {
+      variant_video_path: variantRelativePath,
+      variant_sha256: sha256(finalMediaFixture.finalMediaBytes),
+      variant_size_bytes: finalMediaFixture.finalMediaBytes.length,
+      source_render_sha256: sha256(finalMediaFixture.finalMediaBytes),
+    };
+  }
   await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), canonical);
   await fs.writeJson(path.join(artifactDir, "claim_inventory.json"), {
     schema_version: 1,
@@ -264,13 +301,15 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     readiness: { status: "director_ready", blockers: [] },
     shot_plan: [{ id: "hook", kind: "motion_clip" }],
   });
-  const rendererSelectedAssets = rightsRecords.map((record) => ({
-    asset_id: record.asset_id,
-    kind: record.source_type === "governed_narration_audio" ? "narration" : "video",
-    path: path.resolve(artifactDir, record.path),
-    asset_sha256: record.asset_sha256,
-    asset_size_bytes: record.asset_size_bytes,
-  }));
+  const rendererSelectedAssets = rightsRecords
+    .filter((record) => record.source_type !== "platform_native_derivative")
+    .map((record) => ({
+      asset_id: record.asset_id,
+      kind: record.source_type === "governed_narration_audio" ? "narration" : "video",
+      path: path.resolve(artifactDir, record.path),
+      asset_sha256: record.asset_sha256,
+      asset_size_bytes: record.asset_size_bytes,
+    }));
   await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
     story_id: storyId,
     final_publish_render: true,
@@ -362,10 +401,20 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
   await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     publish_status: "GREEN",
     can_auto_publish: true,
+    enabled_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
     outputs: {
-      youtube_shorts: { title: "Hellraiser: Revival's October Date Is A Risk" },
-      instagram_reels: { caption: "Hellraiser: Revival picked October 8. Source: Eurogamer." },
-      facebook_reels: { page_caption: "Hellraiser: Revival picked October 8. Source: Eurogamer." },
+      youtube_shorts: {
+        title: "Hellraiser: Revival's October Date Is A Risk",
+        ...platformVariants.youtube_shorts,
+      },
+      instagram_reels: {
+        caption: "Hellraiser: Revival picked October 8. Source: Eurogamer.",
+        ...platformVariants.instagram_reels,
+      },
+      facebook_reels: {
+        page_caption: "Hellraiser: Revival picked October 8. Source: Eurogamer.",
+        ...platformVariants.facebook_reels,
+      },
     },
     platform_native_evidence: { verdict: "pass", platforms: [{ platform: "youtube_shorts", status: "pass" }] },
   });

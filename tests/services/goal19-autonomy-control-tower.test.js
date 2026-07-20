@@ -222,6 +222,12 @@ async function makeControlStory(root, storyId, overrides = {}) {
   if (overrides.finalMedia !== false) {
     await fs.writeFile(finalMp4Path, finalMediaFixture.finalMediaBytes);
   }
+  const defaultPlatformVariantPath = path.join(
+    artifactDir,
+    "platform",
+    "youtube-shorts.mp4",
+  );
+  await fs.outputFile(defaultPlatformVariantPath, finalMediaFixture.finalMediaBytes);
   const canonical = {
     story_id: storyId,
     selected_title: "Forza Horizon 6 Shows Real Footage",
@@ -285,6 +291,17 @@ async function makeControlStory(root, storyId, overrides = {}) {
     ...(footageInventory.motion_clips || []),
     ...(footageInventory.motion_assets || []),
   ];
+  const defaultPlatformVariantRightsRecord = {
+    asset_id: "platform-native-youtube_shorts",
+    kind: "platform_native",
+    path: defaultPlatformVariantPath,
+    licence_basis: "derived_platform_variant_of_fully_rights_covered_final_render",
+    allowed_platforms: ["youtube_shorts"],
+    commercial_use_allowed: true,
+    evidence_file: "rights/platform-native-youtube-shorts.json",
+    approval_status: "approved_for_platform_native_transcode",
+    verdict: "GREEN",
+  };
   const defaultRightsLedger = {
     verdict: "pass",
     failures: [],
@@ -305,9 +322,20 @@ async function makeControlStory(root, storyId, overrides = {}) {
         risk_score: 0.1,
       })),
       narrationRightsRecord(storyId),
+      defaultPlatformVariantRightsRecord,
     ],
   };
-  const rightsLedger = overrides.rightsLedger || defaultRightsLedger;
+  const rightsLedger = overrides.rightsLedger
+    ? {
+        ...overrides.rightsLedger,
+        records: [
+          ...(Array.isArray(overrides.rightsLedger.records)
+            ? overrides.rightsLedger.records
+            : []),
+          defaultPlatformVariantRightsRecord,
+        ],
+      }
+    : defaultRightsLedger;
   if (overrides.materialiseRightsEvidence !== false) {
     await materialiseRightsFixture(artifactDir, rightsLedger);
   }
@@ -401,12 +429,18 @@ async function makeControlStory(root, storyId, overrides = {}) {
     disclosure_copy: { short: "Affiliate links may earn us a commission." },
     failures: [],
   });
-  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), overrides.platformManifest || {
+  const defaultPlatformManifest = {
     publish_status: "GREEN",
     can_auto_publish: true,
+    enabled_platforms: ["youtube_shorts"],
     outputs: {
-      youtube_shorts: { title: "Forza Horizon 6 Shows Real Footage" },
-      tiktok: { caption: "Source: Xbox." },
+      youtube_shorts: {
+        title: "Forza Horizon 6 Shows Real Footage",
+        variant_video_path: defaultPlatformVariantPath,
+        variant_sha256: sha256(finalMediaFixture.finalMediaBytes),
+        variant_size_bytes: finalMediaFixture.finalMediaBytes.length,
+        source_render_sha256: sha256(finalMediaFixture.finalMediaBytes),
+      },
     },
     governance_gates: {
       public_output_coherence_gate: passGate(),
@@ -417,7 +451,11 @@ async function makeControlStory(root, storyId, overrides = {}) {
       anti_spam_uniqueness_gate: passGate(),
       finance_crypto_firewall: passGate(),
     },
-  });
+  };
+  await fs.outputJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+    overrides.platformManifest || defaultPlatformManifest,
+  );
   await fs.outputJson(path.join(artifactDir, "analytics_ingest_plan.json"), overrides.analyticsRisk || {
     dry_run_only: true,
     risk_status: "clear",
@@ -1264,7 +1302,7 @@ test("Goal 19 rejects a bare passing rights verdict without used-asset records",
   assert.equal(report.verdict, "BLOCKED");
   assert.equal(report.stories[0].final_verdict, "RED");
   assert.equal(report.stories[0].control_inputs.rights_ledger.status, "fail");
-  assert.equal(report.stories[0].control_inputs.rights_ledger.evidence.rights_record_count, 0);
+  assert.equal(report.stories[0].control_inputs.rights_ledger.evidence.rights_record_count, 1);
   assert.ok(report.stories[0].blockers.includes("control:rights_ledger_not_pass"));
 });
 
@@ -1377,8 +1415,8 @@ test("Goal 19 rejects rights records that do not cover every used motion asset",
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(report.stories[0].final_verdict, "RED");
   assert.equal(rights.status, "fail");
-  assert.equal(rights.evidence.used_asset_count, 2);
-  assert.equal(rights.evidence.matched_asset_count, 0);
+  assert.equal(rights.evidence.used_asset_count, 3);
+  assert.equal(rights.evidence.matched_asset_count, 1);
   assert.deepEqual(rights.evidence.missing_asset_ids, [
     "used-clip",
     "story-incomplete-rights_audio_path",
@@ -1726,8 +1764,8 @@ test("Goal 19 does not reuse one rights record for two used assets sharing a sou
 
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(rights.status, "fail");
-  assert.equal(rights.evidence.used_asset_count, 3);
-  assert.equal(rights.evidence.matched_asset_count, 2);
+  assert.equal(rights.evidence.used_asset_count, 4);
+  assert.equal(rights.evidence.matched_asset_count, 3);
   assert.deepEqual(rights.evidence.missing_asset_ids, ["clip-two"]);
   assert.equal(report.stories[0].final_verdict, "RED");
 });
@@ -1774,8 +1812,8 @@ test("Goal 19 deduplicates the same logical rights row across ledger aliases", a
 
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(rights.status, "fail");
-  assert.equal(rights.evidence.rights_record_count, 2);
-  assert.equal(rights.evidence.matched_asset_count, 2);
+  assert.equal(rights.evidence.rights_record_count, 3);
+  assert.equal(rights.evidence.matched_asset_count, 3);
   assert.deepEqual(rights.evidence.missing_asset_ids, ["clip-two"]);
   assert.equal(report.stories[0].final_verdict, "RED");
 });
@@ -1804,8 +1842,8 @@ test("Goal 19 requires rights coverage for clips selected by the final render", 
 
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(rights.status, "fail");
-  assert.equal(rights.evidence.used_asset_count, 1);
-  assert.equal(rights.evidence.matched_asset_count, 0);
+  assert.equal(rights.evidence.used_asset_count, 2);
+  assert.equal(rights.evidence.matched_asset_count, 1);
   assert.deepEqual(rights.evidence.missing_asset_ids, ["render_scene_1"]);
   assert.equal(report.stories[0].final_verdict, "RED");
 });
@@ -1835,8 +1873,8 @@ test("Goal 19 requires rights coverage for narration selected by the final rende
 
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(rights.status, "fail");
-  assert.equal(rights.evidence.used_asset_count, 3);
-  assert.equal(rights.evidence.matched_asset_count, 2);
+  assert.equal(rights.evidence.used_asset_count, 4);
+  assert.equal(rights.evidence.matched_asset_count, 3);
   assert.deepEqual(rights.evidence.missing_asset_ids, ["final_narration_audio"]);
   assert.equal(report.stories[0].final_verdict, "RED");
 });
@@ -1865,8 +1903,8 @@ test("Goal 19 requires rights coverage for SFX selected for the final mix", asyn
 
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(rights.status, "fail");
-  assert.equal(rights.evidence.used_asset_count, 4);
-  assert.equal(rights.evidence.matched_asset_count, 3);
+  assert.equal(rights.evidence.used_asset_count, 5);
+  assert.equal(rights.evidence.matched_asset_count, 4);
   assert.deepEqual(rights.evidence.missing_asset_ids, ["licensed-impact"]);
   assert.equal(report.stories[0].final_verdict, "RED");
 });
@@ -2077,8 +2115,8 @@ test("Goal 19 does not treat unselected rights inventory as final-render usage",
 
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(rights.status, "pass");
-  assert.equal(rights.evidence.used_asset_count, 3);
-  assert.equal(rights.evidence.matched_asset_count, 3);
+  assert.equal(rights.evidence.used_asset_count, 4);
+  assert.equal(rights.evidence.matched_asset_count, 4);
   assert.deepEqual(rights.evidence.missing_asset_ids, []);
 });
 
@@ -2107,7 +2145,7 @@ test("Goal 19 ignores unrendered SFX alternatives when renderer inputs are autho
   const rights = report.stories[0].control_inputs.rights_ledger;
   assert.equal(rights.status, "pass");
   assert.deepEqual(rights.evidence.missing_asset_ids, []);
-  assert.equal(rights.evidence.used_asset_count, 3);
+  assert.equal(rights.evidence.used_asset_count, 4);
 });
 
 test("Goal 19 rejects a rights ledger whose declared used assets exceed the authoritative renderer inputs", async () => {
@@ -2724,6 +2762,139 @@ test("Goal 19 does not let a GREEN platform manifest mask an authoritative RED p
   assert.equal(report.stories[0].can_auto_publish, false);
   assert.equal(report.stories[0].control_inputs.platform_pack.status, "fail");
   assert.ok(report.stories[0].blockers.includes("control:platform_pack_not_green"));
+});
+
+test("Goal 19 rejects metadata-only outputs for an enabled platform", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-metadata-only-"));
+  const storyId = "story-platform-metadata-only";
+  const story = await makeControlStory(root, storyId, {
+    platformManifest: {
+      publish_status: "GREEN",
+      can_auto_publish: true,
+      enabled_platforms: ["youtube_shorts"],
+      outputs: {
+        youtube_shorts: {
+          title: "Forza Horizon 6 Shows Real Footage",
+          description: "The platform package contains metadata but no native video.",
+        },
+      },
+      governance_gates: {
+        public_output_coherence_gate: passGate(),
+        rights_ledger: passGate(),
+        platform_policy_gate: passGate(),
+        affiliate_disclosure_gate: passGate(),
+        reused_content_risk_gate: passGate(),
+        anti_spam_uniqueness_gate: passGate(),
+        finance_crypto_firewall: passGate(),
+      },
+    },
+  });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:00.000Z",
+  });
+
+  const result = report.stories[0];
+  assert.equal(result.control_inputs.platform_pack.status, "fail");
+  assert.ok(
+    result.control_inputs.platform_pack.evidence.failures.includes(
+      "platform_pack:youtube_shorts:variant_path_missing",
+    ),
+  );
+  assert.equal(result.final_verdict, "RED");
+  assert.equal(result.can_auto_publish, false);
+});
+
+test("Goal 19 rejects an unreadable platform-native variant even when its hashes match", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-corrupt-"));
+  const storyId = "story-platform-corrupt";
+  const story = await makeControlStory(root, storyId);
+  const artifactDir = story.artifact_dir;
+  const variantPath = path.join(artifactDir, "platform", "youtube-shorts.mp4");
+  const corruptBytes = Buffer.from("not a decodable video");
+  await fs.outputFile(variantPath, corruptBytes);
+  const renderManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
+  const finalRenderBytes = await fs.readFile(renderManifest.output_path);
+  const platformManifest = await fs.readJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+  );
+  platformManifest.enabled_platforms = ["youtube_shorts"];
+  platformManifest.outputs = {
+    youtube_shorts: {
+      title: "Forza Horizon 6 Shows Real Footage",
+      variant_video_path: variantPath,
+      variant_sha256: sha256(corruptBytes),
+      variant_size_bytes: corruptBytes.length,
+      source_render_sha256: sha256(finalRenderBytes),
+    },
+  };
+  await fs.writeJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+    platformManifest,
+    { spaces: 2 },
+  );
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:01:00.000Z",
+  });
+
+  const platformPack = report.stories[0].control_inputs.platform_pack;
+  assert.equal(platformPack.status, "fail");
+  assert.ok(
+    platformPack.evidence.failures.some((failure) =>
+      failure.startsWith("platform_pack:youtube_shorts:variant_not_decodable")),
+  );
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a stale platform-native fingerprint or source-render binding", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-stale-"));
+  const storyId = "story-platform-stale";
+  const story = await makeControlStory(root, storyId);
+  const artifactDir = story.artifact_dir;
+  const variantPath = path.join(artifactDir, "platform", "youtube-shorts.mp4");
+  const finalRender = await fs.readFile(path.join(artifactDir, "visual_v4_render.mp4"));
+  await fs.outputFile(variantPath, finalRender);
+  const platformManifest = await fs.readJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+  );
+  platformManifest.enabled_platforms = ["youtube_shorts"];
+  platformManifest.outputs = {
+    youtube_shorts: {
+      title: "Forza Horizon 6 Shows Real Footage",
+      variant_video_path: variantPath,
+      variant_sha256: "0".repeat(64),
+      variant_size_bytes: finalRender.length,
+      source_render_sha256: "f".repeat(64),
+    },
+  };
+  await fs.writeJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+    platformManifest,
+    { spaces: 2 },
+  );
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:02:00.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:youtube_shorts:variant_hash_mismatch"));
+  assert.ok(failures.includes("platform_pack:youtube_shorts:source_render_hash_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
 });
 
 test("Goal 19 keeps a critical final_verdict AMBER when status also says ready", async () => {

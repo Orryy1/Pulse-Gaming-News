@@ -429,6 +429,7 @@ test("platform variant materializer refreshes stale variant captions without rer
         technical_duration_seconds: 39.2,
         platform_variant_render: {
           status: "ready",
+          story_id: "ig-caption-refresh",
           platform: "instagram_reels",
           encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
           source_video_path: path.join(artifactDir, "visual_v4_render.mp4"),

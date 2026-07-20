@@ -312,6 +312,8 @@ async function makeControlTowerPackage(root, storyId = "story-ready") {
     }));
   await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
     story_id: storyId,
+    run_id: `render-run-${storyId}`,
+    generated_at: "2026-06-22T02:09:00.000Z",
     final_publish_render: true,
     output: "visual_v4_render.mp4",
     quality_gate_status: "pass",

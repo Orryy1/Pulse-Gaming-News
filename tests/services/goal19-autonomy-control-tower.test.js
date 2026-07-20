@@ -216,6 +216,9 @@ async function validFinalMediaFixture() {
 
 async function makeControlStory(root, storyId, overrides = {}) {
   const artifactDir = path.join(root, storyId);
+  const renderRunId = `render-run-${storyId}`;
+  const renderGeneratedAt = "2026-07-20T08:00:00.000Z";
+  const platformGeneratedAt = "2026-07-20T08:05:00.000Z";
   await fs.ensureDir(artifactDir);
   const finalMp4Path = path.join(artifactDir, "visual_v4_render.mp4");
   const finalMediaFixture = await validFinalMediaFixture();
@@ -360,6 +363,8 @@ async function makeControlStory(root, storyId, overrides = {}) {
   });
   await fs.outputJson(path.join(artifactDir, "render_manifest.json"), overrides.renderManifest || {
     story_id: storyId,
+    run_id: renderRunId,
+    generated_at: renderGeneratedAt,
     final_publish_render: true,
     output_path: finalMp4Path,
     quality_gate_status: "pass",
@@ -430,6 +435,8 @@ async function makeControlStory(root, storyId, overrides = {}) {
     failures: [],
   });
   const defaultPlatformManifest = {
+    story_id: storyId,
+    generated_at: platformGeneratedAt,
     publish_status: "GREEN",
     can_auto_publish: true,
     enabled_platforms: ["youtube_shorts"],
@@ -440,6 +447,9 @@ async function makeControlStory(root, storyId, overrides = {}) {
         variant_sha256: sha256(finalMediaFixture.finalMediaBytes),
         variant_size_bytes: finalMediaFixture.finalMediaBytes.length,
         source_render_sha256: sha256(finalMediaFixture.finalMediaBytes),
+        story_id: storyId,
+        generated_at: platformGeneratedAt,
+        source_render_run_id: renderRunId,
       },
     },
     governance_gates: {
@@ -2893,6 +2903,103 @@ test("Goal 19 rejects a stale platform-native fingerprint or source-render bindi
   const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
   assert.ok(failures.includes("platform_pack:youtube_shorts:variant_hash_mismatch"));
   assert.ok(failures.includes("platform_pack:youtube_shorts:source_render_hash_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a platform-native variant bound to a different story", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-cross-story-"));
+  const storyId = "story-platform-cross-story";
+  const story = await makeControlStory(root, storyId);
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(manifestPath);
+  platformManifest.story_id = "another-story";
+  platformManifest.outputs.youtube_shorts.story_id = "another-story";
+  await fs.writeJson(manifestPath, platformManifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:02:30.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:manifest_story_id_mismatch"));
+  assert.ok(failures.includes("platform_pack:youtube_shorts:variant_story_id_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a platform-native variant older than its current render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-old-generation-"));
+  const storyId = "story-platform-old-generation";
+  const story = await makeControlStory(root, storyId);
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(manifestPath);
+  platformManifest.generated_at = "2026-07-20T07:59:59.000Z";
+  platformManifest.outputs.youtube_shorts.generated_at = "2026-07-20T07:59:59.000Z";
+  await fs.writeJson(manifestPath, platformManifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:02:40.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:manifest_generated_before_render"));
+  assert.ok(failures.includes("platform_pack:youtube_shorts:variant_generated_before_render"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a platform-native variant from a different render run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-run-mismatch-"));
+  const storyId = "story-platform-run-mismatch";
+  const story = await makeControlStory(root, storyId);
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(manifestPath);
+  platformManifest.outputs.youtube_shorts.source_render_run_id = "old-render-run";
+  await fs.writeJson(manifestPath, platformManifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:02:50.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:youtube_shorts:source_render_run_id_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 requires an exact output key for an explicitly enabled platform", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-exact-key-"));
+  const storyId = "story-platform-exact-key";
+  const story = await makeControlStory(root, storyId);
+  const manifestPath = path.join(story.artifact_dir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(manifestPath);
+  platformManifest.outputs.youtube = platformManifest.outputs.youtube_shorts;
+  delete platformManifest.outputs.youtube_shorts;
+  await fs.writeJson(manifestPath, platformManifest, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:02:55.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.platform_pack.evidence.failures;
+  assert.ok(failures.includes("platform_pack:youtube_shorts:variant_path_missing"));
   assert.equal(report.stories[0].final_verdict, "RED");
   assert.equal(report.stories[0].can_auto_publish, false);
 });

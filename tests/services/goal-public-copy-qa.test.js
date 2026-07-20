@@ -872,6 +872,37 @@ test("goal public copy QA allows currency pronunciation-only TTS differences", (
   assert.ok(!report.failures.includes("public_copy:tts_script_diverges_from_narration"));
 });
 
+test("goal public copy QA allows the Resynced title pronunciation alias", () => {
+  const narration =
+    "Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
+    "Steam lists them at $84.91 combined. Follow Pulse Gaming so you never miss a beat.";
+  const common = {
+    canonical_subject: "Black Flag Resynced",
+    selected_title: "Black Flag Resynced DLC Costs More Than The Game",
+    first_spoken_line: "Black Flag Resynced has nine day-one DLC packs costing more than the game.",
+    narration_script: narration,
+    full_script: narration,
+    description: "Steam lists nine launch-day Black Flag Resynced DLC packs. Source: Steam.",
+    primary_source: "Steam",
+  };
+
+  const pronunciationOnly = evaluateGoalPublicCopy({
+    ...common,
+    tts_script:
+      "Black Flag reesynced has nine day one DLC packs costing more than the game. " +
+      "Steam lists them at 84 dollars 91 combined. Follow Pulse Gaming so you never miss a beat.",
+  });
+  assert.ok(!pronunciationOnly.failures.includes("public_copy:tts_script_diverges_from_narration"));
+
+  const changedClaim = evaluateGoalPublicCopy({
+    ...common,
+    tts_script:
+      "Black Flag reesynced has ten day one DLC packs costing more than the game. " +
+      "Steam lists them at 84 dollars 91 combined. Follow Pulse Gaming so you never miss a beat.",
+  });
+  assert.ok(changedClaim.failures.includes("public_copy:tts_script_diverges_from_narration"));
+});
+
 test("goal public copy QA allows spoken-only cadence punctuation without allowing word drift", () => {
   const narration =
     "Albion Online's event is temporary. Xbox Wire says its Keeper Memories remain. Follow Pulse Gaming so you never miss a beat.";

@@ -11,13 +11,36 @@ const { promisify } = require("node:util");
 
 const {
   REQUIRED_CONTROL_INPUTS,
-  buildGoal19AutonomyControlTower,
+  buildGoal19AutonomyControlTower: buildGoal19AutonomyControlTowerRaw,
   writeGoal19AutonomyControlTower,
 } = require("../../lib/goal19-autonomy-control-tower");
 const { fingerprintFile } = require("../../lib/human-review-artefact-fingerprints");
 
 function passGate(extra = {}) {
   return { verdict: "pass", failures: [], warnings: [], ...extra };
+}
+
+function platformAuthority(enabledPlatforms = ["youtube_shorts"]) {
+  return {
+    schema_version: 1,
+    generated_at: "2026-07-20T08:30:00.000Z",
+    platforms: Object.fromEntries(
+      enabledPlatforms.map((platform) => [
+        platform,
+        {
+          platform,
+          operational_state: "enabled",
+        },
+      ]),
+    ),
+  };
+}
+
+function buildGoal19AutonomyControlTower(options = {}) {
+  return buildGoal19AutonomyControlTowerRaw({
+    platformStatusMatrix: platformAuthority(),
+    ...options,
+  });
 }
 
 function narrationRightsRecord(storyId, allowedPlatforms = ["youtube_shorts", "tiktok"]) {
@@ -2962,6 +2985,58 @@ test("Goal 19 rejects metadata-only outputs for an enabled platform", async () =
   assert.equal(result.can_auto_publish, false);
 });
 
+test("Goal 19 rejects a package that omits a platform enabled by independent authority", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-authority-gap-"));
+  const storyId = "story-platform-authority-gap";
+  const story = await makeControlStory(root, storyId);
+
+  const report = await buildGoal19AutonomyControlTowerRaw({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    platformStatusMatrix: platformAuthority(["youtube_shorts", "instagram_reels"]),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:30.000Z",
+  });
+
+  const platformPack = report.stories[0].control_inputs.platform_pack;
+  assert.equal(platformPack.status, "fail");
+  assert.ok(
+    platformPack.evidence.failures.includes(
+      "platform_pack:enabled_platform_missing_from_manifest:instagram_reels",
+    ),
+  );
+  assert.ok(
+    platformPack.evidence.failures.includes(
+      "platform_pack:instagram_reels:variant_path_missing",
+    ),
+  );
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 fails closed when independent enabled-platform authority is absent", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-authority-missing-"));
+  const storyId = "story-platform-authority-missing";
+  const story = await makeControlStory(root, storyId);
+
+  const report = await buildGoal19AutonomyControlTowerRaw({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:40.000Z",
+  });
+
+  const platformPack = report.stories[0].control_inputs.platform_pack;
+  assert.equal(platformPack.status, "fail");
+  assert.ok(
+    platformPack.evidence.failures.includes("platform_pack:enabled_platform_authority_missing"),
+  );
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
 test("Goal 19 rejects an unreadable platform-native variant even when its hashes match", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-platform-corrupt-"));
   const storyId = "story-platform-corrupt";
@@ -3156,7 +3231,7 @@ test("Goal 19 does not require metadata-only derivatives for deferred platforms"
     "platform_publish_manifest.json",
   );
   const platformManifest = await fs.readJson(platformManifestPath);
-  delete platformManifest.enabled_platforms;
+  platformManifest.enabled_platforms = ["youtube_shorts"];
   platformManifest.outputs.tiktok = {
     caption: "Prepared derivative metadata; platform remains deferred.",
   };
@@ -3175,7 +3250,7 @@ test("Goal 19 does not require metadata-only derivatives for deferred platforms"
   assert.equal(platformPack.evidence.required_platform_count, 1);
   assert.deepEqual(
     platformPack.evidence.variants.map((variant) => variant.platform),
-    ["youtube"],
+    ["youtube_shorts"],
   );
   assert.equal(report.stories[0].final_verdict, "GREEN");
 });

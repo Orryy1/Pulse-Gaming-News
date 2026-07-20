@@ -20,6 +20,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     storyPackagesPath: path.join(ROOT, "output", "goal-contract", "story-packages.json"),
     upstreamFirewallReportPath: path.join(ROOT, "output", "goal-18", "goal18_readiness_report.json"),
+    platformStatusMatrixPath: path.join(ROOT, "output", "goal-contract", "platform_status_matrix.json"),
     outDir: path.join(ROOT, "output", "goal-19"),
     workspaceRoot: ROOT,
     generatedAt: null,
@@ -30,6 +31,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     const arg = argv[index];
     if (arg === "--story-packages") args.storyPackagesPath = argv[++index] || args.storyPackagesPath;
     else if (arg === "--upstream-firewall-report") args.upstreamFirewallReportPath = argv[++index] || args.upstreamFirewallReportPath;
+    else if (arg === "--platform-status-matrix") args.platformStatusMatrixPath = argv[++index] || args.platformStatusMatrixPath;
     else if (arg === "--out-dir") args.outDir = argv[++index] || args.outDir;
     else if (arg === "--workspace") args.workspaceRoot = argv[++index] || args.workspaceRoot;
     else if (arg === "--generated-at") args.generatedAt = argv[++index] || null;
@@ -47,6 +49,7 @@ function usage() {
     "Options:",
     "  --story-packages <path>              Story package manifest",
     "  --upstream-firewall-report <path>    Goal 18 readiness report",
+    "  --platform-status-matrix <path>      Independent platform operational-state authority",
     "  --out-dir <dir>                      Output directory for Goal 19 proof",
     "  --workspace <dir>                    Workspace root for relative package paths",
     "  --generated-at <iso>                 Fixed timestamp for deterministic reports",
@@ -69,9 +72,14 @@ async function main(argv = process.argv.slice(2)) {
   }
   const storyPackages = await readJsonIfPresent(path.resolve(args.storyPackagesPath), []);
   const upstreamFirewallReport = await readJsonIfPresent(path.resolve(args.upstreamFirewallReportPath), {});
+  const platformStatusMatrix = await readJsonIfPresent(
+    path.resolve(args.platformStatusMatrixPath),
+    {},
+  );
   const report = await buildGoal19AutonomyControlTower({
     storyPackages,
     upstreamFirewallReport,
+    platformStatusMatrix,
     workspaceRoot: path.resolve(args.workspaceRoot),
     outputDir: path.resolve(args.outDir),
     generatedAt: args.generatedAt || new Date().toISOString(),

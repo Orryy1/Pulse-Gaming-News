@@ -13,13 +13,28 @@ const {
   repairGoalControlTowerEvidence,
 } = require("../../lib/goal-control-tower-evidence-repair");
 const {
-  buildGoal19AutonomyControlTower,
+  buildGoal19AutonomyControlTower: buildGoal19AutonomyControlTowerRaw,
   checkRightsLedger,
 } = require("../../lib/goal19-autonomy-control-tower");
 const { fingerprintFile } = require("../../lib/human-review-artefact-fingerprints");
 
 function passGate(extra = {}) {
   return { status: "pass", verdict: "pass", failures: [], blockers: [], ...extra };
+}
+
+function buildGoal19AutonomyControlTower(options = {}) {
+  return buildGoal19AutonomyControlTowerRaw({
+    platformStatusMatrix: {
+      schema_version: 1,
+      generated_at: "2026-06-22T02:10:30.000Z",
+      platforms: {
+        youtube_shorts: { platform: "youtube_shorts", operational_state: "enabled" },
+        instagram_reels: { platform: "instagram_reels", operational_state: "enabled" },
+        facebook_reels: { platform: "facebook_reels", operational_state: "enabled" },
+      },
+    },
+    ...options,
+  });
 }
 
 const execFileAsync = promisify(execFile);

@@ -205,6 +205,46 @@ test("weekly scorecard recognises only ledger-bound, materialised, non-empty pri
   }
 });
 
+test("weekly scorecard cannot promote a RED allocation bridge to GREEN", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-commercial-allocation-red-"));
+  writeEvidence(root, "evidence/settlement.pdf");
+  const revenueEntries = [
+    {
+      id: "cash-settlement",
+      stage: "cash_received",
+      revenue_type: "variable",
+      amount_gbp: 20,
+      evidence: [
+        {
+          evidence_type: "payment_processor_settlement",
+          evidence_class: "primary",
+          source_uri: "evidence/settlement.pdf",
+          confidence: "high",
+        },
+      ],
+    },
+  ];
+  const ledgerPath = writeCommercialLedger(root, {
+    revenue_entries: revenueEntries,
+    cost_entries: [],
+  });
+
+  const scorecard = buildWeeklyCommercialScorecard({
+    revenueEntries,
+    evidenceRoot: root,
+    inputLedgerPath: ledgerPath,
+    allocationBridge: {
+      verdict: "RED",
+      blockers: ["source-record:evidence_sha256_mismatch"],
+    },
+  });
+
+  assert.equal(scorecard.revenue.realised_revenue_gbp, 20);
+  assert.equal(scorecard.commercial_evidence_integrity.verdict, "RED");
+  assert.ok(scorecard.blockers.includes("commercial_evidence_allocation_red"));
+  assert.ok(scorecard.blockers.includes("source-record:evidence_sha256_mismatch"));
+});
+
 test("weekly scorecard defaults realised revenue to GBP 0 without primary evidence", () => {
   const scorecard = buildWeeklyCommercialScorecard({
     period: {
@@ -239,8 +279,13 @@ test("weekly scorecard defaults realised revenue to GBP 0 without primary eviden
   assert.equal(scorecard.costs.direct_production_cost_status, "unknown_no_primary_evidence");
   assert.equal(scorecard.costs.labour_replacement_cost_status, "unknown_no_primary_evidence");
   assert.equal(scorecard.costs.total_economic_cost_status, "unavailable_missing_cost_evidence");
+  assert.equal(scorecard.costs.direct_production_cost_gbp, null);
+  assert.equal(scorecard.costs.labour_replacement_cost_gbp, null);
+  assert.equal(scorecard.costs.total_economic_cost_gbp, null);
   assert.equal(scorecard.economics.contribution_margin_status, "unavailable_missing_direct_cost_evidence");
   assert.equal(scorecard.economics.profit_status, "unavailable_missing_fully_loaded_cost_evidence");
+  assert.equal(scorecard.economics.contribution_margin_gbp, null);
+  assert.equal(scorecard.economics.profit_gbp, null);
 });
 
 test("weekly scorecard separates evidenced revenue lifecycle and revenue model", () => {
@@ -619,6 +664,10 @@ test("weekly scorecard publishes its accounting policy in machine-readable form"
   assert.equal(
     scorecard.accounting_policy.profit_formula,
     "contribution_margin_gbp - labour_replacement_cost_gbp",
+  );
+  assert.equal(
+    scorecard.accounting_policy.unknown_amount_representation,
+    "null_not_zero",
   );
   assert.deepEqual(
     scorecard.accounting_policy.non_additive_revenue_metrics,

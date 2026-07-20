@@ -7,6 +7,10 @@ const {
   buildWeeklyCommercialScorecard,
   writeWeeklyCommercialScorecard,
 } = require("../lib/weekly-commercial-scorecard");
+const {
+  allocateCommercialEvidenceLedger,
+  writeCommercialEvidenceAllocation,
+} = require("../lib/intelligence/commercial-evidence-ledger-bridge");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -27,6 +31,8 @@ function parseArgs(argv = process.argv.slice(2)) {
   const week = currentUtcWeek();
   const args = {
     inputPath: null,
+    allocationInputPath: null,
+    publishedSnapshotPath: null,
     evidenceRoot: null,
     outputDir: path.join(ROOT, "output", "commercial-scorecard"),
     weekStart: week.week_start,
@@ -38,6 +44,10 @@ function parseArgs(argv = process.argv.slice(2)) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--input") args.inputPath = argv[++index] || null;
+    else if (arg === "--allocation-input") args.allocationInputPath = argv[++index] || null;
+    else if (arg === "--published-snapshot") {
+      args.publishedSnapshotPath = argv[++index] || null;
+    }
     else if (arg === "--evidence-root") args.evidenceRoot = argv[++index] || null;
     else if (arg === "--out-dir") args.outputDir = argv[++index] || args.outputDir;
     else if (arg === "--week-start") args.weekStart = argv[++index] || args.weekStart;
@@ -56,6 +66,10 @@ function usage() {
     "",
     "Options:",
     "  --input <path>       Local JSON ledger; omitted means a zero-evidence baseline",
+    "  --allocation-input <path>",
+    "                       Raw local evidence ledger to allocate before scoring",
+    "  --published-snapshot <path>",
+    "                       Local platform_posts snapshot or published reconciliation report",
     "  --evidence-root <dir> Root containing every primary evidence file",
     "  --out-dir <dir>      Proof output directory",
     "  --week-start <date>  Reporting week start (YYYY-MM-DD)",
@@ -63,6 +77,9 @@ function usage() {
     "  --generated-at <iso> Fixed proof timestamp",
     "  --json               Print canonical JSON instead of Markdown",
     "  --help               Show this help",
+    "",
+    "Allocation record types: platform_earnings, platform_payout, affiliate_approved_commission, affiliate_payment, sponsor_invoice, sponsor_remittance, provider_invoice, provider_usage, operator_time.",
+    "amount_status=verified requires numeric record and allocation amounts. unknown/not_provided remains unavailable and is never coerced to zero.",
     "",
     "LOCAL_PROOF only. This command reads an explicit local ledger and writes proof files. It does not contact anyone, spend money, use credentials, publish or mutate a database.",
   ].join("\n");
@@ -79,10 +96,43 @@ async function main(argv = process.argv.slice(2)) {
     console.log(usage());
     return { help: true };
   }
-  const input = await readInput(args.inputPath);
-  const inputLedgerPath = args.inputPath ? path.resolve(args.inputPath) : null;
+  if (args.inputPath && args.allocationInputPath) {
+    throw new Error("--input and --allocation-input are mutually exclusive");
+  }
+  if (args.allocationInputPath && !args.publishedSnapshotPath) {
+    throw new Error("--published-snapshot is required with --allocation-input");
+  }
+  if (args.publishedSnapshotPath && !args.allocationInputPath) {
+    throw new Error("--allocation-input is required with --published-snapshot");
+  }
+  const generatedAt = args.generatedAt || new Date().toISOString();
+  let input;
+  let inputLedgerPath;
+  let allocationBridge = null;
+  let allocationWritten = null;
+  if (args.allocationInputPath) {
+    const allocationResult = allocateCommercialEvidenceLedger({
+      sourceLedgerPath: path.resolve(args.allocationInputPath),
+      publicationSnapshotPath: path.resolve(args.publishedSnapshotPath),
+      evidenceRoot: args.evidenceRoot
+        ? path.resolve(args.evidenceRoot)
+        : path.dirname(path.resolve(args.allocationInputPath)),
+      generatedAt,
+    });
+    allocationWritten = await writeCommercialEvidenceAllocation(allocationResult, {
+      outputDir: path.resolve(args.outputDir),
+    });
+    input = await fs.readJson(allocationWritten.ledger_path);
+    inputLedgerPath = allocationWritten.ledger_path;
+    allocationBridge = allocationWritten.report;
+  } else {
+    input = await readInput(args.inputPath);
+    inputLedgerPath = args.inputPath ? path.resolve(args.inputPath) : null;
+  }
   const evidenceRoot = args.evidenceRoot
     ? path.resolve(args.evidenceRoot)
+    : args.allocationInputPath
+      ? path.dirname(path.resolve(args.allocationInputPath))
     : inputLedgerPath
       ? path.dirname(inputLedgerPath)
       : null;
@@ -97,14 +147,15 @@ async function main(argv = process.argv.slice(2)) {
     sourceContext: input.source_context || input.sourceContext || [],
     evidenceRoot,
     inputLedgerPath,
-    generatedAt: args.generatedAt || new Date().toISOString(),
+    allocationBridge,
+    generatedAt,
   });
   const written = await writeWeeklyCommercialScorecard(report, {
     outputDir: path.resolve(args.outputDir),
   });
   if (args.json) console.log(JSON.stringify(report, null, 2));
   else console.log((await fs.readFile(written.markdown, "utf8")).trimEnd());
-  return { report, written };
+  return { report, written, allocationWritten };
 }
 
 if (require.main === module) {

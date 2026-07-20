@@ -399,7 +399,20 @@ async function makeControlStory(root, storyId, overrides = {}) {
   }
   await fs.outputJson(path.join(artifactDir, "visual_quality_report.json"), overrides.visualQuality || passGate());
   await fs.outputJson(path.join(artifactDir, "benchmark_report.json"), overrides.benchmark || passGate({ result: "pass" }));
-  await fs.outputJson(path.join(artifactDir, "pulse_media_house_score.json"), overrides.pulseMediaHouseScore || {
+  const mediaHouseBinding = {
+    story_id: storyId,
+    generated_at: platformGeneratedAt,
+    source_render_run_id: renderRunId,
+    final_video_report: {
+      path: finalMp4Path,
+      sha256: sha256(finalMediaFixture.finalMediaBytes),
+      size_bytes: finalMediaFixture.finalMediaBytes.length,
+      decodable: true,
+      media_qa_status: "pass",
+    },
+  };
+  const defaultMediaHouseScore = {
+    ...mediaHouseBinding,
     verdict: "GREEN",
     status: "pass",
     hard_failures: [],
@@ -422,7 +435,19 @@ async function makeControlStory(root, storyId, overrides = {}) {
       competitor_surpass_score: 78,
       overall_media_house_score: 86,
     },
-  });
+  };
+  await fs.outputJson(
+    path.join(artifactDir, "pulse_media_house_score.json"),
+    overrides.pulseMediaHouseScore
+      ? {
+          ...mediaHouseBinding,
+          ...overrides.pulseMediaHouseScore,
+          final_video_report:
+            overrides.pulseMediaHouseScore.final_video_report ||
+            mediaHouseBinding.final_video_report,
+        }
+      : defaultMediaHouseScore,
+  );
   await fs.outputJson(path.join(artifactDir, "platform_policy_report.json"), overrides.policyReport || {
     verdict: "pass",
     publish_blockers: [],
@@ -473,6 +498,10 @@ async function makeControlStory(root, storyId, overrides = {}) {
   });
   await fs.outputJson(path.join(artifactDir, "uniqueness_report.json"), overrides.uniquenessReport || passGate({ matches: [] }));
   await fs.outputJson(path.join(artifactDir, "publish_verdict.json"), overrides.publishVerdict || {
+    story_id: storyId,
+    generated_at: platformGeneratedAt,
+    source_render_run_id: renderRunId,
+    source_render_sha256: sha256(finalMediaFixture.finalMediaBytes),
     verdict: "GREEN",
     can_auto_publish: true,
     reason_codes: [],
@@ -2682,6 +2711,90 @@ test("Goal 19 hard-blocks weak Pulse Media-House Score before GREEN", async () =
   assert.ok(report.stories[0].blockers.includes("control:pulse_media_house_score_not_pass"));
 });
 
+test("Goal 19 rejects a Pulse Media-House Score bound to another story", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-media-house-cross-story-"));
+  const storyId = "story-media-house-cross-story";
+  const story = await makeControlStory(root, storyId);
+  const scorePath = path.join(story.artifact_dir, "pulse_media_house_score.json");
+  const score = await fs.readJson(scorePath);
+  score.story_id = "another-story";
+  await fs.writeJson(scorePath, score, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T10:00:00.000Z",
+  });
+
+  const mediaHouse = report.stories[0].control_inputs.pulse_media_house_score;
+  assert.equal(mediaHouse.status, "fail");
+  assert.ok(mediaHouse.evidence.binding_failures.includes("media_house:story_id_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a Pulse Media-House Score without current-media binding", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-media-house-unbound-"));
+  const storyId = "story-media-house-unbound";
+  const story = await makeControlStory(root, storyId);
+  const scorePath = path.join(story.artifact_dir, "pulse_media_house_score.json");
+  const score = await fs.readJson(scorePath);
+  delete score.story_id;
+  delete score.generated_at;
+  delete score.source_render_run_id;
+  delete score.final_video_report;
+  await fs.writeJson(scorePath, score, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T10:00:30.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.pulse_media_house_score.evidence.binding_failures;
+  assert.ok(failures.includes("media_house:story_id_missing"));
+  assert.ok(failures.includes("media_house:score_generated_at_missing_or_invalid"));
+  assert.ok(failures.includes("media_house:source_render_run_id_missing"));
+  assert.ok(failures.includes("media_house:final_video_sha256_missing_or_invalid"));
+  assert.ok(failures.includes("media_house:final_video_size_missing_or_invalid"));
+  assert.ok(failures.includes("media_house:final_video_decode_not_verified"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
+test("Goal 19 rejects a Pulse Media-House Score bound to stale render bytes or run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-media-house-stale-render-"));
+  const storyId = "story-media-house-stale-render";
+  const story = await makeControlStory(root, storyId);
+  const scorePath = path.join(story.artifact_dir, "pulse_media_house_score.json");
+  const score = await fs.readJson(scorePath);
+  score.generated_at = "2026-07-20T07:59:59.000Z";
+  score.source_render_run_id = "old-render-run";
+  score.final_video_report.sha256 = "0".repeat(64);
+  score.final_video_report.size_bytes += 1;
+  await fs.writeJson(scorePath, score, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T10:01:00.000Z",
+  });
+
+  const failures = report.stories[0].control_inputs.pulse_media_house_score.evidence.binding_failures;
+  assert.ok(failures.includes("media_house:score_generated_before_render"));
+  assert.ok(failures.includes("media_house:source_render_run_id_mismatch"));
+  assert.ok(failures.includes("media_house:final_video_sha256_mismatch"));
+  assert.ok(failures.includes("media_house:final_video_size_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
+});
+
 test("Goal 19 preserves Pulse Media-House AMBER and disables auto-publish", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-media-house-amber-"));
   const story = await makeControlStory(root, "story-media-house-amber", {
@@ -2772,6 +2885,36 @@ test("Goal 19 does not let a GREEN platform manifest mask an authoritative RED p
   assert.equal(report.stories[0].can_auto_publish, false);
   assert.equal(report.stories[0].control_inputs.platform_pack.status, "fail");
   assert.ok(report.stories[0].blockers.includes("control:platform_pack_not_green"));
+});
+
+test("Goal 19 rejects a GREEN publish verdict bound to another story or render", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal19-publish-verdict-stale-"));
+  const storyId = "story-publish-verdict-stale";
+  const story = await makeControlStory(root, storyId);
+  const verdictPath = path.join(story.artifact_dir, "publish_verdict.json");
+  const verdict = await fs.readJson(verdictPath);
+  verdict.story_id = "another-story";
+  verdict.generated_at = "2026-07-20T07:59:59.000Z";
+  verdict.source_render_run_id = "old-render-run";
+  verdict.source_render_sha256 = "0".repeat(64);
+  await fs.writeJson(verdictPath, verdict, { spaces: 2 });
+
+  const report = await buildGoal19AutonomyControlTower({
+    storyPackages: [story],
+    upstreamFirewallReport: readyGoal18(storyId),
+    workspaceRoot: root,
+    outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T09:00:00.000Z",
+  });
+
+  const platformPack = report.stories[0].control_inputs.platform_pack;
+  assert.equal(platformPack.status, "fail");
+  assert.ok(platformPack.evidence.failures.includes("platform_pack:verdict_story_id_mismatch"));
+  assert.ok(platformPack.evidence.failures.includes("platform_pack:verdict_generated_before_render"));
+  assert.ok(platformPack.evidence.failures.includes("platform_pack:verdict_source_render_run_id_mismatch"));
+  assert.ok(platformPack.evidence.failures.includes("platform_pack:verdict_source_render_hash_mismatch"));
+  assert.equal(report.stories[0].final_verdict, "RED");
+  assert.equal(report.stories[0].can_auto_publish, false);
 });
 
 test("Goal 19 rejects metadata-only outputs for an enabled platform", async () => {

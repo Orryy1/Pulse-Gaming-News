@@ -278,6 +278,12 @@ function parseLlmJsonObject(rawText) {
 }
 
 // --- Fetch source material for fact-checking ---
+function buildSourceMaterialExcerpt(sourceMaterial, maxLength = 2000) {
+  const text = String(sourceMaterial || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  return text.slice(0, Math.max(1, Number(maxLength) || 2000));
+}
+
 async function fetchSourceMaterial(story) {
   const parts = [];
 
@@ -1449,6 +1455,10 @@ Today's date is ${today}. You MUST follow these rules:
         ? script.script_validation_errors || []
         : [],
     };
+    const sourceMaterialExcerpt = buildSourceMaterialExcerpt(sourceMaterial);
+    if (sourceMaterialExcerpt) {
+      enrichedStory.source_material_excerpt = sourceMaterialExcerpt;
+    }
 
     // Generate A/B title variants only for scripts that are actually usable.
     // Review rows intentionally carry no public narration, so spending another
@@ -1508,6 +1518,7 @@ module.exports.buildScriptValidationReview = buildScriptValidationReview;
 module.exports.buildValidationRetryFeedback = buildValidationRetryFeedback;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.parseLlmJsonObject = parseLlmJsonObject;
+module.exports.buildSourceMaterialExcerpt = buildSourceMaterialExcerpt;
 module.exports.sanitiseScript = sanitiseScript;
 module.exports.ensurePulseExactCta = ensurePulseExactCta;
 

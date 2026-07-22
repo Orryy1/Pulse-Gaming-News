@@ -253,12 +253,22 @@ function escapeControlCharsInsideJsonStrings(rawText) {
   return out;
 }
 
+function normaliseTypographicJsonDelimiters(rawText) {
+  return String(rawText || "")
+    .replace(/([\[{,]\s*)[\u201c\u201d]/g, '$1"')
+    .replace(/[\u201c\u201d](\s*:)/g, '"$1')
+    .replace(/(:\s*)[\u201c\u201d]/g, '$1"')
+    .replace(/[\u201c\u201d](\s*[,}\]])/g, '"$1');
+}
+
 function parseLlmJsonObject(rawText) {
   const text = extractJsonObjectText(rawText);
   try {
     return JSON.parse(text);
   } catch (firstErr) {
-    const repaired = escapeControlCharsInsideJsonStrings(text);
+    const repaired = escapeControlCharsInsideJsonStrings(
+      normaliseTypographicJsonDelimiters(text),
+    );
     try {
       return JSON.parse(repaired);
     } catch {

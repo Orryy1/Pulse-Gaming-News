@@ -31,3 +31,12 @@ test("parseLlmJsonObject repairs literal control characters inside strings", () 
 
   assert.equal(parsed.full_script, "Line one\nLine two");
 });
+
+test("parseLlmJsonObject repairs typographic quotes used as JSON delimiters", () => {
+  const parsed = parseLlmJsonObject(
+    "{\u201chook\u201d:\u201cFour Xbox classics just crossed onto PC.\u201d,\u201cscore\u201d:8}",
+  );
+
+  assert.equal(parsed.hook, "Four Xbox classics just crossed onto PC.");
+  assert.equal(parsed.score, 8);
+});

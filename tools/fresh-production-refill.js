@@ -33,7 +33,11 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     repairStoryLimit: 3,
     storiesFile: "",
     resumeStoryPackagesPath: "",
+    segmentReportPath: "",
+    realMotionOutDir: "",
+    realMotionArtifactRoot: "",
     ttsProvider: "",
+    targetPlatforms: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -53,8 +57,26 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     else if (arg.startsWith("--stories-file=")) args.storiesFile = resolveRepoPath(arg.slice("--stories-file=".length));
     else if (arg === "--resume-story-packages") args.resumeStoryPackagesPath = resolveRepoPath(argv[++i] || "");
     else if (arg.startsWith("--resume-story-packages=")) args.resumeStoryPackagesPath = resolveRepoPath(arg.slice("--resume-story-packages=".length));
+    else if (arg === "--segment-report") args.segmentReportPath = resolveRepoPath(argv[++i] || "");
+    else if (arg.startsWith("--segment-report=")) args.segmentReportPath = resolveRepoPath(arg.slice("--segment-report=".length));
+    else if (arg === "--real-motion-out-dir") args.realMotionOutDir = resolveRepoPath(argv[++i] || "");
+    else if (arg.startsWith("--real-motion-out-dir=")) args.realMotionOutDir = resolveRepoPath(arg.slice("--real-motion-out-dir=".length));
+    else if (arg === "--real-motion-artifact-root") args.realMotionArtifactRoot = resolveRepoPath(argv[++i] || "");
+    else if (arg.startsWith("--real-motion-artifact-root=")) args.realMotionArtifactRoot = resolveRepoPath(arg.slice("--real-motion-artifact-root=".length));
     else if (arg === "--tts-provider") args.ttsProvider = String(argv[++i] || "").trim().toLowerCase();
     else if (arg.startsWith("--tts-provider=")) args.ttsProvider = String(arg.slice("--tts-provider=".length) || "").trim().toLowerCase();
+    else if (arg === "--platforms") {
+      args.targetPlatforms = String(argv[++i] || "")
+        .split(",")
+        .map((platform) => platform.trim().toLowerCase())
+        .filter(Boolean);
+    }
+    else if (arg.startsWith("--platforms=")) {
+      args.targetPlatforms = String(arg.slice("--platforms=".length) || "")
+        .split(",")
+        .map((platform) => platform.trim().toLowerCase())
+        .filter(Boolean);
+    }
     else if (arg === "--repair-story-limit") args.repairStoryLimit = Number(argv[++i] || args.repairStoryLimit);
     else if (arg.startsWith("--repair-story-limit=")) args.repairStoryLimit = Number(arg.slice("--repair-story-limit=".length));
     else if (arg === "--repair-evidence-mode") args.repairEvidenceMode = String(argv[++i] || args.repairEvidenceMode).trim().toLowerCase();
@@ -71,6 +93,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
   if (!["plan", "full"].includes(args.repairEvidenceMode)) args.repairEvidenceMode = "plan";
   args.channelId = String(args.channelId || "pulse-gaming").trim() || "pulse-gaming";
   if (!["", "local", "elevenlabs"].includes(args.ttsProvider)) args.ttsProvider = "";
+  if (Array.isArray(args.targetPlatforms)) {
+    args.targetPlatforms = [...new Set(args.targetPlatforms)];
+    if (!args.targetPlatforms.length) args.targetPlatforms = null;
+  }
   return args;
 }
 
@@ -88,7 +114,11 @@ function usage() {
     "  --contract-out-dir <p>   Contract/report output directory",
     "  --stories-file <path>    Optional local fresh official/direct-media story seed file",
     "  --resume-story-packages <p> Resume materialisation from an existing motion-hydrated story-packages.json",
+    "  --segment-report <path> Run-scoped validated segment report used by resume materialisation",
+    "  --real-motion-out-dir <p> Existing motion-pack directory used by resume materialisation",
+    "  --real-motion-artifact-root <p> Proof artefact root where resumed motion clips are materialised",
     "  --tts-provider <name>     Optional narration provider for repair continuation: local or elevenlabs",
+    "  --platforms <csv>         Rights-gate scope for explicitly enabled publish platforms",
     "  --repair-evidence-mode    plan (default) writes fast work orders; full runs deep local repair",
     "  --full-repair-evidence    Alias for --repair-evidence-mode full",
     "  --repair-story-limit <n>  Limit heavy repair evidence to first n eligible RED packages, default 3; 0 = no limit",
@@ -115,10 +145,14 @@ async function main(argv = process.argv.slice(2), io = { stdout: process.stdout,
         contract_out_dir: args.contractOutDir,
         seed_stories_file: args.storiesFile,
         resume_story_packages_path: args.resumeStoryPackagesPath,
+        segment_report_path: args.segmentReportPath,
+        real_motion_out_dir: args.realMotionOutDir,
+        real_motion_artifact_root: args.realMotionArtifactRoot,
         repair_evidence: args.repairEvidence,
         repair_evidence_mode: args.repairEvidenceMode,
         repair_story_limit: args.repairStoryLimit,
         tts_provider_preference: args.ttsProvider || undefined,
+        target_platforms: args.targetPlatforms || undefined,
         reason: "operator_safe_fresh_production_refill",
       },
     },

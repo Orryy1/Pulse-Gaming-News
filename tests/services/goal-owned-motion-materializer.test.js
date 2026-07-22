@@ -10,6 +10,7 @@ const test = require("node:test");
 const {
   buildOwnedMotionFrameLayout,
   buildOwnedMotionFfmpegArgs,
+  canonicalRightsSource,
   materializeGoalOwnedMotionClips,
   writeGoalOwnedMotionMaterializationReport,
 } = require("../../lib/goal-owned-motion-materializer");
@@ -139,6 +140,144 @@ test("owned motion materializer keeps baked card text inside mobile safe bounds"
   assert.doesNotMatch(vf, /x=\(w-tw\)\/2:y=560/);
   assert.match(vf, /drawtext=text='POKEMON GO MEGA'/);
   assert.match(vf, /drawtext=text='MEWTWO IS'/);
+});
+
+test("owned motion generator gives every primary project a per-frame camera path", () => {
+  const canonical = {
+    canonical_subject: "Perfect Dark",
+    selected_title: "Perfect Dark Has A New Studio Signal",
+    primary_source: "Xbox Wire",
+  };
+  const projectClips = [
+    {
+      id: "kinetic-primary",
+      asset_class: "kinetic_aperture_surface",
+      generator_project_id: "pulse.motion.kinetic-aperture.v1",
+      generator_variant: 0,
+      durationS: 7,
+    },
+    {
+      id: "signal-primary",
+      asset_class: "signal_scan_surface",
+      generator_project_id: "pulse.motion.signal-lattice.v1",
+      generator_variant: 0,
+      durationS: 7,
+    },
+    {
+      id: "data-primary",
+      asset_class: "data_pulse_surface",
+      generator_project_id: "pulse.motion.data-ribbons.v1",
+      generator_variant: 0,
+      durationS: 7,
+    },
+    {
+      id: "orbit-primary",
+      asset_class: "orbital_cluster_surface",
+      generator_project_id: "pulse.motion.spatial-orbits.v1",
+      generator_variant: 0,
+      durationS: 7,
+    },
+  ];
+
+  for (const clip of projectClips) {
+    const args = buildOwnedMotionFfmpegArgs({
+      clip,
+      canonical,
+      output: `${clip.id}.mp4`,
+    });
+    const filterGraph = args[args.indexOf("-vf") + 1];
+    assert.match(
+      filterGraph,
+      /crop=1080:1920:x='[^']*sin\(t\*[^']*':y='[^']*cos\(t\*/,
+      clip.generator_project_id,
+    );
+  }
+});
+
+test("signal lattice primary keeps continuous full-frame scan energy", () => {
+  const args = buildOwnedMotionFfmpegArgs({
+    clip: {
+      id: "signal-primary",
+      asset_class: "signal_scan_surface",
+      generator_project_id: "pulse.motion.signal-lattice.v1",
+      generator_variant: 0,
+      durationS: 7,
+    },
+    canonical: {
+      canonical_subject: "Halo Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Is Coming",
+      primary_source: "Xbox Wire",
+    },
+    output: "signal-primary.mp4",
+  });
+  const filterGraph = args[args.indexOf("-vf") + 1];
+
+  assert.match(
+    filterGraph,
+    /drawbox=x='mod\(t\*720,1380\)-300':y=0:w=300:h=ih/,
+  );
+  assert.match(
+    filterGraph,
+    /drawbox=x=0:y='mod\(t\*620,2180\)-260':w=iw:h=260/,
+  );
+  assert.match(
+    filterGraph,
+    /drawbox=x='mod\(t\*1560,1260\)-180':y=0:w=180:h=ih:color=white@0\.34/,
+  );
+  assert.match(
+    filterGraph,
+    /drawbox=x='1080-mod\(t\*1320,1260\)':y=0:w=180:h=ih:color=0x38BDF8@0\.38/,
+  );
+  assert.match(filterGraph, /scroll=horizontal=0\.04:vertical=0\.0015/);
+  assert.match(filterGraph, /rotate='0\.006\*t':ow=iw:oh=ih:c=0x12333A/);
+});
+
+test("spatial orbit trajectory keeps continuous full-frame scan energy", () => {
+  const args = buildOwnedMotionFfmpegArgs({
+    clip: {
+      id: "trajectory-primary",
+      asset_class: "trajectory_arc_surface",
+      generator_project_id: "pulse.motion.spatial-orbits.v1",
+      generator_variant: 3,
+      durationS: 7,
+    },
+    canonical: {
+      canonical_subject: "Halo Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Is Coming",
+      primary_source: "Xbox Wire",
+    },
+    output: "trajectory-primary.mp4",
+  });
+  const filterGraph = args[args.indexOf("-vf") + 1];
+
+  assert.match(filterGraph, /scroll=horizontal=0\.018:vertical=0\.001/);
+  assert.match(filterGraph, /rotate='0\.004\*t':ow=iw:oh=ih:c=0x241B12/);
+});
+
+test("spatial orbit constellation emits a dense full-frame information lattice", () => {
+  const args = buildOwnedMotionFfmpegArgs({
+    clip: {
+      id: "constellation-primary",
+      asset_class: "constellation_drift_surface",
+      generator_project_id: "pulse.motion.spatial-orbits.v1",
+      generator_variant: 2,
+      durationS: 7,
+    },
+    canonical: {
+      canonical_subject: "Halo Campaign Evolved",
+      selected_title: "Halo Campaign Evolved Is Coming",
+      primary_source: "Xbox Wire",
+    },
+    output: "constellation-primary.mp4",
+  });
+  const filterGraph = args[args.indexOf("-vf") + 1];
+
+  assert.match(
+    filterGraph,
+    /drawgrid=width=80:height=128:thickness=10:color=0xCCFBF1@0\.50/,
+  );
+  assert.match(filterGraph, /scroll=horizontal=0\.018:vertical=0\.001/);
+  assert.match(filterGraph, /rotate='0\.004\*t':ow=iw:oh=ih:c=0x0D2D27/);
 });
 
 test("owned motion materializer renders newsroom-grade motion cards instead of flat text blocks", () => {
@@ -379,6 +518,10 @@ test("owned motion materializer creates a source-locked explainer deck when foot
     "comparative_bar_race",
     "metric_ribbon_flow",
     "timeline_cascade_surface",
+    "orbital_cluster_surface",
+    "radial_phase_field",
+    "constellation_drift_surface",
+    "trajectory_arc_surface",
     "animated_source_card",
     "animated_quote_card",
     "stat_card",
@@ -393,8 +536,8 @@ test("owned motion materializer creates a source-locked explainer deck when foot
   assert.equal(materialised.status, "ready");
   assert.equal(materialised.clip_count, requiredAssetClasses.length);
   assert.equal(materialised.owned_explainer_visual_plan, true);
-  assert.equal(materialised.distinct_motion_family_count, 4);
-  assert.equal(materialised.materially_distinct_generator_project_count, 3);
+  assert.equal(materialised.distinct_motion_family_count, 5);
+  assert.equal(materialised.materially_distinct_generator_project_count, 4);
   assert.deepEqual(materialised.clips.map((clip) => clip.asset_class), requiredAssetClasses);
   assert.ok(materialised.clips.every((clip) => clip.source_type === "internally_generated_motion_graphic"));
   assert.ok(materialised.clips.every((clip) => clip.counts_towards_motion_readiness === true));
@@ -411,8 +554,8 @@ test("owned motion materializer creates a source-locked explainer deck when foot
 
   const familyReport = await fs.readJson(path.join(artifactDir, "distinct_motion_family_report.json"));
   assert.equal(familyReport.status, "ready");
-  assert.equal(familyReport.summary.distinct_motion_family_count, 4);
-  assert.equal(familyReport.summary.materially_distinct_generator_project_count, 3);
+  assert.equal(familyReport.summary.distinct_motion_family_count, 5);
+  assert.equal(familyReport.summary.materially_distinct_generator_project_count, 4);
   assert.deepEqual(familyReport.families, [...new Set(materialised.clips.map((clip) => clip.motion_family))]);
 
   const ownedManifest = await fs.readJson(path.join(artifactDir, "owned_motion_manifest.json"));
@@ -432,7 +575,7 @@ test("owned motion materializer creates a source-locked explainer deck when foot
   assert.ok(rights.records.every((record) => record.commercial_use_allowed === true));
 });
 
-test("owned motion materializer emits three materially distinct procedural project masters with complete evidence", async () => {
+test("owned motion materializer emits four materially distinct procedural project masters with complete evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-projects-"));
   const artifactDir = path.join(root, "project-package");
   await fs.ensureDir(artifactDir);
@@ -488,8 +631,7 @@ test("owned motion materializer emits three materially distinct procedural proje
   );
   const projectIds = new Set(primaryProcedural.map((clip) => clip.generator_project_id));
   const projectMasters = new Set(primaryProcedural.map((clip) => clip.generator_master_sha256));
-  const filterGraphs = new Set(
-    primaryProcedural.map((clip) => {
+  const filterGraphByClip = primaryProcedural.map((clip) => {
       const args = buildOwnedMotionFfmpegArgs({
         clip,
         canonical: {
@@ -499,16 +641,74 @@ test("owned motion materializer emits three materially distinct procedural proje
         },
         output: clip.path,
       });
-      return args[args.indexOf("-vf") + 1];
-    }),
-  );
+      return { clip, filterGraph: args[args.indexOf("-vf") + 1] };
+    });
+  const filterGraphs = new Set(filterGraphByClip.map((entry) => entry.filterGraph));
 
-  assert.ok(primaryProcedural.length >= 12);
+  assert.ok(primaryProcedural.length >= 16);
   assert.ok(supportCards.length <= 4);
-  assert.equal(projectIds.size, 3);
-  assert.equal(projectMasters.size, 3);
-  assert.equal(filterGraphs.size, 3);
+  assert.equal(projectIds.size, 4);
+  assert.equal(projectMasters.size, 4);
+  assert.equal(filterGraphs.size, primaryProcedural.length);
+  for (const projectId of projectIds) {
+    const projectEntries = filterGraphByClip.filter(
+      (entry) => entry.clip.generator_project_id === projectId,
+    );
+    assert.equal(
+      new Set(projectEntries.map((entry) => entry.filterGraph)).size,
+      projectEntries.length,
+    );
+  }
   assert.ok([...filterGraphs].every((filterGraph) => !filterGraph.includes("PULSE // MOTION PROOF")));
+  const kineticFilter = [...filterGraphs].find((filterGraph) =>
+    filterGraph.includes("color=0x18263A@1"),
+  );
+  const signalFilter = [...filterGraphs].find((filterGraph) =>
+    filterGraph.includes("color=0x12333A@1"),
+  );
+  const comparativeBarRaceFilter = filterGraphByClip.find(
+    (entry) => entry.clip.asset_class === "comparative_bar_race",
+  )?.filterGraph;
+  const orbitalClusterFilter = filterGraphByClip.find(
+    (entry) => entry.clip.asset_class === "orbital_cluster_surface",
+  )?.filterGraph;
+  assert.ok(kineticFilter);
+  assert.match(kineticFilter, /drawgrid=width=36:height=48:thickness=3:color=white@0\.38/);
+  assert.equal((kineticFilter.match(/w=160:h=84/g) || []).length, 24);
+  assert.doesNotMatch(kineticFilter, /color=0x070A0F@1/);
+  assert.ok(signalFilter);
+  assert.match(signalFilter, /drawgrid=width=45:height=48:thickness=3:color=white@0\.34/);
+  assert.equal((signalFilter.match(/w=64:h=40/g) || []).length, 48);
+  assert.doesNotMatch(signalFilter, /w=iw:h=70/);
+  assert.doesNotMatch(signalFilter, /color=0x040B0C@1/);
+  assert.ok(comparativeBarRaceFilter);
+  assert.match(
+    comparativeBarRaceFilter,
+    /drawbox=x=0:y=0:w=iw:h=ih:color=0x24364A@1:t=fill/,
+  );
+  assert.doesNotMatch(comparativeBarRaceFilter, /color=0x10172A@1/);
+  assert.match(
+    comparativeBarRaceFilter,
+    /drawbox=x=0:y=0:w=iw:h=120:color=0x38BDF8@0\.58:t=fill/,
+  );
+  assert.match(
+    comparativeBarRaceFilter,
+    /drawbox=x=0:y=1800:w=iw:h=120:color=0xF43F5E@0\.58:t=fill/,
+  );
+  assert.ok(orbitalClusterFilter);
+  assert.match(
+    orbitalClusterFilter,
+    /drawbox=x=0:y=0:w=iw:h=ih:color=0x071C2B@1:t=fill/,
+  );
+  assert.match(orbitalClusterFilter, /sin\(t\*/);
+  assert.match(orbitalClusterFilter, /cos\(t\*/);
+  assert.ok(primaryProcedural.every((clip) => {
+    if (/kinetic-aperture/.test(clip.generator_project_id)) return clip.generator_version === 5;
+    if (/signal-lattice/.test(clip.generator_project_id)) return clip.generator_version === 7;
+    if (/data-ribbons/.test(clip.generator_project_id)) return clip.generator_version === 5;
+    if (/spatial-orbits/.test(clip.generator_project_id)) return clip.generator_version === 4;
+    return false;
+  }));
   assert.ok(primaryProcedural.every((clip) => clip.seek_safe === true));
   assert.ok(primaryProcedural.every((clip) => clip.reproducible === true));
 
@@ -554,6 +754,7 @@ test("owned motion materializer emits three materially distinct procedural proje
   );
   assert.equal(strictOwnedRecords.length, materialised.clips.length);
   for (const record of strictOwnedRecords) {
+    assert.equal(record.allowed_use, "finished_editorial_video_only");
     const evaluation = await evaluateOwnedMotionRightsEvidence({
       record,
       required_platforms: record.allowed_platforms,
@@ -681,7 +882,8 @@ test("owned motion materializer creates renderer-compatible motion-heavy decks",
     maxScenes: 8,
   });
 
-  assert.ok(plan.blockers.includes("direct_motion_base_source_repeated"));
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.deepEqual(plan.repeatedBaseSources, []);
   assert.equal(plan.scenes.length >= 7, true);
   assert.equal(plan.readableCardSceneMetrics.direct_motion_scene_count >= 4, true);
   assert.equal(plan.readableCardSceneMetrics.readable_card_duration_ratio <= 0.42, true);
@@ -752,8 +954,8 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
     ffprobeDuration: () => 12,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 17);
-  assert.equal(calls.length, 17);
+  assert.equal(report.summary.materialized_clip_count, 21);
+  assert.equal(calls.length, 21);
   const packageMotionDir = path.join(artifactDir, "owned-motion", "generated");
   assert.ok(
     report.stories[0].materialized.every((result) =>
@@ -769,10 +971,10 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
   );
   const durations = calls.map((call) => call.args[call.args.indexOf("-t") + 1]);
   assert.equal(durations.filter((duration) => duration === "12.00").length, 4);
-  assert.equal(durations.filter((duration) => Number(duration) <= 6).length, 13);
+  assert.equal(durations.filter((duration) => Number(duration) === 7).length, 17);
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
-  assert.equal(materialised.clip_count, 17);
+  assert.equal(materialised.clip_count, 21);
   assert.equal(
     materialised.clips.some((clip) => clip.id === "hyperframes_premium_shell_source_legacy"),
     false,
@@ -780,7 +982,7 @@ test("owned motion materializer executes readable HyperFrames rematerialisation 
   assert.equal(
     materialised.clips
       .filter((clip) => clip.generator_design_role === "primary_procedural_motion")
-      .every((clip) => clip.durationS <= 6),
+      .every((clip) => clip.durationS === 7),
     true,
   );
   const readableCards = materialised.clips.filter((clip) => clip.readable_card_kind);
@@ -987,12 +1189,12 @@ test("owned motion materializer synthesises support deck when existing inventory
   });
 
   assert.equal(report.stories[0].status, "materialized");
-  assert.equal(report.summary.materialized_clip_count, 17);
-  assert.equal(calls.length, 17);
+  assert.equal(report.summary.materialized_clip_count, 21);
+  assert.equal(calls.length, 21);
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
-  assert.equal(materialised.clip_count, 17);
-  assert.equal(materialised.distinct_motion_family_count, 4);
-  assert.equal(materialised.materially_distinct_generator_project_count, 3);
+  assert.equal(materialised.clip_count, 21);
+  assert.equal(materialised.distinct_motion_family_count, 5);
+  assert.equal(materialised.materially_distinct_generator_project_count, 4);
   assert.equal(materialised.clips.every((clip) => clip.source_type === "internally_generated_motion_graphic"), true);
 });
 
@@ -1018,17 +1220,37 @@ test("owned motion materializer preserves existing official direct-video clips w
     visual_family: `ghost_direct_window_${index + 1}`,
     path: path.join(root, "video-cache", `ghost-direct-${index + 1}.mp4`),
     local_materialized_path: path.join(root, "video-cache", `ghost-direct-${index + 1}.mp4`),
-    source_url: "https://vulcan.dl.playstation.net/img/rnd/202501/1101/ghost.mp4",
+    source_url: "https://video.fastly.steamstatic.com/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408/hls_264_master.m3u8?t=1781050956",
     source_type: "licensed_direct_media_url",
     media_kind: "direct_video",
     rights_basis: "official_direct_media",
     counts_towards_motion_readiness: true,
+    source_media_start_s: index * 6,
+    source_window_duration_s: 5,
     durationS: 5,
     validated: true,
     materialized: true,
   }));
+  for (const [index, clip] of directClips.entries()) {
+    const bytes = Buffer.alloc(4096, index + 1);
+    await fs.outputFile(clip.path, bytes);
+    clip.asset_sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+    clip.asset_size_bytes = bytes.length;
+  }
+  const policyEvidencePath = path.join(root, "rights", "ghost-publisher-policy.html");
+  const policyEvidenceBytes = Buffer.alloc(3072, 19);
+  await fs.outputFile(policyEvidencePath, policyEvidenceBytes);
+  const policyEvidenceSha256 = crypto
+    .createHash("sha256")
+    .update(policyEvidenceBytes)
+    .digest("hex");
   await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
     story_id: "ghost-package",
+    readiness: {
+      can_render: true,
+      can_publish: true,
+      publish_blockers: [],
+    },
     motion_inventory: {
       accepted_local_clips: directClips,
       production_motion_clips: directClips,
@@ -1049,12 +1271,26 @@ test("owned motion materializer preserves existing official direct-video clips w
   const directRightsRecords = directClips.map((clip) => ({
     asset_id: clip.id,
     path: clip.path,
-    source_url: clip.source_url,
+    source_url: "https://video.akamai.steamstatic.com/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408/dash_h264.mpd?t=1781050956",
     source_type: clip.source_type,
     licence_basis: "official_promotional_media_transformative_editorial_use",
+    allowed_use: "transformative_editorial_short_form",
     allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
     commercial_use_allowed: true,
-    approval_status: "approved_for_transformative_editorial_use",
+    rights_grant: true,
+    asset_sha256: clip.asset_sha256,
+    asset_size_bytes: clip.asset_size_bytes,
+    source_media_start_s: clip.source_media_start_s,
+    source_window_duration_s: clip.source_window_duration_s,
+    evidence_file: policyEvidencePath,
+    evidence_sha256: policyEvidenceSha256,
+    evidence_size_bytes: policyEvidenceBytes.length,
+    risk_score: 0.2,
+    rights_status: "conditional_youtube_ad_program_scope",
+    approval_status: "approved_for_local_materialization_only",
+    usage_status: "human_legal_review_required_before_publish",
+    live_publish_allowed: false,
+    requires_human_legal_review_before_publish: true,
   }));
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
     records: [],
@@ -1088,37 +1324,110 @@ test("owned motion materializer preserves existing official direct-video clips w
     ffprobeDuration: () => 2.8,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 17);
-  assert.equal(calls.length, 17);
+  assert.equal(report.summary.materialized_clip_count, 21);
+  assert.equal(calls.length, 21);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
-  assert.equal(materialised.clip_count, 22);
+  assert.equal(materialised.clip_count, 26);
   assert.equal(materialised.direct_video_motion_asset_count, 5);
   assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
   assert.equal(
     materialised.clips.filter((clip) => clip.source_type === "internally_generated_motion_graphic").length,
-    17,
+    21,
   );
   assert.ok(materialised.clips.some((clip) => clip.id === "ghost-direct-1"));
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "branded_wipe"));
 
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
-  assert.equal(footage.motion_inventory.accepted_local_clips.length, 22);
-  assert.equal(footage.motion_inventory.production_motion_clips.length, 22);
+  assert.equal(footage.motion_inventory.accepted_local_clips.length, 26);
+  assert.equal(footage.motion_inventory.production_motion_clips.length, 26);
   assert.equal(footage.motion_inventory.direct_video_motion_asset_count, 5);
-  assert.equal(footage.motion_budget.required_motion_scenes, 22);
+  assert.equal(footage.motion_budget.required_motion_scenes, 26);
+  assert.equal(footage.readiness.can_render, true);
+  assert.equal(footage.readiness.can_publish, false);
+  assert.ok(footage.readiness.publish_blockers.includes("rights:direct_motion_live_publish_hold"));
+  assert.ok(
+    footage.readiness.publish_blockers.includes(
+      "rights:human_legal_review_required_before_publish",
+    ),
+  );
 
   const ownedManifest = await fs.readJson(path.join(artifactDir, "owned_motion_manifest.json"));
-  assert.equal(ownedManifest.summary.asset_count, 17);
+  assert.equal(ownedManifest.summary.asset_count, 21);
   assert.equal(ownedManifest.assets.every((asset) => asset.source_type === "internally_generated_motion_graphic"), true);
   const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
   assert.ok(directClips.every((clip) =>
     rights.records.some((record) => record.asset_id === clip.id),
   ));
+  assert.equal(rights.status, "local_materialization_only");
+  assert.equal(rights.verdict, "amber");
+  assert.equal(rights.motion_rights_verdict, "amber");
+  assert.equal(rights.live_publish_allowed, false);
+  assert.equal(rights.requires_human_legal_review_before_publish, true);
+  assert.ok(rights.publish_blockers.includes("rights:direct_motion_live_publish_hold"));
+  assert.ok(
+    rights.publish_blockers.includes("rights:human_legal_review_required_before_publish"),
+  );
 });
 
-test("owned motion materializer preserves stale-count validated official game website direct clips", async () => {
+test("owned motion rights identity collapses Steam transport mirrors without collapsing trailer masters", () => {
+  const fastlyHls = "https://video.fastly.steamstatic.com/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408/hls_264_master.m3u8?t=1781050956";
+  const akamaiDash = "https://video.akamai.steamstatic.com/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408/dash_h264.mpd?t=1781050956";
+  const differentTrailer = "https://video.akamai.steamstatic.com/store_trailers/2806050/1326798026/6b3d92049c61a2ddc074d5d0f9b8b796d0fbdc03/1781131704/dash_h264.mpd?t=1781134450";
+
+  assert.equal(canonicalRightsSource(fastlyHls), canonicalRightsSource(akamaiDash));
+  assert.notEqual(canonicalRightsSource(fastlyHls), canonicalRightsSource(differentTrailer));
+});
+
+test("owned motion materializer does not override unrelated blocked rights failures", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-monotonic-rights-"));
+  const artifactDir = path.join(root, "monotonic-rights");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "monotonic-rights",
+    canonical_subject: "Clockwork Revolution",
+    selected_title: "Clockwork Revolution Has A New Combat Signal",
+    thumbnail_headline: "COMBAT SIGNAL",
+    first_spoken_line: "Clockwork Revolution just sharpened its combat pitch.",
+    confirmed_claims: ["Xbox Wire published an official combat update."],
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/games/clockwork-revolution/",
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "monotonic-rights",
+    motion_inventory: {},
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "blocked",
+    failures: ["rights:narration_commercial_evidence_missing"],
+    records: [],
+  });
+
+  await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: "monotonic-rights",
+        title: "Clockwork Revolution Has A New Combat Signal",
+        artifact_dir: artifactDir,
+        actions: [{
+          action_id: "materialise_owned_generated_motion_clips",
+          repair_lane: "owned_generated_explainer_motion_materialisation",
+        }],
+      }],
+    },
+    execFileSync: (bin, args) => fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, 11)),
+    ffprobeDuration: () => 5,
+  });
+
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(rights.verdict, "blocked");
+  assert.deepEqual(rights.failures, ["rights:narration_commercial_evidence_missing"]);
+});
+
+test("owned motion materializer quarantines validated direct clips without exact commercial rights evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-explainer-stale-direct-video-"));
   const artifactDir = path.join(root, "gta-package");
   await fs.ensureDir(artifactDir);
@@ -1207,26 +1516,103 @@ test("owned motion materializer preserves stale-count validated official game we
     ffprobeDuration: () => 2.8,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 17);
-  assert.equal(calls.length, 17);
+  assert.equal(report.summary.materialized_clip_count, 21);
+  assert.equal(calls.length, 21);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
   assert.equal(materialised.status, "ready");
-  assert.equal(materialised.direct_video_motion_asset_count, 4);
-  assert.equal(materialised.direct_video_motion_family_count, 4);
-  assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 4);
-  assert.equal(
-    materialised.clips
-      .filter((clip) => clip.media_kind === "direct_video")
-      .every((clip) => clip.counts_towards_motion_readiness === true),
-    true,
-  );
+  assert.equal(materialised.direct_video_motion_asset_count, 0);
+  assert.equal(materialised.direct_video_motion_family_count, 0);
+  assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 0);
   assert.equal(
     materialised.clips.filter((clip) => clip.source_type === "internally_generated_motion_graphic").length,
-    17,
+    21,
   );
-  assert.ok(materialised.clips.some((clip) => clip.id === "gta-direct-1"));
+  assert.equal(materialised.clips.some((clip) => clip.id === "gta-direct-1"), false);
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "kinetic_aperture_surface"));
+  assert.equal(materialised.quarantined_direct_video_clip_count, 4);
+  assert.equal(materialised.quarantined_direct_video_clips.length, 4);
+  assert.ok(materialised.quarantined_direct_video_clips.every(
+    (clip) => clip.reason === "non_owned_direct_video_rights_unverified",
+  ));
+  assert.ok(materialised.quarantined_direct_video_clips.every(
+    (clip) => clip.blockers.includes("matching_rights_record_missing"),
+  ));
+
+  const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
+  assert.equal(footage.motion_inventory.accepted_local_clips.length, 21);
+  assert.equal(footage.motion_inventory.production_motion_clips.length, 21);
+  assert.equal(footage.motion_inventory.quarantined_direct_video_clip_count, 4);
+  assert.equal(report.summary.skipped_non_owned_clip_count, 4);
+
+  footage.motion_inventory.accepted_local_clips = [
+    ...footage.motion_inventory.accepted_local_clips,
+    ...directClips,
+  ];
+  footage.motion_inventory.production_motion_clips = [
+    ...footage.motion_inventory.production_motion_clips,
+    ...directClips,
+  ];
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), footage);
+  materialised.clips = [...materialised.clips, ...directClips];
+  materialised.materialised_clips = [...materialised.materialised_clips, ...directClips];
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), materialised);
+
+  const rerun = await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: "gta-package",
+        title: "GTA VI Just Made PS5 The Version To Watch",
+        artifact_dir: artifactDir,
+        actions: [{
+          action_id: "materialise_owned_generated_motion_clips",
+          repair_lane: "owned_generated_explainer_motion_materialisation",
+        }],
+      }],
+    },
+    execFileSync: () => {
+      throw new Error("existing owned clips should not be rematerialized");
+    },
+    ffprobeDuration: () => 2.8,
+  });
+  assert.equal(rerun.summary.skipped_non_owned_clip_count, 4);
+  assert.equal(rerun.summary.quarantined_direct_video_clip_count, 4);
+  assert.equal(new Set(rerun.stories[0].skipped.map((clip) => clip.clip_id)).size, 4);
+  const rerunMaterialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  const rerunFootage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
+  const rerunRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(rerunMaterialised.quarantined_direct_video_clip_count, 4);
+  assert.equal(rerunMaterialised.quarantined_direct_video_clips.length, 4);
+  assert.equal(rerunFootage.motion_inventory.quarantined_direct_video_clip_count, 4);
+  assert.equal(rerunRights.quarantined_non_owned_direct_video_count, 4);
+
+  const auditRerun = await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: "gta-package",
+        title: "GTA VI Just Made PS5 The Version To Watch",
+        artifact_dir: artifactDir,
+        actions: [{
+          action_id: "materialise_owned_generated_motion_clips",
+          repair_lane: "owned_generated_explainer_motion_materialisation",
+        }],
+      }],
+    },
+    execFileSync: () => {
+      throw new Error("existing owned clips should not be rematerialized");
+    },
+    ffprobeDuration: () => 2.8,
+  });
+  assert.equal(auditRerun.summary.quarantined_direct_video_clip_count, 0);
+  const auditMaterialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  const auditFootage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
+  const auditRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(auditMaterialised.quarantined_direct_video_clip_count, 4);
+  assert.equal(auditMaterialised.quarantined_direct_video_clips.length, 4);
+  assert.equal(auditFootage.motion_inventory.quarantined_direct_video_clip_count, 4);
+  assert.equal(auditRights.quarantined_non_owned_direct_video_count, 4);
 });
 
 test("owned motion materializer refresh expands thin owned explainer decks to the full motion pack", async () => {
@@ -1299,18 +1685,18 @@ test("owned motion materializer refresh expands thin owned explainer decks to th
     ffprobeDuration: () => 2.8,
   });
 
-  assert.equal(report.summary.materialized_clip_count, 17);
-  assert.equal(calls.length, 17);
+  assert.equal(report.summary.materialized_clip_count, 21);
+  assert.equal(calls.length, 21);
 
   const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
-  assert.equal(materialised.clip_count, 17);
-  assert.equal(materialised.distinct_motion_family_count, 4);
-  assert.equal(materialised.materially_distinct_generator_project_count, 3);
+  assert.equal(materialised.clip_count, 21);
+  assert.equal(materialised.distinct_motion_family_count, 5);
+  assert.equal(materialised.materially_distinct_generator_project_count, 4);
   assert.equal(materialised.clips.every((clip) => clip.durationS >= 4), true);
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "branded_wipe"));
   assert.ok(materialised.clips.some((clip) => clip.asset_class === "platform_proof_card"));
 
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
-  assert.equal(footage.motion_budget.required_motion_scenes, 17);
-  assert.equal(footage.motion_inventory.accepted_local_clips.length, 17);
+  assert.equal(footage.motion_budget.required_motion_scenes, 21);
+  assert.equal(footage.motion_inventory.accepted_local_clips.length, 21);
 });

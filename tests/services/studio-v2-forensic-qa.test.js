@@ -619,6 +619,40 @@ test("analyseRenderedFrameTaste uses a verified subtitle cue to reject the Arkni
   assert.equal(result.samples[0].reason, "verified_subtitle_overlay_taste_ignored");
 });
 
+test("analyseRenderedFrameTaste accepts the verified Halo subtitle over mid-saturation owned motion", async () => {
+  const frame = {
+    path: "halo-captioned-owned-motion.jpg",
+    timeS: 45,
+    prescan: {
+      text_overlay_likelihood: 0.05319148936170213,
+      white_text_on_dark_likelihood: 0.5615804662743322,
+      edge_density: 0.13241285649615211,
+      saturation_mean: 0.4801897765903267,
+      bright_pixel_ratio: 0.019126301493888637,
+      dark_pixel_ratio: 0.6754187415119963,
+      central_luminance_oval: 0.46006720508810817,
+      central_bright_pixel_ratio: 0.015957446808510637,
+      central_dark_pixel_ratio: 0.6721002059025395,
+      black_frame: false,
+      blur_verdict: "pass",
+    },
+  };
+
+  const result = await analyseRenderedFrameTaste({
+    frames: [frame],
+    subtitleCueRanges: [{
+      startS: 45,
+      endS: 45.88,
+      text: "NEW MISSIONS BECOME",
+    }],
+    prescanFrame: async (candidate) => candidate.prescan,
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+  assert.equal(result.samples[0].reason, "verified_subtitle_overlay_taste_ignored");
+});
+
 test("analyseRenderedFrameTaste keeps the Arknights frame metrics blocked without a verified subtitle cue", async () => {
   const result = await analyseRenderedFrameTaste({
     frames: [{

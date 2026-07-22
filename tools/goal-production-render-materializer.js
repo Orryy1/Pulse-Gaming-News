@@ -32,6 +32,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     inspectOnly: false,
     refreshQualityOnly: false,
     refreshFlagshipInventory: false,
+    ownedMotionOnly: false,
     storyId: "",
     artifactDir: "",
     json: false,
@@ -49,6 +50,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--inspect-only") args.inspectOnly = true;
     else if (arg === "--refresh-quality-only") args.refreshQualityOnly = true;
     else if (arg === "--refresh-flagship-inventory") args.refreshFlagshipInventory = true;
+    else if (arg === "--owned-motion-only") args.ownedMotionOnly = true;
     else if (arg === "--story-id") args.storyId = argv[++i] || "";
     else if (arg === "--artifact-dir") args.artifactDir = argv[++i] || "";
     else if (arg === "--json") args.json = true;
@@ -64,6 +66,7 @@ function printHelp() {
       "       node tools/goal-production-render-materializer.js --refresh-flagship-inventory --story-id id --artifact-dir path [--json]",
       "",
       "Materialises fresh Visual V4 final renders from the ready final-render work order.",
+      "--owned-motion-only requires a hash-bound, cross-platform owned-motion pool and excludes prior third-party footage.",
       "Quality-refresh mode rebuilds post-render benchmark/visual QA for an existing final MP4.",
       "Flagship-inventory refresh snapshots current used assets and rights without rendering or changing publish authority.",
       "No publishing, database mutation, OAuth or token changes are performed.",
@@ -159,6 +162,7 @@ async function main(argv = process.argv.slice(2)) {
     storyIds: args.storyId ? [args.storyId] : [],
     force: args.force,
     inspectOnly: args.inspectOnly,
+    ownedMotionOnly: args.ownedMotionOnly,
   });
   const written = await writeGoalProductionRenderMaterializationReport(report, {
     outputDir: path.resolve(args.outDir),

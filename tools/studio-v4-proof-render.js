@@ -1466,6 +1466,36 @@ function sceneClipReadableCardKind(clip = {}) {
   if (!clip) return "";
   const clipPath = sceneClipPath(clip);
   const sidecar = readSceneClipSidecar(clip) || {};
+  const mediaKind = firstText(
+    typeof clip === "object" ? clip.media_kind : "",
+    typeof clip === "object" ? clip.mediaKind : "",
+  ).toLowerCase();
+  const sourceType = firstText(
+    typeof clip === "object" ? clip.source_type : "",
+    typeof clip === "object" ? clip.sourceType : "",
+  ).toLowerCase();
+  const isOwnedExplainer =
+    mediaKind === "owned_explainer_motion" ||
+    sourceType === "internally_generated_motion_graphic";
+  if (isOwnedExplainer) {
+    const designRole = firstText(
+      typeof clip === "object" ? clip.generator_design_role : "",
+      typeof clip === "object" ? clip.generatorDesignRole : "",
+      sidecar.generator_design_role,
+    ).toLowerCase();
+    const explicitKind = firstText(
+      typeof clip === "object" ? clip.readable_card_kind : "",
+      typeof clip === "object" ? clip.readableCardKind : "",
+      typeof clip === "object" ? clip.card_kind : "",
+      typeof clip === "object" ? clip.cardKind : "",
+      sidecar.card_kind,
+    ).toLowerCase();
+    if (designRole !== "support_card" || !explicitKind) return "";
+    const matchedExplicitKind = explicitKind.match(
+      /^(source|source_lock|context|timeline|quote|takeaway|proof|stat|chart|carousel|screenshot|breaking|title)$/,
+    );
+    return matchedExplicitKind?.[1] || "";
+  }
   const text = [
     typeof clip === "object" ? clip.id : "",
     clipPath,
@@ -1507,7 +1537,13 @@ const PREMIUM_CARD_KIND_PRIORITY = Object.freeze({
   card: 40,
 });
 
-function selectPremiumSceneClips(clips = []) {
+function selectPremiumSceneClips(
+  clips = [],
+  {
+    targetDurationS = null,
+    maxCardDurationRatio = MAX_READABLE_CARD_DURATION_RATIO,
+  } = {},
+) {
   const source = Array.isArray(clips) ? clips.filter(Boolean) : [];
   const cards = source
     .map((clip, index) => {
@@ -1519,23 +1555,59 @@ function selectPremiumSceneClips(clips = []) {
             path: sceneClipPath(clip),
             priority: PREMIUM_CARD_KIND_PRIORITY[kind] || 40,
             source_lock: kind === "source" || kind === "source_lock",
+            minimum_duration_s:
+              sceneClipMinimumReadableDurationS(clip) ||
+              sceneClipSourceDurationS(clip) ||
+              MIN_GENERATED_CARD_SCENE_DURATION_S,
+            premium_card_v5: sceneClipUsesV5PremiumCard(clip),
           }
         : null;
     })
     .filter(Boolean)
     .sort((left, right) => right.priority - left.priority || left.index - right.index);
   const selected = [];
+  const skippedReasons = new Map();
   let sourceLocks = 0;
   let narrativeCards = 0;
+  let selectedCardMinimumDurationS = 0;
+  const targetDuration = Number(targetDurationS);
+  const configuredMaxRatio = Number(maxCardDurationRatio);
+  const standardMaxRatio = Number.isFinite(configuredMaxRatio) && configuredMaxRatio > 0
+    ? configuredMaxRatio
+    : MAX_READABLE_CARD_DURATION_RATIO;
   for (const card of cards) {
     if (selected.length >= PREMIUM_EDIT_RHYTHM_V5.max_generated_card_scene_count) break;
-    if (card.source_lock && sourceLocks >= 1) continue;
+    if (card.source_lock && sourceLocks >= 1) {
+      skippedReasons.set(card.index, "premium_card_ceiling");
+      continue;
+    }
     if (!card.source_lock && narrativeCards >= PREMIUM_EDIT_RHYTHM_V5.max_narrative_card_scene_count) {
+      skippedReasons.set(card.index, "premium_card_ceiling");
       continue;
     }
     const adjacent = selected.some((entry) => Math.abs(entry.index - card.index) === 1);
-    if (adjacent) continue;
+    if (adjacent) {
+      skippedReasons.set(card.index, "premium_card_spacing");
+      continue;
+    }
+    const prospectiveMinimumDurationS = Number(
+      (selectedCardMinimumDurationS + card.minimum_duration_s).toFixed(2),
+    );
+    const prospectiveUsesV5 = card.premium_card_v5 || selected.some(
+      (entry) => entry.premium_card_v5,
+    );
+    const durationRatio = prospectiveUsesV5
+      ? Math.min(standardMaxRatio, MAX_V5_PREMIUM_CARD_DURATION_RATIO)
+      : standardMaxRatio;
+    const durationBudgetS = Number.isFinite(targetDuration) && targetDuration > 0
+      ? targetDuration * durationRatio
+      : Number.POSITIVE_INFINITY;
+    if (prospectiveMinimumDurationS > durationBudgetS + 0.01) {
+      skippedReasons.set(card.index, "premium_card_duration_budget");
+      continue;
+    }
     selected.push(card);
+    selectedCardMinimumDurationS = prospectiveMinimumDurationS;
     if (card.source_lock) sourceLocks += 1;
     else narrativeCards += 1;
   }
@@ -1547,11 +1619,20 @@ function selectPremiumSceneClips(clips = []) {
       index: entry.index,
       kind: entry.kind,
       path: entry.path,
-      reason: selected.some((chosen) => Math.abs(chosen.index - entry.index) === 1)
-        ? "premium_card_spacing"
-        : "premium_card_ceiling",
+      reason: skippedReasons.get(entry.index) || (
+        selected.some((chosen) => Math.abs(chosen.index - entry.index) === 1)
+          ? "premium_card_spacing"
+          : "premium_card_ceiling"
+      ),
     }));
   const selectedInOrder = selected.slice().sort((left, right) => left.index - right.index);
+  const selectedUsesV5 = selected.some((entry) => entry.premium_card_v5);
+  const selectedMaxRatio = selectedUsesV5
+    ? Math.min(standardMaxRatio, MAX_V5_PREMIUM_CARD_DURATION_RATIO)
+    : standardMaxRatio;
+  const cardDurationBudgetS = Number.isFinite(targetDuration) && targetDuration > 0
+    ? Number((targetDuration * selectedMaxRatio).toFixed(2))
+    : null;
   return {
     version: PREMIUM_EDIT_RHYTHM_V5.version,
     clips: source.filter((_, index) => {
@@ -1559,6 +1640,8 @@ function selectPremiumSceneClips(clips = []) {
       return !kind || selectedIndexes.has(index);
     }),
     selected_cards: selectedInOrder.map(({ index, kind, path }) => ({ index, kind, path })),
+    selected_card_minimum_duration_s: selectedCardMinimumDurationS,
+    card_duration_budget_s: cardDurationBudgetS,
     skipped_cards: skippedCards,
   };
 }
@@ -1584,8 +1667,124 @@ function materialisedMotionClipIdentityKeys(clip) {
   return [...new Set(keys)];
 }
 
-function mergeMaterialisedMotionClipCandidates(storyClips = [], manifest = {}) {
+function isVerifiedOwnedMaterialisedMotionClip(clip = {}) {
+  if (!clip || typeof clip !== "object") return false;
+  const mediaKind = firstText(clip.media_kind, clip.mediaKind).toLowerCase();
+  const sourceType = firstText(clip.source_type, clip.sourceType).toLowerCase();
+  const rightsEvaluation = clip.owned_rights_evaluation || {};
+  const rightsGrant = clip.owned_generated_rights_grant || {};
+  const sha256 = (value) => /^[a-f0-9]{64}$/i.test(firstText(value));
+  const positiveNumber = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
+  return Boolean(
+    mediaKind === "owned_explainer_motion" &&
+      sourceType === "internally_generated_motion_graphic" &&
+      clip.source_safety_blocked !== true &&
+      clip.owned_explainer_visual_plan === true &&
+      clip.counts_towards_motion_readiness === true &&
+      clip.materialized === true &&
+      firstText(clip.generator_project_id) &&
+      sha256(clip.generator_master_sha256) &&
+      sha256(clip.materialised_output_sha256) &&
+      positiveNumber(clip.materialised_output_size_bytes) &&
+      firstText(clip.evidence_file_path) &&
+      sha256(clip.evidence_file_sha256) &&
+      positiveNumber(clip.evidence_file_size_bytes) &&
+      firstText(clip.rights_evidence_file_path) &&
+      sha256(clip.rights_evidence_file_sha256) &&
+      positiveNumber(clip.rights_evidence_file_size_bytes) &&
+      firstText(rightsEvaluation.status).toLowerCase() === "pass" &&
+      rightsEvaluation.verified === true &&
+      (!Array.isArray(rightsEvaluation.blockers) || !rightsEvaluation.blockers.length) &&
+      firstText(rightsGrant.grant_type).toLowerCase() === "owned_generated" &&
+      rightsGrant.commercial_use_allowed === true
+  );
+}
+
+function validateVerifiedOwnedMaterialisedMotionClipEvidence(clip = {}) {
+  const blockers = [];
+  const evidence = {};
+  if (!isVerifiedOwnedMaterialisedMotionClip(clip)) {
+    blockers.push("owned_motion_verified_metadata_missing");
+  }
+  const checks = [
+    {
+      key: "asset",
+      path: sceneClipPath(clip),
+      sha256: clip.materialised_output_sha256,
+      size: clip.materialised_output_size_bytes,
+      missing: "owned_motion_asset_missing",
+      shaMismatch: "owned_motion_asset_sha256_mismatch",
+      sizeMismatch: "owned_motion_asset_size_mismatch",
+    },
+    {
+      key: "generation_evidence",
+      path: clip.evidence_file_path,
+      sha256: clip.evidence_file_sha256,
+      size: clip.evidence_file_size_bytes,
+      missing: "owned_motion_generation_evidence_missing",
+      shaMismatch: "owned_motion_generation_evidence_sha256_mismatch",
+      sizeMismatch: "owned_motion_generation_evidence_size_mismatch",
+    },
+    {
+      key: "rights_evidence",
+      path: clip.rights_evidence_file_path,
+      sha256: clip.rights_evidence_file_sha256,
+      size: clip.rights_evidence_file_size_bytes,
+      missing: "owned_motion_rights_evidence_missing",
+      shaMismatch: "owned_motion_rights_evidence_sha256_mismatch",
+      sizeMismatch: "owned_motion_rights_evidence_size_mismatch",
+    },
+  ];
+  for (const check of checks) {
+    const filePath = resolvePathMaybeRoot(check.path);
+    try {
+      const fingerprint = fingerprintLocalFileSync(filePath);
+      evidence[check.key] = {
+        path: filePath,
+        sha256: fingerprint.sha256,
+        size_bytes: fingerprint.size_bytes,
+      };
+      if (fingerprint.sha256 !== firstText(check.sha256).toLowerCase()) {
+        blockers.push(check.shaMismatch);
+      }
+      if (fingerprint.size_bytes !== Number(check.size)) {
+        blockers.push(check.sizeMismatch);
+      }
+    } catch {
+      blockers.push(check.missing);
+    }
+  }
+  return {
+    status: blockers.length ? "blocked" : "pass",
+    blockers: [...new Set(blockers)],
+    evidence,
+  };
+}
+
+function mergeMaterialisedMotionClipCandidates(
+  storyClips = [],
+  manifest = {},
+  { rightsSafeOwnedMotionOnly = false } = {},
+) {
   const base = Array.isArray(storyClips) ? storyClips.filter(Boolean) : [];
+  if (rightsSafeOwnedMotionOnly === true) {
+    const blocked = base
+      .map((clip, index) => ({ clip, index }))
+      .filter(({ clip }) => !isVerifiedOwnedMaterialisedMotionClip(clip));
+    if (blocked.length) {
+      const identities = blocked.map(({ clip, index }) => firstText(
+        clip?.id,
+        clip?.asset_id,
+        clip?.clip_id,
+        sceneClipPath(clip),
+        `clip-${index + 1}`,
+      ));
+      throw new Error(
+        `rights_safe_owned_motion_only_story_clip_blocked:${identities.join(",")}`,
+      );
+    }
+    return base;
+  }
   const status = String(manifest?.status || "").trim().toLowerCase();
   if (!/^(?:pass|ready|green|materialized|materialised)$/.test(status)) return base;
   const candidates = [
@@ -1598,8 +1797,10 @@ function mergeMaterialisedMotionClipCandidates(storyClips = [], manifest = {}) {
     const mediaKind = String(clip?.media_kind || clip?.mediaKind || "").trim().toLowerCase();
     const clipPath = sceneClipPath(clip);
     const identityKeys = materialisedMotionClipIdentityKeys(clip);
+    const admissibleManifestClip =
+      mediaKind === "direct_video" || isVerifiedOwnedMaterialisedMotionClip(clip);
     if (
-      mediaKind !== "direct_video" ||
+      !admissibleManifestClip ||
       !clipPath ||
       identityKeys.some((key) => seen.has(key))
     ) {
@@ -2022,7 +2223,11 @@ function cleanCardText(value = "") {
 function repeatedSceneBaseSources(entries = []) {
   const counts = new Map();
   for (const entry of entries) {
-    if (!entry.baseSourceKey) continue;
+    if (
+      entry.readableCardKind ||
+      entry.verifiedOwnedGeneratedMotion ||
+      !entry.baseSourceKey
+    ) continue;
     counts.set(entry.baseSourceKey, (counts.get(entry.baseSourceKey) || 0) + 1);
   }
   return [...counts.entries()]
@@ -2222,6 +2427,10 @@ function buildClipScenePlan({
       readableCardKind,
       readableText,
       premiumCardV5: readableCardKind ? sceneClipUsesV5PremiumCard(clip) : false,
+      verifiedOwnedGeneratedMotion:
+        !readableCardKind &&
+        isVerifiedOwnedMaterialisedMotionClip(clip) &&
+        firstText(clip.generator_design_role).toLowerCase() === "primary_procedural_motion",
     };
     const repeatSourceKey = allowClipReuse === true ? "" : sceneClipRepeatSourceKey(clip, entry);
     const allowedRepeatCount = Math.max(1, Number(windowRepeatAllowances.get(repeatSourceKey) || 1));
@@ -3134,6 +3343,17 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
   }
   const finalDuration = Number(durationS);
   if (!Number.isFinite(finalDuration) || finalDuration <= 0) return windows;
+  const signature = buildPulseSignatureContract({ story, durationS: finalDuration });
+  if (Number(signature?.outro?.duration_s || 0) >= 2.2) {
+    windows.push(overlayWindow({
+      id: "brand_outro",
+      kind: "title",
+      text: `${signature.outro.brand_line} - ${signature.outro.catch_line}`,
+      startS: Number(signature.outro.start_s),
+      durationS: Number(signature.outro.duration_s),
+      source: "studio_v4_pulse_signature_layer",
+    }));
+  }
   return windows.filter((window) => Number(window.end_s || 0) <= finalDuration + 0.05);
 }
 
@@ -3470,6 +3690,7 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
   const materialisedClipCandidates = mergeMaterialisedMotionClipCandidates(
     bridgeClips.length ? bridgeClips : story.video_clips || [],
     siblingMotionManifest,
+    { rightsSafeOwnedMotionOnly: story.rights_safe_owned_motion_only === true },
   );
   const hyperframesCardDiscovery = mergeCurrentHyperframesStoryCardCandidates({
     clips: materialisedClipCandidates,
@@ -3482,7 +3703,25 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
     const rawPath = sceneClipPath(clip);
     const resolved = await resolveReadableMediaPath(rawPath);
     if (resolved && fs.existsSync(resolved)) {
-      if (clip && typeof clip === "object") clips.push({ ...clip, path: resolved, original_path: rawPath });
+      if (clip && typeof clip === "object") {
+        const mediaKind = firstText(clip.media_kind, clip.mediaKind).toLowerCase();
+        const ownedMotionEvidence = mediaKind === "owned_explainer_motion"
+          ? validateVerifiedOwnedMaterialisedMotionClipEvidence(clip)
+          : null;
+        if (ownedMotionEvidence && ownedMotionEvidence.status !== "pass") {
+          throw new Error(
+            `owned_materialised_motion_evidence_blocked:${ownedMotionEvidence.blockers.join(",")}`,
+          );
+        }
+        clips.push({
+          ...clip,
+          path: resolved,
+          original_path: rawPath,
+          ...(ownedMotionEvidence
+            ? { exact_owned_motion_evidence: ownedMotionEvidence.evidence }
+            : {}),
+        });
+      }
       else clips.push(resolved);
     }
   }
@@ -3537,7 +3776,10 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
     professional_candidate_selection: professionalCandidateSelection,
     blockers: professionalCandidateSelection.blockers,
   };
-  const premiumSceneSelection = selectPremiumSceneClips(directMotionVisualSelection.clips);
+  const premiumSceneSelection = selectPremiumSceneClips(
+    directMotionVisualSelection.clips,
+    { targetDurationS: durationS },
+  );
   const scenePlan = buildClipScenePlan({
     clips: premiumSceneSelection.clips,
     durationS,
@@ -3762,6 +4004,10 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
 
   const renderedMediaIntegrity = outputTransaction.verification;
   const finalDuration = ffprobeDuration(outputPath);
+  const decodedReadableCardWindows = [
+    ...scenePlan.cardVisibleWindows,
+    ...overlayCardWindowsForStory(story, { durationS }),
+  ];
   const decodedVisualGate = await runDecodedVisualGate({
     storyId: story.id || "story",
     mp4Path: outputPath,
@@ -3774,7 +4020,7 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
         duration: scene.durationS,
         type: scene.type || scene.sceneType,
       })),
-      card_visible_windows: scenePlan.cardVisibleWindows,
+      card_visible_windows: decodedReadableCardWindows,
     },
   });
   if (decodedVisualGate.status !== "pass") {
@@ -3972,6 +4218,8 @@ module.exports = {
   repositionAssCaptionsForCardWindows,
   buildCreativeTransitionSequence,
   mergeMaterialisedMotionClipCandidates,
+  isVerifiedOwnedMaterialisedMotionClip,
+  validateVerifiedOwnedMaterialisedMotionClipEvidence,
   hydrateProofClipSourceIdentities,
   selectBalancedProfessionalMotionCandidates,
   mergeCurrentHyperframesStoryCardCandidates,

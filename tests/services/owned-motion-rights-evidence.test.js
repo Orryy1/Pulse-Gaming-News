@@ -50,6 +50,7 @@ async function ownedInput(root, assetKind, overrides = {}) {
     evidence_path: path.join(root, `${assetId}.rights-evidence.json`),
     ownership_basis: "wholly_owned_generated_asset",
     licence_basis: policy.licence_basis,
+    allowed_use: "commercial_editorial_and_platform_native_derivatives",
     rights_grant: true,
     commercial_use_allowed: true,
     allowed_platforms: [...ALL_PLATFORMS],
@@ -91,6 +92,10 @@ test("materialises current scheduler-compatible evidence for every wholly owned 
     assert.equal(result.record.evidence_size_bytes, evidenceFingerprint.size_bytes);
     assert.equal(result.record.rights_grant, true);
     assert.equal(result.record.commercial_use_allowed, true);
+    assert.equal(
+      result.record.allowed_use,
+      "commercial_editorial_and_platform_native_derivatives",
+    );
     assert.deepEqual(result.record.allowed_platforms, ALL_PLATFORMS);
     assert.deepEqual(result.record.provenance, input.provenance);
 
@@ -100,6 +105,10 @@ test("materialises current scheduler-compatible evidence for every wholly owned 
     assert.equal(sidecar.ownership_basis, "wholly_owned_generated_asset");
     assert.equal(sidecar.rights_grant, true);
     assert.equal(sidecar.commercial_use_allowed, true);
+    assert.equal(
+      sidecar.allowed_use,
+      "commercial_editorial_and_platform_native_derivatives",
+    );
     assert.deepEqual(sidecar.allowed_platforms, ALL_PLATFORMS);
     assert.deepEqual(sidecar.provenance, input.provenance);
   }
@@ -124,6 +133,16 @@ test("requires an exact explicit platform set in both the record and evidence", 
   await assert.rejects(
     materializeOwnedMotionRightsEvidence(wildcardInput),
     /allowed_platform_invalid:all/,
+  );
+});
+
+test("requires an explicit allowed use for wholly owned evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-allowed-use-"));
+  const input = await ownedInput(root, "procedural_clip", { allowed_use: "" });
+
+  await assert.rejects(
+    materializeOwnedMotionRightsEvidence(input),
+    /allowed_use_missing/,
   );
 });
 

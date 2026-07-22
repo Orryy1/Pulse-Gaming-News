@@ -27,6 +27,7 @@ const {
   liveRssMotionGate,
   liveRssRepairIntakeGate,
   liveRssWeakMetaMotionPattern,
+  main: runGoalBatchPackages,
   selectStoriesForGoalBatch,
   shouldFillRevenuePathsForGoalBatch,
 } = require("../../tools/goal-batch-packages");
@@ -41,6 +42,32 @@ test("goal batch CLI accepts one canonical story manifest as its stories file", 
   };
 
   assert.deepEqual(asStoryArray(story), [story]);
+});
+
+test("goal proof source manifests preserve each supplemental page owner", () => {
+  const pack = buildGoalProofPackage({
+    story: {
+      id: "halo-source-owner",
+      title: "Halo's Remake Hits Game Pass On 28 July",
+      canonical_subject: "Halo: Campaign Evolved",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://news.xbox.com/en-us/2026/07/21/xbox-game-pass-july-2026-wave-2/",
+      timestamp: "2026-07-21T13:00:00.000Z",
+      full_script: "Halo: Campaign Evolved reaches Game Pass on 28 July. Follow Pulse Gaming so you never miss a beat.",
+      official_source_pages: [
+        {
+          official_source_url: "https://store.steampowered.com/app/2806050/Halo_Campaign_Evolved/",
+          source_title: "Halo: Campaign Evolved Steam Store",
+          source_owner: "Xbox Game Studios",
+          source_type: "steam_storefront_video_reference",
+        },
+      ],
+    },
+    platforms: ["youtube"],
+    generatedAt: "2026-07-21T20:40:00.000Z",
+  });
+
+  assert.equal(pack.source_manifest.official_source_pages[0].source_owner, "Xbox Game Studios");
 });
 
 test("goal batch CLI separates existing evidence input from regenerated output", () => {
@@ -218,6 +245,37 @@ test("goal batch editorial QA prefers display narration over pronunciation-only 
     buildViralScriptIntelligence({ story: prepared, script: prepared.full_script }).verdict,
     "viral_ready",
   );
+});
+
+test("goal batch Halo rewrite does not invent a gameplay comparison for a Game Pass launch story", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "halo-game-pass-launch-proof",
+    title: "Halo: Campaign Evolved Joins Game Pass On 28 July",
+    canonical_subject: "Halo: Campaign Evolved",
+    canonical_angle: "Game Pass launch and three new campaign missions",
+    source_name: "Xbox Wire",
+    source_type: "official_platform",
+    article_url: "https://news.xbox.com/en-us/2026/07/21/xbox-game-pass-july-2026-wave-2/",
+    confirmed_claims: [
+      "Halo: Campaign Evolved launches on 28 July 2026.",
+      "The game is available day one through Game Pass Ultimate and PC Game Pass.",
+      "The remake supports online co-op for up to four players.",
+      "The remake includes three new missions and an expanded arsenal of weapons and vehicles.",
+    ],
+    full_script:
+      "On 28 July, Halo's remake lands on Game Pass with three missions the original never had. " +
+      "Xbox Wire confirms Halo: Campaign Evolved is coming to cloud, console, handheld and PC through Game Pass Ultimate and PC Game Pass. " +
+      "It rebuilds the first campaign with high-definition visuals, refined controls and online co-op for up to four players. " +
+      "The bigger change is new material: three extra missions, a wider weapon pool, more vehicles and fresh enemy types. " +
+      "That gives returning players a reason to revisit the ring beyond nostalgia, while eligible subscribers can play it through their existing plan. " +
+      "But the remake still has to prove those refinements keep Halo's old rhythm instead of sanding it down. " +
+      "The real test starts when squads reach Operation: Meteorite. " +
+      "Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.doesNotMatch(prepared.full_script, /compared the new gameplay with the original/i);
+  assert.doesNotMatch(prepared.full_script, /rifle rhythm, enemy dance/i);
+  assert.match(prepared.full_script, /28 July|Game Pass|three new missions/i);
 });
 
 function licensedSfxAssets() {
@@ -1900,6 +1958,104 @@ test("goal batch live RSS source-motion-first mode falls back to official repair
   assert.deepEqual(selected.map((story) => story.id), ["official-repairable"]);
 });
 
+test("goal batch live RSS repair intake does not mistake publisher names in a media URL for an official source", () => {
+  const stories = [
+    {
+      id: "eurogamer-ea-simulation",
+      title: "EA Sports FC simulation predicts Spain will win the World Cup",
+      canonical_subject: "EA Sports FC 26",
+      source_name: "Eurogamer",
+      url: "https://www.eurogamer.net/ea-sports-fc-spain-winner-fifa-world-cup",
+      published_at: "2026-07-21T09:00:00.000Z",
+      breaking_score: 80,
+    },
+    {
+      id: "eurogamer-bethesda-forum",
+      title: "Todd Howard returns to a Bethesda forum to thank fans",
+      canonical_subject: "Todd Howard",
+      source_name: "Eurogamer",
+      url: "https://www.eurogamer.net/bethesda-todd-howard-reddit-lurker",
+      published_at: "2026-07-21T09:00:00.000Z",
+      breaking_score: 80,
+    },
+  ];
+
+  for (const story of stories) {
+    const repairGate = liveRssRepairIntakeGate(story, liveRssMotionGate(story));
+    assert.equal(repairGate.pass, false, story.id);
+    assert.equal(repairGate.official_platform_source, false, story.id);
+    assert.ok(
+      repairGate.reasons.includes("official_or_discoverable_source_missing"),
+      story.id,
+    );
+  }
+
+  assert.deepEqual(
+    selectStoriesForGoalBatch({
+      requireMaterializableDirectMedia: true,
+      liveRssStories: stories,
+      baseStories: [],
+      now: new Date("2026-07-21T10:00:00.000Z"),
+    }),
+    [],
+  );
+});
+
+test("goal batch live RSS repair intake recognises an official Call of Duty article despite a feed-label mismatch", () => {
+  const story = {
+    id: "call-of-duty-modern-warfare-4-beta",
+    title: "Call of Duty: Modern Warfare 4 open beta details revealed",
+    canonical_subject: "Call of Duty: Modern Warfare 4",
+    source_name: "Xbox Wire",
+    url: "https://www.callofduty.com/blog/2026/07/call-of-duty-modern-warfare-4-open-beta",
+    published_at: "2026-07-21T09:00:00.000Z",
+    breaking_score: 80,
+  };
+
+  const repairGate = liveRssRepairIntakeGate(story, liveRssMotionGate(story));
+
+  assert.equal(repairGate.pass, true);
+  assert.equal(repairGate.official_platform_source, true);
+  assert.equal(repairGate.major_media_discovery_source, false);
+  assert.equal(repairGate.mode, "official_source_motion_repair_intake");
+  assert.deepEqual(
+    selectStoriesForGoalBatch({
+      requireMaterializableDirectMedia: true,
+      liveRssStories: [story],
+      baseStories: [],
+      now: new Date("2026-07-21T10:00:00.000Z"),
+    }).map((row) => row.id),
+    [story.id],
+  );
+});
+
+test("goal batch live RSS source-motion-first mode admits major-media game trailers only for governed discovery", () => {
+  const story = {
+    id: "ign-ninja-gaiden-gameplay",
+    title: "Ninja Gaiden 4 gameplay trailer gives fans a first look",
+    canonical_subject: "Ninja Gaiden 4",
+    source_name: "IGN",
+    url: "https://www.ign.com/articles/ninja-gaiden-4-gameplay-trailer-first-look",
+    published_at: "2026-07-21T09:00:00.000Z",
+    breaking_score: 80,
+  };
+
+  const repairGate = liveRssRepairIntakeGate(story, liveRssMotionGate(story));
+  assert.equal(repairGate.pass, true);
+  assert.equal(repairGate.official_platform_source, false);
+  assert.equal(repairGate.major_media_discovery_source, true);
+  assert.equal(repairGate.mode, "major_media_official_motion_discovery");
+  assert.deepEqual(
+    selectStoriesForGoalBatch({
+      requireMaterializableDirectMedia: true,
+      liveRssStories: [story],
+      baseStories: [],
+      now: new Date("2026-07-21T10:00:00.000Z"),
+    }).map((row) => row.id),
+    [story.id],
+  );
+});
+
 test("goal batch live RSS source-motion-first mode falls back after excluding an already-published direct story", () => {
   const selected = selectStoriesForGoalBatch({
     requireMaterializableDirectMedia: true,
@@ -1989,6 +2145,70 @@ test("goal batch explicit seed files never substitute unrelated revenue fallback
     false,
     "an empty or excluded seeded cohort must remain empty instead of packaging an unrelated backlog story",
   );
+});
+
+test("goal batch explicit seed repair bypasses unattended zero-yield quarantine", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-batch-explicit-quarantine-"));
+  const story = {
+    id: "rss_0123456789abcdef",
+    title: "Call of Duty: Modern Warfare 4 open beta details revealed",
+    canonical_subject: "Call of Duty: Modern Warfare 4",
+    source_name: "Xbox Wire",
+    source_type: "rss",
+    url: "https://www.callofduty.com/blog/2026/07/modern-warfare-4-open-beta",
+    timestamp: "Mon, 20 Jul 2026 17:30:00 +0000",
+    breaking_score: 80,
+  };
+  const storiesFile = path.join(tmp, "seed-stories.json");
+  const quarantineFile = path.join(tmp, "zero-yield-quarantine.json");
+  const outDir = path.join(tmp, "goal-proof-batch");
+  const contractOutDir = path.join(tmp, "goal-contract");
+
+  try {
+    await fs.writeJson(storiesFile, [story]);
+    await fs.writeJson(quarantineFile, {
+      schema_version: 1,
+      generated_at: "2026-07-21T19:00:00.000Z",
+      entries: [
+        {
+          source_fingerprint: buildSourceFingerprint(story),
+          story_ids: [story.id],
+          first_failed_at: "2026-07-21T19:00:00.000Z",
+          last_failed_at: "2026-07-21T19:00:00.000Z",
+          expires_at: "2026-07-22T07:00:00.000Z",
+          failure_count: 1,
+        },
+      ],
+    });
+
+    const result = await runGoalBatchPackages([
+      "--stories-file",
+      storiesFile,
+      "--zero-yield-quarantine",
+      quarantineFile,
+      "--out-dir",
+      outDir,
+      "--contract-out-dir",
+      contractOutDir,
+      "--revenue-paths",
+      path.join(tmp, "missing-revenue-paths.json"),
+      "--v4-motion-pack-dir",
+      path.join(tmp, "missing-motion-packs"),
+      "--sfx-assets",
+      path.join(tmp, "missing-sfx-assets.json"),
+      "--sfx-rights-ledger",
+      path.join(tmp, "missing-sfx-rights.json"),
+      "--generated-at",
+      "2026-07-21T20:00:00.000Z",
+      "--limit",
+      "1",
+    ]);
+
+    assert.equal(result.batch.summary.story_count, 1);
+    assert.equal(result.batch.packages[0].canonical_story_manifest.story_id, story.id);
+  } finally {
+    await fs.remove(tmp);
+  }
 });
 
 test("goal batch CLI defaults to retained licensed SFX evidence", () => {
@@ -5039,6 +5259,117 @@ test("goal batch packages restore sibling motion-hydrated materialised clips bef
     assert.equal(batch.summary.green_count, 1);
   } finally {
     fs.removeSync(tempDir);
+  }
+});
+
+test("goal batch packages restore strictly verified owned motion instead of stale blocked direct clips", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-owned-motion-hydration-"));
+  try {
+    const story = greenStory("owned-motion-hydration");
+    const staleDirectIds = new Set(story.video_clips.map((clip) => clip.id));
+    const artifactDir = path.join(root, story.id);
+    fs.ensureDirSync(artifactDir);
+    const projectIds = [
+      "pulse.motion.kinetic-aperture.v1",
+      "pulse.motion.signal-lattice.v1",
+      "pulse.motion.data-ribbons.v1",
+      "pulse.motion.editorial-support.v1",
+    ];
+    const clips = Array.from({ length: 8 }, (_, index) => {
+      const id = `${story.id}-owned-${index + 1}`;
+      const clipPath = path.join(artifactDir, "owned-motion", `${id}.mp4`);
+      const clipBytes = Buffer.alloc(4096 + index, index + 31);
+      fs.outputFileSync(clipPath, clipBytes);
+      const assetSha256 = crypto.createHash("sha256").update(clipBytes).digest("hex");
+      const evidencePath = `${clipPath}.rights.json`;
+      const evidenceBytes = Buffer.from(JSON.stringify({ asset_id: id, rights_grant: true }));
+      fs.outputFileSync(evidencePath, evidenceBytes);
+      const evidenceSha256 = crypto.createHash("sha256").update(evidenceBytes).digest("hex");
+      const projectId = projectIds[index % projectIds.length];
+      const projectSha256 = crypto.createHash("sha256").update(projectId).digest("hex");
+      return {
+        id,
+        asset_id: id,
+        type: "motion_clip",
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: `local://pulse-generated-motion/${story.id}/${id}`,
+        source_type: "internally_generated_motion_graphic",
+        source_kind: "owned_explainer_motion_surface",
+        media_kind: "owned_explainer_motion",
+        source_family: `${story.id}_${projectId}`,
+        motion_family: `${story.id}_${projectId}`,
+        owned_explainer_visual_plan: true,
+        source_safety_blocked: false,
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        validated: true,
+        durationS: 5,
+        generator_project_id: projectId,
+        generator_master_sha256: projectSha256,
+        materialised_output_sha256: assetSha256,
+        materialised_output_size_bytes: clipBytes.length,
+        owned_rights_record: {
+          asset_id: id,
+          path: clipPath,
+          asset_sha256: assetSha256,
+          asset_size_bytes: clipBytes.length,
+          licence_basis: "owned_generated_editorial_motion_graphic",
+          allowed_use: "finished_editorial_video_only",
+          allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+          rights_grant: true,
+          commercial_use_allowed: true,
+          risk_score: 0.01,
+          evidence_file: evidencePath,
+          evidence_sha256: evidenceSha256,
+          evidence_size_bytes: evidenceBytes.length,
+        },
+        owned_rights_evaluation: {
+          status: "pass",
+          verified: true,
+          blockers: [],
+        },
+      };
+    });
+    fs.writeJsonSync(path.join(artifactDir, "materialised_motion_clips.json"), {
+      schema_version: 1,
+      story_id: story.id,
+      status: "ready",
+      owned_explainer_visual_plan: true,
+      source_safety_blocked: false,
+      clip_count: clips.length,
+      distinct_motion_family_count: 4,
+      direct_video_motion_asset_count: 0,
+      direct_video_motion_family_count: 0,
+      materially_distinct_generator_project_count: 4,
+      distinct_generator_master_count: 4,
+      clips,
+      materialised_clips: clips,
+    });
+    fs.writeJsonSync(path.join(artifactDir, "rights_ledger.json"), {
+      verdict: "pass",
+      records: clips.map((clip) => clip.owned_rights_record),
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      existingArtifactRoot: root,
+      allowOwnedMotionFallback: true,
+      generatedAt: "2026-07-21T18:00:00.000Z",
+    });
+
+    const pack = batch.packages[0];
+    const accepted = pack.footage_inventory.motion_inventory.accepted_local_clips;
+    assert.equal(accepted.length, 8);
+    assert.ok(accepted.every((clip) => clip.owned_explainer_visual_plan === true));
+    assert.ok(accepted.every((clip) => !staleDirectIds.has(clip.id)));
+    assert.ok(
+      pack.publish_verdict.reason_codes.includes("media_house:source_lock_not_verified"),
+      JSON.stringify(pack.publish_verdict.reason_codes),
+    );
+    assert.equal(batch.summary.green_count, 0);
+  } finally {
+    fs.removeSync(root);
   }
 });
 

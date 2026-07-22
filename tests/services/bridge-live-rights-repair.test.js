@@ -106,9 +106,44 @@ test("bridge live rights repair prunes unused legacy visuals and rights generate
   assert.ok(
     repaired.rights_ledger.some((record) => record.asset_id === `${storyId}_thumbnail_candidate_path`),
   );
-  assert.ok(
-    repaired.rights_ledger.every((record) => record.allowed_platforms.includes("x")),
+  assert.deepEqual(
+    repaired.rights_ledger.find((record) => record.asset_id === `${storyId}-owned-motion-1`).allowed_platforms,
+    ["youtube", "tiktok", "instagram", "facebook"],
   );
+  assert.ok(
+    repaired.rights_ledger
+      .find((record) => record.asset_id === `${storyId}_thumbnail_candidate_path`)
+      .allowed_platforms.includes("x"),
+  );
+});
+
+test("bridge live rights repair preserves an explicitly restricted platform scope", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bridge-rights-scope-"));
+  const storyId = "rss_youtube_only";
+  const files = { root, ...(await makeGeneratedFiles(root, storyId)) };
+  const story = bridgeStory(storyId, files);
+  story.rights_ledger.push({
+    asset_id: `${storyId}-official-footage`,
+    path: `output/video_cache/${storyId}_official.mp4`,
+    source_url: "https://www.youtube.com/watch?v=official",
+    source_type: "official_publisher_video",
+    source_owner: "Microsoft Corporation",
+    licence_basis: "microsoft_game_content_usage_rules",
+    allowed_platforms: ["youtube"],
+    restricted_platforms: ["tiktok", "instagram", "facebook", "x"],
+    commercial_use_allowed: true,
+    risk_score: 0.2,
+  });
+
+  const repaired = repairBridgeLiveStoryRights(story, {
+    generatedAt: "2026-07-21T17:20:00.000Z",
+  });
+  const record = repaired.rights_ledger.find(
+    (candidate) => candidate.asset_id === `${storyId}-official-footage`,
+  );
+
+  assert.deepEqual(record.allowed_platforms, ["youtube"]);
+  assert.deepEqual(record.restricted_platforms, ["tiktok", "instagram", "facebook", "x"]);
 });
 
 test("bridge live rights repair plan only applies rows that pass governance after repair", async () => {

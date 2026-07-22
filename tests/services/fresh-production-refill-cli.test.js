@@ -30,8 +30,16 @@ test("fresh production refill CLI is registered and parses safe local-only optio
     "output/manual-seeds/gta-vi.json",
     "--resume-story-packages",
     "output/refill-contract/motion-hydrated/story-packages.json",
+    "--segment-report",
+    "test/output/refill-segments/segment-report.json",
+    "--real-motion-out-dir",
+    "output/refill-contract/motion-packs",
+    "--real-motion-artifact-root",
+    "output/refill-proof",
     "--tts-provider",
     "elevenlabs",
+    "--platforms",
+    "youtube",
     "--repair-story-limit",
     "4",
     "--repair-evidence-mode",
@@ -46,7 +54,11 @@ test("fresh production refill CLI is registered and parses safe local-only optio
   assert.match(args.contractOutDir, /output[\\/]refill-contract$/);
   assert.match(args.storiesFile, /output[\\/]manual-seeds[\\/]gta-vi\.json$/);
   assert.match(args.resumeStoryPackagesPath, /output[\\/]refill-contract[\\/]motion-hydrated[\\/]story-packages\.json$/);
+  assert.match(args.segmentReportPath, /test[\\/]output[\\/]refill-segments[\\/]segment-report\.json$/);
+  assert.match(args.realMotionOutDir, /output[\\/]refill-contract[\\/]motion-packs$/);
+  assert.match(args.realMotionArtifactRoot, /output[\\/]refill-proof$/);
   assert.equal(args.ttsProvider, "elevenlabs");
+  assert.deepEqual(args.targetPlatforms, ["youtube"]);
   assert.equal(args.repairStoryLimit, 4);
   assert.equal(args.repairEvidenceMode, "full");
   assert.equal(args.repairEvidence, false);
@@ -110,8 +122,16 @@ test("fresh production refill CLI delegates to the scheduler refill handler with
       path.join(tmp, "seed-stories.json"),
       "--resume-story-packages",
       path.join(contractOutDir, "motion-hydrated", "story-packages.json"),
+      "--segment-report",
+      path.join(tmp, "segment-report.json"),
+      "--real-motion-out-dir",
+      path.join(contractOutDir, "motion-packs"),
+      "--real-motion-artifact-root",
+      outDir,
       "--tts-provider",
       "elevenlabs",
+      "--platforms",
+      "youtube",
       "--repair-story-limit",
       "3",
     ], {
@@ -130,10 +150,14 @@ test("fresh production refill CLI delegates to the scheduler refill handler with
       calls[0].job.payload.resume_story_packages_path,
       path.join(contractOutDir, "motion-hydrated", "story-packages.json"),
     );
+    assert.equal(calls[0].job.payload.segment_report_path, path.join(tmp, "segment-report.json"));
+    assert.equal(calls[0].job.payload.real_motion_out_dir, path.join(contractOutDir, "motion-packs"));
+    assert.equal(calls[0].job.payload.real_motion_artifact_root, outDir);
     assert.equal(calls[0].job.payload.repair_evidence, true);
     assert.equal(calls[0].job.payload.repair_evidence_mode, "plan");
     assert.equal(calls[0].job.payload.repair_story_limit, 3);
     assert.equal(calls[0].job.payload.tts_provider_preference, "elevenlabs");
+    assert.deepEqual(calls[0].job.payload.target_platforms, ["youtube"]);
     assert.equal(calls[0].job.payload.reason, "operator_safe_fresh_production_refill");
     assert.equal(result.status, "completed");
     assert.equal(result.safety.no_publish, true);

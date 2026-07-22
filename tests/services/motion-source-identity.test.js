@@ -242,6 +242,26 @@ test("motion source identity canonicalises YouTube aliases and strips tracking n
   assert.deepEqual(reconciled.sources[0].clip_indexes, [0, 1]);
 });
 
+test("motion source identity collapses Steam trailer transport and CDN mirrors", () => {
+  const trailerRoot =
+    "/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408";
+  const fastlyDash =
+    `https://video.fastly.steamstatic.com${trailerRoot}/dash_av1.mpd?t=1781050956`;
+  const akamaiHls =
+    `https://video.akamai.steamstatic.com${trailerRoot}/hls_264_master.m3u8?t=1781050956`;
+  const expected = `url:https://video.steamstatic.com${trailerRoot}`;
+
+  assert.equal(canonicaliseMotionSourceUrl(fastlyDash), expected);
+  assert.equal(canonicaliseMotionSourceUrl(akamaiHls), expected);
+
+  const reconciled = reconcileMotionSourceIdentities([
+    { id: "fastly_dash", canonical_source_url: fastlyDash },
+    { id: "akamai_hls", canonical_source_url: akamaiHls },
+  ]);
+  assert.equal(reconciled.sources.length, 1);
+  assert.deepEqual(reconciled.sources[0].clip_indexes, [0, 1]);
+});
+
 test("motion source identity accepts stable base asset IDs but rejects placeholder IDs", () => {
   const stable = resolveMotionSourceIdentity({
     id: "official-scene",

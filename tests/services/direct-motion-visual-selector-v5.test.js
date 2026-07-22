@@ -90,6 +90,92 @@ test("V5 direct-motion selector preserves clean detailed gameplay", () => {
   assert.equal(report.metrics.text_heavy_sample_count, 0);
 });
 
+test("V5 direct-motion selector bypasses only fully evidenced owned support cards", async () => {
+  const hash = (value) => value.repeat(64);
+  const directClip = {
+    id: "official-window-1",
+    path: "C:\\clips\\official-window-1.mp4",
+    source_url: "https://publisher.example/official-window-1.mp4",
+    source_master_sha256: hash("a"),
+  };
+  const governedCard = {
+    id: "owned-source-card",
+    path: "C:\\clips\\owned-source-card.mp4",
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    generator_design_role: "support_card",
+    hyperframes_card: true,
+    readable_card_kind: "source",
+    card_kind: "source",
+    generator_project_id: "pulse.motion.editorial-support.v1",
+    generator_master_sha256: hash("b"),
+    materialised_output_sha256: hash("c"),
+    evidence_file_sha256: hash("d"),
+    rights_evidence_file_sha256: hash("e"),
+    materialized: true,
+    counts_towards_motion_readiness: true,
+    source_safety_blocked: false,
+    owned_rights_evaluation: {
+      status: "pass",
+      verified: true,
+      blockers: [],
+    },
+    owned_generated_rights_grant: {
+      grant_type: "owned_generated",
+      allowed_use: "commercial_editorial_and_platform_native_derivatives",
+      commercial_use_allowed: true,
+      derivative_use_allowed: true,
+    },
+  };
+  const inspected = [];
+
+  const report = await filterPremiumDirectMotionClips([directClip, governedCard], {
+    inspectClip: async (clip) => {
+      inspected.push(clip.id);
+      return {
+        path: clip.path,
+        eligible: true,
+        reasons: [],
+        metrics: { decoded_sample_count: 20 },
+      };
+    },
+  });
+
+  assert.deepEqual(inspected, [directClip.id]);
+  assert.deepEqual(report.clips.map((clip) => clip.id), [directClip.id, governedCard.id]);
+  assert.deepEqual(report.blockers, []);
+});
+
+test("V5 direct-motion selector inspects a forged owned support-card claim", async () => {
+  const forgedCard = {
+    id: "forged-owned-card",
+    path: "C:\\clips\\forged-owned-card.mp4",
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    generator_design_role: "support_card",
+    readable_card_kind: "source",
+    card_kind: "source",
+  };
+  let inspectionCount = 0;
+
+  const report = await filterPremiumDirectMotionClips([forgedCard], {
+    inspectClip: async () => {
+      inspectionCount += 1;
+      return {
+        path: forgedCard.path,
+        eligible: false,
+        reasons: ["direct_motion_frame_taste_failed"],
+        metrics: { decoded_sample_count: 20 },
+      };
+    },
+  });
+
+  assert.equal(inspectionCount, 1);
+  assert.deepEqual(report.clips, []);
+  assert.equal(report.rejected[0].clip_id, forgedCard.id);
+  assert.ok(report.blockers.includes("premium_direct_motion_missing"));
+});
+
 test("V5 direct-motion selector fails closed when a decoded sample could not be analysed", () => {
   const report = scoreDirectMotionVisualSamples([
     {

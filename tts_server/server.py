@@ -316,6 +316,37 @@ DEVICE = os.getenv("DEVICE", "cuda")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8765"))
 VOICES_CONFIG_PATH = os.getenv("VOICES_CONFIG_PATH", "voices.json")
+
+
+def _positive_int_env(name: str, fallback: int, minimum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(fallback)))
+    except (TypeError, ValueError):
+        return fallback
+    return value if value >= minimum else fallback
+
+
+# VoxCPM's Windows CUDA path is not stable for long single-take requests.
+# Node callers segment below these limits; this guard protects the native
+# inference boundary from any caller that bypasses the governed client.
+TTS_SINGLE_TAKE_MAX_WORDS = _positive_int_env(
+    "LOCAL_TTS_SINGLE_TAKE_MAX_WORDS", 40, 8
+)
+TTS_SINGLE_TAKE_MAX_CHARS = _positive_int_env(
+    "LOCAL_TTS_SINGLE_TAKE_MAX_CHARS", 320, 80
+)
+TTS_GPU_PRESSURE_CHECK = os.getenv(
+    "LOCAL_TTS_GPU_PRESSURE_CHECK", "true"
+).strip().lower() not in ("0", "false", "no", "off")
+TTS_COLD_MIN_GPU_FREE_MB = _positive_int_env(
+    "LOCAL_TTS_MIN_GPU_FREE_MB", 12_288, 1
+)
+TTS_RESIDENT_MIN_GPU_FREE_MB = _positive_int_env(
+    "LOCAL_TTS_RESIDENT_MIN_GPU_FREE_MB", 6_144, 1
+)
+INFERENCE_QUEUE_WAIT_S = _positive_int_env(
+    "LOCAL_TTS_INFERENCE_QUEUE_WAIT_S", 15, 1
+)
 # When true, load the __default__ engine during app startup so the first
 # real request doesn't pay the 3-5 min VoxCPM 2 cold-boot cost while the
 # Node-side runner counts down its timeout. Default off for dev
@@ -444,7 +475,27 @@ def _serial_inference(operation: str):
     queued_at = time.monotonic()
     with _inference_state_lock:
         INFERENCE_STATE["waiting"] = int(INFERENCE_STATE["waiting"]) + 1
-    _inference_lock.acquire()
+    acquired = _inference_lock.acquire(timeout=INFERENCE_QUEUE_WAIT_S)
+    if not acquired:
+        waited_ms = int((time.monotonic() - queued_at) * 1000)
+        with _inference_state_lock:
+            INFERENCE_STATE["waiting"] = max(
+                0,
+                int(INFERENCE_STATE["waiting"]) - 1,
+            )
+        log.warning(
+            "[inference-gate] refused queued operation=%s waited_ms=%d "
+            "max_wait_s=%s",
+            operation,
+            waited_ms,
+            INFERENCE_QUEUE_WAIT_S,
+        )
+        raise HTTPException(
+            503,
+            "local_tts_busy: inference queue wait exceeded "
+            f"operation={operation} waited_ms={waited_ms} "
+            f"max_wait_s={INFERENCE_QUEUE_WAIT_S}",
+        )
     started_at = time.monotonic()
     with _inference_state_lock:
         INFERENCE_STATE["waiting"] = max(0, int(INFERENCE_STATE["waiting"]) - 1)
@@ -1065,6 +1116,56 @@ def _synth(voice_id: str, req: TTSRequest) -> TTSResponse:
     text = req.text.strip()
     if not text:
         raise HTTPException(400, "text is empty")
+
+    word_count = len(text.split())
+    if (
+        len(text) > TTS_SINGLE_TAKE_MAX_CHARS
+        or word_count > TTS_SINGLE_TAKE_MAX_WORDS
+    ):
+        log.warning(
+            "[synth-guard] refused oversized single take "
+            "voice_id=%s chars=%d/%d words=%d/%d",
+            voice_id,
+            len(text),
+            TTS_SINGLE_TAKE_MAX_CHARS,
+            word_count,
+            TTS_SINGLE_TAKE_MAX_WORDS,
+        )
+        raise HTTPException(
+            413,
+            "single-take limit exceeded: "
+            f"chars={len(text)} max_chars={TTS_SINGLE_TAKE_MAX_CHARS} "
+            f"words={word_count} max_words={TTS_SINGLE_TAKE_MAX_WORDS}; "
+            "segment narration before retry",
+        )
+
+    if TTS_GPU_PRESSURE_CHECK:
+        vram = _vram_snapshot()
+        free_b = vram.get("free_b") if isinstance(vram, dict) else None
+        if isinstance(free_b, (int, float)):
+            cached_engine = _engine_cache.get(voice_id)
+            resident = getattr(cached_engine, "_model", None) is not None
+            min_free_mb = (
+                min(TTS_COLD_MIN_GPU_FREE_MB, TTS_RESIDENT_MIN_GPU_FREE_MB)
+                if resident
+                else TTS_COLD_MIN_GPU_FREE_MB
+            )
+            free_mb = free_b / (1024 * 1024)
+            if free_mb < min_free_mb:
+                log.warning(
+                    "[synth-guard] refused low-headroom inference "
+                    "voice_id=%s resident=%s free_mb=%d min_free_mb=%d",
+                    voice_id,
+                    resident,
+                    int(free_mb),
+                    min_free_mb,
+                )
+                raise HTTPException(
+                    503,
+                    "local_tts_gpu_busy: "
+                    f"free_mb={int(free_mb)} min_free_mb={min_free_mb} "
+                    f"resident={str(resident).lower()}",
+                )
 
     rate = (req.voice_settings.speaking_rate if req.voice_settings else None) or 1.0
 

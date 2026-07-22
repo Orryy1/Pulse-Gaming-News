@@ -70,6 +70,7 @@ function completeRights(overrides = {}) {
     source_family: "publisher_trailer",
     source_owner: "Fixture Rights Owner",
     licence_basis: "transformative_editorial_short_form",
+    allowed_use: "transformative_editorial_short_form",
     commercial_use_allowed: true,
     allowed_platforms: [
       { platform_key: "youtube_short" },
@@ -1440,6 +1441,282 @@ test("candidate evidence reconciliation builds a current rights row only for a v
   assert.equal(clip.approval_status, "approved_for_transformative_editorial_use");
   assert.equal(clip.reconciliation_basis, "current_validated_official_materialised_clip");
   assert.equal(clip.evidence_file, path.join(artifactDir, "materialised_motion_clips.json"));
+});
+
+test("candidate evidence reconciliation replaces a stale restrictive row only for strictly verified owned procedural motion", async () => {
+  const storyId = "verified_owned_procedural_motion";
+  const artifactDir = await makeArtifactDir("pulse-verified-owned-motion-");
+  const clipPath = path.join(artifactDir, "owned-procedural-motion.mp4");
+  const rightsEvidencePath = `${clipPath}.rights.json`;
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const rightsPath = path.join(artifactDir, "rights_ledger.json");
+  const flagshipEvidencePath = path.join(
+    artifactDir,
+    "flagship",
+    "rights",
+    "owned-procedural-motion.json",
+  );
+  const flagshipInventoryPath = path.join(artifactDir, "flagship", "inventory.json");
+  const clipBytes = Buffer.from("current owned procedural motion");
+  const rightsEvidenceBytes = Buffer.from(JSON.stringify({
+    schema_version: 1,
+    asset_id: "owned-procedural-motion",
+    ownership_basis: "wholly_owned_generated_asset",
+    rights_grant: true,
+    commercial_use_allowed: true,
+    allowed_platforms: TARGET_PLATFORMS,
+  }));
+  const ownedRightsRecord = {
+    asset_id: "owned-procedural-motion",
+    path: clipPath,
+    local_materialized_path: clipPath,
+    ownership_basis: "wholly_owned_generated_asset",
+    source_url: "local://pulse-owned/owned-procedural-motion",
+    source_type: "internally_generated_procedural_motion",
+    source_family: "pulse.motion.kinetic-aperture.v1",
+    source_owner: "Pulse Gaming",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    rights_grant: true,
+    commercial_use_allowed: true,
+    allowed_platforms: TARGET_PLATFORMS,
+    credit_required: false,
+    approval_status: "approved_owned_generated_commercial_use",
+    rights_status: "explicit_owned_generated_asset",
+    evidence_file: rightsEvidencePath,
+    evidence_sha256: sha256(rightsEvidenceBytes),
+    evidence_size_bytes: rightsEvidenceBytes.length,
+    asset_sha256: sha256(clipBytes),
+    asset_size_bytes: clipBytes.length,
+    provenance: {
+      origin: "pulse_gaming_internal_generation",
+      third_party_inputs: false,
+      third_party_sources: [],
+    },
+  };
+  await fs.outputFile(clipPath, clipBytes);
+  await fs.outputFile(rightsEvidencePath, rightsEvidenceBytes);
+  await fs.outputFile(finalVideoPath, Buffer.from("decodable final"));
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Owned Motion Fixture",
+    primary_source: "Xbox Wire",
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    output_path: finalVideoPath,
+    clip_scene_plan: { scenes: [{ path: clipPath }] },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    clips: [{
+      id: "owned-procedural-motion",
+      asset_id: "owned-procedural-motion",
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: "local://pulse-owned/owned-procedural-motion",
+      source_type: "internally_generated_procedural_motion",
+      source_family: "pulse.motion.kinetic-aperture.v1",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      owned_explainer_visual_plan: true,
+      generator_project_id: "pulse.motion.kinetic-aperture.v1",
+      generator_master_sha256: sha256(Buffer.from("owned generator master")),
+      owned_generated_rights_grant: {
+        grant_type: "owned_generated",
+        rights_holder: "Pulse Gaming",
+        allowed_use: "commercial_editorial_and_platform_native_derivatives",
+        allowed_platforms: TARGET_PLATFORMS,
+        commercial_use_allowed: true,
+      },
+      materialised_output_sha256: sha256(clipBytes),
+      materialised_output_size_bytes: clipBytes.length,
+      owned_rights_record: ownedRightsRecord,
+      owned_rights_evaluation: {
+        status: "pass",
+        verified: true,
+        blockers: [],
+        evidence: {
+          provenance_verified: true,
+          exact_allowed_platforms: TARGET_PLATFORMS,
+        },
+      },
+    }],
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {});
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {});
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: {},
+  });
+  const staleLedger = {
+    verdict: "RED",
+    records: [{
+      asset_id: "owned-procedural-motion",
+      path: clipPath,
+      source_url: "local://pulse-owned/owned-procedural-motion",
+      source_type: "internally_generated_procedural_motion",
+      source_owner: "Xbox Wire",
+      ownership_basis: "wholly_owned_generated_asset",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      commercial_use_allowed: true,
+      allowed_platforms: TARGET_PLATFORMS,
+      approval_status: "approved_owned_generated_commercial_use",
+      rights_status: "explicit_owned_generated_asset",
+      usage_scope: "declared_licensed_scope",
+      rights_grant: false,
+      risk_score: 0.01,
+      evidence_file: "[object Object]",
+      current_validated_owned_procedural_motion: true,
+      reconciliation_basis: "current_validated_owned_procedural_motion",
+      owned_rights_record: ownedRightsRecord,
+    }],
+  };
+  await fs.outputJson(rightsPath, staleLedger);
+  await fs.outputJson(flagshipEvidencePath, {
+    schema_version: 1,
+    asset_id: "owned-procedural-motion",
+    asset_sha256: sha256(clipBytes),
+    asset_size_bytes: clipBytes.length,
+    source_url: "local://pulse-owned/owned-procedural-motion",
+    creator: "Xbox Wire",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    commercial_use_allowed: true,
+    rights_verdict: "GREEN",
+    allowed_platforms: TARGET_PLATFORMS,
+    credit_required: false,
+    risk_score: 0.01,
+    approval_status: "approved_owned_generated_commercial_use",
+    source_ledger_path: "rights_ledger.json",
+    source_ledger_sha256: "0".repeat(64),
+    source_record_sha256: "0".repeat(64),
+  });
+  await fs.outputJson(flagshipInventoryPath, {
+    schema_version: 1,
+    story_id: storyId,
+    complete: true,
+    verdict: "GREEN",
+    used_assets: [{
+      asset_id: "owned-procedural-motion",
+      kind: "video",
+      path: clipPath,
+      source_url: "local://pulse-owned/owned-procedural-motion",
+      creator: "Xbox Wire",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      commercial_use_allowed: true,
+      rights_verdict: "GREEN",
+      evidence_file: path.relative(artifactDir, flagshipEvidencePath),
+      allowed_platforms: TARGET_PLATFORMS,
+      credit_required: false,
+      risk_score: 0.01,
+    }],
+    blockers: [],
+  });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: true,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.equal(report.rights.applied, true);
+  assert.deepEqual(report.rights.blockers, []);
+  const clip = report.rights.proposed_ledger.records[0];
+  assert.equal(clip.asset_id, "owned-procedural-motion");
+  assert.equal(clip.source_owner, "Pulse Gaming");
+  assert.equal(clip.rights_grant, true);
+  assert.equal(clip.commercial_use_allowed, true);
+  assert.equal(
+    clip.allowed_use,
+    "commercial_editorial_and_platform_native_derivatives",
+  );
+  assert.deepEqual(clip.allowed_platforms, TARGET_PLATFORMS);
+  assert.equal(clip.evidence_file, rightsEvidencePath);
+  assert.equal(clip.evidence_sha256, sha256(rightsEvidenceBytes));
+  assert.equal(clip.evidence_size_bytes, rightsEvidenceBytes.length);
+  assert.equal(
+    clip.reconciliation_basis,
+    "current_validated_owned_procedural_motion",
+  );
+  const reboundInventory = await fs.readJson(flagshipInventoryPath);
+  const reboundFlagshipEvidence = await fs.readJson(flagshipEvidencePath);
+  assert.equal(reboundInventory.used_assets[0].creator, "Pulse Gaming");
+  assert.equal(reboundFlagshipEvidence.creator, "Pulse Gaming");
+  assert.equal(
+    reboundFlagshipEvidence.source_ledger_sha256,
+    sha256(await fs.readFile(rightsPath)),
+  );
+
+  await fs.writeJson(rightsPath, staleLedger, { spaces: 2 });
+  await fs.appendFile(rightsEvidencePath, "\ntampered");
+  const tamperedEvidenceReport = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+  assert.equal(tamperedEvidenceReport.rights.verdict, "FAIL");
+  assert.ok(
+    tamperedEvidenceReport.rights.blockers.includes(
+      "restrictive_rights_record:owned-procedural-motion",
+    ),
+  );
+
+  await fs.outputFile(rightsEvidencePath, rightsEvidenceBytes);
+  const heldLedger = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  heldLedger.records[0].live_publish_allowed = false;
+  heldLedger.records[0].requires_human_legal_review_before_publish = true;
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), heldLedger);
+  const explicitHoldReport = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+  assert.equal(explicitHoldReport.rights.verdict, "FAIL");
+  assert.ok(
+    explicitHoldReport.rights.blockers.includes(
+      "restrictive_rights_record:owned-procedural-motion",
+    ),
+  );
+
+  await fs.outputJson(rightsPath, staleLedger, { spaces: 2 });
+  const materialisedPath = path.join(artifactDir, "materialised_motion_clips.json");
+  const materialised = await fs.readJson(materialisedPath);
+  delete materialised.clips[0].owned_generated_rights_grant;
+  await fs.outputJson(materialisedPath, materialised, { spaces: 2 });
+  const missingAllowedUseReport = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+  assert.equal(missingAllowedUseReport.rights.verdict, "FAIL");
+  assert.equal(
+    missingAllowedUseReport.rights.proposed_ledger.records.length,
+    0,
+  );
 });
 
 test("candidate evidence reconciliation keeps hash-bound official YouTube motion RED when identity evidence has no bound rights policy", async () => {

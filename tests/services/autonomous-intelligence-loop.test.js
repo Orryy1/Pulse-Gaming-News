@@ -2085,6 +2085,107 @@ test("fresh refill official source evidence normalises article headlines to game
         ["flight-story", "Microsoft Flight Simulator"],
       ],
     );
+    assert.equal(
+      stories.find((story) => story.story_id === "flight-story").primary_source,
+      "Microsoft Flight Simulator",
+    );
+    assert.equal(
+      entries.find((entry) => entry.story_id === "flight-story").source_owner,
+      "Microsoft Flight Simulator official source",
+    );
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill official source evidence derives Call of Duty ownership from the source host", async () => {
+  const { buildFreshRefillOfficialSourceEvidence } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-source-owner-"));
+  const artifactDir = path.join(tmp, "mw4-story");
+  const outputDir = path.join(tmp, "repair");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(path.join(artifactDir, "canonical_story_manifest.json"), JSON.stringify({
+      story_id: "rss_3c543132ea089ba4",
+      canonical_subject: "Call of Duty: Modern Warfare 4",
+      canonical_game: "Call of Duty: Modern Warfare 4",
+      selected_title: "Modern Warfare 4 Sets Its Open Beta Dates",
+      primary_source: "Xbox Wire",
+      primary_source_url:
+        "https://www.callofduty.com/blog/2026/07/call-of-duty-modern-warfare-4-open-beta",
+      narration_script:
+        "Call of Duty: Modern Warfare 4 now has confirmed open beta dates. Follow Pulse Gaming so you never miss a beat.",
+    }));
+    await fs.writeFile(path.join(artifactDir, "source_manifest.json"), JSON.stringify({
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://www.callofduty.com/blog/2026/07/call-of-duty-modern-warfare-4-open-beta",
+        type: "rss",
+      },
+      freshness_gate: "pass",
+      coherence_gate: "pass",
+    }));
+    await fs.writeFile(storyPackagesPath, JSON.stringify([
+      { story_id: "rss_3c543132ea089ba4", artifact_dir: artifactDir },
+    ]));
+
+    const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+    const stories = JSON.parse(await fs.readFile(result.candidateStoriesPath, "utf8"));
+    const entries = JSON.parse(await fs.readFile(result.officialSourceEntriesPath, "utf8"));
+
+    assert.equal(result.official_source_entries_count, 1);
+    assert.equal(stories[0].primary_source, "Call of Duty");
+    assert.equal(entries[0].source_type, "official_game_site_news_page");
+    assert.equal(entries[0].source_owner, "Call of Duty official source");
+    assert.match(entries[0].evidence_of_officialness, /^Call of Duty is the official\/platform source/);
+    assert.doesNotMatch(JSON.stringify(entries[0]), /Xbox Wire official source/i);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("fresh refill official source evidence does not let an Xbox Wire feed label bless a media host", async () => {
+  const { buildFreshRefillOfficialSourceEvidence } = require("../../lib/job-handlers");
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const tmp = await fs.mkdtemp(path.join(repoRoot, "test", "output", "pulse-fresh-refill-source-spoof-"));
+  const artifactDir = path.join(tmp, "media-story");
+  const outputDir = path.join(tmp, "repair");
+  const storyPackagesPath = path.join(tmp, "story-packages.json");
+
+  try {
+    await fs.mkdir(artifactDir, { recursive: true });
+    await fs.writeFile(path.join(artifactDir, "canonical_story_manifest.json"), JSON.stringify({
+      story_id: "rss_abcdef0123456789",
+      canonical_subject: "EA Sports FC 26",
+      canonical_game: "EA Sports FC 26",
+      selected_title: "EA Sports FC 26 Runs A World Cup Simulation",
+      primary_source: "Xbox Wire",
+      primary_source_url: "https://www.eurogamer.net/ea-sports-fc-world-cup-simulation",
+      narration_script:
+        "EA Sports FC 26 has simulated the World Cup. Follow Pulse Gaming so you never miss a beat.",
+    }));
+    await fs.writeFile(path.join(artifactDir, "source_manifest.json"), JSON.stringify({
+      primary_source: {
+        name: "Xbox Wire",
+        url: "https://www.eurogamer.net/ea-sports-fc-world-cup-simulation",
+        type: "rss",
+      },
+      freshness_gate: "pass",
+      coherence_gate: "pass",
+    }));
+    await fs.writeFile(storyPackagesPath, JSON.stringify([
+      { story_id: "rss_abcdef0123456789", artifact_dir: artifactDir },
+    ]));
+
+    const result = await buildFreshRefillOfficialSourceEvidence({ storyPackagesPath, outputDir });
+    const entries = JSON.parse(await fs.readFile(result.officialSourceEntriesPath, "utf8"));
+
+    assert.equal(result.official_source_entries_count, 0);
+    assert.equal(result.accepted_official_source_count, 0);
+    assert.deepEqual(entries, []);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -3703,6 +3804,98 @@ test("fresh production refill handler builds live-RSS local proof packages", asy
       1,
       "fresh refill must not launch the post-validation motion-pack refresh after segment validation fails",
     );
+
+    const checkpointCallStart = childCalls.length;
+    const checkpointResult = await mockedHandlers.fresh_production_refill(
+      {
+        channel_id: "pulse-gaming",
+        payload: {
+          limit: 12,
+          rss_per_feed: 4,
+          out_dir: outDir,
+          contract_out_dir: contractOutDir,
+        },
+      },
+      {
+        log() {},
+        async runNodeJobChildProcess(options) {
+          events.push(options.args[0]);
+          childCalls.push(options);
+          if (options.args[0] === "tools/official-trailer-segment-validator.js") {
+            const reportJsonIndex = options.args.indexOf("--report-json");
+            const reportJsonPath = reportJsonIndex >= 0 ? options.args[reportJsonIndex + 1] : null;
+            assert.ok(reportJsonPath, "expected checkpointed validation to name its run-scoped report");
+            await fs.mkdir(path.dirname(reportJsonPath), { recursive: true });
+            await fs.writeFile(
+              reportJsonPath,
+              JSON.stringify({
+                schema_version: 1,
+                status: "partial",
+                completed: false,
+                checkpoint_report: true,
+                summary: {
+                  segments: 8,
+                  segments_validated: 8,
+                  segments_rejected: 0,
+                },
+                segments: Array.from({ length: 8 }, (_, index) => ({
+                  story_id: "fresh_xbox_story",
+                  status: "validated",
+                  segment_validated: true,
+                  allowed_for_flash_lane: true,
+                  source_family: `official_halo_checkpoint_motion_${index + 1}`,
+                })),
+              }),
+            );
+            return {
+              ok: false,
+              exit_code: null,
+              signal: "SIGTERM",
+              timed_out: true,
+              stdout_tail: "checkpoint written before timeout",
+              stderr_tail: "",
+            };
+          }
+          if (options.args[0] === "tools/goal-real-motion-materializer.js") {
+            const outDirIndex = options.args.indexOf("--out-dir");
+            const motionOutDir = outDirIndex >= 0 ? options.args[outDirIndex + 1] : tmp;
+            await fs.mkdir(motionOutDir, { recursive: true });
+            await fs.writeFile(
+              path.join(motionOutDir, "real_motion_materialization_report.json"),
+              JSON.stringify({
+                schema_version: 1,
+                summary: {
+                  materialized_story_count: 1,
+                  materialized_clip_count: 8,
+                  failed_story_count: 0,
+                },
+                jobs: [{
+                  story_id: "fresh_xbox_story",
+                  status: "materialized",
+                  materialized_count: 8,
+                  direct_video_motion_family_count: 8,
+                  blockers: [],
+                }],
+              }),
+            );
+          }
+          return { ok: true, stdout_tail: "ok", stderr_tail: "" };
+        },
+      },
+    );
+    const checkpointCalls = childCalls.slice(checkpointCallStart);
+    const checkpointRepairReport = JSON.parse(
+      await fs.readFile(checkpointResult.repair_evidence.report_path, "utf8"),
+    );
+    assert.equal(
+      checkpointRepairReport.summary.segment_validation_status,
+      "validated_partial_checkpoint",
+    );
+    assert.equal(
+      checkpointCalls.some((call) => call.args[0] === "tools/goal-real-motion-materializer.js"),
+      true,
+      "fresh refill must continue from validated run-scoped checkpoint evidence after a bounded timeout",
+    );
   } finally {
     for (const [cachePath, entry] of originalCache.entries()) {
       if (entry) require.cache[cachePath] = entry;
@@ -4769,6 +4962,7 @@ test("fresh production refill handler can run from a seeded official story file"
           out_dir: outDir,
           contract_out_dir: contractOutDir,
           zero_yield_quarantine_path: zeroYieldQuarantinePath,
+          target_platforms: ["youtube"],
         },
       },
       {
@@ -4787,6 +4981,8 @@ test("fresh production refill handler can run from a seeded official story file"
       contractOutDir,
       "--zero-yield-quarantine",
       zeroYieldQuarantinePath,
+      "--platforms",
+      "youtube",
     ]);
     assert.equal(result.status, "completed");
     assert.equal(result.story_count, 1);
@@ -4809,6 +5005,11 @@ test("fresh production refill plan mode writes repair work orders without heavy 
   const outDir = path.join(tmp, "goal-proof-batch");
   const contractOutDir = path.join(tmp, "goal-contract");
   const artifactDir = path.join(outDir, "fresh_plan_story");
+  const zeroYieldQuarantinePath = path.join(
+    tmp,
+    "runtime",
+    "zero-yield-quarantine.json",
+  );
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [goalBatchPath, require.cache[goalBatchPath]],
@@ -4891,6 +5092,7 @@ test("fresh production refill plan mode writes repair work orders without heavy 
           limit: 1,
           out_dir: outDir,
           contract_out_dir: contractOutDir,
+          zero_yield_quarantine_path: zeroYieldQuarantinePath,
           repair_evidence_mode: "plan",
           repair_story_limit: 1,
         },
@@ -4905,6 +5107,15 @@ test("fresh production refill plan mode writes repair work orders without heavy 
     );
 
     assert.equal(result.repair_evidence.status, "planned");
+    assert.equal(result.status, "repair_planned");
+    assert.equal(result.zero_yield_incident.detected, false);
+    assert.equal(result.zero_yield_incident.evaluation_status, "deferred_plan_mode");
+    assert.equal(result.zero_yield_incident.outcome, "repair_planned_not_executed");
+    assert.equal(
+      result.zero_yield_incident.quarantine.status,
+      "not_applicable_plan_mode",
+    );
+    await assert.rejects(fs.access(zeroYieldQuarantinePath), { code: "ENOENT" });
     assert.equal(result.repair_evidence.summary.child_process_count, 0);
     assert.equal(result.repair_evidence.summary.repair_attempt_story_package_count, 1);
     assert.equal(result.motion_hydrated_refill.status, "not_attempted");

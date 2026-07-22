@@ -77,6 +77,9 @@ const {
   withLocalTtsSocketIsolation,
 } = require("./lib/studio/local-tts-http");
 const {
+  splitLocalTtsRequestSegments,
+} = require("./lib/studio/local-tts-segmentation");
+const {
   masterTtsAudioFile,
   shouldMasterTtsAudio,
 } = require("./lib/audio-quality");
@@ -1178,7 +1181,8 @@ function markAudioGenerationFailure(
   const message = failure.message || safeAudioErrorMessage(err);
   const failedAt = now().toISOString();
   const pendingLocalResource =
-    normalisedProvider === "local" && code === "gpu_saturated";
+    normalisedProvider === "local" &&
+    (code === "gpu_saturated" || code === "tts_busy");
 
   if (story && typeof story === "object") {
     const preservedPublicPlatformState = hasPublicPlatformEvidence(story);
@@ -1706,6 +1710,154 @@ function recordLocalTtsAttempt(story, label, attempt = {}) {
   });
 }
 
+function localTtsSegmentOutputPath(outputPath, label) {
+  const extension = path.extname(outputPath) || ".mp3";
+  return `${outputPath.slice(0, -extension.length)}_${label}${extension}`;
+}
+
+function alignmentArrays(payload = {}) {
+  const alignment = payload?.alignment || payload || {};
+  const characters = Array.isArray(alignment.characters)
+    ? alignment.characters
+    : typeof alignment.characters === "string"
+      ? [...alignment.characters]
+      : [];
+  const starts = Array.isArray(alignment.character_start_times_seconds)
+    ? alignment.character_start_times_seconds
+    : [];
+  const ends = Array.isArray(alignment.character_end_times_seconds)
+    ? alignment.character_end_times_seconds
+    : [];
+  return {
+    alignment,
+    characters,
+    starts,
+    ends,
+    meta:
+      alignment?.meta && typeof alignment.meta === "object"
+        ? alignment.meta
+        : payload?.meta && typeof payload.meta === "object"
+          ? payload.meta
+          : {},
+  };
+}
+
+async function mergeLocalTtsSegments({
+  segments,
+  segmentPaths,
+  outputPath,
+  text,
+  concatAudio = concatAudioFiles,
+  getDuration = getAudioDuration,
+} = {}) {
+  await concatAudio(segmentPaths, outputPath);
+
+  const characters = [];
+  const starts = [];
+  const ends = [];
+  const timeline = [];
+  const evidence = [];
+  let firstMeta = {};
+  let cumulativeOffset = 0;
+
+  for (let index = 0; index < segmentPaths.length; index += 1) {
+    const segmentPath = segmentPaths[index];
+    const timestampsPath = segmentPath.replace(/\.mp3$/i, "_timestamps.json");
+    const timestampsAbs =
+      (await mediaPaths.resolveExisting(timestampsPath)) || timestampsPath;
+    const payload = await fs.readJson(timestampsAbs);
+    const arrays = alignmentArrays(payload);
+    if (
+      arrays.characters.length === 0 ||
+      arrays.starts.length !== arrays.characters.length ||
+      arrays.ends.length !== arrays.characters.length
+    ) {
+      throw new Error(
+        `local_tts_segment_alignment_invalid:${segments[index]?.label || index + 1}`,
+      );
+    }
+    if (index === 0) firstMeta = arrays.meta;
+    if (characters.length > 0) {
+      characters.push(" ");
+      starts.push(cumulativeOffset);
+      ends.push(cumulativeOffset);
+    }
+    for (let characterIndex = 0; characterIndex < arrays.characters.length; characterIndex += 1) {
+      characters.push(arrays.characters[characterIndex]);
+      starts.push(Number(arrays.starts[characterIndex]) + cumulativeOffset);
+      ends.push(Number(arrays.ends[characterIndex]) + cumulativeOffset);
+    }
+
+    const durationS = await getDuration(segmentPath);
+    const segmentAbs = (await mediaPaths.resolveExisting(segmentPath)) || segmentPath;
+    const audioBuffer = await fs.readFile(segmentAbs);
+    const startS = cumulativeOffset;
+    cumulativeOffset += durationS;
+    timeline.push({
+      label: segments[index].label,
+      startS: Number(startS.toFixed(3)),
+      endS: Number(cumulativeOffset.toFixed(3)),
+      durationS: Number(durationS.toFixed(3)),
+    });
+    evidence.push({
+      label: segments[index].label,
+      textSha256: crypto.createHash("sha256").update(segments[index].text).digest("hex"),
+      audioSha256: crypto.createHash("sha256").update(audioBuffer).digest("hex"),
+      charCount: segments[index].charCount,
+      wordCount: segments[index].wordCount,
+      durationS: Number(durationS.toFixed(3)),
+    });
+  }
+
+  const mergedTranscript = characters.join("");
+  if (mergedTranscript !== String(text || "").replace(/\s+/g, " ").trim()) {
+    throw new Error("local_tts_segment_transcript_mismatch");
+  }
+
+  const outputAbs = (await mediaPaths.resolveExisting(outputPath)) || outputPath;
+  const finalAudioSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(outputAbs))
+    .digest("hex");
+  const timestampsOutput = outputPath.replace(/\.mp3$/i, "_timestamps.json");
+  const maxSegmentChars = Math.max(...segments.map((segment) => segment.maxChars));
+  const maxSegmentWords = Math.max(...segments.map((segment) => segment.maxWords));
+  await fs.writeJson(
+    mediaPaths.writePath(timestampsOutput),
+    {
+      characters,
+      character_start_times_seconds: starts,
+      character_end_times_seconds: ends,
+      meta: {
+        ...firstMeta,
+        text: mergedTranscript,
+        transcript: mergedTranscript,
+        spokenOutroPresent: hasSpokenOutro(mergedTranscript),
+        timestampSource: "merged_local_tts_segments",
+        segmentTimeline: timeline,
+        localTtsSegmentation: {
+          schemaVersion: 1,
+          method: "sentence_aware_bounded_single_take_requests",
+          segmentCount: segments.length,
+          maxSegmentChars,
+          maxSegmentWords,
+          finalAudioSha256,
+          segments: evidence,
+        },
+      },
+    },
+    { spaces: 2 },
+  );
+
+  return {
+    segmentCount: segments.length,
+    maxSegmentChars,
+    maxSegmentWords,
+    finalAudioSha256,
+    timeline,
+  };
+}
+
 async function generateTtsForStory({
   story,
   text,
@@ -1715,10 +1867,73 @@ async function generateTtsForStory({
   provider = resolveTtsProvider(process.env),
   recoverLocalTts = null,
   generateTts = generateTTS,
+  concatAudio = concatAudioFiles,
+  getDuration = getAudioDuration,
+  env = process.env,
 } = {}) {
   if (!isLocalTtsProvider(provider)) {
     await generateTts(text, outputPath, rate, provider);
     return { ok: true, attempts: 1, recovery: null };
+  }
+
+  const segments = splitLocalTtsRequestSegments(text, env);
+  if (segments.length > 1) {
+    const segmentPaths = [];
+    const attempts = [];
+    try {
+      for (const segment of segments) {
+        const segmentPath = localTtsSegmentOutputPath(outputPath, segment.label);
+        segmentPaths.push(segmentPath);
+        const attempt = await generateLocalTtsWithOptionalRecovery({
+          storyId: story?.id,
+          text: segment.text,
+          outputRel: segmentPath,
+          rate,
+          generateTts,
+          recoverLocalTts,
+        });
+        recordLocalTtsAttempt(story, `${label}:${segment.label}`, attempt);
+        attempts.push(attempt);
+        if (!attempt.ok) {
+          const failure = attempt.failure || {};
+          const err = new Error(
+            [
+              "local_tts_generation_failed",
+              failure.code || "tts_failed",
+              failure.message || attempt.error || "local TTS segment generation failed",
+            ].join(":"),
+          );
+          err.code = failure.code || "tts_failed";
+          err.localTtsAttempt = attempt;
+          throw err;
+        }
+      }
+
+      const segmentation = await mergeLocalTtsSegments({
+        segments,
+        segmentPaths,
+        outputPath,
+        text,
+        concatAudio,
+        getDuration,
+      });
+      return {
+        ok: true,
+        attempts: attempts.reduce(
+          (total, attempt) => total + Number(attempt.attempts || 1),
+          0,
+        ),
+        recovery: attempts.map((attempt) => attempt.recovery).filter(Boolean),
+        segmentation,
+      };
+    } finally {
+      for (const segmentPath of segmentPaths) {
+        await fs.remove(mediaPaths.writePath(segmentPath)).catch(() => {});
+        await fs
+          .remove(mediaPaths.writePath(segmentPath.replace(/\.mp3$/i, "_timestamps.json")))
+          .catch(() => {});
+      }
+    }
   }
 
   const attempt = await generateLocalTtsWithOptionalRecovery({
@@ -2207,6 +2422,7 @@ module.exports.buildDeterministicDurationPadding = buildDeterministicDurationPad
 module.exports.buildDeterministicDurationRewrite = buildDeterministicDurationRewrite;
 module.exports.insertBeforeSpokenOutro = insertBeforeSpokenOutro;
 module.exports.ensureSpokenOutro = ensureSpokenOutro;
+module.exports.splitLocalTtsRequestSegments = splitLocalTtsRequestSegments;
 
 if (require.main === module) {
   generateAudio().catch((err) => {

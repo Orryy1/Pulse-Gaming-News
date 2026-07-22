@@ -61,6 +61,21 @@ test("inspectLocalGpuPressure uses a resident-server threshold when local TTS is
   assert.equal(report.thresholds.localTtsResidentReady, true);
 });
 
+test("inspectLocalGpuPressure defaults preserve model-load and resident inference headroom", async () => {
+  const report = await inspectLocalGpuPressure({
+    env: {},
+    localTtsResidentReady: true,
+    execFileImpl: mockExecFile({ stdout: "19564, 24564, 10\n" }),
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.status, "busy");
+  assert.equal(report.thresholds.coldMinFreeMb, 12288);
+  assert.equal(report.thresholds.residentMinFreeMb, 6144);
+  assert.equal(report.thresholds.minFreeMb, 6144);
+  assert.match(report.reason, /below 6144MB/);
+});
+
 test("inspectLocalGpuPressure still blocks resident local TTS when free memory drops below the resident floor", async () => {
   const report = await inspectLocalGpuPressure({
     env: {

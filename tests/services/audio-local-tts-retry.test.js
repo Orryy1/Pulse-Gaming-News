@@ -2,6 +2,9 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs-extra");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
   clearAudioGenerationState,
@@ -20,10 +23,61 @@ const {
   resolveTtsProvider,
   resolveTtsTimeoutMs,
   resolveTtsVoiceIdForProvider,
+  splitLocalTtsRequestSegments,
   shouldAutoPromoteGeneratedAudioToExtendedShort,
   shouldAutoPromoteRuntimePlanToExtendedShort,
   shouldUseDynamicPacingForProvider,
 } = require("../../audio");
+
+test("splitLocalTtsRequestSegments: bounds scheduler narration without losing spoken text", () => {
+  const text = [
+    "Final Fantasy VII Rebirth just changed its combat roadmap.",
+    "Square Enix confirmed a new challenge mode with tougher encounters and revised rewards.",
+    "The update also improves party presets, menu navigation and late-game progression.",
+    "Players can expect the patch after the next maintenance window.",
+  ].join(" ");
+
+  const segments = splitLocalTtsRequestSegments(text, {
+    LOCAL_TTS_MAX_SEGMENT_WORDS: "16",
+    LOCAL_TTS_MAX_SEGMENT_CHARS: "120",
+  });
+
+  assert.ok(segments.length > 1);
+  assert.equal(
+    segments.map((segment) => segment.text).join(" "),
+    text,
+  );
+  assert.ok(
+    segments.every(
+      (segment) =>
+        segment.text.length <= 120 &&
+        segment.text.split(/\s+/).filter(Boolean).length <= 16,
+    ),
+  );
+  assert.ok(
+    segments.some((segment) => segment.text.includes("Final Fantasy VII Rebirth")),
+  );
+});
+
+test("splitLocalTtsRequestSegments: environment overrides cannot exceed the native safety ceiling", () => {
+  const text = Array.from(
+    { length: 70 },
+    (_, index) => `word${String(index + 1).padStart(2, "0")}`,
+  ).join(" ");
+
+  const segments = splitLocalTtsRequestSegments(text, {
+    LOCAL_TTS_MAX_SEGMENT_WORDS: "1000",
+    LOCAL_TTS_MAX_SEGMENT_CHARS: "10000",
+  });
+
+  assert.ok(segments.length > 1);
+  assert.ok(
+    segments.every(
+      (segment) => segment.wordCount <= 32 && segment.charCount <= 260,
+    ),
+  );
+  assert.equal(segments.map((segment) => segment.text).join(" "), text);
+});
 
 test("resolveTtsModelIdForProvider: allows an explicit governed ElevenLabs v3 run without changing defaults", () => {
   assert.equal(
@@ -591,6 +645,111 @@ test("generateTtsForStory: server_down triggers one recovery then keeps the succ
   assert.equal(story.local_tts_attempts[0].recovery.action, "start+prewarm");
 });
 
+test("generateTtsForStory: local scheduler narration is generated as bounded recoverable segments", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-segments-"));
+  const outputPath = path.join(dir, "scheduler.mp3");
+  const text = [
+    "Final Fantasy VII Rebirth just changed its combat roadmap.",
+    "Square Enix confirmed a new challenge mode with tougher encounters and revised rewards.",
+    "The update also improves party presets, menu navigation and late-game progression.",
+    "Players can expect the patch after the next maintenance window.",
+  ].join(" ");
+  const generated = [];
+
+  try {
+    const result = await generateTtsForStory({
+      story: { id: "rss_segmented_scheduler" },
+      text,
+      outputPath,
+      provider: "local",
+      env: {
+        LOCAL_TTS_MAX_SEGMENT_WORDS: "16",
+        LOCAL_TTS_MAX_SEGMENT_CHARS: "120",
+      },
+      generateTts: async (segmentText, segmentPath) => {
+        generated.push({ text: segmentText, path: segmentPath });
+        await fs.outputFile(segmentPath, `audio:${segmentText}`);
+        const chars = [...segmentText];
+        await fs.writeJson(segmentPath.replace(/\.mp3$/, "_timestamps.json"), {
+          characters: chars,
+          character_start_times_seconds: chars.map((_, index) => index * 0.01),
+          character_end_times_seconds: chars.map((_, index) => (index + 1) * 0.01),
+          meta: { source: "local-tts-server", transcript: segmentText },
+        });
+      },
+      concatAudio: async (segmentPaths, mergedPath) => {
+        assert.equal(segmentPaths.length, generated.length);
+        await fs.outputFile(mergedPath, "merged-audio");
+      },
+      getDuration: async () => 1.25,
+    });
+
+    assert.ok(generated.length > 1);
+    assert.ok(
+      generated.every(
+        (segment) =>
+          segment.text.length <= 120 &&
+          segment.text.split(/\s+/).filter(Boolean).length <= 16,
+      ),
+    );
+    assert.equal(generated.map((segment) => segment.text).join(" "), text);
+    assert.equal(await fs.pathExists(outputPath), true);
+
+    const timestamps = await fs.readJson(
+      outputPath.replace(/\.mp3$/, "_timestamps.json"),
+    );
+    assert.equal(timestamps.characters.join(""), text);
+    assert.equal(timestamps.meta.localTtsSegmentation.segmentCount, generated.length);
+    assert.equal(timestamps.meta.localTtsSegmentation.maxSegmentChars, 120);
+    assert.equal(result.segmentation.segmentCount, generated.length);
+  } finally {
+    await fs.remove(dir);
+  }
+});
+
+test("generateTtsForStory: failed local segments remove partial audio and timestamps", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-partial-"));
+  const outputPath = path.join(dir, "scheduler.mp3");
+  const text = [
+    "Final Fantasy VII Rebirth changed its combat roadmap.",
+    "Square Enix confirmed another challenge with revised rewards.",
+  ].join(" ");
+  let partialPath = null;
+
+  try {
+    await assert.rejects(
+      generateTtsForStory({
+        story: { id: "rss_partial_segment" },
+        text,
+        outputPath,
+        provider: "local",
+        env: {
+          LOCAL_TTS_MAX_SEGMENT_WORDS: "8",
+          LOCAL_TTS_MAX_SEGMENT_CHARS: "80",
+        },
+        generateTts: async (segmentText, segmentPath) => {
+          partialPath = segmentPath;
+          await fs.outputFile(segmentPath, `partial:${segmentText}`);
+          await fs.writeJson(segmentPath.replace(/\.mp3$/, "_timestamps.json"), {
+            characters: [...segmentText],
+          });
+          throw new Error("synthetic segment failure");
+        },
+      }),
+      /local_tts_generation_failed/,
+    );
+
+    assert.ok(partialPath);
+    assert.equal(await fs.pathExists(partialPath), false);
+    assert.equal(
+      await fs.pathExists(partialPath.replace(/\.mp3$/, "_timestamps.json")),
+      false,
+    );
+  } finally {
+    await fs.remove(dir);
+  }
+});
+
 test("generateTtsForStory: remote provider overrides local environment defaults", async () => {
   const seen = [];
 
@@ -828,6 +987,30 @@ test("markAudioGenerationFailure: GPU saturation is pending audio, not hard QA f
   assert.equal(story.qa_failed_at, null);
   assert.equal(story.publish_status, "pending_audio");
   assert.match(story.publish_error, /audio_generation_pending: gpu_saturated/);
+  assert.equal(story.audio_generation_failure.pending, true);
+  assert.equal(story.local_tts_failure.requires_server_reset, false);
+});
+
+test("markAudioGenerationFailure: a full local inference lane stays pending without a server reset", () => {
+  const story = {
+    id: "tts-lane-busy",
+    title: "TTS lane busy",
+  };
+  const failure = markAudioGenerationFailure(
+    story,
+    new Error(
+      "Request failed with status code 503: local_tts_busy: inference queue wait exceeded",
+    ),
+    { provider: "local", now: () => new Date("2026-07-21T20:15:00.000Z") },
+  );
+
+  assert.equal(failure.code, "tts_busy");
+  assert.equal(failure.requires_server_reset, false);
+  assert.equal(story.qa_failed, false);
+  assert.deepEqual(story.qa_failures, []);
+  assert.deepEqual(story.qa_warnings, ["audio_generation_pending:tts_busy"]);
+  assert.equal(story.publish_status, "pending_audio");
+  assert.match(story.publish_error, /audio_generation_pending: tts_busy/);
   assert.equal(story.audio_generation_failure.pending, true);
   assert.equal(story.local_tts_failure.requires_server_reset, false);
 });

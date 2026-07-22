@@ -121,6 +121,7 @@
     "ops:source-identity-sidecar": "node tools/source-identity-sidecar-materializer.js",
     "ops:candidate-evidence-reconciliation": "node tools/candidate-evidence-reconciliation.js",
     "ops:elevenlabs-rights-evidence": "node tools/elevenlabs-commercial-rights-evidence.js",
+    "ops:publisher-video-policy-evidence": "node tools/publisher-video-policy-evidence.js",
     "ops:flagship-media-proof": "node tools/flagship-media-evidence-materializer.js",
     "ops:flagship-script-repair": "node tools/flagship-script-repair.js",
     "ops:goal-final-av-review": "node tools/goal-final-av-review-pack.js",

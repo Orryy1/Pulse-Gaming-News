@@ -39,6 +39,7 @@ const {
   scenePlanBlockerDiagnostic,
   buildProfessionalSourceDiversityProof,
   buildSelectedInputAssetEvidence,
+  validateVerifiedOwnedMaterialisedMotionClipEvidence,
   verifyRenderedProofMedia,
   materializeVerifiedProofOutput,
 } = require("../../tools/studio-v4-proof-render");
@@ -52,6 +53,38 @@ const {
 } = require("../../lib/studio/v4/premium-card-timing-policy");
 const { buildKineticAss } = require("../../lib/studio/v2/subtitle-layer-v2");
 const proofRenderLib = require("../../lib/studio/v4/proof-render");
+
+function verifiedOwnedSupportCard(kind, overrides = {}) {
+  const fingerprint = (scope) => crypto
+    .createHash("sha256")
+    .update(`${scope}:${kind}`)
+    .digest("hex");
+  return {
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    generator_design_role: "support_card",
+    hyperframes_card: true,
+    readable_card_kind: kind,
+    card_kind: kind,
+    materialized: true,
+    counts_towards_motion_readiness: true,
+    source_safety_blocked: false,
+    generator_project_id: "pulse.motion.editorial-support.v1",
+    generator_master_sha256: fingerprint("generator"),
+    materialised_output_sha256: fingerprint("output"),
+    evidence_file_sha256: fingerprint("generation-evidence"),
+    rights_evidence_file_sha256: fingerprint("rights-evidence"),
+    owned_rights_evaluation: { status: "pass", verified: true, blockers: [] },
+    owned_generated_rights_grant: {
+      grant_type: "owned_generated",
+      allowed_use: "commercial_editorial_and_platform_native_derivatives",
+      commercial_use_allowed: true,
+      derivative_use_allowed: true,
+    },
+    ...overrides,
+  };
+}
 
 test("Studio V4 fingerprints every renderer-selected media input for rights reconciliation", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-selected-inputs-"));
@@ -465,6 +498,157 @@ test("Studio V4 proof renderer plans motion-only scenes across full narration", 
   assert.equal(plan.scenes.length, 3);
   assert.equal(plan.segmentDurationS, 6.17);
   assert.deepEqual(plan.scenes.map((scene) => scene.path), ["a.mp4", "b.mp4", "c.mp4"]);
+});
+
+test("Studio V4 keeps owned timeline surfaces as motion without an explicit card kind", () => {
+  const plan = buildClipScenePlan({
+    clips: [{
+      path: "timeline-cascade-surface.mp4",
+      media_kind: "owned_explainer_motion",
+      source_type: "internally_generated_motion_graphic",
+      asset_class: "timeline_cascade_surface",
+      generator_design_role: "primary_procedural_motion",
+      source_family: "pulse.motion.data-ribbons.v1",
+      durationS: 5,
+    }],
+    durationS: 5,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.scenes.length, 1);
+  assert.equal(plan.scenes[0].readableCardKind, null);
+});
+
+test("Studio V4 excludes distinct readable cards from direct-motion source repetition", () => {
+  const shared = {
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    generator_design_role: "support_card",
+    source_family: "pulse.motion.editorial-support.v1",
+    motion_family: "pulse.motion.editorial-support.v1",
+    durationS: 5,
+    minimum_readable_duration_s: 2.4,
+  };
+  const plan = buildClipScenePlan({
+    clips: [
+      {
+        ...shared,
+        path: "owned-source-card.mp4",
+        readable_card_kind: "source",
+        card_kind: "source",
+        readable_text: "OFFICIAL XBOX SOURCE",
+      },
+      {
+        ...shared,
+        path: "owned-proof-card.mp4",
+        readable_card_kind: "proof",
+        card_kind: "proof",
+        readable_text: "THREE NEW MISSIONS",
+      },
+    ],
+    durationS: 8,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.scenes.length, 2);
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.deepEqual(plan.repeatedBaseSources, []);
+  assert.equal(plan.blockers.includes("readable_card_kind_repeated"), false);
+});
+
+test("Studio V4 budgets long support cards against the target narration duration", () => {
+  const direct = (index) => ({
+    path: `direct-${index}.mp4`,
+    media_kind: "direct_video",
+    source_family: `official-source-${index}`,
+    durationS: 5,
+  });
+  const card = (kind, index) => ({
+    path: `owned-${kind}-card.mp4`,
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    generator_design_role: "support_card",
+    readable_card_kind: kind,
+    card_kind: kind,
+    readable_text: `${kind} evidence`,
+    minimum_readable_duration_s: 12,
+    durationS: 12,
+  });
+
+  const selection = selectPremiumSceneClips(
+    [
+      direct(1),
+      card("source", 1),
+      direct(2),
+      card("proof", 2),
+      direct(3),
+      card("stat", 3),
+      direct(4),
+      card("quote", 4),
+    ],
+    { targetDurationS: 51.128 },
+  );
+
+  assert.deepEqual(selection.selected_cards.map((entry) => entry.kind), ["source"]);
+  assert.equal(selection.selected_card_minimum_duration_s, 12);
+  assert.equal(selection.card_duration_budget_s, 21.47);
+  assert.ok(
+    selection.skipped_cards
+      .filter((entry) => entry.kind !== "source")
+      .every((entry) => entry.reason === "premium_card_duration_budget"),
+  );
+});
+
+test("Studio V4 does not treat distinct verified owned renders as repeated external footage", () => {
+  const hash = (value) => value.repeat(64);
+  const owned = (index, assetClass) => ({
+    id: `owned-motion-${index}`,
+    path: `owned-motion-${index}.mp4`,
+    source_url: `local://pulse-generated-motion/story/${assetClass}`,
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    generator_design_role: "primary_procedural_motion",
+    asset_class: assetClass,
+    generator_project_id: "pulse.motion.data-ribbons.v1",
+    generator_master_sha256: hash("a"),
+    materialised_output_sha256: index === 1 ? hash("b") : hash("c"),
+    materialised_output_size_bytes: 4096 + index,
+    evidence_file_path: `owned-motion-${index}.mp4.json`,
+    evidence_file_sha256: index === 1 ? hash("d") : hash("e"),
+    evidence_file_size_bytes: 1024 + index,
+    rights_evidence_file_path: `owned-motion-${index}.mp4.rights.json`,
+    rights_evidence_file_sha256: index === 1 ? hash("f") : hash("1"),
+    rights_evidence_file_size_bytes: 2048 + index,
+    materialized: true,
+    counts_towards_motion_readiness: true,
+    owned_explainer_visual_plan: true,
+    source_safety_blocked: false,
+    owned_rights_evaluation: { status: "pass", verified: true, blockers: [] },
+    owned_generated_rights_grant: {
+      grant_type: "owned_generated",
+      allowed_use: "commercial_editorial_and_platform_native_derivatives",
+      commercial_use_allowed: true,
+      derivative_use_allowed: true,
+    },
+    source_family: "story_pulse.motion.data-ribbons.v1",
+    motion_family: "story_pulse.motion.data-ribbons.v1",
+    durationS: 5.2,
+  });
+  const plan = buildClipScenePlan({
+    clips: [
+      owned(1, "data_pulse_surface"),
+      owned(2, "timeline_cascade_surface"),
+    ],
+    durationS: 10.15,
+    xfadeS: 0.25,
+    maxSceneDurationS: 7,
+  });
+
+  assert.equal(plan.scenes.length, 2);
+  assert.equal(plan.blockers.includes("direct_motion_base_source_repeated"), false);
+  assert.deepEqual(plan.repeatedBaseSources, []);
 });
 
 test("Studio V4 proof renderer refuses to repeat clips just to cap direct dwell", () => {
@@ -1339,28 +1523,22 @@ test("Studio V4 proof renderer reports readable owned-card scene windows", () =>
         source_family: "direct_trailer_1",
         durationS: 5,
       },
-      {
+      verifiedOwnedSupportCard("quote", {
         path: "output/generated-motion/story/03_animated_quote_card.mp4",
-        source_type: "internally_generated_motion_graphic",
-        source_kind: "owned_source_card_explainer_motion",
-        media_kind: "owned_explainer_motion",
         source_family: "story_animated_quote_card",
         asset_class: "animated_quote_card",
         readable_text: "THIS QUOTE CHANGES THE STORY",
         minimum_readable_duration_s: 7,
         durationS: 12,
-      },
-      {
+      }),
+      verifiedOwnedSupportCard("proof", {
         path: "output/generated-motion/story/07_platform_proof_card.mp4",
-        source_type: "internally_generated_motion_graphic",
-        source_kind: "owned_source_card_explainer_motion",
-        media_kind: "owned_explainer_motion",
         source_family: "story_platform_proof_card",
         asset_class: "platform_proof_card",
         text: "SOURCE LOCKED",
         minimum_readable_duration_s: 12,
         durationS: 12,
-      },
+      }),
     ],
     durationS: 27,
     xfadeS: 0.25,
@@ -1437,30 +1615,24 @@ test("Studio V4 proof renderer keeps generated cards readable within the final v
         source_family: "elliot_trailer_f",
         durationS: 12,
       },
-      {
+      verifiedOwnedSupportCard("quote", {
         path: "output/generated-motion/elliot/03_animated_quote_card.mp4",
-        source_type: "internally_generated_motion_graphic",
-        media_kind: "owned_explainer_motion",
         source_family: "elliot_quote_card",
         durationS: 12,
         minimum_readable_duration_s: 12,
-      },
-      {
+      }),
+      verifiedOwnedSupportCard("proof", {
         path: "output/generated-motion/elliot/07_platform_proof_card.mp4",
-        source_type: "internally_generated_motion_graphic",
-        media_kind: "owned_explainer_motion",
         source_family: "elliot_proof_card",
         durationS: 12,
         minimum_readable_duration_s: 12,
-      },
-      {
+      }),
+      verifiedOwnedSupportCard("screenshot", {
         path: "output/generated-motion/elliot/08_safe_article_screenshot_transform.mp4",
-        source_type: "internally_generated_motion_graphic",
-        media_kind: "owned_explainer_motion",
         source_family: "elliot_screenshot_card",
         durationS: 12,
         minimum_readable_duration_s: 12,
-      },
+      }),
     ],
     durationS: 106,
     xfadeS: 0.25,
@@ -1641,6 +1813,35 @@ test("Studio V4 renderer merges fresh materialised motion into stale story clip 
       { path: "direct-a.mp4", media_kind: "direct_video" },
       { path: "direct-b.mp4", media_kind: "direct_video", source_family: "official_b" },
       { path: "generated-card.mp4", media_kind: "owned_editorial_motion_graphic" },
+      {
+        asset_id: "verified-owned-motion-1",
+        path: "verified-owned-motion.mp4",
+        media_kind: "owned_explainer_motion",
+        source_type: "internally_generated_motion_graphic",
+        source_safety_blocked: false,
+        owned_explainer_visual_plan: true,
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        generator_project_id: "pulse.motion.kinetic-aperture.v1",
+        generator_master_sha256: "a".repeat(64),
+        materialised_output_sha256: "b".repeat(64),
+        materialised_output_size_bytes: 4096,
+        evidence_file_path: "verified-owned-motion.mp4.json",
+        evidence_file_sha256: "c".repeat(64),
+        evidence_file_size_bytes: 1024,
+        rights_evidence_file_path: "verified-owned-motion.mp4.rights.json",
+        rights_evidence_file_sha256: "d".repeat(64),
+        rights_evidence_file_size_bytes: 768,
+        owned_rights_evaluation: {
+          status: "pass",
+          verified: true,
+          blockers: [],
+        },
+        owned_generated_rights_grant: {
+          grant_type: "owned_generated",
+          commercial_use_allowed: true,
+        },
+      },
     ],
   });
 
@@ -1648,7 +1849,117 @@ test("Studio V4 renderer merges fresh materialised motion into stale story clip 
     "direct-a.mp4",
     "context-card.mp4",
     "direct-b.mp4",
+    "verified-owned-motion.mp4",
   ]);
+});
+
+test("Studio V4 owned-only renderer cannot recover held sibling motion", () => {
+  const ownedClip = (id, clipPath) => ({
+    asset_id: id,
+    path: clipPath,
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    source_safety_blocked: false,
+    owned_explainer_visual_plan: true,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    generator_project_id: "pulse.motion.kinetic-aperture.v1",
+    generator_master_sha256: "a".repeat(64),
+    materialised_output_sha256: "b".repeat(64),
+    materialised_output_size_bytes: 4096,
+    evidence_file_path: `${clipPath}.json`,
+    evidence_file_sha256: "c".repeat(64),
+    evidence_file_size_bytes: 1024,
+    rights_evidence_file_path: `${clipPath}.rights.json`,
+    rights_evidence_file_sha256: "d".repeat(64),
+    rights_evidence_file_size_bytes: 768,
+    owned_rights_evaluation: {
+      status: "pass",
+      verified: true,
+      blockers: [],
+    },
+    owned_generated_rights_grant: {
+      grant_type: "owned_generated",
+      commercial_use_allowed: true,
+    },
+  });
+  const selectedOwned = ownedClip("selected-owned", "selected-owned.mp4");
+  const siblingOwned = ownedClip("sibling-owned", "sibling-owned.mp4");
+  const heldSibling = {
+    id: "held-official-motion",
+    path: "held-official-motion.mp4",
+    media_kind: "direct_video",
+    requires_human_legal_review_before_publish: true,
+  };
+
+  const merged = mergeMaterialisedMotionClipCandidates(
+    [selectedOwned],
+    {
+      status: "pass",
+      clips: [heldSibling, siblingOwned],
+    },
+    { rightsSafeOwnedMotionOnly: true },
+  );
+
+  assert.deepEqual(merged.map((clip) => clip.asset_id), ["selected-owned"]);
+  assert.throws(
+    () => mergeMaterialisedMotionClipCandidates(
+      [selectedOwned, heldSibling],
+      { status: "pass", clips: [] },
+      { rightsSafeOwnedMotionOnly: true },
+    ),
+    /rights_safe_owned_motion_only_story_clip_blocked:held-official-motion/,
+  );
+});
+
+test("Studio V4 renderer re-fingerprints verified owned motion and rights sidecars", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-owned-motion-evidence-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const assetPath = path.join(root, "owned-motion.mp4");
+  const generationEvidencePath = `${assetPath}.json`;
+  const rightsEvidencePath = `${assetPath}.rights.json`;
+  const assetBytes = Buffer.alloc(4096, 17);
+  const generationEvidenceBytes = Buffer.from('{"generator":"pulse.motion.kinetic-aperture.v1"}');
+  const rightsEvidenceBytes = Buffer.from('{"ownership_basis":"wholly_owned_generated_asset"}');
+  fs.writeFileSync(assetPath, assetBytes);
+  fs.writeFileSync(generationEvidencePath, generationEvidenceBytes);
+  fs.writeFileSync(rightsEvidencePath, rightsEvidenceBytes);
+  const sha256 = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
+  const clip = {
+    asset_id: "verified-owned-motion-1",
+    path: assetPath,
+    media_kind: "owned_explainer_motion",
+    source_type: "internally_generated_motion_graphic",
+    source_safety_blocked: false,
+    owned_explainer_visual_plan: true,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    generator_project_id: "pulse.motion.kinetic-aperture.v1",
+    generator_master_sha256: "a".repeat(64),
+    materialised_output_sha256: sha256(assetBytes),
+    materialised_output_size_bytes: assetBytes.length,
+    evidence_file_path: generationEvidencePath,
+    evidence_file_sha256: sha256(generationEvidenceBytes),
+    evidence_file_size_bytes: generationEvidenceBytes.length,
+    rights_evidence_file_path: rightsEvidencePath,
+    rights_evidence_file_sha256: sha256(rightsEvidenceBytes),
+    rights_evidence_file_size_bytes: rightsEvidenceBytes.length,
+    owned_rights_evaluation: { status: "pass", verified: true, blockers: [] },
+    owned_generated_rights_grant: {
+      grant_type: "owned_generated",
+      commercial_use_allowed: true,
+    },
+  };
+
+  const pass = validateVerifiedOwnedMaterialisedMotionClipEvidence(clip);
+  assert.equal(pass.status, "pass");
+  assert.deepEqual(pass.blockers, []);
+  assert.equal(pass.evidence.asset.sha256, sha256(assetBytes));
+
+  fs.writeFileSync(assetPath, Buffer.alloc(4096, 18));
+  const stale = validateVerifiedOwnedMaterialisedMotionClipEvidence(clip);
+  assert.equal(stale.status, "blocked");
+  assert.ok(stale.blockers.includes("owned_motion_asset_sha256_mismatch"));
 });
 
 test("Studio V4 renderer keeps a repaired direct-motion derivative instead of its unsafe original", () => {
@@ -2491,9 +2802,30 @@ test("Studio V4 proof renderer omits unreadable overlay card windows that do not
     "headline_card",
     "proof_primary",
     "proof_secondary",
+    "brand_outro",
   ]);
   assert.equal(windows.every((window) => window.duration_s >= (window.kind === "source_lock" ? 1.6 : 2.6)), true);
   assert.equal(windows.every((window) => window.end_s <= 34.6), true);
+});
+
+test("Studio V4 proof renderer declares the rendered brand outro as a validated title window", () => {
+  const windows = overlayCardWindowsForStory(
+    {
+      canonical_subject: "Halo Campaign Evolved",
+      primary_source: "Xbox Wire",
+      rights_safe_owned_motion_only: true,
+      owned_motion_only_selection: { clips: [{ generator_design_role: "primary_procedural_motion" }] },
+    },
+    { durationS: 51.128 },
+  );
+  const outro = windows.find((window) => window.id === "brand_outro");
+
+  assert.ok(outro);
+  assert.equal(outro.kind, "title");
+  assert.equal(outro.text, "PULSE GAMING - NEVER MISS A BEAT");
+  assert.equal(outro.start_s, 48.33);
+  assert.equal(outro.end_s, 51.13);
+  assert.equal(outro.duration_s, 2.8);
 });
 
 test("Studio V4 proof renderer CLI stays local and story-json driven", () => {

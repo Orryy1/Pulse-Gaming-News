@@ -15,7 +15,12 @@ const { scoreCandidate } = require("./next-publish-candidates");
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");
 const DEFAULT_ANALYTICS_PATH = "D:\\pulse-data\\analytics_findings.md";
-const DEFAULT_CANDIDATE_REPORT_PATH = path.join(OUT, "next_publish_candidates.json");
+const DEFAULT_CANDIDATE_REPORT_PATH = path.join(
+  ROOT,
+  "output",
+  "goal-contract",
+  "next_publish_candidates.json",
+);
 
 function parseArgs(argv) {
   const args = {

@@ -4857,6 +4857,74 @@ test("real motion rights reconciliation still rejects conflicting provenance for
   assert.match(result.failures[0].error, /validation_provenance/);
 });
 
+test("real motion rights reconciliation replaces affirmative validator metadata from a prior materialized run", () => {
+  const sourceUrl =
+    "https://video.fastly.steamstatic.com/store_trailers/2806050/1326798026/hash/1781131704/hls_264_master.m3u8";
+  const clip = {
+    id: "segment_direct_motion_1",
+    media_kind: "direct_video",
+    path: "C:/pulse/materialized/current-window.mp4",
+    source_url: sourceUrl,
+    source_owner: "Xbox Game Studios official source",
+    source_type: "steam_storefront_video_reference",
+    licence_basis: "microsoft_game_content_usage_rules_youtube_ad_program",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube"],
+    restricted_platforms: ["tiktok", "instagram", "facebook", "x"],
+    platform_restrictions: {
+      source_audio: "must_not_be_used",
+      monetisation: "youtube_on_site_ad_program_only",
+    },
+    commercial_use_allowed: true,
+    credit_required: true,
+    evidence_reference: "https://www.xbox.com/en-us/developers/rules",
+    risk_score: 0.45,
+    mediaStartS: 80,
+    durationS: 2.4,
+    validation_provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: "official_product_motion_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_duration_s: 189.2,
+      motion_family_basis: "validated_official_segment_window",
+    },
+    materialized_file_evidence: {
+      sha256: "c".repeat(64),
+      size_bytes: 4096,
+      duration_seconds: 2.4,
+      video_codec: "h264",
+      width: 1080,
+      height: 1920,
+    },
+  };
+  const previousMaterializedRecord = {
+    ...clip,
+    asset_id: clip.id,
+    asset_type: "motion_clip",
+    kind: "video",
+    source_media_start_s: 80,
+    source_window_duration_s: 2.4,
+    validation_provenance: {
+      source: "official_trailer_segment_validation",
+      validation_reason: "official_storefront_trailer_motion_samples_passed",
+      segment_validated: true,
+      allowed_for_flash_lane: true,
+      source_duration_s: 189,
+      motion_family_basis: "validated_official_segment_window",
+    },
+  };
+
+  const result = reconcileMaterializedRightsRecords([clip], {
+    verdict: "pass",
+    records: [previousMaterializedRecord],
+  });
+
+  assert.deepEqual(result.failures, []);
+  assert.equal(result.records.length, 1);
+  assert.deepEqual(result.records[0].validation_provenance, clip.validation_provenance);
+});
+
 test("real motion rights reconciliation treats enabled platform aliases as equivalent", () => {
   const clip = {
     id: "platform-alias-window",
@@ -6568,6 +6636,60 @@ test("real motion materializer replenishes visually rejected windows before appl
     "source-3-window-2",
     "source-3-window-3",
   ]));
+});
+
+test("premium ready refresh cannot preserve prior clips that fail the current visual gate", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-premium-refresh-"));
+  const storyId = "premium-refresh-story";
+  const job = await makePackage(root, storyId);
+  let materializationIndex = 0;
+  const sharedOptions = {
+    root,
+    workOrder: { jobs: [job] },
+    storyIds: [storyId],
+    minClips: 5,
+    minFamilies: 4,
+    maxClips: 5,
+    execFileSync: (_bin, args) => {
+      materializationIndex += 1;
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, materializationIndex));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 3 : null),
+    clipVisualFingerprint: async (clip) => `fingerprint:${clip.id}`,
+  };
+
+  const initial = await materializeGoalRealMotion({
+    ...sharedOptions,
+    generatedAt: "2026-07-21T21:00:00.000Z",
+  });
+  assert.equal(initial.summary.materialized_story_count, 1, JSON.stringify(initial.jobs[0]));
+
+  const visuallyEligibleIds = new Set([
+    `${storyId}-direct-1`,
+    `${storyId}-direct-2`,
+  ]);
+  const refreshed = await materializeGoalRealMotion({
+    ...sharedOptions,
+    generatedAt: "2026-07-21T21:05:00.000Z",
+    includeReadyStories: true,
+    clipVisualEligibility: async (clip) => visuallyEligibleIds.has(clip.id)
+      ? { eligible: true, reasons: [] }
+      : { eligible: false, reasons: ["direct_motion_frame_taste_failed"] },
+  });
+
+  assert.equal(refreshed.summary.materialized_story_count, 0, JSON.stringify(refreshed.jobs[0]));
+  assert.equal(refreshed.summary.blocked_story_count, 1);
+  assert.ok(refreshed.jobs[0].blockers.includes("premium_motion_visual_quality_insufficient"));
+  assert.equal(refreshed.jobs[0].revalidated_existing_motion_clip_count, 2);
+  assert.equal(refreshed.jobs[0].rejected_existing_motion_clip_count, 3);
+  const manifest = await fs.readJson(path.join(job.artifact_dir, "materialised_motion_clips.json"));
+  assert.equal(manifest.status, "blocked");
+  assert.equal(manifest.not_publishable, true);
+  assert.deepEqual(
+    new Set(manifest.clips.map((clip) => clip.id)),
+    visuallyEligibleIds,
+  );
 });
 
 test("real motion materializer can use second validated windows across a diverse official source pool", async () => {
@@ -8394,6 +8516,102 @@ test("real motion materializer treats Steam HLS and DASH variants from one trail
     partial.clips[0].base_source_family,
     /^steamstatic:\/store_trailers\/3483510\/632943268\/ab5efa5d538a2c90f09927047b2df6199cf5e9d6\/1780277626$/,
   );
+});
+
+test("real motion materializer keeps distinct Steam trailer binaries separate when they share one storefront reference", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-steam-storefront-identity-"));
+  const storyId = "steam-storefront-distinct-trailers";
+  const artifactDir = path.join(root, "output", "goal-proof", "batch", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    motion_inventory: {
+      accepted_local_clips: [],
+      production_motion_clips: [],
+      distinct_source_families: [],
+    },
+  });
+
+  const storefrontUrl = "https://store.steampowered.com/app/2806050/Halo_Campaign_Evolved/";
+  const trailerRoots = [
+    "1326798026/6b3d92049c61a2ddc074d5d0f9b8b796d0fbdc03/1781131704",
+    "1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408",
+    "467838524/eecb9591c88e8455df2f5f68610119748ed9d95b/1783543444",
+    "1080131461/ada8c07239e5f34c14c0272d1019d81380aee281/1761091757",
+  ];
+  const segments = trailerRoots.flatMap((trailerRoot, sourceIndex) =>
+    [24, 60].map((start, windowIndex) => {
+      const sourceUrl =
+        `https://video.fastly.steamstatic.com/store_trailers/2806050/${trailerRoot}/hls_264_master.m3u8`;
+      return {
+        story_id: storyId,
+        status: "validated",
+        segment_validated: true,
+        allowed_for_flash_lane: true,
+        validation_reason: "official_product_motion_samples_passed",
+        segment_motion_class: "official_product_motion",
+        action_score: 90 - windowIndex,
+        source_url: sourceUrl,
+        canonical_source_url: storefrontUrl,
+        reference_url: storefrontUrl,
+        source_type: "official_platform_product_page",
+        source_url_kind: "hls_manifest",
+        provider: "licensed_direct_media_acquisition",
+        entity: "Halo: Campaign Evolved",
+        source_family: `halo_storefront_media_${sourceIndex + 1}`,
+        sampled_visual_fingerprint: `halo-source-${sourceIndex + 1}-master`,
+        media_start_s: start,
+        duration_s: 2.4,
+        source_duration_s: 180,
+        rights_risk_class: "official_direct_media",
+        allowed_render_use: "official_direct_media_segment_candidate",
+        ...commercialEditorialRights(sourceUrl),
+      };
+    }),
+  );
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        artifact_dir: artifactDir,
+        blockers: ["visual_evidence:direct_video_motion_missing"],
+        actions: [{
+          action_id: "materialise_validated_real_motion_clips",
+          reason_codes: ["visual_evidence:direct_video_motion_missing"],
+        }],
+      }],
+    },
+    segmentValidationReport: { segments },
+    generatedAt: "2026-07-21T23:30:00.000Z",
+    minClips: 8,
+    minFamilies: 5,
+    maxClips: 8,
+    maxDirectClipsPerBaseSource: 2,
+    strictBaseSourceDiversity: true,
+    minBaseSources: 3,
+    execFileSync: (_bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 8));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 2.4 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0]));
+  assert.equal(report.jobs[0].materialized_count, 8);
+  assert.deepEqual(
+    report.jobs[0].direct_motion_base_source_clip_counts.map((row) => row.count),
+    [2, 2, 2, 2],
+  );
+  const manifest = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(new Set(manifest.clips.map((clip) => clip.base_source_family)).size, 4);
+  assert.ok(manifest.clips.every((clip) => clip.base_source_family.startsWith("steamstatic:")));
 });
 
 test("real motion materializer reconciles stale owned-motion distinct family budgets after real media repair", async () => {

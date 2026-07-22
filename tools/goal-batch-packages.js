@@ -735,16 +735,83 @@ function liveRssMaterializableDirectMediaEvidence(story = {}) {
 }
 
 function liveRssOfficialPlatformSource(story = {}) {
-  const text = [
+  const names = [
     story.source_name,
-    story.primary_source,
-    story.source_type,
+    story.publisher,
+    story.outlet,
+    story.primary_source?.name,
+    story.official_source?.name,
+  ].map(cleanSearchText).filter(Boolean);
+  const urls = [
     story.url,
     story.article_url,
     story.primary_source_url,
     story.official_source_url,
+    story.primary_source?.url,
+    story.official_source?.url,
+  ].map(cleanSearchText).filter(Boolean);
+  const hosts = urls.map((url) => {
+    try {
+      return String(new URL(url).hostname || "").toLowerCase().replace(/^www\./, "");
+    } catch {
+      return "";
+    }
+  }).filter(Boolean);
+  const officialHost = hosts.some((host) =>
+    /(?:^|\.)(?:news\.xbox\.com|blog\.playstation\.com|nintendo\.com|steampowered\.com|steamcommunity\.com|rockstargames\.com|callofduty\.com|ea\.com|ubisoft\.com|capcom\.com|sega\.com|bandainamcoent\.com|square-enix-games\.com|bethesda\.net|bethesda\.com|konami\.com|epicgames\.com|devolverdigital\.com)$/i.test(host),
+  );
+  if (officialHost) return true;
+
+  const recognisedName = names.some((name) =>
+    /^(?:official|xbox wire|playstation blog|nintendo(?: news| direct| official)?|steam(?: news| store)?|rockstar(?: games| newswire)?|ea|electronic arts|ubisoft|capcom|sega|bandai namco|square enix|bethesda|konami|epic games|devolver digital)$/i.test(name),
+  );
+  const declaredOfficial = /^(?:official|platform|storefront)$/i.test(
+    cleanSearchText(story.source_type),
+  );
+  return recognisedName && (declaredOfficial || hosts.length === 0);
+}
+
+function liveRssMajorMediaDiscoverySource(story = {}) {
+  const names = [
+    story.source_name,
+    story.publisher,
+    story.outlet,
+    story.primary_source?.name,
+  ].map(cleanSearchText).filter(Boolean);
+  const urls = [
+    story.url,
+    story.article_url,
+    story.primary_source_url,
+    story.primary_source?.url,
+  ].map(cleanSearchText).filter(Boolean);
+  const hosts = urls.map((url) => {
+    try {
+      return String(new URL(url).hostname || "").toLowerCase().replace(/^www\./, "");
+    } catch {
+      return "";
+    }
+  }).filter(Boolean);
+  const isMajorMedia =
+    names.some((name) =>
+      /^(?:ign|kotaku|polygon|eurogamer|gamespot|pc\s*gamer|vgc|gamesradar|rock\s*paper\s*shotgun|the\s*verge)$/i.test(name),
+    ) ||
+    hosts.some((host) =>
+      /(?:^|\.)(?:ign|kotaku|polygon|eurogamer|gamespot|pcgamer|videogameschronicle|gamesradar|rockpapershotgun|theverge)\.com$/i.test(host),
+    );
+  if (!isMajorMedia) return false;
+
+  const text = [
+    story.title,
+    story.canonical_subject,
+    story.canonical_game,
+    story.game_title,
+    story.description,
+    story.summary,
   ].map(cleanSearchText).filter(Boolean).join(" ");
-  return /\b(?:official|playstation blog|blog\.playstation\.com|xbox wire|news\.xbox\.com|nintendo|steam news|steampowered|rockstar newswire|rockstargames|capcom|sega|ubisoft|bethesda|square enix|bandai namco|konami|ea|electronic arts)\b/i.test(text);
+  const hasRevealSignal = /\b(?:trailer|gameplay|reveal|revealed|first\s+look|showcase|demo|release\s+date|launch\s+date|preview)\b/i.test(text);
+  const hasGameContext = /\b(?:game|games|gaming|gameplay|playable|demo|steam|xbox|playstation|ps5|nintendo|switch|pc|console|developer|publisher|studio|rpg|shooter|platformer|roguelike|survival|multiplayer|single-player|open-world|dlc|patch|season|battle\s+pass|wishlist)\b/i.test(text);
+  const hasNonGameEntertainmentContext = /\b(?:movie|film|cinema|theater|theatre|box\s+office|actor|actress|director|tv|television|streaming|hbo|max|netflix|disney)\b/i.test(text);
+  return hasRevealSignal && hasGameContext && !hasNonGameEntertainmentContext;
 }
 
 function liveRssWeakUnattendedPattern(story = {}) {
@@ -884,12 +951,15 @@ function liveRssMotionGate(story = {}) {
 function liveRssRepairIntakeGate(story = {}, motionGate = liveRssMotionGate(story)) {
   const reasons = [];
   const officialPlatformSource = liveRssOfficialPlatformSource(story);
+  const majorMediaDiscoverySource = liveRssMajorMediaDiscoverySource(story);
   const hasSpecificSubject =
     motionGate.has_specific_subject === true || liveRssHasSpecificSubject(story);
   const score = Number(motionGate.score || liveRssMotionPotentialScore(story));
   if (liveRssWeakUnattendedPattern(story)) reasons.push("weak_unattended_live_rss_pattern");
   if (liveRssWeakMetaMotionPattern(story)) reasons.push("weak_meta_motion_pattern");
-  if (!officialPlatformSource) reasons.push("official_or_platform_source_missing");
+  if (!officialPlatformSource && !majorMediaDiscoverySource) {
+    reasons.push("official_or_discoverable_source_missing");
+  }
   if (!hasSpecificSubject) reasons.push("specific_subject_missing");
   if (score < 30) reasons.push("repair_intake_score_below_threshold");
   return {
@@ -897,8 +967,13 @@ function liveRssRepairIntakeGate(story = {}, motionGate = liveRssMotionGate(stor
     score,
     reasons,
     official_platform_source: officialPlatformSource,
+    major_media_discovery_source: majorMediaDiscoverySource,
     has_specific_subject: hasSpecificSubject,
-    mode: "official_source_motion_repair_intake",
+    mode: officialPlatformSource
+      ? "official_source_motion_repair_intake"
+      : majorMediaDiscoverySource
+        ? "major_media_official_motion_discovery"
+        : "unqualified_source",
   };
 }
 
@@ -1121,9 +1196,12 @@ async function main(argv = process.argv.slice(2)) {
   const motionPackByStory = await loadMotionPackByStory(args.v4MotionPackDir);
   const sfxAssetInventory = await readJsonIfPresent(args.sfxAssetsPath, []);
   const sfxRightsLedger = await readJsonIfPresent(args.sfxRightsLedgerPath, []);
+  const unattendedZeroYieldExclusions = args.storiesFileExplicit
+    ? { story_ids: [], source_fingerprints: [] }
+    : zeroYieldExclusions;
   const excludedStoryIds = [
     ...args.excludedStoryIds,
-    ...zeroYieldExclusions.story_ids,
+    ...unattendedZeroYieldExclusions.story_ids,
     ...(
     args.liveRssOnly && !args.includePublished
       ? Array.from(await loadPublishedStoryIdsForGoalBatch())
@@ -1132,7 +1210,7 @@ async function main(argv = process.argv.slice(2)) {
   ];
   const excludedSourceFingerprints = [
     ...args.excludedSourceFingerprints,
-    ...zeroYieldExclusions.source_fingerprints,
+    ...unattendedZeroYieldExclusions.source_fingerprints,
   ];
   const excludedPublishedStories =
     args.liveRssOnly && !args.includePublished

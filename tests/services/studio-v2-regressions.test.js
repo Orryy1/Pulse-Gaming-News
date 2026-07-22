@@ -1502,6 +1502,31 @@ test("studio local voice path keeps multi-word game titles inside one TTS chunk"
   );
 });
 
+test("studio local voice path cannot raise segment limits above the native safety ceiling", () => {
+  const text = Array.from(
+    { length: 70 },
+    (_, index) => `word${String(index + 1).padStart(2, "0")}`,
+  ).join(" ");
+  const chunks = splitLongVoiceSegments(
+    [{ label: "body", text, rate: 1.0 }],
+    {},
+    {
+      STUDIO_V2_LOCAL_TTS_MAX_SEGMENT_WORDS: "1000",
+      STUDIO_V2_LOCAL_TTS_MAX_SEGMENT_CHARS: "10000",
+    },
+  );
+
+  assert.ok(chunks.length > 1);
+  assert.ok(
+    chunks.every(
+      (chunk) =>
+        chunk.text.split(/\s+/).filter(Boolean).length <= 32 &&
+        chunk.text.length <= 260,
+    ),
+  );
+  assert.equal(chunks.map((chunk) => chunk.text).join(" "), text);
+});
+
 test("studio local voice signature fingerprints accepted Sleepy Liam reference", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-local-voice-"));
   const firstRef = path.join(dir, "pulse_liam_sleepy.wav");

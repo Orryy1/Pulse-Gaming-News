@@ -639,7 +639,9 @@ test("buildPipelineBacklog: surfaces scheduler bridge candidate without changing
       },
     ],
     {
+      now: "2026-07-21T18:00:00.000Z",
       schedulerBridgeCandidateReport: {
+        generated_at: "2026-07-21T17:59:00.000Z",
         bridge_candidates: {
           count: 2,
           mode: "authoritative_bridge_only",
@@ -690,9 +692,46 @@ test("buildPipelineBacklog: surfaces scheduler bridge candidate without changing
   assert.strictEqual(b.next_publish_candidate.source, "scheduler_bridge_preflight");
 });
 
+test("buildPipelineBacklog: stale scheduler bridge reports cannot surface publish candidates", () => {
+  const b = buildPipelineBacklog([], {
+    now: "2026-07-21T18:00:00.000Z",
+    schedulerBridgeCandidateReport: {
+      generated_at: "2026-07-02T04:44:06.333Z",
+      bridge_candidates: {
+        count: 11,
+        mode: "authoritative_bridge_only",
+        live_fallback_used: false,
+      },
+      preflight_qa: {
+        candidates_checked: 3,
+        pass: 3,
+        blocked: 0,
+        warning: 0,
+      },
+      candidates: [
+        {
+          id: "already-posted-tokon",
+          title: "MARVEL Tokon Turns Its Roster Into A Meta Fight",
+          status: "publish_ready",
+          preflight_qa: { status: "pass", blockers: [], warnings: [] },
+        },
+      ],
+    },
+  });
+
+  assert.strictEqual(b.next_publish_candidate, null);
+  assert.strictEqual(b.scheduler_bridge_next_publish_candidate, null);
+  assert.strictEqual(b.scheduler_bridge_publish_readiness, null);
+  assert.deepStrictEqual(b.scheduler_bridge_blocked_candidates, []);
+  assert.strictEqual(b.scheduler_bridge_report_freshness.status, "stale");
+  assert.strictEqual(b.scheduler_bridge_report_freshness.usable, false);
+});
+
 test("buildPipelineBacklog: surfaces scheduler bridge blocked candidates with repair lanes", () => {
   const b = buildPipelineBacklog([], {
+    now: "2026-07-21T18:00:00.000Z",
     schedulerBridgeCandidateReport: {
+      generated_at: "2026-07-21T17:59:00.000Z",
       bridge_candidates: {
         count: 3,
         mode: "authoritative_bridge_only",
@@ -889,7 +928,10 @@ test("ops:pipeline-backlog CLI is registered as a read-only operator command", (
   const src = fs.readFileSync(TOOL_PATH, "utf8");
   assert.match(src, /buildPipelineBacklog/);
   assert.match(src, /renderPipelineBacklogMarkdown/);
-  assert.match(src, /next_publish_candidates\.json/);
+  assert.match(
+    src,
+    /path\.join\(\s*ROOT,\s*"output",\s*"goal-contract",\s*"next_publish_candidates\.json",?\s*\)/,
+  );
   assert.match(src, /schedulerBridgeCandidateReport/);
   assert.doesNotMatch(src, /upsertStory|publishNextStory|uploadShort|AUTO_PUBLISH/);
 });

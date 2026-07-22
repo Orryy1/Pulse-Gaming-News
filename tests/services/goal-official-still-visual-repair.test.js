@@ -150,6 +150,30 @@ test("official still visual repair discovers current goal-contract package layou
   assert.equal(rights.records.length, 5);
 });
 
+test("official still visual repair targets an explicit isolated artifact directory", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-official-stills-explicit-"));
+  const { storyId, artifactDir: standardArtifactDir } = await makePackage(root);
+  const artifactDir = path.join(root, "test", "output", "cadence-recovery", storyId, "artifact");
+  await fs.copy(standardArtifactDir, artifactDir);
+
+  const report = await repairGoalOfficialStillVisuals({
+    root,
+    artifactDir,
+    intakeReport: intakeReport(storyId),
+    storyIds: [storyId],
+    generatedAt: "2026-07-22T09:25:00.000Z",
+    fetchImage: async () => ({
+      buffer: Buffer.alloc(4096, 33),
+      contentType: "image/jpeg",
+    }),
+  });
+
+  assert.equal(report.summary.repaired_story_count, 1);
+  assert.equal(report.jobs[0].artifact_dir, artifactDir);
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(rights.records.length, 5);
+});
+
 test("official still visual repair rejects unsafe still URLs before fetch", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-official-stills-unsafe-"));
   const { storyId } = await makePackage(root);
@@ -190,6 +214,8 @@ test("official still visual repair CLI accepts intake report and story filters",
     "story-a",
     "--story",
     "story-b",
+    "--artifact-dir",
+    "test/output/cadence-recovery/story-a/artifact",
     "--min-assets",
     "4",
     "--max-downloads-per-story",
@@ -199,6 +225,7 @@ test("official still visual repair CLI accepts intake report and story filters",
 
   assert.equal(args.intakeReportPath, "official_source_intake_report.json");
   assert.deepEqual(args.storyIds, ["story-a", "story-b"]);
+  assert.equal(args.artifactDir, "test/output/cadence-recovery/story-a/artifact");
   assert.equal(args.minAssets, 4);
   assert.equal(args.maxDownloadsPerStory, 6);
   assert.equal(args.json, true);

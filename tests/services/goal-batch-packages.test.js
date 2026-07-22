@@ -4311,6 +4311,48 @@ test("goal batch package proof preparation resolves current franchise subjects f
   );
 });
 
+test("goal batch package proof preparation keeps desktop mystery launch rewrites source-specific", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "fresh_desktop_explorer_launch_20260722",
+    title: "Desktop Explorer Turns a Fake PC Into a Mystery",
+    canonical_subject: "Desktop Explorer",
+    source_type: "official_storefront",
+    source_name: "Steam",
+    article_url: "https://store.steampowered.com/app/2527160/Desktop_Explorer/",
+    confirmed_claims: [
+      "Desktop Explorer launched on Steam on 17 July 2026.",
+      "Players investigate an inherited computer through abandoned profiles.",
+      "Players use file explorers, chat logs and corrupted applications as puzzle tools.",
+      "The game includes retro-styled 3D environments.",
+      "The developer flags mature mental-health themes, mild gore and flashing imagery.",
+    ],
+    full_script:
+      "Desktop Explorer has moved from open-world promise to a live store test. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.match(prepared.full_script, /inherited computer/i);
+  assert.match(prepared.full_script, /file explorers|chat logs|corrupted applications/i);
+  assert.match(prepared.full_script, /retro(?:-styled)? 3D/i);
+  assert.match(prepared.full_script, /mental-health|flashing imagery/i);
+  assert.doesNotMatch(prepared.full_script, /open-world promise|this city|trailer budget/i);
+});
+
+test("goal batch package proof preparation does not invent a city for unrelated Steam launches", () => {
+  const prepared = prepareStoryForGoalProof({
+    id: "fresh_logic_circuit_launch",
+    title: "Logic Circuit Launches On Steam",
+    canonical_subject: "Logic Circuit",
+    source_type: "official_storefront",
+    source_name: "Steam",
+    article_url: "https://store.steampowered.com/app/123456/Logic_Circuit/",
+    confirmed_claims: ["Logic Circuit launched on Steam on 22 July 2026."],
+    full_script:
+      "Logic Circuit needs one concrete player-facing detail. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.doesNotMatch(prepared.full_script, /open-world promise|this city|trailer budget|city feels alive/i);
+});
+
 test("goal batch package proof preparation repairs current scored story subjects, titles and scripts", () => {
   const cases = [
     {
@@ -4784,6 +4826,46 @@ test("goal batch packages generate viewer-facing scripts for current official RS
   );
 });
 
+test("goal batch package proof keeps Planet Crafter launch platforms source-bound", () => {
+  const xbox = prepareStoryForGoalProof({
+    id: "rss_planet_crafter_xbox",
+    title: "The Planet Crafter Launches on XBOX July 21: Co-op Survival With No Enemies, Timers, or Pressure",
+    source_type: "rss",
+    freshness_gate: "pass",
+    confirmed_claims: [
+      "The Planet Crafter launches on Xbox July 21 with co-op survival and no enemies or timers.",
+    ],
+    primary_source: {
+      name: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/07/20/the-planet-crafter-survival-without-pressure/",
+      type: "official_platform",
+    },
+    source_published_at: "2026-07-20T14:00:00.000Z",
+  });
+
+  assert.equal(xbox.title, "The Planet Crafter Brings No-Pressure Survival To Xbox");
+  assert.match(xbox.full_script, /\bXbox\b/i);
+  assert.doesNotMatch(xbox.full_script, /\b(?:PS5|PlayStation\s*5|PlayStation five)\b/i);
+
+  const ps5 = prepareStoryForGoalProof({
+    id: "rss_planet_crafter_ps5_source_bound",
+    title: "The Planet Crafter launches on PS5 July 21",
+    source_type: "rss",
+    freshness_gate: "pass",
+    confirmed_claims: ["The Planet Crafter launches on PS5 July 21."],
+    primary_source: {
+      name: "PlayStation Blog",
+      url: "https://blog.playstation.com/2026/06/16/the-planet-crafter-launches-on-ps5-july-21/",
+      type: "official_platform",
+    },
+    source_published_at: "2026-06-16T13:00:13.000Z",
+  });
+
+  assert.match(ps5.title, /\bPS5\b/i);
+  assert.match(ps5.full_script, /\bPlayStation 5\b/i);
+  assert.doesNotMatch(ps5.full_script, /\bXbox\b/i);
+});
+
 test("goal batch package proof preparation replaces article excerpt descriptions with Shorts payoff copy", () => {
   const prepared = prepareStoryForGoalProof({
     id: "rss_granblue_demo_excerpt",
@@ -4812,6 +4894,28 @@ test("goal batch package proof preparation replaces article excerpt descriptions
   assert.match(prepared.description, /Players can try the combat rhythm/i);
   assert.match(prepared.description, /second wind/i);
   assert.match(prepared.description, /Source: PlayStation Blog\.$/);
+});
+
+test("goal batch package proof preparation preserves governed subject-anchored public descriptions", () => {
+  const publicDescription =
+    "Xbox Backward Compatibility on PC starts with four original Xbox games, but achievements arrive later. " +
+    "Source: Xbox Wire. This video was created under Microsoft's Game Content Usage Rules and is not endorsed by Microsoft. " +
+    "Rules: https://www.xbox.com/en-us/developers/rules";
+  const prepared = prepareStoryForGoalProof({
+    id: "fresh_xbox_bc_pc_governed_description",
+    title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    canonical_subject: "Xbox Backward Compatibility on PC",
+    source_type: "official_publisher_news",
+    source_name: "Xbox Wire",
+    primary_source_url:
+      "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+    public_description: publicDescription,
+    description: "An article excerpt that must not win over explicitly governed public copy.",
+    full_script:
+      "Four original Xbox games just crossed onto PC. Xbox Wire confirms backward compatibility on PC has launched in early release. Achievements arrive later. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(prepared.description, publicDescription);
 });
 
 test("goal batch packages avoid double-prefixing distinctive thumbnail subject tokens", () => {

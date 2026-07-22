@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   buildGoalRenderInputWorkOrder,
+  promoteGovernedOwnedMotionOnlyRenderJob,
   renderGoalRenderInputWorkOrderMarkdown,
   writeGoalRenderInputWorkOrder,
 } = require("../../lib/goal-render-input-workorder");
@@ -41,6 +42,67 @@ function blockedQueueItem(overrides = {}) {
     ...overrides,
   };
 }
+
+test("render input work order promotes only strictly governed owned-motion-only jobs", () => {
+  const job = {
+    story_id: "owned-beta-timeline",
+    title: "Switch 2 Misses The Early-Access Beta",
+    artifact_dir: "C:/repo/test/output/owned-beta-timeline",
+    force_final_render: true,
+    target_render_manifest: {
+      output_path: "C:/repo/test/output/owned-beta-timeline/visual_v4_render.mp4",
+    },
+    status: "blocked_on_render_inputs",
+    blockers: ["visual_evidence:no_real_visual_media_asset"],
+    evidence: {
+      narration_ready: true,
+      word_timestamps_ready: true,
+      materialised_motion_ready: true,
+      distinct_motion_family_count: 5,
+    },
+    actions: [{ action_id: "materialise_validated_real_motion_clips" }],
+  };
+  const selection = {
+    clips: Array.from({ length: 13 }, (_, index) => ({ id: `clip-${index + 1}` })),
+    verified_clip_count: 13,
+    primary_clip_count: 12,
+    readable_card_count: 1,
+    source_card_count: 1,
+    generator_project_count: 4,
+    generator_project_ids: ["motion-a", "motion-b", "motion-c", "motion-d"],
+    target_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+    blockers: [],
+  };
+
+  const promoted = promoteGovernedOwnedMotionOnlyRenderJob(job, {
+    enabled: true,
+    materialisedMotion: { status: "ready", owned_explainer_visual_plan: true },
+    validator: () => selection,
+  });
+
+  assert.equal(promoted.status, "ready_for_final_render_job");
+  assert.deepEqual(promoted.blockers, []);
+  assert.equal(promoted.rights_safe_owned_motion_only, true);
+  assert.equal(promoted.evidence.rights_safe_owned_motion_only, true);
+  assert.equal(promoted.evidence.owned_motion_only_selection.primary_clip_count, 12);
+  assert.deepEqual(
+    promoted.actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.match(promoted.actions[0].recommended_command, /--owned-motion-only/);
+
+  const rejected = promoteGovernedOwnedMotionOnlyRenderJob(job, {
+    enabled: true,
+    materialisedMotion: { status: "ready", owned_explainer_visual_plan: true },
+    validator: () => ({ ...selection, clips: [], blockers: ["owned_motion_only_source_card_missing"] }),
+  });
+  assert.equal(rejected.status, "blocked_on_render_inputs");
+  assert.deepEqual(rejected.blockers, ["visual_evidence:no_real_visual_media_asset"]);
+  assert.deepEqual(
+    rejected.evidence.owned_motion_only_selection.blockers,
+    ["owned_motion_only_source_card_missing"],
+  );
+});
 
 test("render input work order maps queued blockers to exact local actions", () => {
   const workOrder = buildGoalRenderInputWorkOrder({

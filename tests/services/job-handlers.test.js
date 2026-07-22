@@ -234,6 +234,61 @@ test("fresh refill script work orders attach official source claims before rewri
   assert.equal(workOrder.jobs[0].source_evidence.source_text_sha256, "a".repeat(64));
 });
 
+test("fresh refill script work orders reuse retained source evidence without a refetch", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-retained-source-"));
+  const artifactDir = path.join(tmp, "fresh_langrisser");
+  const outputDir = path.join(tmp, "repair");
+  const sourceUrl = "https://prtimes.jp/main/html/rd/p/000000017.000132504.html";
+  const claim = "Each squad can field two heroes and two troop types.";
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "fresh_langrisser",
+    canonical_title: "Langrisser Lets You Break The Battlefield Mid-Fight",
+    canonical_subject: "Langrisser: Sea of Sword",
+    canonical_game: "Langrisser: Sea of Sword",
+    narration_script: "Langrisser lets players break the battlefield mid-fight.",
+    source_published_at: "2026-07-22T02:04:00.000Z",
+    confirmed_claims: [claim],
+    claim_inventory: { confirmed: [claim], unconfirmed: [], prohibited: [] },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "source_manifest.json"), {
+    primary_source: {
+      name: "SUGARFUN GAME LIMITED",
+      url: sourceUrl,
+      type: "official_press_release",
+      published_at: "2026-07-22T02:04:00.000Z",
+    },
+    source_evidence: {
+      status: "pass",
+      source_url: sourceUrl,
+      headline: "Langrisser: Sea of Sword gameplay reveal",
+      source_text_sha256: "b".repeat(64),
+      claims: [{
+        text: claim,
+        evidence_text: claim,
+        source_url: sourceUrl,
+        origin: "source_body",
+      }],
+    },
+  }, { spaces: 2 });
+
+  const result = await buildFreshRefillScriptRewriteWorkOrder({
+    quarantinedRows: [{
+      story_id: "fresh_langrisser",
+      artifact_dir: artifactDir,
+      title: "Langrisser Lets You Break The Battlefield Mid-Fight",
+      reasons: ["script_tighten_required"],
+    }],
+    outputDir,
+  });
+  const workOrder = await fs.readJson(result.workOrderPath);
+
+  assert.equal(workOrder.jobs.length, 1);
+  assert.equal(workOrder.jobs[0].source_evidence.status, "pass");
+  assert.equal(workOrder.jobs[0].source_evidence.source_text_sha256, "b".repeat(64));
+  assert.equal(workOrder.jobs[0].source_evidence.claims[0].text, claim);
+});
+
 test("fresh refill routes title-only fatigue into a hash-bound title repair before render repair", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-fresh-refill-title-fatigue-"));
   const artifactDir = path.join(tmp, "rss_arknights");

@@ -1015,6 +1015,28 @@ test("markAudioGenerationFailure: a full local inference lane stays pending with
   assert.equal(story.local_tts_failure.requires_server_reset, false);
 });
 
+test("markAudioGenerationFailure: Axios 503 detail preserves local TTS busy classification", () => {
+  const story = { id: "tts-lane-busy-axios", title: "TTS lane busy Axios response" };
+  const error = new Error("Request failed with status code 503");
+  error.response = {
+    status: 503,
+    data: {
+      detail:
+        "local_tts_busy: inference queue wait exceeded operation=synth:liam waited_ms=15016 max_wait_s=15",
+    },
+  };
+
+  const failure = markAudioGenerationFailure(story, error, {
+    provider: "local",
+    now: () => new Date("2026-07-22T10:55:15.000Z"),
+  });
+
+  assert.equal(failure.code, "tts_busy");
+  assert.equal(failure.requires_server_reset, false);
+  assert.equal(story.qa_failed, false);
+  assert.deepEqual(story.qa_warnings, ["audio_generation_pending:tts_busy"]);
+});
+
 test("clearAudioGenerationState restores platform-derived status for polluted live rows", () => {
   const story = {
     id: "polluted-live-row",

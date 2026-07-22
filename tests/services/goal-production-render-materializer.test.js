@@ -3580,6 +3580,68 @@ test("production renderer accepts compact display tokens split by strict Whisper
   assert.equal(generation.verdict, "GREEN");
 });
 
+test("production renderer accepts an adjacent compound token emitted by Whisper", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-flagship-compound-token-"));
+  const script = "Pre-orders start first, but access stays free.";
+  const artifactDir = await makePackage(root, "flagship-compound-token-alignment", {
+    narration_script: script,
+  });
+  const words = ["Preorders", "start", "first", "but", "access", "stays", "free"];
+  await fs.outputJson(path.join(artifactDir, "timestamps.json"), {
+    words: words.map((word, index) => ({
+      word,
+      start: Number((index * 0.15).toFixed(2)),
+      end: Number(((index + 1) * 0.15).toFixed(2)),
+    })),
+    meta: {
+      display_text: script,
+      spoken_text: script,
+      transcript: script,
+    },
+  });
+  await fs.outputFile(
+    path.join(artifactDir, "captions.srt"),
+    `1\n00:00:00,000 --> 00:00:01,200\n${script}\n`,
+  );
+  await fs.outputJson(path.join(artifactDir, "caption_manifest.json"), {
+    status: "pass",
+    caption_srt_path: path.join(artifactDir, "captions.srt"),
+  });
+  const job = readyJob("flagship-compound-token-alignment", artifactDir, {
+    evidence: {
+      ...readyJob("flagship-compound-token-alignment", artifactDir).evidence,
+      captions_path: path.join(artifactDir, "captions.srt"),
+    },
+  });
+
+  const report = await materializeGoalProductionRenders({
+    workspaceRoot: root,
+    workOrder: { jobs: [job] },
+    generatedAt: "2026-07-15T08:06:30.000Z",
+    renderProof: async ({ output }) => {
+      await fs.outputFile(output, Buffer.alloc(4096, 13));
+      return {
+        clips: 2,
+        rendered_duration_s: 1.2,
+        creative_system_version: "pulse_visual_identity_v5",
+        decoded_visual_gate: {
+          status: "pass",
+          decoded_media_evidence: true,
+          blockers: [],
+          frame_count: 5,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.rendered_count, 1);
+  const generation = await fs.readJson(
+    path.join(artifactDir, "flagship", "generation_manifest.json"),
+  );
+  assert.equal(generation.complete, true, JSON.stringify(generation.blockers, null, 2));
+  assert.equal(generation.verdict, "GREEN");
+});
+
 test("production renderer verifies merged display tokens through preserved spoken lineage", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-spoken-lineage-"));
   const displayScript = "Version 1.4 upgrades PS5.";

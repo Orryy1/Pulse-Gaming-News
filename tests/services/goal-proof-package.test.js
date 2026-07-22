@@ -8,6 +8,7 @@ const test = require("node:test");
 
 const {
   buildPackagePublishVerdict,
+  buildPlatformNativePublishPacks,
   buildGoalProofPackage,
   writeGoalProofPackageArtifacts,
 } = require("../../lib/goal-proof-package");
@@ -277,6 +278,43 @@ test("goal proof package gives DOOM Chain Spear a concrete combat title instead 
     ),
     false,
     JSON.stringify(evidence.failures),
+  );
+});
+
+test("goal proof package preserves a concrete claim-backed Langrisser cover", () => {
+  const candidate = greenStory();
+  candidate.id = "langrisser-breakable-battlefield-pack";
+  candidate.canonical_subject = "Langrisser: Sea of Sword";
+  candidate.canonical_game = "Langrisser: Sea of Sword";
+  candidate.canonical_angle = "breakable terrain changes tactical choices";
+  candidate.public_title = "Langrisser Turns Walls And Bridges Into Weapons";
+  candidate.title = candidate.public_title;
+  candidate.suggested_title = candidate.public_title;
+  candidate.suggested_thumbnail_text = "BREAK WALLS. CUT BRIDGES.";
+  candidate.thumbnail_headline = candidate.suggested_thumbnail_text;
+  candidate.primary_source = "SUGARFUN";
+  candidate.source_name = "SUGARFUN";
+  candidate.description =
+    "Langrisser: Sea of Sword lets players reshape a battlefield during combat.";
+  candidate.confirmed_claims = [
+    "Players can destroy walls and bridges during combat.",
+  ];
+  candidate.full_script =
+    "Langrisser: Sea of Sword lets you break walls and cut bridges while a fight is still moving. SUGARFUN says terrain and battlefield objects can be destroyed during combat, turning routes and elevation into tactical choices. Follow Pulse Gaming so you never miss a beat.";
+
+  const pack = buildGoalProofPackage({
+    story: candidate,
+    rightsLedger: rightsForGreenStory(candidate),
+    generatedAt: "2026-07-22T08:30:00.000Z",
+  });
+
+  assert.equal(
+    pack.canonical_story_manifest.thumbnail_headline,
+    "BREAK WALLS. CUT BRIDGES.",
+  );
+  assert.equal(
+    pack.platform_publish_manifest.outputs.youtube_shorts.cover_frame.headline,
+    "BREAK WALLS. CUT BRIDGES.",
   );
 });
 
@@ -610,6 +648,103 @@ test("goal proof package proves each social pack is platform-native rather than 
     normalise(pack.x_publish_pack.source_safe_post),
     normalise(pack.threads_publish_pack.discussion_post),
   );
+});
+
+test("platform packs keep scheduled beta access separate from paid Steam early access", () => {
+  const narrationScript = [
+    "Modern Warfare 4's beta has two entry points, and Switch 2 players get the later one.",
+    "Early access runs from August 21 through August 25 for pre-orders on Xbox Series X and S, PlayStation 5 and PC.",
+    "The free open beta runs from August 28 through September 1 on every supported platform, including Nintendo Switch 2.",
+    "Switch 2 players can skip pre-order pressure and still judge the game in the free window.",
+  ].join(" ");
+  const canonical = {
+    story_id: "rss_modern_warfare_4_beta_timeline",
+    canonical_subject: "Modern Warfare 4",
+    canonical_game: "Modern Warfare 4",
+    canonical_title: "Modern Warfare 4 Beta Has Two Different Entry Points",
+    selected_title: "Modern Warfare 4 Beta Has Two Different Entry Points",
+    description:
+      "Modern Warfare 4's beta has two entry points, and Switch 2 players get the later one. Early access runs from August 21 through August 25 for pre-orders on Xbox Series X and S, PlayStation 5 and PC.",
+    narration_script: narrationScript,
+    first_spoken_line:
+      "Modern Warfare 4's beta has two entry points, and Switch 2 players get the later one.",
+    primary_source: "Call of Duty Blog",
+    duration_seconds: 58.756,
+  };
+
+  const packs = buildPlatformNativePublishPacks({
+    story: {
+      id: canonical.story_id,
+      canonical_subject: canonical.canonical_subject,
+      public_title: canonical.selected_title,
+      full_script: narrationScript,
+      source_name: "Call of Duty Blog",
+      primary_source: "Call of Duty Blog",
+      duration_seconds: canonical.duration_seconds,
+    },
+    canonical,
+  });
+
+  assert.equal(
+    packs.outputs.youtube_shorts.title,
+    "Switch 2 Misses Modern Warfare 4's Early-Access Beta",
+  );
+  assert.match(packs.outputs.youtube_shorts.description, /early-access window|free open beta/i);
+  assert.match(packs.outputs.youtube_shorts.description, /Switch 2/i);
+  assert.doesNotMatch(
+    `${packs.outputs.youtube_shorts.title} ${packs.outputs.youtube_shorts.description} ${packs.outputs.youtube_shorts.cover_frame.headline}`,
+    /Steam demand|Steam spike|cheaper launch wave|wait problem/i,
+  );
+  assert.equal(packs.outputs.youtube_shorts.cover_frame.headline, "SWITCH 2 BETA GAP");
+  assert.equal(packs.outputs.facebook_reels.duration_seconds, 58.756);
+  assert.equal(packs.platformNativeEvidence.verdict, "pass", JSON.stringify(packs.platformNativeEvidence, null, 2));
+});
+
+test("YouTube platform packs preserve required Microsoft game-content notices", () => {
+  const editorialDescription =
+    "Xbox Backward Compatibility on PC launches with its first four games, all included in every Game Pass plan. " +
+    "Existing digital owners do not pay twice, but achievements arrive later. Source: Xbox Wire.";
+  const rightsNotice =
+    "BLiNX, Conker, Crimson Skies and Fuzion Frenzy \u00a9 Microsoft Corporation. " +
+    "This video was created under Microsoft's Game Content Usage Rules and is not endorsed by Microsoft. " +
+    "Rules: https://www.xbox.com/en-us/developers/rules";
+  const description = `${editorialDescription} ${rightsNotice}`;
+  const canonical = {
+    story_id: "xbox_bc_pc_required_notice",
+    canonical_subject: "Xbox Backward Compatibility on PC",
+    canonical_game: "Xbox Backward Compatibility on PC",
+    canonical_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    description: editorialDescription,
+    narration_script:
+      "Four original Xbox games just crossed onto PC. Xbox Wire confirms the early release includes every Game Pass plan. Achievements arrive later. Follow Pulse Gaming so you never miss a beat.",
+    first_spoken_line: "Four original Xbox games just crossed onto PC.",
+    primary_source: "Xbox Wire",
+  };
+
+  const packs = buildPlatformNativePublishPacks({
+    story: {
+      id: canonical.story_id,
+      canonical_subject: canonical.canonical_subject,
+      public_title: canonical.selected_title,
+      full_script: canonical.narration_script,
+      source_name: "Xbox Wire",
+      primary_source: "Xbox Wire",
+      youtube_required_rights_notice: rightsNotice,
+    },
+    canonical,
+  });
+
+  assert.equal(packs.outputs.youtube_shorts.description, description);
+  assert.match(packs.outputs.youtube_shorts.description, /not endorsed by Microsoft/i);
+  assert.match(packs.outputs.youtube_shorts.description, /xbox\.com\/en-us\/developers\/rules/i);
+  assert.equal(
+    packs.platformNativeEvidence.failures.some(
+      (failure) => failure.platform === "youtube_shorts" && failure.reason === "plain_platform_description",
+    ),
+    false,
+  );
+  assert.equal(mediaHousePrivate.platformCopyTooPlain({ outputs: packs.outputs }), false);
 });
 
 test("goal proof package turns source-admin copy into attention-led Shorts packaging", () => {
@@ -1740,6 +1875,18 @@ test("goal proof package falls back to story source evidence when governance evi
   story.confirmed_claims = [
     "Xbox Wire says Halo: Campaign Evolved showed Assault on the Control Room in hands-on demo form.",
   ];
+  story.source_evidence = {
+    status: "pass",
+    source_url: story.primary_source_url,
+    headline: "Halo: Campaign Evolved hands-on demo",
+    source_text_sha256: "a".repeat(64),
+    claims: story.confirmed_claims.map((text) => ({
+      text,
+      evidence_text: text,
+      source_url: story.primary_source_url,
+      origin: "source_body",
+    })),
+  };
 
   const pack = buildGoalProofPackage({
     story,
@@ -1768,6 +1915,7 @@ test("goal proof package falls back to story source evidence when governance evi
     ],
   );
   assert.deepEqual(pack.source_manifest.blockers, []);
+  assert.deepEqual(pack.source_manifest.source_evidence, story.source_evidence);
   assert.deepEqual(pack.claim_inventory.confirmed, story.confirmed_claims);
 });
 
@@ -1800,6 +1948,42 @@ test("goal proof package preserves official storefront pages for later motion di
     pack.source_manifest.primary_source.official_source_pages[0].official_source_url,
     "https://store.steampowered.com/app/2835570/Buckshot_Roulette/",
   );
+});
+
+test("goal proof package keeps explicit official references non-renderable while satisfying source provenance", () => {
+  const story = greenStory();
+  story.id = "owned-explainer-reference-proof";
+  story.canonical_subject = "Langrisser: Sea of Sword";
+  story.canonical_game = "Langrisser: Sea of Sword";
+  story.video_clips = [];
+  story.motion_clips = [];
+  story.visual_v4_local_motion_clips = [];
+  story.approved_direct_media_url = "";
+  story.direct_media_candidates = [];
+  story.trusted_footage_references = [{
+    id: "langrisser-official-steam-reference",
+    url: "https://store.steampowered.com/app/4808030/Langrisser_Sea_of_Sword/",
+    label: "Official Steam page",
+    source_type: "official_storefront_reference_only",
+    downloads_allowed: false,
+    render_use_allowed: false,
+  }];
+
+  const pack = buildGoalProofPackage({
+    story,
+    rightsLedger: [],
+    generatedAt: "2026-07-22T12:30:00.000Z",
+  });
+
+  assert.equal(pack.footage_inventory.trusted_source_pipeline.references_found, 1);
+  assert.ok(
+    !pack.footage_inventory.readiness.blockers.includes("no_trusted_footage_references_for_story"),
+    JSON.stringify(pack.footage_inventory.readiness, null, 2),
+  );
+  assert.ok(pack.footage_inventory.readiness.blockers.includes("actual_motion_clip_minimum_not_met"));
+  const intake = pack.footage_inventory.trusted_source_pipeline.intake_queue[0];
+  assert.equal(intake.autonomous_motion_candidate, false);
+  assert.equal(intake.allowed_render_use, "reference_only");
 });
 
 test("goal proof package turns official direct media into trusted footage intake references", () => {

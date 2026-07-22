@@ -304,12 +304,40 @@ test("owned motion materializer renders newsroom-grade motion cards instead of f
 
   assert.doesNotMatch(vf, /drawbox=x=70:y=488:w=940:h=284:color=0x0B0F19@0\.72:t=fill/);
   assert.doesNotMatch(vf, /drawbox=x=98:y=820:w=884:h=148:color=black@0\.62:t=fill/);
-  assert.match(vf, /PULSE \/\/ MOTION PROOF/);
-  assert.match(vf, /SOURCE LOCK/);
-  assert.match(vf, /VERIFY/);
+  assert.doesNotMatch(vf, /MOTION PROOF|SOURCE LOCK|VERIFY/);
+  assert.match(vf, /PULSE \/\/ BREAKDOWN/);
+  assert.match(vf, /SOURCE IGN PREVIEW/);
+  assert.match(vf, /SOURCED/);
   assert.match(vf, /mod\(t\*520,1540\)/);
   assert.match(vf, /color=0x38BDF8@0\.92/);
   assert.match(vf, /shadowcolor=black@0\.82:shadowx=3:shadowy=3/);
+});
+
+test("owned motion cards prefer clip-specific public copy over a repeated thumbnail headline", () => {
+  const layout = buildOwnedMotionFrameLayout({
+    clip: {
+      id: "unciv-owned-motion-quote",
+      asset_class: "animated_quote_card",
+      headline: "AI settlers now expand in parallel",
+      visual_purpose: "WHAT CHANGED",
+    },
+    canonical: {
+      canonical_subject: "Unciv 4.21.3",
+      thumbnail_headline: "UNCIV 4.21.3 SMARTER RIVALS",
+      selected_title: "Unciv 4.21.3 Makes Its AI Smarter",
+      primary_source: "Official GitHub release",
+    },
+  });
+
+  const headline = layout.text_blocks.find((block) => block.id === "headline").lines.join(" ");
+  const purpose = layout.text_blocks.find((block) => block.id === "purpose").lines.join(" ");
+  const source = layout.text_blocks.find((block) => block.id === "source").lines.join(" ");
+
+  assert.match(headline, /AI SETTLERS NOW EXPAND IN PARALLEL/);
+  assert.doesNotMatch(headline, /SMARTER RIVALS/);
+  assert.equal(purpose, "WHAT CHANGED");
+  assert.equal(source, "SOURCE OFFICIAL GITHUB RELEASE");
+  assert.doesNotMatch(`${headline} ${purpose} ${source}`, /LOCK|PROOF|SUPPORT/);
 });
 
 test("owned motion materializer enforces readable dwell time for explainer cards", () => {
@@ -465,6 +493,8 @@ test("owned motion materializer creates a source-locked explainer deck when foot
     first_spoken_line: "Kadokawa's activist investor now has a bigger stake than Sony.",
     confirmed_claims: [
       "Oasis Management raised its Kadokawa stake to 11.85%.",
+      "The disclosed holding is now larger than Sony's stake.",
+      "Kadokawa published the ownership filing this week.",
     ],
     primary_source: "IGN",
     source_card_label: "IGN",
@@ -551,6 +581,23 @@ test("owned motion materializer creates a source-locked explainer deck when foot
   assert.ok(materialised.clips.every((clip) => clip.source_relationship === "IGN"));
   assert.ok(materialised.clips.every((clip) => clip.distinctness_score > 0 && clip.distinctness_score < 1));
   assert.ok(materialised.clips.every((clip) => clip.platform_suitability.includes("youtube_shorts")));
+
+  const supportCards = materialised.clips.filter((clip) => clip.hyperframes_card === true);
+  assert.equal(supportCards.length, 4);
+  assert.ok(supportCards.every((clip) => !/lock|proof|support/i.test(clip.visual_purpose)));
+  assert.ok(new Set(supportCards.map((clip) => clip.readable_text)).size >= 3);
+  assert.match(
+    supportCards.find((clip) => clip.asset_class === "animated_quote_card").readable_text,
+    /11\.85%/,
+  );
+  assert.match(
+    supportCards.find((clip) => clip.asset_class === "stat_card").readable_text,
+    /larger than Sony/i,
+  );
+  assert.match(
+    supportCards.find((clip) => clip.asset_class === "platform_proof_card").readable_text,
+    /ownership filing/i,
+  );
 
   const familyReport = await fs.readJson(path.join(artifactDir, "distinct_motion_family_report.json"));
   assert.equal(familyReport.status, "ready");

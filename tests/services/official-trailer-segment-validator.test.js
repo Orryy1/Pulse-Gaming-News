@@ -2150,6 +2150,200 @@ test("official trailer segment validator accepts entity-matched official publish
   assert.equal(report.segments[0].action_sample_count, 0);
 });
 
+test("official trailer segment validator accepts a fully authorised hash-bound local publisher press-kit master", async () => {
+  const outputRoot = tempOutputRoot("official-publisher-local-press-kit-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: path.join(outputRoot, "nextrooms.mp4"),
+        sourceType: "official_publisher_or_developer_trailer_page",
+        sourceFamily: "desktop_explorer_press_gif_nextrooms",
+        source_family: "desktop_explorer_press_gif_nextrooms",
+        reference_title: "Official Desktop Explorer next rooms gameplay GIF",
+        entity: "Desktop Explorer",
+        mediaStartS: 0.85,
+        durationS: 4.15,
+        sourceDurationS: 5.1,
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          source: "official_publisher_press_kit_gif_transcode",
+          provider: "recurring_dream_press_kit",
+          source_owner: "Recurring Dream",
+          source_verified: true,
+          source_sha256: "a".repeat(64),
+          source_identity_path: path.join(outputRoot, "nextrooms.gif"),
+          source_identity_sha256: "b".repeat(64),
+          original_asset_sha256: "b".repeat(64),
+          reference_url: "https://drive.google.com/file/d/official-nextrooms/view",
+          evidence_reference: path.join(outputRoot, "press-kit-rights-evidence.json"),
+          allowed_render_use: "transformative_editorial_short_form",
+          commercial_use_allowed: true,
+          approval_status: "approved_for_commercial_editorial_use",
+          rights_status: "GREEN",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.257, saturation_mean: 0.292, score: 96.9 },
+          { edge_density: 0.239, saturation_mean: 0.269, score: 93.6 },
+          { edge_density: 0.236, saturation_mean: 0.268, score: 93.2 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `publisher-press-kit-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.04,
+            bright_pixel_ratio: 0.15,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["detail_rich"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1, JSON.stringify(report.segments[0], null, 2));
+  assert.equal(
+    report.segments[0].validation_reason,
+    "official_storefront_cinematic_motion_samples_passed",
+  );
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
+test("official trailer segment validator keeps AMBER or hash-unbound local publisher press-kit masters out of cinematic fallback", async () => {
+  const outputRoot = tempOutputRoot("official-publisher-local-press-kit-amber");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: path.join(outputRoot, "nextrooms.mp4"),
+        sourceType: "official_publisher_or_developer_trailer_page",
+        sourceFamily: "desktop_explorer_press_gif_nextrooms",
+        source_family: "desktop_explorer_press_gif_nextrooms",
+        reference_title: "Official Desktop Explorer next rooms gameplay GIF",
+        entity: "Desktop Explorer",
+        mediaStartS: 0.85,
+        durationS: 4.15,
+        sourceDurationS: 5.1,
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          source: "official_publisher_press_kit_gif_transcode",
+          provider: "recurring_dream_press_kit",
+          source_owner: "Recurring Dream",
+          source_verified: true,
+          source_sha256: "a".repeat(64),
+          source_identity_path: path.join(outputRoot, "nextrooms.gif"),
+          source_identity_sha256: "b".repeat(64),
+          original_asset_sha256: "b".repeat(64),
+          reference_url: "https://drive.google.com/file/d/official-nextrooms/view",
+          evidence_reference: path.join(outputRoot, "press-kit-rights-evidence.json"),
+          allowed_render_use: "human_legal_review_required",
+          commercial_use_allowed: false,
+          approval_status: "human_legal_review_required",
+          rights_status: "AMBER",
+        },
+      }),
+      clip({
+        path: path.join(outputRoot, "hash-unbound-nextrooms.mp4"),
+        sourceType: "official_publisher_or_developer_trailer_page",
+        sourceFamily: "desktop_explorer_press_gif_nextrooms_unbound",
+        source_family: "desktop_explorer_press_gif_nextrooms_unbound",
+        reference_title: "Official Desktop Explorer next rooms gameplay GIF",
+        entity: "Desktop Explorer",
+        mediaStartS: 0.85,
+        durationS: 4.15,
+        sourceDurationS: 5.1,
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          source: "official_publisher_press_kit_gif_transcode",
+          provider: "recurring_dream_press_kit",
+          source_owner: "Recurring Dream",
+          source_verified: true,
+          source_sha256: "a".repeat(64),
+          source_identity_path: path.join(outputRoot, "nextrooms.gif"),
+          source_identity_sha256: "b".repeat(64),
+          original_asset_sha256: "c".repeat(64),
+          reference_url: "https://drive.google.com/file/d/official-nextrooms/view",
+          evidence_reference: path.join(outputRoot, "press-kit-rights-evidence.json"),
+          allowed_render_use: "transformative_editorial_short_form",
+          commercial_use_allowed: true,
+          approval_status: "approved_for_commercial_editorial_use",
+          rights_status: "GREEN",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.257, saturation_mean: 0.292, score: 96.9 },
+          { edge_density: 0.239, saturation_mean: 0.269, score: 93.6 },
+          { edge_density: 0.236, saturation_mean: 0.268, score: 93.2 },
+        ];
+        const sample = samples[(call - 1) % samples.length];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `publisher-press-kit-amber-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.04,
+            bright_pixel_ratio: 0.15,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: ["detail_rich"],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 0);
+  assert.equal(report.summary.segments_rejected, 2);
+  for (const segment of report.segments) {
+    assert.equal(segment.validation_reason, "segment_lacks_gameplay_action_samples");
+    assert.equal(segment.allowed_for_flash_lane, false);
+  }
+});
+
 test("official trailer segment validator keeps mismatched publisher direct media out of cinematic fallback", async () => {
   const outputRoot = tempOutputRoot("official-publisher-direct-cinematic-mismatch");
   await cleanTempRoot(outputRoot);

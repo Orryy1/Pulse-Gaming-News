@@ -7202,6 +7202,125 @@ test("real motion materializer can repair only the direct-video gap without disc
   assert.equal(footage.motion_inventory.direct_video_motion_asset_count, 1);
 });
 
+test("real motion materializer keeps governed owned motion when an incoming pack already meets its floor", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-motion-mixed-pack-"));
+  const job = await makePackage(root, "mixed-owned-and-official-motion");
+  const rightsPath = path.join(job.artifact_dir, "rights_ledger.json");
+  const rights = await fs.readJson(rightsPath);
+  rights.assets = rights.assets.map((asset, index) => {
+    const sourceMasterSha256 = crypto
+      .createHash("sha256")
+      .update(`mixed-official-source-${index + 1}`)
+      .digest("hex");
+    return {
+      ...asset,
+      source_master_sha256: sourceMasterSha256,
+      source_master_identity: {
+        identity_kind: "official_direct_video_master",
+        source_master_asset_id: `sha256:${sourceMasterSha256}`,
+        source_master_sha256: sourceMasterSha256,
+        canonical_source_url: asset.source_url,
+      },
+    };
+  });
+  await fs.writeJson(rightsPath, rights, { spaces: 2 });
+  const footagePath = path.join(job.artifact_dir, "footage_inventory.json");
+  const footage = await fs.readJson(footagePath);
+  const ownedClips = [];
+  for (let index = 0; index < 5; index += 1) {
+    const clipPath = path.join(root, "output", "owned-motion", `mixed-owned-${index + 1}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(4096, index + 11));
+    const sourceMasterSha256 = crypto
+      .createHash("sha256")
+      .update("pulse.motion.test.v1")
+      .digest("hex");
+    ownedClips.push({
+      id: `mixed-owned-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `local://pulse-generated-motion/mixed/${index + 1}`,
+      source_family: `mixed_owned_family_${index + 1}`,
+      motion_family: `mixed_owned_family_${index + 1}`,
+      source_type: "internally_generated_motion_graphic",
+      media_kind: "owned_explainer_motion",
+      rights_risk_class: "owned_generated_motion",
+      owned_explainer_visual_plan: true,
+      generator_project_id: "pulse.motion.test.v1",
+      source_master_sha256: sourceMasterSha256,
+      source_master_identity: {
+        identity_kind: "owned_generator_project_master",
+        generator_project_id: "pulse.motion.test.v1",
+        source_master_asset_id: "pulse.motion.test.v1:master",
+        source_master_sha256: sourceMasterSha256,
+        canonical_source_url: "local://pulse-owned-generator-project/pulse.motion.test.v1",
+      },
+      durationS: 6,
+      mediaStartS: 0,
+      validated: true,
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      allowed_use: "finished_editorial_video",
+      rights_grant: {
+        schema_version: 1,
+        grant_id: "pulse.motion.test.v1:owned-generated-v1",
+        grant_type: "owned_generated",
+        rights_holder: "Pulse Gaming",
+        granted_by: "Pulse Gaming",
+        allowed_use: "commercial_editorial_and_platform_native_derivatives",
+        allowed_platforms: [...ENABLED_LIVE_PLATFORM_RIGHTS],
+        commercial_use_allowed: true,
+        derivative_use_allowed: true,
+        credit_required: false,
+      },
+      allowed_platforms: [...ENABLED_LIVE_PLATFORM_RIGHTS],
+      commercial_use_allowed: true,
+      credit_required: false,
+      evidence_reference: `generated://owned-motion/mixed/${index + 1}`,
+      risk_score: 0,
+    });
+  }
+  footage.motion_inventory = {
+    ...(footage.motion_inventory || {}),
+    owned_explainer_visual_plan: true,
+    accepted_local_clips: ownedClips,
+    production_motion_clips: ownedClips,
+    distinct_source_families: ownedClips.map((clip) => clip.source_family),
+  };
+  await fs.writeJson(footagePath, footage, { spaces: 2 });
+
+  const report = await materializeGoalRealMotion({
+    root,
+    workOrder: { jobs: [job] },
+    storyIds: [job.story_id],
+    generatedAt: "2026-07-22T09:35:00.000Z",
+    execFileSync: (bin, args) => {
+      fs.ensureFileSync(args[args.length - 1]);
+      fs.writeFileSync(args[args.length - 1], Buffer.alloc(4096, 21));
+    },
+    ffprobeDuration: (filePath) => (fs.existsSync(filePath) ? 3 : null),
+    clipVisualFingerprint: async (clip) => `unique-${clip.id}`,
+    strictBaseSourceDiversity: true,
+    minBaseSources: 2,
+  });
+
+  assert.equal(report.summary.materialized_story_count, 1, JSON.stringify(report.jobs[0], null, 2));
+  const materialised = await fs.readJson(
+    path.join(job.artifact_dir, "materialised_motion_clips.json"),
+  );
+  assert.equal(materialised.clip_count, 10);
+  assert.equal(
+    materialised.clips.filter((clip) => clip.media_kind === "owned_explainer_motion").length,
+    5,
+  );
+  assert.equal(materialised.clips.filter((clip) => clip.media_kind === "direct_video").length, 5);
+  assert.equal(materialised.professional_source_diversity.status, "pass");
+  assert.equal(materialised.professional_source_diversity.selected_direct_motion_scene_count, 5);
+  assert.equal(materialised.professional_source_diversity.governed_owned_support_scene_count, 5);
+  assert.equal(materialised.professional_source_diversity.unresolved_clips.length, 0);
+});
+
 test("real motion materializer completes a motion floor by merging governed existing and new validated clips", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-real-incremental-motion-"));
   const storyId = "ascend-incremental-motion";

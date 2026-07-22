@@ -2,9 +2,12 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const Database = require("better-sqlite3");
 
 const {
   buildFreshReviewScriptRepairPlan,
+  fetchFreshApprovedProductionRows,
+  selectFreshApprovedProductionRows,
   selectFreshReviewScriptRepairRows,
 } = require("../../lib/ops/fresh-review-script-repair");
 const { commandSafety } = require("../../lib/ops/auto-repair-runner");
@@ -197,6 +200,198 @@ test("fresh review script repair excludes stale, non-script, published and reddi
   ], { now: NOW, limit: 10 });
 
   assert.deepEqual(selected.map((item) => item.story_id), ["fresh_good"]);
+});
+
+test("fresh approved production recovery only selects current unproduced rows and repairable audio failures", () => {
+  const selected = selectFreshApprovedProductionRows([
+    row({
+      story_id: "fresh_approved",
+      decision: "auto",
+      decision_reason: "verified source score met automatic approval threshold",
+      approved: 1,
+      total: 82,
+      publish_status: null,
+      publish_error: null,
+    }),
+    row({
+      story_id: "off_topic_hallucinated_gameplay",
+      title:
+        "Avengers: Doomsday Off to Huge Start in Advance Ticket Sales, Second-Biggest Trailer Launch Ever Behind Only Spider-Man: Brand New Day",
+      top_comment:
+        "Avengers: Doomsday released its first proper trailer yesterday alongside the start of advance ticket sales, and both were a huge success.",
+      body:
+        "The trailer shows real gameplay and lets players judge movement, combat and camera weight.",
+      full_script:
+        "Avengers just showed the part game trailers usually hide: how it plays.",
+      decision: "auto",
+      approved: 1,
+      total: 95,
+    }),
+    row({
+      story_id: "tts_timeout",
+      decision: "auto",
+      decision_reason: "verified source score met automatic approval threshold",
+      approved: 1,
+      total: 80,
+      publish_status: "failed",
+      publish_error: "audio_generation_failed: timeout: local TTS queue wait exceeded",
+    }),
+    row({
+      story_id: "audio_duration_too_long",
+      decision: "auto",
+      decision_reason: "verified source score met automatic approval threshold",
+      approved: 1,
+      total: 79,
+      publish_status: "failed",
+      publish_error: "qa_blocked: audio_duration_too_long (89.60s, max 89.00s)",
+    }),
+    row({
+      story_id: "stale_approved",
+      decision: "auto",
+      approved: 1,
+      total: 90,
+      timestamp: "2026-05-01T12:00:00.000Z",
+      created_at: "2026-05-01T12:00:00.000Z",
+    }),
+    row({
+      story_id: "older_than_approved_runway",
+      decision: "auto",
+      approved: 1,
+      total: 84,
+      timestamp: "2026-06-15T12:00:00.000Z",
+      created_at: "2026-06-15T12:00:00.000Z",
+    }),
+    row({
+      story_id: "already_exported",
+      decision: "auto",
+      approved: 1,
+      total: 89,
+      exported_path: "output/final/already_exported.mp4",
+    }),
+    row({
+      story_id: "already_published",
+      decision: "auto",
+      approved: 1,
+      total: 88,
+      published_platform_post_count: 1,
+      youtube_post_id: "yt-123",
+    }),
+    row({
+      story_id: "non_tts_failure",
+      decision: "auto",
+      approved: 1,
+      total: 87,
+      publish_status: "failed",
+      publish_error: "video_assembly_failed: rights ledger incomplete",
+    }),
+    row({
+      story_id: "hard_stop",
+      decision: "auto",
+      approved: 1,
+      total: 86,
+      hard_stops: JSON.stringify(["source_confidence_below_floor"]),
+    }),
+    row({
+      story_id: "not_approved",
+      decision: "auto",
+      approved: 0,
+      total: 85,
+    }),
+  ], { now: NOW, limit: 10 });
+
+  assert.deepEqual(selected.map((item) => item.story_id), [
+    "fresh_approved",
+    "tts_timeout",
+    "audio_duration_too_long",
+  ]);
+});
+
+test("fresh approved production recovery fetches only recent approved rows without export or post evidence", () => {
+  const db = new Database(":memory:");
+  try {
+    db.exec(`
+      CREATE TABLE stories (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        url TEXT,
+        article_url TEXT,
+        source_type TEXT,
+        timestamp TEXT,
+        created_at TEXT,
+        approved INTEGER,
+        auto_approved INTEGER,
+        exported_path TEXT,
+        youtube_post_id TEXT,
+        youtube_url TEXT,
+        tiktok_post_id TEXT,
+        instagram_media_id TEXT,
+        facebook_post_id TEXT,
+        twitter_post_id TEXT,
+        published_at TEXT,
+        publish_status TEXT,
+        publish_error TEXT
+      );
+      CREATE TABLE story_scores (
+        story_id TEXT,
+        total REAL,
+        decision TEXT,
+        decision_reason TEXT,
+        inputs TEXT,
+        hard_stops TEXT,
+        scored_at TEXT
+      );
+      CREATE TABLE platform_posts (
+        story_id TEXT,
+        status TEXT,
+        external_id TEXT
+      );
+    `);
+    const insertStory = db.prepare(`
+      INSERT INTO stories (
+        id, title, url, article_url, source_type, timestamp, created_at,
+        approved, auto_approved, exported_path
+      ) VALUES (?, ?, ?, ?, 'rss', ?, ?, ?, 1, ?)
+    `);
+    const insertScore = db.prepare(`
+      INSERT INTO story_scores (
+        story_id, total, decision, decision_reason, inputs, hard_stops, scored_at
+      ) VALUES (?, ?, 'auto', 'verified source score met automatic approval threshold', '{}', '[]', ?)
+    `);
+    for (const candidate of [
+      { id: "fresh_approved", approved: 1, exportedPath: null },
+      { id: "already_exported", approved: 1, exportedPath: "output/final/already_exported.mp4" },
+      { id: "already_published", approved: 1, exportedPath: null },
+      { id: "not_approved", approved: 0, exportedPath: null },
+    ]) {
+      const url = `https://www.ign.com/articles/${candidate.id}`;
+      insertStory.run(
+        candidate.id,
+        "Gears of War E-Day Gameplay Reveals A New Combat Detail",
+        url,
+        url,
+        "2026-06-16T12:00:00.000Z",
+        "2026-06-16T12:05:00.000Z",
+        candidate.approved,
+        candidate.exportedPath,
+      );
+      insertScore.run(candidate.id, 82, "2026-06-16T12:10:00.000Z");
+    }
+    db.prepare(
+      "INSERT INTO platform_posts (story_id, status, external_id) VALUES (?, 'published', ?)",
+    ).run("already_published", "yt-123");
+
+    const fetched = fetchFreshApprovedProductionRows({
+      db,
+      now: new Date(NOW),
+      maxAgeHours: 7 * 24,
+      limit: 10,
+    });
+
+    assert.deepEqual(fetched.map((item) => item.id), ["fresh_approved"]);
+    assert.equal(fetched[0].published_platform_post_count, 0);
+  } finally {
+    db.close();
+  }
 });
 
 test("fresh review script repair turns current bridge transcript backlog into bridge rewrite work orders", () => {

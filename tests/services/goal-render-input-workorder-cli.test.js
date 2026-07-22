@@ -22,6 +22,7 @@ test("goal render input work-order CLI parses dry local arguments", () => {
     "dry-run.json",
     "--story-id",
     "story-cli",
+    "--owned-motion-only",
     "--dry-run",
     "--json",
   ]);
@@ -32,6 +33,7 @@ test("goal render input work-order CLI parses dry local arguments", () => {
   assert.equal(args.realMotionMaterializationPath, "real-motion.json");
   assert.equal(args.dryRunPlanPath, "dry-run.json");
   assert.deepEqual(args.storyIds, ["story-cli"]);
+  assert.equal(args.rightsSafeOwnedMotionOnly, true);
   assert.equal(args.dryRun, true);
   assert.equal(args.json, true);
 });

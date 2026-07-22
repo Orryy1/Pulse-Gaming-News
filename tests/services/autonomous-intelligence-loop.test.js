@@ -2365,6 +2365,8 @@ test("fresh production refill escalates zero yield once without creating a retry
     [goalBatchPath, require.cache[goalBatchPath]],
   ]);
   const enqueued = [];
+  const repoDb = { kind: "test_db_handle" };
+  let alternateIntakeOptions = null;
 
   try {
     await fs.mkdir(contractOutDir, { recursive: true });
@@ -2389,7 +2391,8 @@ test("fresh production refill escalates zero yield once without creating a retry
     const { handlers: mockedHandlers } = require("../../lib/job-handlers");
     const context = {
       log() {},
-      async buildFreshReviewLocalPromotionIntake() {
+      async buildFreshReviewLocalPromotionIntake(options) {
+        alternateIntakeOptions = options;
         return {
           fresh_source_intake_stories: [
             {
@@ -2420,6 +2423,7 @@ test("fresh production refill escalates zero yield once without creating a retry
         };
       },
       repos: {
+        db: repoDb,
         jobs: {
           enqueue(row) {
             enqueued.push(row);
@@ -2474,6 +2478,8 @@ test("fresh production refill escalates zero yield once without creating a retry
       ["review-local-alternate"],
     );
     assert.equal(first.zero_yield_incident.alternate_cohort_selected_count, 1);
+    assert.equal(alternateIntakeOptions.db, repoDb);
+    assert.equal(alternateIntakeOptions.approvedMaxAgeHours, 36);
     assert.match(
       first.zero_yield_incident.alternate_cohort_selection_fingerprint,
       /^[a-f0-9]{64}$/,

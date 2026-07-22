@@ -37,6 +37,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     outDir: path.join(ROOT, "output", "goal-contract"),
     generatedAt: null,
     storyIds: [],
+    rightsSafeOwnedMotionOnly: false,
     dryRun: false,
     json: false,
     help: false,
@@ -84,6 +85,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       const value = argv[++i] || "";
       args.storyIds.push(...String(value).split(",").map((item) => item.trim()).filter(Boolean));
     }
+    else if (arg === "--owned-motion-only") args.rightsSafeOwnedMotionOnly = true;
     else if (arg === "--dry-run") args.dryRun = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--help" || arg === "-h") args.help = true;
@@ -120,6 +122,7 @@ function usage() {
     "  --out-dir <dir>         Output directory for the work order",
     "  --generated-at <iso>    Fixed timestamp for deterministic reports",
     "  --story-id <id>         Optional story id filter; repeatable or comma-separated",
+    "  --owned-motion-only     Permit only strictly verified, hash-bound owned explainer motion",
     "  --dry-run               Explicit report-only mode; writes local proof artefacts only",
     "  --json                  Print JSON summary",
   ].join("\n");
@@ -380,6 +383,7 @@ async function main(argv = process.argv.slice(2)) {
     sourceFamilyAcquisitionReport,
     segmentValidationReports: segmentValidationReports.filter(Boolean),
     realMotionMaterializationReport,
+    rightsSafeOwnedMotionOnly: args.rightsSafeOwnedMotionOnly,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   workOrder = filterGoalRenderInputWorkOrderByStoryIds(workOrder, args.storyIds);

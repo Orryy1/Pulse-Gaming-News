@@ -32,6 +32,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     intakeReportPath: path.join(ROOT, "output", "goal-contract", "official_source_intake_report.json"),
     outDir: path.join(ROOT, "output", "goal-contract"),
     root: ROOT,
+    artifactDir: null,
     storyIds: [],
     generatedAt: null,
     minAssets: 5,
@@ -44,6 +45,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     if (arg === "--intake-report" || arg === "--input") args.intakeReportPath = argv[++i] || args.intakeReportPath;
     else if (arg === "--out-dir" || arg === "--output-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--root") args.root = argv[++i] || args.root;
+    else if (arg === "--artifact-dir") args.artifactDir = argv[++i] || null;
     else if (arg === "--story-id" || arg === "--story") args.storyIds.push(...parseStoryIds(argv[++i]));
     else if (arg === "--story-ids") args.storyIds.push(...parseStoryIds(argv[++i]));
     else if (arg === "--generated-at") args.generatedAt = argv[++i] || null;
@@ -69,6 +71,7 @@ function usage() {
     "  --story-ids <ids>              Comma-separated story id filters",
     "  --out-dir <dir>                Output report directory",
     "  --root <dir>                   Workspace root",
+    "  --artifact-dir <dir>           Explicit package directory; requires exactly one story",
     "  --min-assets <n>               Required accepted official stills per story",
     "  --max-downloads-per-story <n>  Cap local still downloads per story",
     "  --json                         Print JSON",
@@ -84,6 +87,7 @@ async function main(argv = process.argv.slice(2)) {
   const intakeReport = await fs.readJson(path.resolve(args.intakeReportPath));
   const report = await repairGoalOfficialStillVisuals({
     root: path.resolve(args.root),
+    artifactDir: args.artifactDir ? path.resolve(args.artifactDir) : null,
     intakeReport,
     storyIds: args.storyIds,
     generatedAt: args.generatedAt || new Date().toISOString(),

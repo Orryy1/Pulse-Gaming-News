@@ -138,6 +138,66 @@ test("fresh review local promotion intake builds local promotion stories without
   assert.equal(report.repair_results[0].output_story_ready, true);
 });
 
+test("fresh review local promotion intake recovers a fresh approved unproduced story without side effects", async () => {
+  const approvedRow = sourceBackedReviewRow({
+    id: "rss_langrisser_gameplay",
+    story_id: "rss_langrisser_gameplay",
+    title: "New Langrisser Sea of Sword Trailer Shows Its First Gameplay",
+    description:
+      "IGN reports Langrisser: Sea of Sword gameplay includes paired heroes and troops, destructible terrain and exploration.",
+    article_url:
+      "https://www.ign.com/articles/langrisser-sea-of-sword-gameplay-trailer",
+    source_name: "IGN",
+    source_published_at: "2026-07-22T02:00:00.000Z",
+    created_at: "2026-07-22T05:56:03.000Z",
+    scored_at: "2026-07-22T06:00:00.000Z",
+    decision: "auto",
+    decision_reason: "verified source score met automatic approval threshold",
+    approved: 1,
+    auto_approved: 1,
+    total: 86,
+    publish_status: null,
+    publish_error: null,
+    exported_path: null,
+  });
+  const report = await buildFreshReviewLocalPromotionIntake({
+    rows: [],
+    approvedRows: [approvedRow],
+    plan: {
+      summary: { selected_count: 0 },
+      source_bound_rewrite_work_orders: [],
+    },
+    now: new Date("2026-07-22T08:00:00.000Z"),
+    reprocessCandidateImpl: async () => [
+      {
+        id: "rss_langrisser_gameplay",
+        title: "Langrisser's Terrain Can Break Mid-Battle",
+        suggested_title: "Langrisser's Terrain Can Break Mid-Battle",
+        source_name: "IGN",
+        article_url:
+          "https://www.ign.com/articles/langrisser-sea-of-sword-gameplay-trailer",
+        source_type: "rss",
+        source_published_at: "2026-07-22T02:00:00.000Z",
+        source_confidence_score: 90,
+        confirmed_claims: [
+          "IGN reports Langrisser: Sea of Sword pairs heroes with troop types and lets attacks alter terrain.",
+        ],
+        full_script:
+          "Langrisser just made the battlefield itself part of the fight. IGN reports Sea of Sword pairs each hero with a troop type, while attacks can destroy terrain and change how a route plays out. That matters because positioning is no longer only about a damage number. Breaking cover or opening a path could decide which unit reaches the next objective. The trailer also shows exploration outside combat, so this is not being framed as a sequence of isolated tactical maps. There is still no confirmed release date, which keeps the useful question focused on the combat system rather than launch hype. If those terrain changes create real tactical choices instead of scripted spectacle, Sea of Sword has a clear way to stand apart. Follow Pulse Gaming so you never miss a beat.",
+        script_generation_status: "script_ready",
+      },
+    ],
+  });
+
+  assert.equal(report.summary.approved_rows_seen, 1);
+  assert.equal(report.summary.approved_production_selected_count, 1);
+  assert.equal(report.summary.local_promotion_story_count, 1);
+  assert.equal(report.fresh_source_intake_stories[0].id, "rss_langrisser_gameplay");
+  assert.equal(report.repair_results[0].intake_source, "approved_production_backlog");
+  assert.equal(report.safety.no_publish_triggered, true);
+  assert.equal(report.safety.no_db_mutation, true);
+});
+
 test("fresh review local promotion intake attaches known official GTA VI direct media", async () => {
   const report = await buildFreshReviewLocalPromotionIntake({
     rows: [
@@ -792,6 +852,18 @@ test("fresh review local promotion intake rejects reusable follow-up scaffold la
   });
 
   assert.ok(failures.includes("local_intake:generic_follow_up_scaffold_script"));
+});
+
+test("fresh review local promotion intake rejects generic gameplay trailer scaffolding", () => {
+  const failures = qualityFailuresForDraft({
+    selected_title: "Langrisser Gameplay Check",
+    canonical_subject: "Langrisser: Sea of Sword",
+    source_title: "New Langrisser: Sea of Sword Trailer Provides First Look at Gameplay",
+    full_script:
+      "Langrisser just showed the part trailers usually hide: how it plays. Players can judge movement, combat and camera weight instead of guessing from a cinematic cut. Players now have a cleaner way to decide whether the pitch survives contact with the controller. The blunt test is whether the gameplay stays fun after the first minute. Quick cuts can disguise pacing problems more easily than weak art. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.ok(failures.includes("local_intake:generic_gameplay_trailer_scaffold_script"));
 });
 
 test("fresh review local promotion intake rejects internal value scaffold language", () => {

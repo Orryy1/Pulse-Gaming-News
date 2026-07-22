@@ -35,6 +35,65 @@ function officialSourceEvidence(claim, sourceUrl) {
   };
 }
 
+test("fresh refill rewrite turns a two-window beta announcement into a sourced timeline", () => {
+  const sourceUrl =
+    "https://www.callofduty.com/blog/2026/07/call-of-duty-modern-warfare-4-open-beta-next-fanatics-fest-recap-serialized-camo-preorder-bonus";
+  const claims = [
+    "The Modern Warfare 4 Beta begins on August 21, kicking off immediately after the Call of Duty: NEXT broadcast.",
+    "Weekend One, the Modern Warfare 4 Early Access Beta, begins on August 21 and ends on August 25.",
+    "The Early Access Beta is available to players who have pre-ordered on Xbox Series X or S, PlayStation 5 and PC.",
+    "Weekend Two, the Modern Warfare 4 Open Beta, is open to all players on all platforms, regardless of their pre-order status, including Nintendo Switch 2 players.",
+    "The second Modern Warfare 4 Beta weekend is scheduled to begin on August 28 and end on September 1.",
+    "Modern Warfare 4 pre-orders for Nintendo Switch 2 begin on August 26.",
+    "Activision says beta dates and platform availability are subject to change.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_modern_warfare_4_beta_timeline",
+      title: "Modern Warfare 4 Open Beta Dates Announced",
+      source: {
+        name: "Call of Duty Blog",
+        url: sourceUrl,
+        title: "Modern Warfare 4: Open Beta Dates and Call of Duty: NEXT",
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
+        headline: "Modern Warfare 4: Open Beta Dates and Call of Duty: NEXT",
+        claims: claims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+    },
+    manifest: {
+      story_id: "rss_modern_warfare_4_beta_timeline",
+      canonical_subject: "Modern Warfare 4",
+      canonical_title: "Modern Warfare 4 Open Beta Dates Announced",
+      primary_source: "Call of Duty Blog",
+      primary_source_url: sourceUrl,
+      confirmed_claims: claims,
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script, null, 2));
+  assert.equal(script.suggested_title, "Modern Warfare 4 Beta Has Two Different Entry Points");
+  assert.match(script.full_script, /August 21[^.]*August 25/i);
+  assert.match(script.full_script, /August 28[^.]*September 1/i);
+  assert.match(script.full_script, /Switch 2/i);
+  assert.match(script.full_script, /without a pre-order|no pre-order/i);
+  assert.match(script.full_script, /subject to change/i);
+  assert.ok(script.word_count <= 150, `expected <=150 words, received ${script.word_count}`);
+  assert.doesNotMatch(script.full_script, /The split matters because/i);
+  assert.doesNotMatch(
+    `${script.suggested_title} ${script.full_script}`,
+    /background noise|watch signal|source package|player-facing update/i,
+  );
+});
+
 test("fresh refill rewrite preserves a concrete ESO Season One argument", () => {
   const sourceUrl = "https://www.elderscrollsonline.com/en-us/news/post/70123";
   const claims = [

@@ -3357,6 +3357,40 @@ function overlayCardWindowsForStory(story = {}, { durationS = null } = {}) {
   return windows.filter((window) => Number(window.end_s || 0) <= finalDuration + 0.05);
 }
 
+function buildMediaAttributionFilterParts({
+  story = {},
+  fontOpt = "font='DejaVu Sans Mono'",
+} = {}) {
+  const manifest =
+    story.media_attribution_manifest ||
+    story.attribution_manifest?.media ||
+    null;
+  const manifestVerdict = String(manifest?.verdict || "").trim().toUpperCase();
+  if (["RED", "FAIL", "FAILED"].includes(manifestVerdict)) return [];
+  const entries = Array.isArray(manifest?.entries)
+    ? manifest.entries
+    : Array.isArray(story.media_attribution_entries)
+      ? story.media_attribution_entries
+      : [];
+  const parts = [];
+  for (const entry of entries.slice(0, 12)) {
+    const decisionVerdict = String(entry?.decision_verdict || "").trim().toUpperCase();
+    if (["RED", "FAIL", "FAILED"].includes(decisionVerdict)) continue;
+    const text = String(entry?.display_text || "").replace(/\s+/g, " ").trim().slice(0, 72);
+    const start = Number(entry?.timeline?.start_seconds ?? entry?.start_seconds);
+    const end = Number(entry?.timeline?.end_seconds ?? entry?.end_seconds);
+    if (!text || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) {
+      continue;
+    }
+    const enable = `between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})`;
+    parts.push(
+      `drawbox=x=46:y=h-224:w=720:h=48:color=0x080B12@0.68:t=fill:enable='${enable}'`,
+      `drawtext=text='${drawtextEscape(text)}':${fontOpt}:fontcolor=white@0.92:fontsize=18:x=62:y=h-211:shadowcolor=black@0.72:shadowx=2:shadowy=2:enable='${enable}'`,
+    );
+  }
+  return parts;
+}
+
 function buildOverlayChain({
   story,
   inputLabel,
@@ -3494,6 +3528,7 @@ function buildOverlayChain({
     `drawtext=text='${impactLabel}':${metaFontOpt}:fontcolor=${pulseSecondary}:fontsize=18:x=118:y=1022:enable='${proofSecondaryEnable}'`,
     ...drawtextLinesForBlock(blockById.proof_secondary, { fontOpt, fontcolor: "white", enable: proofSecondaryEnable }),
     ]),
+    ...buildMediaAttributionFilterParts({ story, fontOpt: metaFontOpt }),
     `drawbox=x=w-286:y=h-126:w=244:h=60:color=0x0D0D0F@0.58:t=fill${nonCardOverlayEnableSuffix}`,
     `drawbox=x=w-286:y=h-126:w=6:h=60:color=${identityAccent}@0.95:t=fill${nonCardOverlayEnableSuffix}`,
     `drawbox=x=w-280:y=h-126:w=238:h=2:color=${pulseSecondary}@0.78:t=fill${nonCardOverlayEnableSuffix}`,
@@ -4215,6 +4250,7 @@ module.exports = {
   scenePlanBlockerDiagnostic,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
+  buildMediaAttributionFilterParts,
   repositionAssCaptionsForCardWindows,
   buildCreativeTransitionSequence,
   mergeMaterialisedMotionClipCandidates,

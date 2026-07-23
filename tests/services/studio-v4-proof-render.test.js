@@ -13,6 +13,7 @@ const {
   buildClipScenePlan,
   buildSceneCompositeFilterParts,
   buildOverlayChain,
+  buildMediaAttributionFilterParts,
   repositionAssCaptionsForCardWindows,
   overlayCardWindowsForStory,
   drawtextEscape,
@@ -85,6 +86,44 @@ function verifiedOwnedSupportCard(kind, overrides = {}) {
     ...overrides,
   };
 }
+
+test("Studio V4 burns small time-bound media credits into the rendered video", () => {
+  const parts = buildMediaAttributionFilterParts({
+    story: {
+      media_attribution_manifest: {
+        entries: [{
+          asset_id: "official-gameplay-window-01",
+          display_text: "Footage: Example Publisher",
+          timeline: { start_seconds: 8, end_seconds: 13 },
+        }],
+      },
+    },
+    fontOpt: "font='DejaVu Sans Mono'",
+  });
+
+  assert.equal(parts.length, 2);
+  assert.match(parts[0], /drawbox=/);
+  assert.match(parts[0], /between\(t\\,8\.000\\,13\.000\)/);
+  assert.match(parts[1], /Footage\\: Example Publisher/);
+  assert.match(parts[1], /fontsize=18/);
+});
+
+test("Studio V4 ignores malformed, untimed or unapproved media credits", () => {
+  const parts = buildMediaAttributionFilterParts({
+    story: {
+      media_attribution_manifest: {
+        verdict: "RED",
+        entries: [
+          { display_text: "Footage: Unknown", timeline: { start_seconds: 1, end_seconds: 4 } },
+          { display_text: "Missing end", timeline: { start_seconds: 5 } },
+        ],
+      },
+    },
+    fontOpt: "font='DejaVu Sans Mono'",
+  });
+
+  assert.deepEqual(parts, []);
+});
 
 test("Studio V4 fingerprints every renderer-selected media input for rights reconciliation", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-v4-selected-inputs-"));

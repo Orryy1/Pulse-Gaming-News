@@ -1196,6 +1196,132 @@ test("candidate evidence reconciliation treats existing as acquisition mode when
   assert.equal(narration.licence_basis, "elevenlabs_commercial_tts_generation");
 });
 
+test("candidate evidence reconciliation recovers reused local TTS provenance only from a current hash-bound rights row", async () => {
+  const storyId = "existing_audio_with_hash_bound_local_tts_provenance";
+  const artifactDir = await makeArtifactDir("pulse-existing-local-tts-provider-");
+  const audioPath = path.join(artifactDir, "audio", "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+  const evidencePath = path.join(artifactDir, "rights", "local-tts-liam.json");
+  const staleEvidencePath = path.join(artifactDir, "rights", "stale-elevenlabs.json");
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const bridgePath = path.join(artifactDir, "scheduler_bridge_candidates.json");
+  const audio = Buffer.from("governed Pulse local TTS narration");
+  const staleAudio = Buffer.from("stale ElevenLabs narration");
+  await fs.outputFile(audioPath, audio);
+  await fs.outputJson(timestampsPath, [{ word: "Governed", start: 0, end: 0.3 }]);
+  await fs.outputJson(evidencePath, {
+    schema_version: 1,
+    provider_id: "pulse_local_tts",
+    commercial_use_allowed: true,
+    verdict: "GREEN",
+  });
+  await fs.outputJson(staleEvidencePath, {
+    schema_version: 1,
+    provider_id: "elevenlabs",
+    commercial_use_allowed: true,
+    verdict: "GREEN",
+  });
+  await fs.outputFile(finalVideoPath, Buffer.from("decodable final"));
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    output_path: finalVideoPath,
+    clip_scene_plan: { scenes: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    provider: "existing",
+    voice_provider: "existing",
+    resolved_narration_audio_path: audioPath,
+    resolved_word_timestamps_path: timestampsPath,
+  });
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {
+    story_id: storyId,
+    provider: "existing",
+    voice_provider: "existing",
+    resolved_audio_path: audioPath,
+    resolved_word_timestamps_path: timestampsPath,
+    audio_sha256: sha256(audio),
+    audio_size_bytes: audio.length,
+    status: "ready",
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), { outputs: {} });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), [
+    completeRights({
+      asset_id: `${storyId}_audio_path`,
+      path: audioPath,
+      source_url: `local://pulse-local-tts/${storyId}`,
+      source_type: "local_tts_voice",
+      source_owner: "Pulse Gaming",
+      provider_id: "pulse_local_tts",
+      provider_name: "Pulse Local TTS",
+      licence_basis: "owned_local_voice_model",
+      allowed_use: "short_form_editorial_narration",
+      allowed_platforms: TARGET_PLATFORMS,
+      evidence_file: path.relative(artifactDir, evidencePath),
+      asset_sha256: sha256(audio),
+      asset_size_bytes: audio.length,
+      approval_status: "approved",
+    }),
+    completeRights({
+      asset_id: `${storyId}_stale_audio_path`,
+      path: audioPath,
+      source_url: `https://api.elevenlabs.io/v1/${storyId}`,
+      source_type: "licensed_tts_voice",
+      source_owner: "ElevenLabs",
+      provider_id: "elevenlabs",
+      provider_name: "ElevenLabs",
+      licence_basis: "elevenlabs_commercial_tts_generation",
+      allowed_use: "short_form_editorial_narration",
+      allowed_platforms: TARGET_PLATFORMS,
+      evidence_file: path.relative(artifactDir, staleEvidencePath),
+      asset_sha256: sha256(staleAudio),
+      asset_size_bytes: staleAudio.length,
+      approval_status: "approved",
+    }),
+  ]);
+  await fs.outputJson(bridgePath, { scheduler_bridge_candidates: [{ story_id: storyId }] });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    generatedAt: "2026-07-23T10:20:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 44 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.deepEqual(report.rights.blockers, []);
+  const narration = report.rights.proposed_ledger.records.find((record) => record.kind === "narration");
+  assert.equal(narration.provider_id, "pulse_local_tts");
+  assert.equal(narration.source_type, "local_tts_voice");
+  assert.equal(narration.licence_basis, "owned_local_voice_model");
+  assert.equal(narration.asset_sha256, sha256(audio));
+
+  await fs.remove(evidencePath);
+  const missingEvidenceReport = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    generatedAt: "2026-07-23T10:21:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 44 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+  assert.equal(missingEvidenceReport.rights.verdict, "FAIL");
+  assert.ok(
+    missingEvidenceReport.rights.blockers.includes("narration_provider_unrecognised"),
+    JSON.stringify(missingEvidenceReport.rights, null, 2),
+  );
+});
+
 test("candidate evidence reconciliation accepts a narration manifest mirror only when current bytes match", async () => {
   const storyId = "hash_identical_narration_mirror";
   const artifactDir = await makeArtifactDir("pulse-narration-mirror-");

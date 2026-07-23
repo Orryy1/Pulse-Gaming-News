@@ -586,6 +586,60 @@ test("audio materializer shifts strict Whisper timestamps after deterministic si
   });
 });
 
+test("audio materializer shifts provider timestamps after deterministic silence removal", () => {
+  const payload = {
+    alignment: {
+      character_start_times_seconds: [0, 0.2, 1.2, 1.4, 2.6],
+      character_end_times_seconds: [0.1, 0.3, 1.3, 1.5, 2.7],
+    },
+    words: [
+      { word: "First.", start: 0, end: 0.3 },
+      { word: "Second.", start: 1.2, end: 1.5 },
+      { word: "Third.", start: 2.6, end: 2.9 },
+    ],
+    meta: {
+      provider: "elevenlabs",
+      wordTimestampSource: "elevenlabs_alignment_normalised",
+      acoustic: { durationSeconds: 3 },
+      voiceDiagnostics: {
+        metrics: { duration_s: 3 },
+      },
+    },
+  };
+
+  const shifted = _testables.shiftWordTimestampsForRemovedSilence(payload, [
+    { start: 0.55, end: 0.95 },
+    { start: 1.85, end: 2.25 },
+  ]);
+
+  assert.deepEqual(shifted.blockers, []);
+  assert.equal(shifted.shifted_word_count, 2);
+  assert.equal(shifted.removed_silence_seconds, 0.8);
+  assert.deepEqual(shifted.payload.words, [
+    { word: "First.", start: 0, end: 0.3 },
+    { word: "Second.", start: 0.8, end: 1.1 },
+    { word: "Third.", start: 1.8, end: 2.1 },
+  ]);
+  assert.deepEqual(
+    shifted.payload.alignment.character_start_times_seconds,
+    [0, 0.2, 0.8, 1, 1.8],
+  );
+  assert.deepEqual(
+    shifted.payload.alignment.character_end_times_seconds,
+    [0.1, 0.3, 0.9, 1.1, 1.9],
+  );
+  assert.equal(shifted.payload.meta.acoustic.durationSeconds, 2.2);
+  assert.equal(shifted.payload.meta.voiceDiagnostics.metrics.duration_s, 2.2);
+  assert.equal(
+    shifted.payload.meta.providerAlignmentSilenceCompaction.postprocess,
+    "deterministic_silence_removal_timestamp_shift",
+  );
+  assert.equal(
+    shifted.payload.meta.providerAlignmentSilenceCompaction.cut_count,
+    2,
+  );
+});
+
 test("audio materializer trims only the centre of verified inter-word pauses", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-timestamp-pause-"));
   const audioPath = path.join(root, "narration.mp3");

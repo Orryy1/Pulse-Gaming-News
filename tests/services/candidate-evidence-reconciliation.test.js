@@ -10,6 +10,10 @@ const fs = require("fs-extra");
 const {
   reconcileCandidateEvidence,
 } = require("../../lib/candidate-evidence-reconciliation");
+const {
+  inspectGeneratedVoiceReference,
+  materializeGeneratedNarrationRights,
+} = require("../../lib/local-generated-voice-rights");
 
 const TARGET_PLATFORMS = ["youtube_shorts", "instagram_reels", "facebook_reels"];
 
@@ -160,15 +164,125 @@ async function addNarrationRightsFixture(fixture, storyId) {
   await fs.outputJson(path.join(fixture.artifactDir, "sfx_manifest.json"), {
     source_plan: { selected_assets: [] },
   });
-  await fs.outputJson(rightsPath, [completeRights({
-    asset_id: `${storyId}_narration`,
+  await fs.outputJson(rightsPath, [
+    await currentNarrationRightsFixture({
+      artifactDir: fixture.artifactDir,
+      storyId,
+      audioPath,
+    }),
+  ]);
+  return { audioPath, rightsPath };
+}
+
+async function currentNarrationRightsFixture({
+  artifactDir,
+  storyId,
+  audioPath,
+  provider = "elevenlabs",
+}) {
+  const audio = await fs.readFile(audioPath);
+  const local = provider === "local";
+  if (local) {
+    const referencePath = path.join(
+      artifactDir,
+      "rights",
+      "fixture-generated-reference.wav",
+    );
+    const referenceBytes = Buffer.from("fixture model-generated reference voice");
+    const referenceSha256 = sha256(referenceBytes);
+    const auditionPath = path.join(
+      artifactDir,
+      "rights",
+      "fixture-generated-audition.json",
+    );
+    await fs.outputFile(referencePath, referenceBytes);
+    await fs.outputJson(auditionPath, {
+      schema_version: 2,
+      model: {
+        id: "openbmb/VoxCPM2",
+        revision: "bffb3df5a29440629464e5e839f4d214c8714c3d",
+        licence: "Apache-2.0",
+        source_url: "https://huggingface.co/openbmb/VoxCPM2",
+      },
+      variants: [{
+        name: "no_ref_default",
+        path: referencePath,
+        reference: null,
+        prompt_text: false,
+        generation_mode: "no_reference",
+      }],
+    });
+    const review = await inspectGeneratedVoiceReference({
+      referencePath,
+      auditionReportPath: auditionPath,
+      humanReview: {
+        status: "approved",
+        reviewer: "test-fixture",
+        reviewed_at: "2026-07-23T10:00:00.000Z",
+        candidate_sha256: referenceSha256,
+        no_impersonation_confirmed: true,
+        quality_approved: true,
+      },
+    });
+    const reviewPath = path.join(
+      artifactDir,
+      "rights",
+      "fixture-generated-reference-review.json",
+    );
+    await fs.outputJson(reviewPath, review);
+    const materialized = await materializeGeneratedNarrationRights({
+      storyId,
+      audioPath,
+      artifactDir,
+      referenceReviewPath: reviewPath,
+      generationReceipt: {
+        schema_version: 1,
+        provider_id: "pulse_local_tts",
+        model_id: "openbmb/VoxCPM2",
+        model_revision: "bffb3df5a29440629464e5e839f4d214c8714c3d",
+        generation_mode: "approved_generated_reference",
+        reference_sha256: referenceSha256,
+        final_audio_sha256: sha256(audio),
+        final_audio_size_bytes: audio.length,
+        generated_at: "2026-07-23T10:00:30.000Z",
+      },
+      targetPlatforms: TARGET_PLATFORMS,
+      generatedAt: "2026-07-23T10:01:00.000Z",
+    });
+    return materialized.rights_record;
+  }
+  const evidencePath = path.join(
+    artifactDir,
+    "rights",
+    "elevenlabs-commercial-tts.json",
+  );
+  await fs.outputJson(evidencePath, {
+    schema_version: 1,
+    story_id: storyId,
+    provider_id: "elevenlabs",
+    audio_sha256: sha256(audio),
+    audio_size_bytes: audio.length,
+    commercial_use_allowed: true,
+    allowed_platforms: TARGET_PLATFORMS,
+    verdict: "GREEN",
+  });
+  return completeRights({
+    asset_id: `${storyId}_audio_path`,
     path: audioPath,
     source_url: `elevenlabs://pulse-gaming/${storyId}`,
     source_type: "elevenlabs_generated_narration",
-    licence_basis: "operator_licensed_elevenlabs_commercial_generation",
-    evidence_file: "narration_manifest.json",
-  })]);
-  return { audioPath, rightsPath };
+    source_owner: "Pulse Gaming",
+    creator: "Pulse Gaming via ElevenLabs",
+    provider_id: "elevenlabs",
+    provider_name: "ElevenLabs",
+    licence_basis: "elevenlabs_commercial_tts_generation",
+    allowed_use: "short_form_editorial_narration",
+    allowed_platforms: TARGET_PLATFORMS,
+    evidence_file: path.relative(artifactDir, evidencePath),
+    asset_sha256: sha256(audio),
+    asset_size_bytes: audio.length,
+    approval_status: "approved",
+  });
 }
 
 async function addFlagshipNarrationSidecarFixture(fixture, storyId) {
@@ -178,6 +292,11 @@ async function addFlagshipNarrationSidecarFixture(fixture, storyId) {
   const rightsPath = path.join(fixture.artifactDir, "rights_ledger.json");
   const evidenceRelativePath = "flagship/rights/narration.json";
   const evidencePath = path.join(fixture.artifactDir, evidenceRelativePath);
+  const providerEvidenceRelativePath = "rights/elevenlabs-commercial-tts.json";
+  const providerEvidencePath = path.join(
+    fixture.artifactDir,
+    providerEvidenceRelativePath,
+  );
   const assetId = `${storyId}_audio_path`;
   const sourceUrl = `elevenlabs://pulse-gaming/${storyId}`;
   const creator = "Pulse Gaming via ElevenLabs";
@@ -188,10 +307,25 @@ async function addFlagshipNarrationSidecarFixture(fixture, storyId) {
     source_url: sourceUrl,
     source_type: "elevenlabs_generated_narration",
     source_owner: "Pulse Gaming",
+    creator,
+    provider_id: "elevenlabs",
+    provider_name: "ElevenLabs",
     licence_basis: licenceBasis,
     allowed_platforms: TARGET_PLATFORMS,
     rights_verdict: "GREEN",
-    evidence_file: "narration_manifest.json",
+    evidence_file: providerEvidenceRelativePath,
+    asset_sha256: sha256(audioBytes),
+    asset_size_bytes: audioBytes.length,
+  });
+  await fs.outputJson(providerEvidencePath, {
+    schema_version: 1,
+    story_id: storyId,
+    provider_id: "elevenlabs",
+    audio_sha256: sha256(audioBytes),
+    audio_size_bytes: audioBytes.length,
+    commercial_use_allowed: true,
+    allowed_platforms: TARGET_PLATFORMS,
+    verdict: "GREEN",
   });
   await fs.outputJson(path.join(fixture.artifactDir, "narration_manifest.json"), {
     story_id: storyId,
@@ -279,6 +413,7 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
   const contextCardSidecar = contextCard.replace(/\.mp4$/i, ".shell.json");
   const audioPath = path.join(artifactDir, "audio", "narration.mp3");
   const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+  const narrationRightsPath = path.join(artifactDir, "rights", "elevenlabs-commercial-tts.json");
   const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
   const instagramVariantPath = path.join(artifactDir, "platform", "instagram-reels.mp4");
   const facebookVariantPath = path.join(artifactDir, "platform", "facebook-reels.mp4");
@@ -305,6 +440,16 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
     },
   });
   await fs.outputFile(audioPath, Buffer.from("current narration"));
+  await fs.outputJson(narrationRightsPath, {
+    schema_version: 1,
+    story_id: "official_black_flag_resynced_launch_20260710",
+    provider_id: "elevenlabs",
+    audio_sha256: sha256(Buffer.from("current narration")),
+    audio_size_bytes: Buffer.byteLength("current narration"),
+    commercial_use_allowed: true,
+    allowed_platforms: TARGET_PLATFORMS,
+    verdict: "GREEN",
+  });
   await fs.outputJson(timestampsPath, [{ word: "Black", start: 0, end: 0.2 }]);
   await fs.outputFile(finalVideoPath, Buffer.from("decodable final media fixture"));
   await fs.outputFile(instagramVariantPath, Buffer.from("instagram native variant"));
@@ -433,11 +578,15 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
     }),
     completeRights({
       asset_id: "official_black_flag_resynced_launch_20260710_elevenlabs_narration",
-      path: path.join(artifactDir, "stale", "narration.mp3"),
+      path: audioPath,
       source_url: "elevenlabs://pulse-gaming/official_black_flag_resynced_launch_20260710",
       source_type: "elevenlabs_generated_narration",
+      provider_id: "elevenlabs",
+      provider_name: "ElevenLabs",
       licence_basis: "operator_licensed_elevenlabs_commercial_generation",
-      evidence_file: "narration_manifest.json",
+      evidence_file: narrationRightsPath,
+      asset_sha256: sha256(Buffer.from("current narration")),
+      asset_size_bytes: Buffer.byteLength("current narration"),
       approval_status: "approved",
     }),
     completeRights({
@@ -516,7 +665,7 @@ test("candidate evidence reconciliation rebuilds Black Flag rights from current 
   const narration = ledger.records.find((record) => record.kind === "narration");
   assert.equal(narration.path, audioPath);
   assert.equal(narration.asset_sha256, sha256(Buffer.from("current narration")));
-  assert.equal(narration.evidence_file, path.join(artifactDir, "narration_manifest.json"));
+  assert.equal(narration.evidence_file, narrationRightsPath);
   assert.equal(narration.source_owner, "Pulse Gaming");
   assert.equal(narration.provider_id, "elevenlabs");
   assert.equal(narration.source_type, "elevenlabs_tts_voice");
@@ -659,7 +808,14 @@ test("candidate evidence reconciliation recognises a verified HyperFrames timeli
   await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
     clips: [],
   });
-  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), []);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), [
+    await currentNarrationRightsFixture({
+      artifactDir,
+      storyId,
+      audioPath,
+      provider: "local",
+    }),
+  ]);
   await fs.outputJson(bridgePath, {
     scheduler_bridge_candidates: [{
       story_id: storyId,
@@ -1140,7 +1296,7 @@ test("candidate evidence reconciliation rejects a material asset with no creator
   assert.ok(report.rights.blockers.includes("reconciled_rights_record_incomplete:unverified-clip"));
 });
 
-test("candidate evidence reconciliation treats existing as acquisition mode when a concrete audio provider corroborates provenance", async () => {
+test("candidate evidence reconciliation does not treat a concrete provider name as commercial narration rights", async () => {
   const storyId = "existing_audio_with_elevenlabs_provenance";
   const artifactDir = await makeArtifactDir("pulse-existing-audio-provider-");
   const audioPath = path.join(artifactDir, "audio", "narration.mp3");
@@ -1188,15 +1344,16 @@ test("candidate evidence reconciliation treats existing as acquisition mode when
     targetPlatforms: TARGET_PLATFORMS,
   });
 
-  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
-  assert.deepEqual(report.rights.blockers, []);
-  const narration = report.rights.proposed_ledger.records.find((record) => record.kind === "narration");
-  assert.equal(narration.provider_id, "elevenlabs");
-  assert.equal(narration.source_type, "elevenlabs_tts_voice");
-  assert.equal(narration.licence_basis, "elevenlabs_commercial_tts_generation");
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      `complete_rights_record_missing:${storyId}_audio_path`,
+    ),
+    JSON.stringify(report.rights, null, 2),
+  );
 });
 
-test("candidate evidence reconciliation recovers reused local TTS provenance only from a current hash-bound rights row", async () => {
+test("candidate evidence reconciliation requires a validated generated-voice sidecar for reused local TTS", async () => {
   const storyId = "existing_audio_with_hash_bound_local_tts_provenance";
   const artifactDir = await makeArtifactDir("pulse-existing-local-tts-provider-");
   const audioPath = path.join(artifactDir, "audio", "narration.mp3");
@@ -1295,15 +1452,102 @@ test("candidate evidence reconciliation recovers reused local TTS provenance onl
     targetPlatforms: TARGET_PLATFORMS,
   });
 
-  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
-  assert.deepEqual(report.rights.blockers, []);
-  const narration = report.rights.proposed_ledger.records.find((record) => record.kind === "narration");
-  assert.equal(narration.provider_id, "pulse_local_tts");
-  assert.equal(narration.source_type, "local_tts_voice");
-  assert.equal(narration.licence_basis, "owned_local_voice_model");
-  assert.equal(narration.asset_sha256, sha256(audio));
+  assert.equal(report.rights.verdict, "FAIL", JSON.stringify(report.rights, null, 2));
+  assert.ok(
+    report.rights.blockers.includes(
+      `narration_local_generated_rights_evidence_invalid:${storyId}_audio_path`,
+    ),
+    JSON.stringify(report.rights, null, 2),
+  );
 
-  await fs.remove(evidencePath);
+  const generatedReferencePath = path.join(
+    artifactDir,
+    "rights",
+    "generated-reference.wav",
+  );
+  const generatedReference = Buffer.from("model-generated reference voice");
+  const generatedReferenceSha256 = sha256(generatedReference);
+  const generatedAuditionPath = path.join(
+    artifactDir,
+    "rights",
+    "generated-audition.json",
+  );
+  await fs.outputFile(generatedReferencePath, generatedReference);
+  await fs.outputJson(generatedAuditionPath, {
+    schema_version: 2,
+    model: {
+      id: "openbmb/VoxCPM2",
+      revision: "bffb3df5a29440629464e5e839f4d214c8714c3d",
+      licence: "Apache-2.0",
+      source_url: "https://huggingface.co/openbmb/VoxCPM2",
+    },
+    variants: [{
+      name: "no_ref_default",
+      path: generatedReferencePath,
+      reference: null,
+      prompt_text: false,
+      generation_mode: "no_reference",
+    }],
+  });
+  const approvedReference = await inspectGeneratedVoiceReference({
+    referencePath: generatedReferencePath,
+    auditionReportPath: generatedAuditionPath,
+    humanReview: {
+      status: "approved",
+      reviewer: "pulse-operator",
+      reviewed_at: "2026-07-23T10:22:00.000Z",
+      candidate_sha256: generatedReferenceSha256,
+      no_impersonation_confirmed: true,
+      quality_approved: true,
+    },
+  });
+  const approvedReferencePath = path.join(
+    artifactDir,
+    "rights",
+    "generated-reference-review.json",
+  );
+  await fs.outputJson(approvedReferencePath, approvedReference);
+  const generatedNarrationRights = await materializeGeneratedNarrationRights({
+    storyId,
+    audioPath,
+    artifactDir,
+    referenceReviewPath: approvedReferencePath,
+    generationReceipt: {
+      schema_version: 1,
+      provider_id: "pulse_local_tts",
+      model_id: "openbmb/VoxCPM2",
+      model_revision: "bffb3df5a29440629464e5e839f4d214c8714c3d",
+      generation_mode: "approved_generated_reference",
+      reference_sha256: generatedReferenceSha256,
+      final_audio_sha256: sha256(audio),
+      final_audio_size_bytes: audio.length,
+      generated_at: "2026-07-23T10:22:30.000Z",
+    },
+    targetPlatforms: TARGET_PLATFORMS,
+    generatedAt: "2026-07-23T10:23:00.000Z",
+  });
+  await fs.outputJson(
+    path.join(artifactDir, "rights_ledger.json"),
+    [generatedNarrationRights.rights_record],
+  );
+  const validatedReport = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    generatedAt: "2026-07-23T10:24:00.000Z",
+    probeMedia: async () => ({ decodable: true, duration_seconds: 44 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+  assert.equal(
+    validatedReport.rights.verdict,
+    "PASS",
+    JSON.stringify(validatedReport.rights, null, 2),
+  );
+
+  await fs.remove(generatedNarrationRights.paths.evidence_json);
   const missingEvidenceReport = await reconcileCandidateEvidence({
     artifactDir,
     bridgePath,
@@ -1353,7 +1597,13 @@ test("candidate evidence reconciliation accepts a narration manifest mirror only
   });
   await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), { source_plan: { selected_assets: [] } });
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), { outputs: {} });
-  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), []);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), [
+    await currentNarrationRightsFixture({
+      artifactDir,
+      storyId,
+      audioPath,
+    }),
+  ]);
   await fs.outputJson(bridgePath, { scheduler_bridge_candidates: [{ story_id: storyId }] });
 
   const report = await reconcileCandidateEvidence({
@@ -1425,7 +1675,13 @@ test("candidate evidence reconciliation prefers an authoritative same-run flagsh
     source_plan: { selected_assets: [] },
   });
   await fs.outputJson(path.join(artifactDir, "platform_publish_manifest.json"), { outputs: {} });
-  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), []);
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), [
+    await currentNarrationRightsFixture({
+      artifactDir,
+      storyId,
+      audioPath: flagshipAudioPath,
+    }),
+  ]);
   await fs.outputJson(path.join(artifactDir, "flagship", "inventory.json"), {
     story_id: storyId,
     used_assets: [],
@@ -3258,14 +3514,13 @@ test("candidate evidence reconciliation applies no lane when aggregate signature
   await fs.outputJson(path.join(fixture.artifactDir, "sfx_manifest.json"), {
     source_plan: { selected_assets: [] },
   });
-  const originalRights = [completeRights({
-    asset_id: `${storyId}_narration`,
-    path: audioPath,
-    source_url: `elevenlabs://pulse-gaming/${storyId}`,
-    source_type: "elevenlabs_generated_narration",
-    licence_basis: "operator_licensed_elevenlabs_commercial_generation",
-    evidence_file: "narration_manifest.json",
-  })];
+  const originalRights = [
+    await currentNarrationRightsFixture({
+      artifactDir: fixture.artifactDir,
+      storyId,
+      audioPath,
+    }),
+  ];
   await fs.outputJson(path.join(fixture.artifactDir, "rights_ledger.json"), originalRights);
 
   const report = await reconcileCandidateEvidence({
@@ -3303,14 +3558,13 @@ test("candidate evidence reconciliation applies valid rights and fingerprints wi
   await fs.outputJson(path.join(fixture.artifactDir, "sfx_manifest.json"), {
     source_plan: { selected_assets: [] },
   });
-  await fs.outputJson(path.join(fixture.artifactDir, "rights_ledger.json"), [completeRights({
-    asset_id: `${storyId}_narration`,
-    path: audioPath,
-    source_url: `elevenlabs://pulse-gaming/${storyId}`,
-    source_type: "elevenlabs_generated_narration",
-    licence_basis: "operator_licensed_elevenlabs_commercial_generation",
-    evidence_file: "narration_manifest.json",
-  })]);
+  await fs.outputJson(path.join(fixture.artifactDir, "rights_ledger.json"), [
+    await currentNarrationRightsFixture({
+      artifactDir: fixture.artifactDir,
+      storyId,
+      audioPath,
+    }),
+  ]);
   const flagshipRightsReportPath = path.join(
     fixture.artifactDir,
     "flagship",
@@ -4177,6 +4431,11 @@ test("candidate evidence reconciliation blocks strict flagship ElevenLabs narrat
     storyId,
   });
   await addNarrationRightsFixture(fixture, storyId);
+  await fs.remove(path.join(
+    fixture.artifactDir,
+    "rights",
+    "elevenlabs-commercial-tts.json",
+  ));
   const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
   const renderManifest = await fs.readJson(renderManifestPath);
   renderManifest.selected_input_assets = {

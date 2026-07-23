@@ -154,6 +154,7 @@ test("local TTS generation does not recover/retry after a timeout", async () => 
     storyId: "rss_timeout",
     text: "A local Liam script",
     outputRel: "test/output/audio/rss_timeout.mp3",
+    coordinateSharedGpu: false,
     generateTts: async () => {
       attempts += 1;
       if (attempts === 1) throw new Error("local TTS timeout after 600000ms");
@@ -179,6 +180,7 @@ test("local TTS generation can recover once after a timeout when repair opts in"
     text: "A local Liam repair script",
     outputRel: "test/output/audio/rss_timeout_repair.mp3",
     recoverTimeouts: true,
+    coordinateSharedGpu: false,
     generateTts: async () => {
       attempts += 1;
       if (attempts === 1) throw new Error("local TTS timeout after 120000ms");
@@ -195,4 +197,70 @@ test("local TTS generation can recover once after a timeout when repair opts in"
   assert.equal(recoveries.length, 1);
   assert.equal(recoveries[0].failure.code, "tts_timeout");
   assert.equal(result.recovery.action, "restart");
+});
+
+test("local TTS generation brackets synthesis with one shared GPU turn", async () => {
+  const calls = [];
+  const turn = {
+    coordinated: true,
+    granted: true,
+    requestId: "pulse-turn-1",
+  };
+  const result = await generateLocalTtsWithOptionalRecovery({
+    storyId: "rss_gpu_turn",
+    text: "A local Liam script",
+    outputRel: "test/output/audio/rss_gpu_turn.mp3",
+    waitForGpuTurn: async ({ workload }) => {
+      calls.push(`acquire:${workload}`);
+      return turn;
+    },
+    generateTts: async () => {
+      calls.push("generate");
+    },
+    stopLocalTtsServer: async () => {
+      calls.push("stop");
+    },
+    releaseGpuTurn: async (heldTurn) => {
+      assert.equal(heldTurn, turn);
+      calls.push("release");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    "acquire:local-tts:rss_gpu_turn",
+    "generate",
+    "stop",
+    "release",
+  ]);
+});
+
+test("local TTS generation releases its shared GPU turn after synthesis failure", async () => {
+  const calls = [];
+  const result = await generateLocalTtsWithOptionalRecovery({
+    storyId: "rss_gpu_failure",
+    text: "A local Liam script",
+    outputRel: "test/output/audio/rss_gpu_failure.mp3",
+    waitForGpuTurn: async () => {
+      calls.push("acquire");
+      return {
+        coordinated: true,
+        granted: true,
+        requestId: "pulse-turn-2",
+      };
+    },
+    generateTts: async () => {
+      calls.push("generate");
+      throw new Error("local TTS server unavailable");
+    },
+    stopLocalTtsServer: async () => {
+      calls.push("stop");
+    },
+    releaseGpuTurn: async () => {
+      calls.push("release");
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(calls, ["acquire", "generate", "stop", "release"]);
 });

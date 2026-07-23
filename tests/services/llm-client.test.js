@@ -50,6 +50,55 @@ test("local client maps Anthropic-style messages to an OpenAI-compatible endpoin
   ]);
 });
 
+test("local client brackets Ollama work with a shared GPU turn and unloads before release", async () => {
+  const calls = [];
+  const turn = {
+    coordinated: true,
+    granted: true,
+    requestId: "pulse-llm-turn",
+  };
+  const client = createLlmClient({
+    env: {
+      LLM_PROVIDER: "local",
+      LOCAL_LLM_BASE_URL: "http://127.0.0.1:11434/v1",
+      LOCAL_LLM_MODEL: "gemma3:4b",
+      STUDIO_GPU_SCHEDULER_ENABLED: "1",
+    },
+    waitForGpuTurn: async ({ workload }) => {
+      calls.push(`acquire:${workload}`);
+      return turn;
+    },
+    fetchImpl: async () => {
+      calls.push("request");
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: "done" } }],
+        }),
+      };
+    },
+    unloadLocalModel: async ({ model }) => {
+      calls.push(`unload:${model}`);
+    },
+    releaseGpuTurn: async (heldTurn) => {
+      assert.equal(heldTurn, turn);
+      calls.push("release");
+    },
+  });
+
+  await client.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    messages: [{ role: "user", content: "Hello" }],
+  });
+
+  assert.deepEqual(calls, [
+    "acquire:local-llm:gemma3:4b",
+    "request",
+    "unload:gemma3:4b",
+    "release",
+  ]);
+});
+
 test("local client times out hung OpenAI-compatible requests", async () => {
   const client = createLlmClient({
     env: {

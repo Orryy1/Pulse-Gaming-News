@@ -204,6 +204,7 @@
     "ops:render-contract": "node tools/render-contract-report.js",
     "ops:publish-readiness": "node tools/publish-readiness.js",
     "ops:publish-cadence": "node tools/publish-cadence-doctor.js",
+    "ops:cadence-incident-snapshot": "node tools/cadence-incident-snapshot.js",
     "ops:guarded-dispatch-reconcile": "node tools/guarded-dispatch-evidence-reconciliation.js",
     "ops:normal-operations": "node tools/normal-operations-report.js",
     "ops:autonomous-feedback": "node tools/autonomous-feedback-monitor.js",
@@ -318,7 +319,8 @@
     "ops:goal40-definition-missing": "node tools/goal40-definition-missing.js",
     "ops:goal41-definition-missing": "node tools/goal41-definition-missing.js",
     "ops:goal42-definition-missing": "node tools/goal42-definition-missing.js",
-    "tts:overnight-report": "node tools/local-tts-overnight-report.js"
+    "tts:overnight-report": "node tools/local-tts-overnight-report.js",
+    "tts:generated-voice-review": "node tools/local-generated-voice-rights.js"
   },
   "keywords": [],
   "author": "",

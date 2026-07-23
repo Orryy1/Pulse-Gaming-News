@@ -35,6 +35,67 @@ function officialSourceEvidence(claim, sourceUrl) {
   };
 }
 
+test("hash-pinned editorial repair carries a source-supported subject, thumbnail and claims", () => {
+  const sourceUrl = "https://gamehistory.org/e3-history/";
+  const fullScript =
+    "E3 just reopened, one archive box at a time. The Video Game History Foundation has released several new collections from the show's earliest years, and the scale is bigger than a nostalgia reel. Researchers can search more than 1,000 pages of organiser Carolyn Rauch's event material, every page of E3 directories from 1995 to 2006 and 1,500 pages of E3 Show Daily. Nearly 12 hours of Anthony Parisi's early show-floor tapes are also preserved after he donated their copyrights to the foundation. That matters because E3's real history was not only the stage reveals. It was booth maps, press kits, sponsorship prices and unfinished games shown once, then lost. The archive is free to research, so the next forgotten announcement may already be sitting in public view. E3 is gone, but its paper trail just became searchable. Follow Pulse Gaming so you never miss a beat.";
+  const claims = [
+    "The Video Game History Foundation released multiple E3 archive collections for free research.",
+    "The collections include more than 1,000 pages of event material, E3 directories from 1995 to 2006 and 1,500 pages of E3 Show Daily.",
+    "Nearly 12 hours of Anthony Parisi's early E3 footage is preserved after he donated its copyrights to the foundation.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_vghf_e3_archive",
+      title: "Video Game History Foundation's latest Has A Source-Proof Risk",
+      preserve_current_script: true,
+      current_script: fullScript,
+      current_script_sha256: createHash("sha256").update(fullScript).digest("hex"),
+      candidate_titles: ["E3's Lost History Is Now Searchable"],
+      candidate_thumbnail_text: "E3 ARCHIVE OPEN",
+      canonical_subject: "E3 archive",
+      source: {
+        name: "Video Game History Foundation",
+        url: sourceUrl,
+        title: "Revisit E3 like you've never seen it before",
+        type: "official_publisher_statement",
+        published_at: "2026-07-22T00:00:00.000Z",
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        source_text_sha256: "b".repeat(64),
+        headline: "Revisit E3 like you've never seen it before",
+        claims: claims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_summary",
+        })),
+      },
+    },
+    manifest: {
+      story_id: "rss_vghf_e3_archive",
+      canonical_subject: "Video Game History Foundation's latest",
+      canonical_title: "Video Game History Foundation's latest Has A Source-Proof Risk",
+      suggested_thumbnail_text: "VIDEO GAME HISTORY PLAYER TEST",
+      primary_source: "RockPaperShotgun",
+      primary_source_url:
+        "https://www.rockpapershotgun.com/the-video-game-history-foundations-latest-collection-is-a-deep-dive-into-e3-like-youve-never-seen-it-before",
+      confirmed_claims: [
+        "The Video Game History Foundation's latest collection is a deep dive into E3.",
+      ],
+    },
+  });
+
+  assert.equal(script.canonical_subject, "E3 archive");
+  assert.equal(script.suggested_title, "E3's Lost History Is Now Searchable");
+  assert.equal(script.suggested_thumbnail_text, "E3 ARCHIVE OPEN");
+  assert.deepEqual(script.confirmed_claims, claims);
+  assert.equal(script.reason, undefined);
+  assert.equal(script.script_provenance.hash_match, true);
+});
+
 test("fresh refill rewrite turns a two-window beta announcement into a sourced timeline", () => {
   const sourceUrl =
     "https://www.callofduty.com/blog/2026/07/call-of-duty-modern-warfare-4-open-beta-next-fanatics-fest-recap-serialized-camo-preorder-bonus";
@@ -2100,6 +2161,65 @@ test("fresh refill script rewrite dry-run leaves local proof files unchanged", a
   assert.equal(report.items[0].source_evidence.selected_claims.length, 1);
   assert.match(report.items[0].source_evidence.selected_claims[0].text, /Tekken 8.*Bob/i);
   assert.equal(await fs.readFile(manifestPath, "utf8"), before);
+});
+
+test("applied rewrite promotes a hash-bound first-party source across canonical lineage", async () => {
+  const { artifactDir, workOrderPath } = await writeFixture("first-party-source-promotion");
+  const officialUrl = "https://en.bandainamcoent.eu/tekken/news/tekken-8-bob-gameplay-trailer";
+  const workOrder = await fs.readJson(workOrderPath);
+  const job = workOrder.jobs[0];
+  const claim =
+    "Tekken 8 is adding Bob to its roster and players seem pretty hyped, despite the fighting game's mounting struggles";
+  job.source = {
+    name: "Bandai Namco",
+    url: officialUrl,
+    type: "official_publisher_statement",
+    published_at: "2026-06-29T11:00:00.000Z",
+    title: "Tekken 8 Bob gameplay trailer",
+  };
+  job.source_evidence = {
+    ...officialSourceEvidence(claim, officialUrl),
+    headline: "Tekken 8 Bob gameplay trailer",
+  };
+  await fs.writeJson(workOrderPath, workOrder, { spaces: 2 });
+  await fs.writeJson(
+    path.join(artifactDir, "source_manifest.json"),
+    {
+      primary_source: {
+        name: "Eurogamer",
+        url: "https://www.eurogamer.net/tekken-8-bob-gameplay-trailer",
+        type: "gaming_press",
+        published_at: "2026-06-29T11:23:29.000Z",
+      },
+    },
+    { spaces: 2 },
+  );
+
+  const report = await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(TEST_ROOT, "first-party-source-promotion", "report"),
+    applyLocal: true,
+  });
+  await runFreshRefillScriptRewrite({
+    root: ROOT,
+    workOrderPath,
+    outDir: path.join(TEST_ROOT, "first-party-source-promotion", "report-replay"),
+    applyLocal: true,
+  });
+  const canonical = await fs.readJson(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+  );
+  const sourceManifest = await fs.readJson(path.join(artifactDir, "source_manifest.json"));
+
+  assert.equal(report.summary.applied_count, 1, JSON.stringify(report, null, 2));
+  assert.equal(canonical.primary_source, "Bandai Namco");
+  assert.equal(canonical.primary_source_url, officialUrl);
+  assert.equal(canonical.source_type, "official_publisher_statement");
+  assert.equal(canonical.source_published_at, "2026-06-29T11:00:00.000Z");
+  assert.deepEqual(sourceManifest.primary_source, job.source);
+  assert.equal(sourceManifest.source_evidence.source_url, officialUrl);
+  assert.equal(sourceManifest.source_evidence.claims.length, 1);
 });
 
 test("fresh refill title-only repair preserves approved narration and scopes roundup claims", async () => {

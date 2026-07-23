@@ -462,6 +462,93 @@ test("goal production render materializer selects only publishable hash-bound ow
   assert.equal(insufficient.clips.length, 0);
 });
 
+test("goal production render materializer uses the authoritative owned-motion manifest when mixed media displaced its clips", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-authoritative-manifest-"));
+  const storyId = "xbox-authoritative-owned-motion";
+  const artifactDir = await makePackage(root, storyId, {
+    canonical_subject: "Xbox Backward Compatibility",
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    primary_source: "Xbox Wire",
+  });
+  const ownedPrimaryClips = await Promise.all(
+    Array.from({ length: 12 }, (_, index) =>
+      writeStrictOwnedPrimaryMotionClip({
+        artifactDir,
+        storyId,
+        index,
+      }),
+    ),
+  );
+  const ownedSourceCard = await writeStrictOwnedReadableCard({
+    artifactDir,
+    storyId,
+    readableText: "Xbox Wire",
+  });
+  const restrictedMixedClipPath = path.join(artifactDir, "restricted-official-still.mp4");
+  await fs.outputFile(restrictedMixedClipPath, Buffer.alloc(4096, 71));
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    owned_explainer_visual_plan: true,
+    clips: [
+      {
+        id: "restricted-official-still",
+        path: restrictedMixedClipPath,
+        source_url: "https://store-images.s-microsoft.com/restricted-official-still",
+        source_type: "official_press_kit_stills",
+        media_kind: "visual_still",
+        materialized: true,
+        counts_towards_motion_readiness: true,
+        live_publish_allowed: false,
+      },
+      ownedSourceCard,
+    ],
+  });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    status: "ready",
+    owned_explainer_visual_plan: true,
+    assets: [...ownedPrimaryClips, ownedSourceCard],
+    materialised_clips: [...ownedPrimaryClips, ownedSourceCard],
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 40,
+      spoken_wpm: 150,
+    },
+  });
+
+  const { story } = await buildRendererStoryJson(
+    readyJob(storyId, artifactDir),
+    {
+      workspaceRoot: root,
+      generatedAt: "2026-07-23T12:00:00.000Z",
+      ownedMotionOnly: true,
+      targetPlatforms: [
+        "youtube_shorts",
+        "instagram_reels",
+        "facebook_reels",
+      ],
+    },
+  );
+
+  assert.equal(story.rights_safe_owned_motion_only, true);
+  assert.deepEqual(story.owned_motion_only_selection.blockers, []);
+  assert.equal(story.owned_motion_only_selection.primary_clip_count, 12);
+  assert.equal(story.owned_motion_only_selection.source_card_count, 1);
+  assert.equal(story.owned_motion_only_selection.generator_project_count, 3);
+  assert.equal(
+    story.video_clips.some((clipPath) => clipPath === restrictedMixedClipPath),
+    false,
+  );
+  assert.ok(
+    story.video_clips.every((clipPath) =>
+      [...ownedPrimaryClips, ownedSourceCard].some(
+        (clip) => path.resolve(clip.path) === path.resolve(clipPath),
+      ),
+    ),
+  );
+});
+
 test("goal production render materializer hydrates generic fallback clips from governed evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-hydrate-"));
   const clipPath = path.join(root, "segment_direct_motion_15.mp4");
@@ -1916,6 +2003,48 @@ test("goal production render materializer clamps stale inventory floors to the s
   assert.equal(plan.readiness.status, "ready");
 });
 
+test("goal production render materializer replaces stale third-party source floors for an owned generator deck", () => {
+  const clips = Array.from({ length: 8 }, (_, index) => {
+    const project = Math.floor(index / 2) + 1;
+    return {
+      id: `owned-project-${project}-variant-${(index % 2) + 1}`,
+      path: `output/owned-motion/owned-${index + 1}.mp4`,
+      source_family: `pulse.motion.project-${project}.v1`,
+      generator_project_id: `pulse.motion.project-${project}.v1`,
+      generator_master_sha256: `${project}`.repeat(64),
+      materialised_output_sha256: `${index + 1}`.repeat(64),
+      media_kind: "owned_explainer_motion",
+      owned_explainer_visual_plan: true,
+      counts_towards_motion_readiness: true,
+      owned_generated_rights_grant: {
+        grant_type: "owned_generated",
+        commercial_use_allowed: true,
+      },
+    };
+  });
+  const plan = _private.footagePlanForDirector({
+    footageInventory: {
+      motion_budget: {
+        required_motion_scenes: 8,
+        required_distinct_families: 4,
+        required_distinct_source_assets: 7,
+        required_distinct_base_sources: 7,
+        available_distinct_source_assets: 12,
+        available_distinct_base_sources: 12,
+      },
+    },
+    clips,
+  });
+
+  assert.equal(plan.motion_budget.required_motion_scenes, 8);
+  assert.equal(plan.motion_budget.required_distinct_families, 4);
+  assert.equal(plan.motion_budget.required_distinct_source_assets, 4);
+  assert.equal(plan.motion_budget.required_distinct_base_sources, 4);
+  assert.equal(plan.motion_budget.available_distinct_source_assets, 4);
+  assert.equal(plan.motion_budget.available_distinct_base_sources, 4);
+  assert.equal(plan.readiness.status, "ready");
+});
+
 test("goal production render materializer retries a locked Windows final before atomic promotion", async () => {
   const calls = [];
   let lockedAttempts = 0;
@@ -2655,6 +2784,108 @@ async function writeStrictOwnedReadableCard({
       blockers: [],
       evidence: {
         asset_path: cardPath,
+        asset_sha256: assetSha256,
+        asset_size_bytes: bytes.length,
+        evidence_path: rightsEvidencePath,
+        evidence_sha256: rightsSha256,
+        evidence_size_bytes: rightsBytes.length,
+        exact_allowed_platforms: allowedPlatforms,
+        provenance_verified: true,
+      },
+    },
+  };
+}
+
+async function writeStrictOwnedPrimaryMotionClip({
+  artifactDir,
+  storyId,
+  index,
+} = {}) {
+  const id = `${storyId}-owned-primary-${index + 1}`;
+  const clipPath = path.join(artifactDir, "owned-motion", `${id}.mp4`);
+  const rightsEvidencePath = `${clipPath}.rights.json`;
+  const bytes = Buffer.alloc(4096, 100 + index);
+  const allowedPlatforms = [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ];
+  await fs.outputFile(clipPath, bytes);
+  const assetSha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+  await fs.outputJson(rightsEvidencePath, {
+    schema: "pulse_owned_asset_rights_evidence_v1",
+    asset_id: id,
+    asset_path: clipPath,
+    asset_sha256: assetSha256,
+    asset_size_bytes: bytes.length,
+    ownership_basis: "wholly_owned_generated_asset",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    rights_grant: true,
+    commercial_use_allowed: true,
+    allowed_platforms: allowedPlatforms,
+  });
+  const rightsBytes = await fs.readFile(rightsEvidencePath);
+  const rightsSha256 = crypto.createHash("sha256").update(rightsBytes).digest("hex");
+  const generatorProjectId = `pulse.motion.test-project-${(index % 3) + 1}.v1`;
+  return {
+    id,
+    asset_id: id,
+    path: clipPath,
+    local_materialized_path: clipPath,
+    source_url: `local://pulse-generated-motion/${storyId}/${id}`,
+    source_type: "internally_generated_motion_graphic",
+    source_kind: "owned_explainer_motion_surface",
+    source_family: generatorProjectId,
+    media_kind: "owned_explainer_motion",
+    asset_class: `motion_surface_${index + 1}`,
+    generator_design_role: "primary_procedural_motion",
+    generator_project_id: generatorProjectId,
+    generator_master_sha256: crypto
+      .createHash("sha256")
+      .update(`master:${generatorProjectId}`)
+      .digest("hex"),
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    owned_explainer_visual_plan: true,
+    source_safety_blocked: false,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    validated: true,
+    materialised_output_sha256: assetSha256,
+    materialised_output_size_bytes: bytes.length,
+    durationS: 4.8,
+    owned_rights_record: {
+      asset_id: id,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      asset_sha256: assetSha256,
+      asset_size_bytes: bytes.length,
+      ownership_basis: "wholly_owned_generated_asset",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      rights_grant: true,
+      commercial_use_allowed: true,
+      allowed_platforms: allowedPlatforms,
+      source_owner: "Pulse Gaming",
+      source_type: "internally_generated_procedural_motion",
+      approval_status: "approved_owned_generated_commercial_use",
+      rights_status: "explicit_owned_generated_asset",
+      risk_score: 0.1,
+      provenance: {
+        origin: "pulse_gaming_internal_generation",
+        third_party_inputs: false,
+        third_party_sources: [],
+      },
+      evidence_file: rightsEvidencePath,
+      evidence_sha256: rightsSha256,
+      evidence_size_bytes: rightsBytes.length,
+    },
+    owned_rights_evaluation: {
+      status: "pass",
+      verified: true,
+      blockers: [],
+      evidence: {
+        asset_path: clipPath,
         asset_sha256: assetSha256,
         asset_size_bytes: bytes.length,
         evidence_path: rightsEvidencePath,

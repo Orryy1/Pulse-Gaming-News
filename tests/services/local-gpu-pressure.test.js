@@ -43,6 +43,26 @@ test("inspectLocalGpuPressure blocks saturated local GPU", async () => {
   assert.match(formatLocalGpuPressure(report), /failure=gpu_saturated/);
 });
 
+test("inspectLocalGpuPressure blocks Pulse while another studio owns the shared GPU", async () => {
+  const report = await inspectLocalGpuPressure({
+    env: {},
+    coordinateSharedGpu: true,
+    inspectSharedGpu: async () => ({
+      ok: false,
+      status: "reserved",
+      owner: { studio: "sleepy-stories", pid: 1234 },
+      reason: "shared GPU is reserved by sleepy-stories",
+    }),
+    execFileImpl: mockExecFile({ stdout: "9000, 24564, 21\n" }),
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.status, "busy");
+  assert.equal(report.failure_code, "shared_gpu_reserved");
+  assert.equal(report.shared_gpu.owner.studio, "sleepy-stories");
+  assert.match(formatLocalGpuPressure(report), /shared_owner=sleepy-stories/);
+});
+
 test("inspectLocalGpuPressure uses a resident-server threshold when local TTS is already loaded", async () => {
   const report = await inspectLocalGpuPressure({
     env: {

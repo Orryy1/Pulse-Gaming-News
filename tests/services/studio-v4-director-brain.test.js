@@ -708,6 +708,77 @@ test("Visual V4 Director counts official trailer segment windows as distinct ren
   assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 8);
 });
 
+test("Visual V4 Director permits two governed owned variants per generator project", () => {
+  const ownedVariants = Array.from({ length: 8 }, (_, index) => {
+    const project = Math.floor(index / 2) + 1;
+    return {
+      id: `pulse-owned-project-${project}-variant-${(index % 2) + 1}`,
+      source_family: `pulse.motion.project-${project}.v1`,
+      base_source_family: `pulse.motion.project-${project}.v1`,
+      generator_project_id: `pulse.motion.project-${project}.v1`,
+      generator_variant: index % 2,
+      generator_master_sha256: `${project}`.repeat(64),
+      materialised_output_sha256: `${index + 1}`.repeat(64),
+      path: `C:\\media\\pulse-owned-${index + 1}.mp4`,
+      durationS: 7,
+      source_type: "internally_generated_procedural_motion",
+      media_kind: "owned_explainer_motion",
+      owned_explainer_visual_plan: true,
+      counts_towards_motion_readiness: true,
+      owned_generated_rights_grant: {
+        grant_type: "owned_generated",
+        commercial_use_allowed: true,
+      },
+      validated: true,
+    };
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: {
+      ...story(),
+      id: "pulse-owned-generator-variants",
+      title: "Pulse Owned Motion Supports A Full Premium Cut",
+    },
+    footagePlan: {
+      readiness: {
+        status: "ready",
+        blockers: [],
+      },
+      motion_budget: {
+        required_motion_scenes: 8,
+        available_motion_clips: ownedVariants.length,
+        required_distinct_families: 4,
+        required_distinct_source_assets: 4,
+        available_distinct_motion_families: 4,
+        available_distinct_source_assets: 4,
+      },
+      motion_inventory: {
+        accepted_local_clips: ownedVariants,
+      },
+    },
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+  const motionShots = plan.shot_plan.filter(
+    (shot) => shot.kind === "motion_clip",
+  );
+
+  assert.equal(plan.readiness.status, "director_ready");
+  assert.equal(motionShots.length, 8);
+  assert.equal(
+    new Set(motionShots.map((shot) => shot.base_source_family)).size,
+    4,
+  );
+  assert.equal(plan.shot_budget.available_distinct_motion_source_assets, 4);
+  assert.ok(
+    !plan.readiness.blockers.includes("actual_motion_clip_minimum_not_met"),
+  );
+  assert.ok(
+    !plan.readiness.blockers.includes(
+      "distinct_motion_source_assets_minimum_not_met",
+    ),
+  );
+});
+
 test("Visual V4 Director schedules every source needed by a stricter ten-source flagship budget", () => {
   const officialSources = Array.from({ length: 10 }, (_, index) => ({
     id: `black-flag-official-source-${index + 1}`,

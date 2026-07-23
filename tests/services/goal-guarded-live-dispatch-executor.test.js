@@ -1435,6 +1435,7 @@ test("guarded live dispatch executor preserves a verified Facebook Reel permalin
 
   assert.equal(report.verdict, "GREEN");
   assert.equal(report.actions[0].url, "https://www.facebook.com/reel/fb_permalink_1");
+  assert.equal(report.actions[0].public_verified, true);
   assert.deepEqual(platformPostCalls, [
     [
       "story-one:facebook_reel",

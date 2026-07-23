@@ -2456,10 +2456,21 @@ async function writeReadyCinematicSoundscapeRuntimeManifest(root) {
     .update(await fs.readFile(audioPath))
     .digest("hex");
   await fs.outputJson(sidecarPath, {
+    schema_version: 1,
     asset_id: "elevenlabs-cinematic-tension-bed",
     role: "tension_bed",
+    family: "tension_bed",
+    provider_id: "elevenlabs_sfx",
     audio_path: audioPath,
     sha256: audioSha256,
+    rights_note: "Generated during a paid ElevenLabs subscription.",
+    terms_evidence_url:
+      "https://help.elevenlabs.io/hc/en-us/articles/13313564601361-Can-I-publish-the-content-I-generate-on-the-platform",
+    allowed_use: "finished_editorial_video_only",
+    commercial_use_allowed: true,
+    raw_redistribution_allowed: false,
+    secondary_layer_only: true,
+    generation_time: "2026-07-23T15:00:00.000Z",
   });
   const manifestPath = path.join(
     root,
@@ -3381,6 +3392,26 @@ test("goal production render materializer autonomously hydrates a hash-verified 
   );
   assert.match(
     story.cinematic_soundscape_runtime_manifest_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  const rightsLedger = await fs.readJson(
+    path.join(artifactDir, "rights_ledger.json"),
+  );
+  const soundscapeRights = rightsLedger.records.find(
+    (record) =>
+      record.asset_id === "elevenlabs-cinematic-tension-bed",
+  );
+  assert.ok(soundscapeRights);
+  assert.equal(soundscapeRights.asset_sha256, runtime.audioSha256);
+  assert.equal(soundscapeRights.commercial_use_allowed, true);
+  assert.equal(soundscapeRights.live_publish_allowed, true);
+  assert.deepEqual(soundscapeRights.allowed_platforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
+  assert.match(
+    soundscapeRights.evidence_sha256,
     /^[a-f0-9]{64}$/,
   );
 });
@@ -8771,6 +8802,186 @@ test("goal production render quality refresh scores the final rendered scene pla
   assert.equal(refreshedBenchmark.visual_evidence_profile.motion_asset_count >= 6, true);
   const refreshedManifest = await fs.readJson(path.join(artifactDir, "render_manifest.json"));
   assert.deepEqual(refreshedManifest.clip_scene_plan.scenes.map((scene) => scene.path), clipScenePlan.scenes.map((scene) => scene.path));
+});
+
+test("goal production render quality refresh preserves owned generator identities from the rendered scene plan", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-owned-scene-lineage-"));
+  const storyId = "owned-scene-lineage";
+  const artifactDir = await makePackage(root, storyId);
+  const finalPath = path.join(artifactDir, "visual_v4_render.mp4");
+  await fs.outputFile(finalPath, Buffer.alloc(4096, 41));
+
+  const generatorProjects = Array.from({ length: 4 }, (_, index) => ({
+    id: `pulse.motion.generator-${index + 1}.v1`,
+    sha256: String(index + 1).repeat(64),
+  }));
+  const ownedAssets = [];
+  for (let index = 0; index < 8; index += 1) {
+    const project = generatorProjects[index % generatorProjects.length];
+    const clipPath = path.join(artifactDir, `owned-motion-${index + 1}.mp4`);
+    const rightsEvidencePath = `${clipPath}.rights.json`;
+    const materialisationEvidencePath = `${clipPath}.json`;
+    const outputSha256 = String(index + 5).repeat(64).slice(0, 64);
+    await fs.outputFile(clipPath, Buffer.alloc(2048, 50 + index));
+    const rightsEvidence = JSON.stringify({
+      asset_id: `owned-motion-${index + 1}`,
+      rights_holder: "Pulse Gaming",
+      commercial_use_allowed: true,
+    });
+    const materialisationEvidence = JSON.stringify({
+      asset_id: `owned-motion-${index + 1}`,
+      generator_project_id: project.id,
+    });
+    await fs.outputFile(rightsEvidencePath, rightsEvidence);
+    await fs.outputFile(materialisationEvidencePath, materialisationEvidence);
+    ownedAssets.push({
+      asset_id: `owned-motion-${index + 1}`,
+      id: `owned-motion-${index + 1}`,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `local://pulse-owned-generator-project/${project.id}/${index + 1}`,
+      source_type: "internally_generated_motion_graphic",
+      source_kind: "owned_explainer_motion_surface",
+      source_family: project.id,
+      motion_family: project.id,
+      media_kind: "motion_clip",
+      generator_project_id: project.id,
+      generator_master_sha256: project.sha256,
+      materialised_output_sha256: outputSha256,
+      owned_explainer_visual_plan: true,
+      counts_towards_motion_readiness: true,
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      commercial_use_allowed: true,
+      allowed_use: "owned_editorial_commercial_distribution",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      approval_status: "approved_for_owned_editorial_use",
+      risk_score: 0.01,
+      durationS: 7,
+      validated: true,
+      evidence_file: {
+        path: materialisationEvidencePath,
+        sha256: sha256(materialisationEvidence),
+        size_bytes: Buffer.byteLength(materialisationEvidence),
+      },
+      evidence_file_path: materialisationEvidencePath,
+      evidence_file_sha256: sha256(materialisationEvidence),
+      evidence_file_size_bytes: Buffer.byteLength(materialisationEvidence),
+      rights_evidence_file_path: rightsEvidencePath,
+      rights_evidence_file_sha256: sha256(rightsEvidence),
+      rights_evidence_file_size_bytes: Buffer.byteLength(rightsEvidence),
+      owned_generated_rights_grant: {
+        grant_type: "owned_generated",
+        commercial_use_allowed: true,
+      },
+      owned_rights_record: {
+        asset_id: `owned-motion-${index + 1}`,
+        path: clipPath,
+        asset_sha256: outputSha256,
+        asset_size_bytes: 2048,
+        ownership_basis: "wholly_owned_generated_asset",
+        licence_basis: "owned_generated_editorial_motion_graphic",
+        rights_basis: "owned_generated_editorial_motion_graphic",
+        allowed_use: "finished_editorial_video_only",
+        rights_grant: true,
+        commercial_use_allowed: true,
+        allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+        source_owner: "Pulse Gaming",
+        source_type: "internally_generated_procedural_motion",
+        evidence_file: rightsEvidencePath,
+        evidence_path: rightsEvidencePath,
+        evidence_sha256: sha256(rightsEvidence),
+        evidence_size_bytes: Buffer.byteLength(rightsEvidence),
+        rights_status: "explicit_owned_generated_asset",
+        approval_status: "approved_owned_generated_commercial_use",
+      },
+    });
+  }
+
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    status: "ready",
+    owned_explainer_visual_plan: true,
+    assets: ownedAssets,
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "blocked",
+    clips: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    motion_budget: {
+      required_motion_scenes: 8,
+      required_distinct_families: 4,
+      required_distinct_source_assets: 7,
+      available_distinct_source_assets: 0,
+    },
+    readiness: {
+      status: "blocked",
+      blockers: ["distinct_motion_source_assets_minimum_not_met"],
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "pass",
+    records: [],
+  });
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: {
+      selected_assets: licensedSfxAssets(),
+    },
+  });
+
+  const clipScenePlan = {
+    repeat_free: true,
+    covered_duration_s: 51,
+    repeated_base_sources: [],
+    scenes: ownedAssets.map((asset, index) => ({
+      index,
+      path: asset.path,
+      durationS: 6.375,
+      sourceDurationS: 7,
+      baseSourceKey: "rendered_owned_motion",
+    })),
+  };
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    renderer: "visual_v4_production",
+    visual_tier: "production_v4_motion",
+    final_publish_render: true,
+    output: "visual_v4_render.mp4",
+    output_path: finalPath,
+    rendered_duration_s: 51,
+    clips: ownedAssets.length,
+    clip_scene_plan: clipScenePlan,
+    selected_input_assets: {
+      authoritative: true,
+      assets: ownedAssets.map((asset) => ({
+        asset_id: asset.asset_id,
+        kind: "video",
+        path: asset.path,
+        asset_sha256: asset.materialised_output_sha256,
+      })),
+    },
+  });
+
+  const refresh = await refreshFinalRenderQualityOnly({
+    storyId,
+    artifactDir,
+    generatedAt: "2026-07-23T14:40:00.000Z",
+  });
+
+  assert.equal(refresh.status, "quality_refreshed");
+  assert.equal(refresh.clip_count, 8);
+  const refreshedDirector = await fs.readJson(path.join(artifactDir, "director_beat_map.json"));
+  assert.equal(refreshedDirector.shot_budget.available_distinct_motion_source_assets, 4);
+  assert.ok(refreshedDirector.readiness.warnings.includes("owned_generator_project_source_floor_recomputed"));
+  const refreshedRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  const firstOwnedRecord = refreshedRights.records.find((record) => record.asset_id === "owned-motion-1");
+  assert.equal(firstOwnedRecord.evidence_file, ownedAssets[0].rights_evidence_file_path);
+  assert.equal(firstOwnedRecord.evidence_sha256, ownedAssets[0].rights_evidence_file_sha256);
+  assert.equal(firstOwnedRecord.evidence_size_bytes, ownedAssets[0].rights_evidence_file_size_bytes);
+  assert.equal(firstOwnedRecord.rights_grant, true);
+  assert.equal(firstOwnedRecord.source_owner, "Pulse Gaming");
 });
 
 test("goal production render quality refresh reconciles stale scorecards and fails closed without a canonical script", async () => {

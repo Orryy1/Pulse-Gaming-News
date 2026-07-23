@@ -97,17 +97,17 @@ test("local live primary runtime launcher replaces matching-commit observation m
   assert.match(script, /protected_primary_runtime/);
 });
 
-test("local live primary runtime launcher defers restarts while publish jobs are actively claimed", () => {
+test("local live primary runtime launcher defers restarts only while an external publish is actively claimed", () => {
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
   const guardStart = script.indexOf("function Get-ActivePublishJobs");
   const guardEnd = script.indexOf("$runtimeTransitionMutexName", guardStart);
   const guardSource = script.slice(guardStart, guardEnd);
 
   assert.match(script, /Get-ActivePublishJobs/);
-  assert.match(
-    script,
-    /kind IN \('publish_schedule_recovery_monitor','publish_runway_generate','publish','publish_window_watchdog'\)/,
-  );
+  assert.match(guardSource, /WHERE kind = 'publish'/);
+  assert.doesNotMatch(guardSource, /publish_schedule_recovery_monitor/);
+  assert.doesNotMatch(guardSource, /publish_runway_generate/);
+  assert.doesNotMatch(guardSource, /publish_window_watchdog/);
   assert.match(script, /lease_until/);
   assert.match(script, /ConvertFrom-Json/);
   assert.match(script, /PSObject\.Properties\["id"\]/);

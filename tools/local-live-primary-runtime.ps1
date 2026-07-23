@@ -410,7 +410,9 @@ const db = new Database(dbPath, { readonly: true, fileMustExist: true });
 const rows = db.prepare(`
   SELECT id, kind, claimed_by, lease_until, updated_at
   FROM jobs
-  WHERE kind IN ('publish_schedule_recovery_monitor','publish_runway_generate','publish','publish_window_watchdog')
+  -- Only this handler can have an external upload in flight. The guarded
+  -- worker safely recycles monitor, runway and watchdog preparation jobs.
+  WHERE kind = 'publish'
     AND status = 'running'
     AND lease_until IS NOT NULL
     AND datetime(lease_until) > datetime('now')

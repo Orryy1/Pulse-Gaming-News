@@ -2082,6 +2082,7 @@ test("candidate evidence reconciliation replaces a stale restrictive row only fo
   await fs.outputJson(rightsPath, staleLedger, { spaces: 2 });
   const materialisedPath = path.join(artifactDir, "materialised_motion_clips.json");
   const materialised = await fs.readJson(materialisedPath);
+  const ownedMotionManifestClip = structuredClone(materialised.clips[0]);
   delete materialised.clips[0].owned_generated_rights_grant;
   await fs.outputJson(materialisedPath, materialised, { spaces: 2 });
   const missingAllowedUseReport = await reconcileCandidateEvidence({
@@ -2099,6 +2100,55 @@ test("candidate evidence reconciliation replaces a stale restrictive row only fo
     missingAllowedUseReport.rights.proposed_ledger.records.length,
     0,
   );
+
+  await fs.outputJson(rightsPath, staleLedger, { spaces: 2 });
+  await fs.outputJson(materialisedPath, { clips: [] }, { spaces: 2 });
+  await fs.outputJson(path.join(artifactDir, "owned_motion_manifest.json"), {
+    story_id: storyId,
+    assets: [ownedMotionManifestClip],
+  });
+  const safelyDemotedRenderManifest = await fs.readJson(
+    path.join(artifactDir, "render_manifest.json"),
+  );
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    ...safelyDemotedRenderManifest,
+    status: "RED",
+    publish_status: "RED",
+    quality_gate_status: "post_render_forensics_passed",
+    post_render_forensic_result: "pass",
+    post_render_forensic_blockers: [],
+    can_publish: false,
+    can_auto_publish: false,
+    publish_ready: false,
+    safe_demotion_applied: true,
+  });
+  const ownedManifestRecoveryReport = await reconcileCandidateEvidence({
+    artifactDir,
+    bridgePath: "",
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: true,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+  assert.equal(
+    ownedManifestRecoveryReport.rights.verdict,
+    "PASS",
+    JSON.stringify(ownedManifestRecoveryReport.rights, null, 2),
+  );
+  assert.equal(
+    ownedManifestRecoveryReport.rights.proposed_ledger.records[0]
+      .reconciliation_basis,
+    "current_validated_owned_procedural_motion",
+  );
+  const recoveredRenderManifest = await fs.readJson(
+    path.join(artifactDir, "render_manifest.json"),
+  );
+  assert.equal(recoveredRenderManifest.status, "GREEN");
+  assert.equal(recoveredRenderManifest.safe_demotion_applied, false);
+  assert.equal(recoveredRenderManifest.publish_status, "RED");
+  assert.equal(recoveredRenderManifest.can_auto_publish, false);
 });
 
 test("candidate evidence reconciliation keeps hash-bound official YouTube motion RED when identity evidence has no bound rights policy", async () => {
@@ -4290,6 +4340,106 @@ test("candidate evidence reconciliation includes every renderer-selected music b
   assert.ok(music.every((record) => record.evidence_file === globalMusicRightsPath));
 });
 
+test("candidate evidence reconciliation reconciles a renderer-selected governed soundscape", async () => {
+  const storyId = "renderer_selected_soundscape_candidate";
+  const fixture = await makeFingerprintFixture({
+    prefix: "pulse-renderer-selected-soundscape-",
+    storyId,
+  });
+  const { rightsPath } = await addNarrationRightsFixture(fixture, storyId);
+  const soundscapePath = path.join(
+    fixture.artifactDir,
+    "audio",
+    "cinematic-ambience.wav",
+  );
+  await fs.outputFile(
+    soundscapePath,
+    Buffer.from("renderer-selected cinematic ambience"),
+  );
+  const soundscapeAssetId = "elevenlabs_cinematic_ambience_fixture";
+  const soundscapeEvidencePath = path.join(
+    fixture.artifactDir,
+    "audio",
+    "cinematic-ambience.elevenlabs-sfx.json",
+  );
+  await fs.outputJson(soundscapeEvidencePath, {
+    schema_version: 1,
+    asset_id: soundscapeAssetId,
+    provider_id: "elevenlabs_sfx",
+    role: "ambience",
+    allowed_use: "finished_editorial_video_only",
+    commercial_use_allowed: true,
+    raw_redistribution_allowed: false,
+  }, { spaces: 2 });
+  const rights = await fs.readJson(rightsPath);
+  await fs.writeJson(rightsPath, [
+    ...rights,
+    {
+      asset_id: soundscapeAssetId,
+      asset_type: "soundscape",
+      kind: "soundscape",
+      role: "ambience",
+      provider_id: "elevenlabs_sfx",
+      provider_name: "ElevenLabs",
+      path: soundscapePath,
+      source_url: `file://${soundscapePath.replace(/\\/g, "/")}`,
+      source_type: "elevenlabs_generated_sfx_sidecar",
+      source_owner: "Pulse Gaming",
+      licence_basis:
+        "elevenlabs_paid_subscription_generated_sfx_finished_editorial_commercial_use",
+      allowed_use: "finished_editorial_video_only",
+      allowed_platforms: TARGET_PLATFORMS,
+      commercial_use_allowed: true,
+      approval_status: "approved_generation_bound_commercial_use",
+      rights_status: "approved_generation_bound_commercial_use",
+      live_publish_allowed: true,
+      risk_score: 0.05,
+      evidence_file: soundscapeEvidencePath,
+    },
+  ], { spaces: 2 });
+  const renderManifestPath = path.join(
+    fixture.artifactDir,
+    "render_manifest.json",
+  );
+  const renderManifest = await fs.readJson(renderManifestPath);
+  renderManifest.selected_input_assets = {
+    schema_version: 2,
+    authoritative: true,
+    complete: true,
+    assets: [{
+      asset_id: soundscapeAssetId,
+      kind: "soundscape",
+      role: "ambience",
+      provider_id: "elevenlabs_sfx",
+      path: soundscapePath,
+    }],
+  };
+  await fs.writeJson(renderManifestPath, renderManifest, { spaces: 2 });
+
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: fixture.bridgePath,
+    storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.equal(report.rights.used_asset_count, 2);
+  assert.equal(report.rights.reconciled_record_count, 2);
+  const soundscape = report.rights.proposed_ledger.records.find(
+    (record) => record.asset_id === soundscapeAssetId,
+  );
+  assert.ok(soundscape);
+  assert.equal(soundscape.kind, "sfx");
+  assert.equal(soundscape.asset_sha256, sha256(await fs.readFile(soundscapePath)));
+  assert.equal(soundscape.evidence_file, soundscapeEvidencePath);
+  assert.equal(soundscape.commercial_use_allowed, true);
+  assert.equal(soundscape.live_publish_allowed, true);
+});
+
 test("candidate evidence reconciliation excludes unrendered SFX alternatives from the used-asset ledger", async () => {
   const storyId = "renderer_selected_sfx_candidate";
   const fixture = await makeFingerprintFixture({
@@ -5060,7 +5210,7 @@ test("candidate evidence reconciliation accepts and fingerprints generation-boun
     prefix: "pulse-strict-flagship-v3-green-tts-rights-",
     storyId,
   });
-  const { audioPath } = await addNarrationRightsFixture(fixture, storyId);
+  const { audioPath, rightsPath } = await addNarrationRightsFixture(fixture, storyId);
   const audioBytes = await fs.readFile(audioPath);
   const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
   const renderManifest = await fs.readJson(renderManifestPath);
@@ -5282,6 +5432,15 @@ test("candidate evidence reconciliation accepts and fingerprints generation-boun
     },
     { spaces: 2 },
   );
+  const [provisionalNarrationRights] = await fs.readJson(rightsPath);
+  await fs.outputJson(rightsPath, [{
+    ...provisionalNarrationRights,
+    commercial_use_allowed: false,
+    approval_status: "requires_generation_bound_commercial_evidence",
+    live_publish_allowed: false,
+    evidence_file: null,
+    risk_score: 0.45,
+  }], { spaces: 2 });
   const commercialRightsEvidenceBytes = await fs.readFile(
     commercialRightsEvidencePath,
   );

@@ -2433,6 +2433,84 @@ async function writeReadyEpidemicRuntimeManifest(root) {
   return { manifestPath, selectedAssets, rightsRecords };
 }
 
+async function writeReadyCinematicSoundscapeRuntimeManifest(root) {
+  const audioPath = path.join(
+    root,
+    "audio",
+    "elevenlabs",
+    "sfx",
+    "cinematic-v1",
+    "tension-bed.wav",
+  );
+  const sidecarPath = path.join(
+    root,
+    "audio",
+    "elevenlabs",
+    "sfx",
+    "cinematic-v1",
+    "tension-bed.elevenlabs-sfx.json",
+  );
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 88));
+  const audioSha256 = crypto
+    .createHash("sha256")
+    .update(await fs.readFile(audioPath))
+    .digest("hex");
+  await fs.outputJson(sidecarPath, {
+    asset_id: "elevenlabs-cinematic-tension-bed",
+    role: "tension_bed",
+    audio_path: audioPath,
+    sha256: audioSha256,
+  });
+  const manifestPath = path.join(
+    root,
+    "output",
+    "elevenlabs-cinematic-soundscapes",
+    "elevenlabs_sfx_runtime_manifest.json",
+  );
+  await fs.outputJson(manifestPath, {
+    schema_version: 1,
+    provider_id: "elevenlabs_sfx",
+    readiness: { status: "ready", blockers: [] },
+    required_roles: ["tension_bed"],
+    covered_roles: ["tension_bed"],
+    selected_assets: [
+      {
+        asset_id: "elevenlabs-cinematic-tension-bed",
+        role: "tension_bed",
+        provider_id: "elevenlabs_sfx",
+        audio_path: audioPath,
+        sidecar_path: sidecarPath,
+        sha256: audioSha256,
+        sha256_verified: true,
+        status: "accepted",
+        rights_note: "Generated during a paid ElevenLabs subscription.",
+        allowed_use: "finished_editorial_video_only",
+        commercial_use_allowed: true,
+      },
+    ],
+    variant_assets_by_role: {
+      tension_bed: [
+        {
+          asset_id: "elevenlabs-cinematic-tension-bed",
+          role: "tension_bed",
+          family: "tension_bed",
+          provider_id: "elevenlabs_sfx",
+          path: audioPath,
+          approval_status: "approved_for_commercial_editorial_use",
+          elevenlabs_governance: {
+            sidecar_path: sidecarPath,
+            sha256: audioSha256,
+            sha256_verified: true,
+            loudness_qc_status: "pass",
+            reuse_status: "within_reuse_limit",
+          },
+        },
+      ],
+    },
+  });
+  return { manifestPath, audioPath, sidecarPath, audioSha256 };
+}
+
 function readyJob(storyId, artifactDir, overrides = {}) {
   return {
     story_id: storyId,
@@ -3264,6 +3342,47 @@ test("goal production render materializer resolves relative Epidemic rights evid
   assert.equal(renderedStory.sfx_asset_inventory.length, runtime.selectedAssets.length);
   assert.equal(renderedStory.sfx_source_plan.readiness.status, "pass");
   assert.deepEqual(renderedStory.sfx_source_plan.readiness.blockers, []);
+});
+
+test("goal production render materializer autonomously hydrates a hash-verified cinematic soundscape runtime", async () => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-production-render-cinematic-soundscape-"),
+  );
+  const storyId = "story-cinematic-soundscape";
+  const artifactDir = await makePackage(root, storyId, {
+    breaking_fast_track: true,
+    breaking_score: 92,
+  });
+  const runtime = await writeReadyCinematicSoundscapeRuntimeManifest(root);
+  const { story } = await buildRendererStoryJson(
+    readyJob(storyId, artifactDir, {
+      cinematic_soundscape_required: true,
+      cinematic_soundscape_runtime_manifest_path: runtime.manifestPath,
+    }),
+    {
+      workspaceRoot: root,
+      generatedAt: "2026-07-23T15:30:00.000Z",
+    },
+  );
+
+  assert.equal(story.cinematic_soundscape_runtime_status, "ready");
+  assert.equal(story.soundscape_asset_inventory.length, 1);
+  assert.equal(
+    story.soundscape_asset_inventory[0].asset_id,
+    "elevenlabs-cinematic-tension-bed",
+  );
+  assert.equal(
+    story.soundscape_asset_inventory[0].elevenlabs_governance.sha256,
+    runtime.audioSha256,
+  );
+  assert.equal(
+    story.cinematic_soundscape_runtime_manifest_path,
+    runtime.manifestPath,
+  );
+  assert.match(
+    story.cinematic_soundscape_runtime_manifest_sha256,
+    /^[a-f0-9]{64}$/,
+  );
 });
 
 test("goal production render materializer cannot let a stale director map override current proof-card copy", async () => {

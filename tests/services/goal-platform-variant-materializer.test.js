@@ -6,6 +6,7 @@ const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const sharp = require("sharp");
 const packageJson = require("../../package.json");
 
 const {
@@ -59,6 +60,52 @@ async function makePackage(root, id = "ig-overlong", durationS = 61.2) {
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+async function addYouTubeShortsCoverCampaign(storyPackage, headline = "4 XBOX CLASSICS HIT PC") {
+  const campaignDir = path.join(storyPackage.artifact_dir, "premium_visual_campaign");
+  const coverPath = path.join(
+    campaignDir,
+    `${storyPackage.story_id}_youtube_shorts_cover.png`,
+  );
+  await fs.ensureDir(campaignDir);
+  await sharp({
+    create: {
+      width: 1080,
+      height: 1920,
+      channels: 3,
+      background: "#101827",
+    },
+  }).png().toFile(coverPath);
+  const manifestPath = path.join(campaignDir, "premium_visual_campaign_manifest.json");
+  await fs.writeJson(manifestPath, {
+    schema_version: 1,
+    story_id: storyPackage.story_id,
+    headline,
+    verdict: "green",
+    provenance: {
+      hero_sha256: "b".repeat(64),
+      hero_source: "governed_parent_visual",
+      derived_asset_only: true,
+    },
+    outputs: {
+      youtube_shorts_cover: {
+        platform: "youtube_shorts_cover",
+        width: 1080,
+        height: 1920,
+        headline,
+        static_path: coverPath,
+      },
+    },
+  }, { spaces: 2 });
+  const platformManifestPath = path.join(
+    storyPackage.artifact_dir,
+    "platform_publish_manifest.json",
+  );
+  const platformManifest = await fs.readJson(platformManifestPath);
+  platformManifest.outputs.youtube_shorts.cover_frame = { headline };
+  await fs.writeJson(platformManifestPath, platformManifest, { spaces: 2 });
+  return { coverPath, manifestPath };
 }
 
 test("platform variant materializer creates probe-backed overlong platform variants without publishing", async () => {
@@ -223,6 +270,50 @@ test("platform variant materializer creates Instagram-safe variants for in-windo
     "pulse-goal-platform-variant-materializer",
   );
   assert.equal(await fs.pathExists(youtube.variant_video_path), true);
+});
+
+test("platform variant materializer carries a governed Shorts cover into the YouTube render and receipt", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-platform-youtube-cover-"));
+  t.after(() => fs.remove(root));
+  const storyPackage = await makePackage(root, "xbox-classics", 39.2);
+  const campaign = await addYouTubeShortsCoverCampaign(storyPackage);
+  const rendered = [];
+
+  const report = await materializeGoalPlatformVariants({
+    storyPackages: [storyPackage],
+    workspaceRoot: root,
+    generatedAt: "2026-07-23T14:00:00.000Z",
+    variantRenderer: async (job) => {
+      rendered.push(job);
+      await fs.outputFile(job.outputPath, Buffer.alloc(2400, 7));
+    },
+    probeDuration: async () => 39.2,
+  });
+
+  assert.equal(report.summary.failed_count, 0);
+  const youtubeJob = rendered.find((item) => item.platform === "youtube_shorts");
+  assert.equal(youtubeJob.coverFramePath, campaign.coverPath);
+  assert.equal(youtubeJob.coverFrameDurationS, 0.6);
+
+  const manifest = await fs.readJson(
+    path.join(storyPackage.artifact_dir, "platform_publish_manifest.json"),
+  );
+  const receipt = manifest.outputs.youtube_shorts.platform_variant_render;
+  assert.equal(
+    receipt.transformation_mode,
+    "transcode_with_embedded_youtube_shorts_cover_frame",
+  );
+  assert.equal(receipt.embedded_cover_frame.status, "ready");
+  assert.equal(receipt.embedded_cover_frame.mobile_selection_at_s, 0.15);
+  assert.equal(
+    receipt.embedded_cover_frame.youtube_custom_image_thumbnail_supported,
+    false,
+  );
+  assert.equal(
+    receipt.embedded_cover_frame.youtube_mobile_frame_selection_required,
+    true,
+  );
+  assert.match(receipt.embedded_cover_frame.cover_frame_sha256, /^[a-f0-9]{64}$/);
 });
 
 test("platform variant materializer resolves and hash-verifies governed flagship captions", async () => {
@@ -536,6 +627,26 @@ test("platform variant materializer uses conservative Instagram Reels encoding a
   assert.equal(args[args.indexOf("-ac") + 1], "2");
   assert.ok(args.includes("-movflags"));
   assert.equal(args[args.indexOf("-movflags") + 1], "+faststart");
+});
+
+test("platform variant materializer embeds a governed story card into the opening of a YouTube Short", () => {
+  const args = buildPlatformVariantFfmpegArgs({
+    inputPath: "input.mp4",
+    outputPath: "youtube-short.mp4",
+    targetDurationS: 48.2,
+    platform: "youtube_shorts",
+    coverFramePath: "story-card.png",
+    coverFrameDurationS: 0.6,
+  });
+
+  assert.equal(args.filter((arg) => arg === "-i").length, 2);
+  assert.ok(args.includes("story-card.png"));
+  assert.ok(args.includes("-filter_complex"));
+  const filter = args[args.indexOf("-filter_complex") + 1];
+  assert.match(filter, /fade=t=out:st=0\.450:d=0\.150:alpha=1/);
+  assert.match(filter, /overlay=0:0:eof_action=pass:shortest=0/);
+  assert.equal(args[args.indexOf("-map") + 1], "[vout]");
+  assert.ok(args.includes("0:a:0?"));
 });
 
 test("platform variant materializer uses Meta-native Facebook Reels encoding args", () => {

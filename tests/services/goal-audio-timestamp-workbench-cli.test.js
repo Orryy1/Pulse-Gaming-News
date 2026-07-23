@@ -12,6 +12,8 @@ test("goal audio timestamp workbench CLI parses local dry-run arguments", () => 
   const args = parseArgs([
     "--work-order",
     "work-order.json",
+    "--story-packages",
+    "story-packages.json",
     "--local-tts-doctor",
     "doctor.json",
     "--out-dir",
@@ -28,12 +30,66 @@ test("goal audio timestamp workbench CLI parses local dry-run arguments", () => 
   ]);
 
   assert.equal(args.workOrderPath, "work-order.json");
+  assert.equal(args.storyPackagesPath, "story-packages.json");
   assert.equal(args.localTtsDoctorPath, "doctor.json");
   assert.equal(args.outDir, "out");
   assert.equal(args.generatedAt, "2026-05-22T05:15:00.000Z");
   assert.deepEqual(args.storyIds, ["story-one", "story-two"]);
   assert.equal(args.provider, "elevenlabs");
   assert.equal(args.json, true);
+});
+
+test("goal audio timestamp workbench CLI discovers missing narration directly from story packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-workbench-cli-packages-"));
+  const artifactDir = path.join(root, "goal-proof-batch", "fresh-story");
+  const storyPackagesPath = path.join(root, "story-packages.json");
+  const doctorPath = path.join(root, "local_tts_doctor.json");
+  const outDir = path.join(root, "out");
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "fresh-story",
+    title: "Fresh First-Party Story",
+    narration_script:
+      "A verified first-party announcement now has a direct path into narration production.",
+  });
+  await fs.outputJson(storyPackagesPath, [
+    {
+      story_id: "fresh-story",
+      artifact_dir: artifactDir,
+    },
+  ]);
+  await fs.outputJson(doctorPath, {
+    generated_at: "2026-07-23T12:00:00.000Z",
+    verdict: "green",
+    ready: true,
+  });
+
+  const originalLog = console.log;
+  console.log = () => {};
+  let result;
+  try {
+    result = await main([
+      "--story-packages",
+      storyPackagesPath,
+      "--local-tts-doctor",
+      doctorPath,
+      "--out-dir",
+      outDir,
+      "--generated-at",
+      "2026-07-23T12:01:00.000Z",
+      "--provider",
+      "local",
+      "--json",
+    ]);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(result.report.summary.story_count, 1);
+  assert.equal(result.report.summary.requires_generation_count, 1);
+  assert.equal(result.report.jobs[0].story_id, "fresh-story");
+  assert.equal(result.report.jobs[0].status, "requires_audio_timestamp_generation");
+  assert.equal(result.report.jobs[0].tts_provider, "local");
+  assert.equal(result.report.safety.no_tts_generation_triggered, true);
 });
 
 test("goal audio timestamp workbench CLI scopes reports to requested stories", async () => {

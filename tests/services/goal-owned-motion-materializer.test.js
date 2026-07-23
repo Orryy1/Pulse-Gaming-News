@@ -340,6 +340,28 @@ test("owned motion cards prefer clip-specific public copy over a repeated thumbn
   assert.doesNotMatch(`${headline} ${purpose} ${source}`, /LOCK|PROOF|SUPPORT/);
 });
 
+test("owned motion cards retain the complete source-claim object before dynamic fitting", () => {
+  const expected = "NEARLY 12 HOURS OF ANTHONY PARISI'S EARLY E3 FOOTAGE";
+  const layout = buildOwnedMotionFrameLayout({
+    clip: {
+      id: "e3-owned-motion-proof",
+      asset_class: "platform_proof_card",
+      headline: "Nearly 12 hours of Anthony Parisi's early E3 footage",
+      visual_purpose: "SOURCE CHECKED",
+    },
+    canonical: {
+      canonical_subject: "E3 archive",
+      selected_title: "E3's Lost History Is Now Searchable",
+      primary_source: "Video Game History Foundation",
+    },
+  });
+  const headline = layout.text_blocks.find((block) => block.id === "headline");
+
+  assert.equal(headline.lines.join(" "), expected);
+  assert.equal(headline.fits, true);
+  assert.equal(headline.within_card_bounds, true);
+});
+
 test("owned motion materializer enforces readable dwell time for explainer cards", () => {
   const canonical = {
     canonical_subject: "Halo Campaign Evolved",
@@ -1914,4 +1936,78 @@ test("owned motion materializer refresh expands thin owned explainer decks to th
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
   assert.equal(footage.motion_budget.required_motion_scenes, 21);
   assert.equal(footage.motion_inventory.accepted_local_clips.length, 21);
+});
+
+test("owned motion refresh rebuilds a complete deck from current canonical source lineage", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-refresh-lineage-"));
+  const artifactDir = path.join(root, "source-lineage");
+  const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(canonicalPath, {
+    story_id: "source-lineage",
+    canonical_subject: "E3 archive",
+    selected_title: "E3's Lost History Is Now Searchable",
+    confirmed_claims: ["The archive includes thousands of pages from E3."],
+    primary_source: "Discovery Outlet",
+    primary_source_url: "https://discovery.example/e3",
+  });
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: "source-lineage",
+    motion_budget: {
+      allow_owned_explainer_motion_only: true,
+      owned_explainer_visual_plan: true,
+    },
+    motion_inventory: {
+      owned_explainer_visual_plan: true,
+      accepted_local_clips: [],
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), { records: [] });
+  const workOrder = {
+    jobs: [{
+      story_id: "source-lineage",
+      title: "E3's Lost History Is Now Searchable",
+      artifact_dir: artifactDir,
+      actions: [{
+        action_id: "materialise_owned_generated_motion_clips",
+        repair_lane: "owned_generated_explainer_motion_materialisation",
+      }],
+    }],
+  };
+  const execFileSync = (bin, args) => {
+    fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, 1));
+  };
+
+  await materializeGoalOwnedMotionClips({
+    root,
+    workOrder,
+    refreshExisting: true,
+    execFileSync,
+    ffprobeDuration: () => 7,
+  });
+  await fs.outputJson(canonicalPath, {
+    story_id: "source-lineage",
+    canonical_subject: "E3 archive",
+    selected_title: "E3's Lost History Is Now Searchable",
+    confirmed_claims: ["The archive includes thousands of pages from E3."],
+    primary_source: "Video Game History Foundation",
+    primary_source_url: "https://gamehistory.org/e3-history/",
+  });
+
+  await materializeGoalOwnedMotionClips({
+    root,
+    workOrder,
+    refreshExisting: true,
+    execFileSync,
+    ffprobeDuration: () => 7,
+  });
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+
+  assert.equal(materialised.clip_count, 21);
+  assert.equal(
+    materialised.clips.every(
+      (clip) => clip.source_relationship === "Video Game History Foundation",
+    ),
+    true,
+  );
 });

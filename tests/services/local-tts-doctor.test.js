@@ -146,6 +146,99 @@ test("local TTS doctor passes resident health into the GPU pressure check", asyn
   assert.equal(report.gpu.thresholds.localTtsResidentReady, true);
 });
 
+test("local TTS doctor blocks recovery side effects while the shared GPU is reserved", async () => {
+  let startCount = 0;
+  let prewarmCount = 0;
+  let smokeCount = 0;
+  const unreachable = {
+    ok: false,
+    status: "unreachable",
+    phase: "unknown",
+    ready: false,
+    engineCount: 0,
+    voice: { loaded: false, refResolved: false, present: false },
+    reasons: ["health endpoint unreachable"],
+  };
+
+  const report = await runDoctor({
+    restart: true,
+    prewarm: true,
+    smoke: true,
+    forceNativeCrashRetry: true,
+    setExitCode: false,
+    writeReport: false,
+    deps: {
+      async fetchLocalTtsHealth() {
+        return unreachable;
+      },
+      async inspectLocalTtsNativeCrash() {
+        return { detected: false };
+      },
+      async readPersistedNativeCrash() {
+        return null;
+      },
+      classifyLocalTtsDoctorAction(summary, options = {}) {
+        if (summary.status === "unreachable" && options.allowRestart) {
+          return {
+            action: "restart",
+            verdict: "red",
+            reason: "local TTS restart requested",
+          };
+        }
+        return {
+          action: "manual_restart_required",
+          verdict: "red",
+          reason: "local TTS is unreachable",
+        };
+      },
+      classifyLocalTtsHealthFailure() {
+        return { code: "local_tts_unreachable" };
+      },
+      async inspectLocalGpuPressure() {
+        return {
+          ok: false,
+          status: "busy",
+          failure_code: "shared_gpu_reserved",
+          reason: "shared GPU is reserved by sleepy-stories",
+          shared_gpu: {
+            status: "reserved",
+            owner: {
+              studio: "sleepy-stories",
+              hard_expires_at: "2026-07-23T13:23:28.599Z",
+            },
+          },
+        };
+      },
+      async startLocalTtsServer() {
+        startCount += 1;
+        return {
+          pid: 24685,
+          spec: { stdoutPath: "stdout.log", stderrPath: "stderr.log" },
+        };
+      },
+      async waitForLocalTtsHealth() {
+        return unreachable;
+      },
+      async prewarmLocalTtsVoice() {
+        prewarmCount += 1;
+        return { ok: true };
+      },
+      async runGenerationSmoke() {
+        smokeCount += 1;
+        return { ok: true, provider: "local", size_bytes: 4096 };
+      },
+    },
+  });
+
+  assert.equal(startCount, 0);
+  assert.equal(prewarmCount, 0);
+  assert.equal(smokeCount, 0);
+  assert.equal(report.verdict, "red");
+  assert.equal(report.action, "wait_for_gpu");
+  assert.equal(report.failure_code, "shared_gpu_reserved");
+  assert.equal(report.gpu.shared_gpu.owner.studio, "sleepy-stories");
+});
+
 test("local TTS doctor retries generation smoke after an allowed restart", async () => {
   let startCount = 0;
   let startOptions = null;

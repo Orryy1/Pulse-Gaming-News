@@ -27,6 +27,13 @@ const {
   minimumScoreForRole,
 } = require("../lib/studio/v4/sfx-source-registry");
 const {
+  CINEMATIC_AUDIO_ARC_VERSION,
+  bedDropoutFilterChain,
+  buildCinematicAudioArc,
+  buildCinematicBedFilters,
+  cinematicCueTiming,
+} = require("../lib/studio/v4/cinematic-audio-arc");
+const {
   discoverPackConfigs,
   selectVariantAsset,
   variantAssetsForRole,
@@ -460,6 +467,7 @@ function buildSelectedInputAssetEvidence({
   scenePlan = {},
   musicCueMix = {},
   sfxCueMix = [],
+  soundscapeMix = {},
 } = {}) {
   const assets = [];
   const byPath = new Map();
@@ -594,6 +602,15 @@ function buildSelectedInputAssetEvidence({
       role: cue.role || cue.target_kind || "sfx",
     });
   }
+  if (soundscapeMix.asset) {
+    add({
+      asset_id: soundscapeMix.asset.asset_id || "cinematic_soundscape",
+      kind: "soundscape",
+      path: soundscapeMix.asset.path,
+      source_url: soundscapeMix.asset.source_url || null,
+      role: soundscapeMix.asset.role || "soundscape",
+    });
+  }
 
   return {
     schema_version: 2,
@@ -644,6 +661,37 @@ function sfxAssetsFromStory(story = {}) {
   return [];
 }
 
+function soundscapeAssetsFromStory(story = {}) {
+  const candidates = [
+    story.soundscape_asset_inventory,
+    story.soundscape_assets,
+    story.cinematic_soundscape_assets,
+    story.cinematic_soundscape_manifest?.selected_assets,
+    story.cinematic_soundscape_manifest?.source_plan?.selected_assets,
+    ...Object.values(
+      story.cinematic_soundscape_manifest?.variant_assets_by_role || {},
+    ),
+  ];
+  const seen = new Set();
+  const assets = [];
+  for (const asset of candidates.flatMap((value) =>
+    Array.isArray(value) ? value : [],
+  )) {
+    const key = String(
+      asset?.asset_id ||
+        asset?.id ||
+        asset?.path ||
+        asset?.audio_path ||
+        asset?.file_path ||
+        "",
+    ).trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    assets.push(asset);
+  }
+  return assets;
+}
+
 function storyHasCuratedEpidemicSfx(story = {}) {
   return sfxAssetsFromStory(story).some((asset) =>
     String(asset.provider_id || asset.provider || "").toLowerCase() === "epidemic_sound",
@@ -655,6 +703,7 @@ function sfxPathForAsset(asset = {}) {
     asset.local_path ||
       asset.file_path ||
       asset.path ||
+      asset.audio_path ||
       asset.source_url ||
       "",
   ).trim();
@@ -971,7 +1020,14 @@ async function resolveStorySfxCueMix(story = {}, { limit = 6 } = {}) {
         role: match.role,
         target_kind: request.target_kind,
         asset_id: match.asset.asset_id || match.asset.id || null,
-        delayMs: request.delayMs,
+        ...cinematicCueTiming({
+          role: match.role,
+          targetDelayMs: request.delayMs,
+          durationS: Math.min(
+            Number(request.durationS || profile.durationS || 0.32),
+            0.42,
+          ),
+        }),
         volume: profile.volume,
         durationS: Math.min(Number(request.durationS || profile.durationS || 0.32), 0.42),
         identity_id: contentIdentity.id,
@@ -1009,6 +1065,48 @@ async function resolveStorySfxCueMix(story = {}, { limit = 6 } = {}) {
       identity_id: contentIdentity.id,
     };
   });
+}
+
+async function resolveStorySoundscapeMix(
+  story = {},
+  { durationS = 0 } = {},
+) {
+  const assets = soundscapeAssetsFromStory(story);
+  const arc = buildCinematicAudioArc({
+    story,
+    durationS,
+    soundscapeAssets: assets,
+  });
+  if (!arc.soundscape) {
+    return {
+      asset: null,
+      arc,
+      policy: arc.policy,
+      status: "unavailable",
+    };
+  }
+  const assetPath = sfxPathForAsset(arc.soundscape);
+  if (!assetPath || !(await fs.pathExists(assetPath))) {
+    return {
+      asset: null,
+      arc: {
+        ...arc,
+        soundscape: null,
+        blocker: "cinematic_soundscape_file_missing",
+      },
+      policy: arc.policy,
+      status: "blocked",
+    };
+  }
+  return {
+    asset: {
+      ...arc.soundscape,
+      path: assetPath,
+    },
+    arc,
+    policy: arc.policy,
+    status: "ready",
+  };
 }
 
 async function resolveStorySfxPaths(story = {}, { limit = 6 } = {}) {
@@ -3901,6 +3999,23 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
   const hasSting = stingPath && (await fs.pathExists(stingPath));
   const stingIdx = hasSting ? ffmpegArgs.filter((item) => item === "-i").length : -1;
   if (hasSting) ffmpegArgs.push("-i", stingPath);
+  const soundscapeMix = await resolveStorySoundscapeMix(story, { durationS });
+  const soundscapePath = soundscapeMix.asset?.path || "";
+  const hasSoundscape =
+    soundscapePath && (await fs.pathExists(soundscapePath));
+  const soundscapeIdx = hasSoundscape
+    ? ffmpegArgs.filter((item) => item === "-i").length
+    : -1;
+  if (hasSoundscape) {
+    ffmpegArgs.push(
+      "-stream_loop",
+      "-1",
+      "-t",
+      (durationS + 1).toFixed(2),
+      "-i",
+      soundscapePath,
+    );
+  }
   const sfxCueMix = await resolveStorySfxCueMix(story, { limit: 6 });
   const sfxStartIdx = ffmpegArgs.filter((item) => item === "-i").length;
   for (const cue of sfxCueMix) ffmpegArgs.push("-i", cue.path);
@@ -3946,22 +4061,51 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
 
   const audioMixInputs = [];
   const mixLabels = ["[a_voice]"];
-  if (hasMusic) {
-    audioMixInputs.push(`[${voiceIdx}:a]asplit=2[a_voice_in][a_voice_sc]`);
+  const voiceSidechainLabels = [];
+  if (hasMusic) voiceSidechainLabels.push("a_voice_music_sc");
+  if (hasSoundscape) voiceSidechainLabels.push("a_voice_soundscape_sc");
+  if (voiceSidechainLabels.length) {
+    audioMixInputs.push(
+      `[${voiceIdx}:a]asplit=${voiceSidechainLabels.length + 1}[a_voice_in]${voiceSidechainLabels
+        .map((label) => `[${label}]`)
+        .join("")}`,
+    );
     audioMixInputs.push(
       `[a_voice_in]highpass=f=70,volume=0.86,acompressor=threshold=-30dB:ratio=5.5:attack=4:release=260:makeup=1,alimiter=limit=0.68:level=disabled,loudnorm=I=-17:TP=-2.5:LRA=5[a_voice]`,
     );
-    audioMixInputs.push(
-      `[${musicIdx}:a]volume=${MUSIC_MIX_POLICY.raw_bed_volume.toFixed(3)},atrim=duration=${durationS.toFixed(3)}[a_music_raw]`,
-    );
-    audioMixInputs.push(
-      `[a_music_raw][a_voice_sc]sidechaincompress=threshold=${MUSIC_MIX_POLICY.sidechain_threshold}:ratio=${MUSIC_MIX_POLICY.sidechain_ratio}:attack=${MUSIC_MIX_POLICY.sidechain_attack_ms}:release=${MUSIC_MIX_POLICY.sidechain_release_ms}:knee=3:level_sc=1,volume=${MUSIC_MIX_POLICY.ducked_bed_output_volume.toFixed(3)}[a_music]`,
-    );
-    mixLabels.push("[a_music]");
   } else {
     audioMixInputs.push(
       `[${voiceIdx}:a]highpass=f=70,volume=0.86,acompressor=threshold=-30dB:ratio=5.5:attack=4:release=260:makeup=1,alimiter=limit=0.68:level=disabled,loudnorm=I=-17:TP=-2.5:LRA=5[a_voice]`,
     );
+  }
+  if (hasMusic) {
+    audioMixInputs.push(
+      `[${musicIdx}:a]volume=${MUSIC_MIX_POLICY.raw_bed_volume.toFixed(3)},atrim=duration=${durationS.toFixed(3)}[a_music_raw]`,
+    );
+    audioMixInputs.push(
+      `[a_music_raw][a_voice_music_sc]sidechaincompress=threshold=${MUSIC_MIX_POLICY.sidechain_threshold}:ratio=${MUSIC_MIX_POLICY.sidechain_ratio}:attack=${MUSIC_MIX_POLICY.sidechain_attack_ms}:release=${MUSIC_MIX_POLICY.sidechain_release_ms}:knee=3:level_sc=1,volume=${MUSIC_MIX_POLICY.ducked_bed_output_volume.toFixed(3)}[a_music_ducked]`,
+    );
+    audioMixInputs.push(
+      ...bedDropoutFilterChain({
+        inputLabel: "a_music_ducked",
+        outputLabel: "a_music",
+        microDropWindows: soundscapeMix.arc.micro_drop_windows,
+      }),
+    );
+    mixLabels.push("[a_music]");
+  }
+  if (hasSoundscape) {
+    audioMixInputs.push(
+      ...buildCinematicBedFilters({
+        inputIndex: soundscapeIdx,
+        voiceSidechainLabel: "a_voice_soundscape_sc",
+        outputLabel: "a_soundscape",
+        durationS,
+        microDropWindows: soundscapeMix.arc.micro_drop_windows,
+        policy: soundscapeMix.policy,
+      }),
+    );
+    mixLabels.push("[a_soundscape]");
   }
   if (hasSting) {
     const stingDuration = Math.max(0.18, Math.min(MUSIC_MIX_POLICY.sting_duration_s, 0.8));
@@ -4085,6 +4229,7 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
     scenePlan,
     musicCueMix,
     sfxCueMix,
+    soundscapeMix,
   });
   const report = {
     story_id: story.id || null,
@@ -4173,9 +4318,25 @@ async function renderProof({ storyJson, output, proofOutputDir }) {
       role: cue.role || null,
       target_kind: cue.target_kind || null,
       path: relativeReportPath(cue.path),
+      delayMs: cue.delayMs,
+      landsAtMs: cue.landsAtMs ?? cue.delayMs,
+      preLapped: cue.preLapped === true,
       volume: cue.volume,
       durationS: cue.durationS,
     })),
+    cinematic_audio_arc_version: CINEMATIC_AUDIO_ARC_VERSION,
+    cinematic_audio_arc: {
+      ...soundscapeMix.arc,
+      soundscape: soundscapeMix.asset
+        ? {
+            asset_id: soundscapeMix.asset.asset_id || null,
+            role: soundscapeMix.asset.role || null,
+            provider_id: soundscapeMix.asset.provider_id || null,
+            path: relativeReportPath(soundscapeMix.asset.path),
+            secondary_layer_only: true,
+          }
+        : null,
+    },
     selected_music_cues: {
       provider_id: musicCueMix.provider_id || null,
       pack_id: musicCueMix.pack_id || null,
@@ -4270,6 +4431,7 @@ module.exports = {
   resolveStoryMusicCueMix,
   resolveStorySfxCueMix,
   resolveStorySfxPaths,
+  resolveStorySoundscapeMix,
   directClipMaxScenes,
   directClipMaxVisibleDwellS,
   sfxPathForAsset,

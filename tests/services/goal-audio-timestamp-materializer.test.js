@@ -840,36 +840,54 @@ test("audio materializer does not guess which side owns an ambiguous masked word
 });
 
 test("audio materializer repairs aligned cadence before promoting generated narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-aligned-cadence-"));
+  const audioPath = path.join(root, "narration.mp3");
+  const timestampPath = path.join(root, "words.json");
   const calls = [];
-  const repaired = await _testables.repairAlignedNarrationPauses({
-    audioPath: "C:/proof/narration.mp3",
-    timestampPath: "C:/proof/words.json",
-    timestampInfo: { word_count: 4 },
-    text: "Halo Campaign Evolved has a catch.",
-    spokenText: "Halo Campaign Evolved has a catch.",
-    provider: "elevenlabs",
-    protectedTitles: ["Halo: Campaign Evolved"],
-    maxPasses: 1,
-    generatedAt: "2026-07-12T18:00:00.000Z",
-    readJson: async () => ({
-      words: [
-        { word: "Halo", start: 0, end: 0.3 },
-        { word: "Campaign", start: 0.7, end: 1 },
-        { word: "Evolved", start: 1, end: 1.3 },
-        { word: "catch", start: 2.4, end: 2.7 },
-      ],
-    }),
-    compactPauses: async (audioPath, words, options) => {
-      calls.push({ audioPath, words, options });
-      return { repaired: true, cut_count: 2, protected_title_cut_count: 1 };
-    },
-    normaliseTimestamps: async () => ({ word_count: 4, timestamp_whisper_alignment: { repaired: true } }),
+  await fs.outputFile(audioPath, Buffer.alloc(2048, 1));
+  await fs.writeJson(timestampPath, {
+    words: [
+      { word: "Halo", start: 0, end: 0.3 },
+      { word: "Campaign", start: 0.7, end: 1 },
+      { word: "Evolved", start: 1, end: 1.3 },
+      { word: "catch", start: 2.4, end: 2.7 },
+    ],
   });
 
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].options.protectedTitles, ["Halo: Campaign Evolved"]);
-  assert.equal(repaired.narration_silence_compaction.cut_count, 2);
-  assert.equal(repaired.word_count, 4);
+  try {
+    const repaired = await _testables.repairAlignedNarrationPauses({
+      audioPath,
+      timestampPath,
+      timestampInfo: { word_count: 4 },
+      text: "Halo Campaign Evolved has a catch.",
+      spokenText: "Halo Campaign Evolved has a catch.",
+      provider: "elevenlabs",
+      protectedTitles: ["Halo: Campaign Evolved"],
+      maxPasses: 1,
+      generatedAt: "2026-07-12T18:00:00.000Z",
+      readJson: async () => ({
+        words: [
+          { word: "Halo", start: 0, end: 0.3 },
+          { word: "Campaign", start: 0.7, end: 1 },
+          { word: "Evolved", start: 1, end: 1.3 },
+          { word: "catch", start: 2.4, end: 2.7 },
+        ],
+      }),
+      compactPauses: async (currentAudioPath, words, options) => {
+        calls.push({ audioPath: currentAudioPath, words, options });
+        return { repaired: true, cut_count: 2, protected_title_cut_count: 1 };
+      },
+      normaliseTimestamps: async () => ({ word_count: 4, timestamp_whisper_alignment: { repaired: true } }),
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].audioPath, audioPath);
+    assert.deepEqual(calls[0].options.protectedTitles, ["Halo: Campaign Evolved"]);
+    assert.equal(repaired.narration_silence_compaction.cut_count, 2);
+    assert.equal(repaired.word_count, 4);
+  } finally {
+    await fs.remove(root);
+  }
 });
 
 test("audio materializer leaves narration unchanged when cadence silence is already bounded", async () => {
@@ -5080,7 +5098,7 @@ test("goal audio materializer rejects ElevenLabs output when strict Whisper veri
   );
 });
 
-test("goal audio materializer adds ElevenLabs narration to the rights ledger", async () => {
+test("goal audio materializer keeps ElevenLabs narration blocked without generation-bound commercial evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-elevenlabs-rights-"));
   const artifactDir = await makePackage(root, "story-elevenlabs-rights");
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
@@ -5148,7 +5166,9 @@ test("goal audio materializer adds ElevenLabs narration to the rights ledger", a
   assert.equal(audioRecord.source_type, "elevenlabs_tts_voice");
   assert.equal(audioRecord.licence_basis, "elevenlabs_commercial_tts_generation");
   assert.equal(audioRecord.path, "audio/narration.mp3");
-  assert.equal(audioRecord.commercial_use_allowed, true);
+  assert.equal(audioRecord.commercial_use_allowed, false);
+  assert.equal(audioRecord.approval_status, "requires_generation_bound_commercial_evidence");
+  assert.equal(audioRecord.live_publish_allowed, false);
   const packagedAudio = await fs.readFile(path.join(artifactDir, "audio", "narration.mp3"));
   assert.equal(
     audioRecord.asset_sha256,

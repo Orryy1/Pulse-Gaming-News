@@ -691,6 +691,40 @@ test("analyseRenderedFrameTaste accepts the verified Halo subtitle over mid-satu
   assert.equal(result.samples[0].reason, "verified_subtitle_overlay_taste_ignored");
 });
 
+test("analyseRenderedFrameTaste accepts the verified Xbox subtitle over detailed owned motion", async () => {
+  const frame = {
+    path: "xbox-captioned-owned-motion.jpg",
+    timeS: 14,
+    prescan: {
+      text_overlay_likelihood: 0.1595744680851064,
+      white_text_on_dark_likelihood: 0.6140702806699865,
+      edge_density: 0.3773200543232232,
+      saturation_mean: 0.7220724605187786,
+      bright_pixel_ratio: 0.026595744680851064,
+      dark_pixel_ratio: 0.5132412856496152,
+      central_luminance_oval: 0.4333300740038998,
+      central_bright_pixel_ratio: 0.014584763212079615,
+      central_dark_pixel_ratio: 0.5904255319148937,
+      black_frame: false,
+      blur_verdict: "pass",
+    },
+  };
+
+  const result = await analyseRenderedFrameTaste({
+    frames: [frame],
+    subtitleCueRanges: [{
+      startS: 13.276,
+      endS: 14.727,
+      text: "Frenzy are playable",
+    }],
+    prescanFrame: async (candidate) => candidate.prescan,
+  });
+
+  assert.equal(result.verdict, "pass");
+  assert.equal(result.badFrameCount, 0);
+  assert.equal(result.samples[0].reason, "verified_subtitle_overlay_taste_ignored");
+});
+
 test("analyseRenderedFrameTaste keeps the Arknights frame metrics blocked without a verified subtitle cue", async () => {
   const result = await analyseRenderedFrameTaste({
     frames: [{

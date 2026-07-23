@@ -707,6 +707,84 @@ test("generateTtsForStory: local scheduler narration is generated as bounded rec
   }
 });
 
+test("generateTtsForStory: one shared GPU turn brackets every segment in a narration", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-story-turn-"));
+  const outputPath = path.join(dir, "scheduler.mp3");
+  const text = [
+    "The Video Game History Foundation opened a searchable E3 archive.",
+    "The collection preserves press kits, floor maps and material from the show's history.",
+    "Researchers can now inspect records that were previously difficult to access.",
+  ].join(" ");
+  const calls = [];
+  const turn = {
+    coordinated: true,
+    granted: true,
+    requestId: "pulse-story-turn-1",
+  };
+  let heldTurn = null;
+  let generatedSegments = 0;
+
+  try {
+    const result = await generateTtsForStory({
+      story: { id: "rss_story_scoped_turn" },
+      text,
+      outputPath,
+      provider: "local",
+      env: {
+        LOCAL_TTS_MAX_SEGMENT_WORDS: "12",
+        LOCAL_TTS_MAX_SEGMENT_CHARS: "90",
+      },
+      waitForGpuTurn: async ({ workload }) => {
+        assert.equal(heldTurn, null);
+        calls.push(`acquire:${workload}`);
+        heldTurn = turn;
+        return turn;
+      },
+      generateTts: async (segmentText, segmentPath) => {
+        assert.equal(heldTurn, turn);
+        calls.push("generate");
+        generatedSegments += 1;
+        await fs.outputFile(segmentPath, `audio:${segmentText}`);
+        const chars = [...segmentText];
+        await fs.writeJson(segmentPath.replace(/\.mp3$/, "_timestamps.json"), {
+          characters: chars,
+          character_start_times_seconds: chars.map((_, index) => index * 0.01),
+          character_end_times_seconds: chars.map((_, index) => (index + 1) * 0.01),
+          meta: { source: "local-tts-server", transcript: segmentText },
+        });
+      },
+      concatAudio: async (_segmentPaths, mergedPath) => {
+        assert.equal(heldTurn, turn);
+        calls.push("merge");
+        await fs.outputFile(mergedPath, "merged-audio");
+      },
+      getDuration: async () => 1,
+      stopLocalTtsServer: async () => {
+        assert.equal(heldTurn, turn);
+        calls.push("stop");
+      },
+      releaseGpuTurn: async (releasedTurn) => {
+        assert.equal(releasedTurn, turn);
+        calls.push("release");
+        heldTurn = null;
+      },
+    });
+
+    assert.ok(generatedSegments > 1);
+    assert.equal(result.segmentation.segmentCount, generatedSegments);
+    assert.deepEqual(calls, [
+      "acquire:local-tts:rss_story_scoped_turn",
+      ...Array.from({ length: generatedSegments }, () => "generate"),
+      "merge",
+      "stop",
+      "release",
+    ]);
+    assert.equal(heldTurn, null);
+  } finally {
+    await fs.remove(dir);
+  }
+});
+
 test("generateTtsForStory: failed local segments remove partial audio and timestamps", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-local-tts-partial-"));
   const outputPath = path.join(dir, "scheduler.mp3");

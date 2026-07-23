@@ -51,6 +51,7 @@ const {
 const {
   createLocalTtsBatchRecovery,
   generateLocalTtsWithOptionalRecovery,
+  withLocalTtsGpuTurn,
 } = require("./lib/ops/local-tts-batch-recovery");
 const {
   resolveAcceptedLocalVoiceReference,
@@ -1902,93 +1903,109 @@ async function generateTtsForStory({
   concatAudio = concatAudioFiles,
   getDuration = getAudioDuration,
   env = process.env,
+  waitForGpuTurn,
+  releaseGpuTurn,
+  stopLocalTtsServer,
 } = {}) {
   if (!isLocalTtsProvider(provider)) {
     await generateTts(text, outputPath, rate, provider);
     return { ok: true, attempts: 1, recovery: null };
   }
 
-  const segments = splitLocalTtsRequestSegments(text, env);
-  if (segments.length > 1) {
-    const segmentPaths = [];
-    const attempts = [];
-    try {
-      for (const segment of segments) {
-        const segmentPath = localTtsSegmentOutputPath(outputPath, segment.label);
-        segmentPaths.push(segmentPath);
-        const attempt = await generateLocalTtsWithOptionalRecovery({
-          storyId: story?.id,
-          text: segment.text,
-          outputRel: segmentPath,
-          rate,
-          generateTts,
-          recoverLocalTts,
-        });
-        recordLocalTtsAttempt(story, `${label}:${segment.label}`, attempt);
-        attempts.push(attempt);
-        if (!attempt.ok) {
-          const failure = attempt.failure || {};
-          const err = new Error(
-            [
-              "local_tts_generation_failed",
-              failure.code || "tts_failed",
-              failure.message || attempt.error || "local TTS segment generation failed",
-            ].join(":"),
-          );
-          err.code = failure.code || "tts_failed";
-          err.localTtsAttempt = attempt;
-          throw err;
+  return withLocalTtsGpuTurn({
+    storyId: story?.id,
+    env,
+    waitForGpuTurn,
+    releaseGpuTurn,
+    stopLocalTtsServer,
+    operation: async () => {
+      const segments = splitLocalTtsRequestSegments(text, env);
+      if (segments.length > 1) {
+        const segmentPaths = [];
+        const attempts = [];
+        try {
+          for (const segment of segments) {
+            const segmentPath = localTtsSegmentOutputPath(outputPath, segment.label);
+            segmentPaths.push(segmentPath);
+            const attempt = await generateLocalTtsWithOptionalRecovery({
+              storyId: story?.id,
+              text: segment.text,
+              outputRel: segmentPath,
+              rate,
+              generateTts,
+              recoverLocalTts,
+              env,
+              coordinateSharedGpu: false,
+            });
+            recordLocalTtsAttempt(story, `${label}:${segment.label}`, attempt);
+            attempts.push(attempt);
+            if (!attempt.ok) {
+              const failure = attempt.failure || {};
+              const err = new Error(
+                [
+                  "local_tts_generation_failed",
+                  failure.code || "tts_failed",
+                  failure.message || attempt.error || "local TTS segment generation failed",
+                ].join(":"),
+              );
+              err.code = failure.code || "tts_failed";
+              err.localTtsAttempt = attempt;
+              throw err;
+            }
+          }
+
+          const segmentation = await mergeLocalTtsSegments({
+            segments,
+            segmentPaths,
+            outputPath,
+            text,
+            concatAudio,
+            getDuration,
+          });
+          return {
+            ok: true,
+            attempts: attempts.reduce(
+              (total, attempt) => total + Number(attempt.attempts || 1),
+              0,
+            ),
+            recovery: attempts.map((attempt) => attempt.recovery).filter(Boolean),
+            segmentation,
+          };
+        } finally {
+          for (const segmentPath of segmentPaths) {
+            await fs.remove(mediaPaths.writePath(segmentPath)).catch(() => {});
+            await fs
+              .remove(mediaPaths.writePath(segmentPath.replace(/\.mp3$/i, "_timestamps.json")))
+              .catch(() => {});
+          }
         }
       }
 
-      const segmentation = await mergeLocalTtsSegments({
-        segments,
-        segmentPaths,
-        outputPath,
+      const attempt = await generateLocalTtsWithOptionalRecovery({
+        storyId: story?.id,
         text,
-        concatAudio,
-        getDuration,
+        outputRel: outputPath,
+        rate,
+        generateTts,
+        recoverLocalTts,
+        env,
+        coordinateSharedGpu: false,
       });
-      return {
-        ok: true,
-        attempts: attempts.reduce(
-          (total, attempt) => total + Number(attempt.attempts || 1),
-          0,
-        ),
-        recovery: attempts.map((attempt) => attempt.recovery).filter(Boolean),
-        segmentation,
-      };
-    } finally {
-      for (const segmentPath of segmentPaths) {
-        await fs.remove(mediaPaths.writePath(segmentPath)).catch(() => {});
-        await fs
-          .remove(mediaPaths.writePath(segmentPath.replace(/\.mp3$/i, "_timestamps.json")))
-          .catch(() => {});
-      }
-    }
-  }
+      recordLocalTtsAttempt(story, label, attempt);
+      if (attempt.ok) return attempt;
 
-  const attempt = await generateLocalTtsWithOptionalRecovery({
-    storyId: story?.id,
-    text,
-    outputRel: outputPath,
-    rate,
-    generateTts,
-    recoverLocalTts,
+      const failure = attempt.failure || {};
+      const message = [
+        "local_tts_generation_failed",
+        failure.code || "tts_failed",
+        failure.message || attempt.error || "local TTS generation failed",
+      ].join(":");
+      const err = new Error(message);
+      err.code = failure.code || "tts_failed";
+      err.localTtsAttempt = attempt;
+      throw err;
+    },
   });
-  recordLocalTtsAttempt(story, label, attempt);
-  if (attempt.ok) return attempt;
-
-  const failure = attempt.failure || {};
-  const message = [
-    "local_tts_generation_failed",
-    failure.code || "tts_failed",
-    failure.message || attempt.error || "local TTS generation failed",
-  ].join(":");
-  const err = new Error(message);
-  err.code = failure.code || "tts_failed";
-  err.localTtsAttempt = attempt;
-  throw err;
 }
 
 async function generateAudio() {

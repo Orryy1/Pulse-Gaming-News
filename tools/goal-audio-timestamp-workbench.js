@@ -19,6 +19,7 @@ const ROOT = path.resolve(__dirname, "..");
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {
     workOrderPath: path.join(ROOT, "output", "goal-contract", "render_input_work_order.json"),
+    storyPackagesPath: null,
     localTtsDoctorPath: path.join(ROOT, "test", "output", "local_tts_doctor.json"),
     outDir: path.join(ROOT, "output", "goal-contract"),
     workspaceRoot: ROOT,
@@ -31,6 +32,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--work-order") args.workOrderPath = argv[++i] || args.workOrderPath;
+    else if (arg === "--story-packages") args.storyPackagesPath = argv[++i] || null;
     else if (arg === "--local-tts-doctor") args.localTtsDoctorPath = argv[++i] || args.localTtsDoctorPath;
     else if (arg === "--out-dir") args.outDir = argv[++i] || args.outDir;
     else if (arg === "--workspace") args.workspaceRoot = argv[++i] || args.workspaceRoot;
@@ -53,6 +55,7 @@ function usage() {
     "",
     "Options:",
     "  --work-order <path>        Goal render input work-order JSON",
+    "  --story-packages <path>     Story-package JSON used instead of the legacy work order",
     "  --local-tts-doctor <path>  Local TTS doctor JSON",
     "  --out-dir <dir>            Output directory for reports",
     "  --workspace <dir>          Workspace root for relative paths",
@@ -68,13 +71,23 @@ async function readJsonIfPresent(filePath, fallback = {}) {
   return fs.readJson(filePath);
 }
 
+function normaliseStoryPackages(document = {}) {
+  if (Array.isArray(document)) return document;
+  for (const key of ["packages", "story_packages", "rows"]) {
+    if (Array.isArray(document?.[key])) return document[key];
+  }
+  return [];
+}
+
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log(usage());
     return { help: true };
   }
-  const workOrder = await readJsonIfPresent(path.resolve(args.workOrderPath));
+  const workOrder = args.storyPackagesPath
+    ? normaliseStoryPackages(await readJsonIfPresent(path.resolve(args.storyPackagesPath), []))
+    : await readJsonIfPresent(path.resolve(args.workOrderPath));
   const localTtsDoctorReport = await readJsonIfPresent(path.resolve(args.localTtsDoctorPath));
   const report = await buildGoalAudioTimestampWorkbench({
     workOrder,
@@ -102,6 +115,7 @@ if (require.main === module) {
 
 module.exports = {
   main,
+  normaliseStoryPackages,
   parseArgs,
   usage,
 };

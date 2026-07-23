@@ -184,6 +184,11 @@ async function runDoctor(options = {}) {
   const nativeCrashQuarantined =
     preexistingNativeCrash?.detected === true &&
     options.forceNativeCrashRetry !== true;
+  const gpuPreflight = await inspectGpu({
+    env: process.env,
+    localTtsHealth: before,
+  });
+  const gpuBlocked = gpuPreflight?.ok === false;
   const plan = nativeCrashQuarantined
     ? {
         action: "quarantine_native_crash",
@@ -192,6 +197,14 @@ async function runDoctor(options = {}) {
           "local TTS remains quarantined after a native access violation; " +
           "prove a compatibility change before forcing another retry",
       }
+    : gpuBlocked
+      ? {
+          action: "wait_for_gpu",
+          verdict: before?.ok === true ? "amber" : "red",
+          reason:
+            gpuPreflight.reason ||
+            "local TTS recovery is blocked until the shared GPU is available",
+        }
     : classifyAction(before, {
         allowRestart: options.restart === true,
         allowPrewarm: options.prewarm === true,
@@ -212,12 +225,13 @@ async function runDoctor(options = {}) {
     prewarm: null,
     generation_smoke: null,
     native_crash: preexistingNativeCrash,
-    gpu: null,
+    gpu: gpuPreflight,
     report_paths: null,
   };
 
   console.log(`[tts-doctor] before ${formatLocalTtsStatus(before)}`);
   console.log(`[tts-doctor] action=${plan.action} verdict=${plan.verdict}`);
+  console.log(`[tts-doctor] gpu ${formatLocalGpuPressure(report.gpu)}`);
 
   if (plan.action === "start" || plan.action === "restart") {
     const maxStartAttempts = Math.max(
@@ -275,6 +289,13 @@ async function runDoctor(options = {}) {
     report.reason =
       "local TTS remains quarantined after a native access violation; " +
       "prove a compatibility change before forcing another retry";
+  } else if (gpuBlocked) {
+    report.verdict = before?.ok === true ? "amber" : "red";
+    report.action = "wait_for_gpu";
+    report.failure_code = report.gpu.failure_code || "gpu_saturated";
+    report.reason =
+      report.gpu.reason ||
+      "local TTS recovery is blocked until the shared GPU is available";
   } else {
     const finalPlan = classifyAction(finalSummary, {
       allowRestart: false,
@@ -285,15 +306,6 @@ async function runDoctor(options = {}) {
     report.action = finalPlan.action;
     report.failure_code = finalFailure.code;
     report.reason = finalPlan.reason;
-  }
-
-  report.gpu = await inspectGpu({ env: process.env, localTtsHealth: finalSummary });
-  console.log(`[tts-doctor] gpu ${formatLocalGpuPressure(report.gpu)}`);
-  if (report.verdict === "green" && report.gpu?.ok === false) {
-    report.verdict = "amber";
-    report.action = "wait_for_gpu";
-    report.failure_code = report.gpu.failure_code || "gpu_saturated";
-    report.reason = report.gpu.reason || "local GPU is too busy for clean TTS generation";
   }
 
   if (options.smoke === true && report.verdict === "green") {

@@ -59,6 +59,7 @@ async function main(argv = process.argv.slice(2)) {
   const storyPackages = await readJsonIfPresent(args.storyPackagesPath, []);
   const report = await materializeGoalPlatformVariants({
     storyPackages,
+    workspaceRoot: ROOT,
     generatedAt: args.generatedAt || new Date().toISOString(),
   });
   const written = await writeGoalPlatformVariantMaterializationReport(report, {

@@ -475,6 +475,42 @@ test("buildLocalBridgeCandidate carries narration audio rights into governance p
   assert.equal(gate.report.rights_ledger.metrics.missing_asset_count, 0);
 });
 
+test("buildLocalBridgeCandidate reads governed rights wrappers exactly once", async () => {
+  const files = await fixture();
+  const rightsPath = path.join(files.artifactDir, "rights_ledger.json");
+  const records = await fs.readJson(rightsPath);
+  await fs.writeJson(rightsPath, {
+    schema_version: 2,
+    story_id: "story_custom_seas",
+    verdict: "pass",
+    used_assets: records.map((record) => ({
+      asset_id: record.asset_id,
+      path: record.path,
+    })),
+    records,
+    blockers: [],
+    reconciliation: {
+      used_asset_record_coverage: "3/3",
+    },
+  });
+  await restampFixtureAuthority(files);
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-07-23T15:20:00.000Z",
+  });
+
+  assert.equal(candidate.rights_ledger.length, 4);
+  assert.equal(
+    new Set(candidate.rights_ledger.map((record) => record.asset_id)).size,
+    candidate.rights_ledger.length,
+  );
+  assert.equal(
+    candidate.rights_ledger.filter((record) => record.asset_id === "clip_a").length,
+    1,
+  );
+});
+
 test("buildLocalBridgeCandidate prefers selected render-story clips over stale materialised inventory", async () => {
   const files = await fixture();
   const motionPath = path.join(files.artifactDir, "materialised_motion_clips.json");
@@ -528,6 +564,115 @@ test("buildLocalBridgeCandidate prefers selected render-story clips over stale m
   assert.deepEqual(
     candidate.video_clips.map((clip) => clip.id),
     ["selected-a", "selected-b", "selected-c"],
+  );
+});
+
+test("buildLocalBridgeCandidate admits only clips selected by the final render scene plan", async () => {
+  const files = await fixture();
+  const renderManifestPath = path.join(files.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  const selectedClips = [
+    {
+      id: "selected-a",
+      path: "C:\\render\\selected-a.mp4",
+      source_url: "local://pulse-motion/selected-a",
+      source_family: "owned_family_a",
+      source_type: "internally_generated_motion_graphic",
+      media_kind: "owned_explainer_motion",
+    },
+    {
+      id: "selected-b",
+      path: "C:\\render\\selected-b.mp4",
+      source_url: "local://pulse-motion/selected-b",
+      source_family: "owned_family_b",
+      source_type: "internally_generated_motion_graphic",
+      media_kind: "owned_explainer_motion",
+    },
+    {
+      id: "selected-c",
+      path: "C:\\render\\selected-c.mp4",
+      source_url: "local://pulse-motion/selected-c",
+      source_family: "owned_family_c",
+      source_type: "internally_generated_motion_graphic",
+      media_kind: "owned_explainer_motion",
+    },
+  ];
+  const rejectedClip = {
+    id: "rejected-unused",
+    path: "C:\\render\\rejected-unused.mp4",
+    source_url: "local://pulse-motion/rejected-unused",
+    source_family: "owned_family_rejected",
+    source_type: "internally_generated_motion_graphic",
+    media_kind: "owned_explainer_motion",
+  };
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    clip_scene_plan: {
+      scenes: selectedClips.map((clip, index) => ({
+        index,
+        path: clip.path.replace(/\\/g, "/"),
+        durationS: 6.5,
+        baseSourceKey: clip.source_family,
+      })),
+    },
+  });
+  await fs.writeJson(path.join(files.artifactDir, "visual_v4_render_story.json"), {
+    story_id: "story_custom_seas",
+    visual_v4_bridge_video_clips: [...selectedClips, rejectedClip],
+    video_clips: [...selectedClips, rejectedClip],
+  });
+  const audioManifest = await fs.readJson(path.join(files.artifactDir, "audio_manifest.json"));
+  await fs.writeJson(path.join(files.artifactDir, "rights_ledger.json"), [
+    ...selectedClips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: "motion",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_family: clip.source_family,
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+    })),
+    {
+      asset_id: rejectedClip.id,
+      asset_type: "motion",
+      path: rejectedClip.path,
+      source_url: rejectedClip.source_url,
+      source_family: rejectedClip.source_family,
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+    },
+    {
+      asset_id: "story_custom_seas_audio_path",
+      asset_type: "audio",
+      path: audioManifest.resolved_narration_audio_path,
+      licence_basis: "operator_authorised_narration_audio",
+      commercial_use_allowed: true,
+      allowed_platforms: ["youtube", "instagram", "facebook"],
+    },
+  ]);
+  await restampFixtureAuthority(files);
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-07-23T16:00:00.000Z",
+  });
+
+  assert.deepEqual(
+    candidate.video_clips.map((clip) => clip.id),
+    ["selected-a", "selected-b", "selected-c"],
+  );
+  assert.deepEqual(
+    candidate.video_clips.map((clip) => clip.path),
+    selectedClips.map((clip) => clip.path.replace(/\\/g, "/")),
+  );
+  assert.equal(candidate.video_clips.some((clip) => clip.id === rejectedClip.id), false);
+  assert.equal(candidate.rights_ledger.some((record) => record.asset_id === rejectedClip.id), false);
+  assert.equal(candidate.rights_ledger.length, 4);
+  assert.equal(
+    new Set(candidate.rights_ledger.map((record) => record.asset_id)).size,
+    candidate.rights_ledger.length,
   );
 });
 
@@ -882,6 +1027,9 @@ test("upsertLocalBridgeCandidate persists sanitized selected package evidence wi
     ],
   });
   await restampFixtureAuthority(files);
+  const rightsPath = path.join(files.artifactDir, "rights_ledger.json");
+  const rightsBefore = await fs.readFile(rightsPath);
+  const frozenRights = await fixtureFingerprint(rightsPath);
 
   const report = await upsertLocalBridgeCandidate({
     bridgePath: files.bridgePath,
@@ -891,19 +1039,35 @@ test("upsertLocalBridgeCandidate persists sanitized selected package evidence wi
     apply: true,
   });
 
-  assert.equal(report.package_evidence_repair.updated_files.length, 4);
+  assert.equal(report.package_evidence_repair.updated_files.length, 3);
   for (const item of report.package_evidence_repair.updated_files) {
     assert.equal(await fs.pathExists(item.backup_path), true);
   }
+  assert.deepEqual(
+    report.package_evidence_repair.skipped_files.find(
+      (item) => item.file_name === "rights_ledger.json",
+    ),
+    {
+      file_name: "rights_ledger.json",
+      updated: false,
+      file_path: rightsPath,
+      reason: "authority_frozen_evidence_preserved",
+    },
+  );
   for (const fileName of [
     "materialised_motion_clips.json",
     "footage_inventory.json",
-    "rights_ledger.json",
     "director_beat_map.json",
   ]) {
     const current = await fs.readJson(path.join(files.artifactDir, fileName));
     assert.equal(/379720|old-doom/i.test(JSON.stringify(current)), false, fileName);
   }
+  assert.deepEqual(await fs.readFile(rightsPath), rightsBefore);
+  assert.deepEqual(await fixtureFingerprint(rightsPath), frozenRights);
+  assert.equal(
+    /379720|old-doom/i.test(JSON.stringify(report.candidate.rights_ledger)),
+    false,
+  );
   const materialised = await fs.readJson(path.join(files.artifactDir, "materialised_motion_clips.json"));
   assert.deepEqual(
     materialised.clips.map((clip) => clip.id),

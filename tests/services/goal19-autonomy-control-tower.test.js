@@ -895,6 +895,7 @@ test("Goal 19 requires a valid final AV review control input before GREEN", asyn
     upstreamFirewallReport: readyGoal18(story.story_id),
     workspaceRoot: root,
     outputDir: path.join(root, "out"),
+    generatedAt: "2026-07-20T08:06:00.000Z",
   });
 
   assert.ok(REQUIRED_CONTROL_INPUTS.includes("final_av_review"));

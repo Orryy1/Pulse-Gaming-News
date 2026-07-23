@@ -6071,9 +6071,9 @@ test("fresh production refill repair preserves Rockstar direct media candidates"
     assert.deepEqual(
       entries.slice(0, 3).map((entry) => entry.source_family),
       [
-        "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_cover_art_animation",
-        "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_2",
-        "rockstar_newswire_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_1",
+        "rockstar_games_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_cover_art_animation",
+        "rockstar_games_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_2",
+        "rockstar_games_grand_theft_auto_vi_rockstar_gta_vi_preorder_cover_art_20260624_rockstar_gta_vi_trailer_1",
       ],
     );
     const officialSiteFamilies = entries.slice(3).map((entry) => entry.source_family);

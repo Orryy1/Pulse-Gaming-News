@@ -49,6 +49,7 @@ async function writeOwnedProject({
     evidence_path: `${clipPath}.rights.json`,
     ownership_basis: "wholly_owned_generated_asset",
     licence_basis: "owned_generated_editorial_motion_graphic",
+    allowed_use: "finished_editorial_video_only",
     rights_grant: true,
     commercial_use_allowed: true,
     allowed_platforms: ALL_PLATFORMS,

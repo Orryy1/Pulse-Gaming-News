@@ -5227,9 +5227,10 @@ test("goal dry-run CLI loads recent published titles for near-topic repeat evide
     INSERT INTO platform_posts (story_id, platform, external_id, external_url, status, published_at)
     VALUES (?, ?, ?, ?, 'published', ?)
   `);
-  insert.run("doom-revelations-v1", "youtube", "yt-doom-revelations", null, "2026-07-06T19:00:00.000Z");
-  insert.run("doom-revelations-v1", "instagram_reel", "ig-doom-revelations", null, "2026-07-06T19:02:00.000Z");
-  insert.run("doom-revelations-v1", "facebook_reel", "fb-doom-revelations", null, "2026-07-06T19:04:00.000Z");
+  const recentPublishedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  insert.run("doom-revelations-v1", "youtube", "yt-doom-revelations", null, recentPublishedAt);
+  insert.run("doom-revelations-v1", "instagram_reel", "ig-doom-revelations", null, recentPublishedAt);
+  insert.run("doom-revelations-v1", "facebook_reel", "fb-doom-revelations", null, recentPublishedAt);
   db.close();
 
   const previousSqliteDbPath = process.env.SQLITE_DB_PATH;

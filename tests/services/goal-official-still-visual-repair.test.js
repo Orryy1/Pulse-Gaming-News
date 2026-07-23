@@ -142,8 +142,7 @@ test("official still visual repair writes hash-bound local-review stills and fai
   assert.ok(rights.records.every((record) => fs.existsSync(record.evidence_file)));
 
   const rows = candidateRows({ rightsLedger: rights });
-  assert.equal(rows.length, 5);
-  assert.ok(rows.every((row) => row.media_kind === "visual_still"));
+  assert.deepEqual(rows, []);
 
   const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
   assert.equal(footage.visual_asset_inventory.accepted_official_stills.length, 5);

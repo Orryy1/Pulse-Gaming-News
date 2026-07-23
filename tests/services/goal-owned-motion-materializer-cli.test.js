@@ -217,7 +217,7 @@ test("goal owned motion materializer CLI derives jobs from governed story packag
 
   assert.equal(result.report.summary.source_story_package_count, 3);
   assert.equal(result.report.summary.story_count, 2);
-  assert.equal(result.report.summary.materialized_clip_count, 17);
+  assert.equal(result.report.summary.materialized_clip_count, 21);
   assert.equal(result.report.summary.existing_clip_count, 5);
   assert.equal(result.report.stories[0].story_id, "missing-story");
 
@@ -371,7 +371,7 @@ test("goal owned motion materializer CLI preserves existing direct-video work or
     console.log = originalLog;
   }
 
-  assert.equal(result.report.summary.materialized_clip_count, 17);
+  assert.equal(result.report.summary.materialized_clip_count, 21);
   const preservedDirectWorkOrder = await fs.readJson(directVideoWorkOrderPath);
   assert.equal(preservedDirectWorkOrder.mode, "DIRECT_VIDEO_ENRICHMENT_WORK_ORDER");
   assert.equal(

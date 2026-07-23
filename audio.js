@@ -873,6 +873,38 @@ const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
 const MAX_FLASH_TOTAL_DURATION = 75;
 const MAX_EXTENDED_TOTAL_DURATION = 90;
 
+function resolvePostTtsDurationContract({
+  runtimePlan = {},
+  audioDuration,
+  totalDuration,
+} = {}) {
+  const measuredNarrationAuthority =
+    String(runtimePlan.durationLane || runtimePlan.duration_lane || "") ===
+    "breaking_news";
+  const minSeconds = measuredNarrationAuthority
+    ? Number(runtimePlan.minSeconds) || 35
+    : MIN_TOTAL_DURATION;
+  const maxSeconds = measuredNarrationAuthority
+    ? Number(runtimePlan.maxSeconds) || 59
+    : Number(runtimePlan.maxSeconds) ||
+      (runtimePlan.route === "extended_short"
+        ? MAX_EXTENDED_TOTAL_DURATION
+        : MAX_FLASH_TOTAL_DURATION);
+  return {
+    measuredNarrationAuthority,
+    actualSeconds: measuredNarrationAuthority
+      ? Number(audioDuration)
+      : Number(totalDuration),
+    minSeconds,
+    maxSeconds,
+    label: measuredNarrationAuthority
+      ? "Breaking News Lane"
+      : runtimePlan.route === "extended_short"
+        ? "Extended Short"
+        : "Flash Lane",
+  };
+}
+
 function storyIsApprovedForExtendedShort(story = {}) {
   if (story.approved !== true && story.auto_approved !== true) return false;
   const type = String(story.story_type || story.content_type || "").toLowerCase();
@@ -2220,8 +2252,17 @@ async function generateAudio() {
       let audioDuration = await getAudioDuration(outputPath);
       let totalDuration = audioDuration + BUMPER_DURATION;
       story.audio_duration = audioDuration;
+      let durationContract = resolvePostTtsDurationContract({
+        runtimePlan,
+        audioDuration,
+        totalDuration,
+      });
 
-      while (totalDuration < MIN_TOTAL_DURATION && regenAttempts < MAX_REGEN) {
+      while (
+        !durationContract.measuredNarrationAuthority &&
+        totalDuration < MIN_TOTAL_DURATION &&
+        regenAttempts < MAX_REGEN
+      ) {
         regenAttempts++;
         console.log(
           `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s). Regenerating longer script (attempt ${regenAttempts}/${MAX_REGEN})...`,
@@ -2298,6 +2339,11 @@ async function generateAudio() {
           audioDuration = newDuration;
           totalDuration = newDuration + BUMPER_DURATION;
           story.audio_duration = newDuration;
+          durationContract = resolvePostTtsDurationContract({
+            runtimePlan,
+            audioDuration,
+            totalDuration,
+          });
           story.full_script = newScript.full_script;
           story.tts_script = newTTS;
           finalTtsScript = newTTS;
@@ -2314,7 +2360,46 @@ async function generateAudio() {
         }
       }
 
-      if (totalDuration < MIN_TOTAL_DURATION) {
+      if (durationContract.measuredNarrationAuthority) {
+        const measuredRuntimePlan = classifyShortScriptRuntime({
+          text: finalTtsScript,
+          story,
+          secondsPerWord: runtimeSecondsPerWord,
+          measuredAudioSeconds: audioDuration,
+        });
+        story.short_runtime_plan = measuredRuntimePlan;
+        story.runtime_route = measuredRuntimePlan.route;
+        story.audio_duration_verification_required =
+          measuredRuntimePlan.audioDurationVerificationRequired === true;
+        if (measuredRuntimePlan.result !== "pass") {
+          const reason =
+            measuredRuntimePlan.failures[0] ||
+            measuredRuntimePlan.warnings[0] ||
+            "breaking_news_measured_audio_invalid";
+          console.log(
+            `[audio] ${story.id}: measured breaking-news narration blocked before render: ${reason}`,
+          );
+          story.qa_failed = true;
+          story.qa_failures = [reason];
+          story.qa_warnings = measuredRuntimePlan.warnings || [];
+          story.qa_failed_at = new Date().toISOString();
+          story.publish_status = "failed";
+          story.publish_error = `qa_blocked: ${reason}`;
+          story.render_fallback_reason = `duration_contract_post_tts:${reason}`;
+          story.audio_path = outputPath;
+          story.tts_script = finalTtsScript;
+          continue;
+        }
+        runtimePlan = measuredRuntimePlan;
+        durationContract = resolvePostTtsDurationContract({
+          runtimePlan,
+          audioDuration,
+          totalDuration,
+        });
+        console.log(
+          `[audio] Breaking News Lane duration OK: ${audioDuration.toFixed(1)}s measured narration`,
+        );
+      } else if (totalDuration < MIN_TOTAL_DURATION) {
         console.log(
           `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s) but max regen attempts (${MAX_REGEN}) reached - accepting as-is`,
         );
@@ -2323,16 +2408,12 @@ async function generateAudio() {
         console.log(`[audio] Duration OK: ${totalDuration.toFixed(1)}s`);
       }
 
-      let maxTotalDuration =
-        Number.isFinite(Number(runtimePlan.maxSeconds)) && runtimePlan.maxSeconds > 0
-          ? Number(runtimePlan.maxSeconds)
-          : runtimePlan.route === "extended_short"
-            ? MAX_EXTENDED_TOTAL_DURATION
-            : MAX_FLASH_TOTAL_DURATION;
-      let durationLaneLabel =
-        runtimePlan.route === "extended_short" ? "Extended Short" : "Flash Lane";
+      let maxTotalDuration = durationContract.maxSeconds;
+      let durationLaneLabel = durationContract.label;
+      let durationForMaximum = durationContract.actualSeconds;
       if (
-        totalDuration > maxTotalDuration &&
+        !durationContract.measuredNarrationAuthority &&
+        durationForMaximum > maxTotalDuration &&
         shouldAutoPromoteGeneratedAudioToExtendedShort({
           provider,
           story,
@@ -2347,13 +2428,14 @@ async function generateAudio() {
         );
         maxTotalDuration = MAX_EXTENDED_TOTAL_DURATION;
         durationLaneLabel = "Extended Short";
+        durationForMaximum = totalDuration;
         console.log(
           `[audio] ${story.id}: generated local Liam audio landed at ${totalDuration.toFixed(1)}s; ` +
             `promoting to deliberate Extended Short instead of failing Flash Lane`,
         );
       }
-      if (totalDuration > maxTotalDuration) {
-        const reason = `audio_duration_too_long (${totalDuration.toFixed(2)}s, max ${maxTotalDuration.toFixed(2)}s)`;
+      if (durationForMaximum > maxTotalDuration) {
+        const reason = `audio_duration_too_long (${durationForMaximum.toFixed(2)}s, max ${maxTotalDuration.toFixed(2)}s)`;
         console.log(
           `[audio] ${story.id}: generated audio exceeds ${durationLaneLabel} contract, blocking before render: ${reason}`,
         );
@@ -2404,6 +2486,7 @@ module.exports.resolveTtsPronunciationDictionaryLocators =
   resolveTtsPronunciationDictionaryLocators;
 module.exports.resolveTtsSeedForProvider = resolveTtsSeedForProvider;
 module.exports.resolveTtsProvider = resolveTtsProvider;
+module.exports.resolvePostTtsDurationContract = resolvePostTtsDurationContract;
 module.exports.markAudioGenerationFailure = markAudioGenerationFailure;
 module.exports.clearAudioGenerationState = clearAudioGenerationState;
 module.exports.generateTtsForStory = generateTtsForStory;

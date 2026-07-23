@@ -40,6 +40,16 @@ const SHORT_LOCAL_PROFILE = {
   aimMax: 205,
 };
 
+const BREAKING_LOCAL_PROFILE = {
+  provider: "local",
+  secondsPerWord: 0.3,
+  minWords: 80,
+  maxWords: 180,
+  aimMin: 105,
+  aimMax: 145,
+  durationLane: "breaking_news",
+};
+
 function publicCopyQaForScript({ story, script, canonicalSubject, sourceName }) {
   const firstLine = script.full_script.split(/(?<=[.!?])\s+/).find(Boolean) || "";
   return evaluateGoalPublicCopy({
@@ -116,6 +126,52 @@ test("source-bound fallback builds a validated Forza script from an article-back
     secondsPerWord: LOCAL_PROFILE.secondsPerWord,
   });
   assert.equal(runtime.result, "pass");
+});
+
+test("source-bound fallback builds the Xbox PC announcement from exact first-party facts", () => {
+  const story = {
+    id: "rss_5efb04ad7c4889e1",
+    title:
+      "Play More of the Games You Love, Wherever You Play with XBOX Backward Compatibility on PC",
+    source_type: "rss",
+    subreddit: "Xbox Wire",
+    url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+  };
+  const sourceMaterial =
+    "Xbox Backward Compatibility on PC launches in early release with four classic original XBOX games. " +
+    "BLiNX: The Time Sweeper, Conker: Live and Reloaded, Crimson Skies: High Road to Revenge and Fuzion Frenzy are playable on PC and supported handhelds. " +
+    "Each game is included with all XBOX Game Pass plans. Existing console digital licenses carry over to PC. " +
+    "Achievements arrive in the coming months.";
+
+  const script = buildSourceBoundFallbackScript(story, {
+    runtimeProfile: BREAKING_LOCAL_PROFILE,
+    sourceMaterial,
+  });
+
+  assert.ok(script);
+  assert.equal(script.suggested_title, "4 Xbox Classics Hit PC, Achievements Come Later");
+  assert.match(script.full_script, /BLiNX/i);
+  assert.match(script.full_script, /Conker: Live and Reloaded/i);
+  assert.match(script.full_script, /Crimson Skies/i);
+  assert.match(script.full_script, /Fuzion Frenzy/i);
+  assert.match(script.full_script, /digital licences carry over/i);
+  assert.match(script.full_script, /achievements arrive in the coming months/i);
+  assert.doesNotMatch(script.full_script, /every Xbox game|entire(?:ly)? new library/i);
+  assert.doesNotMatch(script.full_script, /purchase(?:d)? (?:them )?(?:directly )?(?:via|through) Game Pass/i);
+  assert.ok(
+    script.word_count >= BREAKING_LOCAL_PROFILE.minWords &&
+      script.word_count <= BREAKING_LOCAL_PROFILE.maxWords,
+  );
+
+  const quality = buildViralScriptIntelligence({
+    story: {
+      ...story,
+      source_name: "Xbox Wire",
+      source_material_excerpt: sourceMaterial,
+    },
+    script: script.full_script,
+  });
+  assert.equal(quality.verdict, "viral_ready", JSON.stringify(quality, null, 2));
 });
 
 test("source-bound fallback does not inject Steam player-count context into Forza review-score stories", () => {

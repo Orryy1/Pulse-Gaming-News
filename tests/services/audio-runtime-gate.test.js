@@ -7,6 +7,7 @@ const AUDIO = fs.readFileSync(
   path.join(__dirname, "..", "..", "audio.js"),
   "utf8",
 );
+const { resolvePostTtsDurationContract } = require("../../audio");
 
 test("audio.js checks script runtime before generating TTS", () => {
   const gateAnchor = AUDIO.indexOf("classifyShortScriptRuntime");
@@ -54,7 +55,35 @@ test("audio.js rechecks regenerated audio duration, not the stale first pass", (
 test("audio.js retries too-short regenerated audio until the configured cap", () => {
   assert.match(
     AUDIO,
-    /while\s*\(\s*totalDuration\s*<\s*MIN_TOTAL_DURATION\s*&&\s*regenAttempts\s*<\s*MAX_REGEN\s*\)/,
+    /while\s*\(\s*!durationContract\.measuredNarrationAuthority[\s\S]*totalDuration\s*<\s*MIN_TOTAL_DURATION/,
   );
   assert.match(AUDIO, /Regenerating longer script \(attempt \$\{regenAttempts\}\/\$\{MAX_REGEN\}\)/);
+});
+
+test("audio.js uses measured narration duration for the breaking-news lane", () => {
+  const pass = resolvePostTtsDurationContract({
+    runtimePlan: {
+      durationLane: "breaking_news",
+      minSeconds: 35,
+      maxSeconds: 59,
+    },
+    audioDuration: 41,
+    totalDuration: 41,
+  });
+  assert.deepEqual(pass, {
+    measuredNarrationAuthority: true,
+    actualSeconds: 41,
+    minSeconds: 35,
+    maxSeconds: 59,
+    label: "Breaking News Lane",
+  });
+
+  const flash = resolvePostTtsDurationContract({
+    runtimePlan: { durationLane: "pulse_flash_short", maxSeconds: 75 },
+    audioDuration: 62,
+    totalDuration: 62,
+  });
+  assert.equal(flash.measuredNarrationAuthority, false);
+  assert.equal(flash.minSeconds, 61);
+  assert.equal(flash.maxSeconds, 75);
 });

@@ -67,6 +67,13 @@ test("official source intake accepts entity-matched official references as refer
   assert.equal(reference.downloads_allowed, false);
   assert.equal(reference.allowed_render_use, "reference_only_by_default");
   assert.equal(reference.rights_risk_class, "official_reference_only");
+  assert.deepEqual(reference.allowed_platforms, []);
+  assert.equal(reference.commercial_use_allowed, false);
+  assert.equal(reference.local_materialization_allowed, true);
+  assert.equal(reference.live_publish_allowed, false);
+  assert.equal(reference.requires_human_legal_review_before_publish, true);
+  assert.equal(reference.approval_status, "approved_for_reference_validation_only");
+  assert.equal(reference.rights_status, "official_identity_verified_rights_unresolved");
   assert.equal(reference.source_url_kind, "html_or_unknown_page");
   assert.equal(reference.segment_validation_eligible, false);
   assert.equal(reference.segment_validation_ineligible_reason, "segment_source_url_not_direct_media");
@@ -75,6 +82,90 @@ test("official source intake accepts entity-matched official references as refer
   assert.equal(reference.provenance.source_url_kind, "html_or_unknown_page");
   assert.equal(report.safety.video_downloads, false);
   assert.equal(report.safety.production_db_mutated, false);
+});
+
+test("official source intake preserves an explicit fail-closed publisher scope", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [story()],
+    entries: [
+      officialEntry({
+        licence_basis: "publisher_media_kit_pending_human_review",
+        allowed_use: "local_transformative_editorial_proof",
+        allowed_platforms: [],
+        restricted_platforms: ["youtube", "tiktok", "instagram", "facebook", "x"],
+        commercial_use_allowed: false,
+        local_materialization_allowed: true,
+        live_publish_allowed: false,
+        requires_human_legal_review_before_publish: true,
+        approval_status: "approved_for_local_materialization_only",
+        rights_status: "publisher_assets_rights_unresolved",
+        required_rules_link: "https://www.rockstargames.com/legal",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  const reference = report.accepted_references[0];
+  assert.equal(reference.licence_basis, "publisher_media_kit_pending_human_review");
+  assert.equal(reference.allowed_use, "local_transformative_editorial_proof");
+  assert.deepEqual(reference.allowed_platforms, []);
+  assert.deepEqual(reference.restricted_platforms, [
+    "youtube",
+    "tiktok",
+    "instagram",
+    "facebook",
+    "x",
+  ]);
+  assert.equal(reference.commercial_use_allowed, false);
+  assert.equal(reference.live_publish_allowed, false);
+  assert.equal(reference.requires_human_legal_review_before_publish, true);
+  assert.equal(reference.approval_status, "approved_for_local_materialization_only");
+  assert.equal(reference.rights_status, "publisher_assets_rights_unresolved");
+  assert.equal(reference.required_rules_link, "https://www.rockstargames.com/legal");
+});
+
+test("official press-kit still intake preserves its publisher reference page", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "arkheron-press-kit",
+        canonical_subject: "Arkheron",
+        canonical_game: "Arkheron",
+        title: "Arkheron beta rewards survive the test",
+        full_script: "Arkheron has an official press kit for source-matched local visual proof.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "arkheron-press-kit",
+        entity: "Arkheron",
+        source_type: "official_press_kit_stills",
+        source_owner: "Bonfire Studios",
+        source_family: "arkheron_press_kit_screenshot_01",
+        official_source_url:
+          "https://drive.usercontent.google.com/download?id=arkheron-shot-1&export=download",
+        reference_page_url: "https://www.arkheron.com/en_US/community-media-kit/",
+        source_title: "Arkheron official press-kit screenshot 1",
+        evidence_of_officialness:
+          "Bonfire Studios links the screenshot folder from the official Arkheron media-kit page.",
+        entity_match_notes: "The media-kit folder and screenshot identify Arkheron.",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  assert.equal(
+    report.accepted_references[0].source_url,
+    "https://drive.usercontent.google.com/download?id=arkheron-shot-1&export=download",
+  );
+  assert.equal(
+    report.accepted_references[0].reference_page_url,
+    "https://www.arkheron.com/en_US/community-media-kit/",
+  );
+  assert.equal(
+    report.accepted_references[0].provenance.reference_page_url,
+    "https://www.arkheron.com/en_US/community-media-kit/",
+  );
 });
 
 test("official source intake matches clean operator entries against mojibake story manifests", () => {

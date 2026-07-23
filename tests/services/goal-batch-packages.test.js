@@ -607,6 +607,112 @@ test("goal batch packages hydrate existing final render and audio evidence befor
   }
 });
 
+test("goal batch packages preserve hash-bound measured breaking-news audio authority in the canonical manifest", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-breaking-audio-authority-"));
+  try {
+    const story = greenStory("breaking-audio-authority-story");
+    const storyDir = path.join(tempDir, story.id);
+    const audioPath = path.join(storyDir, "audio", "narration.mp3");
+    const timestampsPath = path.join(storyDir, "audio", "word_timestamps.json");
+    const audioBytes = Buffer.alloc(4096, 8);
+    const timestampPayload = {
+      words: story.word_timestamps,
+      meta: {
+        wordTimestampSource: "local_whisper_word_alignment",
+        timestampWhisperAlignment: { repaired: true },
+      },
+    };
+    fs.outputFileSync(audioPath, audioBytes);
+    fs.outputJsonSync(timestampsPath, timestampPayload);
+    const narrationSha256 = crypto.createHash("sha256").update(audioBytes).digest("hex");
+    const timestampsSha256 = crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(timestampsPath))
+      .digest("hex");
+    fs.writeJsonSync(path.join(storyDir, "audio_manifest.json"), {
+      schema_version: 1,
+      story_id: story.id,
+      narration_audio_path: audioPath,
+      resolved_narration_audio_path: audioPath,
+      narration_audio_sha256: narrationSha256,
+      word_timestamps_path: timestampsPath,
+      resolved_word_timestamps_path: timestampsPath,
+      word_timestamps_sha256: timestampsSha256,
+      word_timestamp_source: "local_whisper_word_alignment",
+      word_timestamp_count: story.word_timestamps.length,
+      voice_status: "materialized",
+      duration_lane: "breaking_news",
+      runtime_route: "breaking_news_short",
+      audio_duration_seconds: 43.7,
+      audio_duration_verification_status: "pass",
+      audio_duration_verified_at: "2026-07-23T01:45:59.871Z",
+      final_audio_authority: true,
+      breaking_news_audio_contract: {
+        duration_lane: "breaking_news",
+        runtime_route: "breaking_news_short",
+        audio_duration_seconds: 43.7,
+        audio_duration_verification_status: "pass",
+        audio_duration_verified_at: "2026-07-23T01:45:59.871Z",
+        final_audio_authority: true,
+        blockers: [],
+      },
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-07-23T01:46:30.000Z",
+    });
+
+    const canonical = batch.packages[0].canonical_story_manifest;
+    assert.equal(canonical.duration_lane, "breaking_news");
+    assert.equal(canonical.runtime_route, "breaking_news_short");
+    assert.equal(canonical.audio_duration_seconds, 43.7);
+    assert.equal(canonical.audio_duration_verification_status, "pass");
+    assert.equal(canonical.final_audio_authority, true);
+    assert.equal(canonical.narration_audio_sha256, narrationSha256);
+    assert.equal(canonical.word_timestamps_sha256, timestampsSha256);
+    assert.deepEqual(canonical.breaking_news_audio_contract.blockers, []);
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
+test("goal batch packages reject incomplete measured audio authority from the canonical manifest", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-incomplete-audio-authority-"));
+  try {
+    const story = greenStory("incomplete-audio-authority-story");
+    const storyDir = path.join(tempDir, story.id);
+    fs.ensureDirSync(storyDir);
+    fs.writeJsonSync(path.join(storyDir, "audio_manifest.json"), {
+      schema_version: 1,
+      story_id: story.id,
+      duration_lane: "breaking_news",
+      runtime_route: "breaking_news_short",
+      audio_duration_seconds: 43.7,
+      audio_duration_verification_status: "pass",
+      final_audio_authority: true,
+      narration_audio_sha256: "a".repeat(64),
+      word_timestamps_sha256: null,
+    });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      rightsLedgerByStory: { [story.id]: rightsFor(story) },
+      existingArtifactRoot: tempDir,
+      generatedAt: "2026-07-23T01:46:30.000Z",
+    });
+
+    const canonical = batch.packages[0].canonical_story_manifest;
+    assert.equal(canonical.final_audio_authority, undefined);
+    assert.equal(canonical.audio_duration_verification_status, undefined);
+    assert.equal(canonical.breaking_news_audio_contract, undefined);
+  } finally {
+    fs.removeSync(tempDir);
+  }
+});
+
 test("goal batch packages preserve newer repaired canonical public copy from existing artifacts", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-repaired-canonical-"));
   try {
@@ -5363,6 +5469,213 @@ test("goal batch packages restore sibling motion-hydrated materialised clips bef
     assert.equal(batch.summary.green_count, 1);
   } finally {
     fs.removeSync(tempDir);
+  }
+});
+
+test("goal batch packages prefer strict hash-bound still motion over stale seed clips", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "goal-batch-still-motion-hydration-"));
+  try {
+    const story = greenStory("strict-still-motion-hydration");
+    const staleClipIds = new Set(story.video_clips.map((clip) => clip.id));
+    story.rights_ledger = story.video_clips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: "motion",
+      kind: "video",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      source_family: clip.source_family,
+      licence_basis: "legacy_motion_reference_only",
+      allowed_use: "local_proof_only",
+      allowed_platforms: [],
+      commercial_use_allowed: false,
+    }));
+    const artifactDir = path.join(root, story.id);
+    fs.ensureDirSync(artifactDir);
+
+    const clips = Array.from({ length: 5 }, (_, index) => {
+      const id = `${story.id}-official-still-${index + 1}`;
+      const clipPath = path.join(artifactDir, "motion", `${id}.mp4`);
+      const clipBytes = Buffer.alloc(4096 + index, index + 51);
+      fs.outputFileSync(clipPath, clipBytes);
+      const clipSha256 = crypto.createHash("sha256").update(clipBytes).digest("hex");
+      const evidencePath = path.join(artifactDir, "rights", `${id}.json`);
+      const evidenceBytes = Buffer.from(JSON.stringify({
+        asset_id: id,
+        licence_basis: "publisher_game_content_rules_youtube_ad_program",
+        commercial_use_allowed: true,
+      }));
+      fs.outputFileSync(evidencePath, evidenceBytes);
+      const evidenceSha256 = crypto.createHash("sha256").update(evidenceBytes).digest("hex");
+      const sourceMasterSha256 = crypto.createHash("sha256").update(`source-master-${index + 1}`).digest("hex");
+      const fingerprint = `${String(index + 1).padStart(16, "0")}:${String(index + 11).padStart(16, "0")}`;
+      return {
+        id,
+        type: "motion_clip",
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: `https://store-images.s-microsoft.com/image/apps.strict-${index + 1}`,
+        canonical_source_url: `https://store-images.s-microsoft.com/image/apps.strict-${index + 1}`,
+        source_type: "official_press_kit_stills",
+        media_kind: "visual_still",
+        source_family: `${story.id}_official_still_family_${index + 1}`,
+        motion_family: `${story.id}_official_still_family_${index + 1}`,
+        base_source_family: `sha256:${sourceMasterSha256}`,
+        base_source_asset_id: `sha256:${sourceMasterSha256}`,
+        base_source_identity_basis: "master_sha256",
+        source_master_sha256: sourceMasterSha256,
+        sampled_visual_fingerprint: fingerprint,
+        visual_content_fingerprint: {
+          algorithm: "temporal-dhash-9x8-v1",
+          signature: fingerprint,
+          sample_count: 2,
+        },
+        hash_bound_still_source_identity_verified: true,
+        counts_towards_motion_readiness: true,
+        materialized: true,
+        validated: true,
+        durationS: 8,
+        allowed_use: "transformative_editorial_short_form",
+        licence_basis: "publisher_game_content_rules_youtube_ad_program",
+        allowed_platforms: ["youtube"],
+        commercial_use_allowed: true,
+        live_publish_allowed: false,
+        requires_human_legal_review_before_publish: true,
+        rights_evidence_file: evidencePath,
+        rights_evidence_sha256: evidenceSha256,
+        rights_evidence_size_bytes: evidenceBytes.length,
+        materialized_file_evidence: {
+          sha256: clipSha256,
+          size_bytes: clipBytes.length,
+          duration_seconds: 8,
+          video_codec: "h264",
+          width: 1080,
+          height: 1920,
+        },
+      };
+    });
+    const sourceRows = clips.map((clip, index) => ({
+      base_source_asset_id: clip.base_source_asset_id,
+      base_source_identity_basis: clip.base_source_identity_basis,
+      scene_count: 1,
+      scene_share: 0.2,
+      clip_indexes: [index],
+      clip_ids: [clip.id],
+    }));
+    const identityRows = sourceRows.map((row) => ({
+      ...row,
+      identity_evidence: [
+        { kind: "master_sha256", alias: row.base_source_asset_id },
+      ],
+    }));
+    fs.writeJsonSync(path.join(artifactDir, "materialised_motion_clips.json"), {
+      schema_version: 1,
+      story_id: story.id,
+      status: "ready",
+      not_publishable: true,
+      publish_blockers: [
+        "rights:live_publish_not_allowed",
+        "rights:human_legal_review_required_before_publish",
+      ],
+      clip_count: clips.length,
+      distinct_motion_family_count: clips.length,
+      distinct_genuine_base_source_count: clips.length,
+      direct_video_motion_asset_count: 0,
+      direct_video_motion_family_count: 0,
+      clips,
+      materialised_clips: clips,
+      professional_source_diversity: {
+        policy_tier: "ultimate_professional",
+        authoritative: true,
+        status: "pass",
+        strict_pass: true,
+        required_genuine_base_source_count: 5,
+        observed_genuine_base_source_count: 5,
+        selected_direct_motion_scene_count: 5,
+        unresolved_clips: [],
+        per_source_scene_shares: sourceRows,
+        identity_evidence: identityRows,
+        concentrated_sources: [],
+        rejected_independence_claims: [],
+        blockers: [],
+        checks: {
+          genuine_base_source_floor: { status: "pass", required: 5, observed: 5 },
+          identity_resolution: { status: "pass", unresolved_clip_count: 0 },
+          source_concentration: { status: "pass", concentrated_source_count: 0 },
+        },
+      },
+      rights_scope_reconciliation: {
+        status: "no_motion_scope_exclusions_required",
+        allowed: true,
+        scope: "local_motion_materialization_only",
+        unresolved_failure_codes: [],
+        missing_excluded_asset_ids: [],
+        independent_ledger_blockers: [],
+        independent_restrictive_statuses: [],
+      },
+      minimum_requirements: {
+        min_clips: 5,
+        min_distinct_motion_families: 4,
+        min_genuine_base_sources: 5,
+      },
+    }, { spaces: 2 });
+    fs.writeJsonSync(path.join(artifactDir, "rights_ledger.json"), {
+      verdict: "fail",
+      failures: [
+        "rights:live_publish_not_allowed",
+        "rights:human_legal_review_required_before_publish",
+      ],
+      records: clips.map((clip) => ({
+        asset_id: clip.id,
+        asset_type: "motion",
+        kind: "video",
+        path: clip.path,
+        source_url: clip.source_url,
+        source_type: clip.source_type,
+        source_family: clip.source_family,
+        licence_basis: clip.licence_basis,
+        allowed_use: clip.allowed_use,
+        allowed_platforms: clip.allowed_platforms,
+        commercial_use_allowed: clip.commercial_use_allowed,
+        live_publish_allowed: clip.live_publish_allowed,
+        requires_human_legal_review_before_publish: clip.requires_human_legal_review_before_publish,
+        evidence_file: clip.rights_evidence_file,
+        evidence_sha256: clip.rights_evidence_sha256,
+        evidence_size_bytes: clip.rights_evidence_size_bytes,
+      })),
+    }, { spaces: 2 });
+
+    const batch = buildGoalBatchPackages({
+      stories: [story],
+      existingArtifactRoot: root,
+      targetPlatforms: ["youtube"],
+      generatedAt: "2026-07-23T03:30:00.000Z",
+    });
+
+    const accepted = batch.packages[0].footage_inventory.motion_inventory.accepted_local_clips;
+    assert.deepEqual(accepted.map((clip) => clip.id), clips.map((clip) => clip.id));
+    assert.ok(accepted.every((clip) => !staleClipIds.has(clip.id)));
+    assert.equal(batch.story_packages[0].verdict, "RED");
+    assert.ok(
+      batch.packages[0].rights_ledger.failures.includes("rights:live_publish_not_allowed"),
+    );
+    const packagedMotionRights = batch.packages[0].rights_ledger.records.filter((record) =>
+      /motion|video/i.test([record.asset_type, record.kind, record.type].filter(Boolean).join(" ")),
+    );
+    assert.ok(packagedMotionRights.every((record) => !staleClipIds.has(record.asset_id)));
+    assert.equal(batch.packages[0].professional_source_diversity_report.status, "pass");
+
+    fs.appendFileSync(clips[0].rights_evidence_file, "\ncorrupted-after-attestation");
+    const rejected = buildGoalBatchPackages({
+      stories: [story],
+      existingArtifactRoot: root,
+      targetPlatforms: ["youtube"],
+      generatedAt: "2026-07-23T03:31:00.000Z",
+    });
+    const rejectedAccepted = rejected.packages[0].footage_inventory.motion_inventory.accepted_local_clips;
+    assert.ok(rejectedAccepted.every((clip) => staleClipIds.has(clip.id)));
+  } finally {
+    fs.removeSync(root);
   }
 });
 

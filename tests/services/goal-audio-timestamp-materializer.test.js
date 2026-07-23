@@ -67,6 +67,58 @@ test("strict Whisper promotion requires fresh repaired alignment evidence", () =
   );
 });
 
+test("measured first-party breaking audio receives explicit duration authority", () => {
+  const contract = _testables.buildMeasuredBreakingNewsAudioContract({
+    canonical: {
+      canonical_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      primary_source: "Xbox Wire",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+      narration_script:
+        "Four original Xbox games just crossed onto PC, but ownership is the bigger story. " +
+        "Xbox Wire confirms BLiNX, Conker: Live and Reloaded, Crimson Skies and Fuzion Frenzy are playable now on PC and supported handhelds in an early release. " +
+        "They are included with Game Pass plans, while existing console digital licences carry over, so owners do not have to buy the four games again. " +
+        "The catch is scope: this is four games, not the full back catalogue, and achievements arrive in the coming months rather than at launch. " +
+        "That turns a nostalgia drop into a test of Xbox Play Anywhere. If Microsoft expands the catalogue quickly, old console purchases become a real portable PC library. " +
+        "Follow Pulse Gaming so you never miss a beat.",
+    },
+    audioDurationSeconds: 43.699592,
+    generatedAt: "2026-07-23T01:30:00.000Z",
+  });
+
+  assert.equal(contract.duration_lane, "breaking_news");
+  assert.equal(contract.runtime_route, "breaking_news_short");
+  assert.equal(contract.audio_duration_seconds, 43.7);
+  assert.equal(contract.audio_duration_verification_status, "pass");
+  assert.equal(contract.final_audio_authority, true);
+  assert.deepEqual(contract.blockers, []);
+});
+
+test("measured first-party breaking audio remains blocked outside its duration lane", () => {
+  const contract = _testables.buildMeasuredBreakingNewsAudioContract({
+    canonical: {
+      canonical_title: "Xbox Backward Compatibility on PC",
+      primary_source: "Xbox Wire",
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+      narration_script:
+        "Xbox Backward Compatibility on PC launches in early release. Existing digital owners do not pay again. Every Game Pass plan includes the four classic games and achievements arrive later. " +
+        "The catalogue starts small, but the ownership promise matters on PC and supported handhelds. Follow Pulse Gaming so you never miss a beat.",
+    },
+    audioDurationSeconds: 65,
+    generatedAt: "2026-07-23T01:30:00.000Z",
+  });
+
+  assert.equal(contract.audio_duration_verification_status, "fail");
+  assert.equal(contract.final_audio_authority, false);
+  assert.ok(
+    contract.blockers.some((blocker) =>
+      /breaking_news_audio_duration_too_long/.test(blocker),
+    ),
+    JSON.stringify(contract, null, 2),
+  );
+});
+
 test("managed TTS materialisation rebinds provider-native rate evidence to the final postprocessed audio", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-managed-rate-final-hash-"));
   const audioPath = path.join(root, "narration.mp3");
@@ -3125,6 +3177,26 @@ test("goal audio materializer coverage treats compact and split outlet/game phra
   assert.equal(coverage.unmatched_expected_word_count, 0);
 });
 
+test("goal audio materializer coverage reconciles source-locked Xbox names and British catalogue spelling", () => {
+  const scriptText =
+    "Xbox Wire confirms BLiNX and Conker are joining the back catalogue before Microsoft expands the catalogue.";
+  const words = [
+    "Xbox", "Wire", "confirms", "Blanks", "and", "Conquer", "are", "joining", "the", "back",
+    "catalog", "before", "Microsoft", "expands", "the", "catalog",
+  ].map((word, index) => ({
+    word,
+    start: Number((index * 0.18).toFixed(3)),
+    end: Number((index * 0.18 + 0.14).toFixed(3)),
+  }));
+
+  const coverage = _testables.analyseWhisperScriptCoverage({ words, scriptText });
+
+  assert.equal(coverage.ok, true);
+  assert.equal(coverage.inserted_actual_word_count, 0);
+  assert.equal(coverage.unmatched_expected_word_count, 0);
+  assert.equal(coverage.canonical_replacement_count, 4);
+});
+
 test("goal audio materializer coverage reconciles versus with the spoken ASR abbreviation", () => {
   const scriptText =
     "Each match is four-versus-four, and the real test is whether every swap stays readable.";
@@ -4962,6 +5034,24 @@ test("goal audio materializer adds ElevenLabs narration to the rights ledger", a
     story_id: "story-elevenlabs-rights",
     verdict: "pass",
     records: [],
+    assets: [
+      {
+        asset_id: "story-elevenlabs-rights_audio_path",
+        asset_type: "narration_audio",
+        kind: "audio",
+        path: "flagship/stale_rights_audio.mp3",
+        source_type: "narration_audio",
+      },
+    ],
+    rights_ledger: [
+      {
+        asset_id: "story-elevenlabs-rights_audio_path",
+        asset_type: "narration_audio",
+        kind: "audio",
+        path: "flagship/stale_legacy_rights_audio.mp3",
+        source_type: "narration_audio",
+      },
+    ],
     used_assets: [
       {
         asset_id: "story-elevenlabs-rights_audio_path",
@@ -5011,6 +5101,15 @@ test("goal audio materializer adds ElevenLabs narration to the rights ledger", a
     crypto.createHash("sha256").update(packagedAudio).digest("hex"),
   );
   assert.equal(audioRecord.asset_size_bytes, packagedAudio.length);
+  for (const collectionName of ["assets", "rights_ledger"]) {
+    const collectionRecord = rights[collectionName].find(
+      (record) => record.asset_id === "story-elevenlabs-rights_audio_path",
+    );
+    assert.equal(collectionRecord.path, "audio/narration.mp3");
+    assert.equal(collectionRecord.licence_basis, "elevenlabs_commercial_tts_generation");
+    assert.equal(collectionRecord.asset_sha256, audioRecord.asset_sha256);
+    assert.equal(collectionRecord.asset_size_bytes, packagedAudio.length);
+  }
   assert.equal(
     rights.used_assets[0].path,
     "flagship/stale_final_audio.mp3",

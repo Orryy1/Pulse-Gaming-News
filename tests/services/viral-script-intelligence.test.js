@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const {
   buildViralScriptIntelligence,
+  findUnsupportedUniversalClaims,
   MIN_MARKET_READY_SHORT_SCRIPT_WORDS,
 } = require("../../lib/viral-script-intelligence");
 
@@ -870,6 +871,35 @@ test("viral script intelligence preserves materially supported universal claims"
   );
 });
 
+test("title fact lock rejects an unsupported every-game claim from a four-game announcement", () => {
+  const story = {
+    id: "xbox-backward-compatibility-pc",
+    title: "Play More of the Games You Love, Wherever You Play",
+    url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+    source_type: "rss",
+    subreddit: "Xbox Wire",
+    source_material_excerpt:
+      "Xbox Backward Compatibility on PC starts with four classic original Xbox games. " +
+      "Blinx, Conker, Crimson Skies and Fuzion Frenzy are playable on PC. " +
+      "All Xbox Game Pass plans include these four games.",
+  };
+
+  assert.deepEqual(
+    findUnsupportedUniversalClaims(
+      story,
+      "Microsoft Just Let You Play Every Xbox Game on PC",
+    ),
+    ["Microsoft Just Let You Play Every Xbox Game on PC"],
+  );
+  assert.deepEqual(
+    findUnsupportedUniversalClaims(
+      story,
+      "All Xbox Game Pass Plans Include These Four PC Classics",
+    ),
+    [],
+  );
+});
+
 test("viral script intelligence matches supported each-pack claims across spoken currency", () => {
   const script =
     "Assassin's Creed Black Flag Resynced has nine day-one DLC packs costing more than the game. " +
@@ -1069,6 +1099,55 @@ test("viral script intelligence excludes anaphoric all-of-that rhetoric from uni
     false,
     JSON.stringify(result, null, 2),
   );
+});
+
+test("viral script intelligence accepts matching universal evidence fetched from a verified first-party article", () => {
+  const script =
+    "Four original Xbox games just crossed onto PC. " +
+    "Xbox Wire confirms all four games are sold on PC and every Game Pass plan includes them. " +
+    "Existing digital owners do not pay twice, while achievements arrive later. " +
+    "The trade-off is a useful library expansion launching before achievements are ready. " +
+    "That makes the ownership carry-over more important than the nostalgia headline. " +
+    "Follow Pulse Gaming so you never miss a beat.";
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "xbox-first-party-source-evidence",
+      title: "Xbox Backward Compatibility Comes To PC",
+      source_type: "rss",
+      subreddit: "Xbox Wire",
+      source_name: "Xbox Wire",
+      url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+      source_material_excerpt:
+        "All four games are sold on PC. Every Game Pass plan includes the four games. Existing digital owners do not have to pay again.",
+    },
+    script,
+  });
+
+  assert.equal(
+    result.blockers.includes("unsupported_universal_claim"),
+    false,
+    JSON.stringify(result, null, 2),
+  );
+});
+
+test("viral script intelligence does not trust fetched evidence from a spoofed first-party host", () => {
+  const result = buildViralScriptIntelligence({
+    story: {
+      id: "xbox-spoofed-source-evidence",
+      title: "Xbox Backward Compatibility Comes To PC",
+      source_type: "rss",
+      subreddit: "Xbox Wire",
+      source_name: "Xbox Wire",
+      url: "https://news.xbox.com.attacker.example/fake",
+      source_material_excerpt: "Every Game Pass plan includes all four games.",
+    },
+    script:
+      "Every Game Pass plan includes all four games. Xbox Wire reports a PC launch. " +
+      "The ownership detail changes the value calculation. The trade-off is delayed achievements. " +
+      "Players can judge the launch by access rather than nostalgia. Follow Pulse Gaming so you never miss a beat.",
+  });
+
+  assert.equal(result.blockers.includes("unsupported_universal_claim"), true);
 });
 
 for (const item of [

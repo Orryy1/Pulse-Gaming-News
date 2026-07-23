@@ -363,7 +363,15 @@ function isPersistableScriptReady(row = {}, env = process.env) {
     story: row,
     secondsPerWord,
   });
-  if (runtime.result !== "pass" || runtime.shouldGenerateShortAudio === false) {
+  const governedBreakingMeasurement =
+    runtime.result === "measurement_required" &&
+    runtime.durationLane === "breaking_news" &&
+    runtime.shouldGenerateShortAudio === true &&
+    row.audio_duration_verification_required === true;
+  if (
+    (runtime.result !== "pass" && !governedBreakingMeasurement) ||
+    runtime.shouldGenerateShortAudio === false
+  ) {
     return false;
   }
 

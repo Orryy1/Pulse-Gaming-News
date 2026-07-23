@@ -94,6 +94,159 @@ test("fresh refill rewrite turns a two-window beta announcement into a sourced t
   );
 });
 
+test("fresh refill rewrite turns the Arkheron Xbox Insider beta into a sourced access and reward story", () => {
+  const sourceUrl =
+    "https://news.xbox.com/en-us/2026/07/22/enter-the-tower-arkheron-closed-beta-is-live-for-xbox-insiders/";
+  const sourceHeadline =
+    "Enter the Tower: Arkheron Closed Beta is Live for Xbox Insiders - Xbox Wire";
+  const claims = [
+    "Arkheron's Closed Beta is open through the Xbox Insiders Program on Xbox Series X|S and Windows PC until midnight PT on July 27.",
+    "Spires is a focused 3v3 arena for trying item builds and Arkheron's core combat.",
+    "Ascension has 15 teams of three and is available during limited regional windows on weekends.",
+    "Playing Spires and Ascension earns Pages for playtest-exclusive Prestige items that remain on the player's account after the test ends.",
+    "Arkheron has no fixed classes because the items a player carries shape how they play.",
+    "Players join through Xbox Insider Hub by opening Previews and selecting Arkheron Insider.",
+    "Xbox Wire describes the Closed Beta as a technical test with bugs and active updates expected.",
+  ];
+  const script = buildFreshRefillViewerScript({
+    job: {
+      story_id: "rss_822f8321f2402258",
+      title: "Xbox Has A Source-Proof Risk",
+      source: {
+        name: "Xbox Wire",
+        url: sourceUrl,
+        title: sourceHeadline,
+      },
+      source_evidence: {
+        status: "pass",
+        source_url: sourceUrl,
+        source_text_sha256: "a".repeat(64),
+        headline: sourceHeadline,
+        claims: claims.map((text) => ({
+          text,
+          evidence_text: text,
+          source_url: sourceUrl,
+          origin: "source_body",
+        })),
+      },
+    },
+    manifest: {
+      story_id: "rss_822f8321f2402258",
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      canonical_title: "Xbox Has A Source-Proof Risk",
+      primary_source: "Xbox Wire",
+      primary_source_url: sourceUrl,
+      confirmed_claims: [sourceHeadline],
+    },
+  });
+
+  assert.equal(script.verdict, "viral_ready", JSON.stringify(script, null, 2));
+  assert.equal(script.story.canonical_subject, "Arkheron");
+  assert.equal(script.suggested_title, "Arkheron Beta Rewards Survive The Test");
+  assert.equal(script.suggested_thumbnail_text, "BETA REWARDS STAY");
+  assert.match(script.full_script, /^Arkheron's Xbox beta is live/i);
+  assert.match(script.full_script, /midnight Pacific on July 27/i);
+  assert.match(script.full_script, /15 teams of three/i);
+  assert.match(script.full_script, /Prestige cosmetics that stay on your account/i);
+  assert.match(script.full_script, /Xbox Insider Hub/i);
+  assert.match(script.full_script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(
+    `${script.suggested_title} ${script.full_script}`,
+    /Needs One Real Proof|source package|watch pile|background noise|why should players care now/i,
+  );
+});
+
+test("fresh refill work order keeps contiguous Arkheron source claims and excludes related stories", async () => {
+  const caseRoot = path.join(TEST_ROOT, "arkheron-official-page-scope");
+  const artifactDir = path.join(caseRoot, "artifact");
+  const workOrderDir = path.join(caseRoot, "work-order");
+  const sourceUrl =
+    "https://news.xbox.com/en-us/2026/07/22/enter-the-tower-arkheron-closed-beta-is-live-for-xbox-insiders/";
+  const sourceHeadline =
+    "Enter the Tower: Arkheron Closed Beta is Live for Xbox Insiders - Xbox Wire";
+  const claim = (text) => ({
+    text,
+    evidence_text: text,
+    source_url: sourceUrl,
+    origin: "source_body",
+  });
+  const sourceClaims = [
+    "Enter the Tower: Arkheron Closed Beta is Live for Xbox Insiders.",
+    "Arkheron's Closed Beta welcomes Xbox Insiders on Series X|S and Windows PC.",
+    "The technical test runs until midnight PT on July 27 and may include bugs and active updates.",
+    "For more information on the game and how to join, check out the details below.",
+    "Arkheron is a fast-paced PvP game where teams of three build their abilities by combining items.",
+    "Arkheron has no fixed classes because the items a player carries shape how they play.",
+    "Spires is a focused 3v3 arena for trying new builds and Arkheron's core combat.",
+    "Ascension has 15 teams of three and runs during limited regional windows on weekends.",
+    "View the full schedule on the official page.",
+    "Closed Beta also includes the first test of cosmetic progression.",
+    "Playing Spires and Ascension earns Pages.",
+    "Pages unlock playtest-exclusive Prestige items that remain on the account after the test ends.",
+    "Players join through Xbox Insider Hub by opening Previews and selecting Arkheron Insider.",
+    "Feedback helps improve combat, controls, performance, onboarding and matchmaking.",
+    "Related Stories: Wreck Runners joins another Xbox Insider playtest.",
+  ];
+
+  await fs.remove(caseRoot);
+  await fs.ensureDir(artifactDir);
+  await fs.writeJson(
+    path.join(artifactDir, "canonical_story_manifest.json"),
+    {
+      story_id: "rss_822f8321f2402258",
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      canonical_title: "Xbox Has A Source-Proof Risk",
+      primary_source: "Xbox Wire",
+      primary_source_url: sourceUrl,
+      confirmed_claims: [sourceHeadline],
+      narration_script:
+        "Xbox has to answer one simple thing: why should players care now? Xbox Wire says Arkheron Closed Beta is live for Xbox Insiders. Follow Pulse Gaming so you never miss a beat.",
+    },
+    { spaces: 2 },
+  );
+  await fs.writeJson(
+    path.join(artifactDir, "source_manifest.json"),
+    {
+      primary_source: {
+        name: "Xbox Wire",
+        url: sourceUrl,
+        type: "official_platform_newsroom",
+        published_at: "2026-07-22T22:00:00.000Z",
+      },
+    },
+    { spaces: 2 },
+  );
+
+  const workOrder = await buildFreshRefillScriptRewriteWorkOrder({
+    quarantinedRows: [{
+      story_id: "rss_822f8321f2402258",
+      artifact_dir: artifactDir,
+      title: "Xbox Has A Source-Proof Risk",
+      reasons: ["script_rewrite_required"],
+    }],
+    outputDir: workOrderDir,
+    sourceEvidenceFetcher: async () => ({
+      status: "pass",
+      source_url: sourceUrl,
+      source_text_sha256: "b".repeat(64),
+      headline: sourceHeadline,
+      source_text: sourceClaims.join(" "),
+      claims: sourceClaims.map(claim),
+    }),
+  });
+  const workOrderJson = await fs.readJson(workOrder.workOrderPath);
+  const scopedClaims = workOrderJson.jobs[0].source_evidence.claims.map((row) => row.text);
+
+  assert.ok(scopedClaims.some((text) => /midnight PT on July 27/i.test(text)));
+  assert.ok(scopedClaims.some((text) => /Prestige items.*remain/i.test(text)));
+  assert.ok(scopedClaims.some((text) => /Xbox Insider Hub/i.test(text)));
+  assert.equal(scopedClaims.some((text) => /Wreck Runners/i.test(text)), false);
+  assert.ok(scopedClaims.length >= 8);
+  assert.ok(scopedClaims.length <= 12);
+});
+
 test("fresh refill rewrite preserves a concrete ESO Season One argument", () => {
   const sourceUrl = "https://www.elderscrollsonline.com/en-us/news/post/70123";
   const claims = [

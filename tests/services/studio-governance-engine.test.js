@@ -170,6 +170,39 @@ test("Studio Governance Engine returns GREEN with the required publish artefacts
   assert.equal(report.correction_plan.actions.length, 0);
 });
 
+test("Studio Governance Engine cannot erase an explicit live-publish or human legal hold", () => {
+  const story = cleanStory();
+  const rightsLedger = rightsLedgerFor(story);
+  rightsLedger[1] = {
+    ...rightsLedger[1],
+    live_publish_allowed: false,
+    requires_human_legal_review_before_publish: true,
+  };
+
+  const report = buildStudioGovernanceReport({
+    story,
+    rightsLedger,
+    generatedAt: "2026-07-22T21:45:00.000Z",
+  });
+
+  assert.equal(report.rights_ledger.verdict, "fail");
+  assert.ok(report.rights_ledger.failures.includes("rights:live_publish_not_allowed"));
+  assert.ok(
+    report.rights_ledger.failures.includes(
+      "rights:human_legal_review_required_before_publish",
+    ),
+  );
+  assert.equal(report.publish_control_tower.verdict, "RED");
+  assert.equal(report.publish_manifest.can_auto_publish, false);
+  assert.ok(report.rejection_reasons.reason_codes.includes("rights:live_publish_not_allowed"));
+  assert.equal(
+    report.rights_ledger.records.find(
+      (record) => record.asset_id === "mixtape-official-trailer",
+    ).live_publish_allowed,
+    false,
+  );
+});
+
 test("Studio Governance Engine accepts GTA VI aliases in public title and description", () => {
   const story = cleanStory({
     id: "gta-vi-governance",

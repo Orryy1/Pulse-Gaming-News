@@ -1,4 +1,5 @@
 const axios = require("axios");
+const cheerio = require("cheerio");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
 
@@ -22,6 +23,11 @@ const { runScriptCoherenceQa } = require("./lib/script-coherence-qa");
 const {
   buildSourceBoundFallbackScript,
 } = require("./lib/source-bound-script-writer");
+const {
+  buildViralScriptIntelligence,
+  findUnsupportedUniversalClaims,
+} = require("./lib/viral-script-intelligence");
+const { isSafePublicTitle } = require("./lib/public-title");
 const { applyGamingPronunciation } = require("./lib/tts-pronunciation");
 
 const { getChannel } = require("./channels");
@@ -284,6 +290,90 @@ function buildSourceMaterialExcerpt(sourceMaterial, maxLength = 2000) {
   return text.slice(0, Math.max(1, Number(maxLength) || 2000));
 }
 
+const ARTICLE_SCHEMA_TYPES = new Set([
+  "article",
+  "blogposting",
+  "newsarticle",
+  "reportagearticle",
+  "techarticle",
+]);
+
+function normaliseExtractedPageText(value, maxLength = 6000) {
+  const text = String(value || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return null;
+  const limit = Math.max(1, Number(maxLength) || 6000);
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+
+function findSchemaArticleBodies(value, bodies = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) findSchemaArticleBodies(item, bodies);
+    return bodies;
+  }
+  if (!value || typeof value !== "object") return bodies;
+
+  const rawTypes = Array.isArray(value["@type"])
+    ? value["@type"]
+    : [value["@type"]];
+  const isArticle = rawTypes.some((type) =>
+    ARTICLE_SCHEMA_TYPES.has(String(type || "").toLowerCase()),
+  );
+  if (isArticle && typeof value.articleBody === "string") {
+    bodies.push(value.articleBody);
+  }
+
+  for (const nested of Object.values(value)) {
+    if (nested && typeof nested === "object") {
+      findSchemaArticleBodies(nested, bodies);
+    }
+  }
+  return bodies;
+}
+
+function extractArticleTextFromHtml(html, maxLength = 6000) {
+  if (typeof html !== "string" || !html.trim()) return null;
+
+  const $ = cheerio.load(html);
+  const schemaBodies = [];
+  $('script[type="application/ld+json"]').each((_, element) => {
+    try {
+      findSchemaArticleBodies(JSON.parse($(element).text()), schemaBodies);
+    } catch {
+      // Invalid metadata must not prevent extraction from the visible article.
+    }
+  });
+  const schemaArticle = schemaBodies
+    .map((body) => normaliseExtractedPageText(body, maxLength))
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length)[0];
+  if (schemaArticle) return schemaArticle;
+
+  const selectorTiers = [
+    "article",
+    '[itemprop="articleBody"], .article-content, .entry-content, .post-content, .wp-block-post-content',
+    "main",
+    "body",
+  ];
+  for (const selector of selectorTiers) {
+    const candidates = [];
+    $(selector).each((_, element) => {
+      const clone = $(element).clone();
+      clone
+        .find("script, style, noscript, nav, header, footer, aside, form, button, svg")
+        .remove();
+      const text = normaliseExtractedPageText(clone.text(), maxLength);
+      if (text && text.length >= 50) candidates.push(text);
+    });
+    if (candidates.length > 0) {
+      return candidates.sort((left, right) => right.length - left.length)[0];
+    }
+  }
+  return null;
+}
+
 async function fetchSourceMaterial(story) {
   const parts = [];
 
@@ -356,19 +446,7 @@ async function fetchPageText(url) {
     });
     const html = response.data;
     if (typeof html !== "string") return null;
-    let text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&#\d+;/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (text.length > 2000) text = text.substring(0, 2000) + "...";
-    return text.length > 50 ? text : null;
+    return extractArticleTextFromHtml(html);
   } catch (err) {
     return null;
   }
@@ -545,6 +623,7 @@ function resolveTtsProviderForRuntime(options = {}) {
 }
 
 function resolvePulseRuntimeProfile(options = {}) {
+  if (options.resolvedRuntimeProfile === true) return options;
   const provider = resolveTtsProviderForRuntime(options);
   const secondsPerWord =
     Number.isFinite(Number(options.secondsPerWord)) && Number(options.secondsPerWord) > 0
@@ -553,6 +632,8 @@ function resolvePulseRuntimeProfile(options = {}) {
   const probe = classifyShortScriptRuntime({
     wordCount: 1,
     secondsPerWord,
+    story: options.story,
+    measuredAudioSeconds: options.measuredAudioSeconds,
   });
   const minWords = probe.minWords || DEFAULT_MIN_WORDS;
   const maxWords = probe.maxWords || DEFAULT_MAX_WORDS;
@@ -566,6 +647,7 @@ function resolvePulseRuntimeProfile(options = {}) {
     aimMax = mid;
   }
   return {
+    resolvedRuntimeProfile: true,
     provider,
     secondsPerWord,
     minWords,
@@ -573,6 +655,14 @@ function resolvePulseRuntimeProfile(options = {}) {
     reviewMaxWords,
     aimMin,
     aimMax,
+    breakingNews: probe.durationLane === "breaking_news",
+    durationLane: probe.durationLane || "pulse_flash_short",
+    runtimeRoute: probe.route,
+    audioDurationVerificationRequired:
+      probe.audioDurationVerificationRequired === true,
+    minSeconds: probe.minSeconds,
+    maxSeconds: probe.maxSeconds,
+    firstPartyAnnouncement: probe.firstPartyAnnouncement || null,
   };
 }
 
@@ -589,6 +679,16 @@ function runtimeAimRange(profile = resolvePulseRuntimeProfile()) {
 function buildPulseRuntimePromptInstruction(channel = {}, options = {}) {
   if (channel?.id !== "pulse-gaming") return "";
   const profile = resolvePulseRuntimeProfile(options);
+  if (profile.breakingNews) {
+    return [
+      "",
+      "ACTIVE VERIFIED BREAKING-NEWS RUNTIME CONTRACT:",
+      `- full_script must be ${runtimeWordRange(profile)} cleaned spoken words for initial narration generation.`,
+      `- Aim for ${runtimeAimRange(profile)} words and use only source-backed facts from the verified first-party announcement.`,
+      `- Final Short authority requires same-run measured narration between ${profile.minSeconds}-${profile.maxSeconds} seconds. Word count is not final duration proof.`,
+      "- Do not pad the announcement to meet the normal Flash Lane and do not claim publish readiness before measured audio passes.",
+    ].join("\n");
+  }
   const legacyNote =
     profile.provider === "local"
       ? "This overrides any older 90-110 word guidance, which only applied to the slower ElevenLabs path."
@@ -609,6 +709,29 @@ function validate(script, channelId, options = {}) {
   const actualWords = countSpokenWords(cleanForTTS(script.full_script || ""));
   const requiresPulseCta = channelId === "pulse-gaming";
   errors.push(...validateFutureReleaseClaims(script, options));
+  const unsupportedTitleClaims = findUnsupportedUniversalClaims(
+    options.story || {},
+    script.suggested_title || "",
+  );
+  if (unsupportedTitleClaims.length > 0) {
+    errors.push(
+      `unsupported_title_universal_claim:${unsupportedTitleClaims[0]}`,
+    );
+  }
+  if (script.suggested_title && !isSafePublicTitle(script.suggested_title)) {
+    errors.push(`unsafe_suggested_title:${script.suggested_title}`);
+  }
+  if (options.requireViralReady === true) {
+    const viral = buildViralScriptIntelligence({
+      story: { ...(options.story || {}), ...script },
+      script: script.full_script || "",
+    });
+    if (viral.verdict !== "viral_ready") {
+      errors.push(
+        `viral_script_not_ready:${viral.viral_score}:${viral.blockers.join("|") || viral.verdict}`,
+      );
+    }
+  }
   const coherenceQa = runScriptCoherenceQa(
     { ...(options.story || {}), ...script },
     {
@@ -622,6 +745,8 @@ function validate(script, channelId, options = {}) {
     const runtime = classifyShortScriptRuntime({
       text: cleanForTTS(script.full_script || ""),
       secondsPerWord: runtimeProfile.secondsPerWord,
+      story: options.story,
+      measuredAudioSeconds: options.measuredAudioSeconds,
     });
     if (runtime.result === "fail") {
       const reason =
@@ -634,8 +759,11 @@ function validate(script, channelId, options = {}) {
       runtime.result === "review" && runtime.route === "extended_or_briefing"
         ? runtime.reviewMaxWords
         : runtime.maxWords;
-    const wordRangeLabel =
-      maxAllowedWords > runtime.maxWords ? "Flash/Extended Short" : "Flash Lane";
+    const wordRangeLabel = runtime.durationLane === "breaking_news"
+      ? "Breaking News Lane"
+      : maxAllowedWords > runtime.maxWords
+        ? "Flash/Extended Short"
+        : "Flash Lane";
     if (actualWords < runtime.minWords || actualWords > maxAllowedWords) {
       errors.push(
         `Actual spoken word count ${actualWords} outside ${runtime.minWords}-${maxAllowedWords} ${wordRangeLabel} range`,
@@ -811,6 +939,12 @@ Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
 function editorWordCountInstruction(channel, options = {}) {
   if (channel?.id === "pulse-gaming") {
     const runtimeProfile = resolvePulseRuntimeProfile(options);
+    if (runtimeProfile.breakingNews) {
+      return (
+        `7) Keep the exact same classification tag and keep full_script within ` +
+        `${runtimeWordRange(runtimeProfile)} cleaned spoken words. Final duration authority comes from measured narration, not word count.`
+      );
+    }
     return (
       `7) Keep the exact same classification tag and keep full_script within ` +
       `${runtimeWordRange(runtimeProfile)} cleaned spoken words. Do not expand it beyond that active provider budget.`
@@ -952,6 +1086,14 @@ function buildValidationRetryFeedback(errors = [], options = {}) {
     "Validation failures to fix:",
   ];
 
+  if (runtimeProfile.breakingNews) {
+    lines.splice(
+      2,
+      0,
+      `- This is the verified breaking-news lane. Final authority requires same-run measured narration between ${runtimeProfile.minSeconds}-${runtimeProfile.maxSeconds} seconds; do not pad to the Flash Lane.`,
+    );
+  }
+
   for (const error of safeErrors) {
     lines.push(`  - ${error}`);
     if (/Actual spoken word count \d+ outside/i.test(error)) {
@@ -976,6 +1118,21 @@ function buildValidationRetryFeedback(errors = [], options = {}) {
         "    Fix: each sentence must add a new fact or consequence. Do not restate the hook.",
       );
     }
+    if (/unsupported_title_universal_claim/i.test(error)) {
+      lines.push(
+        "    Fix: narrow suggested_title to the exact games, audience and access confirmed by the source. Do not expand a verified subset into every, all or always.",
+      );
+    }
+    if (/unsafe_suggested_title/i.test(error)) {
+      lines.push(
+        "    Fix: write a factual public title under 80 characters without exclamation marks, clickbait or raw article-headline phrasing.",
+      );
+    }
+    if (/viral_script_not_ready/i.test(error)) {
+      lines.push(
+        "    Fix: add a source-backed player consequence, a genuine decision or debate and a story-specific payoff. Correct factual ambiguity instead of adding hype.",
+      );
+    }
   }
 
   return lines.join("\n");
@@ -983,7 +1140,10 @@ function buildValidationRetryFeedback(errors = [], options = {}) {
 
 function trySourceBoundFallbackScript(story = {}, channel = {}, options = {}) {
   if (channel?.id !== "pulse-gaming") return null;
-  const runtimeProfile = resolvePulseRuntimeProfile(options);
+  const runtimeProfile =
+    Number(options.minWords) > 0 && Number(options.maxWords) > 0
+      ? options
+      : resolvePulseRuntimeProfile({ ...options, story });
   const fallback = buildSourceBoundFallbackScript(story, {
     runtimeProfile,
     sourceMaterial: options.sourceMaterial,
@@ -994,11 +1154,18 @@ function trySourceBoundFallbackScript(story = {}, channel = {}, options = {}) {
   sanitiseScript(fallback);
   ensurePulseExactCta(fallback, channel.id);
   fallback.word_count = countSpokenWords(cleanForTTS(fallback.full_script || ""));
+  if (runtimeProfile.breakingNews) {
+    fallback.duration_lane = runtimeProfile.durationLane;
+    fallback.format_route = "breaking_news_measurement_required";
+    fallback.runtime_route = "breaking_news_measurement_required";
+    fallback.audio_duration_verification_required = true;
+  }
 
   const validationErrors = validate(fallback, channel.id, {
     story,
     ttsProvider: runtimeProfile.provider,
     secondsPerWord: runtimeProfile.secondsPerWord,
+    requireViralReady: true,
   });
   if (validationErrors.length > 0) {
     console.log(
@@ -1127,10 +1294,10 @@ async function process_stories(options = {}) {
 
   const channel = getChannel();
   console.log(`[processor] Active channel: ${channel.name} (${channel.niche})`);
-  const runtimeProfile = resolvePulseRuntimeProfile();
+  const defaultRuntimeProfile = resolvePulseRuntimeProfile();
   if (channel.id === "pulse-gaming") {
     console.log(
-      `[processor] Active Pulse runtime: ${runtimeProfile.provider} ${runtimeWordRange(runtimeProfile)} words (aim ${runtimeAimRange(runtimeProfile)})`,
+      `[processor] Active Pulse runtime: ${defaultRuntimeProfile.provider} ${runtimeWordRange(defaultRuntimeProfile)} words (aim ${runtimeAimRange(defaultRuntimeProfile)})`,
     );
   }
 
@@ -1165,6 +1332,21 @@ async function process_stories(options = {}) {
     if (sourceMaterial) {
       console.log(
         `[processor] Fetched source material (${sourceMaterial.length} chars)`,
+      );
+    }
+
+    const sourceMaterialExcerpt = buildSourceMaterialExcerpt(sourceMaterial);
+    const storyForProcessing = sourceMaterialExcerpt
+      ? { ...story, source_material_excerpt: sourceMaterialExcerpt }
+      : story;
+    const runtimeProfile = resolvePulseRuntimeProfile({
+      ttsProvider: defaultRuntimeProfile.provider,
+      secondsPerWord: defaultRuntimeProfile.secondsPerWord,
+      story: storyForProcessing,
+    });
+    if (runtimeProfile.breakingNews) {
+      console.log(
+        `[processor] Verified breaking-news lane: ${runtimeWordRange(runtimeProfile)} words pending ${runtimeProfile.minSeconds}-${runtimeProfile.maxSeconds}s measured narration`,
       );
     }
 
@@ -1224,8 +1406,11 @@ Today's date is ${today}. You MUST follow these rules:
       try {
         let extra = "";
         if (attempts === 2) {
+          const durationInstruction = runtimeProfile.breakingNews
+            ? `for the verified breaking-news lane; final authority will use ${runtimeProfile.minSeconds}-${runtimeProfile.maxSeconds}s measured narration`
+            : `for a 61-75 second Short using the active ${runtimeProfile.provider} voice path`;
           extra =
-            `\n\nIMPORTANT: Your previous script failed validation. Ensure the actual full_script is ${runtimeWordRange(runtimeProfile)} spoken words for a 61-75 second Short using the active ${runtimeProfile.provider} voice path. Aim for ${runtimeAimRange(runtimeProfile)} words. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
+            `\n\nIMPORTANT: Your previous script failed validation. Ensure the actual full_script is ${runtimeWordRange(runtimeProfile)} spoken words ${durationInstruction}. Aim for ${runtimeAimRange(runtimeProfile)} words. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
         } else if (attempts === 3) {
           extra =
             `\n\nFINAL ATTEMPT: Produce a ${Math.round((runtimeProfile.aimMin + runtimeProfile.aimMax) / 2)}-word script. Hook must be one concrete sentence under 18 words. Use named people/companies and concrete outcomes. Include a classification tag and CTA. This is your last chance.`;
@@ -1267,16 +1452,17 @@ Today's date is ${today}. You MUST follow these rules:
         script.word_count = countSpokenWords(cleanForTTS(script.full_script || ""));
 
         const errors = validate(script, channel.id, {
-          story,
+          story: storyForProcessing,
           ttsProvider: runtimeProfile.provider,
           secondsPerWord: runtimeProfile.secondsPerWord,
+          requireViralReady: true,
         });
         if (errors.length > 0) {
           console.log(
             `[processor] Validation failed (attempt ${attempts}): ${errors.join(", ")}`,
           );
           if (attempts >= scriptAttemptLimit) {
-            const fallback = trySourceBoundFallbackScript(story, channel, {
+            const fallback = trySourceBoundFallbackScript(storyForProcessing, channel, {
               ...runtimeProfile,
               sourceMaterial,
             });
@@ -1315,7 +1501,7 @@ Today's date is ${today}. You MUST follow these rules:
           );
           lintRetryFeedback = buildRetryFeedback(lint);
           if (attempts >= scriptAttemptLimit) {
-            const fallback = trySourceBoundFallbackScript(story, channel, {
+            const fallback = trySourceBoundFallbackScript(storyForProcessing, channel, {
               ...runtimeProfile,
               sourceMaterial,
             });
@@ -1341,7 +1527,7 @@ Today's date is ${today}. You MUST follow these rules:
         // accepting an unscored draft is how vague or nonsensical
         // local-LLM output reaches TTS and public video.
         if (script) {
-          const gate = await scoreScript(client, script, story, channel);
+          const gate = await scoreScript(client, script, storyForProcessing, channel);
           qualityScore = gate.score;
           console.log(
             `[processor] Quality gate: ${gate.score}/10 - ${gate.reason}`,
@@ -1349,7 +1535,7 @@ Today's date is ${today}. You MUST follow these rules:
           if (gate.score < 7) {
             const reason = `quality_gate_below_threshold:${gate.score}/10:${gate.reason}`;
             if (attempts >= scriptAttemptLimit) {
-              const fallback = trySourceBoundFallbackScript(story, channel, {
+              const fallback = trySourceBoundFallbackScript(storyForProcessing, channel, {
                 ...runtimeProfile,
                 sourceMaterial,
               });
@@ -1379,7 +1565,7 @@ Today's date is ${today}. You MUST follow these rules:
             client,
             script,
             channel,
-            story,
+            storyForProcessing,
             runtimeProfile,
           );
           // Re-strip em dashes after editor pass
@@ -1407,7 +1593,7 @@ Today's date is ${today}. You MUST follow these rules:
           attempt: attempts,
         });
         if (attempts >= scriptAttemptLimit) {
-          const fallback = trySourceBoundFallbackScript(story, channel, {
+          const fallback = trySourceBoundFallbackScript(storyForProcessing, channel, {
             ...runtimeProfile,
             sourceMaterial,
           });
@@ -1434,6 +1620,14 @@ Today's date is ${today}. You MUST follow these rules:
 
     const requiresScriptReview =
       script.script_generation_status === "review_required";
+    const finalRuntimePlan = requiresScriptReview
+      ? null
+      : classifyShortScriptRuntime({
+          text: ttsScript,
+          story: storyForProcessing,
+          secondsPerWord: runtimeProfile.secondsPerWord,
+        });
+    const successfulRuntimeRoute = finalRuntimePlan?.route || "flash_short";
 
     const enrichedStory = {
       ...story,
@@ -1454,8 +1648,32 @@ Today's date is ${today}. You MUST follow these rules:
       script_validation_errors: requiresScriptReview
         ? script.script_validation_errors || []
         : [],
+      format_route: requiresScriptReview
+        ? script.format_route
+        : successfulRuntimeRoute,
+      runtime_route: requiresScriptReview
+        ? script.runtime_route
+        : successfulRuntimeRoute,
+      duration_lane: runtimeProfile.breakingNews
+        ? runtimeProfile.durationLane
+        : script.duration_lane || "pulse_flash_short",
+      audio_duration_verification_required: runtimeProfile.breakingNews
+        ? true
+        : false,
+      short_runtime_plan: finalRuntimePlan
+        ? {
+            result: finalRuntimePlan.result,
+            route: finalRuntimePlan.route,
+            duration_lane: finalRuntimePlan.durationLane || "pulse_flash_short",
+            word_count: finalRuntimePlan.wordCount,
+            estimated_seconds: finalRuntimePlan.estimatedSeconds,
+            measured_audio_seconds: finalRuntimePlan.measuredAudioSeconds || null,
+            final_audio_authority: finalRuntimePlan.finalAudioAuthority === true,
+            audio_duration_verification_required:
+              finalRuntimePlan.audioDurationVerificationRequired === true,
+          }
+        : null,
     };
-    const sourceMaterialExcerpt = buildSourceMaterialExcerpt(sourceMaterial);
     if (sourceMaterialExcerpt) {
       enrichedStory.source_material_excerpt = sourceMaterialExcerpt;
     }
@@ -1519,6 +1737,7 @@ module.exports.buildValidationRetryFeedback = buildValidationRetryFeedback;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.parseLlmJsonObject = parseLlmJsonObject;
 module.exports.buildSourceMaterialExcerpt = buildSourceMaterialExcerpt;
+module.exports.extractArticleTextFromHtml = extractArticleTextFromHtml;
 module.exports.sanitiseScript = sanitiseScript;
 module.exports.ensurePulseExactCta = ensurePulseExactCta;
 

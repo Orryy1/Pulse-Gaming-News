@@ -216,6 +216,39 @@ test("ultimate professional source diversity accepts producer-style SHA identiti
   assert.equal(report.verdict, "GREEN");
 });
 
+test("ultimate professional source diversity accepts producer-style sampled fingerprints", () => {
+  const firstFingerprint = Array.from({ length: 5 }, (_, index) =>
+    (index + 1).toString(16).repeat(16),
+  ).join(":");
+  const secondFingerprint = Array.from({ length: 5 }, (_, index) =>
+    (index + 9).toString(16).repeat(16),
+  ).join(":");
+  const report = buildPulseMediaHouseScore(strongStory({
+    source_diversity_tier: "ultimate_professional",
+    professional_source_diversity: {
+      policy_tier: "ultimate_professional",
+      authoritative: true,
+      status: "pass",
+      required_genuine_base_source_count: 2,
+      observed_genuine_base_source_count: 2,
+      unresolved_clips: [],
+      blockers: [],
+      identity_evidence: [firstFingerprint, secondFingerprint].map((fingerprint) => ({
+        base_source_asset_id: `fingerprint:${fingerprint}`,
+        base_source_identity_basis: "sampled_visual_fingerprint",
+        identity_evidence: [
+          { kind: "sampled_visual_fingerprint", alias: `fingerprint:${fingerprint}` },
+        ],
+      })),
+    },
+  }));
+
+  assert.equal(report.professional_source_diversity_report.status, "pass");
+  assert.equal(report.professional_source_diversity_report.complete_identity_record_count, 2);
+  assert.equal(report.professional_source_diversity_report.distinct_verified_base_identity_count, 2);
+  assert.equal(report.verdict, "GREEN");
+});
+
 test("ultimate professional source diversity rejects ambiguous family-only identities", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     source_diversity_tier: "ultimate_professional",

@@ -170,6 +170,39 @@ test("T-180 strict runway deficit starts one window-scoped candidate recovery an
   );
 });
 
+test("publish recovery monitor supersedes an older queued occurrence before expensive recovery", async () => {
+  const calls = [];
+  const { handlePublishScheduleRecoveryMonitor } = require("../../lib/job-handlers");
+  const result = await handlePublishScheduleRecoveryMonitor(
+    { id: 99, kind: "publish_schedule_recovery_monitor", payload: { phase: "RECOVERY_MONITOR" } },
+    {
+      repos: {
+        jobs: {
+          findNewerActiveByKind(kind, jobId) {
+            assert.equal(kind, "publish_schedule_recovery_monitor");
+            assert.equal(jobId, 99);
+            return { id: 101, kind, status: "pending" };
+          },
+        },
+        db: {},
+      },
+      publishSchedules: [],
+      log() {},
+      async reconcileCriticalPublishSchedules() {
+        calls.push("prep");
+      },
+      async recoverMissedPublishWindows() {
+        calls.push("t0");
+      },
+    },
+  );
+
+  assert.deepEqual(calls, []);
+  assert.equal(result.status, "superseded");
+  assert.equal(result.superseded_by_job_id, 101);
+  assert.equal(result.external_publish_attempted, false);
+});
+
 test("publish recovery monitor restores prep debt and invokes only guarded T0 recovery", async () => {
   const calls = [];
   const { handlePublishScheduleRecoveryMonitor } = require("../../lib/job-handlers");

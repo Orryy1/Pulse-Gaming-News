@@ -65,6 +65,11 @@ test("materialises a verified official-channel reference as a hash-bound local m
   assert.equal(report.can_auto_publish, false);
   assert.equal(report.summary.accepted, 1);
   assert.equal(report.summary.blocked, 0);
+  assert.equal(report.accepted_references.length, 1);
+  assert.equal(
+    report.accepted_references[0].direct_media_url_if_available,
+    report.output_template.entries[0].direct_media_url_if_available,
+  );
   assert.equal(report.safety.social_posting_triggered, false);
   assert.equal(report.safety.production_db_mutated, false);
   assert.equal(report.safety.rights_grants_created, 0);
@@ -78,6 +83,10 @@ test("materialises a verified official-channel reference as a hash-bound local m
   assert.equal(entry.autonomous_use_approved, false);
   assert.equal(entry.rights_grant, false);
   assert.equal(entry.commercial_use_allowed, false);
+  assert.equal(entry.source_audio_allowed, false);
+  assert.equal(entry.local_materialization_allowed, true);
+  assert.equal(entry.live_publish_allowed, false);
+  assert.equal(entry.requires_human_legal_review_before_publish, true);
   assert.deepEqual(entry.allowed_platforms, []);
   assert.equal(entry.rights_status, "local_proof_only");
   assert.equal(entry.rights_verdict, "RED");

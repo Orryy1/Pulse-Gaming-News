@@ -1,7 +1,10 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
 
-const { DEFAULT_SCHEDULES } = require("../../lib/scheduler");
+const {
+  DEFAULT_SCHEDULES,
+  enqueueScheduleOccurrence,
+} = require("../../lib/scheduler");
 
 // Lock the guarded growth cadence in place. The previous single
 // publish_primary at 19:00 UTC produced one Short per day, then Task 3
@@ -213,6 +216,54 @@ test("schedules: guarded recovery monitor checks for missed critical phases ever
     monitor.idempotencyTemplate,
     "publish_schedule_recovery_monitor:{date}:{hour}:{minute}",
   );
+});
+
+test("scheduler keeps the recovery monitor single-flight while one monitor job is active", () => {
+  let enqueueCount = 0;
+  let scheduleUpdateCount = 0;
+  const row = {
+    id: 41,
+    name: "publish_schedule_recovery_monitor",
+    kind: "publish_schedule_recovery_monitor",
+    channel_id: null,
+    priority: 5,
+    requires_gpu: 0,
+    payload: JSON.stringify({
+      phase: "RECOVERY_MONITOR",
+      idempotencyTemplate:
+        "publish_schedule_recovery_monitor:{date}:{hour}:{minute}",
+    }),
+  };
+  const result = enqueueScheduleOccurrence({
+    row,
+    jobs: {
+      findLatestActiveByKind(kind) {
+        assert.equal(kind, "publish_schedule_recovery_monitor");
+        return { id: 9001, kind, status: "running" };
+      },
+      enqueue() {
+        enqueueCount += 1;
+        return { id: 9002 };
+      },
+    },
+    db: {
+      prepare(sql) {
+        assert.match(sql, /UPDATE schedules/i);
+        return {
+          run() {
+            scheduleUpdateCount += 1;
+          },
+        };
+      },
+    },
+    now: new Date("2026-07-23T00:11:00.000Z"),
+    log() {},
+  });
+
+  assert.equal(result.status, "skipped_active");
+  assert.equal(result.active_job_id, 9001);
+  assert.equal(enqueueCount, 0);
+  assert.equal(scheduleUpdateCount, 0);
 });
 
 test("schedules: stale-claim reaper outranks publish and repair work", () => {

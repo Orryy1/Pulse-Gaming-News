@@ -9,7 +9,18 @@ const {
   DEFAULT_LOCAL_SECONDS_PER_WORD,
   DEFAULT_MIN_WORDS,
   DEFAULT_MAX_WORDS,
+  BREAKING_NEWS_MIN_SECONDS,
+  BREAKING_NEWS_MAX_SECONDS,
 } = require("../../lib/services/short-runtime-planner");
+
+const XBOX_BREAKING_STORY = {
+  title: "Play More of the Games You Love, Wherever You Play",
+  url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+  source_type: "rss",
+  subreddit: "Xbox Wire",
+  source_material_excerpt:
+    "Xbox Backward Compatibility on PC launches in early release. Existing digital owners do not pay again. Every Game Pass plan includes the games and achievements arrive later.",
+};
 
 test("short runtime planner: 61s lower edge passes Flash Lane", () => {
   const plan = classifyShortScriptRuntime({ wordCount: 90 });
@@ -145,4 +156,53 @@ test("short runtime planner: local Liam too-short and too-long estimates are exp
   assert.match(tooShort.warnings[0], /script_runtime_below_flash_target/);
   assert.equal(tooLong.result, "fail");
   assert.match(tooLong.failures[0], /script_runtime_too_long/);
+});
+
+test("short runtime planner: verified breaking news generates audio before final measured-duration authority", () => {
+  const plan = classifyShortScriptRuntime({
+    wordCount: 137,
+    story: XBOX_BREAKING_STORY,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+
+  assert.equal(plan.result, "measurement_required");
+  assert.equal(plan.route, "breaking_news_measurement_required");
+  assert.equal(plan.durationLane, "breaking_news");
+  assert.equal(plan.shouldGenerateShortAudio, true);
+  assert.equal(plan.finalAudioAuthority, false);
+  assert.equal(plan.minWords, 80);
+  assert.equal(plan.maxWords, 180);
+  assert.deepEqual(
+    [plan.minSeconds, plan.maxSeconds],
+    [BREAKING_NEWS_MIN_SECONDS, BREAKING_NEWS_MAX_SECONDS],
+  );
+});
+
+test("short runtime planner: measured breaking-news audio is authoritative only inside its lane", () => {
+  const pass = classifyShortScriptRuntime({
+    wordCount: 137,
+    story: XBOX_BREAKING_STORY,
+    measuredAudioSeconds: 41,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+  const tooShort = classifyShortScriptRuntime({
+    wordCount: 137,
+    story: XBOX_BREAKING_STORY,
+    measuredAudioSeconds: 29,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+  const tooLong = classifyShortScriptRuntime({
+    wordCount: 137,
+    story: XBOX_BREAKING_STORY,
+    measuredAudioSeconds: 65,
+    secondsPerWord: secondsPerWordForTtsProvider("local", {}),
+  });
+
+  assert.equal(pass.result, "pass");
+  assert.equal(pass.route, "breaking_news_short");
+  assert.equal(pass.finalAudioAuthority, true);
+  assert.equal(tooShort.result, "fail");
+  assert.match(tooShort.failures[0], /breaking_news_audio_duration_too_short/);
+  assert.equal(tooLong.result, "fail");
+  assert.match(tooLong.failures[0], /breaking_news_audio_duration_too_long/);
 });

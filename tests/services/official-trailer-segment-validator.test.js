@@ -155,6 +155,12 @@ test("official trailer segment validator preserves explicit source rights eviden
         allowedRenderUse: "transformative_editorial_short_form",
         allowedPlatforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
         commercialUseAllowed: true,
+        localMaterializationAllowed: true,
+        livePublishAllowed: false,
+        requiresHumanLegalReviewBeforePublish: true,
+        sourceAudioAllowed: false,
+        rightsGrant: false,
+        rightsVerdict: "RED",
         creditRequired: false,
         evidenceReference: "https://example.com/official-media-policy",
         rightsRiskClass: "official_storefront_promotional_editorial",
@@ -170,6 +176,13 @@ test("official trailer segment validator preserves explicit source rights eviden
       allowed_render_use: report.segments[0].allowed_render_use,
       allowed_platforms: report.segments[0].allowed_platforms,
       commercial_use_allowed: report.segments[0].commercial_use_allowed,
+      local_materialization_allowed: report.segments[0].local_materialization_allowed,
+      live_publish_allowed: report.segments[0].live_publish_allowed,
+      requires_human_legal_review_before_publish:
+        report.segments[0].requires_human_legal_review_before_publish,
+      source_audio_allowed: report.segments[0].source_audio_allowed,
+      rights_grant: report.segments[0].rights_grant,
+      rights_verdict: report.segments[0].rights_verdict,
       credit_required: report.segments[0].credit_required,
       evidence_reference: report.segments[0].evidence_reference,
       rights_risk_class: report.segments[0].rights_risk_class,
@@ -180,6 +193,12 @@ test("official trailer segment validator preserves explicit source rights eviden
       allowed_render_use: "transformative_editorial_short_form",
       allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
       commercial_use_allowed: true,
+      local_materialization_allowed: true,
+      live_publish_allowed: false,
+      requires_human_legal_review_before_publish: true,
+      source_audio_allowed: false,
+      rights_grant: false,
+      rights_verdict: "RED",
       credit_required: false,
       evidence_reference: "https://example.com/official-media-policy",
       rights_risk_class: "official_storefront_promotional_editorial",
@@ -1728,6 +1747,53 @@ test("official trailer segment validator downgrades low-detail colourful samples
   assert.equal(report.segments[0].action_sample_count, 0);
   assert.equal(report.segments[0].samples[0].qa.gameplay_action_candidate, false);
   assert.equal(report.segments[0].samples[0].qa.gameplay_action_reason, "not_enough_visual_detail");
+});
+
+test("official trailer segment validator recognises clean combat samples with stable gameplay HUD evidence", async () => {
+  const outputRoot = tempOutputRoot("stable-gameplay-hud-evidence");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+  const samples = [
+    { edge_density: 0.117, saturation_mean: 0.48 },
+    { edge_density: 0.15, saturation_mean: 0.5 },
+    { edge_density: 0.129, saturation_mean: 0.5 },
+  ];
+
+  const report = await runOfficialTrailerSegmentValidation([clip()], {
+    applyLocal: true,
+    outputRoot,
+    extractor: fakeExtractor,
+    inspectFrame: async (outputPath) => {
+      const sample = samples[call] || samples[0];
+      call += 1;
+      return {
+        ...passingQa(outputPath),
+        content_hash: `stable-gameplay-hud-${call}`,
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0,
+          white_text_on_dark_likelihood: 0,
+          edge_density: sample.edge_density,
+          saturation_mean: sample.saturation_mean,
+          bright_pixel_ratio: 0.02,
+          dark_pixel_ratio: 0.3,
+          lower_band_overlay_likelihood: 0.0227,
+          lower_band_overlay_span_rows: 2,
+          lower_band_overlay_max_row_ratio: 0.9,
+        },
+      };
+    },
+  });
+
+  assert.equal(report.summary.segments_validated, 1);
+  assert.equal(report.segments[0].validation_reason, "segment_samples_passed");
+  assert.equal(report.segments[0].action_sample_count, 3);
+  assert.equal(report.segments[0].segment_motion_class, "gameplay_action");
+  assert.ok(
+    report.segments[0].samples.every(
+      (sample) => sample.qa.gameplay_action_reason === "stable_gameplay_hud_candidate",
+    ),
+  );
 });
 
 test("official trailer segment validator accepts clean official direct-media motion when high-score samples are edge-soft", async () => {

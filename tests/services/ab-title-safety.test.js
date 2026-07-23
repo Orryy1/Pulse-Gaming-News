@@ -65,3 +65,25 @@ test("getBestTitle skips stale title variants that contradict the canonical subj
   assert.equal(resolvePublicTitle(story), "Dragonwilds Has One Last Early Access Test");
   assert.equal(getBestTitle(story), "Dragonwilds Has One Last Early Access Test");
 });
+
+test("getBestTitle skips unsupported universal variants for verified breaking news", () => {
+  const story = {
+    title: "Play More of the Games You Love, Wherever You Play",
+    suggested_title: "Four Xbox Classics Just Reached PC",
+    source_type: "rss",
+    subreddit: "Xbox Wire",
+    url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+    source_material_excerpt:
+      "Xbox Backward Compatibility on PC starts with four classic original Xbox games. " +
+      "Blinx, Conker, Crimson Skies and Fuzion Frenzy are playable on PC. " +
+      "Every Game Pass plan includes these four games.",
+    title_variants: [
+      "Microsoft Just Let You Play Every Xbox Game on PC",
+      "Four Xbox Classics Just Reached PC",
+    ],
+    active_title_index: 0,
+  };
+
+  assert.equal(resolvePublicTitle(story), "Four Xbox Classics Just Reached PC");
+  assert.equal(getBestTitle(story), "Four Xbox Classics Just Reached PC");
+});

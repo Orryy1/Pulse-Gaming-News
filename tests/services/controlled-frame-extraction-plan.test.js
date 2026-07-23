@@ -525,6 +525,94 @@ test("Controlled Frame Extraction Plan accepts official platform product page di
   assert.equal(plan.target_frames[0].downloads_allowed, false);
 });
 
+test("Controlled Frame Extraction Plan accepts hash-bound local masters from verified official YouTube channels", () => {
+  const officialYoutubeMaster = (entity, videoId) => ({
+    source_type: "official_youtube_channel_url",
+    provider: "official_intake",
+    source_url: `C:\\pulse\\official-youtube-motion\\${videoId}.mp4`,
+    source_url_kind: "local_video_file",
+    segment_validation_eligible: true,
+    entity,
+    movie_name: `${entity} official reference`,
+    source_verified: true,
+    downloads_allowed: true,
+    autonomous_use_approved: false,
+    rights_grant: false,
+    allowed_platforms: [],
+    commercial_use_allowed: false,
+    allowed_render_use: "local_proof_only",
+    rights_status: "local_proof_only",
+    rights_verdict: "RED",
+    source_duration_s: 68,
+    provenance: {
+      source: "official_youtube_channel_download",
+      official_channel: "https://www.youtube.com/@XBOX",
+      reference_url: `https://www.youtube.com/watch?v=${videoId}`,
+      source_sha256: "a".repeat(64),
+      source_identity_path: `C:\\pulse\\official-youtube-motion\\${videoId}.source-identity.json`,
+      source_identity_sha256: "b".repeat(64),
+      source_identity_scope: "identity_only_not_rights_grant",
+    },
+  });
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      story_id: "xbox-backward-compatibility-pc",
+      existing_references: [
+        officialYoutubeMaster("Fuzion Frenzy", "CaDe1nVY_6g"),
+        officialYoutubeMaster("Xbox", "HDhh8jy1YQI"),
+      ],
+    }),
+    { maxReferences: 2, maxTargetFrames: 8 },
+  );
+
+  assert.equal(plan.frame_plan_readiness, "frame_plan_ready");
+  assert.equal(plan.selected_references.length, 2);
+  assert.equal(plan.target_frames.length, 8);
+  assert.ok(plan.target_frames.every((frame) => frame.downloads_allowed === false));
+  assert.ok(
+    plan.selected_references.every(
+      (reference) => reference.allowed_render_use === "local_proof_only",
+    ),
+  );
+});
+
+test("Controlled Frame Extraction Plan rejects unbound local files labelled as official YouTube motion", () => {
+  const plan = buildControlledFrameExtractionPlan(
+    motionPlan({
+      existing_references: [
+        {
+          source_type: "official_youtube_channel_url",
+          provider: "official_intake",
+          source_url: "C:\\pulse\\unbound-youtube-file.mp4",
+          source_url_kind: "local_video_file",
+          segment_validation_eligible: true,
+          entity: "Xbox",
+          movie_name: "Xbox official reference",
+          source_verified: true,
+          downloads_allowed: true,
+          autonomous_use_approved: false,
+          rights_grant: false,
+          allowed_platforms: [],
+          commercial_use_allowed: false,
+          allowed_render_use: "local_proof_only",
+          rights_status: "local_proof_only",
+          rights_verdict: "RED",
+          provenance: {
+            source: "official_youtube_channel_download",
+            official_channel: "https://www.youtube.com/@XBOX",
+            reference_url: "https://www.youtube.com/watch?v=HDhh8jy1YQI",
+          },
+        },
+      ],
+    }),
+    { maxReferences: 1, maxTargetFrames: 4 },
+  );
+
+  assert.equal(plan.frame_plan_readiness, "no_reference");
+  assert.equal(plan.selected_references.length, 0);
+  assert.ok(plan.blockers.includes("no_official_motion_reference"));
+});
+
 test("Controlled Frame Extraction Plan accepts official social direct media", () => {
   const plan = buildControlledFrameExtractionPlan(
     motionPlan({

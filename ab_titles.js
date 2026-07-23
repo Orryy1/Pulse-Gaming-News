@@ -13,6 +13,7 @@ const {
   isPlaceholderPublicTitle,
   isRawArticleTitleShape,
   resolvePublicTitle,
+  titlePassesSourceFactLock,
   titleMatchesStorySubject,
 } = require("./lib/public-title");
 
@@ -92,9 +93,14 @@ Reply with ONLY a JSON array of 2 strings. No explanation.`,
       return;
     }
 
-    let cleanVariants = variants.map(cleanTitleVariant).filter(Boolean).slice(0, 2);
+    let cleanVariants = variants
+      .map(cleanTitleVariant)
+      .filter((title) => title && titlePassesSourceFactLock(title, story))
+      .slice(0, 2);
     if (cleanVariants.length < 2) {
-      cleanVariants = fallbackTitleVariants(story, originalTitle);
+      cleanVariants = fallbackTitleVariants(story, originalTitle).filter((title) =>
+        titlePassesSourceFactLock(title, story),
+      );
     }
     if (cleanVariants.length < 2) {
       console.log("[ab_titles] Variant generation skipped - no safe variants");
@@ -125,7 +131,11 @@ function getBestTitle(story) {
 
   const index = story.active_title_index || 0;
   const active = cleanTitleVariant(story.title_variants[index] || story.title_variants[0]);
-  return active && titleMatchesStorySubject(active, story) ? active : resolved;
+  return active &&
+    titleMatchesStorySubject(active, story) &&
+    titlePassesSourceFactLock(active, story)
+    ? active
+    : resolved;
 }
 
 // --- Check views and swap title if underperforming ---

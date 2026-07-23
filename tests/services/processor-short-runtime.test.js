@@ -17,6 +17,15 @@ function words(n) {
 const EXACT_CTA = "Follow Pulse Gaming so you never miss a beat.";
 const EXACT_CTA_WORDS = 9;
 
+const XBOX_BREAKING_STORY = {
+  title: "Play More of the Games You Love, Wherever You Play",
+  url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+  source_type: "rss",
+  subreddit: "Xbox Wire",
+  source_material_excerpt:
+    "Xbox Backward Compatibility on PC launches in early release. Existing digital owners do not pay again. Every Game Pass plan includes the games and achievements arrive later.",
+};
+
 function script(wordCount) {
   const narrativeWordCount = Math.max(0, wordCount - EXACT_CTA_WORDS);
   const fullScript = [words(narrativeWordCount), EXACT_CTA]
@@ -70,6 +79,77 @@ test("processor validate: Pulse local Liam budget is provider-aware", () => {
     ttsProvider: "local",
   });
   assert.deepEqual(pass, []);
+});
+
+test("processor validate: verified first-party breaking news allows bounded copy pending measured audio", () => {
+  const errors = processor.validate(script(137), "pulse-gaming", {
+    ttsProvider: "local",
+    story: XBOX_BREAKING_STORY,
+  });
+
+  assert.deepEqual(errors, []);
+});
+
+test("processor validate: breaking title cannot expand four games into every Xbox game", () => {
+  const unsafe = {
+    ...script(137),
+    suggested_title: "Microsoft Just Let You Play Every Xbox Game on PC",
+  };
+  const unsafeErrors = processor.validate(unsafe, "pulse-gaming", {
+    ttsProvider: "local",
+    story: XBOX_BREAKING_STORY,
+  });
+  assert.ok(
+    unsafeErrors.some((error) => error.includes("unsupported_title_universal_claim")),
+    `got: ${unsafeErrors.join(", ")}`,
+  );
+
+  const safe = {
+    ...script(137),
+    suggested_title: "Every Game Pass Plan Includes These Four Xbox Classics",
+  };
+  assert.deepEqual(
+    processor.validate(safe, "pulse-gaming", {
+      ttsProvider: "local",
+      story: XBOX_BREAKING_STORY,
+    }),
+    [],
+  );
+});
+
+test("processor validate: required editorial readiness blocks generic breaking copy", () => {
+  const fullScript =
+    "According to Xbox Wire, Xbox is launching backward compatibility on PC. " +
+    "Starting today, classic games like Blinx, Conker: Live and Reloaded, Crimson Skies and Fuzion Frenzy are playable for the first time on PC. " +
+    "This adds new features including 4x resolution scaling and enhanced anti-aliasing. " +
+    "Players can access these titles through existing digital licences or purchase them directly via Game Pass. " +
+    "It opens an entirely new library of games you have loved over the years, letting you play wherever you choose. " +
+    EXACT_CTA;
+  const item = {
+    classification: "[CONFIRMED]",
+    hook: "Xbox just moved four original classics onto PC.",
+    body: fullScript,
+    cta: EXACT_CTA,
+    full_script: fullScript,
+    word_count: fullScript.split(/\s+/).length,
+    suggested_title: "Classic Xbox Games Now on PC, Confirmed!",
+    suggested_thumbnail_text: "Four Xbox classics",
+  };
+
+  const errors = processor.validate(item, "pulse-gaming", {
+    ttsProvider: "local",
+    story: XBOX_BREAKING_STORY,
+    requireViralReady: true,
+  });
+
+  assert.ok(
+    errors.some((error) => error.startsWith("viral_script_not_ready:")),
+    `got: ${errors.join(", ")}`,
+  );
+  assert.ok(
+    errors.some((error) => error.startsWith("unsafe_suggested_title:")),
+    `got: ${errors.join(", ")}`,
+  );
 });
 
 test("processor validate: rejects future dates presented as already launched", () => {
@@ -251,6 +331,17 @@ test("processor editor prompt: Pulse uses active local Flash Lane budget, not ol
   assert.match(instruction, /204-250/);
   assert.doesNotMatch(instruction, /180-220/);
   assert.match(instruction, /Do not expand it/);
+});
+
+test("processor editor prompt: verified breaking news uses the measured-audio lane", () => {
+  const instruction = processor.editorWordCountInstruction(
+    { id: "pulse-gaming" },
+    { ttsProvider: "local", story: XBOX_BREAKING_STORY },
+  );
+
+  assert.match(instruction, /80-180/);
+  assert.match(instruction, /measured narration/i);
+  assert.doesNotMatch(instruction, /204-250/);
 });
 
 test("processor prompt treats Reddit top comments as audience colour, not source evidence", () => {

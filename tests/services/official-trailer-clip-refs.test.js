@@ -1074,6 +1074,80 @@ test("official clip refs preserve resolver metadata when frame reports have the 
   assert.equal(exploratory.provenance.source_family, "steam_3727390_2016455987");
 });
 
+test("frame-anchored refs inherit restrictive rights from the matching official reference", () => {
+  const sourceUrl = "C:\\proof\\xbox\\CaDe1nVY_6g.mp4";
+  const refs = buildOfficialTrailerClipsFromFrameReport(
+    {
+      plans: [
+        {
+          story_id: "story-1",
+          frames: [
+            acceptedFrame({
+              source_url: sourceUrl,
+              source_type: "official_youtube_channel_url",
+              source_family: "youtube_CaDe1nVY_6g_fuzion_frenzy",
+              entity: "Fuzion Frenzy",
+              source_duration_s: 68.8,
+              target_time_seconds: 40,
+            }),
+          ],
+        },
+      ],
+    },
+    "story-1",
+    {
+      includeFrameAnchoredWindows: true,
+      referenceReport: {
+        plans: [
+          {
+            story_id: "story-1",
+            references: [
+              {
+                source_url: sourceUrl,
+                source_type: "official_youtube_channel_url",
+                source_family: "youtube_CaDe1nVY_6g_fuzion_frenzy",
+                entity: "Fuzion Frenzy",
+                source_verified: true,
+                downloads_allowed: true,
+                commercial_use_allowed: false,
+                allowed_render_use: "local_proof_only",
+                allowed_platforms: [],
+                local_materialization_allowed: true,
+                live_publish_allowed: false,
+                requires_human_legal_review_before_publish: true,
+                source_audio_allowed: false,
+                rights_grant: false,
+                approval_status: "approved_for_local_materialization_only",
+                rights_status: "local_proof_only",
+                rights_verdict: "RED",
+                provenance: {
+                  source: "official_youtube_channel_download",
+                  official_channel: "https://www.youtube.com/@XBOX",
+                  reference_url: "https://www.youtube.com/watch?v=CaDe1nVY_6g",
+                  source_sha256: "a".repeat(64),
+                },
+              },
+            ],
+          },
+        ],
+      },
+      maxClips: 4,
+    },
+  );
+
+  assert.ok(refs.length > 0);
+  assert.ok(refs.every((ref) => ref.provenance.commercial_use_allowed === false));
+  assert.ok(refs.every((ref) => ref.provenance.local_materialization_allowed === true));
+  assert.ok(refs.every((ref) => ref.provenance.live_publish_allowed === false));
+  assert.ok(
+    refs.every(
+      (ref) => ref.provenance.requires_human_legal_review_before_publish === true,
+    ),
+  );
+  assert.ok(refs.every((ref) => ref.provenance.rights_grant === false));
+  assert.ok(refs.every((ref) => ref.provenance.rights_verdict === "RED"));
+});
+
 test("official clip refs skip resolver references that are only rating-board material", () => {
   const refs = buildOfficialTrailerClipsFromFrameReport(
     { plans: [{ story_id: "story-1", frames: [] }] },

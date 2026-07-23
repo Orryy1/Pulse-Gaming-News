@@ -46,6 +46,38 @@ function frame(path = "test/frame.jpg", extra = {}) {
   };
 }
 
+function hashBoundOfficialYoutubeLocalMaster(overrides = {}) {
+  return {
+    provider: "official_intake",
+    source_type: "official_youtube_channel_url",
+    source_url: "C:\\proof\\xbox\\official-master.mp4",
+    source_url_kind: "local_video_file",
+    entity: "Fuzion Frenzy",
+    source_verified: true,
+    downloads_allowed: true,
+    autonomous_use_approved: false,
+    rights_grant: false,
+    allowed_platforms: [],
+    commercial_use_allowed: false,
+    source_audio_allowed: false,
+    allowed_render_use: "local_proof_only",
+    rights_status: "local_proof_only",
+    rights_verdict: "RED",
+    segment_validation_eligible: true,
+    provenance: {
+      source: "official_youtube_channel_download",
+      official_channel: "https://www.youtube.com/@XBOX",
+      reference_url: "https://www.youtube.com/watch?v=CaDe1nVY_6g",
+      source_sha256: "dcca057301f4465d59eac548a99a3fff03dc494b2ad5e73cb0efed9019e14e4e",
+      source_identity_path: "C:\\proof\\xbox\\official-master.source-identity.json",
+      source_identity_sha256:
+        "2799d91f07a44fee7658996466ce73964f3c9005ae7dc49ddf529cfca1b43ef9",
+      source_identity_scope: "identity_only_not_rights_grant",
+    },
+    ...overrides,
+  };
+}
+
 test("Motion Acquisition Pro is report-only and never enables downloads", () => {
   const plan = buildMotionAcquisitionPlan(baseStory());
 
@@ -115,6 +147,63 @@ test("Motion Acquisition Pro consumes official resolver references as local fram
   assert.ok(actionTypes.includes("trailer_frame_extract_plan"));
   assert.equal(actionTypes.includes("official_trailer_search"), false);
   assert.equal(plan.safety.video_downloads, false);
+});
+
+test("Motion Acquisition Pro report preserves hash-bound local official YouTube masters", () => {
+  const storyId = "hash-bound-official-youtube";
+  const report = buildMotionAcquisitionReport(
+    [baseStory({ id: storyId })],
+    {
+      officialTrailerReferenceReport: {
+        plans: [
+          {
+            story_id: storyId,
+            references: [hashBoundOfficialYoutubeLocalMaster()],
+          },
+        ],
+      },
+    },
+  );
+
+  const plan = report.plans[0];
+  assert.equal(plan.motion_readiness, "reference_ready_for_local_frame_plan");
+  assert.equal(plan.existing_references.length, 1);
+  assert.equal(plan.existing_references[0].downloads_allowed, true);
+  assert.equal(plan.existing_references[0].rights_verdict, "RED");
+  assert.equal(plan.existing_references[0].allowed_render_use, "local_proof_only");
+  assert.equal(
+    plan.existing_references[0].provenance.source_sha256,
+    "dcca057301f4465d59eac548a99a3fff03dc494b2ad5e73cb0efed9019e14e4e",
+  );
+});
+
+test("Motion Acquisition Pro rejects label-only local official YouTube references", () => {
+  const storyId = "unbound-official-youtube";
+  const report = buildMotionAcquisitionReport(
+    [baseStory({ id: storyId })],
+    {
+      officialTrailerReferenceReport: {
+        plans: [
+          {
+            story_id: storyId,
+            references: [
+              hashBoundOfficialYoutubeLocalMaster({
+                provenance: {
+                  source: "official_youtube_channel_download",
+                  official_channel: "https://www.youtube.com/@XBOX",
+                  reference_url: "https://www.youtube.com/watch?v=CaDe1nVY_6g",
+                  source_identity_scope: "identity_only_not_rights_grant",
+                },
+              }),
+            ],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(report.plans[0].existing_references.length, 0);
+  assert.ok(report.plans[0].blockers.includes("no_official_motion_reference"));
 });
 
 test("Motion Acquisition Pro preserves source families from resolver references", () => {

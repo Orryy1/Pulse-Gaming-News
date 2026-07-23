@@ -33,6 +33,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     strictBaseSourceDiversity: false,
     premiumVisualSelection: false,
     refreshReady: false,
+    refreshArtifactDir: "",
     refreshWindowPlanPath: null,
     excludedClipIds: [],
     json: false,
@@ -60,6 +61,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--strict-base-source-diversity") args.strictBaseSourceDiversity = true;
     else if (arg === "--premium-visual-selection") args.premiumVisualSelection = true;
     else if (arg === "--refresh-ready") args.refreshReady = true;
+    else if (arg === "--refresh-artifact-dir") args.refreshArtifactDir = argv[++i] || "";
     else if (arg === "--refresh-window-plan") args.refreshWindowPlanPath = argv[++i] || null;
     else if (arg === "--exclude-clip-id") args.excludedClipIds.push(argv[++i] || "");
     else if (arg === "--json") args.json = true;
@@ -92,10 +94,63 @@ function usage() {
     "  --strict-base-source-diversity  Enforce the ultimate professional identity tier",
     "  --premium-visual-selection  Reject weak frames before clips consume source slots",
     "  --refresh-ready         Refresh requested ready stories from the current motion pack",
+    "  --refresh-artifact-dir <path>  Explicit package directory for one ready story refresh",
     "  --refresh-window-plan <path>  Materialise exact governed replacement windows from JSON",
     "  --exclude-clip-id <id>  Exclude a known-bad package clip during refresh; repeatable",
     "  --json                  Print JSON",
   ].join("\n");
+}
+
+function pathIsWithin(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+async function buildExplicitRefreshWorkOrder({
+  workOrder = {},
+  root = ROOT,
+  refreshArtifactDir = "",
+  refreshReady = false,
+  storyIds = [],
+} = {}) {
+  if (!String(refreshArtifactDir || "").trim()) return workOrder;
+  if (!refreshReady) {
+    throw new Error("--refresh-artifact-dir requires --refresh-ready");
+  }
+  const requestedStoryIds = [...new Set(storyIds.map((value) => String(value || "").trim()).filter(Boolean))];
+  if (requestedStoryIds.length !== 1) {
+    throw new Error("--refresh-artifact-dir requires exactly one --story-id");
+  }
+
+  const resolvedRoot = path.resolve(root);
+  const artifactDir = path.resolve(resolvedRoot, refreshArtifactDir);
+  if (!pathIsWithin(resolvedRoot, artifactDir)) {
+    throw new Error("--refresh-artifact-dir must stay within --root");
+  }
+  const canonicalManifestPath = path.join(artifactDir, "canonical_story_manifest.json");
+  if (!(await fs.pathExists(canonicalManifestPath))) {
+    throw new Error("--refresh-artifact-dir must contain canonical_story_manifest.json");
+  }
+  const canonicalManifest = await fs.readJson(canonicalManifestPath);
+  const storyId = requestedStoryIds[0];
+  if (String(canonicalManifest.story_id || "").trim() !== storyId) {
+    throw new Error("--refresh-artifact-dir canonical story_id does not match --story-id");
+  }
+
+  const existingJobs = Array.isArray(workOrder.jobs) ? workOrder.jobs : [];
+  return {
+    ...workOrder,
+    jobs: [
+      {
+        story_id: storyId,
+        title: String(canonicalManifest.title || canonicalManifest.public_title || "").trim(),
+        artifact_dir: artifactDir,
+        status: "explicit_local_motion_refresh_target",
+        publish_ready: false,
+      },
+      ...existingJobs.filter((job) => String(job?.story_id || "").trim() !== storyId),
+    ],
+  };
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -104,7 +159,13 @@ async function main(argv = process.argv.slice(2)) {
     console.log(usage());
     return { help: true, args };
   }
-  const workOrder = await fs.readJson(path.resolve(args.workOrderPath));
+  const workOrder = await buildExplicitRefreshWorkOrder({
+    workOrder: await fs.readJson(path.resolve(args.workOrderPath)),
+    root: args.root,
+    refreshArtifactDir: args.refreshArtifactDir,
+    refreshReady: args.refreshReady,
+    storyIds: args.storyIds,
+  });
   const segmentValidationReport = args.segmentReportPath
     ? await fs.readJson(path.resolve(args.segmentReportPath))
     : {};
@@ -180,6 +241,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildExplicitRefreshWorkOrder,
   main,
   parseArgs,
   usage,

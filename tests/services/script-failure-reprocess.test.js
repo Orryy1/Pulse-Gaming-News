@@ -699,6 +699,36 @@ test("source-bound local scripts below old 200 WPM floor are still persistable w
   );
 });
 
+test("verified first-party breaking scripts persist for measured-audio production without claiming final authority", () => {
+  const fullScript =
+    "Four original Xbox games just crossed onto PC. Xbox Wire confirms backward compatibility on PC has launched in early release with Blinx, Conker: Live and Reloaded, Crimson Skies and Fuzion Frenzy. All four are sold on PC and included with every Game Pass plan. Players who bought them digitally on console do not have to pay twice: Xbox says those licences carry over. Play Anywhere and Cloud Gaming keep the games available across console, PC, handheld and cloud. PC versions add up to four-times resolution, VSync, windowed or fullscreen modes, anisotropic filtering and enhanced anti-aliasing. There is one trade-off at launch: achievements are not ready today. Microsoft says they will arrive in the coming months, with more original Xbox titles planned. That turns this from a four-game nostalgia drop into the start of an Xbox library that follows owners onto PC. Follow Pulse Gaming so you never miss a beat.";
+  const story = {
+    id: "rss_xbox_pc_bc",
+    title: "Play More of the Games You Love, Wherever You Play",
+    url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-on-pc/",
+    source_type: "rss",
+    subreddit: "Xbox Wire",
+    source_name: "Xbox Wire",
+    source_material_excerpt:
+      "Xbox Backward Compatibility on PC launches in early release. All four games are sold on PC and every Game Pass plan includes the games. Existing digital owners do not pay again and achievements arrive later.",
+    script_generation_status: "script_ready",
+    script_source: "source_bound_fallback",
+    classification: "[CONFIRMED]",
+    hook: "Four original Xbox games just crossed onto PC.",
+    cta: "Follow Pulse Gaming so you never miss a beat.",
+    full_script: fullScript,
+    tts_script: fullScript,
+    word_count: 150,
+    duration_lane: "breaking_news",
+    audio_duration_verification_required: true,
+  };
+
+  assert.equal(
+    isPersistableScriptReady(story, { TTS_PROVIDER: "local" }),
+    true,
+  );
+});
+
 test("source-bound-only reprocess builds a clean local repair row", async () => {
   const { parseArgs, reprocessCandidate } = require("../../tools/reprocess-script-failures");
   const rows = await reprocessCandidate(
@@ -852,4 +882,7 @@ test("processor clears stale review metadata after a successful reprocess", () =
   assert.match(source, /script_generation_status:\s*requiresScriptReview/);
   assert.match(source, /:\s*"script_ready"/);
   assert.match(source, /script_validation_errors:\s*requiresScriptReview/);
+  assert.match(source, /format_route:\s*requiresScriptReview[\s\S]*successfulRuntimeRoute/);
+  assert.match(source, /runtime_route:\s*requiresScriptReview[\s\S]*successfulRuntimeRoute/);
+  assert.match(source, /short_runtime_plan:\s*finalRuntimePlan/);
 });

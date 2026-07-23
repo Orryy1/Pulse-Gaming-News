@@ -12,6 +12,7 @@ const {
   DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS,
   DEFAULT_RENDER_BREATHING_ROOM_SECONDS,
   NORMAL_PRODUCTION_DURATION_LANE,
+  BREAKING_NEWS_DURATION_LANE,
 } = require("../../lib/services/short-duration-contract");
 
 test("estimateVideoDurationFromAudio adds the render breathing room", () => {
@@ -113,6 +114,24 @@ test("classifyShortDuration allows normal production Shorts between 35 and 60 se
     minVideoSeconds: DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS,
     maxVideoSeconds: DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS,
   });
+});
+
+test("classifyShortDuration gives breaking news the normal production media bounds", () => {
+  const pass = classifyShortDuration({
+    audioDurationSeconds: 41,
+    lane: "breaking_news_measurement_required",
+  });
+  const fail = classifyShortDuration({
+    audioDurationSeconds: 65,
+    lane: "breaking_news",
+  });
+
+  assert.equal(pass.result, "pass");
+  assert.equal(pass.durationLane, BREAKING_NEWS_DURATION_LANE);
+  assert.equal(pass.minVideoSeconds, DEFAULT_MIN_NORMAL_PRODUCTION_VIDEO_SECONDS);
+  assert.equal(pass.maxVideoSeconds, DEFAULT_MAX_NORMAL_PRODUCTION_VIDEO_SECONDS);
+  assert.equal(fail.result, "fail");
+  assert.match(fail.failures[0], /audio_duration_too_long/);
 });
 
 test("classifyShortDuration blocks runaway audio even in the extended Short lane", () => {

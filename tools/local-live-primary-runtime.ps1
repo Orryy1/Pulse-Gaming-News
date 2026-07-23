@@ -58,6 +58,20 @@ function Write-RuntimeLog {
   }
 }
 
+function Protect-RuntimeLogMessage {
+  param([AllowNull()][object]$Message)
+
+  $safeMessage = [string]$Message
+  $safeMessage = $safeMessage.Replace("`r", " ").Replace("`n", " ")
+  $safeMessage = $safeMessage -replace '(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;]+', '$1[REDACTED]'
+  $safeMessage = $safeMessage -replace '(?i)((?:access_token|refresh_token)\s*["'']?\s*[:=]\s*["'']?)[^"''\s,;]+', '$1[REDACTED]'
+  $safeMessage = $safeMessage -replace '(?i)((?:api[_-]?key|client[_-]?secret|password)\s*["'']?\s*[:=]\s*["'']?)[^"''\s,;]+', '$1[REDACTED]'
+  if ($safeMessage.Length -gt 1000) {
+    return $safeMessage.Substring(0, 1000)
+  }
+  return $safeMessage
+}
+
 function Get-PublishCriticalWorkerProcesses {
   $workerScriptPattern = '(?i)[\\/]tools[\\/]local-publish-critical-worker\.js(?:["\s]|$)'
   return @(
@@ -301,8 +315,18 @@ if ($runtimeSelection -and [bool]$runtimeSelection.configured) {
     if ($EnsurePublishWorkerOnly) {
       $redirectArguments += "-EnsurePublishWorkerOnly"
     }
-    & $powershellExe @redirectArguments
-    exit $LASTEXITCODE
+    $redirectOutput = @(& $powershellExe @redirectArguments 2>&1 | Select-Object -Last 20)
+    $redirectExitCode = $LASTEXITCODE
+    foreach ($redirectLine in $redirectOutput) {
+      $safeRedirectLine = Protect-RuntimeLogMessage -Message $redirectLine
+      if (-not [string]::IsNullOrWhiteSpace($safeRedirectLine)) {
+        Write-RuntimeLog ("approved_runtime_selection_child_output {0}" -f $safeRedirectLine)
+      }
+    }
+    if ($redirectExitCode -ne 0) {
+      Write-RuntimeLog ("approved_runtime_selection_child_failed exit_code={0}" -f $redirectExitCode)
+    }
+    exit $redirectExitCode
   }
 }
 

@@ -239,3 +239,28 @@ test("local live primary runtime launcher redirects only through a validated cle
   assert.match(script, /-EvidenceRoot/);
   assert.match(script, /-Restart/);
 });
+
+test("local live primary runtime launcher records a bounded redacted selected-child failure", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /function Protect-RuntimeLogMessage/);
+  assert.match(script, /approved_runtime_selection_child_output/);
+  assert.match(script, /approved_runtime_selection_child_failed exit_code=/);
+  assert.match(script, /Select-Object -Last 20/);
+  assert.match(script, /Substring\(0,\s*1000\)/);
+  assert.match(script, /authorization/i);
+  assert.match(script, /access_token/i);
+  assert.match(script, /refresh_token/i);
+
+  const redirectIndex = script.indexOf(
+    "approved_runtime_selection_redirect",
+  );
+  const childOutputIndex = script.indexOf(
+    "approved_runtime_selection_child_output",
+  );
+  const childFailureIndex = script.indexOf(
+    "approved_runtime_selection_child_failed",
+  );
+  assert.ok(redirectIndex < childOutputIndex);
+  assert.ok(childOutputIndex < childFailureIndex);
+});

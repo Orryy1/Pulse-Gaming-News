@@ -244,6 +244,8 @@ test("local live primary runtime launcher records a bounded redacted selected-ch
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
 
   assert.match(script, /function Protect-RuntimeLogMessage/);
+  assert.match(script, /function Write-HandoffLog/);
+  assert.match(script, /pulse-live-primary-runtime-handoff\.log/);
   assert.match(script, /approved_runtime_selection_child_output/);
   assert.match(script, /approved_runtime_selection_child_failed exit_code=/);
   assert.match(script, /Select-Object -Last 20/);
@@ -261,6 +263,9 @@ test("local live primary runtime launcher records a bounded redacted selected-ch
   const childFailureIndex = script.indexOf(
     "approved_runtime_selection_child_failed",
   );
+  const redirectSource = script.slice(redirectIndex, childFailureIndex + 100);
   assert.ok(redirectIndex < childOutputIndex);
   assert.ok(childOutputIndex < childFailureIndex);
+  assert.match(redirectSource, /Write-HandoffLog/);
+  assert.doesNotMatch(redirectSource, /Write-RuntimeLog/);
 });

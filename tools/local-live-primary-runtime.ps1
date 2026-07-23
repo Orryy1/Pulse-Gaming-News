@@ -45,6 +45,7 @@ if (
 $logDir = Join-Path $RepoRoot "output/runtime"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "pulse-live-primary-runtime.log"
+$handoffLogPath = Join-Path $logDir "pulse-live-primary-runtime-handoff.log"
 $publishCriticalWorkerScript = Join-Path $RepoRoot "tools/local-publish-critical-worker.js"
 $publishCriticalWorkerId = "pulse-live-publish-critical"
 
@@ -70,6 +71,35 @@ function Protect-RuntimeLogMessage {
     return $safeMessage.Substring(0, 1000)
   }
   return $safeMessage
+}
+
+function Write-HandoffLog {
+  param([string]$Message)
+
+  $safeMessage = Protect-RuntimeLogMessage -Message $Message
+  if ([string]::IsNullOrWhiteSpace($safeMessage)) {
+    return
+  }
+  $line = "{0} {1}{2}" -f (
+    (Get-Date).ToUniversalTime().ToString("s"),
+    $safeMessage,
+    [Environment]::NewLine
+  )
+  for ($attempt = 0; $attempt -lt 3; $attempt += 1) {
+    try {
+      [System.IO.File]::AppendAllText(
+        $handoffLogPath,
+        $line,
+        (New-Object System.Text.UTF8Encoding($false))
+      )
+      return
+    } catch {
+      if ($attempt -eq 2) {
+        return
+      }
+      Start-Sleep -Milliseconds 50
+    }
+  }
 }
 
 function Get-PublishCriticalWorkerProcesses {
@@ -285,7 +315,7 @@ if ($RuntimeSelectionPlanOnly) {
 if ($runtimeSelection -and [bool]$runtimeSelection.configured) {
   $selectedRuntimeRoot = (Resolve-Path -LiteralPath ([string]$runtimeSelection.runtime_repo_root)).Path
   if (-not $selectedRuntimeRoot.Equals($RepoRoot, [StringComparison]::OrdinalIgnoreCase)) {
-    Write-RuntimeLog (
+    Write-HandoffLog (
       "approved_runtime_selection_redirect repo={0} selected_repo={1} commit_sha={2} branch={3} reason={4}" -f
         $RepoRoot,
         $selectedRuntimeRoot,
@@ -320,11 +350,13 @@ if ($runtimeSelection -and [bool]$runtimeSelection.configured) {
     foreach ($redirectLine in $redirectOutput) {
       $safeRedirectLine = Protect-RuntimeLogMessage -Message $redirectLine
       if (-not [string]::IsNullOrWhiteSpace($safeRedirectLine)) {
-        Write-RuntimeLog ("approved_runtime_selection_child_output {0}" -f $safeRedirectLine)
+        Write-HandoffLog ("approved_runtime_selection_child_output {0}" -f $safeRedirectLine)
       }
     }
     if ($redirectExitCode -ne 0) {
-      Write-RuntimeLog ("approved_runtime_selection_child_failed exit_code={0}" -f $redirectExitCode)
+      Write-HandoffLog ("approved_runtime_selection_child_failed exit_code={0}" -f $redirectExitCode)
+    } else {
+      Write-HandoffLog "approved_runtime_selection_child_completed exit_code=0"
     }
     exit $redirectExitCode
   }

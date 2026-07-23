@@ -1401,6 +1401,55 @@ test("render input work order trusts matching display-script evidence when spoke
   assert.equal(job.blockers.includes("word_timestamps_stale_after_script_rewrite"), false);
 });
 
+test("render input work order treats canonical timestamp text as display evidence when no display alias exists", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-canonical-timestamp-text-"));
+  const artifactDir = path.join(tmpDir, "story");
+  const canonicalScript = "Four Xbox classics just crossed onto PC with existing licences intact.";
+  await fs.ensureDir(path.join(artifactDir, "audio"));
+  await fs.outputFile(path.join(artifactDir, "audio", "narration.mp3"), Buffer.alloc(2048, 1));
+  await fs.outputJson(path.join(artifactDir, "audio", "word_timestamps.json"), {
+    words: [{ word: "Four", start: 0, end: 0.3 }],
+    meta: {
+      text: canonicalScript,
+      wordTimestampSource: "local_whisper_word_alignment",
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {
+    narration_audio_path: "audio/narration.mp3",
+    word_timestamps_path: "audio/word_timestamps.json",
+    word_timestamp_count: 10,
+    timestamp_whisper_alignment: {
+      repaired: true,
+      script_expected_word_count: 10,
+      script_inserted_actual_word_count: 0,
+      script_trailing_actual_word_count: 0,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "xbox-canonical-timestamp-text",
+    selected_title: "Four Xbox Classics Reach PC",
+    narration_script: canonicalScript,
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-23T03:40:00.000Z",
+      queue: [blockedQueueItem({
+        story_id: "xbox-canonical-timestamp-text",
+        title: "Four Xbox Classics Reach PC",
+        artifact_dir: artifactDir,
+        force_final_render: true,
+        render_input_blockers: ["final_narration_audio_missing", "word_timestamps_missing"],
+      })],
+    },
+    generatedAt: "2026-07-23T03:41:00.000Z",
+  });
+
+  const job = workOrder.jobs[0];
+  assert.equal(job.evidence.stale_after_script_rewrite, false);
+  assert.equal(job.evidence.timestamp_display_script_matches, true);
+});
+
 test("render input work order forces rerender when repaired package inputs supersede failed render QA", async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-stale-render-qa-"));
   const artifactDir = path.join(tmpDir, "story");
@@ -1604,6 +1653,203 @@ test("render input work order uses the actual local-proof MP4 time when its mani
     workOrder.jobs[0].evidence.repaired_package_input_freshness.motion_manifest_newer_than_render,
     true,
   );
+});
+
+test("render input work order creates a first production render job from complete held inputs", async () => {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-first-production-render-"));
+  const artifactDir = path.join(tmpDir, "story");
+  const audioPath = path.join(artifactDir, "audio", "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "audio", "word_timestamps.json");
+  const localProofPath = path.join(artifactDir, "visual_v4_render.mp4");
+  await fs.outputFile(audioPath, Buffer.alloc(4096, 3));
+  await fs.writeJson(timestampsPath, {
+    words: [
+      { word: "Xbox", start: 0, end: 0.4 },
+      { word: "classics", start: 0.41, end: 0.9 },
+    ],
+  });
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: "held-first-production-render",
+    canonical_subject: "Xbox backward compatibility on PC",
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    narration_script: "Xbox classics are now playable on PC, with achievements arriving later.",
+    description: "Xbox Wire confirms the first four backward-compatible PC releases.",
+    first_spoken_line: "Four Xbox classics just landed on PC.",
+  });
+  await fs.writeJson(path.join(artifactDir, "audio_manifest.json"), {
+    materialized_at: "2026-07-23T03:10:00.000Z",
+    narration_audio_path: audioPath,
+    word_timestamps_path: timestampsPath,
+    voice_provider: "local",
+    word_timestamp_source: "local_whisper_word_alignment",
+  });
+  const motionClips = [];
+  for (let index = 0; index < 5; index += 1) {
+    const id = `held-first-production-render-motion-${index + 1}`;
+    const clipPath = path.join(artifactDir, "motion", `${id}.mp4`);
+    await fs.outputFile(clipPath, Buffer.alloc(4096 + index, index + 11));
+    motionClips.push({
+      id,
+      path: clipPath,
+      local_materialized_path: clipPath,
+      source_url: `https://publisher.example/game-content-${index + 1}.jpg`,
+      source_type: "official_press_kit_stills",
+      media_kind: "visual_still",
+      source_family: `held_first_production_render_family_${index + 1}`,
+      base_source_family: `held_first_production_render_base_${index + 1}`,
+      materialized: true,
+      counts_towards_motion_readiness: true,
+      validated: true,
+      commercial_use_allowed: true,
+      licence_basis: "publisher_game_content_rules_youtube_ad_program",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube"],
+    });
+  }
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "fail",
+    failures: [
+      "rights:live_publish_not_allowed",
+      "rights:human_legal_review_required_before_publish",
+    ],
+    records: motionClips.map((clip) => ({
+      asset_id: clip.id,
+      asset_type: "motion_clip",
+      kind: "video",
+      path: clip.path,
+      source_url: clip.source_url,
+      source_type: clip.source_type,
+      source_family: clip.source_family,
+      licence_basis: clip.licence_basis,
+      allowed_use: clip.allowed_use,
+      allowed_platforms: clip.allowed_platforms,
+      commercial_use_allowed: true,
+    })),
+  });
+  await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
+    readiness: { status: "pass", blockers: [] },
+  });
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: "held-first-production-render",
+    generated_at: "2026-07-23T03:11:00.000Z",
+    status: "ready",
+    clip_count: 5,
+    distinct_motion_family_count: 5,
+    clips: motionClips,
+  });
+  await fs.outputFile(localProofPath, Buffer.alloc(8192, 4));
+  const olderInputTime = new Date("2026-07-23T03:11:00.000Z");
+  for (const inputPath of [
+    audioPath,
+    timestampsPath,
+    path.join(artifactDir, "canonical_story_manifest.json"),
+    path.join(artifactDir, "audio_manifest.json"),
+    path.join(artifactDir, "rights_ledger.json"),
+    path.join(artifactDir, "sfx_manifest.json"),
+    path.join(artifactDir, "materialised_motion_clips.json"),
+  ]) {
+    await fs.utimes(inputPath, olderInputTime, olderInputTime);
+  }
+  const newestProofTime = new Date("2026-07-23T03:12:00.000Z");
+  await fs.utimes(localProofPath, newestProofTime, newestProofTime);
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-23T03:13:00.000Z",
+      blocked: [{
+        story_id: "held-first-production-render",
+        title: "4 Xbox Classics Hit PC, Achievements Come Later",
+        artifact_dir: artifactDir,
+        render_manifest: {
+          renderer: "visual_v4_local_proof",
+          visual_tier: "local_proof_motion_graphic",
+          final_publish_render: false,
+          output: localProofPath,
+          output_path: localProofPath,
+          quality_gate_status: "materialised_final_verification_failed",
+        },
+        visual_evidence_profile: {
+          asset_count: 6,
+          motion_asset_count: 5,
+          real_media_asset_count: 5,
+          real_motion_asset_count: 5,
+          direct_video_motion_asset_count: 0,
+          real_media_family_count: 5,
+          direct_video_motion_family_count: 0,
+          generated_only_motion_deck: false,
+          blockers: [],
+        },
+        selected_render_evidence: {
+          has_selected_render_assets: false,
+          blockers: [],
+        },
+        status: "blocked",
+        blockers: [
+          "story_package_verdict:red",
+          "story_package:rights:live_publish_not_allowed",
+          "story_package:rights:human_legal_review_required_before_publish",
+          "story_package:media_house:final_publish_render_not_proven",
+          "story_package:media_house:caption_display_not_verified",
+          "story_package:render:final_publish_render_missing",
+          "story_package:render:render_not_final_publish_ready",
+          "story_package:control:review_story_id_missing",
+          "story_package:control:package_verdict_not_green",
+          "story_package:control:review_verdict_not_green",
+          "story_package:control:publish_verdict_not_green",
+          "authoritative_platform_publish_manifest_red",
+          "authoritative_publish_verdict_red",
+          "authoritative_goal_package_summary_red",
+        ],
+      }],
+    },
+    generatedAt: "2026-07-23T03:14:00.000Z",
+  });
+
+  assert.equal(workOrder.summary.ready_for_final_render_job_count, 1, JSON.stringify(workOrder, null, 2));
+  assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
+  assert.equal(workOrder.jobs[0].force_final_render, true);
+  assert.deepEqual(
+    workOrder.jobs[0].actions.map((action) => action.action_id),
+    ["run_visual_v4_production_render"],
+  );
+  assert.equal(
+    workOrder.jobs[0].evidence.repaired_package_input_freshness.newer_than_render,
+    false,
+  );
+  assert.equal(workOrder.safety.no_publish_triggered, true);
+
+  const unsafeRights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  unsafeRights.failures.push("rights:commercial_use_not_allowed");
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), unsafeRights);
+  const rejected = buildGoalRenderInputWorkOrder({
+    cutoverPlan: {
+      generated_at: "2026-07-23T03:15:00.000Z",
+      blocked: workOrder.jobs[0].evidence.cutover_blockers
+        ? [{
+            story_id: "held-first-production-render",
+            title: "4 Xbox Classics Hit PC, Achievements Come Later",
+            artifact_dir: artifactDir,
+            render_manifest: {
+              renderer: "visual_v4_local_proof",
+              visual_tier: "local_proof_motion_graphic",
+              final_publish_render: false,
+              output_path: localProofPath,
+              quality_gate_status: "materialised_final_verification_failed",
+            },
+            visual_evidence_profile: {
+              motion_asset_count: 5,
+              real_media_asset_count: 5,
+              real_media_family_count: 5,
+              generated_only_motion_deck: false,
+              blockers: [],
+            },
+            blockers: workOrder.jobs[0].evidence.cutover_blockers,
+          }]
+        : [],
+    },
+    generatedAt: "2026-07-23T03:16:00.000Z",
+  });
+  assert.equal(rejected.summary.ready_for_final_render_job_count, 0);
 });
 
 test("render input work order routes non-ASR local timestamps through the audio alignment lane", () => {

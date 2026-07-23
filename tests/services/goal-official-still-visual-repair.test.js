@@ -173,6 +173,8 @@ test("official still visual repair preserves a publisher-policy live hold", asyn
       risk_score: 0.45,
       required_rules_link: "https://www.xbox.com/en-us/developers/rules",
       durationS: 8,
+      focal_point_x: 0.22,
+      focal_point_y: 0.68,
     },
   ];
 
@@ -204,6 +206,11 @@ test("official still visual repair preserves a publisher-policy live hold", asyn
   assert.equal(rights.records[0].approval_status, "approved_for_local_materialization_only");
   assert.equal(rights.records[0].rights_status, "conditional_youtube_ad_program_scope");
   assert.equal(rights.records[0].durationS, 8);
+  assert.equal(rights.records[0].focal_point_x, 0.22);
+  assert.equal(rights.records[0].focal_point_y, 0.68);
+  const candidates = candidateRows({ rightsLedger: rights });
+  assert.equal(candidates[0].focal_point_x, 0.22);
+  assert.equal(candidates[0].focal_point_y, 0.68);
   assert.match(rights.records[0].evidence_sha256, /^[a-f0-9]{64}$/);
   assert.equal(fs.existsSync(rights.records[0].evidence_file), true);
 });
@@ -275,6 +282,9 @@ test("official still rerun refreshes an equivalent sidecar binding without repla
     rights_ledger: [materialisedRecord],
   }, { spaces: 2 });
 
+  report.accepted_references[0].focal_point_x = 0.22;
+  report.accepted_references[0].focal_point_y = 0.68;
+
   await repairGoalOfficialStillVisuals({
     root,
     intakeReport: report,
@@ -298,6 +308,8 @@ test("official still rerun refreshes an equivalent sidecar binding without repla
   assert.equal(refreshedRecord.path, motionPath);
   assert.equal(refreshedRecord.asset_sha256, motionSha256);
   assert.equal(refreshedRecord.asset_size_bytes, motionBytes.length);
+  assert.equal(refreshedRecord.focal_point_x, 0.22);
+  assert.equal(refreshedRecord.focal_point_y, 0.68);
 });
 
 test("official still visual repair materialises one asset once when intake report sections repeat it", async () => {

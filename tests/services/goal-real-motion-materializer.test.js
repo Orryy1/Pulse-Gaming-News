@@ -13,10 +13,13 @@ const {
   materializeGoalRealMotion: materializeGoalRealMotionProduction,
   writeGoalRealMotionReport,
   _private: {
+    buildStillMotionFfmpegArgs,
     dynamicMaxDirectClipsPerBaseSource,
+    excludedMotionRightsScopeReconciliation,
     governedExistingStillMotionRows,
     governedStaleInventoryRecoveryRows,
     materializedSourceIdentityFields,
+    normaliseStillCandidate,
     reconcileMaterializedRightsRecords,
   },
 } = require("../../lib/goal-real-motion-materializer");
@@ -857,6 +860,70 @@ test("ready refresh scopes known rights failures to explicitly excluded assets w
     report.jobs[0].rights_scope_transition.status,
     "excluded_assets_removed_from_motion_scope",
   );
+});
+
+test("motion scope reconciliation permits only a monotonic expansion after the global-ledger rebuild hold", () => {
+  const priorExcludedAssetIds = ["legacy-logo", "legacy-motion"];
+  const rightsLedger = {
+    verdict: "fail",
+    status: "blocked",
+    failures: [
+      "rights:licence_basis_missing",
+      "rights:commercial_use_not_allowed",
+    ],
+    blockers: [
+      "rights:global_ledger_rebuild_required_after_motion_scope_exclusions",
+    ],
+    assets: [
+      {
+        asset_id: "legacy-motion",
+        licence_basis: "local_proof_only",
+        commercial_use_allowed: false,
+      },
+      {
+        asset_id: "newly-rejected-motion",
+        commercial_use_allowed: false,
+      },
+    ],
+    motion_scope_reconciliation: {
+      schema_version: 1,
+      status: "excluded_assets_removed_from_motion_scope",
+      allowed: true,
+      scope: "local_motion_materialization_only",
+      source_ledger_preserved: true,
+      excluded_asset_ids: priorExcludedAssetIds,
+      resolved_failure_codes: [
+        "rights:licence_basis_missing",
+        "rights:commercial_use_not_allowed",
+      ],
+      unresolved_failure_codes: [],
+      missing_excluded_asset_ids: [],
+      independent_ledger_blockers: [],
+      independent_restrictive_statuses: [],
+    },
+  };
+
+  const expanded = excludedMotionRightsScopeReconciliation({
+    rightsLedger,
+    excludedClipIds: [...priorExcludedAssetIds, "newly-rejected-motion"],
+    generatedAt: "2026-07-23T04:20:00.000Z",
+  });
+  assert.equal(expanded.allowed, true);
+  assert.equal(expanded.prior_scope_reconciliation_extended, true);
+  assert.deepEqual(expanded.independent_ledger_blockers, []);
+  assert.deepEqual(expanded.previously_reconciled_absent_asset_ids, ["legacy-logo"]);
+  assert.deepEqual(expanded.missing_excluded_asset_ids, []);
+
+  const nonMonotonic = excludedMotionRightsScopeReconciliation({
+    rightsLedger,
+    excludedClipIds: ["legacy-logo", "newly-rejected-motion"],
+    generatedAt: "2026-07-23T04:21:00.000Z",
+  });
+  assert.equal(nonMonotonic.allowed, false);
+  assert.equal(nonMonotonic.prior_scope_reconciliation_extended, false);
+  assert.deepEqual(nonMonotonic.independent_ledger_blockers, [
+    "rights:global_ledger_rebuild_required_after_motion_scope_exclusions",
+  ]);
 });
 
 test("real motion materializer CLI accepts explicit direct base-source clip cap", () => {
@@ -6352,6 +6419,53 @@ test("real motion materializer binds complete same-run evidence to screenshot-de
   assert.equal(rights.records.length, 5);
   assert.ok(rights.records.every((record) => record.asset_type === "screenshot_derived_motion_clip"));
   assert.equal(rights.records[0].asset_sha256, manifest.clips[0].materialized_file_evidence.sha256);
+});
+
+test("governed still motion preserves bounded focal framing in the ffmpeg crop", () => {
+  const candidate = normaliseStillCandidate({
+    id: "official-gameplay",
+    path: "C:/pulse/official-gameplay.jpg",
+    source_url: "https://publisher.example/official-gameplay.jpg",
+    focal_point_x: 0.22,
+    focal_point_y: 1.4,
+  });
+
+  assert.equal(candidate.focal_point_x, 0.22);
+  assert.equal(candidate.focal_point_y, 1);
+
+  const args = buildStillMotionFfmpegArgs({
+    input: candidate.path,
+    output: "C:/pulse/official-gameplay.mp4",
+    durationS: 4,
+    focalPointX: candidate.focal_point_x,
+    focalPointY: candidate.focal_point_y,
+  });
+  const filter = args[args.indexOf("-vf") + 1];
+
+  assert.match(filter, /crop=1080:1920:x='max\(0,min\(iw-1080,iw\*0\.220000-540\)\)'/);
+  assert.match(filter, /y='max\(0,min\(ih-1920,ih\*1\.000000-960\)\)'/);
+
+  const centredArgs = buildStillMotionFfmpegArgs({
+    input: candidate.path,
+    output: "C:/pulse/official-gameplay-centred.mp4",
+    durationS: 4,
+  });
+  assert.match(centredArgs[centredArgs.indexOf("-vf") + 1], /crop=1080:1920,setsar=1/);
+});
+
+test("governed still motion keeps perceptible pan and zoom across the full clip", () => {
+  const args = buildStillMotionFfmpegArgs({
+    input: "C:/pulse/official-gameplay.jpg",
+    output: "C:/pulse/official-gameplay.mp4",
+    durationS: 8,
+  });
+  const filter = args[args.indexOf("-vf") + 1];
+
+  assert.match(filter, /zoompan=z='min\(1\.32,1\.08\+0\.24\*on\/239\)'/);
+  assert.match(filter, /x='\(iw-iw\/zoom\)\*\(0\.08\+0\.84\*on\/239\)'/);
+  assert.match(filter, /y='\(ih-ih\/zoom\)\*\(0\.78-0\.56\*on\/239\)'/);
+  assert.doesNotMatch(filter, /zoom\+0\.0012/);
+  assert.doesNotMatch(filter, /x='iw\/2-\(iw\/zoom\/2\)'/);
 });
 
 test("real motion materializer keeps one screenshot blocked despite lowered invocation thresholds", async () => {

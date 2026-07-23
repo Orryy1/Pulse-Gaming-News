@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const sharp = require("sharp");
 
 const {
   assTimeToSeconds,
@@ -17,6 +18,7 @@ const {
   findRecurringScheduledAudioClusters,
   hammingDistance,
   filterRepeatPairsByIgnoreRanges,
+  analyseVisualRepetition,
   buildVisualRepeatIgnoreRanges,
   buildValidatedReadableCardRanges,
   analyseRenderedFrameTaste,
@@ -392,6 +394,42 @@ test("hammingDistance handles different length hashes", () => {
   assert.equal(hammingDistance("1010", "1010"), 0);
   assert.equal(hammingDistance("1010", "0011"), 2);
   assert.equal(hammingDistance("1010", "10"), 2);
+});
+
+test("visual repetition black-frame detection keeps structured dark cards but rejects black frames with sparse captions", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-v2-black-frame-"));
+  const width = 72;
+  const height = 128;
+  const structured = Buffer.alloc(width * height, 1);
+  const sparseCaption = Buffer.alloc(width * height, 0);
+
+  for (const lineY of [12, 32, 52, 72, 92]) {
+    for (let y = lineY; y < lineY + 2; y++) {
+      for (let x = 0; x < width; x++) structured[y * width + x] = 50;
+    }
+  }
+  for (let y = 108; y < 111; y++) {
+    for (let x = 18; x < 54; x++) sparseCaption[y * width + x] = 255;
+  }
+
+  const structuredPath = path.join(dir, "structured-dark-card.png");
+  const sparseCaptionPath = path.join(dir, "black-with-caption.png");
+  await sharp(structured, { raw: { width, height, channels: 1 } })
+    .png()
+    .toFile(structuredPath);
+  await sharp(sparseCaption, { raw: { width, height, channels: 1 } })
+    .png()
+    .toFile(sparseCaptionPath);
+
+  const structuredReport = await analyseVisualRepetition({
+    frames: [{ path: structuredPath, timeS: 0 }],
+  });
+  const sparseCaptionReport = await analyseVisualRepetition({
+    frames: [{ path: sparseCaptionPath, timeS: 0 }],
+  });
+
+  assert.deepEqual(structuredReport.blackFrames, []);
+  assert.equal(sparseCaptionReport.blackFrames.length, 1);
 });
 
 test("visual repeat filtering ignores deliberate card holds", () => {

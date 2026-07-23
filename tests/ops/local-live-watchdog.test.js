@@ -228,7 +228,7 @@ test("local live watchdog rechecks server listener ownership and applies the tes
   assert.match(source, /\$decision\.action\s+-eq\s+"restart"/);
   assert.match(source, /pulse-runtime-restart-request\.json/);
   assert.match(source, /Resolve-WatchdogOperatorRestartRequest/);
-  assert.match(source, /PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH/);
+  assert.doesNotMatch(source, /PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH/);
 });
 
 test("local live watchdog checks runtime health and polls quickly enough for publish windows", () => {
@@ -260,6 +260,21 @@ test("local live watchdog keeps non-publish content workers alive", () => {
   assert.match(source, /content_workers_check ensuring_content_workers/);
   assert.match(source, /-File",\s*\$contentWorkersScript/);
   assert.doesNotMatch(source, /content_workers_check[\s\S]{0,400}"-Restart"/);
+});
+
+test("local live watchdog restores a missing publish worker without restarting the server", () => {
+  const source = fs.readFileSync(watchdogPath, "utf8");
+  const ensureStart = source.indexOf(
+    "publish_worker_check ensuring_publish_worker",
+  );
+  const ensureEnd = source.indexOf("$tunnel =", ensureStart);
+  const ensureSource = source.slice(ensureStart, ensureEnd);
+
+  assert.match(source, /\[int\]\$PublishWorkerEnsureIntervalSeconds\s*=\s*60\b/);
+  assert.match(ensureSource, /"\-EnsurePublishWorkerOnly"/);
+  assert.match(ensureSource, /\$runtimeScript/);
+  assert.match(ensureSource, /\$RuntimeRepoRoot/);
+  assert.doesNotMatch(ensureSource, /"\-Restart"/);
 });
 
 test("local live watchdog can supervise workers from one checkout while restarting the protected runtime checkout", () => {

@@ -3,10 +3,15 @@ param(
   [string]$EvidenceRoot = "",
   [int]$Port = 3001,
   [switch]$Restart,
-  [switch]$RuntimeSelectionPlanOnly
+  [switch]$RuntimeSelectionPlanOnly,
+  [switch]$EnsurePublishWorkerOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Restart -and $EnsurePublishWorkerOnly) {
+  throw "EnsurePublishWorkerOnly cannot be combined with Restart."
+}
 
 if (-not $RepoRoot) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -54,13 +59,13 @@ function Write-RuntimeLog {
 }
 
 function Get-PublishCriticalWorkerProcesses {
-  $escapedScript = [regex]::Escape([System.IO.Path]::GetFullPath($publishCriticalWorkerScript))
+  $workerScriptPattern = '(?i)[\\/]tools[\\/]local-publish-critical-worker\.js(?:["\s]|$)'
   return @(
     Get-CimInstance Win32_Process -Filter "name = 'node.exe'" -ErrorAction SilentlyContinue |
       Where-Object {
         $commandLine = [string]$_.CommandLine
         $commandLine -and
-        $commandLine -match $escapedScript -and
+        $commandLine -match $workerScriptPattern -and
         $commandLine -match ('--worker-id(?:=|\s+)"?{0}"?(?:\s|$)' -f [regex]::Escape($publishCriticalWorkerId))
       }
   )
@@ -293,6 +298,9 @@ if ($runtimeSelection -and [bool]$runtimeSelection.configured) {
     if ($Restart) {
       $redirectArguments += "-Restart"
     }
+    if ($EnsurePublishWorkerOnly) {
+      $redirectArguments += "-EnsurePublishWorkerOnly"
+    }
     & $powershellExe @redirectArguments
     exit $LASTEXITCODE
   }
@@ -387,7 +395,10 @@ function Test-HealthProvesProtectedPrimaryRuntime {
 function Get-ActivePublishJobs {
   $guardDbPath = $env:SQLITE_DB_PATH
   if (-not $guardDbPath) { $guardDbPath = "D:/pulse-data/pulse.db" }
-  if (-not (Test-Path -LiteralPath $guardDbPath)) { return @() }
+  if (-not (Test-Path -LiteralPath $guardDbPath -PathType Leaf)) {
+    Write-RuntimeLog ("active_publish_restart_guard_db_missing db={0}" -f $guardDbPath)
+    throw "active_publish_restart_guard_db_missing"
+  }
 
   $previousGuardDbPath = $env:PULSE_RUNTIME_RESTART_GUARD_DB_PATH
   $env:PULSE_RUNTIME_RESTART_GUARD_DB_PATH = $guardDbPath
@@ -409,9 +420,10 @@ const rows = db.prepare(`
 console.log(JSON.stringify(rows));
 '@
     $raw = $nodeScript | node - 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $raw) { return @() }
-    $parsed = $raw | ConvertFrom-Json
-    if ($null -eq $parsed) { return @() }
+    if ($LASTEXITCODE -ne 0 -or -not $raw) {
+      throw "active_publish_restart_guard_query_failed"
+    }
+    $parsed = ($raw -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
     foreach ($job in @($parsed)) {
       if ($job -and $job.PSObject.Properties["id"]) {
         Write-Output $job
@@ -419,7 +431,7 @@ console.log(JSON.stringify(rows));
     }
   } catch {
     Write-RuntimeLog ("active_publish_restart_guard_unavailable db={0} error={1}" -f $guardDbPath, $_.Exception.Message)
-    return @()
+    throw "active_publish_restart_guard_query_failed"
   } finally {
     if ($previousGuardDbPath) {
       $env:PULSE_RUNTIME_RESTART_GUARD_DB_PATH = $previousGuardDbPath
@@ -449,6 +461,39 @@ try {
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
   Where-Object { $_.OwningProcess -and $_.OwningProcess -ne 0 } |
   Select-Object -ExpandProperty OwningProcess -Unique
+
+if ($EnsurePublishWorkerOnly) {
+  if (-not $existing) {
+    Write-RuntimeLog ("publish_worker_ensure_skipped_no_listener port={0}" -f $Port)
+    exit 0
+  }
+
+  $workerEnsureHealth = Get-RuntimeHealth -RuntimePort $Port
+  $workerEnsureCommitSha = Get-RuntimeCommitSha -Health $workerEnsureHealth
+  $workerEnsureBranchName = Get-RuntimeBranchName -Health $workerEnsureHealth
+  $workerContractHealthy =
+    $workerEnsureHealth -and
+    (Test-ExpectedPrimaryRuntimeMode -Health $workerEnsureHealth) -and
+    [bool]$workerEnsureHealth.runtime.guarded_live_dispatch_enabled -and
+    [bool]$workerEnsureHealth.runtime.emergency_kill_switch_clear
+  $workerRuntimeMatches =
+    $workerEnsureCommitSha -and
+    $workerEnsureBranchName -and
+    $workerEnsureCommitSha -eq $commitSha -and
+    $workerEnsureBranchName -eq $branchName
+  if (-not $workerContractHealthy -or -not $workerRuntimeMatches) {
+    Write-RuntimeLog ("publish_worker_ensure_skipped_runtime_mismatch port={0} pid={1} commit_sha={2} expected_commit_sha={3} branch={4} expected_branch={5}" -f $Port, ($existing -join ","), $workerEnsureCommitSha, $commitSha, $workerEnsureBranchName, $branchName)
+    exit 0
+  }
+
+  $workerEnsureNodeCommand = Get-Command "node.exe" -ErrorAction SilentlyContinue
+  if (-not $workerEnsureNodeCommand) {
+    $workerEnsureNodeCommand = Get-Command "node" -ErrorAction Stop
+  }
+  $ensuredWorkerPid = Ensure-PublishCriticalWorker -NodeExecutable $workerEnsureNodeCommand.Source
+  Write-RuntimeLog ("publish_worker_ensure_complete port={0} pid={1}" -f $Port, $ensuredWorkerPid)
+  exit 0
+}
 
 if ($existing -and -not $Restart) {
   $existingHealth = Get-RuntimeHealth -RuntimePort $Port
@@ -480,9 +525,23 @@ if ($existing -and -not $Restart) {
 
 if ($existing -and $Restart) {
   $activePublishJobs = @(Get-ActivePublishJobs)
-  $allowRestartDuringPublish = [string]$env:PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH -eq "true"
-  if ($activePublishJobs.Count -gt 0 -and -not $allowRestartDuringPublish) {
+  if ($activePublishJobs.Count -gt 0) {
     Write-RuntimeLog ("restart_deferred_active_publish_jobs port={0} pid={1} jobs={2}" -f $Port, ($existing -join ","), (($activePublishJobs | ConvertTo-Json -Compress) -replace "`r?`n", ""))
+    exit 0
+  }
+
+  $publishWorkersForRestart = @(Get-PublishCriticalWorkerProcesses)
+  foreach ($publishWorker in $publishWorkersForRestart) {
+    Write-RuntimeLog ("publish_critical_worker_stopping_for_runtime_transition pid={0}" -f $publishWorker.ProcessId)
+    Stop-Process -Id $publishWorker.ProcessId -Force -ErrorAction Stop
+  }
+  if ($publishWorkersForRestart.Count -gt 0) {
+    Start-Sleep -Milliseconds 500
+  }
+
+  $postWorkerStopActivePublishJobs = @(Get-ActivePublishJobs)
+  if ($postWorkerStopActivePublishJobs.Count -gt 0) {
+    Write-RuntimeLog ("restart_deferred_publish_worker_race port={0} pid={1} jobs={2}" -f $Port, ($existing -join ","), (($postWorkerStopActivePublishJobs | ConvertTo-Json -Compress) -replace "`r?`n", ""))
     exit 0
   }
 

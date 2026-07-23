@@ -33,6 +33,9 @@ const {
   metaBinaryUploadHeaders,
   metaBinaryUploadTimeoutMs,
 } = require("./lib/platforms/meta-binary-upload-policy");
+const {
+  writeTokenJsonAtomic,
+} = require("./lib/platforms/durable-token-store");
 
 dotenv.config({ override: true });
 
@@ -113,12 +116,9 @@ function buildInstagramReelCaption(story = {}, channelOverride = null) {
 */
 
 async function getAccessToken() {
-  // Prefer env var (persists across Railway deploys, token files get wiped)
-  if (process.env.INSTAGRAM_ACCESS_TOKEN) {
-    return process.env.INSTAGRAM_ACCESS_TOKEN;
-  }
-
-  // Fallback to token file (local dev)
+  // Prefer the rotating token on persistent storage. The environment value
+  // is a bootstrap credential; preferring it forever discards successful
+  // refreshes and eventually returns an expired token.
   const tokenPath = resolveTokenPath();
   if (await fs.pathExists(tokenPath)) {
     const tokenData = await fs.readJson(tokenPath);
@@ -127,9 +127,16 @@ async function getAccessToken() {
       tokenData.expires_at > 0 &&
       Date.now() > tokenData.expires_at
     ) {
-      throw new Error("Instagram token has EXPIRED. Re-auth at /auth/facebook");
+      if (!process.env.INSTAGRAM_ACCESS_TOKEN) {
+        throw new Error("Instagram token has EXPIRED. Re-auth at /auth/facebook");
+      }
+    } else if (typeof tokenData.access_token === "string" && tokenData.access_token) {
+      return tokenData.access_token;
     }
-    return tokenData.access_token;
+  }
+
+  if (process.env.INSTAGRAM_ACCESS_TOKEN) {
+    return process.env.INSTAGRAM_ACCESS_TOKEN;
   }
 
   throw new Error(
@@ -157,8 +164,7 @@ async function refreshToken(currentToken) {
   };
 
   const tokenPath = resolveTokenPath();
-  await fs.ensureDir(path.dirname(tokenPath));
-  await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
+  await writeTokenJsonAtomic(tokenPath, tokenData);
   console.log(
     `[instagram] Token refreshed, expires in ${Math.round(response.data.expires_in / 86400)} days`,
   );
@@ -178,8 +184,7 @@ async function seedTokenFromEnv() {
       seeded_at: new Date().toISOString(),
     };
     const tokenPath = resolveTokenPath();
-    await fs.ensureDir(path.dirname(tokenPath));
-    await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
+    await writeTokenJsonAtomic(tokenPath, tokenData);
     console.log(
       "[instagram] Seeded token from env var to configured token path",
     );

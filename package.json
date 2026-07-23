@@ -80,6 +80,7 @@
     "ops:retention-intelligence": "node tools/retention-intelligence.js",
     "ops:learning-loop": "node tools/continuous-learning-loop.js",
     "ops:growth-autopilot": "node tools/growth-autopilot.js",
+    "ops:oauth-uptime": "node tools/oauth-uptime-maintenance.js",
     "ops:commercial-learning": "node tools/commercial-learning-loop.js",
     "ops:commercial-scorecard": "node tools/weekly-commercial-scorecard.js",
     "ops:published-commercial-reconcile": "node tools/published-commercial-reconciliation.js",

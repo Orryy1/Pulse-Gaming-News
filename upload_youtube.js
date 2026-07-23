@@ -23,6 +23,10 @@ const {
   assertPublicMetadataSafe,
   safePublicExcerpt,
 } = require("./lib/public-metadata-qa");
+const {
+  mergeRotatedToken,
+  writeTokenJsonAtomic,
+} = require("./lib/platforms/durable-token-store");
 
 dotenv.config({ override: true });
 
@@ -138,9 +142,9 @@ async function getAuthClient() {
       try {
         const { credentials: newToken } =
           await oauth2Client.refreshAccessToken();
-        await fs.ensureDir(path.dirname(TOKEN_PATH));
-        await fs.writeJson(TOKEN_PATH, newToken, { spaces: 2 });
-        oauth2Client.setCredentials(newToken);
+        const durableToken = mergeRotatedToken(token, newToken);
+        await writeTokenJsonAtomic(TOKEN_PATH, durableToken);
+        oauth2Client.setCredentials(durableToken);
       } catch (err) {
         if (useEnvRefreshToken(oauth2Client, "file_token_refresh_failed")) {
           return oauth2Client;
@@ -158,6 +162,63 @@ async function getAuthClient() {
     "YouTube not authenticated. Run: node upload_youtube.js auth\n" +
       "Then visit the URL and paste the code back.",
   );
+}
+
+async function inspectAuthStatus({ now = Date.now() } = {}) {
+  let token = {};
+  if (await fs.pathExists(TOKEN_PATH)) {
+    try {
+      token = await fs.readJson(TOKEN_PATH);
+    } catch {
+      return {
+        enabled: true,
+        access_expires_at: null,
+        refresh_available: !!process.env.YOUTUBE_REFRESH_TOKEN,
+        reason: "token_file_unreadable",
+      };
+    }
+  }
+  const refreshAvailable =
+    typeof token.refresh_token === "string" && token.refresh_token.length >= 8 ||
+    typeof process.env.YOUTUBE_REFRESH_TOKEN === "string" &&
+      process.env.YOUTUBE_REFRESH_TOKEN.length >= 8;
+  return {
+    enabled:
+      refreshAvailable ||
+      !!(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET),
+    access_expires_at: Number.isFinite(Number(token.expiry_date))
+      ? Number(token.expiry_date)
+      : null,
+    refresh_available: refreshAvailable,
+    expired:
+      Number.isFinite(Number(token.expiry_date)) &&
+      Number(token.expiry_date) <= Number(now),
+    reason: refreshAvailable ? "refresh_available" : "refresh_missing",
+  };
+}
+
+async function forceRefreshAuth() {
+  const oauth2Client = await getAuthClient();
+  const previous = { ...oauth2Client.credentials };
+  if (!previous.refresh_token) {
+    const envRefresh = process.env.YOUTUBE_REFRESH_TOKEN;
+    if (!envRefresh) throw new Error("youtube_refresh_token_missing");
+    oauth2Client.setCredentials({ ...previous, refresh_token: envRefresh });
+    previous.refresh_token = envRefresh;
+  }
+  const { credentials } = await oauth2Client.refreshAccessToken();
+  const durableToken = mergeRotatedToken(previous, credentials);
+  if (await fs.pathExists(TOKEN_PATH)) {
+    await writeTokenJsonAtomic(TOKEN_PATH, durableToken);
+  }
+  oauth2Client.setCredentials(durableToken);
+  return {
+    ok: true,
+    access_expires_at: Number.isFinite(Number(durableToken.expiry_date))
+      ? Number(durableToken.expiry_date)
+      : null,
+    refresh_available: !!durableToken.refresh_token,
+  };
 }
 
 // --- Generate auth URL for initial setup ---
@@ -209,8 +270,7 @@ async function exchangeCode(code) {
   );
 
   const { tokens } = await oauth2Client.getToken(code);
-  await fs.ensureDir(path.dirname(TOKEN_PATH));
-  await fs.writeJson(TOKEN_PATH, tokens, { spaces: 2 });
+  await writeTokenJsonAtomic(TOKEN_PATH, tokens);
   console.log("[youtube] Token saved successfully!");
   return tokens;
 }
@@ -1105,6 +1165,8 @@ module.exports = {
   generateAuthUrl,
   exchangeCode,
   getAuthClient,
+  inspectAuthStatus,
+  forceRefreshAuth,
   getYoutubeUploadTimeoutMs,
   youtubeRequestOptions,
   ensurePlaylists,

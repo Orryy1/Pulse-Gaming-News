@@ -59,6 +59,7 @@ test("publish-critical worker fails closed unless the guarded runtime contract i
 test("publish-critical worker starts a runner-only restricted queue process", async () => {
   const worker = loadFresh();
   const calls = [];
+  const exitCodes = [];
   const bootstrap = {
     async start(options) {
       calls.push(options);
@@ -78,7 +79,12 @@ test("publish-critical worker starts a runner-only restricted queue process", as
   const result = await worker.main(
     ["--worker-id", "pulse-live-publish-critical"],
     { stdout: { write() {} }, stderr: { write() {} } },
-    { bootstrap, env, installSignalHandlers: false },
+    {
+      bootstrap,
+      env,
+      exit: (code) => exitCodes.push(code),
+      installSignalHandlers: false,
+    },
   );
 
   assert.equal(result.status, "running");
@@ -88,4 +94,18 @@ test("publish-critical worker starts a runner-only restricted queue process", as
   assert.equal(calls[0].runGeneralRunner, true);
   assert.equal(calls[0].autoSeed, false);
   assert.deepEqual(calls[0].kinds, worker.PUBLISH_WORKER_KINDS);
+  assert.deepEqual(calls[0].handlerTimeoutMsByKind, {
+    publish_schedule_recovery_monitor: 120_000,
+  });
+  assert.equal(calls[0].stopOnHandlerTimeout, true);
+  assert.equal(typeof calls[0].onHandlerTimeout, "function");
+
+  const timeoutError = Object.assign(new Error("bounded timeout"), {
+    code: "JOB_HANDLER_TIMEOUT",
+  });
+  await calls[0].onHandlerTimeout(timeoutError, {
+    id: 91,
+    kind: "publish_schedule_recovery_monitor",
+  });
+  assert.deepEqual(exitCodes, [70]);
 });

@@ -8,6 +8,9 @@ const PUBLISH_WORKER_KINDS = Object.freeze([
   "publish_window_watchdog",
   "publish",
 ]);
+const DEFAULT_RECOVERY_MONITOR_TIMEOUT_MS = 120_000;
+const MIN_RECOVERY_MONITOR_TIMEOUT_MS = 30_000;
+const MAX_RECOVERY_MONITOR_TIMEOUT_MS = 10 * 60_000;
 
 function truthy(value) {
   return /^(true|1|yes|on)$/i.test(String(value || "").trim());
@@ -30,6 +33,27 @@ function assertGuardedRuntimeContract(env = process.env) {
       `Refusing guarded publish worker startup: ${failures.join("; ")}`,
     );
   }
+}
+
+function recoveryMonitorTimeoutMs(env = process.env) {
+  const raw = String(
+    env.PULSE_PUBLISH_RECOVERY_MONITOR_TIMEOUT_MS || "",
+  ).trim();
+  if (!raw) return DEFAULT_RECOVERY_MONITOR_TIMEOUT_MS;
+
+  const timeoutMs = Number(raw);
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs < MIN_RECOVERY_MONITOR_TIMEOUT_MS ||
+    timeoutMs > MAX_RECOVERY_MONITOR_TIMEOUT_MS
+  ) {
+    throw new Error(
+      "PULSE_PUBLISH_RECOVERY_MONITOR_TIMEOUT_MS must be an integer " +
+        `between ${MIN_RECOVERY_MONITOR_TIMEOUT_MS} and ` +
+        `${MAX_RECOVERY_MONITOR_TIMEOUT_MS}`,
+    );
+  }
+  return timeoutMs;
 }
 
 function parseArgs(argv = process.argv.slice(2), env = process.env) {
@@ -81,6 +105,8 @@ async function main(
   env.PULSE_MAINTENANCE_RUNNER = "false";
 
   const bootstrap = options.bootstrap || require("../lib/bootstrap-queue");
+  const exit = options.exit || ((code) => process.exit(code));
+  const monitorTimeoutMs = recoveryMonitorTimeoutMs(env);
   const state = await bootstrap.start({
     workerId: args.workerId,
     runScheduler: false,
@@ -89,6 +115,18 @@ async function main(
     kinds: [...PUBLISH_WORKER_KINDS],
     gpu: false,
     autoSeed: false,
+    handlerTimeoutMsByKind: {
+      publish_schedule_recovery_monitor: monitorTimeoutMs,
+    },
+    stopOnHandlerTimeout: true,
+    onHandlerTimeout: async (error, job) => {
+      io.stderr.write(
+        `[local-publish-critical-worker] fatal handler timeout ` +
+          `job=${job?.id ?? "unknown"} kind=${job?.kind || "unknown"} ` +
+          `timeout_ms=${error?.timeoutMs || monitorTimeoutMs}; exiting\n`,
+      );
+      exit(70);
+    },
     log: (message) => io.stderr.write(`${message}\n`),
   });
 
@@ -123,7 +161,9 @@ if (require.main === module) {
 
 module.exports = {
   PUBLISH_WORKER_KINDS,
+  DEFAULT_RECOVERY_MONITOR_TIMEOUT_MS,
   assertGuardedRuntimeContract,
+  recoveryMonitorTimeoutMs,
   parseArgs,
   usage,
   main,

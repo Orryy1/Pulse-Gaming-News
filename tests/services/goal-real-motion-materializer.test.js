@@ -640,6 +640,93 @@ test("governed still-motion recovery requires matching media and rights evidence
   assert.deepEqual(governedExistingStillMotionRows({ assets: [rows[0]] }, { root }), []);
 });
 
+test("non-commercial local still proof requires a hash-bound source and matching held-rights sidecar", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-local-proof-hash-bound-"));
+  const sourceImagePath = path.join(root, "output", "images", "official-story-still.png");
+  const evidencePath = path.join(root, "output", "rights", "official-story-still.json");
+  const sourceUrl = "https://clan.fastly.steamstatic.com/images/38221882/official-story-still.png";
+  const sourceImageBytes = Buffer.alloc(4096, 94);
+  const sourceImageSha256 = crypto
+    .createHash("sha256")
+    .update(sourceImageBytes)
+    .digest("hex");
+  const evidenceBytes = Buffer.from(JSON.stringify({
+    schema_version: 1,
+    asset_id: "official-story-still",
+    decision: {
+      approval_status: "approved_for_local_materialization_only",
+      rights_status: "publisher_assets_rights_unresolved",
+      licence_basis: "official_story_page_pending_human_rights_review",
+      allowed_use: "local_transformative_editorial_proof",
+      allowed_platforms: [],
+      commercial_use_allowed: false,
+      local_materialization_allowed: true,
+      live_publish_allowed: false,
+      requires_human_legal_review_before_publish: true,
+      risk_score: 0.55,
+    },
+    source: {
+      source_url: sourceUrl,
+      local_path: sourceImagePath,
+      sha256: sourceImageSha256,
+      size_bytes: sourceImageBytes.length,
+      content_type: "image/png",
+    },
+    policy: {
+      required_rules_link: "https://manorlords.com/terms-of-use",
+      commercial_reuse_grant_found: false,
+    },
+    safety: { no_publish_triggered: true },
+  }));
+  await fs.outputFile(sourceImagePath, sourceImageBytes);
+  await fs.outputFile(evidencePath, evidenceBytes);
+
+  const asset = {
+    asset_id: "official-story-still",
+    asset_type: "visual_still",
+    kind: "image",
+    path: sourceImagePath,
+    source_url: sourceUrl,
+    source_type: "official_press_kit_stills",
+    source_family: "official_story_page_still",
+    durationS: 5,
+    licence_basis: "official_story_page_pending_human_rights_review",
+    allowed_use: "local_transformative_editorial_proof",
+    allowed_platforms: [],
+    commercial_use_allowed: false,
+    local_materialization_allowed: true,
+    live_publish_allowed: false,
+    requires_human_legal_review_before_publish: true,
+    approval_status: "approved_for_local_materialization_only",
+    rights_status: "publisher_assets_rights_unresolved",
+    risk_score: 0.55,
+    evidence_file: evidencePath,
+    evidence_sha256: crypto.createHash("sha256").update(evidenceBytes).digest("hex"),
+    evidence_size_bytes: evidenceBytes.length,
+  };
+
+  const candidates = candidateRows({
+    root,
+    rightsLedger: { assets: [asset] },
+  });
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].source_master_sha256, sourceImageSha256);
+  assert.equal(candidates[0].hash_bound_still_source_identity_verified, true);
+
+  await fs.writeFile(sourceImagePath, Buffer.alloc(sourceImageBytes.length, 95));
+  assert.deepEqual(candidateRows({
+    root,
+    rightsLedger: { assets: [asset] },
+  }), []);
+
+  await fs.writeFile(sourceImagePath, sourceImageBytes);
+  await fs.appendFile(evidencePath, "\n");
+  assert.deepEqual(candidateRows({
+    root,
+    rightsLedger: { assets: [asset] },
+  }), []);
+});
+
 test("ready refresh scopes known rights failures to explicitly excluded assets without clearing the source ledger", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-still-motion-refresh-merge-"));
   const storyId = "xbox-refresh-merge";

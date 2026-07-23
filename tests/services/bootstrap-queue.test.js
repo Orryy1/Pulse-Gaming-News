@@ -184,6 +184,21 @@ test("bootstrap forwards a content-worker claim guard to the restricted runner",
   );
 });
 
+test("bootstrap forwards bounded handler controls to the restricted runner", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "bootstrap-queue.js"),
+    "utf8",
+  );
+
+  assert.match(source, /handlerTimeoutMsByKind\s*=\s*null/);
+  assert.match(source, /stopOnHandlerTimeout\s*=\s*false/);
+  assert.match(source, /onHandlerTimeout\s*=\s*null/);
+  assert.match(
+    source,
+    /runner\s*=\s*new JobsRunner\(\{[\s\S]*?handlerTimeoutMsByKind,[\s\S]*?stopOnHandlerTimeout,[\s\S]*?onHandlerTimeout,/,
+  );
+});
+
 test("bootstrap validates restricted additional runners", () => {
   assert.deepEqual(
     normaliseAdditionalRunnerLanes([{ id: "runway", kinds: ["fresh_production_refill"] }]),

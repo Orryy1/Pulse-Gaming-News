@@ -7,6 +7,7 @@ param(
   [int]$UnhealthyRestartThreshold = 3,
   [int]$PublishWindowGuardBeforeMinutes = 10,
   [int]$PublishWindowGuardAfterMinutes = 35,
+  [int]$PublishWorkerEnsureIntervalSeconds = 60,
   [string]$TunnelConfigPath = "D:/pulse-data/cloudflared-pulse.yml"
 )
 
@@ -107,6 +108,7 @@ function Test-InCriticalPublishWindow {
 Write-WatchdogLog "watchdog_start repo=$RepoRoot runtime_repo=$RuntimeRepoRoot port=$Port interval=${IntervalSeconds}s"
 
 $destructiveRestartCount = 0
+$lastPublishWorkerEnsureUtc = [DateTimeOffset]::MinValue
 
 while ($true) {
   try {
@@ -124,23 +126,10 @@ while ($true) {
           -NowUtc ([DateTimeOffset]::UtcNow)
         if ($operatorRestart.approved) {
           Write-WatchdogLog ("operator_restart_requested pid={0} reason={1}" -f $operatorRestart.expected_pid, $operatorRestart.reason)
-          $previousRestartOverride = [Environment]::GetEnvironmentVariable(
-            "PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH",
-            "Process"
-          )
-          try {
-            $env:PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH = "true"
-            Start-Process -FilePath "powershell.exe" `
-              -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RuntimeRepoRoot, "-Port", "$Port", "-Restart") `
-              -WorkingDirectory $RuntimeRepoRoot `
-              -WindowStyle Hidden | Out-Null
-          } finally {
-            if ($null -eq $previousRestartOverride) {
-              Remove-Item Env:\PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH -ErrorAction SilentlyContinue
-            } else {
-              $env:PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH = $previousRestartOverride
-            }
-          }
+          Start-Process -FilePath "powershell.exe" `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RuntimeRepoRoot, "-Port", "$Port", "-Restart") `
+            -WorkingDirectory $RuntimeRepoRoot `
+            -WindowStyle Hidden | Out-Null
           Remove-Item -LiteralPath $restartRequestPath -Force
           $destructiveRestartCount = 0
           Start-Sleep -Seconds $IntervalSeconds
@@ -210,6 +199,19 @@ while ($true) {
       Write-WatchdogLog ("runtime_unhealthy_retrying classification=overloaded_or_unresponsive pid={0} destructive_restart_count={1} threshold={2}" -f ($listenerOwners -join ","), $destructiveRestartCount, $UnhealthyRestartThreshold)
     } elseif ($decision.classification -ne "healthy") {
       Write-WatchdogLog ("runtime_classification={0} action=none destructive_restart_count={1}" -f $decision.classification, $destructiveRestartCount)
+    }
+
+    $publishWorkerEnsureNowUtc = [DateTimeOffset]::UtcNow
+    $publishWorkerEnsureDue =
+      ($publishWorkerEnsureNowUtc - $lastPublishWorkerEnsureUtc).TotalSeconds -ge
+      $PublishWorkerEnsureIntervalSeconds
+    if ($decision.classification -eq "healthy" -and $publishWorkerEnsureDue) {
+      Write-WatchdogLog "publish_worker_check ensuring_publish_worker"
+      Start-Process -FilePath "powershell.exe" `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runtimeScript, "-RepoRoot", $RuntimeRepoRoot, "-Port", "$Port", "-EnsurePublishWorkerOnly") `
+        -WorkingDirectory $RuntimeRepoRoot `
+        -WindowStyle Hidden | Out-Null
+      $lastPublishWorkerEnsureUtc = $publishWorkerEnsureNowUtc
     }
 
     $tunnel = Get-CimInstance Win32_Process -Filter "name = 'cloudflared.exe'" |

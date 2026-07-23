@@ -1958,6 +1958,174 @@ test("official trailer segment validator labels clean storefront cinematic motio
   assert.ok(report.segments[0].action_score >= 62);
 });
 
+test("official trailer segment validator accepts clean calm strategy footage as storefront cinematic motion", async () => {
+  const outputRoot = tempOutputRoot("official-steam-storefront-calm-strategy-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.akamai.steamstatic.com/store_trailers/1363080/622565/hash/hls_264_master.m3u8",
+        sourceType: "steam_movie",
+        movieName: "Release Date Trailer",
+        sourceDurationS: 112.9,
+        mediaStartS: 48,
+        entity: "Manor Lords",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.0728, saturation_mean: 0.334, dark_pixel_ratio: 0.1512, score: 76.8 },
+          { edge_density: 0.0909, saturation_mean: 0.3187, dark_pixel_ratio: 0.1377, score: 78.2 },
+          { edge_density: 0.1202, saturation_mean: 0.2752, dark_pixel_ratio: 0.0471, score: 79.6 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `manor-lords-calm-strategy-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: sample.dark_pixel_ratio,
+            bright_pixel_ratio: 0.0024,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: [],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1, JSON.stringify(report.segments[0], null, 2));
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].action_sample_count, 0);
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
+test("official trailer segment validator accepts a clean muted settlement pan with strong average taste", async () => {
+  const outputRoot = tempOutputRoot("official-steam-storefront-muted-settlement-pan");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1363080/extras/bc150a1494b2b6c95f1f493c743c4978.mp4",
+        sourceType: "platform_storefront_video_reference",
+        movieName: "Manor Lords official Steam storefront",
+        sourceDurationS: 8.9,
+        mediaStartS: 4,
+        entity: "Manor Lords",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        const samples = [
+          { edge_density: 0.1641, saturation_mean: 0.2015, score: 81.4 },
+          { edge_density: 0.1298, saturation_mean: 0.433, score: 88.4 },
+          { edge_density: 0.1458, saturation_mean: 0.2122, score: 79.7 },
+        ];
+        const sample = samples[call - 1] || samples[0];
+        return {
+          ...passingQa(outputPath),
+          content_hash: `manor-lords-settlement-pan-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: sample.edge_density,
+            saturation_mean: sample.saturation_mean,
+            dark_pixel_ratio: 0.1,
+            bright_pixel_ratio: 0.01,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: sample.score,
+            tags: [],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 1, JSON.stringify(report.segments[0], null, 2));
+  assert.equal(report.segments[0].validation_reason, "official_storefront_cinematic_motion_samples_passed");
+  assert.equal(report.segments[0].segment_motion_class, "official_storefront_cinematic_motion");
+  assert.equal(report.segments[0].allowed_for_flash_lane, true);
+});
+
+test("official trailer segment validator keeps weak calm storefront footage blocked", async () => {
+  const outputRoot = tempOutputRoot("official-steam-storefront-weak-calm-motion");
+  await cleanTempRoot(outputRoot);
+  let call = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: "https://video.akamai.steamstatic.com/store_trailers/1363080/weak/hash/hls_264_master.m3u8",
+        sourceType: "steam_movie",
+        movieName: "Release Date Trailer",
+        sourceDurationS: 112.9,
+        mediaStartS: 48,
+        entity: "Manor Lords",
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: fakeExtractor,
+      inspectFrame: async (outputPath) => {
+        call += 1;
+        return {
+          ...passingQa(outputPath),
+          content_hash: `weak-calm-storefront-${call}`,
+          prescan: {
+            likely_is_logo: false,
+            text_overlay_likelihood: 0,
+            white_text_on_dark_likelihood: 0,
+            edge_density: 0.052,
+            saturation_mean: 0.21,
+            dark_pixel_ratio: 0.18,
+            bright_pixel_ratio: 0.002,
+            letterbox_bar_ratio: 0,
+          },
+          visual_taste: {
+            verdict: "pass",
+            reason: "taste_passed",
+            score: 78,
+            tags: [],
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 0);
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
+  assert.equal(report.segments[0].validation_reason, "segment_contains_low_detail_frame");
+});
+
 test("official trailer segment validator accepts entity-matched licensed Steam cinematic motion", async () => {
   const outputRoot = tempOutputRoot("official-licensed-steam-storefront-cinematic-motion");
   await cleanTempRoot(outputRoot);
@@ -2298,7 +2466,7 @@ test("official trailer segment validator accepts a fully authorised hash-bound l
   assert.equal(report.segments[0].allowed_for_flash_lane, true);
 });
 
-test("official trailer segment validator keeps AMBER or hash-unbound local publisher press-kit masters out of cinematic fallback", async () => {
+test("official trailer segment validator keeps AMBER or hash-unbound local publisher press-kit masters out before visual scoring", async () => {
   const outputRoot = tempOutputRoot("official-publisher-local-press-kit-amber");
   await cleanTempRoot(outputRoot);
   let call = 0;
@@ -2405,9 +2573,90 @@ test("official trailer segment validator keeps AMBER or hash-unbound local publi
   assert.equal(report.summary.segments_validated, 0);
   assert.equal(report.summary.segments_rejected, 2);
   for (const segment of report.segments) {
-    assert.equal(segment.validation_reason, "segment_lacks_gameplay_action_samples");
+    assert.equal(
+      segment.validation_reason,
+      "publisher_press_kit_requires_green_commercial_editorial_approval",
+    );
     assert.equal(segment.allowed_for_flash_lane, false);
   }
+});
+
+test("official trailer segment validator rejects action-rich AMBER publisher press-kit media before visual scoring", async () => {
+  const outputRoot = tempOutputRoot("official-publisher-local-press-kit-amber-action");
+  await cleanTempRoot(outputRoot);
+  let extractorCalls = 0;
+
+  const report = await runOfficialTrailerSegmentValidation(
+    [
+      clip({
+        path: path.join(outputRoot, "gigabash-ultraman-zero.mp4"),
+        sourceType: "official_publisher_or_developer_trailer_page",
+        sourceFamily: "gigabash_ultraman_zero_press_kit_master",
+        source_family: "gigabash_ultraman_zero_press_kit_master",
+        reference_title: "Official GigaBash Ultraman Zero gameplay press-kit clip",
+        entity: "GigaBash Ultraman Zero",
+        mediaStartS: 6,
+        durationS: 5,
+        sourceDurationS: 32.35,
+        allowEarlyExploratoryWindow: true,
+        provenance: {
+          requires_segment_validation: true,
+          segment_validated: false,
+          allowed_for_flash_lane: false,
+          source: "official_publisher_press_kit",
+          provider: "passion_republic_games_press_kit",
+          source_owner: "Passion Republic Games",
+          source_verified: true,
+          source_sha256: "a".repeat(64),
+          source_identity_path: path.join(outputRoot, "gigabash-ultraman-zero.mp4"),
+          source_identity_sha256: "a".repeat(64),
+          original_asset_sha256: "a".repeat(64),
+          reference_url: "https://drive.google.com/file/d/gigabash-ultraman-zero/view",
+          evidence_reference: path.join(outputRoot, "press-kit-rights-evidence.json"),
+          allowed_render_use: "human_legal_review_required",
+          commercial_use_allowed: false,
+          approval_status: "human_legal_review_required",
+          rights_status: "AMBER",
+        },
+      }),
+    ],
+    {
+      applyLocal: true,
+      outputRoot,
+      extractor: async (args) => {
+        extractorCalls += 1;
+        return fakeExtractor(args);
+      },
+      inspectFrame: async (outputPath) => ({
+        ...passingQa(outputPath),
+        prescan: {
+          likely_is_logo: false,
+          text_overlay_likelihood: 0,
+          white_text_on_dark_likelihood: 0,
+          edge_density: 0.28,
+          saturation_mean: 0.62,
+          dark_pixel_ratio: 0.1,
+          bright_pixel_ratio: 0.1,
+          letterbox_bar_ratio: 0,
+        },
+        visual_taste: {
+          verdict: "pass",
+          reason: "taste_passed",
+          score: 96,
+          tags: ["detail_rich", "gameplay_candidate"],
+        },
+      }),
+    },
+  );
+
+  assert.equal(report.summary.segments_validated, 0);
+  assert.equal(report.summary.segments_rejected, 1);
+  assert.equal(extractorCalls, 0);
+  assert.equal(
+    report.segments[0].validation_reason,
+    "publisher_press_kit_requires_green_commercial_editorial_approval",
+  );
+  assert.equal(report.segments[0].allowed_for_flash_lane, false);
 });
 
 test("official trailer segment validator keeps mismatched publisher direct media out of cinematic fallback", async () => {

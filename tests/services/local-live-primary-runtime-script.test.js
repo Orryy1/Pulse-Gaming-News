@@ -99,6 +99,9 @@ test("local live primary runtime launcher replaces matching-commit observation m
 
 test("local live primary runtime launcher defers restarts while publish jobs are actively claimed", () => {
   const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+  const guardStart = script.indexOf("function Get-ActivePublishJobs");
+  const guardEnd = script.indexOf("$runtimeTransitionMutexName", guardStart);
+  const guardSource = script.slice(guardStart, guardEnd);
 
   assert.match(script, /Get-ActivePublishJobs/);
   assert.match(
@@ -110,8 +113,11 @@ test("local live primary runtime launcher defers restarts while publish jobs are
   assert.match(script, /PSObject\.Properties\["id"\]/);
   assert.doesNotMatch(script, /return @\(\$raw \| ConvertFrom-Json\)/);
   assert.match(script, /restart_deferred_active_publish_jobs/);
-  assert.match(script, /PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH/);
+  assert.doesNotMatch(script, /PULSE_ALLOW_RUNTIME_RESTART_DURING_PUBLISH/);
   assert.match(script, /exit 0/);
+  assert.match(guardSource, /active_publish_restart_guard_db_missing/);
+  assert.match(guardSource, /active_publish_restart_guard_query_failed/);
+  assert.doesNotMatch(guardSource, /return @\(\)/);
 });
 
 test("local live primary runtime launcher preserves guarded queue runtime env", () => {
@@ -139,6 +145,60 @@ test("local live primary runtime launcher isolates guarded publish work from the
   assert.match(script, /publish_schedule_recovery_monitor,publish_window_watchdog,publish/);
   assert.match(script, /publish_critical_worker_started/);
   assert.match(script, /publish_critical_worker_noop_current/);
+});
+
+test("local live primary runtime launcher recycles the stable publish worker during a safe transition", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+  const matcherStart = script.indexOf("function Get-PublishCriticalWorkerProcesses");
+  const matcherEnd = script.indexOf("function Ensure-PublishCriticalWorker", matcherStart);
+  const matcherSource = script.slice(matcherStart, matcherEnd);
+  const initialGuardIndex = script.indexOf("$activePublishJobs = @(Get-ActivePublishJobs)");
+  const workerStopIndex = script.indexOf(
+    "publish_critical_worker_stopping_for_runtime_transition",
+  );
+  const postStopGuardIndex = script.indexOf(
+    "$postWorkerStopActivePublishJobs = @(Get-ActivePublishJobs)",
+  );
+  const serverStopIndex = script.indexOf("stopping_existing_runtime");
+
+  assert.match(
+    matcherSource,
+    /tools\[\\\\\/\]local-publish-critical-worker\\\.js/,
+  );
+  assert.doesNotMatch(
+    matcherSource,
+    /GetFullPath\(\$publishCriticalWorkerScript\)/,
+  );
+  assert.match(script, /restart_deferred_publish_worker_race/);
+  assert.ok(initialGuardIndex >= 0, "initial active-job guard must exist");
+  assert.ok(initialGuardIndex < workerStopIndex, "guard must precede worker stop");
+  assert.ok(
+    workerStopIndex < postStopGuardIndex,
+    "queue must be rechecked after stopping the worker",
+  );
+  assert.ok(
+    postStopGuardIndex < serverStopIndex,
+    "post-stop queue guard must precede server stop",
+  );
+});
+
+test("local live primary runtime launcher can ensure the publish worker without restarting the server", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+  const ensureStart = script.indexOf("if ($EnsurePublishWorkerOnly)");
+  const normalRuntimeStart = script.indexOf(
+    "if ($existing -and -not $Restart)",
+    ensureStart,
+  );
+  const ensureSource = script.slice(ensureStart, normalRuntimeStart);
+
+  assert.match(script, /\[switch\]\$EnsurePublishWorkerOnly/);
+  assert.match(script, /"\-EnsurePublishWorkerOnly"/);
+  assert.match(ensureSource, /publish_worker_ensure_skipped_no_listener/);
+  assert.match(ensureSource, /publish_worker_ensure_skipped_runtime_mismatch/);
+  assert.match(ensureSource, /Ensure-PublishCriticalWorker/);
+  assert.match(ensureSource, /publish_worker_ensure_complete/);
+  assert.doesNotMatch(ensureSource, /\$Restart\s*=\s*\$true/);
+  assert.doesNotMatch(ensureSource, /Stop-Process/);
 });
 
 test("local live primary runtime launcher can safely replace an uninspectable Windows node owner", () => {

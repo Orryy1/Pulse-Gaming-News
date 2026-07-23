@@ -449,6 +449,7 @@ module.exports = {
   postTweet,
   postImageTweet,
   twitterEnabled,
+  generateOAuthHeader,
 };
 
 if (require.main === module) {

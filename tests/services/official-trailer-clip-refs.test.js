@@ -778,6 +778,75 @@ test("official clip refs deep-scan dedupes repeated source/entity/start windows"
   );
 });
 
+test("official clip refs collapse Steam codec and CDN aliases without collapsing distinct movies", () => {
+  const references = [
+    {
+      source_url:
+        "https://video.akamai.steamstatic.com/store_trailers/1363080/691162/launchhash/1750678058/hls_264_master.m3u8?t=1",
+      source_type: "steam_movie",
+      entity: "Manor Lords",
+      movie_id: "691162",
+      movie_name: "Launch Trailer",
+      source_duration_s: 110.9,
+    },
+    {
+      source_url:
+        "https://video.fastly.steamstatic.com/store_trailers/1363080/691162/launchhash/1750678058/dash_h264.mpd?t=2",
+      source_type: "steam_storefront_video_reference",
+      entity: "Manor Lords",
+      movie_id: "official_intake_launch_dash",
+      source_duration_s: 110.9,
+    },
+    {
+      source_url:
+        "https://video.fastly.steamstatic.com/store_trailers/1363080/691162/launchhash/1750678058/movie_max.mp4?t=3",
+      source_type: "steam_storefront_video_reference",
+      entity: "Manor Lords",
+      movie_id: "official_intake_launch_mp4",
+      source_duration_s: 110.9,
+    },
+    {
+      source_url:
+        "https://video.akamai.steamstatic.com/store_trailers/1363080/622565/releasehash/1750678043/hls_264_master.m3u8?t=4",
+      source_type: "steam_movie",
+      entity: "Manor Lords",
+      movie_id: "622565",
+      movie_name: "Release Date Trailer",
+      source_duration_s: 112.9,
+    },
+    {
+      source_url:
+        "https://video.fastly.steamstatic.com/store_trailers/1363080/622565/releasehash/1750678043/dash_av1.mpd?t=5",
+      source_type: "steam_storefront_video_reference",
+      entity: "Manor Lords",
+      movie_id: "official_intake_release_dash",
+      source_duration_s: 112.9,
+    },
+  ].map((reference) => ({
+    ...reference,
+    downloads_allowed: false,
+    segment_validation_eligible: true,
+  }));
+
+  const refs = buildExploratoryClipRefs(
+    { plans: [] },
+    "story-1",
+    {
+      referenceReport: {
+        plans: [{ story_id: "story-1", references }],
+      },
+      exploratoryStartSeconds: [48],
+    },
+  );
+
+  assert.equal(refs.length, 2, JSON.stringify(refs, null, 2));
+  assert.deepEqual(
+    refs.map((ref) => ref.provenance.movie_id),
+    ["691162", "622565"],
+  );
+  assert.ok(refs.every((ref) => ref.path.includes("hls_264_master.m3u8")));
+});
+
 test("official clip refs deep-scan can isolate short clean motion windows", () => {
   const refs = buildExploratoryClipRefs(
     { plans: [] },

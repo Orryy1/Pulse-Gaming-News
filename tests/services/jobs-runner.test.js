@@ -155,3 +155,70 @@ test("JobsRunner does not claim while its claim guard is closed", async (t) => {
   assert.equal(calls.claims.length, 0);
   assert.equal(scheduledDelay, 5000);
 });
+
+test("JobsRunner fails closed and stops after a bounded handler timeout", async (t) => {
+  const timedOutJob = {
+    id: 91,
+    kind: "publish_schedule_recovery_monitor",
+    attempt_count: 0,
+  };
+  const calls = {
+    claims: 0,
+    failures: [],
+    workerHeartbeats: [],
+    timeouts: [],
+  };
+  const repos = {
+    jobs: {
+      claim: () => {
+        calls.claims += 1;
+        return calls.claims === 1 ? timedOutJob : null;
+      },
+      fail: (jobId, error, options) => {
+        calls.failures.push({ jobId, error, options });
+        return { status: "pending" };
+      },
+    },
+    workers: {
+      heartbeat: (workerId, patch) => {
+        calls.workerHeartbeats.push({ workerId, patch });
+      },
+    },
+  };
+  const { JobsRunner } = loadJobsRunnerWithRepos(t, repos);
+  const runner = new JobsRunner({
+    workerId: "pulse-live-publish-critical",
+    handlers: {
+      publish_schedule_recovery_monitor: () => new Promise(() => {}),
+    },
+    handlerTimeoutMsByKind: {
+      publish_schedule_recovery_monitor: 15,
+    },
+    stopOnHandlerTimeout: true,
+    onHandlerTimeout: (error, job) => {
+      calls.timeouts.push({ error, job });
+    },
+    log: () => {},
+  });
+  runner.running = true;
+  runner._heartbeatHandle = setInterval(() => {}, 60_000);
+  let scheduled = 0;
+  runner._schedule = () => {
+    scheduled += 1;
+  };
+
+  await runner._tick();
+
+  assert.equal(calls.claims, 1);
+  assert.equal(calls.failures.length, 1);
+  assert.equal(calls.failures[0].jobId, timedOutJob.id);
+  assert.equal(calls.failures[0].error.code, "JOB_HANDLER_TIMEOUT");
+  assert.equal(calls.failures[0].error.jobId, timedOutJob.id);
+  assert.equal(calls.failures[0].error.kind, timedOutJob.kind);
+  assert.equal(calls.timeouts.length, 1);
+  assert.equal(calls.timeouts[0].job, timedOutJob);
+  assert.equal(runner.running, false);
+  assert.equal(runner.current, null);
+  assert.equal(runner._heartbeatHandle, null);
+  assert.equal(scheduled, 0);
+});

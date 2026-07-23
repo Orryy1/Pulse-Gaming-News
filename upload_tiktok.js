@@ -23,6 +23,10 @@ const {
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { resolveTikTokTokenPath } = require("./lib/token-paths");
+const {
+  mergeRotatedToken,
+  writeTokenJsonAtomic,
+} = require("./lib/platforms/durable-token-store");
 
 const DEFAULT_TOKEN_PATH = path.join(__dirname, "tokens", "tiktok_token.json");
 
@@ -382,10 +386,12 @@ async function refreshToken(refreshToken) {
 
   assertTokenResponse(response.data, "refresh");
 
-  const tokenData = buildTokenRecord(response.data);
+  const tokenData = mergeRotatedToken(
+    { refresh_token: refreshToken },
+    buildTokenRecord(response.data),
+  );
   const tokenPath = resolveTokenPath();
-  await fs.ensureDir(path.dirname(tokenPath));
-  await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
+  await writeTokenJsonAtomic(tokenPath, tokenData);
   return tokenData;
 }
 
@@ -539,8 +545,7 @@ async function exchangeCode(code, opts = {}) {
 
   const tokenData = buildTokenRecord(response.data);
   const tokenPath = resolveTokenPath();
-  await fs.ensureDir(path.dirname(tokenPath));
-  await fs.writeJson(tokenPath, tokenData, { spaces: 2 });
+  await writeTokenJsonAtomic(tokenPath, tokenData);
   console.log("[tiktok] OAuth credential saved successfully");
   return tokenData;
 }

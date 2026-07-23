@@ -168,6 +168,62 @@ test("official press-kit still intake preserves its publisher reference page", (
   );
 });
 
+test("official press-kit still intake preserves hash-bound product-page and policy evidence", () => {
+  const report = buildOfficialSourceIntakeReport({
+    stories: [
+      story({
+        id: "xbox-held-still",
+        canonical_subject: "Xbox",
+        canonical_game: "Conker: Live and Reloaded",
+        title: "Xbox classics reach PC",
+        full_script: "Xbox is bringing selected classics to PC.",
+      }),
+    ],
+    entries: [
+      officialEntry({
+        story_id: "xbox-held-still",
+        entity: "Xbox",
+        source_type: "official_press_kit_stills",
+        source_owner: "Microsoft Studios",
+        source_family: "conker_store_screenshot_03",
+        official_source_url:
+          "https://store-images.s-microsoft.com/image/apps.37949.conker.screen-three",
+        reference_page_url:
+          "https://www.xbox.com/en-US/games/store/conker-live-and-reloaded/BVFB8CBS75R6",
+        source_title: "Conker official Xbox Store screenshot 3",
+        evidence_of_officialness: "Declared in the official Xbox Store product payload.",
+        entity_match_notes: "The product is named in the Xbox classics story.",
+        product_page_evidence_path: "output/source/conker-xbox-store.html",
+        product_page_evidence_sha256: "b".repeat(64),
+        product_page_evidence_size_bytes: 700000,
+        policy_evidence_path: "output/source/xbox-game-content-usage-rules.html",
+        policy_evidence_sha256: "c".repeat(64),
+        policy_evidence_size_bytes: 370000,
+        licence_basis: "microsoft_game_content_usage_rules_youtube_ad_program",
+        allowed_use: "transformative_editorial_short_form",
+        allowed_platforms: ["youtube"],
+        restricted_platforms: ["tiktok", "instagram", "facebook", "x"],
+        commercial_use_allowed: true,
+        local_materialization_allowed: true,
+        live_publish_allowed: false,
+        requires_human_legal_review_before_publish: true,
+        approval_status: "approved_for_local_materialization_only",
+        rights_status: "conditional_youtube_ad_program_scope",
+        required_rules_link: "https://www.xbox.com/en-us/developers/rules",
+      }),
+    ],
+  });
+
+  assert.equal(report.summary.accepted, 1);
+  const reference = report.accepted_references[0];
+  assert.equal(reference.product_page_evidence_path, "output/source/conker-xbox-store.html");
+  assert.equal(reference.product_page_evidence_sha256, "b".repeat(64));
+  assert.equal(reference.product_page_evidence_size_bytes, 700000);
+  assert.equal(reference.policy_evidence_path, "output/source/xbox-game-content-usage-rules.html");
+  assert.equal(reference.policy_evidence_sha256, "c".repeat(64));
+  assert.equal(reference.policy_evidence_size_bytes, 370000);
+});
+
 test("official source intake matches clean operator entries against mojibake story manifests", () => {
   const report = buildOfficialSourceIntakeReport({
     stories: [

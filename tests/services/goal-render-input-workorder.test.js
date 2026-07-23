@@ -1709,22 +1709,34 @@ test("render input work order creates a first production render job from complet
   await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), {
     verdict: "fail",
     failures: [
+      "rights:licence_basis_missing",
       "rights:live_publish_not_allowed",
       "rights:human_legal_review_required_before_publish",
+      "rights:direct_motion_live_publish_hold",
     ],
-    records: motionClips.map((clip) => ({
-      asset_id: clip.id,
-      asset_type: "motion_clip",
-      kind: "video",
-      path: clip.path,
-      source_url: clip.source_url,
-      source_type: clip.source_type,
-      source_family: clip.source_family,
-      licence_basis: clip.licence_basis,
-      allowed_use: clip.allowed_use,
-      allowed_platforms: clip.allowed_platforms,
-      commercial_use_allowed: true,
-    })),
+    records: [
+      {
+        asset_id: "stale-unselected-logo",
+        asset_type: "source_logo",
+        kind: "visual",
+        source_url: "https://publisher.example/stale-logo.png",
+        licence_basis: null,
+        commercial_use_allowed: true,
+      },
+      ...motionClips.map((clip) => ({
+        asset_id: clip.id,
+        asset_type: "motion_clip",
+        kind: "video",
+        path: clip.path,
+        source_url: clip.source_url,
+        source_type: clip.source_type,
+        source_family: clip.source_family,
+        licence_basis: clip.licence_basis,
+        allowed_use: clip.allowed_use,
+        allowed_platforms: clip.allowed_platforms,
+        commercial_use_allowed: true,
+      })),
+    ],
   });
   await fs.writeJson(path.join(artifactDir, "sfx_manifest.json"), {
     readiness: { status: "pass", blockers: [] },
@@ -1753,10 +1765,9 @@ test("render input work order creates a first production render job from complet
   const newestProofTime = new Date("2026-07-23T03:12:00.000Z");
   await fs.utimes(localProofPath, newestProofTime, newestProofTime);
 
-  const workOrder = buildGoalRenderInputWorkOrder({
-    cutoverPlan: {
-      generated_at: "2026-07-23T03:13:00.000Z",
-      blocked: [{
+  const cutoverPlan = {
+    generated_at: "2026-07-23T03:13:00.000Z",
+    blocked: [{
         story_id: "held-first-production-render",
         title: "4 Xbox Classics Hit PC, Achievements Come Later",
         artifact_dir: artifactDir,
@@ -1801,7 +1812,69 @@ test("render input work order creates a first production render job from complet
           "authoritative_goal_package_summary_red",
         ],
       }],
-    },
+  };
+  const missingSourceCard = buildGoalRenderInputWorkOrder({
+    cutoverPlan,
+    generatedAt: "2026-07-23T03:13:30.000Z",
+  });
+  assert.equal(missingSourceCard.summary.ready_for_final_render_job_count, 0);
+  assert.equal(missingSourceCard.jobs[0].status, "blocked_on_render_inputs");
+  assert.deepEqual(
+    missingSourceCard.jobs[0].actions.map((action) => action.action_id),
+    ["materialise_owned_generated_motion_clips"],
+  );
+
+  const sourceCardPath = path.join(artifactDir, "motion", "xbox-wire-source-card.mp4");
+  await fs.outputFile(sourceCardPath, Buffer.alloc(4096, 22));
+  const sourceCard = {
+    id: "held-first-production-render-source-card",
+    path: sourceCardPath,
+    local_materialized_path: sourceCardPath,
+    source_url: "local://hyperframes/held-first-production-render/source",
+    source_type: "hyperframes_premium_shell_card",
+    source_kind: "owned_source_card_explainer_motion",
+    media_kind: "owned_explainer_motion",
+    source_family: "held_first_production_render_source_card",
+    base_source_family: "held_first_production_render_source_card",
+    hyperframes_card: true,
+    readable_card_kind: "source",
+    card_kind: "source",
+    readable_text: "Xbox Wire",
+    durationS: 12,
+    materialized: true,
+    counts_towards_motion_readiness: true,
+    validated: true,
+    commercial_use_allowed: true,
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    allowed_use: "finished_editorial_video_only",
+    allowed_platforms: ["youtube"],
+  };
+  const rightsWithSourceCard = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  rightsWithSourceCard.records.push({
+    asset_id: sourceCard.id,
+    asset_type: "owned_source_card",
+    kind: "video",
+    path: sourceCard.path,
+    source_url: sourceCard.source_url,
+    source_type: sourceCard.source_type,
+    source_family: sourceCard.source_family,
+    licence_basis: sourceCard.licence_basis,
+    allowed_use: sourceCard.allowed_use,
+    allowed_platforms: sourceCard.allowed_platforms,
+    commercial_use_allowed: true,
+  });
+  await fs.writeJson(path.join(artifactDir, "rights_ledger.json"), rightsWithSourceCard);
+  await fs.writeJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: "held-first-production-render",
+    generated_at: "2026-07-23T03:13:45.000Z",
+    status: "ready",
+    clip_count: 6,
+    distinct_motion_family_count: 6,
+    clips: [...motionClips, sourceCard],
+  });
+
+  const workOrder = buildGoalRenderInputWorkOrder({
+    cutoverPlan,
     generatedAt: "2026-07-23T03:14:00.000Z",
   });
 
@@ -1809,12 +1882,26 @@ test("render input work order creates a first production render job from complet
   assert.equal(workOrder.jobs[0].status, "ready_for_final_render_job");
   assert.equal(workOrder.jobs[0].force_final_render, true);
   assert.deepEqual(
+    workOrder.jobs[0].evidence.local_render_rights.ignored_unselected_rights_record_ids,
+    ["stale-unselected-logo"],
+  );
+  assert.deepEqual(
+    workOrder.jobs[0].evidence.local_render_rights.publish_holds_retained,
+    [
+      "rights:live_publish_not_allowed",
+      "rights:human_legal_review_required_before_publish",
+      "rights:direct_motion_live_publish_hold",
+    ],
+  );
+  assert.equal(workOrder.jobs[0].evidence.local_render_rights.publish_permitted, false);
+  assert.deepEqual(
     workOrder.jobs[0].actions.map((action) => action.action_id),
     ["run_visual_v4_production_render"],
   );
+  assert.equal(workOrder.jobs[0].evidence.readable_hyperframes_source_card_ready, true);
   assert.equal(
     workOrder.jobs[0].evidence.repaired_package_input_freshness.newer_than_render,
-    false,
+    true,
   );
   assert.equal(workOrder.safety.no_publish_triggered, true);
 

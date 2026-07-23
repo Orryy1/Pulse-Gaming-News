@@ -1418,6 +1418,174 @@ test("owned motion materializer preserves existing official direct-video clips w
   );
 });
 
+test("owned motion materializer preserves governed still-derived motion and adds only the readable source card", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-owned-motion-preserve-still-pack-"));
+  const storyId = "xbox-backward-compatibility-pc";
+  const artifactDir = path.join(root, "output", "goal-proof", storyId);
+  await fs.ensureDir(artifactDir);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Xbox Backward Compatibility on PC",
+    selected_title: "Four Xbox Classics Just Reached PC",
+    thumbnail_headline: "XBOX CLASSICS ON PC",
+    first_spoken_line: "Four original Xbox games just reached PC.",
+    confirmed_claims: ["Xbox Wire announced the first four backward-compatible PC games."],
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/2026/07/22/xbox-backward-compatibility-pc/",
+  });
+
+  const stillClips = [];
+  for (let index = 0; index < 5; index += 1) {
+    const id = `xbox-store-still-motion-${index + 1}`;
+    const mediaPath = path.join(root, "output", "video_cache", `${id}.mp4`);
+    const sourceImagePath = path.join(root, "output", "source", `${id}.jpg`);
+    const evidencePath = path.join(root, "output", "rights", `${id}.json`);
+    const sourceUrl = `https://store-images.s-microsoft.com/image/apps.${index + 1}.official-gameplay`;
+    const mediaBytes = Buffer.alloc(4096, 31 + index);
+    const sourceImageBytes = Buffer.alloc(4096, 51 + index);
+    const sourceImageSha256 = crypto.createHash("sha256").update(sourceImageBytes).digest("hex");
+    const evidenceBytes = Buffer.from(JSON.stringify({
+      schema_version: 1,
+      asset_id: id,
+      decision: {
+        approval_status: "approved_for_local_materialization_only",
+        rights_status: "conditional_youtube_ad_program_scope",
+        licence_basis: "microsoft_game_content_usage_rules_youtube_ad_program",
+        allowed_use: "transformative_editorial_short_form",
+        allowed_platforms: ["youtube"],
+        commercial_use_allowed: true,
+        local_materialization_allowed: true,
+        live_publish_allowed: false,
+        requires_human_legal_review_before_publish: true,
+        risk_score: 0.45,
+      },
+      source: {
+        source_url: sourceUrl,
+        local_path: sourceImagePath,
+        sha256: sourceImageSha256,
+        size_bytes: sourceImageBytes.length,
+        content_type: "image/jpeg",
+      },
+      policy: { required_rules_link: "https://www.xbox.com/en-us/developers/rules" },
+      safety: { no_publish_triggered: true },
+    }));
+    await fs.outputFile(mediaPath, mediaBytes);
+    await fs.outputFile(sourceImagePath, sourceImageBytes);
+    await fs.outputFile(evidencePath, evidenceBytes);
+    stillClips.push({
+      id,
+      asset_id: id,
+      asset_type: "screenshot_derived_motion_clip",
+      kind: "video",
+      path: mediaPath,
+      local_materialized_path: mediaPath,
+      source_url: sourceUrl,
+      source_type: "official_press_kit_stills",
+      source_family: `xbox_store_gameplay_${index + 1}`,
+      motion_family: `xbox_store_gameplay_${index + 1}`,
+      media_kind: "visual_still",
+      durationS: 8,
+      source_media_start_s: 0,
+      source_window_duration_s: 8,
+      licence_basis: "microsoft_game_content_usage_rules_youtube_ad_program",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube"],
+      commercial_use_allowed: true,
+      local_materialization_allowed: true,
+      live_publish_allowed: false,
+      requires_human_legal_review_before_publish: true,
+      approval_status: "approved_for_local_materialization_only",
+      rights_status: "conditional_youtube_ad_program_scope",
+      risk_score: 0.45,
+      evidence_file: evidencePath,
+      evidence_sha256: crypto.createHash("sha256").update(evidenceBytes).digest("hex"),
+      evidence_size_bytes: evidenceBytes.length,
+      materialized_file_evidence: {
+        sha256: crypto.createHash("sha256").update(mediaBytes).digest("hex"),
+        size_bytes: mediaBytes.length,
+        duration_seconds: 8,
+        video_codec: "h264",
+        width: 1080,
+        height: 1920,
+      },
+      materialized: true,
+      counts_towards_motion_readiness: true,
+    });
+  }
+  await fs.outputJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    readiness: { can_render: true, can_publish: false, publish_blockers: [] },
+    motion_inventory: {
+      accepted_local_clips: stillClips,
+      production_motion_clips: stillClips,
+    },
+  });
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    story_id: storyId,
+    status: "ready",
+    clips: stillClips,
+    materialised_clips: stillClips,
+    clip_count: stillClips.length,
+    distinct_motion_family_count: stillClips.length,
+  });
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    assets: stillClips,
+    records: stillClips,
+    rights_ledger: stillClips,
+  });
+
+  const report = await materializeGoalOwnedMotionClips({
+    root,
+    workOrder: {
+      jobs: [{
+        story_id: storyId,
+        title: "Four Xbox Classics Just Reached PC",
+        artifact_dir: artifactDir,
+        actions: [{
+          action_id: "materialise_owned_generated_motion_clips",
+          repair_lane: "readable_hyperframes_card_motion_rematerialisation",
+        }],
+      }],
+    },
+    generatedAt: "2026-07-23T06:03:50.704Z",
+    execFileSync: (bin, args) => fs.outputFileSync(args[args.length - 1], Buffer.alloc(4096, 71)),
+    ffprobeDuration: () => 12,
+  });
+
+  assert.equal(report.summary.materialized_clip_count, 21);
+  const materialised = await fs.readJson(path.join(artifactDir, "materialised_motion_clips.json"));
+  assert.equal(materialised.status, "ready");
+  assert.equal(materialised.clip_count, 6);
+  assert.equal(materialised.governed_still_motion_asset_count, 5);
+  assert.equal(materialised.owned_support_motion_asset_count, 1);
+  assert.deepEqual(
+    materialised.clips.filter((clip) => clip.media_kind === "visual_still").map((clip) => clip.id),
+    stillClips.map((clip) => clip.id),
+  );
+  const ownedSupport = materialised.clips.filter(
+    (clip) => clip.source_type === "internally_generated_motion_graphic",
+  );
+  assert.equal(ownedSupport.length, 1);
+  assert.equal(ownedSupport[0].asset_class, "animated_source_card");
+  assert.equal(ownedSupport[0].readable_text, "Xbox Wire");
+  assert.deepEqual(
+    materialised.selected_materialised_motion_clip_ids,
+    materialised.clips.map((clip) => clip.id),
+  );
+
+  const ownedManifest = await fs.readJson(path.join(artifactDir, "owned_motion_manifest.json"));
+  assert.equal(ownedManifest.summary.asset_count, 21);
+  const footage = await fs.readJson(path.join(artifactDir, "footage_inventory.json"));
+  assert.equal(footage.motion_inventory.accepted_local_clips.length, 6);
+  assert.equal(footage.live_publish_allowed, false);
+  assert.equal(footage.requires_human_legal_review_before_publish, true);
+  const rights = await fs.readJson(path.join(artifactDir, "rights_ledger.json"));
+  assert.equal(rights.live_publish_allowed, false);
+  assert.equal(rights.requires_human_legal_review_before_publish, true);
+  assert.ok(rights.publish_blockers.includes("rights:human_legal_review_required_before_publish"));
+});
+
 test("owned motion rights identity collapses Steam transport mirrors without collapsing trailer masters", () => {
   const fastlyHls = "https://video.fastly.steamstatic.com/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408/hls_264_master.m3u8?t=1781050956";
   const akamaiDash = "https://video.akamai.steamstatic.com/store_trailers/2806050/1673450740/ed598dc7526249e6bd74f53732f9a6ecf71f8063/1780963408/dash_h264.mpd?t=1781050956";

@@ -2564,6 +2564,109 @@ async function addMotionEvidence(artifactDir, job, count = 7, prefix = "motion")
   return clipPaths;
 }
 
+async function writeStrictOwnedReadableCard({
+  artifactDir,
+  storyId,
+  id = `${storyId}-owned-source-card`,
+  kind = "source",
+  readableText = "Xbox Wire",
+  byteValue = 91,
+} = {}) {
+  const cardPath = path.join(artifactDir, "owned-motion", `${id}.mp4`);
+  const rightsEvidencePath = `${cardPath}.rights.json`;
+  const bytes = Buffer.alloc(4096, byteValue);
+  await fs.outputFile(cardPath, bytes);
+  const assetSha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+  await fs.outputJson(rightsEvidencePath, {
+    schema: "pulse_owned_asset_rights_evidence_v1",
+    asset_id: id,
+    asset_path: cardPath,
+    asset_sha256: assetSha256,
+    asset_size_bytes: bytes.length,
+    ownership_basis: "wholly_owned_generated_asset",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    rights_grant: true,
+    commercial_use_allowed: true,
+  });
+  const rightsBytes = await fs.readFile(rightsEvidencePath);
+  const rightsSha256 = crypto.createHash("sha256").update(rightsBytes).digest("hex");
+  const allowedPlatforms = [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ];
+  return {
+    id,
+    asset_id: id,
+    path: cardPath,
+    local_materialized_path: cardPath,
+    source_url: `local://pulse-generated-motion/${storyId}/${kind}-card`,
+    source_type: "internally_generated_motion_graphic",
+    source_family: `${storyId}_owned_${kind}_card`,
+    media_kind: "owned_explainer_motion",
+    rights_basis: "owned_generated_editorial_motion_graphic",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    generator_project_id: "pulse.motion.editorial-support.v1",
+    generator_master_sha256: "b".repeat(64),
+    sampled_visual_fingerprint: `sha256:${"c".repeat(64)}`,
+    reproducible: true,
+    seek_safe: true,
+    owned_explainer_visual_plan: true,
+    source_safety_blocked: false,
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    validated: true,
+    materialised_output_sha256: assetSha256,
+    materialised_output_size_bytes: bytes.length,
+    durationS: 12,
+    hyperframes_card: true,
+    readable_card_kind: kind,
+    card_kind: kind,
+    readable_text: readableText,
+    owned_rights_record: {
+      asset_id: id,
+      path: cardPath,
+      local_materialized_path: cardPath,
+      asset_sha256: assetSha256,
+      asset_size_bytes: bytes.length,
+      ownership_basis: "wholly_owned_generated_asset",
+      licence_basis: "owned_generated_editorial_motion_graphic",
+      rights_basis: "owned_generated_editorial_motion_graphic",
+      rights_grant: true,
+      commercial_use_allowed: true,
+      allowed_platforms: allowedPlatforms,
+      source_owner: "Pulse Gaming",
+      source_type: "internally_generated_procedural_motion",
+      approval_status: "approved_owned_generated_commercial_use",
+      rights_status: "explicit_owned_generated_asset",
+      risk_score: 0.1,
+      provenance: {
+        origin: "pulse_gaming_internal_generation",
+        third_party_inputs: false,
+        third_party_sources: [],
+      },
+      evidence_file: rightsEvidencePath,
+      evidence_sha256: rightsSha256,
+      evidence_size_bytes: rightsBytes.length,
+    },
+    owned_rights_evaluation: {
+      status: "pass",
+      verified: true,
+      blockers: [],
+      evidence: {
+        asset_path: cardPath,
+        asset_sha256: assetSha256,
+        asset_size_bytes: bytes.length,
+        evidence_path: rightsEvidencePath,
+        evidence_sha256: rightsSha256,
+        evidence_size_bytes: rightsBytes.length,
+        exact_allowed_platforms: allowedPlatforms,
+        provenance_verified: true,
+      },
+    },
+  };
+}
+
 function cleanRepeatFreeScenePlan() {
   return {
     repeatFree: true,
@@ -5471,6 +5574,99 @@ test("goal production render materializer prefers governed package-local HyperFr
   );
   assert.equal(
     selectedCards.some((clip) => path.dirname(clip.path) === staleCardDir),
+    false,
+  );
+});
+
+test("goal production render materializer projects only the selected hash-bound owned source card", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-production-render-selected-owned-shell-"));
+  const storyId = "story-xbox-selected-source";
+  const artifactDir = await makePackage(root, storyId, {
+    primary_source: "Xbox Wire",
+    source_card_label: "Xbox Wire",
+  });
+  await fs.outputJson(path.join(artifactDir, "voice_quality_report.json"), {
+    verdict: "PASS",
+    cadence: {
+      duration_seconds: 40,
+      spoken_wpm: 154,
+    },
+  });
+
+  const officialClips = Array.from({ length: 6 }, (_, index) => ({
+    id: `${storyId}-official-still-${index + 1}`,
+    path: path.join(artifactDir, `official-still-${index + 1}.mp4`),
+    local_materialized_path: path.join(artifactDir, `official-still-${index + 1}.mp4`),
+    source_url: `https://store-images.s-microsoft.com/image/apps.${index + 1}.official-${index + 1}`,
+    source_type: "official_press_kit_stills",
+    media_kind: "visual_still",
+    source_family: `xbox_store_story_visual_${index + 1}`,
+    motion_family: `xbox_store_story_visual_${index + 1}`,
+    rights_basis: "microsoft_game_content_usage_rules_youtube_ad_program",
+    licence_basis: "microsoft_game_content_usage_rules_youtube_ad_program",
+    counts_towards_motion_readiness: true,
+    materialized: true,
+    validated: true,
+    durationS: 8,
+  }));
+  await Promise.all(officialClips.map((clip, index) =>
+    fs.outputFile(clip.path, Buffer.alloc(4096, 30 + index)),
+  ));
+  const selectedSourceCard = await writeStrictOwnedReadableCard({
+    artifactDir,
+    storyId,
+  });
+  const unselectedAuditCard = {
+    ...selectedSourceCard,
+    id: `${storyId}-unselected-audit-card`,
+    asset_id: `${storyId}-unselected-audit-card`,
+    readable_card_kind: "quote",
+    card_kind: "quote",
+    readable_text: "This audit-only card must never render",
+  };
+  const selectedIds = [
+    ...officialClips.map((clip) => clip.id),
+    selectedSourceCard.id,
+  ];
+  await fs.outputJson(path.join(artifactDir, "materialised_motion_clips.json"), {
+    status: "ready",
+    clips: [...officialClips, selectedSourceCard, unselectedAuditCard],
+    selected_materialised_motion_clip_ids: selectedIds,
+  });
+  const job = readyJob(storyId, artifactDir, {
+    evidence: {
+      narration_audio_path: path.join(artifactDir, "audio.mp3"),
+      word_timestamps_path: path.join(artifactDir, "timestamps.json"),
+      word_timestamp_source: "local_whisper_word_alignment",
+      materialised_motion_clip_count: selectedIds.length,
+      distinct_motion_family_count: selectedIds.length,
+      materialised_motion_clip_paths: [
+        ...officialClips.map((clip) => clip.path),
+        selectedSourceCard.path,
+      ],
+      selected_materialised_motion_clip_ids: selectedIds,
+    },
+  });
+
+  const { story } = await buildRendererStoryJson(job, {
+    workspaceRoot: root,
+    generatedAt: "2026-07-23T08:00:00.000Z",
+  });
+  const readableCards = story.visual_v4_bridge_video_clips.filter(
+    (clip) => clip.source_type === "hyperframes_premium_shell_card",
+  );
+
+  assert.equal(story.hyperframes_available_card_count, 1);
+  assert.equal(story.hyperframes_card_count, 1);
+  assert.equal(story.premium_shell_verdict, "pass");
+  assert.equal(story.premium_shell_required_pass_count, 1);
+  assert.equal(story.premium_shell_selection_mode, "governed_dense_motion_source_only");
+  assert.equal(readableCards.length, 1);
+  assert.equal(readableCards[0].path, selectedSourceCard.path);
+  assert.equal(readableCards[0].readable_text, "Xbox Wire");
+  assert.equal(readableCards[0].durationS, V5_SOURCE_CARD_TIMING.planned_visible_duration_s);
+  assert.equal(
+    story.visual_v4_bridge_video_clips.some((clip) => clip.id === unselectedAuditCard.id),
     false,
   );
 });

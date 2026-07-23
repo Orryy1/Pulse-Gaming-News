@@ -14,7 +14,9 @@ const {
   buildProductionRerenderWorkOrder,
   buildSourceAttributionRepairWorkOrder,
   publicCopyRegenerationPending,
+  syncPlatformPublishManifest,
 } = require("../../lib/goal-public-copy-repair");
+const { buildPlatformNativePublishPacks } = require("../../lib/goal-proof-package");
 const {
   parseArgs: parsePublicCopyRepairArgs,
   main: runPublicCopyRepairCli,
@@ -23,6 +25,163 @@ const { evaluateGoalPublicCopy } = require("../../lib/goal-public-copy-qa");
 const { buildPulseMediaHouseScore } = require("../../lib/pulse-media-house-score");
 const { runScriptCoherenceQa } = require("../../lib/script-coherence-qa");
 const { buildViralScriptIntelligence } = require("../../lib/viral-script-intelligence");
+
+test("public copy evidence fingerprints the synced outputs instead of a regenerated native pack", () => {
+  const manifest = {
+    story_id: "rss_xbox_backward_compatibility_pc",
+    canonical_subject: "Xbox",
+    canonical_game: "Xbox",
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    short_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    canonical_angle: "music_licence_preservation",
+    thumbnail_headline: "4 XBOX GAMES HIT PC",
+    first_spoken_line: "Four original Xbox games just crossed onto PC.",
+    narration_script:
+      "Four original Xbox games just crossed onto PC. Xbox Wire confirms the first four backward-compatible releases are now available. Existing digital owners do not pay twice, but achievements arrive later. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Four original Xbox games just crossed onto PC, but ownership is the bigger story. They are included with Game Pass plans, while existing console digital licences carry over, so owners do not have to buy the four games again. If Microsoft expands the catalogue quickly, old console purchases become a real portable PC library. Source: Xbox Wire.",
+    primary_source: { name: "Xbox Wire", url: "https://news.xbox.com/example" },
+  };
+  const generated = buildPlatformNativePublishPacks({
+    story: manifest,
+    canonical: manifest,
+    platformOutputs: {},
+  });
+  const staleManifest = {
+    outputs: generated.outputs,
+    platform_native_evidence: generated.platformNativeEvidence,
+  };
+
+  const synced = syncPlatformPublishManifest(staleManifest, manifest, {
+    generatedAt: "2026-07-22T20:00:00.000Z",
+  });
+  const youtubeEvidence = synced.platform_native_evidence.platforms.find(
+    (item) => item.platform === "youtube_shorts",
+  );
+
+  assert.match(synced.outputs.youtube_shorts.description, /ownership is the bigger story/i);
+  assert.match(youtubeEvidence.copy_fingerprint, /ownership is the bigger story/i);
+  assert.doesNotMatch(youtubeEvidence.copy_fingerprint, /moved into a subscription/i);
+  assert.equal(synced.platform_native_evidence.platform_native_evidence_refreshed_from_outputs, true);
+});
+
+test("public copy repair keeps Xbox PC backward-compatibility metadata concise and source-specific", () => {
+  const repaired = repairGoalPublicCopyManifest({
+    story_id: "rss_xbox_backward_compatibility_pc",
+    canonical_subject: "Xbox",
+    canonical_game: "Xbox",
+    canonical_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    thumbnail_headline: "4 XBOX CLASSICS HIT PC",
+    first_spoken_line: "Four original Xbox games just crossed onto PC, but ownership is the bigger story.",
+    narration_script:
+      "Four original Xbox games just crossed onto PC, but ownership is the bigger story. Xbox Wire confirms BLiNX, Conker: Live and Reloaded, Crimson Skies and Fuzion Frenzy are playable now on PC. They are included with Game Pass plans, while existing console digital licences carry over. Achievements arrive in the coming months. Follow Pulse Gaming so you never miss a beat.",
+    description:
+      "Four original Xbox games just crossed onto PC, but ownership is the bigger story. They are included with Game Pass plans, while existing console digital licences carry over, so owners do not have to buy the four games again. If Microsoft expands the catalogue quickly, old console purchases become a real portable PC library. Source: Xbox Wire.",
+    confirmed_claims: [
+      "Play More of the Games You Love, Wherever You Play with Xbox Backward Compatibility on PC",
+    ],
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/example",
+  }, { generatedAt: "2026-07-22T20:00:00.000Z" });
+
+  assert.equal(
+    repaired.manifest.description,
+    "Xbox Backward Compatibility on PC launches with its first four games, all included in every Game Pass plan. Existing digital owners do not pay twice, but achievements arrive later. Source: Xbox Wire.",
+  );
+  assert.equal(repaired.after.verdict, "pass", JSON.stringify(repaired.after, null, 2));
+});
+
+test("package repair fixes plain platform descriptions without invalidating approved narration", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-xbox-platform-copy-only-"));
+  const artifactDir = path.join(root, "story");
+  await fs.ensureDir(artifactDir);
+  const narration =
+    "Four original Xbox games just crossed onto PC, but ownership is the bigger story. Xbox Wire confirms BLiNX, Conker: Live and Reloaded, Crimson Skies and Fuzion Frenzy are playable now on PC and supported handhelds in an early release. They are included with Game Pass plans, while existing console digital licences carry over, so owners do not have to buy the four games again. The catch is scope: this is four games, not the full back catalogue, and achievements arrive in the coming months rather than at launch. That turns a nostalgia drop into a test of Xbox Play Anywhere. If Microsoft expands the catalogue quickly, old console purchases become a real portable PC library. Follow Pulse Gaming so you never miss a beat.";
+  const canonical = {
+    story_id: "rss_xbox_backward_compatibility_pc",
+    canonical_subject: "Xbox",
+    canonical_game: "Xbox",
+    canonical_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    short_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    thumbnail_headline: "4 XBOX CLASSICS HIT PC",
+    first_spoken_line: "Four original Xbox games just crossed onto PC, but ownership is the bigger story.",
+    narration_script: narration,
+    full_script: narration,
+    tts_script: narration,
+    description:
+      "Four original Xbox games just crossed onto PC, but ownership is the bigger story. They are included with Game Pass plans, while existing console digital licences carry over, so owners do not have to buy the four games again. If Microsoft expands the catalogue quickly, old console purchases become a real portable PC library. Source: Xbox Wire.",
+    confirmed_claims: [
+      "Play More of the Games You Love, Wherever You Play with Xbox Backward Compatibility on PC",
+    ],
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/en-us/example",
+  };
+  const generated = buildPlatformNativePublishPacks({
+    story: canonical,
+    canonical,
+    platformOutputs: {},
+  });
+  generated.outputs.facebook_reels.duration_seconds = 60;
+  await fs.writeJson(path.join(artifactDir, "canonical_story_manifest.json"), canonical, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
+    outputs: generated.outputs,
+    platform_native_evidence: {
+      ...generated.platformNativeEvidence,
+      verdict: "fail",
+      failures: [
+        { platform: "youtube_shorts", reason: "plain_platform_description" },
+        { platform: "instagram_reels", reason: "plain_platform_description" },
+        { platform: "facebook_reels", reason: "plain_platform_description" },
+      ],
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "platform_variant_scorecard.json"), {}, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    verdict: "RED",
+    status: "fail",
+    hard_failures: ["media_house:platform_copy_too_plain"],
+  }, { spaces: 2 });
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "RED",
+    can_auto_publish: false,
+    blockers: [
+      "platform_native:youtube_shorts:plain_platform_description",
+      "media_house:platform_copy_too_plain",
+    ],
+  }, { spaces: 2 });
+
+  const report = await repairGoalPublicCopyPackages({
+    storyPackages: [{ story_id: canonical.story_id, artifact_dir: artifactDir }],
+    generatedAt: "2026-07-22T20:00:00.000Z",
+  });
+  const repairedCanonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  const repairedPlatform = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  const repairedMediaHouse = await fs.readJson(path.join(artifactDir, "pulse_media_house_score.json"));
+  const repairedPublishVerdict = await fs.readJson(path.join(artifactDir, "publish_verdict.json"));
+
+  assert.equal(report.changed[0].status, "platform_copy_quality_repaired");
+  assert.equal(repairedCanonical.narration_script, narration);
+  assert.equal(
+    repairedCanonical.description,
+    "Xbox Backward Compatibility on PC launches with its first four games, all included in every Game Pass plan. Existing digital owners do not pay twice, but achievements arrive later. Source: Xbox Wire.",
+  );
+  assert.equal(repairedPlatform.platform_native_evidence.verdict, "pass", JSON.stringify(repairedPlatform.platform_native_evidence, null, 2));
+  assert.equal(report.changed[0].public_copy_regeneration_pending, false);
+  assert.deepEqual(buildAudioRegenerationWorkbench(report).jobs, []);
+  assert.equal(repairedMediaHouse.hard_failures.includes("media_house:platform_copy_too_plain"), false);
+  assert.equal(
+    repairedPublishVerdict.blockers.some((blocker) => /plain_platform_description|platform_copy_too_plain/.test(blocker)),
+    false,
+  );
+  assert.equal(repairedPublishVerdict.verdict, "RED");
+  assert.equal(repairedPublishVerdict.can_auto_publish, false);
+  assert.ok(
+    repairedPublishVerdict.blockers.some((blocker) => /final_publish_render|rights|final_av_review/.test(blocker)),
+    JSON.stringify(repairedPublishVerdict, null, 2),
+  );
+});
 
 test("caption SRT uses word timestamps instead of evenly distributing full sentences", () => {
   const srt = buildCaptionSrt(

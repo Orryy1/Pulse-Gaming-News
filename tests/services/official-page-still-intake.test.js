@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  bindOfficialPageStillRightsDecisions,
   buildOfficialPageStillIntakeEntries,
 } = require("../../lib/official-page-still-intake");
 const {
@@ -71,6 +72,151 @@ test("official page still intake extracts first-party Xbox product images as acc
   assert.equal(report.summary.rejected, 0);
   assert.ok(report.accepted_references.every((reference) => reference.source_type === "official_press_kit_stills"));
   assert.ok(report.accepted_references.every((reference) => reference.downloads_allowed === false));
+});
+
+test("official page still intake scopes Xbox Store images to the page product payload", () => {
+  const pageUrl =
+    "https://www.xbox.com/en-US/games/store/conker-live-and-reloaded/BVFB8CBS75R6";
+  const targetHero =
+    "https://store-images.s-microsoft.com/image/apps.42431.target-product.hero";
+  const targetScreenshotOne =
+    "https://store-images.s-microsoft.com/image/apps.23314.target-product.screen-one";
+  const targetScreenshotTwo =
+    "https://store-images.s-microsoft.com/image/apps.23799.target-product.screen-two";
+  const unrelatedHero =
+    "https://store-images.s-microsoft.com/image/apps.99999.unrelated-product.hero";
+  const preloadedState = {
+    core2: {
+      products: {
+        productSummaries: {
+          BVFB8CBS75R6: {
+            productId: "BVFB8CBS75R6",
+            title: "Conker: Live and Reloaded",
+            images: {
+              boxArt: {
+                url: "https://store-images.s-microsoft.com/image/apps.50097.target-product.box",
+                width: 1080,
+                height: 1080,
+              },
+              superHeroArt: { url: targetHero, width: 1920, height: 1080 },
+              screenshots: [
+                { url: targetScreenshotOne, width: 1920, height: 1080 },
+                { url: targetScreenshotTwo, width: 1920, height: 1080 },
+              ],
+            },
+          },
+          UNRELATED123: {
+            productId: "UNRELATED123",
+            title: "Unrelated Game",
+            images: {
+              superHeroArt: { url: unrelatedHero, width: 1920, height: 1080 },
+            },
+          },
+        },
+      },
+    },
+  };
+  const html = `
+    <img src="https://cms-assets.xboxservices.com/assets/generic.jpg?n=PCGP-TitleHeroArt-1920x1080.jpg">
+    <script>window.__PRELOADED_STATE__ = ${JSON.stringify(preloadedState)};</script>
+  `;
+
+  const entries = buildOfficialPageStillIntakeEntries({
+    story: {
+      story_id: "rss_5efb04ad7c4889e1",
+      canonical_subject: "Xbox",
+      selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    },
+    pageUrl,
+    html,
+    maxAssets: 3,
+    generatedAt: "2026-07-23T07:00:00.000Z",
+  });
+
+  assert.equal(entries.length, 3);
+  assert.deepEqual(
+    new Set(entries.map((entry) => entry.official_source_url)),
+    new Set([targetHero, targetScreenshotOne, targetScreenshotTwo]),
+  );
+  assert.ok(entries.every((entry) => entry.product_id === "BVFB8CBS75R6"));
+  assert.ok(entries.every((entry) => entry.product_title === "Conker: Live and Reloaded"));
+  assert.ok(entries.every((entry) => entry.scoped_product_payload === true));
+  assert.ok(entries.every((entry) => entry.downloads_allowed === false));
+  assert.ok(!entries.some((entry) => /PCGP|generic|unrelated/i.test(entry.official_source_url)));
+});
+
+test("official page still intake binds a new product image to an existing held rights decision without stale asset evidence", () => {
+  const pageUrl =
+    "https://www.xbox.com/en-US/games/store/conker-live-and-reloaded/BVFB8CBS75R6";
+  const candidate = {
+    story_id: "rss_5efb04ad7c4889e1",
+    entity: "Xbox",
+    source_type: "official_press_kit_stills",
+    source_owner: "Xbox official product page",
+    source_family: "rss_5efb04ad7c4889e1_bvfb8cbs75r6_screenshot_03",
+    official_source_url:
+      "https://store-images.s-microsoft.com/image/apps.37949.target-product.screen-three",
+    source_title: "Conker: Live and Reloaded official product image: screenshot 03",
+    evidence_of_officialness: "Image is declared in the hash-bound product payload.",
+    entity_match_notes: "The official product payload is for the named title in the story.",
+    reference_page_url: pageUrl,
+    downloads_allowed: false,
+    product_id: "BVFB8CBS75R6",
+    product_title: "Conker: Live and Reloaded",
+    scoped_product_payload: true,
+  };
+  const template = {
+    story_id: "rss_5efb04ad7c4889e1",
+    entity: "Conker: Live and Reloaded",
+    source_type: "official_press_kit_stills",
+    source_owner: "Microsoft Studios",
+    source_url:
+      "https://store-images.s-microsoft.com/image/apps.23314.target-product.screen-one",
+    local_source_path: "output/old-capture.jpg",
+    source_asset_sha256: "a".repeat(64),
+    source_asset_size_bytes: 123456,
+    reference_page_url: pageUrl.toLowerCase(),
+    product_page_evidence_path: "output/source/conker-xbox-store.html",
+    product_page_evidence_sha256: "b".repeat(64),
+    product_page_evidence_size_bytes: 700000,
+    licence_basis: "microsoft_game_content_usage_rules_youtube_ad_program",
+    allowed_use: "transformative_editorial_short_form",
+    allowed_platforms: ["youtube"],
+    restricted_platforms: ["tiktok", "instagram", "facebook", "x"],
+    commercial_use_allowed: true,
+    local_materialization_allowed: true,
+    live_publish_allowed: false,
+    requires_human_legal_review_before_publish: true,
+    approval_status: "approved_for_local_materialization_only",
+    rights_status: "conditional_youtube_ad_program_scope",
+    risk_score: 0.45,
+    required_rules_link: "https://www.xbox.com/en-us/developers/rules",
+    required_public_notice: "Conker Copyright Microsoft Corporation.",
+    policy_evidence_path: "output/source/xbox-game-content-usage-rules.html",
+    policy_evidence_sha256: "c".repeat(64),
+    policy_evidence_size_bytes: 370000,
+  };
+
+  const report = bindOfficialPageStillRightsDecisions({
+    entries: [candidate],
+    rightsTemplates: [template],
+    generatedAt: "2026-07-23T07:05:00.000Z",
+  });
+
+  assert.equal(report.summary.bound, 1);
+  assert.equal(report.summary.rejected, 0);
+  const bound = report.bound_entries[0];
+  assert.equal(bound.official_source_url, candidate.official_source_url);
+  assert.equal(bound.licence_basis, template.licence_basis);
+  assert.deepEqual(bound.allowed_platforms, ["youtube"]);
+  assert.equal(bound.live_publish_allowed, false);
+  assert.equal(bound.requires_human_legal_review_before_publish, true);
+  assert.equal(bound.product_page_evidence_sha256, "b".repeat(64));
+  assert.equal(bound.policy_evidence_sha256, "c".repeat(64));
+  assert.equal(bound.rights_binding_status, "held_decision_hash_bound");
+  assert.equal("local_source_path" in bound, false);
+  assert.equal("source_asset_sha256" in bound, false);
+  assert.equal("source_asset_size_bytes" in bound, false);
 });
 
 test("official page still intake resolves same-site Rockstar relative image assets", () => {

@@ -475,3 +475,111 @@ test("does not count licensed audio and SFX records as visual or motion evidence
   assert.equal(profile.real_motion_asset_count, 0);
   assert.equal(profile.direct_video_motion_asset_count, 0);
 });
+
+test("authoritative final-render selection cannot borrow unused subject media to hide an abstract-only deck", () => {
+  const ownedClips = Array.from({ length: 3 }, (_, index) => ({
+    asset_id: `xbox-story-owned-motion-${index + 1}`,
+    kind: "video",
+    path: `C:\\repo\\output\\owned-motion\\abstract-${index + 1}.mp4`,
+    source_url: `local://pulse-generated-motion/xbox-story/abstract-${index + 1}`,
+  }));
+  const unusedOfficialClip = {
+    asset_id: "xbox-story-conker-official",
+    path: "C:\\repo\\output\\video_cache\\conker-official.mp4",
+    source_url: "https://cdn.xbox.com/games/conker-official.mp4",
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    subject_match_quality: "exact_game_match",
+    exact_subject_group: "conker live and reloaded",
+  };
+
+  const profile = visualEvidenceProfile({
+    story: {
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      selected_title: "4 Xbox Classics Hit PC",
+    },
+    renderManifest: {
+      final_publish_render: true,
+      selected_input_assets: {
+        authoritative: true,
+        complete: true,
+        assets: ownedClips,
+      },
+    },
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          ...ownedClips.map((clip) => ({
+            ...clip,
+            source_type: "internally_generated_motion_graphic",
+            media_kind: "owned_explainer_motion",
+            licence_basis: "owned_generated_editorial_motion_graphic",
+          })),
+          unusedOfficialClip,
+        ],
+      },
+    },
+  });
+
+  assert.equal(profile.evidence_scope, "authoritative_final_render_selection");
+  assert.equal(profile.asset_count, 3);
+  assert.equal(profile.real_media_asset_count, 0);
+  assert.equal(profile.subject_matched_editorial_media_count, 0);
+  assert.equal(profile.generated_only_motion_deck, true);
+  assert.ok(profile.blockers.includes("visual_evidence:generated_only_motion_deck"));
+  assert.ok(
+    profile.blockers.includes(
+      "visual_evidence:selected_render_subject_matched_editorial_media_missing",
+    ),
+  );
+});
+
+test("authoritative final-render selection accepts positively subject-matched editorial media", () => {
+  const selectedPath = "C:\\repo\\output\\video_cache\\forza-official.mp4";
+  const profile = visualEvidenceProfile({
+    story: {
+      canonical_subject: "Forza Horizon 6",
+      canonical_game: "Forza Horizon 6",
+      selected_title: "Forza Horizon 6 Gets Its First Gameplay Reveal",
+    },
+    renderManifest: {
+      final_publish_render: true,
+      selected_input_assets: {
+        authoritative: true,
+        complete: true,
+        assets: [
+          {
+            asset_id: "forza-official-window",
+            kind: "video",
+            path: selectedPath,
+          },
+        ],
+      },
+    },
+    footageInventory: {
+      motion_inventory: {
+        production_motion_clips: [
+          {
+            asset_id: "forza-official-window",
+            path: selectedPath,
+            source_url: "https://cdn.xbox.com/games/forza-horizon-6/gameplay.mp4",
+            source_type: "official_platform_product_page",
+            media_kind: "direct_video",
+            subject_match_quality: "exact_game_match",
+            exact_subject_group: "forza horizon 6",
+          },
+        ],
+      },
+    },
+  });
+
+  assert.equal(profile.evidence_scope, "authoritative_final_render_selection");
+  assert.equal(profile.real_media_asset_count, 1);
+  assert.equal(profile.subject_matched_editorial_media_count, 1);
+  assert.ok(
+    !profile.blockers.includes(
+      "visual_evidence:selected_render_subject_matched_editorial_media_missing",
+    ),
+  );
+});

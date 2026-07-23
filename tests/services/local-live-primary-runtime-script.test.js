@@ -231,7 +231,20 @@ test("local live primary runtime launcher redirects only through a validated cle
   assert.match(script, /approved-runtime-selection\.js/);
   assert.match(script, /pulse-approved-runtime-selection\.json/);
   assert.match(script, /approved_runtime_selection_validation_failed/);
-  assert.match(script, /pulse-approved-runtime-selection\.stderr\.log/);
+  assert.match(
+    script,
+    /pulse-approved-runtime-selection\.\{0\}\.\{1\}\.stderr\.log/,
+  );
+  assert.match(script, /\$PID/);
+  assert.match(script, /\[guid\]::NewGuid\(\)\.ToString\("N"\)/);
+  assert.match(
+    script,
+    /Remove-Item -LiteralPath \$runtimeSelectionErrorPath -Force -ErrorAction SilentlyContinue/,
+  );
+  assert.doesNotMatch(
+    script,
+    /Join-Path \$logDir "pulse-approved-runtime-selection\.stderr\.log"/,
+  );
   assert.match(script, /approved_runtime_selection_redirect/);
   assert.match(script, /runtime_entrypoint/);
   assert.match(script, /runtime_repo_root/);

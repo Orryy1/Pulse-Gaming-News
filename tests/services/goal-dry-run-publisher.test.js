@@ -5874,7 +5874,7 @@ test("goal dry-run publisher blocks repeated direct-motion segments even when en
   assert.ok(plan.blocked_stories[0].blockers.includes("visual_evidence:repeated_direct_motion_segment"));
 });
 
-test("goal dry-run publisher blocks owned explainer decks unless a verified source exception is recorded", async () => {
+test("goal dry-run publisher blocks an authoritative abstract-only render even when its news source is verified", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-owned-explainer-"));
   const storyPackage = await makeStoryPackage(
     root,
@@ -5942,6 +5942,24 @@ test("goal dry-run publisher blocks owned explainer decks unless a verified sour
       risk_score: 0.03,
     })),
   });
+  const renderManifestPath = path.join(artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    selected_input_assets: {
+      schema_version: 2,
+      authoritative: true,
+      complete: true,
+      asset_count: clips.length,
+      assets: clips.map((clip) => ({
+        asset_id: clip.id,
+        kind: "video",
+        path: clip.path,
+        source_url: clip.source_url,
+      })),
+      blockers: [],
+    },
+  });
   const canonicalPath = path.join(artifactDir, "canonical_story_manifest.json");
   const canonical = await fs.readJson(canonicalPath);
   await fs.writeJson(canonicalPath, {
@@ -5972,10 +5990,13 @@ test("goal dry-run publisher blocks owned explainer decks unless a verified sour
     generatedAt: "2026-05-23T16:12:00.000Z",
   });
 
-  assert.equal(plan.summary.ready_story_count, 1);
-  assert.equal(plan.summary.blocked_story_count, 0);
-  assert.equal(plan.ready_stories[0].visual_evidence_profile.owned_explainer_motion_ready, true);
-  assert.equal(plan.ready_stories[0].visual_evidence_profile.owned_explainer_exception_approved, true);
+  assert.equal(plan.summary.ready_story_count, 0);
+  assert.equal(plan.summary.blocked_story_count, 1);
+  assert.ok(
+    plan.blocked_stories[0].blockers.includes(
+      "visual_evidence:selected_render_subject_matched_editorial_media_missing",
+    ),
+  );
 });
 
 test("goal dry-run publisher blocks screenshot-derived-only V4 packages as not rich gameplay motion", async () => {

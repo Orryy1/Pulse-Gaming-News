@@ -126,6 +126,128 @@ test("strong Pulse-original package passes competitor-informed score", () => {
   assert.deepEqual(report.hard_failures, []);
 });
 
+test("media-house score fails closed when exact final inputs are abstract despite unused real-media inventory", () => {
+  const base = strongStory();
+  const ownedClips = Array.from({ length: 3 }, (_, index) => ({
+    asset_id: `xbox-owned-motion-${index + 1}`,
+    path: `C:\\media\\owned-motion-${index + 1}.mp4`,
+    source_url: `local://pulse-generated-motion/xbox/${index + 1}`,
+    source_type: "internally_generated_motion_graphic",
+    media_kind: "owned_explainer_motion",
+    licence_basis: "owned_generated_editorial_motion_graphic",
+    source_family: `owned_motion_${index + 1}`,
+  }));
+  const unusedOfficialClips = Array.from({ length: 5 }, (_, index) => ({
+    asset_id: `xbox-official-${index + 1}`,
+    path: `C:\\media\\xbox-official-${index + 1}.mp4`,
+    source_url: `https://cdn.xbox.com/games/xbox-official-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    subject_match_quality: "exact_platform_match",
+    exact_subject_group: "xbox",
+    source_family: `xbox_official_${index + 1}`,
+  }));
+  const report = buildPulseMediaHouseScore(strongStory({
+    canonical: {
+      ...base.canonical,
+      canonical_subject: "Xbox",
+      canonical_game: "Xbox",
+      selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      first_spoken_line: "Four original Xbox games just crossed onto PC.",
+      narration_script:
+        "Four original Xbox games just crossed onto PC. Xbox Wire confirms the games and the ownership carry-over. Follow Pulse Gaming so you never miss a beat.",
+    },
+    renderManifest: {
+      ...base.renderManifest,
+      selected_input_assets: {
+        schema_version: 2,
+        authoritative: true,
+        complete: true,
+        asset_count: ownedClips.length,
+        assets: ownedClips.map((clip) => ({
+          asset_id: clip.asset_id,
+          kind: "video",
+          path: clip.path,
+          source_url: clip.source_url,
+        })),
+        blockers: [],
+      },
+    },
+    materialisedMotionClips: {
+      status: "ready",
+      clips: [...ownedClips, ...unusedOfficialClips],
+      distinct_motion_families: [
+        ...ownedClips,
+        ...unusedOfficialClips,
+      ].map((clip) => clip.source_family),
+    },
+  }));
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(
+    report.selected_render_visual_evidence_profile.evidence_scope,
+    "authoritative_final_render_selection",
+  );
+  assert.equal(
+    report.selected_render_visual_evidence_profile.subject_matched_editorial_media_count,
+    0,
+  );
+  assert.ok(
+    report.hard_failures.includes(
+      "media_house:subject_matched_editorial_media_missing",
+    ),
+  );
+});
+
+test("media-house score accepts exact selected subject-matched editorial media", () => {
+  const base = strongStory();
+  const officialClips = Array.from({ length: 5 }, (_, index) => ({
+    asset_id: `forza-official-${index + 1}`,
+    path: `C:\\media\\forza-official-${index + 1}.mp4`,
+    source_url: `https://cdn.xbox.com/games/forza-horizon-6/clip-${index + 1}.mp4`,
+    source_type: "official_platform_product_page",
+    media_kind: "direct_video",
+    subject_match_quality: "exact_game_match",
+    exact_subject_group: "forza horizon 6",
+    source_family: `forza_official_${index + 1}`,
+    counts_towards_motion_readiness: true,
+  }));
+  const report = buildPulseMediaHouseScore(strongStory({
+    renderManifest: {
+      ...base.renderManifest,
+      selected_input_assets: {
+        schema_version: 2,
+        authoritative: true,
+        complete: true,
+        asset_count: officialClips.length,
+        assets: officialClips.map((clip) => ({
+          asset_id: clip.asset_id,
+          kind: "video",
+          path: clip.path,
+          source_url: clip.source_url,
+        })),
+        blockers: [],
+      },
+    },
+    materialisedMotionClips: {
+      status: "ready",
+      clips: officialClips,
+      distinct_motion_families: officialClips.map((clip) => clip.source_family),
+    },
+  }));
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(
+    report.selected_render_visual_evidence_profile.subject_matched_editorial_media_count,
+    5,
+  );
+  assert.ok(
+    !report.hard_failures.includes(
+      "media_house:subject_matched_editorial_media_missing",
+    ),
+  );
+});
+
 test("ultimate professional source diversity fails closed without authoritative provenance", () => {
   const report = buildPulseMediaHouseScore(strongStory({
     source_diversity_tier: "ultimate_professional",

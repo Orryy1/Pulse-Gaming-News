@@ -398,6 +398,80 @@ test("approval gate inherits strict dry-run platform media paths for guarded dis
   assert.equal(instagram.platform_media_source, "strict_dry_run_platform_action");
 });
 
+test("approval gate preserves governed TikTok disclosure resolution from the strict dry-run action", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-tiktok-disclosure-"));
+  const packet = reviewPacket({
+    artefacts: await proofArtefacts(root),
+    enabled_review_platforms: ["tiktok"],
+    deferred_platforms: [],
+  });
+  const disclosureMetadata = {
+    disclosure_requirements: {},
+    disclosure_requirements_resolved: true,
+    disclosures: {
+      disclosure_flag: "not_required",
+      requirements_resolved: true,
+      resolution_basis: "platform_manifest_disclosure_flag:not_required",
+    },
+    disclosure_status: {
+      required: false,
+      type: "none",
+      basis: "platform_manifest_disclosure_flag:not_required",
+    },
+    commercial_promotion: false,
+    affiliate_links_allowed: false,
+  };
+
+  const report = buildHumanReviewApprovalGate({
+    humanReviewQueue: humanReviewQueue(packet),
+    reviewPacketManifest: reviewPacketManifest(packet),
+    operatorDecisionLog: {
+      mode: "HUMAN_REVIEW_DECISION_LOG",
+      decisions: [
+        decision({
+          approved_platforms: ["tiktok"],
+          reviewed_artefact_fingerprints: fingerprintMap(packet.artefacts),
+        }),
+      ],
+      safety: {
+        no_live_publish_from_log: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+      },
+    },
+    strictDryRunPlan: {
+      mode: "DRY_RUN_PUBLISH",
+      actions: [
+        {
+          action: "would_publish",
+          story_id: packet.story_id,
+          platform: "tiktok",
+          video_path: packet.artefacts.video_path,
+          captions_path: packet.artefacts.captions_path,
+          cover_frame_source: packet.artefacts.first_frame_source,
+          ...disclosureMetadata,
+        },
+      ],
+      safety: {
+        no_publish_triggered: true,
+        no_network_uploads: true,
+        no_db_mutation: true,
+        no_oauth_or_token_change: true,
+        dry_run_only: true,
+      },
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.keys(disclosureMetadata).map((field) => [field, report.approved_actions[0][field]]),
+    ),
+    disclosureMetadata,
+  );
+});
+
 test("approval gate blocks approvals that skip required visual strip and QA review evidence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-visual-evidence-"));
   const packet = reviewPacket({

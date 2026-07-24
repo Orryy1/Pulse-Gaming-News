@@ -308,6 +308,59 @@ test("refresh removes stale blocker, warning and verdict aliases instead of merg
   assert.deepEqual(report.proposed.publish_verdict.package_quality_gate.advisories, []);
 });
 
+test("authority refresh accepts YouTube-scoped rights and freezes the explicit enabled-platform set", async () => {
+  const fixture = await createVerifiedFixture();
+  const disabledReason = "microsoft_game_content_usage_rules_youtube_only";
+  const platformManifestPath = path.join(
+    fixture.artifactDir,
+    "platform_publish_manifest.json",
+  );
+  const platformManifest = await fs.readJson(platformManifestPath);
+  await writeJson(platformManifestPath, {
+    ...platformManifest,
+    enabled_platforms: ["youtube_shorts"],
+    outputs: {
+      ...platformManifest.outputs,
+      instagram_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+      facebook_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+    },
+  });
+  const rights = await fs.readJson(fixture.criticalPaths.rightsPath);
+  rights.records[0].allowed_platforms = ["youtube_shorts"];
+  await writeJson(fixture.criticalPaths.rightsPath, rights);
+
+  const report = await refreshCandidateAuthority({
+    artifactDir: fixture.artifactDir,
+    storyId: STORY_ID,
+    probeMedia: async () => ({ decodable: true }),
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.deepEqual(report.rights.enabled_platforms_checked, ["youtube_shorts"]);
+  for (const document of Object.values(report.proposed)) {
+    assert.deepEqual(
+      document.authority_refresh.platform_scope.enabled_platforms,
+      ["youtube_shorts"],
+    );
+    assert.deepEqual(
+      document.authority_refresh.platform_scope.disabled_platforms,
+      ["facebook_reels", "instagram_reels"],
+    );
+    assert.match(
+      document.authority_refresh.platform_scope.sha256,
+      /^[a-f0-9]{64}$/,
+    );
+  }
+});
+
 test("apply atomically replaces all three authority files, creates backups and preserves frozen hashes", async () => {
   const fixture = await createVerifiedFixture();
   const beforeAuthority = await readBuffers(fixture.authorityPaths);

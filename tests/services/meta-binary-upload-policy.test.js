@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  instagramResumableUploadHeaders,
   metaBinaryUploadHeaders,
   metaBinaryUploadTimeoutMs,
 } = require("../../lib/platforms/meta-binary-upload-policy");
@@ -23,12 +24,20 @@ test("Meta binary upload timeout scales with file size", () => {
 
 test("Meta reel uploaders stream media and use the shared adaptive timeout", () => {
   const root = path.resolve(__dirname, "..", "..");
-  for (const [filename, expectedStream] of [
-    ["upload_facebook.js", /fs\.createReadStream\(delivery\.path\)/],
-    ["upload_instagram.js", /fs\.createReadStream\(exportedAbs\)/],
+  for (const [filename, expectedHeaders, expectedStream] of [
+    [
+      "upload_facebook.js",
+      /metaBinaryUploadHeaders/,
+      /fs\.createReadStream\(delivery\.path\)/,
+    ],
+    [
+      "upload_instagram.js",
+      /instagramResumableUploadHeaders/,
+      /fs\.createReadStream\(exportedAbs\)/,
+    ],
   ]) {
     const source = fs.readFileSync(path.join(root, filename), "utf8");
-    assert.match(source, /metaBinaryUploadHeaders/);
+    assert.match(source, expectedHeaders);
     assert.match(source, /metaBinaryUploadTimeoutMs/);
     assert.match(source, expectedStream);
     assert.doesNotMatch(source, /data:\s*videoBuffer/);
@@ -49,6 +58,21 @@ test("Meta binary upload headers bind the complete stream length for RUpload", (
       "Content-Length": "80976910",
       "X-Entity-Length": "80976910",
       "Content-Type": "video/mp4",
+    },
+  );
+});
+
+test("Instagram resumable upload headers use Meta's documented fields plus the required stream lengths", () => {
+  assert.deepEqual(
+    instagramResumableUploadHeaders(23299648, {
+      accessToken: "test-token",
+    }),
+    {
+      Authorization: "OAuth test-token",
+      offset: "0",
+      file_size: "23299648",
+      "Content-Length": "23299648",
+      "X-Entity-Length": "23299648",
     },
   );
 });

@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -2703,6 +2704,170 @@ test("goal dry-run publisher marks clean enabled actions ready for guarded dispa
   assert.ok(enabledActions.every((action) => action.platform_publish_manifest_path.endsWith("platform_publish_manifest.json")));
 });
 
+test("goal dry-run publisher carries an explicit no-affiliate decision into the guarded action", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-no-affiliate-"));
+  const storyPackage = await makeStoryPackage(root);
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    commercial_promotion: false,
+    disclosure_status: {
+      required: false,
+      type: "none",
+      caption: null,
+    },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T22:50:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((item) => item.platform === "youtube_shorts");
+  assert.ok(youtube);
+  assert.equal(youtube.affiliate_links_allowed, false);
+  assert.equal(youtube.commercial_promotion, false);
+  assert.deepEqual(youtube.disclosure_status, {
+    required: false,
+    type: "none",
+    caption: null,
+  });
+});
+
+test("goal dry-run publisher resolves TikTok disclosure requirements from an explicit governed not-required flag", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-tiktok-disclosure-"));
+  const storyPackage = await makeStoryPackage(root);
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.tiktok = {
+    ...manifest.outputs.tiktok,
+    duration_seconds: { min: 15, max: 90 },
+    disclosure_flag: "not_required",
+    commercial_content_setting_recommendation: "not_required_unless_brand_or_product_promoted",
+    product_link_eligibility: "not_used",
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T23:00:00.000Z",
+    platformOperationalConfig: {
+      ...enabledCorePlatformsOnly(),
+      tiktok: { state: "enabled", reason: "direct_post_approved" },
+    },
+  });
+
+  const tiktok = plan.actions.find((item) => item.platform === "tiktok");
+  assert.ok(tiktok);
+  assert.equal(tiktok.action, "would_publish");
+  assert.equal(tiktok.disclosure_requirements_resolved, true);
+  assert.deepEqual(tiktok.disclosure_status, {
+    required: false,
+    type: "none",
+    basis: "platform_manifest_disclosure_flag:not_required",
+  });
+  assert.deepEqual(tiktok.disclosures, {
+    disclosure_flag: "not_required",
+    requirements_resolved: true,
+    resolution_basis: "platform_manifest_disclosure_flag:not_required",
+  });
+});
+
+test("goal dry-run publisher keeps TikTok disclosure requirements unresolved when governed evidence is absent", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-tiktok-disclosure-missing-"));
+  const storyPackage = await makeStoryPackage(root);
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  manifest.outputs.tiktok = {
+    ...manifest.outputs.tiktok,
+    duration_seconds: { min: 15, max: 90 },
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T23:01:00.000Z",
+    platformOperationalConfig: {
+      ...enabledCorePlatformsOnly(),
+      tiktok: { state: "enabled", reason: "direct_post_approved" },
+    },
+  });
+
+  const tiktok = plan.actions.find((item) => item.platform === "tiktok");
+  assert.ok(tiktok);
+  assert.equal(tiktok.disclosure_requirements_resolved, false);
+  assert.equal(tiktok.disclosure_status, null);
+  assert.deepEqual(tiktok.disclosures, {
+    requirements_resolved: false,
+  });
+});
+
+test("goal dry-run publisher plans only YouTube for an explicitly YouTube-scoped candidate", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-youtube-scope-"));
+  const storyId = "rss_5efb04ad7c4889e1";
+  const storyPackage = await makeStoryPackage(root, storyId);
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const disabledReason = "microsoft_game_content_usage_rules_youtube_only";
+  await fs.writeJson(manifestPath, {
+    ...manifest,
+    enabled_platforms: ["youtube_shorts"],
+    outputs: {
+      ...manifest.outputs,
+      instagram_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+      facebook_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+    },
+  }, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T18:00:00.000Z",
+    platformOperationalConfig: {
+      youtube: { state: "enabled", reason: "core_upload_path" },
+      instagram_reel: { state: "enabled", reason: "graph_credentials_present" },
+      facebook_reel: { state: "enabled", reason: "facebook_reels_enabled" },
+      tiktok: { state: "disabled", reason: "operator_disabled" },
+      twitter: { state: "disabled", reason: "operator_disabled" },
+      threads: { state: "disabled", reason: "operator_disabled" },
+      pinterest: { state: "disabled", reason: "operator_disabled" },
+    },
+  });
+
+  const publishNow = plan.actions.filter((action) => action.action === "would_publish");
+  assert.deepEqual(
+    publishNow.map((action) => `${action.story_id}:${action.platform}`),
+    [`${storyId}:youtube_shorts`],
+  );
+  assert.deepEqual(
+    plan.actions.map((action) => `${action.story_id}:${action.platform}`),
+    [`${storyId}:youtube_shorts`],
+  );
+  assert.equal(
+    plan.actions.some((action) =>
+      ["instagram_reels", "facebook_reels"].includes(action.platform)),
+    false,
+  );
+  for (const platform of ["instagram_reels", "facebook_reels"]) {
+    const status = plan.platform_status_matrix.platforms[platform];
+    assert.equal(status.operational_state, "disabled");
+    assert.equal(status.operational_reason, disabledReason);
+    assert.equal(status.publish_now_action_count, 0);
+    assert.deepEqual(status.planned_story_ids, []);
+    assert.deepEqual(status.scope_disabled_story_ids, [storyId]);
+  }
+});
+
 test("goal dry-run publisher uses platform-native attention copy on final actions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-platform-native-copy-"));
   const storyPackage = await makeStoryPackage(root);
@@ -2777,6 +2942,110 @@ test("goal dry-run publisher uses platform-native attention copy on final action
   assert.doesNotMatch(x.description, /source-safe gaming angle/i);
   assert.doesNotMatch(threads.description, /source-safe gaming angle/i);
   assert.doesNotMatch(pinterest.description, /source-safe gaming angle/i);
+});
+
+test("goal dry-run publisher falls back to canonical public copy when the YouTube ledger description is uploader-unsafe", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-youtube-safe-copy-"));
+  const safePublicDescription =
+    "Four original Xbox games have joined Xbox Backward Compatibility on PC, with all four included in Game Pass. Existing digital console licences carry over, while achievement support is coming later. Source: Eurogamer.";
+  const storyPackage = await makeStoryPackage(
+    root,
+    "youtube-ledger-description",
+    "GREEN",
+    "4 Xbox Classics Hit PC, Achievements Come Later",
+    {
+      canonicalSubject: "Xbox",
+      coherenceMatchesCanonical: true,
+      canonicalPatch: {
+        description: "Xbox brought four original classics to PC. Source: Eurogamer.",
+        public_description: safePublicDescription,
+      },
+    },
+  );
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const longFormRightsDescription = [
+    safePublicDescription,
+    "Rights and image credits:",
+    ...Array.from(
+      { length: 8 },
+      (_, index) =>
+        `Official Xbox Store screenshot ${index + 1}: https://store-images.s-microsoft.com/image/apps.${index + 1}.png`,
+    ),
+    "Microsoft Game Content Usage Rules: https://www.xbox.com/en-US/developers/rules",
+  ].join(" ");
+  assert.ok(longFormRightsDescription.length > 420);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    description: longFormRightsDescription,
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T21:30:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((action) => action.platform === "youtube_shorts");
+  assert.ok(youtube, JSON.stringify({
+    summary: plan.summary,
+    blocked_stories: plan.blocked_stories,
+  }));
+  assert.equal(youtube.action, "would_publish");
+  assert.equal(youtube.description, safePublicDescription);
+  assert.equal(youtube.caption, safePublicDescription);
+  assert.equal(youtube.page_caption, safePublicDescription);
+  assert.ok(youtube.description.length <= 420);
+  assert.doesNotMatch(youtube.description, /https?:\/\/|read more/i);
+
+  const persistedManifest = await fs.readJson(manifestPath);
+  assert.equal(
+    persistedManifest.outputs.youtube_shorts.description,
+    longFormRightsDescription,
+  );
+});
+
+test("goal dry-run publisher rejects a short YouTube action description that still contains article residue", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-youtube-url-copy-"));
+  const safeCanonicalDescription =
+    "Xbox brought four original classics to PC, and achievement support follows later. Source: Eurogamer.";
+  const storyPackage = await makeStoryPackage(
+    root,
+    "youtube-url-description",
+    "GREEN",
+    "4 Xbox Classics Hit PC, Achievements Come Later",
+    {
+      canonicalSubject: "Xbox",
+      coherenceMatchesCanonical: true,
+      canonicalPatch: {
+        description: safeCanonicalDescription,
+      },
+    },
+  );
+  const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const shortArticleResidue =
+    "Xbox brought four original classics to PC. Read more: https://www.eurogamer.net/example";
+  assert.ok(shortArticleResidue.length < 420);
+  manifest.outputs.youtube_shorts = {
+    ...manifest.outputs.youtube_shorts,
+    description: shortArticleResidue,
+  };
+  await fs.writeJson(manifestPath, manifest, { spaces: 2 });
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T21:31:00.000Z",
+    platformOperationalConfig: enabledCorePlatformsOnly(),
+  });
+
+  const youtube = plan.actions.find((action) => action.platform === "youtube_shorts");
+  assert.ok(youtube);
+  assert.equal(youtube.action, "would_publish");
+  assert.equal(youtube.description, safeCanonicalDescription);
+  assert.doesNotMatch(youtube.description, /https?:\/\/|read more/i);
 });
 
 test("goal dry-run publisher treats disabled-platform duration misses as deferred warnings", async () => {
@@ -2873,7 +3142,7 @@ test("goal dry-run publisher surfaces deferred platform enablement gaps without 
 
   assert.equal(plan.summary.platform_publish_now_action_count, 3);
   assert.equal(plan.summary.blocked_action_count, 0);
-  assert.equal(plan.summary.warning_action_count, 0);
+  assert.equal(plan.summary.warning_action_count, 0, JSON.stringify(plan.actions));
 
   const tiktok = plan.actions.find((action) => action.platform === "tiktok");
   const x = plan.actions.find((action) => action.platform === "x");
@@ -2902,12 +3171,13 @@ test("goal dry-run publisher surfaces deferred platform enablement gaps without 
   assert.match(markdown, /x_api_billing_not_declared/);
 });
 
-test("goal dry-run publisher does not treat disabled-platform optimisation warnings as live publish warnings", async () => {
+test("goal dry-run publisher preserves disabled-platform creator-rewards optimisation as a nonblocking advisory", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-deferred-warning-"));
   const storyPackage = await makeStoryPackage(root, "deferred-warning", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
   const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
   const manifest = await fs.readJson(manifestPath);
   manifest.outputs.tiktok.publish_duration_seconds = { min: 15, max: 90 };
+  manifest.outputs.tiktok.technical_duration_seconds = 45;
   manifest.outputs.tiktok.creator_rewards_eligible = false;
   manifest.outputs.tiktok.duration_warnings = ["below_creator_rewards_duration"];
   await fs.writeJson(manifestPath, manifest, { spaces: 2 });
@@ -2924,21 +3194,26 @@ test("goal dry-run publisher does not treat disabled-platform optimisation warni
     },
   });
 
-  assert.equal(plan.summary.warning_action_count, 1);
+  assert.equal(plan.summary.warning_action_count, 0, JSON.stringify(plan.actions));
   assert.equal(plan.summary.publish_now_warning_action_count, 0);
-  assert.equal(plan.summary.deferred_warning_action_count, 1);
+  assert.equal(plan.summary.deferred_warning_action_count, 0);
   assert.equal(plan.overall_verdict, "AMBER");
   assert.ok(plan.readiness_reasons.includes("platform_actions_deferred_until_enabled"));
   assert.ok(!plan.readiness_reasons.includes("platform_or_preflight_warnings"));
-  assert.ok(plan.platform_status_matrix.platforms.tiktok.warnings.includes("below_creator_rewards_duration"));
+  assert.ok(
+    plan.platform_status_matrix.platforms.tiktok.advisories.includes(
+      "below_creator_rewards_duration",
+    ),
+  );
 });
 
-test("goal dry-run publisher still surfaces enabled-platform publish warnings in readiness", async () => {
+test("goal dry-run publisher does not block an upload-eligible TikTok short on Creator Rewards optimisation", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-live-warning-"));
   const storyPackage = await makeStoryPackage(root, "live-warning", "GREEN", "Forza Horizon 6 Exposes Xbox's Steam Bet");
   const manifestPath = path.join(storyPackage.artifact_dir, "platform_publish_manifest.json");
   const manifest = await fs.readJson(manifestPath);
   manifest.outputs.tiktok.publish_duration_seconds = { min: 15, max: 90 };
+  manifest.outputs.tiktok.technical_duration_seconds = 45;
   manifest.outputs.tiktok.creator_rewards_eligible = false;
   manifest.outputs.tiktok.duration_warnings = ["below_creator_rewards_duration"];
   await fs.writeJson(manifestPath, manifest, { spaces: 2 });
@@ -2949,11 +3224,15 @@ test("goal dry-run publisher still surfaces enabled-platform publish warnings in
     platformOperationalConfig: allPlatformsEnabled(),
   });
 
-  assert.equal(plan.summary.warning_action_count, 1);
-  assert.equal(plan.summary.publish_now_warning_action_count, 1);
+  assert.equal(plan.summary.warning_action_count, 0);
+  assert.equal(plan.summary.publish_now_warning_action_count, 0);
   assert.equal(plan.summary.deferred_warning_action_count, 0);
-  assert.equal(plan.overall_verdict, "AMBER");
-  assert.ok(plan.readiness_reasons.includes("platform_or_preflight_warnings"));
+  assert.equal(plan.overall_verdict, "GREEN");
+  assert.ok(!plan.readiness_reasons.includes("platform_or_preflight_warnings"));
+  const tiktok = plan.actions.find((action) => action.platform === "tiktok");
+  assert.equal(tiktok.creator_rewards_eligible, false);
+  assert.deepEqual(tiktok.warnings, []);
+  assert.deepEqual(tiktok.advisories, ["below_creator_rewards_duration"]);
 });
 
 test("goal dry-run publisher clears stale TikTok creator-rewards warnings when the long variant is materialised", async () => {
@@ -3422,6 +3701,7 @@ test("goal dry-run publisher uses hard publish duration separately from strategi
   const manifest = await fs.readJson(manifestPath);
   manifest.outputs.youtube_shorts.publish_duration_seconds = { min: 15, max: 60 };
   manifest.outputs.tiktok.publish_duration_seconds = { min: 15, max: 90 };
+  manifest.outputs.tiktok.technical_duration_seconds = 22;
   manifest.outputs.tiktok.creator_rewards_eligible = false;
   manifest.outputs.tiktok.duration_warnings = ["below_creator_rewards_duration"];
   manifest.retention_short_approved = true;
@@ -3438,7 +3718,7 @@ test("goal dry-run publisher uses hard publish duration separately from strategi
   assert.ok(
     plan.actions
       .find((action) => action.platform === "tiktok")
-      .warnings.includes("below_creator_rewards_duration"),
+      .advisories.includes("below_creator_rewards_duration"),
   );
 });
 
@@ -6802,6 +7082,253 @@ test("goal dry-run publisher blocks stale audio loudness reports after final ren
   assert.equal(plan.overall_verdict, "RED");
   assert.equal(plan.summary.ready_story_count, 0);
   assert.ok(plan.blocked_stories[0].blockers.includes("audio_segment_loudness_report_stale_after_render"));
+});
+
+test("goal dry-run publisher reconciles only stale adapter aliases against exact current package authority", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-dry-run-exact-authority-"));
+  const storyId = "exact-current-package";
+  const storyPackage = await makeStoryPackage(
+    root,
+    storyId,
+    "GREEN",
+    "4 Xbox Classics Hit PC, Achievements Come Later",
+    {
+      canonicalSubject: "Xbox",
+      renderGeneratedAt: "2026-07-23T20:10:05.288Z",
+      audioSegmentGeneratedAt: "2026-07-23T14:29:35.896Z",
+      canonicalPatch: {
+        description:
+          "Four original Xbox games have joined Xbox Backward Compatibility on PC, but achievement support is coming later.",
+        human_reviewed_direct_video_motion_exception: true,
+      },
+    },
+  );
+  const artifactDir = storyPackage.artifact_dir;
+  const finalRenderPath = path.join(artifactDir, "visual_v4_render_outro_repair_v5.mp4");
+  await fs.writeFile(finalRenderPath, Buffer.alloc(2400, 7));
+  const audioPath = path.join(artifactDir, "narration.mp3");
+  const timestampsPath = path.join(artifactDir, "word_timestamps.json");
+  const rightsPath = path.join(artifactDir, "rights_ledger.json");
+  const fingerprint = async (filePath) => {
+    const bytes = await fs.readFile(filePath);
+    return {
+      path: filePath,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      size_bytes: bytes.length,
+    };
+  };
+  const [renderFingerprint, audioFingerprint, timestampsFingerprint, rightsFingerprint] =
+    await Promise.all([
+      fingerprint(finalRenderPath),
+      fingerprint(audioPath),
+      fingerprint(timestampsPath),
+      fingerprint(rightsPath),
+    ]);
+  const temporalPath = path.join(artifactDir, "temporal_video_qa_report.json");
+  await fs.writeJson(temporalPath, {
+    story_id: storyId,
+    verdict: "GREEN",
+    can_publish: true,
+    blockers: [],
+    final_media: renderFingerprint,
+    validation: {
+      render_hash_matches: true,
+      render_size_matches: true,
+      decode_complete: true,
+      video_stream_decoded: true,
+      audio_stream_decoded: true,
+      temporal_scan_complete: true,
+    },
+  });
+  const temporalFingerprint = await fingerprint(temporalPath);
+  const frozenHashes = {
+    render: renderFingerprint,
+    audio: audioFingerprint,
+    timestamps: timestampsFingerprint,
+    rights: rightsFingerprint,
+    temporal_qa_report: temporalFingerprint,
+  };
+  await fs.writeJson(path.join(artifactDir, "publish_verdict.json"), {
+    verdict: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    authority_refresh: {
+      source: "current_independently_verified_artifact_evidence",
+      monotonic_verdict: true,
+      frozen_hashes: frozenHashes,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "final_av_review.json"), {
+    story_id: storyId,
+    verdict: "GREEN",
+    status: "GREEN",
+    publish_ready: true,
+    can_auto_publish: true,
+    reviewed_artefact_fingerprints: {
+      final_mp4: `sha256:${renderFingerprint.sha256}`,
+    },
+    reviewer: { id: "independent-final-av-reviewer", independent: true },
+    attestations: {
+      full_watch: true,
+      full_listen: true,
+      av_sync: true,
+      caption_readability: true,
+      subject_match: true,
+    },
+    blockers: [],
+    failures: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "decoded_forensic_report.json"), {
+    story_id: storyId,
+    verdict: "pass",
+    status: "pass",
+    final_media: {
+      sha256: `sha256:${renderFingerprint.sha256}`,
+      audio_stream_count: 1,
+    },
+    checks: {
+      audio: { verdict: "pass", evidence: { audio_stream_count: 1 } },
+      video: { verdict: "pass" },
+      av_sync: { verdict: "pass" },
+    },
+    blockers: [],
+    failures: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "youtube_publish_metadata_finalisation.json"), {
+    story_id: storyId,
+    generated_at: "2026-07-23T20:22:29.335Z",
+    mode: "APPLY",
+    applied: true,
+    verdict: "GREEN",
+    enabled_platforms: ["youtube_shorts"],
+  });
+  const renderManifestPath = path.join(artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  const visualAssets = Array.from({ length: 8 }, (_, index) => ({
+    asset_id: `official-xbox-still-${index + 1}`,
+    kind: "screenshot",
+    path: path.join(artifactDir, `official-xbox-still-${index + 1}.jpg`),
+    source_url: `https://store-images.s-microsoft.com/xbox-${index + 1}.jpg`,
+    source_type: "official_store_screenshot",
+    subject_match: true,
+    subject_match_quality: "exact_platform_match",
+    matched_subject: "Xbox",
+    asset_sha256: String(index + 1).repeat(64),
+    asset_size_bytes: 1000 + index,
+  }));
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    renderer: "hyperframes",
+    engine: "hyperframes_0.7.68",
+    source_renderer_engine: "hyperframes_0.7.68",
+    output_path: finalRenderPath,
+    input_fingerprint: {
+      audio_sha256: audioFingerprint.sha256,
+      word_timestamps_sha256: timestampsFingerprint.sha256,
+    },
+    selected_input_assets: {
+      authoritative: true,
+      complete: true,
+      asset_count: visualAssets.length,
+      assets: visualAssets,
+      blockers: [],
+    },
+    clip_scene_plan: {
+      renderer: "hyperframes",
+      repeat_free: true,
+      scene_count: 14,
+      placement_count: 40,
+      verified_placement_count: 40,
+      unique_visual_asset_count: visualAssets.length,
+      temporal_qa_verdict: "GREEN",
+    },
+    decoded_visual_gate: {
+      verdict: "GREEN",
+      can_publish: true,
+      render_sha256: renderFingerprint.sha256,
+      render_size_bytes: renderFingerprint.size_bytes,
+    },
+    input_evidence: {
+      hyperframes: {
+        composition_sha256: "a".repeat(64),
+        rights_sidecar_verdict: "PASS",
+        canonical_visual_asset_ids: visualAssets.map((asset) => asset.asset_id),
+      },
+    },
+    hyperframes_adoption_evidence: {
+      final_render_sha256: renderFingerprint.sha256,
+      human_av_review_verdict: "GREEN",
+      temporal_video_qa_verdict: "GREEN",
+      rights_placement_verdict: "PASS",
+    },
+  });
+  const coherencePath = path.join(artifactDir, "coherence_report.json");
+  const coherence = await fs.readJson(coherencePath);
+  coherence.generated_at = "2026-07-23T14:52:47.357Z";
+  coherence.manifest.description = "The earlier Xbox description.";
+  await fs.writeJson(coherencePath, coherence);
+
+  const plan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T20:30:00.000Z",
+    platformOperationalConfig: { youtube: { state: "enabled", reason: "core_upload_path" } },
+  });
+  const youtubeAction = plan.actions.find(
+    (action) => action.story_id === storyId && action.platform === "youtube_shorts",
+  );
+  assert.ok(
+    youtubeAction,
+    JSON.stringify(plan.blocked_stories.map((story) => story.blockers), null, 2),
+  );
+  assert.equal(youtubeAction.video_path, renderFingerprint.path);
+  assert.equal(youtubeAction.video_sha256, renderFingerprint.sha256);
+  assert.equal(youtubeAction.video_size_bytes, renderFingerprint.size_bytes);
+  assert.deepEqual(youtubeAction.warnings, []);
+  assert.deepEqual(youtubeAction.authority_reconciliations, [
+    "hyperframes_premium_shell_aliases_superseded_by_exact_current_authority",
+    "audio_report_timestamp_alias_superseded_by_exact_current_authority",
+    "description_coherence_aliases_superseded_by_exact_current_authority",
+  ]);
+  assert.equal(youtubeAction.live_execution_gate, "guarded_dispatch_ready");
+  const blockers = plan.blocked_stories[0]?.blockers || plan.ready_stories[0]?.blockers || [];
+
+  for (const staleAlias of [
+    "hyperframes_premium_shell_not_passed",
+    "hyperframes_premium_shell_missing",
+    "hyperframes_premium_shell_pass_count_missing:4",
+    "audio_segment_loudness_report_stale_after_render",
+    "stale_public_output_coherence_report",
+    "stale_public_output_coherence_field:description",
+  ]) {
+    assert.equal(
+      blockers.some((blocker) => blocker === staleAlias || blocker.endsWith(`:${staleAlias}`)),
+      false,
+      `${staleAlias} must be superseded only by exact current authority`,
+    );
+  }
+
+  await fs.appendFile(rightsPath, "\n");
+  const tamperedPlan = await buildGoalDryRunPublishPlan({
+    storyPackages: [storyPackage],
+    generatedAt: "2026-07-23T20:31:00.000Z",
+    platformOperationalConfig: { youtube: { state: "enabled", reason: "core_upload_path" } },
+  });
+  const tamperedBlockers =
+    tamperedPlan.blocked_stories[0]?.blockers ||
+    tamperedPlan.ready_stories[0]?.blockers ||
+    [];
+  for (const protectedBlocker of [
+    "hyperframes_premium_shell_not_passed",
+    "audio_segment_loudness_report_stale_after_render",
+    "stale_public_output_coherence_report",
+  ]) {
+    assert.ok(
+      tamperedBlockers.some(
+        (blocker) => blocker === protectedBlocker || blocker.endsWith(`:${protectedBlocker}`),
+      ),
+      `${protectedBlocker} must remain blocking after frozen rights evidence changes`,
+    );
+  }
 });
 
 test("goal dry-run publisher blocks stale voice QA reports after audio regeneration", async () => {

@@ -1775,6 +1775,66 @@ function alignmentArrays(payload = {}) {
   };
 }
 
+async function inspectReusableLocalTtsSegment({ segment, segmentPath } = {}) {
+  if (!segment || !segmentPath) {
+    return { reusable: false, reason: "segment_identity_missing" };
+  }
+  const timestampsPath = segmentPath.replace(/\.mp3$/i, "_timestamps.json");
+  const segmentAbs =
+    (await mediaPaths.resolveExisting(segmentPath)) ||
+    mediaPaths.writePath(segmentPath);
+  const timestampsAbs =
+    (await mediaPaths.resolveExisting(timestampsPath)) ||
+    mediaPaths.writePath(timestampsPath);
+  if (
+    !(await fs.pathExists(segmentAbs)) ||
+    !(await fs.pathExists(timestampsAbs))
+  ) {
+    return { reusable: false, reason: "checkpoint_files_missing" };
+  }
+
+  try {
+    const audioStat = await fs.stat(segmentAbs);
+    if (!audioStat.isFile() || audioStat.size <= 0) {
+      return { reusable: false, reason: "checkpoint_audio_empty" };
+    }
+    const payload = await fs.readJson(timestampsAbs);
+    const arrays = alignmentArrays(payload);
+    if (
+      arrays.characters.length === 0 ||
+      arrays.starts.length !== arrays.characters.length ||
+      arrays.ends.length !== arrays.characters.length
+    ) {
+      return { reusable: false, reason: "checkpoint_alignment_invalid" };
+    }
+    const expectedText = String(segment.text || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const checkpointText = arrays.characters
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!expectedText || checkpointText !== expectedText) {
+      return { reusable: false, reason: "checkpoint_transcript_mismatch" };
+    }
+    return {
+      reusable: true,
+      reason: "matching_audio_and_alignment",
+      audio_path: segmentPath,
+      timestamps_path: timestampsPath,
+      text_sha256: crypto
+        .createHash("sha256")
+        .update(expectedText)
+        .digest("hex"),
+    };
+  } catch (err) {
+    return {
+      reusable: false,
+      reason: `checkpoint_unreadable:${String(err?.message || err)}`,
+    };
+  }
+}
+
 async function mergeLocalTtsSegments({
   segments,
   segmentPaths,
@@ -1922,11 +1982,32 @@ async function generateTtsForStory({
       const segments = splitLocalTtsRequestSegments(text, env);
       if (segments.length > 1) {
         const segmentPaths = [];
+        const completedSegmentPaths = new Set();
         const attempts = [];
+        let reusedSegmentCount = 0;
+        let merged = false;
         try {
           for (const segment of segments) {
             const segmentPath = localTtsSegmentOutputPath(outputPath, segment.label);
             segmentPaths.push(segmentPath);
+            const checkpoint = await inspectReusableLocalTtsSegment({
+              segment,
+              segmentPath,
+            });
+            if (checkpoint.reusable) {
+              const attempt = {
+                ok: true,
+                attempts: 0,
+                recovery: null,
+                reused_checkpoint: true,
+                checkpoint,
+              };
+              recordLocalTtsAttempt(story, `${label}:${segment.label}`, attempt);
+              attempts.push(attempt);
+              completedSegmentPaths.add(segmentPath);
+              reusedSegmentCount += 1;
+              continue;
+            }
             const attempt = await generateLocalTtsWithOptionalRecovery({
               storyId: story?.id,
               text: segment.text,
@@ -1952,6 +2033,7 @@ async function generateTtsForStory({
               err.localTtsAttempt = attempt;
               throw err;
             }
+            completedSegmentPaths.add(segmentPath);
           }
 
           const segmentation = await mergeLocalTtsSegments({
@@ -1962,17 +2044,24 @@ async function generateTtsForStory({
             concatAudio,
             getDuration,
           });
+          merged = true;
           return {
             ok: true,
             attempts: attempts.reduce(
-              (total, attempt) => total + Number(attempt.attempts || 1),
+              (total, attempt) =>
+                total +
+                (Number.isFinite(Number(attempt.attempts))
+                  ? Number(attempt.attempts)
+                  : 1),
               0,
             ),
             recovery: attempts.map((attempt) => attempt.recovery).filter(Boolean),
+            reusedSegmentCount,
             segmentation,
           };
         } finally {
           for (const segmentPath of segmentPaths) {
+            if (!merged && completedSegmentPaths.has(segmentPath)) continue;
             await fs.remove(mediaPaths.writePath(segmentPath)).catch(() => {});
             await fs
               .remove(mediaPaths.writePath(segmentPath.replace(/\.mp3$/i, "_timestamps.json")))

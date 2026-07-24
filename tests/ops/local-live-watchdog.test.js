@@ -128,6 +128,33 @@ test("local live watchdog accepts only a fresh operator-confirmed restart reques
   assert.equal(evidence.expired.classification, "expired");
 });
 
+test("local live watchdog accepts only fresh operator-confirmed restarts for known content worker lanes", () => {
+  const evidence = evaluatePolicy(
+    "$now = [DateTimeOffset]::Parse('2026-07-23T18:20:00Z'); " +
+      "$valid = [pscustomobject]@{" +
+        "schema_version = 1; request_id = 'candidate-monitor-scope-v1'; " +
+        "operator_confirmed = $true; worker_id = 'local-content-runway'; " +
+        "requested_at_utc = '2026-07-23T18:19:00Z'; " +
+        "expires_at_utc = '2026-07-23T18:29:00Z'; " +
+        "reason = 'load_bounded_candidate_monitor'" +
+      "}; " +
+      "$unknown = $valid.PSObject.Copy(); $unknown.worker_id = 'local-publish-critical'; " +
+      "$expired = $valid.PSObject.Copy(); $expired.expires_at_utc = '2026-07-23T18:19:59Z'; " +
+      "[pscustomobject]@{" +
+        "valid = (Resolve-WatchdogContentWorkerRestartRequest -Request $valid -NowUtc $now); " +
+        "unknown = (Resolve-WatchdogContentWorkerRestartRequest -Request $unknown -NowUtc $now); " +
+        "expired = (Resolve-WatchdogContentWorkerRestartRequest -Request $expired -NowUtc $now)" +
+      "}",
+  );
+
+  assert.equal(evidence.valid.approved, true);
+  assert.equal(evidence.valid.worker_id, "local-content-runway");
+  assert.equal(evidence.unknown.approved, false);
+  assert.equal(evidence.unknown.classification, "worker_not_managed");
+  assert.equal(evidence.expired.approved, false);
+  assert.equal(evidence.expired.classification, "expired");
+});
+
 test("local live watchdog starts a missing listener without a destructive restart", () => {
   const decision = evaluatePolicy(
     "Resolve-WatchdogRuntimeDecision -ListenerPresent $false -HealthOutcome request_failed " +
@@ -257,6 +284,9 @@ test("local live watchdog keeps non-publish content workers alive", () => {
 
   assert.match(source, /local-live-content-workers\.ps1/);
   assert.match(source, /\$contentWorkersScript/);
+  assert.match(source, /pulse-content-worker-restart-request\.json/);
+  assert.match(source, /Resolve-WatchdogContentWorkerRestartRequest/);
+  assert.match(source, /"-OnlyWorkerId",\s*\$contentWorkerRestart\.worker_id/);
   assert.match(source, /content_workers_check ensuring_content_workers/);
   assert.match(source, /-File",\s*\$contentWorkersScript/);
   assert.doesNotMatch(source, /content_workers_check[\s\S]{0,400}"-Restart"/);

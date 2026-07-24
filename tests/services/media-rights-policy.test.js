@@ -78,6 +78,11 @@ test("owned media produces a compact GREEN commercial-use record", () => {
       commercial_use_allowed: true,
       allowed_platforms: TARGETS,
       transformation_notes: "Generated in-house for this story.",
+      subject_match: true,
+      subject_match_quality: "exact_platform_match",
+      matched_subject: "Xbox Backward Compatibility on PC",
+      subject_match_evidence:
+        "Generated from the exact approved Xbox Backward Compatibility on PC story brief.",
     }],
   });
 
@@ -87,6 +92,19 @@ test("owned media produces a compact GREEN commercial-use record", () => {
   assert.equal(report.rights_records[0].approval_status, "approved");
   assert.equal(report.rights_records[0].licence_basis, "owned_by_pulse_gaming");
   assert.deepEqual(report.rights_records[0].allowed_platforms, TARGETS);
+  assert.equal(report.rights_records[0].subject_match, true);
+  assert.equal(
+    report.rights_records[0].subject_match_quality,
+    "exact_platform_match",
+  );
+  assert.equal(
+    report.rights_records[0].matched_subject,
+    "Xbox Backward Compatibility on PC",
+  );
+  assert.match(
+    report.rights_records[0].subject_match_evidence,
+    /exact approved Xbox Backward Compatibility/,
+  );
   assert.equal(report.attribution_manifest.entries.length, 0);
 });
 
@@ -262,4 +280,3 @@ test("current-events reporting alone does not auto-approve a third-party photogr
     ),
   );
 });
-

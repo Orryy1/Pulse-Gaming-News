@@ -873,6 +873,60 @@ async function fetchPublishStatus(publishId, { accessToken = null } = {}) {
   };
 }
 
+function buildTikTokCaption(
+  story = {},
+  { channel = null, maxLength = 2200 } = {},
+) {
+  const activeChannel = channel || require("./channels").getChannel();
+  const cleanCopy = (value) =>
+    String(value || "")
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+      .replace(/^(?:\s*\[[^\]\r\n]{1,80}\]\s*)+/, "")
+      .trim();
+  const base =
+    [
+      story.platform_caption,
+      story.tiktok_caption,
+      story.caption,
+      story.description,
+      story.suggested_title,
+      story.suggested_thumbnail_text,
+      story.title,
+    ]
+      .map(cleanCopy)
+      .find(Boolean) || "Pulse Gaming update";
+  const seen = new Set();
+  const candidateHashtags = [
+    ...(Array.isArray(activeChannel?.hashtags) ? activeChannel.hashtags : []),
+    "#viral",
+    "#fyp",
+  ].filter((value) => {
+    const tag = String(value || "").trim();
+    if (!/^#[a-z0-9]+$/i.test(tag)) return false;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const safeMaxLength =
+    Number.isSafeInteger(maxLength) && maxLength > 0 ? maxLength : 2200;
+  const reservedSuffix = candidateHashtags.length
+    ? ` ${candidateHashtags.join(" ")}`
+    : "";
+  const bodyBudget = Math.max(0, safeMaxLength - reservedSuffix.length);
+  const body =
+    base.length > bodyBudget
+      ? bodyBudget > 3
+        ? `${base.slice(0, bodyBudget - 3).trimEnd()}...`
+        : base.slice(0, bodyBudget)
+      : base;
+  const hashtags = candidateHashtags.filter(
+    (tag) => !new RegExp(`(^|\\s)${tag}(?=\\s|$)`, "i").test(body),
+  );
+  const suffix = hashtags.length ? ` ${hashtags.join(" ")}` : "";
+  return `${body}${suffix}`.trim().slice(0, safeMaxLength);
+}
+
 // --- Upload video to TikTok ---
 async function uploadVideo(story) {
   assertTikTokOperatorEnabled();
@@ -898,14 +952,9 @@ async function uploadVideo(story) {
         );
       }
 
-      // Build caption (TikTok max 2200 chars) - channel-aware hashtags
-      const { getChannel } = require("./channels");
-      const channel = getChannel();
-      let caption =
-        story.suggested_title || story.suggested_thumbnail_text || story.title;
-      if (caption.length > 100) caption = caption.substring(0, 97) + "...";
-      const tags = (channel.hashtags || []).join(" ") + " #viral #fyp";
-      caption += " " + tags;
+      // Use the guarded platform-native copy while retaining channel identity
+      // and discovery hashtags inside TikTok's 2,200-character limit.
+      const caption = buildTikTokCaption(story);
 
       console.log(`[tiktok] Uploading: "${caption.substring(0, 60)}..."`);
       const privacyLevel = (() => {
@@ -1078,6 +1127,7 @@ module.exports = {
   uploadFileToTikTokUploadUrl,
   buildPublishStatusFetchRequest,
   fetchPublishStatus,
+  buildTikTokCaption,
   DEFAULT_EXPIRES_IN_SECONDS,
   // Privacy-level resolver + constants — exported for tests and
   // for any operator tooling that wants to read the live effective

@@ -323,7 +323,11 @@ function buildMetadata(story) {
   descLines.push("");
 
   // --- Section 2: Affiliate CTA ---
-  const affiliateLinks = normaliseAffiliateLinks(story).slice(0, 4);
+  const affiliateLinks =
+    story.suppress_affiliate_links === true ||
+    story.affiliate_links_allowed === false
+      ? []
+      : normaliseAffiliateLinks(story).slice(0, 4);
   const disclosure = affiliateDisclosureForLinks(affiliateLinks);
   if (affiliateLinks.length === 1) {
     descLines.push(disclosure);
@@ -367,7 +371,14 @@ function buildMetadata(story) {
   if (sourceLinks.length > 0 || story.subreddit) {
     descLines.push("======================");
     descLines.push("Sources:");
-    if (story.subreddit) descLines.push(`r/${story.subreddit}`);
+    if (story.subreddit) {
+      const sourceType = cleanText(story.source_type).toLowerCase();
+      descLines.push(
+        !sourceType || sourceType === "reddit"
+          ? `r/${story.subreddit}`
+          : cleanText(story.subreddit),
+      );
+    }
     sourceLinks.forEach((link) => descLines.push(link));
     descLines.push("======================");
     descLines.push("");

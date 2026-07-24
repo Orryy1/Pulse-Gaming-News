@@ -1,7 +1,17 @@
 param(
   [string]$RepoRoot = "",
   [string]$RuntimeRepoRoot = "",
-  [switch]$Restart
+  [switch]$Restart,
+  [ValidateSet(
+    "local-publish-prep",
+    "local-content-runway",
+    "local-content-refill",
+    "local-content-repair",
+    "local-content-produce",
+    "local-content-ops",
+    "local-content-learning"
+  )]
+  [string]$OnlyWorkerId = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -191,6 +201,10 @@ $lanes = @(
     Kinds = "fresh_review_script_repair,safe_auto_repair_runner,local_tts_doctor,local_tts_retry_recovery"
   },
   @{
+    Id = "local-content-produce"
+    Kinds = "produce"
+  },
+  @{
     Id = "local-content-ops"
     Kinds = "hunt,produce,analytics,scoring_digest,engage,engage_first_hour,blog_rebuild,db_backup,instagram_pending_verify,overnight_produce_sweep,overnight_analytics_backfill,overnight_claude_analyst,overnight_morning_digest"
   },
@@ -199,6 +213,20 @@ $lanes = @(
     Kinds = "live_performance_analyst,studio_analytics_loop,commercial_learning_loop,competitor_forensics_lab,competitor_quality_gate,autonomous_feedback_monitor,continuous_learning_loop"
   }
 )
+
+if ($OnlyWorkerId) {
+  $lanes = @(
+    $lanes |
+      Where-Object {
+        [string]::Equals(
+          [string]$_.Id,
+          $OnlyWorkerId,
+          [System.StringComparison]::Ordinal
+        )
+      }
+  )
+  Write-ContentWorkerLog ("worker_lane_filter id={0}" -f $OnlyWorkerId)
+}
 
 $env:USE_SQLITE = "true"
 $env:SQLITE_DB_PATH = "D:/pulse-data/pulse.db"

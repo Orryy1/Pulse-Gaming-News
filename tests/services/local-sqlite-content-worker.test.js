@@ -7,6 +7,7 @@ const test = require("node:test");
 
 const {
   DEFAULT_CONTENT_KINDS,
+  contentWorkerHandlerTimeouts,
   createContentWorkerClaimGuard,
   parseArgs,
   usage,
@@ -150,6 +151,24 @@ test("local sqlite content worker uses a long lease for synchronous repair tools
   assert.equal(
     parseArgs([], { PULSE_CONTENT_WORKER_LEASE_MS: "2400000" }).leaseMs,
     2400000,
+  );
+});
+
+test("candidate supply workers fail closed when a monitor exceeds its bounded runtime", () => {
+  assert.deepEqual(
+    contentWorkerHandlerTimeouts(["candidate_supply_monitor"], {}),
+    { candidate_supply_monitor: 15 * 60 * 1000 },
+  );
+  assert.deepEqual(
+    contentWorkerHandlerTimeouts(
+      ["candidate_supply_monitor"],
+      { PULSE_CANDIDATE_SUPPLY_HANDLER_TIMEOUT_MS: "420000" },
+    ),
+    { candidate_supply_monitor: 420000 },
+  );
+  assert.deepEqual(
+    contentWorkerHandlerTimeouts(["fresh_production_refill"], {}),
+    {},
   );
 });
 

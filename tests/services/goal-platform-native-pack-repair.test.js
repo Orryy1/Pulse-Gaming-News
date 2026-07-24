@@ -142,6 +142,84 @@ test("platform-native pack repair upgrades legacy candidate artefacts with backu
   assert.equal(await fs.pathExists(path.join(storyPackages[0].artifact_dir, "threads_publish_pack.json")), true);
 });
 
+test("platform-native repair persists an explicit YouTube-only scope and visible disabled Meta packs", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    rightsPlatforms: ["youtube_shorts"],
+    generatedAt: "2026-07-23T20:10:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-youtube-only"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const manifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.deepEqual(manifest.enabled_platforms, ["youtube_shorts"]);
+  assert.equal(manifest.outputs.youtube_shorts.operational_state, "enabled");
+  for (const platform of ["instagram_reels", "facebook_reels"]) {
+    assert.equal(manifest.outputs[platform].operational_state, "disabled");
+    assert.equal(manifest.outputs[platform].can_auto_publish, false);
+    assert.equal(manifest.outputs[platform].planned_action, null);
+    assert.deepEqual(manifest.outputs[platform].planned_actions, []);
+    assert.match(manifest.outputs[platform].disabled_reason, /rights/i);
+  }
+
+  const instagramPack = await fs.readJson(path.join(artifactDir, "instagram_publish_pack.json"));
+  const facebookPack = await fs.readJson(path.join(artifactDir, "facebook_publish_pack.json"));
+  assert.equal(instagramPack.operational_state, "disabled");
+  assert.equal(facebookPack.operational_state, "disabled");
+});
+
+test("platform-native repair can explicitly enable all five governed live platforms", async () => {
+  const { storyPackages, root } = await legacyArtifact();
+  const artifactDir = storyPackages[0].artifact_dir;
+
+  await repairPlatformNativePacks({
+    storyPackages,
+    rightsPlatforms: ["youtube_shorts"],
+    generatedAt: "2026-07-23T23:39:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-youtube-first"),
+  });
+
+  const applied = await repairPlatformNativePacks({
+    storyPackages,
+    rightsPlatforms: [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+      "tiktok",
+      "x",
+    ],
+    generatedAt: "2026-07-23T23:40:00.000Z",
+    apply: true,
+    backupRoot: path.join(root, "backups-five-platform"),
+  });
+
+  assert.equal(applied.summary.repaired_count, 1);
+  const manifest = await fs.readJson(path.join(artifactDir, "platform_publish_manifest.json"));
+  assert.deepEqual(manifest.enabled_platforms, [
+    "facebook_reels",
+    "instagram_reels",
+    "tiktok",
+    "x",
+    "youtube_shorts",
+  ]);
+  for (const platform of [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+    "tiktok",
+    "x",
+  ]) {
+    assert.equal(manifest.outputs[platform].operational_state, "enabled");
+    assert.notEqual(manifest.outputs[platform].status, "disabled");
+    assert.equal(Object.hasOwn(manifest.outputs[platform], "disabled_reason"), false);
+  }
+});
+
 test("platform-native pack repair preserves fresh Palworld comeback title and cover", async () => {
   const { storyPackages, root } = await legacyArtifact();
   const artifactDir = storyPackages[0].artifact_dir;

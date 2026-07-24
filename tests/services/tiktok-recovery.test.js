@@ -332,6 +332,62 @@ test("TikTok inbox command plan can check a publish id without another upload", 
   assert.match(md, /TikTok Status: SEND_TO_USER_INBOX/);
 });
 
+test("TikTok inbox status proof only verifies public completion when TikTok returns a public post id", () => {
+  const {
+    buildTikTokInboxCommandPlan,
+    renderTikTokInboxCommandMarkdown,
+  } = require("../../lib/platforms/tiktok-inbox-command");
+
+  const plan = buildTikTokInboxCommandPlan({
+    story: { id: "s1", title: "Story" },
+    args: {
+      publishId: "v_inbox_file~public",
+      publicProfileUrl: "https://www.tiktok.com/@pulsegamingnews/",
+    },
+    tiktokStatus: {
+      status: "PUBLISH_COMPLETE",
+      // TikTok's official response schema currently spells this field
+      // "publicaly", so the proof path must accept that exact wire shape.
+      publicaly_available_post_id: ["7612345678901234567"],
+      raw_error_code: "ok",
+    },
+  });
+
+  assert.equal(plan.status_only, true);
+  assert.equal(plan.public_verified, true);
+  assert.equal(plan.requires_manual_completion, false);
+  assert.equal(plan.completion_state, "public_post_verified");
+  assert.deepEqual(plan.public_post_ids, ["7612345678901234567"]);
+  assert.deepEqual(plan.public_urls, [
+    "https://www.tiktok.com/@pulsegamingnews/video/7612345678901234567",
+  ]);
+  assert.equal(plan.safety.no_public_post, false);
+
+  const md = renderTikTokInboxCommandMarkdown(plan);
+  assert.match(md, /Public verified: true/);
+  assert.match(md, /7612345678901234567/);
+});
+
+test("TikTok PUBLISH_COMPLETE without a public id remains unverified", () => {
+  const {
+    buildTikTokInboxCommandPlan,
+  } = require("../../lib/platforms/tiktok-inbox-command");
+
+  const plan = buildTikTokInboxCommandPlan({
+    args: { publishId: "v_inbox_file~private" },
+    tiktokStatus: {
+      status: "PUBLISH_COMPLETE",
+      publicly_available_post_id: [],
+      raw_error_code: "ok",
+    },
+  });
+
+  assert.equal(plan.public_verified, false);
+  assert.equal(plan.requires_manual_completion, true);
+  assert.equal(plan.completion_state, "published_not_publicly_verified");
+  assert.deepEqual(plan.public_post_ids, []);
+});
+
 test("TikTok inbox command plan blocks real upload from auto-selected media", () => {
   const {
     buildTikTokInboxCommandPlan,

@@ -41,6 +41,9 @@ const { canonicalHash } = require("../lib/services/url-canonical");
 const {
   officialYoutubeTransformativeRightsBlockers,
 } = require("../lib/rights-evidence-policy");
+const {
+  resolvePlatformPublishScope,
+} = require("../lib/platform-publish-scope");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "output", "goal-contract");
@@ -91,6 +94,18 @@ const DEFAULT_PUBLISH_PLATFORM_MAX_SECONDS = {
   instagram_reels: 60,
   facebook_reels: 75,
 };
+const GOVERNED_DERIVED_VARIANT_PROFILES = Object.freeze({
+  instagram_reels: {
+    encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
+    min_duration_s: 15,
+    max_duration_s: 59,
+  },
+  facebook_reels: {
+    encoder_profile: "facebook_reels_meta_safe_h264_aac_v1",
+    min_duration_s: 15,
+    max_duration_s: 90,
+  },
+});
 
 const PUBLIC_PLATFORM_FIELDS = [
   "youtube_post_id",
@@ -141,9 +156,20 @@ function schedulerGovernancePlatforms(env = process.env) {
   return platforms;
 }
 
-function schedulerStudioGovernanceOptions(opts = {}) {
+function schedulerStudioGovernanceOptions(opts = {}, story = {}) {
   const supplied = opts.studioGovernanceOptions || {};
   if (Array.isArray(supplied.platforms) && supplied.platforms.length > 0) return supplied;
+  const platformManifest = objectValue(
+    story.platform_publish_manifest || story.platformManifest,
+    {},
+  );
+  const candidateScope = resolvePlatformPublishScope(platformManifest);
+  if (candidateScope.explicit && candidateScope.enabled_platforms.length > 0) {
+    return {
+      ...supplied,
+      platforms: candidateScope.enabled_platforms,
+    };
+  }
   return {
     ...supplied,
     platforms: schedulerGovernancePlatforms(opts.env || process.env),
@@ -687,7 +713,18 @@ function enabledPublishPlatformNames(options = {}) {
 function missingEnabledPublishPlatformNames(story = {}, options = {}) {
   const published = new Set(publishedPlatformNames(story));
   const terminalDuplicate = new Set(terminalDuplicateBlockedPlatformNames(story));
-  return enabledPublishPlatformNames(options).filter((platform) =>
+  const globallyEnabled = enabledPublishPlatformNames(options);
+  const manifest = objectValue(
+    story.platform_publish_manifest || story.platformManifest,
+    {},
+  );
+  const candidateScope = resolvePlatformPublishScope(manifest);
+  const enabledForCandidate = candidateScope.explicit
+    ? globallyEnabled.filter((platform) =>
+        candidateScope.enabled_platforms.includes(platform),
+      )
+    : globallyEnabled;
+  return enabledForCandidate.filter((platform) =>
     !published.has(platform) && !terminalDuplicate.has(platform),
   );
 }
@@ -5041,6 +5078,131 @@ async function schedulerFileFingerprint(filePath, cache = new Map(), fsImpl = fs
   return fingerprint;
 }
 
+async function governedDerivedVariantAssessment({
+  artifactDir = "",
+  storyId = "",
+  platform = "",
+  output = {},
+  masterPath = "",
+  masterFingerprint = null,
+  masterDurationS = null,
+  fingerprintCache = new Map(),
+  fsImpl = fs,
+} = {}) {
+  const platformKey = cleanPlatformName(platform);
+  const policy = GOVERNED_DERIVED_VARIANT_PROFILES[platformKey];
+  const receipt = objectValue(output.platform_variant_render, {});
+  const failures = [];
+  const outputReference = cleanText(
+    receipt.output_path || platformVariantReference(output),
+  );
+  const captionsReference = cleanText(
+    receipt.captions_path ||
+      output.variant_captions_path ||
+      output.captions_path,
+  );
+  const sourcePath = resolveSchedulerAssetPath(receipt.source_video_path, artifactDir);
+  const outputPath = resolveSchedulerAssetPath(outputReference, artifactDir);
+  const declaredVariantPath = resolveSchedulerAssetPath(
+    platformVariantReference(output),
+    artifactDir,
+  );
+  const captionsPath = resolveSchedulerAssetPath(captionsReference, artifactDir);
+  let outputFingerprint = null;
+  let captionsFingerprint = null;
+
+  if (!policy) failures.push("platform_not_governed");
+  if (
+    cleanText(receipt.story_id) !== cleanText(storyId) ||
+    cleanPlatformName(receipt.platform) !== platformKey
+  ) {
+    failures.push("story_or_platform_mismatch");
+  }
+  if (
+    !schedulerVerdictGreen(receipt.status) ||
+    cleanText(receipt.producer_id) !== "pulse-goal-platform-variant-materializer" ||
+    cleanText(receipt.transformation_mode) !== "transcode" ||
+    receipt.passthrough_approved !== false
+  ) {
+    failures.push("producer_or_transformation_invalid");
+  }
+  if (!policy || cleanText(receipt.encoder_profile) !== policy.encoder_profile) {
+    failures.push("encoder_profile_invalid");
+  }
+  if (
+    !masterFingerprint ||
+    schedulerAssetPathKey(sourcePath, artifactDir) !==
+      schedulerAssetPathKey(masterPath, artifactDir) ||
+    normaliseSha256(receipt.source_video_sha256) !== masterFingerprint?.sha256 ||
+    Number(receipt.source_video_size_bytes) !== masterFingerprint?.size_bytes
+  ) {
+    failures.push("approved_master_binding_invalid");
+  }
+  try {
+    if (outputPath) {
+      outputFingerprint = await schedulerFileFingerprint(
+        outputPath,
+        fingerprintCache,
+        fsImpl,
+      );
+    }
+  } catch {
+    outputFingerprint = null;
+  }
+  if (
+    !outputFingerprint ||
+    schedulerAssetPathKey(outputPath, artifactDir) !==
+      schedulerAssetPathKey(declaredVariantPath, artifactDir) ||
+    normaliseSha256(receipt.output_sha256) !== outputFingerprint?.sha256 ||
+    Number(receipt.output_size_bytes) !== outputFingerprint?.size_bytes
+  ) {
+    failures.push("derived_output_fingerprint_invalid");
+  }
+  try {
+    if (captionsPath) {
+      captionsFingerprint = await schedulerFileFingerprint(
+        captionsPath,
+        fingerprintCache,
+        fsImpl,
+      );
+    }
+  } catch {
+    captionsFingerprint = null;
+  }
+  if (!captionsFingerprint) failures.push("derived_captions_binding_invalid");
+
+  const sourceDuration = numberOrNull(receipt.source_duration_s);
+  const outputDuration = numberOrNull(
+    receipt.duration_s || receipt.duration_seconds || output.technical_duration_seconds,
+  );
+  const masterDuration = numberOrNull(masterDurationS);
+  if (
+    masterDuration == null ||
+    sourceDuration == null ||
+    outputDuration == null ||
+    Math.abs(sourceDuration - masterDuration) > 0.25 ||
+    outputDuration < (policy?.min_duration_s ?? Number.POSITIVE_INFINITY) ||
+    outputDuration > (policy?.max_duration_s ?? Number.NEGATIVE_INFINITY) ||
+    Math.abs(outputDuration - sourceDuration) > 1
+  ) {
+    failures.push("derived_duration_invalid");
+  }
+
+  return {
+    valid: failures.length === 0,
+    failures: [...new Set(failures)],
+    platform: platformKey,
+    output_path: outputPath || null,
+    output_sha256: outputFingerprint?.sha256 || null,
+    output_size_bytes: outputFingerprint?.size_bytes || null,
+    captions_path: captionsPath || null,
+    captions_size_bytes: captionsFingerprint?.size_bytes || null,
+    source_duration_s: sourceDuration,
+    duration_s: outputDuration,
+    encoder_profile: cleanText(receipt.encoder_profile) || null,
+  };
+}
+
 async function readSchedulerArtifactValue(artifactDir = "", fileName = "", fallback = null) {
   if (!artifactDir || !fileName) return { present: false, valid: false, value: fallback };
   const filePath = path.join(artifactDir, fileName);
@@ -5062,40 +5224,44 @@ function schedulerFinalUsedAssets({
   platformManifest = {},
   targetPlatforms = [],
 } = {}) {
-  const used = [];
-  for (const [index, scene] of asArray(renderManifest.clip_scene_plan?.scenes).entries()) {
-    used.push({
-      kind: "motion",
-      asset_id: cleanText(scene.asset_id || scene.id || `render_scene_${index + 1}`),
-      path: resolveSchedulerAssetPath(schedulerAssetReference(scene), artifactDir),
-    });
-  }
-  const renderInputEvidence = objectValue(renderManifest.input_evidence, {});
-  const narrationReference = cleanText(
-    renderInputEvidence.resolved_narration_audio_path ||
-      renderInputEvidence.narration_audio_path ||
-      renderManifest.resolved_narration_audio_path ||
-      renderManifest.narration_audio_path ||
-      audioManifest.resolved_narration_audio_path ||
-      audioManifest.narration_audio_path ||
-      audioManifest.audio_path,
-  );
-  if (narrationReference) {
-    used.push({
-      kind: "narration",
-      asset_id: cleanText(audioManifest.narration_asset_id || audioManifest.asset_id || "final_narration"),
-      path: resolveSchedulerAssetPath(narrationReference, artifactDir),
-    });
-  }
-  const selectedSfx = asArray(
-    sfxManifest.source_plan?.selected_assets ?? sfxManifest.selected_assets,
-  );
-  for (const [index, selected] of selectedSfx.entries()) {
-    used.push({
-      kind: "sfx",
-      asset_id: cleanText(selected.asset_id || selected.id || `selected_sfx_${index + 1}`),
-      path: resolveSchedulerAssetPath(schedulerAssetReference(selected), artifactDir),
-    });
+  const authoritativeSelectedInputs =
+    schedulerAuthoritativeSelectedInputAssets(renderManifest, artifactDir);
+  const used = authoritativeSelectedInputs ? [...authoritativeSelectedInputs] : [];
+  if (!authoritativeSelectedInputs) {
+    for (const [index, scene] of asArray(renderManifest.clip_scene_plan?.scenes).entries()) {
+      used.push({
+        kind: "motion",
+        asset_id: cleanText(scene.asset_id || scene.id || `render_scene_${index + 1}`),
+        path: resolveSchedulerAssetPath(schedulerAssetReference(scene), artifactDir),
+      });
+    }
+    const renderInputEvidence = objectValue(renderManifest.input_evidence, {});
+    const narrationReference = cleanText(
+      renderInputEvidence.resolved_narration_audio_path ||
+        renderInputEvidence.narration_audio_path ||
+        renderManifest.resolved_narration_audio_path ||
+        renderManifest.narration_audio_path ||
+        audioManifest.resolved_narration_audio_path ||
+        audioManifest.narration_audio_path ||
+        audioManifest.audio_path,
+    );
+    if (narrationReference) {
+      used.push({
+        kind: "narration",
+        asset_id: cleanText(audioManifest.narration_asset_id || audioManifest.asset_id || "final_narration"),
+        path: resolveSchedulerAssetPath(narrationReference, artifactDir),
+      });
+    }
+    const selectedSfx = asArray(
+      sfxManifest.source_plan?.selected_assets ?? sfxManifest.selected_assets,
+    );
+    for (const [index, selected] of selectedSfx.entries()) {
+      used.push({
+        kind: "sfx",
+        asset_id: cleanText(selected.asset_id || selected.id || `selected_sfx_${index + 1}`),
+        path: resolveSchedulerAssetPath(schedulerAssetReference(selected), artifactDir),
+      });
+    }
   }
   const platformOutputs = objectValue(platformManifest.outputs, {});
   for (const platform of targetPlatforms) {
@@ -5130,6 +5296,30 @@ function schedulerFinalUsedAssets({
     unique.push(asset);
   }
   return unique;
+}
+
+function schedulerAuthoritativeSelectedInputAssets(
+  renderManifest = {},
+  artifactDir = "",
+) {
+  const selected = objectValue(renderManifest.selected_input_assets, {});
+  const assets = asArray(selected.assets);
+  const declaredCount = Number(selected.asset_count);
+  if (
+    selected.authoritative !== true ||
+    selected.complete !== true ||
+    authoritativeEvidenceFailures(selected).length > 0 ||
+    !assets.length ||
+    !Number.isFinite(declaredCount) ||
+    declaredCount !== assets.length
+  ) {
+    return null;
+  }
+  return assets.map((asset, index) => ({
+    kind: cleanText(asset.kind || asset.asset_type || asset.role || "render_input"),
+    asset_id: cleanText(asset.asset_id || asset.id || `selected_input_${index + 1}`),
+    path: resolveSchedulerAssetPath(schedulerAssetReference(asset), artifactDir),
+  }));
 }
 
 function schedulerRightsPlatforms(record = {}) {
@@ -5452,7 +5642,7 @@ async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
   const ledger = rightsArtifact.value;
   const records = rightsLedgerRecords(ledger);
   const targetPlatforms = missingEnabledPublishPlatformNames(story, opts);
-  const usedAssets = schedulerFinalUsedAssets({
+  const legacyUsedAssets = schedulerFinalUsedAssets({
     artifactDir,
     renderManifest: objectValue(renderArtifact.value, {}),
     audioManifest: objectValue(audioArtifact.value, {}),
@@ -5460,9 +5650,62 @@ async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
     platformManifest: objectValue(platformArtifact.value, {}),
     targetPlatforms,
   });
+  const authoritativeSelectedInputs = schedulerAuthoritativeSelectedInputAssets(
+    objectValue(renderArtifact.value, {}),
+    artifactDir,
+  );
+  const usedAssets = authoritativeSelectedInputs || legacyUsedAssets;
   const failures = [];
   const warnings = [];
   const fingerprintCache = new Map();
+  const governedDerivedVariants = [];
+  if (authoritativeSelectedInputs) {
+    const renderManifest = objectValue(renderArtifact.value, {});
+    const platformManifest = objectValue(platformArtifact.value, {});
+    const masterPath = resolveSchedulerAssetPath(
+      renderManifest.output_path ||
+        renderManifest.final_mp4_path ||
+        renderManifest.exported_path,
+      artifactDir,
+    );
+    let masterFingerprint = null;
+    try {
+      masterFingerprint = await schedulerFileFingerprint(
+        masterPath,
+        fingerprintCache,
+        opts.fs || fs,
+      );
+    } catch {
+      failures.push("approved_master_render_unreadable");
+    }
+    for (const platform of targetPlatforms) {
+      const output = objectValue(platformManifest.outputs?.[platform], {});
+      if (!platformVariantReference(output)) continue;
+      const assessment = await governedDerivedVariantAssessment({
+        artifactDir,
+        storyId: cleanText(story.id || story.story_id),
+        platform,
+        output,
+        masterPath,
+        masterFingerprint,
+        masterDurationS:
+          renderManifest.rendered_duration_s ||
+          renderManifest.duration_seconds ||
+          story.duration_seconds,
+        fingerprintCache,
+        fsImpl: opts.fs || fs,
+      });
+      governedDerivedVariants.push(assessment);
+      if (!assessment.valid) {
+        failures.push(
+          ...asArray(assessment.failures).map(
+            (failure) =>
+              `platform_variant_derivative_authority_invalid:${platform}:${failure}`,
+          ),
+        );
+      }
+    }
+  }
   const renderRightsReconciliation =
     await schedulerRenderRightsReconciliationAssessment({
       renderManifest: objectValue(renderArtifact.value, {}),
@@ -5544,10 +5787,15 @@ async function schedulerRightsPreflightForStory(story = {}, opts = {}) {
     warnings: [...new Set(warnings)],
     evidence: {
       rights_ledger_path: rightsArtifact.path,
+      used_asset_source: authoritativeSelectedInputs
+        ? "render_manifest.selected_input_assets"
+        : "legacy_render_audio_sfx_manifests",
       used_asset_count: usedAssets.length,
       covered_asset_count: coveredAssetCount,
       duplicate_record_count: duplicateRecordCount,
       target_platforms: targetPlatforms,
+      governed_derived_variant_count: governedDerivedVariants.length,
+      governed_derived_variants: governedDerivedVariants,
       render_rights_reconciliation: renderRightsReconciliation.evidence,
     },
   };
@@ -6022,7 +6270,7 @@ async function visualLoopPreflightForStory(story = {}, renderManifest = {}) {
   };
 }
 
-async function incidentGuardPreflightForStory(story = {}) {
+async function incidentGuardPreflightForStory(story = {}, opts = {}) {
   if (!shouldRunIncidentGuardForStory(story)) return null;
   const { evaluateIncidentGuard } = require("../lib/incident-guard");
   const { visualEvidenceProfile } = require("../lib/visual-evidence-classifier");
@@ -6076,7 +6324,7 @@ async function incidentGuardPreflightForStory(story = {}) {
   const ownedExplainerExceptionApproved =
     ownedExplainerExceptionApprovedForStory(story, renderManifest) ||
     (ownedExplainerReady && ownedExplainerPolicyApprovedForStory(story));
-  const generatedVisualFailures = asArray(visualEvidence.blockers).filter(
+  let generatedVisualFailures = asArray(visualEvidence.blockers).filter(
     (blocker) =>
       !ownedExplainerReady ||
       !ownedExplainerExceptionApproved ||
@@ -6086,6 +6334,23 @@ async function incidentGuardPreflightForStory(story = {}) {
         "visual_evidence:direct_video_motion_missing",
       ].includes(blocker),
   );
+  const hyperframesStillMotion = /hyperframes/i.test(
+    cleanText(
+      renderManifest.renderer ||
+        renderManifest.engine ||
+        renderManifest.source_renderer_engine,
+    ),
+  )
+    ? hashBoundHumanReviewedHyperframesStillMotionEvidence(
+        renderManifest,
+        await resolveExactTemporalAuthorityForStory(story, opts),
+      )
+    : { approved: false, blockers: ["renderer_not_hyperframes"] };
+  if (hyperframesStillMotion.approved) {
+    generatedVisualFailures = generatedVisualFailures.filter(
+      (blocker) => blocker !== "visual_evidence:direct_video_motion_missing",
+    );
+  }
   const directMotionExceptionApproved =
     story.breaking_news_flag === true ||
     story.human_reviewed_direct_video_motion_exception === true ||
@@ -6094,6 +6359,7 @@ async function incidentGuardPreflightForStory(story = {}) {
     renderManifest.direct_video_motion_exception_approved === true;
   const requiresDirectVideoMotion =
     !directMotionExceptionApproved &&
+    !hyperframesStillMotion.approved &&
     !(ownedExplainerReady && ownedExplainerExceptionApproved) &&
     (
       /visual_v4/i.test(renderLane) ||
@@ -6121,7 +6387,10 @@ async function incidentGuardPreflightForStory(story = {}) {
       result: "pass",
       failures: [],
       warnings: report.warnings || [],
-      evidence: visualLoop.evidence,
+      evidence: {
+        ...(visualLoop.evidence || {}),
+        hyperframes_still_motion: hyperframesStillMotion,
+      },
     };
   }
   return {
@@ -6134,6 +6403,180 @@ async function incidentGuardPreflightForStory(story = {}) {
     warnings: report.warnings || [],
     evidence: {
       ...(visualLoop.evidence || {}),
+      hyperframes_still_motion: hyperframesStillMotion,
+    },
+  };
+}
+
+async function boundCurrentMediaHouseScoreForStory(
+  story = {},
+  renderManifest = {},
+  score = {},
+) {
+  const blockers = [];
+  const artifactDir = artifactDirForStory(story);
+  const storyId = cleanText(story.id || story.story_id);
+  const scoreStoryId = cleanText(score.story_id || score.id);
+  const renderStoryId = cleanText(renderManifest.story_id || renderManifest.id);
+  const selected = objectValue(renderManifest.selected_input_assets, {});
+  const selectedAssets = asArray(selected.assets);
+  const visualAssets = selectedAssets.filter((asset) =>
+    /(?:visual|image|screenshot|still|artwork|photo)/i.test(
+      cleanText(asset.kind || asset.asset_type || asset.role),
+    ),
+  );
+  const profile = objectValue(
+    score.selected_render_visual_evidence_profile,
+    {},
+  );
+  const sourceLock = objectValue(score.source_lock_report, {});
+  const premium = objectValue(score.premium_output_contract, {});
+  const finalRenderCheck = objectValue(premium.checks?.final_render, {});
+  const finalRenderEvidence = objectValue(finalRenderCheck.evidence, {});
+  const renderReference = cleanText(
+    story.exported_path ||
+      story.video_path ||
+      renderManifest.output_path ||
+      renderManifest.exported_path,
+  );
+  const manifestRenderReference = cleanText(
+    renderManifest.output_path || renderManifest.exported_path,
+  );
+  const renderPath = resolveArtifactMediaReference(
+    artifactDir,
+    renderReference,
+  );
+  const manifestRenderPath = resolveArtifactMediaReference(
+    artifactDir,
+    manifestRenderReference,
+  );
+  const scoreRenderPath = resolveArtifactMediaReference(
+    artifactDir,
+    finalRenderEvidence.output_path,
+  );
+  const scoreGeneratedAt = Date.parse(cleanText(score.generated_at));
+  const renderGeneratedAt = Date.parse(cleanText(renderManifest.generated_at));
+  const selectedVisualIds = visualAssets
+    .map((asset) => cleanText(asset.asset_id || asset.id))
+    .filter(Boolean);
+  const profiledVisualIds = asArray(
+    profile.subject_matched_editorial_media_assets,
+  )
+    .map((asset) => cleanText(asset.asset_id || asset.id))
+    .filter(Boolean);
+  const selectedVisualIdSet = new Set(selectedVisualIds);
+  const profiledVisualIdSet = new Set(profiledVisualIds);
+  const overallThreshold = Number(
+    score.thresholds?.overall_media_house_score ?? 78,
+  );
+  const sourceLockThreshold = Number(
+    score.thresholds?.source_lock_score ?? sourceLock.threshold ?? 70,
+  );
+
+  if (!storyId || scoreStoryId !== storyId) blockers.push("score_story_id_mismatch");
+  if (renderStoryId && renderStoryId !== storyId) {
+    blockers.push("render_story_id_mismatch");
+  }
+  if (
+    !schedulerVerdictGreen(score.verdict) ||
+    !schedulerVerdictGreen(score.status) ||
+    authoritativeEvidenceFailures(score).length
+  ) {
+    blockers.push("score_not_green");
+  }
+  if (
+    !Number.isFinite(scoreGeneratedAt) ||
+    !Number.isFinite(renderGeneratedAt) ||
+    scoreGeneratedAt < renderGeneratedAt
+  ) {
+    blockers.push("score_predates_render_manifest");
+  }
+  if (
+    selected.authoritative !== true ||
+    selected.complete !== true ||
+    authoritativeEvidenceFailures(selected).length ||
+    Number(selected.asset_count) !== selectedAssets.length
+  ) {
+    blockers.push("authoritative_selected_inputs_invalid");
+  }
+  if (
+    profile.evidence_scope !== "authoritative_final_render_selection" ||
+    Number(profile.authoritative_selected_asset_count) !== selectedAssets.length ||
+    Number(profile.asset_count) !== visualAssets.length ||
+    Number(profile.subject_matched_editorial_media_count) !== visualAssets.length ||
+    Number(profile.subject_motion_mismatch_count || 0) !== 0 ||
+    authoritativeEvidenceFailures(profile).length
+  ) {
+    blockers.push("selected_render_visual_profile_mismatch");
+  }
+  if (
+    visualAssets.length < 1 ||
+    selectedVisualIds.length !== visualAssets.length ||
+    selectedVisualIdSet.size !== visualAssets.length ||
+    profiledVisualIdSet.size !== visualAssets.length ||
+    selectedVisualIds.some((assetId) => !profiledVisualIdSet.has(assetId)) ||
+    visualAssets.some((asset) => asset.subject_match !== true)
+  ) {
+    blockers.push("selected_render_visual_identity_mismatch");
+  }
+  if (
+    !schedulerVerdictGreen(sourceLock.status || sourceLock.verdict) ||
+    authoritativeEvidenceFailures(sourceLock).length ||
+    !Number.isFinite(Number(sourceLock.score)) ||
+    Number(sourceLock.score) < sourceLockThreshold
+  ) {
+    blockers.push("source_lock_report_not_green");
+  }
+  if (
+    !schedulerVerdictGreen(premium.status || premium.verdict) ||
+    authoritativeEvidenceFailures(premium).length ||
+    !schedulerVerdictGreen(finalRenderCheck.status || finalRenderCheck.verdict) ||
+    authoritativeEvidenceFailures(finalRenderCheck).length ||
+    finalRenderEvidence.final_publish_render !== true
+  ) {
+    blockers.push("premium_final_render_contract_not_green");
+  }
+  if (
+    renderManifest.final_publish_render !== true ||
+    !renderPath ||
+    !manifestRenderPath ||
+    !scoreRenderPath ||
+    normaliseComparablePath(renderPath) !==
+      normaliseComparablePath(manifestRenderPath) ||
+    normaliseComparablePath(renderPath) !== normaliseComparablePath(scoreRenderPath)
+  ) {
+    blockers.push("final_render_path_binding_mismatch");
+  }
+  let renderBytes = null;
+  try {
+    const stat = await fs.stat(renderPath);
+    if (!stat.isFile()) throw new Error("not_file");
+    renderBytes = stat.size;
+  } catch {
+    blockers.push("final_render_file_missing");
+  }
+  if (
+    renderBytes == null ||
+    Number(finalRenderEvidence.output_bytes) !== renderBytes
+  ) {
+    blockers.push("final_render_size_binding_mismatch");
+  }
+  if (
+    !Number.isFinite(Number(score.scores?.overall_media_house_score)) ||
+    Number(score.scores?.overall_media_house_score) < overallThreshold
+  ) {
+    blockers.push("overall_media_house_score_below_threshold");
+  }
+
+  return {
+    valid: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    evidence: {
+      render_path: renderPath || null,
+      render_size_bytes: renderBytes,
+      authoritative_selected_asset_count: selectedAssets.length,
+      authoritative_selected_visual_asset_count: visualAssets.length,
+      source_lock_score: Number(sourceLock.score) || null,
     },
   };
 }
@@ -6147,6 +6590,7 @@ async function mediaHousePreflightForStory(story = {}) {
     currentMotionArtifact,
     currentFootageArtifact,
     currentDistinctMotionArtifact,
+    currentMediaHouseArtifact,
   ] = await Promise.all([
     platformManifestForMediaHousePreflight(story),
     readArtifactJsonObjectForStory(story, "render_manifest.json"),
@@ -6154,6 +6598,7 @@ async function mediaHousePreflightForStory(story = {}) {
     readArtifactJsonObjectForStory(story, "materialised_motion_clips.json"),
     readArtifactJsonObjectForStory(story, "footage_inventory.json"),
     readArtifactJsonObjectForStory(story, "distinct_motion_family_report.json"),
+    readArtifactJsonObjectForStory(story, "pulse_media_house_score.json"),
   ]);
   const currentArtifactOrEmbedded = (current, embedded) =>
     Object.keys(current || {}).length ? current : objectValue(embedded, {});
@@ -6181,6 +6626,41 @@ async function mediaHousePreflightForStory(story = {}) {
       story.distinctMotionFamilyReport ||
       story.distinct_motion_family,
   );
+  const currentMediaHouseScore = currentArtifactOrEmbedded(
+    currentMediaHouseArtifact,
+    story.pulse_media_house_score || story.media_house_score,
+  );
+  const boundCurrentScore = await boundCurrentMediaHouseScoreForStory(
+    story,
+    renderManifest,
+    currentMediaHouseScore,
+  );
+  if (boundCurrentScore.valid) {
+    return {
+      result: "pass",
+      failures: [],
+      warnings: asArray(currentMediaHouseScore.warnings),
+      evidence: {
+        source: "current_bound_pulse_media_house_score",
+        verdict: currentMediaHouseScore.verdict,
+        overall_media_house_score:
+          currentMediaHouseScore.scores?.overall_media_house_score ?? null,
+        title_strength_score:
+          currentMediaHouseScore.scores?.title_strength_score ?? null,
+        first_frame_score:
+          currentMediaHouseScore.scores?.first_frame_score ?? null,
+        first_3_seconds_score:
+          currentMediaHouseScore.scores?.first_3_seconds_score ?? null,
+        competitor_parity_score:
+          currentMediaHouseScore.scores?.competitor_parity_score ?? null,
+        competitor_surpass_score:
+          currentMediaHouseScore.scores?.competitor_surpass_score ?? null,
+        source_lock_score: boundCurrentScore.evidence.source_lock_score,
+        hard_failures: [],
+        binding: boundCurrentScore.evidence,
+      },
+    };
+  }
   const captionEvidenceVerified =
     ["pass", "ready", "green"].includes(
       cleanText(captionManifest.status || captionManifest.verdict).toLowerCase(),
@@ -6257,6 +6737,498 @@ async function mediaHousePreflightForStory(story = {}) {
   };
 }
 
+function videoFailureIsStillHoldCadenceHeuristic(value = "") {
+  return /^(?:choppy_temporal_cadence|stalled_visual_window(?:_center_crop)?)\b/i.test(
+    cleanText(value),
+  );
+}
+
+function schedulerVerdictGreen(value = "") {
+  return ["GREEN", "PASS", "READY"].includes(statusText(value));
+}
+
+function hashBoundHumanReviewedHyperframesStillMotionEvidence(
+  renderManifest = {},
+  temporalAuthority = {},
+) {
+  const blockers = [];
+  const renderer = cleanText(
+    renderManifest.renderer ||
+      renderManifest.engine ||
+      renderManifest.source_renderer_engine,
+  );
+  const selected = objectValue(renderManifest.selected_input_assets, {});
+  const selectedAssets = asArray(selected.assets);
+  const visualAssets = selectedAssets.filter((asset) =>
+    /(?:visual|image|screenshot|still|artwork|photo)/i.test(
+      cleanText(asset.kind || asset.asset_type || asset.role),
+    ),
+  );
+  const scenePlan = objectValue(renderManifest.clip_scene_plan, {});
+  const decodedGate = objectValue(renderManifest.decoded_visual_gate, {});
+  const hyperframesInput = objectValue(
+    renderManifest.input_evidence?.hyperframes,
+    {},
+  );
+  const adoption = objectValue(renderManifest.hyperframes_adoption_evidence, {});
+  const authorityRenderSha = normaliseSha256(
+    temporalAuthority.evidence?.render_sha256,
+  );
+  const selectedVisualIds = visualAssets
+    .map((asset) => cleanText(asset.asset_id || asset.id))
+    .filter(Boolean);
+  const canonicalVisualIds = new Set(
+    asArray(hyperframesInput.canonical_visual_asset_ids).map(cleanText),
+  );
+
+  if (!/hyperframes/i.test(renderer)) blockers.push("renderer_not_hyperframes");
+  if (renderManifest.final_publish_render !== true) {
+    blockers.push("render_not_final_publish");
+  }
+  if (temporalAuthority.valid !== true) {
+    blockers.push("exact_temporal_and_av_authority_missing");
+  }
+  if (
+    selected.authoritative !== true ||
+    selected.complete !== true ||
+    authoritativeEvidenceFailures(selected).length ||
+    Number(selected.asset_count) !== selectedAssets.length
+  ) {
+    blockers.push("authoritative_selected_inputs_invalid");
+  }
+  if (visualAssets.length < 4) blockers.push("visual_asset_floor_not_met");
+  if (
+    visualAssets.some(
+      (asset) =>
+        asset.subject_match !== true ||
+        !cleanText(asset.path) ||
+        !/^[a-f0-9]{64}$/i.test(normaliseSha256(asset.asset_sha256)) ||
+        Number(asset.asset_size_bytes || 0) <= 0,
+    )
+  ) {
+    blockers.push("visual_asset_binding_incomplete");
+  }
+  if (
+    !/hyperframes/i.test(cleanText(scenePlan.renderer)) ||
+    scenePlan.repeat_free !== true ||
+    Number(scenePlan.scene_count || 0) < 3 ||
+    Number(scenePlan.placement_count || 0) < visualAssets.length ||
+    Number(scenePlan.verified_placement_count || 0) !==
+      Number(scenePlan.placement_count || 0) ||
+    Number(scenePlan.unique_visual_asset_count || 0) !== visualAssets.length ||
+    !schedulerVerdictGreen(scenePlan.temporal_qa_verdict)
+  ) {
+    blockers.push("hyperframes_scene_plan_invalid");
+  }
+  if (
+    !schedulerVerdictGreen(decodedGate.verdict) ||
+    decodedGate.can_publish !== true ||
+    !authorityRenderSha ||
+    normaliseSha256(decodedGate.render_sha256) !== authorityRenderSha
+  ) {
+    blockers.push("decoded_visual_gate_not_bound");
+  }
+  if (
+    !/^[a-f0-9]{64}$/i.test(normaliseSha256(hyperframesInput.composition_sha256)) ||
+    !schedulerVerdictGreen(hyperframesInput.rights_sidecar_verdict) ||
+    selectedVisualIds.some((assetId) => !canonicalVisualIds.has(assetId))
+  ) {
+    blockers.push("hyperframes_composition_or_rights_binding_invalid");
+  }
+  if (
+    !authorityRenderSha ||
+    normaliseSha256(adoption.final_render_sha256) !== authorityRenderSha ||
+    !schedulerVerdictGreen(adoption.human_av_review_verdict) ||
+    !schedulerVerdictGreen(adoption.temporal_video_qa_verdict) ||
+    !schedulerVerdictGreen(adoption.rights_placement_verdict)
+  ) {
+    blockers.push("hyperframes_adoption_evidence_invalid");
+  }
+
+  return {
+    approved: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    motion_medium: "animated_subject_matched_editorial_stills",
+    direct_video_claimed: false,
+    visual_asset_count: visualAssets.length,
+    scene_count: Number(scenePlan.scene_count || 0),
+    placement_count: Number(scenePlan.placement_count || 0),
+    render_sha256: authorityRenderSha || null,
+  };
+}
+
+async function exactTemporalAuthorityForStory(story = {}, opts = {}) {
+  const artifactDir = artifactDirForStory(story);
+  const storyId = cleanText(story.id || story.story_id);
+  const effectiveRenderPath = cleanText(story.exported_path || story.video_path);
+  const blockers = [];
+  if (!artifactDir) blockers.push("artifact_dir_missing");
+  if (!storyId) blockers.push("story_id_missing");
+  if (!effectiveRenderPath) blockers.push("render_path_missing");
+  if (blockers.length) return { valid: false, blockers };
+
+  const [temporalArtifact, packageArtifact, renderArtifact, platformArtifact] =
+    await Promise.all([
+    readSchedulerArtifactValue(
+      artifactDir,
+      "temporal_video_qa_report.json",
+      null,
+    ),
+    readSchedulerArtifactValue(
+      artifactDir,
+      "goal_package_summary.json",
+      story.goal_package_summary || story.package_summary || null,
+    ),
+    readSchedulerArtifactValue(
+      artifactDir,
+      "render_manifest.json",
+      story.render_manifest || null,
+    ),
+    readSchedulerArtifactValue(
+      artifactDir,
+      "platform_publish_manifest.json",
+      story.platform_publish_manifest || story.platformManifest || null,
+    ),
+  ]);
+  if (!temporalArtifact.present || !temporalArtifact.valid) {
+    blockers.push("temporal_video_qa_report_missing_or_invalid");
+  }
+  if (!packageArtifact.present || !packageArtifact.valid) {
+    blockers.push("goal_package_summary_missing_or_invalid");
+  }
+  if (!renderArtifact.present || !renderArtifact.valid) {
+    blockers.push("render_manifest_missing_or_invalid");
+  }
+  if (blockers.length) return { valid: false, blockers };
+
+  const temporal = objectValue(temporalArtifact.value, {});
+  const packageSummary = objectValue(packageArtifact.value, {});
+  const renderManifest = objectValue(renderArtifact.value, {});
+  const platformManifest = objectValue(platformArtifact.value, {});
+  const authority = objectValue(packageSummary.authority_refresh, {});
+  const frozen = objectValue(authority.frozen_hashes, {});
+  const masterRenderPath = resolveSchedulerAssetPath(
+    frozen.render?.path ||
+      renderManifest.output_path ||
+      renderManifest.final_mp4_path,
+    artifactDir,
+  );
+  let masterRenderFingerprint = null;
+  let effectiveRenderFingerprint = null;
+  let temporalFingerprint = null;
+  const fingerprintCache = new Map();
+  try {
+    [masterRenderFingerprint, effectiveRenderFingerprint, temporalFingerprint] =
+      await Promise.all([
+      schedulerFileFingerprint(masterRenderPath, fingerprintCache),
+      schedulerFileFingerprint(effectiveRenderPath, fingerprintCache),
+      schedulerFileFingerprint(temporalArtifact.path, fingerprintCache),
+    ]);
+  } catch {
+    blockers.push("authority_file_fingerprint_failed");
+  }
+
+  if (authority.source !== "current_independently_verified_artifact_evidence") {
+    blockers.push("authority_source_invalid");
+  }
+  if (authority.monotonic_verdict !== true) blockers.push("authority_not_monotonic");
+  if (
+    !masterRenderFingerprint ||
+    normaliseSha256(frozen.render?.sha256) !== masterRenderFingerprint.sha256 ||
+    Number(frozen.render?.size_bytes) !== masterRenderFingerprint.size_bytes
+  ) {
+    blockers.push("authority_render_fingerprint_mismatch");
+  }
+  const renderManifestOutputPath = resolveSchedulerAssetPath(
+    renderManifest.output_path ||
+      renderManifest.final_mp4_path ||
+      renderManifest.exported_path,
+    artifactDir,
+  );
+  if (
+    cleanText(renderManifest.story_id) !== storyId ||
+    renderManifest.final_publish_render !== true ||
+    schedulerAssetPathKey(renderManifestOutputPath, artifactDir) !==
+      schedulerAssetPathKey(masterRenderPath, artifactDir)
+  ) {
+    blockers.push("authority_render_manifest_binding_invalid");
+  }
+  if (
+    !temporalFingerprint ||
+    normaliseSha256(frozen.temporal_qa_report?.sha256) !==
+      temporalFingerprint.sha256 ||
+    Number(frozen.temporal_qa_report?.size_bytes) !==
+      temporalFingerprint.size_bytes
+  ) {
+    blockers.push("authority_temporal_report_fingerprint_mismatch");
+  }
+
+  let derivedPlatformVariant = {
+    applicable: false,
+    valid: true,
+    platform: null,
+  };
+  if (
+    schedulerAssetPathKey(effectiveRenderPath, artifactDir) !==
+    schedulerAssetPathKey(masterRenderPath, artifactDir)
+  ) {
+    const matchingOutputs = Object.entries(objectValue(platformManifest.outputs, {}))
+      .filter(([, output]) =>
+        schedulerAssetPathKey(platformVariantReference(output), artifactDir) ===
+          schedulerAssetPathKey(effectiveRenderPath, artifactDir),
+      );
+    if (matchingOutputs.length !== 1) {
+      blockers.push("authority_effective_render_not_governed_variant");
+      derivedPlatformVariant = {
+        applicable: true,
+        valid: false,
+        platform: null,
+        failures: ["governed_variant_receipt_not_unique"],
+      };
+    } else {
+      const [variantPlatform, variantOutput] = matchingOutputs[0];
+      derivedPlatformVariant = {
+        applicable: true,
+        ...(await governedDerivedVariantAssessment({
+          artifactDir,
+          storyId,
+          platform: variantPlatform,
+          output: variantOutput,
+          masterPath: masterRenderPath,
+          masterFingerprint: masterRenderFingerprint,
+          masterDurationS:
+            renderManifest.rendered_duration_s ||
+            renderManifest.duration_seconds ||
+            story.duration_seconds,
+          fingerprintCache,
+          fsImpl: opts.fs || fs,
+        })),
+      };
+      if (!derivedPlatformVariant.valid) {
+        blockers.push(
+          ...asArray(derivedPlatformVariant.failures).map(
+            (failure) => `authority_derived_variant_invalid:${failure}`,
+          ),
+        );
+      }
+    }
+  } else if (
+    !effectiveRenderFingerprint ||
+    effectiveRenderFingerprint.sha256 !== masterRenderFingerprint?.sha256 ||
+    effectiveRenderFingerprint.size_bytes !== masterRenderFingerprint?.size_bytes
+  ) {
+    blockers.push("authority_effective_render_fingerprint_mismatch");
+  }
+
+  const validation = objectValue(temporal.validation, {});
+  const repeatReconciliation = objectValue(
+    validation.repeat_reconciliation,
+    {},
+  );
+  if (cleanText(temporal.story_id) !== storyId) {
+    blockers.push("temporal_story_id_mismatch");
+  }
+  if (!schedulerVerdictGreen(temporal.verdict) || temporal.can_publish !== true) {
+    blockers.push("temporal_verdict_not_green");
+  }
+  if (authoritativeEvidenceFailures(temporal).length) {
+    blockers.push("temporal_report_has_failures");
+  }
+  if (
+    !masterRenderFingerprint ||
+    normaliseSha256(temporal.final_media?.sha256) !== masterRenderFingerprint.sha256 ||
+    Number(temporal.final_media?.size_bytes) !== masterRenderFingerprint.size_bytes
+  ) {
+    blockers.push("temporal_render_fingerprint_mismatch");
+  }
+  for (const [field, expected] of Object.entries({
+    present: true,
+    render_hash_matches: true,
+    render_size_matches: true,
+    decode_complete: true,
+    video_stream_decoded: true,
+    audio_stream_decoded: true,
+    temporal_scan_complete: true,
+    choppy_cadence: false,
+    local_stall_detected: false,
+    center_crop_scan_complete: true,
+    center_crop_choppy_cadence: false,
+    center_crop_local_stall_detected: false,
+  })) {
+    if (validation[field] !== expected) {
+      blockers.push(`temporal_validation_${field}_invalid`);
+    }
+  }
+  if (
+    Number(validation.sampled_frame_count || 0) <= 0 ||
+    Number(validation.temporal_coverage_ratio || 0) < 0.95 ||
+    Number(validation.center_crop_coverage_ratio || 0) < 0.95 ||
+    Number(validation.repeated_motion_sequence_count || 0) !== 0 ||
+    Number(validation.center_crop_repeated_motion_sequence_count || 0) !== 0 ||
+    repeatReconciliation.clean_cadence !== true ||
+    repeatReconciliation.blocking_repeat_detected === true
+  ) {
+    blockers.push("temporal_validation_coverage_or_repeat_invalid");
+  }
+
+  const validateFinalAvReviewFile =
+    opts.validateFinalAvReviewFile ||
+    require("../lib/goal-final-av-review").validateFinalAvReviewFile;
+  const finalAvValidation = await validateFinalAvReviewFile(
+    path.join(artifactDir, "final_av_review.json"),
+    {
+      storyId,
+      artifactDir,
+      finalMp4Path: masterRenderPath,
+    },
+  );
+  if (
+    !schedulerVerdictGreen(finalAvValidation.verdict) ||
+    finalAvValidation.can_auto_publish !== true ||
+    asArray(finalAvValidation.blockers).length
+  ) {
+    blockers.push("final_av_review_not_green");
+  }
+
+  return {
+    valid: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    evidence: {
+      render_sha256: masterRenderFingerprint?.sha256 || null,
+      effective_render_sha256: effectiveRenderFingerprint?.sha256 || null,
+      temporal_report_sha256: temporalFingerprint?.sha256 || null,
+      temporal_sample_fps: temporal.evidence?.temporal?.sample_fps ?? null,
+      temporal_coverage_ratio:
+        Number(validation.temporal_coverage_ratio || 0) || null,
+      final_av_review_verdict: finalAvValidation.verdict || null,
+      derived_platform_variant: derivedPlatformVariant,
+    },
+  };
+}
+
+async function resolveExactTemporalAuthorityForStory(story = {}, opts = {}) {
+  if (opts.exactTemporalAuthority) return opts.exactTemporalAuthority;
+  const key = [
+    artifactDirForStory(story),
+    cleanText(story.id || story.story_id),
+    cleanText(story.exported_path || story.video_path),
+  ].join("|");
+  if (!opts.exactTemporalAuthorityCache) {
+    Object.defineProperty(opts, "exactTemporalAuthorityCache", {
+      value: new Map(),
+      configurable: true,
+      enumerable: false,
+      writable: false,
+    });
+  }
+  if (!opts.exactTemporalAuthorityCache.has(key)) {
+    opts.exactTemporalAuthorityCache.set(
+      key,
+      exactTemporalAuthorityForStory(story, opts),
+    );
+  }
+  return opts.exactTemporalAuthorityCache.get(key);
+}
+
+async function reconcileVideoQaWithExactTemporalAuthority(
+  story = {},
+  videoQa = {},
+  opts = {},
+) {
+  const failures = asArray(videoQa.failures).map(cleanText).filter(Boolean);
+  if (
+    cleanText(videoQa.result).toLowerCase() !== "fail" ||
+    !failures.length ||
+    !failures.every(videoFailureIsStillHoldCadenceHeuristic)
+  ) {
+    return videoQa;
+  }
+  const authority = await resolveExactTemporalAuthorityForStory(story, opts);
+  if (!authority.valid) return videoQa;
+  return {
+    result: "pass",
+    failures: [],
+    warnings: [],
+    evidence: {
+      ...(videoQa.evidence || {}),
+      reconciliation: "exact_hash_bound_temporal_and_human_av_authority",
+      superseded_heuristic_failures: failures,
+      exact_temporal_authority: authority.evidence,
+    },
+  };
+}
+
+function reconcileGovernanceRightsWithSchedulerAuthority(
+  governance = {},
+  schedulerRights = {},
+) {
+  const report = objectValue(governance, {});
+  const failures = asArray(report.failures).map(cleanText).filter(Boolean);
+  const schedulerFailures = asArray(schedulerRights?.failures)
+    .map(cleanText)
+    .filter(Boolean);
+  if (
+    cleanText(report.result).toLowerCase() !== "fail" ||
+    !failures.length ||
+    !failures.every((failure) => /^rights:no_rights_record$/i.test(failure)) ||
+    schedulerFailures.length ||
+    !["pass", "warn"].includes(cleanText(schedulerRights?.result).toLowerCase())
+  ) {
+    return governance;
+  }
+  return {
+    ...report,
+    result: "pass",
+    failures: [],
+    evidence: {
+      ...(report.evidence || {}),
+      reconciliation: "current_hash_bound_scheduler_rights_authority",
+      superseded_stale_alias_failures: failures,
+      scheduler_rights_evidence: schedulerRights.evidence || {},
+    },
+  };
+}
+
+function reconcileIncidentGeneratedStillAliases(
+  incidentGuard = {},
+  schedulerRights = {},
+) {
+  const report = objectValue(incidentGuard, {});
+  const failures = asArray(report.failures).map(cleanText).filter(Boolean);
+  const schedulerFailures = asArray(schedulerRights?.failures)
+    .map(cleanText)
+    .filter(Boolean);
+  const supersedable = new Set([
+    "visual_evidence:generated_only_motion_deck",
+    "visual_evidence:no_real_visual_media_asset",
+  ]);
+  const hyperframesStillMotion =
+    report.evidence?.hyperframes_still_motion || {};
+  if (
+    cleanText(report.result).toLowerCase() !== "fail" ||
+    !failures.some((failure) => supersedable.has(failure)) ||
+    hyperframesStillMotion.approved !== true ||
+    schedulerFailures.length ||
+    !["pass", "warn"].includes(cleanText(schedulerRights?.result).toLowerCase())
+  ) {
+    return incidentGuard;
+  }
+  const superseded = failures.filter((failure) => supersedable.has(failure));
+  const remaining = failures.filter((failure) => !supersedable.has(failure));
+  return {
+    ...report,
+    result: remaining.length ? "fail" : "pass",
+    failures: remaining,
+    evidence: {
+      ...(report.evidence || {}),
+      reconciliation:
+        "hash_bound_human_reviewed_hyperframes_stills_with_current_rights",
+      superseded_generated_still_alias_failures: superseded,
+      scheduler_rights_evidence: schedulerRights.evidence || {},
+    },
+  };
+}
+
 async function runPreflightQaForStory(story = {}, opts = {}) {
   const {
     runContentQa = require("../lib/services/content-qa").runContentQa,
@@ -6302,17 +7274,22 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
       blockThinVisuals: true,
       ...(opts.contentQaOptions || {}),
     });
-    const video = await runVideoQa(
+    const rawVideo = await runVideoQa(
       videoStory.exported_path,
       buildVideoQaOptionsForStory(videoStory, opts.videoQaOptions || {}),
+    );
+    const video = await reconcileVideoQaWithExactTemporalAuthority(
+      videoStory,
+      rawVideo,
+      opts,
     );
     const platform = await runPlatformVideoQa(
       platformStory.exported_path,
       opts.platformVideoQaOptions || {},
     );
-    const governance = await runStudioGovernancePreflight(
+    const rawGovernance = await runStudioGovernancePreflight(
       governanceStory,
-      schedulerStudioGovernanceOptions(opts),
+      schedulerStudioGovernanceOptions(opts, governanceStory),
     );
     const publicCopy = summarisePublicCopyQaResult(
       await runPublicCopyQa(publicCopyManifestForStory(publicCopyStory)),
@@ -6326,8 +7303,19 @@ async function runPreflightQaForStory(story = {}, opts = {}) {
         publicMetadataStory.title,
       ...(opts.publicMetadataQaOptions || {}),
     });
-    const incidentGuard = await runIncidentGuard(cloneStoryForPreflight(story));
+    const rawIncidentGuard = await runIncidentGuard(
+      cloneStoryForPreflight(story),
+      opts,
+    );
     const schedulerRights = await runSchedulerRightsQa(cloneStoryForPreflight(story), opts);
+    const governance = reconcileGovernanceRightsWithSchedulerAuthority(
+      rawGovernance,
+      schedulerRights,
+    );
+    const incidentGuard = reconcileIncidentGeneratedStillAliases(
+      rawIncidentGuard,
+      schedulerRights,
+    );
     const voiceQuality = await runVoiceQualityQa(cloneStoryForPreflight(story));
     const audioSegment = await runAudioSegmentQa(cloneStoryForPreflight(story));
     const timestampAlignment = await runTimestampAlignmentQa(cloneStoryForPreflight(story));
@@ -7567,7 +8555,9 @@ module.exports = {
   combinePreflightQa,
   durationVerdict,
   existingPublicPlatformFields,
+  exactTemporalAuthorityForStory,
   filterStoriesByStoryId,
+  hashBoundHumanReviewedHyperframesStillMotionEvidence,
   mergeBridgeCandidates,
   mediaHousePreflightForStory,
   parseArgs,
@@ -7590,6 +8580,7 @@ module.exports = {
   voiceQualityPreflightForStory,
   normaliseBridgeMotionGovernanceEvidence,
   publicationEvidenceCoverage,
+  reconcileVideoQaWithExactTemporalAuthority,
   summariseQaResult,
   validatePublicationEvidenceFreshness,
   validatePublicationEvidenceRecordIdentity,

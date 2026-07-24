@@ -802,6 +802,135 @@ test("Studio Governance Engine scopes final V4 rights checks to director-selecte
   assert.ok(missingSelectedRights.rejection_reasons.reason_codes.includes("rights:no_rights_record"));
 });
 
+test("Studio Governance Engine uses the complete authoritative final-render input inventory instead of stale bridge media", () => {
+  const story = cleanStory({
+    id: "xbox-authoritative-final-inputs",
+    downloaded_images: [
+      {
+        id: "stale-article-image",
+        path: "C:/legacy/stale-article-image.jpg",
+        source_url: "https://example.com/stale-article-image.jpg",
+        source_type: "article_image",
+      },
+    ],
+    video_clips: [
+      {
+        id: "stale-owned-motion",
+        path: "C:/legacy/stale-owned-motion.mp4",
+        source_url: "local://legacy/stale-owned-motion",
+        source_type: "internally_generated_motion_graphic",
+      },
+    ],
+    visual_v4_bridge_video_clips: [
+      {
+        id: "stale-owned-motion",
+        path: "C:/legacy/stale-owned-motion.mp4",
+        source_url: "local://legacy/stale-owned-motion",
+        source_type: "internally_generated_motion_graphic",
+      },
+    ],
+    render_manifest: {
+      selected_input_assets: {
+        authoritative: true,
+        complete: true,
+        asset_count: 2,
+        blockers: [],
+        assets: [
+          {
+            asset_id: "xbox-final-screenshot",
+            kind: "screenshot",
+            path: "C:/final/xbox-screenshot.jpg",
+            source_url: "https://store-images.s-microsoft.com/xbox-screenshot.jpg",
+            source_type: "official_store_screenshot",
+          },
+          {
+            asset_id: "xbox-final-narration",
+            kind: "narration",
+            path: "C:/final/xbox-narration.mp3",
+            source_url: "elevenlabs://pulse-gaming/xbox",
+            source_type: "narration_audio",
+          },
+        ],
+      },
+    },
+  });
+  const rightsLedger = [
+    {
+      asset_id: "xbox-final-screenshot",
+      path: "C:/final/xbox-screenshot.jpg",
+      source_url: "https://store-images.s-microsoft.com/xbox-screenshot.jpg",
+      source_type: "official_store_screenshot",
+      licence_basis: "microsoft_game_content_usage_rules",
+      allowed_platforms: ["youtube_shorts"],
+      commercial_use_allowed: true,
+      risk_score: 0.1,
+      evidence_file: "rights/xbox-final-screenshot.json",
+    },
+    {
+      asset_id: "xbox-final-narration",
+      path: "C:/final/xbox-narration.mp3",
+      source_url: "elevenlabs://pulse-gaming/xbox",
+      source_type: "narration_audio",
+      licence_basis: "elevenlabs_commercial_subscription",
+      allowed_platforms: ["youtube_shorts"],
+      commercial_use_allowed: true,
+      risk_score: 0.05,
+      evidence_file: "rights/xbox-final-narration.json",
+    },
+  ];
+
+  const assets = collectPublishAssets(story);
+  assert.deepEqual(
+    assets.map((asset) => asset.asset_id),
+    ["xbox-final-screenshot", "xbox-final-narration"],
+  );
+
+  const report = buildStudioGovernanceReport({
+    story,
+    rightsLedger,
+    platforms: ["youtube_shorts"],
+    generatedAt: "2026-07-23T20:45:00.000Z",
+  });
+  assert.equal(report.rights_ledger.verdict, "pass");
+  assert.equal(report.rights_ledger.metrics.asset_count, 2);
+  assert.equal(report.rights_ledger.metrics.missing_asset_count, 0);
+  assert.ok(!report.rejection_reasons.reason_codes.includes("rights:no_rights_record"));
+});
+
+test("Studio Governance Engine does not trust an incomplete authoritative input declaration", () => {
+  const story = cleanStory({
+    id: "incomplete-final-inputs",
+    video_clips: [
+      {
+        id: "fallback-motion",
+        path: "C:/legacy/fallback-motion.mp4",
+        source_url: "local://legacy/fallback-motion",
+        source_type: "internally_generated_motion_graphic",
+      },
+    ],
+    visual_v4_bridge_video_clips: [],
+    render_manifest: {
+      selected_input_assets: {
+        authoritative: true,
+        complete: true,
+        asset_count: 2,
+        blockers: [],
+        assets: [
+          {
+            asset_id: "only-one-declared-input",
+            kind: "screenshot",
+            path: "C:/final/only-one-input.jpg",
+          },
+        ],
+      },
+    },
+  });
+
+  const assetIds = collectPublishAssets(story).map((asset) => asset.asset_id);
+  assert.ok(assetIds.includes("fallback-motion"));
+  assert.ok(!assetIds.includes("only-one-declared-input"));
+});
+
 test("Studio Governance Engine preserves repaired canonical manifests during refresh", () => {
   const canonical = {
     story_id: "1sqpa86",

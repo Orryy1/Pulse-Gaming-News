@@ -15,8 +15,8 @@ const {
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
-async function evidenceFiles(root) {
-  const dir = path.join(root, "proof", "story-one");
+async function evidenceFiles(root, storyId = "story-one") {
+  const dir = path.join(root, "proof", storyId);
   await fs.ensureDir(dir);
   const video = path.join(dir, "visual_v4_render.mp4");
   const captions = path.join(dir, "captions.srt");
@@ -25,7 +25,7 @@ async function evidenceFiles(root) {
   const render = path.join(dir, "render_manifest.json");
   await fs.writeFile(video, Buffer.alloc(2048, 1));
   await fs.writeFile(captions, "1\n00:00:00,000 --> 00:00:01,000\nForza.\n");
-  await fs.writeJson(canonical, { story_id: "story-one", selected_title: "Forza Horizon 6 Exposes Xbox's Steam Bet" });
+  await fs.writeJson(canonical, { story_id: storyId, selected_title: "Forza Horizon 6 Exposes Xbox's Steam Bet" });
   await fs.writeJson(platform, {
     outputs: {
       youtube_shorts: {},
@@ -377,6 +377,56 @@ test("executor preflight requires explicit action ids before any handoff", async
   assert.equal(report.summary.handoff_ready_action_count, 0);
   assert.ok(report.advisory.includes("explicit_action_ids_required"));
   assert.equal(report.executor_plan.required_next_step, "select_explicit_dispatch_action_ids");
+});
+
+test("executor preflight hands off only the scoped YouTube action while Meta remains disabled", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-executor-youtube-scope-"));
+  const storyId = "rss_5efb04ad7c4889e1";
+  const files = await evidenceFiles(root, storyId);
+  const plan = guardedDispatchPlan(files);
+  plan.dispatch_ready_actions[0] = {
+    ...plan.dispatch_ready_actions[0],
+    story_id: storyId,
+  };
+  const matrix = platformStatusMatrix({
+    youtube_shorts: {
+      planned_story_ids: [storyId],
+    },
+  });
+  for (const platform of ["instagram_reels", "facebook_reels"]) {
+    matrix.platforms[platform] = {
+      platform,
+      status: "no_ready_actions",
+      operational_state: "disabled",
+      operational_reason: "microsoft_game_content_usage_rules_youtube_only",
+      can_auto_publish: false,
+      blocked_action_count: 0,
+      deferred_action_count: 0,
+      planned_story_ids: [],
+      scope_disabled_story_ids: [storyId],
+    };
+  }
+
+  const report = buildGuardedDispatchExecutorPreflight({
+    guardedDispatchPlan: plan,
+    platformStatusMatrix: matrix,
+    selectAllDispatchReady: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.deepEqual(
+    report.executor_plan.handoff_ready_actions.map((action) => action.action_id),
+    [`${storyId}:youtube_shorts`],
+  );
+  assert.equal(
+    report.executor_plan.handoff_ready_actions.some((action) =>
+      ["instagram_reels", "facebook_reels"].includes(action.platform)),
+    false,
+  );
 });
 
 test("executor preflight can explicitly hand off the full dispatch-ready runway", async () => {
@@ -915,6 +965,11 @@ test("executor preflight preserves governed Facebook metadata for live handoff",
     cover_headline: "FORZA PC BET TEST",
     landing_page_slug: "/p/forza",
     disclosure_requirements: { affiliate: false, source_attribution: true },
+    disclosure_requirements_resolved: true,
+    disclosures: { requirements_resolved: true, disclosure_flag: "not_required" },
+    disclosure_status: { required: false, type: "none" },
+    commercial_promotion: false,
+    affiliate_links_allowed: false,
   };
   const plan = guardedDispatchPlan(files);
   plan.dispatch_ready_actions[0] = {

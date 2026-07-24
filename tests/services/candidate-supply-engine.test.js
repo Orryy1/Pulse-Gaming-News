@@ -19,6 +19,7 @@ const {
   currentProofPackageEvidence,
 } = require("../../lib/ops/candidate-supply");
 const {
+  buildCurrentCandidateTranscriptAudienceReport,
   buildFreshCandidateReport,
   discoverMotionCapacityReportPaths,
   main,
@@ -63,6 +64,87 @@ function candidate(id, overrides = {}) {
     ...overrides,
   };
 }
+
+test("candidate supply transcript audit skips historical proof scans when there are no scheduler candidates", async () => {
+  let auditCalls = 0;
+  const report = await buildCurrentCandidateTranscriptAudienceReport({
+    candidateReport: { candidates: [] },
+    root: process.cwd(),
+    auditGeneratedTranscripts: async () => {
+      auditCalls += 1;
+      throw new Error("historical transcript scan must not run");
+    },
+  });
+
+  assert.equal(auditCalls, 0);
+  assert.deepEqual(report.summary, {
+    total: 0,
+    pass: 0,
+    rewrite_required: 0,
+    viral_verdict_counts: {},
+  });
+  assert.equal(report.execution_mode, "current_scheduler_candidate_transcript_audit");
+  assert.equal(report.scope.candidate_count, 0);
+  assert.equal(report.scope.artifact_dir_count, 0);
+  assert.equal(report.scope.historical_backlog_omitted, true);
+});
+
+test("candidate supply transcript audit is bounded to current candidate artefact directories", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "candidate-transcript-scope-"));
+  const artifactDir = path.join(root, "output", "proof", "current-story");
+  await fs.ensureDir(artifactDir);
+  let receivedOptions = null;
+
+  try {
+    const report = await buildCurrentCandidateTranscriptAudienceReport({
+      candidateReport: {
+        candidates: [
+          {
+            id: "current-story",
+            source: {
+              artifact_dir: path.relative(root, artifactDir),
+            },
+          },
+          {
+            id: "missing-story",
+            source: {
+              artifact_dir: "output/proof/missing-story",
+            },
+          },
+        ],
+      },
+      root,
+      auditGeneratedTranscripts: async (options) => {
+        receivedOptions = options;
+        return {
+          schema_version: 1,
+          generated_at: "2026-07-23T18:00:00.000Z",
+          execution_mode: "local_transcript_audience_audit",
+          summary: {
+            total: 1,
+            pass: 1,
+            rewrite_required: 0,
+            viral_verdict_counts: { viral_ready: 1 },
+          },
+          stories: [{ story_id: "current-story", verdict: "pass" }],
+          safety: { local_only: true },
+        };
+      },
+    });
+
+    assert.deepEqual(receivedOptions, {
+      root,
+      artifactDirs: [artifactDir],
+    });
+    assert.equal(report.execution_mode, "current_scheduler_candidate_transcript_audit");
+    assert.equal(report.summary.total, 1);
+    assert.equal(report.scope.candidate_count, 2);
+    assert.equal(report.scope.artifact_dir_count, 1);
+    assert.equal(report.scope.historical_backlog_omitted, true);
+  } finally {
+    await fs.remove(root);
+  }
+});
 
 test("candidate supply separates raw fresh discovery from authoritative scheduler eligibility", () => {
   const now = new Date("2026-07-19T23:30:21.517Z");
@@ -271,6 +353,85 @@ test("candidate supply CLI keeps canonical motion packs when refill reports fill
 
   assert.ok(discovered.includes(canonicalMotionPack));
   assert.equal(discovered.length, 5);
+});
+
+test("candidate supply discovery does not scan refill history when canonical reports fill the limit", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-canonical-short-circuit-"));
+  const canonicalRoot = path.join(root, "output", "studio-v4", "motion-packs");
+  const refillRoot = path.join(root, "output", "candidate-supply", "fresh-production-refill");
+  await fs.ensureDir(refillRoot);
+
+  const canonicalReports = [];
+  for (let i = 0; i < 3; i += 1) {
+    const reportPath = path.join(canonicalRoot, `rss_short_circuit_${i}_motion_pack_manifest.json`);
+    await fs.outputJson(reportPath, {
+      story_id: `rss_short_circuit_${i}`,
+      status: "ready",
+      readiness: { status: "v4_motion_ready", blockers: [] },
+    });
+    canonicalReports.push(reportPath);
+  }
+
+  const originalReaddir = fs.readdir;
+  let refillReaddirCalls = 0;
+  fs.readdir = async function observedReaddir(dir, ...args) {
+    if (path.resolve(dir).startsWith(path.resolve(refillRoot))) {
+      refillReaddirCalls += 1;
+    }
+    return originalReaddir.call(this, dir, ...args);
+  };
+  t.after(() => {
+    fs.readdir = originalReaddir;
+  });
+
+  const discovered = await discoverMotionCapacityReportPaths({ root, limit: 3 });
+
+  assert.equal(discovered.length, 3);
+  assert.deepEqual(new Set(discovered), new Set(canonicalReports));
+  assert.equal(refillReaddirCalls, 0);
+});
+
+test("candidate supply supplemental discovery reads only recent authoritative contract roots", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-candidate-supply-bounded-supplemental-"));
+  const refillRoot = path.join(root, "output", "candidate-supply", "fresh-production-refill");
+  const oldContractReport = path.join(
+    refillRoot,
+    "2026-07-20-00",
+    "goal-contract",
+    "fresh_production_refill_repair",
+    "studio_v4_source_family_acquisition.json",
+  );
+  const recentContractReport = path.join(
+    refillRoot,
+    "2026-07-23-18",
+    "goal-contract",
+    "fresh_production_refill_repair",
+    "studio_v4_source_family_acquisition.json",
+  );
+  const nonAuthoritativeProofReport = path.join(
+    refillRoot,
+    "2026-07-23-18",
+    "goal-proof-batch",
+    "rss_non_authoritative",
+    "studio_v4_source_family_acquisition.json",
+  );
+
+  await fs.outputJson(oldContractReport, { rows: [{ story_id: "old_contract" }] });
+  await fs.outputJson(recentContractReport, { rows: [{ story_id: "recent_contract" }] });
+  await fs.outputJson(nonAuthoritativeProofReport, { rows: [{ story_id: "proof_batch" }] });
+  await fs.utimes(path.dirname(oldContractReport), new Date("2026-07-20T00:00:00Z"), new Date("2026-07-20T00:00:00Z"));
+  await fs.utimes(path.join(refillRoot, "2026-07-20-00"), new Date("2026-07-20T00:00:00Z"), new Date("2026-07-20T00:00:00Z"));
+  await fs.utimes(path.join(refillRoot, "2026-07-23-18"), new Date("2026-07-23T18:00:00Z"), new Date("2026-07-23T18:00:00Z"));
+
+  const discovered = await discoverMotionCapacityReportPaths({
+    root,
+    limit: 10,
+    maxSupplementalRunsPerRoot: 1,
+  });
+
+  assert.ok(discovered.includes(recentContractReport));
+  assert.equal(discovered.includes(oldContractReport), false);
+  assert.equal(discovered.includes(nonAuthoritativeProofReport), false);
 });
 
 test("fresh candidate report enables media-house preflight for supply monitor truth", async (t) => {

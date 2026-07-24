@@ -152,6 +152,81 @@ function Resolve-WatchdogOperatorRestartRequest {
   return New-RestartRequestDecision -Approved $true -Classification "operator_restart_requested" -ExpectedPid $expectedPid -Reason $reason
 }
 
+function Resolve-WatchdogContentWorkerRestartRequest {
+  param(
+    $Request,
+    [DateTimeOffset]$NowUtc = ([DateTimeOffset]::UtcNow)
+  )
+
+  function New-ContentWorkerRestartDecision {
+    param(
+      [bool]$Approved,
+      [string]$Classification,
+      [string]$WorkerId = "",
+      [string]$Reason = ""
+    )
+    return [pscustomobject][ordered]@{
+      approved = $Approved
+      classification = $Classification
+      worker_id = $WorkerId
+      reason = $Reason
+    }
+  }
+
+  if (-not $Request) {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "missing"
+  }
+  if ([int]$Request.schema_version -ne 1) {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "unsupported_schema"
+  }
+  if (-not [bool]$Request.operator_confirmed) {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "operator_confirmation_missing"
+  }
+
+  $workerId = ([string]$Request.worker_id).Trim()
+  $reason = ([string]$Request.reason).Trim()
+  $requestId = ([string]$Request.request_id).Trim()
+  $managedWorkerIds = @(
+    "local-publish-prep",
+    "local-content-runway",
+    "local-content-refill",
+    "local-content-repair",
+    "local-content-ops",
+    "local-content-learning"
+  )
+  if ($managedWorkerIds -notcontains $workerId) {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "worker_not_managed" -WorkerId $workerId -Reason $reason
+  }
+  if (-not $reason -or -not $requestId) {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "invalid_request" -WorkerId $workerId -Reason $reason
+  }
+
+  try {
+    $requestedAt = [DateTimeOffset]::Parse(
+      [string]$Request.requested_at_utc,
+      [Globalization.CultureInfo]::InvariantCulture,
+      [Globalization.DateTimeStyles]::RoundtripKind
+    ).ToUniversalTime()
+    $expiresAt = [DateTimeOffset]::Parse(
+      [string]$Request.expires_at_utc,
+      [Globalization.CultureInfo]::InvariantCulture,
+      [Globalization.DateTimeStyles]::RoundtripKind
+    ).ToUniversalTime()
+  } catch {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "invalid_time" -WorkerId $workerId -Reason $reason
+  }
+
+  $now = $NowUtc.ToUniversalTime()
+  if ($expiresAt -le $now) {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "expired" -WorkerId $workerId -Reason $reason
+  }
+  if ($requestedAt -gt $now.AddMinutes(1) -or $requestedAt -lt $now.AddMinutes(-15)) {
+    return New-ContentWorkerRestartDecision -Approved $false -Classification "stale_or_future" -WorkerId $workerId -Reason $reason
+  }
+
+  return New-ContentWorkerRestartDecision -Approved $true -Classification "content_worker_restart_requested" -WorkerId $workerId -Reason $reason
+}
+
 function Test-WatchdogRuntimeHealth {
   param($Health)
 

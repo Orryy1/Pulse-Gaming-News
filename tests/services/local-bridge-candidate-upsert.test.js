@@ -14,6 +14,10 @@ const {
 const {
   runStudioGovernancePreflight,
 } = require("../../lib/services/studio-governance-preflight");
+const {
+  authorityPlatformScope,
+  resolvePlatformPublishScope,
+} = require("../../lib/platform-publish-scope");
 
 const FIXTURE_SCRIPT =
   "Sea of Thieves just made its biggest social gamble in years. Xbox Wire says Custom Seas lets crews set private rules, tune danger and decide whether the shared-world chaos still matters. That is the real split: safer sessions help busy friends return, but they can also drain the stories that make the seas feel alive. If Rare balances rewards carefully, this becomes a social reset. If not, it becomes empty water with prettier waves. Follow Pulse Gaming so you never miss a beat.";
@@ -23,6 +27,33 @@ const GTA_VI_DISPLAY_SCRIPT =
 
 const GTA_VI_SAFE_SPOKEN_SCRIPT =
   "Rockstar just made its next Grand Theft Auto console pitch unusually direct. The useful point is not brand hype. It is what players can actually test: footage clarity, launch timing and whether the PlayStation 5 version looks like the default social feed clip. If the reveal keeps those details clean, PlayStation gets the easy conversation. If it dodges them, every rumour returns and the platform-war noise gets louder. That makes the first clean comparison matter more than any logo. Follow Pulse Gaming so you never miss a beat.";
+
+test("explicit five-platform authority scope accepts TikTok and X without changing legacy defaults", () => {
+  const explicit = resolvePlatformPublishScope({
+    enabled_platforms: [
+      "youtube_shorts",
+      "instagram_reels",
+      "facebook_reels",
+      "tiktok",
+      "x",
+    ],
+  });
+  assert.deepEqual(explicit.blockers, []);
+  assert.deepEqual(explicit.enabled_platforms, [
+    "facebook_reels",
+    "instagram_reels",
+    "tiktok",
+    "x",
+    "youtube_shorts",
+  ]);
+
+  const legacy = resolvePlatformPublishScope({});
+  assert.deepEqual(legacy.enabled_platforms, [
+    "youtube_shorts",
+    "instagram_reels",
+    "facebook_reels",
+  ]);
+});
 
 async function fixtureFingerprint(filePath) {
   const buffer = await fs.readFile(filePath);
@@ -39,6 +70,9 @@ async function restampFixtureAuthority(files, refreshedAt = "2026-07-17T09:55:00
   );
   const audio = await fs.readJson(path.join(files.artifactDir, "audio_manifest.json"));
   const render = await fs.readJson(path.join(files.artifactDir, "render_manifest.json"));
+  const platformManifest = await fs.readJson(
+    path.join(files.artifactDir, "platform_publish_manifest.json"),
+  );
   const authorityRefresh = {
     schema_version: 1,
     refreshed_at: refreshedAt,
@@ -49,6 +83,9 @@ async function restampFixtureAuthority(files, refreshedAt = "2026-07-17T09:55:00
       timestamps: await fixtureFingerprint(audio.resolved_word_timestamps_path),
       rights: await fixtureFingerprint(path.join(files.artifactDir, "rights_ledger.json")),
     },
+    platform_scope: authorityPlatformScope(
+      resolvePlatformPublishScope(platformManifest),
+    ),
     monotonic_verdict: true,
   };
   const specs = [
@@ -101,6 +138,22 @@ async function fixture() {
   });
   await fs.writeFile(path.join(artifactDir, "visual_v4_render.mp4"), Buffer.alloc(600_000));
   await fs.writeFile(path.join(artifactDir, "captions.srt"), "1\n00:00:00,000 --> 00:00:01,000\nSea\n");
+  await fs.writeJson(path.join(artifactDir, "caption_manifest.json"), {
+    story_id: "story_custom_seas",
+    verdict: "PASS",
+    status: "ready",
+    word_count: 81,
+    word_timestamp_count: 81,
+    caption_srt_path: "captions.srt",
+    resolved_caption_srt_path: path.join(artifactDir, "captions.srt"),
+    checks: {
+      caption_file_verified: true,
+      display_script_verified: true,
+      display_alignment_exact: true,
+      caption_timeline_covers_spoken_audio: true,
+    },
+    blockers: [],
+  });
   await fs.ensureDir(path.join(root, "output", "audio"));
   await fs.writeFile(path.join(root, "output", "audio", "story_custom_seas.mp3"), Buffer.alloc(4096));
   await fs.writeJson(path.join(root, "output", "audio", "story_custom_seas_timestamps.json"), {
@@ -327,6 +380,12 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.word_timestamps_path, path.join(files.root, "output", "audio", "story_custom_seas_timestamps.json"));
   assert.equal(candidate.relative_word_timestamps_path, "output/audio/story_custom_seas_timestamps.json");
   assert.match(candidate.manual_caption_path, /captions\.srt$/);
+  assert.equal(candidate.clean_manual_captions, true);
+  assert.equal(candidate.manual_caption_generated, true);
+  assert.equal(candidate.subtitle_timing_source, "timestamps");
+  assert.equal(candidate.subtitle_timing_inspection.usable, true);
+  assert.equal(candidate.subtitle_timing_inspection.word_count, 81);
+  assert.equal(candidate.caption_manifest.status, "ready");
   assert.equal(candidate.platform_publish_manifest.outputs.youtube_shorts.title, "Sea of Thieves Custom Seas Could Split Crews");
   assert.equal(candidate.platform_publish_manifest.outputs.instagram_reels.title, "Sea of Thieves Custom Seas Could Split Crews");
   assert.equal(
@@ -360,6 +419,157 @@ test("buildLocalBridgeCandidate creates scheduler-ready metadata from a local ar
   assert.equal(candidate.pulse_media_house_score.status, "pass");
   assert.equal(candidate.local_bridge_validation.verdict, "pass");
   assert.equal(candidate.local_bridge_validation.evidence.render_bytes, 600_000);
+});
+
+test("buildLocalBridgeCandidate accepts one enabled YouTube pack while preserving explicit disabled Meta entries", async () => {
+  const files = await fixture();
+  const manifestPath = path.join(files.artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const disabledReason = "microsoft_game_content_usage_rules_youtube_only";
+  await fs.writeJson(manifestPath, {
+    ...manifest,
+    enabled_platforms: ["youtube_shorts"],
+    outputs: {
+      youtube_shorts: {
+        ...manifest.outputs.youtube_shorts,
+        description:
+          "Full YouTube description with source links, rights credits and upload-specific metadata.",
+      },
+      instagram_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+      facebook_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+    },
+  });
+  await fs.remove(path.join(files.artifactDir, "instagram_publish_pack.json"));
+  await fs.remove(path.join(files.artifactDir, "facebook_publish_pack.json"));
+  await restampFixtureAuthority(files);
+
+  const candidate = await buildLocalBridgeCandidate({
+    artifactDir: files.artifactDir,
+    generatedAt: "2026-07-17T10:00:00.000Z",
+  });
+
+  assert.deepEqual(
+    candidate.local_bridge_validation.evidence.enabled_platforms_checked,
+    ["youtube_shorts"],
+  );
+  assert.deepEqual(candidate.platform_publish_manifest.enabled_platforms, ["youtube_shorts"]);
+  assert.deepEqual(candidate.enabled_platforms, ["youtube_shorts"]);
+  assert.equal(
+    candidate.description,
+    "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.",
+  );
+  assert.equal(
+    candidate.youtube_description,
+    "Full YouTube description with source links, rights credits and upload-specific metadata.",
+  );
+  for (const platform of ["instagram_reels", "facebook_reels"]) {
+    const output = candidate.platform_publish_manifest.outputs[platform];
+    assert.equal(output.operational_state, "disabled");
+    assert.equal(output.reason, disabledReason);
+    assert.equal(output.can_auto_publish, false);
+    assert.equal(Object.hasOwn(output, "planned_action"), false);
+    assert.equal(Object.hasOwn(output, "title"), false);
+    assert.equal(Object.hasOwn(output, "description"), false);
+    assert.equal(Object.hasOwn(output, "caption"), false);
+    assert.equal(Object.hasOwn(output, "page_caption"), false);
+  }
+});
+
+test("buildLocalBridgeCandidate rejects a missing explicitly enabled YouTube pack", async () => {
+  const files = await fixture();
+  const manifestPath = path.join(files.artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const disabledReason = "microsoft_game_content_usage_rules_youtube_only";
+  await fs.writeJson(manifestPath, {
+    ...manifest,
+    enabled_platforms: ["youtube_shorts"],
+    outputs: {
+      instagram_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+      facebook_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+    },
+  });
+  await fs.remove(path.join(files.artifactDir, "instagram_publish_pack.json"));
+  await fs.remove(path.join(files.artifactDir, "facebook_publish_pack.json"));
+  await restampFixtureAuthority(files);
+
+  await assert.rejects(
+    () => buildLocalBridgeCandidate({
+      artifactDir: files.artifactDir,
+      generatedAt: "2026-07-17T10:00:00.000Z",
+    }),
+    (error) => {
+      assert.ok(error.validation.blockers.includes("platform_pack_missing:youtube_shorts"));
+      return true;
+    },
+  );
+});
+
+test("buildLocalBridgeCandidate rejects Meta enablement added after YouTube-only authority was frozen", async () => {
+  const files = await fixture();
+  const manifestPath = path.join(files.artifactDir, "platform_publish_manifest.json");
+  const manifest = await fs.readJson(manifestPath);
+  const disabledReason = "microsoft_game_content_usage_rules_youtube_only";
+  await fs.writeJson(manifestPath, {
+    ...manifest,
+    enabled_platforms: ["youtube_shorts"],
+    outputs: {
+      ...manifest.outputs,
+      instagram_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+      facebook_reels: {
+        operational_state: "disabled",
+        reason: disabledReason,
+        can_auto_publish: false,
+      },
+    },
+  });
+  await restampFixtureAuthority(files);
+  const frozenManifest = await fs.readJson(manifestPath);
+  await fs.writeJson(manifestPath, {
+    ...frozenManifest,
+    enabled_platforms: ["youtube_shorts", "instagram_reels"],
+    outputs: {
+      ...frozenManifest.outputs,
+      instagram_reels: {
+        title: "Sea of Thieves Custom Seas Could Split Crews",
+        caption:
+          "Sea of Thieves is adding Custom Seas, a private mode where players can set their own rules. Source: Xbox Wire.",
+        cover_frame: { headline: "SEA THIEVES CUSTOM SEAS" },
+        operational_state: "enabled",
+        can_auto_publish: true,
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => buildLocalBridgeCandidate({
+      artifactDir: files.artifactDir,
+      generatedAt: "2026-07-17T10:10:00.000Z",
+    }),
+    (error) => {
+      assert.ok(error.validation.blockers.includes("authority_platform_scope_mismatch"));
+      return true;
+    },
+  );
 });
 
 test("buildLocalBridgeCandidate never promotes authoritative RED evidence to GREEN", async () => {
@@ -1163,6 +1373,40 @@ test("upsertLocalBridgeCandidate ignores stale director motion-minimum flags whe
   const updated = await fs.readJson(files.bridgePath);
   assert.equal(updated.scheduler_bridge_candidates.length, 2);
   assert.ok(updated.scheduler_bridge_candidates.some((item) => item.id === "story_custom_seas"));
+});
+
+test("upsertLocalBridgeCandidate ignores stale distinct-family flags only when the complete current budget proves coverage", async () => {
+  const files = await fixture();
+  await fs.writeJson(path.join(files.artifactDir, "director_beat_map.json"), {
+    readiness: {
+      status: "director_blocked",
+      blockers: ["distinct_motion_families_minimum_not_met"],
+    },
+    shot_budget: {
+      min_actual_motion_clips: 5,
+      available_motion_clips: 21,
+      min_distinct_motion_families: 5,
+      available_distinct_motion_families: 12,
+      min_distinct_motion_source_assets: 5,
+      available_distinct_motion_source_assets: 13,
+    },
+    shot_plan: [{ kind: "motion", label: "Xbox", path: "clip-a.mp4" }],
+  });
+
+  const report = await upsertLocalBridgeCandidate({
+    bridgePath: files.bridgePath,
+    artifactDir: files.artifactDir,
+    backupDir: path.join(files.root, "backups"),
+    generatedAt: "2026-07-23T20:30:00.000Z",
+    apply: true,
+  });
+
+  assert.equal(report.candidate.local_bridge_validation.verdict, "pass");
+  assert.ok(
+    report.candidate.local_bridge_validation.warnings.includes(
+      "stale_director_motion_minimum_ignored_after_current_budget_proof",
+    ),
+  );
 });
 
 test("local bridge candidate upsert command is registered for operator runs", async () => {

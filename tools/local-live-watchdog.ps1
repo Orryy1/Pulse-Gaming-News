@@ -30,6 +30,7 @@ $logDir = Join-Path $RepoRoot "output/runtime"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logPath = Join-Path $logDir "pulse-live-watchdog.log"
 $restartRequestPath = Join-Path $logDir "pulse-runtime-restart-request.json"
+$contentWorkerRestartRequestPath = Join-Path $logDir "pulse-content-worker-restart-request.json"
 $runtimeScript = Join-Path $RuntimeRepoRoot "tools/local-live-primary-runtime.ps1"
 $tunnelScript = Join-Path $RepoRoot "tools/local-live-cloudflared-tunnel.ps1"
 $contentWorkersScript = Join-Path $RepoRoot "tools/local-live-content-workers.ps1"
@@ -141,6 +142,54 @@ while ($true) {
       } catch {
         Write-WatchdogLog ("operator_restart_request_invalid error={0}" -f $_.Exception.Message)
         Remove-Item -LiteralPath $restartRequestPath -Force -ErrorAction SilentlyContinue
+      }
+    }
+
+    if (Test-Path -LiteralPath $contentWorkerRestartRequestPath -PathType Leaf) {
+      try {
+        $contentWorkerRestartRequest =
+          Get-Content -LiteralPath $contentWorkerRestartRequestPath -Raw |
+            ConvertFrom-Json
+        $contentWorkerRestart = Resolve-WatchdogContentWorkerRestartRequest `
+          -Request $contentWorkerRestartRequest `
+          -NowUtc ([DateTimeOffset]::UtcNow)
+        if ($contentWorkerRestart.approved) {
+          Write-WatchdogLog (
+            "content_worker_restart_requested id={0} reason={1}" -f
+              $contentWorkerRestart.worker_id,
+              $contentWorkerRestart.reason
+          )
+          Start-Process -FilePath "powershell.exe" `
+            -ArgumentList @(
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              $contentWorkersScript,
+              "-RepoRoot",
+              $RepoRoot,
+              "-RuntimeRepoRoot",
+              $RuntimeRepoRoot,
+              "-Restart",
+              "-OnlyWorkerId",
+              $contentWorkerRestart.worker_id
+            ) `
+            -WorkingDirectory $RepoRoot `
+            -WindowStyle Hidden | Out-Null
+          Remove-Item -LiteralPath $contentWorkerRestartRequestPath -Force
+        } else {
+          Write-WatchdogLog (
+            "content_worker_restart_request_rejected classification={0}" -f
+              $contentWorkerRestart.classification
+          )
+          Remove-Item -LiteralPath $contentWorkerRestartRequestPath -Force
+        }
+      } catch {
+        Write-WatchdogLog (
+          "content_worker_restart_request_invalid error={0}" -f
+            $_.Exception.Message
+        )
+        Remove-Item -LiteralPath $contentWorkerRestartRequestPath -Force -ErrorAction SilentlyContinue
       }
     }
 

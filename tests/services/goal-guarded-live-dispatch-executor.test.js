@@ -84,8 +84,409 @@ function story(overrides = {}) {
   };
 }
 
+function verifiedInstagramReel(mediaId) {
+  return {
+    publicVerified: true,
+    mediaId,
+    mediaType: "VIDEO",
+    mediaProductType: "REELS",
+    permalink: `https://www.instagram.com/reel/${mediaId}/`,
+    timestamp: "2026-07-24T12:34:56+0000",
+    username: "pulsegaming",
+  };
+}
+
 async function passActionQualityGate() {
   return { result: "pass", blockers: [], checks: {} };
+}
+
+function sha256Buffer(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+async function writeExactCurrentQualityAuthorityFixture(
+  root,
+  {
+    storyId = "story-one",
+    platform = "youtube_shorts",
+  } = {},
+) {
+  await fs.ensureDir(root);
+  const videoPath = path.join(root, "visual_v4_render_outro_repair_v5.mp4");
+  const audioPath = path.join(root, "audio", "narration.mp3");
+  const timestampsPath = path.join(root, "audio", "word_timestamps.json");
+  const rightsPath = path.join(root, "rights_ledger.json");
+  const temporalPath = path.join(root, "temporal_video_qa_report.json");
+  const finalAvPath = path.join(root, "final_av_review.json");
+  const canonicalManifestPath = path.join(root, "canonical_story_manifest.json");
+  const platformPublishManifestPath = path.join(root, "platform_publish_manifest.json");
+  const renderManifestPath = path.join(root, "render_manifest.json");
+  const publishVerdictPath = path.join(root, "publish_verdict.json");
+  const videoBytes = Buffer.from("exact approved final video bytes for guarded quality authority");
+  const audioBytes = Buffer.from("exact narration audio bytes");
+  const timestampPayload = {
+    meta: { source: "elevenlabs-production-path" },
+    words: [{ word: "Xbox", start: 0, end: 0.25 }],
+  };
+  const timestampBytes = Buffer.from(`${JSON.stringify(timestampPayload, null, 2)}\n`);
+  await fs.outputFile(videoPath, videoBytes);
+  await fs.outputFile(audioPath, audioBytes);
+  await fs.outputFile(timestampsPath, timestampBytes);
+
+  const selectedVisualAssets = [];
+  const rightsRecords = [];
+  for (let index = 0; index < 4; index += 1) {
+    const assetId = `official-store-screenshot-${index + 1}`;
+    const assetPath = path.join(root, "selected-visuals", `${assetId}.jpg`);
+    const bytes = Buffer.from(`official selected visual ${index + 1}`);
+    await fs.outputFile(assetPath, bytes);
+    const assetSha256 = sha256Buffer(bytes);
+    selectedVisualAssets.push({
+      asset_id: assetId,
+      kind: "screenshot",
+      subject_match: true,
+      subject_match_quality: "exact_platform_match",
+      matched_subject: "Xbox",
+      path: assetPath,
+      asset_sha256: assetSha256,
+      asset_size_bytes: bytes.length,
+      source_url: `https://store-images.s-microsoft.com/${assetId}.jpg`,
+      role: "hyperframes_visual_source",
+    });
+    rightsRecords.push({
+      asset_id: assetId,
+      kind: "screenshot",
+      path: assetPath,
+      local_materialized_path: assetPath,
+      asset_sha256: assetSha256,
+      asset_size_bytes: bytes.length,
+      source_url: `https://store-images.s-microsoft.com/${assetId}.jpg`,
+      licence_basis: "verified_publisher_video_policy",
+      allowed_platforms: [platform],
+      commercial_use_allowed: true,
+      approval_status: "approved",
+      verdict: "GREEN",
+      rights_grant: true,
+      live_publish_allowed: true,
+      requires_human_review_before_live_publish: false,
+    });
+  }
+
+  const rightsLedger = {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "pass",
+    status: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    failures: [],
+    errors: [],
+    records: rightsRecords,
+  };
+  await fs.writeJson(rightsPath, rightsLedger, { spaces: 2 });
+
+  const renderSha256 = sha256Buffer(videoBytes);
+  const temporalReport = {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "GREEN",
+    can_publish: true,
+    blockers: [],
+    failures: [],
+    errors: [],
+    final_media: {
+      path: videoPath,
+      sha256: renderSha256,
+      size_bytes: videoBytes.length,
+    },
+    evidence: {
+      temporal: {
+        sample_fps: 2,
+      },
+    },
+    validation: {
+      present: true,
+      story_id: storyId,
+      declared_verdict: "GREEN",
+      render_hash_matches: true,
+      render_size_matches: true,
+      decode_complete: true,
+      video_stream_decoded: true,
+      audio_stream_decoded: true,
+      temporal_scan_complete: true,
+      temporal_analysis_scope: "full_frame",
+      temporal_coverage_ratio: 0.998,
+      sampled_frame_count: 102,
+      repeated_motion_sequence_count: 0,
+      choppy_cadence: false,
+      local_stall_detected: false,
+      center_crop_scope: "center_crop",
+      center_crop_scan_complete: true,
+      center_crop_coverage_ratio: 0.998,
+      center_crop_repeated_motion_sequence_count: 0,
+      center_crop_choppy_cadence: false,
+      center_crop_local_stall_detected: false,
+      repeat_reconciliation: {
+        clean_cadence: true,
+        blocking_repeat_detected: false,
+      },
+    },
+  };
+  await fs.writeJson(temporalPath, temporalReport, { spaces: 2 });
+  await fs.writeJson(finalAvPath, {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "GREEN",
+    status: "GREEN",
+    final_verdict: "GREEN",
+    publish_ready: true,
+    can_auto_publish: true,
+    reviewed_artefact_fingerprints: {
+      final_mp4: `sha256:${renderSha256}`,
+    },
+    reviewer: {
+      id: "independent-final-av-reviewer",
+      independent: true,
+    },
+    attestations: {
+      full_watch: true,
+      full_listen: true,
+      av_sync: true,
+      caption_readability: true,
+      subject_match: true,
+    },
+    blockers: [],
+    failures: [],
+    errors: [],
+  }, { spaces: 2 });
+  await fs.writeJson(canonicalManifestPath, {
+    story_id: storyId,
+    selected_title: "4 Xbox Classics Hit PC, Achievements Come Later",
+    canonical_subject: "Xbox",
+    primary_source: "Xbox Wire",
+    primary_source_url: "https://news.xbox.com/example",
+    source_published_at: "2026-07-23T18:00:00.000Z",
+    narration_script:
+      "Four original Xbox games just crossed onto PC, but ownership is the bigger story. Xbox Wire confirms the release and says achievements arrive later. Follow Pulse Gaming so you never miss a beat.",
+    thumbnail_headline: "4 XBOX CLASSICS HIT PC",
+  }, { spaces: 2 });
+  await fs.writeJson(platformPublishManifestPath, {
+    story_id: storyId,
+    enabled_platforms: [platform],
+    outputs: {
+      [platform]: {
+        cover_frame: {
+          subject: "Xbox",
+          headline: "4 XBOX CLASSICS HIT PC",
+        },
+      },
+    },
+  }, { spaces: 2 });
+  await fs.writeJson(renderManifestPath, {
+    schema_version: 1,
+    story_id: storyId,
+    renderer: "hyperframes",
+    engine: "hyperframes_0.7.68",
+    final_publish_render: true,
+    output_path: videoPath,
+    rendered_duration_s: 51.136,
+    selected_input_assets: {
+      schema_version: 2,
+      authoritative: true,
+      complete: true,
+      asset_count: selectedVisualAssets.length,
+      blockers: [],
+      failures: [],
+      assets: selectedVisualAssets,
+    },
+    clip_scene_plan: {
+      renderer: "hyperframes",
+      repeat_free: true,
+      scene_count: 8,
+      placement_count: 12,
+      verified_placement_count: 12,
+      unique_visual_asset_count: selectedVisualAssets.length,
+      temporal_qa_verdict: "GREEN",
+    },
+    decoded_visual_gate: {
+      verdict: "GREEN",
+      can_publish: true,
+      render_sha256: renderSha256,
+      render_size_bytes: videoBytes.length,
+    },
+    input_evidence: {
+      hyperframes: {
+        composition_sha256: "b".repeat(64),
+        rights_sidecar_verdict: "PASS",
+        canonical_visual_asset_ids: selectedVisualAssets.map((asset) => asset.asset_id),
+      },
+    },
+    hyperframes_adoption_evidence: {
+      final_render_sha256: renderSha256,
+      final_render_size_bytes: videoBytes.length,
+      human_av_review_verdict: "GREEN",
+      temporal_video_qa_verdict: "GREEN",
+      rights_placement_verdict: "PASS",
+      enabled_platforms: [platform],
+    },
+  }, { spaces: 2 });
+
+  const rightsBytes = await fs.readFile(rightsPath);
+  const temporalBytes = await fs.readFile(temporalPath);
+  await fs.writeJson(publishVerdictPath, {
+    story_id: storyId,
+    verdict: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    failures: [],
+    errors: [],
+    authority_refresh: {
+      source: "current_independently_verified_artifact_evidence",
+      monotonic_verdict: true,
+      frozen_hashes: {
+        render: {
+          path: videoPath,
+          sha256: renderSha256,
+          size_bytes: videoBytes.length,
+        },
+        audio: {
+          path: audioPath,
+          sha256: sha256Buffer(audioBytes),
+          size_bytes: audioBytes.length,
+        },
+        timestamps: {
+          path: timestampsPath,
+          sha256: sha256Buffer(timestampBytes),
+          size_bytes: timestampBytes.length,
+        },
+        rights: {
+          path: rightsPath,
+          sha256: sha256Buffer(rightsBytes),
+          size_bytes: rightsBytes.length,
+        },
+        temporal_qa_report: {
+          path: temporalPath,
+          sha256: sha256Buffer(temporalBytes),
+          size_bytes: temporalBytes.length,
+        },
+      },
+      platform_scope: {
+        enabled_platforms: [platform],
+        disabled_platforms: [],
+      },
+    },
+  }, { spaces: 2 });
+
+  return {
+    storyId,
+    platform,
+    videoPath,
+    videoSha256: renderSha256,
+    videoSizeBytes: videoBytes.length,
+    audioPath,
+    timestampsPath,
+    rightsPath,
+    temporalPath,
+    finalAvPath,
+    canonicalManifestPath,
+    platformPublishManifestPath,
+    renderManifestPath,
+    publishVerdictPath,
+    selectedVisualAssets,
+  };
+}
+
+function passingExactFinalAvValidation() {
+  return {
+    valid: true,
+    verdict: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    evidence: {
+      fingerprints_verified: true,
+      final_mp4_matches_current_render: true,
+      contact_sheet_binding: {
+        bound_to_current_media: true,
+      },
+      decoded_forensic_report_valid: true,
+      reviewer_independent: true,
+      reviewer_trusted: true,
+      attestations: {
+        full_watch: true,
+        full_listen: true,
+        av_sync: true,
+        caption_readability: true,
+        subject_match: true,
+      },
+    },
+  };
+}
+
+async function runStaleAliasDefaultQualityGate(fixture, storyOverrides = {}) {
+  const staleArticleDeck = Array.from({ length: 5 }, (_, index) => ({
+    path: path.join(path.dirname(fixture.videoPath), `legacy-article-${index + 1}.jpg`),
+    type: "article_inline",
+    source: "article",
+    thumbnail_safety_warnings: ["article_image_relevance_review"],
+  }));
+  return defaultActionQualityGate({
+    story: story({
+      title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      downloaded_images: staleArticleDeck,
+      source_published_at: "2026-07-23T18:00:00.000Z",
+      ...storyOverrides,
+    }),
+    action: action("youtube_shorts", {
+      title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      video_path: fixture.videoPath,
+      video_sha256: fixture.videoSha256,
+      video_size_bytes: fixture.videoSizeBytes,
+      canonical_manifest_path: fixture.canonicalManifestPath,
+      platform_publish_manifest_path: fixture.platformPublishManifestPath,
+    }),
+    config: {
+      publicName: "youtube",
+      mediaKind: "video",
+    },
+    options: {
+      now: "2026-07-23T21:00:00.000Z",
+      runContentQa: async (qualityStory) => {
+        const staleDeckStillUsed = qualityStory.downloaded_images.some(
+          (image) => image.type === "article_inline",
+        );
+        return staleDeckStillUsed
+          ? {
+              result: "fail",
+              failures: [
+                "risky_article_context_dominated_deck (5 risky article images, 0 safe non-article images)",
+              ],
+              warnings: [],
+            }
+          : { result: "pass", failures: [], warnings: [] };
+      },
+      runPublicMetadataQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      runVideoQa: async () => ({
+        result: "fail",
+        failures: [
+          "choppy_temporal_cadence (0.686 overall, 0.941 peak)",
+          "stalled_visual_window (0.941 near-static @ 28.17-31.17s)",
+          "stalled_visual_window_center_crop (0.941 near-static @ 28.33-31.33s)",
+        ],
+        warnings: [],
+      }),
+      buildVideoQaOptionsForStory: () => ({}),
+      runVisualCadenceQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      validateFinalAvReviewFile: async () => passingExactFinalAvValidation(),
+    },
+  });
 }
 
 test("guarded live dispatch executor dry-run never uploads or mutates DB", async () => {
@@ -126,6 +527,1273 @@ test("guarded live dispatch executor dry-run never uploads or mutates DB", async
   assert.equal(report.actions[0].outcome, "dry_run_ready");
   assert.equal(report.safety.no_network_uploads, true);
   assert.equal(report.safety.no_db_mutation, true);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+});
+
+test("guarded live dispatch executor suppresses stale story affiliates when the approved action forbids them", async () => {
+  let uploadedStory = null;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          affiliate_links_allowed: false,
+          commercial_promotion: false,
+          disclosure_status: {
+            required: false,
+            type: "none",
+          },
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        affiliate_url:
+          "https://www.amazon.co.uk/s?k=Forza&tag=pulsegaming-21",
+        affiliate_links: [
+          {
+            label: "Forza",
+            url: "https://www.amazon.co.uk/s?k=Forza&tag=pulsegaming-21",
+          },
+        ],
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async (nextStory) => {
+          uploadedStory = nextStory;
+          return {
+            platform: "youtube",
+            videoId: "yt_no_affiliate",
+            url: "https://youtube.com/shorts/yt_no_affiliate",
+          };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.ok(uploadedStory);
+  assert.equal(uploadedStory.suppress_affiliate_links, true);
+  assert.equal(uploadedStory.affiliate_links_allowed, false);
+});
+
+test("guarded live dispatch executor recognises TikTok in dry-run without network or DB work", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("tiktok", { duration_seconds: 51 })],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: false,
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].outcome, "dry_run_ready");
+  assert.equal(report.actions[0].platform, "tiktok");
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+});
+
+test("guarded live dispatch executor recognises X video in dry-run without network or DB work", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("x")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:x"],
+    apply: false,
+    uploaders: {
+      x: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "twitter", tweetId: "x_post_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].outcome, "dry_run_ready");
+  assert.equal(report.actions[0].platform, "x");
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+});
+
+test("guarded live dispatch executor blocks X live apply until operator, credentials, billing and direct-post approval are explicit", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("x")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:x"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      x: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "twitter", tweetId: "x_post_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.blocked_actions[0].blockers.includes("x_operator_enablement_missing"));
+  assert.ok(report.blocked_actions[0].blockers.includes("x_credentials_missing"));
+  assert.ok(report.blocked_actions[0].blockers.includes("x_api_billing_not_confirmed"));
+  assert.ok(report.blocked_actions[0].blockers.includes("x_direct_post_approval_missing"));
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+});
+
+test("guarded live dispatch executor records the X media/post outcome only after public verifier evidence", async () => {
+  let uploadCalls = 0;
+  let verifierCalls = 0;
+  let persisted = null;
+  const platformPostCalls = [];
+  const generatedAt = "2026-07-23T21:10:00.000Z";
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("x")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:x"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TWITTER_ENABLED: "true",
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_SECRET: "access-secret",
+      X_API_BILLING_CONFIRMED: "true",
+      X_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      x: {
+        uploadShort: async (uploadedStory) => {
+          uploadCalls += 1;
+          assert.equal(uploadedStory.guarded_dispatch_action_id, "story-one:x");
+          return {
+            platform: "twitter",
+            mediaId: "x_media_1",
+            mediaUploaded: true,
+            tweetId: "x_post_1",
+          };
+        },
+        verifyPublicPost: async (postId) => {
+          verifierCalls += 1;
+          assert.equal(postId, "x_post_1");
+          return {
+            publicVerified: true,
+            postId,
+            url: "https://x.com/Pulse_GMG/status/x_post_1",
+            mediaAttached: true,
+          };
+        },
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persisted = { ...nextStory };
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push([
+          "ensurePending",
+          storyId,
+          platform,
+          options.idempotencyKey,
+        ]);
+        return { id: 84 };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push([
+          "markPublished",
+          id,
+          result.externalId,
+          result.externalUrl,
+        ]);
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+    generatedAt,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].outcome, "new_upload");
+  assert.equal(report.actions[0].external_id, "x_post_1");
+  assert.equal(
+    report.actions[0].url,
+    "https://x.com/Pulse_GMG/status/x_post_1",
+  );
+  assert.equal(report.actions[0].public_verified, true);
+  assert.deepEqual(report.actions[0].public_result_evidence, {
+    platform: "x",
+    upload_receipt_id: "x_post_1",
+    media_upload_outcome: "completed",
+    media_id: "x_media_1",
+    post_create_outcome: "created",
+    post_id: "x_post_1",
+    verifier: "x_public_post_verifier",
+    verification_status: "verified_public",
+    public_url: "https://x.com/Pulse_GMG/status/x_post_1",
+    media_attached_verified: true,
+  });
+  assert.equal(uploadCalls, 1);
+  assert.equal(verifierCalls, 1);
+  assert.equal(persisted.twitter_post_id, "x_post_1");
+  assert.equal(persisted.twitter_error, null);
+  assert.equal(persisted.twitter_published_at, generatedAt);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "twitter_video", "story-one:x"],
+    [
+      "markPublished",
+      84,
+      "x_post_1",
+      "https://x.com/Pulse_GMG/status/x_post_1",
+    ],
+  ]);
+});
+
+test("guarded live dispatch executor keeps an unverified X API post receipt pending without claiming it public", async () => {
+  let persisted = null;
+  const platformPostCalls = [];
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("x")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:x"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TWITTER_ENABLED: "true",
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_SECRET: "access-secret",
+      TWITTER_API_BILLING_CONFIRMED: "true",
+      TWITTER_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      x: {
+        uploadShort: async () => ({
+          platform: "twitter",
+          tweetId: "x_post_pending_verification",
+        }),
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persisted = { ...nextStory };
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push([
+          "ensurePending",
+          storyId,
+          platform,
+          options.idempotencyKey,
+        ]);
+        return { id: 85 };
+      },
+      markPublished() {
+        throw new Error("unverified X receipt must not be marked published");
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.actions[0].outcome, "verification_pending");
+  assert.equal(
+    report.actions[0].upload_receipt_id,
+    "x_post_pending_verification",
+  );
+  assert.equal(report.actions[0].public_verified, false);
+  assert.equal(
+    report.actions[0].public_result_evidence.media_upload_outcome,
+    "completed_by_upload_short_contract",
+  );
+  assert.equal(
+    report.actions[0].public_result_evidence.post_create_outcome,
+    "created",
+  );
+  assert.equal(persisted.twitter_post_id, undefined);
+  assert.equal(persisted.twitter_published_at, undefined);
+  assert.match(
+    persisted.twitter_error,
+    /^accepted_processing: public_verification_pending/,
+  );
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "twitter_video", "story-one:x"],
+  ]);
+});
+
+test("guarded live dispatch executor quarantines an X post receipt when its public verifier fails", async () => {
+  const platformPostCalls = [];
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("x")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:x"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TWITTER_ENABLED: "true",
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_SECRET: "access-secret",
+      X_API_BILLING_CONFIRMED: "true",
+      X_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      x: {
+        uploadShort: async () => ({
+          platform: "twitter",
+          tweetId: "x_post_verifier_timeout",
+        }),
+        verifyPublicPost: async () => {
+          const err = new Error("X verifier socket timeout");
+          err.code = "ETIMEDOUT";
+          throw err;
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push([
+          "ensurePending",
+          storyId,
+          platform,
+          options.idempotencyKey,
+        ]);
+        return { id: 87 };
+      },
+      markFailed() {
+        throw new Error("created X post awaiting verification must not be marked failed");
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.actions[0].outcome, "verification_pending");
+  assert.equal(
+    report.actions[0].public_result_evidence.verifier_error_classification,
+    "transient_network_failure",
+  );
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "twitter_video", "story-one:x"],
+  ]);
+});
+
+test("guarded live dispatch executor blocks TikTok live apply until operator, credentials and public Direct Post approval are explicit", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.ok(report.blocked_actions[0].blockers.includes("tiktok_operator_enablement_missing"));
+  assert.ok(report.blocked_actions[0].blockers.includes("tiktok_credentials_missing"));
+  assert.ok(report.blocked_actions[0].blockers.includes("tiktok_public_direct_post_approval_missing"));
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+});
+
+test("guarded live dispatch executor refuses private TikTok privacy levels for a public live action", async () => {
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          privacy_level: "SELF_ONLY",
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+      TIKTOK_PRIVACY_LEVEL: "SELF_ONLY",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "tiktok_public_privacy_required:SELF_ONLY",
+    ),
+  );
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+});
+
+test("guarded live dispatch executor requires a measured TikTok duration before live upload", async () => {
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.blocked_actions[0].blockers.includes("tiktok_video_duration_missing"));
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+});
+
+test("guarded live dispatch executor enforces the TikTok creator-info duration ceiling", async () => {
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 91,
+          creator_info_max_video_post_duration_sec: 60,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "tiktok_video_duration_above_creator_info_max:91:60",
+    ),
+  );
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+});
+
+test("guarded live dispatch executor requires resolved TikTok disclosure requirements", async () => {
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("tiktok", { duration_seconds: 51 })],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "tiktok_disclosure_requirements_unresolved",
+    ),
+  );
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+});
+
+test("guarded live dispatch executor enforces every required TikTok disclosure before network upload", async () => {
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: true,
+            ai_disclosure_required: true,
+            commercial_disclosure_required: true,
+          },
+          disclosures: {},
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "tiktok_affiliate_disclosure_missing",
+    ),
+  );
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "tiktok_ai_disclosure_missing",
+    ),
+  );
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "tiktok_commercial_disclosure_missing",
+    ),
+  );
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+});
+
+test("guarded live dispatch executor rejects unsafe platform-gate override flags", async () => {
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          unsafe_override: true,
+          bypass_platform_gate: true,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "tt_publish_1" };
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.blocked_actions[0].blockers.includes("unsafe_override_not_supported"));
+  assert.ok(report.blocked_actions[0].blockers.includes("tiktok_operator_enablement_missing"));
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+});
+
+test("guarded live dispatch executor verifies TikTok public completion and persists the public post id with the action id", async () => {
+  let uploadCalls = 0;
+  let verifierCalls = 0;
+  let persisted = null;
+  const platformPostCalls = [];
+  const generatedAt = "2026-07-23T21:00:00.000Z";
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+      TIKTOK_PUBLIC_PROFILE_URL: "https://www.tiktok.com/@pulsegamingnews",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async (uploadedStory) => {
+          uploadCalls += 1;
+          assert.equal(uploadedStory.duration_seconds, 51);
+          assert.equal(uploadedStory.guarded_dispatch_action_id, "story-one:tiktok");
+          return {
+            platform: "tiktok",
+            publishId: "tt_publish_job_1",
+            status: "PROCESSING",
+          };
+        },
+        fetchPublishStatus: async (publishId) => {
+          verifierCalls += 1;
+          assert.equal(publishId, "tt_publish_job_1");
+          return {
+            ok: true,
+            status: "PUBLISH_COMPLETE",
+            publicly_available_post_id: ["tt_public_1"],
+          };
+        },
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persisted = { ...nextStory };
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push([
+          "ensurePending",
+          storyId,
+          platform,
+          options.idempotencyKey,
+        ]);
+        return { id: 81 };
+      },
+      markPublished(id, result = {}) {
+        platformPostCalls.push([
+          "markPublished",
+          id,
+          result.externalId,
+          result.externalUrl,
+        ]);
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+    generatedAt,
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.actions[0].outcome, "new_upload");
+  assert.equal(report.actions[0].external_id, "tt_public_1");
+  assert.equal(
+    report.actions[0].url,
+    "https://www.tiktok.com/@pulsegamingnews/video/tt_public_1",
+  );
+  assert.equal(report.actions[0].public_verified, true);
+  assert.deepEqual(report.actions[0].public_result_evidence, {
+    platform: "tiktok",
+    upload_receipt_id: "tt_publish_job_1",
+    verifier: "tiktok_publish_status_fetch",
+    verification_status: "verified_public",
+    platform_status: "PUBLISH_COMPLETE",
+    public_post_id: "tt_public_1",
+    public_url: "https://www.tiktok.com/@pulsegamingnews/video/tt_public_1",
+  });
+  assert.equal(uploadCalls, 1);
+  assert.equal(verifierCalls, 1);
+  assert.equal(persisted.tiktok_post_id, "tt_public_1");
+  assert.equal(persisted.tiktok_error, null);
+  assert.equal(persisted.tiktok_published_at, generatedAt);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "tiktok", "story-one:tiktok"],
+    [
+      "markPublished",
+      81,
+      "tt_public_1",
+      "https://www.tiktok.com/@pulsegamingnews/video/tt_public_1",
+    ],
+  ]);
+});
+
+test("guarded live dispatch executor keeps a processing TikTok receipt pending instead of stamping a public post", async () => {
+  let persisted = null;
+  const platformPostCalls = [];
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => ({
+          platform: "tiktok",
+          publishId: "tt_publish_job_pending",
+          status: "PROCESSING",
+        }),
+        fetchPublishStatus: async () => ({
+          ok: true,
+          status: "PROCESSING",
+          publicly_available_post_id: [],
+        }),
+      },
+    },
+    db: {
+      upsertStory: async (nextStory) => {
+        persisted = { ...nextStory };
+      },
+    },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push([
+          "ensurePending",
+          storyId,
+          platform,
+          options.idempotencyKey,
+        ]);
+        return { id: 82 };
+      },
+      markPublished() {
+        throw new Error("processing TikTok receipt must not be marked published");
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.actions[0].outcome, "verification_pending");
+  assert.equal(report.actions[0].upload_receipt_id, "tt_publish_job_pending");
+  assert.equal(report.actions[0].external_id, undefined);
+  assert.equal(report.actions[0].public_verified, false);
+  assert.equal(
+    report.actions[0].public_result_evidence.verification_status,
+    "verification_pending",
+  );
+  assert.equal(persisted.tiktok_post_id, undefined);
+  assert.equal(persisted.tiktok_published_at, undefined);
+  assert.equal(persisted.tiktok_status, "PROCESSING");
+  assert.match(persisted.tiktok_error, /^accepted_processing: public_verification_pending/);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "tiktok", "story-one:tiktok"],
+  ]);
+  assert.equal(report.required_next_step, "verify_pending_platform_posts");
+});
+
+test("guarded live dispatch executor quarantines a TikTok upload receipt when the public verifier times out", async () => {
+  const platformPostCalls = [];
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => ({
+          platform: "tiktok",
+          publishId: "tt_publish_job_timeout",
+          status: "PUBLISH_COMPLETE",
+        }),
+        fetchPublishStatus: async () => {
+          const err = new Error("TikTok verifier timeout");
+          err.code = "ETIMEDOUT";
+          throw err;
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push([
+          "ensurePending",
+          storyId,
+          platform,
+          options.idempotencyKey,
+        ]);
+        return { id: 86 };
+      },
+      markFailed() {
+        throw new Error("an uploaded receipt awaiting verification must not be marked failed");
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.actions[0].outcome, "verification_pending");
+  assert.equal(report.actions[0].upload_receipt_id, "tt_publish_job_timeout");
+  assert.equal(
+    report.actions[0].public_result_evidence.verifier_error_classification,
+    "transient_network_failure",
+  );
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "tiktok", "story-one:tiktok"],
+  ]);
+});
+
+test("guarded live dispatch executor does not retry a TikTok action id already pending in platform evidence", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { platform: "tiktok", publishId: "must_not_happen" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    platformPosts: {
+      getByStoryPlatform(storyId, platform) {
+        assert.equal(storyId, "story-one");
+        assert.equal(platform, "tiktok");
+        return {
+          story_id: storyId,
+          platform,
+          status: "pending",
+          idempotency_key: "story-one:tiktok",
+        };
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "AMBER");
+  assert.equal(report.actions[0].outcome, "verification_pending");
+  assert.equal(report.actions[0].evidence_source, "platform_posts");
+  assert.equal(report.actions[0].upload_attempted, false);
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(upsertCalls, 0);
+});
+
+test("guarded live dispatch executor classifies TikTok public Direct Post rejection as a non-retryable approval failure", async () => {
+  const platformPostCalls = [];
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          const err = new Error(
+            "unaudited_client_can_only_post_to_private_accounts",
+          );
+          err.response = { status: 403 };
+          err.networkAttempted = true;
+          throw err;
+        },
+      },
+    },
+    db: { upsertStory: async () => {} },
+    platformPosts: {
+      ensurePending(storyId, platform, options = {}) {
+        platformPostCalls.push([
+          "ensurePending",
+          storyId,
+          platform,
+          options.idempotencyKey,
+        ]);
+        return { id: 83 };
+      },
+      markFailed(id, err) {
+        platformPostCalls.push(["markFailed", id, err.message]);
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.actions[0].outcome, "failed");
+  assert.equal(
+    report.actions[0].failure_classification,
+    "direct_post_approval_required",
+  );
+  assert.equal(report.actions[0].retryable, false);
+  assert.equal(report.actions[0].network_attempted, true);
+  assert.deepEqual(platformPostCalls, [
+    ["ensurePending", "story-one", "tiktok", "story-one:tiktok"],
+    ["markFailed", 83, "unaudited_client_can_only_post_to_private_accounts"],
+  ]);
+});
+
+test("guarded live dispatch executor applies max-actions before any TikTok or X network call", async () => {
+  let uploadCalls = 0;
+  let upsertCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("tiktok", {
+          duration_seconds: 51,
+          disclosure_requirements_resolved: true,
+          disclosure_requirements: {
+            affiliate_disclosure_required: false,
+            ai_disclosure_required: false,
+            commercial_disclosure_required: false,
+          },
+        }),
+        action("x"),
+      ],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:tiktok", "story-one:x"],
+    apply: true,
+    maxActions: 1,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+      TIKTOK_ENABLED: "true",
+      TIKTOK_AUTO_UPLOAD_ENABLED: "true",
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+      TIKTOK_DIRECT_POST_APPROVED: "true",
+      TWITTER_ENABLED: "true",
+      TWITTER_API_KEY: "api-key",
+      TWITTER_API_SECRET: "api-secret",
+      TWITTER_ACCESS_TOKEN: "access-token",
+      TWITTER_ACCESS_SECRET: "access-secret",
+      X_API_BILLING_CONFIRMED: "true",
+      X_DIRECT_POST_APPROVED: "true",
+    },
+    uploaders: {
+      tiktok: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { publishId: "must_not_happen" };
+        },
+      },
+      x: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return { tweetId: "must_not_happen" };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {
+        upsertCalls += 1;
+      },
+    },
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.blocked_action_count, 2);
+  for (const blocked of report.blocked_actions) {
+    assert.ok(
+      blocked.blockers.includes("selected_action_count_exceeds_apply_max:1"),
+    );
+  }
+  assert.equal(report.summary.network_attempt_count, 0);
+  assert.equal(report.summary.db_mutation_count, 0);
   assert.equal(uploadCalls, 0);
   assert.equal(upsertCalls, 0);
 });
@@ -171,6 +1839,7 @@ test("guarded live dispatch executor refuses apply when not armed or kill switch
 
 test("guarded live dispatch executor applies only the selected Instagram action and persists its media id", async () => {
   let instagramCalls = 0;
+  let instagramVerifierCalls = 0;
   let youtubeCalls = 0;
   let facebookCalls = 0;
   let persisted = null;
@@ -224,6 +1893,19 @@ test("guarded live dispatch executor applies only the selected Instagram action 
           assert.equal(uploadedStory.suggested_thumbnail_text, "FORZA PC BET TEST");
           return { platform: "instagram", mediaId: "ig_media_1" };
         },
+        verifyPublicReel: async (mediaId) => {
+          instagramVerifierCalls += 1;
+          assert.equal(mediaId, "ig_media_1");
+          return {
+            publicVerified: true,
+            mediaId,
+            mediaType: "VIDEO",
+            mediaProductType: "REELS",
+            permalink: "https://www.instagram.com/reel/ig_media_1/",
+            timestamp: "2026-06-08T09:59:59+0000",
+            username: "pulsegaming",
+          };
+        },
       },
       facebook_reels: {
         uploadShort: async () => {
@@ -256,7 +1938,25 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   assert.equal(report.summary.db_mutation_count, 1);
   assert.equal(report.actions[0].outcome, "new_upload");
   assert.equal(report.actions[0].external_id, "ig_media_1");
+  assert.equal(
+    report.actions[0].url,
+    "https://www.instagram.com/reel/ig_media_1/",
+  );
+  assert.equal(report.actions[0].public_verified, true);
+  assert.deepEqual(report.actions[0].public_result_evidence, {
+    platform: "instagram_reels",
+    upload_receipt_id: "ig_media_1",
+    verifier: "instagram_public_reel_graph_get",
+    verification_status: "verified_public",
+    media_id: "ig_media_1",
+    media_type: "VIDEO",
+    media_product_type: "REELS",
+    permalink: "https://www.instagram.com/reel/ig_media_1/",
+    timestamp: "2026-06-08T09:59:59+0000",
+    username: "pulsegaming",
+  });
   assert.equal(instagramCalls, 1);
+  assert.equal(instagramVerifierCalls, 1);
   assert.equal(youtubeCalls, 0);
   assert.equal(facebookCalls, 0);
   assert.equal(persisted.instagram_media_id, "ig_media_1");
@@ -265,8 +1965,162 @@ test("guarded live dispatch executor applies only the selected Instagram action 
   assert.equal(persisted.published_at, generatedAt);
   assert.deepEqual(platformPostCalls, [
     ["ensurePending", "story-one", "instagram_reel", "story-one:instagram_reels"],
-    ["markPublished", 17, "ig_media_1", null],
+    [
+      "markPublished",
+      17,
+      "ig_media_1",
+      "https://www.instagram.com/reel/ig_media_1/",
+    ],
   ]);
+});
+
+test("guarded live dispatch executor keeps a delayed Instagram public Reel pending and never reuploads it", async () => {
+  let uploadCalls = 0;
+  let verifierCalls = 0;
+  let persisted = null;
+  let pendingRow = null;
+  const platformPostCalls = [];
+
+  const uploaders = {
+    instagram_reels: {
+      uploadShort: async () => {
+        uploadCalls += 1;
+        return {
+          platform: "instagram",
+          mediaId: "ig_pending_public_1",
+        };
+      },
+      verifyPublicReel: async (mediaId) => {
+        verifierCalls += 1;
+        assert.equal(mediaId, "ig_pending_public_1");
+        const err = new Error("Instagram media is not available yet");
+        err.response = {
+          status: 404,
+          data: {
+            error: {
+              code: 100,
+              message: "Object with this ID does not exist yet",
+            },
+          },
+        };
+        throw err;
+      },
+    },
+  };
+  const platformPosts = {
+    getByStoryPlatform(storyId, platform) {
+      assert.equal(storyId, "story-one");
+      assert.equal(platform, "instagram_reel");
+      return pendingRow;
+    },
+    ensurePending(storyId, platform, options = {}) {
+      platformPostCalls.push([
+        "ensurePending",
+        storyId,
+        platform,
+        options.idempotencyKey,
+      ]);
+      pendingRow = {
+        id: 91,
+        story_id: storyId,
+        platform,
+        status: "pending",
+        idempotency_key: options.idempotencyKey,
+      };
+      return pendingRow;
+    },
+    markPublished() {
+      throw new Error("unverified Instagram media must not be marked published");
+    },
+  };
+
+  const firstReport = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("instagram_reels")],
+    }),
+    stories: [story()],
+    actionIds: ["story-one:instagram_reels"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders,
+    db: {
+      upsertStory: async (nextStory) => {
+        persisted = { ...nextStory };
+      },
+    },
+    platformPosts,
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(firstReport.verdict, "AMBER");
+  assert.equal(firstReport.actions[0].outcome, "verification_pending");
+  assert.equal(firstReport.actions[0].upload_receipt_id, "ig_pending_public_1");
+  assert.equal(firstReport.actions[0].public_verified, false);
+  assert.deepEqual(firstReport.actions[0].public_result_evidence, {
+    platform: "instagram_reels",
+    upload_receipt_id: "ig_pending_public_1",
+    verifier: "instagram_public_reel_graph_get",
+    verification_status: "verification_pending",
+    media_id: null,
+    media_type: null,
+    media_product_type: null,
+    permalink: null,
+    timestamp: null,
+    username: null,
+    verifier_error_classification: "instagram_public_reel_not_visible",
+    verifier_retryable: true,
+  });
+  assert.equal(uploadCalls, 1);
+  assert.equal(verifierCalls, 1);
+  assert.equal(persisted.instagram_media_id, undefined);
+  assert.equal(persisted.instagram_published_at, undefined);
+  assert.match(
+    persisted.instagram_error,
+    /^accepted_processing: public_verification_pending publish_id=ig_pending_public_1$/,
+  );
+  assert.deepEqual(platformPostCalls, [
+    [
+      "ensurePending",
+      "story-one",
+      "instagram_reel",
+      "story-one:instagram_reels",
+    ],
+  ]);
+
+  uploaders.instagram_reels.uploadShort = async () => {
+    throw new Error("pending Instagram receipt must never be reuploaded");
+  };
+  const secondReport = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [action("instagram_reels")],
+    }),
+    stories: [persisted],
+    actionIds: ["story-one:instagram_reels"],
+    apply: true,
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders,
+    db: {
+      upsertStory: async () => {
+        throw new Error("pending Instagram receipt must not mutate the story");
+      },
+    },
+    platformPosts,
+    runActionQualityGate: passActionQualityGate,
+  });
+
+  assert.equal(secondReport.verdict, "AMBER");
+  assert.equal(secondReport.actions[0].outcome, "verification_pending");
+  assert.equal(secondReport.actions[0].evidence_source, "platform_posts");
+  assert.equal(secondReport.actions[0].upload_attempted, false);
+  assert.equal(secondReport.summary.network_attempt_count, 0);
+  assert.equal(uploadCalls, 1);
+  assert.equal(verifierCalls, 1);
 });
 
 test("guarded live dispatch executor falls back to Instagram URL upload after eligible binary upload failure", async () => {
@@ -313,6 +2167,7 @@ test("guarded live dispatch executor falls back to Instagram URL upload after el
           );
           return { platform: "instagram", mediaId: "ig_url_ok_1" };
         },
+        verifyPublicReel: async (mediaId) => verifiedInstagramReel(mediaId),
       },
     },
     db: {
@@ -348,7 +2203,12 @@ test("guarded live dispatch executor falls back to Instagram URL upload after el
   assert.equal(persisted.instagram_error, null);
   assert.deepEqual(platformPostCalls, [
     ["ensurePending", "story-one", "instagram_reel", "story-one:instagram_reels"],
-    ["markPublished", 23, "ig_url_ok_1", null],
+    [
+      "markPublished",
+      23,
+      "ig_url_ok_1",
+      "https://www.instagram.com/reel/ig_url_ok_1/",
+    ],
   ]);
 });
 
@@ -385,6 +2245,7 @@ test("guarded live dispatch executor does not report GREEN when one selected ena
       },
       instagram_reels: {
         uploadShort: async () => ({ platform: "instagram", mediaId: "ig_ok_1" }),
+        verifyPublicReel: async (mediaId) => verifiedInstagramReel(mediaId),
       },
       facebook_reels: {
         uploadShort: async () => ({ platform: "facebook", videoId: "fb_ok_1" }),
@@ -895,6 +2756,7 @@ test("guarded live dispatch executor supplements DB rows with canonical manifest
           assert.equal(storyForUpload._guarded_story_source, "db+canonical_manifest");
           return { platform: "instagram", mediaId: "ig_media_1" };
         },
+        verifyPublicReel: async (mediaId) => verifiedInstagramReel(mediaId),
       },
     },
     db: {
@@ -1136,6 +2998,522 @@ test("selectNextGuardedLiveAction skips actions blocked by the last-second quali
     "content:script_coherence:vague_filler:abstract_industry_bridge",
     "video:black_segment_too_long (1.70s @ 21.90s)",
   ]);
+});
+
+test("guarded live dispatch selects an exact approved package over stale DB deck and cadence aliases", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-exact-quality-authority-"));
+  t.after(() => fs.remove(root));
+  const fixture = await writeExactCurrentQualityAuthorityFixture(root);
+  const staleArticleDeck = Array.from({ length: 5 }, (_, index) => ({
+    path: path.join(root, `legacy-article-${index + 1}.jpg`),
+    type: "article_inline",
+    source: "article",
+    thumbnail_safety_warnings: ["article_image_relevance_review"],
+  }));
+  let observedQaDeck = [];
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          title: "4 Xbox Classics Hit PC, Achievements Come Later",
+          video_path: fixture.videoPath,
+          video_sha256: fixture.videoSha256,
+          video_size_bytes: fixture.videoSizeBytes,
+          canonical_manifest_path: fixture.canonicalManifestPath,
+          platform_publish_manifest_path: fixture.platformPublishManifestPath,
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "4 Xbox Classics Hit PC, Achievements Come Later",
+        downloaded_images: staleArticleDeck,
+        source_published_at: "2026-07-23T18:00:00.000Z",
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    generatedAt: "2026-07-23T21:00:00.000Z",
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          return {
+            platform: "youtube",
+            videoId: "yt_exact_authority",
+            url: "https://youtube.com/shorts/yt_exact_authority",
+          };
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: defaultActionQualityGate,
+    actionQualityGateOptions: {
+      now: "2026-07-23T21:00:00.000Z",
+      runContentQa: async (qualityStory) => {
+        observedQaDeck = qualityStory.downloaded_images;
+        const staleDeckStillUsed = qualityStory.downloaded_images.some(
+          (image) => image.type === "article_inline",
+        );
+        return staleDeckStillUsed
+          ? {
+              result: "fail",
+              failures: [
+                "risky_article_context_dominated_deck (5 risky article images, 0 safe non-article images)",
+              ],
+              warnings: [],
+            }
+          : { result: "pass", failures: [], warnings: [] };
+      },
+      runPublicMetadataQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      runVideoQa: async () => ({
+        result: "fail",
+        failures: [
+          "choppy_temporal_cadence (0.686 overall, 0.941 peak)",
+          "stalled_visual_window (0.941 near-static @ 28.17-31.17s)",
+          "stalled_visual_window_center_crop (0.941 near-static @ 28.33-31.33s)",
+        ],
+        warnings: [],
+      }),
+      buildVideoQaOptionsForStory: () => ({}),
+      runVisualCadenceQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      validateFinalAvReviewFile: async () => ({
+        valid: true,
+        verdict: "GREEN",
+        can_auto_publish: true,
+        blockers: [],
+        evidence: {
+          fingerprints_verified: true,
+          final_mp4_matches_current_render: true,
+          contact_sheet_binding: {
+            bound_to_current_media: true,
+          },
+          decoded_forensic_report_valid: true,
+          reviewer_independent: true,
+          reviewer_trusted: true,
+          attestations: {
+            full_watch: true,
+            full_listen: true,
+            av_sync: true,
+            caption_readability: true,
+            subject_match: true,
+          },
+        },
+      }),
+    },
+  });
+
+  assert.equal(report.verdict, "GREEN", JSON.stringify(report.blocked_actions));
+  assert.equal(report.summary.blocked_action_count, 0);
+  assert.equal(report.summary.upload_attempt_count, 1);
+  assert.equal(report.actions[0].outcome, "new_upload");
+  assert.equal(uploadCalls, 1);
+  assert.equal(observedQaDeck.length, 4);
+  assert.ok(
+    observedQaDeck.every(
+      (image) =>
+        image.source === "authoritative_final_render_input" &&
+        image.subject_match === true,
+    ),
+  );
+});
+
+test("exact authority binds a hash-current governed Meta transcode back to the approved master", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-derived-meta-authority-"));
+  t.after(() => fs.remove(root));
+  const fixture = await writeExactCurrentQualityAuthorityFixture(root, {
+    platform: "instagram_reels",
+  });
+  const variantPath = path.join(
+    root,
+    "platform_variants",
+    "instagram_reels",
+    "visual_v4_render_instagram_reels.mp4",
+  );
+  const variantCaptionsPath = path.join(
+    root,
+    "platform_variants",
+    "instagram_reels",
+    "captions_instagram_reels.srt",
+  );
+  const variantBytes = Buffer.from("hash-current governed instagram transcode");
+  await fs.outputFile(variantPath, variantBytes);
+  await fs.outputFile(
+    variantCaptionsPath,
+    "1\n00:00:00,000 --> 00:00:01,000\nXbox classics hit PC.\n",
+  );
+  const platformManifest = await fs.readJson(fixture.platformPublishManifestPath);
+  platformManifest.outputs.instagram_reels = {
+    ...platformManifest.outputs.instagram_reels,
+    variant_video_path: variantPath,
+    variant_captions_path: variantCaptionsPath,
+    platform_variant_render: {
+      status: "ready",
+      producer_id: "pulse-goal-platform-variant-materializer",
+      story_id: fixture.storyId,
+      platform: "instagram_reels",
+      encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
+      transformation_mode: "transcode",
+      passthrough_approved: false,
+      source_video_path: fixture.videoPath,
+      source_video_sha256: fixture.videoSha256,
+      source_video_size_bytes: fixture.videoSizeBytes,
+      output_path: variantPath,
+      output_sha256: sha256Buffer(variantBytes),
+      output_size_bytes: variantBytes.length,
+      captions_path: variantCaptionsPath,
+      source_duration_s: 51.136,
+      duration_s: 51.136,
+      generated_at: "2026-07-23T21:05:00.000Z",
+    },
+  };
+  await fs.writeJson(fixture.platformPublishManifestPath, platformManifest, { spaces: 2 });
+  let observedDeck = [];
+
+  const result = await defaultActionQualityGate({
+    story: story({
+      title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      source_published_at: "2026-07-23T18:00:00.000Z",
+      downloaded_images: [{
+        path: path.join(root, "stale-article.jpg"),
+        type: "article_inline",
+        source: "article",
+      }],
+    }),
+    action: action("instagram_reels", {
+      title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      video_path: variantPath,
+      video_sha256: sha256Buffer(variantBytes),
+      video_size_bytes: variantBytes.length,
+      captions_path: variantCaptionsPath,
+      canonical_manifest_path: fixture.canonicalManifestPath,
+      platform_publish_manifest_path: fixture.platformPublishManifestPath,
+    }),
+    config: {
+      mediaKind: "video",
+      publicName: "instagram",
+    },
+    options: {
+      now: "2026-07-23T21:10:00.000Z",
+      runContentQa: async (qualityStory) => {
+        observedDeck = qualityStory.downloaded_images;
+        return observedDeck.every((image) =>
+          image.source === "authoritative_final_render_input")
+          ? { result: "pass", failures: [], warnings: [] }
+          : { result: "fail", failures: ["stale_db_visual_deck_used"], warnings: [] };
+      },
+      runPublicMetadataQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      runVideoQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      buildVideoQaOptionsForStory: () => ({}),
+      runVisualCadenceQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      validateFinalAvReviewFile: async () => passingExactFinalAvValidation(),
+    },
+  });
+
+  assert.equal(result.result, "pass", JSON.stringify(result.blockers));
+  assert.equal(result.checks.exact_current_quality_authority.valid, true);
+  assert.equal(
+    result.checks.exact_current_quality_authority.derived_platform_variant.valid,
+    true,
+  );
+  assert.equal(observedDeck.length, 4);
+});
+
+test("exact authority fails closed when a governed Meta transcode is tampered", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-derived-meta-tamper-"));
+  t.after(() => fs.remove(root));
+  const fixture = await writeExactCurrentQualityAuthorityFixture(root, {
+    platform: "instagram_reels",
+  });
+  const variantPath = path.join(
+    root,
+    "platform_variants",
+    "instagram_reels",
+    "visual_v4_render_instagram_reels.mp4",
+  );
+  const variantCaptionsPath = path.join(
+    root,
+    "platform_variants",
+    "instagram_reels",
+    "captions_instagram_reels.srt",
+  );
+  const approvedBytes = Buffer.from("approved governed instagram transcode");
+  await fs.outputFile(variantPath, approvedBytes);
+  await fs.outputFile(
+    variantCaptionsPath,
+    "1\n00:00:00,000 --> 00:00:01,000\nXbox classics hit PC.\n",
+  );
+  const platformManifest = await fs.readJson(fixture.platformPublishManifestPath);
+  platformManifest.outputs.instagram_reels = {
+    ...platformManifest.outputs.instagram_reels,
+    variant_video_path: variantPath,
+    variant_captions_path: variantCaptionsPath,
+    platform_variant_render: {
+      status: "ready",
+      producer_id: "pulse-goal-platform-variant-materializer",
+      story_id: fixture.storyId,
+      platform: "instagram_reels",
+      encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
+      transformation_mode: "transcode",
+      passthrough_approved: false,
+      source_video_path: fixture.videoPath,
+      source_video_sha256: fixture.videoSha256,
+      source_video_size_bytes: fixture.videoSizeBytes,
+      output_path: variantPath,
+      output_sha256: sha256Buffer(approvedBytes),
+      output_size_bytes: approvedBytes.length,
+      captions_path: variantCaptionsPath,
+      source_duration_s: 51.136,
+      duration_s: 51.136,
+    },
+  };
+  await fs.writeJson(fixture.platformPublishManifestPath, platformManifest, { spaces: 2 });
+  const tamperedBytes = Buffer.from("tampered governed instagram transcode");
+  await fs.outputFile(variantPath, tamperedBytes);
+
+  const result = await defaultActionQualityGate({
+    story: story({
+      title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      source_published_at: "2026-07-23T18:00:00.000Z",
+    }),
+    action: action("instagram_reels", {
+      title: "4 Xbox Classics Hit PC, Achievements Come Later",
+      video_path: variantPath,
+      video_sha256: sha256Buffer(tamperedBytes),
+      video_size_bytes: tamperedBytes.length,
+      captions_path: variantCaptionsPath,
+      canonical_manifest_path: fixture.canonicalManifestPath,
+      platform_publish_manifest_path: fixture.platformPublishManifestPath,
+    }),
+    config: {
+      mediaKind: "video",
+      publicName: "instagram",
+    },
+    options: {
+      now: "2026-07-23T21:10:00.000Z",
+      runContentQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runPublicMetadataQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      runVideoQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      buildVideoQaOptionsForStory: () => ({}),
+      runVisualCadenceQa: async () => ({ result: "pass", failures: [], warnings: [] }),
+      validateFinalAvReviewFile: async () => passingExactFinalAvValidation(),
+    },
+  });
+
+  assert.equal(result.result, "fail");
+  assert.equal(result.checks.exact_current_quality_authority.valid, false);
+  assert.equal(
+    result.checks.exact_current_quality_authority.derived_platform_variant.valid,
+    false,
+  );
+  assert.ok(
+    result.blockers.some((blocker) =>
+      blocker.includes("derived_output_fingerprint_invalid")),
+    JSON.stringify(result.blockers),
+  );
+});
+
+test("exact current authority supersedes only the stale deck and cadence aliases", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-exact-alias-scope-"));
+  t.after(() => fs.remove(root));
+  const fixture = await writeExactCurrentQualityAuthorityFixture(root);
+  let uploadCalls = 0;
+
+  const report = await runGuardedLiveDispatchExecutor({
+    executorPlan: executorPlan({
+      handoff_ready_actions: [
+        action("youtube_shorts", {
+          title: "4 Xbox Classics Hit PC, Achievements Come Later",
+          video_path: fixture.videoPath,
+          video_sha256: fixture.videoSha256,
+          video_size_bytes: fixture.videoSizeBytes,
+          canonical_manifest_path: fixture.canonicalManifestPath,
+          platform_publish_manifest_path: fixture.platformPublishManifestPath,
+        }),
+      ],
+    }),
+    stories: [
+      story({
+        title: "4 Xbox Classics Hit PC, Achievements Come Later",
+        source_published_at: "2026-07-23T18:00:00.000Z",
+      }),
+    ],
+    actionIds: ["story-one:youtube_shorts"],
+    apply: true,
+    generatedAt: "2026-07-23T21:00:00.000Z",
+    env: {
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "clear",
+    },
+    uploaders: {
+      youtube_shorts: {
+        uploadShort: async () => {
+          uploadCalls += 1;
+          throw new Error("uploader must not run with unrelated quality defects");
+        },
+      },
+    },
+    db: {
+      upsertStory: async () => {},
+    },
+    runActionQualityGate: defaultActionQualityGate,
+    actionQualityGateOptions: {
+      now: "2026-07-23T21:00:00.000Z",
+      runContentQa: async () => ({
+        result: "fail",
+        failures: [
+          "risky_article_context_dominated_deck (5 risky article images, 0 safe non-article images)",
+          "script_coherence:unverified_claim",
+        ],
+        warnings: [],
+      }),
+      runPublicMetadataQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      runVideoQa: async () => ({
+        result: "fail",
+        failures: [
+          "choppy_temporal_cadence (0.686 overall, 0.941 peak)",
+          "stalled_visual_window (0.941 near-static @ 28.17-31.17s)",
+          "black_segment_too_long (1.70s @ 21.90s)",
+        ],
+        warnings: [],
+      }),
+      buildVideoQaOptionsForStory: () => ({}),
+      runVisualCadenceQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+      }),
+      validateFinalAvReviewFile: async () => passingExactFinalAvValidation(),
+    },
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.equal(report.summary.upload_attempt_count, 0);
+  assert.equal(uploadCalls, 0);
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "content:script_coherence:unverified_claim",
+    ),
+  );
+  assert.ok(
+    report.blocked_actions[0].blockers.includes(
+      "video:black_segment_too_long (1.70s @ 21.90s)",
+    ),
+  );
+  assert.equal(
+    report.blocked_actions[0].blockers.some((blocker) =>
+      blocker.includes("risky_article_context_dominated_deck") ||
+      blocker.includes("choppy_temporal_cadence") ||
+      blocker.includes("stalled_visual_window")),
+    false,
+  );
+});
+
+test("tampered final render bytes cannot supersede stale deck or cadence blockers", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-tampered-render-"));
+  t.after(() => fs.remove(root));
+  const fixture = await writeExactCurrentQualityAuthorityFixture(root);
+  await fs.appendFile(fixture.videoPath, "tampered after approval");
+
+  const result = await runStaleAliasDefaultQualityGate(fixture);
+
+  assert.equal(result.result, "fail");
+  assert.ok(
+    result.blockers.some((blocker) =>
+      blocker.includes("risky_article_context_dominated_deck")),
+  );
+  assert.ok(
+    result.blockers.some((blocker) => blocker.includes("choppy_temporal_cadence")),
+  );
+  assert.ok(
+    result.checks.exact_current_quality_authority.blockers.includes(
+      "exact_authority_fingerprint_mismatch:render",
+    ),
+  );
+});
+
+test("missing exact temporal evidence cannot supersede stale deck or cadence blockers", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-missing-temporal-"));
+  t.after(() => fs.remove(root));
+  const fixture = await writeExactCurrentQualityAuthorityFixture(root);
+  await fs.remove(fixture.temporalPath);
+
+  const result = await runStaleAliasDefaultQualityGate(fixture);
+
+  assert.equal(result.result, "fail");
+  assert.ok(
+    result.blockers.some((blocker) =>
+      blocker.includes("risky_article_context_dominated_deck")),
+  );
+  assert.ok(
+    result.blockers.some((blocker) => blocker.includes("stalled_visual_window")),
+  );
+  assert.ok(
+    result.checks.exact_current_quality_authority.blockers.includes(
+      "exact_authority_temporal_report_missing",
+    ),
+  );
+});
+
+test("hash-current but semantically stale temporal evidence cannot supersede cadence blockers", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-guarded-stale-temporal-"));
+  t.after(() => fs.remove(root));
+  const fixture = await writeExactCurrentQualityAuthorityFixture(root);
+  const temporal = await fs.readJson(fixture.temporalPath);
+  temporal.validation.choppy_cadence = true;
+  await fs.writeJson(fixture.temporalPath, temporal, { spaces: 2 });
+  const temporalBytes = await fs.readFile(fixture.temporalPath);
+  const publishVerdict = await fs.readJson(fixture.publishVerdictPath);
+  publishVerdict.authority_refresh.frozen_hashes.temporal_qa_report = {
+    path: fixture.temporalPath,
+    sha256: sha256Buffer(temporalBytes),
+    size_bytes: temporalBytes.length,
+  };
+  await fs.writeJson(fixture.publishVerdictPath, publishVerdict, { spaces: 2 });
+
+  const result = await runStaleAliasDefaultQualityGate(fixture);
+
+  assert.equal(result.result, "fail");
+  assert.ok(
+    result.blockers.some((blocker) => blocker.includes("choppy_temporal_cadence")),
+  );
+  assert.ok(
+    result.checks.exact_current_quality_authority.blockers.includes(
+      "exact_temporal_validation_choppy_cadence_invalid",
+    ),
+  );
 });
 
 test("selectNextGuardedLiveAction carries normal-production duration metadata into the last-second quality story", async () => {

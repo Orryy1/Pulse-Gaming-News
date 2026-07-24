@@ -8,7 +8,12 @@ dotenv.config({ override: true });
 
 const db = require("../lib/db");
 const mediaPaths = require("../lib/media-paths");
-const { uploadVideoToInbox, fetchPublishStatus } = require("../upload_tiktok");
+const { getChannel } = require("../channels");
+const {
+  uploadVideoToInbox,
+  fetchPublishStatus,
+  resolveTokenPath,
+} = require("../upload_tiktok");
 const {
   buildTikTokInboxCommandPlan,
   renderTikTokInboxCommandMarkdown,
@@ -28,6 +33,7 @@ function parseArgs(argv) {
     else if (arg === "--max-age-hours") args.maxAgeHours = Number(argv[++i]);
     else if (arg === "--allow-stale") args.allowStale = true;
     else if (arg === "--publish-id") args.publishId = argv[++i];
+    else if (arg === "--public-profile-url") args.publicProfileUrl = argv[++i];
     else if (arg === "--send-inbox" || arg === "--apply-inbox") args.sendInbox = true;
     else if (arg === "--operator-confirmed") args.operatorConfirmed = true;
     else if (arg === "--dry-run") args.sendInbox = false;
@@ -35,6 +41,50 @@ function parseArgs(argv) {
   args.statusOnly = Boolean(args.publishId) && args.sendInbox !== true;
   args.explicitSelection = Boolean(args.story || args.mp4 || args.publishId);
   return args;
+}
+
+async function fetchTikTokInboxStatusReadOnly(
+  publishId,
+  {
+    tokenPath = resolveTokenPath(),
+    fetchStatus = fetchPublishStatus,
+  } = {},
+) {
+  if (!publishId) {
+    throw new Error("TikTok read-only status check requires a publish id");
+  }
+  let tokenData;
+  try {
+    tokenData = await fs.readJson(tokenPath);
+  } catch {
+    throw new Error(
+      "TikTok token file is missing or unreadable; re-authentication is required before another status check.",
+    );
+  }
+  if (
+    typeof tokenData.access_token !== "string" ||
+    tokenData.access_token.length < 8
+  ) {
+    throw new Error(
+      "TikTok token file has no usable access token; re-authentication is required before another status check.",
+    );
+  }
+  // Passing the stored access token explicitly prevents fetchPublishStatus()
+  // from invoking the refresh-and-write path. This status probe therefore
+  // cannot mutate OAuth material.
+  return fetchStatus(publishId, { accessToken: tokenData.access_token });
+}
+
+function shouldPersistTikTokInboxResult({
+  args = {},
+  story = {},
+  payload = {},
+} = {}) {
+  return (
+    args.statusOnly !== true &&
+    Boolean(story?.id) &&
+    Boolean(payload?.publish_id)
+  );
 }
 
 async function loadStory(args) {
@@ -173,6 +223,16 @@ function classifyTikTokInboxUploadError(err) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (!args.publicProfileUrl) {
+    try {
+      args.publicProfileUrl =
+        process.env.TIKTOK_PUBLIC_PROFILE_URL ||
+        getChannel()?.socials?.tiktok ||
+        null;
+    } catch {
+      args.publicProfileUrl = process.env.TIKTOK_PUBLIC_PROFILE_URL || null;
+    }
+  }
   const outDir = path.resolve(args.outDir || OUT);
   await fs.ensureDir(outDir);
 
@@ -187,7 +247,7 @@ async function main() {
   let tiktokStatus = null;
   let uploadError = null;
   if (args.statusOnly && args.publishId) {
-    tiktokStatus = await fetchPublishStatus(args.publishId);
+    tiktokStatus = await fetchTikTokInboxStatusReadOnly(args.publishId);
   } else if (plan.will_upload_to_tiktok) {
     if (args.operatorConfirmed !== true) {
       throw new Error("tiktok_inbox_upload_requires_operator_confirmed_flag");
@@ -233,7 +293,24 @@ async function main() {
     payload.blockers = [...(payload.blockers || []), uploadError.reason];
     payload.next_operator_step = uploadError.operator_action;
   }
-  const persisted = await persistTikTokInboxResult(story, payload);
+  const persistenceAllowed = shouldPersistTikTokInboxResult({
+    args,
+    story,
+    payload,
+  });
+  const persisted = persistenceAllowed
+    ? await persistTikTokInboxResult(story, payload)
+    : false;
+  payload.persistence = {
+    production_db_mutation_allowed: persistenceAllowed,
+    production_db_mutation_attempted: persistenceAllowed,
+    oauth_token_mutation_attempted: false,
+    reason: args.statusOnly
+      ? "status_only_proof_is_read_only"
+      : persistenceAllowed
+        ? "persist_new_inbox_upload_receipt"
+        : "no_publish_receipt_to_persist",
+  };
   payload.persisted_to_story = persisted;
   const jsonPath = path.join(outDir, "tiktok_inbox_upload_plan.json");
   const mdPath = path.join(outDir, "tiktok_inbox_upload_plan.md");
@@ -259,7 +336,9 @@ if (require.main === module) {
 module.exports = {
   inspectMp4ForInbox,
   classifyTikTokInboxUploadError,
+  fetchTikTokInboxStatusReadOnly,
   main,
   parseArgs,
   persistTikTokInboxResult,
+  shouldPersistTikTokInboxResult,
 };

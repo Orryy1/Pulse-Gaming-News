@@ -1378,6 +1378,94 @@ test("pillarRenderMetadata blocks active HyperFrames premium renders without she
   }
 });
 
+test("pillarRenderMetadata accepts missing shell aliases only when exact current authority agrees", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-render-metadata-hf-exact-authority-"));
+  const planPath = path.join(dir, "dry_run_publish_plan.json");
+  const bridgePath = path.join(dir, "scheduler_bridge_candidates.json");
+  const storyId = "active-hf-exact-authority";
+  const videoPath = "C:/renders/active-hf-exact-authority-v5.mp4";
+  const videoSha256 = "a".repeat(64);
+  const videoSizeBytes = 54_315_130;
+  try {
+    fs.writeFileSync(
+      planPath,
+      JSON.stringify({
+        generated_at: "2026-07-23T21:21:29.255Z",
+        ready_stories: [{ story_id: storyId }],
+        actions: [{
+          story_id: storyId,
+          platform: "youtube_shorts",
+          action: "would_publish",
+          video_path: videoPath,
+          video_sha256: videoSha256,
+          video_size_bytes: videoSizeBytes,
+          video_fingerprint_source: "exact_current_package_authority",
+          authority_reconciliations: [
+            "hyperframes_premium_shell_aliases_superseded_by_exact_current_authority",
+          ],
+          blockers: [],
+          warnings: [],
+          live_execution_gate: "guarded_dispatch_ready",
+        }],
+        safety: {
+          no_publish_triggered: true,
+          no_network_uploads: true,
+          no_db_mutation: true,
+          no_oauth_or_token_change: true,
+          dry_run_only: true,
+        },
+      }),
+    );
+    fs.writeFileSync(
+      bridgePath,
+      JSON.stringify([{
+        id: storyId,
+        exported_path: videoPath,
+        render_lane: "visual_v4_production",
+        render_quality_class: "premium",
+        render_manifest: {
+          renderer: "hyperframes",
+          output_path: videoPath,
+          hyperframes_adoption_evidence: {
+            final_render_sha256: videoSha256,
+            final_render_size_bytes: videoSizeBytes,
+            human_av_review_verdict: "GREEN",
+            temporal_video_qa_verdict: "GREEN",
+            rights_placement_verdict: "PASS",
+          },
+        },
+        publish_verdict: {
+          verdict: "GREEN",
+          can_auto_publish: true,
+          authority_refresh: {
+            source: "current_independently_verified_artifact_evidence",
+            monotonic_verdict: true,
+            frozen_hashes: {
+              render: {
+                path: videoPath,
+                sha256: videoSha256,
+                size_bytes: videoSizeBytes,
+              },
+            },
+          },
+        },
+      }]),
+    );
+
+    const pillar = pr.pillarRenderMetadata({
+      strictDryRunPlanPath: planPath,
+      schedulerBridgeCandidatesPath: bridgePath,
+      stories: [],
+    });
+
+    assert.equal(pillar.verdict, "green");
+    assert.equal(pillar.raw.active_hyperframes_premium_shell_blocker_count, 0);
+    assert.equal(pillar.raw.active_hyperframes_premium_shell_reconciled_count, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("pillarRenderMetadata blocks HyperFrames shell failures nested in render_manifest", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-render-metadata-hf-shell-nested-"));
   const planPath = path.join(dir, "dry_run_publish_plan.json");

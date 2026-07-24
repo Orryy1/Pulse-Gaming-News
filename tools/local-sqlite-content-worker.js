@@ -139,6 +139,21 @@ function createContentWorkerClaimGuard({
   });
 }
 
+function contentWorkerHandlerTimeouts(kinds = [], env = process.env) {
+  if (!kinds.includes("candidate_supply_monitor")) return {};
+  const configured = Number(
+    env.PULSE_CANDIDATE_SUPPLY_HANDLER_TIMEOUT_MS || 15 * 60 * 1000,
+  );
+  const timeoutMs = Math.min(
+    30 * 60 * 1000,
+    Math.max(
+      60 * 1000,
+      Number.isFinite(configured) ? configured : 15 * 60 * 1000,
+    ),
+  );
+  return { candidate_supply_monitor: timeoutMs };
+}
+
 function parseArgs(argv = process.argv.slice(2), env = process.env) {
   const configuredLeaseMs = Number(env.PULSE_CONTENT_WORKER_LEASE_MS || 30 * 60 * 1000);
   const args = {
@@ -186,7 +201,8 @@ async function main(
   io = { stdout: process.stdout, stderr: process.stderr },
   options = {},
 ) {
-  const args = parseArgs(argv);
+  const env = options.env || process.env;
+  const args = parseArgs(argv, env);
   if (args.help) {
     io.stdout.write(`${usage()}\n`);
     return { status: "help", args };
@@ -203,9 +219,11 @@ async function main(
   process.env.PULSE_MAINTENANCE_RUNNER = "false";
 
   const claimGuard = options.claimGuard === undefined
-    ? createContentWorkerClaimGuard({ env: process.env, kinds: args.kinds })
+    ? createContentWorkerClaimGuard({ env, kinds: args.kinds })
     : options.claimGuard;
-  const bootstrap = require("../lib/bootstrap-queue");
+  const bootstrap = options.bootstrap || require("../lib/bootstrap-queue");
+  const exit = options.exit || ((code) => process.exit(code));
+  const handlerTimeoutMsByKind = contentWorkerHandlerTimeouts(args.kinds, env);
   const state = await bootstrap.start({
     workerId: args.workerId,
     runScheduler: false,
@@ -215,6 +233,16 @@ async function main(
     gpu: args.gpu,
     leaseMs: args.leaseMs,
     claimGuard,
+    handlerTimeoutMsByKind,
+    stopOnHandlerTimeout: Object.keys(handlerTimeoutMsByKind).length > 0,
+    onHandlerTimeout: async (error, job) => {
+      io.stderr.write(
+        `[local-sqlite-content-worker] fatal handler timeout ` +
+          `job=${job?.id ?? "unknown"} kind=${job?.kind || "unknown"} ` +
+          `timeout_ms=${error?.timeoutMs || handlerTimeoutMsByKind[job?.kind] || "unknown"}; exiting\n`,
+      );
+      exit(70);
+    },
     autoSeed: false,
     log: (message) => io.stderr.write(`${message}\n`),
   });
@@ -247,6 +275,7 @@ module.exports = {
   FORBIDDEN_CONTENT_WORKER_KINDS,
   assertContentOnlyKinds,
   assertContentWorkerResourceContract,
+  contentWorkerHandlerTimeouts,
   createContentWorkerClaimGuard,
   parseArgs,
   usage,

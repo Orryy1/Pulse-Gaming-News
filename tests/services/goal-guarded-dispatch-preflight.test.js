@@ -284,6 +284,11 @@ test("guarded dispatch preflight preserves governed Facebook metadata from auton
     cover_headline: "FORZA PC BET TEST",
     landing_page_slug: "/p/forza",
     disclosure_requirements: { affiliate: false, source_attribution: true },
+    disclosure_requirements_resolved: true,
+    disclosures: { requirements_resolved: true, disclosure_flag: "not_required" },
+    disclosure_status: { required: false, type: "none" },
+    commercial_promotion: false,
+    affiliate_links_allowed: false,
   };
   const dryRunAction = {
     story_id: "story-one",
@@ -346,6 +351,11 @@ test("guarded dispatch preflight restores governed Facebook metadata onto operat
     cover_headline: "FORZA PC BET TEST",
     landing_page_slug: "/p/forza",
     disclosure_requirements: { affiliate: false, source_attribution: true },
+    disclosure_requirements_resolved: true,
+    disclosures: { requirements_resolved: true, disclosure_flag: "not_required" },
+    disclosure_status: { required: false, type: "none" },
+    commercial_promotion: false,
+    affiliate_links_allowed: false,
   };
   const strictPlan = strictDryRunPlan(media, [approved]);
   Object.assign(strictPlan.actions[0], nativeMetadata);

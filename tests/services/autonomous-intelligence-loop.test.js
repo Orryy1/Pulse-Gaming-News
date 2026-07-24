@@ -329,15 +329,18 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
   const jobHandlersPath = require.resolve("../../lib/job-handlers");
   const candidateSupplyPath = require.resolve("../../lib/ops/candidate-supply");
   const candidateEnginePath = require.resolve("../../tools/candidate-supply-engine");
+  const transcriptAuditPath = require.resolve("../../lib/ops/transcript-audience-audit");
   const fsExtraPath = require.resolve("fs-extra");
   const originalCache = new Map([
     [jobHandlersPath, require.cache[jobHandlersPath]],
     [candidateSupplyPath, require.cache[candidateSupplyPath]],
     [candidateEnginePath, require.cache[candidateEnginePath]],
+    [transcriptAuditPath, require.cache[transcriptAuditPath]],
     [fsExtraPath, require.cache[fsExtraPath]],
   ]);
   const enqueued = [];
   let receivedMotionCapacityReports = null;
+  let scopedTranscriptAuditCalls = 0;
   const fakeReport = {
     generated_at: "2026-06-17T08:05:00.000Z",
     verdict: "amber",
@@ -394,6 +397,16 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
       filename: candidateEnginePath,
       loaded: true,
       exports: {
+        async buildCurrentCandidateTranscriptAudienceReport({ candidateReport }) {
+          scopedTranscriptAuditCalls += 1;
+          assert.equal(candidateReport.totals.returned, 5);
+          return {
+            generated_at: "2026-06-17T08:04:59.000Z",
+            execution_mode: "current_scheduler_candidate_transcript_audit",
+            summary: { total: 0, pass: 0, rewrite_required: 0 },
+            stories: [],
+          };
+        },
         async buildFreshCandidateReport() {
           return { report: { totals: { returned: 5 }, candidates: [] }, stories: [] };
         },
@@ -404,6 +417,21 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
           assert.deepEqual(paths, ["C:\\motion-capacity\\studio_v4_source_family_acquisition.json"]);
           return [{ rows: [{ story_id: "motion-close", readiness_status: "v4_motion_blocked" }] }];
         },
+      },
+    };
+    require.cache[transcriptAuditPath] = {
+      id: transcriptAuditPath,
+      filename: transcriptAuditPath,
+      loaded: true,
+      exports: {
+        async auditGeneratedTranscripts() {
+          return {
+            generated_at: "2026-06-17T08:04:58.000Z",
+            summary: { total: 0, pass: 0, rewrite_required: 0 },
+            stories: [],
+          };
+        },
+        async writeTranscriptAudienceAudit() {},
       },
     };
     require.cache[candidateSupplyPath] = {
@@ -478,6 +506,7 @@ test("candidate supply monitor enqueues fresh intake and repair when runway has 
     assert.equal(result.local_tts_retry_recovery_enqueued, true);
     assert.equal(Array.isArray(receivedMotionCapacityReports), true);
     assert.equal(receivedMotionCapacityReports.length, 1);
+    assert.equal(scopedTranscriptAuditCalls, 1);
     assert.equal(enqueued.length, 5);
     assert.equal(enqueued[0].kind, "hunt");
     assert.equal(enqueued[0].payload.reason, "candidate_supply_monitor_fresh_intake");

@@ -30,7 +30,7 @@ const {
   safePublicExcerpt,
 } = require("./lib/public-metadata-qa");
 const {
-  metaBinaryUploadHeaders,
+  instagramResumableUploadHeaders,
   metaBinaryUploadTimeoutMs,
 } = require("./lib/platforms/meta-binary-upload-policy");
 const {
@@ -46,6 +46,8 @@ function resolveTokenPath() {
 // container fields. Poll accepted status fields and log detailed Graph error
 // payloads from failed responses via formatInstagramStatusCheckError().
 const INSTAGRAM_CONTAINER_STATUS_FIELDS = "status_code,status";
+const INSTAGRAM_PUBLIC_REEL_FIELDS =
+  "id,media_type,media_product_type,permalink,timestamp,username";
 const IG_REEL_PROCESSING_MAX_ATTEMPTS = 60;
 const IG_REEL_PROCESSING_POLL_MS = 10000;
 const IG_STORY_PROCESSING_MAX_ATTEMPTS = 30;
@@ -142,6 +144,46 @@ async function getAccessToken() {
   throw new Error(
     "Instagram not authenticated. Set INSTAGRAM_ACCESS_TOKEN env var or re-auth at /auth/facebook",
   );
+}
+
+async function verifyPublicReel(
+  expectedMediaId,
+  { accessToken = null, axiosClient = axios } = {},
+) {
+  const mediaId = cleanText(expectedMediaId);
+  if (!mediaId) {
+    throw new Error("Instagram public Reel verification requires a media ID");
+  }
+
+  const token = accessToken || (await getAccessToken());
+  const response = await axiosClient.get(
+    `https://graph.facebook.com/v21.0/${encodeURIComponent(mediaId)}`,
+    {
+      params: {
+        fields: INSTAGRAM_PUBLIC_REEL_FIELDS,
+        access_token: token,
+      },
+    },
+  );
+  const payload = response?.data || {};
+  const verifiedMediaId = cleanText(payload.id);
+  const mediaType = cleanText(payload.media_type).toUpperCase();
+  const mediaProductType = cleanText(payload.media_product_type).toUpperCase();
+  const permalink = cleanText(payload.permalink);
+
+  return {
+    publicVerified:
+      verifiedMediaId === mediaId &&
+      mediaType === "VIDEO" &&
+      mediaProductType === "REELS" &&
+      Boolean(permalink),
+    mediaId: verifiedMediaId,
+    mediaType,
+    mediaProductType,
+    permalink,
+    timestamp: cleanText(payload.timestamp),
+    username: cleanText(payload.username),
+  };
 }
 
 async function refreshToken(currentToken) {
@@ -402,9 +444,8 @@ async function uploadReel(story) {
         const uploadResp = await axios({
           method: "POST",
           url: uploadUrl,
-          headers: metaBinaryUploadHeaders(fileSize, {
+          headers: instagramResumableUploadHeaders(fileSize, {
             accessToken,
-            contentType: "video/mp4",
           }),
           data: fs.createReadStream(exportedAbs),
           maxContentLength: Infinity,
@@ -792,10 +833,12 @@ module.exports = {
   uploadStoryImage,
   buildInstagramReelCaption,
   getAccessToken,
+  verifyPublicReel,
   refreshToken,
   seedTokenFromEnv,
   resolveTokenPath,
   INSTAGRAM_CONTAINER_STATUS_FIELDS,
+  INSTAGRAM_PUBLIC_REEL_FIELDS,
   IG_REEL_PROCESSING_MAX_ATTEMPTS,
   IG_REEL_PROCESSING_POLL_MS,
   IG_STORY_PROCESSING_MAX_ATTEMPTS,

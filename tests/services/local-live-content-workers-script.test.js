@@ -17,6 +17,7 @@ test("local live content worker launcher starts durable non-publish worker lanes
     "local-content-runway",
     "local-content-refill",
     "local-content-repair",
+    "local-content-produce",
     "local-content-ops",
     "local-content-learning",
   ]) {
@@ -37,6 +38,10 @@ test("local live content worker launcher starts durable non-publish worker lanes
   assert.match(
     script,
     /Id = "local-content-refill"[\s\S]*?Kinds = "fresh_production_refill"/,
+  );
+  assert.match(
+    script,
+    /Id = "local-content-produce"[\s\S]*?Kinds = "produce"/,
   );
   assert.doesNotMatch(
     script,
@@ -61,6 +66,18 @@ test("local live content worker launcher can safely restart only its own worker 
   assert.match(script, /Stop-Process -Id \$process\.ProcessId -Force/);
   assert.match(script, /Refusing to stop/);
   assert.match(script, /local-content-runway/);
+});
+
+test("local live content worker launcher can rotate one validated lane without stopping peers", () => {
+  const script = fs.readFileSync(SCRIPT_PATH, "utf8");
+
+  assert.match(script, /\[ValidateSet\([\s\S]*"local-content-runway"[\s\S]*\)\]/);
+  assert.match(script, /\[string\]\$OnlyWorkerId\s*=\s*""/);
+  assert.match(
+    script,
+    /\$lanes\s*=\s*@\(\s*\$lanes\s*\|\s*Where-Object\s*\{[\s\S]*\$OnlyWorkerId[\s\S]*\}\s*\)/,
+  );
+  assert.match(script, /worker_lane_filter id=\{0\}/);
 });
 
 test("local live content worker launcher replaces only exact owned workers with stale kinds", () => {

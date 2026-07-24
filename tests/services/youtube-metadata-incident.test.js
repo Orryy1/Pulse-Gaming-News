@@ -22,6 +22,8 @@ test("YouTube metadata does not call preview coverage verified leaks", () => {
   assert.match(meta.description, /PULSE GAMING - Gaming stories with named sources\./);
   assert.doesNotMatch(meta.description, /Verified leaks\. Every day\./);
   assert.doesNotMatch(meta.description, /never miss a beat/i);
+  assert.match(meta.description, /\nIGN\n/);
+  assert.doesNotMatch(meta.description, /r\/IGN/);
 });
 
 test("YouTube metadata still allows leak branding for actual leak and rumour classifications", () => {

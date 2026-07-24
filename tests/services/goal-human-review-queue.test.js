@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const os = require("node:os");
 const path = require("node:path");
@@ -149,6 +150,87 @@ function dryRunPlan({ artifactDir, storyId = "story-one" } = {}) {
       ],
     },
   };
+}
+
+async function multiPlatformDescriptionReconciliationPlan({
+  root,
+  storyId = "multi-platform-coherence-story",
+  missingReconciliationPlatform = "",
+  operatorHumanReviewRequired = false,
+} = {}) {
+  const artifactDir = await makeStoryPackage(root, storyId);
+  const videoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const videoBytes = await fs.readFile(videoPath);
+  const videoSha256 = crypto.createHash("sha256").update(videoBytes).digest("hex");
+  const canonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    manifest: {
+      selected_title: canonical.selected_title,
+      thumbnail_headline: canonical.thumbnail_headline,
+      first_spoken_line: canonical.first_spoken_line,
+      narration_script: canonical.narration_script,
+      description: `${canonical.description} Superseded platform notes.`,
+      source_card_label: "Eurogamer",
+    },
+  });
+
+  const plan = dryRunPlan({ artifactDir, storyId });
+  const reconciliationCode =
+    "description_coherence_aliases_superseded_by_exact_current_authority";
+  const motionDensityWarning =
+    "preflight_qa_warn:content:gold_standard:motion_density_below_reference:warn";
+  const exactAuthorityAction = {
+    ...plan.actions[0],
+    story_id: storyId,
+    platform: "tiktok",
+    video_sha256: videoSha256,
+    video_size_bytes: videoBytes.length,
+    video_fingerprint_source: "exact_current_package_authority",
+    blockers: [],
+    authority_reconciliations: [reconciliationCode],
+    live_execution_gate:
+      operatorHumanReviewRequired
+        ? "operator_human_review_required"
+        : "guarded_dispatch_ready",
+    live_execution_gate_reasons:
+      operatorHumanReviewRequired
+        ? [motionDensityWarning, "platform_or_preflight_warnings"]
+        : [],
+    autonomous_green_lit_by_dry_run: !operatorHumanReviewRequired,
+    requires_human_review_before_live_publish: operatorHumanReviewRequired,
+    warnings: operatorHumanReviewRequired ? [motionDensityWarning] : [],
+  };
+  plan.actions = [
+    exactAuthorityAction,
+    ...["instagram_reels", "facebook_reels", "x"].map((platform) => ({
+      ...exactAuthorityAction,
+      platform,
+      video_sha256: null,
+      video_size_bytes: null,
+      video_fingerprint_source: null,
+    })),
+  ].map((action) => (
+    action.platform === missingReconciliationPlatform
+      ? { ...action, authority_reconciliations: [] }
+      : action
+  ));
+  plan.incident_guard_report.stories[0].public_output_coherence_report = {
+    verdict: "pass",
+    blockers: [],
+    artifact_freshness: {
+      status: "fresh",
+      report_present: true,
+      result: "pass",
+      blockers: [],
+      warnings: [],
+      mismatched_fields: [],
+      missing_fields: [],
+      reconciled_by: "exact_current_package_authority_and_metadata_finalisation",
+    },
+  };
+  return { artifactDir, plan, videoPath, videoSha256 };
 }
 
 test("human review queue turns AMBER strict dry-run candidates into operator packets", async () => {
@@ -522,6 +604,185 @@ test("human review queue blocks stale public coherence artefacts before operator
   assert.ok(queue.blocked_items[0].blockers.includes("stale_public_output_coherence_report"));
   assert.ok(queue.blocked_items[0].blockers.includes("stale_public_output_coherence_field:selected_title"));
   assert.equal(queue.blocked_items[0].approval.live_publish_allowed_before_repair, false);
+});
+
+test("human review queue honours a fresh exact-package dry-run description reconciliation", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-reconciled-coherence-"));
+  const storyId = "reconciled-coherence-story";
+  const artifactDir = await makeStoryPackage(root, storyId);
+  const videoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const videoBytes = await fs.readFile(videoPath);
+  const videoSha256 = crypto.createHash("sha256").update(videoBytes).digest("hex");
+  const canonical = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
+  await fs.outputJson(path.join(artifactDir, "coherence_report.json"), {
+    result: "pass",
+    failures: [],
+    manifest: {
+      selected_title: canonical.selected_title,
+      thumbnail_headline: canonical.thumbnail_headline,
+      first_spoken_line: canonical.first_spoken_line,
+      narration_script: canonical.narration_script,
+      description: `${canonical.description} Full YouTube rights notes.`,
+      source_card_label: "Eurogamer",
+    },
+  });
+
+  const plan = dryRunPlan({ artifactDir, storyId });
+  plan.actions = [{
+    ...plan.actions[0],
+    platform: "youtube_shorts",
+    video_sha256: videoSha256,
+    video_size_bytes: videoBytes.length,
+    video_fingerprint_source: "exact_current_package_authority",
+    blockers: [],
+    authority_reconciliations: [
+      "description_coherence_aliases_superseded_by_exact_current_authority",
+    ],
+    package_checks: {
+      exact_current_package_authority: {
+        valid: true,
+        description_coherence_aliases_superseded: true,
+        exact_fingerprints: {
+          render: {
+            path: videoPath,
+            sha256: videoSha256,
+            size_bytes: videoBytes.length,
+          },
+        },
+      },
+      effective_public_output_coherence: {
+        status: "fresh",
+        verdict: "pass",
+        blockers: [],
+        mismatched_fields: [],
+      },
+    },
+    live_execution_gate: "guarded_dispatch_ready",
+    live_execution_gate_reasons: [],
+    autonomous_green_lit_by_dry_run: true,
+  }];
+  plan.incident_guard_report.stories[0].public_output_coherence_report = {
+    verdict: "pass",
+    blockers: [],
+    artifact_freshness: {
+      status: "fresh",
+      report_present: true,
+      result: "pass",
+      blockers: [],
+      warnings: [],
+      mismatched_fields: [],
+      missing_fields: [],
+      reconciled_by: "exact_current_package_authority_and_metadata_finalisation",
+    },
+  };
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: plan,
+    generatedAt: "2026-07-23T21:30:00.000Z",
+  });
+
+  assert.equal(queue.summary.review_item_count, 1);
+  assert.equal(queue.summary.blocked_item_count, 0);
+  assert.deepEqual(queue.review_items[0].enabled_review_platforms, ["youtube_shorts"]);
+  assert.equal(
+    queue.review_items[0].evidence.public_output_coherence_reconciled_by,
+    "exact_current_package_authority_and_metadata_finalisation",
+  );
+  assert.equal(queue.review_items[0].evidence.video_sha256, videoSha256);
+});
+
+test("human review queue honours one story-bound exact reconciliation across enabled non-YouTube actions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-multi-platform-coherence-"));
+  const { plan, videoSha256 } = await multiPlatformDescriptionReconciliationPlan({ root });
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: plan,
+    generatedAt: "2026-07-24T00:35:00.000Z",
+  });
+
+  assert.equal(queue.summary.review_item_count, 1);
+  assert.equal(queue.summary.blocked_item_count, 0);
+  assert.deepEqual(queue.review_items[0].enabled_review_platforms, [
+    "tiktok",
+    "instagram_reels",
+    "facebook_reels",
+    "x",
+  ]);
+  assert.equal(
+    queue.review_items[0].evidence.public_output_coherence_reconciled_by,
+    "exact_current_package_authority_and_metadata_finalisation",
+  );
+  assert.equal(queue.review_items[0].evidence.video_sha256, videoSha256);
+});
+
+test("human review queue honours bound multi-platform reconciliation for explicit operator review actions", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-operator-gated-coherence-"));
+  const { plan, videoSha256 } = await multiPlatformDescriptionReconciliationPlan({
+    root,
+    storyId: "operator-gated-coherence-story",
+    operatorHumanReviewRequired: true,
+  });
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: plan,
+    generatedAt: "2026-07-24T00:38:00.000Z",
+  });
+
+  assert.equal(queue.summary.review_item_count, 1);
+  assert.equal(queue.summary.blocked_item_count, 0);
+  assert.deepEqual(queue.review_items[0].enabled_review_platforms, [
+    "tiktok",
+    "instagram_reels",
+    "facebook_reels",
+    "x",
+  ]);
+  assert.equal(
+    queue.review_items[0].evidence.public_output_coherence_reconciled_by,
+    "exact_current_package_authority_and_metadata_finalisation",
+  );
+  assert.equal(queue.review_items[0].evidence.video_sha256, videoSha256);
+});
+
+test("human review queue blocks a multi-action reconciliation when one platform loses the bound authority evidence", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-missing-platform-authority-"));
+  const { plan } = await multiPlatformDescriptionReconciliationPlan({
+    root,
+    storyId: "missing-platform-authority-story",
+    missingReconciliationPlatform: "instagram_reels",
+  });
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: plan,
+    generatedAt: "2026-07-24T00:36:00.000Z",
+  });
+
+  assert.equal(queue.summary.review_item_count, 0);
+  assert.equal(queue.summary.blocked_item_count, 1);
+  assert.ok(queue.blocked_items[0].blockers.includes("stale_public_output_coherence_report"));
+  assert.ok(
+    queue.blocked_items[0].blockers.includes("stale_public_output_coherence_field:description"),
+  );
+});
+
+test("human review queue blocks a multi-action reconciliation when the exact render is tampered after dry-run", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-human-review-tampered-platform-authority-"));
+  const { plan, videoPath } = await multiPlatformDescriptionReconciliationPlan({
+    root,
+    storyId: "tampered-platform-authority-story",
+  });
+  await fs.appendFile(videoPath, Buffer.from("tampered-after-dry-run"));
+
+  const queue = await buildGoalHumanReviewQueue({
+    dryRunPlan: plan,
+    generatedAt: "2026-07-24T00:37:00.000Z",
+  });
+
+  assert.equal(queue.summary.review_item_count, 0);
+  assert.equal(queue.summary.blocked_item_count, 1);
+  assert.ok(queue.blocked_items[0].blockers.includes("stale_public_output_coherence_report"));
+  assert.ok(
+    queue.blocked_items[0].blockers.includes("stale_public_output_coherence_field:description"),
+  );
 });
 
 test("human review queue enriches missing dry-run evidence with render-input repair detail", async () => {

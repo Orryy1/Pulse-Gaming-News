@@ -21,6 +21,7 @@ const MOTION_CAPACITY_REPORT_NAMES = new Set([
   "real_motion_source_acquisition_work_order.json",
   "fresh_production_refill_repair_report.json",
 ]);
+const DEFAULT_MAX_SUPPLEMENTAL_RUNS_PER_ROOT = 6;
 
 function parseArgs(argv = process.argv) {
   const args = {
@@ -108,6 +109,13 @@ function isCanonicalMotionPackPath(filePath = "") {
   );
 }
 
+function isCanonicalMotionPackSearchRoot(dir = "") {
+  const normalised = path.normalize(String(dir || "")).toLowerCase();
+  return normalised.endsWith(
+    `${path.sep}output${path.sep}studio-v4${path.sep}motion-packs`.toLowerCase(),
+  );
+}
+
 async function walkMotionCapacityReports(dir, options = {}) {
   const maxDepth = Number.isFinite(options.maxDepth) ? options.maxDepth : 8;
   const depth = Number.isFinite(options.depth) ? options.depth : 0;
@@ -136,6 +144,61 @@ async function walkMotionCapacityReports(dir, options = {}) {
   return found;
 }
 
+async function discoverRecentSupplementalContractRoots(searchRoot, options = {}) {
+  const maxRuns = Math.max(
+    1,
+    Math.min(
+      24,
+      Number(
+        options.maxSupplementalRunsPerRoot ||
+          DEFAULT_MAX_SUPPLEMENTAL_RUNS_PER_ROOT,
+      ) || DEFAULT_MAX_SUPPLEMENTAL_RUNS_PER_ROOT,
+    ),
+  );
+  if (!searchRoot || !(await fs.pathExists(searchRoot))) return [];
+  if (path.basename(path.normalize(searchRoot)).toLowerCase() === "goal-contract") {
+    return [path.normalize(searchRoot)];
+  }
+
+  let entries = [];
+  try {
+    entries = await fs.readdir(searchRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const candidates = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const runRoot = path.join(searchRoot, entry.name);
+        const contractRoot =
+          entry.name.toLowerCase() === "goal-contract"
+            ? runRoot
+            : path.join(runRoot, "goal-contract");
+        if (!(await fs.pathExists(contractRoot))) return null;
+        try {
+          const stat = await fs.stat(runRoot);
+          return {
+            path: path.normalize(contractRoot),
+            mtimeMs: stat.mtimeMs || 0,
+          };
+        } catch {
+          return {
+            path: path.normalize(contractRoot),
+            mtimeMs: 0,
+          };
+        }
+      }),
+  );
+
+  return candidates
+    .filter(Boolean)
+    .sort((a, b) => (b.mtimeMs - a.mtimeMs) || b.path.localeCompare(a.path))
+    .slice(0, maxRuns)
+    .map((item) => item.path);
+}
+
 async function discoverMotionCapacityReportPaths(options = {}) {
   const root = path.resolve(options.root || ROOT);
   const limit = Math.max(1, Math.min(30, Number(options.limit || 12) || 12));
@@ -147,13 +210,49 @@ async function discoverMotionCapacityReportPaths(options = {}) {
         path.join(root, "output", "studio-v4", "motion-packs"),
       ];
 
+  const canonicalSearchRoots = searchRoots.filter(isCanonicalMotionPackSearchRoot);
+  const supplementalSearchRoots = searchRoots.filter(
+    (searchRoot) => !isCanonicalMotionPackSearchRoot(searchRoot),
+  );
   const found = [];
-  for (const searchRoot of searchRoots) {
+  for (const searchRoot of canonicalSearchRoots) {
     found.push(...(await walkMotionCapacityReports(searchRoot, { maxDepth: options.maxDepth })));
   }
 
+  const uniqueReports = (items) => {
+    const unique = new Map();
+    for (const item of items) {
+      const normalised = path.normalize(item.path);
+      const previous = unique.get(normalised);
+      if (!previous || item.mtimeMs > previous.mtimeMs) {
+        unique.set(normalised, { ...item, path: normalised });
+      }
+    }
+    return Array.from(unique.values());
+  };
+  const canonicalFirstPass = uniqueReports(found)
+    .filter((item) => isCanonicalMotionPackPath(item.path))
+    .sort((a, b) => (b.mtimeMs - a.mtimeMs) || a.path.localeCompare(b.path));
+  if (canonicalFirstPass.length >= limit) {
+    return canonicalFirstPass.slice(0, limit).map((item) => item.path);
+  }
+
+  for (const searchRoot of supplementalSearchRoots) {
+    const contractRoots = await discoverRecentSupplementalContractRoots(
+      searchRoot,
+      options,
+    );
+    for (const contractRoot of contractRoots) {
+      found.push(
+        ...(await walkMotionCapacityReports(contractRoot, {
+          maxDepth: options.maxDepth,
+        })),
+      );
+    }
+  }
+
   const unique = new Map();
-  for (const item of found) {
+  for (const item of uniqueReports(found)) {
     const normalised = path.normalize(item.path);
     const previous = unique.get(normalised);
     if (!previous || item.mtimeMs > previous.mtimeMs) unique.set(normalised, { ...item, path: normalised });
@@ -170,6 +269,103 @@ async function discoverMotionCapacityReportPaths(options = {}) {
   return [...canonical, ...supplemental]
     .slice(0, limit)
     .map((item) => item.path);
+}
+
+function currentCandidateTranscriptAuditBase(candidateCount, artifactDirCount) {
+  return {
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    execution_mode: "current_scheduler_candidate_transcript_audit",
+    summary: {
+      total: 0,
+      pass: 0,
+      rewrite_required: 0,
+      viral_verdict_counts: {},
+    },
+    stories: [],
+    scope: {
+      candidate_count: candidateCount,
+      artifact_dir_count: artifactDirCount,
+      historical_backlog_omitted: true,
+    },
+    safety: {
+      local_only: true,
+      analysis_only: true,
+      no_live_publish_triggered: true,
+      no_network_uploads: true,
+      no_db_mutation: true,
+      no_oauth_or_token_change: true,
+    },
+  };
+}
+
+function resolveCandidateArtifactDir(candidate = {}, root = ROOT) {
+  const explicit = [
+    candidate.artifact_dir,
+    candidate.source?.artifact_dir,
+    candidate.current_proof_package?.artifact_dir,
+    candidate.scheduler_bridge_artifact_dir,
+    candidate.package_dir,
+  ].find((value) => typeof value === "string" && value.trim());
+  if (explicit) {
+    return path.normalize(
+      path.isAbsolute(explicit) ? explicit : path.resolve(root, explicit),
+    );
+  }
+
+  const exportedPath = [
+    candidate.exported_path,
+    candidate.final_mp4_path,
+    candidate.final_render_path,
+    candidate.source?.exported_path,
+    candidate.source?.final_mp4_path,
+    candidate.source?.final_render_path,
+  ].find((value) => typeof value === "string" && value.trim());
+  if (!exportedPath) return "";
+  const resolved = path.isAbsolute(exportedPath)
+    ? exportedPath
+    : path.resolve(root, exportedPath);
+  return path.dirname(path.normalize(resolved));
+}
+
+async function buildCurrentCandidateTranscriptAudienceReport({
+  candidateReport = {},
+  root = ROOT,
+  auditGeneratedTranscripts = null,
+} = {}) {
+  const candidates = Array.isArray(candidateReport?.candidates)
+    ? candidateReport.candidates
+    : [];
+  const artifactDirs = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const artifactDir = resolveCandidateArtifactDir(candidate, root);
+    const key = process.platform === "win32"
+      ? artifactDir.toLowerCase()
+      : artifactDir;
+    if (!artifactDir || seen.has(key) || !(await fs.pathExists(artifactDir))) continue;
+    seen.add(key);
+    artifactDirs.push(artifactDir);
+  }
+  const base = currentCandidateTranscriptAuditBase(
+    candidates.length,
+    artifactDirs.length,
+  );
+  if (!artifactDirs.length) return base;
+
+  const audit = auditGeneratedTranscripts ||
+    require("../lib/ops/transcript-audience-audit").auditGeneratedTranscripts;
+  const report = await audit({ root, artifactDirs });
+  return {
+    ...base,
+    ...(report || {}),
+    execution_mode: base.execution_mode,
+    scope: base.scope,
+    safety: {
+      ...base.safety,
+      ...(report?.safety || {}),
+    },
+  };
 }
 
 async function buildFreshCandidateReport({ limit = 30 } = {}) {
@@ -230,11 +426,11 @@ async function main(argv = process.argv) {
   const { report: candidateReport, stories } = await buildFreshCandidateReport({ limit: args.limit });
   let transcriptAudienceReport = null;
   try {
-    const {
-      auditGeneratedTranscripts,
-      writeTranscriptAudienceAudit,
-    } = require("../lib/ops/transcript-audience-audit");
-    transcriptAudienceReport = await auditGeneratedTranscripts({ root: ROOT });
+    const { writeTranscriptAudienceAudit } = require("../lib/ops/transcript-audience-audit");
+    transcriptAudienceReport = await buildCurrentCandidateTranscriptAudienceReport({
+      candidateReport,
+      root: ROOT,
+    });
     await writeTranscriptAudienceAudit(transcriptAudienceReport, {
       outputDir: path.join(ROOT, "output", "transcript-audience-audit"),
     });
@@ -292,6 +488,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildCurrentCandidateTranscriptAudienceReport,
   buildFreshCandidateReport,
   discoverMotionCapacityReportPaths,
   main,

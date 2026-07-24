@@ -16,6 +16,8 @@ const {
   attachStoryPreflight,
   combinePreflightQa,
   formatNextPublishCandidatesMarkdown,
+  hashBoundHumanReviewedHyperframesStillMotionEvidence,
+  mediaHousePreflightForStory,
   parseArgs,
   readBridgeCandidateManifest,
   resolveUpstreamBenchmarkReportPath,
@@ -2367,6 +2369,289 @@ test("scheduler rights preflight preserves deferred TikTok platform semantics", 
   );
 });
 
+test("scheduler preflight honours an explicit YouTube-only candidate scope while global Meta lanes stay enabled", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-youtube-only-scope",
+  });
+  const platformManifestPath = path.join(fixture.artifactDir, "platform_publish_manifest.json");
+  const platformManifest = await fs.readJson(platformManifestPath);
+  const disabledReason = "candidate_rights_not_cleared_for_meta";
+  const youtubeOnlyManifest = {
+    ...platformManifest,
+    enabled_platforms: ["youtube_shorts"],
+    outputs: {
+      ...platformManifest.outputs,
+      instagram_reels: {
+        operational_state: "disabled",
+        status: "disabled",
+        disabled_reason: disabledReason,
+        can_auto_publish: false,
+        planned_action: null,
+        planned_actions: [],
+      },
+      facebook_reels: {
+        operational_state: "disabled",
+        status: "disabled",
+        disabled_reason: disabledReason,
+        can_auto_publish: false,
+        planned_action: null,
+        planned_actions: [],
+      },
+    },
+  };
+  await fs.writeJson(platformManifestPath, youtubeOnlyManifest);
+  await fs.writeJson(fixture.rightsPath, {
+    ...fixture.rightsLedger,
+    records: fixture.rightsLedger.records.map((record) => ({
+      ...record,
+      allowed_platforms: ["youtube_shorts"],
+    })),
+  });
+  fixture.story.platform_publish_manifest = youtubeOnlyManifest;
+  let governancePlatforms = null;
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies({
+      env: {
+        INSTAGRAM_ENABLED: "true",
+        FACEBOOK_ENABLED: "true",
+      },
+      runStudioGovernancePreflight: async (_story, options = {}) => {
+        governancePlatforms = options.platforms;
+        return passPreflightQa();
+      },
+    }),
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.deepEqual(governancePlatforms, ["youtube_shorts"]);
+  assert.deepEqual(
+    preflight.checks.scheduler_rights.evidence.target_platforms,
+    ["youtube_shorts"],
+  );
+});
+
+test("scheduler rights preflight uses authoritative selected render inputs instead of an obsolete scene plan", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-authoritative-selected-inputs",
+  });
+  const obsoletePath = path.join(fixture.artifactDir, "obsolete", "legacy-scene.mp4");
+  await fs.outputFile(obsoletePath, "obsolete scene that is not in the final render");
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    clip_scene_plan: {
+      repeat_free: true,
+      scenes: [
+        {
+          id: "obsolete-legacy-scene",
+          path: obsoletePath,
+          media_kind: "direct_video",
+        },
+      ],
+    },
+    selected_input_assets: {
+      schema_version: 2,
+      authoritative: true,
+      complete: true,
+      asset_count: fixture.files.length,
+      blockers: [],
+      assets: fixture.files.map((file) => ({
+        asset_id: file.asset_id,
+        kind: file.kind,
+        path: file.path,
+        asset_sha256: sha256(file.bytes),
+        asset_size_bytes: file.bytes.length,
+      })),
+    },
+  });
+  await bindSchedulerRightsToStableEvidence(fixture);
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(
+    preflight.checks.scheduler_rights.evidence.used_asset_source,
+    "render_manifest.selected_input_assets",
+  );
+  assert.equal(
+    preflight.checks.scheduler_rights.evidence.used_asset_count,
+    fixture.files.length,
+  );
+});
+
+test("scheduler rights preflight accepts only a hash-current governed Meta derivative of the rights-cleared master", async () => {
+  const fixture = await makeSchedulerRightsPackage({
+    storyId: "scheduler-rights-governed-meta-derivative",
+    platformVariants: ["instagram_reels"],
+  });
+  const selectedFiles = fixture.files.filter(
+    (file) => file.kind !== "platform_native",
+  );
+  const variantFile = fixture.files.find(
+    (file) => file.kind === "platform_native",
+  );
+  const finalVideoPath = fixture.story.exported_path;
+  const finalVideoBytes = await fs.readFile(finalVideoPath);
+  const captionsPath = path.join(
+    fixture.artifactDir,
+    "platform_variants",
+    "instagram_reels",
+    "captions_instagram_reels.srt",
+  );
+  await fs.outputFile(
+    captionsPath,
+    "1\n00:00:00,000 --> 00:00:01,000\nCurrent governed captions.\n",
+  );
+  const renderManifestPath = path.join(fixture.artifactDir, "render_manifest.json");
+  const renderManifest = await fs.readJson(renderManifestPath);
+  await fs.writeJson(renderManifestPath, {
+    ...renderManifest,
+    rendered_duration_s: 50,
+    selected_input_assets: {
+      schema_version: 2,
+      authoritative: true,
+      complete: true,
+      asset_count: selectedFiles.length,
+      blockers: [],
+      assets: selectedFiles.map((file) => ({
+        asset_id: file.asset_id,
+        kind: file.kind,
+        path: file.path,
+        asset_sha256: sha256(file.bytes),
+        asset_size_bytes: file.bytes.length,
+      })),
+    },
+  });
+  const platformManifestPath = path.join(
+    fixture.artifactDir,
+    "platform_publish_manifest.json",
+  );
+  const platformManifest = await fs.readJson(platformManifestPath);
+  platformManifest.outputs.instagram_reels = {
+    ...platformManifest.outputs.instagram_reels,
+    variant_captions_path: captionsPath,
+    platform_variant_render: {
+      status: "ready",
+      producer_id: "pulse-goal-platform-variant-materializer",
+      story_id: fixture.story.id,
+      platform: "instagram_reels",
+      encoder_profile: "instagram_reels_meta_safe_h264_aac_v3",
+      transformation_mode: "transcode",
+      passthrough_approved: false,
+      source_video_path: finalVideoPath,
+      source_video_sha256: sha256(finalVideoBytes),
+      source_video_size_bytes: finalVideoBytes.length,
+      output_path: variantFile.path,
+      output_sha256: sha256(variantFile.bytes),
+      output_size_bytes: variantFile.bytes.length,
+      captions_path: captionsPath,
+      source_duration_s: 50,
+      duration_s: 49.5,
+    },
+  };
+  await fs.writeJson(platformManifestPath, platformManifest);
+  const ledger = await fs.readJson(fixture.rightsPath);
+  ledger.records = ledger.records.filter(
+    (record) => record.asset_id !== "platform-native-instagram_reels",
+  );
+  ledger.used_assets = ledger.used_assets.filter(
+    (record) => record.asset_id !== "platform-native-instagram_reels",
+  );
+  await fs.writeJson(fixture.rightsPath, ledger);
+  await bindSchedulerRightsToStableEvidence(fixture);
+
+  const preflight = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(
+    preflight.checks.scheduler_rights.evidence.used_asset_count,
+    selectedFiles.length,
+  );
+  assert.equal(
+    preflight.checks.scheduler_rights.evidence.governed_derived_variant_count,
+    1,
+  );
+  assert.equal(
+    preflight.checks.scheduler_rights.evidence.governed_derived_variants[0].valid,
+    true,
+  );
+
+  await fs.outputFile(variantFile.path, "tampered governed Meta derivative");
+  const tampered = await runPreflightQaForStory(
+    fixture.story,
+    passSchedulerPreflightDependencies(),
+  );
+  assert.equal(tampered.status, "blocked");
+  assert.ok(
+    tampered.blockers.some((blocker) =>
+      blocker.includes("derived_output_fingerprint_invalid")),
+    JSON.stringify(tampered.blockers),
+  );
+});
+
+test("scheduler preflight reconciles only stale rights and generated-still aliases with current authority", async () => {
+  const preflight = await runPreflightQaForStory(
+    baseStory({
+      id: "hash-current-hyperframes-alias-reconciliation",
+      scheduler_bridge_source: "local_bridge_candidate_upsert",
+      duration_seconds: 51,
+      runtime_seconds: 51,
+      audio_duration: 51,
+      min_video_duration_seconds: 35,
+      max_video_duration_seconds: 60,
+    }),
+    passSchedulerPreflightDependencies({
+      runStudioGovernancePreflight: async () => ({
+        result: "fail",
+        failures: ["rights:no_rights_record"],
+        warnings: [],
+      }),
+      runSchedulerRightsQa: async () => ({
+        result: "pass",
+        failures: [],
+        warnings: [],
+        evidence: {
+          used_asset_count: 14,
+          covered_asset_count: 14,
+        },
+      }),
+      runIncidentGuard: async () => ({
+        result: "fail",
+        failures: [
+          "visual_evidence:generated_only_motion_deck",
+          "visual_evidence:no_real_visual_media_asset",
+        ],
+        warnings: [],
+        evidence: {
+          hyperframes_still_motion: {
+            approved: true,
+            render_sha256: "a".repeat(64),
+          },
+        },
+      }),
+    }),
+  );
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(
+    preflight.checks.governance.evidence.reconciliation,
+    "current_hash_bound_scheduler_rights_authority",
+  );
+  assert.equal(
+    preflight.checks.incident_guard.evidence.reconciliation,
+    "hash_bound_human_reviewed_hyperframes_stills_with_current_rights",
+  );
+});
+
 test("scheduler preflight blocks duplicate rights records for one final-used asset", async () => {
   const fixture = await makeSchedulerRightsPackage({
     storyId: "scheduler-rights-duplicate-record",
@@ -2654,6 +2939,333 @@ test("attachPreflightQa never supersedes decoded repeated-motion blockers with a
   assert.ok(
     candidate.preflight_qa.checks.video.evidence.temporal.repeated_motion_sequences.length > 0,
   );
+});
+
+test("scheduler preflight reconciles only still-hold cadence heuristics with exact hash-bound temporal and human AV authority", async (t) => {
+  const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-exact-temporal-authority-"));
+  t.after(() => fs.remove(artifactDir));
+  const storyId = "exact-temporal-authority";
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const videoBytes = Buffer.from("exact final render bytes");
+  await fs.writeFile(finalVideoPath, videoBytes);
+  const renderHash = sha256(videoBytes);
+  const temporalPath = path.join(artifactDir, "temporal_video_qa_report.json");
+  const temporalReport = {
+    schema_version: 1,
+    story_id: storyId,
+    verdict: "GREEN",
+    can_publish: true,
+    blockers: [],
+    warnings: [],
+    final_media: {
+      path: finalVideoPath,
+      sha256: renderHash,
+      size_bytes: videoBytes.length,
+    },
+    validation: {
+      present: true,
+      story_id: storyId,
+      declared_verdict: "GREEN",
+      render_hash_matches: true,
+      render_size_matches: true,
+      decode_complete: true,
+      video_stream_decoded: true,
+      audio_stream_decoded: true,
+      temporal_scan_complete: true,
+      temporal_analysis_scope: "full_frame",
+      temporal_coverage_ratio: 0.998,
+      sampled_frame_count: 102,
+      repeated_motion_sequence_count: 0,
+      choppy_cadence: false,
+      local_stall_detected: false,
+      center_crop_scope: "center_crop",
+      center_crop_scan_complete: true,
+      center_crop_coverage_ratio: 0.998,
+      center_crop_repeated_motion_sequence_count: 0,
+      center_crop_choppy_cadence: false,
+      center_crop_local_stall_detected: false,
+      repeat_reconciliation: {
+        clean_cadence: true,
+        blocking_repeat_detected: false,
+      },
+    },
+  };
+  await fs.writeJson(temporalPath, temporalReport);
+  const temporalBytes = await fs.readFile(temporalPath);
+  await fs.writeJson(path.join(artifactDir, "final_av_review.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    status: "GREEN",
+    verdict: "GREEN",
+    final_verdict: "GREEN",
+    publish_ready: true,
+    can_auto_publish: true,
+    reviewer: {
+      id: "independent-final-av-reviewer",
+      independent: true,
+    },
+    signoff: {
+      reviewer_id: "independent-final-av-reviewer",
+      signed_at: "2026-07-23T19:36:56.962Z",
+    },
+    reviewed_artefact_fingerprints: {
+      final_mp4: `sha256:${renderHash}`,
+    },
+    attestations: {
+      full_watch: true,
+      full_listen: true,
+      av_sync: true,
+      caption_readability: true,
+      subject_match: true,
+    },
+    blockers: [],
+    failures: [],
+    errors: [],
+  });
+  await fs.writeJson(path.join(artifactDir, "goal_package_summary.json"), {
+    story_id: storyId,
+    verdict: "GREEN",
+    can_auto_publish: true,
+    blockers: [],
+    authority_refresh: {
+      source: "current_independently_verified_artifact_evidence",
+      monotonic_verdict: true,
+      frozen_hashes: {
+        render: {
+          path: finalVideoPath,
+          sha256: renderHash,
+          size_bytes: videoBytes.length,
+        },
+        temporal_qa_report: {
+          path: temporalPath,
+          sha256: sha256(temporalBytes),
+          size_bytes: temporalBytes.length,
+        },
+      },
+    },
+  });
+
+  const story = baseStory({
+    id: storyId,
+    scheduler_bridge_source: "local_bridge_candidate_upsert",
+    scheduler_bridge_artifact_dir: artifactDir,
+    exported_path: finalVideoPath,
+    duration_seconds: 51.136,
+    runtime_seconds: 51.136,
+    audio_duration: 51.136,
+    duration_lane: "normal_production",
+    min_video_duration_seconds: 35,
+    max_video_duration_seconds: 60,
+  });
+  const dependencies = passSchedulerPreflightDependencies({
+    runSchedulerRightsQa: passPreflightQa,
+    validateFinalAvReviewFile: async () => ({
+      verdict: "GREEN",
+      can_auto_publish: true,
+      blockers: [],
+    }),
+    runVideoQa: async () => ({
+      result: "fail",
+      failures: [
+        "choppy_temporal_cadence (0.686 overall, 0.941 peak)",
+        "stalled_visual_window (0.941 near-static @ 28.17-31.17s)",
+        "stalled_visual_window_center_crop (0.941 near-static @ 28.33-31.33s)",
+      ],
+      warnings: [],
+      evidence: {
+        decode: { complete: true, video_stream: true, audio_stream: true },
+        temporal: {
+          scan_complete: true,
+          sample_fps: 6,
+          repeated_motion_sequences: [],
+        },
+      },
+    }),
+  });
+
+  const preflight = await runPreflightQaForStory(story, dependencies);
+
+  assert.equal(preflight.status, "pass", JSON.stringify(preflight.blockers));
+  assert.equal(
+    preflight.checks.video.evidence.reconciliation,
+    "exact_hash_bound_temporal_and_human_av_authority",
+  );
+  assert.equal(preflight.checks.video.evidence.superseded_heuristic_failures.length, 3);
+});
+
+test("hash-bound human-reviewed HyperFrames still motion satisfies the motion medium contract without claiming direct video", () => {
+  const renderSha256 = "a".repeat(64);
+  const visualAssets = Array.from({ length: 4 }, (_, index) => ({
+    asset_id: `official-still-${index + 1}`,
+    kind: "screenshot",
+    subject_match: true,
+    path: `C:/media/official-still-${index + 1}.jpg`,
+    asset_sha256: String(index + 1).repeat(64),
+    asset_size_bytes: 1000 + index,
+  }));
+  const report = hashBoundHumanReviewedHyperframesStillMotionEvidence(
+    {
+      renderer: "hyperframes",
+      engine: "hyperframes_0.7.68",
+      final_publish_render: true,
+      selected_input_assets: {
+        authoritative: true,
+        complete: true,
+        asset_count: visualAssets.length,
+        blockers: [],
+        assets: visualAssets,
+      },
+      clip_scene_plan: {
+        renderer: "hyperframes",
+        repeat_free: true,
+        scene_count: 8,
+        placement_count: 16,
+        verified_placement_count: 16,
+        unique_visual_asset_count: visualAssets.length,
+        temporal_qa_verdict: "GREEN",
+      },
+      decoded_visual_gate: {
+        verdict: "GREEN",
+        can_publish: true,
+        render_sha256: renderSha256,
+      },
+      input_evidence: {
+        hyperframes: {
+          composition_sha256: "b".repeat(64),
+          rights_sidecar_verdict: "PASS",
+          canonical_visual_asset_ids: visualAssets.map((asset) => asset.asset_id),
+        },
+      },
+      hyperframes_adoption_evidence: {
+        final_render_sha256: renderSha256,
+        human_av_review_verdict: "GREEN",
+        temporal_video_qa_verdict: "GREEN",
+        rights_placement_verdict: "PASS",
+      },
+    },
+    {
+      valid: true,
+      evidence: {
+        render_sha256: renderSha256,
+        final_av_review_verdict: "GREEN",
+      },
+    },
+  );
+
+  assert.equal(report.approved, true, JSON.stringify(report.blockers));
+  assert.equal(report.motion_medium, "animated_subject_matched_editorial_stills");
+  assert.equal(report.direct_video_claimed, false);
+});
+
+test("scheduler media-house preflight trusts only the current score bound to authoritative final-render inputs", async (t) => {
+  const artifactDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-next-preflight-bound-media-house-"),
+  );
+  t.after(() => fs.remove(artifactDir));
+  const storyId = "bound-media-house-story";
+  const finalVideoPath = path.join(artifactDir, "final.mp4");
+  const finalVideoBytes = Buffer.from("current governed final render");
+  await fs.writeFile(finalVideoPath, finalVideoBytes);
+  const visualAssets = Array.from({ length: 4 }, (_, index) => ({
+    asset_id: `official-still-${index + 1}`,
+    kind: "screenshot",
+    subject_match: true,
+    path: path.join(artifactDir, `official-still-${index + 1}.jpg`),
+    asset_sha256: String(index + 1).repeat(64),
+    asset_size_bytes: 1000 + index,
+  }));
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    generated_at: "2026-07-23T20:10:00.000Z",
+    final_publish_render: true,
+    output_path: finalVideoPath,
+    selected_input_assets: {
+      authoritative: true,
+      complete: true,
+      asset_count: visualAssets.length,
+      blockers: [],
+      assets: visualAssets,
+    },
+  });
+  await fs.writeJson(path.join(artifactDir, "footage_inventory.json"), {
+    story_id: storyId,
+    generated_at: "2026-07-23T05:20:00.000Z",
+    status: "blocked",
+    blockers: ["stale_pre_render_inventory"],
+  });
+  await fs.writeJson(path.join(artifactDir, "pulse_media_house_score.json"), {
+    story_id: storyId,
+    generated_at: "2026-07-23T20:22:00.000Z",
+    verdict: "GREEN",
+    status: "pass",
+    hard_failures: [],
+    warnings: [],
+    thresholds: {
+      overall_media_house_score: 78,
+      source_lock_score: 70,
+    },
+    scores: {
+      overall_media_house_score: 98,
+      title_strength_score: 100,
+      first_frame_score: 100,
+      first_3_seconds_score: 100,
+      competitor_parity_score: 96,
+      competitor_surpass_score: 92,
+    },
+    selected_render_visual_evidence_profile: {
+      evidence_scope: "authoritative_final_render_selection",
+      authoritative_selected_asset_count: visualAssets.length,
+      asset_count: visualAssets.length,
+      subject_matched_editorial_media_count: visualAssets.length,
+      subject_matched_editorial_media_assets: visualAssets.map((asset) => ({
+        asset_id: asset.asset_id,
+      })),
+      subject_motion_mismatch_count: 0,
+      blockers: [],
+    },
+    source_lock_report: {
+      status: "pass",
+      threshold: 70,
+      score: 100,
+      blockers: [],
+    },
+    premium_output_contract: {
+      status: "pass",
+      blockers: [],
+      checks: {
+        final_render: {
+          status: "pass",
+          blockers: [],
+          evidence: {
+            final_publish_render: true,
+            output_path: finalVideoPath,
+            output_bytes: finalVideoBytes.length,
+          },
+        },
+      },
+    },
+  });
+
+  const result = await mediaHousePreflightForStory({
+    id: storyId,
+    scheduler_bridge_source: "local_bridge_candidate_upsert",
+    scheduler_bridge_artifact_dir: artifactDir,
+    exported_path: finalVideoPath,
+    platform_publish_manifest: {
+      publish_status: "GREEN",
+      can_auto_publish: true,
+      outputs: {
+        youtube_shorts: {
+          title: "Current final-render media house proof",
+        },
+      },
+    },
+  });
+
+  assert.equal(result.result, "pass", JSON.stringify(result.failures));
+  assert.equal(result.evidence.source, "current_bound_pulse_media_house_score");
+  assert.equal(result.evidence.overall_media_house_score, 98);
+  assert.equal(result.evidence.source_lock_score, 100);
 });
 
 test("next publish candidates keep all 2.4-second placeholder renders blocked", async () => {

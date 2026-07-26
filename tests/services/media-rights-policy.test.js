@@ -196,6 +196,114 @@ test("a bounded silent official excerpt becomes GREEN after one policy acceptanc
   );
 });
 
+test("the editorial lane recognises gameplay and official-trailer excerpt labels used by production", () => {
+  for (const rightsBasis of [
+    "transformative_gameplay",
+    "transformative_gameplay_excerpt",
+    "official_gameplay_excerpt",
+    "official_trailer_excerpt",
+    "official_trailer_segment",
+  ]) {
+    const report = assessMediaRightsPackage({
+      story_id: `editorial-alias-${rightsBasis}`,
+      target_platforms: TARGETS,
+      policy_acceptance: POLICY_ACCEPTANCE,
+      assets: [editorialVideo({
+        asset_id: `clip-${rightsBasis}`,
+        rights_basis: rightsBasis,
+      })],
+    });
+
+    assert.equal(report.verdict, "GREEN", rightsBasis);
+    assert.equal(
+      report.rights_records[0].rights_basis_category,
+      "bounded_editorial_excerpt",
+      rightsBasis,
+    );
+    assert.equal(report.rights_records[0].rights_grant, undefined, rightsBasis);
+  }
+});
+
+test("bounded muted official video can rely on current-events reporting while photographs remain excluded", () => {
+  const report = assessMediaRightsPackage({
+    story_id: "breaking-game-news-video",
+    target_platforms: TARGETS,
+    policy_acceptance: POLICY_ACCEPTANCE,
+    assets: [editorialVideo({
+      editorial_purpose: "current_events_reporting",
+      source_end_seconds: 20,
+      total_use_seconds: 8,
+    })],
+  });
+
+  assert.equal(report.verdict, "GREEN");
+  assert.equal(report.live_publish_allowed, true);
+  assert.equal(
+    report.rights_records[0].licence_basis,
+    "uk_fair_dealing_current_events_reporting_bounded_excerpt",
+  );
+  assert.equal(report.rights_records[0].legal_exception_reliance, true);
+});
+
+test("the gameplay-first policy permits eight-second cuts but blocks longer continuous windows", () => {
+  const accepted = assessMediaRightsPackage({
+    story_id: "eight-second-editorial-cut",
+    target_platforms: TARGETS,
+    policy_acceptance: POLICY_ACCEPTANCE,
+    assets: [editorialVideo({
+      source_start_seconds: 12,
+      source_end_seconds: 20,
+      total_use_seconds: 8,
+    })],
+  });
+  const rejected = assessMediaRightsPackage({
+    story_id: "over-eight-second-editorial-cut",
+    target_platforms: TARGETS,
+    policy_acceptance: POLICY_ACCEPTANCE,
+    assets: [editorialVideo({
+      source_start_seconds: 12,
+      source_end_seconds: 20.01,
+      total_use_seconds: 8.01,
+    })],
+  });
+
+  assert.equal(accepted.verdict, "GREEN");
+  assert.equal(
+    accepted.internal_guardrails.max_continuous_motion_excerpt_seconds,
+    8,
+  );
+  assert.equal(rejected.verdict, "RED");
+  assert.ok(
+    rejected.blockers.includes(
+      "official-gameplay-window-01:continuous_excerpt_over_internal_guardrail",
+    ),
+  );
+});
+
+test("the package caps aggregate third-party editorial footage at the gameplay-first motion budget", () => {
+  const assets = Array.from({ length: 5 }, (_, index) =>
+    editorialVideo({
+      asset_id: `official-editorial-window-${index + 1}`,
+      source_start_seconds: index * 10,
+      source_end_seconds: index * 10 + 8,
+      total_use_seconds: 8,
+      timeline_start_seconds: index * 8,
+      timeline_end_seconds: index * 8 + 8,
+    }),
+  );
+  const report = assessMediaRightsPackage({
+    story_id: "aggregate-editorial-overuse",
+    target_platforms: TARGETS,
+    policy_acceptance: POLICY_ACCEPTANCE,
+    assets,
+  });
+
+  assert.equal(report.verdict, "RED");
+  assert.ok(report.blockers.includes("package:total_editorial_media_over_internal_guardrail"));
+  assert.equal(report.summary.total_editorial_media_seconds, 40);
+  assert.equal(report.internal_guardrails.max_total_third_party_media_seconds, 36);
+});
+
 test("a compliant editorial excerpt remains AMBER until the owner accepts the policy once", () => {
   const report = assessMediaRightsPackage({
     story_id: "editorial-awaiting-policy",
@@ -225,8 +333,8 @@ test("editorial guardrails block long excerpts, source audio, music, leaks and r
     assets: [
       editorialVideo({
         asset_id: "long-window",
-        source_end_seconds: 20,
-        total_use_seconds: 8,
+        source_end_seconds: 21,
+        total_use_seconds: 9,
       }),
       editorialVideo({
         asset_id: "source-audio",

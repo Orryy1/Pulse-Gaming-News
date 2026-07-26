@@ -2151,6 +2151,284 @@ test("candidate evidence reconciliation replaces a stale restrictive row only fo
   assert.equal(recoveredRenderManifest.can_auto_publish, false);
 });
 
+async function officialYoutubeEditorialExceptionFixture({
+  evidenceOverrides = {},
+  metadataOverrides = {},
+} = {}) {
+  const storyId = "bounded_editorial_official_youtube_motion";
+  const artifactDir = await makeArtifactDir(
+    "pulse-bounded-editorial-youtube-motion-",
+  );
+  const clipPath = path.join(artifactDir, "official-gameplay-window.mp4");
+  const sourceMasterPath = path.join(
+    artifactDir,
+    "official-gameplay-master.mp4",
+  );
+  const finalVideoPath = path.join(artifactDir, "visual_v4_render.mp4");
+  const assessmentPath = path.join(
+    artifactDir,
+    "media_rights_assessment.json",
+  );
+  const sourceUrl =
+    "https://www.youtube.com/watch?v=BoundedEditorialGameplay1";
+  const sourceMasterBytes = Buffer.from(
+    "hash-bound bounded-editorial youtube master",
+  );
+  const clipBytes = Buffer.from("validated bounded editorial gameplay window");
+  const acceptedAt = "2026-07-26T18:00:00.000Z";
+  const evidence = {
+    schema: "pulse_media_rights_assessment_v1",
+    policy_version: "pulse_media_rights_policy_2026-07-26",
+    story_id: storyId,
+    verdict: "GREEN",
+    live_publish_allowed: true,
+    decisions: [{
+      asset_id: "official-gameplay-window",
+      basis: "bounded_editorial_excerpt",
+      verdict: "GREEN",
+      live_publish_allowed: true,
+      blockers: [],
+      rights_record: {
+        asset_id: "official-gameplay-window",
+        licence_basis:
+          "uk_fair_dealing_current_events_reporting_bounded_excerpt",
+        legal_exception_reliance: true,
+        rights_grant: undefined,
+        commercial_use_allowed: true,
+        allowed_platforms: TARGET_PLATFORMS,
+        editorial_policy_acceptance: {
+          accepted_by: "Pulse Gaming owner",
+          accepted_at: acceptedAt,
+        },
+      },
+    }],
+    rights_records: [{
+      asset_id: "official-gameplay-window",
+      licence_basis:
+        "uk_fair_dealing_current_events_reporting_bounded_excerpt",
+      legal_exception_reliance: true,
+      rights_grant: undefined,
+      commercial_use_allowed: true,
+      allowed_platforms: TARGET_PLATFORMS,
+      live_publish_allowed: true,
+      editorial_policy_acceptance: {
+        accepted_by: "Pulse Gaming owner",
+        accepted_at: acceptedAt,
+      },
+    }],
+    blockers: [],
+    ...evidenceOverrides,
+  };
+
+  await fs.outputFile(clipPath, clipBytes);
+  await fs.outputFile(sourceMasterPath, sourceMasterBytes);
+  await fs.outputFile(finalVideoPath, Buffer.from("decodable final"));
+  await fs.outputJson(assessmentPath, evidence, { spaces: 2 });
+  const assessmentBytes = await fs.readFile(assessmentPath);
+  await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
+    story_id: storyId,
+    canonical_subject: "Official Game",
+    primary_source: "Official Game Channel",
+  });
+  await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
+    story_id: storyId,
+    output_path: finalVideoPath,
+    clip_scene_plan: { scenes: [{ path: clipPath }] },
+  });
+  await fs.outputJson(
+    path.join(artifactDir, "materialised_motion_clips.json"),
+    {
+      clips: [{
+        id: "official-gameplay-window",
+        path: clipPath,
+        local_materialized_path: clipPath,
+        source_url: sourceUrl,
+        canonical_source_url: sourceUrl,
+        youtube_video_id: "BoundedEditorialGameplay1",
+        source_type: "official_publisher_gameplay_clip",
+        source_owner: "Official Game Channel",
+        source_family: "official_gameplay_window_24_8",
+        rights_basis:
+          "uk_fair_dealing_current_events_reporting_bounded_excerpt",
+        licence_basis:
+          "uk_fair_dealing_current_events_reporting_bounded_excerpt",
+        allowed_use:
+          "bounded_transformative_current_events_editorial_excerpt",
+        allowed_platforms: TARGET_PLATFORMS,
+        commercial_use_allowed: true,
+        credit_required: true,
+        live_publish_allowed: true,
+        evidence_reference: assessmentPath,
+        evidence_file: assessmentPath,
+        evidence_kind: "bounded_editorial_excerpt_policy",
+        evidence_sha256: sha256(assessmentBytes),
+        evidence_size_bytes: assessmentBytes.length,
+        risk_score: 0.35,
+        legal_exception_reliance: true,
+        transformative_rights_evidence_verified: true,
+        editorial_policy_acceptance: {
+          accepted_by: "Pulse Gaming owner",
+          accepted_at: acceptedAt,
+        },
+        materialized: true,
+        validated: true,
+        segmentValidationPassed: true,
+        provenance: {
+          source: "official_trailer_segment_validation",
+          segment_validated: true,
+          validation_reason:
+            "hash_bound_official_source_and_editorial_exception_evidence_passed",
+        },
+        source_master_path: sourceMasterPath,
+        source_master_sha256: sha256(sourceMasterBytes),
+        motion_source_identity: {
+          status: "resolved",
+          strict_pass: true,
+          canonical_source_url: sourceUrl,
+          youtube_video_id: "BoundedEditorialGameplay1",
+          source_master_sha256: sha256(sourceMasterBytes),
+          source_identity_provenance: {
+            schema_version: 1,
+            kind: "source_identity_evidence_bundle",
+            status: "resolved",
+            sources: [{
+              schema_version: 1,
+              kind: "pulse_source_identity_sidecar",
+              status: "resolved",
+              canonical_source_url: sourceUrl,
+              youtube_video_id: "BoundedEditorialGameplay1",
+              source_master_sha256: sha256(sourceMasterBytes),
+              channel_identity: {
+                author_name: "Official Game Channel",
+                author_url: "https://www.youtube.com/@officialgamechannel",
+              },
+              identity_scope: "source_identity_only",
+              rights_grant: false,
+            }],
+          },
+          blockers: [],
+        },
+        ...metadataOverrides,
+      }],
+    },
+  );
+  await fs.outputJson(path.join(artifactDir, "audio_manifest.json"), {});
+  await fs.outputJson(path.join(artifactDir, "narration_manifest.json"), {});
+  await fs.outputJson(path.join(artifactDir, "sfx_manifest.json"), {
+    source_plan: { selected_assets: [] },
+  });
+  await fs.outputJson(
+    path.join(artifactDir, "platform_publish_manifest.json"),
+    { outputs: {} },
+  );
+  await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
+    verdict: "RED",
+    records: [{
+      asset_id: "official-gameplay-window",
+      path: clipPath,
+      source_url: sourceUrl,
+      source_type: "official_publisher_gameplay_clip",
+      licence_basis: "official_publisher_promotional_editorial_use",
+      commercial_use_allowed: false,
+      allowed_platforms: [],
+      approval_status: "operator_legal_review_required",
+      rights_status: "operator_legal_review_required",
+      usage_scope: "local_proof_only",
+      rights_verdict: "RED",
+      status: "RED",
+      rights_grant: false,
+      risk_score: 1,
+      evidence_file: "materialised_motion_clips.json",
+      rights_decision_basis:
+        "provisional_renderer_local_proof_pending_policy_reconciliation",
+    }],
+  });
+
+  return {
+    artifactDir,
+    assessmentPath,
+    storyId,
+  };
+}
+
+test("candidate evidence reconciliation accepts a hash-bound bounded editorial exception for verified official YouTube gameplay", async () => {
+  const fixture = await officialYoutubeEditorialExceptionFixture();
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: "",
+    storyId: fixture.storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.rights.verdict, "PASS", JSON.stringify(report.rights, null, 2));
+  assert.deepEqual(report.rights.blockers, []);
+  const clip = report.rights.proposed_ledger.records[0];
+  assert.equal(clip.asset_id, "official-gameplay-window");
+  assert.equal(
+    clip.licence_basis,
+    "uk_fair_dealing_current_events_reporting_bounded_excerpt",
+  );
+  assert.equal(clip.legal_exception_reliance, true);
+  assert.equal(clip.rights_grant, undefined);
+  assert.equal(clip.transformative_rights_evidence_verified, true);
+  assert.equal(clip.live_publish_allowed, true);
+  assert.equal(
+    clip.rights_decision_basis,
+    "validated_bounded_editorial_exception",
+  );
+  assert.equal(
+    clip.reconciliation_basis,
+    "current_validated_official_materialised_clip",
+  );
+
+  await fs.appendFile(fixture.assessmentPath, "\nchanged after declaration");
+  const staleReport = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: "",
+    storyId: fixture.storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+  assert.equal(staleReport.rights.verdict, "FAIL");
+  assert.ok(
+    staleReport.rights.blockers.includes(
+      "transformative_rights_policy_evidence_fingerprint_mismatch:official-gameplay-window",
+    ),
+  );
+});
+
+test("candidate evidence reconciliation rejects a hash-bound editorial assessment whose semantic decision is incomplete", async () => {
+  const fixture = await officialYoutubeEditorialExceptionFixture({
+    evidenceOverrides: {
+      live_publish_allowed: false,
+    },
+  });
+  const report = await reconcileCandidateEvidence({
+    artifactDir: fixture.artifactDir,
+    bridgePath: "",
+    storyId: fixture.storyId,
+    repairRights: true,
+    repairBridgeFingerprints: false,
+    apply: false,
+    probeMedia: async () => ({ decodable: true, duration_seconds: 50 }),
+    targetPlatforms: TARGET_PLATFORMS,
+  });
+
+  assert.equal(report.rights.verdict, "FAIL");
+  assert.ok(
+    report.rights.blockers.includes(
+      "bounded_editorial_exception_evidence_invalid:official-gameplay-window",
+    ),
+  );
+});
+
 test("candidate evidence reconciliation keeps hash-bound official YouTube motion RED when identity evidence has no bound rights policy", async () => {
   const storyId = "verified_official_youtube_motion";
   const artifactDir = await makeArtifactDir("pulse-verified-official-youtube-motion-");

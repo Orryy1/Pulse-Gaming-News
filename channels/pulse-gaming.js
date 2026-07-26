@@ -1,12 +1,17 @@
 // Pulse Gaming - Channel Configuration
 // Gaming leaks, rumours and breaking news
 
+const {
+  PULSE_VISUAL_EDITORIAL_POLICY,
+} = require("../lib/studio/v5/pulse-visual-editorial-policy");
+
 module.exports = {
   id: "pulse-gaming",
   name: "PULSE GAMING",
   tagline: "Verified leaks. Every day.",
   cta: "Follow Pulse Gaming so you never miss a beat",
   niche: "gaming",
+  visualEditorial: PULSE_VISUAL_EDITORIAL_POLICY,
 
   // Brand palette
   colours: {

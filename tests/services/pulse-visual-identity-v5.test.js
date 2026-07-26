@@ -5,7 +5,9 @@ const assert = require("node:assert/strict");
 
 const {
   CREATIVE_SYSTEM_VERSION,
+  PLATFORM_VISUAL_LANGUAGE_VERSION,
   applyPulseVisualIdentityToHtml,
+  detectPlatformVisualLanguage,
   inspectPulseVisualIdentityHtml,
   resolvePulseTransitionCycle,
   resolvePulseVisualIdentity,
@@ -85,6 +87,73 @@ test("Pulse visual identity gives each category an FFmpeg-safe edit transition c
   assert.equal(new Set(reveal).size, reveal.length);
 });
 
+test("Pulse visual identity gives Xbox, PlayStation, Nintendo and Steam stories distinct animated card languages", () => {
+  const cases = [
+    [
+      {
+        title: "Four Xbox Game Pass games arrive this week",
+        full_script: "Xbox has confirmed four additions for Game Pass.",
+      },
+      "xbox",
+      "#107c10",
+      "achievement_orbit_grid",
+    ],
+    [
+      {
+        title: "PS5 Pro update transforms Arknights: Endfield",
+        source_name: "PlayStation Blog",
+      },
+      "playstation",
+      "#0070d1",
+      "console_ribbon_geometry",
+    ],
+    [
+      {
+        title: "Nintendo Switch 2 gets a surprise first-party update",
+        source_name: "Nintendo",
+      },
+      "nintendo",
+      "#e60012",
+      "playful_modular_tiles",
+    ],
+    [
+      {
+        title: "Steam breaks another concurrent-player record",
+        source_name: "SteamDB",
+      },
+      "steam",
+      "#66c0f4",
+      "storefront_data_orbit",
+    ],
+  ];
+
+  for (const [story, expectedId, expectedAccent, expectedMotif] of cases) {
+    const language = detectPlatformVisualLanguage(story);
+    const identity = resolvePulseVisualIdentity(story);
+
+    assert.equal(language.version, PLATFORM_VISUAL_LANGUAGE_VERSION);
+    assert.equal(language.id, expectedId);
+    assert.equal(language.accent.toLowerCase(), expectedAccent);
+    assert.equal(language.motif, expectedMotif);
+    assert.ok(language.animated_elements.length >= 6);
+    assert.equal(language.use_official_platform_logo, false);
+    assert.equal(identity.platform_visual_language.id, expectedId);
+    assert.equal(identity.pulse_brand_boundary.pulse_wordmark_retained, true);
+    assert.equal(identity.pulse_brand_boundary.platform_theme_is_context_not_identity, true);
+  }
+});
+
+test("Pulse visual identity uses a neutral Pulse treatment for genuinely multi-platform stories", () => {
+  const language = detectPlatformVisualLanguage({
+    title: "The same game is changing on Xbox and PlayStation",
+    platforms: ["Xbox Series X|S", "PlayStation 5"],
+  });
+
+  assert.equal(language.id, "multi_platform");
+  assert.equal(language.motif, "cross_platform_signal_matrix");
+  assert.equal(language.use_official_platform_logo, false);
+});
+
 test("Pulse visual identity injects a seek-safe living brand layer into one timeline", () => {
   const identity = resolvePulseVisualIdentity({
     title: "A leaked Resident Evil date is reportedly circulating",
@@ -122,6 +191,42 @@ test("Pulse visual identity injects a seek-safe living brand layer into one time
   assert.equal(report.evidence.depth_layer_count, 2);
   assert.equal(report.evidence.safe_zone_branding, true);
   assert.equal(report.evidence.single_timeline, true);
+});
+
+test("Pulse visual identity materialises platform-specific animated motifs without impersonating a platform account", () => {
+  const identity = resolvePulseVisualIdentity({
+    title: "Four Xbox Game Pass games arrive this week",
+    source_name: "Xbox Wire",
+  });
+  const html = applyPulseVisualIdentityToHtml(BASE_HTML, {
+    identity,
+    kind: "context",
+    durationS: 4.8,
+  });
+
+  assert.match(html, /data-pulse-platform="xbox"/);
+  assert.match(html, /--platform-accent:\s*#107c10/i);
+  assert.match(html, /--platform-highlight:\s*#9bf00b/i);
+  assert.match(
+    html,
+    /id="pulse-platform-motif"[^>]*data-platform-motif="achievement_orbit_grid"/,
+  );
+  assert.match(html, /class="pulse-platform-tag"[^>]*>XBOX STORY</);
+  assert.match(html, /id="pulse-platform-node-1"/);
+  assert.match(html, /id="pulse-platform-node-4"/);
+  assert.doesNotMatch(html, /class="[^"]*official-platform-logo/);
+  assert.equal((html.match(/gsap\.timeline\s*\(/g) || []).length, 1);
+
+  const report = inspectPulseVisualIdentityHtml(html, {
+    expectedCategory: identity.category,
+    expectedPlatform: "xbox",
+  });
+  assert.equal(report.status, "pass");
+  assert.equal(report.evidence.platform, "xbox");
+  assert.equal(report.evidence.platform_motif, "achievement_orbit_grid");
+  assert.equal(report.evidence.platform_motif_node_count, 4);
+  assert.equal(report.evidence.pulse_wordmark_retained, true);
+  assert.equal(report.evidence.official_platform_logo_present, false);
 });
 
 test("Pulse visual identity does not repeat the Pulse wordmark inside its category bug", () => {

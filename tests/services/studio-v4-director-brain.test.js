@@ -362,6 +362,74 @@ test("Visual V4 Director applies a distinct V5 category grammar to update storie
   assert.equal(plan.visual_obligations.fullscreen_cards_are_context_only, true);
 });
 
+test("Visual V4 Director carries the gameplay-first animated platform grammar into the shot plan", () => {
+  const xboxStory = {
+    ...story(),
+    id: "xbox-four-game-pass-games-visual-benchmark",
+    title: "Four Xbox Game Pass Games Are Landing This Week",
+    source_name: "Xbox Wire",
+    full_script:
+      "Xbox has confirmed four Game Pass additions. One arrives today, two land on Tuesday and the final game follows on Friday. The achievement lists make the order matter for completion hunters.",
+  };
+  const footagePlan = buildFootageEmpirePlan({
+    story: xboxStory,
+    trustedFootageReport: trustedReport(),
+    localMotionClips: localClips(8),
+  });
+  const plan = buildVisualV4DirectorPlan({
+    story: xboxStory,
+    footagePlan,
+    localTimeline: localTimeline(),
+    sfxAssetInventory: licensedSfxAssets(),
+  });
+
+  assert.equal(
+    plan.visual_editorial_policy.mode,
+    "gameplay_first_animated_news_hybrid",
+  );
+  assert.equal(plan.platform_visual_language.id, "xbox");
+  assert.equal(plan.platform_visual_language.motif, "achievement_orbit_grid");
+  assert.ok(plan.shot_budget.target_motion_ratio >= 0.72);
+  assert.ok(plan.shot_budget.preferred_motion_scene_count >= 10);
+  assert.ok(plan.shot_budget.max_static_card_ratio <= 0.25);
+  assert.equal(
+    plan.visual_obligations.authentic_game_media_is_visual_backbone_when_available,
+    true,
+  );
+  assert.equal(plan.visual_obligations.animated_context_layer_required, true);
+  assert.equal(
+    plan.visual_obligations.generic_abstract_visuals_are_fallback_only,
+    true,
+  );
+  assert.equal(
+    plan.shot_plan.every(
+      (shot) =>
+        shot.platform_visual_language_id === "xbox" &&
+        shot.platform_motion_signature === "achievement_pop_and_tile_snap",
+    ),
+    true,
+  );
+  assert.ok(
+    plan.engagement_element_plan.required_families.includes(
+      "game_count_reveal",
+    ),
+  );
+  assert.ok(
+    plan.engagement_element_plan.platform_specific_families.includes(
+      "achievement_pop",
+    ),
+  );
+  assert.ok(
+    plan.engagement_element_plan.platform_specific_families.includes(
+      "availability_timeline",
+    ),
+  );
+  assert.equal(
+    plan.engagement_element_plan.animation_rule,
+    "clarify_or_intensify_story_beat",
+  );
+});
+
 test("Visual V4 Director uses distinct official clip windows when source assets are limited", () => {
   const clips = officialWindowClipsFromFourAssets();
   const footagePlan = {

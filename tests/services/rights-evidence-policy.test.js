@@ -50,3 +50,51 @@ test("rights evidence policy accepts an explicit hash-bound policy decision shap
   assert.equal(isTransformativeRightsEvidenceKind(record.evidence_kind), true);
   assert.deepEqual(officialYoutubeTransformativeRightsBlockers(record), []);
 });
+
+test("rights evidence policy accepts a verified bounded editorial exception without pretending it is a rights grant", () => {
+  const record = {
+    kind: "video",
+    source_type: "official_publisher_gameplay_clip",
+    source_url: "https://www.youtube.com/watch?v=xdkm9TKSxyI",
+    evidence_kind: "bounded_editorial_excerpt_policy",
+    transformative_rights_evidence_verified: true,
+    legal_exception_reliance: true,
+    rights_grant: undefined,
+    live_publish_allowed: true,
+    editorial_policy_acceptance: {
+      accepted_by: "Pulse Gaming owner",
+      accepted_at: "2026-07-26T18:00:00.000Z",
+    },
+  };
+
+  assert.equal(isTransformativeRightsEvidenceKind(record.evidence_kind), true);
+  assert.deepEqual(officialYoutubeTransformativeRightsBlockers(record), []);
+  assert.equal(record.rights_grant, undefined);
+});
+
+test("rights evidence policy rejects an editorial exception that lacks owner acceptance or a live-publish decision", () => {
+  const base = {
+    kind: "video",
+    source_type: "official_publisher_gameplay_clip",
+    source_url: "https://www.youtube.com/watch?v=xdkm9TKSxyI",
+    evidence_kind: "bounded_editorial_excerpt_policy",
+    transformative_rights_evidence_verified: true,
+    legal_exception_reliance: true,
+    rights_grant: undefined,
+  };
+
+  assert.deepEqual(officialYoutubeTransformativeRightsBlockers(base), [
+    "transformative_rights_policy_evidence_missing_or_unbound",
+  ]);
+  assert.deepEqual(
+    officialYoutubeTransformativeRightsBlockers({
+      ...base,
+      live_publish_allowed: true,
+      editorial_policy_acceptance: {
+        accepted_by: "Pulse Gaming owner",
+        accepted_at: "not-a-date",
+      },
+    }),
+    ["transformative_rights_policy_evidence_missing_or_unbound"],
+  );
+});

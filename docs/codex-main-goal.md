@@ -184,13 +184,17 @@ Outputs: `rights_ledger.json`, `rights_risk_report.json`, `asset_rejection_reaso
 
 Plan the edit before rendering. Produce a beat-by-beat timeline for hook slam, proof beat, motion clip, stat card, contradiction, platform context, player impact, chart/card moment, commercial-safe CTA and identity CTA.
 
-Hard fail no visual change in the first 1.5 seconds, weak first 3 seconds, too many card-only beats, caption/overlay conflicts, tiny source locks, unaligned SFX, generic endings and unsuitable duration.
+Use the gameplay-first animated news hybrid in `docs/pulse-gameplay-first-visual-system.md`. Authentic, story-specific game motion is the default backbone when governed media exists. Target at least 72% authentic motion, prefer ten or more motion scenes and require purposeful animated context such as kinetic headlines, game-count reveals, achievement or feature pops, timelines, comparison panels and source locks.
+
+Hard fail no visual change in the first 1.5 seconds, weak first 3 seconds, too many card-only beats, caption/overlay conflicts, tiny source locks, unaligned SFX, generic endings, unsuitable duration, irrelevant eye candy or abstract fallback visuals displacing suitable game motion.
 
 Outputs: `director_beat_map.json`, `timeline_plan.json`, `retention_intent_map.json`.
 
 ### 8. Visual V4 / Creator Studio Renderer
 
 Output must feel designed, not assembled. Support kinetic lower thirds, animated source locks, Steam/stat cards, comparison bars, bold captions, full-frame motion, branded wipes, speed ramps, proof cards, split-screen proof moments, quote cards, platform-native cover frames, carousel cards and X image cards.
+
+Apply a story-aware Xbox, PlayStation, Nintendo, Steam or multi-platform visual language to animated context cards and transitions. Platform styling is contextual: Pulse must retain its amber signature, PULSE wordmark and editorial identity, and must not imitate an official first-party account.
 
 Hard fail weak motion density, unclear first frame, poor text hierarchy, tiny captions, dense overlays, illegible source locks, repeated rhythm and template-looking output.
 
@@ -330,6 +334,8 @@ Outputs: `sponsor_media_kit.json`, `sponsor_pitch_pack.md`, `brand_safety_report
 ### 26. Creator Studio Brand System
 
 Define logo usage, motion identity, typography, colour system, source-card style, lower thirds, thumbnail style, caption rules, CTA rules, recurring segment names, banned phrases, editorial tone and platform-specific voice.
+
+The platform visual-language system must support Xbox green achievement and tile motifs, PlayStation blue ribbon geometry, Nintendo red modular motion, Steam cyan data-orbit treatments and a neutral multi-platform split treatment. These are Pulse-owned editorial grammars, not copies of official platform templates.
 
 Ownable formats:
 - The Game Behind the Headline

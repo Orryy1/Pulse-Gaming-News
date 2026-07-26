@@ -1104,6 +1104,79 @@ test("goal production render materializer preserves a current hash-bound reconci
   );
 });
 
+test("goal production render materializer preserves a current hash-bound bounded editorial exception row", () => {
+  const clipPath = "output/video_cache/current-bounded-editorial-window.mp4";
+  const clipSha256 = "9".repeat(64);
+  const completed = _private.augmentRightsLedgerForSelectedClips({
+    verdict: "pass",
+    result: "pass",
+    blockers: [],
+    can_auto_publish: false,
+    records: [{
+      asset_id: "current-bounded-editorial-window",
+      path: clipPath,
+      sha256: clipSha256,
+      asset_sha256: clipSha256,
+      asset_size_bytes: 18432,
+      source_url: "https://www.youtube.com/watch?v=BoundedEditorial1",
+      source_type: "official_youtube_channel",
+      source_owner: "Official Publisher",
+      licence_basis: "uk_fair_dealing_current_events_reporting_bounded_excerpt",
+      allowed_use: "transformative_editorial_short_form",
+      allowed_platforms: ["youtube_shorts", "instagram_reels", "facebook_reels"],
+      commercial_use_allowed: true,
+      approval_status: "approved_under_bounded_editorial_exception",
+      rights_status: "approved_under_bounded_editorial_exception",
+      usage_scope: "transformative_editorial_short_form",
+      rights_verdict: "GREEN",
+      rights_decision_basis: "validated_bounded_editorial_exception",
+      reconciliation_basis: "current_validated_official_materialised_clip",
+      current_validated_official_materialised_clip: true,
+      legal_exception_reliance: true,
+      transformative_rights_evidence_verified: true,
+      live_publish_allowed: true,
+      evidence_kind: "media_rights_assessment",
+      editorial_policy_acceptance: {
+        accepted_by: "Pulse Gaming operator",
+        accepted_at: "2026-07-26T12:00:00.000Z",
+      },
+      risk_score: 0.28,
+      evidence_file: "output/current/media_rights_assessment.json",
+      evidence_sha256: "8".repeat(64),
+      evidence_size_bytes: 5120,
+    }],
+  }, [{
+    id: "current-bounded-editorial-window",
+    path: clipPath,
+    source_url: "https://www.youtube.com/watch?v=BoundedEditorial1",
+    source_type: "official_youtube_channel",
+    source_family: "official_window_12_4",
+    media_kind: "direct_video",
+    rights_basis: "official_publisher_promotional_video",
+    rights_grant: false,
+    rights_status: "operator_legal_review_required",
+    usage_scope: "local_proof_only",
+    sha256: clipSha256,
+    size_bytes: 18432,
+  }]);
+
+  assert.equal(completed.verdict, "PASS");
+  assert.equal(completed.result, "PASS");
+  assert.deepEqual(completed.blockers, []);
+  assert.equal(completed.records[0].commercial_use_allowed, true);
+  assert.equal(completed.records[0].rights_grant, undefined);
+  assert.equal(completed.records[0].legal_exception_reliance, true);
+  assert.equal(completed.records[0].rights_verdict, "GREEN");
+  assert.equal(
+    completed.records[0].rights_decision_basis,
+    "validated_bounded_editorial_exception",
+  );
+  assert.equal(
+    completed.records[0].reconciliation_basis,
+    "current_validated_official_materialised_clip",
+  );
+});
+
 test("goal production render materializer preserves a current hash-bound owned procedural rights row", () => {
   const clipPath = "output/generated/owned-procedural-motion.mp4";
   const clipSha256 = "d".repeat(64);

@@ -11,7 +11,7 @@ const {
   buildTikTokAutomationReport,
 } = require("../lib/platforms/tiktok-automation-report");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");

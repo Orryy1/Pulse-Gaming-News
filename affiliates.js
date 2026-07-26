@@ -2,7 +2,7 @@ const dotenv = require("dotenv");
 const path = require("node:path");
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  dotenv.config({ override: true });
+  dotenv.config({ override: false });
 }
 
 const db = require("./lib/db");

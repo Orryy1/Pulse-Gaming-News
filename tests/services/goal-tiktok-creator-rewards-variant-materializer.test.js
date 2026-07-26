@@ -683,6 +683,10 @@ test("TikTok creator-rewards materializer uses story-specific context instead of
     assert.match(variantCanonical.narration_script, item.mustMatch);
     assert.doesNotMatch(
       variantCanonical.narration_script,
+      /Follow Pulse Gaming so you never miss a beat/i,
+    );
+    assert.doesNotMatch(
+      variantCanonical.narration_script,
       /first look is doing two jobs|selling the fantasy|proving the studio can make it move|logo, a licence|logo, a license/i,
     );
     assert.doesNotMatch(

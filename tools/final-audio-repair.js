@@ -14,7 +14,7 @@ const {
   repairTtsAudioFileLoudness,
 } = require("../lib/audio-quality");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const execFileAsync = util.promisify(cp.execFile);
 const ROOT = path.resolve(__dirname, "..");

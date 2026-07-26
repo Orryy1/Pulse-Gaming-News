@@ -15,7 +15,6 @@ function words(n) {
 }
 
 const EXACT_CTA = "Follow Pulse Gaming so you never miss a beat.";
-const EXACT_CTA_WORDS = 9;
 
 const XBOX_BREAKING_STORY = {
   title: "Play More of the Games You Love, Wherever You Play",
@@ -27,33 +26,30 @@ const XBOX_BREAKING_STORY = {
 };
 
 function script(wordCount) {
-  const narrativeWordCount = Math.max(0, wordCount - EXACT_CTA_WORDS);
-  const fullScript = [words(narrativeWordCount), EXACT_CTA]
-    .filter(Boolean)
-    .join(" ");
+  const fullScript = words(wordCount);
   return {
     classification: "[CONFIRMED]",
     hook: "Nintendo quietly confirmed a hardware shift.",
     body: "Details landed from an official source.",
-    cta: EXACT_CTA,
+    cta: "",
     full_script: fullScript,
     word_count: wordCount,
     suggested_thumbnail_text: "Nintendo shift",
   };
 }
 
-test("processor validate: Pulse accepts current 61-75s spoken word budget", () => {
-  const errors = processor.validate(script(100), "pulse-gaming", {
+test("processor validate: Pulse accepts the standard-news 32-42s budget", () => {
+  const errors = processor.validate(script(54), "pulse-gaming", {
     ttsProvider: "elevenlabs",
   });
   assert.deepEqual(errors, []);
 });
 
-test("processor validate: Pulse allows 76-90s scripts as extended Short candidates", () => {
+test("processor validate: Pulse blocks legacy 76-90s scripts from the canonical lane", () => {
   const errors = processor.validate(script(123), "pulse-gaming", {
     ttsProvider: "elevenlabs",
   });
-  assert.deepEqual(errors, []);
+  assert.ok(errors.some((error) => /script_runtime_too_long/.test(error)));
 });
 
 test("processor validate: Pulse rejects old 160-180 word scripts", () => {
@@ -71,11 +67,13 @@ test("processor validate: Pulse local Liam budget is provider-aware", () => {
     ttsProvider: "local",
   });
   assert.ok(
-    tooShort.some((e) => e.includes("outside 204-250 Flash Lane range")),
+    tooShort.some((e) =>
+      e.includes("outside 107-140 standard_news stabilisation range"),
+    ),
     `got: ${tooShort.join(", ")}`,
   );
 
-  const pass = processor.validate(script(216), "pulse-gaming", {
+  const pass = processor.validate(script(120), "pulse-gaming", {
     ttsProvider: "local",
   });
   assert.deepEqual(pass, []);
@@ -153,9 +151,9 @@ test("processor validate: required editorial readiness blocks generic breaking c
 });
 
 test("processor validate: rejects future dates presented as already launched", () => {
-  const item = script(100);
+  const item = script(54);
   item.hook = "Forza Horizon 6 just launched today.";
-  item.full_script = `${words(96)} The PC and Xbox Series X versions launched today, May 19th, 2026. Follow Pulse Gaming so you never miss a beat.`;
+  item.full_script = `${words(40)} The PC and Xbox Series X versions launched today, May 19th, 2026.`;
 
   const errors = processor.validate(item, "pulse-gaming", {
     now: new Date("2026-05-15T12:00:00Z"),
@@ -169,9 +167,9 @@ test("processor validate: rejects future dates presented as already launched", (
 });
 
 test("processor validate: allows future scheduled dates when not claimed as already live", () => {
-  const item = script(100);
+  const item = script(54);
   item.hook = "Forza Horizon 6 finally has a release window.";
-  item.full_script = `${words(96)} The PC and Xbox Series X versions launch on May 19th, 2026. Follow Pulse Gaming so you never miss a beat.`;
+  item.full_script = `${words(40)} The PC and Xbox Series X versions launch on May 19th, 2026.`;
 
   const errors = processor.validate(item, "pulse-gaming", {
     now: new Date("2026-05-15T12:00:00Z"),
@@ -182,9 +180,9 @@ test("processor validate: allows future scheduled dates when not claimed as alre
 });
 
 test("processor validate: allows launched today when the explicit date is today", () => {
-  const item = script(100);
+  const item = script(54);
   item.hook = "Subnautica 2 just launched today.";
-  item.full_script = `${words(96)} Subnautica 2 launched today, May 15th, 2026. Follow Pulse Gaming so you never miss a beat.`;
+  item.full_script = `${words(41)} Subnautica 2 launched today, May 15th, 2026.`;
 
   const errors = processor.validate(item, "pulse-gaming", {
     now: new Date("2026-05-15T12:00:00Z"),
@@ -195,8 +193,8 @@ test("processor validate: allows launched today when the explicit date is today"
 });
 
 test("processor validate: rejects generated scripts with fake Reddit insider framing", () => {
-  const item = script(100);
-  item.full_script = `${words(96)} A verified insider claims this ordinary Reddit thread proves a platform shift. Follow Pulse Gaming so you never miss a beat.`;
+  const item = script(54);
+  item.full_script = `${words(42)} A verified insider claims this ordinary Reddit thread proves a platform shift.`;
 
   const errors = processor.validate(item, "pulse-gaming", {
     story: {
@@ -212,54 +210,42 @@ test("processor validate: rejects generated scripts with fake Reddit insider fra
   );
 });
 
-test("processor validate: rejects non-exact CTA field", () => {
-  const item = script(100);
+test("processor validate: rejects the retired fixed CTA field", () => {
+  const item = script(54);
   item.cta = "Following Pulse Gaming so you never miss a beat.";
 
   const errors = processor.validate(item, "pulse-gaming");
 
-  assert.ok(errors.includes("script_coherence:cta_not_exact"), `got: ${errors.join(", ")}`);
-});
-
-test("processor validate: rejects scripts where exact CTA is metadata-only", () => {
-  const item = script(100);
-  item.cta = "Follow Pulse Gaming so you never miss a beat";
-  item.full_script =
-    "Nintendo confirmed the Switch 2 bundle and named the price. The detail matters because it changes the value calculation for early buyers today.";
-
-  const errors = processor.validate(item, "pulse-gaming");
-
   assert.ok(
-    errors.includes("script_coherence:missing_exact_cta_in_script"),
+    errors.includes("engagement:retired_fixed_cta_forbidden"),
     `got: ${errors.join(", ")}`,
   );
 });
 
-test("processor ensurePulseExactCta appends exact spoken CTA and strips promo clutter", () => {
-  const item = script(216);
+test("processor validate: rejects the retired fixed CTA even when metadata-only", () => {
+  const item = script(54);
+  item.cta = "Follow Pulse Gaming so you never miss a beat";
+
+  const errors = processor.validate(item, "pulse-gaming");
+
+  assert.ok(
+    errors.includes("engagement:retired_fixed_cta_forbidden"),
+    `got: ${errors.join(", ")}`,
+  );
+});
+
+test("processor ending policy strips the retired CTA and promo clutter", () => {
+  const item = script(54);
   item.cta = "Following Pulse Gaming so you never misses a beat.";
   item.full_script =
     "Forza Horizon 6 hit a concrete Steam record today. Don’t miss out on the latest gaming news and breaking revelations.";
 
   processor.ensurePulseExactCta(item, "pulse-gaming");
 
-  assert.equal(item.cta, EXACT_CTA);
+  assert.equal(item.cta, "");
   assert.equal(
     item.full_script,
-    "Forza Horizon 6 hit a concrete Steam record today. Follow Pulse Gaming so you never miss a beat.",
-  );
-  assert.deepEqual(
-    processor.validate(
-      {
-        ...script(216),
-        cta: item.cta,
-        full_script: `${words(207)} ${item.cta}`,
-        word_count: 216,
-      },
-      "pulse-gaming",
-      { ttsProvider: "local" },
-    ),
-    [],
+    "Forza Horizon 6 hit a concrete Steam record today.",
   );
 });
 
@@ -276,7 +262,7 @@ test("processor ensurePulseExactCta leaves non-Pulse channels alone", () => {
 });
 
 test("processor sanitiseScript tightens an overlong hook before validation", () => {
-  const item = script(100);
+  const item = script(54);
   item.hook =
     "Subnautica 2 just hit early access with a concrete player milestone, a Steam surge and a comeback problem nobody can ignore";
 
@@ -290,9 +276,9 @@ test("processor sanitiseScript tightens an overlong hook before validation", () 
 });
 
 test("processor sanitiseScript replaces advertiser-risk words before validation", () => {
-  const item = script(100);
+  const item = script(54);
   item.hook = "EA just killed another Dead Space comeback.";
-  item.full_script = `${words(96)} EA killed another Dead Space comeback. Follow Pulse Gaming so you never miss a beat.`;
+  item.full_script = `${words(47)} EA killed another Dead Space comeback.`;
 
   processor.sanitiseScript(item);
 
@@ -301,7 +287,7 @@ test("processor sanitiseScript replaces advertiser-risk words before validation"
 });
 
 test("processor sanitiseScript removes direction markers and punctuation spacing from hooks", () => {
-  const item = script(100);
+  const item = script(54);
   item.hook =
     "AMD just announced FSR 4.1 , and it is coming to older RX 6000 cards. [PAUSE] That matters for PC players.";
 
@@ -321,26 +307,26 @@ test("processor validate: non-Pulse channels keep their existing word-count cont
   assert.deepEqual(errors, []);
 });
 
-test("processor editor prompt: Pulse uses active local Flash Lane budget, not old 180-220 range", () => {
+test("processor editor prompt: Pulse uses the standard-news stabilisation budget", () => {
   const instruction = processor.editorWordCountInstruction({
     id: "pulse-gaming",
   }, {
     ttsProvider: "local",
   });
 
-  assert.match(instruction, /204-250/);
+  assert.match(instruction, /107-140/);
   assert.doesNotMatch(instruction, /180-220/);
   assert.match(instruction, /Do not expand it/);
 });
 
-test("processor editor prompt: verified breaking news uses the measured-audio lane", () => {
+test("processor editor prompt: first-party news still uses the selected story band", () => {
   const instruction = processor.editorWordCountInstruction(
     { id: "pulse-gaming" },
     { ttsProvider: "local", story: XBOX_BREAKING_STORY },
   );
 
-  assert.match(instruction, /80-180/);
-  assert.match(instruction, /measured narration/i);
+  assert.match(instruction, /107-140/);
+  assert.doesNotMatch(instruction, /measured narration/i);
   assert.doesNotMatch(instruction, /204-250/);
 });
 
@@ -472,18 +458,18 @@ test("processor final validation failure routes story to review instead of accep
 
 test("processor validation retry feedback gives concrete rewrite guidance", () => {
   const feedback = processor.buildValidationRetryFeedback([
-    "Actual spoken word count 100 outside 204-250 Flash Lane range",
+    "Actual spoken word count 100 outside 107-140 standard_news stabilisation range",
     "script_coherence:vague_filler:community_is_buzzing",
-    "script_coherence:missing_exact_cta_in_script",
+    "engagement:retired_fixed_cta_forbidden",
   ], { ttsProvider: "local" });
 
   assert.match(feedback, /VALIDATION REWRITE BRIEF/);
-  assert.match(feedback, /Rewrite full_script as 204-250 cleaned spoken words/);
-  assert.match(feedback, /Aim for 216-238 words/);
+  assert.match(feedback, /Rewrite full_script as 107-140 cleaned spoken words/);
+  assert.match(feedback, /Aim for 116-131 words/);
   assert.match(feedback, /source-backed facts only/);
   assert.match(feedback, /angle-first/i);
   assert.match(feedback, /hot take/i);
-  assert.match(feedback, /end full_script with exactly/);
+  assert.match(feedback, /retired fixed follow CTA is forbidden/i);
   assert.match(feedback, /named source, number, platform, price, release window or player impact/);
   assert.doesNotMatch(feedback, /original script/i);
 });

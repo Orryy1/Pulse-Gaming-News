@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 try {
-  require("dotenv").config({ override: true, quiet: true });
+  require("dotenv").config({ override: false, quiet: true });
 } catch {}
 
 const {

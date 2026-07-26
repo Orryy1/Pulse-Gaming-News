@@ -6,7 +6,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 const execFileAsync = util.promisify(cp.execFile);
 const mediaPaths = require("../lib/media-paths");
 const { measureAudioLoudness } = require("../lib/audio-quality");

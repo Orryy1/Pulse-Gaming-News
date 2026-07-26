@@ -17,6 +17,23 @@ async function makePackage(root, storyId, rightsLedger) {
     story_id: storyId,
     selected_title: "Forza Horizon 6 Just Broke Xbox's Steam Ceiling",
     canonical_subject: "Forza Horizon 6",
+    originality_disclosure_manifest: {
+      originality_and_transformation_verdict: "STRONG",
+      transformation_evidence: {
+        distinct_editorial_claim: "The release changes the player decision.",
+        player_facing_conclusion: "PC players gain a clearer route.",
+        original_analysis_or_comparison: "Pulse compares access and proof.",
+        source_footage_meaningfully_restructured: true,
+        pulse_context_visible: true,
+        visibly_different_from_source: true,
+        narrated_source_reading_only: false,
+      },
+      synthetic_disclosure_required: false,
+      reason: "Reviewed AI narration does not depict a realistic synthetic event.",
+      operator_decision: "DO_NOT_DISCLOSE",
+      youtube_field_value: false,
+      reviewed_at: "2026-05-25T20:00:00.000Z",
+    },
   });
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), rightsLedger);
   return {
@@ -132,6 +149,42 @@ test("Goal 06 rights ledger passes only when every asset has explicit commercial
   assert.equal(report.summary.blocked_story_count, 0);
   assert.equal(report.stories[0].status, "ready");
   assert.deepEqual(report.stories[0].blockers, []);
+  assert.equal(
+    report.stories[0].originality_and_transformation_verdict,
+    "STRONG",
+  );
+  assert.equal(report.stories[0].originality_disclosure_status, "pass");
+});
+
+test("Goal 06 blocks rights-cleared packages with reused-content risk", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal06-originality-"));
+  const storyPackage = await makePackage(
+    root,
+    "story-originality-risk",
+    readyLedger("story-originality-risk"),
+  );
+  const canonicalPath = path.join(
+    storyPackage.artifact_dir,
+    "canonical_story_manifest.json",
+  );
+  const canonical = await fs.readJson(canonicalPath);
+  canonical.originality_disclosure_manifest.originality_and_transformation_verdict =
+    "REUSED_CONTENT_RISK";
+  await fs.writeJson(canonicalPath, canonical, { spaces: 2 });
+
+  const report = await buildGoal06RightsLedger({
+    workspaceRoot: root,
+    outputDir: path.join(root, "goal-06"),
+    storyPackages: [storyPackage],
+    generatedAt: "2026-05-25T21:00:30.000Z",
+  });
+
+  assert.equal(report.verdict, "BLOCKED");
+  assert.ok(
+    report.stories[0].blockers.includes(
+      "originality:verdict_not_publishable",
+    ),
+  );
 });
 
 test("Goal 06 rights ledger blocks raw record arrays without a final-use asset inventory", async () => {

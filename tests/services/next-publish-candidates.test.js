@@ -2992,6 +2992,14 @@ test("scheduler preflight reconciles only still-hold cadence heuristics with exa
   };
   await fs.writeJson(temporalPath, temporalReport);
   const temporalBytes = await fs.readFile(temporalPath);
+  await fs.writeJson(path.join(artifactDir, "render_manifest.json"), {
+    schema_version: 1,
+    story_id: storyId,
+    final_publish_render: true,
+    output_path: finalVideoPath,
+    file_size_bytes: videoBytes.length,
+    rendered_duration_s: 51.136,
+  });
   await fs.writeJson(path.join(artifactDir, "final_av_review.json"), {
     schema_version: 1,
     story_id: storyId,

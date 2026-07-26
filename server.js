@@ -6,8 +6,10 @@ const cors = require("cors");
 const fs = require("fs-extra");
 const path = require("path");
 const { spawn } = require("child_process");
-const cron = require("node-cron");
 const dotenv = require("dotenv");
+const {
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
 const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { resolveRuntimeBuildInfo } = require("./lib/runtime-build-info");
@@ -29,7 +31,7 @@ const {
   enqueueProtectedApiJob,
 } = require("./lib/protected-primary-runtime");
 
-dotenv.config({ override: true });
+loadDotenvOnce({ dotenv, env: process.env });
 const PROTECTED_PRIMARY_RUNTIME = applyProtectedPrimaryRuntime({
   argv: process.argv,
   env: process.env,
@@ -1933,7 +1935,7 @@ app.post(
   },
 );
 
-// --- Autonomous scheduler (built into server) ---
+// --- Authoritative queue-backed scheduler bootstrap ---
 function serverGeneralQueueRunnerEnabled(env = process.env) {
   return /^(true|1|yes|on)$/i.test(
     String(env.PULSE_SERVER_GENERAL_QUEUE_RUNNER || "").trim(),
@@ -1955,13 +1957,8 @@ async function startAutonomousScheduler() {
     );
   }
 
-  // Phase D: unified jobs queue is now the canonical dispatcher. The
-  // lib/dispatch-mode helper picks between `queue` (default, and the
-  // only mode reachable in production) and `legacy_dev` (explicit dev
-  // opt-out via USE_JOB_QUEUE=false). Bootstrap failure in production
-  // throws and refuses to start — no silent fall-through to the
-  // legacy cron registry, which was the 17-April duplicate-dispatch
-  // foot-gun.
+  // Pulse v1 has one queue-backed dispatcher. Bootstrap failure never
+  // arms a second in-process cron registry.
   const { resolveDispatchMode } = require("./lib/dispatch-mode");
   const dispatch = resolveDispatchMode();
   console.log(
@@ -2002,413 +1999,20 @@ async function startAutonomousScheduler() {
       return;
     } catch (err) {
       if (dispatch.strict) {
-        // Production safety: legacy cron is NOT reachable from here.
-        // Refusing to start is preferable to silently arming a parallel
-        // dispatcher in-process.
         console.error(
-          `[server] FATAL: bootstrap-queue failed in production — refusing to start legacy cron fallback. ` +
+          `[server] FATAL: bootstrap-queue failed in production; no scheduler was started. ` +
             `Original error: ${err.message}`,
         );
         throw err;
       }
       console.error(
-        `[server] bootstrap-queue failed in dev (${err.message}) — no scheduler will run this process. ` +
-          `Set USE_JOB_QUEUE=false to intentionally use the legacy cron block for local dev.`,
+        `[server] bootstrap-queue failed in dev (${err.message}); no scheduler will run this process. Fix the queue bootstrap before retrying.`,
       );
       return;
     }
   }
 
-  // dispatch.mode === 'legacy_dev' — explicit dev opt-in only. Never
-  // reached in production.
-  console.log(
-    "[server] WARNING: legacy in-process cron registry active (USE_JOB_QUEUE=false, dev only). " +
-      "This path is DEPRECATED — queue mode is canonical in production.",
-  );
-  await _registerLegacyDevCronRegistry();
-}
-
-// Quarantined pre-Phase-D cron registry. Do not call this from production
-// paths. Kept only as an escape hatch for local dev against the legacy
-// JSON pipeline (USE_SQLITE!=true). The contents below are unchanged
-// from the pre-Phase-D layout so diffs stay reviewable; future cleanup
-// can delete this block once nobody runs the JSON pipeline locally.
-async function _registerLegacyDevCronRegistry() {
-  schedulerRunning = true;
-  const sendDiscord = require("./notify");
-
-  // Hunt every 3 hours + random jitter (0-15 min) to avoid bot-like timing patterns
-  console.log(
-    "[server] Auto-hunter enabled. Running every ~3 hours (with jitter).",
-  );
-  console.log(
-    "[server] Each hunt: fetch -> scripts -> approve -> audio -> images -> video",
-  );
-  // Schedule hunts with jitter to look human
-  function scheduleNextHunt() {
-    const jitter = Math.floor(Math.random() * JITTER_MAX_MS);
-    const nextIn = HUNTER_INTERVAL_MS + jitter;
-    console.log(
-      `[server] Next hunt in ${Math.round(nextIn / 60000)} minutes (includes ${Math.round(jitter / 60000)}min jitter)`,
-    );
-    hunterInterval = setTimeout(async () => {
-      await runHunter();
-      scheduleNextHunt();
-    }, nextIn);
-  }
-  // Delay first hunt by 30s to let server fully stabilise after deploy
-  setTimeout(() => {
-    runHunter();
-    scheduleNextHunt();
-  }, 30000);
-
-  // Data-driven publish windows - uses analytics history to find optimal hours.
-  // Falls back to 07:00/13:00/19:00 UTC when insufficient data.
-  if (process.env.AUTO_PUBLISH === "true") {
-    const {
-      getRecommendedSchedule,
-      DEFAULT_SCHEDULE,
-    } = require("./optimal_timing");
-    let schedule;
-    try {
-      schedule = await getRecommendedSchedule();
-    } catch (err) {
-      console.log(
-        `[server] Optimal timing analysis failed, using defaults: ${err.message}`,
-      );
-      schedule = DEFAULT_SCHEDULE;
-    }
-    console.log(
-      `[server] Publish schedule confidence: ${schedule.confidence} (${schedule.dataPoints} data points)`,
-    );
-
-    const publishWindows = schedule.crons;
-    const windowLabels = schedule.labels;
-
-    publishWindows.forEach((cronExpr, i) => {
-      cron.schedule(
-        cronExpr,
-        async () => {
-          console.log(`[server-cron] ${windowLabels[i]} - PUBLISH WINDOW`);
-          try {
-            // Final produce pass to catch any stragglers
-            const { produce } = require("./publisher");
-            await produce();
-
-            // Publish ONE story per window (spread across the day for algorithm)
-            const { publishNextStory } = require("./publisher");
-            const result = await publishNextStory({
-              dispatchSource: "server_cron_publish_window",
-            });
-            if (result) {
-              const { renderPublishSummary } = require("./lib/job-handlers");
-              const summary = renderPublishSummary(result);
-              if (summary?.message) await sendDiscord(summary.message);
-            } else {
-              console.log(
-                `[server-cron] No unpublished stories ready for ${windowLabels[i]}`,
-              );
-            }
-          } catch (err) {
-            console.log(`[server-cron] Publish error: ${err.message}`);
-            await sendDiscord(
-              `**Publish Error** (${windowLabels[i]}): ${err.message}`,
-            );
-          }
-        },
-        { timezone: "UTC" },
-      );
-    });
-
-    console.log(
-      `[server] Auto-publish enabled: ${publishWindows.length}x daily - ${windowLabels.join(" | ")}`,
-    );
-
-    // Engagement passes - 30 minutes after each publish window
-    const engagementWindows = ["30 7 * * *", "30 13 * * *", "30 19 * * *"];
-    engagementWindows.forEach((cronExpr, i) => {
-      cron.schedule(
-        cronExpr,
-        async () => {
-          console.log(
-            `[server-cron] ${windowLabels[i]} +30min - ENGAGEMENT PASS`,
-          );
-          try {
-            const { engageRecent } = require("./engagement");
-            await engageRecent();
-          } catch (err) {
-            console.log(`[server-cron] Engagement error: ${err.message}`);
-          }
-        },
-        { timezone: "UTC" },
-      );
-    });
-    console.log(
-      "[server] Auto-engagement enabled: 30 min after each publish window",
-    );
-
-    // First-hour engagement - every 15 minutes, catches videos published < 60 min ago
-    cron.schedule(
-      "*/15 * * * *",
-      async () => {
-        try {
-          const fhNews = await fs.readJson(DATA_FILE).catch(() => []);
-          const now = Date.now();
-          const cutoff1h = now - 60 * 60 * 1000;
-
-          const firstHourVideos = fhNews.filter((s) => {
-            if (!s.youtube_post_id || s.publish_status !== "published")
-              return false;
-            const publishTime = s.published_at || s.timestamp;
-            return publishTime && new Date(publishTime).getTime() >= cutoff1h;
-          });
-
-          if (firstHourVideos.length > 0) {
-            console.log(
-              `[server-cron] First-hour engagement: ${firstHourVideos.length} video(s) in window`,
-            );
-            const { engageFirstHour } = require("./engagement");
-            for (const story of firstHourVideos) {
-              await engageFirstHour(story.youtube_post_id, story);
-            }
-          }
-        } catch (err) {
-          console.log(
-            `[server-cron] First-hour engagement error: ${err.message}`,
-          );
-        }
-      },
-      { timezone: "UTC" },
-    );
-    console.log(
-      "[server] First-hour engagement: every 15 min for videos < 60 min old",
-    );
-
-    // Analytics pass - twice daily, pulls YouTube stats and updates scoring history
-    const analyticsWindows = ["0 8 * * *", "0 20 * * *"];
-    analyticsWindows.forEach((cronExpr) => {
-      cron.schedule(
-        cronExpr,
-        async () => {
-          console.log("[server-cron] ANALYTICS PASS - pulling YouTube stats");
-          try {
-            const { runAnalytics } = require("./analytics");
-            await runAnalytics();
-          } catch (err) {
-            console.log(`[server-cron] Analytics error: ${err.message}`);
-          }
-        },
-        { timezone: "UTC" },
-      );
-    });
-    console.log("[server] Analytics enabled: 2x daily at 08:00/20:00 UTC");
-  } else {
-    console.log(
-      "[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.",
-    );
-    console.log(
-      "[server] Set AUTO_PUBLISH=true in Railway env vars to enable.",
-    );
-  }
-
-  // Weekly longform compilation - every Sunday at 14:00 UTC
-  cron.schedule(
-    "0 14 * * 0",
-    async () => {
-      console.log("[server-cron] Sunday 14:00 UTC - WEEKLY COMPILATION");
-      try {
-        const { compileWeekly } = require("./weekly_compile");
-        const result = await compileWeekly();
-        if (result) {
-          weeklyCompilationState = {
-            status: "complete",
-            last_compiled: new Date().toISOString(),
-            result,
-            error: null,
-          };
-          await sendDiscord(
-            `**Weekly Roundup Published**\n` +
-              `${result.story_count} stories, ${Math.round(result.duration_seconds / 60)} min\n` +
-              `${result.youtube_url || "Upload pending"}`,
-          );
-        } else {
-          weeklyCompilationState = {
-            status: "skipped",
-            last_compiled: new Date().toISOString(),
-            error: null,
-          };
-        }
-      } catch (err) {
-        console.log(`[server-cron] Weekly compilation error: ${err.message}`);
-        weeklyCompilationState = {
-          status: "error",
-          last_compiled: null,
-          error: err.message,
-        };
-        await sendDiscord(`**Weekly Roundup Error**: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-  console.log("[server] Weekly compilation: Sunday 14:00 UTC");
-
-  // Monthly topic compilations - 1st of each month at 10:00 UTC
-  cron.schedule(
-    "0 10 1 * *",
-    async () => {
-      console.log(
-        "[server-cron] 1st of month 10:00 UTC - MONTHLY TOPIC COMPILATIONS",
-      );
-      try {
-        const {
-          identifyCompilableTopics,
-          compileByTopic,
-        } = require("./weekly_compile");
-        const topics = await identifyCompilableTopics(30);
-        const top3 = topics.slice(0, 3);
-
-        if (top3.length === 0) {
-          console.log("[server-cron] No compilable topics found this month");
-          await sendDiscord(
-            "**Monthly Topic Compilations** - No topics with 4+ stories found. Skipping.",
-          );
-          return;
-        }
-
-        console.log(
-          `[server-cron] Compiling top ${top3.length} topics: ${top3.map((t) => t.keyword).join(", ")}`,
-        );
-        await sendDiscord(
-          `**Monthly Topic Compilations** - Starting ${top3.length} compilations: ${top3.map((t) => `"${t.keyword}" (${t.count} stories)`).join(", ")}`,
-        );
-
-        for (const topic of top3) {
-          try {
-            await compileByTopic(topic.keyword);
-          } catch (err) {
-            console.log(
-              `[server-cron] Topic compilation failed for "${topic.keyword}": ${err.message}`,
-            );
-            await sendDiscord(
-              `**Topic Compilation Error** ("${topic.keyword}"): ${err.message}`,
-            );
-          }
-        }
-      } catch (err) {
-        console.log(
-          `[server-cron] Monthly topic compilations error: ${err.message}`,
-        );
-        await sendDiscord(
-          `**Monthly Topic Compilations Error**: ${err.message}`,
-        );
-      }
-    },
-    { timezone: "UTC" },
-  );
-  console.log("[server] Monthly topic compilations: 1st of month at 10:00 UTC");
-
-  // Instagram token auto-refresh - every Monday at 03:00 UTC
-  cron.schedule(
-    "0 3 * * 1",
-    async () => {
-      console.log("[server-cron] Instagram token refresh check...");
-      try {
-        const {
-          seedTokenFromEnv,
-          refreshToken,
-          resolveTokenPath,
-        } = require("./upload_instagram");
-        const fs2 = require("fs-extra");
-        const tokenPath = resolveTokenPath();
-        await seedTokenFromEnv();
-        if (await fs2.pathExists(tokenPath)) {
-          const tokenData = await fs2.readJson(tokenPath);
-          const daysLeft = Math.round(
-            (tokenData.expires_at - Date.now()) / (24 * 60 * 60 * 1000),
-          );
-          console.log(`[instagram] Token expires in ${daysLeft} days`);
-          if (daysLeft < 30) {
-            await refreshToken(tokenData.access_token);
-            console.log("[instagram] Token refreshed successfully");
-          } else {
-            console.log("[instagram] Token still fresh, no refresh needed");
-          }
-        }
-      } catch (err) {
-        console.log(`[instagram] Token refresh failed: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-  console.log("[server] Instagram token auto-refresh: every Monday 03:00 UTC");
-
-  // Blog rebuild - daily at 22:00 UTC (after last publish window)
-  cron.schedule(
-    "0 22 * * *",
-    async () => {
-      console.log("[server-cron] 22:00 UTC - BLOG REBUILD");
-      try {
-        const { build } = require("./blog/build");
-        await build();
-        console.log("[server-cron] Blog rebuild complete");
-      } catch (err) {
-        console.log(`[server-cron] Blog rebuild error: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-  console.log("[server] Blog rebuild: daily at 22:00 UTC");
-
-  // Weekly timing re-analysis - Sunday midnight UTC
-  cron.schedule(
-    "0 0 * * 0",
-    async () => {
-      console.log("[server-cron] Sunday 00:00 UTC - WEEKLY TIMING RE-ANALYSIS");
-      try {
-        const { getTimingReport } = require("./optimal_timing");
-        const report = await getTimingReport();
-        console.log("[server-cron] Timing report generated");
-        await sendDiscord("**Weekly Timing Report**\n" + report);
-      } catch (err) {
-        console.log(`[server-cron] Timing analysis error: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-  console.log("[server] Weekly timing re-analysis: Sunday 00:00 UTC");
-
-  // Daily database backup - 04:00 UTC
-  cron.schedule(
-    "0 4 * * *",
-    async () => {
-      console.log("[server-cron] 04:00 UTC - DATABASE BACKUP");
-      try {
-        const { backupDatabase } = require("./lib/db_backup");
-        await backupDatabase();
-      } catch (err) {
-        console.log(`[server-cron] DB backup error: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-  console.log("[server] Database backup: daily at 04:00 UTC");
-
-  // --- Breaking news watcher (continuous Reddit + RSS monitoring) ---
-  try {
-    const { startWatching } = require("./watcher");
-    const { queueBreaking } = require("./breaking_queue");
-
-    const emitter = startWatching();
-    emitter.on("breaking", (story) => {
-      console.log(`[server] Watcher detected breaking story: ${story.title}`);
-      queueBreaking(story);
-    });
-    console.log(
-      "[server] Breaking news watcher started (90s Reddit / 5min RSS polls)",
-    );
-  } catch (err) {
-    console.log(`[server] Watcher failed to start: ${err.message}`);
-  }
+  // Queue bootstrap is the only scheduler path. Failure leaves this process without a scheduler.
 }
 
 // --- Watcher endpoints (breaking news speed pipeline) ---
@@ -2829,9 +2433,16 @@ app.get("/api/pipeline/backlog", requireAuth, (req, res) => {
 // secrets — just names, cron strings, lanes, priorities.
 app.get("/api/scheduler/plan", requireAuth, (req, res) => {
   try {
-    const { DEFAULT_SCHEDULES } = require("./lib/scheduler");
+    const {
+      DEFAULT_SCHEDULES,
+      activeSchedulesForEnvironment,
+    } = require("./lib/scheduler");
     const { buildSchedulerPlan } = require("./lib/services/scheduler-plan");
-    res.json(buildSchedulerPlan(DEFAULT_SCHEDULES));
+    res.json(
+      buildSchedulerPlan(
+        activeSchedulesForEnvironment(DEFAULT_SCHEDULES, process.env),
+      ),
+    );
   } catch (err) {
     console.error(`[server] /api/scheduler/plan error: ${err.message}`);
     res.status(500).json({ error: "Internal server error" });

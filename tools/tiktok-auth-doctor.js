@@ -10,7 +10,7 @@ const {
   renderTikTokAuthDoctorMarkdown,
 } = require("../lib/platforms/tiktok-auth-doctor");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");

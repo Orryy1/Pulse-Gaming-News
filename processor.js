@@ -2,8 +2,13 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
+const {
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
 
-dotenv.config({ override: true });
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  loadDotenvOnce({ dotenv, env: process.env });
+}
 
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
@@ -29,6 +34,10 @@ const {
 } = require("./lib/viral-script-intelligence");
 const { isSafePublicTitle } = require("./lib/public-title");
 const { applyGamingPronunciation } = require("./lib/tts-pronunciation");
+const {
+  INITIAL_RUNTIME_BANDS,
+  OUTWARD_EDITORIAL_LANES,
+} = require("./lib/stabilisation/brand-content-contract");
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");
@@ -83,11 +92,13 @@ const FINANCE_RED_FLAGS = [
   "can't lose",
 ];
 
-const PULSE_EXACT_CTA = "Follow Pulse Gaming so you never miss a beat.";
 const PULSE_CTA_ENDING_RE =
   /(?:[\s,.!?:;]*(?:don[’']?t miss out on (?:the )?latest gaming news[^.!?]*[.!?]\s*)?(?:follow(?:ing)?\s+pulse\s+gaming\s+so\s+you\s+never\s+miss(?:es)?\s+a\s+beat\.?))+$/i;
 const PULSE_PRE_CTA_PROMO_ENDING_RE =
   /[\s,.!?:;]*don[’']?t miss out on (?:the )?latest gaming news[^.!?]*[.!?]?$/i;
+
+const GENERIC_FOLLOW_CTA_ENDING_RE =
+  /[\s,.!?:;]*(?:follow|subscribe)\s+(?:pulse gaming(?: news)?\s+)?(?:for|so)\s+[^.!?]*(?:[.!?]\s*)?$/i;
 
 // British English enforcement map - common Americanisms Claude defaults to
 const BRITISH_SPELLING = {
@@ -622,6 +633,80 @@ function resolveTtsProviderForRuntime(options = {}) {
     .toLowerCase();
 }
 
+const STABILISATION_STORY_TYPES = new Set(
+  Object.keys(INITIAL_RUNTIME_BANDS),
+);
+const STABILISATION_LANE_IDS = new Set(
+  OUTWARD_EDITORIAL_LANES.map(({ id }) => id),
+);
+
+function resolvePulseStoryType(story = {}) {
+  const explicit = String(
+    story.stabilisation_story_type || story.story_type || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (STABILISATION_STORY_TYPES.has(explicit)) return explicit;
+
+  const text = `${story.title || ""} ${story.hook || ""} ${story.body || ""}`;
+  const itemCount = Number(
+    story.list_item_count || story.item_count || story.subject_count,
+  );
+  if (
+    itemCount === 4 ||
+    /(?:^|\s)(?:4|four)[- ](?:game|item|title|classic|release|change)s?\b/i.test(
+      text,
+    )
+  ) {
+    return "four_item_list";
+  }
+  if (
+    story.two_sided_story === true ||
+    /\b(?:versus|vs\.?|winner|loser|platform strategy|business model|acquisition)\b/i.test(
+      text,
+    )
+  ) {
+    return "two_sided_platform_business";
+  }
+  if (story.single_fact === true || story.single_consequence === true) {
+    return "single_fact_consequence";
+  }
+  return "standard_news";
+}
+
+function resolvePulseEditorialLane(story = {}) {
+  const explicit = String(
+    story.stabilisation_lane_id ||
+      story.outward_editorial_lane ||
+      story.lane_id ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+  if (STABILISATION_LANE_IDS.has(explicit)) return explicit;
+
+  const text = `${story.title || ""} ${story.hook || ""} ${story.body || ""}`;
+  if (/\b(?:trailer|gameplay|footage|demo|remake|graphics?)\b/i.test(text)) {
+    return "trailer_truth_check";
+  }
+  if (
+    /\b(?:xbox|playstation|nintendo|steam|platform|console|pc strategy)\b/i.test(
+      text,
+    )
+  ) {
+    return "platform_pulse";
+  }
+  return "what_changes_for_players";
+}
+
+function preparePulseStabilisationStory(story = {}) {
+  return {
+    ...story,
+    stabilisation_story_type: resolvePulseStoryType(story),
+    stabilisation_lane_id: resolvePulseEditorialLane(story),
+  };
+}
+
 function resolvePulseRuntimeProfile(options = {}) {
   if (options.resolvedRuntimeProfile === true) return options;
   const provider = resolveTtsProviderForRuntime(options);
@@ -629,10 +714,11 @@ function resolvePulseRuntimeProfile(options = {}) {
     Number.isFinite(Number(options.secondsPerWord)) && Number(options.secondsPerWord) > 0
       ? Number(options.secondsPerWord)
       : secondsPerWordForTtsProvider(provider, options.env || process.env);
+  const runtimeStory = preparePulseStabilisationStory(options.story || {});
   const probe = classifyShortScriptRuntime({
     wordCount: 1,
     secondsPerWord,
-    story: options.story,
+    story: runtimeStory,
     measuredAudioSeconds: options.measuredAudioSeconds,
   });
   const minWords = probe.minWords || DEFAULT_MIN_WORDS;
@@ -662,6 +748,8 @@ function resolvePulseRuntimeProfile(options = {}) {
       probe.audioDurationVerificationRequired === true,
     minSeconds: probe.minSeconds,
     maxSeconds: probe.maxSeconds,
+    storyType: runtimeStory.stabilisation_story_type,
+    laneId: runtimeStory.stabilisation_lane_id,
     firstPartyAnnouncement: probe.firstPartyAnnouncement || null,
   };
 }
@@ -689,25 +777,21 @@ function buildPulseRuntimePromptInstruction(channel = {}, options = {}) {
       "- Do not pad the announcement to meet the normal Flash Lane and do not claim publish readiness before measured audio passes.",
     ].join("\n");
   }
-  const legacyNote =
-    profile.provider === "local"
-      ? "This overrides any older 90-110 word guidance, which only applied to the slower ElevenLabs path."
-      : "This is the active ElevenLabs pacing contract.";
   return [
     "",
-    "ACTIVE PULSE RUNTIME CONTRACT:",
+    "ACTIVE PULSE STABILISATION RUNTIME CONTRACT:",
     `- TTS provider: ${profile.provider}.`,
-    `- full_script must be ${runtimeWordRange(profile)} cleaned spoken words for a 61-75 second Short.`,
-    `- Aim for ${runtimeAimRange(profile)} words so the voice does not land too short or scrape the ceiling.`,
-    "- Do not pad with vague channel strategy, repeated claims or internal Pulse language.",
-    `- ${legacyNote}`,
+    `- Story type: ${profile.storyType}; outward lane: ${profile.laneId}.`,
+    `- full_script must be ${runtimeWordRange(profile)} cleaned spoken words for a ${profile.minSeconds}-${profile.maxSeconds} second canonical Short.`,
+    `- Aim for ${runtimeAimRange(profile)} words and end on a story-specific payoff.`,
+    "- Never pad a simple fact to meet a platform reward threshold.",
+    "- The retired fixed Pulse follow CTA is forbidden. A genuinely story-specific CTA is optional and governed at cohort level.",
   ].join("\n");
 }
 
 function validate(script, channelId, options = {}) {
   const errors = [];
   const actualWords = countSpokenWords(cleanForTTS(script.full_script || ""));
-  const requiresPulseCta = channelId === "pulse-gaming";
   errors.push(...validateFutureReleaseClaims(script, options));
   const unsupportedTitleClaims = findUnsupportedUniversalClaims(
     options.story || {},
@@ -725,6 +809,7 @@ function validate(script, channelId, options = {}) {
     const viral = buildViralScriptIntelligence({
       story: { ...(options.story || {}), ...script },
       script: script.full_script || "",
+      ctaPolicy: "optional",
     });
     if (viral.verdict !== "viral_ready") {
       errors.push(
@@ -735,17 +820,29 @@ function validate(script, channelId, options = {}) {
   const coherenceQa = runScriptCoherenceQa(
     { ...(options.story || {}), ...script },
     {
-      requireCtaField: requiresPulseCta,
-      requireFullScriptCta: requiresPulseCta,
+      requireCtaField: false,
+      requireFullScriptCta: false,
     },
   );
   errors.push(...coherenceQa.failures);
   if (channelId === "pulse-gaming") {
-    const runtimeProfile = resolvePulseRuntimeProfile(options);
+    const engagementText = `${script.cta || ""} ${script.full_script || ""}`;
+    if (
+      /follow(?:ing)?\s+pulse\s+gaming\s+so\s+you\s+never\s+miss(?:es)?\s+a\s+beat/i.test(
+        engagementText,
+      )
+    ) {
+      errors.push("engagement:retired_fixed_cta_forbidden");
+    }
+    const runtimeStory = preparePulseStabilisationStory(options.story || {});
+    const runtimeProfile = resolvePulseRuntimeProfile({
+      ...options,
+      story: runtimeStory,
+    });
     const runtime = classifyShortScriptRuntime({
       text: cleanForTTS(script.full_script || ""),
       secondsPerWord: runtimeProfile.secondsPerWord,
-      story: options.story,
+      story: runtimeStory,
       measuredAudioSeconds: options.measuredAudioSeconds,
     });
     if (runtime.result === "fail") {
@@ -759,11 +856,10 @@ function validate(script, channelId, options = {}) {
       runtime.result === "review" && runtime.route === "extended_or_briefing"
         ? runtime.reviewMaxWords
         : runtime.maxWords;
-    const wordRangeLabel = runtime.durationLane === "breaking_news"
-      ? "Breaking News Lane"
-      : maxAllowedWords > runtime.maxWords
-        ? "Flash/Extended Short"
-        : "Flash Lane";
+    const wordRangeLabel =
+      runtime.durationLane === "breaking_news"
+        ? "Breaking News Lane"
+        : `${runtimeStory.stabilisation_story_type} stabilisation`;
     if (actualWords < runtime.minWords || actualWords > maxAllowedWords) {
       errors.push(
         `Actual spoken word count ${actualWords} outside ${runtime.minWords}-${maxAllowedWords} ${wordRangeLabel} range`,
@@ -876,25 +972,44 @@ function sanitiseScript(script) {
   return script;
 }
 
-function ensurePulseExactCta(script = {}, channelId = "pulse-gaming") {
+function applyStabilisationEndingPolicy(script = {}, channelId = "pulse-gaming") {
   if (channelId !== "pulse-gaming" || !script || typeof script !== "object") {
     return script;
   }
 
-  script.cta = PULSE_EXACT_CTA;
-  const fullScript = normaliseScriptPunctuation(String(script.full_script || "")).trim();
+  const cta = normaliseScriptPunctuation(String(script.cta || "")).trim();
+  if (
+    PULSE_CTA_ENDING_RE.test(cta) ||
+    PULSE_PRE_CTA_PROMO_ENDING_RE.test(cta) ||
+    GENERIC_FOLLOW_CTA_ENDING_RE.test(cta)
+  ) {
+    script.cta = "";
+  }
+
+  const fullScript = normaliseScriptPunctuation(
+    String(script.full_script || ""),
+  ).trim();
   if (!fullScript) return script;
 
-  const base =
-    fullScript
+  let base = fullScript;
+  let previous = "";
+  while (base && base !== previous) {
+    previous = base;
+    base = base
       .replace(PULSE_CTA_ENDING_RE, "")
       .replace(PULSE_PRE_CTA_PROMO_ENDING_RE, "")
-      .trim() || fullScript;
-  const separator = /[.!?]$/.test(base) ? " " : ". ";
-  script.full_script = `${base}${separator}${PULSE_EXACT_CTA}`
-    .replace(/\s+/g, " ")
-    .trim();
+      .replace(GENERIC_FOLLOW_CTA_ENDING_RE, "")
+      .trim();
+  }
+  if (base && !/[.!?]$/.test(base)) base = `${base}.`;
+  script.full_script = base.replace(/\s+/g, " ").trim();
   return script;
+}
+
+// Compatibility export for older repair tools. It intentionally no longer
+// inserts an exact CTA; the stabilisation contract retired that behaviour.
+function ensurePulseExactCta(script = {}, channelId = "pulse-gaming") {
+  return applyStabilisationEndingPolicy(script, channelId);
 }
 
 // --- Quality gate: score script 1-10 via second LLM call ---
@@ -909,7 +1024,7 @@ async function scoreScript(client, script, story, channel) {
 - Information density (15%): facts per sentence, no filler
 - Source credibility (15%): does it cite sources?
 - Pacing (10%): punchy, no dead air, urgent tone
-- CTA presence (10%)
+- Story-specific payoff (10%): does the final beat land a consequence, verdict, legitimate choice or useful story-specific question?
 A script with a weak hook can NEVER score above 5, regardless of how good the body is.
 Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
       messages: [
@@ -1076,10 +1191,10 @@ function buildValidationRetryFeedback(errors = [], options = {}) {
   const lines = [
     "VALIDATION REWRITE BRIEF:",
     `- Rewrite full_script as ${runtimeWordRange(runtimeProfile)} cleaned spoken words. Aim for ${runtimeAimRange(runtimeProfile)} words, not the edge of the range.`,
-    "- Use an angle-first story arc: scroll-stopping hook, named source, what happened, concrete player consequence, hot take, payoff, exact CTA.",
+    "- Use an angle-first story arc: scroll-stopping hook, named source, what happened, concrete player consequence, hot take and story-specific payoff.",
     "- The hot take must be useful and source-safe: explain why the fact matters, who benefits, what changes for players or what risk/catch the headline hides.",
     "- Do not repeat the same claim in different wording.",
-    "- Do not mention Pulse except the exact final CTA.",
+    "- Do not mention Pulse in narration. The retired fixed follow CTA is forbidden.",
     "- Do not write internal strategy language such as signal, safe read, safe takeaway, direction of travel or tracking confirmation.",
     "- Do not use generic hype such as community is buzzing, changes everything, nobody saw this coming or here is where it gets interesting.",
     "- If the source is thin, write a smaller, honest script instead of padding.",
@@ -1101,9 +1216,9 @@ function buildValidationRetryFeedback(errors = [], options = {}) {
         "    Fix: adjust length with source-backed facts only. Add or remove concrete details, not filler.",
       );
     }
-    if (/missing_exact_cta_in_script|cta_not_exact/i.test(error)) {
+    if (/missing_exact_cta_in_script|cta_not_exact|missing_exact_cta/i.test(error)) {
       lines.push(
-        "    Fix: end full_script with exactly: Follow Pulse Gaming so you never miss a beat.",
+        "    Fix: remove the retired fixed CTA and end on a story-specific consequence or verdict.",
       );
     }
     if (/vague_filler|internal_pulse|abstract_signal|community_is_buzzing/i.test(
@@ -1152,7 +1267,7 @@ function trySourceBoundFallbackScript(story = {}, channel = {}, options = {}) {
   if (!fallback) return null;
 
   sanitiseScript(fallback);
-  ensurePulseExactCta(fallback, channel.id);
+  applyStabilisationEndingPolicy(fallback, channel.id);
   fallback.word_count = countSpokenWords(cleanForTTS(fallback.full_script || ""));
   if (runtimeProfile.breakingNews) {
     fallback.duration_lane = runtimeProfile.durationLane;
@@ -1229,6 +1344,16 @@ function titleSimilarity(a, b) {
   const intersection = [...wordsA].filter((w) => wordsB.has(w));
   const union = new Set([...wordsA, ...wordsB]);
   return intersection.length / union.size;
+}
+
+function resolveHumanApprovedPinnedComment(story = {}) {
+  const comment = String(story.pinned_comment || "").trim();
+  if (!comment) return "";
+  if (story.pinned_comment_human_approved !== true) return "";
+  if (story.pinned_comment_has_legitimate_choice !== true) return "";
+  const maxWords = Number(story.expected_answer_max_words);
+  if (!Number.isInteger(maxWords) || maxWords < 1 || maxWords > 2) return "";
+  return comment;
 }
 
 async function process_stories(options = {}) {
@@ -1336,9 +1461,11 @@ async function process_stories(options = {}) {
     }
 
     const sourceMaterialExcerpt = buildSourceMaterialExcerpt(sourceMaterial);
-    const storyForProcessing = sourceMaterialExcerpt
-      ? { ...story, source_material_excerpt: sourceMaterialExcerpt }
-      : story;
+    const storyForProcessing = preparePulseStabilisationStory(
+      sourceMaterialExcerpt
+        ? { ...story, source_material_excerpt: sourceMaterialExcerpt }
+        : story,
+    );
     const runtimeProfile = resolvePulseRuntimeProfile({
       ttsProvider: defaultRuntimeProfile.provider,
       secondsPerWord: defaultRuntimeProfile.secondsPerWord,
@@ -1408,12 +1535,12 @@ Today's date is ${today}. You MUST follow these rules:
         if (attempts === 2) {
           const durationInstruction = runtimeProfile.breakingNews
             ? `for the verified breaking-news lane; final authority will use ${runtimeProfile.minSeconds}-${runtimeProfile.maxSeconds}s measured narration`
-            : `for a 61-75 second Short using the active ${runtimeProfile.provider} voice path`;
+            : `for a ${runtimeProfile.minSeconds}-${runtimeProfile.maxSeconds} second canonical Short using the active ${runtimeProfile.provider} voice path`;
           extra =
             `\n\nIMPORTANT: Your previous script failed validation. Ensure the actual full_script is ${runtimeWordRange(runtimeProfile)} spoken words ${durationInstruction}. Aim for ${runtimeAimRange(runtimeProfile)} words. Keep hook under 18 words. Include a classification tag. Do not start the hook with So, Today, Hey, Welcome or In this. Avoid advertiser-risk terms such as killed, murder, suicide, terrorist, massacre, genocide or slaughter.`;
         } else if (attempts === 3) {
           extra =
-            `\n\nFINAL ATTEMPT: Produce a ${Math.round((runtimeProfile.aimMin + runtimeProfile.aimMax) / 2)}-word script. Hook must be one concrete sentence under 18 words. Use named people/companies and concrete outcomes. Include a classification tag and CTA. This is your last chance.`;
+            `\n\nFINAL ATTEMPT: Produce a ${Math.round((runtimeProfile.aimMin + runtimeProfile.aimMax) / 2)}-word script. Hook must be one concrete sentence under 18 words. Use named people/companies and concrete outcomes. Include a classification tag and finish on a story-specific payoff. Do not add the retired fixed Pulse CTA.`;
         }
         if (lintRetryFeedback) {
           extra += `\n\n${lintRetryFeedback}`;
@@ -1448,7 +1575,7 @@ Today's date is ${today}. You MUST follow these rules:
 
         // Post-generation sanitisation: fix banned openers + British English
         sanitiseScript(script);
-        ensurePulseExactCta(script, channel.id);
+        applyStabilisationEndingPolicy(script, channel.id);
         script.word_count = countSpokenWords(cleanForTTS(script.full_script || ""));
 
         const errors = validate(script, channel.id, {
@@ -1583,6 +1710,10 @@ Today's date is ${today}. You MUST follow these rules:
                 .replace(/\u2013/g, ",");
           }
           sanitiseScript(script);
+          applyStabilisationEndingPolicy(script, channel.id);
+          script.word_count = countSpokenWords(
+            cleanForTTS(script.full_script || ""),
+          );
         }
         break;
       } catch (err) {
@@ -1613,10 +1744,10 @@ Today's date is ${today}. You MUST follow these rules:
     // Clean script for TTS (remove [PAUSE] and [VISUAL] markers)
     const ttsScript = cleanForTTS(script.full_script);
 
-    const gameTitle = story.title.replace(/[^a-zA-Z0-9\s]/g, "").trim();
-    const affiliateTag = process.env.AMAZON_AFFILIATE_TAG || "placeholder";
-    const affiliateUrl = `https://www.amazon.co.uk/s?k=${encodeURIComponent(gameTitle)}&tag=${affiliateTag}`;
-    const pinnedComment = `What do you think, legit or fake? Drop your take below 👇 | Check it out: ${affiliateUrl}`;
+    // Affiliate generation and generic engagement prompts are outside the
+    // 30-day stabilisation critical path.
+    const affiliateUrl = "";
+    const pinnedComment = resolveHumanApprovedPinnedComment(story);
 
     const requiresScriptReview =
       script.script_generation_status === "review_required";
@@ -1656,7 +1787,10 @@ Today's date is ${today}. You MUST follow these rules:
         : successfulRuntimeRoute,
       duration_lane: runtimeProfile.breakingNews
         ? runtimeProfile.durationLane
-        : script.duration_lane || "pulse_flash_short",
+        : storyForProcessing.stabilisation_story_type,
+      stabilisation_story_type:
+        storyForProcessing.stabilisation_story_type,
+      stabilisation_lane_id: storyForProcessing.stabilisation_lane_id,
       audio_duration_verification_required: runtimeProfile.breakingNews
         ? true
         : false,
@@ -1664,7 +1798,9 @@ Today's date is ${today}. You MUST follow these rules:
         ? {
             result: finalRuntimePlan.result,
             route: finalRuntimePlan.route,
-            duration_lane: finalRuntimePlan.durationLane || "pulse_flash_short",
+            duration_lane:
+              finalRuntimePlan.durationLane ||
+              storyForProcessing.stabilisation_story_type,
             word_count: finalRuntimePlan.wordCount,
             estimated_seconds: finalRuntimePlan.estimatedSeconds,
             measured_audio_seconds: finalRuntimePlan.measuredAudioSeconds || null,
@@ -1739,7 +1875,15 @@ module.exports.parseLlmJsonObject = parseLlmJsonObject;
 module.exports.buildSourceMaterialExcerpt = buildSourceMaterialExcerpt;
 module.exports.extractArticleTextFromHtml = extractArticleTextFromHtml;
 module.exports.sanitiseScript = sanitiseScript;
+module.exports.applyStabilisationEndingPolicy =
+  applyStabilisationEndingPolicy;
 module.exports.ensurePulseExactCta = ensurePulseExactCta;
+module.exports.preparePulseStabilisationStory =
+  preparePulseStabilisationStory;
+module.exports.resolveHumanApprovedPinnedComment =
+  resolveHumanApprovedPinnedComment;
+module.exports.resolvePulseEditorialLane = resolvePulseEditorialLane;
+module.exports.resolvePulseStoryType = resolvePulseStoryType;
 
 if (require.main === module) {
   process_stories().catch((err) => {

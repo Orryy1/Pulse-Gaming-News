@@ -3,7 +3,7 @@ const path = require('path');
 const { google } = require('googleapis');
 const dotenv = require('dotenv');
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const TOKEN_PATH = path.join(__dirname, '..', 'tokens', 'orryy_token.json');
 const CREDENTIALS_PATH = path.join(__dirname, '..', 'tokens', 'youtube_credentials.json');

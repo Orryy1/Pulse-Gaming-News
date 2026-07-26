@@ -23,7 +23,7 @@ function parseArgs(argv = process.argv.slice(2)) {
 }
 
 async function main() {
-  require("dotenv").config({ override: true, quiet: true });
+  require("dotenv").config({ override: false, quiet: true });
   const args = parseArgs();
   const report = await runDiscordFeedbackIngestion({
     limit: args.limit,

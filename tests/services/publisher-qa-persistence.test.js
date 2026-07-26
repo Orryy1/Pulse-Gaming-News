@@ -124,16 +124,19 @@ test("publisher.js: legacy batch publish delegates to canonical publishNextStory
   );
 });
 
-test("publisher.js: retry QA bypass cannot bypass strict approved-voice mode", () => {
+test("publisher.js: the retired retry bypass cannot skip current preflight", () => {
   const idx = SRC.indexOf("process.env.PUBLISH_RETRY_QA_BYPASS");
   assert.ok(idx > 0, "retry bypass branch must exist");
   const block = SRC.slice(idx - 800, idx + 1200);
-  assert.match(block, /strictVoiceQa/, "retry bypass branch must calculate strict voice QA");
-  assert.match(block, /!strictVoiceQa/, "retry bypass must be disabled when strict voice QA is active");
   assert.match(
     block,
-    /publishCandidateBlocker\(candidate,\s*\{\s*strictContentQa:\s*true/,
-    "retry bypass must still respect strict content/readiness blockers",
+    /Ignoring retired PUBLISH_RETRY_QA_BYPASS/,
+    "the old switch must be visibly ignored",
+  );
+  assert.match(
+    block,
+    /const qa = await runPreflightQa\(candidate\)/,
+    "every retry must still run the complete current preflight",
   );
 });
 
@@ -399,6 +402,12 @@ const PUBLISH_BLOCK_RESOLVED =
   require.resolve("../../lib/services/publish-block.js");
 const PUBLISH_WINDOW_POLICY_RESOLVED =
   require.resolve("../../lib/services/publish-window-policy.js");
+const PUBLISH_MANIFEST_GATE_RESOLVED =
+  require.resolve("../../lib/stabilisation/publish-manifest-gate.js");
+const STUDIO_GOVERNANCE_RESOLVED =
+  require.resolve("../../lib/services/studio-governance-preflight.js");
+const REPOSITORIES_RESOLVED =
+  require.resolve("../../lib/repositories/index.js");
 const ENGAGEMENT_RESOLVED = require.resolve("../../engagement.js");
 const BLOG_RESOLVED = require.resolve("../../blog/generator.js");
 const DISCORD_AUTO_POST_RESOLVED =
@@ -458,12 +467,65 @@ function clearPublisherCache() {
   // live in require.cache and are picked up by publisher's top-level
   // requires on the next load — if we delete them here we'd lose the
   // stubs.
-  delete require.cache[PUBLISH_WINDOW_POLICY_RESOLVED];
   delete require.cache[PUBLISHER_RESOLVED];
 }
 
 let dbState;
 let uploaderCalls;
+let previousStabilisationEnv;
+
+function stubGovernedPublishInfrastructure() {
+  const greenPolicy = {
+    dispatchSource: "test_guarded_publish",
+    verdict: "green",
+    blocked: false,
+    blockers: [],
+    advisory: [],
+  };
+  stubModule(PUBLISH_WINDOW_POLICY_RESOLVED, {
+    buildPublishCooldownPolicy: () => ({ ...greenPolicy }),
+    buildPublishDailyCapPolicy: () => ({ ...greenPolicy }),
+    buildPublishWindowPolicy: () => ({ ...greenPolicy }),
+  });
+  stubModule(PUBLISH_MANIFEST_GATE_RESOLVED, {
+    evaluateStabilisationPublishManifest: () => ({
+      pass: true,
+      failures: [],
+    }),
+  });
+  stubModule(STUDIO_GOVERNANCE_RESOLVED, {
+    async assertStudioGovernancePreflight() {
+      return { rejection_reasons: { warnings: [] } };
+    },
+  });
+
+  const runtimeLeases = {
+    acquire({ name, ownerId }) {
+      return {
+        acquired: true,
+        name,
+        owner_id: ownerId,
+        expires_at: "2026-07-27T00:00:00.000Z",
+      };
+    },
+    release() {
+      return true;
+    },
+  };
+  const publicationGovernance = {
+    prepareDispatch() {},
+    recordAmbiguousDispatchFailure() {},
+    recordPlatformObjectCreated() {},
+    recordPostCreateMetadataFailure() {},
+    recordPlatformConfirmed() {},
+    recordPublished() {},
+  };
+  stubModule(REPOSITORIES_RESOLVED, {
+    getRepos() {
+      return { runtimeLeases, publicationGovernance };
+    },
+  });
+}
 
 function setupMocks({
   cqaResult,
@@ -471,8 +533,12 @@ function setupMocks({
   pvqaResult = { result: "pass", failures: [], warnings: [] },
   stories,
 }) {
+  stubGovernedPublishInfrastructure();
   dbState = {
-    stories: stories.slice(),
+    stories: stories.map((story) => ({
+      human_review_status: "approved",
+      ...story,
+    })),
     upsertCalls: [],
   };
   uploaderCalls = [];
@@ -486,6 +552,9 @@ function setupMocks({
   });
 
   stubModule(DB_RESOLVED, {
+    useSqlite() {
+      return true;
+    },
     async getStories() {
       return dbState.stories.slice();
     },
@@ -575,8 +644,12 @@ function setupMocksPerStory({
   pvqaResult = { result: "pass", failures: [], warnings: [] },
   stories,
 }) {
+  stubGovernedPublishInfrastructure();
   dbState = {
-    stories: stories.slice(),
+    stories: stories.map((story) => ({
+      human_review_status: "approved",
+      ...story,
+    })),
     upsertCalls: [],
   };
   uploaderCalls = [];
@@ -587,6 +660,9 @@ function setupMocksPerStory({
     captureException: () => {},
   });
   stubModule(DB_RESOLVED, {
+    useSqlite() {
+      return true;
+    },
     async getStories() {
       return dbState.stories.slice();
     },
@@ -667,8 +743,31 @@ function setupMocksPerStory({
 
 beforeEach(() => {
   previousPublishCadenceWarnOnly = process.env.PUBLISH_CADENCE_WARN_ONLY;
+  previousStabilisationEnv = Object.fromEntries(
+    [
+      "AUTO_PUBLISH",
+      "PULSE_OPERATING_MODE",
+      "PULSE_GUARDED_LIVE_DISPATCH_ENABLED",
+      "USE_JOB_QUEUE",
+      "USE_SQLITE",
+      "PULSE_PRIMARY_INSTANCE",
+      "PULSE_CONTROL_TOWER_VERDICT",
+      "PULSE_KILL_SWITCH_HEALTHY",
+      "PULSE_EMERGENCY_KILL_SWITCH",
+      "PULSE_KILL_SWITCH",
+    ].map((key) => [key, process.env[key]]),
+  );
   process.env.PUBLISH_CADENCE_WARN_ONLY = "true";
-  delete process.env.USE_SQLITE;
+  process.env.AUTO_PUBLISH = "true";
+  process.env.PULSE_OPERATING_MODE = "LIVE_GUARDED";
+  process.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED = "true";
+  process.env.USE_JOB_QUEUE = "true";
+  process.env.USE_SQLITE = "true";
+  process.env.PULSE_PRIMARY_INSTANCE = "true";
+  process.env.PULSE_CONTROL_TOWER_VERDICT = "GREEN";
+  process.env.PULSE_KILL_SWITCH_HEALTHY = "true";
+  delete process.env.PULSE_EMERGENCY_KILL_SWITCH;
+  delete process.env.PULSE_KILL_SWITCH;
   delete process.env.USE_CANONICAL_DEDUPE;
 });
 
@@ -677,6 +776,10 @@ afterEach(() => {
     delete process.env.PUBLISH_CADENCE_WARN_ONLY;
   } else {
     process.env.PUBLISH_CADENCE_WARN_ONLY = previousPublishCadenceWarnOnly;
+  }
+  for (const [key, value] of Object.entries(previousStabilisationEnv || {})) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
   clearPublisherCache();
 });
@@ -983,10 +1086,10 @@ test("multi-candidate: cap stops the loop at MAX (5) even if more candidates exi
   assert.notStrictEqual(unSeen7.qa_failed, true);
 });
 
-test("multi-candidate: partial retry candidate still runs QA before missing-platform uploads", async () => {
-  // Partial retry: YouTube already done, others missing. It still
-  // needs current QA because local cutover must not reuse stale or
-  // bad-voice artefacts just because one platform succeeded earlier.
+test("multi-candidate: YouTube-complete legacy partial rows are not retried during stabilisation", async () => {
+  // Secondary automatic dispatch is frozen. A legacy row that already
+  // has a real YouTube ID must not be pulled back into the publisher
+  // merely because older secondary-platform columns are empty.
   const partial = {
     id: "rss_partial_retry",
     title: "Retry me",
@@ -1009,15 +1112,12 @@ test("multi-candidate: partial retry candidate still runs QA before missing-plat
   });
 
   const result = await publishNextStory();
-  // Treated as no-safe-candidate because the retry candidate failed fresh QA.
-  assert.strictEqual(result.no_safe_candidate, true);
-  assert.deepStrictEqual(uploaderCalls, [], "retry must not invoke uploaders on QA fail");
+  assert.strictEqual(result, null);
+  assert.deepStrictEqual(uploaderCalls, []);
 
-  // The partial story is persisted as failed so the scheduler does not keep retrying it.
   const row = dbState.stories.find((s) => s.id === "rss_partial_retry");
-  assert.strictEqual(row.qa_failed, true);
-  assert.strictEqual(row.publish_status, "failed");
-  assert.match(row.publish_error, /approved_voice:metadata_missing/);
+  assert.notStrictEqual(row.qa_failed, true);
+  assert.strictEqual(row.publish_status, "partial");
 });
 
 test("multi-candidate: soft warnings on passing candidate do not block publish (classification audit)", async () => {

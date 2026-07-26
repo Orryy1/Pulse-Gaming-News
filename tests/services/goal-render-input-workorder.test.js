@@ -671,10 +671,11 @@ test("render input work order resolves media-root audio and clears stale readabl
   }
 });
 
-test("render input work order CLI loads dotenv quietly for media-root evidence", () => {
+test("render input work order CLI loads dotenv quietly without overriding operator env", () => {
   const source = fs.readFileSync(path.join(ROOT, "tools", "goal-render-input-workorder.js"), "utf8");
   assert.match(source, /PULSE_SKIP_DOTENV/);
-  assert.match(source, /require\("dotenv"\)\.config\(\{\s*override:\s*true,\s*quiet:\s*true\s*\}\)/);
+  assert.match(source, /require\("dotenv"\)\.config\(\{\s*override:\s*false,\s*quiet:\s*true\s*\}\)/);
+  assert.doesNotMatch(source, /require\("dotenv"\)\.config\(\{\s*override:\s*true/);
   assert.ok(
     source.indexOf('require("dotenv").config') < source.indexOf('require("../lib/goal-render-input-workorder")'),
     "dotenv must load before the work-order library reads MEDIA_ROOT-backed evidence",

@@ -260,6 +260,7 @@ test("environment recovery reads queue history and enqueues through repositories
   const enqueued = [];
   const report = await recoverMissedPublishWindowsFromEnvironment({
     now: new Date("2026-07-16T17:20:00.000Z"),
+    env: { PULSE_BREAKING_EXCEPTION_OPERATOR_APPROVED: "true" },
     schedules,
     repos: {
       db: {
@@ -336,4 +337,34 @@ test("recovery does not enqueue beside an imminent canonical window", () => {
   assert.equal(plan.reason, "next_canonical_window_imminent");
   assert.equal(plan.next_canonical_window.scheduled_at_utc, "2026-07-16T19:00:00.000Z");
   assert.equal(plan.minutes_until_next_canonical_window, 10);
+});
+
+test("stabilisation refuses catch-up publishing without an explicit operator exception", () => {
+  const plan = buildMissedPublishWindowRecoveryPlan({
+    now: new Date("2026-07-16T17:20:00.000Z"),
+    schedules,
+    jobs: [
+      {
+        idempotency_key: "publish:2026-07-15:19",
+        status: "done",
+        created_at: "2026-07-15 19:00:00",
+      },
+    ],
+    runtimeArmed: true,
+    operatorCatchupApproved: false,
+    watchdogReport: {
+      safe_to_publish_window: true,
+      hold_scheduler_or_dispatch: false,
+    },
+    selection: {
+      exhausted: false,
+      action_id: "fresh-story:youtube_shorts",
+      selected_platforms: ["youtube_shorts"],
+      priority: { reason: "fresh_story_youtube_first" },
+    },
+  });
+
+  assert.equal(plan.should_enqueue, false);
+  assert.equal(plan.reason, "catch_up_requires_operator_approval");
+  assert.equal(plan.operator_catchup_approved, false);
 });

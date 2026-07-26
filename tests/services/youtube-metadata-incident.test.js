@@ -19,14 +19,17 @@ test("YouTube metadata does not call preview coverage verified leaks", () => {
     content_pillar: "Source Breakdown",
   });
 
-  assert.match(meta.description, /PULSE GAMING - Gaming stories with named sources\./);
+  assert.match(
+    meta.description,
+    /Pulse Gaming News - Gaming stories with named sources\./,
+  );
   assert.doesNotMatch(meta.description, /Verified leaks\. Every day\./);
   assert.doesNotMatch(meta.description, /never miss a beat/i);
   assert.match(meta.description, /\nIGN\n/);
   assert.doesNotMatch(meta.description, /r\/IGN/);
 });
 
-test("YouTube metadata still allows leak branding for actual leak and rumour classifications", () => {
+test("YouTube metadata keeps the broader checked-news identity for leak classifications", () => {
   const meta = buildMetadata({
     id: "leak-story",
     title: "Switch 2 Leak Points To June",
@@ -42,5 +45,9 @@ test("YouTube metadata still allows leak branding for actual leak and rumour cla
     content_pillar: "Rumour Watch",
   });
 
-  assert.match(meta.description, /PULSE GAMING - Verified leaks\. Every day\./);
+  assert.match(
+    meta.description,
+    /Pulse Gaming News - Fast gaming news\. Checked\. Explained\./,
+  );
+  assert.doesNotMatch(meta.description, /Verified leaks\. Every day\./);
 });

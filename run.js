@@ -1,9 +1,11 @@
-const cron = require("node-cron");
 const fs = require("fs-extra");
 const sendDiscord = require("./notify");
 const dotenv = require("dotenv");
+const {
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
 
-dotenv.config({ override: true });
+loadDotenvOnce({ dotenv, env: process.env });
 
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
@@ -22,7 +24,7 @@ const {
               Optional: --story-id <id> or --story <id>
     publish   -Upload to YouTube, TikTok, Instagram
               Optional: --story-id <id> or --story <id>
-    schedule  -Start autonomous cron scheduler (recommended)
+    schedule  -Start the authoritative queue-backed scheduler
     full      -Run complete autonomous cycle once
     approve   -Run auto-approval pass only
 
@@ -326,11 +328,8 @@ async function runSchedule() {
   console.log("[run] All times are GMT/UTC");
   console.log("");
 
-  // Phase D: canonical queue is the default. lib/dispatch-mode enforces
-  // that production always uses the queue (no legacy escape) and that
-  // bootstrap failure in prod throws rather than silently arming the
-  // legacy cron block below. USE_JOB_QUEUE=false in dev is the only
-  // way to reach the legacy registry.
+  // Pulse v1 uses one queue-backed scheduler. There is no legacy cron
+  // fallback in production or development.
   const { resolveDispatchMode } = require("./lib/dispatch-mode");
   const dispatch = resolveDispatchMode();
   console.log(
@@ -354,187 +353,19 @@ async function runSchedule() {
     } catch (err) {
       if (dispatch.strict) {
         console.error(
-          `[run] FATAL: bootstrap-queue failed in production — refusing to start legacy cron fallback. ` +
+          `[run] FATAL: bootstrap-queue failed in production; no scheduler was started. ` +
             `Original error: ${err.message}`,
         );
         throw err;
       }
       console.error(
-        `[run] bootstrap-queue failed in dev (${err.message}) — no scheduler will run. ` +
-          `Set USE_JOB_QUEUE=false to intentionally use the legacy cron block for local dev.`,
+        `[run] bootstrap-queue failed in dev (${err.message}); no scheduler will run. Fix the queue bootstrap before retrying.`,
       );
       return;
     }
   }
 
-  // dispatch.mode === 'legacy_dev' — explicit dev opt-in only. Never reached in production.
-  console.log(
-    "[run] WARNING: legacy in-process cron registry active (USE_JOB_QUEUE=false, dev only). " +
-      "This path is DEPRECATED — queue mode is canonical in production.",
-  );
-  await _registerLegacyDevCronRegistry();
-}
-
-// Quarantined pre-Phase-D cron registry. Do not call from production.
-// Kept as an escape hatch for dev work against the legacy JSON pipeline
-// (USE_SQLITE!=true). Contents unchanged from pre-Phase-D so diffs stay
-// small; future cleanup can delete once the JSON path is retired.
-async function _registerLegacyDevCronRegistry() {
-  // --- HUNT CYCLES (4x daily at optimal news-breaking windows) ---
-
-  // 06:00 GMT -Morning hunt: catches overnight US leaks + Reddit activity
-  cron.schedule(
-    "0 6 * * *",
-    async () => {
-      console.log("[schedule] 06:00 GMT -Morning hunt");
-      try {
-        await runHunt();
-        const { autoApprove } = require("./publisher");
-        await autoApprove();
-      } catch (err) {
-        console.log(`[schedule] Morning hunt error: ${err.message}`);
-        await sendDiscord(`**ERROR** Morning hunt failed: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-
-  // 10:00 GMT -Mid-morning: embargo lifts (typically 9AM-12PM ET = 14:00-17:00 GMT)
-  cron.schedule(
-    "0 10 * * *",
-    async () => {
-      console.log("[schedule] 10:00 GMT -Mid-morning hunt");
-      try {
-        await runHunt();
-        const { autoApprove } = require("./publisher");
-        await autoApprove();
-      } catch (err) {
-        console.log(`[schedule] Mid-morning hunt error: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-
-  // 14:00 GMT -Afternoon: Nintendo Direct window (2PM GMT), major announcements
-  cron.schedule(
-    "0 14 * * *",
-    async () => {
-      console.log(
-        "[schedule] 14:00 GMT -Afternoon hunt (Nintendo/announcement window)",
-      );
-      try {
-        await runHunt();
-        const { autoApprove } = require("./publisher");
-        await autoApprove();
-      } catch (err) {
-        console.log(`[schedule] Afternoon hunt error: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-
-  // 17:00 GMT -Evening: Xbox showcase window + US morning embargo lifts
-  cron.schedule(
-    "0 17 * * *",
-    async () => {
-      console.log("[schedule] 17:00 GMT -Evening hunt (Xbox/embargo window)");
-      try {
-        await runHunt();
-        const { autoApprove } = require("./publisher");
-        await autoApprove();
-      } catch (err) {
-        console.log(`[schedule] Evening hunt error: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-
-  // --- PRODUCE CYCLE (2x daily, before publish windows) ---
-
-  // 18:00 GMT -Produce all approved stories (1hr before YouTube publish)
-  cron.schedule(
-    "0 18 * * *",
-    async () => {
-      console.log("[schedule] 18:00 GMT -Produce cycle");
-      try {
-        await runProduce();
-      } catch (err) {
-        console.log(`[schedule] Produce error: ${err.message}`);
-        await sendDiscord(`**ERROR** Produce cycle failed: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-
-  // --- PUBLISH CYCLE (1x daily at optimal engagement window) ---
-
-  // 19:00 GMT -Publish to YouTube Shorts (peak engagement: 7PM GMT)
-  // TikTok and Instagram are staggered by the publisher module (+60min each)
-  cron.schedule(
-    "0 19 * * *",
-    async () => {
-      console.log("[schedule] 19:00 GMT -PUBLISH WINDOW");
-      try {
-        if (process.env.AUTO_PUBLISH === "true") {
-          await runPublish();
-        } else {
-          console.log("[schedule] AUTO_PUBLISH not enabled, skipping");
-          await sendDiscord(
-            "**Videos ready for upload** -Set AUTO_PUBLISH=true to enable autonomous posting",
-          );
-        }
-      } catch (err) {
-        console.log(`[schedule] Publish error: ${err.message}`);
-        await sendDiscord(`**ERROR** Publish cycle failed: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-
-  // --- LATE NIGHT HUNT (catches PlayStation State of Play @ 10PM GMT) ---
-  cron.schedule(
-    "0 22 * * *",
-    async () => {
-      console.log("[schedule] 22:00 GMT -Late hunt (PlayStation window)");
-      try {
-        await runHunt();
-        const { autoApprove } = require("./publisher");
-        await autoApprove();
-      } catch (err) {
-        console.log(`[schedule] Late hunt error: ${err.message}`);
-      }
-    },
-    { timezone: "UTC" },
-  );
-
-  console.log("[schedule] Cron jobs registered:");
-  console.log("  06:00 UTC -Morning hunt (overnight US leaks)");
-  console.log("  10:00 UTC -Mid-morning hunt (embargo lifts)");
-  console.log("  14:00 UTC -Afternoon hunt (Nintendo Direct window)");
-  console.log("  17:00 UTC -Evening hunt (Xbox/embargo window)");
-  console.log("  18:00 UTC -Produce cycle (audio + images + video)");
-  console.log("  19:00 UTC -PUBLISH (YouTube → TikTok → Instagram)");
-  console.log("  22:00 UTC -Late hunt (PlayStation State of Play window)");
-  console.log("");
-  console.log(
-    `[schedule] AUTO_PUBLISH: ${process.env.AUTO_PUBLISH === "true" ? "ENABLED" : "DISABLED"}`,
-  );
-  console.log("[schedule] Process will stay alive. Press Ctrl+C to exit.");
-
-  // Run an immediate hunt on startup
-  (async () => {
-    console.log("[schedule] Running initial hunt on startup...");
-    try {
-      await runHunt();
-      const { autoApprove } = require("./publisher");
-      await autoApprove();
-      await sendDiscord(
-        "**Pulse Gaming Scheduler Started** -Running autonomously",
-      );
-    } catch (err) {
-      console.log(`[schedule] Initial hunt error: ${err.message}`);
-    }
-  })();
+  // Queue bootstrap is the only scheduler path. Failure leaves this process without a scheduler.
 }
 
 const mode = process.argv[2];
@@ -550,7 +381,7 @@ if (!mode) {
     "  node run.js produce [--story-id <id>] -Generate audio, images and assemble videos",
   );
   console.log(
-    "  node run.js publish [--story-id <id>] -Upload to YouTube, TikTok, Instagram",
+    "  node run.js publish [--story-id <id>] -Run the guarded YouTube publish path",
   );
   console.log("  node run.js full      -Run complete autonomous cycle once");
   console.log("  node run.js approve   -Run auto-approval pass");
@@ -559,7 +390,7 @@ if (!mode) {
   );
   console.log("  node run.js weekly    -Compile weekly longform roundup video");
   console.log(
-    "  node run.js schedule  -Start autonomous cron scheduler (24/7)",
+    "  node run.js schedule  -Start the authoritative queue-backed scheduler",
   );
   console.log(
     "  node run.js blog      -Rebuild static SEO blog from published stories",

@@ -6,7 +6,7 @@ const fs = require("fs-extra");
 const Database = require("better-sqlite3");
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
 }
 
 const {

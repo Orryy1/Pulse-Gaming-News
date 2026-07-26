@@ -15,7 +15,7 @@ const {
   sanitiseTokenStatus,
 } = require("../lib/platforms/tiktok-token-maintenance");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");

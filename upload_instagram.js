@@ -37,7 +37,7 @@ const {
   writeTokenJsonAtomic,
 } = require("./lib/platforms/durable-token-store");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 function resolveTokenPath() {
   return resolveInstagramTokenPath();

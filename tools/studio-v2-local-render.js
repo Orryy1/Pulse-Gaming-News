@@ -3,7 +3,7 @@
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 
-require("dotenv").config({ override: true });
+require("dotenv").config({ override: false });
 
 process.env.STUDIO_V2_VOICE = process.env.STUDIO_V2_VOICE || "local";
 process.env.TTS_PROVIDER = "local";

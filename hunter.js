@@ -2,7 +2,7 @@ const axios = require("axios");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const { getChannel } = require("./channels");
 const { getTrendingTopics, getTrendingBoost } = require("./trending");

@@ -93,7 +93,7 @@ test("publish window policy treats unset primary as active primary when auto-pub
   assert.ok(policy.blockers.includes("publish_window_blocked"));
 });
 
-test("publish cadence warn-only override keeps active primary routes advisory", () => {
+test("publish cadence warn-only flags cannot bypass an active primary hard gate", () => {
   const policy = buildPublishWindowPolicy({
     now: "2026-05-14T22:33:00.000Z",
     dispatchSource: "api_autonomous_publish",
@@ -104,9 +104,9 @@ test("publish cadence warn-only override keeps active primary routes advisory", 
     },
   });
 
-  assert.equal(policy.verdict, "amber");
-  assert.equal(policy.blocked, false);
-  assert.equal(policy.hardGateEnabled, false);
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.equal(policy.hardGateEnabled, true);
 });
 
 test("publish cadence does not hard-block an explicit non-primary mirror", () => {
@@ -232,7 +232,7 @@ test("publish cooldown ignores sentinel duplicate IDs and undated rows", () => {
   assert.equal(policy.lastPublishedAt, null);
 });
 
-test("publish cooldown ignores failed and review-blocked rows with stale platform IDs", () => {
+test("publish cooldown conservatively counts failed and review-blocked rows with real platform IDs", () => {
   const policy = buildPublishCooldownPolicy({
     now: "2026-05-14T19:10:00.000Z",
     stories: [
@@ -254,10 +254,10 @@ test("publish cooldown ignores failed and review-blocked rows with stale platfor
     env: { AUTO_PUBLISH: "true" },
   });
 
-  assert.equal(policy.verdict, "green");
-  assert.equal(policy.blocked, false);
-  assert.equal(policy.lastStoryId, null);
-  assert.equal(policy.minutesSinceLastPost, null);
+  assert.equal(policy.verdict, "red");
+  assert.equal(policy.blocked, true);
+  assert.equal(policy.lastStoryId, "review");
+  assert.equal(policy.minutesSinceLastPost, 6);
 });
 
 test("publish daily cap is warn-only by default when the 24h volume is high", () => {
@@ -375,7 +375,7 @@ test("publish daily cap ignores DUPE ids, undated rows and old posts", () => {
   assert.equal(posts[0].id, "real");
 });
 
-test("publish daily cap ignores failed and script-review rows with stale platform IDs", () => {
+test("publish daily cap conservatively counts conflicted rows with real platform IDs", () => {
   const posts = countPublicPostsInWindow({
     now: "2026-05-14T20:00:00.000Z",
     stories: [
@@ -403,7 +403,7 @@ test("publish daily cap ignores failed and script-review rows with stale platfor
 
   assert.deepEqual(
     posts.map((post) => post.id),
-    ["real"],
+    ["failed", "script-review", "real"],
   );
 });
 

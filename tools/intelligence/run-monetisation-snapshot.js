@@ -12,7 +12,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const DEFAULT_OUT_DIR = path.join(ROOT, "test", "output", "monetisation");

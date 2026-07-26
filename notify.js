@@ -1,6 +1,6 @@
 const dotenv = require('dotenv');
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 function clampInteger(value, fallback, minimum, maximum) {
   const parsed = Number.parseInt(value, 10);

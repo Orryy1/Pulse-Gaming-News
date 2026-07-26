@@ -57,7 +57,7 @@ test("primary runtime hold is opt-in only", () => {
 
 test("server applies primary runtime hold after dotenv and before scheduler startup", () => {
   const source = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
-  const dotenvIndex = source.indexOf("dotenv.config");
+  const dotenvIndex = source.indexOf("loadDotenvOnce({ dotenv, env: process.env })");
   const holdApplyIndex = source.indexOf("applyPrimaryRuntimeHold(process.env)");
   const safeApplyIndex = source.indexOf("applySafeObservationMode(process.env)");
   const schedulerHoldGuardIndex = source.indexOf("Primary runtime hold active - scheduler and jobs runner skipped");
@@ -65,8 +65,8 @@ test("server applies primary runtime hold after dotenv and before scheduler star
   const discordHoldGuardIndex = source.indexOf("Discord bot skipped - primary runtime hold");
   const discordStartIndex = source.indexOf('spawn("node", ["discord/bot.js"]');
 
-  assert.ok(dotenvIndex >= 0, "server must load dotenv");
-  assert.ok(holdApplyIndex > dotenvIndex, "primary hold must run after dotenv override");
+  assert.ok(dotenvIndex >= 0, "server must use the one-shot no-override dotenv loader");
+  assert.ok(holdApplyIndex > dotenvIndex, "primary hold must run after governed dotenv loading");
   assert.ok(safeApplyIndex > holdApplyIndex, "safe observation must be able to override primary hold");
   assert.ok(
     schedulerHoldGuardIndex > safeApplyIndex,

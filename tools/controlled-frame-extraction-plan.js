@@ -5,7 +5,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 
 try {
-  require("dotenv").config({ override: true, quiet: true });
+  require("dotenv").config({ override: false, quiet: true });
 } catch {}
 
 const { buildDemoStories } = require("../lib/creator-studio-os");

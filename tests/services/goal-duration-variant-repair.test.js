@@ -303,7 +303,11 @@ test("duration variant repair extends script, regenerates local audio and rerend
   });
 
   assert.equal(report.summary.candidate_count, 1);
-  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(
+    report.summary.repaired_count,
+    1,
+    JSON.stringify(report, null, 2),
+  );
   assert.equal(report.summary.failed_count, 0);
   assert.equal(report.safety.no_publish_triggered, true);
   assert.equal(report.safety.no_db_mutation, true);
@@ -373,8 +377,9 @@ test("normal duration repair preserves a clean longer spoken script over stale c
     },
   );
 
-  assert.equal(repair.script, cleanLongScript);
-  assert.equal(repair.repaired_word_count, simpleWordCount(cleanLongScript));
+  const expectedScript = cleanLongScript.replace(/\s*Follow Pulse Gaming so you never miss a beat\.$/i, "");
+  assert.equal(repair.script, expectedScript);
+  assert.equal(repair.repaired_word_count, simpleWordCount(expectedScript));
   assert.doesNotMatch(repair.script, /finally has footage players can judge/i);
 });
 
@@ -407,8 +412,9 @@ test("normal duration repair does not pad a clean primary script just to chase t
     },
   );
 
-  assert.equal(repair.script, cleanScript);
-  assert.equal(repair.repaired_word_count, simpleWordCount(cleanScript));
+  const expectedScript = cleanScript.replace(/\s*Follow Pulse Gaming so you never miss a beat\.$/i, "");
+  assert.equal(repair.script, expectedScript);
+  assert.equal(repair.repaired_word_count, simpleWordCount(expectedScript));
   assert.equal(repair.appended_word_count, 0);
   assert.doesNotMatch(repair.script, /finally has footage players can judge/i);
 });
@@ -475,7 +481,7 @@ test("duration variant repair skips stale work-order rows that already have a ta
       duration_variant_repaired_at: "2026-05-22T08:06:00.000Z",
       duration_variant_repair_strategy: "retention_target_safe_script_extension",
       narration_script:
-        "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup. Follow Pulse Gaming so you never miss a beat.",
+        "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup.",
     },
   });
   await fs.outputJson(path.join(artifactDir, "render_manifest.json"), {
@@ -487,7 +493,7 @@ test("duration variant repair skips stale work-order rows that already have a ta
   await fs.outputFile(
     path.join(artifactDir, "captions.srt"),
     buildCaptionSrt(
-      "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup. Follow Pulse Gaming so you never miss a beat.",
+      "Star Fox has a Switch 2 camera deal. IGN reports the Nintendo Switch 2 Camera is discounted for Memorial Day. The discount matters because Switch 2 owners need to know whether the camera is actually part of the setup.",
       23.25,
     ),
   );
@@ -533,11 +539,11 @@ test("normal duration repair tail-pads existing clean renders with tiny underflo
       thumbnail_headline: "GTA 6 PRICE RISK",
       first_spoken_line: "GTA 6 preorders just became a real buying decision.",
       narration_script:
-        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.",
+        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument.",
       full_script:
-        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.",
+        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument.",
       tts_script:
-        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument. Follow Pulse Gaming so you never miss a beat.",
+        "GTA 6 preorders just became a real buying decision. GameSpot reports Rockstar confirmed GTA 6 preorders begin on June 25, while price, editions and bonuses still need checking. The risk is not whether GTA 6 will be huge; it is whether the first store page makes the value clear. Price, editions and bonuses decide whether fans buy early, wait or argue about the premium version. That turns the first store page into a real buy, wait or skip argument.",
       primary_source: "GameSpot",
       source_card_label: "GameSpot",
       confirmed_claims: [
@@ -630,7 +636,6 @@ test("duration variant repair does not churn safe gameplay-source claims into sh
         "The sharper question is whether this feels like The Expanse, not just another sci-fi shooter wearing the name.",
         "Short showcases can sell impact, but mission flow will decide whether players trust the reveal.",
         "If the full missions keep that pace, this could become more than another licensed announcement.",
-        "Follow Pulse Gaming so you never miss a beat.",
       ].join(" "),
       primary_source: "Xbox",
       confirmed_claims: ["Xbox showed The Expanse: Osiris Reborn gameplay during Xbox Partner Preview."],
@@ -811,21 +816,25 @@ test("normal duration repair trusts stale-duration blocker over old render manif
         story_id: story.id,
         output,
         clips: story.video_clips.length,
-        rendered_duration_s: simpleWordCount(story.full_script) >= 116 ? 36.2 : 29.8,
+        rendered_duration_s: simpleWordCount(story.full_script) >= 110 ? 36.2 : 29.8,
         size_bytes: 8192,
       };
     },
   });
 
-  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(
+    report.summary.repaired_count,
+    1,
+    JSON.stringify(report, null, 2),
+  );
   assert.equal(report.jobs[0].original_duration_s, 19.68);
   assert.ok(report.jobs[0].appended_word_count > 0);
-  assert.ok(report.jobs[0].repaired_word_count >= 116, audioCalls[0]);
+  assert.ok(report.jobs[0].repaired_word_count >= 110, audioCalls[0]);
   assert.equal(audioCalls.length, 1);
   assert.equal(renderCalls.length, 1);
 });
 
-test("duration variant repair regenerates fast cadence narration with a safer speaking rate", async () => {
+test("duration variant repair regenerates fast cadence narration from source-bound copy", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-duration-fast-cadence-"));
   const longerSourceSafeScript = [
     "Sea of Thieves just made its biggest social gamble in years.",
@@ -915,19 +924,30 @@ test("duration variant repair regenerates fast cadence narration with a safer sp
   assert.equal(audioCalls.length, 1);
   assert.equal(audioCalls[0].provider, "elevenlabs");
   assert.equal(audioCalls[0].rate, 0.92);
-  assert.ok(simpleWordCount(audioCalls[0].text) >= 98, audioCalls[0].text);
-  assert.match(audioCalls[0].text, /Season 20'?s Custom Seas/i);
-  assert.match(audioCalls[0].text, /24 players/i);
-  assert.match(audioCalls[0].text, /spawn treasure and enemies/i);
-  assert.match(audioCalls[0].text, /biggest community split/i);
+  assert.ok(
+    simpleWordCount(audioCalls[0].text) <= simpleWordCount(longerSourceSafeScript),
+    audioCalls[0].text,
+  );
+  assert.match(audioCalls[0].text, /Custom Seas will let crews create private sessions with their own rules/i);
+  assert.match(audioCalls[0].text, /fault line Rare has to manage/i);
+  assert.doesNotMatch(
+    audioCalls[0].text,
+    /Season 20|24 players|spawn treasure and enemies|change loadouts|biggest community split/i,
+  );
+  assert.doesNotMatch(audioCalls[0].text, /Follow Pulse Gaming/i);
   assert.doesNotMatch(audioCalls[0].text, /Players get calmer sessions/i);
   const scorecard = buildViralScriptIntelligence({
     story: { id: "sea-fast-cadence", title: "Sea of Thieves Custom Seas Could Split Crews", source_name: "Xbox Wire" },
     script: audioCalls[0].text,
+    ctaPolicy: "optional",
   });
   assert.ok(!scorecard.blockers.includes("missing_relatable_stakes"), JSON.stringify(scorecard));
   assert.equal(renderCalls.length, 1);
-  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(
+    report.summary.repaired_count,
+    1,
+    JSON.stringify(report, null, 2),
+  );
   assert.equal(report.jobs[0].tts_rate, 0.92);
   assert.equal(report.safety.external_tts_provider_used, "elevenlabs");
 });
@@ -969,7 +989,10 @@ test("duration variant repair preserves dense fast-cadence scripts instead of ap
   );
 
   assert.equal(repair.appended_word_count, 0);
-  assert.equal(repair.repaired_word_count, simpleWordCount(script));
+  assert.equal(
+    repair.repaired_word_count,
+    simpleWordCount(script.replace(/\s*Follow Pulse Gaming so you never miss a beat\.$/i, "")),
+  );
   assert.doesNotMatch(repair.script, /One reveal cannot settle the game/i);
 });
 
@@ -1010,7 +1033,7 @@ test("duration variant repair extends GTA VI preorder scripts without generic QA
     },
   );
 
-  assert.ok(repair.repaired_word_count >= 110, repair.script);
+  assert.ok(repair.repaired_word_count >= 100, repair.script);
   assert.match(repair.script, /Jason and Lucia/i);
   assert.match(repair.script, /June 25/i);
   assert.match(repair.script, /price/i);
@@ -1027,6 +1050,7 @@ test("duration variant repair extends GTA VI preorder scripts without generic QA
       source_name: "Xbox Wire",
     },
     script: repair.script,
+    ctaPolicy: "optional",
   });
   assert.equal(scorecard.blockers.includes("duplicated_source_attribution"), false, JSON.stringify(scorecard));
   assert.equal(scorecard.blockers.includes("missing_story_specific_payoff"), false, JSON.stringify(scorecard));
@@ -1071,6 +1095,7 @@ test("duration variant repair extends GTA VI preorder scripts without generic QA
       source_name: "Xbox Wire",
     },
     script: staleRepair.script,
+    ctaPolicy: "optional",
   });
   assert.equal(
     staleScorecard.blockers.includes("duplicated_source_attribution"),
@@ -1085,7 +1110,7 @@ test("duration variant repair extends GTA VI preorder scripts without generic QA
   assert.doesNotMatch(staleRepair.script, /price,\s*editions|editions\s+and\s+bonuses/i);
   assert.match(staleRepair.script, /prices, versions and bonuses/i);
   assert.doesNotMatch(staleRepair.script, /GTA 6/i);
-  assert.ok(staleRepair.repaired_word_count >= 115, staleRepair.script);
+  assert.ok(staleRepair.repaired_word_count >= 106, staleRepair.script);
 });
 
 test("duration variant repair strips GTA six-stutter fragments before narration repair", () => {
@@ -1129,7 +1154,7 @@ test("duration variant repair strips GTA six-stutter fragments before narration 
   assert.doesNotMatch(repair.script, /\bGTA\s*s(?:i|y|igh)?[-\s]*six\b/i);
   assert.doesNotMatch(repair.script, /\bG\s*T\s*A\b/i);
   assert.doesNotMatch(repair.script, /\bGTA\s*6\b/i);
-  assert.match(repair.script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
 });
 
 test("duration variant repair avoids ASR-fragile stylised title repeats", () => {
@@ -1205,7 +1230,7 @@ test("duration variant repair avoids ASR-fragile stylised title repeats", () => 
     false,
     JSON.stringify({ script: repair.script, publicCopyQa }),
   );
-  assert.match(repair.script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
 });
 
 test("voice cadence repair preserves an existing platform-native thumbnail headline", async () => {
@@ -1265,7 +1290,11 @@ test("voice cadence repair preserves an existing platform-native thumbnail headl
     },
   });
 
-  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(
+    report.summary.repaired_count,
+    1,
+    JSON.stringify(report, null, 2),
+  );
   const repaired = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
   assert.equal(repaired.thumbnail_headline, "GHOST CHOICES RISK");
   assert.equal(repaired.thumbnail_text, "GHOST CHOICES RISK");
@@ -1336,7 +1365,11 @@ test("duration variant repair reruns existing repairs with noncanonical protecte
   });
   const updated = await fs.readJson(path.join(artifactDir, "canonical_story_manifest.json"));
 
-  assert.equal(report.summary.repaired_count, 1);
+  assert.equal(
+    report.summary.repaired_count,
+    1,
+    JSON.stringify(report, null, 2),
+  );
   assert.equal(audioCalls.length, 1);
   assert.match(updated.narration_script, /Pokémon Go/);
   assert.doesNotMatch(updated.narration_script, /\bPokemon\b/);
@@ -1350,7 +1383,7 @@ test("duration variant repair refreshes stale captions on otherwise valid existi
       duration_variant_repaired_at: "2026-05-23T08:30:00.000Z",
       duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
       narration_script:
-        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. Follow Pulse Gaming so you never miss a beat.",
+        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox.",
       canonical_subject: "Forza Horizon 6",
       canonical_game: "Forza Horizon 6",
       selected_title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
@@ -1404,7 +1437,7 @@ test("duration variant repair refreshes normal publish duration windows on exist
       duration_variant_repaired_at: "2026-05-23T08:30:00.000Z",
       duration_variant_repair_strategy: NORMAL_PRODUCTION_REPAIR_STRATEGY,
       narration_script:
-        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox. Follow Pulse Gaming so you never miss a beat.",
+        "Forza Horizon 6 just turned its Steam launch into an Xbox signal. IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox.",
       canonical_subject: "Forza Horizon 6",
       canonical_game: "Forza Horizon 6",
       selected_title: "Forza Horizon 6 Broke Xbox's Steam Ceiling",
@@ -1423,16 +1456,12 @@ test("duration variant repair refreshes normal publish duration windows on exist
     path.join(artifactDir, "captions.srt"),
     [
       "1",
-      "00:00:00,000 --> 00:00:18,100",
+      "00:00:00,000 --> 00:00:27,150",
       "Forza Horizon 6 just turned its Steam launch into an Xbox signal.",
       "",
       "2",
-      "00:00:18,100 --> 00:00:36,200",
+      "00:00:27,150 --> 00:00:54,300",
       "IGN reports Forza Horizon 6 is already being framed as a major Steam success for Xbox.",
-      "",
-      "3",
-      "00:00:36,200 --> 00:00:54,300",
-      "Follow Pulse Gaming so you never miss a beat.",
       "",
     ].join("\n"),
   );
@@ -1578,8 +1607,8 @@ test("duration variant repair reruns existing normal repairs with content signal
 
   assert.equal(report.summary.skipped_existing_count, 0);
   assert.equal(report.summary.repaired_count, 1);
-  assert.match(audioCalls[0], /\bgaming\b|\bgame\b/i);
-  assert.match(audioCalls[0], /Follow Pulse Gaming/);
+  assert.match(audioCalls[0], /Star Fox|Switch 2 Camera|players/i);
+  assert.doesNotMatch(audioCalls[0], /Follow Pulse Gaming/i);
 });
 
 test("duration variant repair reruns existing normal repairs when the script scorecard still blocks", async () => {
@@ -1715,14 +1744,14 @@ test("duration variant repair reruns existing normal repairs with stale filler e
   assert.equal(report.summary.repaired_count, 1);
   assert.equal(audioCalls.length, 1);
   assert.ok(audioCalls[0].split(/\s+/).length <= 155);
-  assert.match(audioCalls[0], /Follow Pulse Gaming(?: so you never miss a beat| for the gaming stories behind the headline)\.$/);
+  assert.doesNotMatch(audioCalls[0], /Follow Pulse Gaming/i);
   assert.doesNotMatch(
     audioCalls[0],
     /player-facing detail|source for the confirmed claim|stays a gaming story|Before you spend|\.\./i,
   );
   const captions = await fs.readFile(path.join(artifactDir, "captions.srt"), "utf8");
   assert.match(captions, /Forza Horizon 6 just turned its Steam launch into an Xbox signal/);
-  assert.match(captions, /Follow Pulse Gaming/);
+  assert.doesNotMatch(captions, /Follow Pulse Gaming/i);
   assert.match(captions, /00:00:55,500/);
   assert.doesNotMatch(captions, /player-facing detail|\.\./i);
 });
@@ -1959,7 +1988,7 @@ test("duration variant repair expands game deals without studio-internal angle p
   );
 
   assert.ok(repair.repaired_word_count >= 120, repair.script);
-  assert.ok(repair.repaired_word_count <= 132, repair.script);
+  assert.ok(repair.repaired_word_count <= 132, JSON.stringify(repair, null, 2));
   assert.match(repair.script, /Super Mario RPG/);
   assert.match(repair.script, /GameStop/);
   assert.match(repair.script, /physical Switch copy|listed price|used copy|Nintendo/i);
@@ -2007,7 +2036,7 @@ test("duration variant repair strips stale formulaic filler before normal produc
   assert.match(repair.script, /Forza Horizon 6/);
   assert.match(repair.script, /Steam/);
   assert.match(repair.script, /Xbox/);
-  assert.match(repair.script, /Follow Pulse Gaming(?: so you never miss a beat| for the gaming stories behind the headline)\.$/);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
   assert.doesNotMatch(repair.script, /\.\./);
   assert.doesNotMatch(
     repair.script,
@@ -2096,7 +2125,7 @@ test("duration variant repair gives Halo Campaign Evolved a story-specific payof
 
   assert.match(repair.script, /Halo: Campaign Evolved/);
   assert.match(repair.script, /muscle memory|pistol rhythm|trust rebuild/i);
-  assert.match(repair.script, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
   assert.doesNotMatch(
     repair.script,
     /finally has footage players can judge|clip puts the pitch on screen|where hype either turns into trust|world reads clearly in a short/i,
@@ -2124,6 +2153,7 @@ test("duration variant repair gives Halo Campaign Evolved a story-specific payof
       source_name: "PC Gamer",
     },
     script: repair.script,
+    ctaPolicy: "optional",
   });
   assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
   assert.ok(
@@ -2161,8 +2191,13 @@ test("duration variant repair gives Halo Campaign Evolved a story-specific payof
       source_name: "PC Gamer",
     },
     script: compactRepair.script,
+    ctaPolicy: "optional",
   });
-  assert.equal(compactScorecard.verdict, "viral_ready", JSON.stringify(compactScorecard, null, 2));
+  assert.equal(
+    compactScorecard.verdict,
+    "viral_ready",
+    JSON.stringify({ compactRepair, compactScorecard }, null, 2),
+  );
   assert.ok(
     compactRepair.repaired_word_count <= 120,
     `expected compact local TTS repair to stay under cadence-safe word count, got ${compactRepair.repaired_word_count}: ${compactRepair.script}`,
@@ -2204,6 +2239,7 @@ test("duration variant repair gives Halo Campaign Evolved a story-specific payof
       source_name: "PC Gamer",
     },
     script: alreadyCompactRepair.script,
+    ctaPolicy: "optional",
   });
   assert.equal(
     alreadyCompactScorecard.verdict,
@@ -2931,8 +2967,8 @@ test("duration variant repair gives short normal-production scripts enough local
     },
   );
 
-  assert.ok(repair.repaired_word_count >= 120);
-  assert.ok(repair.repaired_word_count <= 132);
+  assert.ok(repair.repaired_word_count >= 110, JSON.stringify(repair, null, 2));
+  assert.ok(repair.repaired_word_count <= 132, JSON.stringify(repair, null, 2));
   assert.match(repair.script, /Hades II/);
   assert.match(repair.script, /PlayStation Blog|PlayStation 5/);
   assert.doesNotMatch(repair.script, /port lands crisp|in public within hours|instant inputs|real question is brutal/i);
@@ -3039,7 +3075,7 @@ test("duration variant repair does not extend raw official Hades trailer metadat
     },
   );
 
-  assert.ok(repair.repaired_word_count >= 120);
+  assert.ok(repair.repaired_word_count >= 110, JSON.stringify(repair, null, 2));
   assert.match(repair.script, /Xbox's trailer lists Hades II for Xbox and PlayStation/i);
   assert.doesNotMatch(repair.script, /port lands crisp|in public within hours/i);
   assert.match(repair.script, /tight dodge timing|broken builds spreading fast/i);
@@ -3134,8 +3170,8 @@ test("duration variant repair gives near-floor local renders enough lift to clea
     },
   );
 
-  assert.ok(repair.repaired_word_count >= 116);
-  assert.ok(repair.repaired_word_count <= 132);
+  assert.ok(repair.repaired_word_count >= 108, JSON.stringify(repair, null, 2));
+  assert.ok(repair.repaired_word_count <= 132, JSON.stringify(repair, null, 2));
   assert.match(repair.script, /Forza Horizon 6/);
   assert.doesNotMatch(repair.script, /the watch point|the detail to watch|the useful test|the only firm read/i);
 });
@@ -3389,7 +3425,7 @@ test("duration variant repair tightens overlong normal-production scripts", () =
   assert.match(repair.script, /Warhammer 40,000: Boltgun Boom/);
   assert.match(repair.script, /GameSpot/);
   assert.match(repair.script, /\bgaming\b|\bgame\b/i);
-  assert.match(repair.script, /Follow Pulse Gaming/);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
   assert.doesNotMatch(repair.script, /source-backed update|source_locked_update|the player angle is simple/i);
 });
 
@@ -3426,12 +3462,12 @@ test("duration variant repair tightens showcase stories without adding deal fill
   );
 
   assert.ok(repair.repaired_word_count < repair.original_word_count);
-  assert.ok(repair.repaired_word_count >= 85);
+  assert.ok(repair.repaired_word_count >= 75, JSON.stringify(repair, null, 2));
   assert.ok(repair.repaired_word_count <= 135);
   assert.match(repair.script, /The Expanse: Osiris Reborn/);
   assert.match(repair.script, /Xbox/);
   assert.match(repair.script, /gameplay/i);
-  assert.match(repair.script, /Follow Pulse Gaming/);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
   assert.doesNotMatch(repair.script, /Xbox reports Xbox showed/i);
   assert.doesNotMatch(repair.script, /Before you spend|buy now|price check|deal is still active/i);
 });
@@ -3476,6 +3512,7 @@ test("duration variant repair tightens GTA preorder risk stories without deal fi
   const scorecard = buildViralScriptIntelligence({
     story: { id: "rss_e2b3643dbce03eaf", title: "GTA 6 Preorders Have A Price Risk", source_name: "GameSpot" },
     script: repair.script,
+    ctaPolicy: "optional",
   });
 
   assert.ok(repair.repaired_word_count < repair.original_word_count);
@@ -3486,7 +3523,7 @@ test("duration variant repair tightens GTA preorder risk stories without deal fi
   assert.doesNotMatch(repair.script, /GTA 6/i);
   assert.match(repair.script, /June 25/i);
   assert.match(repair.script, /price, editions and bonuses|premium version|wallet test/i);
-  assert.match(repair.script, /Follow Pulse Gaming/);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
   assert.doesNotMatch(repair.script, /cheap enough|retailer|stock, region and condition|full price|discount|deal is live/i);
   assert.equal(scorecard.verdict, "viral_ready", JSON.stringify({ repair, scorecard }, null, 2));
   assert.deepEqual(scorecard.blockers, [], JSON.stringify({ repair, scorecard }, null, 2));
@@ -3716,7 +3753,7 @@ test("duration variant repair adds a real curiosity marker to Stranger Than Heav
   assert.doesNotMatch(repair.script, /hook has to|next beat should|public output/i);
 });
 
-test("duration variant repair adds a trade-off marker to private-session social mode scripts", () => {
+test("duration variant repair preserves a source-bound trade-off for private-session social mode scripts", () => {
   const repair = extendScriptToTarget(
     {
       canonical_subject: "Sea of Thieves",
@@ -3747,19 +3784,21 @@ test("duration variant repair adds a trade-off marker to private-session social 
       source_name: "Xbox Wire",
     },
     script: repair.script,
+    ctaPolicy: "optional",
   });
 
-  assert.match(repair.script, /Season 20 is not just adding a private lobby|Season 20'?s Custom Seas/i);
-  assert.match(repair.script, /24 (?:players|pirates)/i);
-  assert.match(repair.script, /Silver scoreboards|spawn treasure and enemies/i);
-  assert.match(repair.script, /public seas could start feeling emptier|public seas could feel quieter|public servers could feel quieter|biggest community split/i);
+  assert.match(repair.script, /Custom Seas.*private sessions.*own rules/i);
+  assert.match(repair.script, /world gets safer but flatter|public seas could feel quieter|biggest social gamble/i);
+  assert.doesNotMatch(repair.script, /24 (?:players|pirates)|Silver scoreboards|spawn treasure and enemies/i);
+  assert.doesNotMatch(repair.script, /Follow Pulse Gaming/i);
   assert.doesNotMatch(repair.script, /The trade-off is brutal/i);
   assert.doesNotMatch(repair.script, /That risk could split the player base\./);
   assert.doesNotMatch(repair.script, /give private crews freedom/i);
   assert.doesNotMatch(repair.script, /If not, it splits the ocean in two/i);
   assert.doesNotMatch(repair.script, /has to survive players now|patch notes/i);
   assert.ok(scorecard.scores.curiosity_gap >= 70, JSON.stringify(scorecard, null, 2));
-  assert.ok(!scorecard.warnings.includes("no_curiosity_marker"), JSON.stringify(scorecard, null, 2));
+  assert.equal(scorecard.verdict, "viral_ready", JSON.stringify(scorecard, null, 2));
+  assert.deepEqual(scorecard.blockers, [], JSON.stringify(scorecard, null, 2));
 });
 
 test("duration variant repair compacts Stranger showcase scripts without generic reveal-catch padding", () => {
@@ -3803,8 +3842,8 @@ test("duration variant repair compacts Stranger showcase scripts without generic
     script: repair.script,
   });
 
-  assert.ok(repair.repaired_word_count >= 116, repair.script);
-  assert.ok(repair.repaired_word_count <= 132, repair.script);
+  assert.ok(repair.repaired_word_count >= 110, JSON.stringify(repair, null, 2));
+  assert.ok(repair.repaired_word_count <= 132, JSON.stringify(repair, null, 2));
   assert.match(repair.script, /awkward catch|real catch|five eras can feel huge/i);
   assert.doesNotMatch(repair.script, /The catch is what matters after the reveal cut/i);
   assert.doesNotMatch(repair.script, /source-checked gaming update/i);
@@ -3852,8 +3891,8 @@ test("duration variant repair gives stale Stranger compact repairs enough local 
     script: repair.script,
   });
 
-  assert.ok(repair.repaired_word_count >= 122, repair.script);
-  assert.ok(repair.repaired_word_count <= 132, repair.script);
+  assert.ok(repair.repaired_word_count >= 110, JSON.stringify(repair, null, 2));
+  assert.ok(repair.repaired_word_count <= 132, JSON.stringify(repair, null, 2));
   assert.doesNotMatch(repair.script, /The catch is what matters after the reveal cut/i);
   assert.doesNotMatch(repair.script, /watchlist|store page|teaser energy/i);
   assert.ok(scorecard.scores.curiosity_gap >= 70, JSON.stringify(scorecard, null, 2));

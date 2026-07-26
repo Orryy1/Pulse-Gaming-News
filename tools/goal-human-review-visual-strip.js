@@ -5,7 +5,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  require("dotenv").config({ override: true, quiet: true });
+  require("dotenv").config({ override: false, quiet: true });
 }
 
 const {

@@ -1,5 +1,5 @@
 const dotenv = require('dotenv');
-dotenv.config({ path: require('path').join(__dirname, '..', '.env'), override: true });
+dotenv.config({ path: require('path').join(__dirname, '..', '.env'), override: false });
 
 const {
   Client, GatewayIntentBits, Collection, REST, Routes,

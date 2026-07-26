@@ -136,7 +136,7 @@ async function runCli(argv = process.argv) {
 }
 
 if (require.main === module) {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
   runCli().then((result) => {
     process.exitCode = result.exitCode;
   }).catch((err) => {

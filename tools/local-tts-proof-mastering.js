@@ -7,7 +7,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true, quiet: true });
+dotenv.config({ override: false, quiet: true });
 
 const {
   buildLocalTtsProofMasteringReport,

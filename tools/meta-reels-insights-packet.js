@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 const Database = require("better-sqlite3");
 const axios = require("axios");
-require("dotenv").config({ override: true, quiet: true });
+require("dotenv").config({ override: false, quiet: true });
 
 const { recordSnapshot } = require("../lib/repositories/platform_metric_snapshots");
 const {

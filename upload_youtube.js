@@ -28,7 +28,7 @@ const {
   writeTokenJsonAtomic,
 } = require("./lib/platforms/durable-token-store");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const TOKEN_PATH = path.join(__dirname, "tokens", "youtube_token.json");
 const CREDENTIALS_PATH = path.join(

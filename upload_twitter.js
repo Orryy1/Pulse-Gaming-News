@@ -27,7 +27,7 @@ const {
   buildDirectUploadPolicy,
 } = require("./lib/services/direct-upload-policy");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 /**
  * Twitter/X is an OPTIONAL publishing channel for Pulse Gaming.

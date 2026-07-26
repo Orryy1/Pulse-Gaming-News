@@ -10,14 +10,29 @@ const {
   computeNextSafePublishWindow,
   formatPublishCadenceMarkdown,
 } = require("../../lib/ops/publish-cadence");
+const {
+  STABILISATION_PROFILE,
+} = require("../../lib/stabilisation/scheduler-profile");
 
-test("default cadence policy uses five guarded growth windows", () => {
-  assert.deepEqual(DEFAULT_EXPECTED_HOURS_UTC, [9, 11, 14, 16, 19]);
+test("default cadence policy uses exactly two guarded YouTube windows with a rolling cap of two", () => {
+  assert.deepEqual(DEFAULT_EXPECTED_HOURS_UTC, [9, 19]);
+  assert.deepEqual(STABILISATION_PROFILE.automated_platforms, ["youtube"]);
+  assert.equal(STABILISATION_PROFILE.max_public_posts_rolling_24h, 2);
+
+  const report = buildPublishCadenceReport({
+    now: "2026-06-13T10:22:00.000Z",
+    stories: [],
+    jobs: [],
+    platformPosts: [],
+  });
+  assert.deepEqual(report.thresholds.expected_hours_utc, [9, 19]);
+  assert.equal(report.thresholds.max_recommended_posts_per_24h, 2);
+
   const next = computeNextSafePublishWindow({
     nowDate: "2026-06-13T10:22:00.000Z",
     publishEvents: [],
   });
-  assert.equal(next.next_safe_publish_at_utc, "2026-06-13T11:00:00.000Z");
+  assert.equal(next.next_safe_publish_at_utc, "2026-06-13T19:00:00.000Z");
 });
 
 test("classifyPublishEvent: scheduled when close to a configured UTC window", () => {

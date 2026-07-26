@@ -46,7 +46,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
     (deps.stdout || process.stdout).write(`${usage()}\n`);
     return { help: true };
   }
-  (deps.dotenv || require("dotenv")).config({ override: true, quiet: true });
+  (deps.dotenv || require("dotenv")).config({ override: false, quiet: true });
   await fs.ensureDir(OUT);
   const db = deps.db || require("../lib/db");
   const stories = await db.getStories();

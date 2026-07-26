@@ -49,6 +49,30 @@ const trustedFinalAvReviewValidator = async () => ({
   blockers: [],
 });
 
+function validOriginalityDisclosureManifest() {
+  return {
+    originality_and_transformation_verdict: "STRONG",
+    transformation_evidence: {
+      distinct_editorial_claim:
+        "Pulse explains how the confirmed change alters the player decision.",
+      player_facing_conclusion:
+        "Players can use the verified timing and platform context to decide what to watch next.",
+      original_analysis_or_comparison:
+        "The edit compares the official claim with its practical consequence for players.",
+      source_footage_meaningfully_restructured: true,
+      pulse_context_visible: true,
+      visibly_different_from_source: true,
+      narrated_source_reading_only: false,
+    },
+    synthetic_disclosure_required: false,
+    reason:
+      "The reviewed editorial narration does not depict a realistic synthetic event.",
+    operator_decision: "DO_NOT_DISCLOSE",
+    youtube_field_value: false,
+    reviewed_at: "2026-07-23T19:36:56.962Z",
+  };
+}
+
 function repairPlatformNativePacks(options = {}) {
   return repairPlatformNativePacksProduction({
     finalAvReviewValidator: trustedFinalAvReviewValidator,
@@ -72,6 +96,7 @@ async function legacyArtifact() {
     thumbnail_headline: "FORZA STEAM SPIKE",
     first_spoken_line: "Forza Horizon 6 just gave Xbox the paid access warning it needed.",
     primary_source: "GamesRadar+",
+    originality_disclosure_manifest: validOriginalityDisclosureManifest(),
   });
   await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     schema_version: 1,
@@ -541,6 +566,7 @@ test("platform-native pack repair stamps GREEN publish controls from final rende
       "Hellraiser: Revival is set for October 8, 2026 on PS5, Xbox Series X/S and PC after a new trailer. Source: Eurogamer.",
     primary_source: "Eurogamer",
     primary_source_url: "https://www.eurogamer.net/hellraiser-revival-release-date-trailer",
+    originality_disclosure_manifest: validOriginalityDisclosureManifest(),
   });
   await fs.writeJson(path.join(artifactDir, "platform_publish_manifest.json"), {
     outputs: {},

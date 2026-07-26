@@ -3,7 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const axios = require("axios");
 const dotenv = require("dotenv");
-dotenv.config({ override: true, quiet: true });
+dotenv.config({ override: false, quiet: true });
 
 const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");

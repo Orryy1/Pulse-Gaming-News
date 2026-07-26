@@ -11,7 +11,7 @@ const {
   materializePremiumVisualCampaign,
 } = require("./lib/ops/premium-visual-campaign-engine");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const OUTPUT_DIR = path.join("output", "stories");
 

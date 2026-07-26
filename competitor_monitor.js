@@ -3,7 +3,7 @@ const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const CONFIG_PATH = path.join(__dirname, "competitor_config.json");
 const DATA_PATH = path.join(__dirname, "competitor_data.json");

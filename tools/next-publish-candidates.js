@@ -8525,7 +8525,7 @@ async function runCli(argv = process.argv) {
 
 if (require.main === module) {
   const entryArgs = parseArgs(process.argv);
-  if (!entryArgs.fileOnly) require("dotenv").config({ override: true });
+  if (!entryArgs.fileOnly) require("dotenv").config({ override: false });
   runCli().catch((err) => {
     process.stderr.write(`[next-publish-candidates] ${err.stack || err.message}\n`);
     process.exitCode = 1;

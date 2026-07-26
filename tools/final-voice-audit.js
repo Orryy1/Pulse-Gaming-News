@@ -140,7 +140,7 @@ async function listAuditMp4s({
 }
 
 async function main() {
-  dotenv.config({ override: true });
+  dotenv.config({ override: false });
   const args = parseArgs(process.argv);
   const finalDir = path.resolve(
     args.finalDir ||

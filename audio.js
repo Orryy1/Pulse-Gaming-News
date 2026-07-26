@@ -3,6 +3,9 @@ const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
+const {
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
 const { exec, execFile } = require("child_process");
 const util = require("util");
 const db = require("./lib/db");
@@ -12,7 +15,7 @@ const execAsync = util.promisify(exec);
 const execFileAsync = util.promisify(execFile);
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  dotenv.config({ override: true });
+  loadDotenvOnce({ dotenv, env: process.env });
 }
 
 const brand = require("./brand");
@@ -304,11 +307,11 @@ function collapseAdjacentDuplicateSentences(text) {
 }
 
 function normalisePulseBrandCtaForTts(text) {
-  return String(text || "").replace(TTS_PULSE_BRAND_CTA_RE, (match) => {
-    const trimmed = match.trim();
-    const terminal = /[!?]$/.test(trimmed) ? trimmed.slice(-1) : ".";
-    return `${SPOKEN_OUTRO_TEXT}${terminal}`;
-  });
+  return String(text || "")
+    .replace(TTS_PULSE_BRAND_CTA_RE, "")
+    .replace(TTS_SHORT_NEWS_CTA_RE, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildTtsAlignmentMeta({
@@ -566,8 +569,8 @@ function cleanForTTS(raw, options = {}) {
       // subtitles with ROLLOUT.JOURNALISTS joined.
       .replace(/[\u2028\u2029]/g, " ")
       .replace(/\[PAUSE\]/gi, ", ")
-      .replace(TTS_PULSE_BRAND_CTA_RE, `${SPOKEN_OUTRO_TEXT}.`)
-      .replace(TTS_SHORT_NEWS_CTA_RE, `${SPOKEN_OUTRO_TEXT}.`)
+      .replace(TTS_PULSE_BRAND_CTA_RE, "")
+      .replace(TTS_SHORT_NEWS_CTA_RE, "")
       .replace(/\[VISUAL:[^\]]*\]/gi, "")
       .replace(/\.{2,}/g, ".")
       // Ensure space after sentence-ending periods (LLM sometimes omits: "2026.The")
@@ -770,7 +773,6 @@ function selectRawTtsScript(story) {
   return ensureSafeSelectedTtsScript(preferred);
 }
 
-const SPOKEN_OUTRO = `${SPOKEN_OUTRO_TEXT}.`;
 const TERMINAL_PULSE_CTA_RE =
   /\b(?:Follow\s+for\s+more\s+gaming\s+news|Follow\s+Pulse(?:\s+|\s*\[PAUSE\]\s*|[\s,;:.\-]+)Gaming\b[^.!?]*)(?:[.!?]\s*)?$/i;
 
@@ -804,18 +806,18 @@ function insertBeforeSpokenOutro(script, insertion) {
   const cleanInsertion = collapseAdjacentDuplicateSentences(
     String(insertion || "").trim(),
   );
-  if (!cleanScript) return cleanInsertion ? ensureSpokenOutro(cleanInsertion) : SPOKEN_OUTRO;
-  if (!cleanInsertion) return ensureSpokenOutro(cleanScript);
+  if (!cleanScript) return cleanInsertion;
+  if (!cleanInsertion) return stripTerminalSpokenOutros(cleanScript);
 
   const withoutOutro = stripTerminalSpokenOutros(cleanScript);
-  return ensureSpokenOutro(`${withoutOutro} ${cleanInsertion}`.trim());
+  return collapseAdjacentDuplicateSentences(
+    `${withoutOutro} ${cleanInsertion}`.trim(),
+  );
 }
 
 function ensureSpokenOutro(script) {
   const cleanScript = collapseAdjacentDuplicateSentences(String(script || "").trim());
-  const withoutTerminalOutros = stripTerminalSpokenOutros(cleanScript);
-  if (!withoutTerminalOutros) return SPOKEN_OUTRO;
-  return `${withoutTerminalOutros} ${SPOKEN_OUTRO}`.replace(/\s+/g, " ").trim();
+  return stripTerminalSpokenOutros(cleanScript);
 }
 
 function buildDeterministicDurationPadding(story, { attempt = 1 } = {}) {
@@ -869,8 +871,10 @@ function buildDeterministicDurationRewrite(story, { attempt = 1 } = {}) {
   };
 }
 
-const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
-const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
+const BUMPER_DURATION = 0;
+// Legacy-only defaults. Canonical Pulse videos use the story-specific
+// stabilisation band carried in short_runtime_plan.
+const MIN_TOTAL_DURATION = 61;
 const MAX_FLASH_TOTAL_DURATION = 75;
 const MAX_EXTENDED_TOTAL_DURATION = 90;
 
@@ -882,17 +886,24 @@ function resolvePostTtsDurationContract({
   const measuredNarrationAuthority =
     String(runtimePlan.durationLane || runtimePlan.duration_lane || "") ===
     "breaking_news";
-  const minSeconds = measuredNarrationAuthority
-    ? Number(runtimePlan.minSeconds) || 35
-    : MIN_TOTAL_DURATION;
+  const stabilisationAuthoritative =
+    runtimePlan.stabilisationAuthoritative === true;
+  const minSeconds =
+    measuredNarrationAuthority || stabilisationAuthoritative
+      ? Number(runtimePlan.minSeconds) || 25
+      : MIN_TOTAL_DURATION;
   const maxSeconds = measuredNarrationAuthority
     ? Number(runtimePlan.maxSeconds) || 59
-    : Number(runtimePlan.maxSeconds) ||
+    : stabilisationAuthoritative
+      ? Number(runtimePlan.maxSeconds) || 55
+      : Number(runtimePlan.maxSeconds) ||
       (runtimePlan.route === "extended_short"
         ? MAX_EXTENDED_TOTAL_DURATION
         : MAX_FLASH_TOTAL_DURATION);
   return {
     measuredNarrationAuthority,
+    stabilisationAuthoritative,
+    paddingForbidden: stabilisationAuthoritative,
     actualSeconds: measuredNarrationAuthority
       ? Number(audioDuration)
       : Number(totalDuration),
@@ -900,6 +911,8 @@ function resolvePostTtsDurationContract({
     maxSeconds,
     label: measuredNarrationAuthority
       ? "Breaking News Lane"
+      : stabilisationAuthoritative
+        ? "Stabilisation Story Band"
       : runtimePlan.route === "extended_short"
         ? "Extended Short"
         : "Flash Lane",
@@ -2366,12 +2379,13 @@ async function generateAudio() {
 
       while (
         !durationContract.measuredNarrationAuthority &&
-        totalDuration < MIN_TOTAL_DURATION &&
+        !durationContract.paddingForbidden &&
+        totalDuration < durationContract.minSeconds &&
         regenAttempts < MAX_REGEN
       ) {
         regenAttempts++;
         console.log(
-          `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s). Regenerating longer script (attempt ${regenAttempts}/${MAX_REGEN})...`,
+          `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${durationContract.minSeconds}s). Regenerating longer script (attempt ${regenAttempts}/${MAX_REGEN})...`,
         );
 
         let newScript;
@@ -2402,7 +2416,7 @@ async function generateAudio() {
             messages: [
               {
                 role: "user",
-                content: `Rewrite this script to be ${runtimePlan.minWords}-${runtimePlan.maxWords} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: ${SPOKEN_OUTRO_TEXT}.`,
+                content: `Rewrite this script to be ${runtimePlan.minWords}-${runtimePlan.maxWords} spoken words for a ${runtimePlan.minSeconds}-${runtimePlan.maxSeconds} second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the ending story-specific and do not add a fixed channel CTA.`,
               },
             ],
           });
@@ -2505,9 +2519,9 @@ async function generateAudio() {
         console.log(
           `[audio] Breaking News Lane duration OK: ${audioDuration.toFixed(1)}s measured narration`,
         );
-      } else if (totalDuration < MIN_TOTAL_DURATION) {
+      } else if (totalDuration < durationContract.minSeconds) {
         console.log(
-          `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s) but max regen attempts (${MAX_REGEN}) reached - accepting as-is`,
+          `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (target ${durationContract.minSeconds}s); accepting the unpadded narration for human review`,
         );
         story.duration_warning = true;
       } else {

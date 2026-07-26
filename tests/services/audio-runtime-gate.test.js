@@ -52,10 +52,10 @@ test("audio.js rechecks regenerated audio duration, not the stale first pass", (
   assert.match(AUDIO, /totalDuration\s*=\s*newDuration\s*\+\s*BUMPER_DURATION/);
 });
 
-test("audio.js retries too-short regenerated audio until the configured cap", () => {
+test("audio.js only retries legacy undershoots and never pads stabilisation stories", () => {
   assert.match(
     AUDIO,
-    /while\s*\(\s*!durationContract\.measuredNarrationAuthority[\s\S]*totalDuration\s*<\s*MIN_TOTAL_DURATION/,
+    /while\s*\(\s*!durationContract\.measuredNarrationAuthority[\s\S]*!durationContract\.paddingForbidden[\s\S]*totalDuration\s*<\s*durationContract\.minSeconds/,
   );
   assert.match(AUDIO, /Regenerating longer script \(attempt \$\{regenAttempts\}\/\$\{MAX_REGEN\}\)/);
 });
@@ -72,6 +72,8 @@ test("audio.js uses measured narration duration for the breaking-news lane", () 
   });
   assert.deepEqual(pass, {
     measuredNarrationAuthority: true,
+    stabilisationAuthoritative: false,
+    paddingForbidden: false,
     actualSeconds: 41,
     minSeconds: 35,
     maxSeconds: 59,
@@ -84,6 +86,23 @@ test("audio.js uses measured narration duration for the breaking-news lane", () 
     totalDuration: 62,
   });
   assert.equal(flash.measuredNarrationAuthority, false);
+  assert.equal(flash.stabilisationAuthoritative, false);
+  assert.equal(flash.paddingForbidden, false);
   assert.equal(flash.minSeconds, 61);
   assert.equal(flash.maxSeconds, 75);
+
+  const standard = resolvePostTtsDurationContract({
+    runtimePlan: {
+      durationLane: "standard_news",
+      stabilisationAuthoritative: true,
+      minSeconds: 32,
+      maxSeconds: 42,
+    },
+    audioDuration: 36,
+    totalDuration: 36,
+  });
+  assert.equal(standard.stabilisationAuthoritative, true);
+  assert.equal(standard.paddingForbidden, true);
+  assert.equal(standard.minSeconds, 32);
+  assert.equal(standard.maxSeconds, 42);
 });

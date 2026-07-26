@@ -176,7 +176,7 @@ const MUSIC_MIX_POLICY = {
 function loadDotenvForCli() {
   try {
     if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-      require("dotenv").config({ override: true });
+      require("dotenv").config({ override: false });
     }
   } catch {}
 }

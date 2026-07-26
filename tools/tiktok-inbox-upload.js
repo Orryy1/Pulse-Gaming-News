@@ -4,7 +4,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const db = require("../lib/db");
 const mediaPaths = require("../lib/media-paths");

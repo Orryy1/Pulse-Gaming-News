@@ -4,7 +4,7 @@
 const path = require("node:path");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROOT = path.resolve(__dirname, "..");
 const db = require("../lib/db");

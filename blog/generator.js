@@ -9,7 +9,7 @@ const path = require('path');
 const dotenv = require('dotenv');
 const { createLlmClient } = require('../lib/llm-client');
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const DIST_DIR = path.join(__dirname, 'dist');
 

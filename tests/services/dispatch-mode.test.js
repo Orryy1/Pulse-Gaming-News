@@ -9,7 +9,8 @@
  *                 failure throws).
  *   dev, default -> queue, non-strict (bootstrap failure skips
  *                   scheduler but does not fall through to legacy).
- *   dev, USE_JOB_QUEUE=false -> legacy_dev, non-strict.
+ *   dev, USE_JOB_QUEUE=false -> queue, non-strict. The legacy scheduler
+ *                               has been retired rather than hidden.
  *   USE_JOB_QUEUE=false in prod -> ignored; stays queue+strict.
  *
  * Run: node --test tests/services/dispatch-mode.test.js
@@ -17,6 +18,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   resolveDispatchMode,
@@ -79,13 +82,13 @@ test("resolveDispatchMode: dev default -> queue, non-strict", () => {
   assert.equal(r.reason, "dev_queue_default");
 });
 
-test("resolveDispatchMode: dev + USE_JOB_QUEUE=false -> legacy_dev, non-strict", () => {
+test("resolveDispatchMode: dev + USE_JOB_QUEUE=false stays queue-only", () => {
   const r = resolveDispatchMode({
     env: { NODE_ENV: "development", USE_JOB_QUEUE: "false" },
   });
-  assert.equal(r.mode, "legacy_dev");
+  assert.equal(r.mode, "queue");
   assert.equal(r.strict, false);
-  assert.equal(r.reason, "dev_explicit_legacy_opt_in");
+  assert.equal(r.reason, "legacy_scheduler_retired_queue_only");
 });
 
 test("resolveDispatchMode: dev + USE_JOB_QUEUE=true -> queue (same as default)", () => {
@@ -105,5 +108,14 @@ test("resolveDispatchMode: any other value than literal 'false' keeps queue", ()
       "queue",
       `USE_JOB_QUEUE=${JSON.stringify(v)} unexpectedly selected legacy`,
     );
+  }
+});
+
+test("run.js and server.js contain no second cron registry", () => {
+  for (const file of ["run.js", "server.js"]) {
+    const source = fs.readFileSync(path.join(__dirname, "..", "..", file), "utf8");
+    assert.doesNotMatch(source, /\bcron\.schedule\s*\(/);
+    assert.doesNotMatch(source, /_registerLegacyDevCronRegistry/);
+    assert.doesNotMatch(source, /mode:\s*["']legacy_dev["']/);
   }
 });

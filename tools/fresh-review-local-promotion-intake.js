@@ -3,7 +3,7 @@
 
 const path = require("node:path");
 const fs = require("fs-extra");
-require("dotenv").config({ quiet: true, override: true });
+require("dotenv").config({ quiet: true, override: false });
 
 const {
   buildFreshReviewLocalPromotionIntake,

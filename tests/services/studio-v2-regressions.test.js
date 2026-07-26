@@ -810,22 +810,15 @@ test("v2 sound layer keeps the music bed below local narration clarity", () => {
   );
 });
 
-test("studio production voice includes the branded spoken outro by default", () => {
+test("studio production voice does not append the retired fixed CTA by default", () => {
   const segments = buildProductionVoiceSegments({
     hook: "Mega Mewtwo is real.",
     body: "The event is free for all players.",
     loop: "That is the real shift.",
-  });
+  }, {});
 
-  const outro = segments.find((segment) => segment.label === "outro");
-  assert.equal(
-    outro.text,
-    "Follow Pulse Gaming so you never miss a beat.",
-  );
-  assert.equal(
-    resolveStudioOutroLine({}),
-    "Follow Pulse Gaming so you never miss a beat.",
-  );
+  assert.equal(segments.some((segment) => segment.label === "outro"), false);
+  assert.equal(resolveStudioOutroLine({}), "");
 });
 
 test("studio production voice can disable the spoken outro for private tests", () => {

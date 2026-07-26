@@ -29,7 +29,7 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-test("canonical audio selection ignores stale caption and spoken derivatives", () => {
+test("canonical audio selection ignores stale derivatives and strips the retired spoken CTA", () => {
   const narration =
     "Ascend to ZERO lets you freeze time, but can its bosses make that power feel dangerous? Follow Pulse Gaming so you never miss a beat.";
   const spoken =
@@ -46,7 +46,11 @@ test("canonical audio selection ignores stale caption and spoken derivatives", (
       display_script: stale,
       spoken_narration_script: stale,
     }),
-    { narrationText: narration, spokenText: spoken },
+    {
+      narrationText: narration,
+      spokenText:
+        "Ascend to ZERO lets you freeze time, but can its bosses make that power feel dangerous?",
+    },
   );
 });
 
@@ -175,14 +179,14 @@ test("managed TTS materialisation rebinds provider-native rate evidence to the f
 
 test("spoken-text selection rejects a TTS derivative that collapsed sentence punctuation", () => {
   const narration =
-    "Palworld changed the argument. Players now judge a finished game. The launch trailer promises scale. The payoff is whether the endgame lasts. Follow Pulse Gaming so you never miss a beat.";
+    "Palworld changed the argument. Players now judge a finished game. The launch trailer promises scale. The payoff is whether the endgame lasts.";
   const collapsed =
-    "Palworld changed the argument, Players now judge a finished game, The launch trailer promises scale, The payoff is whether the endgame lasts, Follow Pulse Gaming so you never miss a beat.";
+    "Palworld changed the argument, Players now judge a finished game, The launch trailer promises scale, The payoff is whether the endgame lasts.";
 
   const selected = _testables.selectSpokenTextForTts(narration, collapsed);
 
   assert.equal(selected, narration);
-  assert.equal((selected.match(/\./g) || []).length, 5);
+  assert.equal((selected.match(/\./g) || []).length, 4);
 });
 
 function charAlignment(text) {
@@ -1257,7 +1261,7 @@ test("goal audio materializer routes real ElevenLabs generation through strict r
   );
 });
 
-test("goal audio materializer cleans cached spoken scripts before TTS generation", async () => {
+test("goal audio materializer removes a retired cached CTA before TTS generation", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-clean-spoken-"));
   const artifactDir = await makePackage(root, "story-clean-spoken", {
     selected_title: "The Expanse: Osiris Reborn Shows Real Gameplay",
@@ -1290,7 +1294,7 @@ test("goal audio materializer cleans cached spoken scripts before TTS generation
   assert.equal(calls.length, 1);
   assert.equal(
     calls[0].text,
-    "The Expanse Osiris Reborn finally showed real gameplay. Follow Pulse Gaming so you never miss a beat.",
+    "The Expanse Osiris Reborn finally showed real gameplay.",
   );
   assert.equal(calls[0].story.tts_script, calls[0].text);
   assert.doesNotMatch(calls[0].text, /:|\[PAUSE\]/);
@@ -3918,8 +3922,8 @@ test("goal audio materializer accepts hyphenated title words split in the openin
 
 test("goal audio materializer keeps the real opening match on long repeated title scripts", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-long-opening-"));
-  const script = "Gears of War E-Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install, with RTX 2060-era hardware as the minimum floor. That is normal for a 2026 blockbuster. The catch is not the number. It is what players have to delete before launch night. A 130 GB install means clearing space, waiting through the preload and hoping the campaign earns that footprint. That is the trade-off for Xbox: if E-Day looks expensive because the levels are dense, cinematic and brutal, the size becomes part of the promise. If the opening hours feel padded, storage becomes the first complaint. E-Day has to make 130 GB feel like weight, not bloat. Follow Pulse Gaming so you never miss a beat.";
-  const transcript = "Gears of War E Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install, with RTX twenty sixty era hardware as the minimum floor. That is normal for a twenty twenty six blockbuster. The catch is not the number. It is what players have to delete before launch night. A 130 GB install means clearing space, waiting through the preload and hoping the campaign earns that footprint. That is the trade off for Xbox. If E Day looks expensive because the levels are dense, cinematic and brutal, the size becomes part of the promise. If the opening hours feel padded, storage becomes the first complaint. E Day has to make 130 gigabytes feel like weight, not bloat. Follow Pulse Gaming so you never miss a beat.";
+  const script = "Gears of War E-Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install, with RTX 2060-era hardware as the minimum floor. That is normal for a 2026 blockbuster. The catch is not the number. It is what players have to delete before launch night. A 130 GB install means clearing space, waiting through the preload and hoping the campaign earns that footprint. That is the trade-off for Xbox: if E-Day looks expensive because the levels are dense, cinematic and brutal, the size becomes part of the promise. If the opening hours feel padded, storage becomes the first complaint. E-Day has to make 130 GB feel like weight, not bloat.";
+  const transcript = "Gears of War E Day just turned PC specs into the story. PC Gamer says the requirements list a 130 GB SSD install, with RTX twenty sixty era hardware as the minimum floor. That is normal for a twenty twenty six blockbuster. The catch is not the number. It is what players have to delete before launch night. A 130 GB install means clearing space, waiting through the preload and hoping the campaign earns that footprint. That is the trade off for Xbox. If E Day looks expensive because the levels are dense, cinematic and brutal, the size becomes part of the promise. If the opening hours feel padded, storage becomes the first complaint. E Day has to make 130 gigabytes feel like weight, not bloat.";
   const artifactDir = await makePackage(root, "story-long-opening-hyphen", {
     selected_title: "Gears E-Day Has A 130GB Problem",
     narration_script: script,
@@ -4199,7 +4203,7 @@ test("goal audio materializer stages strict Whisper regeneration before replacin
 test("goal audio materializer blocks inserted Whisper words instead of hiding them", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-reconcile-"));
   const script =
-    "The Expanse: Osiris Reborn finally showed real gameplay. Follow Pulse Gaming so you never miss a beat.";
+    "The Expanse: Osiris Reborn finally showed real gameplay.";
   const artifactDir = await makePackage(root, "story-whisper-reconcile", {
     selected_title: "The Expanse Shows Real Gameplay",
     narration_script: script,
@@ -4227,18 +4231,9 @@ test("goal audio materializer blocks inserted Whisper words instead of hiding th
         { word: "showed", start: 1.56, end: 1.8 },
         { word: "real", start: 1.84, end: 2.02 },
         { word: "gameplay.", start: 2.06, end: 2.42 },
-        { word: "Follow", start: 2.8, end: 3.02 },
-        { word: "Pulse", start: 3.04, end: 3.22 },
-        { word: "Gaming", start: 3.24, end: 3.52 },
-        { word: "so", start: 3.56, end: 3.68 },
-        { word: "you", start: 3.7, end: 3.82 },
-        { word: "never", start: 3.84, end: 4.02 },
-        { word: "miss", start: 4.04, end: 4.2 },
-        { word: "a", start: 4.22, end: 4.28 },
-        { word: "beat.", start: 4.3, end: 4.52 },
       ],
       transcript:
-        "The Expanse of Osiris Reborn finally showed real gameplay. Follow Pulse Gaming so you never miss a beat.",
+        "The Expanse of Osiris Reborn finally showed real gameplay.",
     }),
     generateTtsForStory: async ({ text, outputPath }) => {
       const audioPath = path.join(root, outputPath);
@@ -4258,7 +4253,8 @@ test("goal audio materializer blocks inserted Whisper words instead of hiding th
 
 test("goal audio materializer retries local narration when generated speech stutters under ASR", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-tts-stutter-retry-"));
-  const script = "V Rising's next move is not another content drop. Follow Pulse Gaming so you never miss a beat.";
+  const script =
+    "V Rising's next move is not another content drop. That makes the studio's next reveal the real test.";
   const artifactDir = await makePackage(root, "story-tts-stutter-retry", {
     selected_title: "V Rising Devs Are Making Another Vampire Game",
     narration_script: script,
@@ -4282,10 +4278,10 @@ test("goal audio materializer retries local narration when generated speech stut
           source: "local_whisper_word_alignment",
           model: "tiny.en",
           transcript:
-            "V Rising's next move is not another content drop drop. Follow Pulse Gaming so you never miss a beat.",
+            "V Rising's next move is not another content drop drop. That makes the studio's next reveal the real test.",
           words: [
             "V", "Rising's", "next", "move", "is", "not", "another", "content", "drop", "drop.",
-            "Follow", "Pulse", "Gaming", "so", "you", "never", "miss", "a", "beat.",
+            "That", "makes", "the", "studio's", "next", "reveal", "the", "real", "test.",
           ].map((word, index) => ({
             word,
             start: Number((index * 0.2).toFixed(2)),
@@ -4328,7 +4324,7 @@ test("goal audio materializer retries local narration when generated speech stut
 
 test("goal audio materializer trims trailing ASR tail words before accepting word timestamps", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-tail-"));
-  const script = "Super Mario RPG just dropped to 15 dollars. Follow Pulse Gaming so you never miss a beat.";
+  const script = "Super Mario RPG just dropped to 15 dollars.";
   const artifactDir = await makePackage(root, "story-whisper-tail", {
     selected_title: "Super Mario RPG Drops To $15",
     narration_script: script,
@@ -4347,8 +4343,7 @@ test("goal audio materializer trims trailing ASR tail words before accepting wor
     alignWordsWithAudio: async () => {
       alignCalls.push(true);
       const words = [
-        "Super", "Mario", "RPG", "just", "dropped", "to", "15", "dollars.", "Follow", "Pulse",
-        "Gaming", "so", "you", "never", "miss", "a", "beat.",
+        "Super", "Mario", "RPG", "just", "dropped", "to", "15", "dollars.",
       ].map((word, index) => ({
         word,
         start: Number((index * 0.2).toFixed(2)),
@@ -4386,7 +4381,7 @@ test("goal audio materializer trims trailing ASR tail words before accepting wor
   assert.equal(report.summary.failed_count, 0);
   assert.equal(alignCalls.length, 2);
   assert.equal(trims.length, 1);
-  assert.equal(Number(trims[0].durationS.toFixed(2)), 3.32);
+  assert.equal(Number(trims[0].durationS.toFixed(2)), 1.52);
   const timestamps = await fs.readJson(path.join(root, "output", "audio", "story-whisper-tail_timestamps.json"));
   assert.equal(timestamps.meta.wordTimestampSource, "local_whisper_word_alignment");
   assert.equal(timestamps.meta.timestampWhisperTailRepair.repaired, true);
@@ -4394,7 +4389,7 @@ test("goal audio materializer trims trailing ASR tail words before accepting wor
   assert.equal(timestamps.words.at(-1).end <= trims[0].durationS, true);
   assert.deepEqual(
     timestamps.words.slice(-3).map((word) => word.word),
-    ["miss", "a", "beat."],
+    ["to", "15", "dollars."],
   );
 });
 
@@ -4443,7 +4438,7 @@ test("goal audio materializer rejects strict Whisper timestamps with an unsafe t
 
 test("goal audio materializer retries Whisper when mid-script ASR insertions exceed the safe threshold", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-insertions-"));
-  const script = "PlayStation five just became harder to buy for new players. Follow Pulse Gaming so you never miss a beat.";
+  const script = "PlayStation five just became harder to buy for new players.";
   const artifactDir = await makePackage(root, "story-whisper-insertions", {
     selected_title: "PS5 Prices Went Up In Europe",
     narration_script: script,
@@ -4463,7 +4458,7 @@ test("goal audio materializer retries Whisper when mid-script ASR insertions exc
       alignWordsWithAudio: async ({ model }) => {
         alignCalls.push(model);
         const text = model === "base.en"
-          ? "PlayStation five just became harder to buy for the company to buy for new players. Follow Pulse Gaming so you never miss a beat."
+          ? "PlayStation five just became harder to buy for the company to buy for new players."
           : script;
         return {
           ok: true,
@@ -4511,7 +4506,6 @@ test("goal audio materializer blocks tiny ASR insertions even on long high-cover
     "That makes it a community access dispute around one of Pokemon's official programmes.",
     "It is small compared with Nintendo's biggest legal fights, but weird enough to watch.",
     "If either side answers, the story changes from odd filing to clearer dispute.",
-    "Follow Pulse Gaming so you never miss a beat.",
   ].join(" ");
   const artifactDir = await makePackage(root, "story-whisper-long-insertions", {
     selected_title: "Nintendo Professor Lawsuit Just Got Weird",
@@ -4588,7 +4582,7 @@ test("goal audio materializer covers title openings when ASR spells GTA 6 posses
 test("goal audio materializer uses configured stronger Whisper fallbacks before rejecting clean speech", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-default-whisper-fallback-"));
   const script =
-    "Mega Mewtwo is finally coming to Pokemon Go. Fair access, clear timing and no paywall confusion decide whether this lands. Follow Pulse Gaming so you never miss a beat.";
+    "Mega Mewtwo is finally coming to Pokemon Go. Fair access, clear timing and no paywall confusion decide whether this lands.";
   const artifactDir = await makePackage(root, "story-default-whisper-fallback", {
     selected_title: "Mega Mewtwo Is Finally Coming To Pokemon Go",
     narration_script: script,
@@ -4657,7 +4651,7 @@ test("goal audio materializer uses configured stronger Whisper fallbacks before 
 test("goal audio materializer blocks high-coverage ASR drift when it inserts words", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-drift-"));
   const script =
-    "Kadokawa's activist investor now has a bigger stake than Sony. Kadokawa works best as a tight news hit with the source visible. Follow Pulse Gaming so you never miss a beat.";
+    "Kadokawa's activist investor now has a bigger stake than Sony. Kadokawa works best as a tight news hit with the source visible.";
   const artifactDir = await makePackage(root, "story-whisper-drift", {
     selected_title: "Kadokawa Stake Just Passed Sony",
     narration_script: script,
@@ -4698,18 +4692,9 @@ test("goal audio materializer blocks high-coverage ASR drift when it inserts wor
         { word: "a", start: 4.5, end: 4.58 },
         { word: "source", start: 4.6, end: 4.86 },
         { word: "visible.", start: 4.88, end: 5.22 },
-        { word: "Follow", start: 5.5, end: 5.72 },
-        { word: "Paul's", start: 5.74, end: 5.96 },
-        { word: "Gaming", start: 5.98, end: 6.24 },
-        { word: "so", start: 6.26, end: 6.38 },
-        { word: "you", start: 6.4, end: 6.52 },
-        { word: "never", start: 6.54, end: 6.74 },
-        { word: "miss", start: 6.76, end: 6.92 },
-        { word: "a", start: 6.94, end: 7.02 },
-        { word: "beat.", start: 7.04, end: 7.28 },
       ],
       transcript:
-        "Kadokawa's activist investor now has a bigger stake than Sony. Katokawa works best as a tight news hit with a source visible. Follow Paul's Gaming so you never miss a beat.",
+        "Kadokawa's activist investor now has a bigger stake than Sony. Katokawa works best as a tight news hit with a source visible.",
     }),
     generateTtsForStory: async ({ text, outputPath }) => {
       const audioPath = path.join(root, outputPath);
@@ -4730,7 +4715,7 @@ test("goal audio materializer blocks high-coverage ASR drift when it inserts wor
 test("goal audio materializer accepts high-confidence opening tense drift without falling back to loose timing", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-opening-drift-"));
   const script =
-    "Xbox asked for feedback and immediately got the exclusives argument. IGN reports Microsoft Launches Xbox Player Voice to Gather Feedback, Fans Immediately Demand Exclusives. Xbox now has one concrete change worth remembering after the scroll moves on. Follow Pulse Gaming so you never miss a beat.";
+    "Xbox asked for feedback and immediately got the exclusives argument. IGN reports Microsoft Launches Xbox Player Voice to Gather Feedback, Fans Immediately Demand Exclusives. Xbox now has one concrete change worth remembering after the scroll moves on.";
   const artifactDir = await makePackage(root, "story-whisper-opening-drift", {
     selected_title: "Xbox Feedback Backfired Fast",
     narration_script: script,
@@ -4749,13 +4734,12 @@ test("goal audio materializer accepts high-confidence opening tense drift withou
       source: "local_whisper_word_alignment",
       model: "tiny.en",
       transcript:
-        "Xbox asks for feedback and immediately got the exclusives argument. IGN reports Microsoft Launches Xbox Player Voice to Gather Feedback, Fans Immediately Demand Exclusives. Xbox now has one concrete change worth remembering after the scroll moves on. Follow Pulse Gaming so you never miss a beat.",
+        "Xbox asks for feedback and immediately got the exclusives argument. IGN reports Microsoft Launches Xbox Player Voice to Gather Feedback, Fans Immediately Demand Exclusives. Xbox now has one concrete change worth remembering after the scroll moves on.",
       words: [
         "Xbox", "asks", "for", "feedback", "and", "immediately", "got", "the", "exclusives", "argument.",
         "IGN", "reports", "Microsoft", "Launches", "Xbox", "Player", "Voice", "to", "Gather", "Feedback,",
         "Fans", "Immediately", "Demand", "Exclusives.", "Xbox", "now", "has", "one", "concrete", "change",
-        "worth", "remembering", "after", "the", "scroll", "moves", "on.", "Follow", "Pulse", "Gaming",
-        "so", "you", "never", "miss", "a", "beat.",
+        "worth", "remembering", "after", "the", "scroll", "moves", "on.",
       ].map((word, index) => ({
         word,
         start: Number((index * 0.18).toFixed(2)),
@@ -4789,7 +4773,7 @@ test("goal audio materializer accepts high-confidence opening tense drift withou
 test("goal audio materializer reconciles gaming ASR alias rate back to raid for captions", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-whisper-raid-alias-"));
   const script =
-    "Mega Mewtwo finally has a Pokémon Go path. The player detail is timing, raid access and whether free players actually get a fair shot. Follow Pulse Gaming so you never miss a beat.";
+    "Mega Mewtwo finally has a Pokémon Go path. The player detail is timing, raid access and whether free players actually get a fair shot.";
   const artifactDir = await makePackage(root, "story-whisper-raid-alias", {
     selected_title: "Mega Mewtwo Is Finally Coming To Pokémon Go",
     narration_script: script,
@@ -4808,7 +4792,7 @@ test("goal audio materializer reconciles gaming ASR alias rate back to raid for 
       source: "local_whisper_word_alignment",
       model: "tiny.en",
       transcript:
-        "Mega Mewtwo finally has a Pokémon Go path. The player detail is timing, rate access and whether free players actually get a fair shot. Follow Pulse Gaming so you never miss a beat.",
+        "Mega Mewtwo finally has a Pokémon Go path. The player detail is timing, rate access and whether free players actually get a fair shot.",
       words: script.replace("raid", "rate").split(/\s+/).map((word, index) => ({
         word,
         start: Number((index * 0.18).toFixed(2)),
@@ -4899,7 +4883,7 @@ test("goal audio materializer retries local Whisper models before blocking ASR a
   process.env.LOCAL_WHISPER_MODELS = "tiny.en,base.en";
   try {
     const script =
-      "Crimson Desert is already live in one region. The studio opened the test build before the wider rollout. Follow Pulse Gaming so you never miss a beat.";
+      "Crimson Desert is already live in one region. The studio opened the test build before the wider rollout.";
     const artifactDir = await makePackage(root, "story-whisper-model-retry", {
       selected_title: "Crimson Desert Is Already Live",
       narration_script: script,
@@ -5444,7 +5428,7 @@ test("goal audio materializer repairs excessive pauses in-place before regenerat
 
 test("goal audio materializer realigns timestamps without mutating audio when timestamps mask acoustic silence", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-mask-silence-"));
-  const script = "Marvel Tokon has twenty playable fighters. Follow Pulse Gaming so you never miss a beat.";
+  const script = "Marvel Tokon has twenty playable fighters. That roster size changes the matchup math.";
   const artifactDir = await makePackage(root, "story-mask-silence", {
     selected_title: "Marvel Tokon's Roster Has One Big Risk",
     narration_script: script,
@@ -5509,7 +5493,7 @@ test("goal audio materializer realigns timestamps without mutating audio when ti
         modelCalls.push(model);
         const words = alignedWords.map((word) => ({ ...word }));
         if (model === "tiny.en") {
-          words[6] = { word: "Follow", start: 1.95, end: 2.55 };
+          words[6] = { word: "That", start: 1.95, end: 2.55 };
         }
         return {
           ok: true,
@@ -5561,7 +5545,7 @@ test("goal audio materializer realigns timestamps without mutating audio when ti
 
 test("goal audio materializer pads an existing pair that cadence QA marks too fast", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-pad-existing-"));
-  const script = "Marvel Tokon has twenty playable fighters. Follow Pulse Gaming so you never miss a beat.";
+  const script = "Marvel Tokon has twenty playable fighters. That makes balance the real test.";
   const artifactDir = await makePackage(root, "story-pad-existing", {
     selected_title: "Marvel Tokon's Roster Has One Big Risk",
     narration_script: script,
@@ -5632,7 +5616,7 @@ test("goal audio materializer pads an existing pair that cadence QA marks too fa
 
 test("goal audio materializer pads a hash-bound strict Whisper pair without rerunning ASR", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-pad-strict-bound-"));
-  const script = "Marvel Tokon has twenty playable fighters. Follow Pulse Gaming so you never miss a beat.";
+  const script = "Marvel Tokon has twenty playable fighters. That makes balance the real test.";
   const storyId = "story-pad-strict-bound";
   const artifactDir = await makePackage(root, storyId, {
     selected_title: "Marvel Tokon's Roster Has One Big Risk",
@@ -5750,7 +5734,7 @@ test("goal audio materializer pads a hash-bound strict Whisper pair without reru
 
 test("explicit target-cadence padding repairs an existing advisory pair without regenerating speech", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-pad-advisory-"));
-  const script = "Castlevania rejects random resets. Follow Pulse Gaming so you never miss a beat.";
+  const script = "Castlevania rejects random resets. That makes every loss a design choice.";
   const artifactDir = await makePackage(root, "story-pad-advisory", {
     selected_title: "Castlevania Belmont's Curse Rejects The Roguelite Formula",
     narration_script: script,
@@ -6218,7 +6202,7 @@ test("forced ElevenLabs generation overrides an existing-audio cadence repair jo
 
 test("goal audio materializer regenerates when existing ASR alignment repair is not clean", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-asr-regenerate-"));
-  const script = "The Expanse Osiris Reborn finally showed real gameplay. Follow Pulse Gaming so you never miss a beat.";
+  const script = "The Expanse Osiris Reborn finally showed real gameplay.";
   const artifactDir = await makePackage(root, "story-asr-regenerate", {
     selected_title: "The Expanse Shows Real Gameplay",
     narration_script: script,
@@ -6265,7 +6249,7 @@ test("goal audio materializer regenerates when existing ASR alignment repair is 
           ok: true,
           source: "local_whisper_word_alignment",
           model: "tiny.en",
-          transcript: "The Expanse of Osiris Reborn finally showed real gameplay. Follow Pulse Gaming so you never miss a beat.",
+          transcript: "The Expanse of Osiris Reborn finally showed real gameplay.",
           words: [
             { word: "The", start: 0.1, end: 0.2 },
             { word: "Expanse", start: 0.22, end: 0.5 },
@@ -6276,15 +6260,6 @@ test("goal audio materializer regenerates when existing ASR alignment repair is 
             { word: "showed", start: 1.52, end: 1.76 },
             { word: "real", start: 1.78, end: 1.96 },
             { word: "gameplay.", start: 1.98, end: 2.34 },
-            { word: "Follow", start: 2.5, end: 2.72 },
-            { word: "Pulse", start: 2.74, end: 2.94 },
-            { word: "Gaming", start: 2.96, end: 3.22 },
-            { word: "so", start: 3.24, end: 3.36 },
-            { word: "you", start: 3.38, end: 3.5 },
-            { word: "never", start: 3.52, end: 3.72 },
-            { word: "miss", start: 3.74, end: 3.9 },
-            { word: "a", start: 3.92, end: 3.98 },
-            { word: "beat.", start: 4, end: 4.24 },
           ],
         };
       }
@@ -6324,7 +6299,7 @@ test("goal audio materializer regenerates when existing ASR alignment repair is 
 test("goal audio materializer does not skip Whisper pairs already flagged for narration regeneration", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-no-false-ready-"));
   const script =
-    "Mega Mewtwo finally has a Pokémon Go path instead of another tease. Follow Pulse Gaming so you never miss a beat.";
+    "Mega Mewtwo finally has a Pokémon Go path instead of another tease.";
   const artifactDir = await makePackage(root, "story-no-false-ready", {
     selected_title: "Mega Mewtwo Is Finally Coming To Pokémon Go",
     narration_script: script,
@@ -6661,7 +6636,7 @@ test("goal audio materializer promotes fresh generated workspace audio over stal
   process.env.MEDIA_ROOT = mediaRoot;
   const storyId = "story-media-promote";
   const script =
-    "Mega Mewtwo finally has a Pokémon Go path. The player detail is timing, raid access and whether free players actually get a fair shot. Follow Pulse Gaming so you never miss a beat.";
+    "Mega Mewtwo finally has a Pokémon Go path. The player detail is timing, raid access and whether free players actually get a fair shot.";
   try {
     const artifactDir = await makePackage(root, storyId, {
       selected_title: "Mega Mewtwo Is Finally Coming To Pokémon Go",
@@ -7154,7 +7129,7 @@ test("goal audio materializer blocks protected game-title ASR substitution befor
 test("goal audio materializer repairs provider title pauses before global compaction and Whisper", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-audio-materializer-provider-title-pause-"));
   const narration =
-    "Shift At Midnight has one awful problem. Follow Pulse Gaming so you never miss a beat.";
+    "Shift At Midnight has one awful problem.";
   const artifactDir = await makePackage(root, "story-provider-title-pause", {
     canonical_game: "Shift At Midnight",
     canonical_subject: "Shift At Midnight",

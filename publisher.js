@@ -1,6 +1,9 @@
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
-dotenv.config({ override: true });
+const {
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+loadDotenvOnce({ dotenv, env: process.env });
 
 const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
@@ -15,9 +18,10 @@ const {
   buildPublishDispatchPolicy,
 } = require("./lib/services/publish-dispatch-policy");
 const {
-  publishCandidateBlocker,
-} = require("./lib/services/pipeline-backlog");
-
+  acquirePublisherLease,
+  defaultOwnerId,
+  releasePublisherLease,
+} = require("./lib/services/publisher-lock");
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;
 
@@ -882,6 +886,8 @@ async function publishNextStory(options = {}) {
     return null;
   }
   publishLock = true;
+  let durableLease = null;
+  let runtimeLeases = null;
 
   try {
     const dispatchSource = options.dispatchSource || "unspecified";
@@ -905,6 +911,59 @@ async function publishNextStory(options = {}) {
         top_reason: dispatchGate.blockers[0] || "publish_dispatch_blocked",
         publish_dispatch: {
           ...dispatchGate,
+          jobId: options.jobId || null,
+          storyId: options.storyId || null,
+        },
+      };
+    }
+    if (!db.useSqlite()) {
+      return {
+        publish_dispatch_blocked: true,
+        status: "blocked",
+        top_reason: "durable_publish_lock_unavailable",
+        publish_dispatch: {
+          ...dispatchGate,
+          blockers: [
+            ...dispatchGate.blockers,
+            "durable_publish_lock_unavailable",
+          ],
+          jobId: options.jobId || null,
+          storyId: options.storyId || null,
+        },
+      };
+    }
+    try {
+      runtimeLeases = require("./lib/repositories").getRepos().runtimeLeases;
+      durableLease = acquirePublisherLease({
+        leases: runtimeLeases,
+        ownerId: defaultOwnerId(),
+        channelId: options.channelId || process.env.CHANNEL || "pulse-gaming",
+        leaseMs: 60 * 60 * 1000,
+        metadata: {
+          dispatch_source: dispatchSource,
+          job_id: options.jobId || null,
+          story_id: options.storyId || null,
+        },
+      });
+    } catch (error) {
+      console.log(
+        `[publisher] durable publish lock unavailable: ${error.message}`,
+      );
+      durableLease = null;
+    }
+    if (!durableLease?.acquired) {
+      return {
+        publish_dispatch_blocked: true,
+        status: "blocked",
+        top_reason: "durable_publish_lock_unavailable",
+        publish_dispatch: {
+          ...dispatchGate,
+          blockers: [
+            ...dispatchGate.blockers,
+            "durable_publish_lock_unavailable",
+          ],
+          current_lock_owner: durableLease?.current_owner_id || null,
+          lock_expires_at: durableLease?.expires_at || null,
           jobId: options.jobId || null,
           storyId: options.storyId || null,
         },
@@ -945,6 +1004,13 @@ async function publishNextStory(options = {}) {
       storyId: options.storyId || null,
     });
   } finally {
+    if (durableLease?.acquired && runtimeLeases) {
+      releasePublisherLease({
+        leases: runtimeLeases,
+        leaseName: durableLease.lease_name,
+        ownerId: durableLease.owner_id,
+      });
+    }
     publishLock = false;
   }
 }
@@ -990,6 +1056,12 @@ function isRealPostId(id) {
 }
 
 function corePostIdsForStory(s, env = process.env) {
+  if (
+    String(env.PULSE_SCHEDULER_PROFILE || "stabilisation_30d").trim() ===
+    "stabilisation_30d"
+  ) {
+    return [s.youtube_post_id];
+  }
   const ids = [
     s.youtube_post_id,
     s.instagram_media_id,
@@ -1168,6 +1240,23 @@ async function persistQaFail(story, { failures, warnings, source }) {
  */
 async function runPreflightQa(story) {
   const warnings = [];
+
+  const {
+    evaluateStabilisationPublishManifest,
+  } = require("./lib/stabilisation/publish-manifest-gate");
+  const stabilisationManifest =
+    evaluateStabilisationPublishManifest(story);
+  if (!stabilisationManifest.pass) {
+    console.log(
+      `[publisher] stabilisation manifest FAIL (${story.id}): ${stabilisationManifest.failures.join(", ")}`,
+    );
+    return {
+      pass: false,
+      failures: stabilisationManifest.failures,
+      warnings,
+      source: "stabilisation_manifest",
+    };
+  }
 
   // Content QA — metadata + script + MP4 size / existence
   try {
@@ -1427,40 +1516,32 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       continue;
     }
 
-    const strictVoiceQa = (() => {
-      try {
-        const { strictVoiceQaEnabled } = require("./lib/services/publish-voice-qa");
-        return strictVoiceQaEnabled(candidate, process.env);
-      } catch (_) {
-        return process.env.REQUIRE_APPROVED_VOICE_FOR_PUBLISH === "true";
-      }
-    })();
+    const {
+      evaluateStoryHumanReview,
+    } = require("./lib/stabilisation/operating-contract");
+    const humanReview = evaluateStoryHumanReview(candidate);
+    if (!humanReview.approved) {
+      qaSkipped.push({
+        id: candidate.id,
+        title: candidate.title,
+        reason: humanReview.blocker,
+        source: "human_review",
+        failures: [humanReview.blocker],
+        persisted_as_failure: false,
+      });
+      console.log(
+        `[publisher] Human review hold (${candidate.id}): ${humanReview.status}`,
+      );
+      continue;
+    }
+
     if (
       candidateIsRetry &&
-      process.env.PUBLISH_RETRY_QA_BYPASS === "true" &&
-      !strictVoiceQa
+      process.env.PUBLISH_RETRY_QA_BYPASS === "true"
     ) {
-      const strictCandidateBlocker = publishCandidateBlocker(candidate, {
-        strictContentQa: true,
-      });
-      if (strictCandidateBlocker) {
-        const skipped = await persistQaFail(candidate, {
-          failures: [strictCandidateBlocker],
-          warnings: [],
-          source: "content",
-        });
-        qaSkipped.push(skipped);
-        console.log(
-          `[publisher] Strict readiness blocked retry QA bypass: ${strictCandidateBlocker}`,
-        );
-        continue;
-      }
-      // Partial-retry stories bypass QA — they were already published
-      // once, so the artefacts are known-good. Take this candidate
-      // immediately.
-      story = candidate;
-      isRetry = true;
-      break;
+      console.log(
+        `[publisher] Ignoring retired PUBLISH_RETRY_QA_BYPASS for ${candidate.id}; every retry must pass current gates`,
+      );
     }
 
     const qa = await runPreflightQa(candidate);
@@ -1726,7 +1807,54 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       `[publisher] YouTube: SKIPPED duplicate title ~ "${ytTitleDupe.title}" ` +
         `(persisted=${blockResult.persisted})`,
     );
+  } else if (pubRepos?.publicationGovernance) {
+    const {
+      dispatchGovernedYouTube,
+    } = require("./lib/services/governed-youtube-dispatch");
+    const { uploadShort } = require("./upload_youtube");
+    const governed = await dispatchGovernedYouTube({
+      story,
+      governance: pubRepos.publicationGovernance,
+      uploadShort,
+      persistStory: (currentStory) => db.upsertStory(currentStory),
+      channelId: pubChannelId || "pulse-gaming",
+      actorId:
+        story.human_reviewed_by ||
+        story.operator_reviewed_by ||
+        story.approved_by ||
+        null,
+      log: console.log,
+    });
+    result.youtube_governance = governed;
+    if (governed.verified_published) {
+      console.log(`[publisher] YouTube: ${governed.external_url || governed.external_id}`);
+      result.youtube = true;
+      result.platform_outcomes.youtube = "new_upload";
+      if (story.title_variants && story.title_variants.length > 1) {
+        story.title_check_at = Date.now() + 2 * 60 * 60 * 1000;
+      }
+    } else {
+      result.youtube = governed.platform_object_created === true;
+      result.platform_outcomes.youtube = "reconciliation_required";
+      result.reconciliation_required = true;
+      result.errors.youtube =
+        governed.error ||
+        governed.reason ||
+        "platform_state_reconciliation_required";
+      story.publish_status = "reconciliation_required";
+      story.publish_error = result.errors.youtube;
+      try {
+        await db.upsertStory(story);
+      } catch (persistErr) {
+        console.log(
+          `[publisher] YouTube reconciliation marker persistence failed: ${persistErr.message}`,
+        );
+      }
+    }
   } else {
+    // Non-live fixtures may exercise the historical adapter without the
+    // governance repository. LIVE_GUARDED dispatch cannot reach this branch:
+    // it requires SQLite, migrations and the bound repository before entry.
     try {
       const { uploadShort } = require("./upload_youtube");
       const ytResult = await uploadShort(story);
@@ -1767,6 +1895,41 @@ async function _publishNextStoryInner({ publishDispatch = null, storyId = null }
       result.errors.youtube = err.message;
       result.platform_outcomes.youtube = "failed";
     }
+  }
+
+  // Pulse v1 stabilisation is deliberately YouTube-only. Secondary
+  // adapters remain visible in status reporting, but none may run from
+  // the automated publisher until a later, operator-approved experiment.
+  if (
+    String(
+      process.env.PULSE_SCHEDULER_PROFILE || "stabilisation_30d",
+    ).trim() === "stabilisation_30d"
+  ) {
+    for (const platform of ["tiktok", "instagram", "facebook", "twitter"]) {
+      result.skipped[platform] = "stabilisation_platform_freeze";
+      result.platform_outcomes[platform] = "skipped";
+    }
+    result.platform_policy = {
+      profile: "stabilisation_30d",
+      automated_platforms: ["youtube"],
+      secondary_platforms_visible_but_disabled: true,
+    };
+    const youtubePublished = isRealPostId(story.youtube_post_id);
+    if (result.reconciliation_required) {
+      story.publish_status = "reconciliation_required";
+    } else {
+      story.publish_status = youtubePublished ? "published" : "failed";
+    }
+    if (
+      youtubePublished &&
+      !result.reconciliation_required &&
+      !story.published_at
+    ) {
+      story.published_at =
+        story.youtube_published_at || new Date().toISOString();
+    }
+    await db.upsertStory(story);
+    return result;
   }
 
   // TikTok - skip if already published or near-duplicate title already uploaded

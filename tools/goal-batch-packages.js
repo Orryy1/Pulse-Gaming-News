@@ -27,7 +27,7 @@ function dotenvSkipped() {
 function loadDotenvForCli() {
   if (dotenvSkipped()) return;
   try {
-    require("dotenv").config({ override: true });
+    require("dotenv").config({ override: false });
   } catch {}
 }
 

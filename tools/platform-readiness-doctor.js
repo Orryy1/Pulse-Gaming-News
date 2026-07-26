@@ -195,7 +195,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
     (deps.stdout || process.stdout).write(`${usage()}\n`);
     return { help: true };
   }
-  (deps.dotenv || require("dotenv")).config({ override: true, quiet: true });
+  (deps.dotenv || require("dotenv")).config({ override: false, quiet: true });
   const inspectTokenStatus =
     deps.inspectTokenStatus || require("../upload_tiktok").inspectTokenStatus;
   const {

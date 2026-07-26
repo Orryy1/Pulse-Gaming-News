@@ -40,7 +40,9 @@ test("viral script intelligence rejects boring recap, repeated hook wording and 
       /paid-access contradiction|contradiction/i.test(item),
     ),
   );
-  assert.ok(result.prompt_directives.some((item) => /CTA once/i.test(item)));
+  assert.ok(
+    result.prompt_directives.some((item) => /Never repeat a CTA/i.test(item)),
+  );
 });
 
 test("viral script intelligence blocks generic source-signal fallback narration", () => {

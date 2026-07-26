@@ -37,7 +37,7 @@ test("selectRawTtsScript: removes stale title separators from cached tts_script"
 
   assert.equal(
     selectRawTtsScript(story),
-    "Halo Campaign Evolved just gave Xbox a real remake test. Follow Pulse Gaming so you never miss a beat.",
+    "Halo Campaign Evolved just gave Xbox a real remake test.",
   );
 });
 
@@ -51,7 +51,7 @@ test("selectRawTtsScript: normalises cached GTA VI spoken-risk before selection"
 
   assert.equal(
     selected,
-    "Rockstar's next Grand Theft Auto starts the preorder fight. Follow Pulse Gaming so you never miss a beat.",
+    "Rockstar's next Grand Theft Auto starts the preorder fight.",
   );
   assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+(?:VI|six|si[- ]?six)\b/i);
 });
@@ -66,7 +66,7 @@ test("selectRawTtsScript: normalises stale dotted GTA VI roman cached narration"
 
   assert.equal(
     selected,
-    "Rockstar's next Grand Theft Auto now has one real preorder catch. Follow Pulse Gaming so you never miss a beat.",
+    "Rockstar's next Grand Theft Auto now has one real preorder catch.",
   );
   assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+V\.?\s*I\.?\b/i);
 });
@@ -80,7 +80,7 @@ test("selectRawTtsScript: normalises fallback GTA VI text when no cached script 
 
   assert.equal(
     selected,
-    "Rockstar's next Grand Theft Auto pre orders just turned the cover art reveal into a buying argument. Follow Pulse Gaming so you never miss a beat.",
+    "Rockstar's next Grand Theft Auto pre orders just turned the cover art reveal into a buying argument.",
   );
   assert.doesNotMatch(selected, /\b(?:GTA|Grand Theft Auto|G\s+T\s+A)\s+(?:VI|six|si[- ]?six)\b/i);
 });
@@ -95,7 +95,7 @@ test("selectRawTtsScript: normalises compact GTAVI text before local narration",
 
   assert.equal(
     selected,
-    "Rockstar's next Grand Theft Auto starts the preorder fight. Follow Pulse Gaming so you never miss a beat.",
+    "Rockstar's next Grand Theft Auto starts the preorder fight.",
   );
   assert.doesNotMatch(selected, /\bGTAVI\b|\bGTA[- ]?VI\b/i);
 });
@@ -117,14 +117,14 @@ test("selectRawTtsScript: returns cached script when no better fallback exists",
   assert.equal(selectRawTtsScript(story), ensureSpokenOutro(story.tts_script));
 });
 
-test("selectRawTtsScript: restores the required spoken outro for source scripts missing it", () => {
+test("selectRawTtsScript: does not invent a spoken outro for source scripts missing one", () => {
   const story = {
     full_script: "Subnautica 2 just passed a million sales.",
   };
 
   assert.equal(
     selectRawTtsScript(story),
-    "Subnautica 2 just passed a million sales. Follow Pulse Gaming so you never miss a beat.",
+    "Subnautica 2 just passed a million sales.",
   );
 });
 
@@ -145,55 +145,55 @@ test("selectRawTtsScript: removes adjacent duplicate opener and duplicate spoken
   );
   assert.equal(
     (selected.match(/Follow Pulse Gaming so you never miss a beat/g) || []).length,
-    1,
+    0,
   );
   assert.equal(
     selected,
-    `${opener} GamesRadar reports the early access launch hit a new Steam peak. Follow Pulse Gaming so you never miss a beat.`,
+    `${opener} GamesRadar reports the early access launch hit a new Steam peak.`,
   );
 });
 
-test("ensureSpokenOutro: collapses repeated terminal CTAs to exactly one", () => {
+test("ensureSpokenOutro: removes repeated retired terminal CTAs", () => {
   assert.equal(
     ensureSpokenOutro(
       "A clean gaming update. Follow Pulse Gaming so you never miss a beat. Follow Pulse Gaming so you never miss a beat.",
     ),
-    "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+    "A clean gaming update.",
   );
 });
 
-test("ensureSpokenOutro: normalises a custom terminal Pulse CTA to the approved spoken outro", () => {
+test("ensureSpokenOutro: removes a generic terminal Pulse CTA", () => {
   assert.equal(
     ensureSpokenOutro("A clean gaming update. Follow Pulse Gaming for the next read."),
-    "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+    "A clean gaming update.",
   );
 });
 
-test("ensureSpokenOutro: replaces temporary short news CTA with Pulse Gaming catch line", () => {
+test("ensureSpokenOutro: removes a temporary generic news CTA", () => {
   assert.equal(
     ensureSpokenOutro("A clean gaming update. Follow for more gaming news."),
-    "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+    "A clean gaming update.",
   );
 });
 
-test("ensureSpokenOutro: replaces pause-marked Pulse Gaming terminal CTA", () => {
+test("ensureSpokenOutro: removes a pause-marked fixed terminal CTA", () => {
   assert.equal(
     ensureSpokenOutro("A clean gaming update. Follow Pulse [PAUSE] Gaming so you never miss a beat."),
-    "A clean gaming update. Follow Pulse Gaming so you never miss a beat.",
+    "A clean gaming update.",
   );
 });
 
-test("cleanForTTS: removes Pulse Gaming outro pauses from generated narration", () => {
+test("cleanForTTS: removes the retired Pulse Gaming outro from narration", () => {
   assert.equal(
     cleanForTTS("Follow Pulse [PAUSE] Gaming so you never miss a beat."),
-    "Follow Pulse Gaming so you never miss a beat.",
+    "",
   );
 });
 
-test("cleanForTTS: restores temporary short news CTA to Pulse Gaming catch line", () => {
+test("cleanForTTS: removes temporary generic news CTA", () => {
   assert.equal(
     cleanForTTS("Follow for more gaming news."),
-    "Follow Pulse Gaming so you never miss a beat.",
+    "",
   );
 });
 

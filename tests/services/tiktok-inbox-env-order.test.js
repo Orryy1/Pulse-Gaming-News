@@ -7,12 +7,12 @@ const fsPromises = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 
-test("tiktok-inbox-upload loads dotenv before opening the DB", () => {
+test("tiktok-inbox-upload loads dotenv without overriding inherited values before opening the DB", () => {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "..", "tools", "tiktok-inbox-upload.js"),
     "utf8",
   );
-  const dotenvConfig = src.indexOf('dotenv.config({ override: true })');
+  const dotenvConfig = src.indexOf('dotenv.config({ override: false })');
   const dbRequire = src.indexOf('require("../lib/db")');
 
   assert.ok(dotenvConfig >= 0, "dotenv config call must exist");
@@ -21,6 +21,7 @@ test("tiktok-inbox-upload loads dotenv before opening the DB", () => {
     dotenvConfig < dbRequire,
     "dotenv must load before lib/db so DATABASE_PATH / USE_SQLITE are honoured",
   );
+  assert.doesNotMatch(src, /dotenv\.config\(\{\s*override:\s*true/);
 });
 
 test("tiktok-inbox-upload requires an operator confirmation flag before live inbox send", () => {

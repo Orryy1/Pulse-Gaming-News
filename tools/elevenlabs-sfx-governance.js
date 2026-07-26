@@ -4,7 +4,7 @@
 const path = require("node:path");
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
 }
 
 const {

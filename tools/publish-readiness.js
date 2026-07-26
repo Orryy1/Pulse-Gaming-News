@@ -21,7 +21,7 @@
 const fs = require("fs-extra");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-require("dotenv").config({ override: true });
+require("dotenv").config({ override: false });
 const {
   buildPublishReadinessReport,
   formatPublishReadinessMarkdown,

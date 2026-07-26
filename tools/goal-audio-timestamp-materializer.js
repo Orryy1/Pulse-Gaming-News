@@ -6,7 +6,7 @@ const { spawn } = require("node:child_process");
 const fs = require("fs-extra");
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
 }
 
 const {

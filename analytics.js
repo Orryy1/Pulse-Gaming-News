@@ -8,7 +8,7 @@ const {
   readLatestRecommendation,
 } = require("./lib/analytics-recommendation");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const DAILY_NEWS_PATH = path.join(__dirname, "daily_news.json");
 const HISTORY_PATH = path.join(__dirname, "analytics_history.json");

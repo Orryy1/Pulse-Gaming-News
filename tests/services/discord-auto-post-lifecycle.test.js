@@ -123,15 +123,28 @@ test("pingEarlyAccess has its own public-drop eligibility guard", () => {
   );
 });
 
-test("server cron publish summary uses canonical renderer", () => {
-  const source = fs.readFileSync(
+test("canonical queue scheduler publish summary uses canonical renderer", () => {
+  const serverSource = fs.readFileSync(
     path.join(__dirname, "..", "..", "server.js"),
     "utf8",
   );
-  const marker = 'dispatchSource: "server_cron_publish_window"';
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, "server cron publish dispatch missing");
-  const body = source.slice(start, start + 1200);
+  const handlerSource = fs.readFileSync(
+    path.join(__dirname, "..", "..", "lib", "job-handlers.js"),
+    "utf8",
+  );
+
+  assert.match(serverSource, /const bootstrap = require\("\.\/lib\/bootstrap-queue"\)/);
+  assert.match(serverSource, /runScheduler:\s*true/);
+  assert.doesNotMatch(
+    serverSource,
+    /server_cron_publish_window/,
+    "server must not retain a second in-process publish scheduler",
+  );
+
+  const marker = 'dispatchSource: "scheduler_job"';
+  const start = handlerSource.indexOf(marker);
+  assert.notEqual(start, -1, "canonical scheduler publish dispatch missing");
+  const body = handlerSource.slice(start, start + 1200);
   assert.match(body, /renderPublishSummary/);
   assert.doesNotMatch(
     body,

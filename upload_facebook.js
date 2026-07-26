@@ -47,7 +47,7 @@ const {
   prepareFacebookReelMedia,
 } = require("./lib/platforms/facebook-reel-media");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 function resolveTokenPath() {
   return resolveFacebookTokenPath();

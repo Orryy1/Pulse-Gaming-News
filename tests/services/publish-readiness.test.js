@@ -1738,7 +1738,7 @@ test("buildMediaVerifyStoriesFromDryRunPlan: scopes verification to current acti
 
 test("tools/publish-readiness.js loads .env for local operator runs", () => {
   const src = fs.readFileSync(TOOL_PATH, "utf8");
-  assert.match(src, /require\(["']dotenv["']\)\.config\(\{\s*override:\s*true\s*\}\)/);
+  assert.match(src, /require\(["']dotenv["']\)\.config\(\{\s*override:\s*false\s*\}\)/);
 });
 
 // ── formatPublishReadinessMarkdown ───────────────────────────────
@@ -4174,7 +4174,7 @@ test("pillarPublishCadence: over-cap cadence tells operators to hold manual publ
   });
 
   assert.equal(pillar.verdict, "amber");
-  assert.match(pillar.reason, /6_posts_in_24h_over_cap_5/);
+  assert.match(pillar.reason, /6_posts_in_24h_over_cap_2/);
 });
 
 test("pillarFacebookReelEligibility: graph proof makes Facebook Reels green", () => {

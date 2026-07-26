@@ -4,7 +4,7 @@
 const axios = require("axios");
 const fs = require("fs-extra");
 const path = require("node:path");
-require("dotenv").config({ override: true, quiet: true });
+require("dotenv").config({ override: false, quiet: true });
 
 const {
   runOAuthUptimeMaintenance,

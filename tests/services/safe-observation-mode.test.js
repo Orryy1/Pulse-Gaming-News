@@ -54,13 +54,13 @@ test("safe observation mode is opt-in only", () => {
 
 test("server applies safe observation mode after dotenv and skips scheduler startup", () => {
   const source = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
-  const dotenvIndex = source.indexOf("dotenv.config");
+  const dotenvIndex = source.indexOf("loadDotenvOnce({ dotenv");
   const applyIndex = source.indexOf("applySafeObservationMode(process.env)");
   const schedulerGuardIndex = source.indexOf("isSafeObservationMode(process.env)");
   const schedulerStartIndex = source.indexOf("startAutonomousScheduler().catch");
 
   assert.ok(dotenvIndex >= 0, "server must load dotenv");
-  assert.ok(applyIndex > dotenvIndex, "safe mode must run after dotenv override");
+  assert.ok(applyIndex > dotenvIndex, "safe mode must run after the one-shot dotenv load");
   assert.ok(schedulerGuardIndex > applyIndex, "scheduler guard must see forced env values");
   assert.ok(
     schedulerGuardIndex < schedulerStartIndex,

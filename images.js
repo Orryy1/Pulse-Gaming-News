@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const brand = require("./brand");
 const getBestImage = require("./images_download");

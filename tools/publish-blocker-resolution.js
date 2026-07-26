@@ -3,7 +3,7 @@
 
 const fs = require("fs-extra");
 const path = require("node:path");
-require("dotenv").config({ override: true });
+require("dotenv").config({ override: false });
 
 const {
   buildGovernanceGreenApprovalPromotionPlan,

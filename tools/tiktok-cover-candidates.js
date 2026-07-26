@@ -6,7 +6,7 @@ const fs = require("fs-extra");
 const path = require("node:path");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const {
   buildTikTokCoverCandidateReport,

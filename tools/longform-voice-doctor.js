@@ -5,7 +5,7 @@ const fs = require("fs-extra");
 const axios = require("axios");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const channel = require("../channels/pulse-gaming");
 const {

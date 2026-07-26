@@ -14,7 +14,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 try {
-  require("dotenv").config({ override: true, quiet: true });
+  require("dotenv").config({ override: false, quiet: true });
 } catch {}
 
 const ROOT = path.resolve(__dirname, "..");

@@ -202,6 +202,8 @@
     "ops:render-health": "node tools/render-health.js",
     "ops:reclassify": "node tools/reclassify-report.js",
     "docs:doctor": "node tools/docs-doctor.js",
+    "ops:stabilisation-phase0-runtime-evidence": "node tools/stabilisation-phase0-runtime-evidence.js",
+    "ops:stabilisation-contract-reports": "node tools/stabilisation-contract-reports.js",
     "ops:agent-rules": "node tools/validate-agent-operating-rules.js",
     "ops:provenance": "node tools/provenance-report.js",
     "ops:render-contract": "node tools/render-contract-report.js",

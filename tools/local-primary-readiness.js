@@ -30,7 +30,7 @@ function findDuplicateEnvKeys(envPath) {
 }
 
 async function main() {
-  dotenv.config({ override: true });
+  dotenv.config({ override: false });
   const args = process.argv.slice(2);
   const jsonOnly = args.includes("--json");
   const outputDir = resolveLocalReadinessOutputDir({ cwd: process.cwd() });

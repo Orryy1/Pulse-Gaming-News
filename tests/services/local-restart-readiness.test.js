@@ -136,7 +136,7 @@ test("cadenceHardGateState enables all gates for active primary auto-publishers 
   assert.equal(state.all_required, true);
 });
 
-test("cadenceHardGateState honours global warn-only override", () => {
+test("cadenceHardGateState does not let warn-only bypass hard gates for an active primary publisher", () => {
   const state = cadenceHardGateState({
     AUTO_PUBLISH: "true",
     PULSE_PRIMARY_INSTANCE: "true",
@@ -145,10 +145,10 @@ test("cadenceHardGateState honours global warn-only override", () => {
 
   assert.equal(state.active_primary_auto_publisher, true);
   assert.equal(state.warn_only, true);
-  assert.equal(state.all_required, false);
-  assert.equal(state.require_window, false);
-  assert.equal(state.require_min_gap, false);
-  assert.equal(state.require_daily_cap, false);
+  assert.equal(state.all_required, true);
+  assert.equal(state.require_window, true);
+  assert.equal(state.require_min_gap, true);
+  assert.equal(state.require_daily_cap, true);
 });
 
 test("summariseCadence exposes restart-critical publish counters", () => {

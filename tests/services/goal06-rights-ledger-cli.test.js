@@ -40,6 +40,27 @@ test("Goal 06 rights ledger CLI writes proof reports from a story package manife
   await fs.outputJson(path.join(artifactDir, "canonical_story_manifest.json"), {
     story_id: "story-cli",
     selected_title: "Switch 2 Upgrade Path Gets Clearer",
+    originality_disclosure_manifest: {
+      originality_and_transformation_verdict: "STRONG",
+      transformation_evidence: {
+        distinct_editorial_claim:
+          "Pulse explains what the upgrade path changes for Switch 2 owners.",
+        player_facing_conclusion:
+          "Players can compare the verified routes before choosing an upgrade.",
+        original_analysis_or_comparison:
+          "The edit compares the official options and their practical trade-offs.",
+        source_footage_meaningfully_restructured: true,
+        pulse_context_visible: true,
+        visibly_different_from_source: true,
+        narrated_source_reading_only: false,
+      },
+      synthetic_disclosure_required: false,
+      reason:
+        "The reviewed editorial narration does not depict a realistic synthetic event.",
+      operator_decision: "DO_NOT_DISCLOSE",
+      youtube_field_value: false,
+      reviewed_at: "2026-05-25T20:59:00.000Z",
+    },
   });
   await fs.outputJson(path.join(artifactDir, "rights_ledger.json"), {
     schema_version: 2,

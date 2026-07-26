@@ -28,7 +28,7 @@ const {
   buildDirectUploadPolicy,
 } = require("./lib/services/direct-upload-policy");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const COOKIES_PATH = path.join(__dirname, "tokens", "tiktok_cookies.json");
 const UPLOAD_TIMEOUT = 120000; // 2 min max per upload

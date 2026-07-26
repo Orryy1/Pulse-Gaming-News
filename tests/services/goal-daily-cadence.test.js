@@ -91,7 +91,7 @@ async function makeReviewItem(root, storyId, quality = {}) {
   };
 }
 
-test("daily cadence plans three reviewed V4 stories into canonical windows", async () => {
+test("daily cadence plans reviewed V4 stories across two canonical daily windows", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-goal-cadence-"));
   const reviewItems = [
     await makeReviewItem(root, "story-a", { scriptScore: 82, visualScore: 90 }),
@@ -146,8 +146,8 @@ test("daily cadence plans three reviewed V4 stories into canonical windows", asy
     plan.publish_schedule.map((slot) => slot.scheduled_for_utc),
     [
       "2026-05-22T09:00:00.000Z",
-      "2026-05-22T14:00:00.000Z",
       "2026-05-22T19:00:00.000Z",
+      "2026-05-23T09:00:00.000Z",
     ],
   );
   assert.equal(plan.publish_schedule[0].operating_mode, "HUMAN_REVIEW");

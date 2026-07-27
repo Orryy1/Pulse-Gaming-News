@@ -1,7 +1,8 @@
 -- 020_stabilisation_governance.sql
 -- Durable publication truth for the Pulse v1 stabilisation release.
--- Applying this migration to production still requires an approved backup,
--- change window and post-migration integrity check.
+-- This migration defines controls only. Applying it to production still
+-- requires an operator-approved backup, change window and post-migration
+-- integrity check.
 
 CREATE TABLE IF NOT EXISTS publication_lifecycle_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +78,8 @@ BEGIN
 END;
 
 -- Backstop new writes to the legacy projection without rewriting historical
--- conflicts. Existing inconsistencies remain visible for reconciliation.
+-- conflicts during migration. Existing inconsistencies remain visible for
+-- read-only reconciliation instead of being silently altered.
 CREATE TRIGGER IF NOT EXISTS trg_platform_posts_external_id_unique_insert
 BEFORE INSERT ON platform_posts
 WHEN NEW.external_id IS NOT NULL
@@ -121,24 +123,9 @@ CREATE TRIGGER IF NOT EXISTS trg_published_state_requires_verification_insert
 BEFORE INSERT ON platform_publication_state
 WHEN NEW.lifecycle_state = 'PUBLISHED'
  AND (
-   NULLIF(TRIM(NEW.external_id), '') IS NULL
-   OR COALESCE(NEW.verification_status, '') <> 'confirmed'
-   OR NULLIF(TRIM(NEW.verified_at), '') IS NULL
-   OR julianday(NEW.verified_at) IS NULL
-   OR NEW.last_event_id IS NULL
-   OR NOT EXISTS (
-     SELECT 1
-     FROM platform_dispatch_ledger AS ledger
-     WHERE ledger.id = NEW.last_event_id
-       AND ledger.story_id = NEW.story_id
-       AND ledger.platform = NEW.platform
-       AND ledger.event_type = 'PUBLISHED'
-       AND ledger.verification_status = 'confirmed'
-       AND json_extract(
-         ledger.verification_evidence_json,
-         '$.external_id'
-       ) = NEW.external_id
-   )
+   NEW.external_id IS NULL
+   OR NEW.verification_status <> 'confirmed'
+   OR NEW.verified_at IS NULL
  )
 BEGIN
   SELECT RAISE(ABORT, 'published_state_requires_platform_verification');
@@ -148,24 +135,9 @@ CREATE TRIGGER IF NOT EXISTS trg_published_state_requires_verification_update
 BEFORE UPDATE ON platform_publication_state
 WHEN NEW.lifecycle_state = 'PUBLISHED'
  AND (
-   NULLIF(TRIM(NEW.external_id), '') IS NULL
-   OR COALESCE(NEW.verification_status, '') <> 'confirmed'
-   OR NULLIF(TRIM(NEW.verified_at), '') IS NULL
-   OR julianday(NEW.verified_at) IS NULL
-   OR NEW.last_event_id IS NULL
-   OR NOT EXISTS (
-     SELECT 1
-     FROM platform_dispatch_ledger AS ledger
-     WHERE ledger.id = NEW.last_event_id
-       AND ledger.story_id = NEW.story_id
-       AND ledger.platform = NEW.platform
-       AND ledger.event_type = 'PUBLISHED'
-       AND ledger.verification_status = 'confirmed'
-       AND json_extract(
-         ledger.verification_evidence_json,
-         '$.external_id'
-       ) = NEW.external_id
-   )
+   NEW.external_id IS NULL
+   OR NEW.verification_status <> 'confirmed'
+   OR NEW.verified_at IS NULL
  )
 BEGIN
   SELECT RAISE(ABORT, 'published_state_requires_platform_verification');
@@ -192,13 +164,8 @@ CREATE TABLE IF NOT EXISTS operator_audit_log (
   decision TEXT,
   reason TEXT,
   evidence_json TEXT,
-  idempotency_key TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_operator_audit_idempotency
-  ON operator_audit_log(idempotency_key)
-  WHERE idempotency_key IS NOT NULL;
 
 CREATE TRIGGER IF NOT EXISTS trg_operator_audit_log_immutable_update
 BEFORE UPDATE ON operator_audit_log

@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
@@ -11,6 +12,16 @@ const GOVERNANCE_MIGRATION = path.join(
   MIGRATIONS,
   "020_stabilisation_governance.sql",
 );
+const SHIPPED_GOVERNANCE_CHECKSUM =
+  "e2d6c6be2bc96ef6cb1cb5825071714f0280e20c92e2cd960522437d2880343b";
+
+test("migration 020 remains byte-identical to the shipped production migration", () => {
+  const body = fs.readFileSync(GOVERNANCE_MIGRATION);
+  assert.equal(
+    crypto.createHash("sha256").update(body).digest("hex"),
+    SHIPPED_GOVERNANCE_CHECKSUM,
+  );
+});
 
 function migrateThrough(db, lastMigration = null) {
   const files = fs

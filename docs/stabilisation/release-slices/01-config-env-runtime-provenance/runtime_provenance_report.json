@@ -1,0 +1,321 @@
+{
+  "schema_version": "pulse-runtime-provenance-v1",
+  "generated_at": "2026-07-27T02:31:56.459Z",
+  "source_commit_sha": "658fedcf7131c53cdb84900fccd6870008c0068c",
+  "runtime_commit_sha": "658fedcf7131c53cdb84900fccd6870008c0068c",
+  "environment": "local-proof",
+  "scope": "typed runtime configuration and sanitised local build identity",
+  "expires_at": "2026-08-03T02:31:56.469Z",
+  "supersedes": [],
+  "superseded_by": [],
+  "authoritative": false,
+  "build": {
+    "commit_sha": "658fedcf7131c53cdb84900fccd6870008c0068c",
+    "commit_short": "658fedc",
+    "commit_source": "local_git",
+    "commit_message_present": false,
+    "branch": "release/pulse-v1",
+    "branch_source": "local_git",
+    "deployment_id": null,
+    "environment": null,
+    "project_id": null,
+    "service_id": null,
+    "node_env": "test"
+  },
+  "effective_config": {
+    "schema_version": "pulse-effective-config-v1",
+    "generated_at": "2026-07-27T02:31:56.4595137Z",
+    "valid": true,
+    "validation_errors": [],
+    "entries": [
+      {
+        "key": "NODE_ENV",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:9f86d081884c7d65",
+        "validation": [
+          "valid"
+        ],
+        "value": "test"
+      },
+      {
+        "key": "PULSE_OPERATING_MODE",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:ac5ed8a99999b428",
+        "validation": [
+          "valid"
+        ],
+        "value": "LOCAL_PROOF"
+      },
+      {
+        "key": "PULSE_SCHEDULER_PROFILE",
+        "present": false,
+        "source_class": "default",
+        "secret": false,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ],
+        "value": "stabilisation_30d"
+      },
+      {
+        "key": "CHANNEL",
+        "present": false,
+        "source_class": "default",
+        "secret": false,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ],
+        "value": "pulse-gaming"
+      },
+      {
+        "key": "USE_SQLITE",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "USE_JOB_QUEUE",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:b5bea41b6c623f7c",
+        "validation": [
+          "valid"
+        ],
+        "value": true
+      },
+      {
+        "key": "AUTO_PUBLISH",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "PULSE_GUARDED_LIVE_DISPATCH_ENABLED",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "PULSE_PRIMARY_INSTANCE",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "PULSE_EMERGENCY_KILL_SWITCH",
+        "present": false,
+        "source_class": "default",
+        "secret": false,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "TIKTOK_ENABLED",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "INSTAGRAM_AUTO_PUBLISH",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "FACEBOOK_AUTO_PUBLISH",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "TWITTER_ENABLED",
+        "present": true,
+        "source_class": "process_environment",
+        "secret": false,
+        "value_hash": "sha256:fcbcf165908dd18a",
+        "validation": [
+          "valid"
+        ],
+        "value": false
+      },
+      {
+        "key": "ANTHROPIC_API_KEY",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "ELEVENLABS_API_KEY",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "YOUTUBE_API_KEY",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "YOUTUBE_CLIENT_SECRET",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "YOUTUBE_REFRESH_TOKEN",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "TIKTOK_CLIENT_SECRET",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "TIKTOK_ACCESS_TOKEN",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "INSTAGRAM_ACCESS_TOKEN",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "FACEBOOK_PAGE_TOKEN",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "TWITTER_API_SECRET",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "TWITTER_ACCESS_SECRET",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "DISCORD_WEBHOOK_URL",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      },
+      {
+        "key": "API_TOKEN",
+        "present": false,
+        "source_class": "default",
+        "secret": true,
+        "value_hash": null,
+        "validation": [
+          "valid"
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "LOCAL_PROOF evidence is not production authority",
+    "No database, scheduler, OAuth, token or platform state was inspected"
+  ]
+}

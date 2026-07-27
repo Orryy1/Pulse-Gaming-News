@@ -243,6 +243,66 @@ test("materializeOwnedMotion writes only a validated owned asset package under t
     path.relative(root, result.manifest_path).startsWith(".."),
     false,
   );
+  const imageAssets = result.manifest.assets.filter(
+    (asset) => asset.media_type === "image",
+  );
+  const videoAsset = result.manifest.assets.find(
+    (asset) => asset.media_type === "video",
+  );
+  assert.deepEqual(
+    videoAsset.provenance.visual_inputs,
+    imageAssets.map((asset) => ({
+      path: asset.path,
+      sha256: asset.sha256,
+    })),
+  );
+});
+
+test("materializeOwnedMotion rejects any still mutated while the MP4 is rendered", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-owned-mutated-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const intake = validIntake();
+  const intakeManifestSha256 = sha256(JSON.stringify(intake));
+  const plan = buildOwnedMotionPlan({
+    intake,
+    intakeManifestSha256,
+    outputDir: root,
+    ffmpegAvailable: true,
+  });
+  const authority = validateApplyAuthority({
+    applyRequested: true,
+    confirmStoryId: intake.story.id,
+    confirmManifestSha256: intakeManifestSha256,
+    plan,
+    env: {
+      DEPLOYMENT_MODE: "local",
+      PULSE_OPERATING_MODE: "HUMAN_REVIEW",
+      AUTO_PUBLISH: "false",
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "false",
+      PULSE_EMERGENCY_KILL_SWITCH: "true",
+    },
+  });
+
+  await assert.rejects(
+    materializeOwnedMotion({
+      intake,
+      plan,
+      authority,
+      renderStill: async ({ outputPath, role }) => {
+        fs.writeFileSync(outputPath, `still:${role}`);
+      },
+      renderVideo: async ({ outputPath, stillPaths }) => {
+        fs.writeFileSync(outputPath, "video");
+        fs.writeFileSync(stillPaths[0], "mutated-after-render-start");
+      },
+      inspectAsset: async ({ mediaType }) =>
+        mediaType === "image"
+          ? { width: 1080, height: 1920, duration_seconds: null }
+          : { width: 1080, height: 1920, duration_seconds: 28 },
+    }),
+    /owned_motion_visual_input_mutated_during_render/,
+  );
+  assert.equal(fs.existsSync(path.join(plan.output_root, "assets")), false);
 });
 
 test("materializeOwnedMotion removes staged media when output validation fails", async (t) => {
@@ -326,6 +386,38 @@ test("renderOwnedStill creates four distinct repository-owned 1080x1920 visual f
   }
 
   assert.equal(new Set(hashes).size, 4);
+});
+
+test("owned platform and branching card labels remain inside the motion-safe area", () => {
+  const intake = validIntake();
+  const plan = buildOwnedMotionPlan({
+    intake,
+    intakeManifestSha256: sha256(JSON.stringify(intake)),
+    outputDir: "C:/proof/safe-area",
+    ffmpegAvailable: true,
+  });
+
+  for (const role of ["platform_release", "branching_balance"]) {
+    const svg = buildOwnedStillSvg({ role, intake, plan });
+    assert.match(
+      svg,
+      /<text x="160" y="1788" text-anchor="start"[^>]*>CHECKED/,
+    );
+    assert.doesNotMatch(
+      svg,
+      /<text[^>]*text-anchor="middle"[^>]*>CHECKED/,
+    );
+  }
+
+  const branching = buildOwnedStillSvg({
+    role: "branching_balance",
+    intake,
+    plan,
+  });
+  assert.match(
+    branching,
+    /<text x="160" y="1585" text-anchor="start"[^>]*>BRANCHING \+ SCALING/,
+  );
 });
 
 test("renderOwnedVideo builds a local-only 28-second motion sequence from the owned stills", () => {

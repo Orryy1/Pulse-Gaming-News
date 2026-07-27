@@ -25,6 +25,24 @@ test("Goal 00: repo AGENTS.md contains the production safety operating rules", a
   assert.equal(report.safety.production_db_mutation_allowed_by_default, false);
   assert.equal(report.safety.oauth_token_mutation_allowed_by_default, false);
   assert.equal(report.safety.external_posting_allowed_by_default, false);
+  for (const command of [
+    "ops:story-intake",
+    "ops:governed-owned-motion",
+    "ops:governed-narration-materialize",
+    "ops:governed-final-composite",
+    "ops:governed-publication-evidence-package",
+    "ops:governed-publication-review",
+    "ops:guarded-youtube-window",
+  ]) {
+    assert.ok(
+      report.documented_npm_commands.some(
+        (documented) => documented.name === command,
+      ),
+      `${command} must remain explicitly documented`,
+    );
+  }
+  assert.equal(report.summary.missing_documented_npm_commands, 0);
+  assert.deepEqual(report.missing_documented_npm_commands, []);
 });
 
 test("Goal 00: missing safety language fails with clear rejection reasons", async () => {

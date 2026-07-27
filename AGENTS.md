@@ -54,6 +54,24 @@ Pulse Gaming is a Node.js CommonJS media system with a React/Vite dashboard.
 - Inspect V4 motion packs: `npm run ops:v4-motion-pack`.
 - Run V4 source-family acquisition checks: `npm run ops:v4-source-family-acquisition`.
 
+## Governed candidate commands
+
+These aliases are the explicit local-candidate command map. Pass command arguments after `--`.
+
+| Purpose | npm command | Reviewed entry point |
+|---|---|---|
+| Official story intake | `npm run ops:story-intake` | `tools/governed-story-intake.js` |
+| Owned motion materialisation | `npm run ops:governed-owned-motion` | `tools/governed-owned-motion.js` |
+| Narration evidence materialisation | `npm run ops:governed-narration-materialize` | `tools/governed-narration-materialize.js` |
+| Final local composite | `npm run ops:governed-final-composite` | `tools/governed-final-composite.js` |
+| Publication evidence package | `npm run ops:governed-publication-evidence-package` | `tools/governed-publication-evidence-package.js` |
+| Hash-bound publication review | `npm run ops:governed-publication-review` | `tools/governed-publication-review.js` |
+| One-window YouTube inspection, admission and dispatch | `npm run ops:guarded-youtube-window` | `tools/guarded-youtube-window.js` |
+
+Dry-run or inspection is the default wherever the command offers it. A local render or successful command is not publication authority. Apply, admission and dispatch remain subject to each command's exact confirmations, backup, stopped-runtime, operating-mode, kill-switch and human-review requirements.
+
+Standard cadence remains the default. A separately authorised one-shot outside cadence additionally requires `--outside-cadence-authorisation-id <id>`, `--confirm-outside-cadence-authorisation-id <same-id>` and `--confirm-outside-cadence-one-shot`. The two IDs must match the exact active authority and all ordinary admission and dispatch gates still apply. This does not bypass scheduling governance, create a recurring window or permit a catch-up flood.
+
 ## Dry-run publish commands
 
 - Strict dry-run package plan: `npm run ops:goal-dry-run-publish`.
@@ -92,15 +110,18 @@ TDD is required. Focused tests are required. Machine-readable artefacts are requ
 
 ## Current production-cutover context
 
-The current cutover is blocked by final production render inputs, not by a lack of ideas. Treat these as live blockers until artefacts prove otherwise:
+The release line now has a separate governed local-candidate path for exact official story intake, owned motion, narration evidence, a final composite, hash-bound review and an exact one-window YouTube command. Local Evercold candidate material exists, but it remains `HOLD`: it is not a production review, scheduler admission or publication claim.
 
-- Missing final narration audio.
-- Missing word timestamps.
-- Missing materialised motion clips.
-- Missing distinct motion families.
-- Missing or stale final MP4 evidence.
-- Incomplete rights records.
-- Scheduler bridge and strict dry-run gaps.
+Treat these as live blockers until exact artefacts prove otherwise:
+
+- Final MP4, QA and evidence-package hashes must be bound to the exact release commit.
+- Exact human approval must name the final media and script hashes.
+- Rights, transformation, renderer and narration records must pass final publication review.
+- Production migrations, fresh backup evidence, queue reconciliation and exact runtime commit parity remain incomplete.
+- Scheduler and control-tower preflights must return `GREEN` for the exact admitted candidate.
+- A public YouTube object must be independently verified after an explicitly authorised dispatch.
+
+This governed path does not change the 13 generic render, platform-pack and repair aliases: those still resolve only to the inspection-only `LOCAL_PROOF` bridge and their unavailable specialist repair capability remains unavailable.
 
 Past production incidents include legacy thin visual renders, placeholder titles, public narration that leaked internal QA language, local LLM failures and platform upload errors. New work must reduce those risks, not route around them.
 
@@ -123,9 +144,20 @@ A goal is done only when the repo has the behaviour, tests and proof artefacts t
 Use the smallest test command that proves the changed behaviour. Examples:
 
 - `node --test tests/services/agent-operating-rules.test.js`
-- `node --test tests/services/incident-guard.test.js`
-- `node --test tests/services/goal-render-input-workorder.test.js`
-- `node --test tests/services/studio-v4-render-bridge.test.js`
+- `node --test tests/services/governed-story-intake.test.js`
+- `node --test tests/ops/governed-story-intake-cli.test.js`
+- `node --test tests/services/governed-owned-motion.test.js`
+- `node --test tests/ops/governed-owned-motion-cli.test.js`
+- `node --test tests/services/governed-narration-materialize.test.js`
+- `node --test tests/ops/governed-narration-materialize-cli.test.js`
+- `node --test tests/services/governed-final-composite.test.js`
+- `node --test tests/ops/governed-final-composite-cli.test.js`
+- `node --test tests/services/governed-publication-evidence-package.test.js`
+- `node --test tests/ops/governed-publication-evidence-package-cli.test.js`
+- `node --test tests/services/governed-publication-review.test.js`
+- `node --test tests/ops/governed-publication-review-cli.test.js`
+- `node --test tests/services/guarded-youtube-window.test.js`
+- `node --test tests/ops/guarded-youtube-window-cli.test.js`
 
 ## Full tests
 

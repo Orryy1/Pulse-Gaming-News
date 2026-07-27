@@ -31,6 +31,7 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+const { resolvePortablePath } = require("../lib/portable-path");
 try {
   if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
     require("dotenv").config({ override: false });
@@ -120,7 +121,7 @@ function resolveStudioV2OutputPaths({
   env = process.env,
 } = {}) {
   const outputDir = env.STUDIO_V2_OUTPUT_DIR
-    ? path.resolve(root, env.STUDIO_V2_OUTPUT_DIR)
+    ? resolvePortablePath(root, env.STUDIO_V2_OUTPUT_DIR)
     : path.join(root, "test", "output");
   const outputStem = safeOutputStem(
     env.STUDIO_V2_OUTPUT_STEM || storyId,

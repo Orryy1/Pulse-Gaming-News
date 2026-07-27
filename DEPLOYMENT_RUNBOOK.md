@@ -4,17 +4,19 @@
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T10:06:00.000Z` |
-| source_commit_sha | `4e1a632f8c232b56a74b79da30e603746d0100d9` |
+| generated_at | `2026-07-27T10:27:10.000Z` |
+| source_commit_sha | `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
 | runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
 | environment | `LOCAL_PROOF release worktree plus named read-only and containment evidence in CURRENT_STATUS.md` |
 | scope | `Approved release preparation, migration, queue reconciliation, local runtime cutover, rollback and acceptance` |
-| expires_at | `2026-08-03T10:06:00.000Z` |
+| expires_at | `2026-08-03T10:27:10.000Z` |
 | supersedes | `DEPLOYMENT_RUNBOOK.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5; LOCAL_DEPLOYMENT_RUNBOOK.md and older notes remain historical` |
 | superseded_by | `none` |
 | authoritative | `true` |
 
 If expired, treat this runbook as **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS**.
+
+> **Restamp required:** the metadata above still attests the previous committed snapshot. Before using this working-branch revision for a change window, restamp it to the exact final source commit, expiry and CI result.
 
 ## Current containment baseline
 
@@ -57,6 +59,8 @@ From a clean checkout of the exact candidate:
 
 ```powershell
 npm ci
+npm --prefix videos/evercold-bastion-short ci
+npm --prefix videos/evercold-bastion-short run check -- --strict
 npm run ops:agent-rules
 npm test
 npm run build
@@ -82,7 +86,35 @@ All three commands previously described as missing now exist. A real read-only r
 
 Repeat them at the exact deployment candidate after database reconciliation. Never reuse the old verdict as current readiness evidence.
 
-The full operator command contract is not reconciled. Thirteen render, platform-pack and repair command names in `AGENTS.md` still lack matching npm scripts at this source boundary. [CURRENT_STATUS.md](CURRENT_STATUS.md) lists them. Resolve and test that command surface before using the documented repair flow to build a production candidate.
+The 13 render, platform-pack and repair command names formerly missing from `package.json` now resolve through a shared, tested `LOCAL_PROOF` bridge. That bridge is inspection-only: it emits `HOLD` evidence, performs no materialisation or repair and refuses apply, publish, live and OAuth/token flags. The specialist production materialisers, media graphs and database-repair implementations remain unavailable at this source boundary. Do not use bridge command completion as readiness evidence; implement and prove the required production capability before using the documented repair flow to build a candidate. [CURRENT_STATUS.md](CURRENT_STATUS.md) lists the exact command boundary.
+
+## Governed local-candidate gate
+
+A separate narrow candidate path now has explicit npm aliases:
+
+```powershell
+npm run ops:story-intake -- --help
+npm run ops:governed-owned-motion -- --help
+npm run ops:governed-narration-materialize -- --help
+npm run ops:governed-final-composite -- --help
+npm run ops:governed-publication-evidence-package -- --help
+npm run ops:governed-publication-review -- --help
+npm run ops:guarded-youtube-window -- --help
+```
+
+This path is distinct from the 13-command generic repair bridge. The local Evercold candidate has governed source, narration, owned-motion and HyperFrames material evidence, but remains `HOLD`. Do not advance it until the exact final composite, evidence package, rights and transformation records, QA result and script/media hashes are independently verified and shown to the human reviewer.
+
+The reviewer's approval must explicitly bind the final media and script hashes. Publication review must then validate those exact artefacts. The guarded YouTube command starts with `inspect`; admission and dispatch require its exact second-pass confirmations plus current backup evidence, stopped competing workers, exact source/runtime commit parity and every runtime safety precondition. Never treat a successful local composite or review dry run as scheduler admission.
+
+Standard cadence remains the default. An exact active goal may authorise a single outside-cadence attempt, but the operator must supply all three additional controls:
+
+```powershell
+--outside-cadence-authorisation-id <exact-authority-id>
+--confirm-outside-cadence-authorisation-id <same-exact-authority-id>
+--confirm-outside-cadence-one-shot
+```
+
+The IDs must match, the boolean must be present and the normal admission and dispatch confirmations remain mandatory. The resulting `SCHEDULED` record and audit evidence bind the one-shot authority. This does not bypass the standard gates, alter the two recurring windows, create a new recurring schedule or authorise a retry after uncertain platform creation.
 
 ## Database safety baseline
 

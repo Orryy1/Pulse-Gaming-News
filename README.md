@@ -4,17 +4,19 @@
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T10:06:00.000Z` |
-| source_commit_sha | `4e1a632f8c232b56a74b79da30e603746d0100d9` |
+| generated_at | `2026-07-27T10:27:10.000Z` |
+| source_commit_sha | `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
 | runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
 | environment | `LOCAL_PROOF release worktree plus named read-only and containment evidence in CURRENT_STATUS.md` |
 | scope | `Canonical repository orientation, authority boundaries and documentation index` |
-| expires_at | `2026-08-03T10:06:00.000Z` |
+| expires_at | `2026-08-03T10:27:10.000Z` |
 | supersedes | `README.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5` |
 | superseded_by | `none` |
 | authoritative | `true` |
 
 If `expires_at` has passed, treat the status statements as **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS** until refreshed.
+
+> **Restamp required:** the metadata above still attests the previous committed snapshot. The governed local-candidate additions in the working release line must be restamped to the exact final commit and its CI result before they can support a release decision.
 
 Pulse Gaming is a Node.js CommonJS media system with a React/Vite control surface. It discovers gaming stories, builds governed editorial and media evidence, renders platform-native assets and can dispatch approved publications through guarded platform adapters. A rendered file is not automatically publishable and a configured adapter is not evidence that a platform is live.
 
@@ -30,6 +32,8 @@ The repository's compatibility operating goal is [docs/codex-main-goal.md](docs/
 - Replacement ownership: the exact two-window reconciler and fail-closed Windows `HUMAN_REVIEW` supervisor are implemented but have not been applied or installed.
 - Publication: all real preflight output remains unauthorised. Next-candidate and strict dry-run verdicts are `HOLD`.
 - Analytics: five YouTube videos map to five story records, but live Analytics scope, publication timezone provenance and an API sample remain unproved.
+- Operator command surface: all 13 formerly missing render, platform-pack and repair names resolve to an inspection-only `LOCAL_PROOF` bridge. The bridge returns `HOLD`; production materialisers and repair implementations remain unavailable.
+- Governed candidate path: the working release line has dedicated official-intake, owned-motion, narration, HyperFrames material, final-composite, evidence/review and exact one-window YouTube controls. Local Evercold material exists, but no final human approval, scheduler admission, deployment or public upload is claimed.
 - Platform scope: YouTube under exact final human review only. Instagram, Facebook, TikTok, X, Threads and Pinterest remain disabled, frozen or manual according to [PLATFORM_MATRIX.md](PLATFORM_MATRIX.md).
 - No current release upload or multi-platform post is claimed.
 - Current evidence and blockers: [CURRENT_STATUS.md](CURRENT_STATUS.md).
@@ -93,7 +97,23 @@ npm run ops:render-health
 
 These commands are evidence surfaces, not publication permission. The 2026-07-27 production-database read-only run returned `HOLD` for the next-candidate and strict dry-run checks. `platform-doctor` passed its fail-closed policy inspection while every platform remained unpublishable.
 
-This fixes the three publication preflight gaps only. Thirteen render, platform-pack and repair command names in `AGENTS.md` still lack matching npm scripts. Their exact names and release impact are recorded in [CURRENT_STATUS.md](CURRENT_STATUS.md); do not substitute similar commands.
+The 13 render, platform-pack and repair command names formerly missing from `package.json` now resolve through a tested, fail-closed `LOCAL_PROOF` bridge. It inspects local inputs and writes evidence only: no materialisation, repair, database mutation, OAuth change or publication is attempted. The specialist production implementations remain unavailable, so command resolution does not change the `HOLD` verdict or candidate readiness. [CURRENT_STATUS.md](CURRENT_STATUS.md) records the exact boundary.
+
+The separate governed local-candidate command map is:
+
+```powershell
+npm run ops:story-intake -- --help
+npm run ops:governed-owned-motion -- --help
+npm run ops:governed-narration-materialize -- --help
+npm run ops:governed-final-composite -- --help
+npm run ops:governed-publication-evidence-package -- --help
+npm run ops:governed-publication-review -- --help
+npm run ops:guarded-youtube-window -- --help
+```
+
+These commands expose a narrow, hash-bound candidate path. Dry-run or inspection is the default where supported. Their existence and local artefacts do not convert `HOLD` into publication authority.
+
+Standard cadence remains the default. The guarded command only accepts a separately authorised one-shot outside cadence when the exact `--outside-cadence-authorisation-id`, matching `--confirm-outside-cadence-authorisation-id` and `--confirm-outside-cadence-one-shot` are all present alongside every normal gate. It is not a recurring-window or safety bypass.
 
 The new cutover tools are also fail-closed:
 

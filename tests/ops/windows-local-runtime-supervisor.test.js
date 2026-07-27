@@ -553,6 +553,7 @@ test("the pinned Scheduled Task command fits the Windows task action limit", () 
   assert.match(command, /\bstart\b/);
   assert.match(command, /SAFE_HUMAN_REVIEW_RUNTIME/);
   assert.match(command, new RegExp("e".repeat(40)));
+  assert.doesNotMatch(command, /\s-r\s/);
   assert.doesNotMatch(command, /AUTO_PUBLISH|GUARDED_LIVE|KILL_SWITCH/);
 
   const parsed = parseSupervisorArgs([
@@ -569,4 +570,16 @@ test("the pinned Scheduled Task command fits the Windows task action limit", () 
   assert.equal(parsed.applyRequested, true);
   assert.equal(parsed.confirmation, "SAFE_HUMAN_REVIEW_RUNTIME");
   assert.equal(parsed.expectedCommit, "e".repeat(40));
+});
+
+test("an overlong Scheduled Task action fails closed before task installation", () => {
+  assert.throws(
+    () =>
+      buildScheduledTaskCommand({
+        repoRoot: `C:/Pulse/${"deep-runtime-root/".repeat(20)}pulse-v1`,
+        expectedCommit: "e".repeat(40),
+        nodeExecutable: "C:/Program Files/nodejs/node.exe",
+      }),
+    /scheduled_task_command_too_long/,
+  );
 });

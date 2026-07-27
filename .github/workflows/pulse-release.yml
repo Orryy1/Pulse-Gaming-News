@@ -39,6 +39,12 @@ jobs:
       - name: Install from package-lock.json
         run: npm ci
 
+      - name: Install the pinned Evercold HyperFrames material project
+        run: npm --prefix videos/evercold-bastion-short ci
+
+      - name: Strictly check the Evercold HyperFrames material project
+        run: npm --prefix videos/evercold-bastion-short run check -- --strict
+
       - name: Prove release configuration and evidence controls
         run: >-
           node --test
@@ -51,6 +57,24 @@ jobs:
           tests/services/stabilisation-runtime-provenance-cli.test.js
           tests/services/ci-secret-scan.test.js
           tests/services/pulse-release-ci.test.js
+          tests/services/agent-operating-rules.test.js
+          tests/ops/agent-operator-command-contract.test.js
+          tests/services/governed-story-intake.test.js
+          tests/ops/governed-story-intake-cli.test.js
+          tests/services/governed-owned-motion.test.js
+          tests/ops/governed-owned-motion-cli.test.js
+          tests/services/governed-narration-materialize.test.js
+          tests/ops/governed-narration-materialize-cli.test.js
+          tests/services/governed-final-composite.test.js
+          tests/ops/governed-final-composite-cli.test.js
+          tests/services/governed-publication-evidence-package.test.js
+          tests/ops/governed-publication-evidence-package-cli.test.js
+          tests/services/governed-publication-review.test.js
+          tests/ops/governed-publication-review-cli.test.js
+          tests/services/governed-platform-dispatch.test.js
+          tests/services/guarded-youtube-window.test.js
+          tests/ops/guarded-youtube-window-cli.test.js
+          tests/services/evercold-hyperframes-material.test.js
 
       - name: Validate repository operating rules
         run: npm run ops:agent-rules

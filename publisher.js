@@ -1502,10 +1502,19 @@ async function runPreflightQa(story, context = {}) {
   // Video QA — duration + black-frame detection via ffprobe/ffmpeg
   try {
     const { runVideoQa } = require("./lib/services/video-qa");
-    const vqa = story.exported_path
+    let vqa = story.exported_path
       ? await runVideoQa(story.exported_path)
       : { result: "skip", reason: "no_exported_path" };
-    if (vqa.result === "warn" && Array.isArray(vqa.warnings)) {
+    if (governedReviewAuthority) {
+      const {
+        reconcileGovernedReviewedVideoQa,
+      } = require("./lib/services/governed-reviewed-content-qa");
+      vqa = reconcileGovernedReviewedVideoQa(
+        vqa,
+        governedReviewAuthority,
+      );
+    }
+    if (Array.isArray(vqa.warnings) && vqa.warnings.length > 0) {
       console.log(
         `[publisher] video QA warnings (${story.id}): ${vqa.warnings.join(", ")}`,
       );

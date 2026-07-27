@@ -107,6 +107,9 @@ jobs:
           tests/ops/governed-publication-review-cli.test.js
           tests/ops/governed-reviewed-qa-repair.test.js
           tests/ops/governed-reviewed-qa-repair-cli.test.js
+          tests/services/governed-reviewed-video-qa.test.js
+          tests/ops/governed-reviewed-video-qa-repair.test.js
+          tests/ops/governed-reviewed-video-qa-repair-cli.test.js
           tests/services/governed-platform-dispatch.test.js
           tests/services/guarded-youtube-window.test.js
           tests/ops/guarded-youtube-window-cli.test.js

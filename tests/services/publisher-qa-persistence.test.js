@@ -2427,23 +2427,16 @@ test("publishNextStory: unavailable render contract fails closed and preserves t
 // LIVE_GUARDED dispatch carries one immutable story authority. A QA failure
 // must stop that operation and must never fall through to another story.
 
-test("exact guarded candidate: a hash-bound governed 47-word Short uses its reviewed editorial and renderer contracts", async (t) => {
-  const directory = fs.mkdtempSync(
-    path.join(os.tmpdir(), "pulse-governed-reviewed-content-qa-"),
-  );
-  const mediaPath = path.join(directory, "official_studio-v21.mp4");
-  const mediaBytes = Buffer.alloc(220 * 1024, 0x5a);
-  fs.writeFileSync(mediaPath, mediaBytes);
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-
-  const fullScript =
-    "Final Fantasy XIV just revealed a tank that fights with two giant shields. Bastion arrives in Evercold and only works in Evolved Mode. The expansion makes its story less linear, auto-scales content and adds a Final Fantasy VII raid. The MMO hits Switch 2 on August fourth.";
-  assert.equal(fullScript.trim().split(/\s+/).length, 47);
-  const scriptSha256 = sha256(Buffer.from(fullScript));
-  const mediaSha256 = sha256(mediaBytes);
+function buildGovernedReviewedShort({
+  storyId = "official_governed_reviewed_short",
+  mediaPath,
+  mediaSha256,
+  fullScript,
+  scriptSha256,
+}) {
   const rendererManifestSha256 = "4".repeat(64);
-  const story = {
-    id: "official_governed_reviewed_short",
+  return {
+    id: storyId,
     title: "Final Fantasy XIV's New Tank Uses TWO Giant Shields",
     channel_id: "pulse-gaming",
     approved: true,
@@ -2460,7 +2453,7 @@ test("exact guarded candidate: a hash-bound governed 47-word Short uses its revi
     hook_type: "direct",
     preflight_evidence: {
       schema_version: "pulse-publication-review-evidence-v1",
-      story_id: "official_governed_reviewed_short",
+      story_id: storyId,
       channel_id: "pulse-gaming",
       source_evidence_sha256: "1".repeat(64),
       qa_report_sha256: "2".repeat(64),
@@ -2478,7 +2471,7 @@ test("exact guarded candidate: a hash-bound governed 47-word Short uses its revi
       },
       renderer_manifest: {
         schema_version: "pulse-render-manifest-v1",
-        story_id: "official_governed_reviewed_short",
+        story_id: storyId,
         channel_id: "pulse-gaming",
         renderer: {
           id: "studio-v21",
@@ -2487,13 +2480,14 @@ test("exact guarded candidate: a hash-bound governed 47-word Short uses its revi
         },
         output: {
           sha256: mediaSha256,
+          duration_seconds: 25,
           platform_video_qa_result: "pass",
         },
       },
     },
     final_publication_review: {
       schema_version: "pulse-final-publication-review-v1",
-      story_id: "official_governed_reviewed_short",
+      story_id: storyId,
       channel_id: "pulse-gaming",
       review_manifest_sha256: "b".repeat(64),
       script_sha256: scriptSha256,
@@ -2515,9 +2509,46 @@ test("exact guarded candidate: a hash-bound governed 47-word Short uses its revi
       reviewed_at: "2026-07-27T08:45:00.000Z",
     },
   };
+}
+
+function createGovernedReviewedShortFixture(t) {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-governed-reviewed-content-qa-"),
+  );
+  const mediaPath = path.join(directory, "official_studio-v21.mp4");
+  const mediaBytes = Buffer.alloc(220 * 1024, 0x5a);
+  fs.writeFileSync(mediaPath, mediaBytes);
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const fullScript =
+    "Final Fantasy XIV just revealed a tank that fights with two giant shields. Bastion arrives in Evercold and only works in Evolved Mode. The expansion makes its story less linear, auto-scales content and adds a Final Fantasy VII raid. The MMO hits Switch 2 on August fourth.";
+  assert.equal(fullScript.trim().split(/\s+/).length, 47);
+  const scriptSha256 = sha256(Buffer.from(fullScript));
+  const mediaSha256 = sha256(mediaBytes);
+  return {
+    fullScript,
+    mediaPath,
+    mediaSha256,
+    scriptSha256,
+    story: buildGovernedReviewedShort({
+      mediaPath,
+      mediaSha256,
+      fullScript,
+      scriptSha256,
+    }),
+  };
+}
+
+test("exact guarded candidate: a hash-bound governed 25-second Short uses its reviewed editorial and renderer contracts", async (t) => {
+  const { mediaSha256, scriptSha256, story } =
+    createGovernedReviewedShortFixture(t);
   const { publishNextStory } = setupMocks({
     useRealContentQa: true,
-    vqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: {
+      result: "fail",
+      failures: ["duration_too_short (25.00s)"],
+      warnings: [],
+    },
     renderDecisionResult: {
       verdict: {
         class: "standard",
@@ -2545,10 +2576,142 @@ test("exact guarded candidate: a hash-bound governed 47-word Short uses its revi
   assert.equal(result.story_id, story.id);
   assert.equal(result.platform_outcomes.youtube, "new_upload");
   assert.deepEqual(uploaderCalls, ["upload_youtube"]);
+  assert.ok(
+    result.qa_warnings.includes(
+      "governed_review_resolved:duration_too_short (25.00s)",
+    ),
+  );
   assert.notEqual(
     dbState.stories.find((row) => row.id === story.id)?.qa_failed,
     true,
   );
+});
+
+test("exact guarded candidate: governed video-QA reconciliation fails closed on authority or render mismatches", async (t) => {
+  async function runScenario(
+    child,
+    {
+      mutateStory = () => {},
+      failures = ["duration_too_short (25.00s)"],
+    } = {},
+  ) {
+    const { mediaSha256, scriptSha256, story } =
+      createGovernedReviewedShortFixture(child);
+    mutateStory(story);
+    const { publishNextStory } = setupMocks({
+      useRealContentQa: true,
+      vqaResult: {
+        result: "fail",
+        failures,
+        warnings: [],
+      },
+      renderDecisionResult: {
+        verdict: {
+          class: "standard",
+          missing: [],
+          reasons: [],
+          sources_used: ["governed-review"],
+        },
+        gate: { allowed: true, reason: null },
+        inputs: {},
+      },
+      stories: [story],
+    });
+    const result = await publishNextStory({
+      async fingerprintPublicationRequest() {
+        return {
+          request_fingerprint: "a".repeat(64),
+          media_sha256: mediaSha256,
+          script_sha256: scriptSha256,
+        };
+      },
+    });
+    assert.equal(result.no_safe_candidate, true);
+    assert.deepEqual(
+      uploaderCalls,
+      [],
+      "an authority or duration mismatch must stop before the uploader",
+    );
+    assert.deepEqual(
+      governedDispatchCalls,
+      [],
+      "an authority or duration mismatch must stop before governed dispatch",
+    );
+    return result;
+  }
+
+  await t.test("wrong reviewed story identity is blocked", async (child) => {
+    const result = await runScenario(child, {
+      mutateStory(story) {
+        story.preflight_evidence.renderer_manifest.story_id =
+          "another_story";
+      },
+    });
+    assert.equal(result.qa_skipped[0].source, "governed_review");
+    assert.ok(
+      result.qa_skipped[0].failures.includes(
+        "governed_review_renderer_story_mismatch",
+      ),
+    );
+  });
+
+  await t.test("wrong reviewed media hash is blocked", async (child) => {
+    const result = await runScenario(child, {
+      mutateStory(story) {
+        story.preflight_evidence.media_sha256 = "f".repeat(64);
+      },
+    });
+    assert.equal(result.qa_skipped[0].source, "governed_review");
+    assert.ok(
+      result.qa_skipped[0].failures.includes(
+        "governed_review_current_media_hash_mismatch",
+      ),
+    );
+  });
+
+  await t.test("different probed duration remains a video-QA failure", async (child) => {
+    const result = await runScenario(child, {
+      failures: ["duration_too_short (24.99s)"],
+    });
+    assert.equal(result.qa_skipped[0].source, "video");
+    assert.deepEqual(result.qa_skipped[0].failures, [
+      "duration_too_short (24.99s)",
+    ]);
+  });
+
+  await t.test("different reviewed renderer duration remains blocked", async (child) => {
+    const result = await runScenario(child, {
+      mutateStory(story) {
+        story.preflight_evidence.renderer_manifest.output.duration_seconds =
+          26;
+      },
+    });
+    assert.equal(result.qa_skipped[0].source, "video");
+    assert.deepEqual(result.qa_skipped[0].failures, [
+      "duration_too_short (25.00s)",
+    ]);
+  });
+
+  await t.test("a second video failure is retained", async (child) => {
+    const result = await runScenario(child, {
+      failures: [
+        "duration_too_short (25.00s)",
+        "black_segment_too_long (4.20s @ 0.00s)",
+      ],
+    });
+    assert.equal(result.qa_skipped[0].source, "video");
+    assert.deepEqual(result.qa_skipped[0].failures, [
+      "black_segment_too_long (4.20s @ 0.00s)",
+    ]);
+    const persisted = dbState.stories.find(
+      (row) => row.id === "official_governed_reviewed_short",
+    );
+    assert.ok(
+      persisted.qa_warnings.includes(
+        "governed_review_resolved:duration_too_short (25.00s)",
+      ),
+    );
+  });
 });
 
 test("exact guarded candidate: bound QA failure never falls through to another ready story", async () => {

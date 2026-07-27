@@ -58,6 +58,7 @@
     "ops:bridge-preflight-stamp-repair": "node tools/operator-command-contract.js bridge-preflight-stamp-repair",
     "ops:goal-audio-materialize": "node tools/operator-command-contract.js goal-audio-materialize",
     "ops:goal-audio-timestamps": "node tools/operator-command-contract.js goal-audio-timestamps",
+    "ops:governed-owned-motion": "node tools/governed-owned-motion.js",
     "ops:goal-owned-motion": "node tools/operator-command-contract.js goal-owned-motion",
     "ops:goal-platform-duration-contract": "node tools/operator-command-contract.js goal-platform-duration-contract",
     "ops:goal-platform-native-repair": "node tools/operator-command-contract.js goal-platform-native-repair",

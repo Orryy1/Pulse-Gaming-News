@@ -278,6 +278,123 @@ test("inspect exposes the computed exact confirmations without weakening the hol
   assert.equal(result.safety.platforms_contacted, false);
 });
 
+test("inspect accepts only an exact one-shot authorisation outside normal cadence", async () => {
+  const scheduledFor = "2026-07-27T18:58:00.000Z";
+  const authorisationId = "thread-019f6282-asap-youtube-one-shot";
+  const dispatchKey = `youtube:${STORY_ID}:${scheduledFor}`;
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "inspect",
+      {
+        inspectDatabase: () => baseSnapshot(),
+      },
+      {
+        scheduledFor,
+        confirmScheduledFor: scheduledFor,
+        confirmDispatchKey: dispatchKey,
+        generatedAt: "2026-07-27T18:57:30.000Z",
+        outsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceOneShot: true,
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "READY_TO_ADMIT");
+  assert.deepEqual(result.expected_confirmations, {
+    story_id: STORY_ID,
+    scheduled_for: scheduledFor,
+    media_sha256: MEDIA_SHA,
+    script_sha256: SCRIPT_SHA,
+    request_fingerprint: REQUEST_SHA,
+    renderer_manifest_sha256: RENDERER_SHA,
+    source_evidence_sha256: SOURCE_SHA,
+    dispatch_idempotency_key: dispatchKey,
+    outside_cadence_authorisation_id: authorisationId,
+    outside_cadence_one_shot: true,
+  });
+  assert.equal(result.safety.platforms_contacted, false);
+});
+
+test("inspect rejects an outside-cadence schedule without exact one-shot authorisation", async () => {
+  const scheduledFor = "2026-07-27T18:58:00.000Z";
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "inspect",
+      {
+        inspectDatabase: () => baseSnapshot(),
+      },
+      {
+        scheduledFor,
+        confirmScheduledFor: scheduledFor,
+        confirmDispatchKey: `youtube:${STORY_ID}:${scheduledFor}`,
+        generatedAt: "2026-07-27T18:57:30.000Z",
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes("schedule_outside_guarded_youtube_windows"),
+  );
+  assert.ok(
+    result.blockers.includes("outside_cadence_authorisation_required"),
+  );
+  assert.equal(result.mutated, false);
+});
+
+test("inspect binds outside-cadence authorisation to the immutable scheduled row", async () => {
+  const scheduledFor = "2026-07-27T18:58:00.000Z";
+  const authorisationId = "thread-authorisation-current";
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "inspect",
+      {
+        inspectDatabase: () =>
+          baseSnapshot({
+            scheduled_rows: [
+              scheduledRow(STORY_ID, {
+                scheduled_for: scheduledFor,
+                control_tower_checked_at:
+                  "2026-07-27T18:58:00.000Z",
+                dispatch_idempotency_key:
+                  `youtube:${STORY_ID}:${scheduledFor}`,
+                outside_cadence_authorisation: {
+                  authorisation_id: "thread-authorisation-stale",
+                  one_shot: true,
+                  basis: "explicit_operator_goal_authorisation",
+                },
+              }),
+            ],
+            lifecycle_by_state: {
+              SCRIPT_READY: { script_sha256: SCRIPT_SHA },
+              RENDERED: {
+                media_sha256: MEDIA_SHA,
+                renderer_manifest_sha256: RENDERER_SHA,
+              },
+            },
+          }),
+      },
+      {
+        scheduledFor,
+        confirmScheduledFor: scheduledFor,
+        confirmDispatchKey: `youtube:${STORY_ID}:${scheduledFor}`,
+        generatedAt: "2026-07-27T18:58:30.000Z",
+        outsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceOneShot: true,
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "scheduled_outside_cadence_authorisation_mismatch",
+    ),
+  );
+});
+
 test("admit invokes existing admission at most once, then proves the exact SCHEDULED row", async () => {
   let inspections = 0;
   let admissions = 0;

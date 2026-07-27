@@ -60,8 +60,29 @@ test("parseArgs accepts help without requiring any live inputs", () => {
     confirmSupervisorStopped: false,
     confirmWorkersStopped: false,
     confirmLiveYoutubeDispatch: false,
+    confirmOutsideCadenceOneShot: false,
     help: true,
   });
+});
+
+test("parseArgs keeps outside-cadence release as an exact one-shot confirmation", () => {
+  const parsed = parseArgs([
+    "--outside-cadence-authorisation-id",
+    "thread-authorisation",
+    "--confirm-outside-cadence-authorisation-id",
+    "thread-authorisation",
+    "--confirm-outside-cadence-one-shot",
+  ]);
+
+  assert.equal(
+    parsed.outsideCadenceAuthorisationId,
+    "thread-authorisation",
+  );
+  assert.equal(
+    parsed.confirmOutsideCadenceAuthorisationId,
+    "thread-authorisation",
+  );
+  assert.equal(parsed.confirmOutsideCadenceOneShot, true);
 });
 
 test("runCli help is read-only and does not execute the guarded operation", async () => {
@@ -83,6 +104,7 @@ test("runCli help is read-only and does not execute the guarded operation", asyn
   assert.equal(result.help, true);
   assert.match(output, /Usage: node tools\/guarded-youtube-window\.js/);
   assert.match(output, /--confirm-request-fingerprint/);
+  assert.match(output, /--confirm-outside-cadence-one-shot/);
 });
 
 test("runCli writes machine JSON and Markdown while inspect remains read-only", async (t) => {

@@ -457,6 +457,79 @@ test("operator admission rejects a schedule outside guarded YouTube windows with
   assertNoAdmissionRows(db);
 });
 
+test("operator admission accepts an exact one-shot outside-cadence authorisation and records it immutably", async (t) => {
+  const { db, repos } = fixture(t);
+  const authorisationId = "thread-019f6282-asap-youtube-one-shot";
+
+  const result = await admitPublication(
+    admissionInput(repos, {
+      scheduledFor: "2026-07-27T10:00:00.000Z",
+      now: new Date("2026-07-27T09:55:00.000Z"),
+      outsideCadenceAuthorisation: {
+        authorisationId,
+        confirmAuthorisationId: authorisationId,
+        oneShotConfirmed: true,
+      },
+    }),
+  );
+
+  assert.equal(result.admitted, true);
+  assert.deepEqual(result.outside_cadence_authorisation, {
+    authorisation_id: authorisationId,
+    one_shot: true,
+    basis: "explicit_operator_goal_authorisation",
+  });
+  const scheduled = JSON.parse(
+    db
+      .prepare(
+        `SELECT evidence_json
+         FROM publication_lifecycle_events
+         WHERE story_id = ? AND platform = 'youtube' AND to_state = 'SCHEDULED'`,
+      )
+      .get("story-admission-1").evidence_json,
+  );
+  assert.deepEqual(
+    scheduled.outside_cadence_authorisation,
+    result.outside_cadence_authorisation,
+  );
+  const audit = JSON.parse(
+    db
+      .prepare(
+        `SELECT evidence_json FROM operator_audit_log
+         WHERE target_id = 'story-admission-1:youtube'`,
+      )
+      .get().evidence_json,
+  );
+  assert.deepEqual(
+    audit.outside_cadence_authorisation,
+    result.outside_cadence_authorisation,
+  );
+});
+
+test("operator admission rejects mismatched outside-cadence authorisation without partial rows", async (t) => {
+  const { db, repos } = fixture(t);
+
+  const result = await admitPublication(
+    admissionInput(repos, {
+      scheduledFor: "2026-07-27T10:00:00.000Z",
+      now: new Date("2026-07-27T09:55:00.000Z"),
+      outsideCadenceAuthorisation: {
+        authorisationId: "thread-authorisation-a",
+        confirmAuthorisationId: "thread-authorisation-b",
+        oneShotConfirmed: true,
+      },
+    }),
+  );
+
+  assert.equal(result.admitted, false);
+  assert.ok(
+    result.blockers.includes(
+      "exact_outside_cadence_authorisation_required",
+    ),
+  );
+  assertNoAdmissionRows(db);
+});
+
 test("operator admission cannot create a catch-up ticket after the guarded window has fired", async (t) => {
   const { db, repos } = fixture(t);
 

@@ -13,6 +13,10 @@ const {
 
 const BOOLEAN_FLAGS = new Map([
   ["help", "help"],
+  [
+    "confirm-outside-cadence-one-shot",
+    "confirmOutsideCadenceOneShot",
+  ],
   ["confirm-supervisor-stopped", "confirmSupervisorStopped"],
   ["confirm-workers-stopped", "confirmWorkersStopped"],
   ["confirm-live-youtube-dispatch", "confirmLiveYoutubeDispatch"],
@@ -43,6 +47,11 @@ Exact second-pass confirmations:
   --reason <text> --confirm-reason <text>
   --change-window-id <id> --confirm-change-window-id <id>
   --confirm-supervisor-stopped --confirm-workers-stopped
+
+Explicit one-shot outside normal cadence:
+  --outside-cadence-authorisation-id <id>
+  --confirm-outside-cadence-authorisation-id <same-id>
+  --confirm-outside-cadence-one-shot
 
 Mutation actions:
   --action admit
@@ -76,6 +85,14 @@ const VALUE_FLAGS = new Map([
   ["confirm-reason", "confirmReason"],
   ["change-window-id", "changeWindowId"],
   ["confirm-change-window-id", "confirmChangeWindowId"],
+  [
+    "outside-cadence-authorisation-id",
+    "outsideCadenceAuthorisationId",
+  ],
+  [
+    "confirm-outside-cadence-authorisation-id",
+    "confirmOutsideCadenceAuthorisationId",
+  ],
   ["generated-at", "generatedAt"],
   ["out-dir", "outDir"],
 ]);
@@ -86,6 +103,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     confirmSupervisorStopped: false,
     confirmWorkersStopped: false,
     confirmLiveYoutubeDispatch: false,
+    confirmOutsideCadenceOneShot: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];

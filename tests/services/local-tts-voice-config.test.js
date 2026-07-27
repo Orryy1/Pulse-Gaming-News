@@ -65,5 +65,47 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
     1.68,
     {},
   );
-  assert.equal(eleven.speaking_rate, 1.68);
+  assert.equal(eleven.speed, 1.2);
+  assert.equal("speaking_rate" in eleven, false);
+});
+
+test("ElevenLabs timing request uses the current speed and output-format contract", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const { buildTtsRequest } = require("../../audio");
+
+  const eleven = buildTtsRequest({
+    provider: "elevenlabs",
+    baseUrl: "https://api.elevenlabs.io",
+    voiceId: "voice-id",
+    text: "Pulse narration.",
+    voiceSettings: {
+      stability: 0.2,
+      similarity_boost: 0.8,
+      style: 0.75,
+      speaking_rate: 0.9,
+    },
+    modelId: "eleven_multilingual_v2",
+  });
+  assert.equal(
+    eleven.url,
+    "https://api.elevenlabs.io/v1/text-to-speech/voice-id/with-timestamps?output_format=mp3_44100_128",
+  );
+  assert.equal(eleven.data.output_format, undefined);
+  assert.equal(eleven.data.voice_settings.speed, 0.9);
+  assert.equal("speaking_rate" in eleven.data.voice_settings, false);
+  assert.equal(eleven.data.model_id, "eleven_multilingual_v2");
+
+  const local = buildTtsRequest({
+    provider: "local",
+    baseUrl: "http://127.0.0.1:8765",
+    voiceId: "voice-id",
+    text: "Pulse narration.",
+    voiceSettings: { speaking_rate: 1.1 },
+  });
+  assert.equal(
+    local.url,
+    "http://127.0.0.1:8765/v1/text-to-speech/voice-id/with-timestamps",
+  );
+  assert.equal(local.data.output_format, "mp3_44100_128");
+  assert.equal(local.data.voice_settings.speaking_rate, 1.1);
 });

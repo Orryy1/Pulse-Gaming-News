@@ -354,16 +354,58 @@ function resolveVoiceSettingsForProvider(
   env = process.env,
 ) {
   const settings = Object.assign({}, baseSettings || {});
-  if (rateOverride !== undefined) {
-    settings.speaking_rate = rateOverride;
-  }
-  if (String(provider || "").toLowerCase() === "local") {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const requestedRate = finiteNumber(
+    rateOverride,
+    finiteNumber(settings.speed, finiteNumber(settings.speaking_rate, 1)),
+  );
+  if (normalisedProvider === "local") {
+    settings.speaking_rate = requestedRate;
     settings.speaking_rate = resolveLocalTtsSpeakingRate(
       settings.speaking_rate,
       env,
     );
+    delete settings.speed;
+  } else {
+    settings.speed = clamp(requestedRate, 0.7, 1.2);
+    delete settings.speaking_rate;
   }
   return settings;
+}
+
+function buildTtsRequest({
+  provider,
+  baseUrl,
+  voiceId,
+  text,
+  voiceSettings,
+  modelId,
+} = {}) {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const local = normalisedProvider === "local";
+  const canonicalVoiceSettings = resolveVoiceSettingsForProvider(
+    normalisedProvider,
+    voiceSettings,
+  );
+  const endpoint =
+    `${String(baseUrl || "").replace(/\/+$/, "")}` +
+    `/v1/text-to-speech/${encodeURIComponent(String(voiceId || ""))}` +
+    "/with-timestamps";
+  const data = {
+    text,
+    voice_settings: canonicalVoiceSettings,
+  };
+  if (local) {
+    data.output_format = "mp3_44100_128";
+  } else {
+    data.model_id = modelId || "eleven_multilingual_v2";
+  }
+  return {
+    url: local
+      ? endpoint
+      : `${endpoint}?output_format=mp3_44100_128`,
+    data,
+  };
 }
 
 // --- Concatenate multiple MP3 files via ffmpeg ---
@@ -423,20 +465,20 @@ async function generateTTS(text, outputPath, rateOverride) {
           "Content-Type": "application/json",
         };
 
-  const data = {
+  const request = buildTtsRequest({
+    provider,
+    baseUrl,
+    voiceId,
     text,
-    voice_settings: resolvedVoiceSettings,
-    output_format: "mp3_44100_128",
-  };
-  if (provider !== "local") {
-    data.model_id = brand.voiceModel || "eleven_multilingual_v2";
-  }
+    voiceSettings: resolvedVoiceSettings,
+    modelId: brand.voiceModel || "eleven_multilingual_v2",
+  });
 
   const response = await axios({
     method: "POST",
-    url: `${baseUrl}/v1/text-to-speech/${voiceId}/with-timestamps`,
+    url: request.url,
     headers,
-    data,
+    data: request.data,
     timeout: resolveTtsTimeoutMs(provider),
   });
 
@@ -701,6 +743,7 @@ module.exports.concatAudioFiles = concatAudioFiles;
 module.exports.resolveTtsTimeoutMs = resolveTtsTimeoutMs;
 module.exports.resolveLocalTtsSpeakingRate = resolveLocalTtsSpeakingRate;
 module.exports.resolveVoiceSettingsForProvider = resolveVoiceSettingsForProvider;
+module.exports.buildTtsRequest = buildTtsRequest;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
 module.exports.resolveAudioRuntimePlan = resolveAudioRuntimePlan;

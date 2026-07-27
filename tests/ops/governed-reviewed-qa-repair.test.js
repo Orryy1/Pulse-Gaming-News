@@ -452,6 +452,10 @@ test("reviewed QA repair atomically clears only the proven false positive and ca
   assert.equal(inspection.verdict, "READY");
   assert.equal(inspection.mutated, false);
   assert.deepEqual(inspection.blockers, []);
+  assert.equal(
+    inspection.qa_publish_error_persistence_shape,
+    "mirrored_exact",
+  );
   assert.equal(inspection.safety.create_boundary_entered, false);
 
   const result = await executeGovernedReviewedQaRepair({
@@ -461,6 +465,10 @@ test("reviewed QA repair atomically clears only the proven false positive and ca
   assert.equal(result.verdict, "APPLIED");
   assert.equal(result.mutated, true);
   assert.deepEqual(result.blockers, []);
+  assert.equal(
+    result.qa_publish_error_persistence_shape,
+    "mirrored_exact",
+  );
 
   const db = new Database(fx.databasePath, { readonly: true });
   const row = db.prepare("SELECT * FROM stories WHERE id = ?").get(STORY_ID);
@@ -492,6 +500,218 @@ test("reviewed QA repair atomically clears only the proven false positive and ca
     0,
   );
   db.close();
+});
+
+test("reviewed QA repair accepts and applies the production top-level-only QA publish error", async (t) => {
+  const fx = await fixture(t);
+  const db = new Database(fx.databasePath);
+  const row = db.prepare("SELECT _extra FROM stories WHERE id = ?").get(STORY_ID);
+  const extra = JSON.parse(row._extra);
+  delete extra.publish_error;
+  db.prepare("UPDATE stories SET _extra = ? WHERE id = ?").run(
+    JSON.stringify(extra),
+    STORY_ID,
+  );
+  db.close();
+
+  const inspection = await executeGovernedReviewedQaRepair(
+    repairOptions(fx),
+  );
+  assert.equal(inspection.mode, "DRY_RUN");
+  assert.equal(inspection.verdict, "READY");
+  assert.deepEqual(inspection.blockers, []);
+  assert.equal(inspection.mutated, false);
+  assert.equal(
+    inspection.qa_publish_error_persistence_shape,
+    "top_level_only",
+  );
+
+  const result = await executeGovernedReviewedQaRepair(
+    applyOptions(fx),
+  );
+  assert.equal(result.mode, "APPLY");
+  assert.equal(result.verdict, "APPLIED");
+  assert.deepEqual(result.blockers, []);
+  assert.equal(result.mutated, true);
+  assert.equal(
+    result.qa_publish_error_persistence_shape,
+    "top_level_only",
+  );
+  assert.equal(result.safety.platform_calls_performed, false);
+  assert.equal(result.safety.oauth_or_tokens_mutated, false);
+  assert.equal(result.safety.secondary_platforms_contacted, false);
+
+  const verified = new Database(fx.databasePath, { readonly: true });
+  const repaired = verified
+    .prepare(
+      "SELECT publish_status, publish_error, _extra FROM stories WHERE id = ?",
+    )
+    .get(STORY_ID);
+  assert.equal(repaired.publish_status, null);
+  assert.equal(repaired.publish_error, null);
+  assert.equal(JSON.parse(repaired._extra).publish_error, null);
+  assert.equal(
+    verified
+      .prepare(
+        `SELECT COUNT(*) AS count FROM platform_dispatch_ledger
+         WHERE story_id = ? AND platform = 'youtube'`,
+      )
+      .get(STORY_ID).count,
+    0,
+  );
+  assert.equal(
+    verified
+      .prepare(
+        `SELECT COUNT(*) AS count FROM platform_posts
+         WHERE story_id = ? AND platform = 'youtube'`,
+      )
+      .get(STORY_ID).count,
+    0,
+  );
+  const decisionEvidence = JSON.parse(
+    verified
+      .prepare(
+        `SELECT evidence_json FROM operator_audit_log
+         WHERE action = 'repair_governed_reviewed_qa_refusal'
+           AND target_id = ?
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(`${STORY_ID}:youtube`).evidence_json,
+  );
+  assert.equal(
+    decisionEvidence.qa_publish_error_persistence_shape,
+    "top_level_only",
+  );
+  verified.close();
+});
+
+test("reviewed QA repair fails closed on a mismatched mirrored publish error without any platform or OAuth action", async (t) => {
+  const fx = await fixture(t);
+  const db = new Database(fx.databasePath);
+  const row = db.prepare("SELECT _extra FROM stories WHERE id = ?").get(STORY_ID);
+  const extra = JSON.parse(row._extra);
+  extra.publish_error = "qa_blocked: different_failure";
+  db.prepare("UPDATE stories SET _extra = ? WHERE id = ?").run(
+    JSON.stringify(extra),
+    STORY_ID,
+  );
+  db.close();
+
+  const result = await executeGovernedReviewedQaRepair(
+    applyOptions(fx),
+  );
+  assert.equal(result.mode, "APPLY");
+  assert.equal(result.verdict, "HOLD");
+  assert.equal(result.mutated, false);
+  assert.ok(
+    result.blockers.includes("exact_qa_publish_error_required"),
+  );
+  assert.equal(result.safety.platform_calls_performed, false);
+  assert.equal(result.safety.oauth_or_tokens_mutated, false);
+  assert.equal(result.safety.secondary_platforms_contacted, false);
+
+  const verified = new Database(fx.databasePath, { readonly: true });
+  const unchanged = verified
+    .prepare(
+      "SELECT publish_status, publish_error, _extra FROM stories WHERE id = ?",
+    )
+    .get(STORY_ID);
+  assert.equal(unchanged.publish_status, "failed");
+  assert.equal(
+    unchanged.publish_error,
+    "qa_blocked: legacy_unstamped_render_requires_rerender",
+  );
+  assert.equal(
+    JSON.parse(unchanged._extra).publish_error,
+    "qa_blocked: different_failure",
+  );
+  assert.equal(
+    verified
+      .prepare(
+        `SELECT lifecycle_state
+         FROM platform_publication_state
+         WHERE story_id = ? AND platform = 'youtube'`,
+      )
+      .get(STORY_ID).lifecycle_state,
+    "SCHEDULED",
+  );
+  assert.equal(
+    verified
+      .prepare(
+        `SELECT COUNT(*) AS count FROM operator_audit_log
+         WHERE action = 'repair_governed_reviewed_qa_refusal'
+           AND target_id = ?`,
+      )
+      .get(`${STORY_ID}:youtube`).count,
+    0,
+  );
+  assert.equal(
+    verified
+      .prepare(
+        `SELECT COUNT(*) AS count FROM platform_dispatch_ledger
+         WHERE story_id = ? AND platform = 'youtube'`,
+      )
+      .get(STORY_ID).count,
+    0,
+  );
+  assert.equal(
+    verified
+      .prepare(
+        `SELECT COUNT(*) AS count FROM platform_posts
+         WHERE story_id = ? AND platform = 'youtube'`,
+      )
+      .get(STORY_ID).count,
+    0,
+  );
+  verified.close();
+});
+
+test("reviewed QA repair rejects null and arbitrary persisted publish-error values", async (t) => {
+  const cases = [
+    {
+      name: "null top-level value",
+      topLevel: null,
+      extra: "qa_blocked: legacy_unstamped_render_requires_rerender",
+    },
+    {
+      name: "arbitrary top-level value",
+      topLevel: "qa_blocked: different_failure",
+      extra: "qa_blocked: legacy_unstamped_render_requires_rerender",
+    },
+    {
+      name: "explicit null mirrored value",
+      topLevel:
+        "qa_blocked: legacy_unstamped_render_requires_rerender",
+      extra: null,
+    },
+  ];
+
+  for (const current of cases) {
+    await t.test(current.name, async (subtest) => {
+      const fx = await fixture(subtest);
+      const db = new Database(fx.databasePath);
+      const row = db
+        .prepare("SELECT _extra FROM stories WHERE id = ?")
+        .get(STORY_ID);
+      const extra = JSON.parse(row._extra);
+      extra.publish_error = current.extra;
+      db.prepare(
+        "UPDATE stories SET publish_error = ?, _extra = ? WHERE id = ?",
+      ).run(current.topLevel, JSON.stringify(extra), STORY_ID);
+      db.close();
+
+      const result = await executeGovernedReviewedQaRepair(
+        repairOptions(fx),
+      );
+      assert.equal(result.verdict, "HOLD");
+      assert.equal(result.mutated, false);
+      assert.ok(
+        result.blockers.includes("exact_qa_publish_error_required"),
+      );
+      assert.equal(result.safety.platform_calls_performed, false);
+      assert.equal(result.safety.oauth_or_tokens_mutated, false);
+    });
+  }
 });
 
 test("reviewed QA repair rejects a caller-controlled future clock", async (t) => {

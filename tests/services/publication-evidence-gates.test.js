@@ -105,6 +105,43 @@ test("per-item rights decisions are hash-bound and attribution alone is never pe
   );
 });
 
+test("transformative editorial use is accepted with a hash-bound review record, not attribution alone", () => {
+  const editorialUse = rightsLedger();
+  editorialUse.items[0] = {
+    ...editorialUse.items[0],
+    item_id: "publisher-reference-clip",
+    source_url: "https://publisher.example/game/trailer",
+    rights_basis: "TRANSFORMATIVE_EDITORIAL_USE",
+    rights_evidence: {
+      reference: "output/rights/story-1-editorial-use-review.json",
+      sha256: "4".repeat(64),
+    },
+    attribution_decision: "REQUIRED_AND_SUPPLIED",
+    attribution_text: "Source: Example Publisher",
+  };
+
+  assert.deepEqual(
+    assessRightsLedger(editorialUse, hashRightsLedger(editorialUse)).blockers,
+    [],
+  );
+
+  delete editorialUse.items[0].rights_evidence;
+  const missingReviewEvidence = assessRightsLedger(
+    editorialUse,
+    hashRightsLedger(editorialUse),
+  );
+  assert.ok(
+    missingReviewEvidence.blockers.includes(
+      "rights_ledger_basis_evidence_required",
+    ),
+  );
+  assert.ok(
+    !missingReviewEvidence.blockers.includes(
+      "rights_ledger_permission_evidence_required",
+    ),
+  );
+});
+
 test("synthetic media always has an explicit, evidence-bearing disclosure decision", () => {
   const disclosed = assessSyntheticMediaDisclosure({
     contains_synthetic_media: true,

@@ -1,21 +1,32 @@
+"use strict";
+
+const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+loadDotenvOnce({ dotenv, env: process.env });
+assertValidRuntimeConfig(process.env);
+
 require("./lib/sentry").initSentry();
 const { sentryExpressMiddleware, setupErrorHandler } = require("./lib/sentry");
-
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs-extra");
 const path = require("path");
 const { spawn } = require("child_process");
 const cron = require("node-cron");
-const dotenv = require("dotenv");
 const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
 const { getPublicUrl } = require("./lib/deployment-mode");
+const { resolveRuntimeBuildInfo } = require("./lib/runtime-build-info");
+const {
+  resolveOperatingContract,
+} = require("./lib/stabilisation/operating-contract");
 const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
-
-dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -209,34 +220,34 @@ if (process.env.USE_SQLITE === "true") {
 
 // --- Legal pages (required for TikTok/Instagram app review) ---
 app.get("/terms", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Terms of Service - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Terms of Service</h1><p>Last updated: 2 April 2026</p>
-<p>By using Pulse Gaming's services you agree to these terms.</p>
-<h2>Use of Service</h2><p>Pulse Gaming provides automated gaming news content across YouTube, TikTok and Instagram. Content is generated from verified public sources and is intended for entertainment and informational purposes.</p>
-<h2>Content</h2><p>All content is sourced from publicly available news outlets, Reddit and RSS feeds. We do not claim ownership of third-party trademarks or intellectual property referenced in our coverage.</p>
+  res.send(`<!DOCTYPE html><html><head><title>Terms of Service - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Terms of Service</h1><p>Last updated: 27 July 2026</p>
+<p>By using Pulse Gaming News services you agree to these terms.</p>
+<h2>Use of Service</h2><p>Pulse Gaming News publishes reviewed gaming news, primarily on YouTube. Stories are based on named public sources and checked before publication. The content is for information and entertainment.</p>
+<h2>Content</h2><p>Coverage may quote or show third-party material for reporting, commentary or criticism. Rights decisions are recorded for each video. We do not claim ownership of third-party trademarks or intellectual property referenced in our coverage.</p>
 <h2>Disclaimer</h2><p>Content is provided as-is. We make reasonable efforts to verify information but cannot guarantee accuracy of all reporting. Rumour-tagged content is clearly labelled as unverified.</p>
 <h2>Contact</h2><p>For enquiries, reach us via our YouTube channel.</p>
 </body></html>`);
 });
 
 app.get("/privacy", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Privacy Policy - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Privacy Policy</h1><p>Last updated: 2 April 2026</p>
-<p>Pulse Gaming respects your privacy.</p>
-<h2>Data Collection</h2><p>We do not collect personal data from viewers. Our application accesses public APIs (Reddit, RSS feeds, YouTube, TikTok, Instagram) to publish gaming news content. No user data is stored or processed.</p>
-<h2>Third-Party Services</h2><p>We use YouTube Data API, TikTok Content Posting API and Instagram Graph API solely for publishing our own content. We do not access or store any third-party user data through these APIs.</p>
+  res.send(`<!DOCTYPE html><html><head><title>Privacy Policy - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Privacy Policy</h1><p>Last updated: 27 July 2026</p>
+<p>Pulse Gaming News respects your privacy.</p>
+<h2>Data Collection</h2><p>We do not intentionally collect personal data from viewers through this site. Our application accesses public news sources and publisher-owned platform accounts to prepare and publish gaming news.</p>
+<h2>Third-Party Services</h2><p>When an operator enables an integration, we use the YouTube Data API, TikTok Content Posting API or Instagram Graph API only for our connected publishing accounts. We do not use those APIs to read or store viewer profiles.</p>
 <h2>Cookies</h2><p>Our dashboard may use essential cookies for session management. No tracking or advertising cookies are used.</p>
 <h2>Contact</h2><p>For privacy enquiries, reach us via our YouTube channel.</p>
 </body></html>`);
 });
 
 app.get("/data-deletion", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Data Deletion Instructions - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Data Deletion Instructions</h1><p>Last updated: 1 May 2026</p>
-<p>Pulse Gaming does not collect or store personal data from viewers.</p>
-<h2>Platform Data</h2><p>If you interact with Pulse Gaming on YouTube, TikTok, Instagram, Facebook or X, those platforms control their own account, comment, analytics and engagement data. Use the privacy or account settings on the relevant platform to manage or delete that data.</p>
-<h2>Operator Authorisation</h2><p>Pulse Gaming stores only operator authorisation records needed to publish content to our own connected channels. These records are not public viewer data.</p>
-<h2>Deletion Request</h2><p>For a deletion request, contact Pulse Gaming through the official YouTube channel and include the platform account or authorisation you want reviewed. We will delete any matching records we control.</p>
+  res.send(`<!DOCTYPE html><html><head><title>Data Deletion Instructions - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Data Deletion Instructions</h1><p>Last updated: 27 July 2026</p>
+<p>Pulse Gaming News does not intentionally collect or store personal data from viewers through this site.</p>
+<h2>Platform Data</h2><p>If you interact with Pulse Gaming News on YouTube, TikTok, Instagram, Facebook or X, those platforms control their account, comment, analytics and engagement data. Use the privacy or account settings on the relevant platform to manage or delete it.</p>
+<h2>Operator Authorisation</h2><p>Pulse Gaming News stores operator authorisation records needed for its connected publishing accounts. These records are not public viewer data.</p>
+<h2>Deletion Request</h2><p>For a deletion request, contact Pulse Gaming News through the official YouTube channel and identify the platform account or authorisation you want reviewed. We will delete any matching records we control.</p>
 </body></html>`);
 });
 
@@ -324,7 +335,7 @@ app.get("/auth/tiktok/callback", async (req, res) => {
     console.log("[tiktok] OAuth callback: token saved successfully");
     res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
       <h1 style="color:#00C853">TikTok Connected!</h1>
-      <p>Access token saved. Pulse Gaming can now publish to TikTok.</p>
+      <p>Authorisation saved. TikTok remains manual-only during Pulse v1.</p>
       <p>You can close this tab.</p>
     </body></html>`);
   } catch (err) {
@@ -726,21 +737,10 @@ app.get("/api/health", (req, res) => {
   // verification: `curl https://<host>/api/health | jq .build` lets
   // an operator prove which commit is actually running without
   // trawling Discord deploy banners.
-  const commitSha = process.env.RAILWAY_GIT_COMMIT_SHA || null;
-  const build = {
-    commit_sha: commitSha,
-    commit_short: commitSha ? commitSha.slice(0, 7) : null,
-    commit_message_present: !!process.env.RAILWAY_GIT_COMMIT_MESSAGE,
-    branch: process.env.RAILWAY_GIT_BRANCH || null,
-    deployment_id: process.env.RAILWAY_DEPLOYMENT_ID || null,
-    environment:
-      process.env.RAILWAY_ENVIRONMENT_NAME ||
-      process.env.RAILWAY_ENVIRONMENT ||
-      null,
-    project_id: process.env.RAILWAY_PROJECT_ID || null,
-    service_id: process.env.RAILWAY_SERVICE_ID || null,
-    node_env: process.env.NODE_ENV || null,
-  };
+  const build = resolveRuntimeBuildInfo({
+    cwd: __dirname,
+    env: process.env,
+  });
 
   // Runtime feature flags that drive dispatch/persistence behaviour.
   // Safely resolve dispatch mode without running the bootstrap path —
@@ -770,11 +770,14 @@ app.get("/api/health", (req, res) => {
     (sqliteDbPath.startsWith("/app/") ||
       sqliteDbPath.includes(path.join(__dirname, "data") + path.sep) ||
       sqliteDbPath === path.join(__dirname, "data", "pulse.db"));
+  const operatingContract = resolveOperatingContract();
 
   const runtime = {
     use_sqlite: process.env.USE_SQLITE === "true",
     use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
-    auto_publish: process.env.AUTO_PUBLISH === "true",
+    operating_mode: operatingContract.mode,
+    auto_publish: operatingContract.live_mutation_allowed,
+    legacy_auto_publish_armed: process.env.AUTO_PUBLISH === "true",
     dispatch: dispatchMode,
     sqlite_db_path: sqliteDbPath ? "(configured)" : null,
     sqlite_db_path_redacted: !!sqliteDbPath,
@@ -793,14 +796,19 @@ app.get("/api/health", (req, res) => {
     /* module absent in early-boot contexts */
   }
 
+  const schedulerActive = currentSchedulerActive();
+  const schedulerExpected =
+    dispatchMode?.mode === "queue" &&
+    deployment?.primary !== false;
   res.json({
-    status: "ok",
+    status: schedulerExpected && !schedulerActive ? "degraded" : "ok",
     version: "v2.2.0",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     hunterActive: !!hunterInterval,
-    autonomousMode: process.env.AUTO_PUBLISH === "true",
-    schedulerActive: schedulerRunning,
+    autonomousMode: operatingContract.live_mutation_allowed,
+    schedulerActive,
+    schedulerExpected,
     circuitBreakers,
     build,
     runtime,
@@ -954,15 +962,11 @@ app.post(
   "/api/autonomous/run",
   requireAuth,
   rateLimit(5, 60000),
-  async (req, res) => {
-    res.json({ status: "started", message: "Full autonomous cycle initiated" });
-
-    try {
-      const { fullAutonomousCycle } = require("./publisher");
-      await fullAutonomousCycle();
-    } catch (err) {
-      console.log(`[server] Autonomous cycle error: ${err.message}`);
-    }
+  (req, res) => {
+    res.status(423).json({
+      status: "blocked",
+      reason: "stabilisation_human_review_required",
+    });
   },
 );
 
@@ -971,19 +975,11 @@ app.post(
   "/api/autonomous/approve",
   requireAuth,
   rateLimit(5, 60000),
-  async (req, res) => {
-    try {
-      const { autoApprove } = require("./publisher");
-      const summary = await autoApprove();
-      res.json({
-        status: "ok",
-        approved: summary.approved,
-        scoring: summary,
-      });
-    } catch (err) {
-      console.error(`[server] Internal error: ${err.message}`);
-      res.status(500).json({ error: "Internal server error" });
-    }
+  (req, res) => {
+    res.status(423).json({
+      status: "blocked",
+      reason: "stabilisation_human_review_required",
+    });
   },
 );
 
@@ -992,50 +988,66 @@ app.post(
   "/api/autonomous/publish",
   requireAuth,
   rateLimit(5, 60000),
-  async (req, res) => {
-    res.json({
-      status: "started",
-      message: "Multi-platform publish initiated",
+  (req, res) => {
+    res.status(423).json({
+      status: "blocked",
+      reason: "stabilisation_multi_platform_publish_disabled",
+      required_path:
+        "human_approval_then_guarded_youtube_scheduler_dispatch",
     });
-
-    try {
-      const { publishToAllPlatforms } = require("./publisher");
-      await publishToAllPlatforms();
-    } catch (err) {
-      console.log(`[server] Multi-platform publish error: ${err.message}`);
-    }
   },
 );
 
 // --- Autonomous status ---
 app.get("/api/autonomous/status", requireAuth, (req, res) => {
+  const operatingContract = resolveOperatingContract();
   res.json({
-    autoPublish: process.env.AUTO_PUBLISH === "true",
-    schedulerActive: schedulerRunning,
+    operatingMode: operatingContract.mode,
+    autoPublish: operatingContract.live_mutation_allowed,
+    legacyAutoPublishArmed: process.env.AUTO_PUBLISH === "true",
+    humanReviewRequired: operatingContract.human_review_required,
+    schedulerActive: currentSchedulerActive(),
     hunterActive: !!hunterInterval,
     lastHuntRun: lastHunterRun.toISOString(),
     nextHuntRun: hunterInterval
       ? new Date(lastHunterRun.getTime() + HUNTER_INTERVAL_MS).toISOString()
       : null,
     schedule: {
-      hunts: "Every 3 hours (auto-produces videos after each hunt)",
+      profile: "stabilisation_30d",
+      hunts: ["Five read-only discovery windows per day"],
       publish: [
-        "12:00 UTC / 1:00 PM BST - lunch break + US morning",
-        "17:00 UTC / 6:00 PM BST - post-work peak + US noon",
-        "21:00 UTC / 10:00 PM BST - evening session + US afternoon",
+        "09:00 UTC - guarded YouTube window",
+        "19:00 UTC - guarded YouTube window",
       ],
-      strategy: "1 Short per window = 3 Shorts/day across all platforms",
+      maximum: "2 YouTube Shorts per rolling 24 hours",
+      minimumGap: "4 hours",
+      catchUp: false,
+      humanReviewRequired: true,
+      strategy: "youtube_only_guarded",
     },
     platforms: {
-      youtube: { configured: !!process.env.YOUTUBE_API_KEY },
-      tiktok: { configured: !!process.env.TIKTOK_CLIENT_KEY },
+      youtube: {
+        configured: !!process.env.YOUTUBE_API_KEY,
+        automation: "human_review_guarded",
+      },
+      tiktok: {
+        configured: !!process.env.TIKTOK_CLIENT_KEY,
+        automation: "operator_disabled",
+      },
       instagram: {
         configured:
           !!process.env.INSTAGRAM_ACCESS_TOKEN ||
           !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID,
+        automation: "operator_disabled",
       },
-      facebook: { configured: !!process.env.FACEBOOK_PAGE_TOKEN },
-      twitter: { configured: !!process.env.TWITTER_API_KEY },
+      facebook: {
+        configured: !!process.env.FACEBOOK_PAGE_TOKEN,
+        automation: "operator_disabled",
+      },
+      twitter: {
+        configured: !!process.env.TWITTER_API_KEY,
+        automation: "operator_disabled",
+      },
     },
   });
 });
@@ -1200,30 +1212,109 @@ app.post(
   },
 );
 
-// --- Schedule ---
-app.post("/api/schedule", requireAuth, rateLimit(30, 60000), (req, res) => {
-  const { id, scheduleTime } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+// --- Guarded publication admission ---
+//
+// This is the only operator-facing path that may turn a reviewed render into
+// immutable SCHEDULED lifecycle evidence during the 30-day stabilisation.
+// It does not upload anything. The queue remains responsible for dispatch at
+// a guarded YouTube window and recomputes the request fingerprint at upload
+// time so post-approval edits fail closed.
+app.post(
+  "/api/publication/admit",
+  requireAuth,
+  rateLimit(10, 60000),
+  async (req, res) => {
+    if (process.env.USE_SQLITE !== "true") {
+      return res.status(503).json({
+        admitted: false,
+        blockers: ["publication_admission_requires_sqlite"],
+      });
+    }
+    const body = req.body || {};
+    if (!body.id) {
+      return res.status(400).json({
+        admitted: false,
+        blockers: ["story_id_required"],
+      });
+    }
+    try {
+      const repos = require("./lib/repositories").getRepos();
+      const channelId =
+        String(body.channelId || process.env.CHANNEL || "pulse-gaming")
+          .trim();
+      const result =
+        await require("./lib/services/publication-admission")
+          .admitPublication({
+            repos,
+            storyId: body.id,
+            channelId,
+            platform: "youtube",
+            actorId: body.actorId,
+            reason: body.reason,
+            confirmationStoryId: body.confirmStoryId,
+            scheduledFor: body.scheduledFor,
+            evidence: body.evidence || {},
+            env: process.env,
+            now: new Date(),
+            resolveMediaPath:
+              require("./lib/media-paths").resolveExisting,
+            channel: require("./channels").getChannel(channelId),
+          });
+      if (!result.admitted) {
+        const status = result.blockers?.includes(
+          "publication_story_not_found",
+        )
+          ? 404
+          : 423;
+        return res.status(status).json(result);
+      }
+      return res.status(result.idempotent_replay ? 200 : 201).json(result);
+    } catch (error) {
+      console.error(
+        `[server] guarded publication admission failed: ${error.message}`,
+      );
+      const safeCode = String(error.message || "").startsWith(
+        "publication_",
+      )
+        ? error.message
+        : "publication_admission_failed";
+      return res.status(409).json({
+        admitted: false,
+        blockers: [safeCode],
+      });
+    }
+  },
+);
 
-  const updated = updateStory(id, { schedule_time: scheduleTime || null });
-  if (!updated) return res.status(404).json({ error: "story not found" });
-
-  res.json({ status: "scheduled", id, scheduleTime });
-});
-
-// --- Retry publish ---
-app.post("/api/retry-publish", requireAuth, rateLimit(5, 60000), (req, res) => {
-  const { id } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
-
-  const updated = updateStory(id, {
-    publish_status: "publishing",
-    publish_error: undefined,
+// Legacy scheduling only changed a mutable story field and could never satisfy
+// the governed publisher. Keep the route visible, but fail closed with the
+// exact replacement instead of presenting a false "scheduled" success.
+app.post("/api/schedule", requireAuth, rateLimit(30, 60000), (_req, res) => {
+  return res.status(423).json({
+    status: "disabled",
+    error: "legacy_schedule_disabled_use_publication_admission",
+    replacement: "/api/publication/admit",
   });
-  if (!updated) return res.status(404).json({ error: "story not found" });
-
-  res.json({ status: "retrying", id });
 });
+
+// Blind retry is unsafe after any potentially ambiguous create request. A
+// definite pre-create failure must receive a fresh reviewed admission; a
+// post-create ambiguity must go through reconciliation.
+app.post(
+  "/api/retry-publish",
+  requireAuth,
+  rateLimit(5, 60000),
+  (_req, res) => {
+    return res.status(423).json({
+      status: "disabled",
+      error: "blind_publish_retry_disabled",
+      next_actions: [
+        "/api/publication/admit",
+        "npm run ops:publication-reconciliation",
+      ],
+    });
+  },
+);
 
 // --- Shared: has the operator supplied a valid Bearer API_TOKEN? ---
 // Non-throwing version of the requireAuth middleware, for routes that
@@ -1517,6 +1608,18 @@ let hunterInterval = null;
 let lastHunterRun = new Date(0);
 let schedulerRunning = false;
 
+function currentSchedulerActive() {
+  try {
+    const bootstrapState = require("./lib/bootstrap-queue").state();
+    if (bootstrapState) {
+      return bootstrapState.schedulerHandle?.active === true;
+    }
+  } catch {
+    /* legacy scheduler path has no queue bootstrap state */
+  }
+  return schedulerRunning;
+}
+
 async function runHunter() {
   console.log("[server] Running hunter cycle...");
   lastHunterRun = new Date();
@@ -1603,7 +1706,7 @@ async function runHunter() {
         const { produce } = require("./publisher");
         await produce();
         await sendDiscord(
-          `**Pulse Gaming Pipeline**\n` +
+          `**Pulse Gaming News Pipeline**\n` +
             `Hunted ${newPosts.length} new stories, ${needProduce.length} produced into videos`,
         );
       } catch (err) {
@@ -1652,16 +1755,6 @@ app.post(
 
 // --- Autonomous scheduler (built into server) ---
 async function startAutonomousScheduler() {
-  const hasKey =
-    process.env.ANTHROPIC_API_KEY &&
-    process.env.ANTHROPIC_API_KEY !== "placeholder";
-  if (!hasKey) {
-    console.log(
-      "[server] Autonomous scheduler disabled. Set ANTHROPIC_API_KEY to enable.",
-    );
-    return;
-  }
-
   // Phase D: unified jobs queue is now the canonical dispatcher. The
   // lib/dispatch-mode helper picks between `queue` (default, and the
   // only mode reachable in production) and `legacy_dev` (explicit dev
@@ -1684,10 +1777,8 @@ async function startAutonomousScheduler() {
         runRunner: true,
         autoSeed: true,
       });
-      schedulerRunning = !!(
-        bootstrapState &&
-        (bootstrapState.schedulerHandle || bootstrapState.runner)
-      );
+      schedulerRunning =
+        bootstrapState?.schedulerHandle?.active === true;
       if (schedulerRunning) {
         console.log(
           "[server] canonical scheduler up via bootstrap-queue (lib/scheduler.js + jobs-runner)",
@@ -1805,9 +1896,9 @@ async function _registerLegacyDevCronRegistry() {
                       .join("\n")
                   : "";
               await sendDiscord(
-                `**Pulse Gaming Published** (${windowLabels[i]})\n` +
+                `**Pulse Gaming News Published** (${windowLabels[i]})\n` +
                   `"${result.title}"\n` +
-                  `YT: ${result.youtube ? "yes" : "FAIL"} | TT: ${result.tiktok ? "yes" : "FAIL"} | IG: ${result.instagram ? "yes" : "FAIL"} | FB: ${result.facebook ? "yes" : "FAIL"} | X: ${result.twitter ? "yes" : "FAIL"}` +
+                  `YouTube: ${result.youtube ? "published" : "not published"} | Secondary platforms: frozen` +
                   errorDetails,
               );
             } else {
@@ -1910,11 +2001,9 @@ async function _registerLegacyDevCronRegistry() {
     console.log("[server] Analytics enabled: 2x daily at 08:00/20:00 UTC");
   } else {
     console.log(
-      "[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.",
+      "[server] Legacy dev publication is disabled. Candidates remain held for human review.",
     );
-    console.log(
-      "[server] Set AUTO_PUBLISH=true in Railway env vars to enable.",
-    );
+    console.log("[server] Use the governed durable queue and YouTube review flow.");
   }
 
   // Weekly longform compilation - every Sunday at 14:00 UTC
@@ -2393,9 +2482,15 @@ app.get("/api/pipeline/backlog", requireAuth, (req, res) => {
 // secrets — just names, cron strings, lanes, priorities.
 app.get("/api/scheduler/plan", requireAuth, (req, res) => {
   try {
-    const { DEFAULT_SCHEDULES } = require("./lib/scheduler");
+    const {
+      STABILISATION_SCHEDULER_PROFILE,
+      schedulesForProfile,
+    } = require("./lib/scheduler");
     const { buildSchedulerPlan } = require("./lib/services/scheduler-plan");
-    res.json(buildSchedulerPlan(DEFAULT_SCHEDULES));
+    const profile =
+      process.env.PULSE_SCHEDULER_PROFILE ||
+      STABILISATION_SCHEDULER_PROFILE;
+    res.json(buildSchedulerPlan(schedulesForProfile(profile)));
   } catch (err) {
     console.error(`[server] /api/scheduler/plan error: ${err.message}`);
     res.status(500).json({ error: "Internal server error" });
@@ -2637,7 +2732,7 @@ app.post("/api/webhook/railway", rateLimit(30, 60000), async (req, res) => {
     const payload = req.body || {};
     const status = payload.status || payload.type || "unknown";
     const service =
-      payload.service?.name || payload.meta?.serviceName || "Pulse Gaming";
+      payload.service?.name || payload.meta?.serviceName || "Pulse Gaming News";
 
     if (
       ["FAILED", "CRASHED", "REMOVED", "BUILD_FAILED"].includes(
@@ -2694,7 +2789,7 @@ const server = app.listen(PORT, () => {
   const primaryInstance = isPrimary();
 
   console.log(
-    `[server] Pulse Gaming Command Centre v2 running on http://localhost:${PORT}`,
+    `[server] Pulse Gaming News Command Centre running on http://localhost:${PORT}`,
   );
 
   // Notify Discord on successful deploy. Real Railway deploys keep the
@@ -2721,12 +2816,24 @@ const server = app.listen(PORT, () => {
   })();
 
   startAutonomousScheduler().catch((err) => {
-    console.log(`[server] Autonomous scheduler startup error: ${err.message}`);
+    console.error(
+      `[server] FATAL autonomous scheduler startup error: ${err.message}`,
+    );
+    process.exitCode = 1;
+    server.close(() => {
+      console.error(
+        "[server] HTTP listener closed because scheduler startup failed",
+      );
+    });
   });
 
   // Start Discord bot alongside the server
+  const discordCommunityFrozen =
+    resolveOperatingContract().freeze.discord_economy;
   if (!primaryInstance) {
     console.log("[server] Discord bot skipped - non-primary mirror");
+  } else if (discordCommunityFrozen) {
+    console.log("[server] Discord bot skipped - Pulse v1 community freeze");
   } else if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
     try {
       const botProcess = spawn("node", ["discord/bot.js"], {
@@ -2753,8 +2860,15 @@ const server = app.listen(PORT, () => {
 });
 
 // --- Graceful shutdown: flush SQLite WAL and close connections ---
-function gracefulShutdown(signal) {
+let gracefulShutdownStarted = false;
+async function gracefulShutdown(signal) {
+  if (gracefulShutdownStarted) return;
+  gracefulShutdownStarted = true;
   console.log(`[server] ${signal} received. Shutting down gracefully...`);
+  const forcedShutdown = setTimeout(() => {
+    console.error("[server] Forced shutdown after timeout");
+    process.exit(1);
+  }, 10000);
 
   // Stop the hunter interval
   if (hunterInterval) {
@@ -2763,7 +2877,22 @@ function gracefulShutdown(signal) {
     hunterInterval = null;
   }
 
-  // Flush and close SQLite
+  // Release scheduler/job-runner ownership before closing their database.
+  try {
+    const queueStop = await require("./lib/bootstrap-queue").stop();
+    schedulerRunning = false;
+    console.log("[server] Queue scheduler and runner stopped");
+    if (queueStop?.runnerDrained === false) {
+      console.error(
+        "[server] Active job did not drain; leaving SQLite open until forced process exit",
+      );
+      return;
+    }
+  } catch (err) {
+    console.log(`[server] Queue shutdown error: ${err.message}`);
+  }
+
+  // Flush and close SQLite after durable leases have been released.
   try {
     const db = require("./lib/db");
     if (db.close) {
@@ -2775,16 +2904,13 @@ function gracefulShutdown(signal) {
   }
 
   server.close(() => {
+    clearTimeout(forcedShutdown);
     console.log("[server] HTTP server closed");
     console.log("[server] Graceful shutdown complete");
     process.exit(0);
   });
-  setTimeout(() => {
-    console.error("[server] Forced shutdown after timeout");
-    process.exit(1);
-  }, 10000);
 }
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
 
 module.exports = { broadcastProgress };

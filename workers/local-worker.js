@@ -32,6 +32,36 @@ const { handlers } = require("../lib/job-handlers");
 
 const DEFAULT_POLL_MS = Number(process.env.WORKER_POLL_MS) || 3000;
 const DEFAULT_HEARTBEAT_MS = Number(process.env.WORKER_HEARTBEAT_MS) || 30000;
+const DEFAULT_SERVER_JOB_LEASE_MS = 5 * 60 * 1000;
+const MAX_SERVER_JOB_LEASE_MS = 30 * 60 * 1000;
+
+function timestampMs(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  let normalised = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(normalised)) {
+    normalised = `${normalised.replace(" ", "T")}Z`;
+  }
+  const parsed = Date.parse(normalised);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function serverLeaseDurationMs(job) {
+  const claimedAt = timestampMs(job?.claimed_at);
+  const leaseUntil = timestampMs(job?.lease_until);
+  const reportedDuration =
+    claimedAt === null || leaseUntil === null ? null : leaseUntil - claimedAt;
+  if (
+    Number.isFinite(reportedDuration) &&
+    reportedDuration > 0 &&
+    reportedDuration <= MAX_SERVER_JOB_LEASE_MS
+  ) {
+    return reportedDuration;
+  }
+  return DEFAULT_SERVER_JOB_LEASE_MS;
+}
 
 class LocalWorker {
   constructor({
@@ -67,6 +97,83 @@ class LocalWorker {
     this.current = null;
     this._heartbeatHandle = null;
     this._tickHandle = null;
+    this._currentLeaseHealthy = false;
+    this._currentAbortController = null;
+    this._currentLeaseDurationMs = null;
+    this._currentLeaseDeadlineMs = null;
+    this._currentLeaseDeadlineHandle = null;
+  }
+
+  _captureCurrentGeneration() {
+    if (!this.current) return null;
+    return {
+      id: this.current.id,
+      claimToken: this.current.claim_token,
+      abortController: this._currentAbortController,
+    };
+  }
+
+  _generationIsCurrent(generation) {
+    return (
+      !!generation &&
+      this.current?.id === generation.id &&
+      this.current?.claim_token === generation.claimToken &&
+      this._currentAbortController === generation.abortController
+    );
+  }
+
+  _clearLeaseDeadline() {
+    if (this._currentLeaseDeadlineHandle) {
+      clearTimeout(this._currentLeaseDeadlineHandle);
+    }
+    this._currentLeaseDeadlineHandle = null;
+    this._currentLeaseDeadlineMs = null;
+  }
+
+  _loseLease(generation, reason) {
+    if (!this._generationIsCurrent(generation)) return false;
+    this._currentLeaseHealthy = false;
+    this._clearLeaseDeadline();
+    generation.abortController?.abort(reason || new Error("job_lease_lost"));
+    return true;
+  }
+
+  _armLeaseDeadline(generation, deadlineMs) {
+    if (!this._generationIsCurrent(generation)) return false;
+    this._clearLeaseDeadline();
+    this._currentLeaseDeadlineMs = deadlineMs;
+    const delayMs = deadlineMs - Date.now();
+    if (delayMs <= 0) {
+      return this._loseLease(
+        generation,
+        new Error("job_lease_deadline_elapsed"),
+      );
+    }
+    this._currentLeaseDeadlineHandle = setTimeout(() => {
+      this._loseLease(generation, new Error("job_lease_deadline_elapsed"));
+    }, delayMs);
+    this._currentLeaseDeadlineHandle.unref?.();
+    return true;
+  }
+
+  _startLocalLease(generation, job, requestStartedAt) {
+    this._currentLeaseDurationMs = serverLeaseDurationMs(job);
+    return this._armLeaseDeadline(
+      generation,
+      requestStartedAt + this._currentLeaseDurationMs,
+    );
+  }
+
+  _renewLocalLease(generation, requestStartedAt) {
+    if (!this._currentLeaseHealthy || !this._generationIsCurrent(generation)) {
+      return false;
+    }
+    const duration =
+      Number.isFinite(this._currentLeaseDurationMs) &&
+      this._currentLeaseDurationMs > 0
+        ? this._currentLeaseDurationMs
+        : DEFAULT_SERVER_JOB_LEASE_MS;
+    return this._armLeaseDeadline(generation, requestStartedAt + duration);
   }
 
   async _fetch(path, { method = "GET", body = null } = {}) {
@@ -80,9 +187,11 @@ class LocalWorker {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(
+      const error = new Error(
         `${method} ${path} -> ${res.status}: ${text.slice(0, 400)}`,
       );
+      error.status = res.status;
+      throw error;
     }
     if (res.status === 204) return null;
     return res.json();
@@ -163,6 +272,11 @@ class LocalWorker {
     if (this._heartbeatHandle) clearInterval(this._heartbeatHandle);
     this._tickHandle = null;
     this._heartbeatHandle = null;
+    const generation = this._captureCurrentGeneration();
+    if (!this._loseLease(generation, new Error("worker_stopping"))) {
+      this._currentLeaseHealthy = false;
+      this._clearLeaseDeadline();
+    }
     try {
       await this._fetch("/api/workers/heartbeat", {
         method: "POST",
@@ -200,6 +314,7 @@ class LocalWorker {
     }
 
     let job = null;
+    const claimRequestStartedAt = Date.now();
     try {
       const resp = await this._fetch("/api/jobs/claim", {
         method: "POST",
@@ -222,12 +337,38 @@ class LocalWorker {
     }
 
     this.current = job;
+    this._currentLeaseHealthy = true;
+    this._currentAbortController = new AbortController();
+    const generation = this._captureCurrentGeneration();
+    this._startLocalLease(generation, job, claimRequestStartedAt);
+    const assertLeaseHealthy = () => {
+      if (
+        this._generationIsCurrent(generation) &&
+        Number.isFinite(this._currentLeaseDeadlineMs) &&
+        Date.now() >= this._currentLeaseDeadlineMs
+      ) {
+        this._loseLease(generation, new Error("job_lease_deadline_elapsed"));
+      }
+      if (
+        !this._currentLeaseHealthy ||
+        !this._generationIsCurrent(generation)
+      ) {
+        const error = new Error("job_lease_lost");
+        error.code = "job_lease_lost";
+        throw error;
+      }
+      return true;
+    };
     const handler = this.handlerMap[job.kind];
     if (!handler) {
       const msg = `no handler registered for kind=${job.kind}`;
       this.log(`[local-worker] job ${job.id} ${msg}`);
-      await this._safeFail(job.id, msg);
+      await this._safeFail(job, msg);
+      this._clearLeaseDeadline();
       this.current = null;
+      this._currentLeaseHealthy = false;
+      this._currentAbortController = null;
+      this._currentLeaseDurationMs = null;
       this._schedule(50);
       return;
     }
@@ -235,6 +376,7 @@ class LocalWorker {
     this.log(`[local-worker] ${this.workerId} running #${job.id} ${job.kind}`);
     const startedAt = Date.now();
     try {
+      assertLeaseHealthy();
       // The cloud-side jobs repo gave us a legit row but the handlers
       // expect real repo access via ctx.repos. In the remote-worker case
       // repo writes must round-trip through the cloud, so handlers that
@@ -245,11 +387,15 @@ class LocalWorker {
         workerId: this.workerId,
         remote: true,
         fetch: (path, opts) => this._fetch(path, opts),
+        signal: generation.abortController.signal,
+        assertLeaseHealthy,
       });
+      assertLeaseHealthy();
       await this._fetch(`/api/jobs/${job.id}/complete`, {
         method: "POST",
         body: {
           worker_id: this.workerId,
+          claim_token: job.claim_token,
           result: truncateResult(result),
         },
       });
@@ -257,7 +403,7 @@ class LocalWorker {
     } catch (err) {
       this.log(`[local-worker] #${job.id} ${job.kind} FAILED: ${err.message}`);
       await this._safeFail(
-        job.id,
+        job,
         err.message || String(err),
         (err && err.stack) || null,
       );
@@ -269,17 +415,22 @@ class LocalWorker {
         }
       }
     } finally {
+      this._clearLeaseDeadline();
       this.current = null;
+      this._currentLeaseHealthy = false;
+      this._currentAbortController = null;
+      this._currentLeaseDurationMs = null;
       this._schedule(50);
     }
   }
 
-  async _safeFail(jobId, errorMsg, stack) {
+  async _safeFail(job, errorMsg, stack) {
     try {
-      await this._fetch(`/api/jobs/${jobId}/fail`, {
+      await this._fetch(`/api/jobs/${job.id}/fail`, {
         method: "POST",
         body: {
           worker_id: this.workerId,
+          claim_token: job.claim_token,
           error: errorMsg,
           log: stack ? String(stack).slice(-4000) : null,
         },
@@ -291,6 +442,7 @@ class LocalWorker {
 
   async _heartbeat() {
     if (!this.running) return;
+    const generation = this._captureCurrentGeneration();
     try {
       await this._fetch("/api/workers/heartbeat", {
         method: "POST",
@@ -302,15 +454,29 @@ class LocalWorker {
     } catch (err) {
       this.log(`[local-worker] worker heartbeat error: ${err.message}`);
     }
-    if (!this.current) return;
+    if (!this._generationIsCurrent(generation)) return;
+    const heartbeatRequestStartedAt = Date.now();
     try {
-      await this._fetch(`/api/jobs/${this.current.id}/heartbeat`, {
+      await this._fetch(`/api/jobs/${generation.id}/heartbeat`, {
         method: "POST",
-        body: { worker_id: this.workerId },
+        body: {
+          worker_id: this.workerId,
+          claim_token: generation.claimToken,
+        },
       });
+      this._renewLocalLease(generation, heartbeatRequestStartedAt);
     } catch (err) {
+      if (!this._generationIsCurrent(generation)) return;
+      if (err.status === 409) {
+        this._loseLease(generation, err);
+      } else if (
+        Number.isFinite(this._currentLeaseDeadlineMs) &&
+        Date.now() >= this._currentLeaseDeadlineMs
+      ) {
+        this._loseLease(generation, new Error("job_lease_deadline_elapsed"));
+      }
       this.log(
-        `[local-worker] job #${this.current.id} heartbeat error: ${err.message}`,
+        `[local-worker] job #${generation.id} heartbeat error: ${err.message}`,
       );
     }
   }

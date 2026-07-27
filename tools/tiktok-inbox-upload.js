@@ -10,7 +10,7 @@ const {
   renderTikTokInboxCommandMarkdown,
 } = require("../lib/platforms/tiktok-inbox-command");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output");

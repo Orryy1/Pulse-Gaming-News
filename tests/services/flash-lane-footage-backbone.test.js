@@ -40,6 +40,16 @@ function frameReport(frames) {
   };
 }
 
+function editorialStory(overrides = {}) {
+  return {
+    id: "story-1",
+    editorial_lane_id: "what_changes_for_players",
+    hook_type: "direct",
+    duration_band_id: "what_changes_standard_35_42",
+    ...overrides,
+  };
+}
+
 function segment({ entity, source = null, allowed = true, reason = "segment_samples_passed", start = 48 } = {}) {
   const url = source || `https://video.example/${entity}.m3u8`;
   return {
@@ -60,6 +70,7 @@ function segment({ entity, source = null, allowed = true, reason = "segment_samp
 
 test("Flash Lane footage backbone downgrades stories with only one validated clip", () => {
   const report = buildFlashLaneFootageBackboneReport({
+    story: editorialStory(),
     storyId: "story-1",
     frameReport: frameReport([
       frame({ entity: "GTA" }),
@@ -89,8 +100,9 @@ test("Flash Lane footage backbone allows three validated clip windows", () => {
   const sourceB = "https://video.example/reddead.m3u8";
   const sourceC = "https://video.example/bioshock.m3u8";
   const report = buildFlashLaneFootageBackboneReport({
+    story: editorialStory(),
     storyId: "story-1",
-    targetRuntimeS: 15,
+    minClipDominance: 0.35,
     frameReport: frameReport([
       frame({ entity: "GTA", source: sourceA }),
       frame({ entity: "Red Dead", source: sourceB }),
@@ -110,7 +122,7 @@ test("Flash Lane footage backbone allows three validated clip windows", () => {
   assert.equal(report.validated_clip_refs.length, 3);
 });
 
-test("Flash Lane footage backbone projects a footage-heavy 60s Flash proof", () => {
+test("Flash Lane footage backbone projects against the selected editorial band", () => {
   const entities = [
     "GTA",
     "Red Dead",
@@ -138,14 +150,16 @@ test("Flash Lane footage backbone projects a footage-heavy 60s Flash proof", () 
   );
 
   const report = buildFlashLaneFootageBackboneReport({
+    story: editorialStory(),
     storyId: "story-1",
-    targetRuntimeS: 66,
     frameReport: frameReport(frames),
     segmentValidationReport: { segments },
   });
 
   assert.equal(report.verdict, "ready_for_flash_render_preflight");
-  assert.equal(report.validated_clip_refs.length, 9);
+  assert.equal(report.thresholds.durationBandId, "what_changes_standard_35_42");
+  assert.equal(report.thresholds.targetRuntimeS, 38.5);
+  assert.equal(report.validated_clip_refs.length, 6);
   assert.ok(report.projected_clip_dominance >= 0.65);
   assert.deepEqual(report.blockers, []);
 });
@@ -168,8 +182,8 @@ test("Flash Lane footage backbone caps repeated use of the same trailer source",
   );
 
   const report = buildFlashLaneFootageBackboneReport({
+    story: editorialStory(),
     storyId: "story-1",
-    targetRuntimeS: 30,
     minClipDominance: 0.5,
     maxCandidateWindowsPerSource: 6,
     frameReport: frameReport(frames),
@@ -197,8 +211,8 @@ test("Flash Lane footage backbone balances validated clips across story entities
   );
 
   const report = buildFlashLaneFootageBackboneReport({
+    story: editorialStory(),
     storyId: "story-1",
-    targetRuntimeS: 20,
     minClipDominance: 0.5,
     frameReport: frameReport(frames),
     segmentValidationReport: { segments },
@@ -226,8 +240,8 @@ test("Flash Lane footage backbone excludes validated clips below the Flash quali
   });
 
   const report = buildFlashLaneFootageBackboneReport({
+    story: editorialStory(),
     storyId: "story-1",
-    targetRuntimeS: 15,
     frameReport: frameReport([lowQuality, highQuality]),
     segmentValidationReport: {
       segments: [
@@ -246,6 +260,7 @@ test("Flash Lane footage backbone excludes validated clips below the Flash quali
 
 test("Flash Lane footage backbone markdown is operator-readable", () => {
   const report = buildFlashLaneFootageBackboneReport({
+    story: editorialStory(),
     storyId: "story-1",
     frameReport: frameReport([frame({ entity: "GTA" })]),
     segmentValidationReport: { segments: [] },
@@ -255,4 +270,19 @@ test("Flash Lane footage backbone markdown is operator-readable", () => {
   assert.match(md, /Flash Lane Footage Backbone v1/);
   assert.match(md, /Verdict:/);
   assert.match(md, /Recommendations/);
+});
+
+test("Flash Lane footage backbone fails closed without editorial metadata", () => {
+  const report = buildFlashLaneFootageBackboneReport({
+    storyId: "story-1",
+    frameReport: frameReport([frame({ entity: "GTA" })]),
+    segmentValidationReport: { segments: [] },
+  });
+
+  assert.equal(report.verdict, "editorial_contract_blocked");
+  assert.equal(report.thresholds.targetRuntimeS, null);
+  assert.match(
+    report.blockers[0],
+    /^pulse_editorial_contract_metadata_missing:/,
+  );
 });

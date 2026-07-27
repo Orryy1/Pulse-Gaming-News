@@ -19,7 +19,7 @@ function parseArgs(argv) {
     fixture: false,
     storyJson: null,
     scenesJson: null,
-    durationS: 62,
+    durationS: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
@@ -28,7 +28,13 @@ function parseArgs(argv) {
     else if (arg === "--fixture") args.fixture = true;
     else if (arg === "--story-json") args.storyJson = argv[++i] || null;
     else if (arg === "--scenes-json") args.scenesJson = argv[++i] || null;
-    else if (arg === "--duration") args.durationS = Math.max(1, Number(argv[++i]) || 62);
+    else if (arg === "--duration") {
+      const durationS = Number(argv[++i]);
+      if (!Number.isFinite(durationS) || durationS <= 0) {
+        throw new Error("--duration requires a positive measured runtime");
+      }
+      args.durationS = durationS;
+    }
   }
   return args;
 }
@@ -57,6 +63,10 @@ function fixtureStory() {
     source_type: "rss",
     subreddit: "GameSpot",
     content_pillar: "Confirmed Drop",
+    editorial_lane_id: "what_changes_for_players",
+    hook_type: "direct",
+    duration_band_id: "what_changes_standard_35_42",
+    duration_s: 38.5,
     full_script:
       "Take-Two just made a surprising call. GTA, Red Dead and BioShock fans all have a reason to care.",
   };
@@ -92,7 +102,11 @@ async function main() {
   const plan = buildStandardShortCreatorOverlayPlan({
     story,
     scenes,
-    durationS: args.durationS,
+    durationS:
+      args.durationS ??
+      story.duration_s ??
+      story.duration_seconds ??
+      null,
   });
   const markdown = renderStandardShortCreatorOverlayMarkdown(plan);
 
@@ -105,7 +119,15 @@ async function main() {
   process.stderr.write("[standard-overlay] wrote test/output/standard_short_creator_overlay_v1.{json,md}\n");
 }
 
-main().catch((err) => {
-  process.stderr.write(`[standard-overlay] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[standard-overlay] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  fixtureStory,
+  main,
+  parseArgs,
+};

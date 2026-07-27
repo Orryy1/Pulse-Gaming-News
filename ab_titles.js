@@ -4,7 +4,7 @@ const { google } = require("googleapis");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const { getChannel } = require("./channels");
 

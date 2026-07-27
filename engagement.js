@@ -19,7 +19,7 @@ const path = require("path");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const REPLY_LOG_PATH = path.join(__dirname, "engagement_reply_log.json");
 const DAILY_NEWS_PATH = path.join(__dirname, "daily_news.json");

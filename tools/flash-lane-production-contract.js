@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
 } catch {}
 
 const { ffprobeDuration } = require("../lib/studio/media-acquisition");
@@ -38,22 +38,27 @@ function parseArgs(argv) {
 function fixtureStory() {
   return {
     id: "fixture_flash_lane_story",
-    title: "GTA 6 Owner Passed On A Sequel To A Legacy Franchise",
-    hook: "Take-Two just made the weirdest legacy franchise call of the week.",
+    title: "Xbox adds achievements to backwards-compatible games",
+    hook: "Xbox has added achievement support to selected original Xbox games.",
+    hook_type: "direct",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_standard_35_42",
+    cta: "",
+    cta_policy: {
+      policy_version: "pulse-selective-cta-v2",
+      scope: "shorts",
+      include_cta: false,
+      copy_strategy: "none",
+      cohort_bucket: 1,
+      cohort_numerator: 1,
+      cohort_denominator: 3,
+      audit_hash: `sha256:${"c".repeat(64)}`,
+    },
     full_script: [
-      "Take-Two just made the weirdest legacy franchise call of the week.",
-      "The company says it passed on a sequel to one of its legacy franchises because the pitch was not strong enough.",
-      "That matters because Take-Two owns names that still make gaming audiences stop scrolling: GTA, Red Dead, BioShock, Mafia and Borderlands.",
-      "This is not a release-date reveal and it is not confirmation of a cancelled project.",
-      "It is a rare look at how the publisher decides what gets revived and what stays buried.",
-      "The interesting bit is the standard.",
-      "Take-Two is basically saying nostalgia alone is not enough.",
-      "If a sequel cannot clear the creative bar, even a famous logo does not save it.",
-      "That makes the mystery bigger, not smaller.",
-      "Was it BioShock, Midnight Club, Bully, Max Payne or something else entirely?",
-      "For players, the real takeaway is brutal.",
-      "A beloved franchise can still lose internally if the pitch feels average.",
-      "Follow Pulse Gaming so you never miss a beat.",
+      "Xbox has added achievement support to selected original Xbox games in backwards compatibility.",
+      "That changes old catalogue releases from simple nostalgia plays into trackable games with modern profile progress.",
+      "Microsoft has not confirmed every title yet, so the affected list still matters.",
+      "For players, the practical change is clear: returning classics can now contribute achievements alongside newer Game Pass releases.",
     ].join(" "),
   };
 }
@@ -138,7 +143,14 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  process.stderr.write(`[flash-lane-contract] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[flash-lane-contract] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  fixtureStory,
+  parseArgs,
+};

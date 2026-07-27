@@ -85,7 +85,7 @@ test("production mode + USE_SQLITE!=true -> throws, never silently approves", as
   );
 });
 
-test("production mode + injected repos -> scoring runs and applies decisions", async () => {
+test("production scoring can rank stories but Pulse v1 never auto-approves them", async () => {
   const repos = makeRepos();
   // Fresh story that should score well: verified flair, high source
   // confidence, recent timestamp, real visuals, strong hook.
@@ -115,33 +115,26 @@ test("production mode + injected repos -> scoring runs and applies decisions", a
   // Every decision must be deterministic: check the persisted row.
   const scoreRow = repos.db
     .prepare(
-      `SELECT decision, total FROM story_scores
+      `SELECT decision, total, inputs FROM story_scores
        WHERE story_id = 'prod-auto'
        ORDER BY scored_at DESC LIMIT 1`,
     )
     .get();
   assert.ok(scoreRow, "a story_scores row must be persisted");
-  assert.ok(
-    ["auto", "review", "defer", "reject"].includes(scoreRow.decision),
-    `decision must be one of the four canonical outcomes, got ${scoreRow.decision}`,
-  );
-  // If decision==='auto' the stories row must flip approved=1; if
-  // review/defer/reject the stories row must NOT be approved.
+  assert.equal(scoreRow.decision, "review");
+  assert.equal(summary.approved, 0);
+  assert.ok(summary.review >= 1);
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.equal(inputs.pre_human_review_decision, "auto");
+  assert.equal(inputs.human_review_required, true);
+
   const storyRow = repos.db
     .prepare(
       `SELECT approved, auto_approved FROM stories WHERE id = 'prod-auto'`,
     )
     .get();
-  if (scoreRow.decision === "auto") {
-    assert.equal(storyRow.approved, 1);
-    assert.equal(storyRow.auto_approved, 1);
-  } else {
-    assert.equal(
-      storyRow.approved,
-      0,
-      `non-auto decision '${scoreRow.decision}' must not set approved=1`,
-    );
-  }
+  assert.equal(storyRow.approved, 0);
+  assert.equal(storyRow.auto_approved, 0);
 });
 
 test("dev + USE_SCORING_ENGINE=false -> explicit no-op, nothing approved", async () => {

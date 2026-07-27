@@ -16,7 +16,7 @@ function card(label = "card_context") {
   return { type: "card.stat", label, duration: 4.2 };
 }
 
-test("Flash Lane Visual Director blocks two reused clip refs across a 60s plan", () => {
+test("Flash Lane Visual Director blocks two reused clip refs for a standard selected band", () => {
   const scenes = [
     clip("opener", "gta.m3u8", 32),
     clip("clip_1", "bioshock.m3u8", 34),
@@ -33,11 +33,15 @@ test("Flash Lane Visual Director blocks two reused clip refs across a 60s plan",
   const report = buildFlashLaneVisualDirector({
     scenes,
     media: { clips: [{ path: "gta.m3u8" }, { path: "bioshock.m3u8" }] },
-    narrationDurationS: 66.8,
+    narrationDurationS: 38.5,
   });
 
   assert.equal(report.verdict, "block");
-  assert.ok(report.blockers.includes("flash_visual_requires_three_unique_clip_refs_for_60s"));
+  assert.ok(
+    report.blockers.includes(
+      "flash_visual_requires_more_unique_clip_refs_for_selected_band",
+    ),
+  );
   assert.ok(report.blockers.includes("flash_visual_clip_source_overused"));
   assert.equal(report.metrics.uniqueClipSources, 2);
 });
@@ -53,7 +57,7 @@ test("Flash Lane Visual Director blocks clip anchors that start inside likely ra
       card("card_takeaway"),
     ],
     media: { clips: [{ path: "a.m3u8" }, { path: "b.m3u8" }, { path: "c.m3u8" }] },
-    narrationDurationS: 62,
+    narrationDurationS: 38.5,
   });
 
   assert.equal(report.verdict, "block");
@@ -83,7 +87,7 @@ test("Flash Lane Visual Director allows diverse safe clip-led plans", () => {
         { path: "c.m3u8", provenance: { segment_quality_score: 91 } },
       ],
     },
-    narrationDurationS: 64,
+    narrationDurationS: 38.5,
   });
 
   assert.equal(report.verdict, "allow");
@@ -120,7 +124,7 @@ test("Flash Lane Visual Director blocks unvalidated official trailer segments", 
         { path: "c.m3u8" },
       ],
     },
-    narrationDurationS: 64,
+    narrationDurationS: 38.5,
   });
 
   assert.equal(report.verdict, "block");
@@ -149,7 +153,7 @@ test("Flash Lane Visual Director blocks low-quality official clip anchors", () =
         { path: "c.m3u8", provenance: { segment_quality_score: 91 } },
       ],
     },
-    narrationDurationS: 64,
+    narrationDurationS: 38.5,
   });
 
   assert.equal(report.verdict, "block");
@@ -170,9 +174,29 @@ test("Flash Lane Visual Director warns when cards and cover art are support, not
   const report = buildFlashLaneVisualDirector({
     scenes,
     media: { clips: [{ path: "a.m3u8" }, { path: "b.m3u8" }, { path: "c.m3u8" }] },
-    narrationDurationS: 63,
+    narrationDurationS: 38.5,
   });
 
   assert.ok(report.warnings.includes("flash_visual_cover_art_should_only_support"));
   assert.ok(report.warnings.includes("flash_visual_card_ratio_high"));
+});
+
+test("Flash Lane Visual Director scales clip-source requirements for the selected runtime", () => {
+  const report = buildFlashLaneVisualDirector({
+    scenes: [
+      clip("a1", "a.m3u8", 30),
+      clip("b1", "b.m3u8", 32),
+      clip("a2", "a.m3u8", 34),
+      clip("b2", "b.m3u8", 36),
+      clip("a3", "a.m3u8", 38),
+      clip("b3", "b.m3u8", 40),
+      { type: "clip.frame", label: "frame", source: "frame.jpg", duration: 3 },
+    ],
+    media: { clips: [{ path: "a.m3u8" }, { path: "b.m3u8" }] },
+    narrationDurationS: 27.5,
+  });
+
+  assert.equal(report.thresholds.minUniqueClipSources, 2);
+  assert.equal(report.thresholds.minDistinctSceneBeats, 6);
+  assert.equal(report.verdict, "allow");
 });

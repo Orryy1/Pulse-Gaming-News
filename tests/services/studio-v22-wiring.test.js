@@ -50,15 +50,26 @@ test("buildThumbnailsForApprovedStories is exported", () => {
   assert.strictEqual(typeof hf.buildThumbnailsForApprovedStories, "function");
 });
 
-test("manual run.js produce path builds thumbnail candidates", () => {
-  const src = require("node:fs").readFileSync(
+test("manual run.js produce path delegates to the governed producer", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const runner = fs.readFileSync(
     require("node:path").join(__dirname, "..", "..", "run.js"),
     "utf8",
   );
+  const publisher = fs.readFileSync(
+    path.join(__dirname, "..", "..", "publisher.js"),
+    "utf8",
+  );
   assert.match(
-    src,
-    /runProduce[\s\S]*?buildThumbnailsForApprovedStories/,
-    "run.js produce should build HF thumbnails and thumbnail_candidate_path like publisher.produce",
+    runner,
+    /runProduce[\s\S]*?require\(["']\.\/publisher["']\)[\s\S]*?produce\(\)/,
+    "run.js produce must enter the single governed production graph",
+  );
+  assert.match(
+    publisher,
+    /async function produce\(\)[\s\S]*?buildThumbnailsForApprovedStories/,
+    "the governed producer should build HF thumbnail candidates",
   );
 });
 

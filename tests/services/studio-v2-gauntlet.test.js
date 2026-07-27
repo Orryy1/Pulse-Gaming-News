@@ -14,6 +14,8 @@ const {
   rankCandidate,
   buildGauntletFindings,
   buildGauntletMarkdown,
+  buildGauntletHtml,
+  ROOT,
 } = require("../../lib/studio/v2/gauntlet-v2");
 
 test("parseReportFilename recognises canonical v2 reports", () => {
@@ -265,4 +267,53 @@ test("buildGauntletMarkdown produces a candidate matrix", () => {
   });
   assert.match(md, /Candidate Matrix/);
   assert.match(md, /x \| 99/);
+});
+
+test("buildGauntletHtml resolves candidate links against the explicit production work root", () => {
+  const outputDir = path.join(
+    ROOT,
+    "output",
+    "studio-v21",
+    "candidate",
+  );
+  const mp4Path = path.join(outputDir, "studio_v2_candidate_v21.mp4");
+  const html = buildGauntletHtml(
+    {
+      generatedAt: "now",
+      candidateCount: 1,
+      summary: { verdict: "pass", bestCandidate: "candidate:v21" },
+      findings: [],
+      candidates: [
+        {
+          key: "candidate:v21",
+          kind: "variant",
+          channelId: "pulse-gaming",
+          score: 100,
+          studio: {
+            lane: "pass",
+            durationS: 31,
+            sfxEventCount: 1,
+            grammarKinds: ["source-slam"],
+            hyperframesCardCount: 4,
+          },
+          forensic: {
+            verdict: "pass",
+            subtitleVerdict: "pass",
+            visualVerdict: "pass",
+          },
+          loudness: { integratedLufs: -16 },
+          seo: { validationCount: 0 },
+          paths: {
+            mp4: path.relative(ROOT, mp4Path),
+            forensicHtml: null,
+          },
+        },
+      ],
+    },
+    outputDir,
+  );
+
+  assert.match(html, /href="studio_v2_candidate_v21\.mp4"/);
+  assert.match(html, /src="studio_v2_candidate_v21\.mp4"/);
+  assert.doesNotMatch(html, /\.\.\/\.\.\/output\/studio-v21/);
 });

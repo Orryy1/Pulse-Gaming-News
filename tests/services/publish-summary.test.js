@@ -347,7 +347,7 @@ test("no-safe-candidate result renders failed summary with Top reason + Skipped 
   };
   const s = renderPublishSummary(result, { jobId: 999 });
   assert.equal(s.status, "failed");
-  assert.match(s.message, /Pulse Gaming Publish Attempt/);
+  assert.match(s.message, /Pulse Gaming News publish attempt/);
   assert.match(s.message, /job #999/);
   assert.match(s.message, /No safe publish candidate passed QA/);
   assert.match(s.message, /Candidates tried: 3/);

@@ -78,7 +78,7 @@ module.exports = {
         .setColor(config.COLOURS.AMBER)
         .setTitle(`🔮 Prediction #${prediction.id}`)
         .setDescription(`**${question}**\n\n**1.** ${option1}\n**2.** ${option2}\n\nUse \`/predict bet ${prediction.id} <option> <xp>\` to place your bet!`)
-        .setFooter({ text: 'PULSE GAMING Predictions' })
+        .setFooter({ text: 'PULSE GAMING NEWS Predictions' })
         .setTimestamp();
 
       await interaction.reply({ embeds: [embed] });

@@ -171,20 +171,17 @@ async function runFastPipeline(story) {
     const assemble = require("./assemble");
     await assemble();
 
-    // Step 7: Publish (if AUTO_PUBLISH is on)
-    let publishResult = null;
-    if (process.env.AUTO_PUBLISH === "true") {
-      console.log("[breaking] Step 5/5: Publishing to all platforms...");
-      const { publishNextStory } = require("./publisher");
-      publishResult = await publishNextStory();
-      if (publishResult) {
-        console.log(
-          `[breaking] Published: YT=${publishResult.youtube} TT=${publishResult.tiktok} IG=${publishResult.instagram} FB=${publishResult.facebook} X=${publishResult.twitter}`,
-        );
-      }
-    } else {
-      console.log("[breaking] Step 5/5: AUTO_PUBLISH off:skipping upload");
-    }
+    // Stabilisation breaking-news policy: the watcher may prepare a
+    // candidate quickly, but it cannot bypass human review, the guarded
+    // SCHEDULED lifecycle event or the two-window cadence contract.
+    const publishResult = {
+      publish_dispatch_blocked: true,
+      status: "held",
+      top_reason: "breaking_story_requires_explicit_operator_admission",
+    };
+    console.log(
+      "[breaking] Step 5/5: Candidate held for explicit operator admission",
+    );
 
     const elapsedMs = Date.now() - startTime;
     const elapsedSec = Math.round(elapsedMs / 1000);
@@ -193,7 +190,9 @@ async function runFastPipeline(story) {
     // Discord notification
     try {
       const sendDiscord = require("./notify");
-      const platformStatus = publishResult
+      const platformStatus = publishResult.publish_dispatch_blocked
+        ? `Publishing held: ${publishResult.top_reason}`
+        : publishResult
         ? `YT: ${publishResult.youtube ? "yes" : "no"} | TT: ${publishResult.tiktok ? "yes" : "no"} | IG: ${publishResult.instagram ? "yes" : "no"} | FB: ${publishResult.facebook ? "yes" : "no"} | X: ${publishResult.twitter ? "yes" : "no"}`
         : "Publishing skipped";
       await sendDiscord(

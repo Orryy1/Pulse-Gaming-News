@@ -20,7 +20,7 @@ const os = require("os");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 /**
  * Apply the operator's approval choice to a story and persist it via the

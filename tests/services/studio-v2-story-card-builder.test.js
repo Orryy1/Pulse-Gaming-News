@@ -11,6 +11,11 @@ const {
   outputNameForCard,
   pickStoryBackdrop,
 } = require("../../tools/studio-v2-build-story-cards");
+const { deriveCardContent } = require("../../lib/studio/v2/hf-card-builders");
+const { CTA_POLICY } = require("../../lib/services/pulse-editorial-contract");
+
+const CONTEXTUAL_CTA = "Which version would you install first?";
+const AUDIT_HASH = `sha256:${"a".repeat(64)}`;
 
 test("story card specs are topical and do not reuse generic Metro copy", () => {
   const story = {
@@ -40,10 +45,89 @@ test("story card specs are topical and do not reuse generic Metro copy", () => {
     "No premium ticket. No paywall. Every player gets access.",
   );
   assert.deepEqual(specs.takeaway.headlineWords, ["FREE", "MEGA", "MEWTWO"]);
-  assert.deepEqual(specs.outro.headlineWords, ["FOLLOW", "FOR", "MORE"]);
-  assert.equal(specs.outro.kicker, "DAILY GAMING NEWS");
-  assert.equal(specs.outro.cta, "VERIFIED GAMING NEWS");
+  assert.equal(specs.takeaway.cta, "");
+  assert.deepEqual(specs.outro.headlineWords, ["PULSE", "GAMING", "NEWS"]);
+  assert.equal(specs.outro.kicker, "FAST. CHECKED. EXPLAINED.");
+  assert.equal(specs.outro.cta, "");
   assert.doesNotMatch(serialised, /METRO 2039/i);
+  assert.doesNotMatch(serialised, /FOLLOW FOR MORE|NEVER MISS A BEAT/i);
+});
+
+test("story card specs apply only an authenticated selected CTA decision", () => {
+  const base = {
+    id: "selected-card-cta",
+    title: "Xbox confirms a new backwards compatibility update",
+    subreddit: "Xbox Wire",
+    source_type: "rss",
+  };
+  const selected = buildStoryCardSpecs({
+    ...base,
+    cta: CONTEXTUAL_CTA,
+    full_script: `Achievements are now confirmed. ${CONTEXTUAL_CTA}`,
+    cta_policy: {
+      policy_version: CTA_POLICY.version,
+      scope: "shorts",
+      include_cta: true,
+      copy_strategy: CTA_POLICY.copy_strategy,
+      cohort_bucket: 0,
+      cohort_numerator: 1,
+      cohort_denominator: 3,
+      audit_hash: AUDIT_HASH,
+    },
+  });
+  assert.equal(selected.takeaway.cta, CONTEXTUAL_CTA);
+  assert.equal(selected.outro.cta, CONTEXTUAL_CTA);
+
+  const tampered = buildStoryCardSpecs({
+    ...base,
+    cta_policy: {
+      policy_version: CTA_POLICY.version,
+      scope: "shorts",
+      include_cta: true,
+      copy_strategy: CTA_POLICY.copy_strategy,
+      cohort_bucket: 0,
+      cohort_numerator: 1,
+      cohort_denominator: 3,
+      audit_hash: AUDIT_HASH,
+    },
+  });
+  assert.equal(tampered.takeaway.cta, "");
+  assert.equal(tampered.outro.cta, "");
+});
+
+test("HyperFrames derived takeaway content follows the same CTA contract", () => {
+  const base = {
+    id: "hf-card-cta",
+    title: "Publisher confirms a major service update",
+    source_type: "rss",
+    subreddit: "IGN",
+  };
+  const omitted = deriveCardContent({ story: base });
+  assert.equal(omitted.takeaway.cta, "");
+  assert.notDeepEqual(omitted.takeaway.headlineWords, [
+    "FOLLOW",
+    "FOR",
+    "MORE",
+  ]);
+
+  const selected = deriveCardContent({
+    story: {
+      ...base,
+      cta: CONTEXTUAL_CTA,
+      full_script: `Achievements are now confirmed. ${CONTEXTUAL_CTA}`,
+      cta_policy: {
+        policy_version: CTA_POLICY.version,
+        scope: "shorts",
+        include_cta: true,
+        copy_strategy: CTA_POLICY.copy_strategy,
+        cohort_bucket: 0,
+        cohort_numerator: 1,
+        cohort_denominator: 3,
+        audit_hash: AUDIT_HASH,
+      },
+    },
+  });
+  assert.equal(selected.takeaway.cta, CONTEXTUAL_CTA);
 });
 
 test("story card builder uses story-specific output names", () => {

@@ -18,24 +18,33 @@ const path = require("node:path");
 const PUBLISHER_PATH = path.join(__dirname, "..", "..", "publisher.js");
 const src = fs.readFileSync(PUBLISHER_PATH, "utf8");
 
-test("publisher.js: TikTok browser fallback is gated on TIKTOK_BROWSER_FALLBACK", () => {
+test("publisher.js: every dormant TikTok browser fallback stays behind the YouTube-only cutover", () => {
   // Every require("./upload_tiktok_browser") must sit inside a
   // TIKTOK_BROWSER_FALLBACK-guarded branch, not at top level
   // or in an unconditional catch.
+  const stabilisationBoundary = src.indexOf(
+    "return finaliseStabilisationYoutubeOnly(",
+  );
+  assert.ok(
+    stabilisationBoundary >= 0,
+    "the stabilisation publisher must have an explicit YouTube-only return boundary",
+  );
   const matches = [
     ...src.matchAll(/require\(["']\.\/upload_tiktok_browser["']\)/g),
   ];
   assert.ok(
-    matches.length >= 2,
-    `expected ≥2 require()s of upload_tiktok_browser, got ${matches.length}`,
+    matches.length >= 1,
+    `expected at least one dormant upload_tiktok_browser require, got ${matches.length}`,
   );
   for (const m of matches) {
+    assert.ok(
+      m.index > stabilisationBoundary,
+      `upload_tiktok_browser require at offset ${m.index} is reachable before the YouTube-only return`,
+    );
     // Look back up to ~3000 chars from the require() for the env
     // guard. The per-story branch has a ~2KB if/else with all
     // the safeMsg redaction + error-assignment code between the
-    // wantBrowserFallback declaration and the require. The
-    // legacy batch branch is smaller (~600 chars). 3000 covers
-    // both.
+    // wantBrowserFallback declaration and the require.
     const start = Math.max(0, m.index - 3000);
     const window = src.slice(start, m.index);
     assert.match(
@@ -108,20 +117,23 @@ test("upload_tiktok_browser: module loads + exposes uploadShort/uploadAll", () =
   assert.strictEqual(typeof mod.uploadAll, "function");
 });
 
-test("publisher.js: TIKTOK_BROWSER_FALLBACK read from env + lower-cased (dev flag idiom)", () => {
-  // The canonical check is
-  //   (process.env.TIKTOK_BROWSER_FALLBACK || "").toLowerCase() === "true"
-  // Pin both places this pattern appears so future refactors
-  // keep the case-insensitive idiom rather than an exact "true"
-  // match that would break the common "True"/"TRUE" env values.
+test("publisher.js: the legacy TikTok flag cannot arm a reachable stabilisation path", () => {
+  const stabilisationBoundary = src.indexOf(
+    "return finaliseStabilisationYoutubeOnly(",
+  );
   const occurrences = [
     ...src.matchAll(
       /\(process\.env\.TIKTOK_BROWSER_FALLBACK \|\| ""\)\.toLowerCase\(\) === "true"/g,
     ),
   ];
-  assert.strictEqual(
-    occurrences.length,
-    2,
-    `expected 2 uses of the case-insensitive TIKTOK_BROWSER_FALLBACK check (per-story + legacy batch path); got ${occurrences.length}`,
+  assert.ok(
+    occurrences.length <= 1,
+    `expected no duplicate TikTok browser-fallback gates after batch-path removal; got ${occurrences.length}`,
   );
+  for (const occurrence of occurrences) {
+    assert.ok(
+      occurrence.index > stabilisationBoundary,
+      `TIKTOK_BROWSER_FALLBACK at offset ${occurrence.index} can arm a path before the YouTube-only return`,
+    );
+  }
 });

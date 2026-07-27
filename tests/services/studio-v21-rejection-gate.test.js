@@ -2,11 +2,15 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
   normaliseGateCandidate,
   evaluateStudioRejectionGate,
   buildGateMarkdown,
+  loadGateInputFromGauntlet,
 } = require("../../lib/studio/v2/studio-rejection-gate-v21");
 
 function canonical(overrides = {}) {
@@ -177,4 +181,93 @@ test("buildGateMarkdown includes verdict, reasons, metrics and hero moments", ()
   assert.match(md, /Final verdict: review/);
   assert.match(md, /gauntlet_drop/);
   assert.match(md, /source_slam/);
+});
+
+test("loadGateInputFromGauntlet ignores legacy canonical calibration when the governed candidate-only gate is selected", async () => {
+  const outputDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "studio-v21-candidate-gate-"),
+  );
+  const candidateReportPath = path.join(
+    outputDir,
+    "candidate_studio_v2_v21_report.json",
+  );
+  fs.writeFileSync(
+    candidateReportPath,
+    JSON.stringify({
+      storyId: "candidate",
+      verdict: { lane: "pass" },
+      runtime: { durationS: 31 },
+      auto: {},
+      premiumLane: { verdict: "pass", hyperframesCardCount: 4 },
+      heroMoments: {
+        momentCount: 1,
+        overlayApplied: true,
+        moments: [{ type: "source_slam" }],
+      },
+    }),
+  );
+  const legacyCanonicalReportPath = path.join(
+    outputDir,
+    "candidate_studio_v2_report.json",
+  );
+  fs.writeFileSync(
+    legacyCanonicalReportPath,
+    JSON.stringify({
+      storyId: "candidate",
+      verdict: { lane: "pass" },
+      runtime: { durationS: 31 },
+      auto: {},
+    }),
+  );
+  fs.writeFileSync(
+    path.join(outputDir, "studio_v2_gauntlet_report.json"),
+    JSON.stringify({
+      candidates: [
+        {
+          key: "candidate:v21",
+          storyId: "candidate",
+          variant: "v21",
+          kind: "variant",
+          score: 100,
+          studio: { lane: "pass" },
+          forensic: {
+            verdict: "pass",
+            audioRecurrence: "pass",
+            subtitleVerdict: "pass",
+            visualVerdict: "pass",
+          },
+          paths: { studioReport: candidateReportPath },
+        },
+        {
+          key: "candidate:canonical",
+          storyId: "candidate",
+          variant: "canonical",
+          kind: "canonical",
+          score: 50,
+          studio: { lane: "pass" },
+          forensic: {
+            verdict: "pass",
+            audioRecurrence: "pass",
+            subtitleVerdict: "pass",
+            visualVerdict: "pass",
+          },
+          paths: { studioReport: legacyCanonicalReportPath },
+        },
+      ],
+    }),
+  );
+
+  try {
+    const input = await loadGateInputFromGauntlet({
+      storyId: "candidate",
+      variant: "v21",
+      outputDir,
+      requireCanonical: false,
+    });
+    assert.equal(input.candidate.key, "candidate:v21");
+    assert.equal(input.canonical, null);
+    assert.deepEqual(input.calibration, []);
+  } finally {
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
 });

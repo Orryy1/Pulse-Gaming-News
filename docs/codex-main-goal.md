@@ -4,19 +4,19 @@
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T10:27:10.000Z` |
-| source_commit_sha | `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
-| runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
-| environment | `LOCAL_PROOF release worktree plus named read-only and containment evidence in CURRENT_STATUS.md` |
+| generated_at | `2026-07-27T19:08:30.000Z` |
+| source_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| runtime_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| environment | `Production cutover evidence plus a stopped, clean local runtime checkout; no live canary claimed` |
 | scope | `Repository operating goal and compatibility pointer for the Pulse v1 stabilisation programme` |
-| expires_at | `2026-08-03T10:27:10.000Z` |
-| supersedes | `docs/codex-main-goal.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5` |
+| expires_at | `2026-08-03T19:08:30.000Z` |
+| supersedes | `docs/codex-main-goal.md at a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
 | superseded_by | `none` |
 | authoritative | `true` |
 
 If expired, treat this file as **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS** until refreshed with the canonical set.
 
-> **Restamp required:** the metadata above still attests the previous committed snapshot. The governed local-candidate changes described below require the exact final source commit and CI result before this compatibility contract can support a release decision.
+> **Release attestation:** source/runtime candidate `bc371fb258ecc6312189338e995d1b1270323a0a` passed push run `30296131560` and pull-request run `30296137033`. This documentation-only attestation records the stopped pre-canary state and grants no publication authority.
 
 ## North star
 
@@ -44,15 +44,15 @@ Instagram, Facebook, TikTok, X, Threads and Pinterest remain disabled, manual or
 
 ## Current boundary
 
-The previous local publisher/watchdog and OAuth maintenance tasks are contained. The public custom domain is HTTP `502` fail-closed. Railway remains an observation-only old runtime. The replacement `HUMAN_REVIEW` Windows supervisor and exact two-window queue reconciler are implemented but have not been installed or applied.
+The previous local publisher/watchdog and OAuth maintenance tasks are contained. The public custom domain remains fail-closed and Railway remains an observation-only old runtime. The exact two-window queue reconciliation has been applied. The replacement checkout is clean, stopped and detached at the green source commit; the safe `HUMAN_REVIEW` supervisor has not yet been rearmed.
 
-Production SQLite integrity checks passed at migration `020`. A verified online backup and restore rehearsal exist, and migrations `021` through `023` passed on the restored copy. Those migrations remain unapplied to production.
+Production SQLite now records migrations `001` through `023`. Post-migration, post-containment, post-reconciliation and candidate-approval backups were independently verified and restore-rehearsed, with quick, integrity and foreign-key checks passing.
 
 The documented next-candidate, platform-doctor and strict dry-run commands now exist. Their real read-only evidence does not authorise publication: the candidate and package verdicts are `HOLD`, while the platform policy check passed with every platform still unpublishable.
 
 The 13 render, platform-pack and repair names formerly missing from the wider operator command contract now resolve to tested npm scripts through an inspection-only `LOCAL_PROOF` bridge. Every bridge run reports `HOLD` and performs no materialisation, repair, database mutation, OAuth change or publication. The specialist production implementations remain unavailable, so this resolves command discoverability without changing candidate readiness. [CURRENT_STATUS.md](../CURRENT_STATUS.md) is the source of truth for that boundary.
 
-A separate governed local-candidate lane now exists for exact official intake, owned motion, narration evidence, HyperFrames material, final composition, publication evidence/review and a guarded one-window YouTube action. Local Evercold material exists, but remains `HOLD`: final hashes, explicit human approval, production migration and backup evidence, exact runtime parity, scheduler admission and a verified public upload are not established by this source state.
+A separate governed local-candidate lane now binds the exact official intake, owned motion, narration evidence, HyperFrames material, final composition and publication review. The user-approved Evercold script and v8 MP4 hash are durably recorded. Scheduler admission, guarded YouTube dispatch and independent public confirmation remain outstanding.
 
 A read-only analytics audit mapped five YouTube video IDs to five story records. It did not verify live `yt-analytics.readonly` scope, publication timezone or YouTube Analytics API data.
 

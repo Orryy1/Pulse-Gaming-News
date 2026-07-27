@@ -1,52 +1,52 @@
 # Pulse Gaming Current Status
 
-> **NOT PRODUCTION GREEN.** The previous local publishing runtime is contained and the release line now has fail-closed cutover tools, but no governed replacement runtime is installed, no current release is serving the public domain and no publication candidate is authorised.
+> **CUTOVER GREEN THROUGH FINAL REVIEW; LIVE CANARY PENDING.** The previous runtime is contained, production is migrated and reconciled, the exact candidate is human-approved and the stopped replacement checkout matches the green source commit. Scheduler admission, YouTube dispatch and public confirmation have not yet occurred.
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T10:27:10.000Z` |
-| source_commit_sha | `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
-| runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
-| environment | `LOCAL_PROOF release worktree plus read-only Windows task, local port, production SQLite, public endpoint, Railway and GitHub observations; authorised containment and backup actions are named below` |
+| generated_at | `2026-07-27T19:08:30.000Z` |
+| source_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| runtime_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| environment | `Production SQLite cutover plus a stopped, clean local runtime checkout; authorised database mutations and exact CI evidence are named below` |
 | scope | `Pulse v1 cutover status at the committed code boundary; no deployment or publication claim` |
-| expires_at | `2026-08-03T10:27:10.000Z` |
-| supersedes | `CURRENT_STATUS.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5 and ad hoc status claims for current release decisions` |
+| expires_at | `2026-08-03T19:08:30.000Z` |
+| supersedes | `CURRENT_STATUS.md at a2de969d7d6c61e6ccd0a651a219e988d75289e2 and ad hoc status claims for current release decisions` |
 | superseded_by | `none` |
 | authoritative | `true` |
 
 After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS** and refresh from the actual target environment.
 
-> **Restamp required:** `source_commit_sha`, `generated_at` and `expires_at` above still attest the previous committed snapshot. The governed local-candidate changes described below are working-branch source evidence only until this document is restamped to the exact final commit and that commit's CI result.
+> **Release attestation:** source/runtime candidate `bc371fb258ecc6312189338e995d1b1270323a0a` passed push run `30296131560` and pull-request run `30296137033`. This documentation-only attestation records the stopped pre-canary state and is not itself deployed code or publication authority.
 
 ## Executive status
 
 | Area | Status | Evidence boundary |
 |---|---|---|
-| Release source | committed | branch `release/pulse-v1`, code boundary `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
+| Release source | exact candidate green | code/runtime boundary `bc371fb258ecc6312189338e995d1b1270323a0a`; push run `30296131560` and pull-request run `30296137033` succeeded |
 | Local legacy runtime | contained | no listener on port `3001`; the old publisher/watchdog process family was stopped |
 | Legacy Windows publisher task | disabled | `PulseGaming-LiveWatchdog-Supervisor` is disabled |
 | Legacy token-maintenance task | disabled | `PulseGaming-OAuthUptime` is disabled |
 | Public custom domain | fail-closed | `https://pulse.orryy.com/api/health` returned HTTP `502`; there is no healthy local origin behind the tunnel |
 | Railway | observation-only and divergent | deployment `16d8879f-c4ed-4aef-b16c-a5e06aceed43`, commit `2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10`, scheduler and autonomous mode inactive; it is not the approved release runtime |
-| Production SQLite integrity | inspected read-only | `D:\pulse-data\pulse.db`; `quick_check=ok`, `integrity_check=ok`, zero foreign-key violations and latest applied migration `020` |
-| Verified online backup | complete | `D:\pulse-data\backups\pulse_2026-07-27T09-20-24-950Z.db`, 232,570,880 bytes, SHA-256 `086f765148e4a74765a05b4beb2a55f4605a5aac7dd2a9ca6a742782a8dfaf41` |
+| Production SQLite integrity | cut over and verified | `D:\pulse-data\pulse.db`; migration `023`, `quick_check=ok`, `integrity_check=ok` and zero foreign-key violations |
+| Latest verified online backup | complete | post-publication-review backup `D:\pulse-data\backups\pulse_2026-07-27T19-03-39-000Z.db`, SHA-256 `d6fb565c591dc2a68bcfe4d06fdaa22545d9924e460c04b855dc7a0bfcc70bdc`, restore rehearsal passed |
 | Restore rehearsal | complete | restored copy and evidence under `D:\pulse-data\restore-rehearsals\pulse_2026-07-27T09-20-24-950Z.restore.db*`; the initial restored hash matched the backup and integrity checks passed |
 | Migration rehearsal | complete on restored copy only | migrations `021`, `022` and `023` reached `023` on the rehearsal database with required tables, derivation column, audit idempotency column and index present; integrity checks passed |
-| Production migrations | pending | production remains at `020`; migrations `021` through `023` have not been applied to `D:\pulse-data\pulse.db` |
+| Production migrations | applied | production records migrations `001` through `023`; post-apply checkpoint, backup, restore and integrity evidence passed |
 | Publish preflight commands | implemented and exercised read-only | `ops:next-publish-candidates`, `ops:platform-doctor` and `ops:goal-dry-run-publish` exist; evidence is under `D:\pulse-data\cutover-proof\preflight-before-migration` |
 | Wider operator command contract | resolved fail-closed, production capability unavailable | all 13 formerly missing names now resolve to a tested inspection-only `LOCAL_PROOF` bridge; each reports `HOLD`, performs no materialisation or repair and grants no publication authority |
-| Governed local candidate path | implemented in the working release line, candidate still `HOLD` | exact official story intake, owned motion, governed narration evidence, HyperFrames material, final local composite, publication evidence/review and one-window YouTube controls have dedicated entry points; this does not prove final hashes, human approval, scheduler admission, deployment or publication |
+| Governed local candidate path | approved through final review | story `official_d86953ca92ca`, script SHA-256 `4f2d9c084d91433d09272a8be718f8d15992224cc3906a8af53747ba7e6a3dcc` and v8 media SHA-256 `d26fb7fa9e55b0059cf028aea777c6a4c713bfaa81847d9125015b2519a9504a` are durably bound; admission and upload remain pending |
 | Next-candidate preflight | `HOLD` | scheduler not ready, one owner not proven and candidate render, rights, QA, disclosure and human-review evidence incomplete |
 | Platform doctor | policy check `PASS`, publication `NO` | all seven platform rows remained visible, no platform was publishable and no credential value was read; this is not authentication or readiness proof |
 | Strict dry-run publish | `HOLD` | package not ready, scheduler not ready, no uploader entered and no external object created |
 | Production dependency audit | `HOLD`, risk reduced | exact-lock production findings reduced from 36 to 22: critical `2 → 0`, high `10 → 2`, moderate `23 → 20` and low `1 → 0`; the remaining Hyperframes and Sentry/OpenTelemetry major-version constraints are documented in `docs/dependency-audit.md` |
-| Exact two-window reconciler | implemented, not applied | `tools/stabilisation-cutover-reconcile.js` plans YouTube-only `publish_morning` at `09:00 UTC` and `publish_primary` at `19:00 UTC`, quarantines unsafe debt and is dry-run by default |
+| Exact two-window reconciler | applied | 140 unsafe jobs quarantined, 31 old schedules disabled and only `publish_morning` at `09:00 UTC` plus `publish_primary` at `19:00 UTC` installed |
 | Guarded outside-cadence one-shot | implemented, not exercised | standard cadence remains the default; one exact active authority ID, its matching confirmation and the explicit one-shot boolean are all required in addition to every normal gate, with immutable schedule and audit binding |
-| Governed Windows supervisor | implemented, not installed | `ops:windows-local-runtime` enforces a clean exact commit, `HUMAN_REVIEW`, YouTube-only policy, kill switches tripped and both publish arms off; `PulseGaming-Stabilisation-Runtime` does not exist |
+| Governed local runtime | exact stopped checkout prepared | credential-bearing checkout is clean and detached at `bc371fb258ecc6312189338e995d1b1270323a0a`; protected local credential files were hash-verified unchanged; safe `HUMAN_REVIEW` rearm remains pending |
 | YouTube analytics baseline | `HOLD` | the read-only audit mapped five unique published video IDs to five story rows, but live `yt-analytics.readonly` scope is missing or unrecorded, publish timezone is unresolved and no YouTube Analytics API sample was collected |
 | PR 68 | closed as superseded | PR 69 contained all observed PR 68 ancestry and paths: zero unique commits and zero paths absent; closure was not a merge or readiness decision |
 | PR 69 | open draft and archived | forensic branch `archive/pr69-forensic-2026-07-27` preserves SHA `cfe609ae1b53b2a13ac1af1ae97ae4a0abb4ac48`; the draft remains open and is not the release candidate |
-| Current release CI and branch protection | not established by this snapshot | no `GREEN` claim |
+| Current release CI | green for exact candidate | push run `30296131560` and pull-request run `30296137033` completed successfully |
 | Live upload | none performed by this cutover | no public upload or multi-platform post claim |
 | Controlled evidence programme | not started | the governed 12-video sample and 30-day and 90-day evidence gates remain future, time-bound work |
 
@@ -89,18 +89,12 @@ The governed local-candidate commands are not implementations of those 13 generi
 
 ## Remaining cutover blockers
 
-1. keep the 13-command generic bridge inspection-only; its specialist repair capabilities remain unavailable and must be implemented and reviewed before any operator relies on those repair aliases
-2. obtain current CI evidence for the exact release candidate and establish the required GitHub release check
-3. apply migrations `021` through `023` to the named production database only under an approved change window, then repeat integrity and application checks
-4. generate the reconciler's required cutover backup-evidence record, run its dry-run plan and apply only after every blocker is clear
-5. create a dedicated clean runtime checkout at the exact approved commit
-6. install and start the governed Windows supervisor, then prove exact commit health, one scheduler owner and one healthy primary lease
-7. keep the public custom domain fail-closed until that exact runtime passes health and ownership verification
-8. reauthorise YouTube with the required read-only Analytics scope, resolve publication timezone provenance and collect a five-video API sample without changing platform objects
-9. finish and independently verify the current governed Evercold candidate's final MP4, rights ledger, transformation evidence, QA, disclosure and exact human approval, then bind every hash to the release commit
-10. confirm the first approved YouTube canary end to end before expanding cadence
-11. complete the governed 12-video sample and the 30-day and 90-day evidence gates without inventing future outcomes
-12. remove, replace or separately review the residual Hyperframes dependency risk and validate the Sentry 10 major upgrade before treating the production dependency audit as green
+1. admit the exact approved candidate into one immutable outside-cadence YouTube window
+2. take a fresh verified backup after admission, then perform one guarded dispatch with no retry after platform-contact ambiguity
+3. require `PUBLISHED_CONFIRMED` and independently verify the public YouTube object and exact identity
+4. close the armed shell, rearm only the safe `HUMAN_REVIEW` supervisor and prove one healthy owner without enabling secondary platforms
+5. keep the 13-command generic bridge inspection-only until specialist repair implementations are separately reviewed
+6. complete the governed 12-video sample and the 30-day and 90-day evidence gates without inventing future outcomes
 
 ## Release posture
 

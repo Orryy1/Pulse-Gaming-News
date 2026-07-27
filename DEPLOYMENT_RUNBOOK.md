@@ -4,19 +4,19 @@
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T10:27:10.000Z` |
-| source_commit_sha | `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
-| runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
-| environment | `LOCAL_PROOF release worktree plus named read-only and containment evidence in CURRENT_STATUS.md` |
+| generated_at | `2026-07-27T19:08:30.000Z` |
+| source_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| runtime_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| environment | `Production cutover evidence plus a stopped, clean local runtime checkout; no live canary claimed` |
 | scope | `Approved release preparation, migration, queue reconciliation, local runtime cutover, rollback and acceptance` |
-| expires_at | `2026-08-03T10:27:10.000Z` |
-| supersedes | `DEPLOYMENT_RUNBOOK.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5; LOCAL_DEPLOYMENT_RUNBOOK.md and older notes remain historical` |
+| expires_at | `2026-08-03T19:08:30.000Z` |
+| supersedes | `DEPLOYMENT_RUNBOOK.md at a2de969d7d6c61e6ccd0a651a219e988d75289e2; LOCAL_DEPLOYMENT_RUNBOOK.md and older notes remain historical` |
 | superseded_by | `none` |
 | authoritative | `true` |
 
 If expired, treat this runbook as **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS**.
 
-> **Restamp required:** the metadata above still attests the previous committed snapshot. Before using this working-branch revision for a change window, restamp it to the exact final source commit, expiry and CI result.
+> **Release attestation:** source/runtime candidate `bc371fb258ecc6312189338e995d1b1270323a0a` passed push run `30296131560` and pull-request run `30296137033`. This documentation-only attestation records the stopped pre-canary state; it does not authorise or prove a post.
 
 ## Current containment baseline
 
@@ -149,7 +149,7 @@ Restore evidence is:
 - restore report: `D:\pulse-data\restore-rehearsals\pulse_2026-07-27T09-20-24-950Z.restore.db.rehearsal.json`
 - migration report: `D:\pulse-data\restore-rehearsals\pulse_2026-07-27T09-20-24-950Z.restore.db.migration-rehearsal.json`
 
-The initial restored copy matched the backup hash and passed integrity checks. The rehearsal then applied migrations `021`, `022` and `023` to that copy only, reached migration `023` and passed final integrity checks. Production remains at `020`.
+The initial restored copy matched the backup hash and passed integrity checks. Production subsequently applied migrations `021`, `022` and `023`, reached migration `023` and passed post-migration quick, integrity and foreign-key checks. Fresh verified backup and restore evidence was then taken after worker containment, queue reconciliation, story ingestion, script approval and publication review.
 
 The online-backup verification sidecar is source evidence. The cutover reconciler separately requires a current `pulse-cutover-backup-evidence-v1` record with verified operator, restore and source-database fields. Do not relabel the existing sidecar or bypass the reconciler's evidence contract.
 
@@ -170,7 +170,7 @@ Do not start the governed runtime while its clean checkout has pending migration
 
 ## Queue and schedule reconciliation
 
-`tools/stabilisation-cutover-reconcile.js` is the only cutover surface for the currently stranded jobs and schedule drift. It is read-only by default and writes JSON plus Markdown plans.
+`tools/stabilisation-cutover-reconcile.js` is the governed cutover surface for stranded jobs and schedule drift. It remains read-only by default and writes JSON plus Markdown plans. The current production cutover applied its reviewed plan: 140 unsafe jobs were quarantined, 31 old schedules were disabled and the two canonical YouTube windows were installed.
 
 Its intended terminal schedule is exactly:
 

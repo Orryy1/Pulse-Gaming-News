@@ -4,19 +4,19 @@
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T10:27:10.000Z` |
-| source_commit_sha | `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
-| runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
-| environment | `LOCAL_PROOF release worktree plus named read-only and containment evidence in CURRENT_STATUS.md` |
+| generated_at | `2026-07-27T19:08:30.000Z` |
+| source_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| runtime_commit_sha | `bc371fb258ecc6312189338e995d1b1270323a0a` |
+| environment | `Production cutover evidence plus a stopped, clean local runtime checkout; no live canary claimed` |
 | scope | `Canonical repository orientation, authority boundaries and documentation index` |
-| expires_at | `2026-08-03T10:27:10.000Z` |
-| supersedes | `README.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5` |
+| expires_at | `2026-08-03T19:08:30.000Z` |
+| supersedes | `README.md at a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
 | superseded_by | `none` |
 | authoritative | `true` |
 
 If `expires_at` has passed, treat the status statements as **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS** until refreshed.
 
-> **Restamp required:** the metadata above still attests the previous committed snapshot. The governed local-candidate additions in the working release line must be restamped to the exact final commit and its CI result before they can support a release decision.
+> **Release attestation:** source/runtime candidate `bc371fb258ecc6312189338e995d1b1270323a0a` passed push run `30296131560` and pull-request run `30296137033`. This documentation-only attestation records the stopped pre-canary state; it is not publication authority.
 
 Pulse Gaming is a Node.js CommonJS media system with a React/Vite control surface. It discovers gaming stories, builds governed editorial and media evidence, renders platform-native assets and can dispatch approved publications through guarded platform adapters. A rendered file is not automatically publishable and a configured adapter is not evidence that a platform is live.
 
@@ -28,8 +28,9 @@ The repository's compatibility operating goal is [docs/codex-main-goal.md](docs/
 - Previous local publisher/watchdog and OAuth maintenance tasks: contained and disabled.
 - Custom domain: HTTP `502` fail-closed because no approved local origin is running.
 - Railway: observation-only old deployment at commit `2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10`; not the release target.
-- Production SQLite: integrity checks passed at migration `020`; verified backup, restore and a separate `021` to `023` migration rehearsal exist. Production migrations `021` through `023` remain pending.
-- Replacement ownership: the exact two-window reconciler and fail-closed Windows `HUMAN_REVIEW` supervisor are implemented but have not been applied or installed.
+- Production SQLite: migrations `001` through `023` are applied; integrity and foreign-key checks pass. Legacy workers, 140 unsafe jobs and 31 old schedules were contained, leaving exactly the two governed YouTube windows.
+- Replacement ownership: the credential-bearing checkout is stopped, clean and detached at the exact green source commit. The safe `HUMAN_REVIEW` supervisor is not yet rearmed.
+- Exact canary: the user-approved script and v8 MP4 review are durably bound. Scheduler admission, YouTube dispatch and public confirmation remain pending.
 - Publication: all real preflight output remains unauthorised. Next-candidate and strict dry-run verdicts are `HOLD`.
 - Analytics: five YouTube videos map to five story records, but live Analytics scope, publication timezone provenance and an API sample remain unproved.
 - Operator command surface: all 13 formerly missing render, platform-pack and repair names resolve to an inspection-only `LOCAL_PROOF` bridge. The bridge returns `HOLD`; production materialisers and repair implementations remain unavailable.

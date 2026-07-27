@@ -27,7 +27,8 @@
  *   test/output/1sn9xhe_proto.ass
  *   test/output/1sn9xhe_proto_filter.txt
  *
- * Usage: node tools/quality-prototype.js
+ * Migration-only usage:
+ *   PULSE_ENABLE_MIGRATION_ONLY_PROTOTYPE=true node tools/quality-prototype.js
  */
 
 "use strict";
@@ -54,6 +55,18 @@ const FONT_OPT =
   process.platform === "win32"
     ? "fontfile='C\\:/Windows/Fonts/arial.ttf'"
     : "font='DejaVu Sans'";
+const MIGRATION_ONLY_POLICY = Object.freeze({
+  migration_only: true,
+  production_publish_allowed: false,
+});
+
+function assertMigrationOnlyExecution(env = process.env) {
+  if (env.PULSE_ENABLE_MIGRATION_ONLY_PROTOTYPE !== "true") {
+    throw new Error(
+      "migration_only_prototype_disabled:set_PULSE_ENABLE_MIGRATION_ONLY_PROTOTYPE=true_for_local_test_output_only",
+    );
+  }
+}
 
 // ---- Fixture discovery ------------------------------------------
 
@@ -173,7 +186,7 @@ function buildSlate(paths) {
       type: "card",
       cardKind: "takeaway",
       text: "WATCH THE FULL TRAILER",
-      cta: "FOLLOW FOR MORE",
+      cta: "",
       // Use the trailer's title-card frame as the moody backdrop
       // (heavy blur + darken applied in the filter so the text
       // still sits on a dark surface but with on-theme colour and
@@ -255,7 +268,7 @@ function buildSceneFilter(scene, slot) {
     //     CTA 1.0–1.6s; arrow gently translates up after 1.6s
     const cardKind = scene.cardKind || "takeaway";
     const text = (scene.text || "").replace(/'/g, "’");
-    const cta = (scene.cta || "FOLLOW PULSE GAMING").replace(/'/g, "’");
+    const cta = (scene.cta || "FAST. CHECKED. EXPLAINED.").replace(/'/g, "’");
     const fadeIn = (start, dur = 0.4) =>
       `alpha='if(lt(t\\,${start})\\,0\\,if(lt(t-${start}\\,${dur})\\,(t-${start})/${dur}\\,1))'`;
     return [
@@ -386,6 +399,7 @@ function inlineCharsToWords(alignment) {
 // ---- Main --------------------------------------------------------
 
 async function main() {
+  assertMigrationOnlyExecution();
   await fs.ensureDir(TEST_OUT);
 
   // 1. Load story metadata
@@ -604,7 +618,14 @@ async function main() {
   console.log(`  STOCK FILLER: 0 scenes  ←  the whole point`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  MIGRATION_ONLY_POLICY,
+  assertMigrationOnlyExecution,
+};

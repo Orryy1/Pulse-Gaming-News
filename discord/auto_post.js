@@ -1,5 +1,5 @@
 /**
- * PULSE GAMING - Auto-post integration
+ * PULSE GAMING NEWS - Auto-post integration
  *
  * Called from the main pipeline's publisher.js after each upload.
  * Posts rich embeds to the correct Discord channel based on story classification.
@@ -173,7 +173,9 @@ async function postNewStory(story) {
         },
         { name: "Pillar", value: story.content_pillar || "News", inline: true },
       )
-      .setFooter({ text: "PULSE GAMING - Verified leaks. Every day." })
+      .setFooter({
+        text: "PULSE GAMING NEWS - Fast gaming news. Checked. Explained.",
+      })
       .setTimestamp(story.timestamp ? new Date(story.timestamp) : new Date());
 
     if (story.breaking_score) {
@@ -264,7 +266,7 @@ async function postVideoUpload(story) {
           "\n\n" +
           `${badge(story.flair)}`,
       )
-      .setFooter({ text: "PULSE GAMING" })
+      .setFooter({ text: "PULSE GAMING NEWS" })
       .setTimestamp();
 
     if (story.article_image) {
@@ -370,7 +372,7 @@ async function postStoryForApproval(story) {
           inline: true,
         },
       )
-      .setFooter({ text: "PULSE GAMING - Story Approval" })
+      .setFooter({ text: "PULSE GAMING NEWS - Story review" })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(

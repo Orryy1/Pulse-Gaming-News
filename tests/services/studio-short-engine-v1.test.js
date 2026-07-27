@@ -16,6 +16,62 @@ const {
   SCENE_TYPES,
   CARD_TYPES,
 } = require("../../lib/scene-composer");
+const {
+  CTA_POLICY,
+} = require("../../lib/services/pulse-editorial-contract");
+
+test("scene composer ignores caller CTA copy and uses only the governed story decision", () => {
+  const cta = "Which version would you install first?";
+  const policy = {
+    policy_version: CTA_POLICY.version,
+    scope: "shorts",
+    include_cta: true,
+    copy_strategy: CTA_POLICY.copy_strategy,
+    cohort_bucket: 0,
+    cohort_numerator: 1,
+    cohort_denominator: 3,
+    audit_hash: `sha256:${"a".repeat(64)}`,
+  };
+  const media = {
+    clips: [{ path: "clip.mp4" }],
+    trailerFrames: [],
+    articleHeroes: [],
+    publisherAssets: [],
+    stockFillers: [],
+  };
+  const selected = composeStudioSlate({
+    story: {
+      id: "scene-selected-cta",
+      title: "Xbox confirms achievements",
+      cta,
+      full_script: `Achievements are confirmed. ${cta}`,
+      cta_policy: policy,
+    },
+    media,
+    audioDurationS: 40,
+    opts: { cta: "FOLLOW FOR MORE" },
+  });
+  const omitted = composeStudioSlate({
+    story: {
+      id: "scene-omitted-cta",
+      title: "Xbox confirms achievements",
+    },
+    media,
+    audioDurationS: 40,
+    opts: { cta: "FOLLOW FOR MORE" },
+  });
+
+  assert.equal(
+    selected.scenes.find((scene) => scene.type === SCENE_TYPES.CARD_TAKEAWAY)
+      .cta,
+    cta,
+  );
+  assert.equal(
+    omitted.scenes.find((scene) => scene.type === SCENE_TYPES.CARD_TAKEAWAY)
+      .cta,
+    "",
+  );
+});
 
 test("studio editorial builds a tighter Metro 2039 script", () => {
   const result = editorial.buildStudioEditorial({

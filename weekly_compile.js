@@ -9,7 +9,7 @@ const db = require('./lib/db');
 
 const execAsync = util.promisify(exec);
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const brand = require('./brand');
 const { getChannel } = require('./channels');

@@ -24,7 +24,7 @@ const path = require("path");
 const axios = require("axios");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 // 2026-04-30 audit P0 (token-log sweep): never print full token values
 // to stdout. CLI output gets pasted into chat / screen-shared / saved

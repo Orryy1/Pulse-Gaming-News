@@ -524,7 +524,7 @@ function buildEvenSpacedAss(story, duration) {
   for (let i = 0; i < tokens.length; i += 4) {
     phrases.push(tokens.slice(i, i + 4).join(" "));
   }
-  if (phrases.length === 0) phrases.push(story.title || "Pulse Gaming");
+  if (phrases.length === 0) phrases.push(story.title || "Pulse Gaming News");
   const per = duration / phrases.length;
   // Build pseudo-words with even start/end.
   const words = [];

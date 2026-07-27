@@ -19,6 +19,9 @@ test("visual QA: premium inventory + clean signals (no pre-built thumbnail) → 
     suggested_thumbnail_text: "IRON SAINT CONSOLE REVEAL",
     flair: "Confirmed",
     company_name: "Halberd Games",
+    editorial_lane_id: "platform_pulse",
+    hook_type: "direct",
+    duration_band_id: "platform_pulse_short_30_36",
     downloaded_images: [
       { path: "p://k.jpg", type: "key_art", source: "steam", priority: 95 },
       { path: "p://h.jpg", type: "hero", source: "steam", priority: 92 },

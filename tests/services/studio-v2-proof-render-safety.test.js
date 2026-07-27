@@ -6,9 +6,39 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
-  assertNarrationAllowedForProof,
-  narrationVoiceBlocker,
+  assertNarrationAllowedForProof: assertNarrationAllowedForProofRaw,
+  narrationVoiceBlocker: narrationVoiceBlockerRaw,
 } = require("../../lib/studio/v2/proof-render-safety");
+const {
+  CTA_POLICY,
+} = require("../../lib/services/pulse-editorial-contract");
+
+const pulseStory = {
+  id: "proof-safety-no-cta",
+  cta: "",
+  full_script: "Take-Two changed course.",
+  cta_policy: {
+    policy_version: CTA_POLICY.version,
+    scope: "shorts",
+    include_cta: false,
+    copy_strategy: "none",
+    cohort_bucket: 1,
+    cohort_numerator: 1,
+    cohort_denominator: 3,
+    audit_hash: `sha256:${"b".repeat(64)}`,
+  },
+};
+
+function narrationVoiceBlocker(narration, env = process.env) {
+  return narrationVoiceBlockerRaw(narration, env, { story: pulseStory });
+}
+
+function assertNarrationAllowedForProof(narration, options = {}) {
+  return assertNarrationAllowedForProofRaw(narration, {
+    story: pulseStory,
+    ...options,
+  });
+}
 
 function proofAudioPath(name = "approved.mp3") {
   const dir = path.join(process.cwd(), "test", "output", "tmp-proof-render-safety");
@@ -24,7 +54,7 @@ test("Studio V2 proof safety blocks unapproved local VoxCPM narration before ren
     provider: "local",
     source: "local-production-voxcpm-path",
     audioPath: proofAudioPath("local-approved.mp3"),
-    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    transcript: "Take-Two changed course.",
     acoustic: { medianPitchHz: 118 },
   };
 
@@ -47,7 +77,7 @@ test("Studio V2 proof safety allows approved local narration only with explicit 
     provider: "local",
     source: "local-production-voxcpm-path",
     audioPath: proofAudioPath("local-explicitly-approved.mp3"),
-    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    transcript: "Take-Two changed course.",
     acoustic: { medianPitchHz: 118 },
   };
 
@@ -82,7 +112,7 @@ test("Studio V2 proof safety allows provided real audio for local proof renders"
     provider: "external",
     source: "provided-real-audio",
     audioPath: proofAudioPath(),
-    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    transcript: "Take-Two changed course.",
     acoustic: { medianPitchHz: 118 },
   };
 
@@ -107,7 +137,7 @@ test("Studio V2 proof safety blocks missing narration files before render", () =
     provider: "external",
     source: "provided-real-audio",
     audioPath: path.join(process.cwd(), "test", "output", "tmp-proof-render-safety", "missing.mp3"),
-    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    transcript: "Take-Two changed course.",
     acoustic: { medianPitchHz: 118 },
   };
 
@@ -136,7 +166,7 @@ test("Studio V2 proof safety allows unapproved local voice only for explicit dia
     provider: "local",
     source: "provided-local-tts-audio",
     audioPath: proofAudioPath("foo_voxcpm2.mp3"),
-    transcript: "Follow Pulse Gaming so you never miss a beat.",
+    transcript: "Take-Two changed course.",
     acoustic: { medianPitchHz: 118 },
   };
 

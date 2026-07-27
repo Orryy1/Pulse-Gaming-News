@@ -39,6 +39,9 @@ function baseStory(overrides = {}) {
     loop: "That makes the missing sequel the real story.",
     full_script:
       "Take-Two may have passed on a legacy sequel. Fans are comparing the mystery sequel with GTA, Red Dead and BioShock while Rockstar focuses on GTA 6. That makes the missing sequel the real story.",
+    editorial_lane_id: "what_changes_for_players",
+    hook_type: "direct",
+    duration_band_id: "what_changes_standard_35_42",
     downloaded_images: [],
     game_images: [],
     video_clips: [],
@@ -149,11 +152,11 @@ test("v1.2 requires multiple exact groups for Take-Two multi-game stories", () =
 
   assert.equal(plan.exact_subject_readiness.exact_subject_asset_count, 6);
   assert.equal(plan.exact_subject_readiness.unique_exact_subject_groups, 1);
-  assert.equal(plan.exact_subject_readiness.studio_v2_60s_eligible, false);
+  assert.equal(plan.exact_subject_readiness.studio_v2_selected_band_eligible, false);
   assert.ok(plan.exact_subject_readiness.downgrade_reasons.includes("needs_3_unique_exact_subject_groups"));
 });
 
-test("v1.2 runtime downgrade rules block 60s candidates below four exact assets", () => {
+test("v1.2 media downgrade rules block selected-band candidates below four exact assets", () => {
   const plan = buildAssetAcquisitionPlan(
     baseStory({
       title: "BioShock sequel rumour returns",
@@ -168,8 +171,11 @@ test("v1.2 runtime downgrade rules block 60s candidates below four exact assets"
   );
 
   assert.equal(plan.exact_subject_readiness.exact_subject_asset_count, 3);
-  assert.equal(plan.exact_subject_readiness.studio_v2_60s_eligible, false);
-  assert.equal(plan.exact_subject_readiness.recommended_runtime_class, "short_only_30_45");
+  assert.equal(plan.exact_subject_readiness.studio_v2_selected_band_eligible, false);
+  assert.equal(
+    plan.exact_subject_readiness.recommended_runtime_class,
+    "what_changes_standard_35_42",
+  );
   assert.equal(plan.exact_subject_readiness.recommended_format, "short_only");
 });
 
@@ -189,8 +195,15 @@ test("v1.2 promotes six diverse exact assets to premium candidate", () => {
 
   assert.equal(plan.exact_subject_readiness.exact_subject_asset_count, 6);
   assert.equal(plan.exact_subject_readiness.unique_exact_subject_groups, 3);
-  assert.equal(plan.exact_subject_readiness.studio_v2_60s_eligible, true);
-  assert.equal(plan.exact_subject_readiness.recommended_runtime_class, "premium_short_60_75");
+  assert.equal(plan.exact_subject_readiness.studio_v2_selected_band_eligible, true);
+  assert.equal(
+    plan.exact_subject_readiness.recommended_runtime_class,
+    "what_changes_standard_35_42",
+  );
+  assert.deepEqual(
+    plan.exact_subject_readiness.recommended_runtime_seconds,
+    [35, 42],
+  );
   assert.equal(plan.exact_subject_readiness.recommended_format, "premium_short");
 });
 
@@ -211,7 +224,7 @@ test("v1.2 downgrades repeated image decks even with enough exact labels", () =>
   );
 
   assert.equal(plan.exact_subject_readiness.repeated_asset_pairs > 0, true);
-  assert.equal(plan.exact_subject_readiness.studio_v2_60s_eligible, false);
+  assert.equal(plan.exact_subject_readiness.studio_v2_selected_band_eligible, false);
   assert.ok(plan.exact_subject_readiness.downgrade_reasons.includes("repeated_asset_pairs_above_threshold"));
 });
 
@@ -251,8 +264,11 @@ test("Creator Studio OS exposes exact-subject readiness fields", () => {
   assert.equal(packet.media_inventory.exact_subject_asset_count, 3);
   assert.equal(packet.media_inventory.generic_context_asset_count, 1);
   assert.equal(packet.media_inventory.premium_countable_asset_count, 3);
-  assert.equal(packet.media_inventory.studio_v2_60s_eligibility, false);
-  assert.equal(packet.media_inventory.recommended_runtime_class, "short_only_30_45");
+  assert.equal(packet.media_inventory.studio_v2_selected_band_eligibility, false);
+  assert.equal(
+    packet.media_inventory.recommended_runtime_class,
+    "what_changes_standard_35_42",
+  );
   assert.ok(packet.media_inventory.rejection_or_downgrade_reasons.length > 0);
 });
 

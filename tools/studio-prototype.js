@@ -14,7 +14,8 @@
  *
  * Single story (1sn9xhe), all-ffmpeg, zero HyperFrames.
  *
- * Usage: node tools/studio-prototype.js
+ * Migration-only usage:
+ *   PULSE_ENABLE_MIGRATION_ONLY_PROTOTYPE=true node tools/studio-prototype.js
  */
 
 "use strict";
@@ -51,6 +52,18 @@ const FONT_OPT =
   process.platform === "win32"
     ? "fontfile='C\\:/Windows/Fonts/arial.ttf'"
     : "font='DejaVu Sans'";
+const MIGRATION_ONLY_POLICY = Object.freeze({
+  migration_only: true,
+  production_publish_allowed: false,
+});
+
+function assertMigrationOnlyExecution(env = process.env) {
+  if (env.PULSE_ENABLE_MIGRATION_ONLY_PROTOTYPE !== "true") {
+    throw new Error(
+      "migration_only_prototype_disabled:set_PULSE_ENABLE_MIGRATION_ONLY_PROTOTYPE=true_for_local_test_output_only",
+    );
+  }
+}
 
 // ---- Fixture loading ---------------------------------------------
 
@@ -232,7 +245,7 @@ function buildOpenerFilter({ slot, scene, story, fontOpt }) {
  */
 function buildTakeawayCardFilter({ slot, duration, scene, fontOpt }) {
   const text = (scene.text || "WATCH THE FULL TRAILER").replace(/'/g, "’");
-  const cta = (scene.cta || "FOLLOW FOR MORE").replace(/'/g, "’");
+  const cta = (scene.cta || "FAST. CHECKED. EXPLAINED.").replace(/'/g, "’");
   const cardKind = scene.cardKind || "takeaway";
   const fadeIn = (start, dur = 0.4) =>
     `alpha='if(lt(t\\,${start})\\,0\\,if(lt(t-${start}\\,${dur})\\,(t-${start})/${dur}\\,1))'`;
@@ -453,6 +466,7 @@ function inlineCharsToWords(alignment) {
 // ---- Main --------------------------------------------------------
 
 async function main() {
+  assertMigrationOnlyExecution();
   await fs.ensureDir(TEST_OUT);
 
   const story = await loadStory();
@@ -492,7 +506,7 @@ async function main() {
     story,
     media,
     audioDurationS: audioDuration,
-    opts: { takeawayText: "WATCH THE FULL TRAILER", cta: "FOLLOW FOR MORE" },
+    opts: { takeawayText: "WATCH THE FULL TRAILER" },
   });
   // 1b. If a HyperFrames source-card MP4 has been provided, attach
   // it to the FIRST card.source scene as a pre-rendered video.
@@ -751,3 +765,8 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  MIGRATION_ONLY_POLICY,
+  assertMigrationOnlyExecution,
+};

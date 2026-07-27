@@ -5,11 +5,12 @@ const assert = require("node:assert/strict");
 
 const { buildMetadata } = require("../../upload_youtube");
 
-test("buildMetadata renders a targeted affiliate stack in the description", () => {
+test("Pulse v1 freezes affiliate links in public YouTube metadata", () => {
   const meta = buildMetadata({
+    channel_id: "pulse-gaming",
     title: "Pokemon Go event announced",
     full_script:
-      "Pokemon Go has a new event. Players can catch more monsters in the new update. Follow Pulse Gaming for more gaming news.",
+      "Pokemon Go has a new event. Players can catch more monsters in the new update.",
     affiliate_links: [
       {
         label: "Pokemon Go Plus+",
@@ -22,8 +23,8 @@ test("buildMetadata renders a targeted affiliate stack in the description", () =
     ],
   });
 
-  assert.match(meta.description, /Related links:/);
-  assert.match(meta.description, /Pokemon Go Plus\+/);
-  assert.match(meta.description, /Pokemon TCG/);
-  assert.equal((meta.description.match(/tag=pulsegaming-21/g) || []).length, 2);
+  assert.doesNotMatch(meta.description, /Related links:/);
+  assert.doesNotMatch(meta.description, /Pokemon Go Plus\+/);
+  assert.doesNotMatch(meta.description, /Pokemon TCG/);
+  assert.doesNotMatch(meta.description, /tag=pulsegaming-21/);
 });

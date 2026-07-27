@@ -1,0 +1,277 @@
+{
+  "schema_version": "pulse-phase-0-report-index-v1",
+  "generated_at": "2026-07-27T08:17:00.0885794Z",
+  "source_commit_sha": "ed2745dd2cbeeb179ab54d47b8d380304baaf9e5",
+  "runtime_commit_sha": "MISMATCH — local ec2ba4d98d3ee55f8c8999952cde5b378168e0c1; public 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10",
+  "environment": "LOCAL_PROOF release worktree plus read-only local :3001, Windows task, public Railway and GitHub metadata observations; no mutation",
+  "scope": "Inventory of the ten canonical documents, ten required Phase 0 reports, compatibility goal and machine-readable audit implementation matrix",
+  "expires_at": "2026-08-03T08:17:00.0885794Z",
+  "supersedes": "none — first machine-readable Phase 0 documentation index",
+  "superseded_by": "none",
+  "authoritative": false,
+  "authority_scope": "Inventory only. Canonical Markdown documents govern repository policy within their stated scope. This index is not runtime evidence.",
+  "stale_notice": "STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS",
+  "verification_state": "RED_PROVENANCE_MISMATCH_MULTIPLE_OWNER_RISK_FINAL_SOURCE_RESTAMPED",
+  "canonical_documents": [
+    {
+      "path": "README.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "OPERATING_MODES.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "DATA_MODEL.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "CONTENT_STANDARD.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "MEDIA_AND_RIGHTS.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "PLATFORM_MATRIX.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "DEPLOYMENT_RUNBOOK.md",
+      "authoritative": true,
+      "verification_state": "REFRESHED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "INCIDENT_RUNBOOK.md",
+      "authoritative": true,
+      "verification_state": "CREATED_METADATA_AND_LINKS_LOCALLY_VERIFIED"
+    },
+    {
+      "path": "CURRENT_STATUS.md",
+      "authoritative": true,
+      "verification_state": "CREATED_RUNTIME_MISMATCH_AND_MULTIPLE_OWNER_RISK_OBSERVED"
+    }
+  ],
+  "required_phase_0_reports": [
+    {
+      "path": "docs/stabilisation/phase-0/runtime_provenance_report.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_RED_RUNTIME_PROVENANCE_MISMATCH"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/publishing_process_inventory.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_RED_MULTIPLE_OWNER_RISK"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/pr68_pr69_overlap_report.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_PR68_CONTAINED_HUMAN_SUPERSESSION_PENDING"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/release_pulse_v1_slice_plan.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_PROPOSAL_ONLY"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/database_state_integrity_report.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_SCHEMA_SOURCE_ONLY_DATABASE_UNVERIFIED"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/scheduler_ownership_report.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_RED_MULTIPLE_OWNER_RISK"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/analytics_readiness_report.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_SOURCE_CAPABILITY_ONLY_LIVE_DATA_UNVERIFIED"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/ci_implementation_plan.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_STATIC_WORKFLOW_ONLY_CURRENT_RUN_UNVERIFIED"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/documentation_consolidation_plan.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_PROPOSAL_ONLY"
+    },
+    {
+      "path": "docs/stabilisation/phase-0/current_status_proposal.md",
+      "authoritative": false,
+      "verification_state": "GENERATED_PROPOSAL_ONLY"
+    }
+  ],
+  "compatibility_documents": [
+    {
+      "path": "docs/codex-main-goal.md",
+      "authoritative": true,
+      "verification_state": "CREATED_COMPATIBILITY_CONTRACT_LINKS_LOCALLY_VERIFIED"
+    }
+  ],
+  "release_slice_controls": [
+    {
+      "path": "docs/stabilisation/release-slices/audit_implementation_matrix.json",
+      "authoritative": false,
+      "verification_state": "CREATED_139_CONTROL_ITEMS_PRODUCTION_RED"
+    }
+  ],
+  "unverified_evidence": [
+    "provider_build_authority_and_release_deployment_parity",
+    "production_database_integrity",
+    "scheduler_process_and_lease_owner",
+    "pr_68_human_supersession_approval",
+    "pr_69_later_work_release_slice_provenance",
+    "current_ci_run_and_branch_protection",
+    "oauth_scope_and_platform_eligibility",
+    "live_analytics_data",
+    "live_platform_objects",
+    "real_twelve_video_experiment",
+    "complete_thirty_day_evidence_window"
+  ],
+  "observed_failures": [
+    "release_source_local_runtime_and_public_runtime_commit_mismatch",
+    "multiple_scheduler_or_automation_owner_risk",
+    "three_agent_documented_operator_commands_missing_from_package_and_tools"
+  ],
+  "observed_runtime_evidence": {
+    "observed_at_utc": "2026-07-27T07:31:51Z",
+    "final_release_source_commit": "ed2745dd2cbeeb179ab54d47b8d380304baaf9e5",
+    "release_worktree_interim_commit": "6aa1f5b80cac78fc6edfdf5d1c738714d5d55d62",
+    "main_checkout": {
+      "path": "C:/Users/MORR/gaming-studio/pulse-gaming",
+      "branch": "codex/epidemic-sound-full-integration",
+      "commit": "5dc164dc3469a4bc642fa6ca9498cc296f559198",
+      "dirty_entry_count": 80
+    },
+    "local_listener": {
+      "address": ":3001",
+      "pid": 34536,
+      "process_started_at_reported": "2026-07-26 19:59:11",
+      "process_start_timezone": "UNKNOWN / UNVERIFIED",
+      "health_commit": "ec2ba4d98d3ee55f8c8999952cde5b378168e0c1",
+      "scheduler_active": true,
+      "autonomous_mode": true,
+      "dispatch_mode": "queue",
+      "dispatch_strict": true
+    },
+    "public_railway": {
+      "health_commit": "2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10",
+      "deployment_id": "16d8879f-c4ed-4aef-b16c-a5e06aceed43",
+      "scheduler_active": false,
+      "autonomous_mode": false,
+      "dispatch_mode": "queue",
+      "dispatch_strict": true,
+      "persistent_sqlite": false,
+      "storage_note": "ephemeral indicator from health; database contents not inspected"
+    },
+    "windows_tasks": [
+      {
+        "name": "Orryy-PulseGaming",
+        "schedule": "daily 06:00",
+        "state": "ready",
+        "last_result": "success",
+        "action": "C:/Claude/orryy-expansion/agents/run_daily.py pulse_gaming",
+        "classification": "research, brief and 3-5 drafts; no direct publishing observed"
+      },
+      {
+        "name": "PulseGaming-GrowthAutopilot",
+        "schedule": "approximately every 30 minutes",
+        "state": "ready",
+        "last_result": "success",
+        "action": "tools/growth-autopilot.js",
+        "classification": "reads database/reports and writes local artefacts; no external publishing observed"
+      },
+      {
+        "name": "PulseGaming-LiveWatchdog-Supervisor",
+        "schedule": "boot trigger",
+        "state": "running",
+        "last_result": "267009",
+        "action": "tools/local-live-watchdog.ps1",
+        "classification": "live-publishing-capable; enforces local primary runtime, workers, tunnel, AUTO_PUBLISH=true and queue mode"
+      },
+      {
+        "name": "PulseGaming-OAuthUptime",
+        "schedule": "approximately every six hours",
+        "state": "ready",
+        "last_result": "success",
+        "action": "tools/oauth-uptime-maintenance.js --refresh",
+        "classification": "token-mutating; allowTokenMutation=true"
+      }
+    ]
+  },
+  "observed_pull_request_evidence": {
+    "observed_date": "2026-07-27",
+    "pr_68": {
+      "url": "https://github.com/Orryy1/Pulse-Gaming-News/pull/68",
+      "state": "open",
+      "draft": true,
+      "title": "Reconcile V4 governance cutover work",
+      "base": "main@2c7f47c5",
+      "head": "codex/github-reconciliation-v4-cutover@9e23fdb3",
+      "mergeable_state": "clean",
+      "commits": 522,
+      "changed_files": 901,
+      "additions": 249610,
+      "deletions": 4023,
+      "updated_at": "2026-05-27"
+    },
+    "pr_69": {
+      "url": "https://github.com/Orryy1/Pulse-Gaming-News/pull/69",
+      "state": "open",
+      "draft": true,
+      "title": "[codex] restore governed publish readiness and narration cadence",
+      "base": "main@2c7f47c5",
+      "head": "codex/epidemic-sound-full-integration@cfe609ae",
+      "mergeable_state": "clean",
+      "commits": 1348,
+      "changed_files": 1277,
+      "additions": 522756,
+      "deletions": 6197,
+      "updated_at": "2026-07-15"
+    },
+    "ancestry": {
+      "merge_base": "pr_68_head_9e23fdb3",
+      "pr_68_is_ancestor_of_pr_69": true,
+      "rev_list_left_right_count": [0, 826],
+      "cherry_equivalent_unique_count": [0, 826]
+    },
+    "changed_paths": {
+      "pr_68_main_relative": 901,
+      "pr_69_main_relative": 1277,
+      "unique_to_pr_68": 0,
+      "unique_to_pr_69": 376
+    },
+    "main_checkout_ahead_of_pr_69": {
+      "checkout_commit": "5dc164dc3469a4bc642fa6ca9498cc296f559198",
+      "pr_69_is_ancestor": true,
+      "rev_list_left_right_count": [0, 145]
+    },
+    "pr_68_unique_work": false,
+    "safe_supersession": "PENDING_HUMAN_REVIEW"
+  },
+  "validation": {
+    "json_parse": "PASS",
+    "required_file_inventory": "PASS_10_CANONICAL_10_PHASE0_1_COMPATIBILITY_1_MATRIX",
+    "markdown_metadata": "PASS_21_DOCUMENTS_FINAL_SOURCE_AND_EXPIRY_MATCH",
+    "relative_links": "PASS_0_MISSING",
+    "audit_matrix": "PASS_139_ITEMS_ENUM_PATH_AND_COUNT_VALID",
+    "unqualified_production_green_scan": "PASS_ONLY_NEGATED_OR_EXPLICITLY_UNSATISFIED_REFERENCES",
+    "diff_check": "PASS",
+    "docs_doctor": "PASS_REPORTED_BY_ROOT_EXIT_0"
+  }
+}

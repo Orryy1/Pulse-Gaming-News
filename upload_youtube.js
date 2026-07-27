@@ -2,14 +2,15 @@ const fs = require("fs-extra");
 const path = require("path");
 const { google } = require("googleapis");
 const dotenv = require("dotenv");
-const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
-const { normaliseAffiliateLinks } = require("./lib/affiliate-targeting");
+const {
+  assessPostPublishMutation,
+} = require("./lib/services/post-publish-mutation-policy");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const TOKEN_PATH = path.join(__dirname, "tokens", "youtube_token.json");
 const CREDENTIALS_PATH = path.join(
@@ -24,24 +25,34 @@ const PLAYLIST_DEFS = [
   {
     key: "breaking",
     title: "Breaking Gaming News",
-    desc: "The biggest breaking stories in gaming - delivered fast. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Fast gaming news with the player consequence and source evidence made clear.",
   },
   {
     key: "leaks_rumours",
     title: "Gaming Leaks & Rumours",
-    desc: "The latest gaming leaks, insider info and rumours - all in one place. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Source-checked gaming reports, clearly labelled by confidence and explained for players.",
   },
   {
     key: "confirmed",
     title: "Confirmed Gaming News",
-    desc: "Verified, confirmed gaming news you can trust. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Confirmed gaming news with proof on screen and the practical consequence explained.",
   },
   {
     key: "all_shorts",
-    title: "All Pulse Gaming Shorts",
-    desc: "Every Pulse Gaming Short in one playlist. Sit back, hit play and catch up on everything. Follow Pulse Gaming so you never miss a beat.",
+    title: "All Pulse Gaming News Shorts",
+    desc: "Every Pulse Gaming News Short: fast gaming news, checked and explained.",
   },
 ];
+
+function resolveApprovedPinnedCommentForUpload(story) {
+  const assessment = assessPostPublishMutation("youtube_pinned_comment", {
+    automatic: false,
+    story,
+  });
+  if (!story?.pinned_comment) return null;
+  if (!assessment.allowed) return null;
+  return assessment.payload.text;
+}
 
 // Map classification tags to playlist keys
 function getPlaylistKeys(classification) {
@@ -222,29 +233,18 @@ function buildMetadata(story) {
   }
   descLines.push("");
 
-  // --- Section 2: Affiliate CTA ---
-  const affiliateLinks = normaliseAffiliateLinks(story).slice(0, 4);
-  if (affiliateLinks.length === 1) {
-    descLines.push(`${affiliateLinks[0].label}: ${affiliateLinks[0].url}`);
-    descLines.push("");
-  } else if (affiliateLinks.length > 1) {
-    descLines.push("Related links:");
-    for (const link of affiliateLinks) {
-      descLines.push(`- ${link.label}: ${link.url}`);
-    }
-    descLines.push("");
-  }
+  // Pulse v1 deliberately keeps affiliate and sponsor material out of public
+  // metadata while the controlled editorial experiment establishes audience
+  // trust and intent.
 
-  // --- Section 3: Channel identity ---
+  // --- Section 2: Channel identity ---
   descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
   descLines.push(
-    brand.CTA
-      ? brand.CTA.replace(/^Follow /i, "Follow ")
-      : "Follow so you never miss an update.",
+    "Player consequences, source evidence and clear explanations.",
   );
   descLines.push("");
 
-  // --- Section 4: Social links ---
+  // --- Section 3: Social links ---
   const socials = channel.socials || {};
   if (Object.keys(socials).length > 0) {
     if (socials.tiktok) descLines.push(`TikTok: ${socials.tiktok}`);
@@ -254,7 +254,7 @@ function buildMetadata(story) {
     descLines.push("");
   }
 
-  // --- Section 5: Sources ---
+  // --- Section 4: Sources ---
   const sourceLinks = [];
   if (story.url && story.url.startsWith("http")) sourceLinks.push(story.url);
   if (
@@ -481,11 +481,80 @@ async function addToPlaylists(youtube, videoId, classification) {
   return added;
 }
 
+async function insertYoutubeVideoOnce(youtube, request) {
+  if (!youtube?.videos || typeof youtube.videos.insert !== "function") {
+    throw new Error("youtube_video_insert_client_required");
+  }
+  return youtube.videos.insert(request);
+}
+
+function resolveContainsSyntheticMedia(story) {
+  const disclosure = story?.synthetic_media_disclosure;
+  const decision = String(
+    disclosure?.decision || "",
+  )
+    .trim()
+    .toUpperCase();
+  if (
+    decision !== "DISCLOSE" &&
+    decision !== "NO_DISCLOSURE_REQUIRED"
+  ) {
+    throw new Error("youtube_synthetic_disclosure_decision_required");
+  }
+  if (typeof disclosure?.youtube_field_value !== "boolean") {
+    throw new Error("youtube_synthetic_disclosure_field_required");
+  }
+  const expected = decision === "DISCLOSE";
+  if (disclosure.youtube_field_value !== expected) {
+    throw new Error("youtube_synthetic_disclosure_field_mismatch");
+  }
+  return disclosure.youtube_field_value;
+}
+
+function buildYoutubeShortRequestBody(
+  story,
+  { title, description, tags, categoryId = "20" } = {},
+) {
+  return {
+    snippet: {
+      title,
+      description,
+      tags,
+      categoryId,
+      defaultLanguage: "en",
+      defaultAudioLanguage: "en",
+    },
+    status: {
+      privacyStatus: "public",
+      selfDeclaredMadeForKids: false,
+      embeddable: true,
+      containsSyntheticMedia: resolveContainsSyntheticMedia(story),
+    },
+  };
+}
+
 // --- Upload a single video as YouTube Short ---
-async function uploadShort(story) {
+async function uploadShort(
+  story,
+  {
+    governedDispatch = false,
+    markCreateAttemptStarted = null,
+  } = {},
+) {
+  if (governedDispatch !== true) {
+    throw new Error("governed_youtube_dispatch_required");
+  }
+  if (typeof markCreateAttemptStarted !== "function") {
+    throw new Error("youtube_create_boundary_marker_required");
+  }
+  const approvedComment = resolveApprovedPinnedCommentForUpload(story);
+  if (story?.pinned_comment && !approvedComment) {
+    console.log(
+      "[youtube] Optional top-level comment omitted: explicit hash-bound operator approval is missing or invalid",
+    );
+  }
   addBreadcrumb(`YouTube upload: ${story.title}`, "upload");
-  return withRetry(
-    async () => {
+  {
       const auth = await getAuthClient();
       const youtube = google.youtube({ version: "v3", auth });
 
@@ -623,24 +692,16 @@ async function uploadShort(story) {
 
       console.log(`[youtube] Uploading: "${title}"`);
 
-      const response = await youtube.videos.insert({
+      markCreateAttemptStarted();
+      const response = await insertYoutubeVideoOnce(youtube, {
         part: ["snippet", "status"],
-        requestBody: {
-          snippet: {
-            title,
-            description,
-            tags,
-            categoryId:
-              require("./channels").getChannel().youtubeCategory || "20",
-            defaultLanguage: "en",
-            defaultAudioLanguage: "en",
-          },
-          status: {
-            privacyStatus: "public",
-            selfDeclaredMadeForKids: false,
-            embeddable: true,
-          },
-        },
+        requestBody: buildYoutubeShortRequestBody(story, {
+          title,
+          description,
+          tags,
+          categoryId:
+            require("./channels").getChannel().youtubeCategory || "20",
+        }),
         media: {
           body: fs.createReadStream(exportedAbs || story.exported_path),
         },
@@ -648,6 +709,17 @@ async function uploadShort(story) {
 
       const videoId = response.data.id;
       console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
+
+      // Return the external identity immediately. The governed dispatcher
+      // must durably anchor PLATFORM_OBJECT_CREATED before any optional
+      // playlist, thumbnail or comment mutation is allowed. Those legacy
+      // enrichments remain frozen during stabilisation and will move to
+      // separately leased metadata jobs in a later release slice.
+      return {
+        platform: "youtube",
+        videoId,
+        url: `https://youtube.com/shorts/${videoId}`,
+      };
 
       // Add to playlists based on classification
       try {
@@ -717,23 +789,26 @@ async function uploadShort(story) {
         }
       }
 
-      // Post pinned comment
-      if (story.pinned_comment) {
+      // The Data API can create a top-level comment but cannot pin it.
+      // Only submit text that has a separate, hash-bound operator approval.
+      if (approvedComment) {
         try {
-          const commentResponse = await youtube.commentThreads.insert({
+          await youtube.commentThreads.insert({
             part: ["snippet"],
             requestBody: {
               snippet: {
                 videoId,
                 topLevelComment: {
                   snippet: {
-                    textOriginal: story.pinned_comment,
+                    textOriginal: approvedComment,
                   },
                 },
               },
             },
           });
-          console.log(`[youtube] Pinned comment posted`);
+          console.log(
+            "[youtube] Approved top-level comment posted; pinning remains a manual Studio action",
+          );
         } catch (err) {
           console.log(
             `[youtube] Comment failed (non-critical): ${err.message}`,
@@ -746,13 +821,14 @@ async function uploadShort(story) {
         videoId,
         url: `https://youtube.com/shorts/${videoId}`,
       };
-    },
-    { label: "youtube upload" },
-  );
+  }
 }
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
+  throw new Error(
+    "legacy_youtube_batch_publish_disabled_use_governed_queue",
+  );
   const stories = await db.getStories();
   if (!stories.length) {
     console.log("[youtube] No stories found");
@@ -877,6 +953,14 @@ async function uploadAll() {
 
 // --- Upload a longform compilation as a regular YouTube video (NOT a Short) ---
 async function uploadLongform(compilation) {
+  const profile = String(
+    process.env.PULSE_SCHEDULER_PROFILE || "stabilisation_30d",
+  )
+    .trim()
+    .toLowerCase();
+  if (profile !== "legacy") {
+    throw new Error("stabilisation_longform_upload_disabled");
+  }
   const auth = await getAuthClient();
   const youtube = google.youtube({ version: "v3", auth });
   const brand = require("./brand");
@@ -917,9 +1001,7 @@ async function uploadLongform(compilation) {
   }
 
   descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
-  descLines.push(
-    brand.CTA ? brand.CTA : "Subscribe so you never miss a roundup.",
-  );
+  if (brand.CTA) descLines.push(brand.CTA);
   descLines.push("");
 
   const hashtags = (channel.hashtags || [])
@@ -986,6 +1068,10 @@ async function postCommunityImage(story) {
 }
 
 module.exports = {
+  buildYoutubeShortRequestBody,
+  insertYoutubeVideoOnce,
+  resolveApprovedPinnedCommentForUpload,
+  resolveContainsSyntheticMedia,
   uploadShort,
   uploadAll,
   uploadLongform,

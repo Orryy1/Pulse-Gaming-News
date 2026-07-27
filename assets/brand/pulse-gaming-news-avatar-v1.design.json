@@ -1,0 +1,42 @@
+{
+  "schema_version": "pulse-brand-asset-v1",
+  "asset_id": "pulse-gaming-news-avatar-v1",
+  "status": "local_review_candidate",
+  "live_channel_changed": false,
+  "brand_name": "Pulse Gaming News",
+  "tagline": "Fast gaming news. Checked. Explained.",
+  "requirements": {
+    "wordless": true,
+    "mark_circle_coverage_target_percent": [70, 80],
+    "palette": {
+      "background": "#070707",
+      "field": "#090909",
+      "mark": "#FF6B1A"
+    },
+    "flat_colour": true,
+    "soft_glow": false,
+    "asymmetric": true,
+    "tiny_size_proofs_px": [24, 32, 48]
+  },
+  "generation": {
+    "mode": "built-in image generation followed by deterministic SVG construction",
+    "use_case": "logo-brand",
+    "prompt": "Create one exceptionally polished, wordless gaming-news signal mark: a bold amber-orange emblem combining a thick asymmetric audio pulse waveform with a subtle abstract P/G monogram, occupying 70–80% of a near-black circular field, with flat colour, no glow, no gradients, no shadows, no text and no generic gaming symbols."
+  },
+  "files": {
+    "master": "assets/brand/pulse-gaming-news-avatar-v1.svg",
+    "preview_1024": "assets/brand/pulse-gaming-news-avatar-v1.png",
+    "proof_48": "assets/brand/proof/pulse-gaming-news-avatar-v1-48.png",
+    "proof_32": "assets/brand/proof/pulse-gaming-news-avatar-v1-32.png",
+    "proof_24": "assets/brand/proof/pulse-gaming-news-avatar-v1-24.png",
+    "proof_sheet": "assets/brand/proof/pulse-gaming-news-avatar-v1-proof-sheet.png"
+  },
+  "sha256": {
+    "master": "24678bbc3f0e59dab5fdb9314b96e5ed5838a7255200fa45462e1b2f5ce94292",
+    "preview_1024": "c99d062326382e7237337048b94d87785a7080cd92635c86bfb30dfad0517cf9",
+    "proof_48": "f42439cc3552ab1811abf97c4670415d428e74e2e6e216101979f548030449ce",
+    "proof_32": "e88cc2b76512b66ac7cf51889f138eb95433e80215a3d8d1c3dffbebdb9aa9ba",
+    "proof_24": "83f5a4d77fc37dd9518ac40d1eb917e47c04c9a3fe63bf7c970793a8f2bf37c5",
+    "proof_sheet": "1c2afd81c1945a3629728d050f8ba1b65478a6a9e6570318ff3b5779b0e1d790"
+  }
+}

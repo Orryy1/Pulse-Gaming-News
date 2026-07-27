@@ -1,0 +1,47 @@
+{
+  "schema_version": "pulse-release-slice-verification-v1",
+  "generated_at": "2026-07-27T02:31:56.459Z",
+  "code_commit_sha": "658fedcf7131c53cdb84900fccd6870008c0068c",
+  "branch": "release/pulse-v1",
+  "slice": "01-config-env-runtime-provenance",
+  "verdict": "GREEN_LOCAL_PROOF",
+  "production_authority": false,
+  "verification": {
+    "focused_tests": {
+      "passed": 41,
+      "failed": 0
+    },
+    "full_tests": {
+      "passed": 1877,
+      "failed": 0
+    },
+    "dashboard_build": "PASS",
+    "secret_scan": {
+      "scanned_files": 377,
+      "findings": 0
+    },
+    "agent_operating_rules": "PASS",
+    "docs_doctor": {
+      "high": 0,
+      "medium": 0,
+      "low": 3
+    },
+    "diff_check": "PASS"
+  },
+  "remaining_blockers": [
+    "production_runtime_not_verified_or_changed",
+    "github_branch_protection_not_configured",
+    "release_branch_not_pushed",
+    "slice_02_database_scheduler_reconciliation_outstanding",
+    "dependency_advisories_require_review",
+    "analytics_and_five_video_import_outstanding",
+    "publishing_gates_outstanding"
+  ],
+  "dependency_advisories": {
+    "total": 37,
+    "low": 1,
+    "moderate": 23,
+    "high": 11,
+    "critical": 2
+  }
+}

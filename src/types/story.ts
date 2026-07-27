@@ -65,20 +65,30 @@ export interface StoryCardState {
 }
 
 export interface AutonomousStatus {
+  operatingMode: 'LOCAL_PROOF' | 'HUMAN_REVIEW' | 'LIVE_GUARDED';
   autoPublish: boolean;
+  legacyAutoPublishArmed: boolean;
+  humanReviewRequired: boolean;
   schedulerActive: boolean;
   hunterActive: boolean;
   lastHuntRun: string;
   nextHuntRun: string | null;
   schedule: {
+    profile: string;
     hunts: string[];
-    produce: string;
-    publish: string;
+    publish: string[];
+    maximum: string;
+    minimumGap: string;
+    catchUp: boolean;
+    humanReviewRequired: boolean;
+    strategy: string;
   };
   platforms: {
-    youtube: { configured: boolean };
-    tiktok: { configured: boolean };
-    instagram: { configured: boolean };
+    youtube: { configured: boolean; automation: string };
+    tiktok: { configured: boolean; automation: string };
+    instagram: { configured: boolean; automation: string };
+    facebook: { configured: boolean; automation: string };
+    x: { configured: boolean; automation: string };
   };
 }
 

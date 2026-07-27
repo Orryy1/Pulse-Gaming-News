@@ -31,7 +31,7 @@ const path = require("path");
 const axios = require("axios");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROLE_SPECS = {
   stacked: {

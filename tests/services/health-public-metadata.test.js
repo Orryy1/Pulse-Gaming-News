@@ -21,3 +21,12 @@ test("/api/health public metadata redacts raw SQLite filesystem paths", () => {
   assert.notEqual(start, -1, "health route not found");
   assert.doesNotMatch(healthBlock, /sqlite_db_path\s*:\s*sqliteDbPath\s*[,}]/);
 });
+
+test("/api/health build metadata is resolved through the sanitised runtime identity", () => {
+  assert.match(src, /resolveRuntimeBuildInfo/);
+  assert.match(healthBlock, /resolveRuntimeBuildInfo\(/);
+  assert.doesNotMatch(
+    healthBlock,
+    /const\s+commitSha\s*=\s*process\.env\.RAILWAY_GIT_COMMIT_SHA/,
+  );
+});

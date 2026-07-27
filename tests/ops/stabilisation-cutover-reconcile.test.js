@@ -464,7 +464,7 @@ test("inspection plans quarantines, safe stale reaping and exactly two governed 
   }
 });
 
-test("dry-run classifies both observed recovery job kinds as legacy non-governed debt", () => {
+test("dry-run classifies observed recovery and retired automation job kinds as legacy non-governed debt", () => {
   const directory = workspace();
   const dbPath = createFixture(directory);
   const outDir = path.join(directory, "proof");
@@ -492,6 +492,24 @@ test("dry-run classifies both observed recovery job kinds as legacy non-governed
       "fresh_production_refill",
       insertJob.run(
         "fresh_production_refill",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+      ),
+    ],
+    [
+      "growth_autopilot",
+      insertJob.run(
+        "growth_autopilot",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+      ),
+    ],
+    [
+      "oauth_uptime_maintenance",
+      insertJob.run(
+        "oauth_uptime_maintenance",
         "2026-07-27T08:00:00.000Z",
         "2026-07-27T08:00:00.000Z",
         "2026-07-27T08:00:00.000Z",

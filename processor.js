@@ -1,7 +1,19 @@
+"use strict";
+
+const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  loadDotenvOnce({ dotenv, env: process.env });
+}
+assertValidRuntimeConfig(process.env);
+
 const Anthropic = require("@anthropic-ai/sdk");
 const axios = require("axios");
 const fs = require("fs-extra");
-const dotenv = require("dotenv");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const {
@@ -10,8 +22,6 @@ const {
   DEFAULT_MIN_WORDS,
   DEFAULT_MAX_WORDS,
 } = require("./lib/services/short-runtime-planner");
-
-dotenv.config({ override: true });
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");

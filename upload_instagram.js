@@ -14,7 +14,7 @@ const {
   normaliseAffiliateLinks,
 } = require("./lib/affiliate-targeting");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 function resolveTokenPath() {
   return resolveInstagramTokenPath();

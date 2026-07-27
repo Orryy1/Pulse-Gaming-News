@@ -1,7 +1,19 @@
+"use strict";
+
+const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  loadDotenvOnce({ dotenv, env: process.env });
+}
+assertValidRuntimeConfig(process.env);
+
 const axios = require("axios");
 const fs = require("fs-extra");
 const path = require("path");
-const dotenv = require("dotenv");
 const { exec, execFile } = require("child_process");
 const util = require("util");
 const db = require("./lib/db");
@@ -9,10 +21,6 @@ const mediaPaths = require("./lib/media-paths");
 
 const execAsync = util.promisify(exec);
 const execFileAsync = util.promisify(execFile);
-
-if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  dotenv.config({ override: true });
-}
 
 const brand = require("./brand");
 

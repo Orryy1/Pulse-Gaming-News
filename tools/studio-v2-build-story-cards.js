@@ -308,7 +308,7 @@ async function loadStoryForCards(storyId) {
     };
   }
 
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
   const Database = require("better-sqlite3");
   const { resolveStudioDbPath } = require("../lib/studio/v2/studio-db-path");
   const db = new Database(resolveStudioDbPath({ root: ROOT }), {

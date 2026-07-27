@@ -9,7 +9,7 @@ const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 const { normaliseAffiliateLinks } = require("./lib/affiliate-targeting");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const TOKEN_PATH = path.join(__dirname, "tokens", "youtube_token.json");
 const CREDENTIALS_PATH = path.join(

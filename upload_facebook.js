@@ -22,7 +22,7 @@ const mediaPaths = require("./lib/media-paths");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { resolveFacebookTokenPath } = require("./lib/token-paths");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 function resolveTokenPath() {
   return resolveFacebookTokenPath();

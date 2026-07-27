@@ -59,9 +59,10 @@ test("PILLAR_NAMES: includes the security + docs drift pillars", () => {
   assert.ok(pr.PILLAR_NAMES.includes("docs_drift"));
 });
 
-test("tools/publish-readiness.js loads .env for local operator runs", () => {
+test("tools/publish-readiness.js loads .env without overriding operator values", () => {
   const src = fs.readFileSync(TOOL_PATH, "utf8");
-  assert.match(src, /require\(["']dotenv["']\)\.config\(\{\s*override:\s*true\s*\}\)/);
+  assert.match(src, /require\(["']dotenv["']\)\.config\(/);
+  assert.doesNotMatch(src, /override:\s*true/);
 });
 
 // ── formatPublishReadinessMarkdown ───────────────────────────────

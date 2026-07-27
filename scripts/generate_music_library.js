@@ -14,7 +14,7 @@ const path = require('path');
 const axios = require('axios');
 const dotenv = require('dotenv');
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const MUSIC_CACHE = path.join(__dirname, '..', 'output', 'music');
 const TARGET_DURATION = 70; // ~65s video + 5s buffer

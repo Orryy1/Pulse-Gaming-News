@@ -3,14 +3,14 @@ const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
 const util = require("util");
-const db = require("./lib/db");
 
 const execAsync = util.promisify(exec);
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  dotenv.config({ override: true });
+  dotenv.config({ override: false, quiet: true });
 }
 
+const db = require("./lib/db");
 const axios = require("axios");
 const brand = require("./brand");
 const { getChannel } = require("./channels");

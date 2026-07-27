@@ -1,11 +1,19 @@
-const fs = require("fs-extra");
+"use strict";
+
 const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+loadDotenvOnce({ dotenv, env: process.env });
+assertValidRuntimeConfig(process.env);
+
+const fs = require("fs-extra");
 const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
-
-dotenv.config({ override: true });
 
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;

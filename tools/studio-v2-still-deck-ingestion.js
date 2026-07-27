@@ -6,7 +6,7 @@ const fs = require("fs-extra");
 const { execFileSync, execSync } = require("node:child_process");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
 } catch {}
 
 const { composeStudioSlate, SCENE_TYPES } = require("../lib/scene-composer");

@@ -1,11 +1,18 @@
+"use strict";
+
+const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+loadDotenvOnce({ dotenv, env: process.env });
+assertValidRuntimeConfig(process.env);
+
 const cron = require("node-cron");
 const fs = require("fs-extra");
 const sendDiscord = require("./notify");
-const dotenv = require("dotenv");
 const db = require("./lib/db");
-
-dotenv.config({ override: true });
-
 /*
   Pulse Gaming Pipeline v2 -Autonomous Operations
 

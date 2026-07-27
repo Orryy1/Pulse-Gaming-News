@@ -1,54 +1,56 @@
 # Pulse Gaming
 
-> **Authority boundary:** This is the canonical repository entry point. It describes the intended governed system at the source commit below. It does not prove what is running in production.
+> **Authority boundary:** This is the canonical repository entry point. It describes the governed system and current cutover evidence at the source boundary below. It does not authorise deployment or publication.
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T08:17:00.0885794Z` |
-| source_commit_sha | `ed2745dd2cbeeb179ab54d47b8d380304baaf9e5` |
-| runtime_commit_sha | `MISMATCH — local ec2ba4d98d3ee55f8c8999952cde5b378168e0c1; public 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
-| environment | `LOCAL_PROOF release worktree plus read-only local :3001, Windows task, public Railway and GitHub metadata observations; no mutation` |
-| scope | Canonical repository orientation, authority boundaries and documentation index |
-| expires_at | `2026-08-03T08:17:00.0885794Z` |
-| supersedes | `none — no root README.md existed at the source baseline` |
+| generated_at | `2026-07-27T10:06:00.000Z` |
+| source_commit_sha | `4e1a632f8c232b56a74b79da30e603746d0100d9` |
+| runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
+| environment | `LOCAL_PROOF release worktree plus named read-only and containment evidence in CURRENT_STATUS.md` |
+| scope | `Canonical repository orientation, authority boundaries and documentation index` |
+| expires_at | `2026-08-03T10:06:00.000Z` |
+| supersedes | `README.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5` |
 | superseded_by | `none` |
 | authoritative | `true` |
 
 If `expires_at` has passed, treat the status statements as **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS** until refreshed.
 
-Pulse Gaming is a Node.js CommonJS media system with a React/Vite control surface. It discovers gaming stories, builds governed editorial and media evidence, renders platform-native assets and can dispatch approved publications through guarded platform adapters. The stabilisation contract is deliberately conservative: a generated file is not automatically publishable and a configured capability is not evidence that a platform is live.
+Pulse Gaming is a Node.js CommonJS media system with a React/Vite control surface. It discovers gaming stories, builds governed editorial and media evidence, renders platform-native assets and can dispatch approved publications through guarded platform adapters. A rendered file is not automatically publishable and a configured adapter is not evidence that a platform is live.
 
-The repository’s compatibility operating goal is [docs/codex-main-goal.md](docs/codex-main-goal.md). It delegates detailed authority to the canonical set below.
+The repository's compatibility operating goal is [docs/codex-main-goal.md](docs/codex-main-goal.md). Detailed authority lives in the canonical documents below.
 
 ## Current release posture
 
-- Default operating mode: `LOCAL_PROOF`.
-- Live publication: **not authorised by this document**.
-- Runtime provenance and scheduler ownership: **RED**. A 2026-07-27 read-only snapshot found different commits in the release worktree, main checkout, local server and public Railway service, with the local scheduler/autonomous indicators active and several Pulse-named Windows tasks present.
-- Production database health, OAuth state and current platform objects: **UNKNOWN / UNVERIFIED**.
-- Approved production stack in the committed operating contract: ElevenLabs, Epidemic Sound, HyperFrames and FFmpeg.
-- Disabled replacement stack: HeyGen, Kokoro and MusicGen.
-- Primary stabilisation platform: YouTube under human review. Secondary-platform automation remains disabled or manual according to [PLATFORM_MATRIX.md](PLATFORM_MATRIX.md).
-- Controlled evidence gate: the real 12-video experiment and 30-day observation window are not yet proven complete.
+- Production status: **NOT GREEN**.
+- Previous local publisher/watchdog and OAuth maintenance tasks: contained and disabled.
+- Custom domain: HTTP `502` fail-closed because no approved local origin is running.
+- Railway: observation-only old deployment at commit `2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10`; not the release target.
+- Production SQLite: integrity checks passed at migration `020`; verified backup, restore and a separate `021` to `023` migration rehearsal exist. Production migrations `021` through `023` remain pending.
+- Replacement ownership: the exact two-window reconciler and fail-closed Windows `HUMAN_REVIEW` supervisor are implemented but have not been applied or installed.
+- Publication: all real preflight output remains unauthorised. Next-candidate and strict dry-run verdicts are `HOLD`.
+- Analytics: five YouTube videos map to five story records, but live Analytics scope, publication timezone provenance and an API sample remain unproved.
+- Platform scope: YouTube under exact final human review only. Instagram, Facebook, TikTok, X, Threads and Pinterest remain disabled, frozen or manual according to [PLATFORM_MATRIX.md](PLATFORM_MATRIX.md).
+- No current release upload or multi-platform post is claimed.
 - Current evidence and blockers: [CURRENT_STATUS.md](CURRENT_STATUS.md).
 
 ## Canonical documentation
 
 Read these documents in order:
 
-1. [ARCHITECTURE.md](ARCHITECTURE.md) — component boundaries and publication lifecycle.
-2. [OPERATING_MODES.md](OPERATING_MODES.md) — permitted actions in each mode.
-3. [DATA_MODEL.md](DATA_MODEL.md) — durable records, migrations and invariants.
-4. [CONTENT_STANDARD.md](CONTENT_STANDARD.md) — editorial and audience-quality contract.
-5. [MEDIA_AND_RIGHTS.md](MEDIA_AND_RIGHTS.md) — asset provenance, rights and disclosure gates.
-6. [PLATFORM_MATRIX.md](PLATFORM_MATRIX.md) — intended platform policy versus unverified live state.
-7. [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) — approved release and verification procedure.
-8. [INCIDENT_RUNBOOK.md](INCIDENT_RUNBOOK.md) — containment and reconciliation procedure.
-9. [CURRENT_STATUS.md](CURRENT_STATUS.md) — expiring release-status snapshot.
+1. [ARCHITECTURE.md](ARCHITECTURE.md) - component boundaries and publication lifecycle.
+2. [OPERATING_MODES.md](OPERATING_MODES.md) - permitted actions in each mode.
+3. [DATA_MODEL.md](DATA_MODEL.md) - durable records, migrations and invariants.
+4. [CONTENT_STANDARD.md](CONTENT_STANDARD.md) - editorial and audience-quality contract.
+5. [MEDIA_AND_RIGHTS.md](MEDIA_AND_RIGHTS.md) - asset provenance, rights and disclosure gates.
+6. [PLATFORM_MATRIX.md](PLATFORM_MATRIX.md) - intended platform policy versus unverified live state.
+7. [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) - approved release and verification procedure.
+8. [INCIDENT_RUNBOOK.md](INCIDENT_RUNBOOK.md) - containment and reconciliation procedure.
+9. [CURRENT_STATUS.md](CURRENT_STATUS.md) - expiring release-status snapshot.
 
-Machine-readable traceability is available in the [Phase 0 report index](docs/stabilisation/phase-0/report_index.json) and [audit implementation matrix](docs/stabilisation/release-slices/audit_implementation_matrix.json). Both are non-authoritative inventories and must be read with their evidence boundaries and expiry.
+The [governed Windows local runtime cutover](docs/stabilisation/windows-local-runtime-cutover.md) is the implementation-specific operator guide for the replacement local runtime.
 
-Architecture decisions belong under `docs/adr/`. Historical generated evidence should move, when deliberately curated, to `docs/archive/YYYY-MM/`. New machine-generated evidence should normally be a CI artefact rather than committed source.
+The old Phase 0 report index and release-slice reports remain non-authoritative historical evidence. Their observations can support a forensic review, but their old source commits and expiry timestamps do not override the canonical set.
 
 ## Repository map
 
@@ -68,24 +70,44 @@ Architecture decisions belong under `docs/adr/`. Historical generated evidence s
 
 ## Safe local orientation
 
-These commands describe or verify source without authorising publication:
+Install and validate a clean checkout:
 
 ```powershell
-npm install
+npm ci
+npm run ops:agent-rules
 npm test
 npm run build
-npm run ops:agent-rules
-npm run ops:publish-readiness
-npm run ops:platform:status
+npm run docs:doctor
 ```
 
-Some operator commands can create local evidence or read configured services. Check [OPERATING_MODES.md](OPERATING_MODES.md) and the command implementation before running them. Never infer live permission from the presence of an npm script.
+The documented release preflights now exist:
 
-Known command-surface gap: `AGENTS.md` names `ops:next-publish-candidates`, `ops:platform-doctor` and `ops:goal-dry-run-publish`, but those scripts and tool entry points do not exist at the recorded source commit. Do not report them as run or passed. The available `ops:publish-readiness`, `ops:control-room` and `ops:system:doctor` checks most recently returned AMBER, AMBER and review respectively, which is not production readiness.
+```powershell
+npm run ops:next-publish-candidates
+npm run ops:platform-doctor
+npm run ops:goal-dry-run-publish
+npm run ops:publish-readiness
+npm run ops:platform:status
+npm run ops:render-health
+```
 
-## Historical material retained
+These commands are evidence surfaces, not publication permission. The 2026-07-27 production-database read-only run returned `HOLD` for the next-candidate and strict dry-run checks. `platform-doctor` passed its fail-closed policy inspection while every platform remained unpublishable.
 
-No prior root `README.md` existed at the source baseline, so nothing was deleted or silently replaced. Useful older guidance remains available and is now explicitly non-canonical:
+This fixes the three publication preflight gaps only. Thirteen render, platform-pack and repair command names in `AGENTS.md` still lack matching npm scripts. Their exact names and release impact are recorded in [CURRENT_STATUS.md](CURRENT_STATUS.md); do not substitute similar commands.
+
+The new cutover tools are also fail-closed:
+
+```powershell
+node tools/stabilisation-cutover-reconcile.js --database D:\pulse-data\pulse.db
+npm run ops:windows-local-runtime -- plan --repo-root <clean-checkout> --expected-commit <sha>
+node tools/youtube-analytics-cutover-audit.js --db D:\pulse-data\pulse.db --out <evidence-directory>
+```
+
+The reconciler is a dry run unless all apply requirements are supplied. The Windows supervisor lifecycle is a dry run without `--apply` and its exact confirmation value. The analytics command reads SQLite only and does not call YouTube or change OAuth.
+
+## Preserved historical guidance
+
+Useful older guidance remains available but is non-canonical:
 
 - [README_OPERATIONS.md](README_OPERATIONS.md)
 - [PULSE_SYSTEM_MAP.md](PULSE_SYSTEM_MAP.md)
@@ -98,4 +120,4 @@ No prior root `README.md` existed at the source baseline, so nothing was deleted
 - [docs/phase-a-inventory.md](docs/phase-a-inventory.md)
 - [docs/phase-c-readwrite-map.md](docs/phase-c-readwrite-map.md)
 
-Those files may contain valuable incident history but they do not override the canonical set above. Their dates, commit references and evidence scope must be checked before use.
+Those files may contain valuable incident history, but their dates, commit references and evidence boundaries must be checked before use.

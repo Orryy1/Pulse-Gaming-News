@@ -1,0 +1,87 @@
+{
+  "schema_version": "pulse-release-slice-verification-v1",
+  "generated_at": "2026-07-27T05:56:56.7374085Z",
+  "code_commit_sha": "e563c041b90f542cb322ba8d26fb51ce30c0048b",
+  "branch": "release/pulse-v1",
+  "slice": "02-db-job-reconciliation",
+  "verdict": "GREEN_LOCAL_PROOF",
+  "production_authority": false,
+  "scope": [
+    "migration_020_governance_schema",
+    "transactional_job_claims_and_lease_fencing",
+    "single_scheduler_and_publisher_ownership",
+    "youtube_only_stabilisation_cadence",
+    "immutable_publication_lifecycle",
+    "human_operator_admission",
+    "exact_request_fingerprint",
+    "single_attempt_youtube_create_boundary",
+    "public_object_verification",
+    "ambiguous_outcome_reconciliation",
+    "atomic_story_projection",
+    "verified_sqlite_backup_tooling"
+  ],
+  "verification": {
+    "focused_stabilisation_tests": {
+      "passed": 269,
+      "failed": 0
+    },
+    "full_tests": {
+      "passed": 2106,
+      "failed": 0
+    },
+    "dashboard_build": "PASS",
+    "syntax_checks": "PASS",
+    "secret_scan": {
+      "scanned_files": 396,
+      "findings": 0,
+      "secret_values_exposed": false
+    },
+    "agent_operating_rules": "PASS",
+    "docs_doctor": {
+      "high": 0,
+      "medium": 0,
+      "low": 3
+    },
+    "diff_check": "PASS"
+  },
+  "migration": {
+    "path": "db/migrations/020_stabilisation_governance.sql",
+    "sha256": "90099468774c7858861b02cba6618f94bbfec4c9950fa172d64f81a8de3bb3e7",
+    "fresh_database_tested": true,
+    "rerun_tested": true,
+    "atomic_rollback_tested": true,
+    "production_applied": false
+  },
+  "backup": {
+    "online_sqlite_backup_implemented": true,
+    "sha256_verification_implemented": true,
+    "read_only_reopen_implemented": true,
+    "quick_check_implemented": true,
+    "integrity_check_implemented": true,
+    "foreign_key_check_implemented": true,
+    "machine_readable_sidecar_implemented": true,
+    "tamper_rejection_tested": true,
+    "production_backup_performed": false
+  },
+  "external_effects": {
+    "live_publish": false,
+    "external_post": false,
+    "oauth_or_token_mutation": false,
+    "production_database_mutation": false,
+    "railway_change": false,
+    "network_platform_verification": false
+  },
+  "remaining_blockers": [
+    "production_database_backup_and_integrity_evidence_not_created",
+    "migration_020_not_applied_to_production",
+    "production_single_primary_lease_not_observed",
+    "youtube_oauth_and_authenticated_channel_not_verified_in_change_window",
+    "live_reconciliation_inventory_not_reviewed",
+    "real_human_review_admission_not_exercised",
+    "real_public_youtube_confirmation_not_observed",
+    "twelve_video_experiment_not_run",
+    "thirty_day_and_ninety_day_operational_evidence_not_available",
+    "release_branch_not_pushed",
+    "github_branch_protection_not_configured"
+  ]
+}

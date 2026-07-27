@@ -10,7 +10,9 @@ const publisherPath = path.resolve(__dirname, "..", "..", "publisher.js");
 const uploaderSource = fs.readFileSync(uploaderPath, "utf8");
 const publisherSource = fs.readFileSync(publisherPath, "utf8");
 const {
+  buildYoutubeShortRequestBody,
   insertYoutubeVideoOnce,
+  resolveContainsSyntheticMedia,
   uploadAll,
   uploadLongform,
   uploadShort,
@@ -33,6 +35,55 @@ test("YouTube create mutation is attempted exactly once when its response is amb
     (error) => error === responseLost,
   );
   assert.equal(attempts, 1);
+});
+
+test("governed YouTube request carries the reviewed altered-content decision", () => {
+  const disclosed = {
+    synthetic_media_disclosure: {
+      contains_synthetic_media: true,
+      decision: "DISCLOSE",
+      rationale: "Synthetic narration is present.",
+      disclosure_text: "Includes AI-generated narration.",
+      youtube_field_value: true,
+      reviewed_at: "2026-07-27T08:45:00.000Z",
+    },
+  };
+  const notDisclosed = {
+    synthetic_media_disclosure: {
+      contains_synthetic_media: false,
+      decision: "NO_DISCLOSURE_REQUIRED",
+      rationale: "The final edit contains no realistic altered content.",
+      disclosure_text: null,
+      youtube_field_value: false,
+      reviewed_at: "2026-07-27T08:45:00.000Z",
+    },
+  };
+
+  assert.equal(resolveContainsSyntheticMedia(disclosed), true);
+  assert.equal(resolveContainsSyntheticMedia(notDisclosed), false);
+  assert.equal(
+    buildYoutubeShortRequestBody(disclosed, {
+      title: "Reviewed title",
+      description: "Reviewed description",
+      tags: ["Pulse Gaming News"],
+      categoryId: "20",
+    }).status.containsSyntheticMedia,
+    true,
+  );
+  assert.throws(
+    () => resolveContainsSyntheticMedia({}),
+    /youtube_synthetic_disclosure_decision_required/,
+  );
+  assert.throws(
+    () =>
+      resolveContainsSyntheticMedia({
+        synthetic_media_disclosure: {
+          ...disclosed.synthetic_media_disclosure,
+          youtube_field_value: false,
+        },
+      }),
+    /youtube_synthetic_disclosure_field_mismatch/,
+  );
 });
 
 test("YouTube adapter refuses direct Short and legacy batch mutation paths", async () => {
@@ -64,7 +115,11 @@ test("publisher is the governed Short caller and the adapter has no generic muta
   assert.doesNotMatch(uploaderSource, /\bwithRetry\b/);
   assert.match(
     publisherSource,
-    /uploadShort\(story,\s*\{\s*governedDispatch:\s*true,\s*markCreateAttemptStarted,\s*\}\)/,
+    /uploadShort\(uploadStory,\s*\{\s*governedDispatch:\s*true,\s*markCreateAttemptStarted,\s*\}\)/,
+  );
+  assert.match(
+    publisherSource,
+    /synthetic_media_disclosure:\s*scheduled\.publicationEvidence\.synthetic_media_disclosure/,
   );
   assert.match(
     uploaderSource,

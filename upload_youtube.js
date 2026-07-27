@@ -487,6 +487,51 @@ async function insertYoutubeVideoOnce(youtube, request) {
   return youtube.videos.insert(request);
 }
 
+function resolveContainsSyntheticMedia(story) {
+  const disclosure = story?.synthetic_media_disclosure;
+  const decision = String(
+    disclosure?.decision || "",
+  )
+    .trim()
+    .toUpperCase();
+  if (
+    decision !== "DISCLOSE" &&
+    decision !== "NO_DISCLOSURE_REQUIRED"
+  ) {
+    throw new Error("youtube_synthetic_disclosure_decision_required");
+  }
+  if (typeof disclosure?.youtube_field_value !== "boolean") {
+    throw new Error("youtube_synthetic_disclosure_field_required");
+  }
+  const expected = decision === "DISCLOSE";
+  if (disclosure.youtube_field_value !== expected) {
+    throw new Error("youtube_synthetic_disclosure_field_mismatch");
+  }
+  return disclosure.youtube_field_value;
+}
+
+function buildYoutubeShortRequestBody(
+  story,
+  { title, description, tags, categoryId = "20" } = {},
+) {
+  return {
+    snippet: {
+      title,
+      description,
+      tags,
+      categoryId,
+      defaultLanguage: "en",
+      defaultAudioLanguage: "en",
+    },
+    status: {
+      privacyStatus: "public",
+      selfDeclaredMadeForKids: false,
+      embeddable: true,
+      containsSyntheticMedia: resolveContainsSyntheticMedia(story),
+    },
+  };
+}
+
 // --- Upload a single video as YouTube Short ---
 async function uploadShort(
   story,
@@ -643,22 +688,13 @@ async function uploadShort(
       markCreateAttemptStarted();
       const response = await insertYoutubeVideoOnce(youtube, {
         part: ["snippet", "status"],
-        requestBody: {
-          snippet: {
-            title,
-            description,
-            tags,
-            categoryId:
-              require("./channels").getChannel().youtubeCategory || "20",
-            defaultLanguage: "en",
-            defaultAudioLanguage: "en",
-          },
-          status: {
-            privacyStatus: "public",
-            selfDeclaredMadeForKids: false,
-            embeddable: true,
-          },
-        },
+        requestBody: buildYoutubeShortRequestBody(story, {
+          title,
+          description,
+          tags,
+          categoryId:
+            require("./channels").getChannel().youtubeCategory || "20",
+        }),
         media: {
           body: fs.createReadStream(exportedAbs || story.exported_path),
         },
@@ -1024,7 +1060,9 @@ async function postCommunityImage(story) {
 }
 
 module.exports = {
+  buildYoutubeShortRequestBody,
   insertYoutubeVideoOnce,
+  resolveContainsSyntheticMedia,
   uploadShort,
   uploadAll,
   uploadLongform,

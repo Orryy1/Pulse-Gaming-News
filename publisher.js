@@ -839,6 +839,96 @@ function publicationDispatchError(code) {
   return error;
 }
 
+function readScheduledPublicationEvidence(evidence) {
+  const publicationEvidence = evidence?.publication_evidence;
+  if (
+    !publicationEvidence ||
+    typeof publicationEvidence !== "object" ||
+    Array.isArray(publicationEvidence) ||
+    publicationEvidence.schema_version !==
+      "pulse-publication-evidence-v1"
+  ) {
+    throw publicationDispatchError(
+      "scheduled_publication_evidence_required",
+    );
+  }
+  for (const field of [
+    "source_evidence_sha256",
+    "qa_report_sha256",
+    "rights_ledger_sha256",
+    "renderer_manifest_sha256",
+  ]) {
+    if (
+      !/^[a-f0-9]{64}$/i.test(
+        String(publicationEvidence[field] || ""),
+      )
+    ) {
+      throw publicationDispatchError(
+        `scheduled_publication_${field}_required`,
+      );
+    }
+  }
+  const transformation =
+    publicationEvidence.originality_transformation;
+  if (
+    !["STRONG", "ADEQUATE"].includes(
+      String(transformation?.verdict || "").trim().toUpperCase(),
+    ) ||
+    !String(transformation?.rationale || "").trim() ||
+    !String(transformation?.evidence_ref || "").trim() ||
+    !/^[a-f0-9]{64}$/i.test(
+      String(transformation?.evidence_sha256 || ""),
+    )
+  ) {
+    throw publicationDispatchError(
+      "scheduled_originality_transformation_evidence_required",
+    );
+  }
+  const renderer = publicationEvidence.renderer;
+  if (
+    !String(renderer?.id || "").trim() ||
+    !String(renderer?.role || "").trim() ||
+    !String(renderer?.version || "").trim()
+  ) {
+    throw publicationDispatchError(
+      "scheduled_renderer_identity_required",
+    );
+  }
+  const disclosure =
+    publicationEvidence.synthetic_media_disclosure;
+  const disclosureDecision = String(disclosure?.decision || "")
+    .trim()
+    .toUpperCase();
+  const reviewedAt = new Date(disclosure?.reviewed_at);
+  const expectedYoutubeField =
+    disclosureDecision === "DISCLOSE"
+      ? true
+      : disclosureDecision === "NO_DISCLOSURE_REQUIRED"
+        ? false
+        : null;
+  if (
+    typeof disclosure?.contains_synthetic_media !== "boolean" ||
+    !["DISCLOSE", "NO_DISCLOSURE_REQUIRED"].includes(
+      disclosureDecision,
+    ) ||
+    !String(disclosure?.rationale || "").trim() ||
+    (disclosureDecision === "DISCLOSE" &&
+      !String(disclosure?.disclosure_text || "").trim()) ||
+    typeof disclosure?.youtube_field_value !== "boolean" ||
+    disclosure.youtube_field_value !== expectedYoutubeField ||
+    !disclosure?.reviewed_at ||
+    Number.isNaN(reviewedAt.getTime()) ||
+    (disclosure?.contains_synthetic_media === true &&
+      disclosureDecision === "NO_DISCLOSURE_REQUIRED" &&
+      !String(disclosure?.policy_basis || "").trim())
+  ) {
+    throw publicationDispatchError(
+      "scheduled_synthetic_disclosure_decision_required",
+    );
+  }
+  return publicationEvidence;
+}
+
 const SCHEDULED_DISPATCH_EARLY_TOLERANCE_MS = 60 * 1000;
 const SCHEDULED_DISPATCH_LATE_TOLERANCE_MS = 15 * 60 * 1000;
 
@@ -892,6 +982,8 @@ function readScheduledDispatchEvidence(
       "scheduled_dispatch_request_fingerprint_required",
     );
   }
+  const publicationEvidence =
+    readScheduledPublicationEvidence(evidence);
   const scheduledFor = new Date(evidence.scheduled_for);
   const effectiveNow =
     at instanceof Date
@@ -935,6 +1027,7 @@ function readScheduledDispatchEvidence(
     evidence,
     idempotencyKey,
     requestFingerprint,
+    publicationEvidence,
     scheduledFor: scheduledFor.toISOString(),
   };
 }
@@ -1659,6 +1752,7 @@ async function _publishNextStoryInner(
           channel:
             runtime.channel ||
             require("./channels").getChannel(pubChannelId),
+          publicationEvidence: scheduled.publicationEvidence,
         },
       );
       if (
@@ -1670,6 +1764,11 @@ async function _publishNextStoryInner(
         );
       }
       const { uploadShort } = require("./upload_youtube");
+      const uploadStory = {
+        ...story,
+        synthetic_media_disclosure:
+          scheduled.publicationEvidence.synthetic_media_disclosure,
+      };
       const dispatchResult = await governedDispatch({
         db: pubRepos.db,
         platformPosts: pubRepos.platformPosts,
@@ -1696,7 +1795,7 @@ async function _publishNextStoryInner(
               reason: `title-skip: ${ytTitleDupe.title}`,
             };
           }
-          const ytResult = await uploadShort(story, {
+          const ytResult = await uploadShort(uploadStory, {
             governedDispatch: true,
             markCreateAttemptStarted,
           });

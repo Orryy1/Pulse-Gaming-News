@@ -43,6 +43,53 @@ test("runtime config rejects the legacy scheduler in every environment", () => {
   assert.ok(parsed.errors.includes("durable_job_queue_required"));
 });
 
+test("runtime config exposes one standard and one optional experimental renderer", () => {
+  const parsed = parseRuntimeConfig({
+    NODE_ENV: "test",
+    PULSE_OPERATING_MODE: "LOCAL_PROOF",
+    USE_JOB_QUEUE: "true",
+  });
+
+  assert.equal(parsed.values.PULSE_STANDARD_RENDERER, "studio-v21");
+  assert.equal(
+    parsed.values.PULSE_EXPERIMENTAL_RENDERER,
+    "hyperframes-next",
+  );
+  assert.equal(parsed.valid, true);
+
+  const disabledExperiment = parseRuntimeConfig({
+    NODE_ENV: "test",
+    PULSE_OPERATING_MODE: "LOCAL_PROOF",
+    USE_JOB_QUEUE: "true",
+    PULSE_EXPERIMENTAL_RENDERER: "disabled",
+  });
+  assert.equal(disabledExperiment.valid, true);
+});
+
+test("runtime config rejects legacy or invented active renderer generations", () => {
+  for (const renderer of ["legacy", "studio-v2", "studio-v4"]) {
+    const parsed = parseRuntimeConfig({
+      NODE_ENV: "test",
+      PULSE_OPERATING_MODE: "LOCAL_PROOF",
+      USE_JOB_QUEUE: "true",
+      PULSE_STANDARD_RENDERER: renderer,
+    });
+    assert.equal(parsed.valid, false);
+    assert.ok(parsed.errors.includes("invalid_enum:PULSE_STANDARD_RENDERER"));
+  }
+
+  const duplicate = parseRuntimeConfig({
+    NODE_ENV: "test",
+    PULSE_OPERATING_MODE: "LOCAL_PROOF",
+    USE_JOB_QUEUE: "true",
+    PULSE_EXPERIMENTAL_RENDERER: "studio-v21",
+  });
+  assert.equal(duplicate.valid, false);
+  assert.ok(
+    duplicate.errors.includes("invalid_enum:PULSE_EXPERIMENTAL_RENDERER"),
+  );
+});
+
 test("startup validation fails closed with structured production errors", () => {
   assert.throws(
     () =>

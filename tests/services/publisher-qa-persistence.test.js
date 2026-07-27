@@ -150,6 +150,33 @@ const DISCORD_AUTO_POST_RESOLVED =
 const DISCORD_POST_GATE_RESOLVED =
   require.resolve("../../lib/services/discord-post-gate.js");
 const PUBLISH_NOW = new Date("2026-07-27T09:05:00.000Z");
+const SCHEDULED_PUBLICATION_EVIDENCE = Object.freeze({
+  schema_version: "pulse-publication-evidence-v1",
+  source_evidence_sha256: "1".repeat(64),
+  qa_report_sha256: "2".repeat(64),
+  rights_ledger_sha256: "3".repeat(64),
+  renderer_manifest_sha256: "4".repeat(64),
+  renderer: {
+    id: "studio-v21",
+    role: "standard",
+    version: "2.1.0",
+  },
+  originality_transformation: {
+    verdict: "STRONG",
+    rationale: "Original reporting and motion design transform the references.",
+    evidence_ref: "output/qa/transformation.json",
+    evidence_sha256: "5".repeat(64),
+  },
+  synthetic_media_disclosure: {
+    contains_synthetic_media: true,
+    decision: "DISCLOSE",
+    rationale: "Synthetic narration is present.",
+    disclosure_text: "Includes AI-generated narration.",
+    policy_basis: null,
+    youtube_field_value: true,
+    reviewed_at: "2026-07-27T08:45:00.000Z",
+  },
+});
 
 function stubModule(resolvedPath, exports) {
   require.cache[resolvedPath] = {
@@ -207,6 +234,8 @@ function clearPublisherCache() {
 
 let dbState;
 let uploaderCalls;
+let uploadedStories;
+let fingerprintCalls;
 let governedDispatchCalls;
 
 function withTestPublisherLease(publisher) {
@@ -253,6 +282,7 @@ function withTestPublisherLease(publisher) {
             dispatch_idempotency_key: `youtube:${storyId}:test-operation`,
             request_fingerprint: "a".repeat(64),
             scheduled_for: "2026-07-27T09:00:00.000Z",
+            publication_evidence: SCHEDULED_PUBLICATION_EVIDENCE,
           }),
         };
       },
@@ -284,7 +314,8 @@ function withTestPublisherLease(publisher) {
         env: liveGuardedEnv,
         repos: publicationRepos,
         governedDispatch,
-        async fingerprintPublicationRequest(story) {
+        async fingerprintPublicationRequest(story, options) {
+          fingerprintCalls.push({ story, options });
           return {
             request_fingerprint:
               story.test_request_fingerprint || "a".repeat(64),
@@ -319,6 +350,8 @@ function setupMocks({
     upsertCalls: [],
   };
   uploaderCalls = [];
+  uploadedStories = [];
+  fingerprintCalls = [];
   governedDispatchCalls = [];
 
   // Stub notify + sentry so require('./notify') / require('./lib/sentry')
@@ -392,8 +425,9 @@ function setupMocks({
   ]) {
     const resolved = require.resolve(`../../${name}.js`);
     stubModule(resolved, {
-      async uploadShort() {
+      async uploadShort(story) {
         uploaderCalls.push(name);
+        uploadedStories.push(structuredClone(story));
         return { videoId: "should_not_be_called", url: "x" };
       },
       async uploadAll() {
@@ -433,6 +467,8 @@ function setupMocksPerStory({
     upsertCalls: [],
   };
   uploaderCalls = [];
+  uploadedStories = [];
+  fingerprintCalls = [];
   governedDispatchCalls = [];
   delete require.cache[RENDER_DECISION_RESOLVED];
 
@@ -490,8 +526,9 @@ function setupMocksPerStory({
   ]) {
     const resolved = require.resolve(`../../${name}.js`);
     stubModule(resolved, {
-      async uploadShort() {
+      async uploadShort(story) {
         uploaderCalls.push(name);
+        uploadedStories.push(structuredClone(story));
         return { videoId: "should_not_be_called", url: "x" };
       },
       async uploadAll() {
@@ -700,6 +737,39 @@ test("publishNextStory: stabilisation dispatch attempts YouTube only", async () 
   assert.equal(persisted.tiktok_post_id, undefined);
 });
 
+test("publishNextStory: dispatch fingerprints and uploads the immutable scheduled disclosure decision", async () => {
+  const story = {
+    id: "rss_reviewed_disclosure",
+    title: "The reviewed disclosure cannot drift",
+    approved: true,
+    exported_path: "/tmp/reviewed-disclosure.mp4",
+    synthetic_media_disclosure: {
+      contains_synthetic_media: false,
+      decision: "NO_DISCLOSURE_REQUIRED",
+      rationale: "This mutable row value was not the reviewed decision.",
+    },
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory();
+
+  assert.equal(result.platform_outcomes.youtube, "new_upload");
+  assert.equal(fingerprintCalls.length, 1);
+  assert.deepEqual(
+    fingerprintCalls[0].options.publicationEvidence,
+    SCHEDULED_PUBLICATION_EVIDENCE,
+  );
+  assert.equal(uploadedStories.length, 1);
+  assert.deepEqual(
+    uploadedStories[0].synthetic_media_disclosure,
+    SCHEDULED_PUBLICATION_EVIDENCE.synthetic_media_disclosure,
+  );
+});
+
 test("publishNextStory: changed content is blocked when its current fingerprint differs from admission", async () => {
   const story = {
     id: "rss_changed_after_admission",
@@ -762,6 +832,47 @@ test("publishNextStory: missing scheduled governance evidence blocks before uplo
   assert.deepEqual(dbState.upsertCalls, []);
 });
 
+test("publishNextStory: legacy schedule without immutable publication evidence is held", async () => {
+  const story = {
+    id: "rss_schedule_without_review_bundle",
+    title: "Old schedule lacks reviewed evidence",
+    approved: true,
+    exported_path: "/tmp/old-schedule.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({
+    repos: {
+      db: {},
+      platformPosts: {},
+      publicationGovernance: {
+        getLatestLifecycleEvent() {
+          return {
+            story_id: story.id,
+            platform: "youtube",
+            to_state: "SCHEDULED",
+            evidence_json: JSON.stringify({
+              dispatch_idempotency_key:
+                "youtube:rss_schedule_without_review_bundle:test-operation",
+              request_fingerprint: "a".repeat(64),
+              scheduled_for: "2026-07-27T09:00:00.000Z",
+            }),
+          };
+        },
+      },
+    },
+  });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.top_reason, "scheduled_publication_evidence_required");
+  assert.deepEqual(uploaderCalls, []);
+  assert.deepEqual(governedDispatchCalls, []);
+});
+
 test("publishNextStory: an expired admission ticket cannot catch up in a later window", async () => {
   const story = {
     id: "rss_expired_schedule",
@@ -789,6 +900,7 @@ test("publishNextStory: an expired admission ticket cannot catch up in a later w
                 "youtube:rss_expired_schedule:2026-07-27T09:00:00.000Z",
               request_fingerprint: "a".repeat(64),
               scheduled_for: "2026-07-27T09:00:00.000Z",
+              publication_evidence: SCHEDULED_PUBLICATION_EVIDENCE,
             }),
           };
         },
@@ -841,6 +953,7 @@ test("publishNextStory: skips an unscheduled high-score story and dispatches the
                 "youtube:rss_scheduled_second:test-operation",
               request_fingerprint: "b".repeat(64),
               scheduled_for: "2026-07-27T09:00:00.000Z",
+              publication_evidence: SCHEDULED_PUBLICATION_EVIDENCE,
             }),
           };
         },
@@ -984,6 +1097,7 @@ test("publishNextStory: a canonically blocked row cannot starve the next schedul
                 `youtube:${storyId}:test-operation`,
               request_fingerprint: "c".repeat(64),
               scheduled_for: "2026-07-27T09:00:00.000Z",
+              publication_evidence: SCHEDULED_PUBLICATION_EVIDENCE,
             }),
           };
         },

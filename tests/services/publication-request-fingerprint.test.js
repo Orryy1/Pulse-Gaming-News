@@ -86,6 +86,69 @@ test("relocating identical media does not change the governed request fingerprin
   assert.equal(relocated.request_fingerprint, first.request_fingerprint);
 });
 
+test("reviewed publication evidence is immutable fingerprint input", async (t) => {
+  const mediaPath = mediaFixture(t);
+  const original = story(mediaPath);
+  const publicationEvidence = {
+    renderer_manifest_sha256: "a".repeat(64),
+    rights_ledger_sha256: "b".repeat(64),
+    synthetic_media_disclosure: {
+      contains_synthetic_media: true,
+      decision: "DISCLOSE",
+      rationale: "Synthetic narration is present.",
+      disclosure_text: "Includes AI-generated narration.",
+      youtube_field_value: true,
+      reviewed_at: "2026-07-27T08:45:00.000Z",
+    },
+  };
+  const options = {
+    channelId: "pulse-gaming",
+    publicationEvidence,
+  };
+
+  const baseline = await fingerprintPublicationRequest(original, options);
+  const keyReordered = await fingerprintPublicationRequest(original, {
+    ...options,
+    publicationEvidence: {
+      synthetic_media_disclosure: {
+        disclosure_text: "Includes AI-generated narration.",
+        rationale: "Synthetic narration is present.",
+        decision: "DISCLOSE",
+        contains_synthetic_media: true,
+        reviewed_at: "2026-07-27T08:45:00.000Z",
+        youtube_field_value: true,
+      },
+      rights_ledger_sha256: "b".repeat(64),
+      renderer_manifest_sha256: "a".repeat(64),
+    },
+  });
+  const changedDecision = await fingerprintPublicationRequest(original, {
+    ...options,
+    publicationEvidence: {
+      ...publicationEvidence,
+      synthetic_media_disclosure: {
+        contains_synthetic_media: true,
+        decision: "NO_DISCLOSURE_REQUIRED",
+        rationale: "Gameplay-only synthetic production assistance.",
+        disclosure_text: null,
+        policy_basis: "youtube_altered_content_policy_reviewed",
+        youtube_field_value: false,
+        reviewed_at: "2026-07-27T08:45:00.000Z",
+      },
+    },
+  });
+
+  assert.equal(
+    baseline.request.publication_evidence.synthetic_media_disclosure.decision,
+    "DISCLOSE",
+  );
+  assert.equal(keyReordered.request_fingerprint, baseline.request_fingerprint);
+  assert.notEqual(
+    changedDecision.request_fingerprint,
+    baseline.request_fingerprint,
+  );
+});
+
 test("script, title, media content and channel identity each change the request fingerprint", async (t) => {
   const mediaPath = mediaFixture(t);
   const original = story(mediaPath);

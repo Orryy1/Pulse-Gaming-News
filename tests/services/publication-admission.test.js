@@ -10,10 +10,21 @@ const Database = require("better-sqlite3");
 
 const {
   admitPublication,
+  buildImmutablePublicationEvidence,
 } = require("../../lib/services/publication-admission");
 const {
   fingerprintPublicationRequest,
 } = require("../../lib/services/publication-request-fingerprint");
+const {
+  hashRightsLedger,
+} = require("../../lib/services/publication-evidence-gates");
+const {
+  createRendererEvidence,
+} = require("../../lib/stabilisation/render-manifest");
+const {
+  EXPERIMENTAL_RENDERER_ID,
+  fingerprintRendererManifest,
+} = require("../../lib/stabilisation/renderer-governance");
 const governanceFactory = require("../../lib/repositories/publication_governance");
 const storiesFactory = require("../../lib/repositories/stories");
 
@@ -22,9 +33,29 @@ const NOW = new Date("2026-07-27T08:55:00.000Z");
 const SCHEDULED_FOR = "2026-07-27T09:00:00.000Z";
 const SCRIPT = "Original Xbox games are returning with achievement support.";
 const MEDIA = "final-reviewed-video";
+const RIGHTS_LEDGER = Object.freeze({
+  ledger_version: 1,
+  decision: "CLEARED",
+  items: [
+    {
+      item_id: "owned-motion-package",
+      source_url: "pulse-owned://story-admission-1/motion-package",
+      asset_sha256: "4".repeat(64),
+      included_in_final: true,
+      rights_decision: "CLEARED",
+      rights_basis: "OWNED",
+      rights_evidence: {
+        reference: "output/rights/story-admission-1-owned-motion.json",
+        sha256: "5".repeat(64),
+      },
+      attribution_decision: "NOT_REQUIRED",
+      attribution_text: null,
+    },
+  ],
+});
 const HASHES = Object.freeze({
   source_evidence_sha256: "1".repeat(64),
-  rights_ledger_sha256: "2".repeat(64),
+  rights_ledger_sha256: hashRightsLedger(RIGHTS_LEDGER),
   qa_report_sha256: "3".repeat(64),
 });
 const LIVE_ENV = Object.freeze({
@@ -38,6 +69,83 @@ const LIVE_ENV = Object.freeze({
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function rendererManifest(overrides = {}) {
+  return createRendererEvidence({
+    story: {
+      id: "story-admission-1",
+      channel_id: "pulse-gaming",
+    },
+    rendererVersion: "2.1.0",
+    mediaSha256: sha256(MEDIA),
+    stack: {
+      hyperframes: true,
+      ffmpeg: true,
+    },
+    platformVideoQa: {
+      result: "pass",
+      failures: [],
+      warnings: [],
+      technical: {
+        video_codec: "h264",
+        video_profile: "High",
+        pixel_format: "yuv420p",
+        width: 1080,
+        height: 1920,
+        audio_codec: "aac",
+        audio_sample_rate_hz: 48000,
+        has_audio: true,
+        duration_seconds: 37.2,
+        ffprobe_passed: true,
+      },
+    },
+    timing: {
+      first_frame_exact_subject: true,
+      hook_visible_by_ms: 200,
+      consequence_by_ms: 1100,
+      proof_by_ms: 2600,
+    },
+    motion: {
+      scene_count: 8,
+      motion_scene_count: 4,
+      exact_subject_clip_count: 2,
+      exact_subject_still_motion_count: 1,
+      unrelated_filler_count: 0,
+      every_scene_rights_accepted: true,
+    },
+    operatingMode: "LIVE_GUARDED",
+    ...overrides,
+  }).manifest;
+}
+
+function completeEvidence(overrides = {}) {
+  const manifest = overrides.renderer_manifest || rendererManifest();
+  return {
+    ...HASHES,
+    originality_transformation: {
+      verdict: "STRONG",
+      rationale:
+        "Pulse adds an original player consequence, comparison, sequencing and motion treatment.",
+      evidence_ref:
+        "output/qa/story-admission-1-transformation-evidence.json",
+      evidence_sha256: "6".repeat(64),
+    },
+    rights_ledger: RIGHTS_LEDGER,
+    synthetic_media_disclosure: {
+      contains_synthetic_media: true,
+      decision: "DISCLOSE",
+      rationale:
+        "The final edit contains synthetic narration and designed motion elements.",
+      disclosure_text:
+        "Includes AI-generated narration and synthetic visual elements.",
+      youtube_field_value: true,
+      reviewed_at: "2026-07-27T08:45:00.000Z",
+    },
+    renderer_manifest: manifest,
+    renderer_manifest_sha256: fingerprintRendererManifest(manifest),
+    ...overrides,
+  };
 }
 
 function fixture(t, storyOverrides = {}) {
@@ -102,7 +210,7 @@ function admissionInput(repos, overrides = {}) {
     reason: "Reviewed final script, rights, render and QA evidence",
     confirmationStoryId: "story-admission-1",
     scheduledFor: SCHEDULED_FOR,
-    evidence: { ...HASHES },
+    evidence: completeEvidence(),
     env: { ...LIVE_ENV },
     now: NOW,
     channel: {
@@ -135,10 +243,15 @@ function assertNoAdmissionRows(db) {
 test("operator admission atomically records exact evidence through SCHEDULED and exact replay is idempotent", async (t) => {
   const { db, repos, story } = fixture(t);
   const input = admissionInput(repos);
+  const publicationEvidence = buildImmutablePublicationEvidence({
+    evidence: input.evidence,
+    operatingMode: "LIVE_GUARDED",
+  });
   const expectedFingerprint = await fingerprintPublicationRequest(story, {
     channelId: input.channelId,
     platform: input.platform,
     channel: input.channel,
+    publicationEvidence,
   });
 
   const admitted = await admitPublication(input);
@@ -217,8 +330,24 @@ test("operator admission atomically records exact evidence through SCHEDULED and
     HASHES.rights_ledger_sha256,
   );
   assert.equal(
+    evidenceByState.ASSETS_CLEARED.originality_transformation.verdict,
+    "STRONG",
+  );
+  assert.equal(
+    evidenceByState.ASSETS_CLEARED.rights_ledger.items[0].rights_basis,
+    "OWNED",
+  );
+  assert.equal(
     evidenceByState.RENDERED.media_sha256,
     expectedFingerprint.media_sha256,
+  );
+  assert.equal(
+    evidenceByState.RENDERED.renderer_manifest_sha256,
+    input.evidence.renderer_manifest_sha256,
+  );
+  assert.equal(
+    evidenceByState.RENDERED.renderer.id,
+    "studio-v21",
   );
   assert.equal(
     evidenceByState.QA_PASSED.qa_report_sha256,
@@ -229,8 +358,16 @@ test("operator admission atomically records exact evidence through SCHEDULED and
     auditRows[0].id,
   );
   assert.equal(
+    evidenceByState.HUMAN_APPROVED.synthetic_media_disclosure.decision,
+    "DISCLOSE",
+  );
+  assert.equal(
     evidenceByState.SCHEDULED.request_fingerprint,
     expectedFingerprint.request_fingerprint,
+  );
+  assert.deepEqual(
+    evidenceByState.SCHEDULED.publication_evidence,
+    publicationEvidence,
   );
   assert.equal(
     evidenceByState.SCHEDULED.dispatch_idempotency_key,
@@ -261,10 +398,9 @@ test("a changed request cannot reuse an admitted operation identity or append pa
   const admitted = await admitPublication(input);
   fs.writeFileSync(mediaPath, "changed-after-operator-approval");
 
-  await assert.rejects(
-    admitPublication(input),
-    /publication_idempotency_conflict/,
-  );
+  const changed = await admitPublication(input);
+  assert.equal(changed.admitted, false);
+  assert.ok(changed.blockers.includes("renderer_media_hash_mismatch"));
 
   assert.equal(
     db.prepare("SELECT COUNT(*) AS count FROM operator_audit_log").get().count,
@@ -399,6 +535,109 @@ test("missing QA or evidence hashes fail closed without partial admission rows",
     for (const blocker of item.blockers) {
       assert.ok(result.blockers.includes(blocker), `${item.name}: ${blocker}`);
     }
+    assertNoAdmissionRows(db);
+  }
+});
+
+test("admission binds transformation, per-item rights and synthetic disclosure decisions", async (t) => {
+  const weak = completeEvidence({
+    originality_transformation: {
+      verdict: "WEAK",
+      rationale: "This edit is too close to a narrated source summary.",
+      evidence_ref: "output/qa/weak.json",
+      evidence_sha256: "7".repeat(64),
+    },
+  });
+  const attributionLedger = structuredClone(RIGHTS_LEDGER);
+  attributionLedger.items[0].rights_basis = "ATTRIBUTION_ONLY";
+  attributionLedger.items[0].attribution_decision =
+    "REQUIRED_AND_SUPPLIED";
+  attributionLedger.items[0].attribution_text = "Credit: publisher";
+
+  const cases = [
+    {
+      name: "weak transformation",
+      evidence: weak,
+      blocker: "originality_transformation_weak",
+    },
+    {
+      name: "attribution presented as permission",
+      evidence: completeEvidence({
+        rights_ledger: attributionLedger,
+        rights_ledger_sha256: hashRightsLedger(attributionLedger),
+      }),
+      blocker: "attribution_is_not_permission",
+    },
+    {
+      name: "missing synthetic decision",
+      evidence: completeEvidence({
+        synthetic_media_disclosure: undefined,
+      }),
+      blocker: "synthetic_media_presence_decision_required",
+    },
+  ];
+
+  for (const item of cases) {
+    const { db, repos } = fixture(t);
+    const result = await admitPublication(
+      admissionInput(repos, { evidence: item.evidence }),
+    );
+    assert.equal(result.admitted, false, item.name);
+    assert.ok(
+      result.blockers.includes(item.blocker),
+      `${item.name}: ${item.blocker}`,
+    );
+    assertNoAdmissionRows(db);
+  }
+});
+
+test("admission requires the active governed renderer and exact final media", async (t) => {
+  const experimental = rendererManifest();
+  experimental.renderer = {
+    id: EXPERIMENTAL_RENDERER_ID,
+    role: "experimental",
+    version: "0.1.0",
+  };
+  const thinMotion = rendererManifest();
+  thinMotion.motion = {
+    ...thinMotion.motion,
+    exact_subject_clip_count: 0,
+    exact_subject_still_motion_count: 0,
+  };
+  const wrongMedia = rendererManifest();
+  wrongMedia.output = {
+    ...wrongMedia.output,
+    sha256: "9".repeat(64),
+  };
+
+  const cases = [
+    {
+      name: "experimental renderer",
+      evidence: completeEvidence({ renderer_manifest: experimental }),
+      blocker: "experimental_renderer_not_publishable",
+    },
+    {
+      name: "missing exact-subject motion",
+      evidence: completeEvidence({ renderer_manifest: thinMotion }),
+      blocker: "exact_subject_motion_missing",
+    },
+    {
+      name: "renderer describes different final media",
+      evidence: completeEvidence({ renderer_manifest: wrongMedia }),
+      blocker: "renderer_media_hash_mismatch",
+    },
+  ];
+
+  for (const item of cases) {
+    const { db, repos } = fixture(t);
+    const result = await admitPublication(
+      admissionInput(repos, { evidence: item.evidence }),
+    );
+    assert.equal(result.admitted, false, item.name);
+    assert.ok(
+      result.blockers.includes(item.blocker),
+      `${item.name}: ${item.blocker}`,
+    );
     assertNoAdmissionRows(db);
   }
 });

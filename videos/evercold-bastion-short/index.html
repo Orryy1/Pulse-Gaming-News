@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="node_modules/gsap/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #000;
+      }
+      body {
+        font-family: sans-serif;
+      }
+
+      #root {
+        position: relative;
+        isolation: isolate;
+        background: #06121c;
+      }
+
+      #evercold-owned-motion {
+        position: absolute;
+        inset: 0;
+        width: 1080px;
+        height: 1920px;
+        object-fit: cover;
+        z-index: 1;
+      }
+
+      .material-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      .source-chip {
+        position: absolute;
+        top: 54px;
+        right: 48px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        min-width: 210px;
+        height: 42px;
+        padding: 0 18px;
+        border: 1px solid rgba(158, 235, 255, 0.62);
+        border-radius: 999px;
+        background: rgba(4, 18, 29, 0.78);
+        box-shadow:
+          0 0 24px rgba(66, 193, 232, 0.16),
+          inset 0 0 14px rgba(158, 235, 255, 0.04);
+        color: #e8f8ff;
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 2.1px;
+        text-transform: uppercase;
+      }
+
+      .source-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #9eebff;
+        box-shadow: 0 0 15px rgba(158, 235, 255, 0.95);
+        animation: source-pulse 7s ease-in-out 4;
+      }
+
+      .edge-rail {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 4px;
+        height: 100%;
+        background: linear-gradient(
+          to bottom,
+          rgba(158, 235, 255, 0),
+          rgba(158, 235, 255, 0.95) 18%,
+          rgba(255, 107, 26, 0.9) 82%,
+          rgba(255, 107, 26, 0)
+        );
+        box-shadow: 0 0 22px rgba(158, 235, 255, 0.32);
+      }
+
+      .scan-line {
+        position: absolute;
+        left: 0;
+        top: -50px;
+        width: 100%;
+        height: 3px;
+        opacity: 0;
+        background: linear-gradient(
+          to right,
+          transparent,
+          rgba(158, 235, 255, 0.68),
+          transparent
+        );
+        box-shadow: 0 0 18px rgba(158, 235, 255, 0.48);
+        animation: scan-pass 7s ease-in-out 4;
+      }
+
+      .progress-track {
+        position: absolute;
+        left: 48px;
+        right: 48px;
+        bottom: 39px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(232, 248, 255, 0.14);
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        width: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #9eebff 0%, #ff6b1a 100%);
+        box-shadow: 0 0 18px rgba(158, 235, 255, 0.55);
+        animation: progress 28s linear 1 forwards;
+      }
+
+      .corner {
+        position: absolute;
+        width: 34px;
+        height: 34px;
+        opacity: 0.46;
+        animation: corner-breathe 7s ease-in-out 4;
+      }
+
+      .corner::before,
+      .corner::after {
+        content: "";
+        position: absolute;
+        background: rgba(158, 235, 255, 0.82);
+        box-shadow: 0 0 12px rgba(158, 235, 255, 0.28);
+      }
+
+      .corner::before {
+        width: 34px;
+        height: 2px;
+      }
+
+      .corner::after {
+        width: 2px;
+        height: 34px;
+      }
+
+      .corner.top-left {
+        left: 28px;
+        top: 28px;
+      }
+
+      .corner.top-right {
+        right: 28px;
+        top: 28px;
+        transform: rotate(90deg);
+      }
+
+      .corner.bottom-right {
+        right: 28px;
+        bottom: 28px;
+        transform: rotate(180deg);
+      }
+
+      .corner.bottom-left {
+        left: 28px;
+        bottom: 28px;
+        transform: rotate(270deg);
+      }
+
+      @keyframes progress {
+        from {
+          width: 0;
+        }
+        to {
+          width: 100%;
+        }
+      }
+
+      @keyframes source-pulse {
+        0%,
+        100% {
+          opacity: 0.58;
+          transform: scale(0.82);
+        }
+        18%,
+        62% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @keyframes corner-breathe {
+        0%,
+        100% {
+          opacity: 0.28;
+        }
+        28%,
+        68% {
+          opacity: 0.62;
+        }
+      }
+
+      @keyframes scan-pass {
+        0% {
+          top: -50px;
+          opacity: 0;
+        }
+        5% {
+          opacity: 0.46;
+        }
+        34% {
+          opacity: 0.18;
+        }
+        44% {
+          top: 1970px;
+          opacity: 0;
+        }
+        100% {
+          top: 1970px;
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="28"
+      data-fps="30"
+      data-width="1080"
+      data-height="1920"
+    >
+      <video
+        id="evercold-owned-motion"
+        class="clip"
+        src="assets/evercold-owned-motion.mp4"
+        data-start="0"
+        data-duration="28"
+        data-track-index="1"
+        preload="auto"
+        muted
+        playsinline
+      ></video>
+
+      <div class="material-overlay" aria-hidden="true">
+        <div class="edge-rail"></div>
+        <div class="scan-line"></div>
+        <div class="source-chip">
+          <span class="source-dot"></span>
+          Source // official
+        </div>
+        <div class="corner top-left"></div>
+        <div class="corner top-right"></div>
+        <div class="corner bottom-right"></div>
+        <div class="corner bottom-left"></div>
+        <div class="progress-track">
+          <div class="progress-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const materialClock = { progress: 0 };
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to(
+        materialClock,
+        { progress: 1, duration: 28, ease: "none" },
+        0,
+      );
+      window.__timelines.main = timeline;
+    </script>
+  </body>
+</html>

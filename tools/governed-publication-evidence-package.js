@@ -9,11 +9,15 @@ const VALUE_ARGUMENTS = Object.freeze({
   "--story-intake": "storyIntakePath",
   "--source-evidence": "sourceEvidencePath",
   "--owned-motion-manifest": "ownedMotionManifestPath",
+  "--source-media-manifest": "sourceMediaManifestPath",
+  "--source-media-manifest-sha256": "sourceMediaManifestSha256",
   "--governed-narration-manifest": "governedNarrationManifestPath",
   "--final-composite-manifest": "finalCompositeManifestPath",
   "--renderer-manifest": "rendererManifestPath",
   "--qa-report": "qaReportPath",
   "--final-mp4": "finalMp4Path",
+  "--publication-metadata": "publicationMetadataPath",
+  "--publication-metadata-sha256": "publicationMetadataSha256",
   "--out-dir": "outDir",
   "--generated-at": "generatedAt",
 });
@@ -44,7 +48,13 @@ function usage() {
     "  --renderer-manifest PATH",
     "  --qa-report PATH",
     "  --final-mp4 PATH",
+    "  --publication-metadata PATH",
+    "  --publication-metadata-sha256 SHA256",
     "  --out-dir PATH",
+    "",
+    "Optional governed source media (both values are required together):",
+    "  --source-media-manifest PATH",
+    "  --source-media-manifest-sha256 SHA256",
     "",
     "Apply requires every exact confirmation:",
     "  --apply",
@@ -96,6 +106,20 @@ function parseArgs(argv = []) {
       continue;
     }
     throw new Error(`unknown_argument:${argument}`);
+  }
+  if (options.help) return options;
+  if (
+    Boolean(options.sourceMediaManifestPath) !==
+    Boolean(options.sourceMediaManifestSha256)
+  ) {
+    throw new Error("source_media_manifest_pair_required");
+  }
+  if (
+    Boolean(options.publicationMetadataPath) !==
+    Boolean(options.publicationMetadataSha256) ||
+    !options.publicationMetadataPath
+  ) {
+    throw new Error("publication_metadata_pair_required");
   }
   if (approvalSupplied) options.humanApproval = approval;
   return options;

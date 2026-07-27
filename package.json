@@ -47,6 +47,7 @@
     "ops:queue:inspect": "node tools/queue-inspect.js",
     "ops:story-intake": "node tools/governed-story-intake.js",
     "ops:governed-narration-materialize": "node tools/governed-narration-materialize.js",
+    "ops:governed-source-media-ephemeral": "node tools/governed-source-media-ephemeral.js",
     "ops:governed-final-composite": "node tools/governed-final-composite.js",
     "ops:governed-publication-evidence-package": "node tools/governed-publication-evidence-package.js",
     "ops:governed-publication-review": "node tools/governed-publication-review.js",

@@ -72,7 +72,9 @@ test("Pulse release workflow runs every governed service and ops test", () => {
     }),
     "tests/services/guarded-youtube-window.test.js",
     "tests/ops/guarded-youtube-window-cli.test.js",
+    "tests/services/platform-safe-zones.test.js",
     "tests/services/evercold-hyperframes-material.test.js",
+    "tests/services/evercold-platform-safe-zone-runtime.test.js",
     "tests/ops/agent-operator-command-contract.test.js",
     "tests/services/agent-operating-rules.test.js",
   ];

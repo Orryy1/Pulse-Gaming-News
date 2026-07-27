@@ -1,0 +1,267 @@
+{
+  "schema_version": "pulse-governed-source-media-manifest-v1",
+  "story_id": "official_d86953ca92ca",
+  "generated_at": "2026-07-27T20:30:00.000Z",
+  "composition_duration_seconds": 28,
+  "rights_review": {
+    "path": "evidence/ffxiv-materials-rights-review.json",
+    "sha256": "036190376405a6b39efeb6f21f4c5de4baaf5d5f9afe8463f033fd722385066f",
+    "review_status": "ACCEPTED"
+  },
+  "components": [
+    {
+      "component_id": "ffxiv-bastion-official-thumbnail",
+      "media_type": "IMAGE",
+      "asset": {
+        "path": "assets/official/bastion-official-thumbnail.jpg",
+        "sha256": "7fa237fa62a43e46e7ebb8efb1909fc63d694811d8589174428e7ea8a19aeb6f",
+        "width": 1280,
+        "height": 720
+      },
+      "source": {
+        "page_url": "https://eu.finalfantasyxiv.com/evercold/media/",
+        "direct_media_url": "https://i.ytimg.com/vi/uaZlrprwSq4/maxresdefault.jpg",
+        "publisher": "Square Enix",
+        "channel_url": "https://www.youtube.com/@ffxiv",
+        "trailer_url": "https://www.youtube.com/watch?v=uaZlrprwSq4"
+      },
+      "rights_basis": "LICENSED",
+      "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+      "review_status": "ACCEPTED",
+      "attribution": {
+        "required": true,
+        "text": "© SQUARE ENIX",
+        "delivery": [
+          "ON_SCREEN",
+          "DESCRIPTION"
+        ]
+      },
+      "editorial": {
+        "purpose": "TRANSFORMATIVE_EDITORIAL",
+        "third_party_music_used": false,
+        "source_audio_disposition": "NOT_APPLICABLE",
+        "usage_seconds": [
+          0,
+          3.8
+        ],
+        "treatment": "portrait reframe, depth push, animated shield HUD and kinetic headline"
+      }
+    },
+    {
+      "component_id": "ffxiv-bastion-concept-art",
+      "media_type": "IMAGE",
+      "asset": {
+        "path": "assets/official/bastion-concept-art.jpg",
+        "sha256": "d8f0f3a426c7de0a94c6863a6b53bda25674c639cc804744e9c41ba7820662d2",
+        "width": 1920,
+        "height": 2716
+      },
+      "source": {
+        "page_url": "https://eu.finalfantasyxiv.com/evercold/media/",
+        "direct_media_url": "https://lds-img.finalfantasyxiv.com/promo/h/h/WQDKabyATGkXE7PxktcDmWjBHI.jpg",
+        "publisher": "Square Enix"
+      },
+      "rights_basis": "LICENSED",
+      "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+      "review_status": "ACCEPTED",
+      "attribution": {
+        "required": true,
+        "text": "© SQUARE ENIX",
+        "delivery": [
+          "ON_SCREEN",
+          "DESCRIPTION"
+        ]
+      },
+      "editorial": {
+        "purpose": "TRANSFORMATIVE_EDITORIAL",
+        "third_party_music_used": false,
+        "source_audio_disposition": "NOT_APPLICABLE",
+        "usage_seconds": [
+          3.1,
+          8.3
+        ],
+        "treatment": "portrait crop, parallax rise, Bastion identity card and shield-count proof"
+      }
+    },
+    {
+      "component_id": "ffxiv-evolved-mode",
+      "media_type": "IMAGE",
+      "asset": {
+        "path": "assets/official/evolved-mode.jpg",
+        "sha256": "82eb8594202e66dc237f160a570c59e4e3fcb0549faa804a7c015f1f24f585e4",
+        "width": 1920,
+        "height": 1080
+      },
+      "source": {
+        "page_url": "https://eu.finalfantasyxiv.com/evercold/",
+        "direct_media_url": "https://lds-img.finalfantasyxiv.com/promo/h/K/mR4RvzvRLTG23XBa2HwXoqWC6A.jpg",
+        "publisher": "Square Enix"
+      },
+      "rights_basis": "LICENSED",
+      "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+      "review_status": "ACCEPTED",
+      "attribution": {
+        "required": true,
+        "text": "© SQUARE ENIX",
+        "delivery": [
+          "ON_SCREEN",
+          "DESCRIPTION"
+        ]
+      },
+      "editorial": {
+        "purpose": "TRANSFORMATIVE_EDITORIAL",
+        "third_party_music_used": false,
+        "source_audio_disposition": "NOT_APPLICABLE",
+        "usage_seconds": [
+          7.8,
+          12.2
+        ],
+        "treatment": "split-mode proof panel beneath the retained animated selector"
+      }
+    },
+    {
+      "component_id": "ffxiv-naglfar-gameplay-01",
+      "media_type": "IMAGE",
+      "asset": {
+        "path": "assets/official/naglfar-gameplay-01.jpg",
+        "sha256": "b79fea1dea89766d09b24b91d329b9fb611ad641bb67ad2ea5c6035bf20115b9",
+        "width": 1920,
+        "height": 1129
+      },
+      "source": {
+        "page_url": "https://eu.finalfantasyxiv.com/evercold/media/",
+        "direct_media_url": "https://lds-img.finalfantasyxiv.com/promo/h/C/xhgo2LNiT7aGiAmzwy1Jd3-O7M.jpg",
+        "publisher": "Square Enix"
+      },
+      "rights_basis": "LICENSED",
+      "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+      "review_status": "ACCEPTED",
+      "attribution": {
+        "required": true,
+        "text": "© SQUARE ENIX",
+        "delivery": [
+          "ON_SCREEN",
+          "DESCRIPTION"
+        ]
+      },
+      "editorial": {
+        "purpose": "TRANSFORMATIVE_EDITORIAL",
+        "third_party_music_used": false,
+        "source_audio_disposition": "NOT_APPLICABLE",
+        "usage_seconds": [
+          11.6,
+          13.6
+        ],
+        "treatment": "blurred portrait fill, sharp gameplay window and route-choice overlay"
+      }
+    },
+    {
+      "component_id": "ffxiv-naglfar-gameplay-02",
+      "media_type": "IMAGE",
+      "asset": {
+        "path": "assets/official/naglfar-gameplay-02.jpg",
+        "sha256": "deded5e00f740c233626bb99ff89461eef8bc2c84b61dbce280b7f0b081c87d1",
+        "width": 1920,
+        "height": 1129
+      },
+      "source": {
+        "page_url": "https://eu.finalfantasyxiv.com/evercold/media/",
+        "direct_media_url": "https://lds-img.finalfantasyxiv.com/promo/h/3/RE7XFlpGSnui4n6SWIXcq7dIQ8.jpg",
+        "publisher": "Square Enix"
+      },
+      "rights_basis": "LICENSED",
+      "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+      "review_status": "ACCEPTED",
+      "attribution": {
+        "required": true,
+        "text": "© SQUARE ENIX",
+        "delivery": [
+          "ON_SCREEN",
+          "DESCRIPTION"
+        ]
+      },
+      "editorial": {
+        "purpose": "TRANSFORMATIVE_EDITORIAL",
+        "third_party_music_used": false,
+        "source_audio_disposition": "NOT_APPLICABLE",
+        "usage_seconds": [
+          13.2,
+          15
+        ],
+        "treatment": "gameplay match-cut beneath the retained auto-scaling meter"
+      }
+    },
+    {
+      "component_id": "ffxiv-beyond-lifestream",
+      "media_type": "IMAGE",
+      "asset": {
+        "path": "assets/official/beyond-lifestream.jpg",
+        "sha256": "fbad4fc71ece40073d3a212d313c3d5196ee685d3b1c163afff8e040c36196cd",
+        "width": 1920,
+        "height": 1078
+      },
+      "source": {
+        "page_url": "https://eu.finalfantasyxiv.com/evercold/media/",
+        "direct_media_url": "https://lds-img.finalfantasyxiv.com/promo/h/t/XB4O-xPrmB6n_wOvwrpDp07WmI.jpg",
+        "publisher": "Square Enix"
+      },
+      "rights_basis": "LICENSED",
+      "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+      "review_status": "ACCEPTED",
+      "attribution": {
+        "required": true,
+        "text": "© SQUARE ENIX",
+        "delivery": [
+          "ON_SCREEN",
+          "DESCRIPTION"
+        ]
+      },
+      "editorial": {
+        "purpose": "TRANSFORMATIVE_EDITORIAL",
+        "third_party_music_used": false,
+        "source_audio_disposition": "NOT_APPLICABLE",
+        "usage_seconds": [
+          16.4,
+          19.7
+        ],
+        "treatment": "cinematic portrait crop, eight-player HUD assembly and raid label lock-up"
+      }
+    },
+    {
+      "component_id": "ffxiv-evercold-key-art",
+      "media_type": "IMAGE",
+      "asset": {
+        "path": "assets/official/evercold-key-art.jpg",
+        "sha256": "291625d67d948ee09bd8a17aac97379b35a3d9c08a3d2af6825d4d0539098494",
+        "width": 1440,
+        "height": 2160
+      },
+      "source": {
+        "page_url": "https://eu.finalfantasyxiv.com/evercold/media/",
+        "direct_media_url": "https://lds-img.finalfantasyxiv.com/promo/h/f/zmuw00jJ6Cltw9cXd43BUxHq3E.jpg",
+        "publisher": "Square Enix"
+      },
+      "rights_basis": "LICENSED",
+      "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+      "review_status": "ACCEPTED",
+      "attribution": {
+        "required": true,
+        "text": "© SQUARE ENIX",
+        "delivery": [
+          "ON_SCREEN",
+          "DESCRIPTION"
+        ]
+      },
+      "editorial": {
+        "purpose": "TRANSFORMATIVE_EDITORIAL",
+        "third_party_music_used": false,
+        "source_audio_disposition": "NOT_APPLICABLE",
+        "usage_seconds": [
+          20.2,
+          23.2
+        ],
+        "treatment": "vertical key-art bridge into the retained Switch 2 date card"
+      }
+    }
+  ]
+}

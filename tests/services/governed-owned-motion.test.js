@@ -152,6 +152,30 @@ test("owned still grammar is data-driven for the FFXIV Evercold feature stack", 
   assert.doesNotMatch(svg, /BAN CONFIRMED|COMPENSATION SENT|CHEATER/i);
 });
 
+test("platform release still reserves the narrated caption lane", () => {
+  const intake = validIntake();
+  intake.story.id = "official_d86953ca92ca";
+  intake.story.title = "Final Fantasy XIV reveals Evercold";
+  intake.story.loop = "The MMO hits Switch 2 on August fourth.";
+  const plan = buildOwnedMotionPlan({
+    intake,
+    intakeManifestSha256: sha256(JSON.stringify(intake)),
+    outputDir: "C:/proof/evercold-caption-safe",
+    ffmpegAvailable: true,
+  });
+
+  const svg = buildOwnedStillSvg({
+    role: "platform_release",
+    intake,
+    plan,
+  });
+
+  assert.match(svg, /SWITCH 2/i);
+  assert.match(svg, /4 AUGUST/i);
+  assert.doesNotMatch(svg, /The MMO hits Switch 2/i);
+  assert.doesNotMatch(svg, /releaseText/i);
+});
+
 test("validateApplyAuthority requires apply, exact identity and a fail-closed local review environment", () => {
   const intake = validIntake();
   const intakeManifestSha256 = sha256(JSON.stringify(intake));
@@ -388,7 +412,7 @@ test("renderOwnedStill creates four distinct repository-owned 1080x1920 visual f
   assert.equal(new Set(hashes).size, 4);
 });
 
-test("owned platform and branching card labels remain inside the motion-safe area", () => {
+test("owned motion places every readable SVG card inside the strict shared portrait safe zone", () => {
   const intake = validIntake();
   const plan = buildOwnedMotionPlan({
     intake,
@@ -401,11 +425,16 @@ test("owned platform and branching card labels remain inside the motion-safe are
     const svg = buildOwnedStillSvg({ role, intake, plan });
     assert.match(
       svg,
+      /<g id="safe-zone-content" data-safe-zone-profile="portrait-cross-platform-strict-v1" transform="translate\(125\.25 240\) scale\(0\.6125\)">/,
+    );
+    assert.match(
+      svg,
       /<text x="160" y="1788" text-anchor="start"[^>]*>CHECKED/,
     );
-    assert.doesNotMatch(
-      svg,
-      /<text[^>]*text-anchor="middle"[^>]*>CHECKED/,
+    assert.ok(
+      svg.indexOf('<rect width="1080" height="1920"') <
+        svg.indexOf('id="safe-zone-content"'),
+      "full-bleed background stays outside the viewer-content safe-zone group",
     );
   }
 

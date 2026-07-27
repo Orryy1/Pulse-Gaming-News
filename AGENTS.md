@@ -63,6 +63,7 @@ These aliases are the explicit local-candidate command map. Pass command argumen
 | Official story intake | `npm run ops:story-intake` | `tools/governed-story-intake.js` |
 | Owned motion materialisation | `npm run ops:governed-owned-motion` | `tools/governed-owned-motion.js` |
 | Narration evidence materialisation | `npm run ops:governed-narration-materialize` | `tools/governed-narration-materialize.js` |
+| Ephemeral official source-media acquisition and validation | `npm run ops:governed-source-media-ephemeral` | `tools/governed-source-media-ephemeral.js` |
 | Final local composite | `npm run ops:governed-final-composite` | `tools/governed-final-composite.js` |
 | Publication evidence package | `npm run ops:governed-publication-evidence-package` | `tools/governed-publication-evidence-package.js` |
 | Hash-bound publication review | `npm run ops:governed-publication-review` | `tools/governed-publication-review.js` |

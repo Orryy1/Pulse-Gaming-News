@@ -16,6 +16,9 @@ const VALUE_FLAGS = Object.freeze({
   "--narration-manifest": "narrationManifestPath",
   "--narration-manifest-sha256":
     "expectedNarrationManifestSha256",
+  "--source-media-manifest": "sourceMediaManifestPath",
+  "--source-media-manifest-sha256":
+    "expectedSourceMediaManifestSha256",
   "--timestamps": "timestampsPath",
   "--out-dir": "outDir",
   "--generated-at": "generatedAt",
@@ -44,6 +47,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     audioPath: null,
     narrationManifestPath: null,
     expectedNarrationManifestSha256: null,
+    sourceMediaManifestPath: null,
+    expectedSourceMediaManifestSha256: null,
     timestampsPath: null,
     outDir: null,
     generatedAt: new Date().toISOString(),
@@ -120,6 +125,8 @@ function usage() {
     "  --ffmpeg <path>                  FFmpeg executable",
     "  --ffprobe <path>                 FFprobe executable",
     "  --render-timeout-ms <ms>         10000-1800000 (default 600000)",
+    "  --source-media-manifest <path>   Governed licensed source-media manifest",
+    "  --source-media-manifest-sha256 <h>  Independently supplied exact source-media SHA-256",
     "  --hyperframes-project-file <p>   Repeat for exact project files when deriving the combined manifest",
     "  --hyperframes-generator <id>     Generator identity (default hyperframes@0.7.76)",
     "  --hyperframes-source-commit <h>  Exact 40-character source commit",
@@ -169,6 +176,40 @@ async function main(argv = process.argv.slice(2), deps = {}) {
     "narration_timestamps_required",
   );
   requiredValue(args.outDir, "out_dir_required");
+  const hasSourceMediaManifest = Boolean(
+    String(args.sourceMediaManifestPath || "").trim(),
+  );
+  const hasSourceMediaManifestSha256 = Boolean(
+    String(
+      args.expectedSourceMediaManifestSha256 || "",
+    ).trim(),
+  );
+  if (
+    hasSourceMediaManifest &&
+    !hasSourceMediaManifestSha256
+  ) {
+    throw new Error(
+      "source_media_manifest_sha256_required",
+    );
+  }
+  if (
+    !hasSourceMediaManifest &&
+    hasSourceMediaManifestSha256
+  ) {
+    throw new Error(
+      "source_media_manifest_path_required",
+    );
+  }
+  if (
+    hasSourceMediaManifestSha256 &&
+    !/^[a-f0-9]{64}$/i.test(
+      args.expectedSourceMediaManifestSha256,
+    )
+  ) {
+    throw new Error(
+      "source_media_manifest_sha256_invalid",
+    );
+  }
 
   const execute =
     deps.execute || executeGovernedFinalComposite;
@@ -184,6 +225,15 @@ async function main(argv = process.argv.slice(2), deps = {}) {
     ),
     expectedNarrationManifestSha256:
       args.expectedNarrationManifestSha256.toLowerCase(),
+    ...(hasSourceMediaManifest
+      ? {
+          sourceMediaManifestPath: path.resolve(
+            args.sourceMediaManifestPath,
+          ),
+          expectedSourceMediaManifestSha256:
+            args.expectedSourceMediaManifestSha256.toLowerCase(),
+        }
+      : {}),
     timestampsPath: path.resolve(args.timestampsPath),
     outDir: path.resolve(args.outDir),
     generatedAt: args.generatedAt,

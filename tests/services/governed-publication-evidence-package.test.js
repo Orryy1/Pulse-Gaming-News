@@ -16,6 +16,13 @@ const {
 const {
   executeGovernedPublicationEvidencePackage,
 } = require("../../lib/services/governed-publication-evidence-package");
+const {
+  METADATA_SCHEMA,
+} = require("../../lib/services/governed-publication-metadata");
+const {
+  ATTRIBUTION_TEXT,
+  MANIFEST_SCHEMA: SOURCE_MEDIA_MANIFEST_SCHEMA,
+} = require("../../lib/services/governed-source-media");
 
 const STORY_ID = "official_d86953ca92ca";
 const CHANNEL_ID = "pulse-gaming";
@@ -24,6 +31,12 @@ const APPROVED_AT = "2026-07-27T17:05:00.000Z";
 const DISCLOSURE_CONFIRMATION = "DISCLOSE_AND_SET_YOUTUBE_TRUE";
 const SCRIPT =
   "Final Fantasy XIV just revealed a tank that fights with two giant shields. Bastion arrives in Evercold and only works in Evolved Mode.";
+const LICENCE_URL =
+  "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc";
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -103,6 +116,7 @@ function fixture() {
       script_sha256: scriptSha256,
       visual_brief: {
         format: "owned-motion-only",
+        source_media_policy: "OWNED_ONLY",
         forbidden_media: [
           "third-party screenshots",
           "gameplay footage",
@@ -111,6 +125,19 @@ function fixture() {
       },
     },
   });
+  const publicationMetadata = jsonFile(
+    root,
+    "publication-metadata.json",
+    {
+      schema_version: METADATA_SCHEMA,
+      story_id: STORY_ID,
+      channel_id: CHANNEL_ID,
+      platform: "youtube_shorts",
+      title: "Final Fantasy XIV reveals Bastion",
+      description:
+        "Bastion arrives in Final Fantasy XIV's Evercold update.",
+    },
+  );
   const motion = file(root, "evercold-hf.mp4", "owned-hyperframes-video");
   const narration = file(root, "narration.mp3", "licensed-narration");
   const finalMp4 = file(root, "final.mp4", "final-composite-video");
@@ -375,6 +402,8 @@ function fixture() {
     rendererManifestPath: renderer.absolutePath,
     qaReportPath: qa.absolutePath,
     finalMp4Path: finalMp4.absolutePath,
+    publicationMetadataPath: publicationMetadata.absolutePath,
+    publicationMetadataSha256: publicationMetadata.sha256,
     outDir: root,
     generatedAt: GENERATED_AT,
   };
@@ -400,7 +429,250 @@ function fixture() {
     composite,
     sourceTimestamps,
     timestamps,
+    publicationMetadata,
   };
+}
+
+function addLicensedSourceMedia(values) {
+  const sourceMediaAsset = file(
+    values.root,
+    "official/bastion-gameplay.png",
+    TINY_PNG,
+  );
+  const rightsReview = jsonFile(
+    values.root,
+    "official/source-media-rights-review.json",
+    {
+      schema_version: "pulse-governed-rights-review-evidence-v1",
+      story_id: STORY_ID,
+      review_status: "ACCEPTED",
+      rights_basis: "LICENSED",
+      publisher: "Square Enix",
+      licence_evidence_url: LICENCE_URL,
+      licence_effective_date: "2026-05-07",
+      reviewed_by: "pulse-editorial-rights-review",
+      reviewed_at: GENERATED_AT,
+      scope:
+        "Official FINAL FANTASY XIV gameplay used in a narrated, edited news report.",
+      findings: {
+        covered_materials: [
+          "art",
+          "images",
+          "screenshots",
+          "video",
+        ],
+        permitted_destination:
+          "YouTube and comparable social-network partner programmes",
+        copyright_notice: ATTRIBUTION_TEXT,
+        copyright_notice_delivery: ["DESCRIPTION", "ON_SCREEN"],
+        third_party_music_used: false,
+        source_audio_used: false,
+        raw_asset_redistribution: false,
+        removal_request_must_be_honoured: true,
+      },
+    },
+  );
+  const sourceMedia = jsonFile(
+    values.root,
+    "official/source-media-manifest.json",
+    {
+      schema_version: SOURCE_MEDIA_MANIFEST_SCHEMA,
+      story_id: STORY_ID,
+      rights_review: {
+        path: path.relative(
+          path.dirname(
+            path.join(values.root, "official/source-media-manifest.json"),
+          ),
+          rightsReview.absolutePath,
+        ),
+        sha256: rightsReview.sha256,
+        review_status: "ACCEPTED",
+      },
+      components: [
+        {
+          component_id: "bastion-gameplay-01",
+          media_type: "IMAGE",
+          asset: {
+            path: path.relative(
+              path.dirname(
+                path.join(
+                  values.root,
+                  "official/source-media-manifest.json",
+                ),
+              ),
+              sourceMediaAsset.absolutePath,
+            ),
+            sha256: sourceMediaAsset.sha256,
+            width: 1,
+            height: 1,
+            mime_type: "image/png",
+          },
+          source: {
+            page_url:
+              "https://eu.finalfantasyxiv.com/evercold/media/",
+          direct_media_url:
+              "https://lds-img.finalfantasyxiv.com/promo/h/a/test.png",
+            publisher: "Square Enix",
+          },
+          rights_basis: "LICENSED",
+          licence_evidence_url: LICENCE_URL,
+          review_status: "ACCEPTED",
+          attribution: {
+            required: true,
+            text: ATTRIBUTION_TEXT,
+            delivery: ["ON_SCREEN", "DESCRIPTION"],
+          },
+          editorial: {
+            purpose: "TRANSFORMATIVE_EDITORIAL",
+            third_party_music_used: false,
+            source_audio_disposition: "NOT_APPLICABLE",
+            usage_seconds: [0, 2],
+          },
+        },
+      ],
+    },
+  );
+
+  const intake = JSON.parse(
+    fs.readFileSync(values.options.storyIntakePath, "utf8"),
+  );
+  intake.story.visual_brief = {
+    format: "governed-hybrid-editorial",
+    source_media_policy: "LICENSED_OFFICIAL_FFXIV",
+  };
+  writeJson(values.options.storyIntakePath, intake);
+
+  const publicationMetadata = JSON.parse(
+    fs.readFileSync(values.options.publicationMetadataPath, "utf8"),
+  );
+  publicationMetadata.description = [
+    publicationMetadata.description,
+    "",
+    ATTRIBUTION_TEXT,
+  ].join("\n");
+  writeJson(
+    values.options.publicationMetadataPath,
+    publicationMetadata,
+  );
+  values.options.publicationMetadataSha256 = sha256(
+    fs.readFileSync(values.options.publicationMetadataPath),
+  );
+  values.publicationMetadata.sha256 =
+    values.options.publicationMetadataSha256;
+  values.publicationMetadata.value = publicationMetadata;
+
+  const ownedMotion = JSON.parse(
+    fs.readFileSync(values.options.ownedMotionManifestPath, "utf8"),
+  );
+  const hyperframes = ownedMotion.assets[0];
+  hyperframes.ownership = "mixed";
+  hyperframes.rights_basis = "LICENSED";
+  hyperframes.attribution_required = true;
+  hyperframes.provenance.third_party_media_used = true;
+  hyperframes.provenance.source_media_manifest = {
+    path: path.relative(
+      path.dirname(values.options.ownedMotionManifestPath),
+      sourceMedia.absolutePath,
+    ),
+    sha256: sourceMedia.sha256,
+  };
+  writeJson(values.options.ownedMotionManifestPath, ownedMotion);
+  values.ownedMotion.sha256 = sha256(
+    fs.readFileSync(values.options.ownedMotionManifestPath),
+  );
+
+  const renderer = JSON.parse(
+    fs.readFileSync(values.options.rendererManifestPath, "utf8"),
+  );
+  renderer.inputs.push({
+    component_id: "bastion-gameplay-01",
+    role: "source_media",
+    path: path.relative(
+      path.dirname(values.options.rendererManifestPath),
+      sourceMediaAsset.absolutePath,
+    ),
+    sha256: sourceMediaAsset.sha256,
+    embedded_in_final: true,
+  });
+  writeJson(values.options.rendererManifestPath, renderer);
+  const rendererFileSha256 = sha256(
+    fs.readFileSync(values.options.rendererManifestPath),
+  );
+  const rendererCanonicalSha256 =
+    fingerprintRendererManifest(renderer);
+
+  const qa = JSON.parse(
+    fs.readFileSync(values.options.qaReportPath, "utf8"),
+  );
+  qa.renderer_manifest_sha256 = rendererCanonicalSha256;
+  writeJson(values.options.qaReportPath, qa);
+  values.qa.sha256 = sha256(
+    fs.readFileSync(values.options.qaReportPath),
+  );
+
+  const composite = JSON.parse(
+    fs.readFileSync(values.options.finalCompositeManifestPath, "utf8"),
+  );
+  composite.inputs.story_intake.sha256 = sha256(
+    fs.readFileSync(values.options.storyIntakePath),
+  );
+  composite.inputs.owned_motion_manifest.sha256 =
+    values.ownedMotion.sha256;
+  composite.inputs.source_media_manifest = {
+    path: path.relative(
+      path.dirname(values.options.finalCompositeManifestPath),
+      sourceMedia.absolutePath,
+    ),
+    sha256: sourceMedia.sha256,
+  };
+  composite.hyperframes = {
+    third_party_media_used: true,
+  };
+  composite.source_media = {
+    policy: "LICENSED_OFFICIAL_FFXIV",
+    manifest: {
+      path: path.relative(
+        path.dirname(values.options.finalCompositeManifestPath),
+        sourceMedia.absolutePath,
+      ),
+      sha256: sourceMedia.sha256,
+    },
+    rights_review: {
+      path: path.relative(
+        path.dirname(values.options.finalCompositeManifestPath),
+        rightsReview.absolutePath,
+      ),
+      sha256: rightsReview.sha256,
+    },
+    components: [
+      {
+        component_id: "bastion-gameplay-01",
+        path: path.relative(
+          path.dirname(values.options.finalCompositeManifestPath),
+          sourceMediaAsset.absolutePath,
+        ),
+        sha256: sourceMediaAsset.sha256,
+        attribution: {
+          required: true,
+          text: ATTRIBUTION_TEXT,
+        },
+      },
+    ],
+  };
+  composite.renderer_manifest.file_sha256 = rendererFileSha256;
+  composite.renderer_manifest.canonical_sha256 =
+    rendererCanonicalSha256;
+  composite.qa_report.sha256 = values.qa.sha256;
+  writeJson(values.options.finalCompositeManifestPath, composite);
+
+  values.options.sourceMediaManifestPath = sourceMedia.absolutePath;
+  values.options.sourceMediaManifestSha256 = sourceMedia.sha256;
+  values.sourceMedia = sourceMedia;
+  values.sourceMediaAsset = sourceMediaAsset;
+  values.rendererCanonicalSha256 = rendererCanonicalSha256;
+  values.humanApproval.confirmRendererCanonicalSha256 =
+    rendererCanonicalSha256;
+  return values;
 }
 
 test("dry-run validates and plans without writing or inferring human approval", async () => {
@@ -421,6 +693,378 @@ test("dry-run validates and plans without writing or inferring human approval", 
     }
   } finally {
     fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("owned-only intake must declare its explicit source-media policy", async () => {
+  const values = fixture();
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(values.options.storyIntakePath, "utf8"),
+    );
+    delete intake.story.visual_brief.source_media_policy;
+    writeJson(values.options.storyIntakePath, intake);
+    const composite = JSON.parse(
+      fs.readFileSync(
+        values.options.finalCompositeManifestPath,
+        "utf8",
+      ),
+    );
+    composite.inputs.story_intake.sha256 = sha256(
+      fs.readFileSync(values.options.storyIntakePath),
+    );
+    writeJson(
+      values.options.finalCompositeManifestPath,
+      composite,
+    );
+
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(values.options),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "story_intake_source_media_policy_invalid",
+          ),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("licensed intake requires the exact source-media manifest path and hash", async () => {
+  const values = fixture();
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(values.options.storyIntakePath, "utf8"),
+    );
+    intake.story.visual_brief.source_media_policy =
+      "LICENSED_OFFICIAL_FFXIV";
+    writeJson(values.options.storyIntakePath, intake);
+    const composite = JSON.parse(
+      fs.readFileSync(
+        values.options.finalCompositeManifestPath,
+        "utf8",
+      ),
+    );
+    composite.inputs.story_intake.sha256 = sha256(
+      fs.readFileSync(values.options.storyIntakePath),
+    );
+    writeJson(
+      values.options.finalCompositeManifestPath,
+      composite,
+    );
+
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(values.options),
+      (error) => {
+        assert.ok(
+          error.codes.includes("source_media_manifest_path_required"),
+        );
+        assert.ok(
+          error.codes.includes(
+            "source_media_manifest_sha256_required",
+          ),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("publication metadata is mandatory, independently hash-bound and fail-closed", async () => {
+  const missing = fixture();
+  try {
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage({
+        ...missing.options,
+        publicationMetadataPath: undefined,
+        publicationMetadataSha256: undefined,
+      }),
+      (error) => {
+        assert.ok(
+          error.codes.includes("publication_metadata_path_required"),
+        );
+        assert.ok(
+          error.codes.includes("publication_metadata_sha256_required"),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(missing.root, { recursive: true, force: true });
+  }
+
+  const tampered = fixture();
+  try {
+    fs.appendFileSync(
+      tampered.options.publicationMetadataPath,
+      " ",
+      "utf8",
+    );
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(tampered.options),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "publication_metadata_sha256_mismatch",
+          ),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(tampered.root, { recursive: true, force: true });
+  }
+});
+
+test("licensed source media cannot claim supplied attribution unless publication description contains the exact notice", async () => {
+  const values = addLicensedSourceMedia(fixture());
+  try {
+    const metadata = JSON.parse(
+      fs.readFileSync(values.options.publicationMetadataPath, "utf8"),
+    );
+    metadata.description =
+      "Bastion arrives in Final Fantasy XIV's Evercold update.";
+    writeJson(values.options.publicationMetadataPath, metadata);
+    values.options.publicationMetadataSha256 = sha256(
+      fs.readFileSync(values.options.publicationMetadataPath),
+    );
+
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(values.options),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "publication_metadata_description_attribution_missing",
+          ),
+        );
+        return true;
+      },
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(values.root, "publication-review.json"),
+      ),
+      false,
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("dry-run accepts exact licensed official FFXIV source media without weakening owned-only controls", async () => {
+  const values = addLicensedSourceMedia(fixture());
+  try {
+    const result = await executeGovernedPublicationEvidencePackage(
+      values.options,
+    );
+    assert.equal(result.verdict, "VALIDATED_DRY_RUN");
+    assert.equal(
+      result.source_media_manifest_sha256,
+      values.sourceMedia.sha256,
+    );
+    assert.equal(result.third_party_media_used, true);
+    assert.equal(result.attribution_required, true);
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("source-media inputs fail closed when incomplete, policy-mismatched or hash-tampered", async () => {
+  const incomplete = fixture();
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(incomplete.options.storyIntakePath, "utf8"),
+    );
+    intake.story.visual_brief.source_media_policy =
+      "LICENSED_OFFICIAL_FFXIV";
+    writeJson(incomplete.options.storyIntakePath, intake);
+    const composite = JSON.parse(
+      fs.readFileSync(
+        incomplete.options.finalCompositeManifestPath,
+        "utf8",
+      ),
+    );
+    composite.inputs.story_intake.sha256 = sha256(
+      fs.readFileSync(incomplete.options.storyIntakePath),
+    );
+    writeJson(
+      incomplete.options.finalCompositeManifestPath,
+      composite,
+    );
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage({
+        ...incomplete.options,
+        sourceMediaManifestPath: "missing.json",
+      }),
+      (error) => {
+        assert.ok(
+          error.codes.includes("source_media_manifest_pair_required"),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(incomplete.root, { recursive: true, force: true });
+  }
+
+  const policyMismatch = addLicensedSourceMedia(fixture());
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(policyMismatch.options.storyIntakePath, "utf8"),
+    );
+    intake.story.visual_brief.source_media_policy = "ATTRIBUTION_ONLY";
+    writeJson(policyMismatch.options.storyIntakePath, intake);
+    const composite = JSON.parse(
+      fs.readFileSync(
+        policyMismatch.options.finalCompositeManifestPath,
+        "utf8",
+      ),
+    );
+    composite.inputs.story_intake.sha256 = sha256(
+      fs.readFileSync(policyMismatch.options.storyIntakePath),
+    );
+    writeJson(
+      policyMismatch.options.finalCompositeManifestPath,
+      composite,
+    );
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(
+        policyMismatch.options,
+      ),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "story_intake_source_media_policy_invalid",
+          ),
+        );
+        return true;
+      },
+    );
+
+    intake.story.visual_brief.source_media_policy =
+      "LICENSED_OFFICIAL_FFXIV";
+    writeJson(policyMismatch.options.storyIntakePath, intake);
+    composite.inputs.story_intake.sha256 = sha256(
+      fs.readFileSync(policyMismatch.options.storyIntakePath),
+    );
+    writeJson(
+      policyMismatch.options.finalCompositeManifestPath,
+      composite,
+    );
+    policyMismatch.options.sourceMediaManifestSha256 = "f".repeat(64);
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(
+        policyMismatch.options,
+      ),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "source_media_manifest_sha256_mismatch",
+          ),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(policyMismatch.root, {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("licensed source media must remain exactly bound to mixed motion and one-to-one renderer inputs", async () => {
+  const values = addLicensedSourceMedia(fixture());
+  try {
+    const ownedMotion = JSON.parse(
+      fs.readFileSync(values.options.ownedMotionManifestPath, "utf8"),
+    );
+    ownedMotion.assets[0].provenance.source_media_manifest.sha256 =
+      "f".repeat(64);
+    writeJson(values.options.ownedMotionManifestPath, ownedMotion);
+    const ownedMotionSha = sha256(
+      fs.readFileSync(values.options.ownedMotionManifestPath),
+    );
+    const composite = JSON.parse(
+      fs.readFileSync(values.options.finalCompositeManifestPath, "utf8"),
+    );
+    composite.inputs.owned_motion_manifest.sha256 = ownedMotionSha;
+    writeJson(values.options.finalCompositeManifestPath, composite);
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(values.options),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "mixed_motion_source_media_manifest_sha256_mismatch",
+          ),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+
+  const rendererMismatch = addLicensedSourceMedia(fixture());
+  try {
+    const renderer = JSON.parse(
+      fs.readFileSync(
+        rendererMismatch.options.rendererManifestPath,
+        "utf8",
+      ),
+    );
+    renderer.inputs.find(
+      (input) => input.role === "source_media",
+    ).component_id = "unexpected-source-media";
+    writeJson(rendererMismatch.options.rendererManifestPath, renderer);
+    const rendererSha = sha256(
+      fs.readFileSync(rendererMismatch.options.rendererManifestPath),
+    );
+    const rendererCanonicalSha =
+      fingerprintRendererManifest(renderer);
+    const qa = JSON.parse(
+      fs.readFileSync(rendererMismatch.options.qaReportPath, "utf8"),
+    );
+    qa.renderer_manifest_sha256 = rendererCanonicalSha;
+    writeJson(rendererMismatch.options.qaReportPath, qa);
+    const composite = JSON.parse(
+      fs.readFileSync(
+        rendererMismatch.options.finalCompositeManifestPath,
+        "utf8",
+      ),
+    );
+    composite.renderer_manifest.file_sha256 = rendererSha;
+    composite.renderer_manifest.canonical_sha256 =
+      rendererCanonicalSha;
+    composite.qa_report.sha256 = sha256(
+      fs.readFileSync(rendererMismatch.options.qaReportPath),
+    );
+    writeJson(
+      rendererMismatch.options.finalCompositeManifestPath,
+      composite,
+    );
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(
+        rendererMismatch.options,
+      ),
+      (error) => {
+        assert.ok(
+          error.codes.includes("renderer_source_media_inputs_mismatch"),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(rendererMismatch.root, {
+      recursive: true,
+      force: true,
+    });
   }
 });
 
@@ -526,12 +1170,26 @@ test("apply writes a complete evidence package directly accepted by governed pub
       validation.renderer.canonicalSha256,
       values.rendererCanonicalSha256,
     );
+    assert.equal(
+      validation.publicationMetadata.sha256,
+      values.publicationMetadata.sha256,
+    );
 
     const review = JSON.parse(
       fs.readFileSync(result.publication_review_path, "utf8"),
     );
     assert.equal(review.synthetic_media_disclosure.decision, "DISCLOSE");
     assert.equal(review.synthetic_media_disclosure.youtube_field_value, true);
+    assert.deepEqual(review.publication_metadata, {
+      path: values.publicationMetadata.path,
+      sha256: values.publicationMetadata.sha256,
+      platform: "youtube_shorts",
+    });
+    assert.deepEqual(review.policy, {
+      source_media_policy: "OWNED_ONLY",
+      third_party_media_used: false,
+      attribution_required: false,
+    });
     const rights = JSON.parse(
       fs.readFileSync(result.rights_ledger_path, "utf8"),
     );
@@ -561,6 +1219,142 @@ test("apply writes a complete evidence package directly accepted by governed pub
       packageManifest.inputs.renderer_manifest.canonical_sha256,
       values.rendererCanonicalSha256,
     );
+    assert.equal(
+      packageManifest.inputs.publication_metadata.sha256,
+      values.publicationMetadata.sha256,
+    );
+    assert.equal(
+      packageManifest.bindings.publication_metadata_sha256,
+      values.publicationMetadata.sha256,
+    );
+    const transformation = JSON.parse(
+      fs.readFileSync(result.transformation_evidence_path, "utf8"),
+    );
+    assert.equal(
+      transformation.bindings.publication_metadata.sha256,
+      values.publicationMetadata.sha256,
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("apply records licensed mixed motion and every governed FFXIV source component with supplied attribution", async () => {
+  const values = addLicensedSourceMedia(fixture());
+  try {
+    const result = await executeGovernedPublicationEvidencePackage({
+      ...values.options,
+      apply: true,
+      humanApproval: values.humanApproval,
+    });
+    const sourceRights = JSON.parse(
+      fs.readFileSync(result.source_media_rights_evidence_path, "utf8"),
+    );
+    assert.equal(sourceRights.rights_basis, "LICENSED");
+    assert.equal(
+      sourceRights.manifest_binding.sha256,
+      values.sourceMedia.sha256,
+    );
+    assert.deepEqual(
+      sourceRights.components.map((component) => component.component_id),
+      ["bastion-gameplay-01"],
+    );
+    assert.deepEqual(
+      sourceRights.description_attribution_evidence,
+      {
+        publication_metadata: {
+          path: values.publicationMetadata.path,
+          sha256: values.publicationMetadata.sha256,
+          platform: "youtube_shorts",
+        },
+        notice: ATTRIBUTION_TEXT,
+        exact_standalone_line_verified: true,
+      },
+    );
+
+    const motionRights = JSON.parse(
+      fs.readFileSync(
+        result.owned_motion_rights_evidence_path,
+        "utf8",
+      ),
+    );
+    assert.equal(motionRights.ownership, "mixed");
+    assert.equal(motionRights.rights_basis, "LICENSED");
+    assert.equal(motionRights.attribution_required, true);
+    assert.equal(motionRights.third_party_media_used, true);
+
+    const rights = JSON.parse(
+      fs.readFileSync(result.rights_ledger_path, "utf8"),
+    );
+    const motion = rights.items.find(
+      (item) => item.item_id === "hyperframes-intermediate",
+    );
+    assert.equal(motion.rights_basis, "LICENSED");
+    assert.equal(
+      motion.attribution_decision,
+      "REQUIRED_AND_SUPPLIED",
+    );
+    assert.equal(motion.attribution_text, ATTRIBUTION_TEXT);
+    const sourceItem = rights.items.find(
+      (item) => item.item_id === "bastion-gameplay-01",
+    );
+    assert.equal(sourceItem.rights_basis, "LICENSED");
+    assert.equal(
+      sourceItem.attribution_decision,
+      "REQUIRED_AND_SUPPLIED",
+    );
+    assert.equal(sourceItem.attribution_text, ATTRIBUTION_TEXT);
+    assert.equal(
+      sourceItem.asset_sha256,
+      values.sourceMediaAsset.sha256,
+    );
+
+    const review = JSON.parse(
+      fs.readFileSync(result.publication_review_path, "utf8"),
+    );
+    assert.equal(
+      review.source_media_manifest.sha256,
+      values.sourceMedia.sha256,
+    );
+    assert.deepEqual(review.policy, {
+      source_media_policy: "LICENSED_OFFICIAL_FFXIV",
+      third_party_media_used: true,
+      attribution_required: true,
+    });
+    assert.equal(
+      review.publication_metadata.sha256,
+      values.publicationMetadata.sha256,
+    );
+    const validation = await validatePublicationReviewManifest({
+      manifestPath: result.publication_review_path,
+      probe: async () => validProbe(),
+    });
+    assert.equal(
+      validation.sourceMedia.manifest_sha256,
+      values.sourceMedia.sha256,
+    );
+    assert.equal(
+      validation.publicationMetadata.sha256,
+      values.publicationMetadata.sha256,
+    );
+    assert.equal(validation.rendererInputs.length, 4);
+
+    const packageManifest = JSON.parse(
+      fs.readFileSync(result.package_manifest_path, "utf8"),
+    );
+    assert.equal(packageManifest.policy.third_party_media_used, true);
+    assert.equal(packageManifest.policy.attribution_required, true);
+    assert.equal(
+      packageManifest.inputs.source_media_manifest.sha256,
+      values.sourceMedia.sha256,
+    );
+    assert.equal(
+      packageManifest.inputs.publication_metadata.sha256,
+      values.publicationMetadata.sha256,
+    );
+    const markdown = fs.readFileSync(result.markdown_path, "utf8");
+    assert.match(markdown, /Third-party media used: true/);
+    assert.match(markdown, /Attribution required: true/);
   } finally {
     fs.rmSync(values.root, { recursive: true, force: true });
   }

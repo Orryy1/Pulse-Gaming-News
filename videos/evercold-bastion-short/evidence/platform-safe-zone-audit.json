@@ -1,0 +1,473 @@
+{
+  "schema_version": "pulse-platform-safe-zone-audit-v1",
+  "story_id": "official_d86953ca92ca",
+  "generated_at": "2026-07-27T20:30:00.000Z",
+  "profile_id": "portrait-cross-platform-strict-v1",
+  "canvas": {
+    "width": 1080,
+    "height": 1920
+  },
+  "safe_rect": {
+    "x": 96,
+    "y": 240,
+    "width": 720,
+    "height": 1176
+  },
+  "covered_surfaces": [
+    "youtube_shorts",
+    "tiktok",
+    "instagram_reels",
+    "facebook_reels",
+    "x_vertical_video"
+  ],
+  "geometry_method": "The maximum platform-specific edge reservation is expanded by an editorial uncertainty buffer. The resulting rectangle is deliberately stricter than any one profile and reserves the right action rail, top search/player chrome and lower caption/control region.",
+  "caption_contract": {
+    "format": "ASS",
+    "profile_id": "portrait-cross-platform-strict-v1",
+    "caption_rect": {
+      "x": 96,
+      "y": 1040,
+      "width": 720,
+      "height": 200
+    },
+    "anchor": {
+      "x": 456,
+      "y": 1200,
+      "alignment": 2
+    },
+    "font_size": 78,
+    "emphasis_font_size": 88,
+    "max_phrase_chars": 12,
+    "max_words_per_phrase": 2,
+    "runtime_evidence_path": "final-render-qa.json#captions.safe_zone"
+  },
+  "runtime_geometry_evidence": {
+    "method": "Playwright Chromium getBoundingClientRect() after deterministic GSAP seeks",
+    "tolerance_px": 2,
+    "sweep_seconds": [
+      0,
+      0.15,
+      2,
+      3.25,
+      5,
+      7.9,
+      9.5,
+      11.7,
+      12.8,
+      13.25,
+      14.3,
+      16.45,
+      18.1,
+      20.25,
+      21.8,
+      24.5,
+      27.5
+    ],
+    "rest_samples": [
+      {
+        "at_seconds": 0,
+        "element_ids": [
+          "evercold-owned-motion-viewport",
+          "source-chip",
+          "media-legal",
+          "progress-track"
+        ]
+      },
+      {
+        "at_seconds": 2,
+        "element_ids": [
+          "proof-frame-hook",
+          "ffxiv-bastion-official-thumbnail",
+          "proof-label-hook"
+        ]
+      },
+      {
+        "at_seconds": 5,
+        "element_ids": [
+          "proof-frame-character",
+          "ffxiv-bastion-concept-art",
+          "proof-label-character"
+        ]
+      },
+      {
+        "at_seconds": 9.5,
+        "element_ids": [
+          "proof-frame-mode",
+          "ffxiv-evolved-mode",
+          "proof-label-mode"
+        ]
+      },
+      {
+        "at_seconds": 12.8,
+        "element_ids": [
+          "proof-frame-gameplay-one",
+          "ffxiv-naglfar-gameplay-01",
+          "proof-label-gameplay-one"
+        ]
+      },
+      {
+        "at_seconds": 14.3,
+        "element_ids": [
+          "proof-frame-gameplay-two",
+          "ffxiv-naglfar-gameplay-02",
+          "proof-label-gameplay-two"
+        ]
+      },
+      {
+        "at_seconds": 18.1,
+        "element_ids": [
+          "proof-frame-raid",
+          "ffxiv-beyond-lifestream",
+          "proof-label-raid"
+        ]
+      },
+      {
+        "at_seconds": 21.8,
+        "element_ids": [
+          "proof-frame-key-art",
+          "ffxiv-evercold-key-art",
+          "proof-label-key"
+        ]
+      }
+    ]
+  },
+  "composition_source": "../index.html",
+  "elements": [
+    {
+      "id": "evercold-owned-motion-viewport",
+      "selector": "#evercold-owned-motion-viewport",
+      "role": "embedded_viewer_content",
+      "bbox": {
+        "x": 125,
+        "y": 240,
+        "width": 662,
+        "height": 1176
+      }
+    },
+    {
+      "id": "proof-frame-hook",
+      "selector": "#proof-frame-hook",
+      "role": "card",
+      "bbox": {
+        "x": 96,
+        "y": 390,
+        "width": 720,
+        "height": 451
+      }
+    },
+    {
+      "id": "ffxiv-bastion-official-thumbnail",
+      "selector": "#ffxiv-bastion-official-thumbnail",
+      "role": "source_media",
+      "bbox": {
+        "x": 97,
+        "y": 391,
+        "width": 718,
+        "height": 449
+      }
+    },
+    {
+      "id": "shield-reticle",
+      "selector": "#shield-reticle",
+      "role": "meaningful_graphic",
+      "geometry_mode": "dynamic_contained",
+      "bbox": {
+        "x": 156,
+        "y": 370,
+        "width": 600,
+        "height": 600
+      }
+    },
+    {
+      "id": "proof-label-hook",
+      "selector": "#proof-label-hook",
+      "role": "pill",
+      "bbox": {
+        "x": 116,
+        "y": 866,
+        "width": 340,
+        "height": 44
+      }
+    },
+    {
+      "id": "proof-frame-character",
+      "selector": "#proof-frame-character",
+      "role": "card",
+      "bbox": {
+        "x": 190,
+        "y": 390,
+        "width": 532,
+        "height": 960
+      }
+    },
+    {
+      "id": "ffxiv-bastion-concept-art",
+      "selector": "#ffxiv-bastion-concept-art",
+      "role": "source_media",
+      "bbox": {
+        "x": 191,
+        "y": 391,
+        "width": 530,
+        "height": 958
+      }
+    },
+    {
+      "id": "proof-label-character",
+      "selector": "#proof-label-character",
+      "role": "pill",
+      "bbox": {
+        "x": 214,
+        "y": 1284,
+        "width": 340,
+        "height": 44
+      }
+    },
+    {
+      "id": "proof-frame-mode",
+      "selector": "#proof-frame-mode",
+      "role": "card",
+      "bbox": {
+        "x": 96,
+        "y": 390,
+        "width": 720,
+        "height": 405
+      }
+    },
+    {
+      "id": "ffxiv-evolved-mode",
+      "selector": "#ffxiv-evolved-mode",
+      "role": "source_media",
+      "bbox": {
+        "x": 97,
+        "y": 391,
+        "width": 718,
+        "height": 403
+      }
+    },
+    {
+      "id": "proof-label-mode",
+      "selector": "#proof-label-mode",
+      "role": "pill",
+      "bbox": {
+        "x": 116,
+        "y": 820,
+        "width": 340,
+        "height": 44
+      }
+    },
+    {
+      "id": "proof-frame-gameplay-one",
+      "selector": "#proof-frame-gameplay-one",
+      "role": "card",
+      "bbox": {
+        "x": 96,
+        "y": 390,
+        "width": 720,
+        "height": 477
+      }
+    },
+    {
+      "id": "ffxiv-naglfar-gameplay-01",
+      "selector": "#ffxiv-naglfar-gameplay-01",
+      "role": "source_media",
+      "bbox": {
+        "x": 97,
+        "y": 391,
+        "width": 718,
+        "height": 475
+      }
+    },
+    {
+      "id": "proof-label-gameplay-one",
+      "selector": "#proof-label-gameplay-one",
+      "role": "pill",
+      "bbox": {
+        "x": 116,
+        "y": 892,
+        "width": 340,
+        "height": 44
+      }
+    },
+    {
+      "id": "proof-frame-gameplay-two",
+      "selector": "#proof-frame-gameplay-two",
+      "role": "card",
+      "bbox": {
+        "x": 96,
+        "y": 390,
+        "width": 720,
+        "height": 477
+      }
+    },
+    {
+      "id": "ffxiv-naglfar-gameplay-02",
+      "selector": "#ffxiv-naglfar-gameplay-02",
+      "role": "source_media",
+      "bbox": {
+        "x": 97,
+        "y": 391,
+        "width": 718,
+        "height": 475
+      }
+    },
+    {
+      "id": "proof-label-gameplay-two",
+      "selector": "#proof-label-gameplay-two",
+      "role": "pill",
+      "bbox": {
+        "x": 116,
+        "y": 892,
+        "width": 340,
+        "height": 44
+      }
+    },
+    {
+      "id": "proof-frame-raid",
+      "selector": "#proof-frame-raid",
+      "role": "card",
+      "bbox": {
+        "x": 96,
+        "y": 390,
+        "width": 720,
+        "height": 573
+      }
+    },
+    {
+      "id": "ffxiv-beyond-lifestream",
+      "selector": "#ffxiv-beyond-lifestream",
+      "role": "source_media",
+      "bbox": {
+        "x": 97,
+        "y": 391,
+        "width": 718,
+        "height": 571
+      }
+    },
+    {
+      "id": "proof-label-raid",
+      "selector": "#proof-label-raid",
+      "role": "pill",
+      "bbox": {
+        "x": 116,
+        "y": 988,
+        "width": 340,
+        "height": 44
+      }
+    },
+    {
+      "id": "proof-frame-key-art",
+      "selector": "#proof-frame-key-art",
+      "role": "card",
+      "bbox": {
+        "x": 182,
+        "y": 390,
+        "width": 548,
+        "height": 960
+      }
+    },
+    {
+      "id": "ffxiv-evercold-key-art",
+      "selector": "#ffxiv-evercold-key-art",
+      "role": "source_media",
+      "bbox": {
+        "x": 183,
+        "y": 391,
+        "width": 546,
+        "height": 958
+      }
+    },
+    {
+      "id": "proof-label-key",
+      "selector": "#proof-label-key",
+      "role": "pill",
+      "bbox": {
+        "x": 206,
+        "y": 1284,
+        "width": 340,
+        "height": 44
+      }
+    },
+    {
+      "id": "source-chip",
+      "selector": "#source-chip",
+      "role": "pill",
+      "bbox": {
+        "x": 456,
+        "y": 260,
+        "width": 360,
+        "height": 42
+      }
+    },
+    {
+      "id": "media-legal",
+      "selector": "#media-legal",
+      "role": "attribution",
+      "bbox": {
+        "x": 575,
+        "y": 318,
+        "width": 241,
+        "height": 40
+      }
+    },
+    {
+      "id": "progress-track",
+      "selector": "#progress-track",
+      "role": "progress",
+      "bbox": {
+        "x": 96,
+        "y": 1396,
+        "width": 720,
+        "height": 4
+      }
+    }
+  ],
+  "decorative_exemptions": [
+    {
+      "id": "edge-rail",
+      "selector": "#edge-rail",
+      "carries_meaning": false,
+      "rationale": "Decorative edge glow only; it may remain full bleed."
+    },
+    {
+      "id": "scan-line",
+      "selector": "#scan-line",
+      "carries_meaning": false,
+      "rationale": "Decorative scan pass only; it may traverse the full canvas."
+    },
+    {
+      "id": "corner-top-left",
+      "selector": "#corner-top-left",
+      "carries_meaning": false,
+      "rationale": "Decorative framing mark only."
+    },
+    {
+      "id": "corner-top-right",
+      "selector": "#corner-top-right",
+      "carries_meaning": false,
+      "rationale": "Decorative framing mark only."
+    },
+    {
+      "id": "corner-bottom-right",
+      "selector": "#corner-bottom-right",
+      "carries_meaning": false,
+      "rationale": "Decorative framing mark only."
+    },
+    {
+      "id": "corner-bottom-left",
+      "selector": "#corner-bottom-left",
+      "carries_meaning": false,
+      "rationale": "Decorative framing mark only."
+    }
+  ],
+  "guidance_sources": [
+    "https://support.google.com/google-ads/answer/9128498",
+    "https://ads.tiktok.com/business/library/TikTok_CreativeCodes_May2023.pdf",
+    "https://www.facebook.com/business/ads/facebook-instagram-reels-ads",
+    "https://business.x.com/en/help/campaign-setup/creative-ad-specifications"
+  ],
+  "limitations": [
+    "Platform chrome is dynamic and can vary by device, locale, accessibility settings, account state and app version.",
+    "Full-bleed imagery and non-semantic decorative framing may extend beyond the safe rectangle; no meaningful text, attribution, card, pill or diagram does."
+  ],
+  "external_publish_authorised": false
+}

@@ -33,6 +33,10 @@ function completeArgs(extra = []) {
     "final-render-qa.json",
     "--final-mp4",
     "final.mp4",
+    "--publication-metadata",
+    "publication-metadata.json",
+    "--publication-metadata-sha256",
+    "e".repeat(64),
     "--out-dir",
     ".",
     "--generated-at",
@@ -42,9 +46,26 @@ function completeArgs(extra = []) {
 }
 
 test("CLI defaults to dry-run and maps every explicit evidence input", () => {
-  const options = parseArgs(completeArgs());
+  const options = parseArgs(
+    completeArgs([
+      "--source-media-manifest",
+      "source-media-manifest.json",
+      "--source-media-manifest-sha256",
+      "d".repeat(64),
+    ]),
+  );
   assert.equal(options.apply, false);
   assert.equal(options.storyIntakePath, "story-intake.json");
+  assert.equal(
+    options.sourceMediaManifestPath,
+    "source-media-manifest.json",
+  );
+  assert.equal(options.sourceMediaManifestSha256, "d".repeat(64));
+  assert.equal(
+    options.publicationMetadataPath,
+    "publication-metadata.json",
+  );
+  assert.equal(options.publicationMetadataSha256, "e".repeat(64));
   assert.equal(
     options.governedNarrationManifestPath,
     "governed-narration-manifest.json",
@@ -54,6 +75,82 @@ test("CLI defaults to dry-run and maps every explicit evidence input", () => {
     "final-composite-manifest.json",
   );
   assert.equal(options.humanApproval, undefined);
+});
+
+test("CLI requires the source-media path and exact hash as a pair", () => {
+  assert.throws(
+    () =>
+      parseArgs(
+        completeArgs([
+          "--source-media-manifest",
+          "source-media-manifest.json",
+        ]),
+      ),
+    /source_media_manifest_pair_required/,
+  );
+  assert.throws(
+    () =>
+      parseArgs(
+        completeArgs([
+          "--source-media-manifest-sha256",
+          "d".repeat(64),
+        ]),
+      ),
+    /source_media_manifest_pair_required/,
+  );
+});
+
+test("CLI requires the publication-metadata path and exact hash as a pair", () => {
+  const withoutMetadata = completeArgs().filter(
+    (value, index, values) =>
+      value !== "--publication-metadata" &&
+      values[index - 1] !== "--publication-metadata" &&
+      value !== "--publication-metadata-sha256" &&
+      values[index - 1] !== "--publication-metadata-sha256",
+  );
+  assert.throws(
+    () => parseArgs(withoutMetadata),
+    /publication_metadata_pair_required/,
+  );
+  assert.throws(
+    () =>
+      parseArgs([
+        ...withoutMetadata,
+        "--publication-metadata",
+        "publication-metadata.json",
+      ]),
+    /publication_metadata_pair_required/,
+  );
+  assert.throws(
+    () =>
+      parseArgs([
+        ...withoutMetadata,
+        "--publication-metadata-sha256",
+        "e".repeat(64),
+      ]),
+    /publication_metadata_pair_required/,
+  );
+});
+
+test("CLI help remains available without supplying governed inputs", async () => {
+  let stdout = "";
+  let called = false;
+  const exitCode = await runCli(["--help"], {
+    execute: async () => {
+      called = true;
+      return {};
+    },
+    stdout: {
+      write(value) {
+        stdout += value;
+      },
+    },
+    stderr: { write() {} },
+  });
+  assert.equal(exitCode, 0);
+  assert.equal(called, false);
+  assert.match(stdout, /--publication-metadata PATH/);
+  assert.match(stdout, /validation-only dry-run/);
 });
 
 test("CLI forwards apply only with explicit human confirmation values", async () => {

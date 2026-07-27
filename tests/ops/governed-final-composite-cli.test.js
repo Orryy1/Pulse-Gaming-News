@@ -33,6 +33,12 @@ const REQUIRED_ARGS = [
   "--hyperframes-project-file",
   "videos/evercold/hyperframes.json",
 ];
+const SOURCE_MEDIA_ARGS = [
+  "--source-media-manifest",
+  "source-media-manifest.json",
+  "--source-media-manifest-sha256",
+  "c".repeat(64),
+];
 
 test("parseArgs accepts only explicit LOCAL_PROOF composite inputs", () => {
   const args = parseArgs([
@@ -62,6 +68,21 @@ test("parseArgs accepts only explicit LOCAL_PROOF composite inputs", () => {
     "videos/evercold/hyperframes.json",
   ]);
   assert.equal(args.generatedAt, "2026-07-27T17:00:00.000Z");
+});
+
+test("parseArgs accepts an exact optional governed source-media manifest pair", () => {
+  const args = parseArgs([
+    ...REQUIRED_ARGS,
+    ...SOURCE_MEDIA_ARGS,
+  ]);
+  assert.equal(
+    args.sourceMediaManifestPath,
+    "source-media-manifest.json",
+  );
+  assert.equal(
+    args.expectedSourceMediaManifestSha256,
+    "c".repeat(64),
+  );
 });
 
 test("parseArgs rejects publish, apply, DB and unknown flags", () => {
@@ -117,6 +138,31 @@ test("main resolves all paths and delegates one LOCAL_PROOF render", async () =>
   );
   assert.equal(result.verdict, "MATERIALIZED_LOCAL_PROOF");
   assert.equal(JSON.parse(stdout).publish_authorised, false);
+});
+
+test("main resolves and delegates the exact optional source-media manifest pair", async () => {
+  let received = null;
+  await main([...REQUIRED_ARGS, ...SOURCE_MEDIA_ARGS], {
+    stdout: { write() {} },
+    async execute(options) {
+      received = options;
+      return {
+        schema_version:
+          "pulse-governed-final-composite-result-v1",
+        mode: "LOCAL_PROOF",
+        verdict: "MATERIALIZED_LOCAL_PROOF",
+        publish_authorised: false,
+      };
+    },
+  });
+  assert.equal(
+    path.isAbsolute(received.sourceMediaManifestPath),
+    true,
+  );
+  assert.equal(
+    received.expectedSourceMediaManifestSha256,
+    "c".repeat(64),
+  );
 });
 
 test("main requires every governed input before invoking the service", async () => {
@@ -184,6 +230,57 @@ test("main requires an independent governed narration manifest SHA-256", async (
       },
     }),
     /narration_manifest_sha256_required/,
+  );
+  assert.equal(invoked, false);
+});
+
+test("main requires source-media manifest and independent SHA-256 together", async () => {
+  for (const [extraArgs, expectedError] of [
+    [
+      ["--source-media-manifest", "source-media-manifest.json"],
+      /source_media_manifest_sha256_required/,
+    ],
+    [
+      [
+        "--source-media-manifest-sha256",
+        "c".repeat(64),
+      ],
+      /source_media_manifest_path_required/,
+    ],
+  ]) {
+    let invoked = false;
+    await assert.rejects(
+      main([...REQUIRED_ARGS, ...extraArgs], {
+        stdout: { write() {} },
+        async execute() {
+          invoked = true;
+        },
+      }),
+      expectedError,
+    );
+    assert.equal(invoked, false);
+  }
+});
+
+test("main rejects an invalid independent source-media manifest SHA-256", async () => {
+  let invoked = false;
+  await assert.rejects(
+    main(
+      [
+        ...REQUIRED_ARGS,
+        "--source-media-manifest",
+        "source-media-manifest.json",
+        "--source-media-manifest-sha256",
+        "not-a-sha",
+      ],
+      {
+        stdout: { write() {} },
+        async execute() {
+          invoked = true;
+        },
+      },
+    ),
+    /source_media_manifest_sha256_invalid/,
   );
   assert.equal(invoked, false);
 });

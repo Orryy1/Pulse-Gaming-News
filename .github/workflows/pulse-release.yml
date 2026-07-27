@@ -42,6 +42,24 @@ jobs:
       - name: Install the pinned Evercold HyperFrames material project
         run: npm --prefix videos/evercold-bastion-short ci
 
+      - name: Acquire exact ephemeral Evercold source media
+        run: >-
+          npm run ops:governed-source-media-ephemeral --
+          acquire
+          --mode LOCAL_PROOF
+          --manifest videos/evercold-bastion-short/source-media-manifest.json
+          --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8
+          --story-id official_d86953ca92ca
+
+      - name: Validate ephemeral bytes and governed rights evidence
+        run: >-
+          npm run ops:governed-source-media-ephemeral --
+          validate
+          --mode LOCAL_PROOF
+          --manifest videos/evercold-bastion-short/source-media-manifest.json
+          --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8
+          --story-id official_d86953ca92ca
+
       - name: Strictly check the Evercold HyperFrames material project
         run: npm --prefix videos/evercold-bastion-short run check -- --strict
 
@@ -63,18 +81,25 @@ jobs:
           tests/ops/governed-story-intake-cli.test.js
           tests/services/governed-owned-motion.test.js
           tests/ops/governed-owned-motion-cli.test.js
+          tests/services/governed-source-media.test.js
+          tests/services/governed-source-media-actual-manifest.test.js
+          tests/services/governed-source-media-ephemeral.test.js
+          tests/ops/governed-source-media-ephemeral-cli.test.js
           tests/services/governed-narration-materialize.test.js
           tests/ops/governed-narration-materialize-cli.test.js
           tests/services/governed-final-composite.test.js
           tests/ops/governed-final-composite-cli.test.js
           tests/services/governed-publication-evidence-package.test.js
           tests/ops/governed-publication-evidence-package-cli.test.js
+          tests/services/governed-publication-metadata.test.js
           tests/services/governed-publication-review.test.js
           tests/ops/governed-publication-review-cli.test.js
           tests/services/governed-platform-dispatch.test.js
           tests/services/guarded-youtube-window.test.js
           tests/ops/guarded-youtube-window-cli.test.js
+          tests/services/platform-safe-zones.test.js
           tests/services/evercold-hyperframes-material.test.js
+          tests/services/evercold-platform-safe-zone-runtime.test.js
 
       - name: Validate repository operating rules
         run: npm run ops:agent-rules

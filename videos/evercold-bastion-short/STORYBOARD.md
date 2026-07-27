@@ -13,12 +13,12 @@ mode: autonomous
 - src: compositions/frames/01-two-shields.html
 - duration: 4.2s
 - transition_in: cut
-- scene: Two shield silhouettes lock together as the direct hook lands.
+- scene: The official Bastion reveal fills a broadcast proof window while the owned shield reticle and direct hook land together.
 - voiceover: "Final Fantasy XIV just revealed a tank that fights with two giant shields."
 - motion_rules: kinetic-beat-slam, svg-path-draw, ambient-glow-bloom
 
-Open cold on the visual idea anyone can understand. The shield lock and the
-headline arrive as one forceful beat, establishing the news before any lore.
+Open cold on the official reveal image rather than an abstract-only frame. The
+reticle, shield motif and headline arrive as one beat before any lore.
 
 ## Frame 2 — Bastion
 
@@ -26,12 +26,13 @@ headline arrive as one forceful beat, establishing the news before any lore.
 - src: compositions/frames/02-bastion.html
 - duration: 3.8s
 - transition_in: velocity-push
-- scene: The two shields separate, then lock around the Bastion job name.
+- scene: Official Bastion character art rises into the existing reveal language and locks beside the job name.
 - voiceover: "Bastion arrives in Evercold"
 - motion_rules: spring-pop-entrance, reactive-displacement, sine-wave-loop
 
-Name the job only after the visual promise is clear. This beat converts the
-hook into a specific, memorable reveal.
+Name the job only after the visual promise is clear. The character art gives
+the viewer a real game subject while the existing graphic system keeps the
+Pulse identity.
 
 ## Frame 3 — Evolved only
 
@@ -39,12 +40,12 @@ hook into a specific, memorable reveal.
 - src: compositions/frames/03-evolved-mode.html
 - duration: 4.2s
 - transition_in: velocity-push
-- scene: A Reborn selector clicks down into a bright Evolved Mode state.
+- scene: The official Reborn/Evolved comparison appears first, then yields to the owned animated selector.
 - voiceover: "and only works in Evolved Mode."
 - motion_rules: control-target-sync, press-release-spring, ambient-glow-bloom
 
-Make the limitation feel like a mode switch, not disclaimer text. The viewer
-should understand the requirement before the sentence finishes.
+Use the official comparison as proof, then let the selector simplify it. The
+viewer should understand the requirement before the sentence finishes.
 
 ## Frame 4 — Choose and scale
 
@@ -52,12 +53,12 @@ should understand the requirement before the sentence finishes.
 - src: compositions/frames/04-branch-and-scale.html
 - duration: 5.4s
 - transition_in: blur-through
-- scene: One route branches into two while an automatic balance meter settles.
+- scene: Two official in-game Naglfar views cut quickly before the owned route diagram and automatic balance meter settle.
 - voiceover: "The expansion makes its story less linear and auto-scales content"
 - motion_rules: svg-path-draw, control-target-sync, sine-wave-loop
 
-Turn two system changes into one player benefit: more choice without breaking
-the content balance. The branching path leads the eye into the balancing meter.
+Start with real in-game locations, then turn the two system changes into one
+player benefit: more choice without breaking the content balance.
 
 ## Frame 5 — Eight-player raid
 
@@ -65,12 +66,12 @@ the content balance. The branching path leads the eye into the balancing meter.
 - src: compositions/frames/05-lifestream-raid.html
 - duration: 4.6s
 - transition_in: blur-through
-- scene: Eight raid slots assemble around the Beyond the Lifestream title.
+- scene: Official Beyond the Lifestream art lands, then eight owned raid slots assemble around the title.
 - voiceover: "and adds a Final Fantasy Seven raid."
 - motion_rules: spring-pop-entrance, depth-scatter-assemble, ambient-glow-bloom
 
-This is the fan-recognition payoff. Eight slots establish the scale before the
-raid name and crossover label lock into place.
+This is the fan-recognition payoff. The official Cloud artwork establishes the
+crossover, then the eight slots make the raid scale immediately clear.
 
 ## Frame 6 — Switch 2 date
 
@@ -78,9 +79,9 @@ raid name and crossover label lock into place.
 - src: compositions/frames/06-switch-date.html
 - duration: 5.8s
 - transition_in: color-dip
-- scene: A red platform card stamps in with Switch 2 and 4 August.
+- scene: Official vertical Evercold key art bridges into the red Switch 2 and 4 August card.
 - voiceover: "The MMO hits Switch Two on August fourth."
 - motion_rules: kinetic-beat-slam, counting-dynamic-scale, ambient-glow-bloom
 
-Close on the most actionable fact. The platform and date must remain readable
-through the final hold, ending with a clean Pulse Gaming lock-up.
+Use the key art as a short visual reset, then close on the most actionable fact.
+The platform and date remain readable through the final Pulse Gaming hold.

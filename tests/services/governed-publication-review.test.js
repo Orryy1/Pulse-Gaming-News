@@ -19,6 +19,13 @@ const {
   executeGovernedPublicationReview,
 } = require("../../lib/services/governed-publication-review");
 const {
+  METADATA_SCHEMA,
+} = require("../../lib/services/governed-publication-metadata");
+const {
+  ATTRIBUTION_TEXT,
+  MANIFEST_SCHEMA: SOURCE_MEDIA_MANIFEST_SCHEMA,
+} = require("../../lib/services/governed-source-media");
+const {
   buildNextPublishCandidatesReport,
 } = require("../../lib/ops/stabilisation-preflight");
 
@@ -27,6 +34,12 @@ const STORY_ID = "official_ff567afb1a07";
 const CHANNEL_ID = "pulse-gaming";
 const SCRIPT =
   "Delta Force just widened cheater compensation to cover thirty-day bans. Previously, victims qualified only after a ten-year ban. The official update says in-game mail should arrive within three business days of confirmation. But if a squadmate extracted and returned your gear, you cannot claim twice.";
+const LICENCE_URL =
+  "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc";
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -379,6 +392,25 @@ function fixture() {
     sha256: sha256(fs.readFileSync(qaPath)),
   };
 
+  const publicationMetadataPath = path.join(
+    root,
+    "publication-metadata.json",
+  );
+  writeJson(publicationMetadataPath, {
+    schema_version: METADATA_SCHEMA,
+    story_id: STORY_ID,
+    channel_id: CHANNEL_ID,
+    platform: "youtube_shorts",
+    title: "Delta Force widens cheater compensation",
+    description:
+      "Delta Force has expanded cheater compensation eligibility.",
+  });
+  const publicationMetadata = {
+    path: path.basename(publicationMetadataPath),
+    absolutePath: publicationMetadataPath,
+    sha256: sha256(fs.readFileSync(publicationMetadataPath)),
+  };
+
   const reviewPath = path.join(root, "publication-review.json");
   const review = {
     schema_version: "pulse-governed-publication-review-v1",
@@ -418,6 +450,16 @@ function fixture() {
       path: ownedMotion.path,
       sha256: ownedMotion.sha256,
     },
+    publication_metadata: {
+      path: publicationMetadata.path,
+      sha256: publicationMetadata.sha256,
+      platform: "youtube_shorts",
+    },
+    policy: {
+      source_media_policy: "OWNED_ONLY",
+      third_party_media_used: false,
+      attribution_required: false,
+    },
     renderer_inputs: rendererInputs,
   };
   writeJson(reviewPath, review);
@@ -432,6 +474,299 @@ function fixture() {
     finalMp4,
     narration,
     motion,
+    publicationMetadata,
+  };
+}
+
+function addLicensedSourceMedia(values) {
+  const asset = fileRecord(
+    values.root,
+    "source-media/ffxiv-gameplay.png",
+    TINY_PNG,
+  );
+  const rightsReviewPath = path.join(
+    values.root,
+    "source-media-rights-review.json",
+  );
+  writeJson(rightsReviewPath, {
+    schema_version: "pulse-governed-rights-review-evidence-v1",
+    story_id: STORY_ID,
+    review_status: "ACCEPTED",
+    rights_basis: "LICENSED",
+    publisher: "Square Enix",
+    licence_evidence_url: LICENCE_URL,
+    licence_effective_date: "2026-05-07",
+    reviewed_by: "pulse-editorial-rights-review",
+    reviewed_at: NOW,
+    scope:
+      "Official FINAL FANTASY XIV gameplay used in a narrated, edited news report.",
+    findings: {
+      covered_materials: [
+        "art",
+        "images",
+        "screenshots",
+        "video",
+      ],
+      permitted_destination:
+        "YouTube and comparable social-network partner programmes",
+      copyright_notice: ATTRIBUTION_TEXT,
+      copyright_notice_delivery: ["DESCRIPTION", "ON_SCREEN"],
+      third_party_music_used: false,
+      source_audio_used: false,
+      raw_asset_redistribution: false,
+      removal_request_must_be_honoured: true,
+    },
+  });
+  const rightsReviewSha = sha256(
+    fs.readFileSync(rightsReviewPath),
+  );
+  const sourceManifestPath = path.join(
+    values.root,
+    "source-media-manifest.json",
+  );
+  writeJson(sourceManifestPath, {
+    schema_version: SOURCE_MEDIA_MANIFEST_SCHEMA,
+    story_id: STORY_ID,
+    rights_review: {
+      path: path.basename(rightsReviewPath),
+      sha256: rightsReviewSha,
+      review_status: "ACCEPTED",
+    },
+    components: [
+      {
+        component_id: "ffxiv-gameplay-01",
+        media_type: "IMAGE",
+        asset: {
+          path: asset.path,
+          sha256: asset.sha256,
+          width: 1,
+          height: 1,
+          mime_type: "image/png",
+        },
+        source: {
+          page_url: "https://eu.finalfantasyxiv.com/evercold/media/",
+          direct_media_url:
+            "https://lds-img.finalfantasyxiv.com/promo/h/a/test.png",
+          publisher: "Square Enix",
+        },
+        rights_basis: "LICENSED",
+        licence_evidence_url: LICENCE_URL,
+        review_status: "ACCEPTED",
+        attribution: {
+          required: true,
+          text: ATTRIBUTION_TEXT,
+          delivery: ["ON_SCREEN", "DESCRIPTION"],
+        },
+        editorial: {
+          purpose: "TRANSFORMATIVE_EDITORIAL",
+          third_party_music_used: false,
+          source_audio_disposition: "NOT_APPLICABLE",
+          usage_seconds: [0, 2],
+        },
+      },
+    ],
+  });
+  const sourceManifestSha = sha256(
+    fs.readFileSync(sourceManifestPath),
+  );
+
+  const publicationMetadata = JSON.parse(
+    fs.readFileSync(values.publicationMetadata.absolutePath, "utf8"),
+  );
+  publicationMetadata.description = [
+    publicationMetadata.description,
+    "",
+    ATTRIBUTION_TEXT,
+  ].join("\n");
+  writeJson(
+    values.publicationMetadata.absolutePath,
+    publicationMetadata,
+  );
+  values.publicationMetadata.sha256 = sha256(
+    fs.readFileSync(values.publicationMetadata.absolutePath),
+  );
+  values.review.publication_metadata.sha256 =
+    values.publicationMetadata.sha256;
+
+  const ownedMotionPath = path.join(
+    values.root,
+    values.review.owned_motion_manifest.path,
+  );
+  const ownedMotion = JSON.parse(
+    fs.readFileSync(ownedMotionPath, "utf8"),
+  );
+  const mixed = ownedMotion.assets.find(
+    (component) => component.media_type === "video",
+  );
+  mixed.role = "hyperframes_intermediate";
+  mixed.ownership = "mixed";
+  mixed.rights_basis = "LICENSED";
+  mixed.attribution_required = true;
+  mixed.provenance = {
+    third_party_media_used: true,
+    source_media_manifest: {
+      path: path.basename(sourceManifestPath),
+      sha256: sourceManifestSha,
+    },
+  };
+  for (const component of ownedMotion.assets.filter(
+    (candidate) => candidate !== mixed,
+  )) {
+    component.rights_basis = "OWNED";
+    component.attribution_required = false;
+    component.provenance = {
+      third_party_media_used: false,
+    };
+  }
+  writeJson(ownedMotionPath, ownedMotion);
+  values.review.owned_motion_manifest.sha256 = sha256(
+    fs.readFileSync(ownedMotionPath),
+  );
+
+  const sourceInput = {
+    component_id: "ffxiv-gameplay-01",
+    role: "source_media",
+    path: asset.path,
+    sha256: asset.sha256,
+    embedded_in_final: true,
+  };
+  const rendererPath = path.join(
+    values.root,
+    values.review.renderer_manifest.path,
+  );
+  const renderer = JSON.parse(
+    fs.readFileSync(rendererPath, "utf8"),
+  );
+  renderer.inputs.push(sourceInput);
+  writeJson(rendererPath, renderer);
+  values.review.renderer_manifest.file_sha256 = sha256(
+    fs.readFileSync(rendererPath),
+  );
+  values.review.renderer_manifest.canonical_sha256 =
+    fingerprintRendererManifest(renderer);
+  values.review.renderer_inputs.push(sourceInput);
+
+  const qaPath = path.join(values.root, values.review.qa_report.path);
+  const qa = JSON.parse(fs.readFileSync(qaPath, "utf8"));
+  qa.renderer_manifest_sha256 =
+    values.review.renderer_manifest.canonical_sha256;
+  writeJson(qaPath, qa);
+  values.review.qa_report.sha256 = sha256(fs.readFileSync(qaPath));
+
+  const sourceRightsPath = path.join(
+    values.root,
+    "source-media-rights.json",
+  );
+  writeJson(sourceRightsPath, {
+    schema_version: "pulse-rights-evidence-v1",
+    story_id: STORY_ID,
+    rights_basis: "LICENSED",
+    rights_decision: "CLEARED",
+    publisher: "Square Enix",
+    attribution_required: true,
+    attribution_text: ATTRIBUTION_TEXT,
+    attribution_delivery: ["DESCRIPTION", "ON_SCREEN"],
+    description_attribution_evidence: {
+      publication_metadata: {
+        path: values.review.publication_metadata.path,
+        sha256: values.review.publication_metadata.sha256,
+        platform: "youtube_shorts",
+      },
+      notice: ATTRIBUTION_TEXT,
+      exact_standalone_line_verified: true,
+    },
+    third_party_media_used: true,
+    licence: {
+      evidence_url: LICENCE_URL,
+      rights_review_path: path.basename(rightsReviewPath),
+      rights_review_sha256: rightsReviewSha,
+      review_status: "ACCEPTED",
+    },
+    manifest_binding: {
+      path: path.basename(sourceManifestPath),
+      sha256: sourceManifestSha,
+    },
+    components: [
+      {
+        component_id: "ffxiv-gameplay-01",
+        asset_path: asset.path,
+        asset_sha256: asset.sha256,
+        direct_media_url:
+          "https://lds-img.finalfantasyxiv.com/promo/h/a/test.png",
+        rights_basis: "LICENSED",
+        attribution_required: true,
+        attribution_text: ATTRIBUTION_TEXT,
+      },
+    ],
+  });
+  const sourceRightsSha = sha256(
+    fs.readFileSync(sourceRightsPath),
+  );
+  const motionItem = values.rightsLedger.items.find(
+    (item) => item.item_id === "owned-motion",
+  );
+  writeJson(values.motionRightsPath, {
+    schema_version: "pulse-rights-evidence-v1",
+    story_id: STORY_ID,
+    component_id: "owned-motion",
+    asset_path: values.motion.path,
+    asset_sha256: values.motion.sha256,
+    rights_basis: "LICENSED",
+    rights_decision: "CLEARED",
+    ownership: "mixed",
+    attribution_required: true,
+    attribution_text: ATTRIBUTION_TEXT,
+    third_party_media_used: true,
+    source_media_manifest_binding: {
+      path: path.basename(sourceManifestPath),
+      sha256: sourceManifestSha,
+    },
+  });
+  motionItem.rights_basis = "LICENSED";
+  motionItem.rights_evidence.sha256 = sha256(
+    fs.readFileSync(values.motionRightsPath),
+  );
+  motionItem.attribution_decision = "REQUIRED_AND_SUPPLIED";
+  motionItem.attribution_text = ATTRIBUTION_TEXT;
+  values.rightsLedger.items.push({
+    item_id: "ffxiv-gameplay-01",
+    source_url:
+      "https://lds-img.finalfantasyxiv.com/promo/h/a/test.png",
+    asset_path: asset.path,
+    asset_sha256: asset.sha256,
+    included_in_final: true,
+    rights_decision: "CLEARED",
+    rights_basis: "LICENSED",
+    rights_evidence: {
+      reference: path.basename(sourceRightsPath),
+      sha256: sourceRightsSha,
+    },
+    attribution_decision: "REQUIRED_AND_SUPPLIED",
+    attribution_text: ATTRIBUTION_TEXT,
+  });
+  writeJson(values.rightsPath, values.rightsLedger);
+  values.review.rights_ledger.file_sha256 = sha256(
+    fs.readFileSync(values.rightsPath),
+  );
+  values.review.rights_ledger.canonical_sha256 = hashRightsLedger(
+    values.rightsLedger,
+  );
+  values.review.source_media_manifest = {
+    path: path.basename(sourceManifestPath),
+    sha256: sourceManifestSha,
+  };
+  values.review.policy = {
+    source_media_policy: "LICENSED_OFFICIAL_FFXIV",
+    third_party_media_used: true,
+    attribution_required: true,
+  };
+  writeJson(values.reviewPath, values.review);
+  return {
+    ...values,
+    sourceAsset: asset,
+    sourceManifestPath,
+    sourceManifestSha,
+    sourceRightsPath,
   };
 }
 
@@ -452,6 +787,18 @@ test("dry-run validates a complete review package and builds scheduler evidence"
     result.preflight_evidence.renderer_manifest.output.sha256,
     values.finalMp4.sha256,
   );
+  assert.equal(
+    result.preflight_evidence.publication_metadata_sha256,
+    values.publicationMetadata.sha256,
+  );
+  assert.deepEqual(result.preflight_evidence.publication_metadata, {
+    path: values.publicationMetadata.absolutePath,
+    sha256: values.publicationMetadata.sha256,
+    platform: "youtube_shorts",
+    title: "Delta Force widens cheater compensation",
+    description:
+      "Delta Force has expanded cheater compensation eligibility.",
+  });
   assert.deepEqual(result.preflight_evidence.artifact_evidence, {
     final_mp4_exists: true,
     narration_audio_exists: true,
@@ -493,6 +840,310 @@ test("dry-run validates a complete review package and builds scheduler evidence"
     runtimeCommitSha: "a".repeat(40),
   });
   assert.equal(report.candidates[0].preflight_verdict, "PASS");
+});
+
+test("review requires an explicit owned-only or licensed source-media policy", async () => {
+  const missingPolicy = fixture();
+  delete missingPolicy.review.policy;
+  writeJson(missingPolicy.reviewPath, missingPolicy.review);
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: missingPolicy.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "publication_review_source_media_policy_invalid",
+        ),
+      );
+      return true;
+    },
+  );
+
+  const missingLicensedManifest = fixture();
+  missingLicensedManifest.review.policy = {
+    source_media_policy: "LICENSED_OFFICIAL_FFXIV",
+    third_party_media_used: true,
+    attribution_required: true,
+  };
+  writeJson(
+    missingLicensedManifest.reviewPath,
+    missingLicensedManifest.review,
+  );
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: missingLicensedManifest.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "publication_review_source_media_manifest_required",
+        ),
+      );
+      assert.ok(
+        error.codes.includes(
+          "publication_review_source_media_manifest_path_required",
+        ),
+      );
+      assert.ok(
+        error.codes.includes(
+          "publication_review_source_media_manifest_sha256_required",
+        ),
+      );
+      return true;
+    },
+  );
+});
+
+test("review reloads mandatory publication metadata and rejects omission or byte tampering", async () => {
+  const missing = fixture();
+  delete missing.review.publication_metadata;
+  writeJson(missing.reviewPath, missing.review);
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: missing.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes("publication_metadata_path_required"),
+      );
+      assert.ok(
+        error.codes.includes("publication_metadata_sha256_required"),
+      );
+      return true;
+    },
+  );
+
+  const tampered = fixture();
+  fs.appendFileSync(
+    tampered.publicationMetadata.absolutePath,
+    " ",
+    "utf8",
+  );
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: tampered.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes("publication_metadata_sha256_mismatch"),
+      );
+      return true;
+    },
+  );
+});
+
+test("review rejects licensed media when the independently bound publication description omits the exact copyright notice", async () => {
+  const values = addLicensedSourceMedia(fixture());
+  const metadata = JSON.parse(
+    fs.readFileSync(values.publicationMetadata.absolutePath, "utf8"),
+  );
+  metadata.description =
+    "Delta Force has expanded cheater compensation eligibility.";
+  writeJson(values.publicationMetadata.absolutePath, metadata);
+  values.review.publication_metadata.sha256 = sha256(
+    fs.readFileSync(values.publicationMetadata.absolutePath),
+  );
+  writeJson(values.reviewPath, values.review);
+
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: values.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "publication_metadata_description_attribution_missing",
+        ),
+      );
+      return true;
+    },
+  );
+});
+
+test("dry-run validates exact licensed source-media inputs and required Square Enix attribution", async () => {
+  const values = addLicensedSourceMedia(fixture());
+  const result = await executeGovernedPublicationReview({
+    manifestPath: values.reviewPath,
+    generatedAt: NOW,
+    probe: async () => validProbe(),
+  });
+
+  assert.equal(result.verdict, "VALID");
+  assert.equal(
+    result.preflight_evidence.source_media_manifest_sha256,
+    values.sourceManifestSha,
+  );
+  assert.equal(result.preflight_evidence.artifact_evidence.hashes_verified, true);
+});
+
+test("review rejects licensed source media omitted from renderer coverage or missing exact attribution", async () => {
+  const missingRendererInput = addLicensedSourceMedia(fixture());
+  const rendererPath = path.join(
+    missingRendererInput.root,
+    missingRendererInput.review.renderer_manifest.path,
+  );
+  const renderer = JSON.parse(fs.readFileSync(rendererPath, "utf8"));
+  renderer.inputs = renderer.inputs.filter(
+    (input) => input.role !== "source_media",
+  );
+  writeJson(rendererPath, renderer);
+  missingRendererInput.review.renderer_inputs =
+    missingRendererInput.review.renderer_inputs.filter(
+      (input) => input.role !== "source_media",
+    );
+  missingRendererInput.review.renderer_manifest.file_sha256 = sha256(
+    fs.readFileSync(rendererPath),
+  );
+  missingRendererInput.review.renderer_manifest.canonical_sha256 =
+    fingerprintRendererManifest(renderer);
+  const qaPath = path.join(
+    missingRendererInput.root,
+    missingRendererInput.review.qa_report.path,
+  );
+  const qa = JSON.parse(fs.readFileSync(qaPath, "utf8"));
+  qa.renderer_manifest_sha256 =
+    missingRendererInput.review.renderer_manifest.canonical_sha256;
+  writeJson(qaPath, qa);
+  missingRendererInput.review.qa_report.sha256 = sha256(
+    fs.readFileSync(qaPath),
+  );
+  writeJson(
+    missingRendererInput.reviewPath,
+    missingRendererInput.review,
+  );
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: missingRendererInput.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "source_media_renderer_input_coverage_mismatch",
+        ),
+      );
+      assert.ok(
+        error.codes.includes(
+          "rights_ledger_renderer_component_coverage_mismatch",
+        ),
+      );
+      return true;
+    },
+  );
+
+  const wrongAttribution = addLicensedSourceMedia(fixture());
+  const item = wrongAttribution.rightsLedger.items.find(
+    (candidate) => candidate.item_id === "ffxiv-gameplay-01",
+  );
+  item.attribution_text = "Credit: Square Enix";
+  writeJson(wrongAttribution.rightsPath, wrongAttribution.rightsLedger);
+  wrongAttribution.review.rights_ledger.file_sha256 = sha256(
+    fs.readFileSync(wrongAttribution.rightsPath),
+  );
+  wrongAttribution.review.rights_ledger.canonical_sha256 =
+    hashRightsLedger(wrongAttribution.rightsLedger);
+  writeJson(wrongAttribution.reviewPath, wrongAttribution.review);
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: wrongAttribution.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes("source_media_rights_ledger_item_invalid"),
+      );
+      return true;
+    },
+  );
+
+  const falseMotionOwnership = addLicensedSourceMedia(fixture());
+  const motionEvidence = JSON.parse(
+    fs.readFileSync(falseMotionOwnership.motionRightsPath, "utf8"),
+  );
+  motionEvidence.ownership = "owned";
+  writeJson(falseMotionOwnership.motionRightsPath, motionEvidence);
+  falseMotionOwnership.rightsLedger.items.find(
+    (candidate) => candidate.item_id === "owned-motion",
+  ).rights_evidence.sha256 = sha256(
+    fs.readFileSync(falseMotionOwnership.motionRightsPath),
+  );
+  writeJson(
+    falseMotionOwnership.rightsPath,
+    falseMotionOwnership.rightsLedger,
+  );
+  falseMotionOwnership.review.rights_ledger.file_sha256 = sha256(
+    fs.readFileSync(falseMotionOwnership.rightsPath),
+  );
+  falseMotionOwnership.review.rights_ledger.canonical_sha256 =
+    hashRightsLedger(falseMotionOwnership.rightsLedger);
+  writeJson(
+    falseMotionOwnership.reviewPath,
+    falseMotionOwnership.review,
+  );
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: falseMotionOwnership.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes("mixed_motion_rights_evidence_invalid"),
+      );
+      return true;
+    },
+  );
+
+  const tamperedAggregate = addLicensedSourceMedia(fixture());
+  const aggregate = JSON.parse(
+    fs.readFileSync(tamperedAggregate.sourceRightsPath, "utf8"),
+  );
+  aggregate.components[0].asset_sha256 = "f".repeat(64);
+  writeJson(tamperedAggregate.sourceRightsPath, aggregate);
+  const aggregateSha = sha256(
+    fs.readFileSync(tamperedAggregate.sourceRightsPath),
+  );
+  tamperedAggregate.rightsLedger.items.find(
+    (candidate) => candidate.item_id === "ffxiv-gameplay-01",
+  ).rights_evidence.sha256 = aggregateSha;
+  writeJson(
+    tamperedAggregate.rightsPath,
+    tamperedAggregate.rightsLedger,
+  );
+  tamperedAggregate.review.rights_ledger.file_sha256 = sha256(
+    fs.readFileSync(tamperedAggregate.rightsPath),
+  );
+  tamperedAggregate.review.rights_ledger.canonical_sha256 =
+    hashRightsLedger(tamperedAggregate.rightsLedger);
+  writeJson(tamperedAggregate.reviewPath, tamperedAggregate.review);
+  await assert.rejects(
+    executeGovernedPublicationReview({
+      manifestPath: tamperedAggregate.reviewPath,
+      generatedAt: NOW,
+      probe: async () => validProbe(),
+    }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "source_media_rights_evidence_components_mismatch",
+        ),
+      );
+      return true;
+    },
+  );
 });
 
 test("rejects any embedded renderer component omitted from the rights ledger", async () => {
@@ -571,6 +1222,18 @@ test("apply atomically approves the exact reviewed render and records immutable 
   assert.equal(
     extra.final_publication_review.review_manifest_sha256,
     result.review_manifest_sha256,
+  );
+  assert.deepEqual(
+    extra.final_publication_review.publication_metadata,
+    {
+      path: values.publicationMetadata.absolutePath,
+      sha256: values.publicationMetadata.sha256,
+      platform: "youtube_shorts",
+    },
+  );
+  assert.equal(
+    extra.preflight_evidence.publication_metadata_sha256,
+    values.publicationMetadata.sha256,
   );
   const audit = db
     .prepare(

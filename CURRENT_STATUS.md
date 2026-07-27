@@ -36,6 +36,7 @@ After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT 
 | Next-candidate preflight | `HOLD` | scheduler not ready, one owner not proven and candidate render, rights, QA, disclosure and human-review evidence incomplete |
 | Platform doctor | policy check `PASS`, publication `NO` | all seven platform rows remained visible, no platform was publishable and no credential value was read; this is not authentication or readiness proof |
 | Strict dry-run publish | `HOLD` | package not ready, scheduler not ready, no uploader entered and no external object created |
+| Production dependency audit | `HOLD`, risk reduced | exact-lock production findings reduced from 36 to 22: critical `2 → 0`, high `10 → 2`, moderate `23 → 20` and low `1 → 0`; the remaining Hyperframes and Sentry/OpenTelemetry major-version constraints are documented in `docs/dependency-audit.md` |
 | Exact two-window reconciler | implemented, not applied | `tools/stabilisation-cutover-reconcile.js` plans YouTube-only `publish_morning` at `09:00 UTC` and `publish_primary` at `19:00 UTC`, quarantines unsafe debt and is dry-run by default |
 | Governed Windows supervisor | implemented, not installed | `ops:windows-local-runtime` enforces a clean exact commit, `HUMAN_REVIEW`, YouTube-only policy, kill switches tripped and both publish arms off; `PulseGaming-Stabilisation-Runtime` does not exist |
 | YouTube analytics baseline | `HOLD` | the read-only audit mapped five unique published video IDs to five story rows, but live `yt-analytics.readonly` scope is missing or unrecorded, publish timezone is unresolved and no YouTube Analytics API sample was collected |
@@ -92,6 +93,7 @@ The bridge is deliberately inspection-only. It writes JSON and Markdown evidence
 9. select a current, verified story and materialise final narration, word timestamps, distinct motion, final MP4, rights ledger, QA, disclosure and explicit human approval
 10. confirm the first approved YouTube canary end to end before expanding cadence
 11. complete the governed 12-video sample and the 30-day and 90-day evidence gates without inventing future outcomes
+12. remove, replace or separately review the residual Hyperframes dependency risk and validate the Sentry 10 major upgrade before treating the production dependency audit as green
 
 ## Release posture
 

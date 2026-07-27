@@ -114,14 +114,36 @@ function fixture() {
   const motion = file(root, "evercold-hf.mp4", "owned-hyperframes-video");
   const narration = file(root, "narration.mp3", "licensed-narration");
   const finalMp4 = file(root, "final.mp4", "final-composite-video");
+  const sourceTimestamps = jsonFile(root, "narration-word-timestamps.json", {
+    schema_version: "pulse-word-timestamps-v1",
+    story_id: STORY_ID,
+    script_sha256: scriptSha256,
+    source_alignment_sha256: "d".repeat(64),
+    audio_sha256: narration.sha256,
+    audio_duration_seconds: 23.5,
+    word_count: 2,
+    words: [
+      { text: "Final", start_seconds: 0, end_seconds: 0.25 },
+      { text: "Fantasy", start_seconds: 0.25, end_seconds: 0.55 },
+    ],
+  });
   const timestamps = jsonFile(root, "word-timestamps.json", {
     schema_version: "pulse-word-timestamps-v1",
     story_id: STORY_ID,
+    script_sha256: scriptSha256,
+    source_alignment_sha256: "d".repeat(64),
+    audio_sha256: narration.sha256,
+    audio_duration_seconds: 23.5,
+    word_count: 2,
     transcript: SCRIPT,
     words: [
       { text: "Final", start_seconds: 0, end_seconds: 0.25 },
       { text: "Fantasy", start_seconds: 0.25, end_seconds: 0.55 },
     ],
+    source: {
+      path: sourceTimestamps.path,
+      sha256: sourceTimestamps.sha256,
+    },
   });
   const ownedMotion = jsonFile(root, "combined-owned-motion-manifest.json", {
     schema_version: "pulse-owned-motion-manifest-v1",
@@ -183,9 +205,9 @@ function fixture() {
     },
     outputs: {
       word_timestamps: {
-        path: timestamps.path,
+        path: sourceTimestamps.path,
         schema_version: "pulse-word-timestamps-v1",
-        sha256: timestamps.sha256,
+        sha256: sourceTimestamps.sha256,
         word_count: 2,
       },
     },
@@ -376,6 +398,8 @@ function fixture() {
     narration,
     qa,
     composite,
+    sourceTimestamps,
+    timestamps,
   };
 }
 
@@ -395,6 +419,27 @@ test("dry-run validates and plans without writing or inferring human approval", 
     for (const outputPath of Object.values(result.planned_outputs)) {
       assert.equal(fs.existsSync(outputPath), false);
     }
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("normalised renderer timestamps bind the exact governed source timestamp artefact", async () => {
+  const values = fixture();
+  try {
+    assert.notEqual(values.sourceTimestamps.sha256, values.timestamps.sha256);
+    const result = await executeGovernedPublicationEvidencePackage(
+      values.options,
+    );
+    assert.equal(result.verdict, "VALIDATED_DRY_RUN");
+    assert.equal(
+      result.timestamp_lineage.source_sha256,
+      values.sourceTimestamps.sha256,
+    );
+    assert.equal(
+      result.timestamp_lineage.normalised_sha256,
+      values.timestamps.sha256,
+    );
   } finally {
     fs.rmSync(values.root, { recursive: true, force: true });
   }
@@ -600,6 +645,52 @@ test("owned motion must be owned, unattributed and free of third-party media", a
         assert.ok(error.codes.includes("third_party_media_forbidden"));
         assert.ok(
           error.codes.includes("owned_motion_attribution_must_not_be_required"),
+        );
+        return true;
+      },
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("normalised timestamp source path and hash tampering are refused", async () => {
+  const values = fixture();
+  try {
+    const normalised = JSON.parse(
+      fs.readFileSync(values.timestamps.absolutePath, "utf8"),
+    );
+    normalised.source.sha256 = "f".repeat(64);
+    writeJson(values.timestamps.absolutePath, normalised);
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(values.options),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "normalised_word_timestamps_source_sha256_mismatch",
+          ),
+        );
+        return true;
+      },
+    );
+
+    const replacement = file(
+      values.root,
+      "substituted-source-timestamps.json",
+      fs.readFileSync(values.sourceTimestamps.absolutePath),
+    );
+    normalised.source = {
+      path: replacement.path,
+      sha256: replacement.sha256,
+    };
+    writeJson(values.timestamps.absolutePath, normalised);
+    await assert.rejects(
+      executeGovernedPublicationEvidencePackage(values.options),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "normalised_word_timestamps_source_path_mismatch",
+          ),
         );
         return true;
       },

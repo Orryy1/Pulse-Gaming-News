@@ -429,6 +429,310 @@ test("inspection plans quarantines, safe stale reaping and exactly two governed 
   }
 });
 
+test("dry-run classifies both observed recovery job kinds as legacy non-governed debt", () => {
+  const directory = workspace();
+  const dbPath = createFixture(directory);
+  const outDir = path.join(directory, "proof");
+  const db = new Database(dbPath);
+  const insertJob = db.prepare(
+    `
+    INSERT INTO jobs
+      (kind, status, run_at, attempt_count, max_attempts, created_at,
+       updated_at)
+    VALUES
+      (?, 'pending', ?, 0, 3, ?, ?)
+  `,
+  );
+  const observedJobs = [
+    [
+      "local_tts_retry_recovery",
+      insertJob.run(
+        "local_tts_retry_recovery",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+      ),
+    ],
+    [
+      "fresh_production_refill",
+      insertJob.run(
+        "fresh_production_refill",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+        "2026-07-27T08:00:00.000Z",
+      ),
+    ],
+  ];
+  db.close();
+
+  try {
+    runTool([
+      "--database",
+      dbPath,
+      "--out-dir",
+      outDir,
+      "--cutover-id",
+      "cutover-test-local-tts-debt",
+      "--generated-at",
+      "2026-07-27T10:00:00.000Z",
+      "--source-commit-sha",
+      "b".repeat(40),
+      "--runtime-commit-sha",
+      "b".repeat(40),
+    ]);
+    const plan = JSON.parse(
+      fs.readFileSync(
+        path.join(outDir, "stabilisation_cutover_plan.json"),
+        "utf8",
+      ),
+    );
+    for (const [kind, inserted] of observedJobs) {
+      const id = Number(inserted.lastInsertRowid);
+      const action = plan.actions.find(
+        (candidate) =>
+          candidate.target_type === "job" && candidate.target_id === id,
+      );
+
+      assert.deepEqual(action, {
+        action: "QUARANTINE",
+        target_type: "job",
+        target_id: id,
+        target: `job:${id}:${kind}`,
+        reason: "non_governed_autonomous_debt_frozen",
+        from_status: "pending",
+        to_status: "cancelled",
+      });
+      assert.ok(
+        !plan.blockers.includes(`manual_job_review_required:${id}:${kind}`),
+      );
+    }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("an unknown pending job kind remains a fail-closed manual-review blocker", () => {
+  const directory = workspace();
+  const dbPath = createFixture(directory);
+  const outDir = path.join(directory, "proof");
+  const db = new Database(dbPath);
+  const inserted = db
+    .prepare(
+      `
+      INSERT INTO jobs
+        (kind, status, run_at, attempt_count, max_attempts, created_at,
+         updated_at)
+      VALUES
+        ('fresh_production_refill_v2', 'pending', ?, 0, 3, ?, ?)
+    `,
+    )
+    .run(
+      "2026-07-27T08:00:00.000Z",
+      "2026-07-27T08:00:00.000Z",
+      "2026-07-27T08:00:00.000Z",
+    );
+  db.close();
+
+  try {
+    runTool([
+      "--database",
+      dbPath,
+      "--out-dir",
+      outDir,
+      "--cutover-id",
+      "cutover-test-unknown-active-kind",
+      "--generated-at",
+      "2026-07-27T10:00:00.000Z",
+      "--source-commit-sha",
+      "b".repeat(40),
+      "--runtime-commit-sha",
+      "b".repeat(40),
+    ]);
+    const plan = JSON.parse(
+      fs.readFileSync(
+        path.join(outDir, "stabilisation_cutover_plan.json"),
+        "utf8",
+      ),
+    );
+    const id = Number(inserted.lastInsertRowid);
+    const action = plan.actions.find(
+      (candidate) =>
+        candidate.target_type === "job" && candidate.target_id === id,
+    );
+
+    assert.deepEqual(action, {
+      action: "HOLD_MANUAL_REVIEW",
+      target_type: "job",
+      target_id: id,
+      target: `job:${id}:fresh_production_refill_v2`,
+      reason: "unknown_job_kind_requires_operator_review",
+      from_status: "pending",
+      to_status: "pending",
+    });
+    assert.ok(
+      plan.blockers.includes(
+        `manual_job_review_required:${id}:fresh_production_refill_v2`,
+      ),
+    );
+    assert.equal(plan.apply_authorised, false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("authorised apply atomically cancels observed legacy recovery jobs with operator-audit evidence", () => {
+  const directory = workspace();
+  const dbPath = createFixture(directory);
+  const outDir = path.join(directory, "proof");
+  const db = new Database(dbPath);
+  const insertJob = db.prepare(`
+    INSERT INTO jobs
+      (kind, status, run_at, attempt_count, max_attempts, claimed_by,
+       claimed_at, lease_until, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const past = "2026-07-27T08:00:00.000Z";
+  const localTts = insertJob.run(
+    "local_tts_retry_recovery",
+    "pending",
+    past,
+    0,
+    3,
+    null,
+    null,
+    null,
+    past,
+    past,
+  );
+  const refill = insertJob.run(
+    "fresh_production_refill",
+    "running",
+    past,
+    1,
+    3,
+    "refill-worker",
+    past,
+    past,
+    past,
+    past,
+  );
+  db.prepare(
+    `
+    INSERT INTO job_runs
+      (job_id, worker_id, attempt, status, started_at)
+    VALUES (?, 'refill-worker', 1, 'running', ?)
+  `,
+  ).run(refill.lastInsertRowid, past);
+  db.close();
+  const evidencePath = createBackupEvidence(directory, dbPath);
+
+  try {
+    runTool(
+      [
+        "--database",
+        dbPath,
+        "--backup-evidence",
+        evidencePath,
+        "--out-dir",
+        outDir,
+        "--cutover-id",
+        "cutover-test-observed-legacy-debt",
+        "--confirm-cutover-id",
+        "cutover-test-observed-legacy-debt",
+        "--generated-at",
+        "2026-07-27T10:00:00.000Z",
+        "--source-commit-sha",
+        "b".repeat(40),
+        "--runtime-commit-sha",
+        "b".repeat(40),
+        "--apply",
+      ],
+      authorisedEnvironment(),
+    );
+
+    const result = JSON.parse(
+      fs.readFileSync(
+        path.join(outDir, "stabilisation_cutover_result.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(result.verdict, "APPLIED");
+    const expectedJobIds = [
+      Number(localTts.lastInsertRowid),
+      Number(refill.lastInsertRowid),
+    ];
+    const resultMutations = result.mutations_performed.filter(
+      (entry) =>
+        entry.action === "QUARANTINE" &&
+        expectedJobIds.includes(entry.target_id),
+    );
+    assert.deepEqual(
+      resultMutations.map((entry) => entry.target).sort(),
+      [
+        `job:${localTts.lastInsertRowid}:local_tts_retry_recovery`,
+        `job:${refill.lastInsertRowid}:fresh_production_refill`,
+      ].sort(),
+    );
+    assert.ok(
+      resultMutations.every(
+        (entry) => entry.reason === "non_governed_autonomous_debt_frozen",
+      ),
+    );
+
+    const check = new Database(dbPath, { readonly: true });
+    const quarantined = check
+      .prepare(
+        `SELECT id, kind, status, last_error, claimed_by, lease_until
+         FROM jobs
+         WHERE id IN (?, ?)
+         ORDER BY id`,
+      )
+      .all(...expectedJobIds);
+    assert.deepEqual(
+      quarantined.map((row) => [row.kind, row.status]),
+      [
+        ["local_tts_retry_recovery", "cancelled"],
+        ["fresh_production_refill", "cancelled"],
+      ],
+    );
+    for (const row of quarantined) {
+      assert.match(
+        row.last_error,
+        /stabilisation_cutover_quarantine:cutover-test-observed-legacy-debt:non_governed_autonomous_debt_frozen/,
+      );
+      assert.equal(row.claimed_by, null);
+      assert.equal(row.lease_until, null);
+    }
+    const activeRun = check
+      .prepare("SELECT * FROM job_runs WHERE job_id = ?")
+      .get(refill.lastInsertRowid);
+    assert.equal(activeRun.status, "failed");
+    assert.equal(
+      activeRun.error_message,
+      "stabilisation_cutover_quarantined",
+    );
+
+    const audit = check
+      .prepare(
+        `SELECT evidence_json
+         FROM operator_audit_log
+         WHERE action = 'stabilisation_cutover_reconcile'
+           AND target_id = 'cutover-test-observed-legacy-debt'`,
+      )
+      .get();
+    const auditEvidence = JSON.parse(audit.evidence_json);
+    const auditedMutations = auditEvidence.mutations_performed.filter(
+      (entry) =>
+        entry.action === "QUARANTINE" &&
+        expectedJobIds.includes(entry.target_id),
+    );
+    assert.deepEqual(auditedMutations, resultMutations);
+    check.close();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("--apply without backup and fail-closed HUMAN_REVIEW gates remains read-only HOLD", () => {
   const directory = workspace();
   const dbPath = createFixture(directory);

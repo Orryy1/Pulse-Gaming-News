@@ -1,7 +1,7 @@
 {
   "name": "pulse-gaming-discord",
   "version": "1.0.0",
-  "description": "PULSE GAMING Discord bot — Verified leaks. Every day.",
+  "description": "Pulse Gaming News Discord bot for announcements and audience feedback.",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",

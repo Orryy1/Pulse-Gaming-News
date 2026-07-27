@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Radar, Rocket, Zap, Youtube, Music2, Instagram, BarChart3, Newspaper } from 'lucide-react';
-import { fetchHunterStatus, triggerHunter, fetchAutonomousStatus, fetchPlatformStatus, triggerAutonomousCycle } from '../api/news';
+import { RefreshCw, Radar, Rocket, Youtube, Music2, Instagram, BarChart3, Newspaper } from 'lucide-react';
+import { fetchHunterStatus, triggerHunter, fetchAutonomousStatus, fetchPlatformStatus } from '../api/news';
 import type { AutonomousStatus, PlatformStatus } from '../types/story';
 
 type ActiveTab = 'stories' | 'analytics';
@@ -19,7 +19,6 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
   const [hunterRunning, setHunterRunning] = useState(false);
   const [autoStatus, setAutoStatus] = useState<AutonomousStatus | null>(null);
   const [platforms, setPlatforms] = useState<PlatformStatus | null>(null);
-  const [cycleRunning, setCycleRunning] = useState(false);
 
   useEffect(() => {
     fetchHunterStatus()
@@ -46,19 +45,6 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
     }
   };
 
-  const handleAutonomousCycle = async () => {
-    setCycleRunning(true);
-    try {
-      await triggerAutonomousCycle();
-      setTimeout(() => {
-        onRefresh();
-        setCycleRunning(false);
-      }, 10000);
-    } catch {
-      setCycleRunning(false);
-    }
-  };
-
   return (
     <nav className="sticky top-0 z-50 border-b border-white/5 bg-[#1E2330]/95 backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -66,16 +52,18 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="h-3 w-3 rounded-full bg-[#FF6B1A] shadow-[0_0_8px_#FF6B1A]" />
-              {autoStatus?.autoPublish && (
+              {autoStatus?.operatingMode === 'LIVE_GUARDED' && (
                 <div className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#FF6B1A] animate-ping" />
               )}
             </div>
             <div>
               <h1 className="text-xs font-bold tracking-[0.2em] text-[#FF6B1A] sm:text-lg">
-                PULSE GAMING <span className="text-white/30">//</span> COMMAND CENTRE
+                PULSE GAMING NEWS <span className="text-white/30">//</span> COMMAND CENTRE
               </h1>
-              {autoStatus?.autoPublish && (
-                <p className="text-[9px] font-semibold tracking-wider text-[#FF6B1A]/40">AUTONOMOUS MODE ACTIVE</p>
+              {autoStatus && (
+                <p className="text-[9px] font-semibold tracking-wider text-[#FF6B1A]/50">
+                  {autoStatus.operatingMode} · HUMAN REVIEW REQUIRED
+                </p>
               )}
             </div>
           </div>
@@ -130,17 +118,6 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
               </div>
             )}
 
-            {/* Full autonomous cycle button */}
-            <button
-              onClick={handleAutonomousCycle}
-              disabled={cycleRunning}
-              className="flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] font-semibold tracking-wider text-amber-400 transition-all hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs"
-              title="Run full autonomous cycle: hunt + approve + produce + publish"
-            >
-              <Zap size={12} className={cycleRunning ? 'animate-pulse' : ''} />
-              <span className="hidden sm:inline">{cycleRunning ? 'RUNNING...' : 'AUTO CYCLE'}</span>
-            </button>
-
             <button
               onClick={handleHunterRun}
               disabled={hunterRunning}
@@ -187,9 +164,7 @@ export default function Navbar({ onRefresh, isLoading, hasApproved, onPublish, a
           <div className="flex items-center gap-3 border-t border-white/[0.03] py-1.5 text-[9px] font-medium tracking-wider text-white/20">
             <span>HUNTS: {autoStatus.schedule.hunts.join(' / ')}</span>
             <span className="text-white/10">|</span>
-            <span>PRODUCE: {autoStatus.schedule.produce}</span>
-            <span className="text-white/10">|</span>
-            <span>PUBLISH: {autoStatus.schedule.publish}</span>
+            <span>PUBLISH: {autoStatus.schedule.publish.join(' / ')}</span>
           </div>
         )}
       </div>

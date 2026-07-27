@@ -166,11 +166,11 @@ function renderAssetAcquisitionSummary(assetReport) {
   lines.push(`- total candidates: ${assetReport.summary.total_candidates}`);
   lines.push(`- deck items: ${assetReport.summary.deck_items}`);
   if (assetReport.exact_subject_summary) {
-    lines.push(`- Studio V2 60s eligible after exact-subject gate: ${assetReport.exact_subject_summary.studio_v2_60s_eligible}`);
+    lines.push(`- Studio V2 selected-band eligible after exact-subject gate: ${assetReport.exact_subject_summary.studio_v2_selected_band_eligible}`);
     lines.push(`- premium candidates after exact-subject gate: ${assetReport.exact_subject_summary.premium_candidates}`);
   }
   lines.push("");
-  lines.push("| story | before | after | exact | runtime | v2 60s | deck | key tasks |");
+  lines.push("| story | before | after | exact | runtime | selected band | deck | key tasks |");
   lines.push("| --- | --- | --- | ---: | --- | --- | ---: | --- |");
   for (const plan of assetReport.plans) {
     const exact = plan.exact_subject_readiness || {};
@@ -181,7 +181,7 @@ function renderAssetAcquisitionSummary(assetReport) {
         `${plan.creator_studio_after.colour}/${plan.creator_studio_after.media_verdict}`,
         exact.exact_subject_asset_count || 0,
         exact.recommended_runtime_class || "unknown",
-        exact.studio_v2_60s_eligible === true,
+        exact.studio_v2_selected_band_eligible === true,
         plan.visual_deck.items.length,
         plan.tasks.slice(0, 4).map((task) => task.type).join(", ") || "none",
       ]

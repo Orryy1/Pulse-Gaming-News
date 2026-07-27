@@ -62,6 +62,7 @@ test("publication request fingerprint is stable for equivalent governed input", 
 
   assert.equal(replay.request_fingerprint, first.request_fingerprint);
   assert.equal(replay.canonical_json, first.canonical_json);
+  assert.equal(first.request.contract_version, 2);
   assert.equal(first.media_sha256, sha256("governed-video-v1"));
   assert.equal(first.script_sha256, sha256(firstStory.full_script));
   assert.match(first.request_fingerprint, /^[a-f0-9]{64}$/);
@@ -145,6 +146,45 @@ test("reviewed publication evidence is immutable fingerprint input", async (t) =
   assert.equal(keyReordered.request_fingerprint, baseline.request_fingerprint);
   assert.notEqual(
     changedDecision.request_fingerprint,
+    baseline.request_fingerprint,
+  );
+});
+
+test("pinned-comment approval evidence is immutable fingerprint input", async (t) => {
+  const mediaPath = mediaFixture(t);
+  const original = {
+    ...story(mediaPath),
+    pinned_comment: "Which of the four are you installing first?",
+    pinned_comment_approval: {
+      decision: "APPROVED",
+      story_id: "story-fingerprint-1",
+      text_sha256: "c".repeat(64),
+      contextual_rationale:
+        "The video gives viewers a legitimate choice between four named games.",
+      reviewed_at: "2026-07-27T12:00:00.000Z",
+      reviewer: "operator-1",
+    },
+  };
+  const options = { channelId: "pulse-gaming" };
+
+  const baseline = await fingerprintPublicationRequest(original, options);
+  const changedApproval = await fingerprintPublicationRequest(
+    {
+      ...original,
+      pinned_comment_approval: {
+        ...original.pinned_comment_approval,
+        reviewer: "operator-2",
+      },
+    },
+    options,
+  );
+
+  assert.equal(
+    baseline.request.pinned_comment_approval.reviewer,
+    "operator-1",
+  );
+  assert.notEqual(
+    changedApproval.request_fingerprint,
     baseline.request_fingerprint,
   );
 });

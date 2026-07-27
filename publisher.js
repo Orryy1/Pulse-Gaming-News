@@ -171,7 +171,10 @@ async function autoApprove({ repos: injectedRepos, env = process.env } = {}) {
   }
 
   const { runScoringPass } = require("./lib/decision-engine");
-  const summary = runScoringPass({ repos });
+  const summary = runScoringPass({
+    repos,
+    humanReviewRequired: true,
+  });
   return summary;
 }
 
@@ -206,51 +209,36 @@ async function produce() {
   // sees a consistent "path set ⇔ file present" invariant.
   await selfHealStaleMediaPaths();
 
-  const affiliates = require("./affiliates");
   const audio = require("./audio");
   const images = require("./images");
-  const assemble = require("./assemble");
   const { generateEntityMentions } = require("./entities");
 
-  await affiliates();
+  // Commercial metadata remains frozen until the controlled audience
+  // experiment proves intent. Affiliate generation is not a production stage.
   await audio();
   // Entity extraction runs between audio (needs word-level timestamps)
-  // and assemble (consumes story.mentions to overlay faces at spoken
-  // moments). Safe to skip — assemble treats missing mentions as no-op.
+  // and the governed renderer, which consumes story.mentions to overlay
+  // faces at spoken moments.
   await generateEntityMentions();
   await images();
-  await assemble();
 
-  // Studio v2.1 quality layer: explicit switch only. The legacy MP4
-  // remains the publishable artefact; v2.1 renders are sidecar
-  // candidates stamped with a human visual review hold. This lets us
-  // test the high-quality layer without accidentally pushing an
-  // experimental render into the normal platform queue.
-  try {
-    const {
-      isStudioV21BatchEnabled,
-      runStudioV21ReviewBatch,
-    } = require("./lib/studio/v2/studio-v21-review-batch");
-    if (isStudioV21BatchEnabled(process.env)) {
-      const limit = Number(process.env.STUDIO_V21_BATCH_LIMIT || 5);
-      const result = await runStudioV21ReviewBatch({
-        db,
-        limit,
-        env: process.env,
-      });
-      console.log(
-        `[publisher] Studio v2.1 review batch complete: candidates=${result.candidates.length}, results=${result.results.length}`,
-      );
-    }
-  } catch (err) {
-    console.log(
-      `[publisher] Studio v2.1 review batch errored (non-fatal): ${err.message}`,
-    );
-  }
-
-  // Generate Instagram Story images for each produced video
-  const { generateStoryImages } = require("./images_story");
-  await generateStoryImages();
+  // Studio v2.1 is the sole standard renderer in the governed production
+  // graph. Its candidate becomes the primary exported artefact under a
+  // mandatory human-review hold. Any render, gauntlet or automatic-gate
+  // failure aborts production; legacy assembly is migration-only and is
+  // never a silent fallback.
+  const {
+    runStudioV21ReviewBatch,
+  } = require("./lib/studio/v2/studio-v21-review-batch");
+  const limit = Number(process.env.STUDIO_V21_BATCH_LIMIT || 5);
+  const result = await runStudioV21ReviewBatch({
+    db,
+    limit,
+    env: process.env,
+  });
+  console.log(
+    `[publisher] Studio v2.1 governed batch complete: candidates=${result.candidates.length}, results=${result.results.length}`,
+  );
 
   // Studio v2: build per-story YouTube thumbnails (1280×720 JPEG) for
   // every approved+exported story that doesn't yet have one. Best-
@@ -269,26 +257,12 @@ async function produce() {
     );
   }
 
-  // Session 2 — warn-only format-catalogue routing. For every
-  // approved+exported story, score the media inventory and surface
-  // the recommended format. We deliberately do NOT change render
-  // behaviour from this hook yet; the goal is to (a) populate
-  // observability so an operator can see which stories are being
-  // padded into Shorts when they should be Briefing items or blog-
-  // only, and (b) prove the classifier against real production
-  // stories before promoting it. Anything off here is informational
-  // — failures are non-fatal.
-  try {
-    await logFormatRecommendationsForApprovedStories();
-  } catch (err) {
-    console.log(
-      `[publisher] format-catalogue warn-only pass errored (non-fatal): ${err.message}`,
-    );
-  }
-
   console.log("[publisher] Produce pipeline complete");
 }
 
+// Migration-only diagnostic retained for explicit operator tooling. It is not
+// part of the governed produce graph because its legacy runtime recommendations
+// conflict with the canonical Pulse editorial experiment matrix.
 async function logFormatRecommendationsForApprovedStories() {
   const stories = await db.getStories();
   if (!Array.isArray(stories) || stories.length === 0) return;
@@ -324,7 +298,7 @@ async function logFormatRecommendationsForApprovedStories() {
       continue;
     }
     counts[inv.classification] = (counts[inv.classification] || 0) + 1;
-    const runtime = recommendRuntime(inv);
+    const runtime = recommendRuntime(inv, { story });
     const fmt = selectFormatForStory(story, inv);
     const fmtId = fmt?.format?.id || "unknown";
     if (
@@ -446,7 +420,7 @@ async function _publishToAllPlatformsUnlocked(assertLeaseHealthy) {
   };
 }
 
-// --- Full autonomous cycle: hunt → approve → produce → publish ---
+// --- Compatibility entrypoint: hunt → review queue → governed production hold ---
 async function publishToAllPlatforms(options = {}) {
   const leases =
     options.leases ||
@@ -477,7 +451,7 @@ async function publishToAllPlatforms(options = {}) {
 async function fullAutonomousCycle() {
   const startTime = Date.now();
   console.log("[publisher] ========================================");
-  console.log("[publisher] FULL AUTONOMOUS CYCLE STARTED");
+  console.log("[publisher] GOVERNED PREPARATION CYCLE STARTED");
   console.log(`[publisher] ${new Date().toISOString()}`);
   console.log("[publisher] ========================================");
 
@@ -540,14 +514,14 @@ async function fullAutonomousCycle() {
       }
 
       await sendDiscord(
-        `**🔎 Pulse Gaming Hunt Complete**\n${newPosts.length} new stories found`,
+        `**🔎 Pulse Gaming News hunt complete**\n${newPosts.length} new stories found`,
       );
     } else {
       console.log("[publisher] No new stories found");
     }
 
-    // Step 2: Auto-approve (scoring engine; see autoApprove() doc above).
-    addBreadcrumb("Auto-approving stories", "pipeline");
+    // Step 2: Score candidates into the mandatory human-review queue.
+    addBreadcrumb("Scoring stories for human review", "pipeline");
     console.log("[publisher] Step 2/4: Running editorial scoring pass...");
     const scoringSummary = await autoApprove();
 
@@ -617,83 +591,58 @@ async function fullAutonomousCycle() {
     console.log("[publisher] Step 3/4: Producing assets...");
     await produce();
 
-    // Step 4: Publish to all platforms
-    if (process.env.AUTO_PUBLISH === "true") {
-      addBreadcrumb("Publishing to all platforms", "pipeline");
-      console.log("[publisher] Step 4/4: Publishing to all platforms...");
-      const results = await publishToAllPlatforms();
-
-      if (results.publish_dispatch_blocked) {
-        await sendDiscord(
-          `**Pulse Gaming Publish Deferred**\nReason: ${results.top_reason}`,
-        );
-      } else {
-        const totalUploaded =
-          results.youtube.length +
-          results.tiktok.length +
-          results.instagram.length;
-        await sendDiscord(
-          `**Pulse Gaming Auto-Publish Complete**\n` +
-            `YouTube: ${results.youtube.length} | TikTok: ${results.tiktok.length} | Instagram: ${results.instagram.length}\n` +
-            `Total: ${totalUploaded} uploads across all platforms`,
-        );
-      }
-    } else {
-      console.log(
-        "[publisher] Step 4/4: AUTO_PUBLISH not enabled, skipping uploads",
-      );
-      await sendDiscord(
-        "**Pulse Gaming Produce Complete** - Videos ready. Set AUTO_PUBLISH=true to enable uploads.",
-      );
-    }
+    // Step 4: Stabilisation mode never dispatches. Production candidates
+    // remain held until a named operator completes the governed review.
+    const hold = {
+      status: "held_for_human_review",
+      reason: "stabilisation_human_review_required",
+    };
+    addBreadcrumb("Holding candidates for human review", "pipeline");
+    console.log(
+      `[publisher] Step 4/4: ${hold.status} (${hold.reason})`,
+    );
+    await sendDiscord(
+      "**Pulse Gaming News preparation complete**\nCandidates are held for named human review. No upload was dispatched.",
+    );
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
-    console.log(`[publisher] Autonomous cycle complete in ${elapsed}s`);
+    console.log(`[publisher] Governed preparation complete in ${elapsed}s`);
+    return {
+      ...hold,
+      elapsed_seconds: elapsed,
+      scoring: scoringSummary,
+    };
   } catch (err) {
     captureException(err, { step: "fullAutonomousCycle" });
     console.log(`[publisher] CYCLE ERROR: ${err.message}`);
     await sendDiscord(
-      `**Pulse Gaming ERROR**\nAutonomous cycle failed: ${err.message}`,
+      `**Pulse Gaming News error**\nPreparation cycle failed: ${err.message}`,
     );
+    return {
+      status: "failed",
+      reason: "preparation_cycle_error",
+      error: err.message,
+    };
   }
 }
 
-// --- Publish-only cycle (for the evening optimal posting window) ---
+// --- Legacy publish-only entrypoint (hard-held during stabilisation) ---
 async function publishOnlyCycle() {
-  console.log("[publisher] === PUBLISH-ONLY CYCLE ===");
-
-  try {
-    // Auto-approve any remaining stories
-    await autoApprove();
-
-    // Produce any unapproved assets
-    await produce();
-
-    // Publish
-    if (process.env.AUTO_PUBLISH === "true") {
-      const results = await publishToAllPlatforms();
-      if (results.publish_dispatch_blocked) {
-        await sendDiscord(
-          `**Evening Publish Deferred** - ${results.top_reason}`,
-        );
-      } else {
-        const total =
-          results.youtube.length +
-          results.tiktok.length +
-          results.instagram.length;
-        await sendDiscord(
-          `**Evening Publish Complete** - ${total} videos posted across platforms`,
-        );
-      }
-    }
-  } catch (err) {
-    console.log(`[publisher] Publish cycle error: ${err.message}`);
-    await sendDiscord(`**Publish Cycle ERROR**: ${err.message}`);
-  }
+  const hold = {
+    status: "held_for_human_review",
+    reason: "stabilisation_human_review_required",
+  };
+  console.log(
+    `[publisher] Legacy publish-only cycle blocked: ${hold.reason}`,
+  );
+  await sendDiscord(
+    "**Pulse Gaming News publish window held**\nA named human review and governed YouTube dispatch are required.",
+  );
+  return hold;
 }
 
-// --- Publish a single next-available story across all platforms ---
-// Used by the 3x daily publish windows to spread content through the day
+// --- Governed dispatch of a single reviewed YouTube candidate ---
+// Secondary-platform adapters remain visible but frozen by the operating contract.
 async function _publishNextStoryWithMemoryLock(
   assertLeaseHealthy,
   runtime = {},
@@ -2505,53 +2454,11 @@ async function _publishNextStoryInner(
   // engage_first_hour_sweep scheduler job. A detached timer here would
   // outlive this publisher lease and could duplicate work after takeover.
 
-  // Generate poll/engagement pinned comment (only on first publish, not retries)
-  if (!isRetry) {
-    try {
-      const {
-        generatePollComment,
-        pinComment: pinEngagement,
-      } = require("./engagement");
-      const pollComment = await generatePollComment(story);
-      assertLeaseHealthy();
-      if (pollComment && story.youtube_post_id) {
-        assertLeaseHealthy();
-        const commentId = await pinEngagement(
-          story.youtube_post_id,
-          pollComment,
-        );
-        assertLeaseHealthy();
-        if (commentId) {
-          story.engagement_comment_id = commentId;
-          console.log(`[publisher] Engagement comment pinned: ${commentId}`);
-        }
-      }
-    } catch (err) {
-      if (isPublisherLeaseLostError(err)) throw err;
-      console.log(`[publisher] Engagement comment skipped: ${err.message}`);
-    }
-  }
-
-  // Generate blog post (only on first publish)
-  if (!isRetry) {
-    try {
-      const { generateAndSaveBlogPost } = require("./blog/generator");
-      await generateAndSaveBlogPost(story);
-      assertLeaseHealthy();
-    } catch (err) {
-      if (isPublisherLeaseLostError(err)) throw err;
-      console.log("[publisher] Blog generation skipped: " + err.message);
-    }
-  }
-
   // Post to Discord channels, video drops only (news already posted by processor.js).
   //
   // Migration 012 replaces the old `!isRetry` derived-state guard with
   // durable per-story markers so a re-render that clears platform ids
-  // cannot re-trigger #video-drops or #polls. isRetry is still used for
-  // the YouTube engagement pass / blog gen / pinned comment above — that
-  // logic is correctly "only on first successful publish" and doesn't
-  // have the re-render-resets-ids failure mode that Discord did.
+  // cannot re-trigger #video-drops or #polls.
   try {
     const { postVideoUpload, postStoryPoll } = require("./discord/auto_post");
     const {

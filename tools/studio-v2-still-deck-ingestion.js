@@ -37,7 +37,6 @@ const {
 } = require("../audio");
 const {
   wordsFromAlignment,
-  resolveStudioOutroLine,
 } = require("../lib/studio/sound-layer");
 const {
   buildStoryFromStillDeckPlan,
@@ -62,13 +61,15 @@ const {
 const {
   assertFlashLaneProofReady,
   buildFlashLaneProofPreflight,
+  resolveRequiredPulseEditorialContract,
 } = require("../lib/studio/v2/flash-lane-preflight");
 const {
   recommendStudioV2Promotion,
 } = require("../lib/studio/v2/still-deck-promotion");
 const {
-  FLASH_LANE_DEFAULT_MAX_WORDS,
-} = require("../lib/studio/v2/flash-lane-production-contract");
+  validatePulseCta,
+  validatePulseScriptRuntime,
+} = require("../lib/services/pulse-editorial-contract");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "test", "output", "studio-v2-still-deck");
@@ -93,7 +94,6 @@ const DEFAULT_SEGMENT_VALIDATION_REPORT = path.join(
   "official_trailer_segment_validation_apply_local.json",
 );
 const PREFERRED = ["1szzhy9", "rss_4105cb7c837252c3"];
-const TARGET_RUNTIME_S = 61;
 const FONT_OPT =
   process.platform === "win32"
     ? "fontfile='C\\:/Windows/Fonts/arial.ttf'"
@@ -288,14 +288,6 @@ function buildSimpleAss({ story, durationS }) {
   return lines.join("\n") + "\n";
 }
 
-function ensureSpokenOutro(text) {
-  const outro = resolveStudioOutroLine({});
-  const script = String(text || "").trim();
-  if (!script) return outro;
-  if (/follow pulse gaming/i.test(script)) return script;
-  return `${script} ${outro}`;
-}
-
 function cleanInlineText(text) {
   return String(text || "")
     .replace(/\[PAUSE\]/gi, "")
@@ -332,26 +324,72 @@ function buildRenderStory(story) {
     hook: story.hook || story.title,
     full_script: story.full_script || story.body || story.title,
   };
-  const previousMaxWords = process.env.STUDIO_EDITORIAL_MAX_WORDS;
-  process.env.STUDIO_EDITORIAL_MAX_WORDS =
-    process.env.STUDIO_EDITORIAL_MAX_WORDS || String(FLASH_LANE_DEFAULT_MAX_WORDS);
-  try {
-    const editorial = buildStudioEditorial(base);
-    const caption = ensureSpokenOutro(editorial.scriptForCaption || editorial.fullScript || base.full_script);
-    const tts = ensureSpokenOutro(editorial.scriptForTTS || caption);
-    const hook = selectProofHook({ editorialHook: editorial.hook, story: base });
-    return {
-      ...base,
-      hook,
-      body: editorial.body || base.body,
-      full_script: caption,
-      tts_script: tts,
-      scriptForCaption: caption,
-    };
-  } finally {
-    if (previousMaxWords === undefined) delete process.env.STUDIO_EDITORIAL_MAX_WORDS;
-    else process.env.STUDIO_EDITORIAL_MAX_WORDS = previousMaxWords;
+  const editorialResolution = resolveRequiredPulseEditorialContract({
+    story: base,
+  });
+  if (editorialResolution.blocker) {
+    throw new Error(
+      `still_deck_editorial_blocked:${editorialResolution.blocker}`,
+    );
   }
+  const editorialContract = editorialResolution.contract;
+  const editorial = buildStudioEditorial(base, {
+    maxWords: editorialContract.max_words,
+  });
+  const caption = cleanInlineText(
+    editorial.scriptForCaption || editorial.fullScript || base.full_script,
+  );
+  const tts = cleanInlineText(editorial.scriptForTTS || caption);
+  const runtimeValidation = validatePulseScriptRuntime({
+    text: tts,
+    contract: editorialContract,
+  });
+  if (runtimeValidation.result !== "pass") {
+    throw new Error(
+      `still_deck_editorial_blocked:${runtimeValidation.failures.join(",")}`,
+    );
+  }
+  if (!base.cta_policy) {
+    throw new Error("still_deck_editorial_blocked:pulse_cta_policy_missing");
+  }
+  const ctaValidation = validatePulseCta({
+    script: {
+      cta: base.cta || "",
+      full_script: caption,
+    },
+    decision: base.cta_policy,
+  });
+  if (ctaValidation.result !== "pass") {
+    throw new Error(
+      `still_deck_editorial_blocked:${ctaValidation.failures.join(",")}`,
+    );
+  }
+  const hook = selectProofHook({ editorialHook: editorial.hook, story: base });
+  return {
+    ...base,
+    hook,
+    body: editorial.body || base.body,
+    full_script: caption,
+    tts_script: tts,
+    scriptForCaption: caption,
+    editorial_contract_version: editorialContract.contract_version,
+  };
+}
+
+function resolveTargetRuntimeS(story) {
+  const editorialResolution = resolveRequiredPulseEditorialContract({ story });
+  if (editorialResolution.blocker) {
+    throw new Error(
+      `still_deck_editorial_blocked:${editorialResolution.blocker}`,
+    );
+  }
+  return Number(
+    (
+      (Number(editorialResolution.contract.min_seconds) +
+        Number(editorialResolution.contract.max_seconds)) /
+      2
+    ).toFixed(3),
+  );
 }
 
 async function readTimestampWords(timestampsPath) {
@@ -432,7 +470,7 @@ async function resolveNarration({
     mode: "silent_fixture",
     audioPath: null,
     timestampsPath: null,
-    durationS: TARGET_RUNTIME_S,
+    durationS: resolveTargetRuntimeS(story),
     provider: "silent_fixture",
     source: "silent_visual_proof",
   };
@@ -507,7 +545,7 @@ async function buildFlashLaneRenderPreflight({
   const targetDurationS =
     narration.mode === "real_audio" && Number.isFinite(narration.durationS)
       ? narration.durationS
-      : TARGET_RUNTIME_S;
+      : resolveTargetRuntimeS(renderStory);
   const composed = composeStudioSlate({
     story: renderStory,
     media,
@@ -515,8 +553,7 @@ async function buildFlashLaneRenderPreflight({
     opts: {
       allowStockFiller: false,
       flashLane: true,
-      takeawayText: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      takeawayText: "PULSE GAMING NEWS",
     },
   });
   const scenes = composed.scenes.length
@@ -525,7 +562,7 @@ async function buildFlashLaneRenderPreflight({
         {
           type: SCENE_TYPES.CARD_SOURCE,
           label: "card_source",
-          duration: TARGET_RUNTIME_S,
+          duration: targetDurationS,
           sourceLabel: story.source_type || "NEWS",
         },
       ];
@@ -534,6 +571,7 @@ async function buildFlashLaneRenderPreflight({
     scenes,
     media,
     scriptWordCount: countWords(renderStory.tts_script || renderStory.full_script || renderStory.body || renderStory.title),
+    story: renderStory,
   });
   return {
     ...report,
@@ -573,7 +611,7 @@ async function renderStillDeckVariant({
         provider: "local",
         source: "local-production-voxcpm-path",
       },
-      { allowSilentFixture, allowLocalVoiceDiagnostic },
+      { story: renderStory, allowSilentFixture, allowLocalVoiceDiagnostic },
     );
   }
   const narration = await resolveNarration({
@@ -585,11 +623,15 @@ async function renderStillDeckVariant({
     generateLocalTts,
     allowSilentFixture,
   });
-  assertNarrationAllowedForProof(narration, { allowSilentFixture, allowLocalVoiceDiagnostic });
+  assertNarrationAllowedForProof(narration, {
+    story: renderStory,
+    allowSilentFixture,
+    allowLocalVoiceDiagnostic,
+  });
   const targetDurationS =
     narration.mode === "real_audio" && Number.isFinite(narration.durationS)
       ? narration.durationS
-      : TARGET_RUNTIME_S;
+      : resolveTargetRuntimeS(renderStory);
   const composed = composeStudioSlate({
     story: renderStory,
     media,
@@ -597,8 +639,7 @@ async function renderStillDeckVariant({
     opts: {
       allowStockFiller: false,
       flashLane: variant === "enriched",
-      takeawayText: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      takeawayText: "PULSE GAMING NEWS",
     },
   });
   const scenes = composed.scenes.length
@@ -607,14 +648,25 @@ async function renderStillDeckVariant({
         {
           type: SCENE_TYPES.CARD_SOURCE,
           label: "card_source",
-          duration: TARGET_RUNTIME_S,
+          duration: targetDurationS,
           sourceLabel: story.source_type || "NEWS",
         },
       ];
   const flashLanePreflight =
     variant === "enriched"
       ? assertFlashLaneProofReady(
-          { narration, scenes, media },
+          {
+            narration,
+            scenes,
+            media,
+            story: renderStory,
+            scriptWordCount: countWords(
+              renderStory.tts_script ||
+                renderStory.full_script ||
+                renderStory.body ||
+                renderStory.title,
+            ),
+          },
           { allowDiagnosticRender: allowFlashDiagnosticRender },
         )
       : null;
@@ -948,10 +1000,10 @@ async function main() {
   if (args.useOfficialTrailerClips && frameReport) {
     if (segmentValidationReport) {
       footageBackboneReport = buildFlashLaneFootageBackboneReport({
+        story,
         storyId: story.id,
         frameReport,
         segmentValidationReport,
-        targetRuntimeS: 66,
       });
       officialClipRefs = footageBackboneReport.validated_clip_refs || [];
     } else {
@@ -1132,7 +1184,7 @@ async function main() {
     : renderRejected || enrichedVoiceGate === "red"
       ? "blocked_by_render_or_voice_qa"
       : enrichedVisualCount >= 8 && enrichedPackage.metrics.distinctEntities >= 3
-        ? "studio_v2_60s_candidate_local_proof"
+        ? "studio_v2_selected_band_candidate_local_proof"
         : enrichedVisualCount >= 3
           ? "standard_short_candidate"
           : "still_too_thin";
@@ -1259,7 +1311,15 @@ async function main() {
   process.stderr.write(`[still-deck] wrote ${rel(reportJson)} and ${rel(reportMd)}\n`);
 }
 
-main().catch((err) => {
-  process.stderr.write(`[still-deck] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[still-deck] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  buildRenderStory,
+  parseArgs,
+  resolveTargetRuntimeS,
+};

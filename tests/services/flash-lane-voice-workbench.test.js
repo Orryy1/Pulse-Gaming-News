@@ -10,30 +10,37 @@ const {
   evaluateVoiceCandidate,
   generateLocalVoiceCandidate,
   renderFlashLaneVoiceWorkbenchMarkdown,
-  scriptWithRequiredOutro,
+  scriptForGovernedNarration,
 } = require("../../lib/studio/v2/flash-lane-voice-workbench");
+const {
+  CTA_POLICY,
+} = require("../../lib/services/pulse-editorial-contract");
 
-const FLASH_SCRIPT = [
-  "Take-Two just made the weirdest legacy franchise call of the week.",
-  "The company says it passed on a sequel to one of its legacy franchises because the pitch was not strong enough.",
-  "That matters because Take-Two owns names that still make gaming audiences stop scrolling: GTA, Red Dead, BioShock, Mafia and Borderlands.",
-  "This is not a release-date reveal and it is not confirmation of a cancelled project.",
-  "It is a rare look at how the publisher decides what gets revived and what stays buried.",
-  "The interesting bit is the standard.",
-  "Take-Two is saying nostalgia alone is not enough.",
-  "If a sequel cannot clear the creative bar, even a famous logo does not save it.",
-  "That makes the mystery bigger, not smaller.",
-  "Was it BioShock, Midnight Club, Bully, Max Payne or something else entirely?",
-  "For players, the real takeaway is brutal.",
-  "A beloved franchise can still lose internally if the pitch feels average.",
-  "Follow Pulse Gaming so you never miss a beat.",
-].join(" ");
+const FLASH_SCRIPT =
+  "Xbox has added achievement support to selected original Xbox games in backwards compatibility. " +
+  "That changes old catalogue releases from simple nostalgia plays into trackable games with modern profile progress. " +
+  "Microsoft has not confirmed every title yet, so the affected list still matters. " +
+  "For players, the practical change is clear: returning classics can now contribute achievements alongside newer Game Pass releases.";
 
 function story(overrides = {}) {
   return {
     id: "voice-story",
-    title: "GTA 6 Owner Passed On A Sequel To A Legacy Franchise",
-    hook: "Take-Two just made the weirdest legacy franchise call of the week.",
+    title: "Xbox adds achievements to backwards-compatible games",
+    hook: "Xbox has added achievement support to selected original Xbox games.",
+    hook_type: "direct",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_standard_35_42",
+    cta: "",
+    cta_policy: {
+      policy_version: CTA_POLICY.version,
+      scope: "shorts",
+      include_cta: false,
+      copy_strategy: "none",
+      cohort_bucket: 1,
+      cohort_numerator: 1,
+      cohort_denominator: 3,
+      audit_hash: `sha256:${"b".repeat(64)}`,
+    },
     full_script: FLASH_SCRIPT,
     ...overrides,
   };
@@ -45,7 +52,7 @@ function candidate(overrides = {}) {
     provider: "elevenlabs",
     source: "elevenlabs-production-path",
     path: "test/output/audio/candidate-a.mp3",
-    durationS: 64.5,
+    durationS: 40,
     transcript: FLASH_SCRIPT,
     acoustic: {
       medianPitchHz: 118,
@@ -72,14 +79,14 @@ test("Flash Lane voice workbench approves a clean production candidate", () => {
   assert.equal(report.candidates[0].blockers.length, 0);
 });
 
-test("Flash Lane voice workbench rejects cached slow demonic local narration", () => {
+test("Flash Lane voice workbench rejects out-of-band demonic local narration", () => {
   const result = evaluateVoiceCandidate({
     story: story(),
     candidate: candidate({
       id: "slow-local",
       provider: "local",
       source: "local-production-voxcpm-path",
-      durationS: 118.025,
+      durationS: 50,
       acoustic: {
         medianPitchHz: 61,
         integratedLufs: -25,
@@ -93,8 +100,9 @@ test("Flash Lane voice workbench rejects cached slow demonic local narration", (
 
   assert.equal(result.verdict, "rejected");
   assert.equal(result.pilot_allowed, false);
-  assert.ok(result.blockers.includes("narration_too_long_for_flash_lane"));
-  assert.ok(result.blockers.includes("spoken_pace_too_slow"));
+  assert.ok(
+    result.blockers.includes("audio_duration_above_selected_band"),
+  );
   assert.ok(result.blockers.includes("demonic_low_voice_risk"));
 });
 
@@ -137,17 +145,15 @@ test("Flash Lane voice workbench allows explicitly approved clean local output",
   assert.equal(result.pilot_allowed, true);
 });
 
-test("Flash Lane voice workbench rejects candidates missing the spoken outro", () => {
+test("Flash Lane voice workbench approves an omitted-CTA narration without an outro", () => {
   const result = evaluateVoiceCandidate({
     story: story(),
-    candidate: candidate({
-      id: "no-outro",
-      transcript: "Take-Two just made the weirdest legacy franchise call of the week.",
-    }),
+    candidate: candidate({ id: "no-cta-outro" }),
   });
 
-  assert.equal(result.verdict, "rejected");
-  assert.ok(result.blockers.includes("spoken_outro_missing"));
+  assert.equal(result.verdict, "approved_for_flash_lane_preflight");
+  assert.equal(result.transcript.cta_policy_verified, true);
+  assert.equal(result.transcript.contextual_cta_present, false);
 });
 
 test("Flash Lane voice workbench treats missing acoustic evidence as review, not green", () => {
@@ -186,18 +192,24 @@ test("Flash Lane voice workbench does not treat null acoustic values as zero", (
   assert.equal(result.blockers.includes("audio_clipping_risk"), false);
 });
 
-test("Flash Lane voice workbench warns when narration is slower than the high-energy lane ideal", () => {
+test("Flash Lane voice workbench accepts calibrated narration inside its selected band", () => {
   const result = evaluateVoiceCandidate({
     story: story(),
     candidate: candidate({
-      id: "slow-but-publishable",
-      durationS: 72.2,
+      id: "calibrated-selected-band",
+      durationS: 41.5,
     }),
   });
 
-  assert.equal(result.verdict, "needs_human_voice_review");
-  assert.ok(result.warnings.includes("spoken_pace_below_flash_lane_ideal"));
-  assert.equal(result.blockers.includes("spoken_pace_too_slow"), false);
+  assert.equal(result.verdict, "approved_for_flash_lane_preflight");
+  assert.equal(
+    result.blockers.includes("audio_duration_above_selected_band"),
+    false,
+  );
+  assert.equal(
+    result.blockers.includes("audio_duration_below_selected_band"),
+    false,
+  );
 });
 
 test("Flash Lane voice workbench blocks objectively too-quiet narration", () => {
@@ -252,20 +264,17 @@ test("Flash Lane voice workbench marks apply-local voice generation as local TTS
   assert.equal(report.safety.posts_to_platforms, false);
 });
 
-test("Flash Lane voice workbench appends the required spoken outro when the contract strips it", () => {
-  const bodyOnly = FLASH_SCRIPT.replace(" Follow Pulse Gaming so you never miss a beat.", "");
-  const text = scriptWithRequiredOutro(bodyOnly, {
-    script: { spoken_outro_required: true },
-  });
+test("Flash Lane voice workbench preserves governed narration without appending copy", () => {
+  const text = scriptForGovernedNarration(FLASH_SCRIPT, story());
 
-  assert.match(text, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.equal(text, FLASH_SCRIPT);
 });
 
 test("Flash Lane voice workbench markdown is readable and safety-explicit", () => {
   const report = buildFlashLaneVoiceWorkbench({
     story: story(),
     candidates: [
-      candidate({ id: "reject", durationS: 118.025 }),
+      candidate({ id: "reject", durationS: 50 }),
       candidate({ id: "approve" }),
     ],
     now: "2026-05-02T00:00:00.000Z",
@@ -329,16 +338,14 @@ test("Flash Lane voice workbench can generate a local candidate under test/outpu
         json: async () => ({
           audio_base64: Buffer.from("fake mp3 bytes").toString("base64"),
           alignment: {
-            characters: Array.from(
-              "Take-Two call. Follow Pulse Gaming so you never miss a beat.",
-            ),
+            characters: Array.from(FLASH_SCRIPT),
             character_start_times_seconds: [],
             character_end_times_seconds: [],
           },
         }),
       };
     },
-    durationProbe: () => 68.2,
+    durationProbe: () => 40.5,
     acousticProbe: () => ({
       medianPitchHz: 118,
       integratedLufs: -18,
@@ -351,10 +358,11 @@ test("Flash Lane voice workbench can generate a local candidate under test/outpu
   assert.equal(result.status, "generated");
   assert.equal(result.candidate.provider, "local");
   assert.equal(result.candidate.source, "local-production-chatterbox-path");
-  assert.equal(result.candidate.durationS, 68.2);
-  assert.match(result.candidate.transcript, /Follow Pulse Gaming/);
+  assert.equal(result.candidate.durationS, 40.5);
+  assert.equal(result.candidate.transcript, FLASH_SCRIPT);
   assert.match(requestedUrl, /loaded-pulse-voice/);
-  assert.match(requestedBody.text, /Follow Pulse Gaming so you never miss a beat\.$/);
+  assert.match(requestedBody.text, /^Xbox has added achievement support/);
+  assert.doesNotMatch(requestedBody.text, /\bfollow\b|\bsubscribe\b/i);
   assert.equal(fs.existsSync(result.candidate.path), true);
 });
 
@@ -372,7 +380,7 @@ test("Flash Lane voice workbench can keep raw local audio and evaluate a normali
       ok: true,
       json: async () => ({
         audio_base64: Buffer.from("raw mp3 bytes").toString("base64"),
-        alignment: { characters: Array.from("Follow Pulse Gaming so you never miss a beat.") },
+        alignment: { characters: Array.from(FLASH_SCRIPT) },
       }),
     }),
     postProcessAudio: async ({ inputPath, outputPath }) => {
@@ -383,7 +391,7 @@ test("Flash Lane voice workbench can keep raw local audio and evaluate a normali
     durationProbe: (file) => {
       assert.equal(file.endsWith(".mp3"), true);
       assert.equal(file.includes("_raw"), false);
-      return 64.2;
+      return 40.2;
     },
     acousticProbe: () => ({
       medianPitchHz: 118,
@@ -435,11 +443,11 @@ test("Flash Lane voice workbench defaults local generation to the channel brand 
           ok: true,
           json: async () => ({
             audio_base64: Buffer.from("fake mp3 bytes").toString("base64"),
-            alignment: { characters: Array.from("Follow Pulse Gaming so you never miss a beat.") },
+            alignment: { characters: Array.from(FLASH_SCRIPT) },
           }),
         };
       },
-      durationProbe: () => 68,
+      durationProbe: () => 40,
       acousticProbe: () => null,
     });
   } finally {

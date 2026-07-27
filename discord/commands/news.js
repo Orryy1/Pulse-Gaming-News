@@ -35,7 +35,7 @@ function storyEmbed(story) {
       { name: 'Classification', value: story.flair || 'Unknown', inline: true },
       { name: 'Source', value: story.subreddit || story.source_type || 'Unknown', inline: true },
     )
-    .setFooter({ text: 'PULSE GAMING' })
+    .setFooter({ text: 'PULSE GAMING NEWS' })
     .setTimestamp(story.timestamp ? new Date(story.timestamp) : new Date());
 
   if (story.youtube_url) {
@@ -77,7 +77,7 @@ module.exports = {
       const embeds = latest.map(s => storyEmbed(s));
 
       await interaction.reply({
-        content: `📰 **Latest ${latest.length} stories from PULSE GAMING**`,
+        content: `📰 **Latest ${latest.length} stories from PULSE GAMING NEWS**`,
         embeds,
       });
     }

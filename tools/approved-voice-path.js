@@ -47,13 +47,41 @@ function printHelp() {
       "  --audio <path>         Audio path to verify",
       "  --provider <name>      Voice provider label",
       "  --source <name>        Voice source label",
-      "  --transcript <text>    Transcript/outro evidence",
+      "  --transcript <text>    Transcript and governed CTA evidence",
       "  --median-pitch <hz>    Optional median pitch evidence",
       "  --json                 Print JSON instead of Markdown",
       "",
       "This command verifies the narration path only. It does not generate speech or render video.",
     ].join("\n") + "\n",
   );
+}
+
+function fixtureStory() {
+  return {
+    id: "fixture_approved_voice_story",
+    title: "Xbox adds achievements to backwards-compatible games",
+    hook: "Xbox has added achievement support to selected original Xbox games.",
+    hook_type: "direct",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_standard_35_42",
+    cta: "",
+    cta_policy: {
+      policy_version: "pulse-selective-cta-v2",
+      scope: "shorts",
+      include_cta: false,
+      copy_strategy: "none",
+      cohort_bucket: 1,
+      cohort_numerator: 1,
+      cohort_denominator: 3,
+      audit_hash: `sha256:${"c".repeat(64)}`,
+    },
+    full_script: [
+      "Xbox has added achievement support to selected original Xbox games in backwards compatibility.",
+      "That changes old catalogue releases from simple nostalgia plays into trackable games with modern profile progress.",
+      "Microsoft has not confirmed every title yet, so the affected list still matters.",
+      "For players, the practical change is clear: returning classics can now contribute achievements alongside newer Game Pass releases.",
+    ].join(" "),
+  };
 }
 
 async function fixtureAudio() {
@@ -70,14 +98,16 @@ async function main() {
     return;
   }
   const audioPath = args.fixture ? await fixtureAudio() : args.audio;
+  const story = args.fixture ? fixtureStory() : null;
   const result = evaluateApprovedVoicePath({
+    story,
     narration: {
       provider: args.fixture ? "elevenlabs" : args.provider,
       source: args.fixture ? "elevenlabs-production-path" : args.source,
       audioPath,
       transcript:
         args.transcript ||
-        (args.fixture ? "Take-Two changed course. Follow Pulse Gaming so you never miss a beat." : ""),
+        (args.fixture ? story.full_script : ""),
       acoustic: {
         medianPitchHz: Number.isFinite(args.medianPitchHz)
           ? args.medianPitchHz
@@ -96,7 +126,14 @@ async function main() {
   process.stderr.write("[approved-voice-path] wrote test/output/approved_voice_path_v1.{json,md}\n");
 }
 
-main().catch((err) => {
-  process.stderr.write(`[approved-voice-path] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[approved-voice-path] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  fixtureStory,
+  parseArgs,
+};

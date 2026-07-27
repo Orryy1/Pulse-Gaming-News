@@ -13,6 +13,9 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+const {
+  resolveGovernedCtaCopy,
+} = require("../lib/services/pulse-editorial-contract");
 
 const ROOT = path.resolve(__dirname, "..");
 const TEST_OUT = path.join(ROOT, "test", "output");
@@ -147,7 +150,9 @@ function headlineWordsFromTitle(title) {
 
 function firstUsefulQuote(story) {
   const text = storyText(story);
-  if (/No premium ticket\.\s*No paywall\.\s*Every player gets access/i.test(text)) {
+  if (
+    /No premium ticket\.\s*No paywall\.\s*Every player gets access/i.test(text)
+  ) {
     return "No premium ticket. No paywall. Every player gets access.";
   }
 
@@ -158,12 +163,21 @@ function firstUsefulQuote(story) {
   if (topComment) return clampWords(topComment, 16);
 
   const title = normaliseText(story?.title);
-  return title ? clampWords(title, 12) : "The important detail is changing fast.";
+  return title
+    ? clampWords(title, 12)
+    : "The important detail is changing fast.";
 }
 
 function buildStoryCardSpecs(story) {
   const label = sourceLabel(story);
   const title = normaliseText(story?.title);
+  const governedCta = resolveGovernedCtaCopy(story);
+  const outro = {
+    step: "PULSE GAMING NEWS",
+    kicker: "FAST. CHECKED. EXPLAINED.",
+    headlineWords: ["PULSE", "GAMING", "NEWS"],
+    cta: governedCta,
+  };
 
   if (isPokemonMewtwoStory(story)) {
     return {
@@ -206,14 +220,9 @@ function buildStoryCardSpecs(story) {
         step: "03 / TAKEAWAY",
         kicker: "THE BOTTOM LINE",
         headlineWords: ["FREE", "MEGA", "MEWTWO"],
-        cta: "FOLLOW FOR MORE",
+        cta: governedCta,
       },
-      outro: {
-        step: "PULSE GAMING",
-        kicker: "DAILY GAMING NEWS",
-        headlineWords: ["FOLLOW", "FOR", "MORE"],
-        cta: "VERIFIED GAMING NEWS",
-      },
+      outro,
     };
   }
 
@@ -222,7 +231,8 @@ function buildStoryCardSpecs(story) {
     source: {
       kicker: "SOURCE",
       label,
-      sublabel: story?.source_type === "reddit" ? "REDDIT THREAD" : "NEWS SOURCE",
+      sublabel:
+        story?.source_type === "reddit" ? "REDDIT THREAD" : "NEWS SOURCE",
     },
     context: {
       kicker: "WHY IT MATTERS",
@@ -243,20 +253,16 @@ function buildStoryCardSpecs(story) {
       kicker: "KEY LINE",
       quoteText: firstUsefulQuote(story),
       attribution: label,
-      attributionSub: story?.source_type === "reddit" ? "top comment" : "reported detail",
+      attributionSub:
+        story?.source_type === "reddit" ? "top comment" : "reported detail",
     },
     takeaway: {
       step: "03 / TAKEAWAY",
       kicker: "THE BOTTOM LINE",
       headlineWords,
-      cta: "FOLLOW FOR MORE",
+      cta: governedCta,
     },
-    outro: {
-      step: "PULSE GAMING",
-      kicker: "DAILY GAMING NEWS",
-      headlineWords: ["FOLLOW", "FOR", "MORE"],
-      cta: "VERIFIED GAMING NEWS",
-    },
+    outro,
   };
 }
 
@@ -276,7 +282,9 @@ function smartCropSibling(filePath) {
 }
 
 function firstExisting(paths) {
-  return paths.find((candidate) => candidate && fs.existsSync(candidate)) || null;
+  return (
+    paths.find((candidate) => candidate && fs.existsSync(candidate)) || null
+  );
 }
 
 function pickStoryBackdrop(story) {
@@ -496,13 +504,25 @@ async function buildProjectForCard({
 
 async function renderCard({ kind, storyId, channelId, projectDir, inspect }) {
   await fs.ensureDir(TEST_OUT);
-  const outPath = path.join(TEST_OUT, outputNameForCard(kind, storyId, channelId));
+  const outPath = path.join(
+    TEST_OUT,
+    outputNameForCard(kind, storyId, channelId),
+  );
   console.log(`[story-cards] lint ${path.basename(projectDir)}`);
   runHyperframes(["lint"], projectDir);
   if (inspect) {
     console.log(`[story-cards] inspect ${path.basename(projectDir)}`);
     runHyperframes(
-      ["inspect", ".", "--samples", "3", "--timeout", "10000", "--max-issues", "20"],
+      [
+        "inspect",
+        ".",
+        "--samples",
+        "3",
+        "--timeout",
+        "10000",
+        "--max-issues",
+        "20",
+      ],
       projectDir,
     );
   }
@@ -592,7 +612,9 @@ async function main() {
     `  backdrop: ${result.backdropPath ? path.relative(ROOT, result.backdropPath) : "template default"}`,
   );
   for (const kind of CARD_KINDS) {
-    console.log(`  ${kind}: ${path.relative(ROOT, result.outputs[kind].outPath)}`);
+    console.log(
+      `  ${kind}: ${path.relative(ROOT, result.outputs[kind].outPath)}`,
+    );
   }
 }
 

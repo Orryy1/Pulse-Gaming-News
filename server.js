@@ -21,6 +21,9 @@ const { extractBearerToken, tokenMatches } = require("./lib/auth-token");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { resolveRuntimeBuildInfo } = require("./lib/runtime-build-info");
 const {
+  resolveOperatingContract,
+} = require("./lib/stabilisation/operating-contract");
+const {
   resolveFacebookTokenPath,
   resolveInstagramTokenPath,
 } = require("./lib/token-paths");
@@ -217,34 +220,34 @@ if (process.env.USE_SQLITE === "true") {
 
 // --- Legal pages (required for TikTok/Instagram app review) ---
 app.get("/terms", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Terms of Service - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Terms of Service</h1><p>Last updated: 2 April 2026</p>
-<p>By using Pulse Gaming's services you agree to these terms.</p>
-<h2>Use of Service</h2><p>Pulse Gaming provides automated gaming news content across YouTube, TikTok and Instagram. Content is generated from verified public sources and is intended for entertainment and informational purposes.</p>
-<h2>Content</h2><p>All content is sourced from publicly available news outlets, Reddit and RSS feeds. We do not claim ownership of third-party trademarks or intellectual property referenced in our coverage.</p>
+  res.send(`<!DOCTYPE html><html><head><title>Terms of Service - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Terms of Service</h1><p>Last updated: 27 July 2026</p>
+<p>By using Pulse Gaming News services you agree to these terms.</p>
+<h2>Use of Service</h2><p>Pulse Gaming News publishes reviewed gaming news, primarily on YouTube. Stories are based on named public sources and checked before publication. The content is for information and entertainment.</p>
+<h2>Content</h2><p>Coverage may quote or show third-party material for reporting, commentary or criticism. Rights decisions are recorded for each video. We do not claim ownership of third-party trademarks or intellectual property referenced in our coverage.</p>
 <h2>Disclaimer</h2><p>Content is provided as-is. We make reasonable efforts to verify information but cannot guarantee accuracy of all reporting. Rumour-tagged content is clearly labelled as unverified.</p>
 <h2>Contact</h2><p>For enquiries, reach us via our YouTube channel.</p>
 </body></html>`);
 });
 
 app.get("/privacy", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Privacy Policy - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Privacy Policy</h1><p>Last updated: 2 April 2026</p>
-<p>Pulse Gaming respects your privacy.</p>
-<h2>Data Collection</h2><p>We do not collect personal data from viewers. Our application accesses public APIs (Reddit, RSS feeds, YouTube, TikTok, Instagram) to publish gaming news content. No user data is stored or processed.</p>
-<h2>Third-Party Services</h2><p>We use YouTube Data API, TikTok Content Posting API and Instagram Graph API solely for publishing our own content. We do not access or store any third-party user data through these APIs.</p>
+  res.send(`<!DOCTYPE html><html><head><title>Privacy Policy - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Privacy Policy</h1><p>Last updated: 27 July 2026</p>
+<p>Pulse Gaming News respects your privacy.</p>
+<h2>Data Collection</h2><p>We do not intentionally collect personal data from viewers through this site. Our application accesses public news sources and publisher-owned platform accounts to prepare and publish gaming news.</p>
+<h2>Third-Party Services</h2><p>When an operator enables an integration, we use the YouTube Data API, TikTok Content Posting API or Instagram Graph API only for our connected publishing accounts. We do not use those APIs to read or store viewer profiles.</p>
 <h2>Cookies</h2><p>Our dashboard may use essential cookies for session management. No tracking or advertising cookies are used.</p>
 <h2>Contact</h2><p>For privacy enquiries, reach us via our YouTube channel.</p>
 </body></html>`);
 });
 
 app.get("/data-deletion", (req, res) => {
-  res.send(`<!DOCTYPE html><html><head><title>Data Deletion Instructions - Pulse Gaming</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
-<h1>Data Deletion Instructions</h1><p>Last updated: 1 May 2026</p>
-<p>Pulse Gaming does not collect or store personal data from viewers.</p>
-<h2>Platform Data</h2><p>If you interact with Pulse Gaming on YouTube, TikTok, Instagram, Facebook or X, those platforms control their own account, comment, analytics and engagement data. Use the privacy or account settings on the relevant platform to manage or delete that data.</p>
-<h2>Operator Authorisation</h2><p>Pulse Gaming stores only operator authorisation records needed to publish content to our own connected channels. These records are not public viewer data.</p>
-<h2>Deletion Request</h2><p>For a deletion request, contact Pulse Gaming through the official YouTube channel and include the platform account or authorisation you want reviewed. We will delete any matching records we control.</p>
+  res.send(`<!DOCTYPE html><html><head><title>Data Deletion Instructions - Pulse Gaming News</title></head><body style="max-width:800px;margin:40px auto;font-family:sans-serif;padding:0 20px">
+<h1>Data Deletion Instructions</h1><p>Last updated: 27 July 2026</p>
+<p>Pulse Gaming News does not intentionally collect or store personal data from viewers through this site.</p>
+<h2>Platform Data</h2><p>If you interact with Pulse Gaming News on YouTube, TikTok, Instagram, Facebook or X, those platforms control their account, comment, analytics and engagement data. Use the privacy or account settings on the relevant platform to manage or delete it.</p>
+<h2>Operator Authorisation</h2><p>Pulse Gaming News stores operator authorisation records needed for its connected publishing accounts. These records are not public viewer data.</p>
+<h2>Deletion Request</h2><p>For a deletion request, contact Pulse Gaming News through the official YouTube channel and identify the platform account or authorisation you want reviewed. We will delete any matching records we control.</p>
 </body></html>`);
 });
 
@@ -332,7 +335,7 @@ app.get("/auth/tiktok/callback", async (req, res) => {
     console.log("[tiktok] OAuth callback: token saved successfully");
     res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px">
       <h1 style="color:#00C853">TikTok Connected!</h1>
-      <p>Access token saved. Pulse Gaming can now publish to TikTok.</p>
+      <p>Authorisation saved. TikTok remains manual-only during Pulse v1.</p>
       <p>You can close this tab.</p>
     </body></html>`);
   } catch (err) {
@@ -767,11 +770,14 @@ app.get("/api/health", (req, res) => {
     (sqliteDbPath.startsWith("/app/") ||
       sqliteDbPath.includes(path.join(__dirname, "data") + path.sep) ||
       sqliteDbPath === path.join(__dirname, "data", "pulse.db"));
+  const operatingContract = resolveOperatingContract();
 
   const runtime = {
     use_sqlite: process.env.USE_SQLITE === "true",
     use_job_queue_explicit: process.env.USE_JOB_QUEUE || null,
-    auto_publish: process.env.AUTO_PUBLISH === "true",
+    operating_mode: operatingContract.mode,
+    auto_publish: operatingContract.live_mutation_allowed,
+    legacy_auto_publish_armed: process.env.AUTO_PUBLISH === "true",
     dispatch: dispatchMode,
     sqlite_db_path: sqliteDbPath ? "(configured)" : null,
     sqlite_db_path_redacted: !!sqliteDbPath,
@@ -800,7 +806,7 @@ app.get("/api/health", (req, res) => {
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     hunterActive: !!hunterInterval,
-    autonomousMode: process.env.AUTO_PUBLISH === "true",
+    autonomousMode: operatingContract.live_mutation_allowed,
     schedulerActive,
     schedulerExpected,
     circuitBreakers,
@@ -994,8 +1000,12 @@ app.post(
 
 // --- Autonomous status ---
 app.get("/api/autonomous/status", requireAuth, (req, res) => {
+  const operatingContract = resolveOperatingContract();
   res.json({
-    autoPublish: process.env.AUTO_PUBLISH === "true",
+    operatingMode: operatingContract.mode,
+    autoPublish: operatingContract.live_mutation_allowed,
+    legacyAutoPublishArmed: process.env.AUTO_PUBLISH === "true",
+    humanReviewRequired: operatingContract.human_review_required,
     schedulerActive: currentSchedulerActive(),
     hunterActive: !!hunterInterval,
     lastHuntRun: lastHunterRun.toISOString(),
@@ -1004,7 +1014,7 @@ app.get("/api/autonomous/status", requireAuth, (req, res) => {
       : null,
     schedule: {
       profile: "stabilisation_30d",
-      hunts: "Five read-only discovery windows per day",
+      hunts: ["Five read-only discovery windows per day"],
       publish: [
         "09:00 UTC - guarded YouTube window",
         "19:00 UTC - guarded YouTube window",
@@ -1696,7 +1706,7 @@ async function runHunter() {
         const { produce } = require("./publisher");
         await produce();
         await sendDiscord(
-          `**Pulse Gaming Pipeline**\n` +
+          `**Pulse Gaming News Pipeline**\n` +
             `Hunted ${newPosts.length} new stories, ${needProduce.length} produced into videos`,
         );
       } catch (err) {
@@ -1886,9 +1896,9 @@ async function _registerLegacyDevCronRegistry() {
                       .join("\n")
                   : "";
               await sendDiscord(
-                `**Pulse Gaming Published** (${windowLabels[i]})\n` +
+                `**Pulse Gaming News Published** (${windowLabels[i]})\n` +
                   `"${result.title}"\n` +
-                  `YT: ${result.youtube ? "yes" : "FAIL"} | TT: ${result.tiktok ? "yes" : "FAIL"} | IG: ${result.instagram ? "yes" : "FAIL"} | FB: ${result.facebook ? "yes" : "FAIL"} | X: ${result.twitter ? "yes" : "FAIL"}` +
+                  `YouTube: ${result.youtube ? "published" : "not published"} | Secondary platforms: frozen` +
                   errorDetails,
               );
             } else {
@@ -1991,11 +2001,9 @@ async function _registerLegacyDevCronRegistry() {
     console.log("[server] Analytics enabled: 2x daily at 08:00/20:00 UTC");
   } else {
     console.log(
-      "[server] AUTO_PUBLISH is off. Videos will be produced but not uploaded.",
+      "[server] Legacy dev publication is disabled. Candidates remain held for human review.",
     );
-    console.log(
-      "[server] Set AUTO_PUBLISH=true in Railway env vars to enable.",
-    );
+    console.log("[server] Use the governed durable queue and YouTube review flow.");
   }
 
   // Weekly longform compilation - every Sunday at 14:00 UTC
@@ -2724,7 +2732,7 @@ app.post("/api/webhook/railway", rateLimit(30, 60000), async (req, res) => {
     const payload = req.body || {};
     const status = payload.status || payload.type || "unknown";
     const service =
-      payload.service?.name || payload.meta?.serviceName || "Pulse Gaming";
+      payload.service?.name || payload.meta?.serviceName || "Pulse Gaming News";
 
     if (
       ["FAILED", "CRASHED", "REMOVED", "BUILD_FAILED"].includes(
@@ -2781,7 +2789,7 @@ const server = app.listen(PORT, () => {
   const primaryInstance = isPrimary();
 
   console.log(
-    `[server] Pulse Gaming Command Centre v2 running on http://localhost:${PORT}`,
+    `[server] Pulse Gaming News Command Centre running on http://localhost:${PORT}`,
   );
 
   // Notify Discord on successful deploy. Real Railway deploys keep the
@@ -2820,8 +2828,12 @@ const server = app.listen(PORT, () => {
   });
 
   // Start Discord bot alongside the server
+  const discordCommunityFrozen =
+    resolveOperatingContract().freeze.discord_economy;
   if (!primaryInstance) {
     console.log("[server] Discord bot skipped - non-primary mirror");
+  } else if (discordCommunityFrozen) {
+    console.log("[server] Discord bot skipped - Pulse v1 community freeze");
   } else if (process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID) {
     try {
       const botProcess = spawn("node", ["discord/bot.js"], {

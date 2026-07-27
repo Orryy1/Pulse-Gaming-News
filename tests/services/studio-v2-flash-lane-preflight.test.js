@@ -6,10 +6,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
-  assertFlashLaneProofReady,
+  assertFlashLaneProofReady: assertFlashLaneProofReadyRaw,
   buildFlashLaneNarrationPlan,
-  buildFlashLaneProofPreflight,
+  buildFlashLaneProofPreflight: buildFlashLaneProofPreflightRaw,
 } = require("../../lib/studio/v2/flash-lane-preflight");
+const {
+  CTA_POLICY,
+} = require("../../lib/services/pulse-editorial-contract");
 
 function proofAudioPath(name = "flash-lane-provided.mp3") {
   const dir = path.join(process.cwd(), "test", "output", "tmp-flash-lane-preflight");
@@ -24,9 +27,50 @@ const providedNarration = {
   provider: "external",
   source: "provided-real-audio",
   audioPath: proofAudioPath(),
-  transcript: "Follow Pulse Gaming so you never miss a beat.",
+  transcript: "Xbox players gained a verified compatibility feature.",
   acoustic: { medianPitchHz: 118 },
 };
+
+const pulseStory = {
+  id: "preflight-contract-story",
+  title: "Xbox changes backwards compatibility for players",
+  hook: "Xbox players just gained a feature the old catalogue was missing.",
+  hook_type: "direct",
+  editorial_lane_id: "what_changes_for_players",
+  duration_band_id: "what_changes_standard_35_42",
+  cta: "",
+  cta_policy: {
+    policy_version: CTA_POLICY.version,
+    scope: "shorts",
+    include_cta: false,
+    copy_strategy: "none",
+    cohort_bucket: 1,
+    cohort_numerator: 1,
+    cohort_denominator: 3,
+    audit_hash: `sha256:${"b".repeat(64)}`,
+  },
+};
+
+const selectedBandWordCount = 56;
+
+function buildFlashLaneProofPreflight(args = {}) {
+  return buildFlashLaneProofPreflightRaw({
+    story: pulseStory,
+    scriptWordCount: selectedBandWordCount,
+    ...args,
+  });
+}
+
+function assertFlashLaneProofReady(args = {}, options = {}) {
+  return assertFlashLaneProofReadyRaw(
+    {
+      story: pulseStory,
+      scriptWordCount: selectedBandWordCount,
+      ...args,
+    },
+    options,
+  );
+}
 
 function clipScene(i) {
   return { type: "clip", label: `clip_${i}`, source: `clip-${i}.mp4` };
@@ -72,7 +116,7 @@ test("Flash Lane preflight allows footage-led proofs", () => {
     },
   });
 
-  assert.equal(report.verdict, "allow");
+  assert.equal(report.verdict, "allow", report.blockers.join(", "));
   assert.equal(report.metrics.actualClipScenes, 7);
   assert.equal(report.metrics.actualClipDominance, 0.58);
 });
@@ -112,7 +156,7 @@ test("Flash Lane preflight allows exhausted clip refs when trailer frames carry 
   assert.equal(report.blockers.includes("flash_lane_clip_dominance_below_target"), false);
 });
 
-test("Flash Lane preflight blocks repeating too few official clips across a 60s proof", () => {
+test("Flash Lane preflight blocks repeating too few official clips", () => {
   const scenes = [
     clipScene(1),
     clipScene(2),
@@ -166,46 +210,53 @@ test("Flash Lane preflight blocks unapproved local narration", () => {
   );
 });
 
-test("Flash Lane preflight blocks overlong narration before rendering", () => {
+test("Flash Lane preflight blocks narration above the selected duration band", () => {
   const report = buildFlashLaneProofPreflight({
     narration: {
       ...providedNarration,
-      durationS: 118.025,
+      durationS: 42.1,
     },
     scenes: [clipScene(1), clipScene(2), clipScene(3), clipScene(4), clipScene(5), clipScene(6)],
     media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }] },
   });
 
   assert.equal(report.verdict, "block");
-  assert.ok(report.blockers.includes("flash_lane_runtime_outside_61_to_75_seconds"));
-  assert.equal(report.metrics.narrationDurationS, 118.025);
+  assert.ok(
+    report.blockers.includes("audio_duration_above_selected_band"),
+  );
+  assert.equal(report.metrics.narrationDurationS, 42.1);
+  assert.equal(
+    report.thresholds.durationBandId,
+    "what_changes_standard_35_42",
+  );
 });
 
-test("Flash Lane preflight blocks very slow narration pace before rendering", () => {
+test("Flash Lane preflight blocks narration below the selected duration band", () => {
   const report = buildFlashLaneProofPreflight({
     narration: {
       ...providedNarration,
-      durationS: 118.025,
+      durationS: 34.9,
     },
-    scriptWordCount: 148,
     scenes: [clipScene(1), clipScene(2), clipScene(3), clipScene(4), clipScene(5), clipScene(6)],
     media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }] },
   });
 
   assert.equal(report.verdict, "block");
-  assert.ok(report.blockers.includes("flash_lane_spoken_wpm_outside_publishable_range"));
-  assert.equal(report.metrics.spokenWpm, 75.2);
-  assert.equal(report.narrationPlan.recommendation, "regenerate_narration_at_normal_creator_pace");
-  assert.ok(report.narrationPlan.issues.includes("spoken_pace_too_slow"));
+  assert.ok(
+    report.blockers.includes("audio_duration_below_selected_band"),
+  );
+  assert.equal(
+    report.narrationPlan.recommendation,
+    "regenerate_narration_within_selected_band",
+  );
 });
 
-test("Flash Lane preflight accepts narration inside the 61-75 second window", () => {
+test("Flash Lane preflight accepts narration inside the selected duration band", () => {
   const report = buildFlashLaneProofPreflight({
     narration: {
       ...providedNarration,
-      durationS: 68.2,
+      durationS: 40,
     },
-    scriptWordCount: 160,
     scenes: [
       clipScene(1),
       clipScene(2),
@@ -220,19 +271,25 @@ test("Flash Lane preflight accepts narration inside the 61-75 second window", ()
     media: { clips: [{ path: "a.mp4" }, { path: "b.mp4" }, { path: "c.mp4" }], trailerFrames: [{ path: "frame-1.jpg" }, { path: "frame-2.jpg" }] },
   });
 
-  assert.equal(report.verdict, "allow");
-  assert.equal(report.metrics.spokenWpm, 140.8);
+  assert.equal(report.verdict, "allow", report.blockers.join(", "));
+  assert.equal(report.metrics.spokenWpm, 84);
+  assert.deepEqual(report.narrationPlan.targetRuntimeS, [35, 42]);
 });
 
-test("Flash Lane narration plan flags scripts too short for 61-75s creator pace", () => {
+test("Flash Lane narration plan uses the selected band's exact word range", () => {
   const plan = buildFlashLaneNarrationPlan({
-    scriptWordCount: 121,
+    story: pulseStory,
+    scriptWordCount: 51,
   });
 
-  assert.deepEqual(plan.targetRuntimeS, [61, 75]);
-  assert.deepEqual(plan.idealWpmRange, [140, 155]);
-  assert.ok(plan.issues.includes("script_too_short_for_flash_lane_target"));
-  assert.equal(plan.recommendation, "expand_script_before_flash_lane_voice");
+  assert.equal(plan.durationBandId, "what_changes_standard_35_42");
+  assert.deepEqual(plan.targetRuntimeS, [35, 42]);
+  assert.deepEqual(plan.targetWordRange, [52, 61]);
+  assert.ok(plan.issues.includes("script_runtime_below_selected_band"));
+  assert.equal(
+    plan.recommendation,
+    "expand_script_to_selected_band_before_voice",
+  );
 });
 
 test("Flash Lane preflight can be bypassed only for explicit diagnostics", () => {

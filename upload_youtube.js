@@ -6,7 +6,9 @@ const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
-const { normaliseAffiliateLinks } = require("./lib/affiliate-targeting");
+const {
+  assessPostPublishMutation,
+} = require("./lib/services/post-publish-mutation-policy");
 
 dotenv.config({ override: false });
 
@@ -23,24 +25,34 @@ const PLAYLIST_DEFS = [
   {
     key: "breaking",
     title: "Breaking Gaming News",
-    desc: "The biggest breaking stories in gaming - delivered fast. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Fast gaming news with the player consequence and source evidence made clear.",
   },
   {
     key: "leaks_rumours",
     title: "Gaming Leaks & Rumours",
-    desc: "The latest gaming leaks, insider info and rumours - all in one place. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Source-checked gaming reports, clearly labelled by confidence and explained for players.",
   },
   {
     key: "confirmed",
     title: "Confirmed Gaming News",
-    desc: "Verified, confirmed gaming news you can trust. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Confirmed gaming news with proof on screen and the practical consequence explained.",
   },
   {
     key: "all_shorts",
-    title: "All Pulse Gaming Shorts",
-    desc: "Every Pulse Gaming Short in one playlist. Sit back, hit play and catch up on everything. Follow Pulse Gaming so you never miss a beat.",
+    title: "All Pulse Gaming News Shorts",
+    desc: "Every Pulse Gaming News Short: fast gaming news, checked and explained.",
   },
 ];
+
+function resolveApprovedPinnedCommentForUpload(story) {
+  const assessment = assessPostPublishMutation("youtube_pinned_comment", {
+    automatic: false,
+    story,
+  });
+  if (!story?.pinned_comment) return null;
+  if (!assessment.allowed) return null;
+  return assessment.payload.text;
+}
 
 // Map classification tags to playlist keys
 function getPlaylistKeys(classification) {
@@ -221,29 +233,18 @@ function buildMetadata(story) {
   }
   descLines.push("");
 
-  // --- Section 2: Affiliate CTA ---
-  const affiliateLinks = normaliseAffiliateLinks(story).slice(0, 4);
-  if (affiliateLinks.length === 1) {
-    descLines.push(`${affiliateLinks[0].label}: ${affiliateLinks[0].url}`);
-    descLines.push("");
-  } else if (affiliateLinks.length > 1) {
-    descLines.push("Related links:");
-    for (const link of affiliateLinks) {
-      descLines.push(`- ${link.label}: ${link.url}`);
-    }
-    descLines.push("");
-  }
+  // Pulse v1 deliberately keeps affiliate and sponsor material out of public
+  // metadata while the controlled editorial experiment establishes audience
+  // trust and intent.
 
-  // --- Section 3: Channel identity ---
+  // --- Section 2: Channel identity ---
   descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
   descLines.push(
-    brand.CTA
-      ? brand.CTA.replace(/^Follow /i, "Follow ")
-      : "Follow so you never miss an update.",
+    "Player consequences, source evidence and clear explanations.",
   );
   descLines.push("");
 
-  // --- Section 4: Social links ---
+  // --- Section 3: Social links ---
   const socials = channel.socials || {};
   if (Object.keys(socials).length > 0) {
     if (socials.tiktok) descLines.push(`TikTok: ${socials.tiktok}`);
@@ -253,7 +254,7 @@ function buildMetadata(story) {
     descLines.push("");
   }
 
-  // --- Section 5: Sources ---
+  // --- Section 4: Sources ---
   const sourceLinks = [];
   if (story.url && story.url.startsWith("http")) sourceLinks.push(story.url);
   if (
@@ -546,6 +547,12 @@ async function uploadShort(
   if (typeof markCreateAttemptStarted !== "function") {
     throw new Error("youtube_create_boundary_marker_required");
   }
+  const approvedComment = resolveApprovedPinnedCommentForUpload(story);
+  if (story?.pinned_comment && !approvedComment) {
+    console.log(
+      "[youtube] Optional top-level comment omitted: explicit hash-bound operator approval is missing or invalid",
+    );
+  }
   addBreadcrumb(`YouTube upload: ${story.title}`, "upload");
   {
       const auth = await getAuthClient();
@@ -782,23 +789,26 @@ async function uploadShort(
         }
       }
 
-      // Post pinned comment
-      if (story.pinned_comment) {
+      // The Data API can create a top-level comment but cannot pin it.
+      // Only submit text that has a separate, hash-bound operator approval.
+      if (approvedComment) {
         try {
-          const commentResponse = await youtube.commentThreads.insert({
+          await youtube.commentThreads.insert({
             part: ["snippet"],
             requestBody: {
               snippet: {
                 videoId,
                 topLevelComment: {
                   snippet: {
-                    textOriginal: story.pinned_comment,
+                    textOriginal: approvedComment,
                   },
                 },
               },
             },
           });
-          console.log(`[youtube] Pinned comment posted`);
+          console.log(
+            "[youtube] Approved top-level comment posted; pinning remains a manual Studio action",
+          );
         } catch (err) {
           console.log(
             `[youtube] Comment failed (non-critical): ${err.message}`,
@@ -991,9 +1001,7 @@ async function uploadLongform(compilation) {
   }
 
   descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
-  descLines.push(
-    brand.CTA ? brand.CTA : "Subscribe so you never miss a roundup.",
-  );
+  if (brand.CTA) descLines.push(brand.CTA);
   descLines.push("");
 
   const hashtags = (channel.hashtags || [])
@@ -1062,6 +1070,7 @@ async function postCommunityImage(story) {
 module.exports = {
   buildYoutubeShortRequestBody,
   insertYoutubeVideoOnce,
+  resolveApprovedPinnedCommentForUpload,
   resolveContainsSyntheticMedia,
   uploadShort,
   uploadAll,

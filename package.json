@@ -51,6 +51,7 @@
     "ops:governed-final-composite": "node tools/governed-final-composite.js",
     "ops:governed-publication-evidence-package": "node tools/governed-publication-evidence-package.js",
     "ops:governed-publication-review": "node tools/governed-publication-review.js",
+    "ops:governed-reviewed-qa-repair": "node tools/governed-reviewed-qa-repair.js",
     "ops:guarded-youtube-window": "node tools/guarded-youtube-window.js",
     "ops:media:verify": "node tools/media-verify.js",
     "ops:db:backup-dry-run": "node tools/db-backup-dry-run.js",

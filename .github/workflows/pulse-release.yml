@@ -105,6 +105,8 @@ jobs:
           tests/services/governed-publication-metadata.test.js
           tests/services/governed-publication-review.test.js
           tests/ops/governed-publication-review-cli.test.js
+          tests/ops/governed-reviewed-qa-repair.test.js
+          tests/ops/governed-reviewed-qa-repair-cli.test.js
           tests/services/governed-platform-dispatch.test.js
           tests/services/guarded-youtube-window.test.js
           tests/ops/guarded-youtube-window-cli.test.js

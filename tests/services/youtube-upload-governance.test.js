@@ -551,7 +551,7 @@ test("publisher is the governed Short caller and the adapter has no generic muta
   );
   assert.match(
     publisherSource,
-    /synthetic_media_disclosure:\s*scheduled\.publicationEvidence\.synthetic_media_disclosure/,
+    /synthetic_media_disclosure:\s*scheduledBeforeDispatch\.publicationEvidence\s*\.synthetic_media_disclosure/,
   );
   assert.match(
     uploaderSource,

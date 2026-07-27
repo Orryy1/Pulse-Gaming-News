@@ -30,6 +30,7 @@ test("publication lifecycle exposes every governed state", () => {
     "ANALYTICS_COLLECTED",
   ]);
   assert.deepEqual(EXCEPTION_STATES, [
+    "ADMISSION_CANCELLED_BEFORE_DISPATCH",
     "DISPATCH_FAILED_BEFORE_CREATE",
     "PLATFORM_CREATED_CONFIRMATION_FAILED",
     "PLATFORM_CREATED_METADATA_FAILED",
@@ -39,6 +40,24 @@ test("publication lifecycle exposes every governed state", () => {
   ]);
   assert.equal(knownState("PUBLISHED"), true);
   assert.equal(knownState("unknown"), false);
+});
+
+test("an expired admission can be cancelled before dispatch and explicitly rescheduled", () => {
+  assert.equal(
+    canTransition("SCHEDULED", "ADMISSION_CANCELLED_BEFORE_DISPATCH"),
+    true,
+  );
+  assert.equal(
+    canTransition("ADMISSION_CANCELLED_BEFORE_DISPATCH", "SCHEDULED"),
+    true,
+  );
+  assert.equal(
+    canTransition(
+      "ADMISSION_CANCELLED_BEFORE_DISPATCH",
+      "DISPATCH_STARTED",
+    ),
+    false,
+  );
 });
 
 test("canonical progress is adjacent and unsafe skips are refused", () => {

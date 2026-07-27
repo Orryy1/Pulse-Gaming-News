@@ -272,6 +272,100 @@ test("dispatch cannot substitute a different operation identity after scheduling
   db.close();
 });
 
+test("an operator can cancel an expired admission only before the dispatch boundary", () => {
+  const { db, governance } = fixture();
+  const storyId = "story-1";
+  const dispatchKey = "youtube:story-1:expired-admission";
+  advanceToScheduled(
+    governance,
+    storyId,
+    "expired-admission",
+    dispatchKey,
+  );
+  const scheduled = governance.getLatestLifecycleEvent(
+    storyId,
+    "youtube",
+    "SCHEDULED",
+  );
+  const scheduledEvidence = JSON.parse(scheduled.evidence_json);
+  const cancellationNow = new Date(
+    Date.parse(scheduledEvidence.scheduled_for) + 16 * 60 * 1000,
+  );
+  const decision = governance.recordOperatorDecision({
+    actorId: "operator-1",
+    action: "repair_governed_reviewed_qa_refusal",
+    targetType: "platform_publication",
+    targetId: `${storyId}:youtube`,
+    decision: "APPROVED",
+    reason: "Cancel the expired pre-create admission after reviewed QA repair",
+    evidence: {
+      scheduled_event_id: scheduled.id,
+      dispatch_idempotency_key: dispatchKey,
+      request_fingerprint: scheduledEvidence.request_fingerprint,
+      create_boundary_entered: false,
+    },
+    idempotencyKey: "qa-repair:story-1:operator-decision",
+  });
+
+  assert.throws(
+    () =>
+      governance.cancelScheduledAdmissionBeforeDispatch({
+        storyId,
+        platform: "youtube",
+        channelId: "pulse-gaming",
+        scheduledEventId: scheduled.id + 1,
+        scheduledDispatchIdempotencyKey: dispatchKey,
+        requestFingerprint: scheduledEvidence.request_fingerprint,
+        actorId: "operator-1",
+        operatorDecisionId: decision.id,
+        now: cancellationNow,
+        evidence: {
+          create_boundary_entered: false,
+          external_object_created: false,
+        },
+        idempotencyKey: "qa-repair:story-1:cancel",
+      }),
+    /scheduled_cancellation_event_mismatch/,
+  );
+
+  const event = governance.cancelScheduledAdmissionBeforeDispatch({
+    storyId,
+    platform: "youtube",
+    channelId: "pulse-gaming",
+    scheduledEventId: scheduled.id,
+    scheduledDispatchIdempotencyKey: dispatchKey,
+    requestFingerprint: scheduledEvidence.request_fingerprint,
+    actorId: "operator-1",
+    operatorDecisionId: decision.id,
+    now: cancellationNow,
+    evidence: {
+      create_boundary_entered: false,
+      external_object_created: false,
+      qa_failures_resolved: [
+        "legacy_unstamped_render_requires_rerender",
+        "script_too_short (47 words, min 80)",
+      ],
+    },
+    idempotencyKey: "qa-repair:story-1:cancel",
+  });
+
+  assert.equal(event.from_state, "SCHEDULED");
+  assert.equal(event.to_state, "ADMISSION_CANCELLED_BEFORE_DISPATCH");
+  assert.equal(
+    governance.getState(storyId, "youtube").lifecycle_state,
+    "ADMISSION_CANCELLED_BEFORE_DISPATCH",
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM platform_dispatch_ledger WHERE story_id = ?",
+      )
+      .get(storyId).count,
+    0,
+  );
+  db.close();
+});
+
 test("SCHEDULED rejects incomplete or non-GREEN dispatch evidence", () => {
   const cases = [
     {

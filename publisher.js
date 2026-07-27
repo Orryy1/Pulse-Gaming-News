@@ -986,7 +986,11 @@ function assertExactDispatchBinding(binding, storyId, scheduled) {
   }
 }
 
-function assertSameScheduledDispatchTicket(initial, current) {
+function assertSameScheduledDispatchTicket(
+  initial,
+  current,
+  mismatchCode = "scheduled_dispatch_ticket_changed_before_create",
+) {
   const comparisons = [
     [
       String(current?.scheduledFor || "").trim(),
@@ -1004,11 +1008,13 @@ function assertSameScheduledDispatchTicket(initial, current) {
       String(current?.requestFingerprint || "").trim().toLowerCase(),
       String(initial?.requestFingerprint || "").trim().toLowerCase(),
     ],
+    [
+      String(current?.event?.evidence_json || "").trim(),
+      String(initial?.event?.evidence_json || "").trim(),
+    ],
   ];
   if (comparisons.some(([actual, expected]) => actual !== expected)) {
-    throw publicationDispatchError(
-      "scheduled_dispatch_ticket_changed_before_create",
-    );
+    throw publicationDispatchError(mismatchCode);
   }
 }
 
@@ -1414,13 +1420,52 @@ async function persistQaFail(story, { failures, warnings, source }) {
  * verdict is not evidence that the asset passed, so the story remains
  * held until an operator repairs the QA lane and reschedules it.
  */
-async function runPreflightQa(story) {
+async function runPreflightQa(story, context = {}) {
   const warnings = [];
+  let governedReviewAuthority = null;
+
+  try {
+    const {
+      hasGovernedReviewedContentQaEvidence,
+      resolveGovernedReviewedContentQaAuthority,
+    } = require("./lib/services/governed-reviewed-content-qa");
+    if (hasGovernedReviewedContentQaEvidence(story)) {
+      governedReviewAuthority =
+        await resolveGovernedReviewedContentQaAuthority({
+          story,
+          scheduledDispatch: context.scheduledDispatch,
+          exactDispatchBinding: context.exactDispatchBinding,
+          resolveMediaPath: context.resolveMediaPath,
+        });
+    }
+  } catch (qaErr) {
+    const failures = Array.isArray(qaErr?.codes)
+      ? qaErr.codes
+      : [qaErr?.code || "governed_reviewed_content_qa_invalid"];
+    console.log(
+      `[publisher] governed review QA FAIL (${story.id}): ${failures.join(", ")}`,
+    );
+    return {
+      pass: false,
+      failures,
+      warnings: warnings.slice(),
+      source: "governed_review",
+    };
+  }
 
   // Content QA — metadata + script + MP4 size / existence
   try {
     const { runContentQa } = require("./lib/services/content-qa");
-    const cqa = await runContentQa(story);
+    let cqa = await runContentQa(story);
+    if (governedReviewAuthority) {
+      const {
+        reconcileGovernedReviewedContentQa,
+      } = require("./lib/services/governed-reviewed-content-qa");
+      cqa = reconcileGovernedReviewedContentQa(
+        cqa,
+        governedReviewAuthority,
+      );
+    }
     if (cqa.warnings && cqa.warnings.length > 0) {
       console.log(
         `[publisher] content QA warnings (${story.id}): ${cqa.warnings.join(", ")}`,
@@ -1755,7 +1800,13 @@ async function _publishNextStoryInner(
       break;
     }
 
-    const qa = await runPreflightQa(candidate);
+    const qa = await runPreflightQa(candidate, {
+      scheduledDispatch: scheduled,
+      exactDispatchBinding,
+      resolveMediaPath:
+        runtime.resolveMediaPath ||
+        require("./lib/media-paths").resolveExisting,
+    });
     assertLeaseHealthy();
     if (qa.pass) {
       story = candidate;
@@ -2081,15 +2132,41 @@ async function _publishNextStoryInner(
           "scheduled_request_fingerprint_mismatch",
         );
       }
+      const scheduledBeforeDispatch = readScheduledDispatchEvidence(
+        pubRepos.publicationGovernance,
+        story.id,
+        "youtube",
+        trustedClock(),
+        pubChannelId,
+      );
+      assertSameScheduledDispatchTicket(
+        scheduled,
+        scheduledBeforeDispatch,
+        "scheduled_dispatch_ticket_changed_before_dispatch",
+      );
+      assertExactDispatchBinding(
+        exactDispatchBinding,
+        story.id,
+        scheduledBeforeDispatch,
+      );
+      assertExactDatabaseDataVersion(
+        pubRepos.db,
+        exactDispatchBinding,
+        "guarded_database_data_version_changed_before_dispatch",
+      );
+      assertLeaseHealthy();
       const { uploadShort } = require("./upload_youtube");
       const uploadStory = {
         ...story,
         synthetic_media_disclosure:
-          scheduled.publicationEvidence.synthetic_media_disclosure,
+          scheduledBeforeDispatch.publicationEvidence
+            .synthetic_media_disclosure,
         governed_publication_metadata_sha256:
-          scheduled.publicationEvidence.publication_metadata_sha256,
+          scheduledBeforeDispatch.publicationEvidence
+            .publication_metadata_sha256,
         governed_publication_metadata:
-          scheduled.publicationEvidence.publication_metadata,
+          scheduledBeforeDispatch.publicationEvidence
+            .publication_metadata,
       };
       const dispatchResult = await governedDispatch({
         db: pubRepos.db,
@@ -2098,11 +2175,12 @@ async function _publishNextStoryInner(
         storyId: story.id,
         channelId: pubChannelId,
         platform: "youtube",
-        idempotencyKey: scheduled.idempotencyKey,
+        idempotencyKey: scheduledBeforeDispatch.idempotencyKey,
         requestFingerprint: currentFingerprint.request_fingerprint,
         dispatchEvidence: {
-          ...scheduled.evidence,
-          scheduled_lifecycle_event_id: scheduled.event.id || null,
+          ...scheduledBeforeDispatch.evidence,
+          scheduled_lifecycle_event_id:
+            scheduledBeforeDispatch.event.id || null,
           current_media_sha256: currentFingerprint.media_sha256,
           current_script_sha256: currentFingerprint.script_sha256,
           current_request_fingerprint:
@@ -2128,7 +2206,7 @@ async function _publishNextStoryInner(
                 pubChannelId,
               );
               assertSameScheduledDispatchTicket(
-                scheduled,
+                scheduledBeforeDispatch,
                 currentScheduled,
               );
               assertExactDispatchBinding(

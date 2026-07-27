@@ -679,9 +679,11 @@ function withTestPublisherLease(publisher) {
 
 function setupMocks({
   cqaResult,
+  useRealContentQa = false,
   vqaResult,
   pvqaResult = { result: "pass", failures: [], warnings: [] },
   renderDecisionError = null,
+  renderDecisionResult = null,
   persistStory = null,
   stories,
 }) {
@@ -720,12 +722,16 @@ function setupMocks({
     },
   });
 
-  stubModule(CQA_RESOLVED, {
-    async runContentQa() {
-      if (cqaResult instanceof Error) throw cqaResult;
-      return cqaResult;
-    },
-  });
+  if (useRealContentQa) {
+    delete require.cache[CQA_RESOLVED];
+  } else {
+    stubModule(CQA_RESOLVED, {
+      async runContentQa() {
+        if (cqaResult instanceof Error) throw cqaResult;
+        return cqaResult;
+      },
+    });
+  }
   stubModule(VQA_RESOLVED, {
     async runVideoQa() {
       if (vqaResult instanceof Error) throw vqaResult;
@@ -742,6 +748,12 @@ function setupMocks({
     stubModule(RENDER_DECISION_RESOLVED, {
       async decideForStory() {
         throw renderDecisionError;
+      },
+    });
+  } else if (renderDecisionResult) {
+    stubModule(RENDER_DECISION_RESOLVED, {
+      async decideForStory() {
+        return renderDecisionResult;
       },
     });
   } else {
@@ -1210,6 +1222,82 @@ test("publishNextStory: exact binding is re-enforced against the persisted sched
   );
   assert.deepEqual(uploaderCalls, []);
   assert.deepEqual(governedDispatchCalls, []);
+});
+
+test("publishNextStory: scheduled ticket drift during request fingerprinting blocks before governed dispatch", async () => {
+  const story = {
+    id: "rss_ticket_drifts_during_fingerprint",
+    title: "Changed ticket during fingerprint",
+    approved: true,
+    exported_path: "/tmp/ticket-drift.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+  let changed = false;
+  const publicationGovernance = {
+    getLatestLifecycleEvent(storyId, platform, toState) {
+      assert.equal(storyId, story.id);
+      assert.equal(platform, "youtube");
+      assert.equal(toState, "SCHEDULED");
+      const suffix = changed ? "changed" : "test-operation";
+      return {
+        id: changed ? 91 : 90,
+        story_id: storyId,
+        platform,
+        to_state: "SCHEDULED",
+        evidence_json: JSON.stringify({
+          dispatch_idempotency_key:
+            `youtube:${storyId}:${suffix}`,
+          request_fingerprint: changed
+            ? "b".repeat(64)
+            : "a".repeat(64),
+          scheduled_for: "2026-07-27T09:00:00.000Z",
+          publication_evidence: SCHEDULED_PUBLICATION_EVIDENCE,
+        }),
+      };
+    },
+  };
+  const repos = {
+    db: {
+      pragma() {
+        return 1;
+      },
+    },
+    platformPosts: {},
+    publicationGovernance,
+  };
+
+  const result = await publishNextStory({
+    repos,
+    exactDispatchBinding: {
+      storyId: story.id,
+      platform: "youtube",
+      scheduledFor: "2026-07-27T09:00:00.000Z",
+      scheduledEventId: 90,
+      dispatchIdempotencyKey:
+        `youtube:${story.id}:test-operation`,
+      requestFingerprint: "a".repeat(64),
+      databaseDataVersion: 1,
+    },
+    async fingerprintPublicationRequest() {
+      changed = true;
+      return {
+        request_fingerprint: "a".repeat(64),
+        media_sha256: "d".repeat(64),
+        script_sha256: "e".repeat(64),
+      };
+    },
+  });
+
+  assert.equal(
+    result.errors.youtube,
+    "scheduled_dispatch_ticket_changed_before_dispatch",
+  );
+  assert.deepEqual(governedDispatchCalls, []);
+  assert.deepEqual(uploaderCalls, []);
 });
 
 test("publishNextStory: a fresh trusted boundary clock blocks create after the window expires", async () => {
@@ -2338,6 +2426,130 @@ test("publishNextStory: unavailable render contract fails closed and preserves t
 //
 // LIVE_GUARDED dispatch carries one immutable story authority. A QA failure
 // must stop that operation and must never fall through to another story.
+
+test("exact guarded candidate: a hash-bound governed 47-word Short uses its reviewed editorial and renderer contracts", async (t) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-governed-reviewed-content-qa-"),
+  );
+  const mediaPath = path.join(directory, "official_studio-v21.mp4");
+  const mediaBytes = Buffer.alloc(220 * 1024, 0x5a);
+  fs.writeFileSync(mediaPath, mediaBytes);
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const fullScript =
+    "Final Fantasy XIV just revealed a tank that fights with two giant shields. Bastion arrives in Evercold and only works in Evolved Mode. The expansion makes its story less linear, auto-scales content and adds a Final Fantasy VII raid. The MMO hits Switch 2 on August fourth.";
+  assert.equal(fullScript.trim().split(/\s+/).length, 47);
+  const scriptSha256 = sha256(Buffer.from(fullScript));
+  const mediaSha256 = sha256(mediaBytes);
+  const rendererManifestSha256 = "4".repeat(64);
+  const story = {
+    id: "official_governed_reviewed_short",
+    title: "Final Fantasy XIV's New Tank Uses TWO Giant Shields",
+    channel_id: "pulse-gaming",
+    approved: true,
+    auto_approved: false,
+    full_script: fullScript,
+    exported_path: mediaPath,
+    render_engine: "studio-v21",
+    render_review_status: "approved",
+    operator_review_status: "script_approved",
+    script_sha256: scriptSha256,
+    script_approved_sha256: scriptSha256,
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_short_25_32",
+    hook_type: "direct",
+    preflight_evidence: {
+      schema_version: "pulse-publication-review-evidence-v1",
+      story_id: "official_governed_reviewed_short",
+      channel_id: "pulse-gaming",
+      source_evidence_sha256: "1".repeat(64),
+      qa_report_sha256: "2".repeat(64),
+      rights_ledger_sha256: "3".repeat(64),
+      renderer_manifest_sha256: rendererManifestSha256,
+      publication_metadata_sha256: "6".repeat(64),
+      media_sha256: mediaSha256,
+      script_sha256: scriptSha256,
+      artifact_evidence: {
+        final_mp4_exists: true,
+        narration_audio_exists: true,
+        word_timestamps_exist: true,
+        motion_materialised: true,
+        hashes_verified: true,
+      },
+      renderer_manifest: {
+        schema_version: "pulse-render-manifest-v1",
+        story_id: "official_governed_reviewed_short",
+        channel_id: "pulse-gaming",
+        renderer: {
+          id: "studio-v21",
+          role: "standard",
+          version: "2.1.0",
+        },
+        output: {
+          sha256: mediaSha256,
+          platform_video_qa_result: "pass",
+        },
+      },
+    },
+    final_publication_review: {
+      schema_version: "pulse-final-publication-review-v1",
+      story_id: "official_governed_reviewed_short",
+      channel_id: "pulse-gaming",
+      review_manifest_sha256: "b".repeat(64),
+      script_sha256: scriptSha256,
+      media_sha256: mediaSha256,
+      qa_report: {
+        sha256: "2".repeat(64),
+        verdict: "PASS",
+      },
+      renderer_manifest: {
+        canonical_sha256: rendererManifestSha256,
+        verdict: "PASS",
+        publishable_under_human_review: true,
+      },
+      final_mp4: {
+        path: mediaPath,
+        sha256: mediaSha256,
+      },
+      reviewed_by: "user:MORR",
+      reviewed_at: "2026-07-27T08:45:00.000Z",
+    },
+  };
+  const { publishNextStory } = setupMocks({
+    useRealContentQa: true,
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    renderDecisionResult: {
+      verdict: {
+        class: "standard",
+        missing: [],
+        reasons: [],
+        sources_used: ["governed-review"],
+      },
+      gate: { allowed: true, reason: null },
+      inputs: {},
+    },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({
+    async fingerprintPublicationRequest() {
+      return {
+        request_fingerprint: "a".repeat(64),
+        media_sha256: mediaSha256,
+        script_sha256: scriptSha256,
+      };
+    },
+  });
+
+  assert.equal(result.no_safe_candidate, undefined);
+  assert.equal(result.story_id, story.id);
+  assert.equal(result.platform_outcomes.youtube, "new_upload");
+  assert.deepEqual(uploaderCalls, ["upload_youtube"]);
+  assert.notEqual(
+    dbState.stories.find((row) => row.id === story.id)?.qa_failed,
+    true,
+  );
+});
 
 test("exact guarded candidate: bound QA failure never falls through to another ready story", async () => {
   const bad = {

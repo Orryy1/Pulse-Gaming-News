@@ -470,6 +470,80 @@ test("operator admission atomically records exact evidence through SCHEDULED and
   );
 });
 
+test("a cancelled pre-dispatch admission can be admitted into one fresh schedule", async (t) => {
+  const { db, repos } = fixture(t);
+  const first = await admitPublication(admissionInput(repos));
+  const scheduled = repos.publicationGovernance.getLatestLifecycleEvent(
+    first.story_id,
+    "youtube",
+    "SCHEDULED",
+  );
+  const scheduledEvidence = JSON.parse(scheduled.evidence_json);
+  const repairDecision =
+    repos.publicationGovernance.recordOperatorDecision({
+      actorId: "operator-1",
+      action: "repair_governed_reviewed_qa_refusal",
+      targetType: "platform_publication",
+      targetId: `${first.story_id}:youtube`,
+      decision: "APPROVED",
+      reason: "Reviewed QA repair proved no create boundary was entered",
+      evidence: {
+        scheduled_event_id: scheduled.id,
+        dispatch_idempotency_key:
+          scheduledEvidence.dispatch_idempotency_key,
+        request_fingerprint: scheduledEvidence.request_fingerprint,
+        create_boundary_entered: false,
+      },
+      idempotencyKey: "qa-repair:story-admission-1:decision",
+    });
+  repos.publicationGovernance.cancelScheduledAdmissionBeforeDispatch({
+    storyId: first.story_id,
+    platform: "youtube",
+    channelId: "pulse-gaming",
+    scheduledEventId: scheduled.id,
+    scheduledDispatchIdempotencyKey:
+      scheduledEvidence.dispatch_idempotency_key,
+    requestFingerprint: scheduledEvidence.request_fingerprint,
+    actorId: "operator-1",
+    operatorDecisionId: repairDecision.id,
+    now: new Date("2026-07-27T09:16:01.000Z"),
+    evidence: {
+      create_boundary_entered: false,
+      external_object_created: false,
+    },
+    idempotencyKey: "qa-repair:story-admission-1:cancel",
+  });
+
+  const readmitted = await admitPublication(
+    admissionInput(repos, {
+      scheduledFor: "2026-07-27T19:00:00.000Z",
+      now: new Date("2026-07-27T18:55:00.000Z"),
+      reason: "Fresh schedule after governed pre-create QA repair",
+    }),
+  );
+
+  assert.equal(readmitted.admitted, true);
+  assert.equal(readmitted.lifecycle_state, "SCHEDULED");
+  assert.equal(readmitted.scheduled_for, "2026-07-27T19:00:00.000Z");
+  assert.notEqual(
+    readmitted.dispatch_idempotency_key,
+    first.dispatch_idempotency_key,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT to_state
+         FROM publication_lifecycle_events
+         WHERE story_id = ? AND platform = 'youtube'
+         ORDER BY id`,
+      )
+      .all(first.story_id)
+      .slice(-2)
+      .map((row) => row.to_state),
+    ["ADMISSION_CANCELLED_BEFORE_DISPATCH", "SCHEDULED"],
+  );
+});
+
 test("admission rejects a relative publication-metadata path without writing governance rows", async (t) => {
   const { db, repos } = fixture(t);
   const relativePath = path.relative(

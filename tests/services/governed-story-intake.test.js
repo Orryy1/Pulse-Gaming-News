@@ -294,6 +294,15 @@ test("approve-script is exact-hash-bound, separately audited and never auto-appr
   executeGovernedStoryIntake(
     applyOptions(values, databasePath, backupEvidencePath),
   );
+  const checkpoint = new Database(databasePath);
+  assert.equal(
+    checkpoint.pragma("journal_mode = WAL", { simple: true }),
+    "wal",
+  );
+  checkpoint.pragma("wal_checkpoint(TRUNCATE)");
+  checkpoint.close();
+  assert.equal(fs.existsSync(`${databasePath}-wal`), false);
+  assert.equal(fs.existsSync(`${databasePath}-shm`), false);
   backupEvidencePath = createBackupEvidence(
     values.root,
     databasePath,
@@ -314,6 +323,8 @@ test("approve-script is exact-hash-bound, separately audited and never auto-appr
     env: applyEnv(),
   });
   assert.equal(result.verdict, "APPLIED");
+  assert.equal(fs.existsSync(`${databasePath}-wal`), false);
+  assert.equal(fs.existsSync(`${databasePath}-shm`), false);
 
   const db = new Database(databasePath, { readonly: true });
   const story = db

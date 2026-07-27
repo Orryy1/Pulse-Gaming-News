@@ -2,7 +2,6 @@ const fs = require("fs-extra");
 const path = require("path");
 const { google } = require("googleapis");
 const dotenv = require("dotenv");
-const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
@@ -481,11 +480,29 @@ async function addToPlaylists(youtube, videoId, classification) {
   return added;
 }
 
+async function insertYoutubeVideoOnce(youtube, request) {
+  if (!youtube?.videos || typeof youtube.videos.insert !== "function") {
+    throw new Error("youtube_video_insert_client_required");
+  }
+  return youtube.videos.insert(request);
+}
+
 // --- Upload a single video as YouTube Short ---
-async function uploadShort(story) {
+async function uploadShort(
+  story,
+  {
+    governedDispatch = false,
+    markCreateAttemptStarted = null,
+  } = {},
+) {
+  if (governedDispatch !== true) {
+    throw new Error("governed_youtube_dispatch_required");
+  }
+  if (typeof markCreateAttemptStarted !== "function") {
+    throw new Error("youtube_create_boundary_marker_required");
+  }
   addBreadcrumb(`YouTube upload: ${story.title}`, "upload");
-  return withRetry(
-    async () => {
+  {
       const auth = await getAuthClient();
       const youtube = google.youtube({ version: "v3", auth });
 
@@ -623,7 +640,8 @@ async function uploadShort(story) {
 
       console.log(`[youtube] Uploading: "${title}"`);
 
-      const response = await youtube.videos.insert({
+      markCreateAttemptStarted();
+      const response = await insertYoutubeVideoOnce(youtube, {
         part: ["snippet", "status"],
         requestBody: {
           snippet: {
@@ -648,6 +666,17 @@ async function uploadShort(story) {
 
       const videoId = response.data.id;
       console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
+
+      // Return the external identity immediately. The governed dispatcher
+      // must durably anchor PLATFORM_OBJECT_CREATED before any optional
+      // playlist, thumbnail or comment mutation is allowed. Those legacy
+      // enrichments remain frozen during stabilisation and will move to
+      // separately leased metadata jobs in a later release slice.
+      return {
+        platform: "youtube",
+        videoId,
+        url: `https://youtube.com/shorts/${videoId}`,
+      };
 
       // Add to playlists based on classification
       try {
@@ -746,13 +775,14 @@ async function uploadShort(story) {
         videoId,
         url: `https://youtube.com/shorts/${videoId}`,
       };
-    },
-    { label: "youtube upload" },
-  );
+  }
 }
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
+  throw new Error(
+    "legacy_youtube_batch_publish_disabled_use_governed_queue",
+  );
   const stories = await db.getStories();
   if (!stories.length) {
     console.log("[youtube] No stories found");
@@ -877,6 +907,14 @@ async function uploadAll() {
 
 // --- Upload a longform compilation as a regular YouTube video (NOT a Short) ---
 async function uploadLongform(compilation) {
+  const profile = String(
+    process.env.PULSE_SCHEDULER_PROFILE || "stabilisation_30d",
+  )
+    .trim()
+    .toLowerCase();
+  if (profile !== "legacy") {
+    throw new Error("stabilisation_longform_upload_disabled");
+  }
   const auth = await getAuthClient();
   const youtube = google.youtube({ version: "v3", auth });
   const brand = require("./brand");
@@ -986,6 +1024,7 @@ async function postCommunityImage(story) {
 }
 
 module.exports = {
+  insertYoutubeVideoOnce,
   uploadShort,
   uploadAll,
   uploadLongform,

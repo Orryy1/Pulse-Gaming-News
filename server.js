@@ -790,14 +790,19 @@ app.get("/api/health", (req, res) => {
     /* module absent in early-boot contexts */
   }
 
+  const schedulerActive = currentSchedulerActive();
+  const schedulerExpected =
+    dispatchMode?.mode === "queue" &&
+    deployment?.primary !== false;
   res.json({
-    status: "ok",
+    status: schedulerExpected && !schedulerActive ? "degraded" : "ok",
     version: "v2.2.0",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     hunterActive: !!hunterInterval,
     autonomousMode: process.env.AUTO_PUBLISH === "true",
-    schedulerActive: schedulerRunning,
+    schedulerActive,
+    schedulerExpected,
     circuitBreakers,
     build,
     runtime,
@@ -951,15 +956,11 @@ app.post(
   "/api/autonomous/run",
   requireAuth,
   rateLimit(5, 60000),
-  async (req, res) => {
-    res.json({ status: "started", message: "Full autonomous cycle initiated" });
-
-    try {
-      const { fullAutonomousCycle } = require("./publisher");
-      await fullAutonomousCycle();
-    } catch (err) {
-      console.log(`[server] Autonomous cycle error: ${err.message}`);
-    }
+  (req, res) => {
+    res.status(423).json({
+      status: "blocked",
+      reason: "stabilisation_human_review_required",
+    });
   },
 );
 
@@ -968,19 +969,11 @@ app.post(
   "/api/autonomous/approve",
   requireAuth,
   rateLimit(5, 60000),
-  async (req, res) => {
-    try {
-      const { autoApprove } = require("./publisher");
-      const summary = await autoApprove();
-      res.json({
-        status: "ok",
-        approved: summary.approved,
-        scoring: summary,
-      });
-    } catch (err) {
-      console.error(`[server] Internal error: ${err.message}`);
-      res.status(500).json({ error: "Internal server error" });
-    }
+  (req, res) => {
+    res.status(423).json({
+      status: "blocked",
+      reason: "stabilisation_human_review_required",
+    });
   },
 );
 
@@ -989,18 +982,13 @@ app.post(
   "/api/autonomous/publish",
   requireAuth,
   rateLimit(5, 60000),
-  async (req, res) => {
-    res.json({
-      status: "started",
-      message: "Multi-platform publish initiated",
+  (req, res) => {
+    res.status(423).json({
+      status: "blocked",
+      reason: "stabilisation_multi_platform_publish_disabled",
+      required_path:
+        "human_approval_then_guarded_youtube_scheduler_dispatch",
     });
-
-    try {
-      const { publishToAllPlatforms } = require("./publisher");
-      await publishToAllPlatforms();
-    } catch (err) {
-      console.log(`[server] Multi-platform publish error: ${err.message}`);
-    }
   },
 );
 
@@ -1008,31 +996,48 @@ app.post(
 app.get("/api/autonomous/status", requireAuth, (req, res) => {
   res.json({
     autoPublish: process.env.AUTO_PUBLISH === "true",
-    schedulerActive: schedulerRunning,
+    schedulerActive: currentSchedulerActive(),
     hunterActive: !!hunterInterval,
     lastHuntRun: lastHunterRun.toISOString(),
     nextHuntRun: hunterInterval
       ? new Date(lastHunterRun.getTime() + HUNTER_INTERVAL_MS).toISOString()
       : null,
     schedule: {
-      hunts: "Every 3 hours (auto-produces videos after each hunt)",
+      profile: "stabilisation_30d",
+      hunts: "Five read-only discovery windows per day",
       publish: [
-        "12:00 UTC / 1:00 PM BST - lunch break + US morning",
-        "17:00 UTC / 6:00 PM BST - post-work peak + US noon",
-        "21:00 UTC / 10:00 PM BST - evening session + US afternoon",
+        "09:00 UTC - guarded YouTube window",
+        "19:00 UTC - guarded YouTube window",
       ],
-      strategy: "1 Short per window = 3 Shorts/day across all platforms",
+      maximum: "2 YouTube Shorts per rolling 24 hours",
+      minimumGap: "4 hours",
+      catchUp: false,
+      humanReviewRequired: true,
+      strategy: "youtube_only_guarded",
     },
     platforms: {
-      youtube: { configured: !!process.env.YOUTUBE_API_KEY },
-      tiktok: { configured: !!process.env.TIKTOK_CLIENT_KEY },
+      youtube: {
+        configured: !!process.env.YOUTUBE_API_KEY,
+        automation: "human_review_guarded",
+      },
+      tiktok: {
+        configured: !!process.env.TIKTOK_CLIENT_KEY,
+        automation: "operator_disabled",
+      },
       instagram: {
         configured:
           !!process.env.INSTAGRAM_ACCESS_TOKEN ||
           !!process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID,
+        automation: "operator_disabled",
       },
-      facebook: { configured: !!process.env.FACEBOOK_PAGE_TOKEN },
-      twitter: { configured: !!process.env.TWITTER_API_KEY },
+      facebook: {
+        configured: !!process.env.FACEBOOK_PAGE_TOKEN,
+        automation: "operator_disabled",
+      },
+      twitter: {
+        configured: !!process.env.TWITTER_API_KEY,
+        automation: "operator_disabled",
+      },
     },
   });
 });
@@ -1197,30 +1202,109 @@ app.post(
   },
 );
 
-// --- Schedule ---
-app.post("/api/schedule", requireAuth, rateLimit(30, 60000), (req, res) => {
-  const { id, scheduleTime } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
+// --- Guarded publication admission ---
+//
+// This is the only operator-facing path that may turn a reviewed render into
+// immutable SCHEDULED lifecycle evidence during the 30-day stabilisation.
+// It does not upload anything. The queue remains responsible for dispatch at
+// a guarded YouTube window and recomputes the request fingerprint at upload
+// time so post-approval edits fail closed.
+app.post(
+  "/api/publication/admit",
+  requireAuth,
+  rateLimit(10, 60000),
+  async (req, res) => {
+    if (process.env.USE_SQLITE !== "true") {
+      return res.status(503).json({
+        admitted: false,
+        blockers: ["publication_admission_requires_sqlite"],
+      });
+    }
+    const body = req.body || {};
+    if (!body.id) {
+      return res.status(400).json({
+        admitted: false,
+        blockers: ["story_id_required"],
+      });
+    }
+    try {
+      const repos = require("./lib/repositories").getRepos();
+      const channelId =
+        String(body.channelId || process.env.CHANNEL || "pulse-gaming")
+          .trim();
+      const result =
+        await require("./lib/services/publication-admission")
+          .admitPublication({
+            repos,
+            storyId: body.id,
+            channelId,
+            platform: "youtube",
+            actorId: body.actorId,
+            reason: body.reason,
+            confirmationStoryId: body.confirmStoryId,
+            scheduledFor: body.scheduledFor,
+            evidence: body.evidence || {},
+            env: process.env,
+            now: new Date(),
+            resolveMediaPath:
+              require("./lib/media-paths").resolveExisting,
+            channel: require("./channels").getChannel(channelId),
+          });
+      if (!result.admitted) {
+        const status = result.blockers?.includes(
+          "publication_story_not_found",
+        )
+          ? 404
+          : 423;
+        return res.status(status).json(result);
+      }
+      return res.status(result.idempotent_replay ? 200 : 201).json(result);
+    } catch (error) {
+      console.error(
+        `[server] guarded publication admission failed: ${error.message}`,
+      );
+      const safeCode = String(error.message || "").startsWith(
+        "publication_",
+      )
+        ? error.message
+        : "publication_admission_failed";
+      return res.status(409).json({
+        admitted: false,
+        blockers: [safeCode],
+      });
+    }
+  },
+);
 
-  const updated = updateStory(id, { schedule_time: scheduleTime || null });
-  if (!updated) return res.status(404).json({ error: "story not found" });
-
-  res.json({ status: "scheduled", id, scheduleTime });
-});
-
-// --- Retry publish ---
-app.post("/api/retry-publish", requireAuth, rateLimit(5, 60000), (req, res) => {
-  const { id } = req.body;
-  if (!id) return res.status(400).json({ error: "id required" });
-
-  const updated = updateStory(id, {
-    publish_status: "publishing",
-    publish_error: undefined,
+// Legacy scheduling only changed a mutable story field and could never satisfy
+// the governed publisher. Keep the route visible, but fail closed with the
+// exact replacement instead of presenting a false "scheduled" success.
+app.post("/api/schedule", requireAuth, rateLimit(30, 60000), (_req, res) => {
+  return res.status(423).json({
+    status: "disabled",
+    error: "legacy_schedule_disabled_use_publication_admission",
+    replacement: "/api/publication/admit",
   });
-  if (!updated) return res.status(404).json({ error: "story not found" });
-
-  res.json({ status: "retrying", id });
 });
+
+// Blind retry is unsafe after any potentially ambiguous create request. A
+// definite pre-create failure must receive a fresh reviewed admission; a
+// post-create ambiguity must go through reconciliation.
+app.post(
+  "/api/retry-publish",
+  requireAuth,
+  rateLimit(5, 60000),
+  (_req, res) => {
+    return res.status(423).json({
+      status: "disabled",
+      error: "blind_publish_retry_disabled",
+      next_actions: [
+        "/api/publication/admit",
+        "npm run ops:publication-reconciliation",
+      ],
+    });
+  },
+);
 
 // --- Shared: has the operator supplied a valid Bearer API_TOKEN? ---
 // Non-throwing version of the requireAuth middleware, for routes that
@@ -1514,6 +1598,18 @@ let hunterInterval = null;
 let lastHunterRun = new Date(0);
 let schedulerRunning = false;
 
+function currentSchedulerActive() {
+  try {
+    const bootstrapState = require("./lib/bootstrap-queue").state();
+    if (bootstrapState) {
+      return bootstrapState.schedulerHandle?.active === true;
+    }
+  } catch {
+    /* legacy scheduler path has no queue bootstrap state */
+  }
+  return schedulerRunning;
+}
+
 async function runHunter() {
   console.log("[server] Running hunter cycle...");
   lastHunterRun = new Date();
@@ -1649,16 +1745,6 @@ app.post(
 
 // --- Autonomous scheduler (built into server) ---
 async function startAutonomousScheduler() {
-  const hasKey =
-    process.env.ANTHROPIC_API_KEY &&
-    process.env.ANTHROPIC_API_KEY !== "placeholder";
-  if (!hasKey) {
-    console.log(
-      "[server] Autonomous scheduler disabled. Set ANTHROPIC_API_KEY to enable.",
-    );
-    return;
-  }
-
   // Phase D: unified jobs queue is now the canonical dispatcher. The
   // lib/dispatch-mode helper picks between `queue` (default, and the
   // only mode reachable in production) and `legacy_dev` (explicit dev
@@ -1681,10 +1767,8 @@ async function startAutonomousScheduler() {
         runRunner: true,
         autoSeed: true,
       });
-      schedulerRunning = !!(
-        bootstrapState &&
-        (bootstrapState.schedulerHandle || bootstrapState.runner)
-      );
+      schedulerRunning =
+        bootstrapState?.schedulerHandle?.active === true;
       if (schedulerRunning) {
         console.log(
           "[server] canonical scheduler up via bootstrap-queue (lib/scheduler.js + jobs-runner)",
@@ -2390,9 +2474,15 @@ app.get("/api/pipeline/backlog", requireAuth, (req, res) => {
 // secrets — just names, cron strings, lanes, priorities.
 app.get("/api/scheduler/plan", requireAuth, (req, res) => {
   try {
-    const { DEFAULT_SCHEDULES } = require("./lib/scheduler");
+    const {
+      STABILISATION_SCHEDULER_PROFILE,
+      schedulesForProfile,
+    } = require("./lib/scheduler");
     const { buildSchedulerPlan } = require("./lib/services/scheduler-plan");
-    res.json(buildSchedulerPlan(DEFAULT_SCHEDULES));
+    const profile =
+      process.env.PULSE_SCHEDULER_PROFILE ||
+      STABILISATION_SCHEDULER_PROFILE;
+    res.json(buildSchedulerPlan(schedulesForProfile(profile)));
   } catch (err) {
     console.error(`[server] /api/scheduler/plan error: ${err.message}`);
     res.status(500).json({ error: "Internal server error" });
@@ -2718,7 +2808,15 @@ const server = app.listen(PORT, () => {
   })();
 
   startAutonomousScheduler().catch((err) => {
-    console.log(`[server] Autonomous scheduler startup error: ${err.message}`);
+    console.error(
+      `[server] FATAL autonomous scheduler startup error: ${err.message}`,
+    );
+    process.exitCode = 1;
+    server.close(() => {
+      console.error(
+        "[server] HTTP listener closed because scheduler startup failed",
+      );
+    });
   });
 
   // Start Discord bot alongside the server
@@ -2750,8 +2848,15 @@ const server = app.listen(PORT, () => {
 });
 
 // --- Graceful shutdown: flush SQLite WAL and close connections ---
-function gracefulShutdown(signal) {
+let gracefulShutdownStarted = false;
+async function gracefulShutdown(signal) {
+  if (gracefulShutdownStarted) return;
+  gracefulShutdownStarted = true;
   console.log(`[server] ${signal} received. Shutting down gracefully...`);
+  const forcedShutdown = setTimeout(() => {
+    console.error("[server] Forced shutdown after timeout");
+    process.exit(1);
+  }, 10000);
 
   // Stop the hunter interval
   if (hunterInterval) {
@@ -2760,7 +2865,22 @@ function gracefulShutdown(signal) {
     hunterInterval = null;
   }
 
-  // Flush and close SQLite
+  // Release scheduler/job-runner ownership before closing their database.
+  try {
+    const queueStop = await require("./lib/bootstrap-queue").stop();
+    schedulerRunning = false;
+    console.log("[server] Queue scheduler and runner stopped");
+    if (queueStop?.runnerDrained === false) {
+      console.error(
+        "[server] Active job did not drain; leaving SQLite open until forced process exit",
+      );
+      return;
+    }
+  } catch (err) {
+    console.log(`[server] Queue shutdown error: ${err.message}`);
+  }
+
+  // Flush and close SQLite after durable leases have been released.
   try {
     const db = require("./lib/db");
     if (db.close) {
@@ -2772,16 +2892,13 @@ function gracefulShutdown(signal) {
   }
 
   server.close(() => {
+    clearTimeout(forcedShutdown);
     console.log("[server] HTTP server closed");
     console.log("[server] Graceful shutdown complete");
     process.exit(0);
   });
-  setTimeout(() => {
-    console.error("[server] Forced shutdown after timeout");
-    process.exit(1);
-  }, 10000);
 }
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
 
 module.exports = { broadcastProgress };

@@ -30,6 +30,19 @@ test("runtime config is typed and rejects contradictory production values", () =
   assert.ok(parsed.errors.includes("production_requires_durable_job_queue"));
 });
 
+test("runtime config rejects the legacy scheduler in every environment", () => {
+  const parsed = parseRuntimeConfig({
+    NODE_ENV: "development",
+    PULSE_OPERATING_MODE: "LOCAL_PROOF",
+    USE_SQLITE: "true",
+    USE_JOB_QUEUE: "false",
+    AUTO_PUBLISH: "false",
+  });
+
+  assert.equal(parsed.valid, false);
+  assert.ok(parsed.errors.includes("durable_job_queue_required"));
+});
+
 test("startup validation fails closed with structured production errors", () => {
   assert.throws(
     () =>

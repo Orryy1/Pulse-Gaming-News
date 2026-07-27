@@ -4,12 +4,12 @@
 
 | metadata | value |
 |---|---|
-| generated_at | `2026-07-27T10:06:00.000Z` |
-| source_commit_sha | `4e1a632f8c232b56a74b79da30e603746d0100d9` |
+| generated_at | `2026-07-27T10:27:10.000Z` |
+| source_commit_sha | `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
 | runtime_commit_sha | `NONE - old local origin contained; Railway observation-only runtime remains at 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10` |
 | environment | `LOCAL_PROOF release worktree plus read-only Windows task, local port, production SQLite, public endpoint, Railway and GitHub observations; authorised containment and backup actions are named below` |
 | scope | `Pulse v1 cutover status at the committed code boundary; no deployment or publication claim` |
-| expires_at | `2026-08-03T10:06:00.000Z` |
+| expires_at | `2026-08-03T10:27:10.000Z` |
 | supersedes | `CURRENT_STATUS.md at ed2745dd2cbeeb179ab54d47b8d380304baaf9e5 and ad hoc status claims for current release decisions` |
 | superseded_by | `none` |
 | authoritative | `true` |
@@ -20,7 +20,7 @@ After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT 
 
 | Area | Status | Evidence boundary |
 |---|---|---|
-| Release source | committed | branch `release/pulse-v1`, code boundary `4e1a632f8c232b56a74b79da30e603746d0100d9` |
+| Release source | committed | branch `release/pulse-v1`, code boundary `a2de969d7d6c61e6ccd0a651a219e988d75289e2` |
 | Local legacy runtime | contained | no listener on port `3001`; the old publisher/watchdog process family was stopped |
 | Legacy Windows publisher task | disabled | `PulseGaming-LiveWatchdog-Supervisor` is disabled |
 | Legacy token-maintenance task | disabled | `PulseGaming-OAuthUptime` is disabled |
@@ -32,7 +32,7 @@ After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT 
 | Migration rehearsal | complete on restored copy only | migrations `021`, `022` and `023` reached `023` on the rehearsal database with required tables, derivation column, audit idempotency column and index present; integrity checks passed |
 | Production migrations | pending | production remains at `020`; migrations `021` through `023` have not been applied to `D:\pulse-data\pulse.db` |
 | Publish preflight commands | implemented and exercised read-only | `ops:next-publish-candidates`, `ops:platform-doctor` and `ops:goal-dry-run-publish` exist; evidence is under `D:\pulse-data\cutover-proof\preflight-before-migration` |
-| Wider operator command contract | incomplete | 13 render, platform-pack and repair commands named in `AGENTS.md` still have no matching `package.json` script; exact names are listed below |
+| Wider operator command contract | resolved fail-closed, production capability unavailable | all 13 formerly missing names now resolve to a tested inspection-only `LOCAL_PROOF` bridge; each reports `HOLD`, performs no materialisation or repair and grants no publication authority |
 | Next-candidate preflight | `HOLD` | scheduler not ready, one owner not proven and candidate render, rights, QA, disclosure and human-review evidence incomplete |
 | Platform doctor | policy check `PASS`, publication `NO` | all seven platform rows remained visible, no platform was publishable and no credential value was read; this is not authentication or readiness proof |
 | Strict dry-run publish | `HOLD` | package not ready, scheduler not ready, no uploader entered and no external object created |
@@ -50,6 +50,7 @@ After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT 
 - `LOCAL_PROOF`, `DRY_RUN_PUBLISH`, `HUMAN_REVIEW` and `LIVE_GUARDED` boundaries fail closed.
 - YouTube is the only primary human-reviewed stabilisation lane. Instagram, Facebook, TikTok, X, Threads and Pinterest remain disabled, frozen or manual.
 - The three documented preflight commands now resolve to tested tools and generate machine-readable JSON plus readable Markdown.
+- The 13 formerly missing render, platform-pack and repair command names now resolve to a tested `LOCAL_PROOF` bridge. It inspects named local inputs, reports `HOLD` and refuses apply, publish, live and OAuth/token flags; the production implementations are still unavailable.
 - The cutover reconciler is read-only by default and requires an exact database, source/runtime commit parity, verified backup evidence, explicit `HUMAN_REVIEW` authority and matching confirmation before it can mutate state.
 - The Windows supervisor refuses dirty or mismatched source, pending or mismatched migrations, foreign port ownership and unsafe runtime configuration.
 - Migrations `001` through `023` are tracked. Migration `020` preserves its deployed checksum and migration `023` carries the later governance hardening.
@@ -58,9 +59,9 @@ After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT 
 
 These are source and local-proof facts. They do not prove that production has deployed or exercised the release.
 
-## Remaining operator command gap
+## Operator command bridge boundary
 
-The three publication preflight commands are fixed. The wider `AGENTS.md` command contract is not yet complete because these names have no matching npm script at the source boundary:
+The three publication preflight commands are implemented. These 13 wider `AGENTS.md` command names also now have matching npm scripts and a shared, tested entry point:
 
 - `ops:bridge-live-rights-repair`
 - `ops:bridge-preflight-stamp-repair`
@@ -76,11 +77,11 @@ The three publication preflight commands are fixed. The wider `AGENTS.md` comman
 - `ops:v4-motion-pack`
 - `ops:v4-source-family-acquisition`
 
-Do not substitute a similarly named tool or claim one of these commands ran. Reconcile the scripts and entry points before relying on the documented render or repair workflow.
+The bridge is deliberately inspection-only. It writes JSON and Markdown evidence, returns readiness `HOLD`, performs no materialisation or repair and makes no external call, production database mutation, OAuth/token mutation or publication attempt. The specialist production materialisers, media graphs and database-repair implementations were not ported into this reviewed release slice. Do not interpret command resolution or `execution_status: COMPLETE` as capability, candidate readiness or publication authority.
 
 ## Remaining cutover blockers
 
-1. reconcile the 13 remaining operator command names with tested scripts and entry points
+1. replace the inspection-only operator bridge with reviewed production materialisers and repair implementations, then prove them with focused and integration evidence before relying on the documented candidate-build flow
 2. obtain current CI evidence for the exact release candidate and establish the required GitHub release check
 3. apply migrations `021` through `023` to the named production database only under an approved change window, then repeat integrity and application checks
 4. generate the reconciler's required cutover backup-evidence record, run its dry-run plan and apply only after every blocker is clear

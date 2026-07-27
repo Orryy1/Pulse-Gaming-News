@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
@@ -48,6 +49,7 @@ function fixture() {
     assignedAt: "2026-07-26T12:00:00.000Z",
     creativeManifest: {
       runtime_seconds: 31.25,
+      hook_type: "direct",
       narrator_version: "elevenlabs-pulse-v3",
       first_frame_text: "GAME PASS JUST CHANGED",
       motion_ratio: 0.625,
@@ -128,7 +130,15 @@ test("ingestion persists only metrics returned for the explicit assigned video",
   assert.equal(result.persisted, true);
   assert.equal(result.snapshot.views, 120);
   assert.equal(result.snapshot.shown_in_feed, null);
+  assert.equal(result.snapshot.stayed_to_watch_percent, null);
+  assert.equal(result.snapshot.swiped_away_percent, null);
+  assert.equal(result.snapshot.retention_1_second_percent, null);
   assert.equal(result.snapshot.retention_3_second_percent, null);
+  assert.equal(result.snapshot.retention_10_second_percent, null);
+  assert.deepEqual(
+    JSON.parse(result.snapshot.metric_derivations_json),
+    {},
+  );
   assert.equal(
     snapshots.getSnapshot({
       experimentId: "pulse-v1-controlled-12",
@@ -138,6 +148,180 @@ test("ingestion persists only metrics returned for the explicit assigned video",
       snapshotWindow: "24h",
     }).id,
     result.snapshot.id,
+  );
+  db.close();
+});
+
+test("ingestion derives 1s, 3s and 10s retention only from observed curve evidence and immutable runtime", async () => {
+  const { db, snapshots } = fixture();
+  const retentionCurve = [
+    {
+      elapsed_video_time_ratio: 0,
+      audience_watch_ratio: 1,
+      relative_retention_performance: 0.5,
+    },
+    {
+      elapsed_video_time_ratio: 0.04,
+      audience_watch_ratio: 0.92,
+      relative_retention_performance: 0.45,
+    },
+    {
+      elapsed_video_time_ratio: 0.08,
+      audience_watch_ratio: 0.86,
+      relative_retention_performance: 0.4,
+    },
+    {
+      elapsed_video_time_ratio: 0.12,
+      audience_watch_ratio: 0.8,
+      relative_retention_performance: 0.35,
+    },
+    {
+      elapsed_video_time_ratio: 0.32,
+      audience_watch_ratio: 0.6,
+      relative_retention_performance: 0.2,
+    },
+  ];
+  const rawRetentionPayload = {
+    columnHeaders: [
+      { name: "elapsedVideoTimeRatio" },
+      { name: "audienceWatchRatio" },
+      { name: "relativeRetentionPerformance" },
+    ],
+    rows: [
+      [0, 1, 0.5],
+      [0.04, 0.92, 0.45],
+      [0.08, 0.86, 0.4],
+      [0.12, 0.8, 0.35],
+      [0.32, 0.6, 0.2],
+    ],
+  };
+  const service = createYouTubeAnalyticsIngestionService({
+    snapshots,
+    now: () => NOW,
+    analyticsAdapter: {
+      async fetchVideoSnapshot() {
+        return {
+          status: "collected",
+          channelId: "UC_PULSE_GAMING",
+          videoId: "youtube-video-1",
+          snapshotWindow: "24h",
+          metrics: {
+            engaged_views: 80,
+            views: 120,
+          },
+          breakdowns: { retention_curve: retentionCurve },
+          sourceRequest: {
+            retention: {
+              dimensions: "elapsedVideoTimeRatio",
+              filters: "video==youtube-video-1",
+            },
+          },
+          sourcePayload: {
+            retention: rawRetentionPayload,
+            summary: {
+              columnHeaders: [
+                { name: "video" },
+                { name: "views" },
+                { name: "engagedViews" },
+              ],
+              rows: [["youtube-video-1", 120, 80]],
+            },
+          },
+        };
+      },
+    },
+  });
+
+  const result = await service.ingestSnapshot({
+    experimentId: "pulse-v1-controlled-12",
+    channelId: "pulse-gaming",
+    youtubeChannelId: "UC_PULSE_GAMING",
+    storyId: "story-1",
+    videoId: "youtube-video-1",
+    snapshotWindow: "24h",
+    publishedAt: "2026-07-26T12:00:00.000Z",
+  });
+
+  assert.equal(result.snapshot.retention_1_second_percent, 93.6);
+  assert.equal(result.snapshot.retention_3_second_percent, 83.6);
+  assert.equal(result.snapshot.retention_10_second_percent, 60);
+  assert.equal(result.snapshot.stayed_to_watch_percent, null);
+  assert.equal(result.snapshot.swiped_away_percent, null);
+  assert.deepEqual(
+    JSON.parse(result.snapshot.observed_metrics_json),
+    ["engaged_views", "views"],
+  );
+  assert.deepEqual(
+    JSON.parse(result.snapshot.retention_curve_json),
+    retentionCurve,
+  );
+  assert.deepEqual(
+    JSON.parse(result.snapshot.source_payload_json).retention,
+    rawRetentionPayload,
+  );
+  const derivations = JSON.parse(
+    result.snapshot.metric_derivations_json,
+  );
+  const assignmentEvidence = db
+    .prepare(
+      `SELECT creative_manifest_sha256
+       FROM controlled_video_experiment_cells
+       WHERE video_id = ?`,
+    )
+    .get("youtube-video-1");
+  assert.equal(
+    derivations.retention_1_second_percent.method,
+    "linear_interpolation_elapsed_video_time_ratio_v1",
+  );
+  assert.equal(
+    derivations.retention_3_second_percent.method,
+    "linear_interpolation_elapsed_video_time_ratio_v1",
+  );
+  assert.equal(
+    derivations.retention_10_second_percent.method,
+    "exact_observed_curve_point_v1",
+  );
+  assert.equal(
+    derivations.retention_1_second_percent.runtime_seconds,
+    31.25,
+  );
+  assert.equal(
+    derivations.retention_1_second_percent.target_seconds,
+    1,
+  );
+  assert.equal(
+    derivations.retention_1_second_percent
+      .assignment_creative_manifest_sha256,
+    assignmentEvidence.creative_manifest_sha256,
+  );
+  assert.match(
+    derivations.retention_1_second_percent.retention_curve_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  assert.equal(
+    derivations.retention_1_second_percent.retention_curve_sha256,
+    crypto
+      .createHash("sha256")
+      .update(result.snapshot.retention_curve_json)
+      .digest("hex"),
+  );
+  assert.equal(
+    derivations.retention_3_second_percent.retention_curve_sha256,
+    derivations.retention_1_second_percent.retention_curve_sha256,
+  );
+  assert.deepEqual(
+    derivations.retention_1_second_percent.lower_observation,
+    {
+      audience_watch_ratio: 1,
+      elapsed_video_time_ratio: 0,
+    },
+  );
+  assert.deepEqual(
+    derivations.retention_1_second_percent.upper_observation,
+    {
+      audience_watch_ratio: 0.92,
+      elapsed_video_time_ratio: 0.04,
+    },
   );
   db.close();
 });

@@ -44,6 +44,7 @@ function fixture() {
     assignedAt: "2026-07-26T12:00:00.000Z",
     creativeManifest: {
       runtime_seconds: 31.25,
+      hook_type: "direct",
       narrator_version: "elevenlabs-pulse-v3",
       first_frame_text: "GAME PASS JUST CHANGED",
       motion_ratio: 0.625,
@@ -118,6 +119,59 @@ test("snapshot persistence stores observed metrics and leaves unavailable metric
       snapshotWindow: "24h",
     }).id,
     row.id,
+  );
+  db.close();
+});
+
+test("retention derivation never extrapolates beyond observed curve evidence", () => {
+  const { db, snapshots } = fixture();
+  const row = snapshots.recordSnapshot({
+    experimentId: "pulse-v1-controlled-12",
+    channelId: "pulse-gaming",
+    youtubeChannelId: "UC_PULSE_GAMING",
+    storyId: "story-1",
+    videoId: "youtube-video-1",
+    snapshotWindow: "24h",
+    publishedAt: "2026-07-26T12:00:00.000Z",
+    collectedAt: "2026-07-27T12:00:00.000Z",
+    metrics: {
+      engaged_views: 80,
+      views: 120,
+    },
+    breakdowns: {
+      retention_curve: [
+        {
+          elapsed_video_time_ratio: 0.2,
+          audience_watch_ratio: 0.7,
+        },
+        {
+          elapsed_video_time_ratio: 0.4,
+          audience_watch_ratio: 0.5,
+        },
+      ],
+    },
+    sourcePayload: {
+      retention: {
+        columnHeaders: [
+          { name: "elapsedVideoTimeRatio" },
+          { name: "audienceWatchRatio" },
+        ],
+        rows: [
+          [0.2, 0.7],
+          [0.4, 0.5],
+        ],
+      },
+    },
+  });
+
+  assert.equal(row.retention_1_second_percent, null);
+  assert.equal(row.retention_3_second_percent, null);
+  assert.equal(row.retention_10_second_percent, 58);
+  assert.equal(row.stayed_to_watch_percent, null);
+  assert.equal(row.swiped_away_percent, null);
+  assert.deepEqual(
+    Object.keys(JSON.parse(row.metric_derivations_json)),
+    ["retention_10_second_percent"],
   );
   db.close();
 });
@@ -212,6 +266,42 @@ test("analytics windows are anchored to the assignment's observed publish time",
       snapshotWindow: "24h",
     }),
     null,
+  );
+  db.close();
+});
+
+test("analytics refuses assignments created under the obsolete ordinal policy", () => {
+  const { db, snapshots } = fixture();
+  db.exec(
+    "DROP TRIGGER trg_controlled_video_experiments_immutable_update",
+  );
+  db.prepare(
+    `UPDATE controlled_video_experiments
+     SET assignment_policy = ?
+     WHERE experiment_id = ?`,
+  ).run(
+    "canonical-ordinal-v1",
+    "pulse-v1-controlled-12",
+  );
+
+  assert.throws(
+    () =>
+      snapshots.recordSnapshot({
+        experimentId: "pulse-v1-controlled-12",
+        channelId: "pulse-gaming",
+        youtubeChannelId: "UC_PULSE_GAMING",
+        storyId: "story-1",
+        videoId: "youtube-video-1",
+        snapshotWindow: "24h",
+        publishedAt: "2026-07-26T12:00:00.000Z",
+        collectedAt: "2026-07-27T12:00:00.000Z",
+        metrics: { views: 120 },
+        sourcePayload: {
+          columnHeaders: [{ name: "video" }, { name: "views" }],
+          rows: [["youtube-video-1", 120]],
+        },
+      }),
+    /youtube_analytics_experiment_assignment_policy_invalid/,
   );
   db.close();
 });

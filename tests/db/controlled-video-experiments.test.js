@@ -33,6 +33,7 @@ function fixture() {
 function creativeManifest(overrides = {}) {
   return {
     runtime_seconds: 31.25,
+    hook_type: "direct",
     narrator_version: "elevenlabs-pulse-v3",
     first_frame_text: "GAME PASS JUST CHANGED",
     motion_ratio: 0.625,
@@ -52,10 +53,14 @@ function creativeManifest(overrides = {}) {
 test("experiment ledger persists the canonical 12-cell editorial matrix", () => {
   const { db, experiments } = fixture();
 
-  experiments.ensureExperiment({
+  const experiment = experiments.ensureExperiment({
     experimentId: "pulse-v1-controlled-12",
     channelId: "pulse-gaming",
   });
+  assert.equal(
+    experiment.assignment_policy,
+    "observed-cell-match-v1",
+  );
   const cells = experiments.listCells("pulse-v1-controlled-12");
 
   assert.equal(cells.length, 12);
@@ -292,6 +297,82 @@ test("observed runtime must fit the assigned experiment duration cell", () => {
   db.close();
 });
 
+test("observed lane, hook and runtime enrol the video into its exact matrix cell", () => {
+  const { db, experiments } = fixture();
+  db.prepare("INSERT INTO stories (id, title) VALUES (?, ?)").run(
+    "story-1",
+    "Story one",
+  );
+  db.prepare("INSERT INTO stories (id, title) VALUES (?, ?)").run(
+    "story-2",
+    "Story two",
+  );
+  db.prepare("INSERT INTO stories (id, title) VALUES (?, ?)").run(
+    "story-3",
+    "Story three",
+  );
+  experiments.ensureExperiment({
+    experimentId: "pulse-v1-controlled-12",
+    channelId: "pulse-gaming",
+  });
+
+  const assignment = experiments.assignNextVideo({
+    experimentId: "pulse-v1-controlled-12",
+    channelId: "pulse-gaming",
+    storyId: "story-1",
+    videoId: "youtube-video-1",
+    assignedAt: "2026-07-27T12:00:00.000Z",
+    creativeManifest: {
+      ...creativeManifest(),
+      hook_type: "open_loop",
+    },
+  });
+
+  assert.equal(assignment.ordinal, 3);
+  assert.equal(assignment.editorial_lane, "what_changes_for_players");
+  assert.equal(assignment.hook_type, "open_loop");
+  assert.equal(assignment.duration_band, "short");
+  const directAssignment = experiments.assignNextVideo({
+    experimentId: "pulse-v1-controlled-12",
+    channelId: "pulse-gaming",
+    storyId: "story-2",
+    videoId: "youtube-video-2",
+    assignedAt: "2026-07-27T12:01:00.000Z",
+    creativeManifest: creativeManifest({
+      published_at: "2026-07-27T11:59:00.000Z",
+    }),
+  });
+  assert.equal(directAssignment.ordinal, 1);
+  assert.throws(
+    () =>
+      experiments.assignNextVideo({
+        experimentId: "pulse-v1-controlled-12",
+        channelId: "pulse-gaming",
+        storyId: "story-3",
+        videoId: "youtube-video-3",
+        assignedAt: "2026-07-27T12:02:00.000Z",
+        creativeManifest: creativeManifest({
+          hook_type: "open_loop",
+          published_at: "2026-07-27T12:00:00.000Z",
+        }),
+      }),
+    /controlled_experiment_cell_already_assigned/,
+  );
+  assert.throws(
+    () =>
+      experiments.assignNextVideo({
+        experimentId: "pulse-v1-controlled-12",
+        channelId: "pulse-gaming",
+        storyId: "story-1",
+        videoId: "youtube-video-1",
+        assignedAt: "2026-07-27T12:00:00.000Z",
+        creativeManifest: creativeManifest(),
+      }),
+    /controlled_experiment_creative_manifest_hook_mismatch/,
+  );
+  db.close();
+});
+
 test("creative evidence must describe the assigned editorial lane and a passing QA result", () => {
   const { db, experiments } = fixture();
   db.prepare("INSERT INTO stories (id, title) VALUES (?, ?)").run(
@@ -315,7 +396,7 @@ test("creative evidence must describe the assigned editorial lane and a passing 
       experiments.assignNextVideo({
         ...assignment,
         creativeManifest: creativeManifest({
-          consequence_lane: "platform_pulse",
+          consequence_lane: "generic_news",
         }),
       }),
     /controlled_experiment_creative_manifest_lane_mismatch/,
@@ -431,6 +512,7 @@ test("the controlled ledger accepts exactly one video per cell and then closes",
         creativeManifest: creativeManifest({
           runtime_seconds:
             (cell.runtimeMinSeconds + cell.runtimeMaxSeconds) / 2,
+          hook_type: cell.hookType,
           consequence_lane: cell.editorialLane,
           published_at: `2026-07-27T11:59:${String(index).padStart(2, "0")}.000Z`,
         }),

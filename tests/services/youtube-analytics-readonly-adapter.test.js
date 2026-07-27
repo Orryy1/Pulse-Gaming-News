@@ -84,7 +84,23 @@ test("read-only adapter queries explicit channel and video identity without inve
     false,
   );
   assert.equal(
+    Object.hasOwn(result.metrics, "stayed_to_watch_percent"),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(result.metrics, "swiped_away_percent"),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(result.metrics, "retention_1_second_percent"),
+    false,
+  );
+  assert.equal(
     Object.hasOwn(result.metrics, "retention_3_second_percent"),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(result.metrics, "retention_10_second_percent"),
     false,
   );
   assert.deepEqual(result.sourcePayload, { summary: sourcePayload });

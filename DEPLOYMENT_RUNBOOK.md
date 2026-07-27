@@ -60,6 +60,16 @@ From a clean checkout of the exact candidate:
 ```powershell
 npm ci
 npm --prefix videos/evercold-bastion-short ci
+npm run ops:governed-source-media-ephemeral -- acquire `
+  --mode LOCAL_PROOF `
+  --manifest videos/evercold-bastion-short/source-media-manifest.json `
+  --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8 `
+  --story-id official_d86953ca92ca
+npm run ops:governed-source-media-ephemeral -- validate `
+  --mode LOCAL_PROOF `
+  --manifest videos/evercold-bastion-short/source-media-manifest.json `
+  --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8 `
+  --story-id official_d86953ca92ca
 npm --prefix videos/evercold-bastion-short run check -- --strict
 npm run ops:agent-rules
 npm test
@@ -96,6 +106,7 @@ A separate narrow candidate path now has explicit npm aliases:
 npm run ops:story-intake -- --help
 npm run ops:governed-owned-motion -- --help
 npm run ops:governed-narration-materialize -- --help
+npm run ops:governed-source-media-ephemeral -- --help
 npm run ops:governed-final-composite -- --help
 npm run ops:governed-publication-evidence-package -- --help
 npm run ops:governed-publication-review -- --help

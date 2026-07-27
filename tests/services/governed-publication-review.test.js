@@ -527,6 +527,7 @@ function addLicensedSourceMedia(values) {
   writeJson(sourceManifestPath, {
     schema_version: SOURCE_MEDIA_MANIFEST_SCHEMA,
     story_id: STORY_ID,
+    generated_at: NOW,
     rights_review: {
       path: path.basename(rightsReviewPath),
       sha256: rightsReviewSha,

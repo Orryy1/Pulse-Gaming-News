@@ -83,6 +83,15 @@ Standard cadence remains the default. A separately authorised one-shot outside c
 
 Dry-run output is evidence, not permission to publish.
 
+## SQLite restore rehearsal
+
+- Inspect the CLI contract: `npm run ops:db:restore-rehearsal -- --help`.
+- Create a distinct read-only restore proof from an existing verified online
+  backup: `npm run ops:db:restore-rehearsal -- --backup <backup.db> --backup-verification <backup.db.verification.json> --restore <new-restore.db>`.
+
+The restore command refuses existing output paths, never opens the production
+source as a database and emits `pulse-restore-rehearsal-v1` JSON evidence.
+
 ## Safety modes
 
 LOCAL_PROOF is the default mode. Use it for renders, tests, repair planning and proof artefacts.

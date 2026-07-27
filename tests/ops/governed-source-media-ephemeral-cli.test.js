@@ -12,7 +12,7 @@ const {
   usage,
 } = require("../../tools/governed-source-media-ephemeral");
 
-const HASH = "8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8";
+const HASH = "05d1657249776f87f3f6f91a4b8b8a36575eaac0c527ba8cde8ef5b5855e96b8";
 const STORY_ID = "official_d86953ca92ca";
 const ROOT = path.resolve(__dirname, "..", "..");
 
@@ -91,6 +91,11 @@ test("acquire action emits READY only after full governed validation", async () 
     ),
   );
   assert.equal(calls[0].expectedManifestSha256, HASH);
+  assert.ok(
+    Number.isFinite(
+      Date.parse(calls[1][1].validationBoundaryAt),
+    ),
+  );
   assert.equal(result.verdict, "READY");
   assert.equal(result.governed.component_count, 7);
   assert.equal(JSON.parse(output).ephemeral.assets.length, 7);
@@ -130,6 +135,11 @@ test("validate action runs ephemeral and governed validation without acquire", a
   assert.deepEqual(
     calls.map(([name]) => name),
     ["ephemeral", "governed"],
+  );
+  assert.ok(
+    Number.isFinite(
+      Date.parse(calls[1][1].validationBoundaryAt),
+    ),
   );
   assert.equal(result.verdict, "READY");
   assert.equal(result.governed.component_count, 7);

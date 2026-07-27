@@ -63,12 +63,12 @@ npm --prefix videos/evercold-bastion-short ci
 npm run ops:governed-source-media-ephemeral -- acquire `
   --mode LOCAL_PROOF `
   --manifest videos/evercold-bastion-short/source-media-manifest.json `
-  --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8 `
+  --manifest-sha256 05d1657249776f87f3f6f91a4b8b8a36575eaac0c527ba8cde8ef5b5855e96b8 `
   --story-id official_d86953ca92ca
 npm run ops:governed-source-media-ephemeral -- validate `
   --mode LOCAL_PROOF `
   --manifest videos/evercold-bastion-short/source-media-manifest.json `
-  --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8 `
+  --manifest-sha256 05d1657249776f87f3f6f91a4b8b8a36575eaac0c527ba8cde8ef5b5855e96b8 `
   --story-id official_d86953ca92ca
 npm --prefix videos/evercold-bastion-short run check -- --strict
 npm run ops:agent-rules

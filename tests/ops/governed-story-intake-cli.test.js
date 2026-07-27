@@ -7,6 +7,9 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { test } = require("node:test");
+const {
+  createGovernedHybridStoryIntakeFixture,
+} = require("../fixtures/governed-hybrid-story-intake");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const CLI = path.join(ROOT, "tools", "governed-story-intake.js");
@@ -104,6 +107,38 @@ test("CLI fails closed on unknown flags and never treats them as positional valu
   assert.notEqual(run.status, 0);
   const output = JSON.parse(run.stderr);
   assert.ok(output.errors.includes("unknown_flag:--surprise"));
+});
+
+test("CLI dry-run accepts an exact governed hybrid asset manifest hash", () => {
+  const values = createGovernedHybridStoryIntakeFixture();
+  const outDir = path.join(values.root, "proof");
+  const run = spawnSync(
+    process.execPath,
+    [
+      CLI,
+      "ingest",
+      "--manifest",
+      values.storyIntakePath,
+      "--asset-manifest",
+      values.assetManifestPath,
+      "--asset-manifest-sha256",
+      values.assetManifestSha256,
+      "--generated-at",
+      "2026-07-27T12:00:00.000Z",
+      "--out-dir",
+      outDir,
+    ],
+    { cwd: ROOT, encoding: "utf8", timeout: 120_000 },
+  );
+
+  assert.equal(run.status, 0, run.stderr);
+  const output = JSON.parse(run.stdout);
+  assert.equal(output.verdict, "VALID");
+  assert.equal(output.story_id, values.storyId);
+  assert.equal(
+    output.owned_asset_manifest_sha256,
+    values.assetManifestSha256,
+  );
 });
 
 test("package exposes the governed story-intake operator command", () => {

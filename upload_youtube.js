@@ -1,5 +1,7 @@
 const fs = require("fs-extra");
+const crypto = require("node:crypto");
 const path = require("path");
+const { Readable } = require("node:stream");
 const { google } = require("googleapis");
 const dotenv = require("dotenv");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
@@ -9,6 +11,18 @@ const mediaPaths = require("./lib/media-paths");
 const {
   assessPostPublishMutation,
 } = require("./lib/services/post-publish-mutation-policy");
+const {
+  YOUTUBE_PLATFORM_CONTRACT,
+  validateGovernedPublicationMetadata,
+} = require("./lib/services/governed-publication-metadata");
+const {
+  createYoutubeAuthTelemetry,
+  normaliseYoutubeAuthTelemetry,
+  runSanitisedYoutubeOperation,
+  sanitiseYoutubeError,
+  sanitiseYoutubeErrorMessage,
+  updateYoutubeAuthTelemetry,
+} = require("./lib/services/youtube-safety");
 
 dotenv.config({ override: false });
 
@@ -19,6 +33,7 @@ const CREDENTIALS_PATH = path.join(
   "youtube_credentials.json",
 );
 const PLAYLIST_PATH = path.join(__dirname, "tokens", "youtube_playlists.json");
+const MAX_BOUND_YOUTUBE_MEDIA_BYTES = 512 * 1024 * 1024;
 
 // --- Playlist definitions ---
 const PLAYLIST_DEFS = [
@@ -66,7 +81,151 @@ function getPlaylistKeys(classification) {
 }
 
 // --- OAuth2 client setup ---
-async function getAuthClient() {
+async function refreshYoutubeCredentialsInMemory(
+  oauth2Client,
+  credentials,
+  {
+    nowMs = Date.now(),
+    forceRefresh = false,
+    telemetry = createYoutubeAuthTelemetry(),
+  } = {},
+) {
+  const current = { ...(credentials || {}) };
+  const expiryDate = Number(current.expiry_date);
+  if (
+    forceRefresh !== true &&
+    (!Number.isFinite(expiryDate) || nowMs <= expiryDate - 60_000)
+  ) {
+    return {
+      credentials: current,
+      refreshed: false,
+      telemetry: normaliseYoutubeAuthTelemetry(telemetry),
+    };
+  }
+
+  updateYoutubeAuthTelemetry(telemetry, {
+    ...telemetry,
+    ephemeral_access_token_refresh: {
+      attempted: true,
+      succeeded: false,
+      failed: false,
+    },
+  });
+  console.log("[youtube] Refreshing expired token in memory...");
+  let refreshed;
+  try {
+    refreshed = await oauth2Client.refreshAccessToken();
+  } catch (error) {
+    updateYoutubeAuthTelemetry(telemetry, {
+      ...telemetry,
+      ephemeral_access_token_refresh: {
+        attempted: true,
+        succeeded: false,
+        failed: true,
+      },
+    });
+    throw sanitiseYoutubeError(error);
+  }
+  const next = {
+    ...current,
+    ...(refreshed?.credentials || {}),
+  };
+  if (!next.refresh_token && current.refresh_token) {
+    next.refresh_token = current.refresh_token;
+  }
+  oauth2Client.setCredentials(next);
+  updateYoutubeAuthTelemetry(telemetry, {
+    ...telemetry,
+    ephemeral_access_token_refresh: {
+      attempted: true,
+      succeeded: true,
+      failed: false,
+    },
+  });
+  return {
+    credentials: next,
+    refreshed: true,
+    telemetry: normaliseYoutubeAuthTelemetry(telemetry),
+  };
+}
+
+function reportYoutubeAuthTelemetry(reportAuthTelemetry, telemetry) {
+  if (typeof reportAuthTelemetry !== "function") return;
+  reportAuthTelemetry(normaliseYoutubeAuthTelemetry(telemetry));
+}
+
+function attachYoutubeRefreshTelemetry(
+  oauth2Client,
+  telemetry,
+  reportAuthTelemetry = null,
+) {
+  if (
+    !oauth2Client ||
+    typeof oauth2Client.refreshToken !== "function"
+  ) {
+    throw new Error("youtube_refresh_telemetry_hook_unavailable");
+  }
+
+  const markRefresh = ({ attempted, succeeded, failed }) => {
+    updateYoutubeAuthTelemetry(telemetry, {
+      ...telemetry,
+      ephemeral_access_token_refresh: {
+        attempted,
+        succeeded,
+        failed,
+      },
+    });
+    reportYoutubeAuthTelemetry(reportAuthTelemetry, telemetry);
+  };
+
+  // Google Auth emits `tokens` only after a successful refresh. Observe that
+  // signal without copying any credential value into telemetry.
+  if (typeof oauth2Client.on === "function") {
+    oauth2Client.on("tokens", (tokens) => {
+      if (!tokens || !tokens.access_token) return;
+      markRefresh({
+        attempted: true,
+        succeeded: true,
+        failed: false,
+      });
+    });
+  }
+
+  // All current google-auth-library automatic refresh paths flow through the
+  // instance's refreshToken method. Wrapping it makes attempts and failures
+  // observable as well as the successful `tokens` event above.
+  const refreshToken = oauth2Client.refreshToken;
+  oauth2Client.refreshToken = async function observedRefreshToken(...args) {
+    markRefresh({
+      attempted: true,
+      succeeded: false,
+      failed: false,
+    });
+    try {
+      const value = await refreshToken.apply(this, args);
+      markRefresh({
+        attempted: true,
+        succeeded: true,
+        failed: false,
+      });
+      return value;
+    } catch (error) {
+      markRefresh({
+        attempted: true,
+        succeeded: false,
+        failed: true,
+      });
+      throw sanitiseYoutubeError(error);
+    }
+  };
+
+  return oauth2Client;
+}
+
+async function getAuthClientWithTelemetry(
+  telemetry,
+  reportAuthTelemetry = null,
+) {
   // Support env vars for cloud deployment (Railway)
   const clientId = process.env.YOUTUBE_CLIENT_ID;
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
@@ -99,24 +258,35 @@ async function getAuthClient() {
     client_secret,
     redirect_uri,
   );
+  attachYoutubeRefreshTelemetry(
+    oauth2Client,
+    telemetry,
+    reportAuthTelemetry,
+  );
 
   // Load token from file or env var
   if (await fs.pathExists(TOKEN_PATH)) {
     const token = await fs.readJson(TOKEN_PATH);
     oauth2Client.setCredentials(token);
-
-    if (token.expiry_date && Date.now() > token.expiry_date - 60000) {
-      console.log("[youtube] Refreshing expired token...");
-      const { credentials: newToken } = await oauth2Client.refreshAccessToken();
-      await fs.ensureDir(path.dirname(TOKEN_PATH));
-      await fs.writeJson(TOKEN_PATH, newToken, { spaces: 2 });
-      oauth2Client.setCredentials(newToken);
-    }
+    // Authentication reads may refresh access credentials for the current
+    // process, but they must never rewrite durable token material. Persisting
+    // a token remains exclusive to the explicit `token` OAuth command below.
+    await refreshYoutubeCredentialsInMemory(oauth2Client, token, {
+      telemetry,
+    });
 
     return oauth2Client;
   } else if (refreshToken) {
     console.log("[youtube] Using refresh token from env...");
     oauth2Client.setCredentials({ refresh_token: refreshToken });
+    await refreshYoutubeCredentialsInMemory(
+      oauth2Client,
+      { refresh_token: refreshToken },
+      {
+        forceRefresh: true,
+        telemetry,
+      },
+    );
     return oauth2Client;
   }
 
@@ -124,6 +294,20 @@ async function getAuthClient() {
     "YouTube not authenticated. Run: node upload_youtube.js auth\n" +
       "Then visit the URL and paste the code back.",
   );
+}
+
+async function getAuthClient({ reportAuthTelemetry = null } = {}) {
+  const telemetry = createYoutubeAuthTelemetry();
+  try {
+    return await getAuthClientWithTelemetry(
+      telemetry,
+      reportAuthTelemetry,
+    );
+  } catch (error) {
+    throw sanitiseYoutubeError(error);
+  } finally {
+    reportYoutubeAuthTelemetry(reportAuthTelemetry, telemetry);
+  }
 }
 
 // --- Generate auth URL for initial setup ---
@@ -313,6 +497,91 @@ function buildMetadata(story) {
   return { title, description, tags };
 }
 
+function governedPublicationMetadataError(code, cause = null) {
+  const error = new Error(code);
+  error.code = code;
+  if (cause) error.cause = cause;
+  return error;
+}
+
+function resolveGovernedYoutubeMetadata(story) {
+  const binding = story?.governed_publication_metadata;
+  if (
+    !binding ||
+    typeof binding !== "object" ||
+    Array.isArray(binding)
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_required",
+    );
+  }
+  const approvedSha = String(
+    story?.governed_publication_metadata_sha256 || "",
+  )
+    .trim()
+    .toLowerCase();
+  const bindingSha = String(binding.sha256 || "")
+    .trim()
+    .toLowerCase();
+  if (
+    !/^[a-f0-9]{64}$/.test(approvedSha) ||
+    approvedSha !== bindingSha
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_hash_binding_required",
+    );
+  }
+  if (
+    String(binding.platform || "").trim() !==
+      YOUTUBE_PLATFORM_CONTRACT.reviewedMetadataPlatform ||
+    !String(binding.path || "").trim() ||
+    !String(binding.title || "").trim() ||
+    !String(binding.description || "").trim()
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_binding_invalid",
+    );
+  }
+
+  let approved;
+  try {
+    approved = validateGovernedPublicationMetadata({
+      metadataPath: binding.path,
+      expectedMetadataSha256: approvedSha,
+      expectedStoryId: story?.id,
+      expectedChannelId: story?.channel_id,
+      expectedPlatform:
+        YOUTUBE_PLATFORM_CONTRACT.reviewedMetadataPlatform,
+      requireCanonicalAbsolutePath: true,
+    });
+  } catch (cause) {
+    const metadataCode = Array.isArray(cause?.codes)
+      ? cause.codes[0]
+      : null;
+    const code = metadataCode
+      ? `governed_dispatch_${metadataCode}`
+      : "governed_dispatch_publication_metadata_invalid";
+    throw governedPublicationMetadataError(code, cause);
+  }
+
+  if (
+    approved.title !== binding.title ||
+    approved.description !== binding.description ||
+    approved.sha256 !== bindingSha
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_binding_mismatch",
+    );
+  }
+
+  return {
+    path: approved.path,
+    sha256: approved.sha256,
+    title: approved.title,
+    description: approved.description,
+  };
+}
+
 // --- Extract game name from title for hashtag ---
 function extractGameName(title) {
   const patterns = [
@@ -407,7 +676,9 @@ async function ensurePlaylists(youtube) {
       pageToken = res.data.nextPageToken;
     } while (pageToken);
   } catch (err) {
-    console.log(`[youtube] Could not list playlists: ${err.message}`);
+    console.log(
+      `[youtube] Could not list playlists: ${sanitiseYoutubeErrorMessage(err.message)}`,
+    );
   }
 
   // Create missing playlists
@@ -435,7 +706,7 @@ async function ensurePlaylists(youtube) {
       console.log(`[youtube] Created playlist: ${def.title} (${res.data.id})`);
     } catch (err) {
       console.log(
-        `[youtube] Failed to create playlist "${def.title}": ${err.message}`,
+        `[youtube] Failed to create playlist "${def.title}": ${sanitiseYoutubeErrorMessage(err.message)}`,
       );
     }
   }
@@ -471,7 +742,9 @@ async function addToPlaylists(youtube, videoId, classification) {
       });
       added.push(key);
     } catch (err) {
-      console.log(`[youtube] Failed to add to ${key} playlist: ${err.message}`);
+      console.log(
+        `[youtube] Failed to add to ${key} playlist: ${sanitiseYoutubeErrorMessage(err.message)}`,
+      );
     }
   }
 
@@ -533,12 +806,68 @@ function buildYoutubeShortRequestBody(
   };
 }
 
+async function loadHashBoundYoutubeMedia(
+  story,
+  expectedMediaSha256,
+  {
+    resolveMediaPath = mediaPaths.resolveExisting,
+    validate = validateVideo,
+    readFile = fs.readFile,
+  } = {},
+) {
+  const expected = String(expectedMediaSha256 || "")
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) {
+    throw new Error("youtube_expected_media_sha256_required");
+  }
+
+  const resolvedPath = await resolveMediaPath(story?.exported_path);
+  const mediaPath = resolvedPath || story?.exported_path;
+  const byteLength = await validate(mediaPath, "youtube");
+  if (
+    !Number.isSafeInteger(byteLength) ||
+    byteLength < 1 ||
+    byteLength > MAX_BOUND_YOUTUBE_MEDIA_BYTES
+  ) {
+    throw new Error("youtube_media_immutable_buffer_size_invalid");
+  }
+
+  const bytes = await readFile(mediaPath);
+  if (!Buffer.isBuffer(bytes) || bytes.length !== byteLength) {
+    throw new Error("youtube_media_read_length_mismatch");
+  }
+  const actual = crypto
+    .createHash("sha256")
+    .update(bytes)
+    .digest("hex");
+  if (actual !== expected) {
+    throw new Error("youtube_media_sha256_mismatch");
+  }
+
+  let streamCreated = false;
+  return Object.freeze({
+    sha256: actual,
+    byteLength: bytes.length,
+    createReadStream() {
+      if (streamCreated) {
+        throw new Error("youtube_bound_media_stream_already_consumed");
+      }
+      streamCreated = true;
+      return Readable.from([bytes]);
+    },
+  });
+}
+
 // --- Upload a single video as YouTube Short ---
 async function uploadShort(
   story,
   {
     governedDispatch = false,
     markCreateAttemptStarted = null,
+    assertYoutubeCreateBoundary = null,
+    reportAuthTelemetry = null,
+    expectedMediaSha256 = null,
   } = {},
 ) {
   if (governedDispatch !== true) {
@@ -547,6 +876,15 @@ async function uploadShort(
   if (typeof markCreateAttemptStarted !== "function") {
     throw new Error("youtube_create_boundary_marker_required");
   }
+  const governedMetadata = resolveGovernedYoutubeMetadata(story);
+  if (typeof assertYoutubeCreateBoundary !== "function") {
+    throw new Error("youtube_create_boundary_guard_required");
+  }
+  if (typeof reportAuthTelemetry !== "function") {
+    throw new Error("youtube_auth_telemetry_reporter_required");
+  }
+  const { tags } = buildMetadata(story);
+  const title = governedMetadata.title;
   const approvedComment = resolveApprovedPinnedCommentForUpload(story);
   if (story?.pinned_comment && !approvedComment) {
     console.log(
@@ -554,17 +892,16 @@ async function uploadShort(
     );
   }
   addBreadcrumb(`YouTube upload: ${story.title}`, "upload");
-  {
-      const auth = await getAuthClient();
+  return runSanitisedYoutubeOperation(async () => {
+      // Materialise and hash the approved bytes before OAuth or any platform
+      // request. The later upload stream is created from this private buffer,
+      // so replacing or retargeting the source path cannot change what is sent.
+      const boundMedia = await loadHashBoundYoutubeMedia(
+        story,
+        expectedMediaSha256,
+      );
+      const auth = await getAuthClient({ reportAuthTelemetry });
       const youtube = google.youtube({ version: "v3", auth });
-
-      // Resolve the MP4 path through media-paths so the YouTube
-      // uploader picks it up from MEDIA_ROOT (persistent volume)
-      // when set, with repo-root fallback for legacy DB rows.
-      const exportedAbs = await mediaPaths.resolveExisting(story.exported_path);
-      await validateVideo(exportedAbs || story.exported_path, "youtube");
-
-      const { title, description, tags } = buildMetadata(story);
 
       // YouTube-side dedup: check recent uploads for similar titles before uploading
       try {
@@ -686,24 +1023,27 @@ async function uploadShort(
         }
       } catch (err) {
         console.log(
-          `[youtube] Dedup check failed (uploading anyway): ${err.message}`,
+          `[youtube] Dedup check failed (uploading anyway): ${sanitiseYoutubeErrorMessage(err.message)}`,
         );
       }
 
       console.log(`[youtube] Uploading: "${title}"`);
 
+      await require("./publisher").invokeTrustedYoutubeCreateBoundaryGate(
+        assertYoutubeCreateBoundary,
+      );
       markCreateAttemptStarted();
       const response = await insertYoutubeVideoOnce(youtube, {
         part: ["snippet", "status"],
         requestBody: buildYoutubeShortRequestBody(story, {
-          title,
-          description,
+          title: governedMetadata.title,
+          description: governedMetadata.description,
           tags,
           categoryId:
             require("./channels").getChannel().youtubeCategory || "20",
         }),
         media: {
-          body: fs.createReadStream(exportedAbs || story.exported_path),
+          body: boundMedia.createReadStream(),
         },
       });
 
@@ -727,7 +1067,7 @@ async function uploadShort(
         await addToPlaylists(youtube, videoId, story.classification);
       } catch (err) {
         console.log(
-          `[youtube] Playlist assignment failed (non-critical): ${err.message}`,
+          `[youtube] Playlist assignment failed (non-critical): ${sanitiseYoutubeErrorMessage(err.message)}`,
         );
       }
 
@@ -784,7 +1124,7 @@ async function uploadShort(
           }
         } catch (err) {
           console.log(
-            `[youtube] Thumbnail upload failed (non-critical): ${err.message}`,
+            `[youtube] Thumbnail upload failed (non-critical): ${sanitiseYoutubeErrorMessage(err.message)}`,
           );
         }
       }
@@ -811,7 +1151,7 @@ async function uploadShort(
           );
         } catch (err) {
           console.log(
-            `[youtube] Comment failed (non-critical): ${err.message}`,
+            `[youtube] Comment failed (non-critical): ${sanitiseYoutubeErrorMessage(err.message)}`,
           );
         }
       }
@@ -821,7 +1161,7 @@ async function uploadShort(
         videoId,
         url: `https://youtube.com/shorts/${videoId}`,
       };
-  }
+  });
 }
 
 // --- Batch upload all ready stories ---
@@ -861,7 +1201,9 @@ async function uploadAll() {
     try {
       pubRepos = require("./lib/repositories").getRepos();
     } catch (err) {
-      console.log(`[youtube] repos unavailable: ${err.message}`);
+      console.log(
+        `[youtube] repos unavailable: ${sanitiseYoutubeErrorMessage(err.message)}`,
+      );
     }
   }
 
@@ -940,9 +1282,11 @@ async function uploadAll() {
       // Respect YouTube API quota (10000 units/day, upload = 1600 units)
       await new Promise((r) => setTimeout(r, 5000));
     } catch (err) {
+      err = sanitiseYoutubeError(err);
       captureException(err, { platform: "youtube", storyId: story.id });
-      console.log(`[youtube] Upload failed for ${story.id}: ${err.message}`);
-      story.publish_error = err.message;
+      const safeMessage = sanitiseYoutubeErrorMessage(err.message);
+      console.log(`[youtube] Upload failed for ${story.id}: ${safeMessage}`);
+      story.publish_error = safeMessage;
     }
   }
 
@@ -1068,10 +1412,13 @@ async function postCommunityImage(story) {
 }
 
 module.exports = {
+  attachYoutubeRefreshTelemetry,
   buildYoutubeShortRequestBody,
   insertYoutubeVideoOnce,
+  loadHashBoundYoutubeMedia,
   resolveApprovedPinnedCommentForUpload,
   resolveContainsSyntheticMedia,
+  resolveGovernedYoutubeMetadata,
   uploadShort,
   uploadAll,
   uploadLongform,
@@ -1080,6 +1427,7 @@ module.exports = {
   generateAuthUrl,
   exchangeCode,
   getAuthClient,
+  refreshYoutubeCredentialsInMemory,
   ensurePlaylists,
   addToPlaylists,
 };
@@ -1093,19 +1441,33 @@ if (require.main === module) {
       const youtube = google.youtube({ version: "v3", auth });
       const ids = await ensurePlaylists(youtube);
       console.log("[youtube] Playlist IDs:", JSON.stringify(ids, null, 2));
-    })().catch(console.error);
+    })().catch((error) => {
+      console.error(
+        sanitiseYoutubeErrorMessage(error?.message || error),
+      );
+    });
   } else if (cmd === "auth") {
-    generateAuthUrl().catch(console.error);
+    generateAuthUrl().catch((error) => {
+      console.error(
+        sanitiseYoutubeErrorMessage(error?.message || error),
+      );
+    });
   } else if (cmd === "token") {
     const code = process.argv[3];
     if (!code) {
       console.log("Usage: node upload_youtube.js token YOUR_AUTH_CODE");
       process.exit(1);
     }
-    exchangeCode(code).catch(console.error);
+    exchangeCode(code).catch((error) => {
+      console.error(
+        sanitiseYoutubeErrorMessage(error?.message || error),
+      );
+    });
   } else {
     uploadAll().catch((err) => {
-      console.log(`[youtube] ERROR: ${err.message}`);
+      console.log(
+        `[youtube] ERROR: ${sanitiseYoutubeErrorMessage(err.message)}`,
+      );
       process.exit(1);
     });
   }

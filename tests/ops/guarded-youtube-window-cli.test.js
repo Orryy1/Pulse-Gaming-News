@@ -85,6 +85,17 @@ test("parseArgs keeps outside-cadence release as an exact one-shot confirmation"
   assert.equal(parsed.confirmOutsideCadenceOneShot, true);
 });
 
+test("parseArgs rejects an operator-controlled guarded clock", () => {
+  assert.throws(
+    () =>
+      parseArgs([
+        "--generated-at",
+        "2026-07-27T19:02:00.000Z",
+      ]),
+    /unknown_option:generated-at/,
+  );
+});
+
 test("runCli help is read-only and does not execute the guarded operation", async () => {
   let executions = 0;
   let output = "";

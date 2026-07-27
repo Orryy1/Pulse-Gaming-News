@@ -1,11 +1,11 @@
 {
   "schema_version": "pulse-governed-source-media-manifest-v1",
   "story_id": "official_d86953ca92ca",
-  "generated_at": "2026-07-27T20:30:00.000Z",
+  "generated_at": "2026-07-27T16:54:58.896Z",
   "composition_duration_seconds": 28,
   "rights_review": {
     "path": "evidence/ffxiv-materials-rights-review.json",
-    "sha256": "036190376405a6b39efeb6f21f4c5de4baaf5d5f9afe8463f033fd722385066f",
+    "sha256": "ec6e99d42ac0484ddc19f7a891b7504d175873e9349a77976e44a2b174a9747c",
     "review_status": "ACCEPTED"
   },
   "components": [

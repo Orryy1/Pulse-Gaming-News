@@ -1,7 +1,28 @@
 const { test, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const Database = require("better-sqlite3");
+
+const {
+  admitPublication,
+} = require("../../lib/services/publication-admission");
+const {
+  fingerprintPublicationRequest,
+} = require("../../lib/services/publication-request-fingerprint");
+const {
+  hashRightsLedger,
+} = require("../../lib/services/publication-evidence-gates");
+const {
+  createRendererEvidence,
+} = require("../../lib/stabilisation/render-manifest");
+const {
+  fingerprintRendererManifest,
+} = require("../../lib/stabilisation/renderer-governance");
+const governanceFactory = require("../../lib/repositories/publication_governance");
+const storiesFactory = require("../../lib/repositories/stories");
 
 // QA-fail deadlock fix (2026-04-21)
 //
@@ -149,6 +170,7 @@ const DISCORD_AUTO_POST_RESOLVED =
   require.resolve("../../discord/auto_post.js");
 const DISCORD_POST_GATE_RESOLVED =
   require.resolve("../../lib/services/discord-post-gate.js");
+const MIGRATIONS = path.resolve(__dirname, "..", "..", "db", "migrations");
 const PUBLISH_NOW = new Date("2026-07-27T09:05:00.000Z");
 const SCHEDULED_PUBLICATION_EVIDENCE = Object.freeze({
   schema_version: "pulse-publication-evidence-v1",
@@ -156,6 +178,15 @@ const SCHEDULED_PUBLICATION_EVIDENCE = Object.freeze({
   qa_report_sha256: "2".repeat(64),
   rights_ledger_sha256: "3".repeat(64),
   renderer_manifest_sha256: "4".repeat(64),
+  publication_metadata_sha256: "6".repeat(64),
+  publication_metadata: {
+    path: "C:\\proof\\reviewed-publication-metadata.json",
+    sha256: "6".repeat(64),
+    platform: "youtube_shorts",
+    title: "The exact approved YouTube title",
+    description:
+      "The exact approved YouTube description.\n\nFootage: © SQUARE ENIX",
+  },
   renderer: {
     id: "studio-v21",
     role: "standard",
@@ -177,6 +208,212 @@ const SCHEDULED_PUBLICATION_EVIDENCE = Object.freeze({
     reviewed_at: "2026-07-27T08:45:00.000Z",
   },
 });
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+async function persistedOutsideCadenceAdmission(t) {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-publisher-outside-cadence-"),
+  );
+  const mediaPath = path.join(directory, "reviewed-final.mp4");
+  const mediaBytes = Buffer.from("outside-cadence-reviewed-video");
+  fs.writeFileSync(mediaPath, mediaBytes);
+  const metadataPath = path.join(
+    directory,
+    "publication-metadata.json",
+  );
+  const metadataValue = {
+    schema_version: "pulse-governed-publication-metadata-v1",
+    story_id: "outside-cadence-story",
+    channel_id: "pulse-gaming",
+    platform: "youtube_shorts",
+    title: "The exact outside-cadence approved title",
+    description:
+      "The exact outside-cadence approved description.\n\n© SQUARE ENIX",
+  };
+  const metadataBytes = Buffer.from(
+    `${JSON.stringify(metadataValue, null, 2)}\n`,
+  );
+  fs.writeFileSync(metadataPath, metadataBytes);
+
+  const db = new Database(":memory:");
+  for (const filename of fs
+    .readdirSync(MIGRATIONS)
+    .filter((name) => /^\d{3}_.+\.sql$/.test(name))
+    .sort()) {
+    db.exec(fs.readFileSync(path.join(MIGRATIONS, filename), "utf8"));
+  }
+  db.prepare("INSERT INTO channels (id, name) VALUES (?, ?)").run(
+    "pulse-gaming",
+    "Pulse Gaming",
+  );
+  const story = {
+    id: "outside-cadence-story",
+    title: "Outside-cadence governed story",
+    channel_id: "pulse-gaming",
+    approved: true,
+    auto_approved: false,
+    full_script:
+      "Final Fantasy XIV reveals a new tank built around two giant shields.",
+    exported_path: mediaPath,
+    publish_status: null,
+    youtube_post_id: null,
+  };
+  db.prepare(
+    `INSERT INTO stories
+       (id, title, channel_id, approved, auto_approved, full_script,
+        exported_path, publish_status, youtube_post_id)
+     VALUES
+       (@id, @title, @channel_id, 1, 0, @full_script,
+        @exported_path, @publish_status, @youtube_post_id)`,
+  ).run(story);
+  const rightsLedger = {
+    ledger_version: 1,
+    decision: "CLEARED",
+    items: [
+      {
+        item_id: "owned-motion",
+        source_url: "pulse-owned://outside-cadence-story/motion",
+        asset_sha256: "4".repeat(64),
+        included_in_final: true,
+        rights_decision: "CLEARED",
+        rights_basis: "OWNED",
+        rights_evidence: {
+          reference: "output/rights/outside-cadence-story.json",
+          sha256: "5".repeat(64),
+        },
+        attribution_decision: "NOT_REQUIRED",
+        attribution_text: null,
+      },
+    ],
+  };
+  const rendererManifest = createRendererEvidence({
+    story,
+    rendererVersion: "2.1.0",
+    mediaSha256: sha256(mediaBytes),
+    stack: { hyperframes: true, ffmpeg: true },
+    platformVideoQa: {
+      result: "pass",
+      failures: [],
+      warnings: [],
+      technical: {
+        video_codec: "h264",
+        video_profile: "High",
+        pixel_format: "yuv420p",
+        width: 1080,
+        height: 1920,
+        audio_codec: "aac",
+        audio_sample_rate_hz: 48000,
+        has_audio: true,
+        duration_seconds: 30,
+        ffprobe_passed: true,
+      },
+    },
+    timing: {
+      first_frame_exact_subject: true,
+      hook_visible_by_ms: 200,
+      consequence_by_ms: 1100,
+      proof_by_ms: 2600,
+    },
+    motion: {
+      scene_count: 8,
+      motion_scene_count: 4,
+      exact_subject_clip_count: 2,
+      exact_subject_still_motion_count: 1,
+      unrelated_filler_count: 0,
+      every_scene_rights_accepted: true,
+    },
+    operatingMode: "LIVE_GUARDED",
+  }).manifest;
+  const publicationMetadata = {
+    path: metadataPath,
+    sha256: sha256(metadataBytes),
+    platform: metadataValue.platform,
+    title: metadataValue.title,
+    description: metadataValue.description,
+  };
+  const evidence = {
+    source_evidence_sha256: "1".repeat(64),
+    qa_report_sha256: "2".repeat(64),
+    rights_ledger: rightsLedger,
+    rights_ledger_sha256: hashRightsLedger(rightsLedger),
+    originality_transformation: {
+      verdict: "STRONG",
+      rationale: "Original reporting and motion treatment.",
+      evidence_ref: "output/qa/outside-cadence-transformation.json",
+      evidence_sha256: "3".repeat(64),
+    },
+    synthetic_media_disclosure: {
+      contains_synthetic_media: true,
+      decision: "DISCLOSE",
+      rationale: "Synthetic narration is present.",
+      disclosure_text: "Includes AI-generated narration.",
+      youtube_field_value: true,
+      reviewed_at: "2026-07-27T09:54:00.000Z",
+    },
+    publication_metadata_sha256: publicationMetadata.sha256,
+    publication_metadata: publicationMetadata,
+    renderer_manifest: rendererManifest,
+    renderer_manifest_sha256:
+      fingerprintRendererManifest(rendererManifest),
+  };
+  const repos = {
+    db,
+    stories: storiesFactory.bind(db),
+    publicationGovernance: governanceFactory.bind(db),
+  };
+  const channel = {
+    id: "pulse-gaming",
+    name: "Pulse Gaming",
+    niche: "gaming",
+    tagline: "Fast. Verified. Player-first.",
+    cta: "Subscribe for the next confirmed drop.",
+    youtubeCategory: "20",
+  };
+  const scheduledFor = "2026-07-27T10:00:00.000Z";
+  const authorisationId = "outside-cadence-publisher-test";
+  const admission = await admitPublication({
+    repos,
+    storyId: story.id,
+    channelId: story.channel_id,
+    platform: "youtube",
+    actorId: "operator-test",
+    reason: "Exact one-shot breaking-news release",
+    confirmationStoryId: story.id,
+    scheduledFor,
+    evidence,
+    env: {
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      AUTO_PUBLISH: "true",
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      USE_JOB_QUEUE: "true",
+      USE_SQLITE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+    },
+    now: new Date("2026-07-27T09:55:00.000Z"),
+    channel,
+    outsideCadenceAuthorisation: {
+      authorisationId,
+      confirmAuthorisationId: authorisationId,
+      oneShotConfirmed: true,
+    },
+  });
+  assert.equal(admission.admitted, true);
+  t.after(() => {
+    db.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  return {
+    admission,
+    channel,
+    db,
+    repos,
+    scheduledFor,
+    story,
+  };
+}
 
 function stubModule(resolvedPath, exports) {
   require.cache[resolvedPath] = {
@@ -240,6 +477,7 @@ let governedDispatchCalls;
 
 function withTestPublisherLease(publisher) {
   const liveGuardedEnv = {
+    NODE_ENV: "test",
     PULSE_OPERATING_MODE: "LIVE_GUARDED",
     AUTO_PUBLISH: "true",
     PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
@@ -268,13 +506,20 @@ function withTestPublisherLease(publisher) {
     },
   };
   const publicationRepos = {
-    db: {},
+    db: {
+      pragma(statement, options) {
+        assert.equal(statement, "data_version");
+        assert.deepEqual(options, { simple: true });
+        return 1;
+      },
+    },
     platformPosts: {},
     publicationGovernance: {
       getLatestLifecycleEvent(storyId, platform, toState) {
         assert.equal(platform, "youtube");
         assert.equal(toState, "SCHEDULED");
         return {
+          id: 90,
           story_id: storyId,
           platform,
           to_state: "SCHEDULED",
@@ -307,12 +552,104 @@ function withTestPublisherLease(publisher) {
       externalUrl: uploadResult.externalUrl,
     };
   };
+  function selectDefaultExactStoryId(channelId = "pulse-gaming") {
+    const candidates = dbState.stories
+      .filter((story) => (story.channel_id || "pulse-gaming") === channelId)
+      .filter(
+        (story) =>
+          story.approved === true &&
+          Boolean(story.exported_path) &&
+          story.qa_failed !== true &&
+          story.publish_status !== "failed" &&
+          !story.youtube_post_id,
+      )
+      .sort(
+        (left, right) =>
+          (right.breaking_score || right.score || 0) -
+          (left.breaking_score || left.score || 0),
+      );
+    return candidates[0]?.id || dbState.stories[0]?.id || "test-story";
+  }
+  function buildExactDispatchBinding({ storyId, repos }) {
+    let event = null;
+    try {
+      event =
+        repos?.publicationGovernance?.getLatestLifecycleEvent?.(
+          storyId,
+          "youtube",
+          "SCHEDULED",
+        ) || null;
+    } catch {
+      event = null;
+    }
+    let evidence = {};
+    try {
+      evidence = JSON.parse(event?.evidence_json || "{}");
+    } catch {
+      evidence = {};
+    }
+    let databaseDataVersion = 1;
+    try {
+      const value = repos?.db?.pragma?.("data_version", { simple: true });
+      if (Number.isSafeInteger(value) && value > 0) {
+        databaseDataVersion = value;
+      }
+    } catch {
+      // The publisher will exercise the supplied deterministic fallback DB.
+    }
+    return {
+      storyId,
+      platform: "youtube",
+      scheduledFor:
+        evidence.scheduled_for || "2026-07-27T09:00:00.000Z",
+      scheduledEventId: event?.id ?? "test-scheduled-event",
+      dispatchIdempotencyKey:
+        evidence.dispatch_idempotency_key ||
+        `youtube:${storyId}:test-operation`,
+      requestFingerprint:
+        evidence.request_fingerprint || "a".repeat(64),
+      databaseDataVersion,
+    };
+  }
   return {
     ...publisher,
     publishNextStory(options = {}) {
+      const { testExactStoryId, ...callerOptions } = options;
+      const requestedRepos = callerOptions.repos || publicationRepos;
+      const repos =
+        typeof requestedRepos?.db?.pragma === "function"
+          ? requestedRepos
+          : {
+              ...requestedRepos,
+              db: {
+                ...(requestedRepos?.db || {}),
+                pragma(statement, pragmaOptions) {
+                  assert.equal(statement, "data_version");
+                  assert.deepEqual(pragmaOptions, { simple: true });
+                  return 1;
+                },
+              },
+            };
+      const hasExplicitBinding = Object.prototype.hasOwnProperty.call(
+        callerOptions,
+        "exactDispatchBinding",
+      );
+      const exactDispatchBinding = hasExplicitBinding
+        ? callerOptions.exactDispatchBinding
+        : buildExactDispatchBinding({
+            storyId:
+              testExactStoryId ||
+              selectDefaultExactStoryId(
+                callerOptions.channelId ||
+                  callerOptions.env?.CHANNEL ||
+                  liveGuardedEnv.CHANNEL ||
+                  "pulse-gaming",
+              ),
+            repos,
+          });
       return publisher.publishNextStory({
         env: liveGuardedEnv,
-        repos: publicationRepos,
+        repos,
         governedDispatch,
         async fingerprintPublicationRequest(story, options) {
           fingerprintCalls.push({ story, options });
@@ -328,7 +665,9 @@ function withTestPublisherLease(publisher) {
         verifyYoutubePublic: async () => {
           throw new Error("test governed dispatcher owns verification");
         },
-        ...options,
+        ...callerOptions,
+        repos,
+        exactDispatchBinding,
         leases,
       });
     },
@@ -343,6 +682,7 @@ function setupMocks({
   vqaResult,
   pvqaResult = { result: "pass", failures: [], warnings: [] },
   renderDecisionError = null,
+  persistStory = null,
   stories,
 }) {
   dbState = {
@@ -371,6 +711,9 @@ function setupMocks({
       const idx = dbState.stories.findIndex((s) => s.id === story.id);
       if (idx >= 0) dbState.stories[idx] = { ...story };
       else dbState.stories.push({ ...story });
+      if (typeof persistStory === "function") {
+        await persistStory(story);
+      }
     },
     async saveStories(arr) {
       dbState.stories = arr.slice();
@@ -658,6 +1001,57 @@ test("publishNextStory: LOCAL_PROOF fails closed before candidate selection or u
   assert.deepEqual(dbState.upsertCalls, []);
 });
 
+test("publishNextStory: unbound LIVE_GUARDED dispatch fails closed before uploader or create boundary", async () => {
+  const story = {
+    id: "rss_unbound_live_guarded",
+    title: "An unbound caller must never select this story",
+    approved: true,
+    exported_path: "/tmp/unbound-live-guarded.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({ exactDispatchBinding: null });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.top_reason, "guarded_exact_dispatch_binding_required");
+  assert.deepEqual(uploaderCalls, []);
+  assert.deepEqual(governedDispatchCalls, []);
+  assert.deepEqual(dbState.upsertCalls, []);
+});
+
+test("publishNextStory: incomplete LIVE_GUARDED binding fails closed before uploader or create boundary", async () => {
+  const story = {
+    id: "rss_incomplete_live_guarded",
+    title: "An incomplete authority must never select this story",
+    approved: true,
+    exported_path: "/tmp/incomplete-live-guarded.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({
+    exactDispatchBinding: {
+      storyId: story.id,
+      platform: "youtube",
+    },
+  });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.top_reason, "guarded_exact_dispatch_binding_invalid");
+  assert.deepEqual(uploaderCalls, []);
+  assert.deepEqual(governedDispatchCalls, []);
+  assert.deepEqual(dbState.upsertCalls, []);
+});
+
 test("publishNextStory: cadence is rechecked inside the durable publisher lease", async () => {
   const story = {
     id: "rss_cadence_block",
@@ -737,6 +1131,459 @@ test("publishNextStory: stabilisation dispatch attempts YouTube only", async () 
   assert.equal(persisted.tiktok_post_id, undefined);
 });
 
+test("publishNextStory: exact binding cannot be displaced by a higher-score concurrently scheduled story", async () => {
+  const target = {
+    id: "rss_exact_target",
+    title: "Exact guarded target",
+    approved: true,
+    exported_path: "/tmp/exact-target.mp4",
+    breaking_score: 1,
+  };
+  const concurrent = {
+    id: "rss_concurrent_higher_score",
+    title: "Concurrent higher score",
+    approved: true,
+    exported_path: "/tmp/concurrent.mp4",
+    breaking_score: 999,
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [concurrent, target],
+  });
+
+  const result = await publishNextStory({
+    exactDispatchBinding: {
+      storyId: target.id,
+      platform: "youtube",
+      scheduledFor: "2026-07-27T09:00:00.000Z",
+      scheduledEventId: 90,
+      dispatchIdempotencyKey:
+        `youtube:${target.id}:test-operation`,
+      requestFingerprint: "a".repeat(64),
+      databaseDataVersion: 1,
+    },
+  });
+
+  assert.equal(result.story_id, target.id);
+  assert.equal(uploadedStories.length, 1);
+  assert.equal(uploadedStories[0].id, target.id);
+  assert.equal(governedDispatchCalls.length, 1);
+  assert.equal(governedDispatchCalls[0].storyId, target.id);
+  assert.equal(
+    dbState.stories.find((story) => story.id === concurrent.id)
+      .youtube_post_id,
+    undefined,
+  );
+});
+
+test("publishNextStory: exact binding is re-enforced against the persisted scheduled event", async () => {
+  const story = {
+    id: "rss_exact_event_mismatch",
+    title: "Changed scheduled ticket",
+    approved: true,
+    exported_path: "/tmp/event-mismatch.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({
+    exactDispatchBinding: {
+      storyId: story.id,
+      platform: "youtube",
+      scheduledFor: "2026-07-27T09:00:00.000Z",
+      scheduledEventId: 91,
+      dispatchIdempotencyKey:
+        `youtube:${story.id}:test-operation`,
+      requestFingerprint: "a".repeat(64),
+      databaseDataVersion: 1,
+    },
+  });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(
+    result.top_reason,
+    "guarded_exact_dispatch_event_mismatch",
+  );
+  assert.deepEqual(uploaderCalls, []);
+  assert.deepEqual(governedDispatchCalls, []);
+});
+
+test("publishNextStory: a fresh trusted boundary clock blocks create after the window expires", async () => {
+  const story = {
+    id: "rss_window_expires_before_create",
+    title: "Window expires during preflight",
+    approved: true,
+    exported_path: "/tmp/window-expiry.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+  let clockCalls = 0;
+  const times = [
+    "2026-07-27T09:05:00.000Z",
+    "2026-07-27T09:05:00.000Z",
+    "2026-07-27T09:16:00.000Z",
+  ];
+  let createAttempts = 0;
+  stubModule(require.resolve("../../upload_youtube.js"), {
+    async uploadShort(_story, options = {}) {
+      assert.equal(
+        typeof options.assertYoutubeCreateBoundary,
+        "function",
+      );
+      await options.assertYoutubeCreateBoundary();
+      createAttempts += 1;
+      return {
+        videoId: "must-not-be-created",
+        url: "https://youtu.be/must-not-be-created",
+      };
+    },
+  });
+
+  const result = await publishNextStory({
+    now() {
+      const value = times[Math.min(clockCalls, times.length - 1)];
+      clockCalls += 1;
+      return new Date(value);
+    },
+    exactDispatchBinding: {
+      storyId: story.id,
+      platform: "youtube",
+      scheduledFor: "2026-07-27T09:00:00.000Z",
+      scheduledEventId: 90,
+      dispatchIdempotencyKey:
+        `youtube:${story.id}:test-operation`,
+      requestFingerprint: "a".repeat(64),
+      databaseDataVersion: 1,
+    },
+  });
+
+  assert.equal(createAttempts, 0);
+  assert.ok(clockCalls >= 3);
+  assert.equal(result.platform_outcomes.youtube, "governance_blocked");
+  assert.equal(
+    result.errors.youtube,
+    "scheduled_dispatch_window_expired",
+  );
+});
+
+test("publishNextStory: a separate SQLite connection commit is rejected at the authenticated create boundary", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-publisher-data-version-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  const primary = new Database(databasePath);
+  primary.exec(
+    `CREATE TABLE external_writes (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       value TEXT NOT NULL
+     )`,
+  );
+  const writer = new Database(databasePath, { fileMustExist: true });
+  t.after(() => {
+    writer.close();
+    primary.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const story = {
+    id: "rss_external_database_race",
+    title: "External database race",
+    approved: true,
+    exported_path: "/tmp/external-database-race.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+  const publicationGovernance = {
+    getLatestLifecycleEvent(storyId, platform, toState) {
+      assert.equal(platform, "youtube");
+      assert.equal(toState, "SCHEDULED");
+      return {
+        id: 90,
+        story_id: storyId,
+        platform,
+        to_state: "SCHEDULED",
+        evidence_json: JSON.stringify({
+          dispatch_idempotency_key:
+            `youtube:${storyId}:test-operation`,
+          request_fingerprint: "a".repeat(64),
+          scheduled_for: "2026-07-27T09:00:00.000Z",
+          publication_evidence: SCHEDULED_PUBLICATION_EVIDENCE,
+        }),
+      };
+    },
+  };
+  let createAttempts = 0;
+  stubModule(require.resolve("../../upload_youtube.js"), {
+    async uploadShort(_story, options = {}) {
+      writer
+        .prepare(
+          "INSERT INTO external_writes (value) VALUES ('racing-commit')",
+        )
+        .run();
+      await options.assertYoutubeCreateBoundary();
+      createAttempts += 1;
+      return {
+        videoId: "must-not-be-created",
+        url: "https://youtu.be/must-not-be-created",
+      };
+    },
+  });
+  const databaseDataVersion = primary.pragma("data_version", {
+    simple: true,
+  });
+
+  const result = await publishNextStory({
+    repos: {
+      db: primary,
+      platformPosts: {},
+      publicationGovernance,
+    },
+    exactDispatchBinding: {
+      storyId: story.id,
+      platform: "youtube",
+      scheduledFor: "2026-07-27T09:00:00.000Z",
+      scheduledEventId: 90,
+      dispatchIdempotencyKey:
+        `youtube:${story.id}:test-operation`,
+      requestFingerprint: "a".repeat(64),
+      databaseDataVersion,
+    },
+  });
+
+  assert.equal(createAttempts, 0);
+  assert.equal(result.platform_outcomes.youtube, "governance_blocked");
+  assert.equal(
+    result.errors.youtube,
+    "guarded_database_data_version_changed_before_create",
+  );
+});
+
+test("publishNextStory: its own persistence does not invalidate the guarded database version before create", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-publisher-self-write-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  const primary = new Database(databasePath);
+  primary.exec(
+    `CREATE TABLE publisher_writes (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       story_id TEXT NOT NULL,
+       publish_status TEXT
+     )`,
+  );
+  const legacyWriter = new Database(databasePath, { fileMustExist: true });
+  t.after(() => {
+    legacyWriter.close();
+    primary.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const story = {
+    id: "rss_guarded_publisher_self_write",
+    title: "Guarded publisher self write",
+    approved: true,
+    exported_path: "/tmp/guarded-publisher-self-write.mp4",
+  };
+  const persistedStories = [];
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+    persistStory(value) {
+      persistedStories.push(structuredClone(value));
+      legacyWriter
+        .prepare(
+          `INSERT INTO publisher_writes (story_id, publish_status)
+           VALUES (?, ?)`,
+        )
+        .run(value.id, value.publish_status || null);
+    },
+  });
+  const publicationGovernance = {
+    getLatestLifecycleEvent(storyId, platform, toState) {
+      assert.equal(platform, "youtube");
+      assert.equal(toState, "SCHEDULED");
+      return {
+        id: 90,
+        story_id: storyId,
+        platform,
+        to_state: "SCHEDULED",
+        evidence_json: JSON.stringify({
+          dispatch_idempotency_key:
+            `youtube:${storyId}:test-operation`,
+          request_fingerprint: "a".repeat(64),
+          scheduled_for: "2026-07-27T09:00:00.000Z",
+          publication_evidence: SCHEDULED_PUBLICATION_EVIDENCE,
+        }),
+      };
+    },
+  };
+  let createAttempts = 0;
+  stubModule(require.resolve("../../upload_youtube.js"), {
+    async uploadShort(_story, options = {}) {
+      assert.equal(
+        options.expectedMediaSha256,
+        "d".repeat(64),
+        "the uploader must receive the freshly fingerprinted media SHA, not a missing field from immutable publication evidence",
+      );
+      await options.assertYoutubeCreateBoundary();
+      createAttempts += 1;
+      return {
+        videoId: "guarded-self-write-created",
+        url: "https://youtu.be/guarded-self-write-created",
+      };
+    },
+  });
+  const databaseDataVersion = primary.pragma("data_version", {
+    simple: true,
+  });
+
+  const result = await publishNextStory({
+    repos: {
+      db: primary,
+      platformPosts: {},
+      publicationGovernance,
+    },
+    exactDispatchBinding: {
+      storyId: story.id,
+      platform: "youtube",
+      scheduledFor: "2026-07-27T09:00:00.000Z",
+      scheduledEventId: 90,
+      dispatchIdempotencyKey:
+        `youtube:${story.id}:test-operation`,
+      requestFingerprint: "a".repeat(64),
+      databaseDataVersion,
+    },
+  });
+
+  assert.equal(createAttempts, 1);
+  assert.equal(result.platform_outcomes.youtube, "new_upload");
+  assert.equal(result.youtube, true);
+  assert.equal(persistedStories.length, 1);
+  assert.equal(persistedStories[0].render_contract_blocked, false);
+  assert.ok(persistedStories[0].render_contract_class);
+  assert.equal(
+    persistedStories[0].youtube_post_id,
+    "guarded-self-write-created",
+  );
+  assert.equal(
+    legacyWriter
+      .prepare("SELECT COUNT(*) FROM publisher_writes")
+      .pluck()
+      .get(),
+    1,
+    "only post-create outcome persistence should use the legacy writer",
+  );
+});
+
+test("publishNextStory: a post-guard external commit is rejected at publisher entry", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-publisher-entry-data-version-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  const primary = new Database(databasePath);
+  primary.exec(
+    `CREATE TABLE external_writes (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       value TEXT NOT NULL
+     )`,
+  );
+  const writer = new Database(databasePath, { fileMustExist: true });
+  t.after(() => {
+    writer.close();
+    primary.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const databaseDataVersion = primary.pragma("data_version", {
+    simple: true,
+  });
+  writer
+    .prepare(
+      "INSERT INTO external_writes (value) VALUES ('after-guard')",
+    )
+    .run();
+  const story = {
+    id: "rss_publisher_entry_database_race",
+    title: "Publisher entry database race",
+    approved: true,
+    exported_path: "/tmp/publisher-entry-database-race.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({
+    repos: {
+      db: primary,
+      platformPosts: {},
+      publicationGovernance: {},
+    },
+    exactDispatchBinding: {
+      storyId: story.id,
+      platform: "youtube",
+      scheduledFor: "2026-07-27T09:00:00.000Z",
+      scheduledEventId: 90,
+      dispatchIdempotencyKey:
+        `youtube:${story.id}:test-operation`,
+      requestFingerprint: "a".repeat(64),
+      databaseDataVersion,
+    },
+  });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(
+    result.top_reason,
+    "guarded_database_data_version_changed_before_publisher_entry",
+  );
+  assert.deepEqual(uploaderCalls, []);
+  assert.deepEqual(governedDispatchCalls, []);
+});
+
+test("publishNextStory: production ignores a caller-supplied clock", async () => {
+  const story = {
+    id: "rss_forged_production_clock",
+    title: "Forged clock cannot open a window",
+    approved: true,
+    exported_path: "/tmp/forged-clock.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+  let forgedClockCalls = 0;
+
+  await publishNextStory({
+    env: {
+      NODE_ENV: "production",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      AUTO_PUBLISH: "true",
+      PULSE_GUARDED_LIVE_DISPATCH_ENABLED: "true",
+      USE_JOB_QUEUE: "true",
+      USE_SQLITE: "true",
+      PULSE_PRIMARY_INSTANCE: "true",
+      PULSE_EMERGENCY_KILL_SWITCH: "false",
+    },
+    now() {
+      forgedClockCalls += 1;
+      return new Date("2026-07-27T09:05:00.000Z");
+    },
+  });
+
+  assert.equal(forgedClockCalls, 0);
+});
+
 test("publishNextStory: dispatch fingerprints and uploads the immutable scheduled disclosure decision", async () => {
   const story = {
     id: "rss_reviewed_disclosure",
@@ -768,6 +1615,161 @@ test("publishNextStory: dispatch fingerprints and uploads the immutable schedule
     uploadedStories[0].synthetic_media_disclosure,
     SCHEDULED_PUBLICATION_EVIDENCE.synthetic_media_disclosure,
   );
+  assert.equal(
+    uploadedStories[0].governed_publication_metadata_sha256,
+    SCHEDULED_PUBLICATION_EVIDENCE.publication_metadata_sha256,
+  );
+  assert.deepEqual(
+    uploadedStories[0].governed_publication_metadata,
+    SCHEDULED_PUBLICATION_EVIDENCE.publication_metadata,
+  );
+});
+
+test("publishNextStory: YouTube failure telemetry survives while secrets are scrubbed before logs, story persistence and result", async () => {
+  const story = {
+    id: "rss_safe_youtube_failure",
+    title: "Sanitised YouTube failure",
+    approved: true,
+    exported_path: "/tmp/safe-youtube-failure.mp4",
+  };
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+  const secret = "bearer-secret-value";
+  const refreshSecret = "refresh-secret-value";
+  stubModule(require.resolve("../../upload_youtube.js"), {
+    async uploadShort(_story, options = {}) {
+      options.reportAuthTelemetry({
+        schema_version: "pulse-youtube-auth-telemetry-v1",
+        durable_oauth_or_token_mutated: false,
+        ephemeral_access_token_refresh: {
+          attempted: true,
+          succeeded: false,
+          failed: true,
+        },
+      });
+      throw new Error(
+        `Bearer ${secret} rejected refresh_token=${refreshSecret}`,
+      );
+    },
+  });
+  const observedTelemetry = [];
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...values) => logs.push(values.join(" "));
+  let result;
+  try {
+    result = await publishNextStory({
+      onYoutubeAuthTelemetry(value) {
+        observedTelemetry.push(value);
+      },
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  const persisted = dbState.stories.find((row) => row.id === story.id);
+  const serialised = JSON.stringify({
+    logs,
+    persisted,
+    result,
+    observedTelemetry,
+  });
+  assert.equal(serialised.includes(secret), false);
+  assert.equal(serialised.includes(refreshSecret), false);
+  assert.match(result.errors.youtube, /\[REDACTED\]/);
+  assert.equal(result.platform_outcomes.youtube, "failed");
+  assert.deepEqual(result.safety.youtube_auth, {
+    schema_version: "pulse-youtube-auth-telemetry-v1",
+    durable_oauth_or_token_mutated: false,
+    ephemeral_access_token_refresh: {
+      attempted: true,
+      succeeded: false,
+      failed: true,
+    },
+  });
+  assert.deepEqual(observedTelemetry.at(-1), result.safety.youtube_auth);
+  assert.equal(persisted.youtube_error, result.errors.youtube);
+});
+
+test("publishNextStory: dispatches an exact persisted one-shot outside-cadence admission", async (t) => {
+  const persisted = await persistedOutsideCadenceAdmission(t);
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [persisted.story],
+  });
+
+  const result = await publishNextStory({
+    repos: {
+      db: persisted.db,
+      platformPosts: {},
+      publicationGovernance:
+        persisted.repos.publicationGovernance,
+    },
+    now: new Date("2026-07-27T10:00:30.000Z"),
+    channel: persisted.channel,
+    async fingerprintPublicationRequest(story, options) {
+      return fingerprintPublicationRequest(story, {
+        ...options,
+        channel: persisted.channel,
+        resolveMediaPath: async (storedPath) => storedPath,
+      });
+    },
+  });
+
+  assert.equal(result.youtube, true);
+  assert.deepEqual(uploaderCalls, ["upload_youtube"]);
+  assert.equal(governedDispatchCalls.length, 1);
+  assert.equal(
+    governedDispatchCalls[0].idempotencyKey,
+    persisted.admission.dispatch_idempotency_key,
+  );
+  assert.equal(
+    governedDispatchCalls[0].requestFingerprint,
+    persisted.admission.request_fingerprint,
+  );
+});
+
+test("publishNextStory: an outside-cadence row without its exact immutable authorisation remains held", async (t) => {
+  const persisted = await persistedOutsideCadenceAdmission(t);
+  const actualGovernance = persisted.repos.publicationGovernance;
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [persisted.story],
+  });
+
+  const result = await publishNextStory({
+    repos: {
+      db: persisted.db,
+      platformPosts: {},
+      publicationGovernance: {
+        getLatestLifecycleEvent(...args) {
+          const event =
+            actualGovernance.getLatestLifecycleEvent(...args);
+          const evidence = JSON.parse(event.evidence_json);
+          delete evidence.outside_cadence_authorisation;
+          return {
+            ...event,
+            evidence_json: JSON.stringify(evidence),
+          };
+        },
+      },
+    },
+    now: new Date("2026-07-27T10:00:30.000Z"),
+    channel: persisted.channel,
+  });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(
+    result.top_reason,
+    "scheduled_outside_cadence_authorisation_required",
+  );
+  assert.deepEqual(uploaderCalls, []);
+  assert.deepEqual(governedDispatchCalls, []);
 });
 
 test("publishNextStory: changed content is blocked when its current fingerprint differs from admission", async () => {
@@ -873,6 +1875,57 @@ test("publishNextStory: legacy schedule without immutable publication evidence i
   assert.deepEqual(governedDispatchCalls, []);
 });
 
+test("publishNextStory: scheduled evidence without exact approved metadata is held before uploader", async () => {
+  const story = {
+    id: "rss_schedule_without_approved_metadata",
+    title: "Schedule has no approved public metadata",
+    approved: true,
+    exported_path: "/tmp/schedule-without-approved-metadata.mp4",
+  };
+  const publicationEvidence = structuredClone(
+    SCHEDULED_PUBLICATION_EVIDENCE,
+  );
+  delete publicationEvidence.publication_metadata_sha256;
+  delete publicationEvidence.publication_metadata;
+  const { publishNextStory } = setupMocks({
+    cqaResult: { result: "pass", failures: [], warnings: [] },
+    vqaResult: { result: "pass", failures: [], warnings: [] },
+    stories: [story],
+  });
+
+  const result = await publishNextStory({
+    repos: {
+      db: {},
+      platformPosts: {},
+      publicationGovernance: {
+        getLatestLifecycleEvent() {
+          return {
+            id: 20,
+            story_id: story.id,
+            platform: "youtube",
+            to_state: "SCHEDULED",
+            evidence_json: JSON.stringify({
+              dispatch_idempotency_key:
+                "youtube:rss_schedule_without_approved_metadata:test-operation",
+              request_fingerprint: "a".repeat(64),
+              scheduled_for: "2026-07-27T09:00:00.000Z",
+              publication_evidence: publicationEvidence,
+            }),
+          };
+        },
+      },
+    },
+  });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(
+    result.top_reason,
+    "scheduled_publication_metadata_sha256_required",
+  );
+  assert.deepEqual(uploaderCalls, []);
+  assert.deepEqual(governedDispatchCalls, []);
+});
+
 test("publishNextStory: an expired admission ticket cannot catch up in a later window", async () => {
   const story = {
     id: "rss_expired_schedule",
@@ -895,6 +1948,9 @@ test("publishNextStory: an expired admission ticket cannot catch up in a later w
         getLatestLifecycleEvent() {
           return {
             id: 21,
+            story_id: story.id,
+            platform: "youtube",
+            to_state: "SCHEDULED",
             evidence_json: JSON.stringify({
               dispatch_idempotency_key:
                 "youtube:rss_expired_schedule:2026-07-27T09:00:00.000Z",
@@ -937,6 +1993,7 @@ test("publishNextStory: skips an unscheduled high-score story and dispatches the
   });
 
   const result = await publishNextStory({
+    testExactStoryId: scheduled.id,
     repos: {
       db: {},
       platformPosts: {},
@@ -1074,6 +2131,7 @@ test("publishNextStory: a canonically blocked row cannot starve the next schedul
     stories: [blocked, eligible],
   });
   const result = await publishNextStory({
+    testExactStoryId: eligible.id,
     repos: {
       db: {},
       platformPosts: {
@@ -1092,6 +2150,9 @@ test("publishNextStory: a canonically blocked row cannot starve the next schedul
         getLatestLifecycleEvent(storyId) {
           return {
             id: storyId === blocked.id ? 31 : 32,
+            story_id: storyId,
+            platform: "youtube",
+            to_state: "SCHEDULED",
             evidence_json: JSON.stringify({
               dispatch_idempotency_key:
                 `youtube:${storyId}:test-operation`,
@@ -1273,17 +2334,12 @@ test("publishNextStory: unavailable render contract fails closed and preserves t
   assert.strictEqual(persisted.publish_status, "held");
 });
 
-// ---------- multi-candidate fallback tests (2026-04-22) ----------
+// ---------- exact guarded candidate tests ----------
 //
-// Drive the publisher with a list of stubbed candidates where the
-// first N fail QA and one later candidate passes. Asserts:
-//   - earlier candidates are persisted qa_failed=true
-//   - only one upload happens (the passing candidate's)
-//   - result.qa_skipped_count reports how many were walked past
-//   - the cap stops the loop after MAX candidates even if more
-//     bad stories remain
+// LIVE_GUARDED dispatch carries one immutable story authority. A QA failure
+// must stop that operation and must never fall through to another story.
 
-test("multi-candidate: first QA-fails, second passes — second uploads, qa_skipped_count=1", async () => {
+test("exact guarded candidate: bound QA failure never falls through to another ready story", async () => {
   const bad = {
     id: "rss_bad",
     title: "Stale mp4",
@@ -1317,22 +2373,20 @@ test("multi-candidate: first QA-fails, second passes — second uploads, qa_skip
   assert.strictEqual(badRow.qa_failed, true);
   assert.strictEqual(badRow.publish_status, "failed");
 
-  // Good story got published — result has the normal success shape
-  assert.strictEqual(result.no_safe_candidate, undefined);
-  assert.strictEqual(result.title, "Healthy mp4");
+  // Only the bound bad story is evaluated.
+  assert.strictEqual(result.no_safe_candidate, true);
   assert.strictEqual(result.qa_skipped_count, 1);
   assert.ok(result.qa_skipped && result.qa_skipped.length === 1);
   assert.strictEqual(result.qa_skipped[0].id, "rss_bad");
 
-  // Uploader WAS called (for the good story) — at least one core
-  // platform was attempted.
-  assert.ok(
-    uploaderCalls.length > 0,
-    "expected uploader calls for the passing candidate",
-  );
+  // The ready good story stays untouched and no create path is reached.
+  const goodRow = dbState.stories.find((s) => s.id === "rss_good");
+  assert.notStrictEqual(goodRow.qa_failed, true);
+  assert.deepStrictEqual(uploaderCalls, []);
+  assert.deepStrictEqual(governedDispatchCalls, []);
 });
 
-test("multi-candidate: 3 QA-fail candidates are all marked failed, no uploads", async () => {
+test("exact guarded candidate: only the bound story is evaluated when several would fail QA", async () => {
   const stories = [
     {
       id: "rss_a",
@@ -1365,18 +2419,18 @@ test("multi-candidate: 3 QA-fail candidates are all marked failed, no uploads", 
 
   const result = await publishNextStory();
   assert.strictEqual(result.no_safe_candidate, true);
-  assert.strictEqual(result.qa_skipped_count, 3);
-  assert.strictEqual(result.candidates_tried, 3);
+  assert.strictEqual(result.qa_skipped_count, 1);
+  assert.strictEqual(result.candidates_tried, 1);
 
-  // Every story is now qa_failed=true
-  for (const id of ["rss_a", "rss_b", "rss_c"]) {
-    const row = dbState.stories.find((s) => s.id === id);
-    assert.strictEqual(
-      row.qa_failed,
+  const bound = dbState.stories.find((s) => s.id === "rss_a");
+  assert.strictEqual(bound.qa_failed, true);
+  assert.strictEqual(bound.publish_status, "failed");
+  for (const id of ["rss_b", "rss_c"]) {
+    assert.notStrictEqual(
+      dbState.stories.find((s) => s.id === id).qa_failed,
       true,
-      `${id} must be persisted qa_failed=true`,
+      `${id} must remain untouched by another story's authority`,
     );
-    assert.strictEqual(row.publish_status, "failed");
   }
   assert.deepStrictEqual(
     uploaderCalls,
@@ -1385,8 +2439,8 @@ test("multi-candidate: 3 QA-fail candidates are all marked failed, no uploads", 
   );
 });
 
-test("multi-candidate: cap stops the loop at MAX (5) even if more candidates exist", async () => {
-  // 7 candidates all fail — only the first 5 should be tried.
+test("exact guarded candidate: a large backlog cannot expand one authority into a batch", async () => {
+  // Seven candidates all fail, but one exact authority can evaluate only one.
   const stories = Array.from({ length: 7 }, (_, i) => ({
     id: `rss_cap_${i}`,
     title: `Cap ${i}`,
@@ -1407,19 +2461,18 @@ test("multi-candidate: cap stops the loop at MAX (5) even if more candidates exi
   assert.strictEqual(result.no_safe_candidate, true);
   assert.strictEqual(
     result.candidates_tried,
-    5,
-    "cap must limit the walk to 5",
+    1,
+    "one exact authority must evaluate one story",
   );
-  assert.strictEqual(result.qa_skipped_count, 5);
+  assert.strictEqual(result.qa_skipped_count, 1);
 
-  // The 6th and 7th stories were never touched — still not qa_failed.
-  const unSeen6 = dbState.stories.find((s) => s.id === "rss_cap_5");
-  const unSeen7 = dbState.stories.find((s) => s.id === "rss_cap_6");
-  assert.notStrictEqual(unSeen6.qa_failed, true);
-  assert.notStrictEqual(unSeen7.qa_failed, true);
+  // Every story outside the exact authority remains untouched.
+  for (const story of dbState.stories.slice(1)) {
+    assert.notStrictEqual(story.qa_failed, true);
+  }
 });
 
-test("multi-candidate: YouTube-complete partial rows do not consume stabilisation windows", async () => {
+test("exact guarded candidate: a YouTube-complete bound row fails closed as not ready", async () => {
   // Legacy partial row: YouTube is already public while secondary
   // platforms are missing. QA remains skipped, but the secondary freeze
   // means no uploader is allowed to fire.
@@ -1446,7 +2499,9 @@ test("multi-candidate: YouTube-complete partial rows do not consume stabilisatio
   });
 
   const result = await publishNextStory();
-  assert.strictEqual(result, null);
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.top_reason, "guarded_exact_story_not_ready");
+  assert.equal(result.story_id, partial.id);
   assert.deepEqual(uploaderCalls, []);
   assert.deepEqual(governedDispatchCalls, []);
 
@@ -1515,9 +2570,7 @@ test("publishNextStory: QA-failed story is NOT re-selected on subsequent calls (
     stories: [bad, good],
   });
 
-  // First call with multi-candidate fallback: both bad AND good go
-  // through QA in the SAME call because cqaResult is shared. Both
-  // fail → both marked qa_failed → no_safe_candidate.
+  // The first exact operation can mutate only the bound bad story.
   const result = await publishNextStory();
   assert.strictEqual(result.no_safe_candidate, true);
 
@@ -1530,20 +2583,20 @@ test("publishNextStory: QA-failed story is NOT re-selected on subsequent calls (
   assert.strictEqual(badRow.publish_status, "failed");
 
   const goodRow = dbState.stories.find((s) => s.id === "rss_good");
+  assert.notStrictEqual(goodRow.qa_failed, true);
+
+  // A separately bound subsequent operation skips the failed row and
+  // evaluates the next story. A third operation finds no ready target.
+  const result2 = await publishNextStory();
+  assert.strictEqual(result2.no_safe_candidate, true);
   assert.strictEqual(
-    goodRow.qa_failed,
+    dbState.stories.find((s) => s.id === "rss_good").qa_failed,
     true,
-    "good story (with same failing QA stub) should also be qa_failed after multi-candidate walk",
   );
 
-  // Deadlock invariant: a subsequent call must skip both (selector
-  // filter on qa_failed === true).
-  const result2 = await publishNextStory();
-  assert.strictEqual(
-    result2,
-    null,
-    "subsequent call must find NO eligible story (both are qa_failed)",
-  );
+  const result3 = await publishNextStory();
+  assert.equal(result3.publish_dispatch_blocked, true);
+  assert.equal(result3.top_reason, "guarded_exact_story_not_ready");
 });
 
 test("publishNextStory: selector skips publish_status='failed' stories (all-core upload-fail case)", async () => {

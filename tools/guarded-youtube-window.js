@@ -93,7 +93,6 @@ const VALUE_FLAGS = new Map([
     "confirm-outside-cadence-authorisation-id",
     "confirmOutsideCadenceAuthorisationId",
   ],
-  ["generated-at", "generatedAt"],
   ["out-dir", "outDir"],
 ]);
 

@@ -31,7 +31,7 @@ const {
 const STORY_ID = "official_d86953ca92ca";
 const SCRIPT =
   "Final Fantasy XIV just revealed a tank that fights with two giant shields.";
-const GENERATED_AT = "2026-07-27T17:00:00.000Z";
+const GENERATED_AT = "2026-07-27T15:00:00.000Z";
 const SOURCE_MEDIA_POLICY = "LICENSED_OFFICIAL_FFXIV";
 const FFXIV_LICENCE_URL =
   "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc";
@@ -500,6 +500,7 @@ function addGovernedSourceMedia(values) {
   const sourceMediaManifest = {
     schema_version: SOURCE_MEDIA_MANIFEST_SCHEMA,
     story_id: STORY_ID,
+    generated_at: GENERATED_AT,
     rights_review: {
       path: path.relative(
         path.dirname(sourceMediaManifestPath),
@@ -808,6 +809,7 @@ test("licensed source media produces a truthful mixed HyperFrames manifest bound
       expectedSourceMediaManifestSha256:
         sourceMedia.sourceMediaManifestSha256,
       sourceMediaPolicy: SOURCE_MEDIA_POLICY,
+      validationBoundaryAt: GENERATED_AT,
     });
 
     const combined = JSON.parse(
@@ -842,9 +844,102 @@ test("licensed source media produces a truthful mixed HyperFrames manifest bound
       expectedSourceMediaManifestSha256:
         sourceMedia.sourceMediaManifestSha256,
       sourceMediaPolicy: SOURCE_MEDIA_POLICY,
+      validationBoundaryAt: GENERATED_AT,
     });
     assert.equal(validation.thirdPartyMediaUsed, true);
     assert.equal(validation.sourceMedia.components.length, 1);
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("combined manifest validation rejects a mixed HyperFrames intermediate that aliases its owned backbone", async () => {
+  const values = fixture();
+  try {
+    const sourceMedia = addGovernedSourceMedia(values);
+    const outputPath = path.join(
+      values.root,
+      "derived",
+      "combined-owned-motion-manifest.json",
+    );
+    await deriveCombinedOwnedMotionManifest({
+      sourceManifestPath: values.originalManifestPath,
+      storyId: STORY_ID,
+      hyperframesVideoPath: values.hyperframesPath,
+      hyperframesProbe: videoProbe(),
+      projectFilePaths: [
+        values.projectPath,
+        values.configPath,
+        sourceMedia.sourceAssetPath,
+      ],
+      outputPath,
+      generatedAt: GENERATED_AT,
+      generatorIdentity: "hyperframes@0.7.76",
+      sourceMediaManifestPath:
+        sourceMedia.sourceMediaManifestPath,
+      expectedSourceMediaManifestSha256:
+        sourceMedia.sourceMediaManifestSha256,
+      sourceMediaPolicy: SOURCE_MEDIA_POLICY,
+      validationBoundaryAt: GENERATED_AT,
+    });
+
+    const combined = JSON.parse(
+      fs.readFileSync(outputPath, "utf8"),
+    );
+    const hybrid = combined.assets.find(
+      (asset) => asset.role === "hyperframes_intermediate",
+    );
+    const backbone = combined.assets.find(
+      (asset) => asset.role === "owned_motion_backbone",
+    );
+    delete backbone.attribution_required;
+    writeJson(outputPath, combined);
+    assert.throws(
+      () =>
+        validateCombinedOwnedMotionManifest({
+          manifestPath: outputPath,
+          storyId: STORY_ID,
+          hyperframesVideoPath: values.hyperframesPath,
+          sourceMediaManifestPath:
+            sourceMedia.sourceMediaManifestPath,
+          expectedSourceMediaManifestSha256:
+            sourceMedia.sourceMediaManifestSha256,
+          sourceMediaPolicy: SOURCE_MEDIA_POLICY,
+          validationBoundaryAt: GENERATED_AT,
+        }),
+      (error) =>
+        error?.codes?.includes(
+          "hyperframes_source_backbone_policy_invalid",
+        ),
+    );
+
+    backbone.attribution_required = false;
+    backbone.path = hybrid.path;
+    backbone.sha256 = hybrid.sha256;
+    hybrid.provenance.source_backbone = {
+      path: hybrid.path,
+      sha256: hybrid.sha256,
+    };
+    writeJson(outputPath, combined);
+
+    assert.throws(
+      () =>
+        validateCombinedOwnedMotionManifest({
+          manifestPath: outputPath,
+          storyId: STORY_ID,
+          hyperframesVideoPath: values.hyperframesPath,
+          sourceMediaManifestPath:
+            sourceMedia.sourceMediaManifestPath,
+          expectedSourceMediaManifestSha256:
+            sourceMedia.sourceMediaManifestSha256,
+          sourceMediaPolicy: SOURCE_MEDIA_POLICY,
+          validationBoundaryAt: GENERATED_AT,
+        }),
+      (error) =>
+        error?.codes?.includes(
+          "hyperframes_source_backbone_not_distinct",
+        ),
+    );
   } finally {
     fs.rmSync(values.root, { recursive: true, force: true });
   }

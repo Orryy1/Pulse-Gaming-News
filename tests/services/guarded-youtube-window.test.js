@@ -8,11 +8,18 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  assertGuardedSqliteTransactionBoundary,
   executeGuardedYoutubeWindow,
   inspectGuardedYoutubeDatabase,
   renderGuardedYoutubeWindowMarkdown,
   validateBackupEvidence,
 } = require("../../lib/ops/guarded-youtube-window");
+const {
+  sqliteMutationBoundaryBlockers,
+} = require("../../lib/ops/stabilisation-cutover-reconcile");
+const {
+  fingerprintOutsideCadenceAuthorisation,
+} = require("../../lib/services/publication-admission");
 
 const STORY_ID = "official_d86953ca92ca";
 const NOW = "2026-07-27T19:02:00.000Z";
@@ -28,6 +35,22 @@ const DISPATCH_KEY = `youtube:${STORY_ID}:${SCHEDULED_FOR}`;
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function createCheckpointedWalDatabase(databasePath) {
+  const Database = require("better-sqlite3");
+  const db = new Database(databasePath);
+  db.exec(
+    `CREATE TABLE boundary_probe (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       value TEXT NOT NULL
+     )`,
+  );
+  db.pragma("journal_mode = WAL");
+  db.pragma("wal_autocheckpoint = 0");
+  db.pragma("wal_checkpoint(TRUNCATE)");
+  db.close();
+  return sha256(fs.readFileSync(databasePath));
 }
 
 function liveEnv(patch = {}) {
@@ -127,6 +150,36 @@ function scheduledRow(storyId = STORY_ID, patch = {}) {
   };
 }
 
+function persistedOutsideCadenceAuthorisation({
+  scheduledFor,
+  authorisationId,
+  authorisedAt,
+  dispatchKey,
+  requestFingerprint = REQUEST_SHA,
+  patch = {},
+}) {
+  const payload = {
+    schema_version: "pulse-outside-cadence-authorisation-v1",
+    authorisation_id: authorisationId,
+    confirmed_authorisation_id: authorisationId,
+    one_shot: true,
+    basis: "explicit_operator_goal_authorisation",
+    story_id: STORY_ID,
+    channel_id: "pulse-gaming",
+    platform: "youtube",
+    scheduled_for: scheduledFor,
+    authorised_at: authorisedAt,
+    dispatch_idempotency_key: dispatchKey,
+    request_fingerprint: requestFingerprint,
+    ...patch,
+  };
+  return {
+    ...payload,
+    binding_sha256:
+      fingerprintOutsideCadenceAuthorisation(payload),
+  };
+}
+
 function baseSnapshot(patch = {}) {
   return {
     database_path: "C:\\data\\pulse.db",
@@ -213,6 +266,11 @@ function commonOptions(action, dependencies = {}, patch = {}) {
         script_sha256: SCRIPT_SHA,
         request_fingerprint: REQUEST_SHA,
       }),
+      mutationBoundaryBlockers: () => [],
+      assertTransactionBoundary: () => 7,
+      readDatabaseDataVersion: () => {
+        throw new Error("post_transaction_data_version_read_forbidden");
+      },
       ...dependencies,
     },
     ...patch,
@@ -395,6 +453,126 @@ test("inspect binds outside-cadence authorisation to the immutable scheduled row
   );
 });
 
+test("inspect rejects a legacy surface-only outside-cadence row the publisher would refuse", async () => {
+  const scheduledFor = "2026-07-27T18:58:00.000Z";
+  const authorisationId = "thread-authorisation-current";
+  const dispatchKey = `youtube:${STORY_ID}:${scheduledFor}`;
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "inspect",
+      {
+        inspectDatabase: () =>
+          baseSnapshot({
+            scheduled_rows: [
+              scheduledRow(STORY_ID, {
+                scheduled_for: scheduledFor,
+                control_tower_checked_at:
+                  "2026-07-27T18:58:00.000Z",
+                dispatch_idempotency_key: dispatchKey,
+                outside_cadence_authorisation: {
+                  authorisation_id: authorisationId,
+                  one_shot: true,
+                  basis: "explicit_operator_goal_authorisation",
+                },
+              }),
+            ],
+            lifecycle_by_state: {
+              SCRIPT_READY: { script_sha256: SCRIPT_SHA },
+              RENDERED: {
+                media_sha256: MEDIA_SHA,
+                renderer_manifest_sha256: RENDERER_SHA,
+              },
+            },
+          }),
+      },
+      {
+        scheduledFor,
+        confirmScheduledFor: scheduledFor,
+        confirmDispatchKey: dispatchKey,
+        generatedAt: "2026-07-27T18:58:30.000Z",
+        outsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceOneShot: true,
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "scheduled_outside_cadence_authorisation_schema_invalid",
+    ),
+  );
+});
+
+test("inspect accepts the same fully bound outside-cadence row as the publisher", async () => {
+  const scheduledFor = "2026-07-27T18:58:00.000Z";
+  const authorisationId = "thread-authorisation-current";
+  const dispatchKey = `youtube:${STORY_ID}:${scheduledFor}`;
+  const authorisation = persistedOutsideCadenceAuthorisation({
+    scheduledFor,
+    authorisationId,
+    authorisedAt: "2026-07-27T18:57:30.000Z",
+    dispatchKey,
+  });
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "inspect",
+      {
+        inspectDatabase: () =>
+          baseSnapshot({
+            scheduled_rows: [
+              scheduledRow(STORY_ID, {
+                scheduled_for: scheduledFor,
+                control_tower_checked_at:
+                  "2026-07-27T18:58:00.000Z",
+                dispatch_idempotency_key: dispatchKey,
+                outside_cadence_authorisation: authorisation,
+              }),
+            ],
+            lifecycle_by_state: {
+              SCRIPT_READY: { script_sha256: SCRIPT_SHA },
+              RENDERED: {
+                media_sha256: MEDIA_SHA,
+                renderer_manifest_sha256: RENDERER_SHA,
+              },
+            },
+          }),
+      },
+      {
+        scheduledFor,
+        confirmScheduledFor: scheduledFor,
+        confirmDispatchKey: dispatchKey,
+        generatedAt: "2026-07-27T18:58:30.000Z",
+        outsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceAuthorisationId: authorisationId,
+        confirmOutsideCadenceOneShot: true,
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "READY_TO_DISPATCH");
+  assert.deepEqual(result.blockers, []);
+});
+
+test("production execution rejects an injected guarded clock", async () => {
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "inspect",
+      {
+        inspectDatabase: () => baseSnapshot(),
+      },
+      {
+        env: liveEnv({ NODE_ENV: "production" }),
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(result.blockers.includes("operator_generated_at_forbidden"));
+  assert.notEqual(result.generated_at, NOW);
+});
+
 test("admit invokes existing admission at most once, then proves the exact SCHEDULED row", async () => {
   let inspections = 0;
   let admissions = 0;
@@ -450,6 +628,127 @@ test("admit invokes existing admission at most once, then proves the exact SCHED
   assert.equal(result.safety.platforms_contacted, false);
 });
 
+test("admit rejects a WAL created after pre-open validation before admission can mutate", async (t) => {
+  const Database = require("better-sqlite3");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-admit-wal-race-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const databasePath = path.join(root, "pulse.db");
+  const databaseSha = createCheckpointedWalDatabase(databasePath);
+  let admissions = 0;
+
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "admit",
+      {
+        inspectDatabase: () =>
+          baseSnapshot({
+            database_path: databasePath,
+            database_sha256: databaseSha,
+          }),
+        validateBackupEvidence: () => ({
+          valid: true,
+          blockers: [],
+          evidence: {
+            source_database_path: databasePath,
+            source_database_sha256: databaseSha,
+            verified_at: "2026-07-27T18:50:00.000Z",
+          },
+        }),
+        mutationBoundaryBlockers: sqliteMutationBoundaryBlockers,
+        assertTransactionBoundary:
+          assertGuardedSqliteTransactionBoundary,
+        openRepositories: () => {
+          const db = new Database(databasePath);
+          db.prepare(
+            "INSERT INTO boundary_probe (value) VALUES ('racing-wal')",
+          ).run();
+          return {
+            repos: {
+              db,
+              stories: {},
+              publicationGovernance: {},
+            },
+            close() {
+              db.close();
+            },
+          };
+        },
+        admitPublication: async () => {
+          admissions += 1;
+          return { admitted: true, blockers: [] };
+        },
+      },
+      {
+        databasePath,
+        env: liveEnv({ SQLITE_DB_PATH: databasePath }),
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(result.blockers.includes("source_database_wal_not_checkpointed"));
+  assert.equal(result.mutated, false);
+  assert.equal(result.safety.platforms_contacted, false);
+  assert.equal(admissions, 0);
+});
+
+test("admit rejects SHM-only source state at the strict pre-open boundary", async (t) => {
+  const Database = require("better-sqlite3");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-admit-shm-"));
+  const databasePath = path.join(root, "pulse.db");
+  const databaseSha = createCheckpointedWalDatabase(databasePath);
+  const reader = new Database(databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  t.after(() => {
+    reader.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  reader.prepare("SELECT COUNT(*) FROM boundary_probe").pluck().get();
+  assert.equal(fs.statSync(`${databasePath}-wal`).size, 0);
+  assert.ok(fs.statSync(`${databasePath}-shm`).size > 0);
+  let repositoryOpens = 0;
+
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "admit",
+      {
+        inspectDatabase: () =>
+          baseSnapshot({
+            database_path: databasePath,
+            database_sha256: databaseSha,
+          }),
+        validateBackupEvidence: () => ({
+          valid: true,
+          blockers: [],
+          evidence: {
+            source_database_path: databasePath,
+            source_database_sha256: databaseSha,
+            verified_at: "2026-07-27T18:50:00.000Z",
+          },
+        }),
+        mutationBoundaryBlockers: sqliteMutationBoundaryBlockers,
+        openRepositories: () => {
+          repositoryOpens += 1;
+          throw new Error("must_not_open");
+        },
+      },
+      {
+        databasePath,
+        env: liveEnv({ SQLITE_DB_PATH: databasePath }),
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes("source_database_shared_memory_present"),
+  );
+  assert.equal(result.mutated, false);
+  assert.equal(repositoryOpens, 0);
+});
+
 test("admit refuses any existing scheduled row without calling admission", async () => {
   let admissions = 0;
   const result = await executeGuardedYoutubeWindow(
@@ -493,6 +792,7 @@ test("admit accepts only an exact newly APPLIED governed publication review", as
 test("dispatch calls the real publisher boundary once and independently confirms publication", async () => {
   let inspections = 0;
   let dispatches = 0;
+  let publisherOptions = null;
   const result = await executeGuardedYoutubeWindow(
     commonOptions("dispatch", {
       inspectDatabase: () => {
@@ -535,10 +835,23 @@ test("dispatch calls the real publisher boundary once and independently confirms
         close() {},
       }),
       publisherRuntimeDatabasePath: () => "C:\\data\\pulse.db",
-      publishNextStory: async () => {
+      publishNextStory: async (options) => {
         dispatches += 1;
+        publisherOptions = options;
+        options.onYoutubeAuthTelemetry({
+          schema_version: "pulse-youtube-auth-telemetry-v1",
+          durable_oauth_or_token_mutated: false,
+          ephemeral_access_token_refresh: {
+            attempted: true,
+            succeeded: true,
+            failed: false,
+          },
+        });
         return {
           youtube: true,
+          story_id: STORY_ID,
+          dispatch_idempotency_key: DISPATCH_KEY,
+          request_fingerprint: REQUEST_SHA,
           platform_outcomes: { youtube: "new_upload" },
         };
       },
@@ -551,6 +864,128 @@ test("dispatch calls the real publisher boundary once and independently confirms
   assert.equal(result.publication.external_id, "yt_exact_123");
   assert.equal(result.publication.story_projection_confirmed, true);
   assert.equal(result.safety.platforms_contacted, true);
+  assert.equal(result.safety.durable_oauth_or_token_mutated, false);
+  assert.deepEqual(
+    result.safety.ephemeral_youtube_access_token_refresh,
+    {
+      attempted: true,
+      succeeded: true,
+      failed: false,
+    },
+  );
+  assert.deepEqual(publisherOptions.exactDispatchBinding, {
+    storyId: STORY_ID,
+    platform: "youtube",
+    scheduledFor: SCHEDULED_FOR,
+    scheduledEventId: 90,
+    dispatchIdempotencyKey: DISPATCH_KEY,
+    requestFingerprint: REQUEST_SHA,
+    databaseDataVersion: 7,
+  });
+});
+
+test("dispatch rejects a WAL created after pre-open validation before contacting YouTube", async (t) => {
+  const Database = require("better-sqlite3");
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-dispatch-wal-race-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const databasePath = path.join(root, "pulse.db");
+  const databaseSha = createCheckpointedWalDatabase(databasePath);
+  let dispatches = 0;
+
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "dispatch",
+      {
+        inspectDatabase: () =>
+          baseSnapshot({
+            database_path: databasePath,
+            database_sha256: databaseSha,
+            scheduled_rows: [scheduledRow()],
+            lifecycle_by_state: {
+              SCRIPT_READY: { script_sha256: SCRIPT_SHA },
+              RENDERED: {
+                media_sha256: MEDIA_SHA,
+                renderer_manifest_sha256: RENDERER_SHA,
+              },
+            },
+          }),
+        validateBackupEvidence: () => ({
+          valid: true,
+          blockers: [],
+          evidence: {
+            source_database_path: databasePath,
+            source_database_sha256: databaseSha,
+            verified_at: "2026-07-27T18:50:00.000Z",
+          },
+        }),
+        mutationBoundaryBlockers: sqliteMutationBoundaryBlockers,
+        assertTransactionBoundary:
+          assertGuardedSqliteTransactionBoundary,
+        openRepositories: () => {
+          const db = new Database(databasePath);
+          db.prepare(
+            "INSERT INTO boundary_probe (value) VALUES ('racing-wal')",
+          ).run();
+          return {
+            repos: { db, runtimeLeases: {} },
+            close() {
+              db.close();
+            },
+          };
+        },
+        publisherRuntimeDatabasePath: () => databasePath,
+        publishNextStory: async () => {
+          dispatches += 1;
+        },
+      },
+      {
+        databasePath,
+        env: liveEnv({ SQLITE_DB_PATH: databasePath }),
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(result.blockers.includes("source_database_wal_not_checkpointed"));
+  assert.equal(result.mutated, false);
+  assert.equal(result.safety.platforms_contacted, false);
+  assert.equal(dispatches, 0);
+});
+
+test("dispatch transaction returns its data_version baseline before a post-return external commit", (t) => {
+  const Database = require("better-sqlite3");
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-dispatch-data-version-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  const databaseSha = createCheckpointedWalDatabase(databasePath);
+  const primary = new Database(databasePath, { fileMustExist: true });
+  const writer = new Database(databasePath, { fileMustExist: true });
+  t.after(() => {
+    writer.close();
+    primary.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const guardedBaseline = assertGuardedSqliteTransactionBoundary({
+    repos: { db: primary },
+    databasePath,
+    expectedSourceSha256: databaseSha,
+    mutationBoundaryBlockers: sqliteMutationBoundaryBlockers,
+  });
+  writer
+    .prepare(
+      "INSERT INTO boundary_probe (value) VALUES ('after-transaction')",
+    )
+    .run();
+  const currentDataVersion = primary.pragma("data_version", {
+    simple: true,
+  });
+
+  assert.equal(Number.isSafeInteger(guardedBaseline), true);
+  assert.notEqual(currentDataVersion, guardedBaseline);
 });
 
 test("dispatch never retries an ambiguous publisher failure", async () => {
@@ -575,8 +1010,17 @@ test("dispatch never retries an ambiguous publisher failure", async () => {
         close() {},
       }),
       publisherRuntimeDatabasePath: () => "C:\\data\\pulse.db",
-      publishNextStory: async () => {
+      publishNextStory: async (options) => {
         dispatches += 1;
+        options.onYoutubeAuthTelemetry({
+          schema_version: "pulse-youtube-auth-telemetry-v1",
+          durable_oauth_or_token_mutated: false,
+          ephemeral_access_token_refresh: {
+            attempted: true,
+            succeeded: false,
+            failed: true,
+          },
+        });
         throw new Error("network outcome unknown");
       },
     }),
@@ -586,6 +1030,14 @@ test("dispatch never retries an ambiguous publisher failure", async () => {
   assert.ok(result.blockers.includes("publisher_dispatch_ambiguous_no_retry"));
   assert.equal(dispatches, 1);
   assert.equal(result.retry_attempted, false);
+  assert.deepEqual(
+    result.safety.ephemeral_youtube_access_token_refresh,
+    {
+      attempted: true,
+      succeeded: false,
+      failed: true,
+    },
+  );
 });
 
 test("dispatch holds before the publisher on runtime, identity, build or selection drift", async () => {
@@ -821,5 +1273,79 @@ test("database inspection is read-only and exposes stopped-runtime evidence", (t
   assert.equal(snapshot.running_job_count, 0);
   assert.equal(snapshot.active_worker_count, 0);
   assert.equal(snapshot.scheduled_rows.length, 0);
+  assert.equal(sha256(fs.readFileSync(databasePath)), before);
+});
+
+test("database inspection rejects SHM-only source state without touching source bytes", (t) => {
+  const Database = require("better-sqlite3");
+  const { runMigrations } = require("../../lib/migrate");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-guarded-shm-"));
+  const databasePath = path.join(root, "pulse.db");
+  const db = new Database(databasePath);
+  runMigrations(db);
+  db.close();
+  const setup = new Database(databasePath, { fileMustExist: true });
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+
+  const reader = new Database(databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  t.after(() => {
+    reader.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  reader.prepare("SELECT version FROM schema_migrations LIMIT 1").get();
+  assert.equal(fs.statSync(`${databasePath}-wal`).size, 0);
+  assert.ok(fs.statSync(`${databasePath}-shm`).size > 0);
+  const before = sha256(fs.readFileSync(databasePath));
+
+  const snapshot = inspectGuardedYoutubeDatabase({
+    databasePath,
+    storyId: STORY_ID,
+    generatedAt: NOW,
+  });
+
+  assert.equal(snapshot.schema_ready, false);
+  assert.ok(
+    snapshot.schema_blockers.includes(
+      "source_database_shared_memory_present",
+    ),
+  );
+  assert.equal(sha256(fs.readFileSync(databasePath)), before);
+});
+
+test("database inspection snapshots a clean checkpointed WAL database without creating source sidecars", (t) => {
+  const Database = require("better-sqlite3");
+  const { runMigrations } = require("../../lib/migrate");
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-guarded-wal-snapshot-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const databasePath = path.join(root, "pulse.db");
+  const db = new Database(databasePath);
+  runMigrations(db);
+  db.close();
+  const setup = new Database(databasePath, { fileMustExist: true });
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+  assert.equal(fs.existsSync(`${databasePath}-wal`), false);
+  assert.equal(fs.existsSync(`${databasePath}-shm`), false);
+  const before = sha256(fs.readFileSync(databasePath));
+
+  const snapshot = inspectGuardedYoutubeDatabase({
+    databasePath,
+    storyId: STORY_ID,
+    generatedAt: NOW,
+  });
+
+  assert.equal(snapshot.schema_ready, true);
+  assert.equal(fs.existsSync(`${databasePath}-wal`), false);
+  assert.equal(fs.existsSync(`${databasePath}-shm`), false);
   assert.equal(sha256(fs.readFileSync(databasePath)), before);
 });

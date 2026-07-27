@@ -5,12 +5,13 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { test } = require("node:test");
+const { after, test } = require("node:test");
 const Database = require("better-sqlite3");
 
 const {
   admitPublication,
   buildImmutablePublicationEvidence,
+  fingerprintOutsideCadenceAuthorisation,
 } = require("../../lib/services/publication-admission");
 const {
   fingerprintPublicationRequest,
@@ -57,6 +58,39 @@ const HASHES = Object.freeze({
   source_evidence_sha256: "1".repeat(64),
   rights_ledger_sha256: hashRightsLedger(RIGHTS_LEDGER),
   qa_report_sha256: "3".repeat(64),
+});
+const PUBLICATION_METADATA_DIRECTORY = fs.mkdtempSync(
+  path.join(os.tmpdir(), "pulse-approved-publication-metadata-"),
+);
+const PUBLICATION_METADATA_PATH = path.join(
+  PUBLICATION_METADATA_DIRECTORY,
+  "publication-metadata.json",
+);
+const PUBLICATION_METADATA_VALUE = Object.freeze({
+  schema_version: "pulse-governed-publication-metadata-v1",
+  story_id: "story-admission-1",
+  channel_id: "pulse-gaming",
+  platform: "youtube_shorts",
+  title: "The exact approved YouTube title",
+  description:
+    "The exact approved YouTube description.\n\nFootage: © SQUARE ENIX",
+});
+const PUBLICATION_METADATA_BYTES = Buffer.from(
+  `${JSON.stringify(PUBLICATION_METADATA_VALUE, null, 2)}\n`,
+);
+fs.writeFileSync(PUBLICATION_METADATA_PATH, PUBLICATION_METADATA_BYTES);
+const PUBLICATION_METADATA = Object.freeze({
+  path: PUBLICATION_METADATA_PATH,
+  sha256: sha256(PUBLICATION_METADATA_BYTES),
+  platform: PUBLICATION_METADATA_VALUE.platform,
+  title: PUBLICATION_METADATA_VALUE.title,
+  description: PUBLICATION_METADATA_VALUE.description,
+});
+after(() => {
+  fs.rmSync(PUBLICATION_METADATA_DIRECTORY, {
+    recursive: true,
+    force: true,
+  });
 });
 const LIVE_ENV = Object.freeze({
   PULSE_OPERATING_MODE: "LIVE_GUARDED",
@@ -142,6 +176,8 @@ function completeEvidence(overrides = {}) {
       youtube_field_value: true,
       reviewed_at: "2026-07-27T08:45:00.000Z",
     },
+    publication_metadata_sha256: PUBLICATION_METADATA.sha256,
+    publication_metadata: PUBLICATION_METADATA,
     renderer_manifest: manifest,
     renderer_manifest_sha256: fingerprintRendererManifest(manifest),
     ...overrides,
@@ -239,6 +275,48 @@ function assertNoAdmissionRows(db) {
     0,
   );
 }
+
+test("operator admission runs the supplied database boundary check first inside its write transaction", async (t) => {
+  const { db, repos } = fixture(t);
+  let boundaryChecks = 0;
+
+  await assert.rejects(
+    admitPublication(
+      admissionInput(repos, {
+        transactionBoundaryCheck() {
+          boundaryChecks += 1;
+          assert.equal(db.inTransaction, true);
+          assertNoAdmissionRows(db);
+          throw new Error("source_database_wal_not_checkpointed");
+        },
+      }),
+    ),
+    /source_database_wal_not_checkpointed/,
+  );
+
+  assert.equal(boundaryChecks, 1);
+  assertNoAdmissionRows(db);
+});
+
+test("immutable publication evidence retains the exact reviewed metadata binding", () => {
+  const publicationMetadata = { ...PUBLICATION_METADATA };
+  const immutable = buildImmutablePublicationEvidence({
+    evidence: completeEvidence({
+      publication_metadata_sha256: publicationMetadata.sha256,
+      publication_metadata: publicationMetadata,
+    }),
+    operatingMode: "LIVE_GUARDED",
+  });
+
+  assert.equal(
+    immutable.publication_metadata_sha256,
+    publicationMetadata.sha256,
+  );
+  assert.deepEqual(
+    immutable.publication_metadata,
+    publicationMetadata,
+  );
+});
 
 test("operator admission atomically records exact evidence through SCHEDULED and exact replay is idempotent", async (t) => {
   const { db, repos, story } = fixture(t);
@@ -392,6 +470,110 @@ test("operator admission atomically records exact evidence through SCHEDULED and
   );
 });
 
+test("admission rejects a relative publication-metadata path without writing governance rows", async (t) => {
+  const { db, repos } = fixture(t);
+  const relativePath = path.relative(
+    process.cwd(),
+    PUBLICATION_METADATA.path,
+  );
+
+  const result = await admitPublication(
+    admissionInput(repos, {
+      evidence: completeEvidence({
+        publication_metadata: {
+          ...PUBLICATION_METADATA,
+          path: relativePath,
+        },
+      }),
+    }),
+  );
+
+  assert.equal(result.admitted, false);
+  assert.ok(
+    result.blockers.includes(
+      "publication_metadata_canonical_absolute_path_required",
+    ),
+  );
+  assertNoAdmissionRows(db);
+});
+
+test("admission rejects a missing publication-metadata file without writing governance rows", async (t) => {
+  const { db, mediaPath, repos } = fixture(t);
+  const missingPath = path.join(
+    path.dirname(mediaPath),
+    "missing-publication-metadata.json",
+  );
+
+  const result = await admitPublication(
+    admissionInput(repos, {
+      evidence: completeEvidence({
+        publication_metadata: {
+          ...PUBLICATION_METADATA,
+          path: missingPath,
+        },
+      }),
+    }),
+  );
+
+  assert.equal(result.admitted, false);
+  assert.ok(
+    result.blockers.includes("publication_metadata_file_required"),
+  );
+  assertNoAdmissionRows(db);
+});
+
+test("admission rejects drifted publication-metadata bytes without writing governance rows", async (t) => {
+  const { db, mediaPath, repos } = fixture(t);
+  const driftedPath = path.join(
+    path.dirname(mediaPath),
+    "drifted-publication-metadata.json",
+  );
+  fs.writeFileSync(
+    driftedPath,
+    Buffer.concat([PUBLICATION_METADATA_BYTES, Buffer.from(" ")]),
+  );
+
+  const result = await admitPublication(
+    admissionInput(repos, {
+      evidence: completeEvidence({
+        publication_metadata: {
+          ...PUBLICATION_METADATA,
+          path: driftedPath,
+        },
+      }),
+    }),
+  );
+
+  assert.equal(result.admitted, false);
+  assert.ok(
+    result.blockers.includes(
+      "publication_metadata_sha256_mismatch",
+    ),
+  );
+  assertNoAdmissionRows(db);
+});
+
+test("admission rejects a mutable metadata snapshot that differs from the approved file", async (t) => {
+  const { db, repos } = fixture(t);
+
+  const result = await admitPublication(
+    admissionInput(repos, {
+      evidence: completeEvidence({
+        publication_metadata: {
+          ...PUBLICATION_METADATA,
+          title: "A replacement title that was never approved",
+        },
+      }),
+    }),
+  );
+
+  assert.equal(result.admitted, false);
+  assert.ok(
+    result.blockers.includes("publication_metadata_binding_mismatch"),
+  );
+  assertNoAdmissionRows(db);
+});
+
 test("a changed request cannot reuse an admitted operation identity or append partial history", async (t) => {
   const { db, mediaPath, repos } = fixture(t);
   const input = admissionInput(repos);
@@ -425,6 +607,79 @@ test("a changed request cannot reuse an admitted operation identity or append pa
   assert.notEqual(
     originalAudit.media_sha256,
     sha256("changed-after-operator-approval"),
+  );
+});
+
+test("metadata-only replay cannot reuse an admitted operation identity", async (t) => {
+  const { db, mediaPath, repos } = fixture(t);
+  const input = admissionInput(repos);
+  const admitted = await admitPublication(input);
+  const replacementValue = {
+    ...PUBLICATION_METADATA_VALUE,
+    title: "A different valid title for the same scheduled operation",
+  };
+  const replacementBytes = Buffer.from(
+    `${JSON.stringify(replacementValue, null, 2)}\n`,
+  );
+  const replacementPath = path.join(
+    path.dirname(mediaPath),
+    "replacement-publication-metadata.json",
+  );
+  fs.writeFileSync(replacementPath, replacementBytes);
+  const replacementMetadata = {
+    path: replacementPath,
+    sha256: sha256(replacementBytes),
+    platform: replacementValue.platform,
+    title: replacementValue.title,
+    description: replacementValue.description,
+  };
+
+  await assert.rejects(
+    () =>
+      admitPublication(
+        admissionInput(repos, {
+          evidence: completeEvidence({
+            publication_metadata_sha256:
+              replacementMetadata.sha256,
+            publication_metadata: replacementMetadata,
+          }),
+        }),
+      ),
+    /publication_idempotency_conflict/,
+  );
+
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM operator_audit_log").get()
+      .count,
+    1,
+  );
+  assert.equal(
+    db
+      .prepare("SELECT COUNT(*) AS count FROM publication_lifecycle_events")
+      .get().count,
+    9,
+  );
+  const scheduled = JSON.parse(
+    db
+      .prepare(
+        `SELECT evidence_json
+         FROM publication_lifecycle_events
+         WHERE story_id = ? AND platform = 'youtube'
+           AND to_state = 'SCHEDULED'`,
+      )
+      .get("story-admission-1").evidence_json,
+  );
+  assert.equal(
+    scheduled.request_fingerprint,
+    admitted.request_fingerprint,
+  );
+  assert.equal(
+    scheduled.publication_evidence.publication_metadata_sha256,
+    PUBLICATION_METADATA.sha256,
+  );
+  assert.equal(
+    scheduled.publication_evidence.publication_metadata.path,
+    PUBLICATION_METADATA.path,
   );
 });
 
@@ -474,10 +729,27 @@ test("operator admission accepts an exact one-shot outside-cadence authorisation
   );
 
   assert.equal(result.admitted, true);
-  assert.deepEqual(result.outside_cadence_authorisation, {
+  const expectedAuthorisation = {
+    schema_version: "pulse-outside-cadence-authorisation-v1",
     authorisation_id: authorisationId,
+    confirmed_authorisation_id: authorisationId,
     one_shot: true,
     basis: "explicit_operator_goal_authorisation",
+    story_id: "story-admission-1",
+    channel_id: "pulse-gaming",
+    platform: "youtube",
+    scheduled_for: "2026-07-27T10:00:00.000Z",
+    authorised_at: "2026-07-27T09:55:00.000Z",
+    dispatch_idempotency_key:
+      "youtube:story-admission-1:2026-07-27T10:00:00.000Z",
+    request_fingerprint: result.request_fingerprint,
+  };
+  assert.deepEqual(result.outside_cadence_authorisation, {
+    ...expectedAuthorisation,
+    binding_sha256:
+      fingerprintOutsideCadenceAuthorisation(
+        expectedAuthorisation,
+      ),
   });
   const scheduled = JSON.parse(
     db
@@ -590,6 +862,17 @@ test("missing QA or evidence hashes fail closed without partial admission rows",
         "source_evidence_hash_required",
         "rights_ledger_hash_required",
       ],
+    },
+    {
+      name: "missing reviewed publication metadata",
+      storyOverrides: {},
+      inputOverrides: {
+        evidence: completeEvidence({
+          publication_metadata_sha256: undefined,
+          publication_metadata: undefined,
+        }),
+      },
+      blockers: ["publication_metadata_hash_required"],
     },
     {
       name: "unresolved story QA failure",

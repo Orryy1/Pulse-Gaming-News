@@ -54,6 +54,7 @@ function main(argv = process.argv.slice(2)) {
         databasePath: inspection.database_path,
         plan,
         env: process.env,
+        allowSourceMismatch: Boolean(existingAudit),
       });
     } catch (error) {
       executionError = error;

@@ -42,6 +42,7 @@ test("validates the exact Evercold source-media manifest and all seven local ass
     expectedManifestSha256: sha256(manifestBytes),
     expectedStoryId: STORY_ID,
     compositionDurationSeconds: 28,
+    validationBoundaryAt: new Date().toISOString(),
   });
 
   assert.equal(result.story_id, STORY_ID);

@@ -55,7 +55,7 @@ jobs:
           acquire
           --mode LOCAL_PROOF
           --manifest videos/evercold-bastion-short/source-media-manifest.json
-          --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8
+          --manifest-sha256 05d1657249776f87f3f6f91a4b8b8a36575eaac0c527ba8cde8ef5b5855e96b8
           --story-id official_d86953ca92ca
 
       - name: Validate ephemeral bytes and governed rights evidence
@@ -64,7 +64,7 @@ jobs:
           validate
           --mode LOCAL_PROOF
           --manifest videos/evercold-bastion-short/source-media-manifest.json
-          --manifest-sha256 8d153578ab14efd5a6872e59a7273deb1c32223d87c6e36f5ef69cc936d09dd8
+          --manifest-sha256 05d1657249776f87f3f6f91a4b8b8a36575eaac0c527ba8cde8ef5b5855e96b8
           --story-id official_d86953ca92ca
 
       - name: Strictly check the Evercold HyperFrames material project
@@ -86,6 +86,10 @@ jobs:
           tests/ops/agent-operator-command-contract.test.js
           tests/services/governed-story-intake.test.js
           tests/ops/governed-story-intake-cli.test.js
+          tests/services/governed-worker-containment.test.js
+          tests/ops/governed-worker-containment-cli.test.js
+          tests/services/sqlite-restore-rehearsal.test.js
+          tests/ops/sqlite-restore-rehearsal-cli.test.js
           tests/services/governed-owned-motion.test.js
           tests/ops/governed-owned-motion-cli.test.js
           tests/services/governed-source-media.test.js

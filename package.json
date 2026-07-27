@@ -54,6 +54,7 @@
     "ops:guarded-youtube-window": "node tools/guarded-youtube-window.js",
     "ops:media:verify": "node tools/media-verify.js",
     "ops:db:backup-dry-run": "node tools/db-backup-dry-run.js",
+    "ops:db:restore-rehearsal": "node tools/sqlite-restore-rehearsal.js",
     "ops:publication-reconciliation": "node tools/publication-reconciliation.js",
     "ops:platform:status": "node tools/platform-status.js",
     "ops:social-platforms": "node tools/social-platform-operations.js",

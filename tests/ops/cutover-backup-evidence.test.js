@@ -216,6 +216,113 @@ test("operator composes independently verified backup and restore proofs into re
   );
 });
 
+test("a clean checkpointed WAL source remains eligible and the composer leaves no source sidecars", (t) => {
+  const fixture = createFixture(t);
+  const outDir = path.join(fixture.directory, "proof");
+  const setup = new Database(fixture.databasePath, {
+    fileMustExist: true,
+  });
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+
+  assert.equal(fs.existsSync(`${fixture.databasePath}-wal`), false);
+  assert.equal(fs.existsSync(`${fixture.databasePath}-shm`), false);
+
+  const stdout = JSON.parse(runTool(argsFor(fixture, outDir)));
+
+  assert.equal(stdout.verdict, "PASS");
+  assert.equal(fs.existsSync(`${fixture.databasePath}-wal`), false);
+  assert.equal(fs.existsSync(`${fixture.databasePath}-shm`), false);
+});
+
+test("the composer rejects source changes committed only to a non-empty WAL", (t) => {
+  const fixture = createFixture(t);
+  const outDir = path.join(fixture.directory, "proof");
+  const setup = new Database(fixture.databasePath, {
+    fileMustExist: true,
+  });
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+  const checkpointedMainHash = sha256(fixture.databasePath);
+
+  const writer = new Database(fixture.databasePath, {
+    fileMustExist: true,
+  });
+  try {
+    writer.pragma("wal_autocheckpoint = 0");
+    writer
+      .prepare("INSERT INTO proof_rows (value) VALUES ('only in WAL')")
+      .run();
+    assert.equal(sha256(fixture.databasePath), checkpointedMainHash);
+    assert.ok(fs.statSync(`${fixture.databasePath}-wal`).size > 0);
+    assert.ok(fs.statSync(`${fixture.databasePath}-shm`).size > 0);
+
+    const execution = runToolAllowFailure(argsFor(fixture, outDir));
+
+    assert.equal(execution.status, 2);
+    const summary = JSON.parse(execution.stdout);
+    assert.equal(summary.verdict, "HOLD");
+    assert.ok(
+      summary.blockers.includes("source_database_wal_not_checkpointed"),
+      execution.stdout,
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(outDir, "pulse_cutover_backup_evidence.json"),
+      ),
+      false,
+    );
+  } finally {
+    writer.close();
+  }
+});
+
+test("the composer rejects shared memory held by a reader even when the source WAL is empty", (t) => {
+  const fixture = createFixture(t);
+  const outDir = path.join(fixture.directory, "proof");
+  const setup = new Database(fixture.databasePath, {
+    fileMustExist: true,
+  });
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+
+  const reader = new Database(fixture.databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    reader.prepare("SELECT COUNT(*) FROM proof_rows").pluck().get();
+    assert.equal(fs.statSync(`${fixture.databasePath}-wal`).size, 0);
+    assert.ok(fs.statSync(`${fixture.databasePath}-shm`).size > 0);
+
+    const execution = runToolAllowFailure(argsFor(fixture, outDir));
+
+    assert.equal(execution.status, 2);
+    const summary = JSON.parse(execution.stdout);
+    assert.equal(summary.verdict, "HOLD");
+    assert.ok(
+      summary.blockers.includes(
+        "source_database_shared_memory_present",
+      ),
+      execution.stdout,
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(outDir, "pulse_cutover_backup_evidence.json"),
+      ),
+      false,
+    );
+  } finally {
+    reader.close();
+  }
+});
+
 test("tampered backup or restore bytes produce only HOLD attempt evidence", (t) => {
   const fixture = createFixture(t);
   const outDir = path.join(fixture.directory, "proof");

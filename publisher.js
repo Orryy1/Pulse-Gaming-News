@@ -21,9 +21,44 @@ const {
 const {
   resolveOperatingContract,
 } = require("./lib/stabilisation/operating-contract");
+const {
+  YOUTUBE_PLATFORM_CONTRACT,
+} = require("./lib/services/governed-publication-metadata");
+const {
+  ADMISSION_LATE_TOLERANCE_MS,
+  ADMISSION_WINDOW_DRIFT_MS,
+  validatePersistedOutsideCadenceAuthorisation,
+} = require("./lib/services/publication-admission");
+const {
+  createYoutubeAuthTelemetry,
+  normaliseYoutubeAuthTelemetry,
+  sanitiseYoutubeError,
+  sanitiseYoutubeErrorMessage,
+} = require("./lib/services/youtube-safety");
 
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;
+const trustedYoutubeCreateBoundaryGates = new WeakSet();
+
+function issueTrustedYoutubeCreateBoundaryGate(revalidate) {
+  const gate = async function trustedYoutubeCreateBoundaryGate() {
+    return revalidate();
+  };
+  trustedYoutubeCreateBoundaryGates.add(gate);
+  return gate;
+}
+
+async function invokeTrustedYoutubeCreateBoundaryGate(gate) {
+  if (
+    typeof gate !== "function" ||
+    !trustedYoutubeCreateBoundaryGates.has(gate)
+  ) {
+    throw publicationDispatchError(
+      "youtube_create_boundary_guard_untrusted",
+    );
+  }
+  return gate();
+}
 
 // Title similarity check (Jaccard > 0.5) - used for dedup across hunt + publish
 function titlesSimilar(a, b) {
@@ -681,6 +716,7 @@ async function _publishNextStoryWithMemoryLock(
 // day where the hunter/processor has shipped many broken items.
 async function publishNextStory(options = {}) {
   const runtimeEnv = options.env || process.env;
+  const trustedClock = createTrustedPublisherClock(options, runtimeEnv);
   const operatingContract = resolveOperatingContract({
     env: runtimeEnv,
   });
@@ -696,6 +732,34 @@ async function publishNextStory(options = {}) {
       top_reason: topReason,
       operating_mode: operatingContract.mode,
       blockers: operatingContract.blockers,
+    };
+  }
+  let exactDispatchBinding;
+  try {
+    if (
+      options.exactDispatchBinding === undefined ||
+      options.exactDispatchBinding === null
+    ) {
+      throw publicationDispatchError(
+        "guarded_exact_dispatch_binding_required",
+      );
+    }
+    exactDispatchBinding = normaliseExactDispatchBinding(
+      options.exactDispatchBinding,
+    );
+  } catch (error) {
+    const topReason =
+      error?.code ||
+      error?.message ||
+      "guarded_exact_dispatch_binding_invalid";
+    console.log(
+      `[publisher] Live dispatch blocked by exact authority: ${topReason}`,
+    );
+    return {
+      publish_dispatch_blocked: true,
+      status: "blocked",
+      top_reason: topReason,
+      operating_mode: operatingContract.mode,
     };
   }
   const resolvedRepos =
@@ -725,7 +789,7 @@ async function publishNextStory(options = {}) {
         require("./lib/scheduler").evaluateStabilisationPublishCadence;
       const cadence = cadenceEvaluator({
         db: resolvedRepos.db,
-        now: options.now || new Date(),
+        now: trustedClock(),
         excludeJobId: options.currentJobId || null,
       });
       if (!cadence?.allowed) {
@@ -740,8 +804,10 @@ async function publishNextStory(options = {}) {
       assertHealthy();
       return _publishNextStoryWithMemoryLock(assertHealthy, {
         ...options,
+        exactDispatchBinding,
         env: runtimeEnv,
         repos: resolvedRepos,
+        trustedClock,
       });
     },
   });
@@ -788,6 +854,164 @@ function publicationDispatchError(code) {
   return error;
 }
 
+function createTrustedPublisherClock(options = {}, env = process.env) {
+  const allowTestClock =
+    String(env.NODE_ENV || "").trim().toLowerCase() === "test";
+  const injected = allowTestClock ? options.now : null;
+  return function trustedPublisherNow() {
+    const value =
+      typeof injected === "function"
+        ? injected()
+        : injected instanceof Date
+          ? new Date(injected.getTime())
+          : injected ?? new Date();
+    const now = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+    if (Number.isNaN(now.getTime())) {
+      throw publicationDispatchError("scheduled_dispatch_clock_invalid");
+    }
+    return now;
+  };
+}
+
+function normaliseExactDispatchBinding(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw publicationDispatchError("guarded_exact_dispatch_binding_invalid");
+  }
+  const scheduled = new Date(value.scheduledFor);
+  const binding = {
+    storyId: String(value.storyId || "").trim(),
+    platform: String(value.platform || "").trim(),
+    scheduledFor: Number.isNaN(scheduled.getTime())
+      ? ""
+      : scheduled.toISOString(),
+    scheduledEventId: String(value.scheduledEventId ?? "").trim(),
+    dispatchIdempotencyKey: String(
+      value.dispatchIdempotencyKey || "",
+    ).trim(),
+    requestFingerprint: String(value.requestFingerprint || "")
+      .trim()
+      .toLowerCase(),
+    databaseDataVersion: Number(value.databaseDataVersion),
+  };
+  if (
+    !binding.storyId ||
+    binding.platform !== "youtube" ||
+    !binding.scheduledFor ||
+    !binding.scheduledEventId ||
+    !binding.dispatchIdempotencyKey ||
+    !/^[a-f0-9]{64}$/.test(binding.requestFingerprint) ||
+    !Number.isSafeInteger(binding.databaseDataVersion) ||
+    binding.databaseDataVersion < 1
+  ) {
+    throw publicationDispatchError("guarded_exact_dispatch_binding_invalid");
+  }
+  return Object.freeze(binding);
+}
+
+function readPublisherSqliteDataVersion(db) {
+  if (!db || typeof db.pragma !== "function") {
+    throw publicationDispatchError(
+      "guarded_database_data_version_unavailable",
+    );
+  }
+  let value;
+  try {
+    value = db.pragma("data_version", { simple: true });
+  } catch {
+    throw publicationDispatchError(
+      "guarded_database_data_version_unavailable",
+    );
+  }
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw publicationDispatchError(
+      "guarded_database_data_version_invalid",
+    );
+  }
+  return value;
+}
+
+function assertExactDatabaseDataVersion(
+  db,
+  binding,
+  mismatchCode,
+) {
+  if (!binding) return;
+  if (
+    readPublisherSqliteDataVersion(db) !==
+    binding.databaseDataVersion
+  ) {
+    throw publicationDispatchError(mismatchCode);
+  }
+}
+
+function assertExactDispatchBinding(binding, storyId, scheduled) {
+  if (!binding) return;
+  const comparisons = [
+    [
+      String(storyId || "").trim(),
+      binding.storyId,
+      "guarded_exact_dispatch_story_mismatch",
+    ],
+    [
+      "youtube",
+      binding.platform,
+      "guarded_exact_dispatch_platform_mismatch",
+    ],
+    [
+      String(scheduled?.scheduledFor || "").trim(),
+      binding.scheduledFor,
+      "guarded_exact_dispatch_schedule_mismatch",
+    ],
+    [
+      String(scheduled?.event?.id ?? "").trim(),
+      binding.scheduledEventId,
+      "guarded_exact_dispatch_event_mismatch",
+    ],
+    [
+      String(scheduled?.idempotencyKey || "").trim(),
+      binding.dispatchIdempotencyKey,
+      "guarded_exact_dispatch_key_mismatch",
+    ],
+    [
+      String(scheduled?.requestFingerprint || "")
+        .trim()
+        .toLowerCase(),
+      binding.requestFingerprint,
+      "guarded_exact_dispatch_fingerprint_mismatch",
+    ],
+  ];
+  for (const [actual, expected, code] of comparisons) {
+    if (actual !== expected) throw publicationDispatchError(code);
+  }
+}
+
+function assertSameScheduledDispatchTicket(initial, current) {
+  const comparisons = [
+    [
+      String(current?.scheduledFor || "").trim(),
+      String(initial?.scheduledFor || "").trim(),
+    ],
+    [
+      String(current?.event?.id ?? "").trim(),
+      String(initial?.event?.id ?? "").trim(),
+    ],
+    [
+      String(current?.idempotencyKey || "").trim(),
+      String(initial?.idempotencyKey || "").trim(),
+    ],
+    [
+      String(current?.requestFingerprint || "").trim().toLowerCase(),
+      String(initial?.requestFingerprint || "").trim().toLowerCase(),
+    ],
+  ];
+  if (comparisons.some(([actual, expected]) => actual !== expected)) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_ticket_changed_before_create",
+    );
+  }
+}
+
 function readScheduledPublicationEvidence(evidence) {
   const publicationEvidence = evidence?.publication_evidence;
   if (
@@ -816,6 +1040,64 @@ function readScheduledPublicationEvidence(evidence) {
         `scheduled_publication_${field}_required`,
       );
     }
+  }
+  const publicationMetadataSha = String(
+    publicationEvidence.publication_metadata_sha256 || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(publicationMetadataSha)) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_sha256_required",
+    );
+  }
+  const publicationMetadata = publicationEvidence.publication_metadata;
+  if (
+    !publicationMetadata ||
+    typeof publicationMetadata !== "object" ||
+    Array.isArray(publicationMetadata)
+  ) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_required",
+    );
+  }
+  const boundMetadataSha = String(
+    publicationMetadata.sha256 || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(boundMetadataSha)) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_binding_sha256_required",
+    );
+  }
+  if (boundMetadataSha !== publicationMetadataSha) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_sha256_mismatch",
+    );
+  }
+  if (!String(publicationMetadata.path || "").trim()) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_path_required",
+    );
+  }
+  if (
+    String(publicationMetadata.platform || "").trim() !==
+    YOUTUBE_PLATFORM_CONTRACT.reviewedMetadataPlatform
+  ) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_platform_invalid",
+    );
+  }
+  if (!String(publicationMetadata.title || "").trim()) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_title_required",
+    );
+  }
+  if (!String(publicationMetadata.description || "").trim()) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_description_required",
+    );
   }
   const transformation =
     publicationEvidence.originality_transformation;
@@ -886,6 +1168,7 @@ function readScheduledDispatchEvidence(
   storyId,
   platform,
   at = new Date(),
+  channelId = null,
 ) {
   if (
     !publicationGovernance ||
@@ -902,6 +1185,14 @@ function readScheduledDispatchEvidence(
   );
   if (!event) {
     throw publicationDispatchError("scheduled_dispatch_evidence_required");
+  }
+  if (
+    String(event.story_id || "").trim() !== String(storyId || "").trim() ||
+    String(event.platform || "").trim() !== String(platform || "").trim()
+  ) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_event_identity_mismatch",
+    );
   }
   let evidence;
   try {
@@ -949,15 +1240,42 @@ function readScheduledDispatchEvidence(
   if (Number.isNaN(effectiveNow.getTime())) {
     throw publicationDispatchError("scheduled_dispatch_clock_invalid");
   }
-  if (
-    ![9, 19].includes(scheduledFor.getUTCHours()) ||
-    scheduledFor.getUTCMinutes() !== 0 ||
-    scheduledFor.getUTCSeconds() !== 0 ||
-    scheduledFor.getUTCMilliseconds() !== 0
-  ) {
-    throw publicationDispatchError(
-      "scheduled_dispatch_guarded_window_required",
-    );
+  const normalCadence =
+    [9, 19].includes(scheduledFor.getUTCHours()) &&
+    scheduledFor.getUTCMinutes() === 0 &&
+    scheduledFor.getUTCSeconds() === 0 &&
+    scheduledFor.getUTCMilliseconds() === 0;
+  if (!normalCadence) {
+    if (
+      scheduledFor.getUTCSeconds() !== 0 ||
+      scheduledFor.getUTCMilliseconds() !== 0
+    ) {
+      throw publicationDispatchError(
+        "scheduled_dispatch_guarded_window_required",
+      );
+    }
+    const outsideCadenceBlockers =
+      validatePersistedOutsideCadenceAuthorisation(
+        evidence.outside_cadence_authorisation,
+        {
+          storyId,
+          channelId,
+          platform,
+          scheduledFor: scheduledFor.toISOString(),
+          authorisedNoEarlierThan: new Date(
+            scheduledFor.getTime() - ADMISSION_WINDOW_DRIFT_MS,
+          ).toISOString(),
+          authorisedNoLaterThan: new Date(
+            scheduledFor.getTime() + ADMISSION_LATE_TOLERANCE_MS,
+          ).toISOString(),
+          now: effectiveNow.toISOString(),
+          dispatchIdempotencyKey: idempotencyKey,
+          requestFingerprint,
+        },
+      );
+    if (outsideCadenceBlockers.length) {
+      throw publicationDispatchError(outsideCadenceBlockers[0]);
+    }
   }
   const scheduleDeltaMs =
     effectiveNow.getTime() - scheduledFor.getTime();
@@ -990,7 +1308,8 @@ function isGovernanceDispatchError(error) {
     code.startsWith("publication_governance_") ||
     code.startsWith("publication_dispatch_") ||
     code.startsWith("publication_fingerprint_") ||
-    code.startsWith("governed_dispatch_")
+    code.startsWith("governed_dispatch_") ||
+    code.startsWith("guarded_database_")
   );
 }
 
@@ -1238,14 +1557,14 @@ async function _publishNextStoryInner(
     runtime.channelId || runtimeEnv.CHANNEL || "pulse-gaming";
   const authenticatedChannelId =
     runtimeEnv.CHANNEL || "pulse-gaming";
-  const dispatchNow =
-    runtime.now instanceof Date
-      ? new Date(runtime.now.getTime())
-      : new Date(
-          typeof runtime.now === "function"
-            ? runtime.now()
-            : runtime.now || Date.now(),
-        );
+  const trustedClock =
+    typeof runtime.trustedClock === "function"
+      ? runtime.trustedClock
+      : createTrustedPublisherClock(runtime, runtimeEnv);
+  const dispatchNow = trustedClock();
+  const exactDispatchBinding = normaliseExactDispatchBinding(
+    runtime.exactDispatchBinding,
+  );
   if (requestedChannelId !== authenticatedChannelId) {
     return {
       publish_dispatch_blocked: true,
@@ -1262,6 +1581,20 @@ async function _publishNextStoryInner(
     } catch (err) {
       console.log(`[publisher] publish: repos unavailable: ${err.message}`);
     }
+  }
+  try {
+    assertExactDatabaseDataVersion(
+      pubRepos?.db,
+      exactDispatchBinding,
+      "guarded_database_data_version_changed_before_publisher_entry",
+    );
+  } catch (error) {
+    return {
+      publish_dispatch_blocked: true,
+      status: "blocked",
+      top_reason: error.code || error.message,
+      story_id: exactDispatchBinding?.storyId || null,
+    };
   }
   const stories = await db.getStories();
   assertLeaseHealthy();
@@ -1290,6 +1623,12 @@ async function _publishNextStoryInner(
   const ready = stories.filter((s) => {
     const storyChannelId = s.channel_id || "pulse-gaming";
     if (storyChannelId !== requestedChannelId) return false;
+    if (
+      exactDispatchBinding &&
+      s.id !== exactDispatchBinding.storyId
+    ) {
+      return false;
+    }
     if (!s.approved || !s.exported_path) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;
@@ -1298,7 +1637,14 @@ async function _publishNextStoryInner(
 
   if (ready.length === 0) {
     console.log("[publisher] No stories need publishing");
-    return null;
+    return exactDispatchBinding
+      ? {
+          publish_dispatch_blocked: true,
+          status: "blocked",
+          top_reason: "guarded_exact_story_not_ready",
+          story_id: exactDispatchBinding.storyId,
+        }
+      : null;
   }
 
   // Prioritise: unpublished stories first (0 platforms), then partial, then by score
@@ -1338,14 +1684,21 @@ async function _publishNextStoryInner(
             : `canonical_platform_post_${canonicalPost.status}`,
         );
       }
-      scheduledCandidates.push({
-        candidate,
-        scheduled: readScheduledDispatchEvidence(
+      const scheduled = readScheduledDispatchEvidence(
           pubRepos?.publicationGovernance,
           candidate.id,
           "youtube",
           dispatchNow,
-        ),
+          candidate.channel_id || requestedChannelId,
+        );
+      assertExactDispatchBinding(
+        exactDispatchBinding,
+        candidate.id,
+        scheduled,
+      );
+      scheduledCandidates.push({
+        candidate,
+        scheduled,
       });
     } catch (error) {
       governanceSkipped.push({
@@ -1448,8 +1801,12 @@ async function _publishNextStoryInner(
       `(score: ${story.breaking_score || story.score || 0}, qa_skipped_before=${qaSkipped.length})`,
   );
 
+  let youtubeAuthTelemetry = createYoutubeAuthTelemetry();
   const result = {
     title: story.title,
+    story_id: story.id,
+    dispatch_idempotency_key: scheduledDispatch?.idempotencyKey || null,
+    request_fingerprint: scheduledDispatch?.requestFingerprint || null,
     // --- Render-quality metadata for Discord summary (audit P1) ---
     // Exposes the assemble.js-stamped fields so the operator sees per-
     // publish render quality without diving into the DB. Falls back
@@ -1535,6 +1892,16 @@ async function _publishNextStoryInner(
     qa_warnings: preflightWarnings,
     qa_skipped_count: qaSkipped.length,
     qa_skipped: qaSkipped,
+    safety: {
+      youtube_auth: youtubeAuthTelemetry,
+    },
+  };
+  const reportYoutubeAuthTelemetry = (value) => {
+    youtubeAuthTelemetry = normaliseYoutubeAuthTelemetry(value);
+    result.safety.youtube_auth = youtubeAuthTelemetry;
+    if (typeof runtime.onYoutubeAuthTelemetry === "function") {
+      runtime.onYoutubeAuthTelemetry(youtubeAuthTelemetry);
+    }
   };
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in
@@ -1605,16 +1972,12 @@ async function _publishNextStoryInner(
       );
     }
     // Allowed — still stamp the class on the story for analytics.
-    try {
-      assertLeaseHealthy();
-      story.render_contract_class = decision.verdict.class;
-      story.render_contract_blocked = false;
-      await db.upsertStory(story);
-      assertLeaseHealthy();
-    } catch (err) {
-      if (isPublisherLeaseLostError(err)) throw err;
-      /* non-fatal */
-    }
+    // Keep the accepted verdict in memory until final outcome persistence.
+    // A write here through lib/db's singleton uses a different SQLite
+    // connection from the guard-bound repository and would make our own
+    // legitimate commit look like an external data_version race.
+    story.render_contract_class = decision.verdict.class;
+    story.render_contract_blocked = false;
   } catch (err) {
     if (isPublisherLeaseLostError(err)) throw err;
     console.log(
@@ -1675,7 +2038,13 @@ async function _publishNextStoryInner(
           story.id,
           "youtube",
           dispatchNow,
+          pubChannelId,
         );
+      assertExactDispatchBinding(
+        exactDispatchBinding,
+        story.id,
+        scheduled,
+      );
       const governedDispatch =
         runtime.governedDispatch ||
         require("./lib/services/governed-platform-dispatch")
@@ -1717,6 +2086,10 @@ async function _publishNextStoryInner(
         ...story,
         synthetic_media_disclosure:
           scheduled.publicationEvidence.synthetic_media_disclosure,
+        governed_publication_metadata_sha256:
+          scheduled.publicationEvidence.publication_metadata_sha256,
+        governed_publication_metadata:
+          scheduled.publicationEvidence.publication_metadata,
       };
       const dispatchResult = await governedDispatch({
         db: pubRepos.db,
@@ -1744,9 +2117,38 @@ async function _publishNextStoryInner(
               reason: `title-skip: ${ytTitleDupe.title}`,
             };
           }
+          const assertYoutubeCreateBoundary =
+            issueTrustedYoutubeCreateBoundaryGate(async () => {
+              assertLeaseHealthy();
+              const currentScheduled = readScheduledDispatchEvidence(
+                pubRepos.publicationGovernance,
+                story.id,
+                "youtube",
+                trustedClock(),
+                pubChannelId,
+              );
+              assertSameScheduledDispatchTicket(
+                scheduled,
+                currentScheduled,
+              );
+              assertExactDispatchBinding(
+                exactDispatchBinding,
+                story.id,
+                currentScheduled,
+              );
+              assertExactDatabaseDataVersion(
+                pubRepos.db,
+                exactDispatchBinding,
+                "guarded_database_data_version_changed_before_create",
+              );
+              assertLeaseHealthy();
+            });
           const ytResult = await uploadShort(uploadStory, {
             governedDispatch: true,
             markCreateAttemptStarted,
+            assertYoutubeCreateBoundary,
+            reportAuthTelemetry: reportYoutubeAuthTelemetry,
+            expectedMediaSha256: currentFingerprint.media_sha256,
           });
           if (ytResult?.blocked) {
             return {
@@ -1759,7 +2161,13 @@ async function _publishNextStoryInner(
             externalUrl: ytResult?.url,
           };
         },
-        verifyPublic: verifyYoutubePublic,
+        verifyPublic: async (input) => {
+          try {
+            return await verifyYoutubePublic(input);
+          } catch (error) {
+            throw sanitiseYoutubeError(error, runtimeEnv);
+          }
+        },
       });
       assertLeaseHealthy();
       if (dispatchResult?.status === "blocked") {
@@ -1794,6 +2202,7 @@ async function _publishNextStoryInner(
       }
     } catch (err) {
       if (isPublisherLeaseLostError(err)) throw err;
+      err = sanitiseYoutubeError(err, runtimeEnv);
       const governanceState =
         typeof pubRepos?.publicationGovernance?.getState === "function"
           ? pubRepos.publicationGovernance.getState(story.id, "youtube")
@@ -1804,19 +2213,21 @@ async function _publishNextStoryInner(
         governanceState?.verification_status === "requires_reconciliation";
       if (requiresReconciliation) {
         console.log(
-          `[publisher] YouTube dispatch requires reconciliation: ${err.message}`,
+          `[publisher] YouTube dispatch requires reconciliation: ${sanitiseYoutubeErrorMessage(err.message, runtimeEnv)}`,
         );
         story.youtube_error = err.message;
         result.errors.youtube = err.message;
         result.platform_outcomes.youtube = "reconciliation_required";
       } else if (isGovernanceDispatchError(err)) {
         console.log(
-          `[publisher] YouTube dispatch blocked by governance: ${err.message}`,
+          `[publisher] YouTube dispatch blocked by governance: ${sanitiseYoutubeErrorMessage(err.message, runtimeEnv)}`,
         );
         result.errors.youtube = err.message;
         result.platform_outcomes.youtube = "governance_blocked";
       } else {
-        console.log(`[publisher] YouTube upload failed: ${err.message}`);
+        console.log(
+          `[publisher] YouTube upload failed: ${sanitiseYoutubeErrorMessage(err.message, runtimeEnv)}`,
+        );
         story.youtube_error = err.message;
         result.errors.youtube = err.message;
         result.platform_outcomes.youtube = "failed";
@@ -2530,6 +2941,7 @@ module.exports = {
   fullAutonomousCycle,
   publishOnlyCycle,
   selfHealStaleMediaPaths,
+  invokeTrustedYoutubeCreateBoundaryGate,
 };
 
 if (require.main === module) {

@@ -9,6 +9,13 @@ const path = require("node:path");
 const test = require("node:test");
 const Database = require("better-sqlite3");
 
+const {
+  buildCutoverPlan,
+  executeCutoverApply,
+  inspectDatabase,
+  verifyBackupEvidence,
+} = require("../../lib/ops/stabilisation-cutover-reconcile");
+
 const ROOT = path.resolve(__dirname, "..", "..");
 const TOOL = path.join(ROOT, "tools", "stabilisation-cutover-reconcile.js");
 
@@ -213,6 +220,34 @@ function authorisedEnvironment(overrides = {}) {
     PINTEREST_AUTO_PUBLISH: "false",
     ...overrides,
   };
+}
+
+function authorisedApplyArgs({
+  dbPath,
+  evidencePath,
+  outDir,
+  cutoverId,
+  commit = "a".repeat(40),
+}) {
+  return [
+    "--database",
+    dbPath,
+    "--backup-evidence",
+    evidencePath,
+    "--out-dir",
+    outDir,
+    "--cutover-id",
+    cutoverId,
+    "--confirm-cutover-id",
+    cutoverId,
+    "--generated-at",
+    "2026-07-27T10:00:00.000Z",
+    "--source-commit-sha",
+    commit,
+    "--runtime-commit-sha",
+    commit,
+    "--apply",
+  ];
 }
 
 test("default cutover inspection is a read-only HOLD with JSON and Markdown proof", () => {
@@ -909,6 +944,185 @@ test("tampered backup evidence blocks apply before the database write boundary",
     assert.equal(result.safety.production_database_mutated, false);
     assert.equal(sha256(dbPath), beforeHash);
   } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("authorised apply supports a clean checkpointed WAL database after every handle closes", () => {
+  const directory = workspace();
+  const dbPath = createFixture(directory);
+  const outDir = path.join(directory, "proof");
+  const setup = new Database(dbPath);
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+  const evidencePath = createBackupEvidence(directory, dbPath);
+
+  try {
+    assert.equal(fs.existsSync(`${dbPath}-wal`), false);
+    assert.equal(fs.existsSync(`${dbPath}-shm`), false);
+
+    runTool(
+      authorisedApplyArgs({
+        dbPath,
+        evidencePath,
+        outDir,
+        cutoverId: "cutover-test-clean-wal",
+        commit: "1".repeat(40),
+      }),
+      authorisedEnvironment(),
+    );
+
+    const result = JSON.parse(
+      fs.readFileSync(
+        path.join(outDir, "stabilisation_cutover_result.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(result.verdict, "APPLIED");
+    assert.equal(result.safety.production_database_mutated, true);
+    assert.equal(fs.existsSync(`${dbPath}-wal`), false);
+    assert.equal(fs.existsSync(`${dbPath}-shm`), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("authorised apply rejects shared memory held by a reader even when the WAL is empty", () => {
+  const directory = workspace();
+  const dbPath = createFixture(directory);
+  const outDir = path.join(directory, "proof");
+  const setup = new Database(dbPath);
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+  const evidencePath = createBackupEvidence(directory, dbPath);
+  const reader = new Database(dbPath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+
+  try {
+    reader.prepare("SELECT COUNT(*) FROM schedules").pluck().get();
+    assert.equal(fs.statSync(`${dbPath}-wal`).size, 0);
+    assert.ok(fs.statSync(`${dbPath}-shm`).size > 0);
+
+    runTool(
+      authorisedApplyArgs({
+        dbPath,
+        evidencePath,
+        outDir,
+        cutoverId: "cutover-test-shared-memory",
+        commit: "2".repeat(40),
+      }),
+      authorisedEnvironment(),
+    );
+
+    const result = JSON.parse(
+      fs.readFileSync(
+        path.join(outDir, "stabilisation_cutover_result.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(result.verdict, "HOLD");
+    assert.equal(result.apply_authorised, false);
+    assert.ok(
+      result.blockers.includes("source_database_shared_memory_present"),
+      JSON.stringify(result),
+    );
+    assert.equal(
+      reader
+        .prepare(
+          `SELECT COUNT(*) FROM operator_audit_log
+           WHERE action = 'stabilisation_cutover_reconcile'`,
+        )
+        .pluck()
+        .get(),
+      0,
+    );
+  } finally {
+    reader.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("authorised apply revalidates a racing WAL after BEGIN IMMEDIATE and before its first query", () => {
+  const directory = workspace();
+  const dbPath = createFixture(directory);
+  const setup = new Database(dbPath);
+  setup.pragma("journal_mode = WAL");
+  setup.pragma("wal_autocheckpoint = 0");
+  setup.pragma("wal_checkpoint(TRUNCATE)");
+  setup.close();
+  const evidencePath = createBackupEvidence(directory, dbPath);
+  const generatedAt = "2026-07-27T10:00:00.000Z";
+  const env = authorisedEnvironment();
+  const inspection = inspectDatabase({
+    databasePath: dbPath,
+    generatedAt,
+  });
+  const backupVerification = verifyBackupEvidence({
+    evidencePath,
+    databasePath: dbPath,
+    generatedAt,
+  });
+  const plan = buildCutoverPlan({
+    inspection,
+    applyRequested: true,
+    cutoverId: "cutover-test-racing-wal",
+    sourceCommitSha: "3".repeat(40),
+    runtimeCommitSha: "3".repeat(40),
+    confirmationId: "cutover-test-racing-wal",
+    backupVerification,
+    env,
+  });
+  assert.equal(plan.verdict, "READY_TO_APPLY");
+
+  let racingWriter = null;
+  function RacingDatabase(filePath, databaseOptions) {
+    const db = new Database(filePath, databaseOptions);
+    if (databaseOptions?.readonly !== true) {
+      racingWriter = new Database(filePath, { fileMustExist: true });
+      racingWriter.pragma("wal_autocheckpoint = 0");
+      racingWriter
+        .prepare(
+          `INSERT INTO operator_audit_log
+             (actor_id, action, target_type, target_id, decision, reason,
+              evidence_json, created_at)
+           VALUES ('race', 'external_racing_write', 'sqlite_database',
+                   'race', 'OBSERVED', 'test race', '{}', ?)`,
+        )
+        .run(generatedAt);
+      assert.ok(fs.statSync(`${filePath}-wal`).size > 0);
+    }
+    return db;
+  }
+
+  try {
+    assert.throws(
+      () =>
+        executeCutoverApply({
+          databasePath: dbPath,
+          plan,
+          env,
+          DatabaseImpl: RacingDatabase,
+        }),
+      /source_database_wal_not_checkpointed/,
+    );
+    assert.equal(
+      racingWriter
+        .prepare(
+          `SELECT COUNT(*) FROM operator_audit_log
+           WHERE action = 'stabilisation_cutover_reconcile'`,
+        )
+        .pluck()
+        .get(),
+      0,
+    );
+  } finally {
+    if (racingWriter) racingWriter.close();
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });

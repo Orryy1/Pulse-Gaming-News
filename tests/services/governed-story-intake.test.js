@@ -11,8 +11,12 @@ const Database = require("better-sqlite3");
 const { runMigrations } = require("../../lib/migrate");
 const {
   executeGovernedStoryIntake,
+  validateOwnedAssetManifest,
   validateStoryIntakeManifest,
 } = require("../../lib/services/governed-story-intake");
+const {
+  createGovernedHybridStoryIntakeFixture,
+} = require("../fixtures/governed-hybrid-story-intake");
 
 const NOW = "2026-07-27T12:00:00.000Z";
 const SOURCE_URL =
@@ -393,6 +397,212 @@ test("owned assets can be hash-bound during intake or attached later without acq
     assetManifestSha256,
   );
   db.close();
+});
+
+test("accepts the exact hash-bound governed mixed HyperFrames intermediate and preserves the combined manifest SHA", () => {
+  const values = createGovernedHybridStoryIntakeFixture();
+
+  const result = executeGovernedStoryIntake({
+    action: "ingest",
+    manifestPath: values.storyIntakePath,
+    assetManifestPath: values.assetManifestPath,
+    assetManifestSha256: values.assetManifestSha256,
+    generatedAt: NOW,
+  });
+
+  assert.equal(result.verdict, "VALID");
+  assert.equal(result.story_id, values.storyId);
+  assert.equal(
+    result.owned_asset_manifest_sha256,
+    values.assetManifestSha256,
+  );
+  assert.equal(
+    result.owned_asset_manifest_sha256,
+    sha256(fs.readFileSync(values.assetManifestPath)),
+  );
+});
+
+test("rejects a mixed HyperFrames intermediate that declares itself as its owned source backbone", () => {
+  const values = createGovernedHybridStoryIntakeFixture({
+    mutateAssetManifest(manifest) {
+      const hybrid = manifest.assets[1];
+      manifest.assets[0] = {
+        path: hybrid.path,
+        sha256: hybrid.sha256,
+        media_type: "video",
+        role: "owned_motion_backbone",
+        ownership: "owned",
+        rights_basis: "OWNED",
+        attribution_required: false,
+      };
+      hybrid.provenance.source_backbone = {
+        path: hybrid.path,
+        sha256: hybrid.sha256,
+      };
+    },
+  });
+
+  assert.throws(
+    () =>
+      executeGovernedStoryIntake({
+        action: "ingest",
+        manifestPath: values.storyIntakePath,
+        assetManifestPath: values.assetManifestPath,
+        assetManifestSha256: values.assetManifestSha256,
+        generatedAt: NOW,
+      }),
+    (error) =>
+      error?.codes?.includes(
+        "owned_asset_1_owned_source_backbone_not_distinct",
+      ),
+  );
+});
+
+test("requires the governed hybrid source backbone to carry exact owned-backbone policy metadata", () => {
+  const cases = [
+    {
+      name: "role",
+      mutate(backbone) {
+        backbone.role = "primary_motion";
+      },
+    },
+    {
+      name: "rights basis",
+      mutate(backbone) {
+        backbone.rights_basis = "LICENSED";
+      },
+    },
+    {
+      name: "attribution",
+      mutate(backbone) {
+        backbone.attribution_required = true;
+      },
+    },
+  ];
+
+  for (const scenario of cases) {
+    const values = createGovernedHybridStoryIntakeFixture({
+      mutateAssetManifest(manifest) {
+        const backbone = manifest.assets[0];
+        backbone.role = "owned_motion_backbone";
+        backbone.rights_basis = "OWNED";
+        backbone.attribution_required = false;
+        scenario.mutate(backbone);
+      },
+    });
+
+    assert.throws(
+      () =>
+        executeGovernedStoryIntake({
+          action: "ingest",
+          manifestPath: values.storyIntakePath,
+          assetManifestPath: values.assetManifestPath,
+          assetManifestSha256: values.assetManifestSha256,
+          generatedAt: NOW,
+        }),
+      (error) =>
+        error?.codes?.includes(
+          "owned_asset_1_owned_source_backbone_policy_invalid",
+        ),
+      scenario.name,
+    );
+  }
+});
+
+test("rejects a governed mixed HyperFrames intermediate when any source-media hash, licence or transformation evidence drifts", () => {
+  const cases = [
+    {
+      name: "source manifest binding",
+      create: () =>
+        createGovernedHybridStoryIntakeFixture({
+          mutateAssetManifest(manifest) {
+            manifest.assets[1].provenance.source_media_manifest.sha256 =
+              "0".repeat(64);
+          },
+        }),
+      expectedCode:
+        "owned_asset_1_source_media_manifest_sha256_mismatch",
+    },
+    {
+      name: "licence evidence",
+      create: () =>
+        createGovernedHybridStoryIntakeFixture({
+          mutateSourceMediaManifest(manifest) {
+            manifest.components[0].licence_evidence_url =
+              "https://example.com/not-the-reviewed-licence";
+          },
+        }),
+      expectedCode:
+        "owned_asset_1_source_media_component_0_licence_evidence_url_invalid",
+    },
+    {
+      name: "transformation evidence",
+      create: () =>
+        createGovernedHybridStoryIntakeFixture({
+          mutateSourceMediaManifest(manifest) {
+            manifest.components[0].editorial.treatment = "";
+          },
+        }),
+      expectedCode: "owned_asset_1_transformation_evidence_invalid",
+    },
+  ];
+
+  for (const scenario of cases) {
+    const values = scenario.create();
+    assert.throws(
+      () =>
+        executeGovernedStoryIntake({
+          action: "ingest",
+          manifestPath: values.storyIntakePath,
+          assetManifestPath: values.assetManifestPath,
+          assetManifestSha256: values.assetManifestSha256,
+          generatedAt: NOW,
+        }),
+      (error) => {
+        assert.ok(
+          error.codes.includes(scenario.expectedCode),
+          `${scenario.name}: ${error.codes.join(", ")}`,
+        );
+        return true;
+      },
+    );
+  }
+});
+
+test("continues to reject ordinary mixed and third-party owned-asset records", () => {
+  const values = fixture();
+  const assetPath = path.join(values.root, "untrusted-motion.mp4");
+  fs.writeFileSync(assetPath, "untrusted-motion");
+  const manifestPath = path.join(values.root, "untrusted-assets.json");
+
+  for (const ownership of ["mixed", "third_party"]) {
+    writeJson(manifestPath, {
+      schema_version: "pulse-owned-motion-manifest-v1",
+      story_id: STORY_ID,
+      assets: [
+        {
+          path: path.basename(assetPath),
+          sha256: sha256(fs.readFileSync(assetPath)),
+          media_type: "video",
+          role: "primary_motion",
+          ownership,
+        },
+      ],
+    });
+
+    assert.throws(
+      () =>
+        validateOwnedAssetManifest({
+          manifestPath,
+          expectedSha256: sha256(fs.readFileSync(manifestPath)),
+          expectedStoryId: STORY_ID,
+        }),
+      (error) => {
+        assert.ok(error.codes.includes("owned_asset_0_ownership_invalid"));
+        return true;
+      },
+    );
+  }
 });
 
 test("attach-owned-assets is separately gated, atomic and idempotently audited", () => {

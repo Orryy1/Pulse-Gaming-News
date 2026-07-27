@@ -26,8 +26,8 @@ const {
 
 const STORY_ID = "official_d86953ca92ca";
 const CHANNEL_ID = "pulse-gaming";
-const GENERATED_AT = "2026-07-27T17:00:00.000Z";
-const APPROVED_AT = "2026-07-27T17:05:00.000Z";
+const GENERATED_AT = "2026-07-27T15:00:00.000Z";
+const APPROVED_AT = "2026-07-27T15:05:00.000Z";
 const DISCLOSURE_CONFIRMATION = "DISCLOSE_AND_SET_YOUTUBE_TRUE";
 const SCRIPT =
   "Final Fantasy XIV just revealed a tank that fights with two giant shields. Bastion arrives in Evercold and only works in Evolved Mode.";
@@ -478,6 +478,7 @@ function addLicensedSourceMedia(values) {
     {
       schema_version: SOURCE_MEDIA_MANIFEST_SCHEMA,
       story_id: STORY_ID,
+      generated_at: GENERATED_AT,
       rights_review: {
         path: path.relative(
           path.dirname(
@@ -1163,6 +1164,7 @@ test("apply writes a complete evidence package directly accepted by governed pub
     const validation = await validatePublicationReviewManifest({
       manifestPath: result.publication_review_path,
       probe: async () => validProbe(),
+      validationBoundaryAt: GENERATED_AT,
     });
     assert.equal(validation.storyId, STORY_ID);
     assert.equal(validation.mediaSha256, values.finalMp4.sha256);
@@ -1328,6 +1330,7 @@ test("apply records licensed mixed motion and every governed FFXIV source compon
     const validation = await validatePublicationReviewManifest({
       manifestPath: result.publication_review_path,
       probe: async () => validProbe(),
+      validationBoundaryAt: GENERATED_AT,
     });
     assert.equal(
       validation.sourceMedia.manifest_sha256,

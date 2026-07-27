@@ -149,6 +149,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
       expectedManifestSha256:
         options.expectedManifestSha256,
       expectedStoryId: options.expectedStoryId,
+      validationBoundaryAt: new Date().toISOString(),
     });
     result = buildCombinedReadyResult({
       operation:
@@ -169,6 +170,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
       expectedManifestSha256:
         options.expectedManifestSha256,
       expectedStoryId: options.expectedStoryId,
+      validationBoundaryAt: new Date().toISOString(),
     });
     result = buildCombinedReadyResult({
       operation:

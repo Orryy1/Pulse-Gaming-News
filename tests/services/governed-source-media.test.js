@@ -27,6 +27,7 @@ const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+const VALIDATION_BOUNDARY = "2026-07-27T15:01:00.000Z";
 const videoFixtureCache = new Map();
 
 function sha256(value) {
@@ -114,7 +115,7 @@ function fixture() {
     licence_evidence_url: LICENCE_URL,
     licence_effective_date: "2026-05-07",
     reviewed_by: "pulse-editorial-rights-review",
-    reviewed_at: "2026-07-27T18:00:00.000Z",
+    reviewed_at: "2026-07-27T15:00:00.000Z",
     scope:
       "Official FINAL FANTASY XIV gameplay used in a narrated, edited news report.",
     findings: {
@@ -133,6 +134,7 @@ function fixture() {
   const manifest = {
     schema_version: MANIFEST_SCHEMA,
     story_id: STORY_ID,
+    generated_at: "2026-07-27T15:00:30.000Z",
     rights_review: {
       path: path.relative(root, evidencePath),
       sha256: evidenceSha256,
@@ -208,6 +210,7 @@ function validate(input, overrides = {}) {
     manifestPath: input.manifestPath,
     expectedManifestSha256: input.manifestSha256,
     expectedStoryId: STORY_ID,
+    validationBoundaryAt: VALIDATION_BOUNDARY,
     ...overrides,
   });
 }
@@ -245,6 +248,7 @@ test("validates an exact, licensed and accepted Square Enix source-media manifes
     manifestPath: input.manifestPath,
     expectedManifestSha256: input.manifestSha256,
     expectedStoryId: STORY_ID,
+    validationBoundaryAt: VALIDATION_BOUNDARY,
   });
 
   assert.equal(result.schema_version, MANIFEST_SCHEMA);
@@ -262,6 +266,93 @@ test("validates an exact, licensed and accepted Square Enix source-media manifes
   assert.deepEqual(
     result.components[0].editorial.usage_seconds,
     [0, 3.6],
+  );
+});
+
+test("requires an explicit temporal validation boundary", () => {
+  const input = fixture();
+
+  assert.throws(
+    () =>
+      validateGovernedSourceMediaManifest({
+        manifestPath: input.manifestPath,
+        expectedManifestSha256: input.manifestSha256,
+        expectedStoryId: STORY_ID,
+      }),
+    (error) =>
+      error instanceof GovernedSourceMediaError &&
+      error.codes.includes(
+        "source_media_validation_boundary_required",
+      ),
+  );
+});
+
+test("cannot legitimise future evidence with an operator-supplied future boundary", () => {
+  const input = fixture();
+
+  assert.throws(
+    () =>
+      validate(input, {
+        validationBoundaryAt: "2099-07-27T18:03:00.001Z",
+      }),
+    (error) =>
+      error instanceof GovernedSourceMediaError &&
+      error.codes.includes(
+        "source_media_validation_boundary_in_future",
+      ),
+  );
+});
+
+test("clock-skew tolerance on the boundary cannot extend the evidence clock twice", () => {
+  const clockSnapshot = Date.now();
+  const input = rewriteManifest(fixture(), (manifest) => {
+    manifest.generated_at = new Date(
+      clockSnapshot + 75_000,
+    ).toISOString();
+  });
+
+  assert.throws(
+    () =>
+      validate(input, {
+        validationBoundaryAt: new Date(
+          clockSnapshot + 30_000,
+        ).toISOString(),
+      }),
+    (error) =>
+      error instanceof GovernedSourceMediaError &&
+      error.codes.includes(
+        "source_media_manifest_generated_at_in_future",
+      ),
+  );
+});
+
+test("rejects a source-media manifest generated beyond the one-minute clock-skew allowance", () => {
+  const input = rewriteManifest(fixture(), (manifest) => {
+    manifest.generated_at = "2026-07-27T15:02:00.001Z";
+  });
+
+  assert.throws(
+    () => validate(input),
+    (error) =>
+      error instanceof GovernedSourceMediaError &&
+      error.codes.includes(
+        "source_media_manifest_generated_at_in_future",
+      ),
+  );
+});
+
+test("rejects a rights review dated beyond the one-minute clock-skew allowance", () => {
+  const input = rewriteEvidence(fixture(), (evidence) => {
+    evidence.reviewed_at = "2026-07-27T15:02:00.001Z";
+  });
+
+  assert.throws(
+    () => validate(input),
+    (error) =>
+      error instanceof GovernedSourceMediaError &&
+      error.codes.includes(
+        "source_media_rights_review_reviewed_at_in_future",
+      ),
   );
 });
 

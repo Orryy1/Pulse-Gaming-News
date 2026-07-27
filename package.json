@@ -56,6 +56,7 @@
     "docs:doctor": "node tools/docs-doctor.js",
     "ops:agent-rules": "node tools/validate-agent-operating-rules.js",
     "ops:stabilisation-runtime-provenance": "node tools/stabilisation-runtime-provenance.js",
+    "ops:windows-local-runtime": "node tools/windows-local-runtime-supervisor.js",
     "ops:provenance": "node tools/provenance-report.js",
     "ops:render-contract": "node tools/render-contract-report.js",
     "ops:publish-readiness": "node tools/publish-readiness.js",

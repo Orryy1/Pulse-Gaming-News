@@ -25,6 +25,15 @@ test("Pulse release workflow enforces lockfile install, tests, build and redacte
   );
   assert.match(yaml, /node-version:\s+24/);
   assert.match(yaml, /run:\s+npm ci/);
+  assert.match(
+    yaml,
+    /sudo apt-get update\s*\n\s+sudo apt-get install --yes ffmpeg/,
+  );
+  assert.ok(
+    yaml.indexOf("sudo apt-get install --yes ffmpeg") <
+      yaml.indexOf("Prove release configuration and evidence controls"),
+    "ffmpeg must be installed before tests that generate and probe media fixtures",
+  );
   assert.match(yaml, /node --test/);
   assert.match(yaml, /tests\/services\/report-governance\.test\.js/);
   assert.match(yaml, /tests\/services\/ci-secret-scan\.test\.js/);

@@ -244,7 +244,7 @@ test("every live publisher entrypoint uses one durable coordinator", () => {
     "async function _publishToAllPlatformsUnlocked",
   );
   const batchEnd = source.indexOf(
-    "// --- Full autonomous cycle",
+    "async function publishToAllPlatforms",
     batchStart,
   );
   const batchSource = source.slice(batchStart, batchEnd);

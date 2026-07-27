@@ -35,7 +35,7 @@ test("Pulse release workflow enforces lockfile install, tests, build and redacte
   assert.doesNotMatch(yaml, /\$\{\{\s*secrets\./);
 
   const referencedTests = [
-    ...yaml.matchAll(/tests\/services\/[a-z0-9-]+\.test\.js/g),
+    ...yaml.matchAll(/tests\/(?:services|ops)\/[a-z0-9-]+\.test\.js/g),
   ].map((match) => match[0]);
   assert.ok(referencedTests.length > 0);
   for (const testPath of referencedTests) {
@@ -43,6 +43,45 @@ test("Pulse release workflow enforces lockfile install, tests, build and redacte
       fs.existsSync(path.join(ROOT, testPath)),
       true,
       `${testPath} must exist in a clean checkout`,
+    );
+  }
+});
+
+test("Pulse release workflow checks the nested HyperFrames material project", () => {
+  const yaml = fs.readFileSync(WORKFLOW, "utf8");
+
+  assert.match(
+    yaml,
+    /run:\s+npm --prefix videos\/evercold-bastion-short ci/,
+  );
+  assert.match(
+    yaml,
+    /run:\s+npm --prefix videos\/evercold-bastion-short run check -- --strict/,
+  );
+});
+
+test("Pulse release workflow runs every governed service and ops test", () => {
+  const yaml = fs.readFileSync(WORKFLOW, "utf8");
+  const governedTests = [
+    ...["services", "ops"].flatMap((area) => {
+      const directory = path.join(ROOT, "tests", area);
+      return fs
+        .readdirSync(directory)
+        .filter((name) => /^governed-.*\.test\.js$/.test(name))
+        .map((name) => `tests/${area}/${name}`);
+    }),
+    "tests/services/guarded-youtube-window.test.js",
+    "tests/ops/guarded-youtube-window-cli.test.js",
+    "tests/services/evercold-hyperframes-material.test.js",
+    "tests/ops/agent-operator-command-contract.test.js",
+    "tests/services/agent-operating-rules.test.js",
+  ];
+
+  for (const testPath of governedTests) {
+    assert.match(
+      yaml,
+      new RegExp(testPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      `${testPath} must run in the focused release gate`,
     );
   }
 });

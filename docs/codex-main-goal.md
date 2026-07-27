@@ -16,6 +16,8 @@
 
 If expired, treat this file as **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS** until refreshed with the canonical set.
 
+> **Restamp required:** the metadata above still attests the previous committed snapshot. The governed local-candidate changes described below require the exact final source commit and CI result before this compatibility contract can support a release decision.
+
 ## North star
 
 Build Pulse Gaming into a governed, commercially intelligent media operating system that produces exceptionally clear, accurate and engaging gaming journalism. Quality should withstand comparison with leading gaming-news and creator-led video brands without copying their assets, identity or work.
@@ -33,7 +35,8 @@ The immediate programme is safe production cutover and controlled growth:
 - per-item rights and transformation evidence
 - explicit synthetic-media disclosure decision
 - durable SQLite queue, one scheduler owner and hard idempotency
-- exactly two potential YouTube windows at most: `09:00 UTC` and `19:00 UTC`
+- exactly two recurring YouTube windows at most: `09:00 UTC` and `19:00 UTC`
+- standard cadence by default; a separately authorised outside-cadence one-shot must bind one exact authority ID and every ordinary gate without creating a recurring window
 - no catch-up flood
 - read-only analytics before optimisation
 
@@ -48,6 +51,8 @@ Production SQLite integrity checks passed at migration `020`. A verified online 
 The documented next-candidate, platform-doctor and strict dry-run commands now exist. Their real read-only evidence does not authorise publication: the candidate and package verdicts are `HOLD`, while the platform policy check passed with every platform still unpublishable.
 
 The 13 render, platform-pack and repair names formerly missing from the wider operator command contract now resolve to tested npm scripts through an inspection-only `LOCAL_PROOF` bridge. Every bridge run reports `HOLD` and performs no materialisation, repair, database mutation, OAuth change or publication. The specialist production implementations remain unavailable, so this resolves command discoverability without changing candidate readiness. [CURRENT_STATUS.md](../CURRENT_STATUS.md) is the source of truth for that boundary.
+
+A separate governed local-candidate lane now exists for exact official intake, owned motion, narration evidence, HyperFrames material, final composition, publication evidence/review and a guarded one-window YouTube action. Local Evercold material exists, but remains `HOLD`: final hashes, explicit human approval, production migration and backup evidence, exact runtime parity, scheduler admission and a verified public upload are not established by this source state.
 
 A read-only analytics audit mapped five YouTube video IDs to five story records. It did not verify live `yt-analytics.readonly` scope, publication timezone or YouTube Analytics API data.
 

@@ -23,6 +23,24 @@ const REPAIRED_COMMANDS = [
   "v4-motion-pack",
   "v4-source-family-acquisition",
 ];
+const GOVERNED_COMMANDS = new Map([
+  ["ops:story-intake", "tools/governed-story-intake.js"],
+  ["ops:governed-owned-motion", "tools/governed-owned-motion.js"],
+  [
+    "ops:governed-narration-materialize",
+    "tools/governed-narration-materialize.js",
+  ],
+  ["ops:governed-final-composite", "tools/governed-final-composite.js"],
+  [
+    "ops:governed-publication-review",
+    "tools/governed-publication-review.js",
+  ],
+  [
+    "ops:governed-publication-evidence-package",
+    "tools/governed-publication-evidence-package.js",
+  ],
+  ["ops:guarded-youtube-window", "tools/guarded-youtube-window.js"],
+]);
 
 function documentedNpmCommands() {
   const agents = fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8");
@@ -31,6 +49,17 @@ function documentedNpmCommands() {
       [...agents.matchAll(/`npm run ([^`\s]+)/g)].map((match) => match[1]),
     ),
   ].sort();
+}
+
+function documentedFocusedTests() {
+  const agents = fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8");
+  return [
+    ...new Set(
+      [...agents.matchAll(/node --test\s+([^\s`]+\.test\.js)/g)].map(
+        (match) => match[1],
+      ),
+    ),
+  ].filter((testPath) => !/[<>]/.test(testPath)).sort();
 }
 
 test("every npm command documented in AGENTS.md resolves to a local entry point", () => {
@@ -53,6 +82,72 @@ test("every npm command documented in AGENTS.md resolves to a local entry point"
       true,
       `${commandName} points at missing entry point ${nodeMatch[1]}`,
     );
+  }
+});
+
+test("governed cutover commands resolve to their exact reviewed entry points", () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
+  );
+
+  for (const [commandName, entrypoint] of GOVERNED_COMMANDS) {
+    assert.equal(
+      packageJson.scripts?.[commandName],
+      `node ${entrypoint}`,
+      `${commandName} must resolve only to ${entrypoint}`,
+    );
+    assert.equal(
+      fs.existsSync(path.join(ROOT, entrypoint)),
+      true,
+      `${entrypoint} must exist in a clean checkout`,
+    );
+  }
+});
+
+test("AGENTS.md documents every governed cutover command explicitly", () => {
+  const documented = new Set(documentedNpmCommands());
+
+  for (const commandName of GOVERNED_COMMANDS.keys()) {
+    assert.equal(
+      documented.has(commandName),
+      true,
+      `${commandName} must be named in the operator command map`,
+    );
+  }
+});
+
+test("every focused test path documented in AGENTS.md exists", () => {
+  const documented = documentedFocusedTests();
+  assert.ok(documented.length > 0);
+  assert.ok(documented.some((testPath) => testPath.startsWith("tests/ops/")));
+  assert.ok(
+    documented.some((testPath) => testPath.startsWith("tests/services/")),
+  );
+
+  for (const testPath of documented) {
+    assert.equal(
+      fs.existsSync(path.join(ROOT, testPath)),
+      true,
+      `${testPath} must exist in a clean checkout`,
+    );
+  }
+});
+
+test("operator docs preserve standard cadence and name every one-shot confirmation", () => {
+  const documents = [
+    fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8"),
+    fs.readFileSync(path.join(ROOT, "DEPLOYMENT_RUNBOOK.md"), "utf8"),
+  ];
+  const flags = [
+    "--outside-cadence-authorisation-id",
+    "--confirm-outside-cadence-authorisation-id",
+    "--confirm-outside-cadence-one-shot",
+  ];
+
+  for (const document of documents) {
+    assert.match(document, /standard cadence remains the default/i);
+    assert.match(document, /does not bypass/i);
+    for (const flag of flags) assert.match(document, new RegExp(flag));
   }
 });
 

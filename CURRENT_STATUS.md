@@ -16,6 +16,8 @@
 
 After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT RELEASE DECISIONS** and refresh from the actual target environment.
 
+> **Restamp required:** `source_commit_sha`, `generated_at` and `expires_at` above still attest the previous committed snapshot. The governed local-candidate changes described below are working-branch source evidence only until this document is restamped to the exact final commit and that commit's CI result.
+
 ## Executive status
 
 | Area | Status | Evidence boundary |
@@ -33,11 +35,13 @@ After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT 
 | Production migrations | pending | production remains at `020`; migrations `021` through `023` have not been applied to `D:\pulse-data\pulse.db` |
 | Publish preflight commands | implemented and exercised read-only | `ops:next-publish-candidates`, `ops:platform-doctor` and `ops:goal-dry-run-publish` exist; evidence is under `D:\pulse-data\cutover-proof\preflight-before-migration` |
 | Wider operator command contract | resolved fail-closed, production capability unavailable | all 13 formerly missing names now resolve to a tested inspection-only `LOCAL_PROOF` bridge; each reports `HOLD`, performs no materialisation or repair and grants no publication authority |
+| Governed local candidate path | implemented in the working release line, candidate still `HOLD` | exact official story intake, owned motion, governed narration evidence, HyperFrames material, final local composite, publication evidence/review and one-window YouTube controls have dedicated entry points; this does not prove final hashes, human approval, scheduler admission, deployment or publication |
 | Next-candidate preflight | `HOLD` | scheduler not ready, one owner not proven and candidate render, rights, QA, disclosure and human-review evidence incomplete |
 | Platform doctor | policy check `PASS`, publication `NO` | all seven platform rows remained visible, no platform was publishable and no credential value was read; this is not authentication or readiness proof |
 | Strict dry-run publish | `HOLD` | package not ready, scheduler not ready, no uploader entered and no external object created |
 | Production dependency audit | `HOLD`, risk reduced | exact-lock production findings reduced from 36 to 22: critical `2 → 0`, high `10 → 2`, moderate `23 → 20` and low `1 → 0`; the remaining Hyperframes and Sentry/OpenTelemetry major-version constraints are documented in `docs/dependency-audit.md` |
 | Exact two-window reconciler | implemented, not applied | `tools/stabilisation-cutover-reconcile.js` plans YouTube-only `publish_morning` at `09:00 UTC` and `publish_primary` at `19:00 UTC`, quarantines unsafe debt and is dry-run by default |
+| Guarded outside-cadence one-shot | implemented, not exercised | standard cadence remains the default; one exact active authority ID, its matching confirmation and the explicit one-shot boolean are all required in addition to every normal gate, with immutable schedule and audit binding |
 | Governed Windows supervisor | implemented, not installed | `ops:windows-local-runtime` enforces a clean exact commit, `HUMAN_REVIEW`, YouTube-only policy, kill switches tripped and both publish arms off; `PulseGaming-Stabilisation-Runtime` does not exist |
 | YouTube analytics baseline | `HOLD` | the read-only audit mapped five unique published video IDs to five story rows, but live `yt-analytics.readonly` scope is missing or unrecorded, publish timezone is unresolved and no YouTube Analytics API sample was collected |
 | PR 68 | closed as superseded | PR 69 contained all observed PR 68 ancestry and paths: zero unique commits and zero paths absent; closure was not a merge or readiness decision |
@@ -52,6 +56,7 @@ After `expires_at`, display **STALE HISTORICAL EVIDENCE: DO NOT USE FOR CURRENT 
 - YouTube is the only primary human-reviewed stabilisation lane. Instagram, Facebook, TikTok, X, Threads and Pinterest remain disabled, frozen or manual.
 - The three documented preflight commands now resolve to tested tools and generate machine-readable JSON plus readable Markdown.
 - The 13 formerly missing render, platform-pack and repair command names now resolve to a tested `LOCAL_PROOF` bridge. It inspects named local inputs, reports `HOLD` and refuses apply, publish, live and OAuth/token flags; the production implementations are still unavailable.
+- A separate governed local-candidate lane binds official intake, owned motion, narration, final composition, publication evidence, review and guarded YouTube window controls. Local Evercold materials exist, but no final media hash or human-review decision is authorised by this status snapshot.
 - The cutover reconciler is read-only by default and requires an exact database, source/runtime commit parity, verified backup evidence, explicit `HUMAN_REVIEW` authority and matching confirmation before it can mutate state.
 - The Windows supervisor refuses dirty or mismatched source, pending or mismatched migrations, foreign port ownership and unsafe runtime configuration.
 - Migrations `001` through `023` are tracked. Migration `020` preserves its deployed checksum and migration `023` carries the later governance hardening.
@@ -80,9 +85,11 @@ The three publication preflight commands are implemented. These 13 wider `AGENTS
 
 The bridge is deliberately inspection-only. It writes JSON and Markdown evidence, returns readiness `HOLD`, performs no materialisation or repair and makes no external call, production database mutation, OAuth/token mutation or publication attempt. The specialist production materialisers, media graphs and database-repair implementations were not ported into this reviewed release slice. Do not interpret command resolution or `execution_status: COMPLETE` as capability, candidate readiness or publication authority.
 
+The governed local-candidate commands are not implementations of those 13 generic repair aliases. They are a narrow, hash-bound path for one exact candidate and remain subject to final artefact verification, exact human review, production preflight, admission and dispatch controls.
+
 ## Remaining cutover blockers
 
-1. replace the inspection-only operator bridge with reviewed production materialisers and repair implementations, then prove them with focused and integration evidence before relying on the documented candidate-build flow
+1. keep the 13-command generic bridge inspection-only; its specialist repair capabilities remain unavailable and must be implemented and reviewed before any operator relies on those repair aliases
 2. obtain current CI evidence for the exact release candidate and establish the required GitHub release check
 3. apply migrations `021` through `023` to the named production database only under an approved change window, then repeat integrity and application checks
 4. generate the reconciler's required cutover backup-evidence record, run its dry-run plan and apply only after every blocker is clear
@@ -90,7 +97,7 @@ The bridge is deliberately inspection-only. It writes JSON and Markdown evidence
 6. install and start the governed Windows supervisor, then prove exact commit health, one scheduler owner and one healthy primary lease
 7. keep the public custom domain fail-closed until that exact runtime passes health and ownership verification
 8. reauthorise YouTube with the required read-only Analytics scope, resolve publication timezone provenance and collect a five-video API sample without changing platform objects
-9. select a current, verified story and materialise final narration, word timestamps, distinct motion, final MP4, rights ledger, QA, disclosure and explicit human approval
+9. finish and independently verify the current governed Evercold candidate's final MP4, rights ledger, transformation evidence, QA, disclosure and exact human approval, then bind every hash to the release commit
 10. confirm the first approved YouTube canary end to end before expanding cadence
 11. complete the governed 12-video sample and the 30-day and 90-day evidence gates without inventing future outcomes
 12. remove, replace or separately review the residual Hyperframes dependency risk and validate the Sentry 10 major upgrade before treating the production dependency audit as green

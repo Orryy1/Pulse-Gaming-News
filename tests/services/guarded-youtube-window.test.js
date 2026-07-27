@@ -243,6 +243,41 @@ test("inspect is the default read-only lane and reports the exact review as read
   assert.equal(result.safety.platforms_contacted, false);
 });
 
+test("inspect exposes the computed exact confirmations without weakening the hold", async () => {
+  const result = await executeGuardedYoutubeWindow(
+    commonOptions(
+      "inspect",
+      {
+        inspectDatabase: () => baseSnapshot(),
+      },
+      {
+        confirmMediaSha256: undefined,
+        confirmScriptSha256: undefined,
+        confirmRequestFingerprint: undefined,
+        confirmRendererManifestSha256: undefined,
+        confirmSourceEvidenceSha256: undefined,
+        confirmDispatchKey: undefined,
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.equal(result.mutated, false);
+  assert.deepEqual(result.expected_confirmations, {
+    story_id: STORY_ID,
+    scheduled_for: SCHEDULED_FOR,
+    media_sha256: MEDIA_SHA,
+    script_sha256: SCRIPT_SHA,
+    request_fingerprint: REQUEST_SHA,
+    renderer_manifest_sha256: RENDERER_SHA,
+    source_evidence_sha256: SOURCE_SHA,
+    dispatch_idempotency_key: DISPATCH_KEY,
+  });
+  assert.equal(result.request_fingerprint, REQUEST_SHA);
+  assert.ok(result.blockers.includes("current_request_fingerprint_mismatch"));
+  assert.equal(result.safety.platforms_contacted, false);
+});
+
 test("admit invokes existing admission at most once, then proves the exact SCHEDULED row", async () => {
   let inspections = 0;
   let admissions = 0;
@@ -564,6 +599,49 @@ test("backup evidence is fresh and bound to the current exact database bytes", (
   assert.equal(changed.valid, false);
   assert.ok(changed.blockers.includes("cutover_backup_source_sha256_mismatch"));
 });
+
+test(
+  "backup source path comparison preserves POSIX case sensitivity",
+  { skip: process.platform === "win32" },
+  (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-path-case-"));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const databasePath = path.join(root, "Pulse.db");
+    const otherDatabasePath = path.join(root, "pulse.db");
+    const backupPath = path.join(root, "pulse.backup.db");
+    const evidencePath = path.join(root, "backup-evidence.json");
+    fs.writeFileSync(databasePath, "current-database");
+    fs.writeFileSync(otherDatabasePath, "different-database");
+    fs.writeFileSync(backupPath, "verified-backup");
+    fs.writeFileSync(
+      evidencePath,
+      JSON.stringify({
+        schema_version: "pulse-cutover-backup-evidence-v1",
+        source_database_path: otherDatabasePath,
+        source_database_sha256: sha256(fs.readFileSync(databasePath)),
+        backup_path: backupPath,
+        backup_sha256: sha256(fs.readFileSync(backupPath)),
+        verified_at: "2026-07-27T18:55:00.000Z",
+        restore_test_status: "PASS",
+        integrity_check: "ok",
+        foreign_key_check: "ok",
+        quick_check: "ok",
+        backup_restore_hashes_match: true,
+        production_database_mutated: false,
+      }),
+    );
+
+    const result = validateBackupEvidence({
+      backupEvidencePath: evidencePath,
+      databasePath,
+      databaseSha256: sha256(fs.readFileSync(databasePath)),
+      generatedAt: NOW,
+    });
+
+    assert.equal(result.valid, false);
+    assert.ok(result.blockers.includes("cutover_backup_source_path_mismatch"));
+  },
+);
 
 test("database inspection is read-only and exposes stopped-runtime evidence", (t) => {
   const Database = require("better-sqlite3");

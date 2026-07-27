@@ -12,10 +12,46 @@ const {
 } = require("../lib/ops/guarded-youtube-window");
 
 const BOOLEAN_FLAGS = new Map([
+  ["help", "help"],
   ["confirm-supervisor-stopped", "confirmSupervisorStopped"],
   ["confirm-workers-stopped", "confirmWorkersStopped"],
   ["confirm-live-youtube-dispatch", "confirmLiveYoutubeDispatch"],
 ]);
+
+const USAGE = `Usage: node tools/guarded-youtube-window.js [options]
+
+Read-only discovery:
+  --action inspect
+  --database <path>
+  --backup-evidence <path>
+  --publication-review-result <path>
+  --story-id <id>
+  --scheduled-for <ISO-8601>
+  --expected-source-commit <40-char SHA>
+  --expected-runtime-commit <40-char SHA>
+
+Exact second-pass confirmations:
+  --confirm-story-id <id>
+  --confirm-scheduled-for <ISO-8601>
+  --confirm-media-sha256 <SHA-256>
+  --confirm-script-sha256 <SHA-256>
+  --confirm-request-fingerprint <SHA-256>
+  --confirm-renderer-manifest-sha256 <SHA-256>
+  --confirm-source-evidence-sha256 <SHA-256>
+  --confirm-dispatch-key <key>
+  --actor-id <id> --confirm-actor-id <id>
+  --reason <text> --confirm-reason <text>
+  --change-window-id <id> --confirm-change-window-id <id>
+  --confirm-supervisor-stopped --confirm-workers-stopped
+
+Mutation actions:
+  --action admit
+  --action dispatch --confirm-live-youtube-dispatch
+
+Inspect is always the default. The first inspect remains HOLD when exact
+confirmations are absent and emits expected_confirmations for a reviewed
+second pass. No command mutates authentication credentials.
+`;
 
 const VALUE_FLAGS = new Map([
   ["action", "action"],
@@ -85,14 +121,43 @@ function writeArtifacts({ outDir, result }) {
       ),
   );
   fs.mkdirSync(resolved, { recursive: true });
-  const jsonPath = path.join(resolved, "guarded-youtube-window.json");
-  const markdownPath = path.join(resolved, "guarded-youtube-window.md");
-  fs.writeFileSync(jsonPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-  fs.writeFileSync(
-    markdownPath,
-    renderGuardedYoutubeWindowMarkdown(result),
-    "utf8",
-  );
+  const action = String(result.action || "inspect")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-");
+  const generatedAt = String(result.generated_at || new Date().toISOString())
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-+$/g, "");
+  const baseName = `guarded-youtube-window-${action}-${generatedAt}`;
+  const jsonPath = path.join(resolved, `${baseName}.json`);
+  const markdownPath = path.join(resolved, `${baseName}.md`);
+  const artifacts = [
+    {
+      filePath: jsonPath,
+      content: `${JSON.stringify(result, null, 2)}\n`,
+    },
+    {
+      filePath: markdownPath,
+      content: renderGuardedYoutubeWindowMarkdown(result),
+    },
+  ];
+  for (const artifact of artifacts) {
+    if (
+      fs.existsSync(artifact.filePath) &&
+      fs.readFileSync(artifact.filePath, "utf8") !== artifact.content
+    ) {
+      throw new Error(
+        `guarded_evidence_collision:${path.basename(artifact.filePath)}`,
+      );
+    }
+  }
+  for (const artifact of artifacts) {
+    if (!fs.existsSync(artifact.filePath)) {
+      fs.writeFileSync(artifact.filePath, artifact.content, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+    }
+  }
   return {
     json_path: jsonPath,
     markdown_path: markdownPath,
@@ -106,6 +171,18 @@ async function runCli({
   stdout = process.stdout,
 } = {}) {
   const parsed = parseArgs(argv);
+  if (parsed.help) {
+    stdout.write(USAGE);
+    return {
+      help: true,
+      mutated: false,
+      safety: {
+        database_mutated: false,
+        platforms_contacted: false,
+        authentication_credentials_mutated: false,
+      },
+    };
+  }
   const result = await execute({
     ...parsed,
     env,
@@ -137,6 +214,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  USAGE,
   parseArgs,
   runCli,
   writeArtifacts,

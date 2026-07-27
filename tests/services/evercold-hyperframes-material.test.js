@@ -51,15 +51,17 @@ test("Evercold HyperFrames material is deterministic, local and exactly 28 secon
 test("Evercold HyperFrames material pins its authoring stack and exposes no external publish script", () => {
   const packageJson = JSON.parse(read("package.json"));
 
-  assert.equal(
-    packageJson.scripts.check,
-    "npx --yes hyperframes@0.7.76 check",
-  );
-  assert.equal(
-    packageJson.scripts.render,
-    "npx --yes hyperframes@0.7.76 render",
-  );
+  assert.equal(packageJson.scripts.check, "hyperframes check");
+  assert.equal(packageJson.scripts.render, "hyperframes render");
+  assert.doesNotMatch(JSON.stringify(packageJson.scripts), /\bnpx\b|--yes/);
   assert.equal(packageJson.dependencies.gsap, "3.15.0");
+  assert.equal(packageJson.devDependencies.hyperframes, "0.7.76");
+  const lock = JSON.parse(read("package-lock.json"));
+  assert.equal(
+    lock.packages[""].devDependencies.hyperframes,
+    "0.7.76",
+  );
+  assert.equal(lock.packages["node_modules/hyperframes"].version, "0.7.76");
   assert.equal(packageJson.scripts.publish, undefined);
 });
 

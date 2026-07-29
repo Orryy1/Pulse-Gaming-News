@@ -4,15 +4,17 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { SCENE_TYPES } = require("../../lib/scene-composer");
-const {
-  buildSourceCardFilter,
-} = require("../../lib/scenes/source-card");
+const { buildSourceCardFilter } = require("../../lib/scenes/source-card");
 const {
   buildClipFilter,
   buildSceneInput,
   buildFlashStatCardFilter,
   dispatchSceneFilter,
 } = require("../../lib/studio/ffmpeg-scene-renderer");
+const { CTA_POLICY } = require("../../lib/services/pulse-editorial-contract");
+
+const CONTEXTUAL_CTA = "Which version would you install first?";
+const AUDIT_HASH = `sha256:${"a".repeat(64)}`;
 
 const FONT_OPT = "fontfile='C\\:/Windows/Fonts/arial.ttf'";
 
@@ -71,13 +73,23 @@ test("Flash Lane clip badges use compact fading creator chips", () => {
 test("Flash Lane grammar clips render as punch, speed-ramp and freeze-frame beats", () => {
   const punch = dispatchSceneFilter({
     slot: 0,
-    scene: { type: SCENE_TYPES.PUNCH, duration: 1.8, source: "clip.mp4", entity: "GTA" },
+    scene: {
+      type: SCENE_TYPES.PUNCH,
+      duration: 1.8,
+      source: "clip.mp4",
+      entity: "GTA",
+    },
     story: {},
     fontOpt: FONT_OPT,
   });
   const speed = dispatchSceneFilter({
     slot: 1,
-    scene: { type: SCENE_TYPES.SPEED_RAMP, duration: 3.8, source: "clip.mp4", entity: "GTA" },
+    scene: {
+      type: SCENE_TYPES.SPEED_RAMP,
+      duration: 3.8,
+      source: "clip.mp4",
+      entity: "GTA",
+    },
     story: {},
     fontOpt: FONT_OPT,
   });
@@ -162,25 +174,42 @@ test("dispatchSceneFilter routes Flash Lane card treatment", () => {
   assert.match(context, /KEEP WATCHING/);
 });
 
-test("Flash Lane takeaway card stays bright enough for end-frame QA", () => {
+test("Flash Lane selected-CTA takeaway stays bright enough for end-frame QA", () => {
   const filter = dispatchSceneFilter({
     slot: 0,
     scene: {
       type: SCENE_TYPES.CARD_TAKEAWAY,
       label: "card_takeaway",
       duration: 4,
-      text: "FOLLOW PULSE GAMING",
-      cta: "NEVER MISS A BEAT",
+      text: "PULSE GAMING NEWS",
+      cta: "FOLLOW FOR MORE",
       cardTreatment: "flash_lane",
     },
-    story: {},
+    story: {
+      cta: CONTEXTUAL_CTA,
+      full_script: `Achievements are now confirmed. ${CONTEXTUAL_CTA}`,
+      cta_policy: {
+        policy_version: CTA_POLICY.version,
+        scope: "shorts",
+        include_cta: true,
+        copy_strategy: CTA_POLICY.copy_strategy,
+        cohort_bucket: 0,
+        cohort_numerator: 1,
+        cohort_denominator: 3,
+        audit_hash: AUDIT_HASH,
+      },
+    },
     fontOpt: FONT_OPT,
   });
 
-  assert.match(filter, /NEVER MISS A BEAT/);
-  assert.match(filter, /FOLLOW PULSE GAMING/);
+  assert.match(filter, /Which version would you install first/);
+  assert.match(filter, /PULSE GAMING NEWS/);
+  assert.doesNotMatch(filter, /NEVER MISS A BEAT|FOLLOW FOR MORE/);
   assert.match(filter, /eq=brightness=-0\.08:saturation=1\.08:contrast=1\.14/);
   assert.doesNotMatch(filter, /drawbox=x=0:y=0:w=iw:h=400:color=black@0\.55/);
-  assert.doesNotMatch(filter, /drawbox=x=0:y=h-500:w=iw:h=500:color=black@0\.55/);
+  assert.doesNotMatch(
+    filter,
+    /drawbox=x=0:y=h-500:w=iw:h=500:color=black@0\.55/,
+  );
   assert.doesNotMatch(filter, /drawbox=[^,]*:alpha=/);
 });

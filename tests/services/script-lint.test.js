@@ -11,6 +11,9 @@ const {
   DEFAULT_MIN_WORDS,
   DEFAULT_MAX_WORDS,
 } = require("../../lib/services/script-lint");
+const {
+  resolvePulseScriptContract,
+} = require("../../lib/services/pulse-editorial-contract");
 
 // A realistic clean script — 130 words, curiosity marker in the
 // hook, no banned phrases, 24h time. Used as the baseline for
@@ -25,8 +28,8 @@ const CLEAN_SCRIPT =
   "verified the timeline through two separate trade outlets and an internal " +
   "calendar invite that leaked last week. Players are already speculating about " +
   "what this means for the series going forward, and the marketing team is " +
-  "quietly scrubbing old posts in preparation for the new positioning. Follow " +
-  "Pulse Gaming so you never miss a drop, because this one moves fast.";
+  "quietly scrubbing old posts in preparation for the new positioning. That leaves " +
+  "the studio with a narrow launch window and players with one reason to wait.";
 
 // ---------- happy path ----------
 
@@ -50,6 +53,70 @@ test("lintScript: below min word count → fail:script_too_short", () => {
   const r = lintScript("One two three four five six seven eight nine ten.");
   assert.strictEqual(r.result, "fail");
   assert.ok(r.failures.some((f) => f.startsWith("script_too_short")));
+});
+
+test("lintScript: selected Pulse duration contract overrides legacy word bounds", () => {
+  const draft = [
+    "Verified",
+    "sources",
+    "say",
+    ...Array.from({ length: 39 }, (_, index) => `detail${index}`),
+  ].join(" ");
+  const fastContract = resolvePulseScriptContract({
+    story: {
+      id: "lint-fast",
+      editorial_lane_id: "what_changes_for_players",
+      duration_band_id: "what_changes_short_25_32",
+    },
+  });
+  const contextContract = resolvePulseScriptContract({
+    story: {
+      id: "lint-context",
+      editorial_lane_id: "platform_pulse",
+      duration_band_id: "platform_pulse_standard_42_50",
+    },
+  });
+
+  const fast = lintScript(draft, { contract: fastContract });
+  assert.equal(fast.duration_band_id, "what_changes_short_25_32");
+  assert.equal(
+    fast.failures.some((failure) => failure.startsWith("script_too_short")),
+    false,
+  );
+  assert.equal(
+    fast.warnings.some((warning) => warning.startsWith("script_too_long")),
+    false,
+  );
+
+  const context = lintScript(draft, { contract: contextContract });
+  assert.equal(context.result, "fail");
+  assert.ok(
+    context.failures.some((failure) => failure.startsWith("script_too_short")),
+  );
+});
+
+test("lintScript: selected Pulse duration contract makes overflow a hard failure", () => {
+  const contract = resolvePulseScriptContract({
+    story: {
+      id: "lint-fast-overflow",
+      editorial_lane_id: "what_changes_for_players",
+      duration_band_id: "what_changes_short_25_32",
+    },
+  });
+  const draft = [
+    "Verified",
+    "sources",
+    "say",
+    ...Array.from(
+      { length: contract.max_words - 2 },
+      (_, index) => `detail${index}`,
+    ),
+  ].join(" ");
+  const result = lintScript(draft, { contract });
+  assert.equal(result.result, "fail");
+  assert.ok(
+    result.failures.some((failure) => failure.startsWith("script_too_long")),
+  );
 });
 
 test("lintScript: each banned phrase → fail", () => {
@@ -129,7 +196,7 @@ test("lintScript: no curiosity marker → warn:no_curiosity_marker", () => {
     "Fans are discussing options, cosmetics, and accessibility features. " +
     "The embargo ends soon and marketing will shift to long-form gameplay previews. " +
     "Updates will ship monthly with a rolling patch cadence through the first year. " +
-    "Follow Pulse Gaming so you never miss a drop on weekend windows.";
+    "The first year therefore depends on whether that monthly cadence remains consistent.";
   const r = lintScript(dry);
   // Not a fail — curiosity-marker absence is a warn only.
   assert.notStrictEqual(r.result, "fail");

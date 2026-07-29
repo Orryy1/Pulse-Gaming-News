@@ -15,6 +15,17 @@ const {
   confidenceFromFlair,
 } = require("../../lib/creative/format-catalogue");
 
+function editorialStory(overrides = {}) {
+  return {
+    id: "runtime-contract-story",
+    title: "Xbox changes Game Pass",
+    editorial_lane_id: "platform_pulse",
+    hook_type: "direct",
+    duration_band_id: "platform_pulse_short_30_36",
+    ...overrides,
+  };
+}
+
 test("runtime: every classification in RUNTIME_PLANS resolves", () => {
   for (const cls of Object.keys(RUNTIME_PLANS)) {
     const plan = recommendRuntime(cls);
@@ -35,13 +46,25 @@ test("runtime: reject_visuals + blog_only do not render", () => {
   }
 });
 
-test("runtime: short_only is 30-45s, premium_video is 60-75s", () => {
-  const sho = recommendRuntime("short_only");
+test("runtime: all renderable inventory classes defer to the selected editorial band", () => {
+  const sho = recommendRuntime("short_only", {
+    story: editorialStory(),
+  });
   assert.equal(sho.runtimeSeconds.min, 30);
-  assert.equal(sho.runtimeSeconds.max, 45);
-  const prem = recommendRuntime("premium_video");
-  assert.equal(prem.runtimeSeconds.min, 60);
-  assert.equal(prem.runtimeSeconds.max, 75);
+  assert.equal(sho.runtimeSeconds.max, 36);
+  const prem = recommendRuntime("premium_video", {
+    story: editorialStory(),
+  });
+  assert.deepEqual(prem.runtimeSeconds, sho.runtimeSeconds);
+  assert.equal(prem.durationBandId, "platform_pulse_short_30_36");
+});
+
+test("runtime: renderable inventory fails closed without editorial metadata", () => {
+  const plan = recommendRuntime("premium_video");
+
+  assert.equal(plan.shouldRender, false);
+  assert.equal(plan.runtimeSeconds, null);
+  assert.match(plan.blocker, /^pulse_editorial_contract_metadata_missing:/);
 });
 
 test("runtime: describeRuntimeRules emits all 6 buckets", () => {
@@ -57,9 +80,10 @@ test("runtime: describeRuntimeRules emits all 6 buckets", () => {
   ]);
 });
 
-test("formats: catalogue contains all 9 ids the prompt requires", () => {
+test("formats: catalogue contains the complete governed format ladder", () => {
   const expected = [
     "daily_shorts",
+    "evergreen_verdict_short",
     "daily_briefing",
     "weekly_roundup",
     "monthly_release_radar",
@@ -147,6 +171,25 @@ test("formats: selectFormatForStory routes inventory bands correctly", () => {
     { classification: "short_only" },
   );
   assert.equal(shortOnly.format.id, "daily_shorts");
+});
+
+test("formats: evergreen verdict is explicit-only and never steals a news story", () => {
+  const explicit = selectFormatForStory(
+    {
+      id: "evergreen-1",
+      flair: "Verified",
+      editorial_format: "evergreen_verdict_short",
+    },
+    { classification: "premium_video" },
+  );
+  assert.equal(explicit.format.id, "evergreen_verdict_short");
+  assert.equal(explicit.format.idealRuntimeSeconds.target, 82);
+
+  const ordinary = selectFormatForStory(
+    { id: "news-1", flair: "Verified" },
+    { classification: "premium_video" },
+  );
+  assert.equal(ordinary.format.id, "daily_shorts");
 });
 
 test("formats: confidenceFromFlair maps the standard flairs", () => {

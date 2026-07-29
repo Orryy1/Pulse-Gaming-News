@@ -7,19 +7,32 @@ const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
-test("Pulse VoxCPM voice map carries Sleepy-proven safety parameters", () => {
+test("Pulse VoxCPM voice map carries immutable external-reference and safe synthesis parameters", () => {
   const voices = JSON.parse(
     fs.readFileSync(path.join(ROOT, "tts_server", "voices.json"), "utf8"),
   );
   const pulse = voices.TX3LPaxmHKxFdv7VOQHJ;
 
   assert.ok(pulse, "Pulse Liam voice mapping must exist");
-  assert.equal(pulse.ref_voice_path, "voices/pulse_v2.wav");
-  assert.equal(pulse.base_speed <= 1.4, true);
+  assert.equal(pulse.ref_voice_file, "pulse_liam_sleepy.wav");
+  assert.match(pulse.ref_voice_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(pulse.ref_voice_probe.duration_seconds, 48.761917);
+  assert.equal(pulse.ref_voice_probe.sample_rate_hz, 24_000);
+  assert.equal(pulse.ref_voice_probe.channels, 1);
+  assert.equal(pulse.reference_rights_status, "CLEARED");
+  assert.equal(
+    pulse.reference_rights_evidence_reference,
+    "docs/voice-reference-rights-attestation.md#pulse-liam",
+  );
+  assert.equal(pulse.accepted_reference_id, "pulse-sleepy-liam-20260502");
+  assert.equal(pulse.accepted_reference_file, "pulse_liam_sleepy.wav");
+  assert.equal(pulse.base_speed, 1);
   assert.equal(pulse.cfg_value, 2.0);
   assert.equal(pulse.inference_timesteps, 20);
+  assert.equal(pulse.load_denoiser, false);
+  assert.equal(pulse.voice_qa.fallback_without_reference, false);
   assert.equal(typeof pulse.ref_voice_text, "string");
-  assert.match(pulse.ref_voice_text, /Metro/i);
+  assert.match(pulse.ref_voice_text, /weary traveller/i);
 });
 
 test("Pulse VoxCPM engine passes cfg, timesteps and prompt conditioning", () => {
@@ -65,5 +78,76 @@ test("Pulse local TTS request rate is capped before server base-speed multiplica
     1.68,
     {},
   );
-  assert.equal(eleven.speaking_rate, 1.68);
+  assert.equal(eleven.speed, 1.2);
+  assert.equal("speaking_rate" in eleven, false);
+});
+
+test("ElevenLabs timing request uses the current speed and output-format contract", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const { buildTtsRequest } = require("../../audio");
+
+  const eleven = buildTtsRequest({
+    provider: "elevenlabs",
+    baseUrl: "https://api.elevenlabs.io",
+    voiceId: "voice-id",
+    text: "Pulse narration.",
+    voiceSettings: {
+      stability: 0.2,
+      similarity_boost: 0.8,
+      style: 0.75,
+      speaking_rate: 0.9,
+    },
+    modelId: "eleven_multilingual_v2",
+  });
+  assert.equal(
+    eleven.url,
+    "https://api.elevenlabs.io/v1/text-to-speech/voice-id/with-timestamps?output_format=mp3_44100_128",
+  );
+  assert.equal(eleven.data.output_format, undefined);
+  assert.equal(eleven.data.voice_settings.speed, 0.9);
+  assert.equal("speaking_rate" in eleven.data.voice_settings, false);
+  assert.equal(eleven.data.model_id, "eleven_multilingual_v2");
+
+  const local = buildTtsRequest({
+    provider: "local",
+    baseUrl: "http://127.0.0.1:8765",
+    voiceId: "voice-id",
+    text: "Pulse narration.",
+    voiceSettings: { speaking_rate: 1.1 },
+  });
+  assert.equal(
+    local.url,
+    "http://127.0.0.1:8765/v1/text-to-speech/voice-id/with-timestamps",
+  );
+  assert.equal(local.data.output_format, "mp3_44100_128");
+  assert.equal(local.data.voice_settings.speaking_rate, 1.1);
+});
+
+test("ElevenLabs paid synthesis receives a deterministic render-bound idempotency key", () => {
+  process.env.PULSE_SKIP_DOTENV = "true";
+  const {
+    buildElevenLabsCreditIdempotencyKey,
+  } = require("../../audio");
+  const input = {
+    outputPath: "output/audio/story-1.mp3",
+    voiceId: "voice-id",
+    modelId: "eleven_multilingual_v2",
+    text: "Pulse narration.",
+    voiceSettings: { stability: 0.2, speed: 1.1 },
+  };
+  const first = buildElevenLabsCreditIdempotencyKey(input);
+  const second = buildElevenLabsCreditIdempotencyKey({ ...input });
+  const changedScript = buildElevenLabsCreditIdempotencyKey({
+    ...input,
+    text: "Different narration.",
+  });
+  const changedOutput = buildElevenLabsCreditIdempotencyKey({
+    ...input,
+    outputPath: "output/audio/story-2.mp3",
+  });
+
+  assert.match(first, /^pulse-elevenlabs-tts-v1:[a-f0-9]{64}$/);
+  assert.equal(second, first);
+  assert.notEqual(changedScript, first);
+  assert.notEqual(changedOutput, first);
 });

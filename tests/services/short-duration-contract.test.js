@@ -7,6 +7,7 @@ const {
   DEFAULT_MIN_SHORT_VIDEO_SECONDS,
   DEFAULT_MAX_SHORT_VIDEO_SECONDS,
   DEFAULT_RENDER_BREATHING_ROOM_SECONDS,
+  resolveShortDurationBounds,
 } = require("../../lib/services/short-duration-contract");
 
 test("estimateVideoDurationFromAudio adds the render breathing room", () => {
@@ -50,4 +51,24 @@ test("duration defaults match the current publish QA contract", () => {
   assert.equal(DEFAULT_MIN_SHORT_VIDEO_SECONDS, 61);
   assert.equal(DEFAULT_MAX_SHORT_VIDEO_SECONDS, 75);
   assert.equal(DEFAULT_RENDER_BREATHING_ROOM_SECONDS, 1);
+});
+
+test("evergreen verdicts use the deliberate 61-90 second extended Short lane", () => {
+  assert.deepEqual(
+    resolveShortDurationBounds({
+      editorialFormat: "evergreen_verdict_short",
+    }),
+    {
+      laneId: "pulse_extended_short",
+      minVideoSeconds: 61,
+      maxVideoSeconds: 90,
+    },
+  );
+  const result = classifyShortDuration({
+    editorialFormat: "evergreen_verdict_short",
+    videoDurationSeconds: 82,
+  });
+  assert.equal(result.result, "pass");
+  assert.equal(result.laneId, "pulse_extended_short");
+  assert.equal(result.maxVideoSeconds, 90);
 });

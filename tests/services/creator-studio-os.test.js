@@ -18,19 +18,11 @@ function trailer(path = "test/trailer.mp4") {
 }
 
 const FLASH_READY_SCRIPT = [
-  "Take-Two just made the weirdest legacy franchise call of the week.",
-  "The company says it passed on a sequel to one of its legacy franchises because the pitch was not strong enough.",
-  "That matters because Take-Two owns names that still make gaming audiences stop scrolling: GTA, Red Dead, BioShock, Mafia and Borderlands.",
-  "This is not a release-date reveal and it is not confirmation of a cancelled project.",
-  "It is a rare look at how the publisher decides what gets revived and what stays buried.",
-  "The interesting bit is the standard.",
-  "Take-Two is saying nostalgia alone is not enough.",
-  "If a sequel cannot clear the creative bar, even a famous logo does not save it.",
-  "That makes the mystery bigger, not smaller.",
-  "Was it BioShock, Midnight Club, Bully, Max Payne or something else entirely?",
-  "For players, the real takeaway is brutal.",
-  "A beloved franchise can still lose internally if the pitch feels average.",
-  "Follow Pulse Gaming so you never miss a beat.",
+  "Take-Two just made a surprising call on one of its legacy franchises.",
+  "The publisher says it rejected a sequel pitch because the idea was not strong enough.",
+  "That does not confirm a cancelled game or reveal which series was involved.",
+  "It does show that nostalgia alone will not revive BioShock, Bully or Midnight Club.",
+  "For players, the practical consequence is simple: a famous name still needs a convincing new direction.",
 ].join(" ");
 
 function baseStory(overrides = {}) {
@@ -47,7 +39,11 @@ function baseStory(overrides = {}) {
     body: "Rockstar and Xbox are now the centre of the conversation. MindsEye is part of the comparison because players are watching both open-world launches.",
     loop: "The question is whether Xbox can turn that attention into a real hardware moment.",
     full_script:
-      "GTA 6 just became the biggest Xbox story of the week. Rockstar and Xbox are now the centre of the conversation. MindsEye is part of the comparison because players are watching both open-world launches. The question is whether Xbox can turn that attention into a real hardware moment.",
+      "GTA 6 just became the biggest Xbox story of the week. Rockstar and Xbox are now at the centre of the conversation. Players are watching whether this attention changes marketing, hardware bundles or Game Pass strategy. Nothing here confirms a release plan. The opportunity is immediate. The practical point is that Xbox has a rare chance to turn one enormous game into a wider platform moment.",
+    editorial_lane_id: "platform_pulse",
+    hook_type: "direct",
+    duration_band_id: "platform_pulse_short_30_36",
+    cta: "",
     downloaded_images: [
       img("steam_hero", "steam", "gta-hero.jpg"),
       img("steam_capsule", "steam", "gta-capsule.jpg"),
@@ -145,7 +141,9 @@ test("Creator Studio OS routes premium media inventory to premium_short", () => 
 
   assert.equal(packet.media_inventory.verdict, "premium_ready");
   assert.equal(packet.format_route.verdict, "premium_short");
-  assert.equal(packet.render_contract.tiktok_60_second_eligibility, true);
+  assert.equal(packet.render_contract.duration_band_id, "platform_pulse_short_30_36");
+  assert.equal(packet.render_contract.target_duration_seconds, 33);
+  assert.equal(packet.render_contract.tiktok_60_second_eligibility, false);
 });
 
 test("Creator Studio OS assigns premium Shorts to the Pulse Flash Lane", () => {
@@ -159,15 +157,102 @@ test("Creator Studio OS assigns premium Shorts to the Pulse Flash Lane", () => {
   );
 
   assert.equal(packet.format_lane_policy.lane_id, "pulse_flash_short");
-  assert.equal(packet.flash_lane_contract.lane_id, "pulse_flash_short");
+  assert.equal(packet.flash_lane_contract.lane_id, "platform_pulse");
   assert.equal(packet.flash_lane_contract.next_action, "generate_approved_flash_lane_voice");
-  assert.equal(packet.flash_lane_contract.script.spoken_outro_required, true);
-  assert.equal(packet.format_lane_policy.runtime_target_seconds.min, 61);
-  assert.equal(packet.format_lane_policy.runtime_target_seconds.max, 75);
+  assert.equal(packet.flash_lane_contract.script.contextual_cta_selected, false);
+  assert.equal(packet.format_lane_policy.runtime_target_seconds.min, 30);
+  assert.equal(packet.format_lane_policy.runtime_target_seconds.max, 36);
   assert.equal(packet.format_lane_policy.caption_rules.max_words_per_punch, 3);
   assert.equal(packet.format_lane_policy.render_rules.clip_dominance_target, 0.55);
   assert.ok(packet.format_lane_policy.qa_gates.includes("approved_voice_required"));
+  assert.ok(packet.format_lane_policy.qa_gates.includes("pulse_editorial_contract_required"));
+  assert.ok(!packet.format_lane_policy.qa_gates.includes("tiktok_60s_runtime_required"));
+  assert.ok(!packet.format_lane_policy.qa_gates.includes("outro_required"));
   assert.ok(packet.format_lane_policy.render_rules.visual_backbone.includes("game_footage"));
+});
+
+test("Creator Studio OS routes explicit evergreen verdicts through the extended governed lane", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "evergreen-verdict",
+      editorial_format: "evergreen_verdict_short",
+      evergreen_verdict_assessment: {
+        verdict: "READY_FOR_PRODUCTION",
+        blockers: [],
+      },
+      duration_band_id: undefined,
+      editorial_lane_id: undefined,
+      hook_type: undefined,
+      duration_seconds: 82,
+    }),
+  );
+
+  assert.equal(
+    packet.format_route.verdict,
+    "evergreen_verdict_short",
+  );
+  assert.equal(
+    packet.format_lane_policy.lane_id,
+    "pulse_evergreen_verdict_short",
+  );
+  assert.equal(packet.render_contract.target_duration_seconds, 82);
+  assert.equal(packet.render_contract.render_lane, "studio_v2_candidate");
+  assert.equal(packet.format_lane_policy.production_safety.report_only, false);
+});
+
+test("Creator Studio OS never invents a generic follow CTA in the shot list", () => {
+  const packet = buildProductionPacket(baseStory({ id: "no-cta-shot-list" }));
+  const publicCopy = packet.shot_list.shots
+    .map((shot) => shot.script_beat)
+    .filter(Boolean)
+    .join(" ");
+
+  assert.doesNotMatch(publicCopy, /\b(?:follow|subscribe)\b/i);
+  assert.match(publicCopy, /Fast gaming news\. Checked\. Explained\./);
+});
+
+test("Creator Studio OS uses only a selected contextual CTA in the close", () => {
+  const cta = "Would this Xbox change make you switch platforms?";
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "selected-contextual-cta",
+      cta,
+      full_script: `${baseStory().full_script} ${cta}`,
+      cta_policy: {
+        policy_version: "pulse-selective-cta-v2",
+        scope: "shorts",
+        include_cta: true,
+        copy_strategy: "story_specific_contextual",
+        cohort_bucket: 0,
+        cohort_numerator: 1,
+        cohort_denominator: 3,
+        audit_hash: `sha256:${"a".repeat(64)}`,
+      },
+    }),
+  );
+  const close = packet.shot_list.shots.at(-1);
+
+  assert.equal(close.script_beat, cta);
+  assert.equal(close.visual_type, "brand_close");
+});
+
+test("Creator Studio OS fails closed when Pulse editorial metadata is missing", () => {
+  const packet = buildProductionPacket(
+    baseStory({
+      id: "missing-editorial-contract",
+      editorial_lane_id: undefined,
+      hook_type: undefined,
+      duration_band_id: undefined,
+    }),
+  );
+
+  assert.equal(packet.publish_readiness.colour, "RED");
+  assert.ok(
+    packet.publish_readiness.blockers.some((item) =>
+      item.startsWith("pulse_editorial_contract_metadata_missing:"),
+    ),
+  );
+  assert.equal(packet.render_contract.target_duration_seconds, null);
 });
 
 test("Creator Studio OS assigns release radar stories to the Pulse Briefing Lane", () => {
@@ -273,7 +358,7 @@ test("Creator Studio OS reports TikTok API blocked with dispatch pack required",
 
   assert.equal(packet.platform_route_plan.tiktok.official_api_status, "blocked");
   assert.equal(packet.platform_route_plan.tiktok.dispatch_pack_required, true);
-  assert.equal(packet.platform_route_plan.tiktok.sixty_second_eligibility, true);
+  assert.equal(packet.platform_route_plan.tiktok.sixty_second_eligibility, false);
 });
 
 test("Creator Studio OS includes official motion and frame-plan readiness", () => {

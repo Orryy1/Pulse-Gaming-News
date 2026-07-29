@@ -134,6 +134,7 @@ async function main() {
     voice = await ensureProductionElevenLabsVoice({
       root: ROOT,
       storyId: STORY_ID,
+      story,
       editorial,
       force: process.env.STUDIO_V1_FORCE_TTS === "true",
     }).catch(async (err) => {
@@ -188,7 +189,6 @@ async function main() {
     audioDurationS,
     opts: {
       takeawayText: "WATCH THE FULL TRAILER",
-      cta: "FOLLOW FOR MORE",
       allowStockFiller: false,
     },
   });

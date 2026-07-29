@@ -18,7 +18,7 @@ const path = require('path');
 const https = require('https');
 const dotenv = require('dotenv');
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const LYRICS_CACHE_PATH = path.join(__dirname, '..', 'output', 'lyrics_cache.json');
 const GENIUS_TOKEN = process.env.GENIUS_API_TOKEN;

@@ -1,6 +1,9 @@
 "use strict";
 
+const path = require("node:path");
 const { runGauntlet, discoverGauntletCandidates } = require("../lib/studio/v2/gauntlet-v2");
+
+const ROOT = path.resolve(__dirname, "..");
 
 function hasFlag(name) {
   return process.argv.includes(name);
@@ -11,7 +14,10 @@ async function main() {
   console.log("  STUDIO V2 GAUNTLET");
   console.log("==============================================");
 
-  const candidates = await discoverGauntletCandidates();
+  const outputDir = process.env.STUDIO_V2_OUTPUT_DIR
+    ? path.resolve(ROOT, process.env.STUDIO_V2_OUTPUT_DIR)
+    : undefined;
+  const candidates = await discoverGauntletCandidates(outputDir);
   console.log(`[gauntlet] discovered ${candidates.length} rendered candidate(s)`);
   for (const candidate of candidates) {
     console.log(
@@ -21,6 +27,7 @@ async function main() {
 
   const report = await runGauntlet({
     candidates,
+    outputDir,
     skipLoudness: hasFlag("--skip-loudness"),
   });
 

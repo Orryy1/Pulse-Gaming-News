@@ -31,9 +31,10 @@
 const path = require("node:path");
 const fs = require("fs-extra");
 const { execSync } = require("node:child_process");
+const { resolvePortablePath } = require("../lib/portable-path");
 try {
   if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-    require("dotenv").config({ override: true });
+    require("dotenv").config({ override: false });
   }
 } catch {}
 
@@ -95,14 +96,70 @@ const {
   buildCreatorGradePlan,
 } = require("../lib/studio/creator-grade/orchestrator");
 const {
+  resolveRequiredPulseEditorialContract,
+} = require("../lib/studio/v2/flash-lane-preflight");
+const {
   reorderMediaByVault,
 } = require("../lib/studio/creator-grade/clip-intelligence-vault");
 
 const ROOT = path.resolve(__dirname, "..");
-const TEST_OUT = path.join(ROOT, "test", "output");
 
 const STORY_ID = process.argv[2] || "1sn9xhe";
-const OUTPUT_SUFFIX = process.env.STUDIO_V2_OUTPUT_SUFFIX || "";
+
+function safeOutputStem(value) {
+  const stem = String(value || "")
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, "_")
+    .replace(/^_+|_+$/g, "");
+  if (!stem) throw new Error("studio_v2_output_stem_required");
+  return stem;
+}
+
+function resolveStudioV2OutputPaths({
+  root = ROOT,
+  storyId = STORY_ID,
+  env = process.env,
+} = {}) {
+  const outputDir = env.STUDIO_V2_OUTPUT_DIR
+    ? resolvePortablePath(root, env.STUDIO_V2_OUTPUT_DIR)
+    : path.join(root, "test", "output");
+  const outputStem = safeOutputStem(
+    env.STUDIO_V2_OUTPUT_STEM || storyId,
+  );
+  const suffix = String(env.STUDIO_V2_OUTPUT_SUFFIX || "");
+  return {
+    outputDir,
+    outputStem,
+    suffix,
+    assPath: path.join(
+      outputDir,
+      `${outputStem}_studio_v2${suffix}.ass`,
+    ),
+    filterPath: path.join(
+      outputDir,
+      `${outputStem}_studio_v2${suffix}_filter.txt`,
+    ),
+    outputPath: path.join(
+      outputDir,
+      `studio_v2_${outputStem}${suffix}.mp4`,
+    ),
+    creatorGradePath: path.join(
+      outputDir,
+      `${outputStem}_creator_grade_render${suffix}.json`,
+    ),
+    seoPath: path.join(
+      outputDir,
+      `${outputStem}_studio_v2${suffix}_seo.json`,
+    ),
+    reportPath: path.join(
+      outputDir,
+      `${outputStem}_studio_v2${suffix}_report.json`,
+    ),
+  };
+}
+
+const OUTPUT_PATHS = resolveStudioV2OutputPaths();
+const OUTPUT_DIR = OUTPUT_PATHS.outputDir;
 
 const FONT_OPT =
   process.platform === "win32"
@@ -146,6 +203,7 @@ function assertLocalVoxCpmAllowed() {
 
 function resolveStudioV2VoiceMode() {
   const voiceMode = (process.env.STUDIO_V2_VOICE || "production").toLowerCase();
+  if (voiceMode === "preapproved") return voiceMode;
   if (voiceMode === "production" || voiceMode === "elevenlabs") {
     return voiceMode;
   }
@@ -163,8 +221,29 @@ function resolveStudioV2VoiceMode() {
     return voiceMode;
   }
   throw new Error(
-    `Unknown STUDIO_V2_VOICE="${voiceMode}". Use production, elevenlabs, local or explicitly approved legacy local Liam.`,
+    `Unknown STUDIO_V2_VOICE="${voiceMode}". Use preapproved, production, elevenlabs, local or explicitly approved legacy local Liam.`,
   );
+}
+
+function resolvePreapprovedStudioVoice(env = process.env) {
+  const audioPath = String(
+    env.STUDIO_V2_PREAPPROVED_AUDIO_PATH || "",
+  ).trim();
+  const timestampsPath = String(
+    env.STUDIO_V2_PREAPPROVED_TIMESTAMPS_PATH || "",
+  ).trim();
+  if (!audioPath) throw new Error("preapproved_audio_path_required");
+  if (!timestampsPath) {
+    throw new Error("preapproved_timestamps_path_required");
+  }
+  return {
+    provider: "elevenlabs",
+    source: "governed-preapproved-elevenlabs",
+    audioPath,
+    timestampsPath,
+    editorialScriptAppliedToAudio: true,
+    preapproved: true,
+  };
 }
 
 async function assertLocalTtsReadyForStudio() {
@@ -876,15 +955,6 @@ function sumSceneDurations(scenes) {
 
 function resolveMainNarrationDurationS({ voice, audioDurationS }) {
   const audioDuration = Number(audioDurationS);
-  const outroStart = Number(voice?.outroStartS);
-  if (
-    Number.isFinite(audioDuration) &&
-    Number.isFinite(outroStart) &&
-    outroStart > 0 &&
-    outroStart < audioDuration
-  ) {
-    return Number(outroStart.toFixed(3));
-  }
   return Number.isFinite(audioDuration) ? Number(audioDuration.toFixed(3)) : 0;
 }
 
@@ -910,25 +980,24 @@ function storyOutroPath({ root = ROOT, storyId, channelId = "pulse-gaming" }) {
 }
 
 function buildFallbackOutroScene(duration) {
-  const safeDuration = Math.max(3, Number(duration || 4));
+  const safeDuration = Math.max(1.5, Number(duration || 3));
   const ffmpegInput = `-f lavfi -t ${(safeDuration + 1).toFixed(2)} -i color=c=0x0D0D0F:s=1080x1920:r=${FPS}`;
   const ffmpegFilter = [
     `[0:v]setrange=tv`,
     `drawbox=x=(w-760)/2:y=520:w=760:h=4:color=0xFF6B1A@0.95:t=fill`,
-    `drawtext=text='PULSE GAMING':${FONT_OPT}:fontcolor=0xFF6B1A:fontsize=42:x=(w-tw)/2:y=660`,
-    `drawtext=text='FOLLOW':${FONT_OPT}:fontcolor=white:fontsize=112:x=(w-tw)/2:y=820`,
-    `drawtext=text='FOR MORE':${FONT_OPT}:fontcolor=white:fontsize=112:x=(w-tw)/2:y=940`,
-    `drawtext=text='VERIFIED GAMING NEWS DAILY':${FONT_OPT}:fontcolor=white@0.82:fontsize=30:x=(w-tw)/2:y=1140`,
+    `drawtext=text='PULSE GAMING NEWS':${FONT_OPT}:fontcolor=0xFF6B1A:fontsize=42:x=(w-tw)/2:y=660`,
+    `drawtext=text='FAST GAMING NEWS':${FONT_OPT}:fontcolor=white:fontsize=78:x=(w-tw)/2:y=840`,
+    `drawtext=text='CHECKED. EXPLAINED.':${FONT_OPT}:fontcolor=white:fontsize=62:x=(w-tw)/2:y=960`,
     `drawbox=x=(w-760)/2:y=1300:w=760:h=4:color=0xFF6B1A@0.95:t=fill`,
     `trim=duration=${safeDuration.toFixed(3)},setpts=PTS-STARTPTS`,
     `format=yuv420p,setsar=1[v0]`,
   ].join(",");
   return {
-    type: "outro",
-    sceneType: "outro",
-    label: "outro_end_card",
+    type: "brand_close",
+    sceneType: "brand_close",
+    label: "brand_close_end_card",
     duration: safeDuration,
-    premiumLane: "ffmpeg-outro",
+    premiumLane: "ffmpeg-brand-close",
     ffmpegInput,
     ffmpegFilter,
   };
@@ -936,51 +1005,104 @@ function buildFallbackOutroScene(duration) {
 
 function appendStudioOutro({
   scenes,
-  storyId,
+  story,
+  storyId = story?.id,
   root = ROOT,
   channelId = "pulse-gaming",
-  minRuntimeS = Number(process.env.STUDIO_V2_MIN_RUNTIME_S || 61),
-  minOutroDurationS = Number(process.env.STUDIO_V2_MIN_OUTRO_S || 4),
+  brandCloseDurationS = Number(process.env.STUDIO_V2_BRAND_CLOSE_DURATION_S || 3),
   voiceDurationS = null,
   hfOutroPath = null,
   enabled = true,
 } = {}) {
   const out = (scenes || []).map((scene) => ({ ...scene }));
   if (!enabled) {
-    return { scenes: out, appended: false, outroScene: null, totalDurationS: sumSceneDurations(out) };
+      return { scenes: out, appended: false, outroScene: null, totalDurationS: sumSceneDurations(out) };
   }
 
+  const editorialResolution = resolveRequiredPulseEditorialContract({ story });
+  if (editorialResolution.blocker) {
+    throw new Error(
+      `studio_v2_brand_close_blocked:${editorialResolution.blocker}`,
+    );
+  }
+  const editorialContract = editorialResolution.contract;
   const currentDurationS = sumSceneDurations(out);
   const voiceDuration = Number(voiceDurationS);
-  const outroDurationS = Number(
-    Math.max(
-      Number.isFinite(minOutroDurationS) && minOutroDurationS > 0
-        ? minOutroDurationS
-        : 4,
-      (Number.isFinite(minRuntimeS) ? minRuntimeS : 61) - currentDurationS,
-      Number.isFinite(voiceDuration) ? voiceDuration - currentDurationS : 0,
+  if (
+    Number.isFinite(voiceDuration) &&
+    voiceDuration < Number(editorialContract.min_seconds)
+  ) {
+    throw new Error(
+      "studio_v2_brand_close_blocked:audio_duration_below_selected_band",
+    );
+  }
+  if (
+    Number.isFinite(voiceDuration) &&
+    voiceDuration > Number(editorialContract.max_seconds)
+  ) {
+    throw new Error(
+      "studio_v2_brand_close_blocked:audio_duration_above_selected_band",
+    );
+  }
+  if (
+    currentDurationS < Number(editorialContract.min_seconds) ||
+    currentDurationS > Number(editorialContract.max_seconds)
+  ) {
+    throw new Error(
+      "studio_v2_brand_close_blocked:scene_duration_outside_selected_band",
+    );
+  }
+
+  const requestedBrandCloseDuration = Number(brandCloseDurationS);
+  const brandCloseDuration = Number(
+    Math.min(
+      currentDurationS,
+      Number.isFinite(requestedBrandCloseDuration) &&
+        requestedBrandCloseDuration > 0
+        ? requestedBrandCloseDuration
+        : 3,
     ).toFixed(3),
   );
+  let tailRemaining = brandCloseDuration;
+  while (tailRemaining > 0.0005 && out.length > 0) {
+    const last = out[out.length - 1];
+    const lastDuration = Number(last?.duration || 0);
+    if (lastDuration > tailRemaining) {
+      last.duration = Number((lastDuration - tailRemaining).toFixed(3));
+      tailRemaining = 0;
+    } else {
+      tailRemaining = Number((tailRemaining - lastDuration).toFixed(3));
+      out.pop();
+    }
+  }
+  if (tailRemaining > 0.0005) {
+    throw new Error(
+      "studio_v2_brand_close_blocked:insufficient_scene_tail",
+    );
+  }
+
   const resolvedOutroPath =
     hfOutroPath || storyOutroPath({ root, storyId, channelId });
   const hasHyperframesOutro =
     Boolean(hfOutroPath) || fs.existsSync(resolvedOutroPath);
   const outroScene = hasHyperframesOutro
     ? {
-        type: "outro",
-        sceneType: "outro",
-        label: "outro_end_card",
-        duration: outroDurationS,
+        type: "brand_close",
+        sceneType: "brand_close",
+        label: "brand_close_end_card",
+        duration: brandCloseDuration,
         premiumLane: "hyperframes",
         prerenderedMp4: resolvedOutroPath,
       }
-    : buildFallbackOutroScene(outroDurationS);
+    : buildFallbackOutroScene(brandCloseDuration);
 
   out.push(outroScene);
   return {
     scenes: out,
     appended: true,
     outroScene,
+    duration_band_id: editorialContract.duration_band_id,
+    replaced_tail_duration_s: brandCloseDuration,
     totalDurationS: sumSceneDurations(out),
   };
 }
@@ -1074,7 +1196,7 @@ function enforceDeclaredSceneDuration({ filter, slot, duration }) {
 }
 
 async function main() {
-  await fs.ensureDir(TEST_OUT);
+  await fs.ensureDir(OUTPUT_DIR);
 
   console.log("");
   console.log("==============================================");
@@ -1157,10 +1279,13 @@ async function main() {
   console.log("[5/11] resolving voice path...");
   const voiceMode = resolveStudioV2VoiceMode();
   let voice;
-  if (voiceMode === "production" || voiceMode === "elevenlabs") {
+  if (voiceMode === "preapproved") {
+    voice = resolvePreapprovedStudioVoice(process.env);
+  } else if (voiceMode === "production" || voiceMode === "elevenlabs") {
     voice = await ensureProductionElevenLabsVoice({
       root: ROOT,
       storyId: STORY_ID,
+      story,
       editorial,
       force: process.env.STUDIO_V2_FORCE_TTS === "true",
     }).catch(async (err) => {
@@ -1170,6 +1295,7 @@ async function main() {
       const fallback = await ensureProductionLocalVoice({
         root: ROOT,
         storyId: STORY_ID,
+        story,
         editorial,
         force: false,
       }).catch(async () => {
@@ -1191,6 +1317,7 @@ async function main() {
     voice = await ensureProductionLocalVoice({
       root: ROOT,
       storyId: STORY_ID,
+      story,
       editorial,
       force: process.env.STUDIO_V2_FORCE_TTS === "true",
     });
@@ -1239,7 +1366,6 @@ async function main() {
     audioDurationS: mainNarrationDurationS || audioDurationS,
     opts: {
       takeawayText: "WATCH THE FULL TRAILER",
-      cta: "FOLLOW FOR MORE",
       allowStockFiller: false,
     },
   });
@@ -1282,6 +1408,7 @@ async function main() {
   });
   const outroPlan = appendStudioOutro({
     scenes: fallbackMotion.scenes,
+    story: renderStory,
     storyId: STORY_ID,
     root: ROOT,
     channelId: process.env.CHANNEL || "pulse-gaming",
@@ -1431,10 +1558,7 @@ async function main() {
 
   // ---- 11. Subtitle layer v2 ----
   console.log("[11/11] building kinetic word-pop subtitles...");
-  const assPath = path.join(
-    TEST_OUT,
-    `${STORY_ID}_studio_v2${OUTPUT_SUFFIX}.ass`,
-  );
+  const assPath = OUTPUT_PATHS.assPath;
   const channelTheme = (() => {
     try {
       const { getChannelTheme } = require("../lib/studio/v2/channel-themes");
@@ -1485,16 +1609,10 @@ async function main() {
 
   // ---- ffmpeg invocation ----
   const allInputs = [...sceneInputs, ...audioInputs, ...sfxInputs];
-  const filterPath = path.join(
-    TEST_OUT,
-    `${STORY_ID}_studio_v2${OUTPUT_SUFFIX}_filter.txt`,
-  );
+  const filterPath = OUTPUT_PATHS.filterPath;
   await fs.writeFile(filterPath, filterParts.join(";\n"));
 
-  const outputPath = path.join(
-    TEST_OUT,
-    `studio_v2_${STORY_ID}${OUTPUT_SUFFIX}.mp4`,
-  );
+  const outputPath = OUTPUT_PATHS.outputPath;
   const command = [
     "ffmpeg -y -hide_banner -loglevel warning",
     allInputs.join(" "),
@@ -1502,7 +1620,7 @@ async function main() {
     `-map "[outv]" -map "${soundLayer.mapArg.replace(/-map\s+/, "")}"`,
     "-c:v libx264 -crf 20 -preset medium",
     "-pix_fmt yuv420p -profile:v high -level:v 4.0",
-    "-c:a aac -b:a 192k",
+    "-c:a aac -b:a 192k -ar 48000",
     `-r ${FPS} -shortest`,
     `-movflags +faststart "${outputPath.replace(/\\/g, "/")}"`,
   ].join(" ");
@@ -1541,7 +1659,7 @@ async function main() {
         `-i "${tmpPath.replace(/\\/g, "/")}"`,
         "-map 0:v -map 0:a",
         "-c:v copy",
-        `-c:a aac -b:a 192k`,
+        `-c:a aac -b:a 192k -ar 48000`,
         `-af "loudnorm=I=${target}:TP=${tp}:LRA=${lra}"`,
         `-movflags +faststart "${outputPath.replace(/\\/g, "/")}"`,
       ].join(" ");
@@ -1667,10 +1785,7 @@ async function main() {
         : null,
       alignmentCoverage: refreshedCreatorGradePlan.timeline.alignment.coverage,
     };
-    const cgPath = path.join(
-      TEST_OUT,
-      `${STORY_ID}_creator_grade_render${OUTPUT_SUFFIX || ""}.json`,
-    );
+    const cgPath = OUTPUT_PATHS.creatorGradePath;
     await fs.writeJson(cgPath, refreshedCreatorGradePlan, { spaces: 2 });
     report.creatorGrade.path = path.relative(ROOT, cgPath).replace(/\\/g, "/");
   }
@@ -1718,10 +1833,7 @@ async function main() {
       runtimeS: output.durationS,
       channel: channelForSeo,
     });
-    const seoPath = path.join(
-      TEST_OUT,
-      `${STORY_ID}_studio_v2${OUTPUT_SUFFIX}_seo.json`,
-    );
+    const seoPath = OUTPUT_PATHS.seoPath;
     await fs.writeJson(seoPath, seo, { spaces: 2 });
     report.seo = {
       path: path.relative(ROOT, seoPath).replace(/\\/g, "/"),
@@ -1740,10 +1852,7 @@ async function main() {
     report.seo = { error: err.message };
   }
 
-  const reportPath = path.join(
-    TEST_OUT,
-    `${STORY_ID}_studio_v2${OUTPUT_SUFFIX}_report.json`,
-  );
+  const reportPath = OUTPUT_PATHS.reportPath;
   await fs.writeJson(reportPath, report, { spaces: 2 });
 
   console.log("");
@@ -1785,6 +1894,8 @@ module.exports = {
   boostMotionDensityForShorts,
   replaceFallbackReleaseCardsWithMotion,
   resolveMainNarrationDurationS,
+  resolvePreapprovedStudioVoice,
+  resolveStudioV2OutputPaths,
   resolveStudioV2VoiceMode,
   resolveSubtitleScriptText,
   sumSceneDurations,

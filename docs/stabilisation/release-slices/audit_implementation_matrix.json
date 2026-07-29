@@ -1,0 +1,2203 @@
+{
+  "schema_version": "pulse-audit-implementation-matrix-v1",
+  "generated_at": "2026-07-27T08:17:00.0885794Z",
+  "source_commit_sha": "ed2745dd2cbeeb179ab54d47b8d380304baaf9e5",
+  "runtime_commit_sha": "MISMATCH — local ec2ba4d98d3ee55f8c8999952cde5b378168e0c1; public 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10",
+  "environment": "LOCAL_PROOF release worktree plus read-only local :3001, Windows task, public Railway and GitHub metadata observations; no mutation",
+  "scope": "Major audit controls, PG-01 through PG-18, Phase 0 through Phase 4 actions and exit criteria, hard autonomous-publishing gates and continuing prohibitions",
+  "expires_at": "2026-08-03T08:17:00.0885794Z",
+  "supersedes": "none - first machine-readable implementation matrix for the stabilisation audit",
+  "superseded_by": "none",
+  "authoritative": false,
+  "authority_scope": "Traceability and local implementation classification only. It does not prove deployment, live-account state, production data integrity, elapsed evidence windows or permission to publish.",
+  "production_verdict": "RED",
+  "status_enum": {
+    "implemented_local": "The control has local source, test or documentation implementation. This does not prove deployment or a live outcome.",
+    "evidence_only": "Read-only evidence or a proposal exists, but the control is not fully implemented or its outcome is not established.",
+    "external_gate": "Completion requires verified state or an authorised change outside this local documentation lane.",
+    "time_bound_gate": "Completion requires an elapsed observation period, a real publication sample or both.",
+    "intentionally_deferred": "The item is deliberately not being activated in the current stabilisation phase."
+  },
+  "classification_policy": [
+    "A local implementation status never implies production deployment.",
+    "Where local code exists but the audit outcome depends on live evidence, the item is classified by the remaining external or time-bound gate.",
+    "Empty code_paths or test_paths are deliberate and must not be interpreted as missing JSON data.",
+    "Only paths present in this working tree at generation time are listed.",
+    "No item in this matrix grants permission to publish, mutate OAuth, alter tokens, change provider configuration or mutate a production database."
+  ],
+  "major_controls": [
+    {
+      "id": "MC-01",
+      "control": "Use exactly one explicit operating mode: LOCAL_PROOF, HUMAN_REVIEW or LIVE_GUARDED, and reject contradictory legacy flags.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/stabilisation/operating-contract.js",
+        "lib/stabilisation/runtime-config.js"
+      ],
+      "test_paths": [
+        "tests/services/stabilisation-operating-contract.test.js",
+        "tests/services/stabilisation-runtime-config.test.js"
+      ],
+      "proof_paths": [
+        "OPERATING_MODES.md"
+      ],
+      "remaining_gate": "Verify that the authoritative live runtime is built from this implementation."
+    },
+    {
+      "id": "MC-02",
+      "control": "Use the governed editorial chain from discovery through verified analytics and learning review.",
+      "status": "evidence_only",
+      "code_paths": [
+        "lib/services/publication-admission.js",
+        "lib/stabilisation/publication-lifecycle.js",
+        "lib/services/youtube-analytics-ingestion.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-admission.test.js",
+        "tests/services/publication-lifecycle.test.js",
+        "tests/services/youtube-analytics-ingestion.test.js"
+      ],
+      "proof_paths": [
+        "ARCHITECTURE.md",
+        "DATA_MODEL.md"
+      ],
+      "remaining_gate": "No current end-to-end live candidate and analytics round trip was observed."
+    },
+    {
+      "id": "MC-03",
+      "control": "Keep YouTube Shorts as the primary platform and require human review during stabilisation.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/governed-platform-dispatch.js",
+        "lib/services/publication-admission.js"
+      ],
+      "test_paths": [
+        "tests/services/governed-platform-dispatch.test.js",
+        "tests/services/publication-admission.test.js"
+      ],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md",
+        "docs/codex-main-goal.md"
+      ],
+      "remaining_gate": "The observed local runtime reported autonomous mode active and is not provenance-equal to this source."
+    },
+    {
+      "id": "MC-04",
+      "control": "Freeze or keep manual all secondary social-platform publication during the YouTube experiment.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/governed-platform-dispatch.js",
+        "lib/ops/platform-status.js"
+      ],
+      "test_paths": [
+        "tests/services/governed-platform-dispatch.test.js",
+        "tests/services/platform-posts-skipped.test.js"
+      ],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "remaining_gate": "Live platform settings and account state were not inspected."
+    },
+    {
+      "id": "MC-05",
+      "control": "Keep affiliates, blog automation, Discord and secondary platforms out of the Pulse v1 critical path.",
+      "status": "evidence_only",
+      "code_paths": [
+        "lib/services/post-publish-mutation-policy.js"
+      ],
+      "test_paths": [
+        "tests/services/post-publish-mutation-policy.test.js",
+        "tests/services/publisher-critical-path-freeze.test.js"
+      ],
+      "proof_paths": [
+        "ARCHITECTURE.md",
+        "PLATFORM_MATRIX.md"
+      ],
+      "remaining_gate": "The local policy is represented in the working tree, but no deployed critical-path trace was observed."
+    },
+    {
+      "id": "MC-06",
+      "control": "Run the fixed 12-video matrix across three editorial lanes, two hook types and two runtime bands before changing the model.",
+      "status": "time_bound_gate",
+      "code_paths": [
+        "db/migrations/021_controlled_experiment_analytics.sql",
+        "lib/repositories/youtube_analytics_experiment_snapshots.js",
+        "lib/services/pulse-editorial-contract.js"
+      ],
+      "test_paths": [
+        "tests/db/youtube-analytics-experiment-snapshots.test.js",
+        "tests/services/pulse-editorial-contract.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "remaining_gate": "Zero of twelve real controlled-video records were verified by this documentation lane."
+    },
+    {
+      "id": "MC-07",
+      "control": "Base editorial decisions on stayed-to-watch, average percentage viewed, average view duration, completion, subscriber, share, returning-viewer and one-, three- and ten-second retention evidence.",
+      "status": "external_gate",
+      "code_paths": [
+        "db/migrations/021_controlled_experiment_analytics.sql",
+        "db/migrations/022_youtube_retention_derivation_evidence.sql",
+        "lib/services/youtube-analytics-readonly-adapter.js",
+        "lib/services/youtube-analytics-ingestion.js"
+      ],
+      "test_paths": [
+        "tests/services/youtube-analytics-readonly-adapter.test.js",
+        "tests/services/youtube-analytics-ingestion.test.js",
+        "tests/db/youtube-analytics-experiment-snapshots.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/analytics_readiness_report.md"
+      ],
+      "remaining_gate": "Live yt-analytics.readonly scope, metric availability and five manual mappings remain unverified."
+    },
+    {
+      "id": "MC-08",
+      "control": "Cap stabilisation cadence at two daily windows with at least four hours between publications.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/scheduler-plan.js",
+        "lib/scheduler.js"
+      ],
+      "test_paths": [
+        "tests/services/scheduler-stabilisation-cadence-guard.test.js",
+        "tests/services/scheduler-stabilisation-profile.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md",
+        "docs/production-cadence.md"
+      ],
+      "remaining_gate": "A 30-day live no-burst and no-off-schedule record is not yet available."
+    },
+    {
+      "id": "MC-09",
+      "control": "Require source-bound editorial transformation and explicit human approval before live publication.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/pulse-editorial-contract.js",
+        "lib/services/publication-admission.js"
+      ],
+      "test_paths": [
+        "tests/services/pulse-editorial-contract.test.js",
+        "tests/services/publication-admission.test.js",
+        "tests/services/operator-editorial-fixtures.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md",
+        "OPERATING_MODES.md"
+      ],
+      "remaining_gate": "No live HUMAN_REVIEW admission was inspected."
+    },
+    {
+      "id": "MC-10",
+      "control": "Require per-item hash-bound rights evidence and never treat attribution as permission.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/publication-evidence-gates.js",
+        "lib/services/publication-admission.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-evidence-gates.test.js",
+        "tests/services/publication-admission.test.js"
+      ],
+      "proof_paths": [
+        "MEDIA_AND_RIGHTS.md"
+      ],
+      "remaining_gate": "No production candidate was checked for 100 per cent manifest coverage."
+    },
+    {
+      "id": "MC-11",
+      "control": "Preserve ElevenLabs, Epidemic Sound and HyperFrames as the approved production stack while HeyGen, Kokoro and MusicGen remain disabled.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/stabilisation/renderer-governance.js",
+        "lib/render-engine-switch.js"
+      ],
+      "test_paths": [
+        "tests/services/stabilisation-renderer-governance.test.js",
+        "tests/services/render-engine-switch.test.js"
+      ],
+      "proof_paths": [
+        "MEDIA_AND_RIGHTS.md"
+      ],
+      "remaining_gate": "The currently deployed renderer and provider configuration were not inspected."
+    },
+    {
+      "id": "MC-12",
+      "control": "Require commit-stamped, expiring and superseding status evidence.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/stabilisation/report-governance.js"
+      ],
+      "test_paths": [
+        "tests/services/report-governance.test.js"
+      ],
+      "proof_paths": [
+        "CURRENT_STATUS.md",
+        "docs/stabilisation/phase-0/report_index.json"
+      ],
+      "remaining_gate": "Restamped to ed2745dd2cbeeb179ab54d47b8d380304baaf9e5; any source change or expiry requires a new evidence set."
+    },
+    {
+      "id": "MC-13",
+      "control": "Freeze the approved public package and reject mutable post-publish metadata or asset drift.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/publication-request-fingerprint.js",
+        "lib/services/post-publish-mutation-policy.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-request-fingerprint.test.js",
+        "tests/services/post-publish-mutation-policy.test.js",
+        "tests/services/publisher-post-publish-freeze.test.js"
+      ],
+      "proof_paths": [
+        "DATA_MODEL.md"
+      ],
+      "remaining_gate": "No live platform object was inspected for mutation drift."
+    },
+    {
+      "id": "MC-14",
+      "control": "Block placeholder titles, internal QA wording and other production language from public output.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/script-lint.js",
+        "lib/services/pulse-editorial-contract.js"
+      ],
+      "test_paths": [
+        "tests/services/script-lint.test.js",
+        "tests/services/system-prompt-editorial-contract.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md",
+        "INCIDENT_RUNBOOK.md"
+      ],
+      "remaining_gate": "The last public object was not queried by this lane."
+    },
+    {
+      "id": "MC-15",
+      "control": "Expose exact runtime provenance and deploy only an authorised protected-main release.",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/runtime-build-info.js",
+        "tools/stabilisation-runtime-provenance.js"
+      ],
+      "test_paths": [
+        "tests/services/runtime-build-info.test.js",
+        "tests/services/stabilisation-runtime-provenance-cli.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/runtime_provenance_report.md"
+      ],
+      "remaining_gate": "Release source, local runtime, public runtime and protected main do not match."
+    },
+    {
+      "id": "MC-16",
+      "control": "Expose health, queue and scheduler evidence without treating a health response as production readiness.",
+      "status": "evidence_only",
+      "code_paths": [
+        "lib/runtime-build-info.js",
+        "lib/services/scheduler-lock.js"
+      ],
+      "test_paths": [
+        "tests/services/health-public-metadata.test.js",
+        "tests/services/scheduler-lock.test.js"
+      ],
+      "proof_paths": [
+        "CURRENT_STATUS.md",
+        "docs/stabilisation/phase-0/scheduler_ownership_report.md"
+      ],
+      "remaining_gate": "Multiple-owner risk remains and no authoritative lease owner was verified."
+    },
+    {
+      "id": "MC-17",
+      "control": "Use a durable publication lifecycle and reconcile externally published but internally failed records.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/stabilisation/publication-lifecycle.js",
+        "lib/repositories/platform_posts.js",
+        "lib/services/publication-reconciliation-worker.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-lifecycle.test.js",
+        "tests/db/platform-posts-reconciliation.test.js",
+        "tests/services/publication-reconciliation-worker.test.js"
+      ],
+      "proof_paths": [
+        "DATA_MODEL.md",
+        "docs/stabilisation/release-slices/02-db-job-reconciliation/lifecycle_coverage.json"
+      ],
+      "remaining_gate": "Production rows and external platform objects were not reconciled."
+    },
+    {
+      "id": "MC-18",
+      "control": "Maintain verified backup, restore and controlled restart procedures before autonomous publication.",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/ops/db-backup-dry-run.js",
+        "tools/db-backup-dry-run.js"
+      ],
+      "test_paths": [
+        "tests/services/db-backup-verification.test.js"
+      ],
+      "proof_paths": [
+        "DEPLOYMENT_RUNBOOK.md",
+        "INCIDENT_RUNBOOK.md"
+      ],
+      "remaining_gate": "No production backup, restore rehearsal or controlled restart was executed."
+    },
+    {
+      "id": "MC-19",
+      "control": "Use the Pulse Gaming News display identity, governed wordless avatar, evidence-led viewer proposition and three outward editorial lanes.",
+      "status": "implemented_local",
+      "code_paths": [
+        "channels/pulse-gaming.js",
+        "lib/brand-name-qa.js",
+        "assets/brand/pulse-gaming-news-avatar-v1.design.json",
+        "assets/brand/pulse-gaming-news-avatar-v1.svg"
+      ],
+      "test_paths": [
+        "tests/services/brand-name-qa.test.js",
+        "tests/services/pulse-brand-assets.test.js",
+        "tests/services/pulse-brand-operator-surfaces.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "remaining_gate": "Local assets and copy do not authorise or prove a live YouTube profile change."
+    },
+    {
+      "id": "MC-20",
+      "control": "Keep affiliates, sponsorships and hypothetical advertising revenue out of editorial cadence and release decisions until audience intent is evidenced.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/post-publish-mutation-policy.js"
+      ],
+      "test_paths": [
+        "tests/services/post-publish-mutation-policy.test.js",
+        "tests/services/publisher-critical-path-freeze.test.js"
+      ],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "remaining_gate": "No deployed critical-path trace or current commercial-account state was inspected."
+    },
+    {
+      "id": "MC-21",
+      "control": "Build a verified 90-day operating case study before considering sale, licensing or a managed newsroom service.",
+      "status": "intentionally_deferred",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "remaining_gate": "Requires stable production evidence, measured operator time and cost, customer isolation, contracts and support design."
+    },
+    {
+      "id": "MC-22",
+      "control": "Keep documented operator commands aligned with package scripts and real tool entry points.",
+      "status": "evidence_only",
+      "code_paths": [
+        "AGENTS.md",
+        "package.json"
+      ],
+      "test_paths": [
+        "tests/services/agent-operating-rules.test.js"
+      ],
+      "proof_paths": [
+        "CURRENT_STATUS.md",
+        "docs/stabilisation/phase-0/ci_implementation_plan.md"
+      ],
+      "remaining_gate": "AGENTS.md names three absent commands: ops:next-publish-candidates, ops:platform-doctor and ops:goal-dry-run-publish."
+    }
+  ],
+  "risk_register": [
+    {
+      "id": "PG-01",
+      "severity": "Critical",
+      "finding": "No rich retention ingestion",
+      "required_control": "Activate read-only Analytics proof",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/services/youtube-analytics-readonly-adapter.js",
+        "lib/services/youtube-analytics-ingestion.js",
+        "db/migrations/022_youtube_retention_derivation_evidence.sql"
+      ],
+      "test_paths": [
+        "tests/services/youtube-analytics-readonly-adapter.test.js",
+        "tests/services/youtube-analytics-ingestion.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/analytics_readiness_report.md"
+      ],
+      "completion_boundary": "Local capability exists; live scope, real retention rows and manual mapping proof do not."
+    },
+    {
+      "id": "PG-02",
+      "severity": "Critical",
+      "finding": "main is not production truth",
+      "required_control": "One protected production branch",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/runtime-build-info.js"
+      ],
+      "test_paths": [
+        "tests/services/runtime-build-info.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/runtime_provenance_report.md"
+      ],
+      "completion_boundary": "Observed public runtime is main@2c7f47c5 while local and release source differ; branch protection was not queried."
+    },
+    {
+      "id": "PG-03",
+      "severity": "Critical",
+      "finding": "PR 69 contains 1,277 files",
+      "required_control": "Reconstruct as thematic PRs",
+      "status": "evidence_only",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/pr68_pr69_overlap_report.md",
+        "docs/stabilisation/phase-0/release_pulse_v1_slice_plan.md",
+        "docs/stabilisation/release-slices/01-config-env-runtime-provenance/verification_summary.json",
+        "docs/stabilisation/release-slices/02-db-job-reconciliation/verification_summary.json"
+      ],
+      "completion_boundary": "Slice evidence exists, but no complete reviewed thematic PR sequence or protected-main merge was observed."
+    },
+    {
+      "id": "PG-04",
+      "severity": "Critical",
+      "finding": "Historical posting burst",
+      "required_control": "Durable cadence hard gates",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/scheduler-plan.js",
+        "lib/scheduler.js"
+      ],
+      "test_paths": [
+        "tests/services/scheduler-stabilisation-cadence-guard.test.js",
+        "tests/services/scheduler-cadence.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "completion_boundary": "Local guards exist; zero off-schedule posts for 30 days remains a separate time-bound acceptance gate."
+    },
+    {
+      "id": "PG-05",
+      "severity": "Critical",
+      "finding": "Failed rows carry platform IDs",
+      "required_control": "Correct posting state model",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/stabilisation/publication-lifecycle.js",
+        "lib/repositories/platform_posts.js",
+        "lib/services/publication-reconciliation-worker.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-lifecycle.test.js",
+        "tests/db/platform-posts-reconciliation.test.js",
+        "tests/services/publication-reconciliation-worker.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/release-slices/02-db-job-reconciliation/lifecycle_coverage.json"
+      ],
+      "completion_boundary": "The source model is implemented locally; production rows and external IDs remain uninspected."
+    },
+    {
+      "id": "PG-06",
+      "severity": "High",
+      "finding": "Template and repetition risk",
+      "required_control": "Stronger editorial transformation",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/pulse-editorial-contract.js",
+        "lib/services/script-lint.js"
+      ],
+      "test_paths": [
+        "tests/services/pulse-editorial-contract.test.js",
+        "tests/services/operator-editorial-fixtures.test.js",
+        "tests/services/system-prompt-editorial-contract.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "completion_boundary": "Local contract coverage is not evidence of YouTube Partner Programme approval or audience differentiation."
+    },
+    {
+      "id": "PG-07",
+      "severity": "High",
+      "finding": "Exact-subject motion shortage",
+      "required_control": "Formal first-party media intake",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/studio/v2/still-deck-ingestion.js",
+        "lib/studio/v2/official-trailer-segment-validator.js",
+        "lib/services/publication-evidence-gates.js"
+      ],
+      "test_paths": [
+        "tests/services/studio-v2-still-deck-ingestion.test.js",
+        "tests/services/official-trailer-segment-validator.test.js",
+        "tests/services/publication-evidence-gates.test.js"
+      ],
+      "proof_paths": [
+        "MEDIA_AND_RIGHTS.md"
+      ],
+      "completion_boundary": "Intake and gates exist locally; no current production candidate was verified for exact-subject motion and rights completeness."
+    },
+    {
+      "id": "PG-08",
+      "severity": "High",
+      "finding": "Fixed 60-second prompt conflicts with retention policy",
+      "required_control": "One duration policy",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/short-runtime-planner.js",
+        "lib/format-lane-policy.js",
+        "processor.js"
+      ],
+      "test_paths": [
+        "tests/services/processor-short-runtime.test.js",
+        "tests/services/short-runtime-planner.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "completion_boundary": "Local policy supports controlled runtime bands; audience validation is pending."
+    },
+    {
+      "id": "PG-09",
+      "severity": "High",
+      "finding": "Status documents become stale without supersession",
+      "required_control": "Commit-stamped expiring evidence",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/stabilisation/report-governance.js"
+      ],
+      "test_paths": [
+        "tests/services/report-governance.test.js"
+      ],
+      "proof_paths": [
+        "CURRENT_STATUS.md",
+        "docs/stabilisation/phase-0/report_index.json"
+      ],
+      "completion_boundary": "The documentation set is restamped to ed2745dd2cbeeb179ab54d47b8d380304baaf9e5; this does not prove deployment."
+    },
+    {
+      "id": "PG-10",
+      "severity": "High",
+      "finding": "No visible CI checks on active head",
+      "required_control": "Required GitHub CI",
+      "status": "external_gate",
+      "code_paths": [
+        ".github/workflows/pulse-release.yml",
+        "tools/ci-secret-scan.js"
+      ],
+      "test_paths": [
+        "tests/services/pulse-release-ci.test.js",
+        "tests/services/ci-secret-scan.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/ci_implementation_plan.md"
+      ],
+      "completion_boundary": "Workflow source exists; no green GitHub run or required branch-protection check was verified for the final candidate."
+    },
+    {
+      "id": "PG-11",
+      "severity": "High",
+      "finding": "Multiple runtime and scheduler modes",
+      "required_control": "One runtime owner and one queue",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/services/scheduler-lock.js",
+        "lib/repositories/runtime_leases.js"
+      ],
+      "test_paths": [
+        "tests/services/scheduler-lock.test.js",
+        "tests/db/runtime-leases-repository.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/scheduler_ownership_report.md"
+      ],
+      "completion_boundary": "The local listener and four Pulse-named Windows tasks create observed multiple-owner risk."
+    },
+    {
+      "id": "PG-12",
+      "severity": "High",
+      "finding": "Public repository exposes operational design",
+      "required_control": "Private repository or split architecture",
+      "status": "external_gate",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/release_pulse_v1_slice_plan.md"
+      ],
+      "completion_boundary": "Repository visibility and architecture publication policy require owner and GitHub administration decisions."
+    },
+    {
+      "id": "PG-13",
+      "severity": "Medium",
+      "finding": "Generic brand and name collisions",
+      "required_control": "Extend display name and strengthen icon",
+      "status": "external_gate",
+      "code_paths": [
+        "channels/pulse-gaming.js",
+        "lib/brand-name-qa.js",
+        "assets/brand/pulse-gaming-news-avatar-v1.design.json",
+        "assets/brand/pulse-gaming-news-avatar-v1.svg"
+      ],
+      "test_paths": [
+        "tests/services/brand-name-qa.test.js",
+        "tests/services/pulse-brand-assets.test.js",
+        "tests/services/pulse-brand-operator-surfaces.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "completion_boundary": "Display identity and wordless avatar assets exist locally; applying them to the live channel requires explicit operator approval."
+    },
+    {
+      "id": "PG-14",
+      "severity": "Medium",
+      "finding": "Fragmented social handles",
+      "required_control": "Unified display identity",
+      "status": "intentionally_deferred",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "completion_boundary": "Secondary platforms are frozen, so handle changes are outside the current YouTube stabilisation critical path."
+    },
+    {
+      "id": "PG-15",
+      "severity": "Medium",
+      "finding": "Discord architecture is ahead of audience",
+      "required_control": "Reduce to a minimal community",
+      "status": "implemented_local",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "completion_boundary": "The canonical policy limits Discord to announcements and feedback; live Discord configuration was not inspected."
+    },
+    {
+      "id": "PG-16",
+      "severity": "Medium",
+      "finding": "Affiliate and sponsor systems are premature",
+      "required_control": "Freeze until meaningful audience scale",
+      "status": "evidence_only",
+      "code_paths": [
+        "lib/services/post-publish-mutation-policy.js"
+      ],
+      "test_paths": [
+        "tests/services/post-publish-mutation-policy.test.js",
+        "tests/services/publisher-critical-path-freeze.test.js"
+      ],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "completion_boundary": "The policy freeze is documented and locally tested, but no deployed trace proves these systems are outside the live critical path."
+    },
+    {
+      "id": "PG-17",
+      "severity": "Medium",
+      "finding": "Numerous active renderer generations",
+      "required_control": "Standardise and retire legacy versions",
+      "status": "intentionally_deferred",
+      "code_paths": [
+        "lib/stabilisation/renderer-governance.js",
+        "lib/render-engine-switch.js"
+      ],
+      "test_paths": [
+        "tests/services/stabilisation-renderer-governance.test.js",
+        "tests/services/render-engine-switch.test.js"
+      ],
+      "proof_paths": [
+        "ARCHITECTURE.md"
+      ],
+      "completion_boundary": "Governance distinguishes standard and experimental renderers, but physical retirement is a Phase 3 action."
+    },
+    {
+      "id": "PG-18",
+      "severity": "Medium",
+      "finding": "Fixed CTA creates dead time",
+      "required_control": "Dynamic or selective CTA",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/pulse-editorial-contract.js",
+        "lib/studio/v2/standard-short-creator-overlay.js"
+      ],
+      "test_paths": [
+        "tests/services/pulse-editorial-contract.test.js",
+        "tests/services/standard-short-creator-overlay.test.js",
+        "tests/services/youtube-pinned-comment-policy.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "completion_boundary": "Local contract removes a fixed generic CTA and limits selective CTA use; retention effect is unproven."
+    }
+  ],
+  "recovery_programme": [
+    {
+      "phase": "Phase 0",
+      "window": "first 72 hours",
+      "objective": "Establish one source of truth without touching the current published upload.",
+      "actions": [
+        {
+          "id": "P0-A01",
+          "control": "Freeze all feature work.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/release_pulse_v1_slice_plan.md"
+          ],
+          "completion_boundary": "A written stabilisation scope exists, but a repository-wide feature freeze cannot be proved by this lane."
+        },
+        {
+          "id": "P0-A02",
+          "control": "Preserve current ElevenLabs, Epidemic Sound, HyperFrames and final MP4 assets.",
+          "status": "evidence_only",
+          "code_paths": [
+            "lib/stabilisation/renderer-governance.js"
+          ],
+          "test_paths": [
+            "tests/services/stabilisation-renderer-governance.test.js"
+          ],
+          "proof_paths": [
+            "MEDIA_AND_RIGHTS.md"
+          ],
+          "completion_boundary": "The approved stack is preserved in policy and no asset mutation was performed by this lane; asset hashes were not independently inventoried."
+        },
+        {
+          "id": "P0-A03",
+          "control": "Record the exact current local runtime commit.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/runtime_provenance_report.md"
+          ],
+          "completion_boundary": "Local :3001 reported ec2ba4d98d3ee55f8c8999952cde5b378168e0c1 at the observation time."
+        },
+        {
+          "id": "P0-A04",
+          "control": "Record the exact current public runtime commit.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/runtime_provenance_report.md"
+          ],
+          "completion_boundary": "Public Railway reported 2c7f47c5f6e7544f4a16ef7e5b4d3df1ffc7cf10 at the observation time."
+        },
+        {
+          "id": "P0-A05",
+          "control": "Record scheduler owner, process ID and start time.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/scheduler_ownership_report.md"
+          ],
+          "completion_boundary": "PID and reported start time were observed, but the authoritative owner and lease remain unknown."
+        },
+        {
+          "id": "P0-A06",
+          "control": "Export a read-only queue and database status snapshot.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/database_state_integrity_report.md"
+          ],
+          "completion_boundary": "Only repository schema and source capability were inspected; the production database was not."
+        },
+        {
+          "id": "P0-A07",
+          "control": "Back up the database.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/ops/db-backup-dry-run.js",
+            "tools/db-backup-dry-run.js"
+          ],
+          "test_paths": [
+            "tests/services/db-backup-verification.test.js"
+          ],
+          "proof_paths": [
+            "DEPLOYMENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "No production database mutation or backup was authorised or performed."
+        },
+        {
+          "id": "P0-A08",
+          "control": "Tag PR 69 head as a forensic archive.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/pr68_pr69_overlap_report.md"
+          ],
+          "completion_boundary": "The candidate head cfe609ae was identified; tag creation requires explicit approval and was not performed."
+        },
+        {
+          "id": "P0-A09",
+          "control": "Determine whether PR 68 contains unique work.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/pr68_pr69_overlap_report.md"
+          ],
+          "completion_boundary": "Read-only ancestry, cherry-equivalence and path comparison found zero work unique to PR 68 relative to PR 69."
+        },
+        {
+          "id": "P0-A10",
+          "control": "Mark PR 68 superseded after unique work is captured.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/pr68_pr69_overlap_report.md"
+          ],
+          "completion_boundary": "PR 68 containment is evidenced, but supersession remains a human GitHub action."
+        },
+        {
+          "id": "P0-A11",
+          "control": "Turn all live publishing into human-review mode during reconciliation.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/stabilisation/operating-contract.js"
+          ],
+          "test_paths": [
+            "tests/services/stabilisation-operating-contract.test.js"
+          ],
+          "proof_paths": [
+            "OPERATING_MODES.md",
+            "docs/stabilisation/phase-0/scheduler_ownership_report.md"
+          ],
+          "completion_boundary": "The observed local runtime reported autonomous mode active; this lane did not mutate it."
+        },
+        {
+          "id": "P0-A12",
+          "control": "Produce one CURRENT_STATUS.md stamped with the evidence commit.",
+          "status": "implemented_local",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CURRENT_STATUS.md"
+          ],
+          "completion_boundary": "Created locally and restamped to ed2745dd2cbeeb179ab54d47b8d380304baaf9e5; the documentation hand-off remains uncommitted."
+        }
+      ],
+      "exit_criteria": [
+        {
+          "id": "P0-E01",
+          "control": "One known runtime owner.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/scheduler_ownership_report.md"
+          ],
+          "completion_boundary": "Not met; multiple-owner risk is RED."
+        },
+        {
+          "id": "P0-E02",
+          "control": "Exact commit provenance.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/runtime_provenance_report.md"
+          ],
+          "completion_boundary": "Commits were observed but do not match."
+        },
+        {
+          "id": "P0-E03",
+          "control": "No unknown scheduler.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/publishing_process_inventory.md"
+          ],
+          "completion_boundary": "Not met; task actions were inventoried but authoritative ownership and complete scheduler exclusion remain unproved."
+        },
+        {
+          "id": "P0-E04",
+          "control": "Database backup verified.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/ops/db-backup-dry-run.js"
+          ],
+          "test_paths": [
+            "tests/services/db-backup-verification.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/database_state_integrity_report.md"
+          ],
+          "completion_boundary": "Not met for production."
+        },
+        {
+          "id": "P0-E05",
+          "control": "No live branch ambiguity.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/runtime_provenance_report.md"
+          ],
+          "completion_boundary": "Not met; release, local runtime, public runtime and main checkout differ."
+        },
+        {
+          "id": "P0-E06",
+          "control": "Current upload untouched.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CURRENT_STATUS.md"
+          ],
+          "completion_boundary": "No live mutation was made by this lane, but the platform object itself was not queried."
+        }
+      ]
+    },
+    {
+      "phase": "Phase 1",
+      "window": "days 4 to 14",
+      "objective": "Restore trustworthy engineering and analytics foundations.",
+      "actions": [
+        {
+          "id": "P1-A01",
+          "control": "Add required CI for install, tests, build and secret scanning.",
+          "status": "implemented_local",
+          "code_paths": [
+            ".github/workflows/pulse-release.yml",
+            "tools/ci-secret-scan.js"
+          ],
+          "test_paths": [
+            "tests/services/pulse-release-ci.test.js",
+            "tests/services/ci-secret-scan.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/ci_implementation_plan.md"
+          ],
+          "completion_boundary": "Workflow source exists; an exact-candidate GitHub run is not verified."
+        },
+        {
+          "id": "P1-A02",
+          "control": "Add branch protection.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/ci_implementation_plan.md"
+          ],
+          "completion_boundary": "Requires GitHub administration and was not queried or changed."
+        },
+        {
+          "id": "P1-A03",
+          "control": "Implement typed environment validation.",
+          "status": "implemented_local",
+          "code_paths": [
+            "lib/stabilisation/runtime-config.js"
+          ],
+          "test_paths": [
+            "tests/services/stabilisation-runtime-config.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/release-slices/01-config-env-runtime-provenance/verification_summary.json"
+          ],
+          "completion_boundary": "Implemented locally; deployed runtime remains different."
+        },
+        {
+          "id": "P1-A04",
+          "control": "Remove production dotenv override ambiguity.",
+          "status": "implemented_local",
+          "code_paths": [
+            "lib/stabilisation/runtime-config.js"
+          ],
+          "test_paths": [
+            "tests/services/stabilisation-runtime-config.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/release-slices/01-config-env-runtime-provenance/verification_summary.json"
+          ],
+          "completion_boundary": "Local source contract exists; provider environment was not changed."
+        },
+        {
+          "id": "P1-A05",
+          "control": "Activate a small read-only YouTube Analytics proof.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/youtube-analytics-readonly-adapter.js",
+            "lib/services/youtube-analytics-ingestion.js"
+          ],
+          "test_paths": [
+            "tests/services/youtube-analytics-readonly-adapter.test.js",
+            "tests/services/youtube-analytics-ingestion.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/analytics_readiness_report.md"
+          ],
+          "completion_boundary": "No OAuth initiation or live query was authorised."
+        },
+        {
+          "id": "P1-A06",
+          "control": "Import five already-published Shorts.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/youtube-analytics-ingestion.js"
+          ],
+          "test_paths": [
+            "tests/services/youtube-analytics-ingestion.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/analytics_readiness_report.md"
+          ],
+          "completion_boundary": "No live analytics rows were imported."
+        },
+        {
+          "id": "P1-A07",
+          "control": "Verify retention and traffic-source mappings manually.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/youtube-analytics-readonly-adapter.js"
+          ],
+          "test_paths": [
+            "tests/services/youtube-analytics-readonly-adapter.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/analytics_readiness_report.md"
+          ],
+          "completion_boundary": "Requires real Studio and API evidence."
+        },
+        {
+          "id": "P1-A08",
+          "control": "Reconcile failed rows with external platform IDs.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/publication-reconciliation-worker.js",
+            "tools/publication-reconciliation.js"
+          ],
+          "test_paths": [
+            "tests/services/publication-reconciliation-worker.test.js",
+            "tests/services/publication-reconciliation-command.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/database_state_integrity_report.md"
+          ],
+          "completion_boundary": "Local reconciliation capability exists; production rows and platform objects were not inspected."
+        },
+        {
+          "id": "P1-A09",
+          "control": "Consolidate current documentation.",
+          "status": "implemented_local",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "README.md",
+            "docs/stabilisation/phase-0/documentation_consolidation_plan.md",
+            "docs/stabilisation/phase-0/report_index.json"
+          ],
+          "completion_boundary": "Ten canonical documents and ten Phase 0 reports exist locally; legacy documents are preserved as linked history."
+        },
+        {
+          "id": "P1-A10",
+          "control": "Reduce the active scheduler to two daily windows.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/scheduler-plan.js"
+          ],
+          "test_paths": [
+            "tests/services/scheduler-stabilisation-profile.test.js",
+            "tests/services/scheduler-stabilisation-cadence-guard.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/scheduler_ownership_report.md"
+          ],
+          "completion_boundary": "Local schedule policy exists, but the observed local runtime and Windows tasks were not reconfigured."
+        },
+        {
+          "id": "P1-A11",
+          "control": "Establish the clean release/pulse-v1 branch.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CURRENT_STATUS.md"
+          ],
+          "completion_boundary": "The branch exists, but the shared worktree is intentionally dirty while slices are being reconstructed."
+        },
+        {
+          "id": "P1-A12",
+          "control": "Begin reconstructing PR 69 as thematic slices.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/release_pulse_v1_slice_plan.md",
+            "docs/stabilisation/release-slices/01-config-env-runtime-provenance/verification_summary.json",
+            "docs/stabilisation/release-slices/02-db-job-reconciliation/verification_summary.json"
+          ],
+          "completion_boundary": "Reconstruction has begun; the sequence is not complete or merged."
+        }
+      ],
+      "exit_criteria": [
+        {
+          "id": "P1-E01",
+          "control": "CI green from a clean checkout.",
+          "status": "external_gate",
+          "code_paths": [
+            ".github/workflows/pulse-release.yml"
+          ],
+          "test_paths": [
+            "tests/services/pulse-release-ci.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/ci_implementation_plan.md"
+          ],
+          "completion_boundary": "Not verified."
+        },
+        {
+          "id": "P1-E02",
+          "control": "Five videos have verified retention data.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/youtube-analytics-ingestion.js"
+          ],
+          "test_paths": [
+            "tests/services/youtube-analytics-ingestion.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/analytics_readiness_report.md"
+          ],
+          "completion_boundary": "Not met."
+        },
+        {
+          "id": "P1-E03",
+          "control": "No platform row is ambiguously failed and published.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/publication-reconciliation-worker.js"
+          ],
+          "test_paths": [
+            "tests/services/publication-reconciliation-worker.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/database_state_integrity_report.md"
+          ],
+          "completion_boundary": "Production state was not inspected."
+        },
+        {
+          "id": "P1-E04",
+          "control": "Exact runtime commit appears in health output.",
+          "status": "evidence_only",
+          "code_paths": [
+            "lib/runtime-build-info.js"
+          ],
+          "test_paths": [
+            "tests/services/health-public-metadata.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/runtime_provenance_report.md"
+          ],
+          "completion_boundary": "Commits appear, but they do not equal the release candidate."
+        },
+        {
+          "id": "P1-E05",
+          "control": "One scheduler and one queue are authoritative.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/services/scheduler-lock.js"
+          ],
+          "test_paths": [
+            "tests/services/scheduler-lock.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/scheduler_ownership_report.md"
+          ],
+          "completion_boundary": "Not met."
+        },
+        {
+          "id": "P1-E06",
+          "control": "No production code depends on PR 68.",
+          "status": "evidence_only",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/pr68_pr69_overlap_report.md"
+          ],
+          "completion_boundary": "PR 68 is fully contained by PR 69 in observed Git ancestry and paths; human supersession remains pending."
+        }
+      ]
+    },
+    {
+      "phase": "Phase 2",
+      "window": "days 15 to 30",
+      "objective": "Run the controlled 12-video experiment.",
+      "actions": [
+        {
+          "id": "P2-A01",
+          "control": "Produce the 12-video matrix.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/pulse-editorial-contract.js"
+          ],
+          "test_paths": [
+            "tests/services/pulse-editorial-contract.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Requires twelve real approved videos."
+        },
+        {
+          "id": "P2-A02",
+          "control": "Publish no more than two per day.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/scheduler-plan.js"
+          ],
+          "test_paths": [
+            "tests/services/scheduler-stabilisation-cadence-guard.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Local guard exists; real experiment record is pending."
+        },
+        {
+          "id": "P2-A03",
+          "control": "Maintain four-hour spacing.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/scheduler-plan.js"
+          ],
+          "test_paths": [
+            "tests/services/scheduler-stabilisation-cadence-guard.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Local guard exists; real experiment record is pending."
+        },
+        {
+          "id": "P2-A04",
+          "control": "Review every video manually.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/publication-admission.js"
+          ],
+          "test_paths": [
+            "tests/services/publication-admission.test.js"
+          ],
+          "proof_paths": [
+            "OPERATING_MODES.md"
+          ],
+          "completion_boundary": "Requires twelve real human-review records."
+        },
+        {
+          "id": "P2-A05",
+          "control": "Record creative variables in the analytics schema.",
+          "status": "implemented_local",
+          "code_paths": [
+            "db/migrations/021_controlled_experiment_analytics.sql",
+            "lib/repositories/youtube_analytics_experiment_snapshots.js"
+          ],
+          "test_paths": [
+            "tests/db/youtube-analytics-experiment-snapshots.test.js"
+          ],
+          "proof_paths": [
+            "DATA_MODEL.md"
+          ],
+          "completion_boundary": "Schema and repository support exist locally; no real records were inspected."
+        },
+        {
+          "id": "P2-A06",
+          "control": "Use no fixed CTA.",
+          "status": "implemented_local",
+          "code_paths": [
+            "lib/services/pulse-editorial-contract.js"
+          ],
+          "test_paths": [
+            "tests/services/pulse-editorial-contract.test.js",
+            "tests/services/youtube-pinned-comment-policy.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Local contract implemented; real output review pending."
+        },
+        {
+          "id": "P2-A07",
+          "control": "Use exact-subject visual material.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/studio/v2/still-deck-ingestion.js",
+            "lib/studio/v2/official-trailer-segment-validator.js"
+          ],
+          "test_paths": [
+            "tests/services/studio-v2-still-deck-ingestion.test.js",
+            "tests/services/official-trailer-segment-validator.test.js"
+          ],
+          "proof_paths": [
+            "MEDIA_AND_RIGHTS.md"
+          ],
+          "completion_boundary": "Requires evidence for all twelve live candidates."
+        },
+        {
+          "id": "P2-A08",
+          "control": "Record first-frame, three-second and completion performance.",
+          "status": "external_gate",
+          "code_paths": [
+            "db/migrations/021_controlled_experiment_analytics.sql",
+            "db/migrations/022_youtube_retention_derivation_evidence.sql"
+          ],
+          "test_paths": [
+            "tests/db/youtube-analytics-experiment-snapshots.test.js"
+          ],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/analytics_readiness_report.md"
+          ],
+          "completion_boundary": "Live retention evidence is unavailable to this lane."
+        },
+        {
+          "id": "P2-A09",
+          "control": "Hold weekly editorial review.",
+          "status": "time_bound_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Requires recorded weekly review decisions."
+        },
+        {
+          "id": "P2-A10",
+          "control": "Make no automated scoring changes during the experiment.",
+          "status": "implemented_local",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Canonical policy is explicit; compliance must be checked across the live experiment."
+        }
+      ],
+      "exit_criteria": [
+        {
+          "id": "P2-E01",
+          "control": "Twelve complete analytics records.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/repositories/youtube_analytics_experiment_snapshots.js"
+          ],
+          "test_paths": [
+            "tests/db/youtube-analytics-experiment-snapshots.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Not met."
+        },
+        {
+          "id": "P2-E02",
+          "control": "At least one repeatable winning lane.",
+          "status": "time_bound_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Not met; twelve-video sample and review windows are incomplete."
+        },
+        {
+          "id": "P2-E03",
+          "control": "No duplicate posts.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/publication-request-fingerprint.js"
+          ],
+          "test_paths": [
+            "tests/services/publication-request-fingerprint.test.js"
+          ],
+          "proof_paths": [
+            "DATA_MODEL.md"
+          ],
+          "completion_boundary": "Local duplicate control exists; experiment outcome is pending."
+        },
+        {
+          "id": "P2-E04",
+          "control": "No off-schedule posts.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/scheduler-plan.js"
+          ],
+          "test_paths": [
+            "tests/services/scheduler-stabilisation-cadence-guard.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Not met."
+        },
+        {
+          "id": "P2-E05",
+          "control": "No QA fallback text in public content.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/script-lint.js"
+          ],
+          "test_paths": [
+            "tests/services/script-lint.test.js"
+          ],
+          "proof_paths": [
+            "INCIDENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "Local gate exists; twelve public outputs were not observed."
+        },
+        {
+          "id": "P2-E06",
+          "control": "No corrupted external-platform state.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/publication-reconciliation-worker.js"
+          ],
+          "test_paths": [
+            "tests/services/publication-reconciliation-worker.test.js"
+          ],
+          "proof_paths": [
+            "DATA_MODEL.md"
+          ],
+          "completion_boundary": "Not met."
+        },
+        {
+          "id": "P2-E07",
+          "control": "No rights-evidence gap.",
+          "status": "time_bound_gate",
+          "code_paths": [
+            "lib/services/publication-evidence-gates.js"
+          ],
+          "test_paths": [
+            "tests/services/publication-evidence-gates.test.js"
+          ],
+          "proof_paths": [
+            "MEDIA_AND_RIGHTS.md"
+          ],
+          "completion_boundary": "Local gate exists; twelve complete real ledgers were not observed."
+        }
+      ]
+    },
+    {
+      "phase": "Phase 3",
+      "window": "days 31 to 60",
+      "objective": "Release a maintainable Pulse v1.",
+      "actions": [
+        {
+          "id": "P3-A01",
+          "control": "Complete the clean thematic pull-request sequence.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/release_pulse_v1_slice_plan.md"
+          ],
+          "completion_boundary": "Reconstruction is in progress and not yet a complete reviewed sequence."
+        },
+        {
+          "id": "P3-A02",
+          "control": "Merge to protected main.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "DEPLOYMENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "Requires completed review, branch protection and explicit merge authority."
+        },
+        {
+          "id": "P3-A03",
+          "control": "Tag v1.0.0.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "DEPLOYMENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "No release tag is permitted before Phase 3 acceptance."
+        },
+        {
+          "id": "P3-A04",
+          "control": "Deploy only from the v1.0.0 tag.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "DEPLOYMENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "No deployment was authorised."
+        },
+        {
+          "id": "P3-A05",
+          "control": "Update avatar and channel strapline.",
+          "status": "external_gate",
+          "code_paths": [
+            "channels/pulse-gaming.js",
+            "assets/brand/pulse-gaming-news-avatar-v1.design.json",
+            "assets/brand/pulse-gaming-news-avatar-v1.svg"
+          ],
+          "test_paths": [
+            "tests/services/pulse-brand-assets.test.js",
+            "tests/services/pulse-brand-operator-surfaces.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Requires operator approval and channel mutation."
+        },
+        {
+          "id": "P3-A06",
+          "control": "Remove or archive redundant renderer generations.",
+          "status": "intentionally_deferred",
+          "code_paths": [
+            "lib/stabilisation/renderer-governance.js"
+          ],
+          "test_paths": [
+            "tests/services/stabilisation-renderer-governance.test.js"
+          ],
+          "proof_paths": [
+            "ARCHITECTURE.md"
+          ],
+          "completion_boundary": "Governance exists; retirement is deferred to the maintainable release phase."
+        },
+        {
+          "id": "P3-A07",
+          "control": "Remove fixed 60-second requirements.",
+          "status": "implemented_local",
+          "code_paths": [
+            "lib/services/short-runtime-planner.js",
+            "processor.js"
+          ],
+          "test_paths": [
+            "tests/services/processor-short-runtime.test.js",
+            "tests/services/short-runtime-planner.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Local source supports controlled duration bands; deployed source is mismatched."
+        },
+        {
+          "id": "P3-A08",
+          "control": "Retire the fixed CTA.",
+          "status": "implemented_local",
+          "code_paths": [
+            "lib/services/pulse-editorial-contract.js"
+          ],
+          "test_paths": [
+            "tests/services/pulse-editorial-contract.test.js"
+          ],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Local source contract exists; deployed output not verified."
+        },
+        {
+          "id": "P3-A09",
+          "control": "Add a simple executive dashboard.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [
+            "tests/services/dashboard-analytics-page.test.js"
+          ],
+          "proof_paths": [
+            "ARCHITECTURE.md"
+          ],
+          "completion_boundary": "Existing dashboard analytics is not claimed as the required release executive dashboard."
+        },
+        {
+          "id": "P3-A10",
+          "control": "Conduct one restore rehearsal.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/ops/db-backup-dry-run.js"
+          ],
+          "test_paths": [
+            "tests/services/db-backup-verification.test.js"
+          ],
+          "proof_paths": [
+            "DEPLOYMENT_RUNBOOK.md",
+            "INCIDENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "Not performed."
+        },
+        {
+          "id": "P3-A11",
+          "control": "Conduct one controlled restart rehearsal.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "DEPLOYMENT_RUNBOOK.md",
+            "INCIDENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "Not performed."
+        },
+        {
+          "id": "P3-A12",
+          "control": "Keep YouTube as the only automated publishing target.",
+          "status": "implemented_local",
+          "code_paths": [
+            "lib/services/governed-platform-dispatch.js"
+          ],
+          "test_paths": [
+            "tests/services/governed-platform-dispatch.test.js"
+          ],
+          "proof_paths": [
+            "PLATFORM_MATRIX.md"
+          ],
+          "completion_boundary": "Local policy exists; live platform configuration remains unverified."
+        }
+      ],
+      "exit_criteria": [
+        {
+          "id": "P3-E01",
+          "control": "main equals deployed code.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/runtime_provenance_report.md"
+          ],
+          "completion_boundary": "Not met."
+        },
+        {
+          "id": "P3-E02",
+          "control": "Rollback works.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "DEPLOYMENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "Not rehearsed."
+        },
+        {
+          "id": "P3-E03",
+          "control": "Recovery runbook works.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "INCIDENT_RUNBOOK.md"
+          ],
+          "completion_boundary": "Not rehearsed."
+        },
+        {
+          "id": "P3-E04",
+          "control": "Status evidence is current.",
+          "status": "implemented_local",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CURRENT_STATUS.md",
+            "docs/stabilisation/phase-0/report_index.json"
+          ],
+          "completion_boundary": "Local evidence is restamped and expires on 2026-08-03; runtime and platform truth still require fresh live evidence."
+        },
+        {
+          "id": "P3-E05",
+          "control": "No giant open reconciliation branch is required for operations.",
+          "status": "external_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "docs/stabilisation/phase-0/pr68_pr69_overlap_report.md"
+          ],
+          "completion_boundary": "PR 68 and PR 69 remain open drafts."
+        },
+        {
+          "id": "P3-E06",
+          "control": "Production has one renderer and one experimental renderer.",
+          "status": "external_gate",
+          "code_paths": [
+            "lib/stabilisation/renderer-governance.js"
+          ],
+          "test_paths": [
+            "tests/services/stabilisation-renderer-governance.test.js"
+          ],
+          "proof_paths": [
+            "ARCHITECTURE.md"
+          ],
+          "completion_boundary": "Local governance exists; deployed renderer inventory was not inspected."
+        }
+      ]
+    },
+    {
+      "phase": "Phase 4",
+      "window": "days 61 to 90",
+      "objective": "Scale only the proven editorial product.",
+      "actions": [
+        {
+          "id": "P4-A01",
+          "control": "Increase to three daily Shorts only if retention remains stable.",
+          "status": "time_bound_gate",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "CONTENT_STANDARD.md"
+          ],
+          "completion_boundary": "Deferred until the controlled sample and retention stability are proven."
+        },
+        {
+          "id": "P4-A02",
+          "control": "Pilot Instagram Reels using proven YouTube winners.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "PLATFORM_MATRIX.md"
+          ],
+          "completion_boundary": "Instagram remains disabled during stabilisation."
+        },
+        {
+          "id": "P4-A03",
+          "control": "Pilot Facebook Reels separately.",
+          "status": "intentionally_deferred",
+          "code_paths": [
+            "lib/platforms/facebook-reels-mode.js"
+          ],
+          "test_paths": [
+            "tests/services/facebook-reels-mode.test.js"
+          ],
+          "proof_paths": [
+            "PLATFORM_MATRIX.md"
+          ],
+          "completion_boundary": "Facebook remains disabled except controlled proof."
+        },
+        {
+          "id": "P4-A04",
+          "control": "Keep TikTok manual or explicitly approved.",
+          "status": "implemented_local",
+          "code_paths": [
+            "lib/platforms/tiktok-dispatch.js",
+            "lib/services/governed-platform-dispatch.js"
+          ],
+          "test_paths": [
+            "tests/services/governed-platform-dispatch.test.js"
+          ],
+          "proof_paths": [
+            "PLATFORM_MATRIX.md"
+          ],
+          "completion_boundary": "Local policy is manual; live configuration was not inspected."
+        },
+        {
+          "id": "P4-A05",
+          "control": "Produce one four- to eight-minute YouTube explainer based on a proven Short topic.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "PLATFORM_MATRIX.md"
+          ],
+          "completion_boundary": "Deferred until a Short topic is proven."
+        },
+        {
+          "id": "P4-A06",
+          "control": "Introduce one selective sponsorship or affiliate test only if audience intent supports it.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "PLATFORM_MATRIX.md"
+          ],
+          "completion_boundary": "Frozen until audience intent and scale are evidenced."
+        },
+        {
+          "id": "P4-A07",
+          "control": "Expand Discord only when returning viewers request community space.",
+          "status": "intentionally_deferred",
+          "code_paths": [],
+          "test_paths": [],
+          "proof_paths": [
+            "PLATFORM_MATRIX.md"
+          ],
+          "completion_boundary": "Discord remains minimal."
+        }
+      ],
+      "exit_criteria": []
+    }
+  ],
+  "hard_acceptance_gates": [
+    {
+      "id": "HAG-01",
+      "gate": "Runtime provenance",
+      "required_result": "Exact deployed commit visible",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/runtime-build-info.js"
+      ],
+      "test_paths": [
+        "tests/services/health-public-metadata.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/runtime_provenance_report.md"
+      ],
+      "current_result": "Visible but mismatched; RED."
+    },
+    {
+      "id": "HAG-02",
+      "gate": "Repository",
+      "required_result": "Production equals protected main",
+      "status": "external_gate",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "CURRENT_STATUS.md"
+      ],
+      "current_result": "Not met and branch protection unverified."
+    },
+    {
+      "id": "HAG-03",
+      "gate": "CI",
+      "required_result": "Green from clean checkout",
+      "status": "external_gate",
+      "code_paths": [
+        ".github/workflows/pulse-release.yml"
+      ],
+      "test_paths": [
+        "tests/services/pulse-release-ci.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/ci_implementation_plan.md"
+      ],
+      "current_result": "No exact-candidate GitHub run was verified."
+    },
+    {
+      "id": "HAG-04",
+      "gate": "Duplicate control",
+      "required_result": "Zero duplicates for 30 consecutive days",
+      "status": "time_bound_gate",
+      "code_paths": [
+        "lib/services/publication-request-fingerprint.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-request-fingerprint.test.js"
+      ],
+      "proof_paths": [
+        "DATA_MODEL.md"
+      ],
+      "current_result": "30-day window incomplete."
+    },
+    {
+      "id": "HAG-05",
+      "gate": "Cadence",
+      "required_result": "Zero off-schedule posts for 30 consecutive days",
+      "status": "time_bound_gate",
+      "code_paths": [
+        "lib/services/scheduler-plan.js"
+      ],
+      "test_paths": [
+        "tests/services/scheduler-stabilisation-cadence-guard.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "current_result": "30-day window incomplete."
+    },
+    {
+      "id": "HAG-06",
+      "gate": "State integrity",
+      "required_result": "Zero failed rows with unresolved platform IDs",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/services/publication-reconciliation-worker.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-reconciliation-worker.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/database_state_integrity_report.md"
+      ],
+      "current_result": "Production database unverified."
+    },
+    {
+      "id": "HAG-07",
+      "gate": "QA",
+      "required_result": "Zero fallback or internal-production wording in public output",
+      "status": "time_bound_gate",
+      "code_paths": [
+        "lib/services/script-lint.js"
+      ],
+      "test_paths": [
+        "tests/services/script-lint.test.js"
+      ],
+      "proof_paths": [
+        "INCIDENT_RUNBOOK.md"
+      ],
+      "current_result": "Local controls exist; required live evidence window is incomplete."
+    },
+    {
+      "id": "HAG-08",
+      "gate": "Analytics",
+      "required_result": "Retention and subscriber data active",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/services/youtube-analytics-readonly-adapter.js",
+        "lib/services/youtube-analytics-ingestion.js"
+      ],
+      "test_paths": [
+        "tests/services/youtube-analytics-ingestion.test.js"
+      ],
+      "proof_paths": [
+        "docs/stabilisation/phase-0/analytics_readiness_report.md"
+      ],
+      "current_result": "Live data unverified."
+    },
+    {
+      "id": "HAG-09",
+      "gate": "Rights",
+      "required_result": "100 per cent manifest coverage",
+      "status": "time_bound_gate",
+      "code_paths": [
+        "lib/services/publication-evidence-gates.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-evidence-gates.test.js"
+      ],
+      "proof_paths": [
+        "MEDIA_AND_RIGHTS.md"
+      ],
+      "current_result": "Local gate exists; complete live-candidate coverage unverified."
+    },
+    {
+      "id": "HAG-10",
+      "gate": "Human control",
+      "required_result": "Immediate kill switch tested",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/stabilisation/operating-contract.js"
+      ],
+      "test_paths": [
+        "tests/services/stabilisation-operating-contract.test.js"
+      ],
+      "proof_paths": [
+        "INCIDENT_RUNBOOK.md"
+      ],
+      "current_result": "No live kill-switch rehearsal was performed."
+    },
+    {
+      "id": "HAG-11",
+      "gate": "Recovery",
+      "required_result": "Backup and restore rehearsal passed",
+      "status": "external_gate",
+      "code_paths": [
+        "lib/ops/db-backup-dry-run.js"
+      ],
+      "test_paths": [
+        "tests/services/db-backup-verification.test.js"
+      ],
+      "proof_paths": [
+        "DEPLOYMENT_RUNBOOK.md",
+        "INCIDENT_RUNBOOK.md"
+      ],
+      "current_result": "No production rehearsal was performed."
+    },
+    {
+      "id": "HAG-12",
+      "gate": "Content evidence",
+      "required_result": "At least 12 controlled videos analysed",
+      "status": "time_bound_gate",
+      "code_paths": [
+        "lib/repositories/youtube_analytics_experiment_snapshots.js"
+      ],
+      "test_paths": [
+        "tests/db/youtube-analytics-experiment-snapshots.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "current_result": "Not met."
+    },
+    {
+      "id": "HAG-13",
+      "gate": "Editorial differentiation",
+      "required_result": "Winning lane demonstrates repeatable improvement",
+      "status": "time_bound_gate",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "current_result": "Not met."
+    },
+    {
+      "id": "HAG-14",
+      "gate": "Platform expansion",
+      "required_result": "One platform enabled at a time",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/governed-platform-dispatch.js"
+      ],
+      "test_paths": [
+        "tests/services/governed-platform-dispatch.test.js"
+      ],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "current_result": "Local policy keeps secondary platforms frozen or manual; no enablement is authorised."
+    }
+  ],
+  "continuing_prohibitions": [
+    {
+      "id": "PROHIBIT-01",
+      "control": "No finance or crypto verticals.",
+      "status": "implemented_local",
+      "code_paths": [],
+      "test_paths": [],
+      "proof_paths": [
+        "docs/codex-main-goal.md"
+      ],
+      "completion_boundary": "Pulse v1 scope is gaming only."
+    },
+    {
+      "id": "PROHIBIT-02",
+      "control": "No mass autonomous cross-posting.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/governed-platform-dispatch.js"
+      ],
+      "test_paths": [
+        "tests/services/governed-platform-dispatch.test.js"
+      ],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "completion_boundary": "Secondary platforms are frozen or manual in local policy."
+    },
+    {
+      "id": "PROHIBIT-03",
+      "control": "No automated public comment interaction.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/post-publish-mutation-policy.js"
+      ],
+      "test_paths": [
+        "tests/services/post-publish-mutation-policy.test.js"
+      ],
+      "proof_paths": [
+        "PLATFORM_MATRIX.md"
+      ],
+      "completion_boundary": "Post-publish mutation policy is fail-closed locally."
+    },
+    {
+      "id": "PROHIBIT-04",
+      "control": "No additional Studio generations.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/stabilisation/renderer-governance.js"
+      ],
+      "test_paths": [
+        "tests/services/stabilisation-renderer-governance.test.js"
+      ],
+      "proof_paths": [
+        "ARCHITECTURE.md"
+      ],
+      "completion_boundary": "Current governance names one standard and one experimental lane."
+    },
+    {
+      "id": "PROHIBIT-05",
+      "control": "No generic article-to-video production at scale.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/pulse-editorial-contract.js"
+      ],
+      "test_paths": [
+        "tests/services/pulse-editorial-contract.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "completion_boundary": "Source-bound transformation is required locally."
+    },
+    {
+      "id": "PROHIBIT-06",
+      "control": "No bulk backlog publication.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/scheduler-plan.js"
+      ],
+      "test_paths": [
+        "tests/services/scheduler-stabilisation-cadence-guard.test.js"
+      ],
+      "proof_paths": [
+        "CONTENT_STANDARD.md"
+      ],
+      "completion_boundary": "Local cadence admission prevents burst publication."
+    },
+    {
+      "id": "PROHIBIT-07",
+      "control": "No unreviewed live publishing.",
+      "status": "implemented_local",
+      "code_paths": [
+        "lib/services/publication-admission.js",
+        "lib/stabilisation/operating-contract.js"
+      ],
+      "test_paths": [
+        "tests/services/publication-admission.test.js",
+        "tests/services/stabilisation-operating-contract.test.js"
+      ],
+      "proof_paths": [
+        "OPERATING_MODES.md"
+      ],
+      "completion_boundary": "Local source requires human review; the mismatched local runtime reported autonomous mode active."
+    }
+  ],
+  "summary": {
+    "counts_are_generated_from_this_file": false,
+    "major_controls": {
+      "total": 22,
+      "implemented_local": 13,
+      "evidence_only": 4,
+      "external_gate": 3,
+      "time_bound_gate": 1,
+      "intentionally_deferred": 1
+    },
+    "risk_register": {
+      "total": 18,
+      "implemented_local": 8,
+      "evidence_only": 2,
+      "external_gate": 6,
+      "time_bound_gate": 0,
+      "intentionally_deferred": 2
+    },
+    "hard_acceptance_gates": {
+      "total": 14,
+      "implemented_local": 1,
+      "evidence_only": 0,
+      "external_gate": 7,
+      "time_bound_gate": 6,
+      "intentionally_deferred": 0
+    },
+    "autonomous_publish_gate": "BLOCKED",
+    "reason": "Runtime and protected-main equality, CI, scheduler ownership, production database integrity, live analytics, recovery rehearsal, twelve controlled videos and the 30-day evidence windows are not satisfied."
+  },
+  "validation": {
+    "json_parse": "PASS",
+    "status_enum_membership": "PASS_139_ITEMS",
+    "pg_id_coverage": "PASS_PG01_THROUGH_PG18",
+    "phase_action_coverage": "PASS_PHASE0_THROUGH_PHASE4_ACTIONS_AND_EXIT_CRITERIA",
+    "hard_gate_coverage": "PASS_14_GATES",
+    "referenced_path_existence": "PASS_0_MISSING",
+    "summary_counts": "PASS",
+    "final_source_commit_restamp": "PASS_ed2745dd2cbeeb179ab54d47b8d380304baaf9e5"
+  }
+}

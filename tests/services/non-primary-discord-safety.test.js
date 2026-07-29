@@ -24,3 +24,16 @@ test("server.js: non-primary mirrors skip Discord startup side effects", () => {
     /if\s*\(\s*!primaryInstance\s*\)\s*\{[\s\S]*Discord bot skipped - non-primary mirror[\s\S]*\}\s*else\s+if\s*\(/,
   );
 });
+
+test("Pulse v1 keeps the interactive Discord economy bot out of the runtime", () => {
+  assert.match(src, /resolveOperatingContract/);
+  assert.match(
+    src,
+    /discordCommunityFrozen\s*=\s*resolveOperatingContract\(\)\.freeze\.discord_economy/,
+  );
+  assert.match(src, /Discord bot skipped - Pulse v1 community freeze/);
+  assert.match(
+    src,
+    /else\s+if\s*\(\s*discordCommunityFrozen\s*\)\s*\{[\s\S]*?Pulse v1 community freeze/,
+  );
+});

@@ -2,12 +2,22 @@ const axios = require("axios");
 const fs = require("fs-extra");
 const dotenv = require("dotenv");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const { getChannel } = require("./channels");
 const { getTrendingTopics, getTrendingBoost } = require("./trending");
 const { getPerformanceBoost } = require("./analytics");
 const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
+const {
+  isStoryTitleDuplicate,
+  titleSimilarity,
+} = require("./lib/services/story-title-dedupe");
+const {
+  classifyGovernedSource,
+} = require("./lib/services/governed-editorial-evidence-ingress");
+const {
+  BREAKING_SOURCE_POLICY,
+} = require("./lib/services/breaking-source-policy");
 
 const USER_AGENT = "pulse-gaming-hunter/2.0 (by /u/PulseGamingBot)";
 
@@ -136,13 +146,7 @@ const DEFAULT_BREAKING_KEYWORDS = [
 ];
 
 function similarity(a, b) {
-  const wordsA = a.toLowerCase().split(/\s+/);
-  const wordsB = b.toLowerCase().split(/\s+/);
-  const setA = new Set(wordsA);
-  const setB = new Set(wordsB);
-  const intersection = [...setA].filter((w) => setB.has(w));
-  const union = new Set([...setA, ...setB]);
-  return intersection.length / union.size;
+  return titleSimilarity(a, b);
 }
 
 function scoreBreakingValue(
@@ -151,6 +155,7 @@ function scoreBreakingValue(
   numComments,
   breakingKeywords,
   trendingTopics,
+  governedSourceClass = "",
 ) {
   let breakingScore = 0;
   const lower = title.toLowerCase();
@@ -169,17 +174,33 @@ function scoreBreakingValue(
     breakingScore += getTrendingBoost(title, trendingTopics);
   }
 
+  // Discovery priority only. This cannot create verification or publish
+  // authority; downstream evidence capture still has to confirm the body.
+  if (
+    String(governedSourceClass).trim().toUpperCase() ===
+    "OFFICIAL_FIRST_PARTY"
+  ) {
+    breakingScore += 45;
+  }
+
   return breakingScore;
 }
 
 // --- Reddit RSS fallback (no auth needed, works when JSON API returns 403) ---
-async function fetchSubredditRSS(subreddit, sort = "hot") {
-  const url = `https://www.reddit.com/r/${subreddit}/${sort}/.rss?limit=50`;
+async function fetchSubredditRSS(
+  subreddit,
+  sort = "hot",
+  { httpGet = axios.get, limit = 50 } = {},
+) {
+  const url = `https://www.reddit.com/r/${subreddit}/${sort}/.rss?limit=${limit}`;
   console.log(`[hunter] Fetching: r/${subreddit} (${sort}) [RSS fallback]`);
 
   try {
-    const response = await axios.get(url, {
-      headers: { "User-Agent": randomUA() },
+    const response = await httpGet(url, {
+      headers: {
+        Accept: "application/atom+xml,application/xml;q=0.9,*/*;q=0.1",
+        "User-Agent": USER_AGENT,
+      },
       timeout: 15000,
       responseType: "text",
     });
@@ -211,6 +232,12 @@ async function fetchSubredditRSS(subreddit, sort = "hot") {
       // Extract post ID from permalink (/r/sub/comments/ID/...)
       const idMatch = permalink.match(/\/comments\/([a-z0-9]+)\//);
       const id = idMatch ? idMatch[1] : "";
+      const subredditMatch = permalink.match(/^\/r\/([^/]+)\//i);
+      const sourceSubreddit = subredditMatch
+        ? decodeURIComponent(subredditMatch[1])
+        : subreddit.includes("+")
+          ? ""
+          : subreddit;
 
       const updated = updatedMatch ? updatedMatch[1] : "";
       const flair = categoryMatch ? categoryMatch[1] : "";
@@ -218,6 +245,7 @@ async function fetchSubredditRSS(subreddit, sort = "hot") {
       entries.push({
         id,
         title,
+        subreddit: sourceSubreddit,
         permalink,
         link_flair_text: flair,
         score: 0, // RSS doesn't include score
@@ -238,6 +266,101 @@ async function fetchSubredditRSS(subreddit, sort = "hot") {
     console.log(`[hunter] RSS fallback r/${subreddit} failed: ${err.message}`);
     return [];
   }
+}
+
+function normaliseSubreddits(subreddits) {
+  const unique = [];
+  for (const value of Array.isArray(subreddits) ? subreddits : []) {
+    const subreddit = String(value || "").trim();
+    if (!/^[a-zA-Z0-9_]{2,32}$/.test(subreddit)) continue;
+    if (!unique.includes(subreddit)) unique.push(subreddit);
+  }
+  return unique.slice(0, 16);
+}
+
+const PUBLIC_REDDIT_BATCH_CACHE_TTL_MS = 45 * 1000;
+
+function createRedditBatchCache() {
+  return {
+    entriesByKey: new Map(),
+    inFlightByKey: new Map(),
+  };
+}
+
+const publicRedditBatchCache = createRedditBatchCache();
+
+function cloneRedditPosts(posts) {
+  return posts.map((post) => ({ ...post }));
+}
+
+async function fetchSubredditsNew(
+  subreddits,
+  {
+    tokenProvider = getRedditAccessToken,
+    httpGet = axios.get,
+    cache = publicRedditBatchCache,
+    now = Date.now,
+    cacheTtlMs = PUBLIC_REDDIT_BATCH_CACHE_TTL_MS,
+  } = {},
+) {
+  const primarySubs = normaliseSubreddits(subreddits);
+  if (!primarySubs.length) return [];
+  const token = await tokenProvider();
+  const combined = primarySubs.join("+");
+  if (!token) {
+    const cacheKey = `public:new:${combined}`;
+    const nowMs = Number(now());
+    const cached = cache.entriesByKey.get(cacheKey);
+    if (
+      cached &&
+      Number.isFinite(nowMs) &&
+      nowMs - cached.fetchedAtMs >= 0 &&
+      nowMs - cached.fetchedAtMs < cacheTtlMs
+    ) {
+      return cloneRedditPosts(cached.posts);
+    }
+
+    const existingRequest = cache.inFlightByKey.get(cacheKey);
+    if (existingRequest) {
+      return cloneRedditPosts(await existingRequest);
+    }
+
+    const request = fetchSubredditRSS(combined, "new", {
+      httpGet,
+      limit: 100,
+    })
+      .then((posts) => {
+        cache.entriesByKey.set(cacheKey, {
+          fetchedAtMs: Number(now()),
+          posts: cloneRedditPosts(posts),
+        });
+        return posts;
+      })
+      .finally(() => {
+        cache.inFlightByKey.delete(cacheKey);
+      });
+    cache.inFlightByKey.set(cacheKey, request);
+    return cloneRedditPosts(await request);
+  }
+  const response = await httpGet(
+    `https://oauth.reddit.com/r/${combined}/new?limit=100`,
+    {
+      headers: getRedditHeaders(token),
+      timeout: 15000,
+    },
+  );
+  const children = response.data?.data?.children || [];
+  return children.map((child) => ({
+    ...child.data,
+    subreddit: child.data?.subreddit || "",
+  }));
+}
+
+async function fetchRedditHuntBatch(
+  subreddits,
+  { fetchSubredditsNewImpl = fetchSubredditsNew } = {},
+) {
+  return fetchSubredditsNewImpl(normaliseSubreddits(subreddits));
 }
 
 async function fetchSubreddit(subreddit) {
@@ -803,100 +926,94 @@ async function hunt() {
   // --- Phase 1: Reddit (hot + new from key subreddits) ---
   console.log("[hunter] Phase 1: Reddit scraping...");
 
-  for (const sub of SUBREDDITS) {
-    try {
-      // Fetch hot posts
-      const hotPosts = await fetchSubreddit(sub);
+  try {
+    const redditPosts = await fetchRedditHuntBatch(SUBREDDITS);
+    const seenIds = new Set();
 
-      // Also fetch new posts from the first 5 subreddits (primary sources - catches breaking news faster)
-      let newPosts = [];
-      if (SUBREDDITS.indexOf(sub) < 5) {
-        await new Promise((r) => setTimeout(r, 500));
-        newPosts = await fetchSubredditNew(sub);
+    for (const post of redditPosts) {
+      if (!post.id || seenIds.has(post.id)) continue;
+      seenIds.add(post.id);
+
+      const sub =
+        post.subreddit ||
+        SUBREDDITS[0] ||
+        "unknown";
+      const subredditIndex = SUBREDDITS.findIndex(
+        (candidate) => candidate.toLowerCase() === sub.toLowerCase(),
+      );
+      if (subredditIndex < 0) continue;
+
+      // For the primary leak/rumour subreddit (first in list), filter by flair
+      const flair = post.link_flair_text || "";
+      const isPrimarySub = subredditIndex === 0;
+      if (isPrimarySub && channel.niche === "gaming") {
+        const matchesFlair = allowedFlairs.some((f) =>
+          flair.toLowerCase().includes(f),
+        );
+        if (!matchesFlair) continue;
       }
 
-      const combined = [...hotPosts, ...newPosts];
-      const seenIds = new Set();
+      // For general subs, filter by minimum engagement + recency
+      if (!isPrimarySub) {
+        const postAge =
+          (Date.now() - post.created_utc * 1000) / (1000 * 60 * 60);
+        if (postAge > 24) continue;
+        if (post.score < 100 && post.num_comments < 20) continue;
 
-      for (const post of combined) {
-        if (seenIds.has(post.id)) continue;
-        seenIds.add(post.id);
-
-        // For the primary leak/rumour subreddit (first in list), filter by flair
-        const flair = post.link_flair_text || "";
-        const isPrimarySub = SUBREDDITS.indexOf(sub) === 0;
-        if (isPrimarySub && channel.niche === "gaming") {
-          const matchesFlair = allowedFlairs.some((f) =>
-            flair.toLowerCase().includes(f),
-          );
-          if (!matchesFlair) continue;
-        }
-
-        // For general subs, filter by minimum engagement + recency
-        if (!isPrimarySub) {
-          const postAge =
-            (Date.now() - post.created_utc * 1000) / (1000 * 60 * 60);
-          if (postAge > 24) continue;
-          if (post.score < 100 && post.num_comments < 20) continue;
-
-          // Filter junk posts from meme-heavy subs (PCMasterRace, gaming, etc.)
-          const titleLower = (post.title || "").toLowerCase();
-          const junkPatterns = [
-            /\b(meme|mfw|mrw|shitpost|rant|vent|am i the only|does anyone else|unpopular opinion)\b/,
-            /\b(my setup|my build|my rig|rate my|battlestation|just bought|just got|just upgraded)\b/,
-            /\b(help me|should i buy|which should i|what should i|is it worth|recommend me)\b/,
-            /\b(petition to|can we talk about|i hate|i love|hot take|controversial)\b/,
-          ];
-          const junkFlairs = [
-            "meme",
-            "satire",
-            "joke",
-            "shitpost",
-            "rant",
-            "discussion",
-            "question",
-            "tech support",
-            "build",
-            "setup",
-            "advice",
-          ];
-          const postFlair = (flair || "").toLowerCase();
-          if (junkPatterns.some((p) => p.test(titleLower))) continue;
-          if (junkFlairs.some((f) => postFlair.includes(f))) continue;
-        }
-
-        allPosts.push({
-          id: post.id,
-          title: decodeEntities(post.title),
-          url: `https://reddit.com${post.permalink}`,
-          score: post.score,
-          flair: flair || "News",
-          subreddit: sub,
-          top_comment: "",
-          // 2026-04-29 incident: distinguish a real Reddit top comment
-          // from RSS feed descriptions so the comment overlay in
-          // assemble.js doesn't render an RSS blurb under a u/Redditor
-          // badge. Reddit posts START with no comment fetched; the
-          // enrichment phase below will set this to
-          // "reddit_top_comment" once fetchTopComments succeeds.
-          comment_source_type: "none",
-          timestamp: new Date(post.created_utc * 1000).toISOString(),
-          num_comments: post.num_comments || 0,
-          source_type: "reddit",
-          thumbnail_url:
-            post.thumbnail && post.thumbnail.startsWith("http")
-              ? post.thumbnail
-              : null,
-          article_url:
-            post.url && !post.url.includes("reddit.com") ? post.url : null,
-        });
+        // Filter junk posts from meme-heavy subs (PCMasterRace, gaming, etc.)
+        const titleLower = (post.title || "").toLowerCase();
+        const junkPatterns = [
+          /\b(meme|mfw|mrw|shitpost|rant|vent|am i the only|does anyone else|unpopular opinion)\b/,
+          /\b(my setup|my build|my rig|rate my|battlestation|just bought|just got|just upgraded)\b/,
+          /\b(help me|should i buy|which should i|what should i|is it worth|recommend me)\b/,
+          /\b(petition to|can we talk about|i hate|i love|hot take|controversial)\b/,
+        ];
+        const junkFlairs = [
+          "meme",
+          "satire",
+          "joke",
+          "shitpost",
+          "rant",
+          "discussion",
+          "question",
+          "tech support",
+          "build",
+          "setup",
+          "advice",
+        ];
+        const postFlair = (flair || "").toLowerCase();
+        if (junkPatterns.some((p) => p.test(titleLower))) continue;
+        if (junkFlairs.some((f) => postFlair.includes(f))) continue;
       }
 
-      // Politeness delay between subreddits
-      await new Promise((r) => setTimeout(r, 600));
-    } catch (err) {
-      console.log(`[hunter] ERROR r/${sub}: ${err.message}`);
+      allPosts.push({
+        id: post.id,
+        title: decodeEntities(post.title),
+        url: `https://reddit.com${post.permalink}`,
+        score: post.score,
+        flair: flair || "News",
+        subreddit: sub,
+        top_comment: "",
+        // 2026-04-29 incident: distinguish a real Reddit top comment
+        // from RSS feed descriptions so the comment overlay in
+        // assemble.js doesn't render an RSS blurb under a u/Redditor
+        // badge. Reddit posts START with no comment fetched; the
+        // enrichment phase below will set this to
+        // "reddit_top_comment" once fetchTopComments succeeds.
+        comment_source_type: "none",
+        timestamp: new Date(post.created_utc * 1000).toISOString(),
+        num_comments: post.num_comments || 0,
+        source_type: "reddit",
+        thumbnail_url:
+          post.thumbnail && post.thumbnail.startsWith("http")
+            ? post.thumbnail
+            : null,
+        article_url:
+          post.url && !post.url.includes("reddit.com") ? post.url : null,
+      });
     }
+  } catch (err) {
+    console.log(`[hunter] Reddit batch error: ${err.message}`);
   }
 
   console.log(`[hunter] Reddit: ${allPosts.length} qualifying posts`);
@@ -911,6 +1028,10 @@ async function hunt() {
   for (const result of rssResults) {
     if (result.status !== "fulfilled") continue;
     for (const item of result.value) {
+      const governedSource = classifyGovernedSource(
+        item.url,
+        BREAKING_SOURCE_POLICY,
+      );
       allPosts.push({
         id: `rss_${require("crypto")
           .createHash("sha256")
@@ -933,6 +1054,9 @@ async function hunt() {
         num_comments: 0,
         source_type: "rss",
         article_url: item.url,
+        governed_source_class:
+          governedSource?.source_class || null,
+        governed_source_id: governedSource?.source_id || null,
       });
     }
   }
@@ -943,7 +1067,7 @@ async function hunt() {
   const deduped = [];
   for (const post of allPosts) {
     const isDupe = deduped.some(
-      (existing) => similarity(existing.title, post.title) > 0.5,
+      (existing) => isStoryTitleDuplicate(existing.title, post.title),
     );
     if (!isDupe) deduped.push(post);
   }
@@ -965,6 +1089,7 @@ async function hunt() {
       post.num_comments,
       BREAKING_KEYWORDS,
       trendingTopics,
+      post.governed_source_class,
     );
 
     // Historical performance boost (0-30 points) from analytics
@@ -1129,6 +1254,9 @@ module.exports.COMPANY_LOGOS = COMPANY_LOGOS;
 module.exports.scoreBreakingValue = scoreBreakingValue;
 module.exports.similarity = similarity;
 module.exports.fetchSubredditNew = fetchSubredditNew;
+module.exports.fetchSubredditsNew = fetchSubredditsNew;
+module.exports.fetchRedditHuntBatch = fetchRedditHuntBatch;
+module.exports.createRedditBatchCache = createRedditBatchCache;
 
 if (require.main === module) {
   hunt().catch((err) => {

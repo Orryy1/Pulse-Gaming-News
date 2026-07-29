@@ -1,7 +1,7 @@
 const axios = require('axios');
 const dotenv = require('dotenv');
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 async function sendDiscord(message) {
   try {

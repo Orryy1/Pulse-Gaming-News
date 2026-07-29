@@ -331,6 +331,7 @@ PREWARM_WATCHDOG_S = int(os.getenv("PREWARM_WATCHDOG_S", "420"))
 # --- Imports ---
 from voxcpm_engine import VoxCPMEngine
 from aligner import Aligner
+from voice_reference import validate_voice_reference
 
 
 # --- Voice registry ---
@@ -355,6 +356,55 @@ def _load_voices_map() -> Dict[str, dict]:
 
 
 VOICES_MAP = _load_voices_map()
+
+# Reference audio is private production data, not source code. A clean managed
+# checkout locates it through this explicit root and validates the immutable
+# hash/WAV probe declared in voices.json before a mapped voice may load.
+VOICE_REFERENCE_DATA_ROOT = os.getenv(
+    "VOICE_REFERENCE_DATA_ROOT",
+    str(Path(__file__).parent / "voices"),
+)
+ALLOW_UNCLEARED_VOICE_REFERENCE_FOR_LOCAL_QA = (
+    os.getenv(
+        "ALLOW_UNCLEARED_VOICE_REFERENCE_FOR_LOCAL_QA",
+        "false",
+    ).strip().lower()
+    in ("1", "true", "yes", "on")
+)
+
+
+def _reference_validation(cfg: Dict[str, object]) -> Dict[str, object]:
+    return validate_voice_reference(
+        data_root=VOICE_REFERENCE_DATA_ROOT,
+        relative_path=str(cfg.get("ref_voice_file") or ""),
+        expected_sha256=str(cfg.get("ref_voice_sha256") or ""),
+        expected_probe=cfg.get("ref_voice_probe") or {},
+        rights_status=str(cfg.get("reference_rights_status") or "UNVERIFIED"),
+        rights_evidence_reference=cfg.get("reference_rights_evidence_reference"),
+    )
+
+
+def _validated_reference_path(cfg: Dict[str, object]) -> str:
+    validation = _reference_validation(cfg)
+    allowed = validation["production_ready"] or (
+        ALLOW_UNCLEARED_VOICE_REFERENCE_FOR_LOCAL_QA
+        and validation["technical_ready"]
+    )
+    if not allowed:
+        detail = ", ".join(validation["reasons"]) or "unknown validation failure"
+        raise RuntimeError(
+            "voice reference is not production-ready; "
+            f"local_qa_override={ALLOW_UNCLEARED_VOICE_REFERENCE_FOR_LOCAL_QA}; "
+            f"reasons={detail}"
+        )
+    # Validation already proved that the relative path is contained beneath
+    # the configured private root and is a regular WAV file.
+    return str(
+        (
+            Path(VOICE_REFERENCE_DATA_ROOT).expanduser().resolve(strict=True)
+            / str(cfg["ref_voice_file"])
+        ).resolve(strict=True)
+    )
 
 # Shared aligner (language-agnostic enough for our stories, and it's not
 # cheap to double-load wav2vec2 into VRAM).
@@ -615,11 +665,12 @@ def _get_engine(voice_id: str) -> VoxCPMEngine:
         _engine_cache[voice_id] = _engine_cache["__default__"]
         return _engine_cache[voice_id]
 
-    ref = _resolve_ref_path(cfg.get("ref_voice_path"))
+    ref = _validated_reference_path(cfg)
     base_speed = float(cfg.get("base_speed", 1.0))
     alias = cfg.get("alias", voice_id)
     log.info(
-        f"[engine] COLD_START voice_id={voice_id!r} alias={alias} ref={ref} "
+        f"[engine] COLD_START voice_id={voice_id!r} alias={alias} "
+        f"ref_file={cfg.get('ref_voice_file')} "
         f"base_speed={base_speed} — loading VoxCPM 2, expect 2-5 min"
     )
     t0 = time.monotonic()
@@ -734,17 +785,20 @@ def _on_startup():
 
 @app.get("/health")
 def health():
-    voices_listed = [
-        {
-            "voice_id": vid,
-            "alias": cfg.get("alias", vid),
-            "channel": cfg.get("channel"),
-            "base_speed": cfg.get("base_speed"),
-            "ref_resolved": _resolve_ref_path(cfg.get("ref_voice_path")) is not None,
-            "loaded": vid in _engine_cache,
-        }
-        for vid, cfg in VOICES_MAP.items()
-    ]
+    voices_listed = []
+    for vid, cfg in VOICES_MAP.items():
+        validation = _reference_validation(cfg)
+        voices_listed.append(
+            {
+                "voice_id": vid,
+                "alias": cfg.get("alias", vid),
+                "channel": cfg.get("channel"),
+                "base_speed": cfg.get("base_speed"),
+                "ref_resolved": validation["path_valid"],
+                "loaded": vid in _engine_cache,
+                "reference_validation": validation,
+            }
+        )
     return {
         "status": "ok",
         "voices": voices_listed,

@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const brand = require("./brand");
 const getBestImage = require("./images_download");
@@ -287,7 +287,7 @@ function buildFallbackSvg(title, thumbnailText, flair, platform) {
   );
 }
 
-async function generateImages() {
+async function generateImages(options = {}) {
   console.log("[images] === Professional Image Pipeline v2 ===");
 
   // Phase 3C JSON-shrink: replace the old daily_news.json pathExists
@@ -306,8 +306,14 @@ async function generateImages() {
   await fs.ensureDir(mediaPaths.writePath(OUTPUT_DIR));
   await fs.ensureDir(mediaPaths.writePath(CACHE_DIR));
 
+  const scopedStories = Array.isArray(options.storyIds)
+    ? require("./lib/services/exact-story-production-scope").filterStoriesToExactScope(
+        stories,
+        options,
+      )
+    : stories;
   const toProcess = applyProduceSelection(
-    stories.filter((s) => s.approved === true && !s.image_path),
+    scopedStories.filter((s) => s.approved === true && !s.image_path),
     { stage: "images", log: console.log },
   );
 
@@ -484,6 +490,11 @@ async function generateImages() {
 
   await db.saveStories(stories);
   console.log("[images] Stories updated");
+  return {
+    processed: toProcess.length,
+    story_ids: toProcess.map((story) => story.id),
+    exact_scope: Array.isArray(options.storyIds),
+  };
 }
 
 module.exports = generateImages;

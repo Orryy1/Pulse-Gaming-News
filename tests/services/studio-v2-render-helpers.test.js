@@ -13,6 +13,18 @@ const {
   sumSceneDurations,
 } = require("../../tools/studio-v2-render");
 
+function pulseStory(overrides = {}) {
+  return {
+    id: "render-helper-story",
+    title: "Xbox changes Game Pass",
+    editorial_lane_id: "platform_pulse",
+    hook_type: "direct",
+    duration_band_id: "platform_pulse_short_30_36",
+    cta: "",
+    ...overrides,
+  };
+}
+
 test("fallback release cards become authored motion beats when HyperFrames lane is rich", () => {
   const scenes = [
     {
@@ -105,63 +117,78 @@ test("motion density boost splits a long motion scene without changing duration"
   assert.equal(result.scenes[1].sceneType, "punch");
 });
 
-test("studio outro extends short renders beyond the TikTok one-minute floor", () => {
+test("studio brand close reserves the tail without extending the selected duration band", () => {
   const scenes = [
-    { type: "opener", label: "opener", duration: 30 },
-    { type: SCENE_TYPES.CARD_TAKEAWAY, label: "card_takeaway", duration: 24.79 },
+    { type: "opener", label: "opener", duration: 20 },
+    { type: SCENE_TYPES.CARD_TAKEAWAY, label: "card_takeaway", duration: 13 },
   ];
 
   const result = appendStudioOutro({
     scenes,
-    storyId: "rss_ca673f22ddbbbdfc",
+    story: pulseStory({ id: "rss_ca673f22ddbbbdfc" }),
     root: "C:\\repo",
-    minRuntimeS: 61,
-    minOutroDurationS: 4,
+    brandCloseDurationS: 3,
+    voiceDurationS: 33,
     hfOutroPath: "C:\\repo\\test\\output\\hf_outro_card_rss_ca673f22ddbbbdfc.mp4",
   });
 
   assert.equal(result.appended, true);
-  assert.equal(result.outroScene.type, "outro");
+  assert.equal(result.outroScene.type, "brand_close");
   assert.equal(result.outroScene.premiumLane, "hyperframes");
   assert.equal(result.outroScene.prerenderedMp4.endsWith("hf_outro_card_rss_ca673f22ddbbbdfc.mp4"), true);
-  assert.ok(sumSceneDurations(result.scenes) >= 61);
+  assert.equal(result.outroScene.duration, 3);
+  assert.equal(sumSceneDurations(result.scenes), 33);
 });
 
-test("studio outro still adds a branded end beat when the slate is already long", () => {
+test("studio brand close keeps an in-band longer slate at its original duration", () => {
   const result = appendStudioOutro({
-    scenes: [{ type: "opener", label: "opener", duration: 64 }],
-    storyId: "story-1",
+    scenes: [{ type: "opener", label: "opener", duration: 48 }],
+    story: pulseStory({
+      id: "story-1",
+      editorial_lane_id: "trailer_truth_check",
+      duration_band_id: "trailer_truth_standard_38_48",
+    }),
     root: "C:\\repo",
-    minRuntimeS: 61,
-    minOutroDurationS: 4,
+    brandCloseDurationS: 3,
+    voiceDurationS: 48,
   });
 
   assert.equal(result.appended, true);
-  assert.equal(result.outroScene.duration, 4);
-  assert.equal(sumSceneDurations(result.scenes), 68);
+  assert.equal(result.outroScene.duration, 3);
+  assert.equal(sumSceneDurations(result.scenes), 48);
 });
 
-test("studio outro covers a spoken voice tail even when the one-minute floor is lower", () => {
-  const result = appendStudioOutro({
-    scenes: [{ type: "opener", label: "opener", duration: 54 }],
-    storyId: "story-1",
-    root: "C:\\repo",
-    minRuntimeS: 57,
-    minOutroDurationS: 2,
-    voiceDurationS: 60.2,
-  });
-
-  assert.equal(result.outroScene.duration, 6.2);
-  assert.equal(sumSceneDurations(result.scenes), 60.2);
+test("studio brand close fails closed when narration is outside the selected band", () => {
+  assert.throws(
+    () =>
+      appendStudioOutro({
+        scenes: [{ type: "opener", label: "opener", duration: 40 }],
+        story: pulseStory(),
+        voiceDurationS: 40,
+      }),
+    /audio_duration_above_selected_band/,
+  );
 });
 
-test("main slate duration ends before the spoken outro when voice metadata exposes it", () => {
+test("studio brand close fails closed without explicit editorial metadata", () => {
+  assert.throws(
+    () =>
+      appendStudioOutro({
+        scenes: [{ type: "opener", label: "opener", duration: 33 }],
+        story: { id: "metadata-missing" },
+        voiceDurationS: 33,
+      }),
+    /pulse_editorial_contract_metadata_missing/,
+  );
+});
+
+test("main slate duration always follows the complete governed narration", () => {
   assert.equal(
     resolveMainNarrationDurationS({
       audioDurationS: 60.2,
       voice: { outroStartS: 54.7 },
     }),
-    54.7,
+    60.2,
   );
   assert.equal(
     resolveMainNarrationDurationS({
@@ -172,17 +199,18 @@ test("main slate duration ends before the spoken outro when voice metadata expos
   );
 });
 
-test("subtitle script text follows the actual voice transcript including outro", () => {
+test("subtitle script text follows the actual governed voice transcript", () => {
   const text = resolveSubtitleScriptText({
     voice: { editorialScriptAppliedToAudio: true },
     tsData: {
       meta: {
-        text: "Mega Mewtwo is coming. Follow Pulse Gaming so you never miss a beat.",
+        text: "Mega Mewtwo is coming. Would the free event bring you back?",
       },
     },
     editorial: { scriptForCaption: "Mega Mewtwo is coming." },
     spokenTranscript: "Mega Mewtwo is coming.",
   });
 
-  assert.match(text, /Follow Pulse Gaming/);
+  assert.match(text, /Would the free event bring you back/);
+  assert.doesNotMatch(text, /\b(?:follow|subscribe)\b/i);
 });

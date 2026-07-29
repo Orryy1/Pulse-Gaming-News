@@ -1,31 +1,43 @@
-const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs-extra");
 const { google } = require("googleapis");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
+const {
+  editorialIdentityFor,
+  resolveEditorialMessagesClient,
+} = require("./lib/services/governed-editorial-client");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const { getChannel } = require("./channels");
 
 /**
  * A/B Title Testing for YouTube Shorts
  *
- * Generates title variants via Claude, then swaps to the next variant
+ * Generates title variants via the governed editorial client, then swaps
+ * to the next variant
  * if views-per-hour is below average 2 hours after publish.
  */
 
 // --- Generate 2 additional title variants from the original ---
-async function generateTitleVariants(story) {
+async function generateTitleVariants(
+  story,
+  { editorialClient = null, env = process.env } = {},
+) {
   const channel = getChannel();
   const originalTitle =
     story.suggested_title || story.suggested_thumbnail_text || story.title;
 
-  const client = new Anthropic.default({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const client =
+    editorialClient ||
+    resolveEditorialMessagesClient({
+      env,
+    });
 
   try {
+    if (!client) {
+      throw new Error("editorial_client_not_configured");
+    }
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 400,
@@ -64,6 +76,10 @@ Reply with ONLY a JSON array of 2 strings. No explanation.`,
 
     story.title_variants = [originalTitle, ...cleanVariants];
     story.active_title_index = 0;
+    story.title_variant_generator_identity = editorialIdentityFor(
+      client,
+      "claude-haiku-4-5-20251001",
+    );
 
     console.log(`[ab_titles] Generated variants for "${originalTitle}":`);
     cleanVariants.forEach((v, i) => console.log(`  [${i + 1}] ${v}`));

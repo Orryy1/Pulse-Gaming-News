@@ -5,7 +5,7 @@
 const EventEmitter = require('events');
 const axios = require('axios');
 const { getChannel } = require('./channels');
-const { scoreBreakingValue, similarity, fetchSubredditNew } = require('./hunter');
+const { scoreBreakingValue, fetchSubredditsNew } = require('./hunter');
 
 const USER_AGENT = 'pulse-gaming-hunter/2.0 (personal use)';
 
@@ -18,8 +18,13 @@ const REDDIT_POLL_MS = 90 * 1000;   // 90 seconds - well within Reddit's 30 req/
 const RSS_POLL_MS = 5 * 60 * 1000;  // 5 minutes
 
 class BreakingWatcher extends EventEmitter {
-  constructor() {
+  constructor({
+    channelProvider = getChannel,
+    fetchSubredditsNewImpl = fetchSubredditsNew,
+  } = {}) {
     super();
+    this._channelProvider = channelProvider;
+    this._fetchSubredditsNew = fetchSubredditsNewImpl;
     this._seenIds = new Set();
     this._velocityMap = new Map();   // id -> { firstSeen: Date, firstScore: number }
     this._redditTimer = null;
@@ -39,7 +44,7 @@ class BreakingWatcher extends EventEmitter {
       return this;
     }
 
-    const channel = getChannel();
+    const channel = this._channelProvider();
     console.log('[watcher] Starting continuous monitor for channel:', channel.name);
     console.log(`[watcher] Reddit poll: every ${REDDIT_POLL_MS / 1000}s | RSS poll: every ${RSS_POLL_MS / 1000}s`);
     console.log(`[watcher] Breaking threshold: ${BREAKING_THRESHOLD} | Velocity: ${VELOCITY_UPVOTES} upvotes in ${VELOCITY_WINDOW_MS / 60000} min`);
@@ -76,77 +81,78 @@ class BreakingWatcher extends EventEmitter {
     };
   }
 
+  async pollRedditOnce() {
+    return this._pollReddit(true);
+  }
+
   // --- Reddit polling ---
 
-  async _pollReddit() {
-    if (!this._running) return;
+  async _pollReddit(force = false) {
+    if (!this._running && !force) return;
 
-    const channel = getChannel();
+    const channel = this._channelProvider();
     const subreddits = channel.subreddits || [];
     const breakingKeywords = channel.breakingKeywords || [];
 
-    // Only poll the first 4 primary subreddits to stay within rate limits
-    // 4 subreddits * 1 request each = 4 requests per 90s cycle = ~2.7 req/min
+    // Fetch the channel's complete subreddit set so the immediate watcher
+    // poll and startup hunt share one in-flight/cached Reddit request. Only
+    // the four primary communities are evaluated for breaking events here.
     const primarySubs = subreddits.slice(0, 4);
+    const primarySubKeys = new Set(primarySubs.map((sub) => sub.toLowerCase()));
 
-    for (const sub of primarySubs) {
-      if (!this._running) break;
+    try {
+      const posts = await this._fetchSubredditsNew(subreddits);
+      this._lastRedditPoll = new Date();
 
-      try {
-        const posts = await fetchSubredditNew(sub);
-        this._lastRedditPoll = new Date();
+      for (const post of posts) {
+        const sub = post.subreddit || primarySubs[0] || 'unknown';
+        if (!primarySubKeys.has(sub.toLowerCase())) continue;
+        this._storiesChecked++;
 
-        for (const post of posts) {
-          this._storiesChecked++;
+        // Score the post
+        const bScore = scoreBreakingValue(
+          post.title, post.score, post.num_comments || 0,
+          breakingKeywords, []
+        );
 
-          // Score the post
-          const bScore = scoreBreakingValue(
-            post.title, post.score, post.num_comments || 0,
-            breakingKeywords, []
-          );
+        // Velocity tracking - record first sighting, check acceleration later
+        if (!this._velocityMap.has(post.id)) {
+          this._velocityMap.set(post.id, {
+            firstSeen: new Date(),
+            firstScore: post.score,
+          });
+        } else {
+          // Check velocity: did it gain 500+ upvotes within the velocity window?
+          const entry = this._velocityMap.get(post.id);
+          const elapsed = Date.now() - entry.firstSeen.getTime();
+          const gained = post.score - entry.firstScore;
 
-          // Velocity tracking - record first sighting, check acceleration later
-          if (!this._velocityMap.has(post.id)) {
-            this._velocityMap.set(post.id, {
-              firstSeen: new Date(),
-              firstScore: post.score,
-            });
-          } else {
-            // Check velocity: did it gain 500+ upvotes within the velocity window?
-            const entry = this._velocityMap.get(post.id);
-            const elapsed = Date.now() - entry.firstSeen.getTime();
-            const gained = post.score - entry.firstScore;
-
-            if (elapsed <= VELOCITY_WINDOW_MS && gained >= VELOCITY_UPVOTES) {
-              // Velocity breaking - even if raw score is below threshold
-              if (!this._seenIds.has(`velocity_${post.id}`)) {
-                this._seenIds.add(`velocity_${post.id}`);
-                const story = this._buildStory(post, sub, bScore + 50, 'velocity');
-                console.log(`[watcher] VELOCITY BREAKING: +${gained} upvotes in ${Math.round(elapsed / 60000)} min - ${post.title.substring(0, 60)}`);
-                this._breakingEmitted++;
-                this.emit('breaking', story);
-              }
+          if (elapsed <= VELOCITY_WINDOW_MS && gained >= VELOCITY_UPVOTES) {
+            // Velocity breaking - even if raw score is below threshold
+            if (!this._seenIds.has(`velocity_${post.id}`)) {
+              this._seenIds.add(`velocity_${post.id}`);
+              const story = this._buildStory(post, sub, bScore + 50, 'velocity');
+              console.log(`[watcher] VELOCITY BREAKING: +${gained} upvotes in ${Math.round(elapsed / 60000)} min - ${post.title.substring(0, 60)}`);
+              this._breakingEmitted++;
+              this.emit('breaking', story);
             }
-          }
-
-          // Standard breaking threshold check
-          if (bScore >= BREAKING_THRESHOLD && !this._seenIds.has(post.id)) {
-            this._seenIds.add(post.id);
-            const story = this._buildStory(post, sub, bScore, 'threshold');
-            console.log(`[watcher] BREAKING (score ${bScore}): ${post.title.substring(0, 60)}`);
-            this._breakingEmitted++;
-            this.emit('breaking', story);
-          } else if (!this._seenIds.has(post.id)) {
-            // Mark as seen even if not breaking - prevents re-evaluation
-            this._seenIds.add(post.id);
           }
         }
 
-        // Polite delay between subreddit requests (600ms)
-        await new Promise(r => setTimeout(r, 600));
-      } catch (err) {
-        console.log(`[watcher] Reddit poll error r/${sub}: ${err.message}`);
+        // Standard breaking threshold check
+        if (bScore >= BREAKING_THRESHOLD && !this._seenIds.has(post.id)) {
+          this._seenIds.add(post.id);
+          const story = this._buildStory(post, sub, bScore, 'threshold');
+          console.log(`[watcher] BREAKING (score ${bScore}): ${post.title.substring(0, 60)}`);
+          this._breakingEmitted++;
+          this.emit('breaking', story);
+        } else if (!this._seenIds.has(post.id)) {
+          // Mark as seen even if not breaking - prevents re-evaluation
+          this._seenIds.add(post.id);
+        }
       }
+    } catch (err) {
+      console.log(`[watcher] Reddit poll error: ${err.message}`);
     }
 
     // Prune velocity map - discard entries older than 1 hour to avoid memory leak
@@ -163,7 +169,7 @@ class BreakingWatcher extends EventEmitter {
   async _pollRSS() {
     if (!this._running) return;
 
-    const channel = getChannel();
+    const channel = this._channelProvider();
     const feeds = channel.rssFeeds || [];
     const breakingKeywords = channel.breakingKeywords || [];
 
@@ -298,7 +304,7 @@ function getStatus() {
   return instance.getStatus();
 }
 
-module.exports = { startWatching, stopWatching, getStatus };
+module.exports = { BreakingWatcher, startWatching, stopWatching, getStatus };
 
 // Standalone mode
 if (require.main === module) {

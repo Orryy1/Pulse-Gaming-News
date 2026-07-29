@@ -4,7 +4,7 @@ const axios = require("axios");
 const dotenv = require("dotenv");
 const db = require("./lib/db");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const DAILY_NEWS_PATH = path.join(__dirname, "daily_news.json");
 const HISTORY_PATH = path.join(__dirname, "analytics_history.json");

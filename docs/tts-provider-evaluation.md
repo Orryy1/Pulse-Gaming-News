@@ -19,6 +19,30 @@ The local server currently uses VoxCPM 2 for synthesis and a forced-aligner for
 timestamps. A smoke render through `audio.js.generateTTS()` succeeded and wrote
 to `D:/pulse-data/media/output/audio/__local_tts_smoke.mp3`.
 
+## July 2026 Qualification Audit
+
+The wider studio audit recovered the local clone the operator remembered:
+`pulse_liam_sleepy.wav`, also registered as
+`pulse-sleepy-liam-20260502`. It is the 48.761917-second, 24 kHz mono reference
+that the May Pulse voice lock recorded as technically approved after cadence,
+pitch, stability and no-fallback smoke checks. Its SHA-256 is
+`2311991e66a48400b04b5d5131d2b34f29241aa2d4ed1d667ee7b41d114b761b`.
+The shorter `pulse_v2.wav` was correctly rejected and is no longer the
+qualification target.
+
+This is strong technical evidence. On 2026-07-28 the operator explicitly
+attested that Liam and the relevant voice owners granted express permission for
+voice cloning and commercial production use. That attestation is recorded in
+`docs/voice-reference-rights-attestation.md`, so the immutable Liam reference is
+now rights-cleared for the local fallback lane. ElevenLabs remains the active
+production provider while included credits are available; the local clone is a
+qualified fallback and future A/B candidate rather than the default narrator.
+
+The managed service now uses `VOICE_REFERENCE_DATA_ROOT` to locate private
+reference audio outside the checkout. `voices.json` contains only the relative
+filename and immutable validation contract. Health reports technical and
+production readiness without exposing the absolute private data-root path.
+
 ## What Whisper Is
 
 Whisper is not a narrator/TTS engine. It is ASR: speech recognition,
@@ -174,9 +198,10 @@ Test script:
 
 ## Recommendation
 
-Keep VoxCPM 2 as the production-safe local default today because it is already
-working, commercially clean and integrated. Build the next iteration as an A/B
-test harness, then test Chatterbox Turbo first. If Chatterbox wins the listening
+Keep VoxCPM 2 as the authorised local fallback because it is already working,
+commercially clean and integrated. Use the paid ElevenLabs allowance for active
+production under the credit governor while building the next iteration as an
+A/B test harness. Test Chatterbox Turbo first. If Chatterbox wins the listening
 test and stays stable on this Windows/RTX 4090 setup, promote it behind the same
 `TTS_PROVIDER=local` interface as `LOCAL_TTS_ENGINE=chatterbox`.
 

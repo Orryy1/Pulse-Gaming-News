@@ -178,6 +178,25 @@ test("runContentQa: overlong audio duration hard-fails before publish", async ()
   );
 });
 
+test("runContentQa: 82-second evergreen verdict uses its extended lane", async () => {
+  const story = goodStory({
+    editorial_format: "evergreen_verdict_short",
+    duration_seconds: 82,
+  });
+  const qa = await runContentQa(story, {
+    fs: fakeFs({
+      [story.exported_path]: { size: 5 * 1024 * 1024 },
+    }),
+  });
+
+  assert.ok(
+    !qa.failures.some((failure) =>
+      failure.startsWith("video_duration_too_long"),
+    ),
+    qa.failures.join(", "),
+  );
+});
+
 test("runContentQa: pending Studio v2.1 render requires human visual review", async () => {
   const story = goodStory({
     render_engine: "studio-v21",

@@ -20,7 +20,7 @@ const dotenv = require("dotenv");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const COOKIES_PATH = path.join(__dirname, "tokens", "tiktok_cookies.json");
 const UPLOAD_TIMEOUT = 120000; // 2 min max per upload

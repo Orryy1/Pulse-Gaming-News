@@ -1,0 +1,143 @@
+{
+  "schema_version": "pulse-publication-lifecycle-coverage-v1",
+  "generated_at": "2026-07-27T05:56:56.7374085Z",
+  "source_commit_sha": "e563c041b90f542cb322ba8d26fb51ce30c0048b",
+  "authoritative": false,
+  "local_tests_passed": true,
+  "canonical_states": [
+    {
+      "state": "DISCOVERED",
+      "writer": "publication_admission",
+      "evidence_gate": "story_identity"
+    },
+    {
+      "state": "VERIFIED",
+      "writer": "publication_admission",
+      "evidence_gate": "verification_evidence_hash"
+    },
+    {
+      "state": "EDITORIALLY_APPROVED",
+      "writer": "publication_admission",
+      "evidence_gate": "editorial_approval"
+    },
+    {
+      "state": "SCRIPT_READY",
+      "writer": "publication_admission",
+      "evidence_gate": "script_sha256"
+    },
+    {
+      "state": "ASSETS_CLEARED",
+      "writer": "publication_admission",
+      "evidence_gate": "rights_evidence_hash"
+    },
+    {
+      "state": "RENDERED",
+      "writer": "publication_admission",
+      "evidence_gate": "media_sha256"
+    },
+    {
+      "state": "QA_PASSED",
+      "writer": "publication_admission",
+      "evidence_gate": "qa_evidence_hash"
+    },
+    {
+      "state": "HUMAN_APPROVED",
+      "writer": "publication_admission",
+      "evidence_gate": "immutable_operator_decision"
+    },
+    {
+      "state": "SCHEDULED",
+      "writer": "publication_admission",
+      "evidence_gate": "fresh_guarded_window_and_request_fingerprint"
+    },
+    {
+      "state": "DISPATCH_STARTED",
+      "writer": "governed_platform_dispatch",
+      "evidence_gate": "lease_and_current_scheduled_evidence"
+    },
+    {
+      "state": "PLATFORM_OBJECT_CREATED",
+      "writer": "recordPlatformObjectCreated",
+      "evidence_gate": "anchored_external_id"
+    },
+    {
+      "state": "PLATFORM_SCHEDULED",
+      "writer": "recordPlatformScheduled",
+      "evidence_gate": "exact_private_processed_publish_at_fingerprint_and_runway_lock"
+    },
+    {
+      "state": "PLATFORM_CONFIRMED",
+      "writer": "recordPlatformConfirmed",
+      "evidence_gate": "fresh_public_processed_verification"
+    },
+    {
+      "state": "PUBLISHED",
+      "writer": "recordPublished",
+      "evidence_gate": "matching_confirmation_and_atomic_projection"
+    },
+    {
+      "state": "ANALYTICS_PENDING",
+      "writer": "recordAnalyticsPending",
+      "evidence_gate": "published_identity"
+    },
+    {
+      "state": "ANALYTICS_COLLECTED",
+      "writer": "recordAnalyticsCollected",
+      "evidence_gate": "timestamped_metrics_snapshot"
+    }
+  ],
+  "exception_states": [
+    {
+      "state": "DISPATCH_FAILED_BEFORE_CREATE",
+      "writer": "recordPreCreateFailure",
+      "retry_policy": "new_admission_required"
+    },
+    {
+      "state": "PLATFORM_CREATED_CONFIRMATION_FAILED",
+      "writer": "recordPlatformCreatedConfirmationFailed",
+      "retry_policy": "reconciliation_only"
+    },
+    {
+      "state": "PLATFORM_CREATED_METADATA_FAILED",
+      "writer": "recordPostCreateMetadataFailure",
+      "retry_policy": "reconciliation_only"
+    },
+    {
+      "state": "PUBLISHED_QA_INCIDENT",
+      "writer": "recordPublishedQaIncident",
+      "retry_policy": "operator_review"
+    },
+    {
+      "state": "RECONCILIATION_REQUIRED",
+      "writer": "recordAmbiguousDispatchFailure_or_reconciliation_worker",
+      "retry_policy": "never_create_again_without_resolved_identity"
+    },
+    {
+      "state": "PLATFORM_SCHEDULE_DISARMED",
+      "writer": "recordScheduledPlatformDisarmed",
+      "retry_policy": "terminal_no_rearm_or_catch_up",
+      "evidence_gate": "exact_owner_verified_private_object_without_publish_at"
+    },
+    {
+      "state": "RETRACTED",
+      "writer": "recordRetracted",
+      "retry_policy": "terminal",
+      "evidence_gate": "immutable_operator_approval_and_fresh_platform_proof"
+    }
+  ],
+  "invariants": [
+    "lifecycle_events_are_append_only",
+    "operator_audit_is_append_only",
+    "published_requires_exact_public_verification",
+    "external_ids_are_unique_per_platform",
+    "same_idempotency_key_cannot_change_payload",
+    "later_terminal_state_cannot_regress_on_retry",
+    "identity_less_ambiguity_cannot_call_platform_verifier",
+    "private_scheduled_object_cannot_project_public_before_t0",
+    "remote_publish_at_requires_durable_release_commitment_confirmed_evidence",
+    "t70_release_commitment_survives_local_outage_and_t15_is_best_effort_revocation",
+    "disarmed_schedule_is_terminal_and_cannot_rearm_or_catch_up",
+    "story_projection_and_canonical_publication_commit_atomically"
+  ],
+  "production_observations": 0
+}

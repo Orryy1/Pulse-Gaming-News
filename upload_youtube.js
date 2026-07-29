@@ -1,15 +1,40 @@
 const fs = require("fs-extra");
+const crypto = require("node:crypto");
 const path = require("path");
+const { Readable } = require("node:stream");
 const { google } = require("googleapis");
 const dotenv = require("dotenv");
-const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
-const { normaliseAffiliateLinks } = require("./lib/affiliate-targeting");
+const {
+  assessPostPublishMutation,
+} = require("./lib/services/post-publish-mutation-policy");
+const {
+  YOUTUBE_PLATFORM_CONTRACT,
+  validateGovernedPublicationMetadata,
+} = require("./lib/services/governed-publication-metadata");
+const {
+  createYoutubeAuthTelemetry,
+  normaliseYoutubeAuthTelemetry,
+  runSanitisedYoutubeOperation,
+  sanitiseYoutubeError,
+  sanitiseYoutubeErrorMessage,
+  updateYoutubeAuthTelemetry,
+} = require("./lib/services/youtube-safety");
+const {
+  resolveYoutubeScheduledPublishAt,
+} = require("./lib/services/youtube-scheduled-release-contract");
+const {
+  EXPECTED_PULSE_YOUTUBE_CHANNEL_ID,
+  fingerprintYouTubeAccountBindingProof,
+  validateYouTubeTokenIdentityAndScopes,
+  validateYouTubeAccountBindingProof,
+  verifyYouTubeAccountBinding,
+} = require("./lib/services/youtube-account-binding-verifier");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const TOKEN_PATH = path.join(__dirname, "tokens", "youtube_token.json");
 const CREDENTIALS_PATH = path.join(
@@ -18,30 +43,43 @@ const CREDENTIALS_PATH = path.join(
   "youtube_credentials.json",
 );
 const PLAYLIST_PATH = path.join(__dirname, "tokens", "youtube_playlists.json");
+const MAX_BOUND_YOUTUBE_MEDIA_BYTES = 512 * 1024 * 1024;
+const YOUTUBE_OAUTH_CLIENT_SHA256_ENV =
+  "PULSE_YOUTUBE_OAUTH_CLIENT_SHA256";
 
 // --- Playlist definitions ---
 const PLAYLIST_DEFS = [
   {
     key: "breaking",
     title: "Breaking Gaming News",
-    desc: "The biggest breaking stories in gaming - delivered fast. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Fast gaming news with the player consequence and source evidence made clear.",
   },
   {
     key: "leaks_rumours",
     title: "Gaming Leaks & Rumours",
-    desc: "The latest gaming leaks, insider info and rumours - all in one place. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Source-checked gaming reports, clearly labelled by confidence and explained for players.",
   },
   {
     key: "confirmed",
     title: "Confirmed Gaming News",
-    desc: "Verified, confirmed gaming news you can trust. Follow Pulse Gaming so you never miss a beat.",
+    desc: "Confirmed gaming news with proof on screen and the practical consequence explained.",
   },
   {
     key: "all_shorts",
-    title: "All Pulse Gaming Shorts",
-    desc: "Every Pulse Gaming Short in one playlist. Sit back, hit play and catch up on everything. Follow Pulse Gaming so you never miss a beat.",
+    title: "All Pulse Gaming News Shorts",
+    desc: "Every Pulse Gaming News Short: fast gaming news, checked and explained.",
   },
 ];
+
+function resolveApprovedPinnedCommentForUpload(story) {
+  const assessment = assessPostPublishMutation("youtube_pinned_comment", {
+    automatic: false,
+    story,
+  });
+  if (!story?.pinned_comment) return null;
+  if (!assessment.allowed) return null;
+  return assessment.payload.text;
+}
 
 // Map classification tags to playlist keys
 function getPlaylistKeys(classification) {
@@ -55,25 +93,171 @@ function getPlaylistKeys(classification) {
 }
 
 // --- OAuth2 client setup ---
-async function getAuthClient() {
-  // Support env vars for cloud deployment (Railway)
-  const clientId = process.env.YOUTUBE_CLIENT_ID;
-  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
-  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
+async function refreshYoutubeCredentialsInMemory(
+  oauth2Client,
+  credentials,
+  {
+    nowMs = Date.now(),
+    forceRefresh = false,
+    telemetry = createYoutubeAuthTelemetry(),
+  } = {},
+) {
+  const current = { ...(credentials || {}) };
+  const expiryDate = Number(current.expiry_date);
+  if (
+    forceRefresh !== true &&
+    (!Number.isFinite(expiryDate) || nowMs <= expiryDate - 60_000)
+  ) {
+    return {
+      credentials: current,
+      refreshed: false,
+      telemetry: normaliseYoutubeAuthTelemetry(telemetry),
+    };
+  }
 
-  let client_id, client_secret, redirect_uri;
+  updateYoutubeAuthTelemetry(telemetry, {
+    ...telemetry,
+    ephemeral_access_token_refresh: {
+      attempted: true,
+      succeeded: false,
+      failed: false,
+    },
+  });
+  console.log("[youtube] Refreshing expired token in memory...");
+  let refreshed;
+  try {
+    refreshed = await oauth2Client.refreshAccessToken();
+  } catch (error) {
+    updateYoutubeAuthTelemetry(telemetry, {
+      ...telemetry,
+      ephemeral_access_token_refresh: {
+        attempted: true,
+        succeeded: false,
+        failed: true,
+      },
+    });
+    throw sanitiseYoutubeError(error);
+  }
+  const next = {
+    ...current,
+    ...(refreshed?.credentials || {}),
+  };
+  if (!next.refresh_token && current.refresh_token) {
+    next.refresh_token = current.refresh_token;
+  }
+  oauth2Client.setCredentials(next);
+  updateYoutubeAuthTelemetry(telemetry, {
+    ...telemetry,
+    ephemeral_access_token_refresh: {
+      attempted: true,
+      succeeded: true,
+      failed: false,
+    },
+  });
+  return {
+    credentials: next,
+    refreshed: true,
+    telemetry: normaliseYoutubeAuthTelemetry(telemetry),
+  };
+}
 
-  if (await fs.pathExists(CREDENTIALS_PATH)) {
-    const credentials = await fs.readJson(CREDENTIALS_PATH);
-    const inst = credentials.installed || credentials.web || {};
-    client_id = inst.client_id;
-    client_secret = inst.client_secret;
-    redirect_uri = inst.redirect_uris?.[0] || "http://localhost";
-  } else if (clientId && clientSecret) {
-    client_id = clientId;
-    client_secret = clientSecret;
-    redirect_uri = "http://localhost";
+function reportYoutubeAuthTelemetry(reportAuthTelemetry, telemetry) {
+  if (typeof reportAuthTelemetry !== "function") return;
+  reportAuthTelemetry(normaliseYoutubeAuthTelemetry(telemetry));
+}
+
+function attachYoutubeRefreshTelemetry(
+  oauth2Client,
+  telemetry,
+  reportAuthTelemetry = null,
+) {
+  if (
+    !oauth2Client ||
+    typeof oauth2Client.refreshToken !== "function"
+  ) {
+    throw new Error("youtube_refresh_telemetry_hook_unavailable");
+  }
+
+  const markRefresh = ({ attempted, succeeded, failed }) => {
+    updateYoutubeAuthTelemetry(telemetry, {
+      ...telemetry,
+      ephemeral_access_token_refresh: {
+        attempted,
+        succeeded,
+        failed,
+      },
+    });
+    reportYoutubeAuthTelemetry(reportAuthTelemetry, telemetry);
+  };
+
+  // Google Auth emits `tokens` only after a successful refresh. Observe that
+  // signal without copying any credential value into telemetry.
+  if (typeof oauth2Client.on === "function") {
+    oauth2Client.on("tokens", (tokens) => {
+      if (!tokens || !tokens.access_token) return;
+      markRefresh({
+        attempted: true,
+        succeeded: true,
+        failed: false,
+      });
+    });
+  }
+
+  // All current google-auth-library automatic refresh paths flow through the
+  // instance's refreshToken method. Wrapping it makes attempts and failures
+  // observable as well as the successful `tokens` event above.
+  const refreshToken = oauth2Client.refreshToken;
+  oauth2Client.refreshToken = async function observedRefreshToken(...args) {
+    markRefresh({
+      attempted: true,
+      succeeded: false,
+      failed: false,
+    });
+    try {
+      const value = await refreshToken.apply(this, args);
+      markRefresh({
+        attempted: true,
+        succeeded: true,
+        failed: false,
+      });
+      return value;
+    } catch (error) {
+      markRefresh({
+        attempted: true,
+        succeeded: false,
+        failed: true,
+      });
+      throw sanitiseYoutubeError(error);
+    }
+  };
+
+  return oauth2Client;
+}
+
+async function loadYoutubeOAuthConfiguration({
+  env = process.env,
+  credentialsPath = CREDENTIALS_PATH,
+  fileSystem = fs,
+} = {}) {
+  let clientId;
+  let clientSecret;
+  let redirectUri;
+  if (await fileSystem.pathExists(credentialsPath)) {
+    const credentials = await fileSystem.readJson(
+      credentialsPath,
+    );
+    const configured =
+      credentials.installed || credentials.web || {};
+    clientId = configured.client_id;
+    clientSecret = configured.client_secret;
+    redirectUri =
+      configured.redirect_uris?.[0] || "http://localhost";
   } else {
+    clientId = env.YOUTUBE_CLIENT_ID;
+    clientSecret = env.YOUTUBE_CLIENT_SECRET;
+    redirectUri = "http://localhost";
+  }
+  if (!clientId || !clientSecret) {
     throw new Error(
       `YouTube credentials not found.\n` +
         "Set up OAuth2: https://console.cloud.google.com/apis/credentials\n" +
@@ -82,30 +266,57 @@ async function getAuthClient() {
         "3. Run: node upload_youtube.js auth",
     );
   }
+  return Object.freeze({
+    clientId: String(clientId),
+    clientSecret: String(clientSecret),
+    redirectUri: String(redirectUri),
+  });
+}
+
+async function getAuthClientWithTelemetry(
+  telemetry,
+  reportAuthTelemetry = null,
+  { oauthConfiguration = null } = {},
+) {
+  const configuration =
+    oauthConfiguration ||
+    (await loadYoutubeOAuthConfiguration());
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
 
   const oauth2Client = new google.auth.OAuth2(
-    client_id,
-    client_secret,
-    redirect_uri,
+    configuration.clientId,
+    configuration.clientSecret,
+    configuration.redirectUri,
+  );
+  attachYoutubeRefreshTelemetry(
+    oauth2Client,
+    telemetry,
+    reportAuthTelemetry,
   );
 
   // Load token from file or env var
   if (await fs.pathExists(TOKEN_PATH)) {
     const token = await fs.readJson(TOKEN_PATH);
     oauth2Client.setCredentials(token);
-
-    if (token.expiry_date && Date.now() > token.expiry_date - 60000) {
-      console.log("[youtube] Refreshing expired token...");
-      const { credentials: newToken } = await oauth2Client.refreshAccessToken();
-      await fs.ensureDir(path.dirname(TOKEN_PATH));
-      await fs.writeJson(TOKEN_PATH, newToken, { spaces: 2 });
-      oauth2Client.setCredentials(newToken);
-    }
+    // Authentication reads may refresh access credentials for the current
+    // process, but they must never rewrite durable token material. Persisting
+    // a token remains exclusive to the explicit `token` OAuth command below.
+    await refreshYoutubeCredentialsInMemory(oauth2Client, token, {
+      telemetry,
+    });
 
     return oauth2Client;
   } else if (refreshToken) {
     console.log("[youtube] Using refresh token from env...");
     oauth2Client.setCredentials({ refresh_token: refreshToken });
+    await refreshYoutubeCredentialsInMemory(
+      oauth2Client,
+      { refresh_token: refreshToken },
+      {
+        forceRefresh: true,
+        telemetry,
+      },
+    );
     return oauth2Client;
   }
 
@@ -113,6 +324,584 @@ async function getAuthClient() {
     "YouTube not authenticated. Run: node upload_youtube.js auth\n" +
       "Then visit the URL and paste the code back.",
   );
+}
+
+async function getAuthClient({
+  reportAuthTelemetry = null,
+  oauthConfiguration = null,
+} = {}) {
+  const telemetry = createYoutubeAuthTelemetry();
+  try {
+    return await getAuthClientWithTelemetry(
+      telemetry,
+      reportAuthTelemetry,
+      { oauthConfiguration },
+    );
+  } catch (error) {
+    throw sanitiseYoutubeError(error);
+  } finally {
+    reportYoutubeAuthTelemetry(reportAuthTelemetry, telemetry);
+  }
+}
+
+function youtubeAccountProbeTimestamp(now) {
+  const value = typeof now === "function" ? now() : null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const error = new Error(
+      "youtube_account_binding_probe_clock_invalid",
+    );
+    error.code = error.message;
+    throw error;
+  }
+  return date.toISOString();
+}
+
+function sanitiseYoutubeTokenInfoForBinding(rawTokenInfo) {
+  const raw =
+    rawTokenInfo && typeof rawTokenInfo === "object"
+      ? rawTokenInfo
+      : {};
+  const rawScopes = Array.isArray(raw.scopes)
+    ? raw.scopes
+    : typeof raw.scope === "string"
+      ? raw.scope.trim().split(/\s+/)
+      : [];
+  return {
+    ...(raw.issued_to !== undefined
+      ? {
+          issued_to:
+            typeof raw.issued_to === "string"
+              ? raw.issued_to.trim()
+              : null,
+        }
+      : {}),
+    ...(raw.audience !== undefined
+      ? {
+          audience:
+            typeof raw.audience === "string"
+              ? raw.audience.trim()
+              : null,
+        }
+      : {}),
+    ...(raw.aud !== undefined
+      ? {
+          aud:
+            typeof raw.aud === "string"
+              ? raw.aud.trim()
+              : null,
+        }
+      : {}),
+    scope: rawScopes
+      .map((scope) => String(scope || "").trim())
+      .filter(Boolean)
+      .join(" "),
+  };
+}
+
+function sanitiseYoutubeChannelListForBinding(rawResponse) {
+  const items = Array.isArray(rawResponse?.data?.items)
+    ? rawResponse.data.items
+    : [];
+  return {
+    items: items.map((item) => ({
+      id: String(item?.id || "").trim(),
+      status: {
+        privacyStatus: item?.status?.privacyStatus,
+        isLinked: item?.status?.isLinked,
+        longUploadsStatus: item?.status?.longUploadsStatus,
+      },
+    })),
+  };
+}
+
+function youtubeAccountBindingFailureEvidence({
+  code,
+  expectedChannelId,
+  configuredOAuthClientSha256 = null,
+  expectedOAuthClientSha256 = null,
+  now,
+}) {
+  let generatedAt = null;
+  try {
+    generatedAt = youtubeAccountProbeTimestamp(now);
+  } catch {
+    // An invalid injected clock is itself reported as a closed failure below.
+  }
+  const safeExpectedChannelId = /^UC[A-Za-z0-9_-]{20,}$/.test(
+    String(expectedChannelId || "").trim(),
+  )
+    ? String(expectedChannelId).trim()
+    : null;
+  const safeConfiguredClientSha256 = /^[a-f0-9]{64}$/.test(
+    String(configuredOAuthClientSha256 || "").trim().toLowerCase(),
+  )
+    ? String(configuredOAuthClientSha256).trim().toLowerCase()
+    : null;
+  const safeExpectedClientSha256 = /^[a-f0-9]{64}$/.test(
+    String(expectedOAuthClientSha256 || "").trim().toLowerCase(),
+  )
+    ? String(expectedOAuthClientSha256).trim().toLowerCase()
+    : null;
+  const body = {
+    schema_version:
+      "pulse-youtube-account-binding-probe-failure-v1",
+    verdict: "RED",
+    generated_at: generatedAt,
+    expected_channel_id: safeExpectedChannelId,
+    configured_oauth_client_sha256:
+      safeConfiguredClientSha256,
+    expected_oauth_client_sha256: safeExpectedClientSha256,
+    reason_codes: [
+      String(code || "youtube_account_binding_probe_failed"),
+    ],
+    sanitisation: {
+      credential_values_included: false,
+      raw_probe_payloads_included: false,
+      upstream_error_messages_included: false,
+    },
+    side_effects: {
+      database_mutated: false,
+      oauth_mutated: false,
+    },
+    operational_publish_authority: false,
+    publication_authority_granted: false,
+    external_publish_authorised: false,
+  };
+  return Object.freeze({
+    ...body,
+    proof_sha256:
+      fingerprintYouTubeAccountBindingProof(body),
+  });
+}
+
+function createEphemeralYoutubeProbeAuthClient({
+  accessToken,
+  configuredOAuthClientId,
+  expiryDate,
+}) {
+  const auth = new google.auth.OAuth2(configuredOAuthClientId);
+  auth.setCredentials({
+    access_token: accessToken,
+    ...(Number.isFinite(Number(expiryDate))
+      ? { expiry_date: Number(expiryDate) }
+      : {}),
+  });
+  return auth;
+}
+
+async function probeYoutubeAccountBinding({
+  oauth2Client,
+  youtube = null,
+  createProbeAuthClient =
+    createEphemeralYoutubeProbeAuthClient,
+  youtubeFactory = google.youtube,
+  configuredOAuthClientId,
+  expectedOAuthClientSha256,
+  expectedChannelId,
+  now = () => new Date(),
+} = {}) {
+  const expectedClientSha256 = String(
+    expectedOAuthClientSha256 || "",
+  )
+    .trim()
+    .toLowerCase();
+  const failure = (code, configuredOAuthClientSha256 = null) =>
+    youtubeAccountBindingFailureEvidence({
+      code,
+      expectedChannelId,
+      configuredOAuthClientSha256,
+      expectedOAuthClientSha256: expectedClientSha256,
+      now,
+    });
+  if (
+    !oauth2Client ||
+    typeof oauth2Client.getTokenInfo !== "function"
+  ) {
+    return failure(
+      "youtube_account_binding_authenticated_client_required",
+    );
+  }
+  const configuredClientId = String(
+    configuredOAuthClientId || "",
+  ).trim();
+  const configuredClientSha256 = crypto
+    .createHash("sha256")
+    .update(configuredClientId, "utf8")
+    .digest("hex");
+  if (
+    !configuredClientId ||
+    !/^[a-f0-9]{64}$/.test(expectedClientSha256) ||
+    configuredClientSha256 !== expectedClientSha256
+  ) {
+    return failure(
+      "youtube_account_binding_configured_client_mismatch",
+      configuredClientSha256,
+    );
+  }
+  if (
+    !/^UC[A-Za-z0-9_-]{20,}$/.test(
+      String(expectedChannelId || "").trim(),
+    )
+  ) {
+    return failure(
+      "youtube_account_binding_expected_channel_required",
+      configuredClientSha256,
+    );
+  }
+
+  const accessToken = oauth2Client?.credentials?.access_token;
+  if (!accessToken) {
+    return failure(
+      "youtube_account_binding_access_token_unavailable",
+      configuredClientSha256,
+    );
+  }
+  let rawTokenInfo;
+  try {
+    rawTokenInfo = await oauth2Client.getTokenInfo(accessToken);
+  } catch {
+    return failure(
+      "youtube_account_binding_tokeninfo_probe_failed",
+      configuredClientSha256,
+    );
+  }
+  let tokenInfoCheckedAt;
+  try {
+    tokenInfoCheckedAt = youtubeAccountProbeTimestamp(now);
+  } catch {
+    return failure(
+      "youtube_account_binding_probe_clock_invalid",
+      configuredClientSha256,
+    );
+  }
+  const tokenInfoProbeResult = {
+    checked_at: tokenInfoCheckedAt,
+    data: sanitiseYoutubeTokenInfoForBinding(rawTokenInfo),
+  };
+  try {
+    validateYouTubeTokenIdentityAndScopes(
+      tokenInfoProbeResult.data,
+      {
+        configuredOAuthClientSha256:
+          configuredClientSha256,
+      },
+    );
+  } catch (error) {
+    return failure(
+      error?.code ||
+        "youtube_account_binding_tokeninfo_probe_invalid",
+      configuredClientSha256,
+    );
+  }
+  let youtubeClient;
+  try {
+    if (
+      typeof createProbeAuthClient !== "function" ||
+      typeof youtubeFactory !== "function"
+    ) {
+      throw new Error("youtube_account_binding_probe_factory_invalid");
+    }
+    const probeAuth = createProbeAuthClient({
+      accessToken,
+      configuredOAuthClientId: configuredClientId,
+      expiryDate: oauth2Client?.credentials?.expiry_date,
+    });
+    youtubeClient =
+      youtube ||
+      youtubeFactory({ version: "v3", auth: probeAuth });
+  } catch {
+    return failure(
+      "youtube_account_binding_channel_probe_failed",
+      configuredClientSha256,
+    );
+  }
+  let rawChannelResult;
+  try {
+    rawChannelResult = await youtubeClient.channels.list({
+      part: ["id", "status"],
+      mine: true,
+    });
+  } catch {
+    return failure(
+      "youtube_account_binding_channel_probe_failed",
+      configuredClientSha256,
+    );
+  }
+  let channelCheckedAt;
+  try {
+    channelCheckedAt = youtubeAccountProbeTimestamp(now);
+  } catch {
+    return failure(
+      "youtube_account_binding_probe_clock_invalid",
+      configuredClientSha256,
+    );
+  }
+  const channelProbeResult = {
+    checked_at: channelCheckedAt,
+    data: sanitiseYoutubeChannelListForBinding(rawChannelResult),
+  };
+
+  try {
+    return verifyYouTubeAccountBinding({
+      expectedChannelId: String(expectedChannelId).trim(),
+      configuredOAuthClientSha256: configuredClientSha256,
+      tokenInfoProbeResult,
+      channelProbeResult,
+      now,
+    });
+  } catch (error) {
+    return failure(
+      error?.code || "youtube_account_binding_verification_failed",
+      configuredClientSha256,
+    );
+  }
+}
+
+function runtimeYoutubeAccountBindingError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+async function createRuntimeYoutubeAuthenticatedClient({
+  oauthConfiguration,
+  reportAuthTelemetry = null,
+} = {}) {
+  return getAuthClient({
+    reportAuthTelemetry,
+    oauthConfiguration,
+  });
+}
+
+async function createFreshYoutubeAccountBoundSession({
+  env = process.env,
+  now = () => new Date(),
+  reportAuthTelemetry = null,
+  loadOAuthConfiguration =
+    loadYoutubeOAuthConfiguration,
+  createAuthenticatedClient =
+    createRuntimeYoutubeAuthenticatedClient,
+  youtubeFactory = google.youtube,
+  probeAccountBinding = probeYoutubeAccountBinding,
+} = {}) {
+  const expectedClientSha256 = String(
+    env?.[YOUTUBE_OAUTH_CLIENT_SHA256_ENV] || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expectedClientSha256)) {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_expected_client_sha256_required",
+    );
+  }
+  let oauthConfiguration;
+  try {
+    oauthConfiguration = await loadOAuthConfiguration({
+      env,
+    });
+  } catch {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_oauth_configuration_failed",
+    );
+  }
+  const configuredClientId = String(
+    oauthConfiguration?.clientId || "",
+  ).trim();
+  const configuredClientSha256 = crypto
+    .createHash("sha256")
+    .update(configuredClientId, "utf8")
+    .digest("hex");
+  if (
+    !configuredClientId ||
+    configuredClientSha256 !== expectedClientSha256
+  ) {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_configured_client_mismatch",
+    );
+  }
+  let oauth2Client;
+  try {
+    oauth2Client = await createAuthenticatedClient({
+      oauthConfiguration,
+      reportAuthTelemetry,
+    });
+  } catch {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_authenticated_client_failed",
+    );
+  }
+  let youtubeClient;
+  try {
+    youtubeClient = youtubeFactory({
+      version: "v3",
+      auth: oauth2Client,
+    });
+  } catch {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_youtube_client_failed",
+    );
+  }
+  if (
+    !youtubeClient ||
+    typeof youtubeClient !== "object"
+  ) {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_youtube_client_failed",
+    );
+  }
+
+  let currentProof = null;
+  const validateCurrentProof = () =>
+    validateYouTubeAccountBindingProof(currentProof, {
+      expectedChannelId:
+        EXPECTED_PULSE_YOUTUBE_CHANNEL_ID,
+      configuredOAuthClientSha256:
+        expectedClientSha256,
+      now,
+    }).value;
+  const revalidate = async () => {
+    let proof;
+    try {
+      proof = await probeAccountBinding({
+        oauth2Client,
+        youtube: youtubeClient,
+        configuredOAuthClientId: configuredClientId,
+        expectedOAuthClientSha256:
+          expectedClientSha256,
+        expectedChannelId:
+          EXPECTED_PULSE_YOUTUBE_CHANNEL_ID,
+        now,
+      });
+    } catch {
+      throw runtimeYoutubeAccountBindingError(
+        "youtube_runtime_account_binding_probe_failed",
+      );
+    }
+    if (proof?.verdict !== "GREEN") {
+      throw runtimeYoutubeAccountBindingError(
+        "youtube_runtime_account_binding_probe_not_green",
+      );
+    }
+    currentProof = proof;
+    return validateCurrentProof();
+  };
+  await revalidate();
+
+  const session = Object.create(null);
+  Object.defineProperties(session, {
+    getYoutubeClient: {
+      enumerable: false,
+      value() {
+        validateCurrentProof();
+        return youtubeClient;
+      },
+    },
+    getBindingProof: {
+      enumerable: false,
+      value: validateCurrentProof,
+    },
+    revalidate: {
+      enumerable: false,
+      value: revalidate,
+    },
+  });
+  return Object.freeze(session);
+}
+
+async function buildFreshYoutubeAccountBindingArmInput({
+  env = process.env,
+  now = () => new Date(),
+  reportAuthTelemetry = null,
+  loadOAuthConfiguration =
+    loadYoutubeOAuthConfiguration,
+  createAuthenticatedClient =
+    createRuntimeYoutubeAuthenticatedClient,
+  probeAccountBinding = probeYoutubeAccountBinding,
+} = {}) {
+  const expectedClientSha256 = String(
+    env?.[YOUTUBE_OAUTH_CLIENT_SHA256_ENV] || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expectedClientSha256)) {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_expected_client_sha256_required",
+    );
+  }
+  let oauthConfiguration;
+  try {
+    oauthConfiguration = await loadOAuthConfiguration({
+      env,
+    });
+  } catch {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_oauth_configuration_failed",
+    );
+  }
+  const configuredClientId = String(
+    oauthConfiguration?.clientId || "",
+  ).trim();
+  const configuredClientSha256 = crypto
+    .createHash("sha256")
+    .update(configuredClientId, "utf8")
+    .digest("hex");
+  if (
+    !configuredClientId ||
+    configuredClientSha256 !== expectedClientSha256
+  ) {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_configured_client_mismatch",
+    );
+  }
+  let oauth2Client;
+  try {
+    oauth2Client = await createAuthenticatedClient({
+      oauthConfiguration,
+      reportAuthTelemetry,
+    });
+  } catch {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_authenticated_client_failed",
+    );
+  }
+  let proof;
+  try {
+    proof = await probeAccountBinding({
+      oauth2Client,
+      configuredOAuthClientId: configuredClientId,
+      expectedOAuthClientSha256: expectedClientSha256,
+      expectedChannelId:
+        EXPECTED_PULSE_YOUTUBE_CHANNEL_ID,
+      now,
+    });
+  } catch {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_probe_failed",
+    );
+  }
+  if (proof?.verdict !== "GREEN") {
+    throw runtimeYoutubeAccountBindingError(
+      "youtube_runtime_account_binding_probe_not_green",
+    );
+  }
+  const validated = validateYouTubeAccountBindingProof(
+    proof,
+    {
+      expectedChannelId:
+        EXPECTED_PULSE_YOUTUBE_CHANNEL_ID,
+      configuredOAuthClientSha256:
+        expectedClientSha256,
+      now,
+    },
+  ).value;
+  return Object.freeze({
+    proof: validated,
+    expectedChannelId:
+      EXPECTED_PULSE_YOUTUBE_CHANNEL_ID,
+    configuredOAuthClientSha256:
+      expectedClientSha256,
+  });
 }
 
 // --- Generate auth URL for initial setup ---
@@ -222,29 +1011,18 @@ function buildMetadata(story) {
   }
   descLines.push("");
 
-  // --- Section 2: Affiliate CTA ---
-  const affiliateLinks = normaliseAffiliateLinks(story).slice(0, 4);
-  if (affiliateLinks.length === 1) {
-    descLines.push(`${affiliateLinks[0].label}: ${affiliateLinks[0].url}`);
-    descLines.push("");
-  } else if (affiliateLinks.length > 1) {
-    descLines.push("Related links:");
-    for (const link of affiliateLinks) {
-      descLines.push(`- ${link.label}: ${link.url}`);
-    }
-    descLines.push("");
-  }
+  // Pulse v1 deliberately keeps affiliate and sponsor material out of public
+  // metadata while the controlled editorial experiment establishes audience
+  // trust and intent.
 
-  // --- Section 3: Channel identity ---
+  // --- Section 2: Channel identity ---
   descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
   descLines.push(
-    brand.CTA
-      ? brand.CTA.replace(/^Follow /i, "Follow ")
-      : "Follow so you never miss an update.",
+    "Player consequences, source evidence and clear explanations.",
   );
   descLines.push("");
 
-  // --- Section 4: Social links ---
+  // --- Section 3: Social links ---
   const socials = channel.socials || {};
   if (Object.keys(socials).length > 0) {
     if (socials.tiktok) descLines.push(`TikTok: ${socials.tiktok}`);
@@ -254,7 +1032,7 @@ function buildMetadata(story) {
     descLines.push("");
   }
 
-  // --- Section 5: Sources ---
+  // --- Section 4: Sources ---
   const sourceLinks = [];
   if (story.url && story.url.startsWith("http")) sourceLinks.push(story.url);
   if (
@@ -311,6 +1089,91 @@ function buildMetadata(story) {
   ].filter(Boolean);
 
   return { title, description, tags };
+}
+
+function governedPublicationMetadataError(code, cause = null) {
+  const error = new Error(code);
+  error.code = code;
+  if (cause) error.cause = cause;
+  return error;
+}
+
+function resolveGovernedYoutubeMetadata(story) {
+  const binding = story?.governed_publication_metadata;
+  if (
+    !binding ||
+    typeof binding !== "object" ||
+    Array.isArray(binding)
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_required",
+    );
+  }
+  const approvedSha = String(
+    story?.governed_publication_metadata_sha256 || "",
+  )
+    .trim()
+    .toLowerCase();
+  const bindingSha = String(binding.sha256 || "")
+    .trim()
+    .toLowerCase();
+  if (
+    !/^[a-f0-9]{64}$/.test(approvedSha) ||
+    approvedSha !== bindingSha
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_hash_binding_required",
+    );
+  }
+  if (
+    String(binding.platform || "").trim() !==
+      YOUTUBE_PLATFORM_CONTRACT.reviewedMetadataPlatform ||
+    !String(binding.path || "").trim() ||
+    !String(binding.title || "").trim() ||
+    !String(binding.description || "").trim()
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_binding_invalid",
+    );
+  }
+
+  let approved;
+  try {
+    approved = validateGovernedPublicationMetadata({
+      metadataPath: binding.path,
+      expectedMetadataSha256: approvedSha,
+      expectedStoryId: story?.id,
+      expectedChannelId: story?.channel_id,
+      expectedPlatform:
+        YOUTUBE_PLATFORM_CONTRACT.reviewedMetadataPlatform,
+      requireCanonicalAbsolutePath: true,
+    });
+  } catch (cause) {
+    const metadataCode = Array.isArray(cause?.codes)
+      ? cause.codes[0]
+      : null;
+    const code = metadataCode
+      ? `governed_dispatch_${metadataCode}`
+      : "governed_dispatch_publication_metadata_invalid";
+    throw governedPublicationMetadataError(code, cause);
+  }
+
+  if (
+    approved.title !== binding.title ||
+    approved.description !== binding.description ||
+    approved.sha256 !== bindingSha
+  ) {
+    throw governedPublicationMetadataError(
+      "governed_dispatch_publication_metadata_binding_mismatch",
+    );
+  }
+
+  return {
+    path: approved.path,
+    sha256: approved.sha256,
+    title: approved.title,
+    description: approved.description,
+  };
 }
 
 // --- Extract game name from title for hashtag ---
@@ -407,7 +1270,9 @@ async function ensurePlaylists(youtube) {
       pageToken = res.data.nextPageToken;
     } while (pageToken);
   } catch (err) {
-    console.log(`[youtube] Could not list playlists: ${err.message}`);
+    console.log(
+      `[youtube] Could not list playlists: ${sanitiseYoutubeErrorMessage(err.message)}`,
+    );
   }
 
   // Create missing playlists
@@ -435,7 +1300,7 @@ async function ensurePlaylists(youtube) {
       console.log(`[youtube] Created playlist: ${def.title} (${res.data.id})`);
     } catch (err) {
       console.log(
-        `[youtube] Failed to create playlist "${def.title}": ${err.message}`,
+        `[youtube] Failed to create playlist "${def.title}": ${sanitiseYoutubeErrorMessage(err.message)}`,
       );
     }
   }
@@ -471,7 +1336,9 @@ async function addToPlaylists(youtube, videoId, classification) {
       });
       added.push(key);
     } catch (err) {
-      console.log(`[youtube] Failed to add to ${key} playlist: ${err.message}`);
+      console.log(
+        `[youtube] Failed to add to ${key} playlist: ${sanitiseYoutubeErrorMessage(err.message)}`,
+      );
     }
   }
 
@@ -481,21 +1348,273 @@ async function addToPlaylists(youtube, videoId, classification) {
   return added;
 }
 
+async function insertYoutubeVideoOnce(youtube, request) {
+  if (!youtube?.videos || typeof youtube.videos.insert !== "function") {
+    throw new Error("youtube_video_insert_client_required");
+  }
+  return youtube.videos.insert(request);
+}
+
+function resolveContainsSyntheticMedia(story) {
+  const disclosure = story?.synthetic_media_disclosure;
+  const decision = String(
+    disclosure?.decision || "",
+  )
+    .trim()
+    .toUpperCase();
+  if (
+    decision !== "DISCLOSE" &&
+    decision !== "NO_DISCLOSURE_REQUIRED"
+  ) {
+    throw new Error("youtube_synthetic_disclosure_decision_required");
+  }
+  if (typeof disclosure?.youtube_field_value !== "boolean") {
+    throw new Error("youtube_synthetic_disclosure_field_required");
+  }
+  const expected = decision === "DISCLOSE";
+  if (disclosure.youtube_field_value !== expected) {
+    throw new Error("youtube_synthetic_disclosure_field_mismatch");
+  }
+  return disclosure.youtube_field_value;
+}
+
+function buildYoutubeShortRequestBody(
+  story,
+  {
+    title,
+    description,
+    tags,
+    categoryId = "20",
+    scheduledFor = null,
+    privateOnly = false,
+    now = new Date(),
+  } = {},
+) {
+  const publishAt = resolveYoutubeScheduledPublishAt(
+    scheduledFor,
+    { now },
+  );
+  const armScheduledRelease = privateOnly !== true && Boolean(publishAt);
+  return {
+    snippet: {
+      title,
+      description,
+      tags,
+      categoryId,
+      defaultLanguage: "en",
+      defaultAudioLanguage: "en",
+    },
+    status: {
+      privacyStatus:
+        privateOnly === true || armScheduledRelease ? "private" : "public",
+      ...(armScheduledRelease ? { publishAt } : {}),
+      selfDeclaredMadeForKids: false,
+      embeddable: true,
+      containsSyntheticMedia: resolveContainsSyntheticMedia(story),
+    },
+  };
+}
+
+function buildYoutubeShortUploadResult({
+  videoId,
+  requestBody,
+  responseData = {},
+} = {}) {
+  const resolvedVideoId = String(
+    videoId || responseData?.id || "",
+  ).trim();
+  if (!resolvedVideoId) {
+    throw new Error("youtube_upload_result_video_id_required");
+  }
+  const requestedPrivacyStatus = String(
+    requestBody?.status?.privacyStatus || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (
+    !["private", "public", "unlisted"].includes(
+      requestedPrivacyStatus,
+    )
+  ) {
+    throw new Error(
+      "youtube_upload_result_requested_privacy_status_required",
+    );
+  }
+  const responsePrivacyStatus = String(
+    responseData?.status?.privacyStatus || "",
+  )
+    .trim()
+    .toLowerCase();
+  const actualPrivacyStatus = responsePrivacyStatus || null;
+  if (
+    actualPrivacyStatus &&
+    !["private", "public", "unlisted"].includes(
+      actualPrivacyStatus,
+    )
+  ) {
+    throw new Error(
+      "youtube_upload_result_actual_privacy_status_invalid",
+    );
+  }
+  const publishAt = String(
+    responseData?.status?.publishAt ||
+      requestBody?.status?.publishAt ||
+      "",
+  ).trim();
+
+  return {
+    platform: "youtube",
+    videoId: resolvedVideoId,
+    url: `https://youtube.com/shorts/${resolvedVideoId}`,
+    privacyStatus:
+      actualPrivacyStatus || requestedPrivacyStatus,
+    requestedPrivacyStatus,
+    actualPrivacyStatus,
+    ...(publishAt
+      ? {
+          publishAt,
+          scheduledFor: publishAt,
+        }
+      : {}),
+  };
+}
+
+async function loadHashBoundYoutubeMedia(
+  story,
+  expectedMediaSha256,
+  {
+    resolveMediaPath = mediaPaths.resolveExisting,
+    validate = validateVideo,
+    readFile = fs.readFile,
+  } = {},
+) {
+  const expected = String(expectedMediaSha256 || "")
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) {
+    throw new Error("youtube_expected_media_sha256_required");
+  }
+
+  const resolvedPath = await resolveMediaPath(story?.exported_path);
+  const mediaPath = resolvedPath || story?.exported_path;
+  const byteLength = await validate(mediaPath, "youtube");
+  if (
+    !Number.isSafeInteger(byteLength) ||
+    byteLength < 1 ||
+    byteLength > MAX_BOUND_YOUTUBE_MEDIA_BYTES
+  ) {
+    throw new Error("youtube_media_immutable_buffer_size_invalid");
+  }
+
+  const bytes = await readFile(mediaPath);
+  if (!Buffer.isBuffer(bytes) || bytes.length !== byteLength) {
+    throw new Error("youtube_media_read_length_mismatch");
+  }
+  const actual = crypto
+    .createHash("sha256")
+    .update(bytes)
+    .digest("hex");
+  if (actual !== expected) {
+    throw new Error("youtube_media_sha256_mismatch");
+  }
+
+  let streamCreated = false;
+  return Object.freeze({
+    sha256: actual,
+    byteLength: bytes.length,
+    createReadStream() {
+      if (streamCreated) {
+        throw new Error("youtube_bound_media_stream_already_consumed");
+      }
+      streamCreated = true;
+      return Readable.from([bytes]);
+    },
+  });
+}
+
 // --- Upload a single video as YouTube Short ---
-async function uploadShort(story) {
+async function uploadShort(
+  story,
+  {
+    governedDispatch = false,
+    markCreateAttemptStarted = null,
+    assertYoutubeCreateBoundary = null,
+    reportAuthTelemetry = null,
+    expectedMediaSha256 = null,
+    scheduledFor = null,
+    privateOnly = false,
+    youtubeAccountBoundSession = null,
+  } = {},
+) {
+  if (governedDispatch !== true) {
+    throw new Error("governed_youtube_dispatch_required");
+  }
+  if (typeof markCreateAttemptStarted !== "function") {
+    throw new Error("youtube_create_boundary_marker_required");
+  }
+  const governedMetadata = resolveGovernedYoutubeMetadata(story);
+  const requestPreparedAt = new Date();
+  const scheduledPublishAt = resolveYoutubeScheduledPublishAt(
+    scheduledFor,
+    { now: requestPreparedAt },
+  );
+  if (typeof assertYoutubeCreateBoundary !== "function") {
+    throw new Error("youtube_create_boundary_guard_required");
+  }
+  if (typeof reportAuthTelemetry !== "function") {
+    throw new Error("youtube_auth_telemetry_reporter_required");
+  }
+  if (
+    !youtubeAccountBoundSession ||
+    typeof youtubeAccountBoundSession.getYoutubeClient !==
+      "function" ||
+    typeof youtubeAccountBoundSession.getBindingProof !==
+      "function" ||
+    typeof youtubeAccountBoundSession.revalidate !== "function"
+  ) {
+    throw new Error("youtube_account_bound_session_required");
+  }
+  const initialAccountBindingProof =
+    youtubeAccountBoundSession.getBindingProof();
+  if (
+    initialAccountBindingProof?.expected_channel_id !==
+      EXPECTED_PULSE_YOUTUBE_CHANNEL_ID ||
+    initialAccountBindingProof?.observed_channel_id !==
+      EXPECTED_PULSE_YOUTUBE_CHANNEL_ID
+  ) {
+    throw new Error(
+      "youtube_account_bound_session_pulse_channel_required",
+    );
+  }
+  const { tags } = buildMetadata(story);
+  const title = governedMetadata.title;
+  const requestBody = buildYoutubeShortRequestBody(story, {
+    title: governedMetadata.title,
+    description: governedMetadata.description,
+    tags,
+    categoryId:
+      require("./channels").getChannel().youtubeCategory || "20",
+    scheduledFor: scheduledPublishAt,
+    privateOnly,
+    now: requestPreparedAt,
+  });
+  const approvedComment = resolveApprovedPinnedCommentForUpload(story);
+  if (story?.pinned_comment && !approvedComment) {
+    console.log(
+      "[youtube] Optional top-level comment omitted: explicit hash-bound operator approval is missing or invalid",
+    );
+  }
   addBreadcrumb(`YouTube upload: ${story.title}`, "upload");
-  return withRetry(
-    async () => {
-      const auth = await getAuthClient();
-      const youtube = google.youtube({ version: "v3", auth });
-
-      // Resolve the MP4 path through media-paths so the YouTube
-      // uploader picks it up from MEDIA_ROOT (persistent volume)
-      // when set, with repo-root fallback for legacy DB rows.
-      const exportedAbs = await mediaPaths.resolveExisting(story.exported_path);
-      await validateVideo(exportedAbs || story.exported_path, "youtube");
-
-      const { title, description, tags } = buildMetadata(story);
+  return runSanitisedYoutubeOperation(async () => {
+      // Materialise and hash the approved bytes before OAuth or any platform
+      // request. The later upload stream is created from this private buffer,
+      // so replacing or retargeting the source path cannot change what is sent.
+      const boundMedia = await loadHashBoundYoutubeMedia(
+        story,
+        expectedMediaSha256,
+      );
+      const youtube =
+        youtubeAccountBoundSession.getYoutubeClient();
 
       // YouTube-side dedup: check recent uploads for similar titles before uploading
       try {
@@ -617,37 +1736,45 @@ async function uploadShort(story) {
         }
       } catch (err) {
         console.log(
-          `[youtube] Dedup check failed (uploading anyway): ${err.message}`,
+          `[youtube] Dedup check failed (uploading anyway): ${sanitiseYoutubeErrorMessage(err.message)}`,
         );
       }
 
       console.log(`[youtube] Uploading: "${title}"`);
 
-      const response = await youtube.videos.insert({
+      await youtubeAccountBoundSession.revalidate();
+      await require("./publisher").invokeTrustedYoutubeCreateBoundaryGate(
+        assertYoutubeCreateBoundary,
+      );
+      if (
+        youtubeAccountBoundSession.getYoutubeClient() !== youtube
+      ) {
+        throw new Error(
+          "youtube_account_bound_session_client_changed",
+        );
+      }
+      markCreateAttemptStarted();
+      const response = await insertYoutubeVideoOnce(youtube, {
         part: ["snippet", "status"],
-        requestBody: {
-          snippet: {
-            title,
-            description,
-            tags,
-            categoryId:
-              require("./channels").getChannel().youtubeCategory || "20",
-            defaultLanguage: "en",
-            defaultAudioLanguage: "en",
-          },
-          status: {
-            privacyStatus: "public",
-            selfDeclaredMadeForKids: false,
-            embeddable: true,
-          },
-        },
+        requestBody,
         media: {
-          body: fs.createReadStream(exportedAbs || story.exported_path),
+          body: boundMedia.createReadStream(),
         },
       });
 
       const videoId = response.data.id;
       console.log(`[youtube] Uploaded: https://youtube.com/shorts/${videoId}`);
+
+      // Return the external identity immediately. The governed dispatcher
+      // must durably anchor PLATFORM_OBJECT_CREATED before any optional
+      // playlist, thumbnail or comment mutation is allowed. Those legacy
+      // enrichments remain frozen during stabilisation and will move to
+      // separately leased metadata jobs in a later release slice.
+      return buildYoutubeShortUploadResult({
+        videoId,
+        requestBody,
+        responseData: response.data,
+      });
 
       // Add to playlists based on classification
       try {
@@ -655,7 +1782,7 @@ async function uploadShort(story) {
         await addToPlaylists(youtube, videoId, story.classification);
       } catch (err) {
         console.log(
-          `[youtube] Playlist assignment failed (non-critical): ${err.message}`,
+          `[youtube] Playlist assignment failed (non-critical): ${sanitiseYoutubeErrorMessage(err.message)}`,
         );
       }
 
@@ -712,31 +1839,34 @@ async function uploadShort(story) {
           }
         } catch (err) {
           console.log(
-            `[youtube] Thumbnail upload failed (non-critical): ${err.message}`,
+            `[youtube] Thumbnail upload failed (non-critical): ${sanitiseYoutubeErrorMessage(err.message)}`,
           );
         }
       }
 
-      // Post pinned comment
-      if (story.pinned_comment) {
+      // The Data API can create a top-level comment but cannot pin it.
+      // Only submit text that has a separate, hash-bound operator approval.
+      if (approvedComment) {
         try {
-          const commentResponse = await youtube.commentThreads.insert({
+          await youtube.commentThreads.insert({
             part: ["snippet"],
             requestBody: {
               snippet: {
                 videoId,
                 topLevelComment: {
                   snippet: {
-                    textOriginal: story.pinned_comment,
+                    textOriginal: approvedComment,
                   },
                 },
               },
             },
           });
-          console.log(`[youtube] Pinned comment posted`);
+          console.log(
+            "[youtube] Approved top-level comment posted; pinning remains a manual Studio action",
+          );
         } catch (err) {
           console.log(
-            `[youtube] Comment failed (non-critical): ${err.message}`,
+            `[youtube] Comment failed (non-critical): ${sanitiseYoutubeErrorMessage(err.message)}`,
           );
         }
       }
@@ -746,13 +1876,14 @@ async function uploadShort(story) {
         videoId,
         url: `https://youtube.com/shorts/${videoId}`,
       };
-    },
-    { label: "youtube upload" },
-  );
+  });
 }
 
 // --- Batch upload all ready stories ---
 async function uploadAll() {
+  throw new Error(
+    "legacy_youtube_batch_publish_disabled_use_governed_queue",
+  );
   const stories = await db.getStories();
   if (!stories.length) {
     console.log("[youtube] No stories found");
@@ -785,7 +1916,9 @@ async function uploadAll() {
     try {
       pubRepos = require("./lib/repositories").getRepos();
     } catch (err) {
-      console.log(`[youtube] repos unavailable: ${err.message}`);
+      console.log(
+        `[youtube] repos unavailable: ${sanitiseYoutubeErrorMessage(err.message)}`,
+      );
     }
   }
 
@@ -864,9 +1997,11 @@ async function uploadAll() {
       // Respect YouTube API quota (10000 units/day, upload = 1600 units)
       await new Promise((r) => setTimeout(r, 5000));
     } catch (err) {
+      err = sanitiseYoutubeError(err);
       captureException(err, { platform: "youtube", storyId: story.id });
-      console.log(`[youtube] Upload failed for ${story.id}: ${err.message}`);
-      story.publish_error = err.message;
+      const safeMessage = sanitiseYoutubeErrorMessage(err.message);
+      console.log(`[youtube] Upload failed for ${story.id}: ${safeMessage}`);
+      story.publish_error = safeMessage;
     }
   }
 
@@ -877,6 +2012,14 @@ async function uploadAll() {
 
 // --- Upload a longform compilation as a regular YouTube video (NOT a Short) ---
 async function uploadLongform(compilation) {
+  const profile = String(
+    process.env.PULSE_SCHEDULER_PROFILE || "stabilisation_30d",
+  )
+    .trim()
+    .toLowerCase();
+  if (profile !== "legacy") {
+    throw new Error("stabilisation_longform_upload_disabled");
+  }
   const auth = await getAuthClient();
   const youtube = google.youtube({ version: "v3", auth });
   const brand = require("./brand");
@@ -917,9 +2060,7 @@ async function uploadLongform(compilation) {
   }
 
   descLines.push(`${brand.CHANNEL_NAME} - ${brand.TAGLINE}`);
-  descLines.push(
-    brand.CTA ? brand.CTA : "Subscribe so you never miss a roundup.",
-  );
+  if (brand.CTA) descLines.push(brand.CTA);
   descLines.push("");
 
   const hashtags = (channel.hashtags || [])
@@ -986,6 +2127,18 @@ async function postCommunityImage(story) {
 }
 
 module.exports = {
+  attachYoutubeRefreshTelemetry,
+  buildFreshYoutubeAccountBindingArmInput,
+  buildYoutubeShortUploadResult,
+  buildYoutubeShortRequestBody,
+  createFreshYoutubeAccountBoundSession,
+  insertYoutubeVideoOnce,
+  loadHashBoundYoutubeMedia,
+  probeYoutubeAccountBinding,
+  resolveApprovedPinnedCommentForUpload,
+  resolveContainsSyntheticMedia,
+  resolveGovernedYoutubeMetadata,
+  resolveYoutubeScheduledPublishAt,
   uploadShort,
   uploadAll,
   uploadLongform,
@@ -994,6 +2147,7 @@ module.exports = {
   generateAuthUrl,
   exchangeCode,
   getAuthClient,
+  refreshYoutubeCredentialsInMemory,
   ensurePlaylists,
   addToPlaylists,
 };
@@ -1007,19 +2161,33 @@ if (require.main === module) {
       const youtube = google.youtube({ version: "v3", auth });
       const ids = await ensurePlaylists(youtube);
       console.log("[youtube] Playlist IDs:", JSON.stringify(ids, null, 2));
-    })().catch(console.error);
+    })().catch((error) => {
+      console.error(
+        sanitiseYoutubeErrorMessage(error?.message || error),
+      );
+    });
   } else if (cmd === "auth") {
-    generateAuthUrl().catch(console.error);
+    generateAuthUrl().catch((error) => {
+      console.error(
+        sanitiseYoutubeErrorMessage(error?.message || error),
+      );
+    });
   } else if (cmd === "token") {
     const code = process.argv[3];
     if (!code) {
       console.log("Usage: node upload_youtube.js token YOUR_AUTH_CODE");
       process.exit(1);
     }
-    exchangeCode(code).catch(console.error);
+    exchangeCode(code).catch((error) => {
+      console.error(
+        sanitiseYoutubeErrorMessage(error?.message || error),
+      );
+    });
   } else {
     uploadAll().catch((err) => {
-      console.log(`[youtube] ERROR: ${err.message}`);
+      console.log(
+        `[youtube] ERROR: ${sanitiseYoutubeErrorMessage(err.message)}`,
+      );
       process.exit(1);
     });
   }

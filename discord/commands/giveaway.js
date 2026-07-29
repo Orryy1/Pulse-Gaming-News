@@ -111,7 +111,7 @@ module.exports = {
         .setColor(config.COLOURS.AMBER)
         .setTitle('🎉 GIVEAWAY')
         .setDescription(`**${prize}**\n\nReact with 🎉 to enter!\n\n**Winners:** ${winnerCount}\n**Ends:** <t:${Math.floor(endsAt / 1000)}:R>`)
-        .setFooter({ text: 'PULSE GAMING Giveaway' })
+        .setFooter({ text: 'PULSE GAMING NEWS Giveaway' })
         .setTimestamp(new Date(endsAt));
 
       const msg = await interaction.reply({ embeds: [embed], fetchReply: true });

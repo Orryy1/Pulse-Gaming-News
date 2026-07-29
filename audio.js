@@ -1,20 +1,38 @@
+"use strict";
+
+const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
+  loadDotenvOnce({ dotenv, env: process.env });
+}
+assertValidRuntimeConfig(process.env);
+
 const axios = require("axios");
+const crypto = require("node:crypto");
 const fs = require("fs-extra");
 const path = require("path");
-const dotenv = require("dotenv");
 const { exec, execFile } = require("child_process");
 const util = require("util");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
+const {
+  createElevenLabsCreditGovernor,
+} = require("./lib/services/elevenlabs-credit-governor");
+const {
+  safeRedirectConfig,
+} = require("./lib/safe-url");
 
 const execAsync = util.promisify(exec);
 const execFileAsync = util.promisify(execFile);
 
-if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  dotenv.config({ override: true });
-}
-
 const brand = require("./brand");
+
+let defaultElevenLabsCreditGovernor = null;
+let defaultElevenLabsCreditGovernorSignature = null;
 
 // --- Phonetic replacements for words TTS mispronounces ---
 const PHONETIC_MAP = {
@@ -34,9 +52,91 @@ const { runBrandNameQa } = require("./lib/brand-name-qa");
 const { applyProduceSelection } = require("./lib/produce-selection");
 const {
   classifyShortScriptRuntime,
-  DEFAULT_MIN_WORDS,
-  DEFAULT_MAX_WORDS,
 } = require("./lib/services/short-runtime-planner");
+const {
+  resolvePulseScriptContract,
+  validatePulseScriptRuntime,
+} = require("./lib/services/pulse-editorial-contract");
+
+function resolveAudioRuntimePlan({ story = {}, channelId, scriptText } = {}) {
+  const resolvedChannelId =
+    String(channelId || story.channel_id || process.env.CHANNEL || "")
+      .trim()
+      .toLowerCase() || "pulse-gaming";
+  const cleanedScript = cleanForTTS(
+    scriptText ||
+      story.tts_script ||
+      story.full_script ||
+      story.body ||
+      "",
+  );
+  if (resolvedChannelId !== "pulse-gaming") {
+    return classifyShortScriptRuntime({
+      text: cleanedScript,
+      story,
+    });
+  }
+
+  const contract = resolvePulseScriptContract({ story });
+  const runtime = validatePulseScriptRuntime({
+    text: cleanedScript,
+    contract,
+  });
+  const shouldGenerateShortAudio =
+    contract.format_family === "short" && runtime.result === "pass";
+  return {
+    result:
+      contract.format_family === "short" ? runtime.result : "route_longform",
+    route:
+      contract.format_family === "short"
+        ? shouldGenerateShortAudio
+          ? "contracted_short"
+          : "blocked"
+        : "briefing_or_longform",
+    shouldGenerateShortAudio,
+    failures:
+      contract.format_family === "short"
+        ? runtime.failures
+        : ["pulse_recap_requires_longform_audio_path"],
+    warnings: runtime.warnings,
+    wordCount: runtime.word_count,
+    estimatedSeconds: runtime.estimated_seconds,
+    minSeconds: contract.min_seconds,
+    maxSeconds: contract.max_seconds,
+    minWords: contract.min_words,
+    maxWords: contract.max_words,
+    durationBandId: contract.duration_band_id,
+    format: contract.format_family,
+    contract,
+  };
+}
+
+function evaluateAudioDurationAgainstPlan(durationSeconds, runtimePlan) {
+  const duration = Number(durationSeconds);
+  const minSeconds = Number(runtimePlan?.minSeconds);
+  const maxSeconds = Number(runtimePlan?.maxSeconds);
+  if (
+    !Number.isFinite(duration) ||
+    !Number.isFinite(minSeconds) ||
+    !Number.isFinite(maxSeconds)
+  ) {
+    throw new Error("valid_audio_duration_plan_required");
+  }
+  const failures = [];
+  if (duration < minSeconds) {
+    failures.push("audio_duration_below_selected_band");
+  } else if (duration > maxSeconds) {
+    failures.push("audio_duration_above_selected_band");
+  }
+  return {
+    result: failures.length ? "fail" : "pass",
+    failures,
+    durationSeconds: duration,
+    minSeconds,
+    maxSeconds,
+    durationBandId: runtimePlan.durationBandId || null,
+  };
+}
 
 // --- Clean text for TTS - shared logic ---
 function cleanForTTS(raw) {
@@ -203,10 +303,6 @@ function selectRawTtsScript(story) {
   return preferred;
 }
 
-const BUMPER_DURATION = 0; // bumpers removed - audio must hit 61s on its own
-const MIN_TOTAL_DURATION = 61; // TikTok Creator Rewards minimum
-const MAX_FLASH_TOTAL_DURATION = 75;
-
 // --- Get audio duration via ffprobe ---
 async function getAudioDuration(audioPath) {
   try {
@@ -268,16 +364,122 @@ function resolveVoiceSettingsForProvider(
   env = process.env,
 ) {
   const settings = Object.assign({}, baseSettings || {});
-  if (rateOverride !== undefined) {
-    settings.speaking_rate = rateOverride;
-  }
-  if (String(provider || "").toLowerCase() === "local") {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const requestedRate = finiteNumber(
+    rateOverride,
+    finiteNumber(settings.speed, finiteNumber(settings.speaking_rate, 1)),
+  );
+  if (normalisedProvider === "local") {
+    settings.speaking_rate = requestedRate;
     settings.speaking_rate = resolveLocalTtsSpeakingRate(
       settings.speaking_rate,
       env,
     );
+    delete settings.speed;
+  } else {
+    settings.speed = clamp(requestedRate, 0.7, 1.2);
+    delete settings.speaking_rate;
   }
   return settings;
+}
+
+function buildTtsRequest({
+  provider,
+  baseUrl,
+  voiceId,
+  text,
+  voiceSettings,
+  modelId,
+} = {}) {
+  const normalisedProvider = String(provider || "").toLowerCase();
+  const local = normalisedProvider === "local";
+  const canonicalVoiceSettings = resolveVoiceSettingsForProvider(
+    normalisedProvider,
+    voiceSettings,
+  );
+  const endpoint =
+    `${String(baseUrl || "").replace(/\/+$/, "")}` +
+    `/v1/text-to-speech/${encodeURIComponent(String(voiceId || ""))}` +
+    "/with-timestamps";
+  const data = {
+    text,
+    voice_settings: canonicalVoiceSettings,
+  };
+  if (local) {
+    data.output_format = "mp3_44100_128";
+  } else {
+    data.model_id = modelId || "eleven_multilingual_v2";
+  }
+  return {
+    url: local
+      ? endpoint
+      : `${endpoint}?output_format=mp3_44100_128`,
+    data,
+  };
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function buildElevenLabsCreditIdempotencyKey({
+  outputPath,
+  voiceId,
+  modelId,
+  text,
+  voiceSettings,
+} = {}) {
+  return [
+    "pulse-elevenlabs-tts-v1",
+    sha256(
+      JSON.stringify({
+        output_path: String(outputPath || "").replace(/\\/g, "/"),
+        voice_id: String(voiceId || ""),
+        model_id: String(modelId || ""),
+        text_sha256: sha256(text),
+        voice_settings: voiceSettings || {},
+      }),
+    ),
+  ].join(":");
+}
+
+function resolveDefaultElevenLabsCreditGovernor() {
+  const signature = sha256(
+    JSON.stringify({
+      api_key: process.env.ELEVENLABS_API_KEY || "",
+      base_url: process.env.ELEVENLABS_BASE_URL || "",
+      reserve: process.env.ELEVENLABS_CREDIT_RESERVE || "",
+      reserve_percent:
+        process.env.ELEVENLABS_CREDIT_RESERVE_PERCENT || "",
+      warning_percent:
+        process.env.ELEVENLABS_CREDIT_WARNING_PERCENT || "",
+      estimate_multiplier:
+        process.env.ELEVENLABS_CREDIT_ESTIMATE_MULTIPLIER || "",
+      snapshot_ttl:
+        process.env.ELEVENLABS_CREDIT_SNAPSHOT_TTL_MS || "",
+      allow_overage: process.env.ELEVENLABS_ALLOW_OVERAGE || "",
+      state_root: process.env.PULSE_STATE_ROOT || "",
+    }),
+  );
+  if (
+    defaultElevenLabsCreditGovernor &&
+    defaultElevenLabsCreditGovernorSignature === signature
+  ) {
+    return defaultElevenLabsCreditGovernor;
+  }
+  defaultElevenLabsCreditGovernor = createElevenLabsCreditGovernor({
+    env: process.env,
+    request: (input) =>
+      axios({
+        ...input,
+        validateStatus: () => true,
+        ...safeRedirectConfig(0),
+        maxBodyLength: 256 * 1024,
+        maxContentLength: 2 * 1024 * 1024,
+      }),
+  });
+  defaultElevenLabsCreditGovernorSignature = signature;
+  return defaultElevenLabsCreditGovernor;
 }
 
 // --- Concatenate multiple MP3 files via ffmpeg ---
@@ -306,7 +508,7 @@ async function concatAudioFiles(files, outputPath) {
 //
 // Both providers must return identical JSON:
 //   { audio_base64, alignment: { characters, character_start_times_seconds, character_end_times_seconds } }
-async function generateTTS(text, outputPath, rateOverride) {
+async function generateTTS(text, outputPath, rateOverride, options = {}) {
   const provider = (process.env.TTS_PROVIDER || "elevenlabs").toLowerCase();
   const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID || "default";
   const voiceSettings = Object.assign(
@@ -337,50 +539,163 @@ async function generateTTS(text, outputPath, rateOverride) {
           "Content-Type": "application/json",
         };
 
-  const data = {
+  const request = buildTtsRequest({
+    provider,
+    baseUrl,
+    voiceId,
     text,
-    voice_settings: resolvedVoiceSettings,
-    output_format: "mp3_44100_128",
-  };
+    voiceSettings: resolvedVoiceSettings,
+    modelId: brand.voiceModel || "eleven_multilingual_v2",
+  });
+
+  let creditLease = null;
   if (provider !== "local") {
-    data.model_id = brand.voiceModel || "eleven_multilingual_v2";
+    const creditGovernor =
+      options.creditGovernor ||
+      resolveDefaultElevenLabsCreditGovernor();
+    creditLease = await creditGovernor.preflight({
+      text,
+      purpose: options.purpose || "pulse_narration",
+      idempotencyKey: buildElevenLabsCreditIdempotencyKey({
+        outputPath,
+        voiceId,
+        modelId: request.data.model_id,
+        text,
+        voiceSettings: request.data.voice_settings,
+      }),
+    });
+    if (creditLease.report.warnings.length) {
+      console.warn(
+        `[elevenlabs-credit] remaining=${creditLease.report.remaining_percent}% ` +
+          `reserve=${creditLease.report.hard_reserve_credits} ` +
+          `estimate=${creditLease.report.estimated_request_credits} ` +
+          `warnings=${creditLease.report.warnings.join(",")}`,
+      );
+    }
   }
 
-  const response = await axios({
-    method: "POST",
-    url: `${baseUrl}/v1/text-to-speech/${voiceId}/with-timestamps`,
-    headers,
-    data,
-    timeout: resolveTtsTimeoutMs(provider),
-  });
+  const httpClient = options.httpClient || axios;
+  let response;
+  let providerCallStarted = false;
+  if (creditLease?.replayAvailable === true) {
+    response = {
+      status: 200,
+      data: await creditLease.readRecordedProviderResult(),
+    };
+  } else {
+    try {
+      if (creditLease) {
+        await creditLease.markProviderCallStarted();
+        providerCallStarted = true;
+      }
+      response = await httpClient({
+        method: "POST",
+        url: request.url,
+        headers,
+        data: request.data,
+        timeout: resolveTtsTimeoutMs(provider),
+        ...(provider === "local"
+          ? {}
+          : {
+              ...safeRedirectConfig(0),
+              validateStatus: () => true,
+            }),
+      });
+    } catch (error) {
+      if (creditLease && providerCallStarted) {
+        await creditLease
+          .markProviderCallAmbiguous(
+            "provider_request_outcome_unknown",
+          )
+          .catch(() => {});
+      }
+      throw error;
+    }
+  }
 
   // outputPath is the repo-relative path the caller passes in
   // (e.g. `output/audio/abc.mp3`). writeTarget is where it
   // actually lands on disk — under MEDIA_ROOT in production,
   // under the repo root in local dev.
   const writeTarget = mediaPaths.writePath(outputPath);
-  await fs.ensureDir(path.dirname(writeTarget));
 
+  const responseStatus = Number(response?.status);
+  if (
+    Number.isFinite(responseStatus) &&
+    (responseStatus < 200 || responseStatus >= 300)
+  ) {
+    if (creditLease && creditLease.replayAvailable !== true) {
+      await creditLease
+        .markProviderCallAmbiguous(
+          "provider_http_response_not_success",
+        )
+        .catch(() => {});
+    }
+    throw new Error(
+      `[audio] ${provider} returned HTTP ${responseStatus}`,
+    );
+  }
   const audioBase64 = response.data.audio_base64;
   if (!audioBase64) {
+    if (creditLease && creditLease.replayAvailable !== true) {
+      await creditLease
+        .markProviderCallAmbiguous(
+          "provider_response_missing_audio",
+        )
+        .catch(() => {});
+    }
     throw new Error(
       `[audio] ${provider} returned no audio_base64 - check ${baseUrl} health`,
     );
   }
-  await fs.writeFile(writeTarget, Buffer.from(audioBase64, "base64"));
+  if (creditLease && creditLease.replayAvailable !== true) {
+    try {
+      await creditLease.recordProviderSuccess(response.data);
+    } catch (error) {
+      await creditLease
+        .markProviderCallAmbiguous(
+          "provider_result_journal_failed",
+        )
+        .catch(() => {});
+      throw error;
+    }
+  }
+  const audioBytes = Buffer.from(audioBase64, "base64");
+  await fs.ensureDir(path.dirname(writeTarget));
+  await fs.writeFile(writeTarget, audioBytes);
 
   const timestampsPath = outputPath.replace(/\.mp3$/, "_timestamps.json");
   const timestampsWriteTarget = mediaPaths.writePath(timestampsPath);
   const alignment = response.data.alignment || {};
   await fs.writeJson(timestampsWriteTarget, alignment, { spaces: 2 });
+  if (creditLease) {
+    const creditPath = outputPath.replace(/\.mp3$/, "_credit.json");
+    await fs.writeJson(
+      mediaPaths.writePath(creditPath),
+      {
+        ...creditLease.report,
+        committed: true,
+        committed_at: new Date().toISOString(),
+      },
+      { spaces: 2 },
+    );
+    await creditLease.complete({
+      outputSha256: crypto
+        .createHash("sha256")
+        .update(audioBytes)
+        .digest("hex"),
+    });
+  }
 
   // Return the repo-relative path so callers and the DB continue
   // to treat the story.audio_path field as location-independent.
   return outputPath;
 }
 
-async function generateAudio() {
+async function generateAudio(options = {}) {
   console.log("[audio] Loading stories from canonical store...");
+  const { getChannel } = require("./channels");
+  const channel = getChannel();
 
   // Phase 3C JSON-shrink: the old `fs.pathExists("daily_news.json")`
   // precondition was a JSON-era assumption that wrongly fired in
@@ -394,8 +709,14 @@ async function generateAudio() {
     return;
   }
 
+  const scopedStories = Array.isArray(options.storyIds)
+    ? require("./lib/services/exact-story-production-scope").filterStoriesToExactScope(
+        stories,
+        options,
+      )
+    : stories;
   const toProcess = applyProduceSelection(
-    stories.filter((s) => s.approved === true && !s.audio_path),
+    scopedStories.filter((s) => s.approved === true && !s.audio_path),
     { stage: "audio", log: console.log },
   );
 
@@ -403,8 +724,6 @@ async function generateAudio() {
 
   for (const story of toProcess) {
     console.log(`[audio] Generating audio for: ${story.title}`);
-    let regenAttempts = 0;
-    const MAX_REGEN = 2;
 
     try {
       // Clean TTS script using shared cleaning function
@@ -416,9 +735,10 @@ async function generateAudio() {
         tts_script: ttsText,
       });
 
-      const runtimePlan = classifyShortScriptRuntime({
-        text: ttsText,
+      const runtimePlan = resolveAudioRuntimePlan({
         story,
+        channelId: channel.id,
+        scriptText: ttsText,
       });
       story.short_runtime_plan = runtimePlan;
       if (runtimePlan.shouldGenerateShortAudio === false) {
@@ -556,93 +876,26 @@ async function generateAudio() {
         await generateTTS(ttsText, outputPath);
       }
 
-      // Duration enforcement - check if video will clear 61s
+      // The generated narration must remain inside the story's selected
+      // editorial duration band. Audio never rewrites editorial copy: a miss
+      // fails closed for processor repair or human review.
       const audioDuration = await getAudioDuration(outputPath);
-      const totalDuration = audioDuration + BUMPER_DURATION;
       story.audio_duration = audioDuration;
-
-      if (totalDuration < MIN_TOTAL_DURATION && regenAttempts < MAX_REGEN) {
-        regenAttempts++;
+      const durationGate = evaluateAudioDurationAgainstPlan(
+        audioDuration,
+        runtimePlan,
+      );
+      story.audio_duration_gate = durationGate;
+      if (durationGate.result === "fail") {
+        const reason = `${durationGate.failures[0]} (${audioDuration.toFixed(
+          2,
+        )}s, selected ${durationGate.minSeconds.toFixed(
+          2,
+        )}-${durationGate.maxSeconds.toFixed(2)}s band ${
+          durationGate.durationBandId || "unknown"
+        })`;
         console.log(
-          `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s). Regenerating longer script (attempt ${regenAttempts}/${MAX_REGEN})...`,
-        );
-
-        // Regenerate with a longer target
-        const Anthropic = require("@anthropic-ai/sdk");
-        const { getChannel } = require("./channels");
-        const channel = getChannel();
-        const client = new Anthropic.default({
-          apiKey: process.env.ANTHROPIC_API_KEY,
-        });
-        const basePrompt =
-          channel.systemPrompt ||
-          (await fs.readFile("system_prompt.txt", "utf-8"));
-
-        const response = await client.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 1200,
-          system: basePrompt,
-          messages: [
-            {
-              role: "user",
-              content: `Rewrite this script to be ${DEFAULT_MIN_WORDS}-${DEFAULT_MAX_WORDS} spoken words for a 61-75 second gaming Short. It was too short at ${story.word_count} words.\n\n${story.full_script}\n\nStory: ${story.title}\nKeep the same classification: ${story.classification}. Keep the CTA exactly: Follow Pulse Gaming so you never miss a beat.`,
-            },
-          ],
-        });
-
-        let text = response.content[0].text.trim();
-        if (text.startsWith("```")) {
-          text = text
-            .replace(/^```(?:json)?\s*\n?/, "")
-            .replace(/\n?```\s*$/, "");
-        }
-
-          try {
-            const newScript = JSON.parse(text);
-            const newTTS = cleanForTTS(newScript.full_script);
-            assertBrandNameQaForTts(story, {
-              full_script: newScript.full_script,
-              tts_script: newTTS,
-            });
-            const newRuntimePlan = classifyShortScriptRuntime({
-            text: newTTS,
-            story,
-          });
-          if (newRuntimePlan.shouldGenerateShortAudio === false) {
-            throw new Error(
-              `regenerated_script_runtime_invalid:${newRuntimePlan.failures[0] || newRuntimePlan.warnings[0] || "unknown"}`,
-            );
-          }
-
-          await generateTTS(newTTS, outputPath);
-          const newDuration = await getAudioDuration(outputPath);
-          story.audio_duration = newDuration;
-          story.full_script = newScript.full_script;
-          story.tts_script = newTTS;
-          finalTtsScript = newTTS;
-          story.word_count = newScript.word_count || story.word_count;
-          console.log(
-            `[audio] Regenerated: now ${(newDuration + BUMPER_DURATION).toFixed(1)}s`,
-          );
-        } catch (parseErr) {
-          console.log(
-            `[audio] Regen parse failed, keeping original: ${parseErr.message}`,
-          );
-          story.duration_warning = true;
-        }
-      } else if (totalDuration < MIN_TOTAL_DURATION) {
-        console.log(
-          `[audio] WARNING: ${story.id} is ${totalDuration.toFixed(1)}s (need ${MIN_TOTAL_DURATION}s) but max regen attempts (${MAX_REGEN}) reached - accepting as-is`,
-        );
-        story.duration_warning = true;
-      } else {
-        console.log(`[audio] Duration OK: ${totalDuration.toFixed(1)}s`);
-      }
-
-      if (totalDuration > MAX_FLASH_TOTAL_DURATION) {
-        const reason = `audio_duration_too_long (${totalDuration.toFixed(2)}s, max ${MAX_FLASH_TOTAL_DURATION.toFixed(2)}s)`;
-        console.log(
-          `[audio] ${story.id}: generated audio exceeds Flash Lane contract, blocking before render: ${reason}`,
+          `[audio] ${story.id}: generated audio missed its selected editorial band, blocking before render: ${reason}`,
         );
         story.qa_failed = true;
         story.qa_failures = [reason];
@@ -655,6 +908,11 @@ async function generateAudio() {
         story.tts_script = finalTtsScript;
         continue;
       }
+      console.log(
+        `[audio] Duration OK: ${audioDuration.toFixed(1)}s inside ${
+          durationGate.durationBandId
+        }`,
+      );
 
       story.audio_path = outputPath;
       story.tts_script = finalTtsScript;
@@ -666,6 +924,11 @@ async function generateAudio() {
 
   await db.saveStories(stories);
   console.log("[audio] Stories updated");
+  return {
+    processed: toProcess.length,
+    story_ids: toProcess.map((story) => story.id),
+    exact_scope: Array.isArray(options.storyIds),
+  };
 }
 
 module.exports = generateAudio;
@@ -676,8 +939,14 @@ module.exports.concatAudioFiles = concatAudioFiles;
 module.exports.resolveTtsTimeoutMs = resolveTtsTimeoutMs;
 module.exports.resolveLocalTtsSpeakingRate = resolveLocalTtsSpeakingRate;
 module.exports.resolveVoiceSettingsForProvider = resolveVoiceSettingsForProvider;
+module.exports.buildTtsRequest = buildTtsRequest;
+module.exports.buildElevenLabsCreditIdempotencyKey =
+  buildElevenLabsCreditIdempotencyKey;
 module.exports.assertBrandNameQaForTts = assertBrandNameQaForTts;
 module.exports.selectRawTtsScript = selectRawTtsScript;
+module.exports.resolveAudioRuntimePlan = resolveAudioRuntimePlan;
+module.exports.evaluateAudioDurationAgainstPlan =
+  evaluateAudioDurationAgainstPlan;
 
 if (require.main === module) {
   generateAudio().catch((err) => {

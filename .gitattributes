@@ -1,1 +1,5 @@
 db/migrations/*.sql text eol=lf
+assets/brand/pulse-gaming-news-avatar-v1.svg text eol=lf
+videos/**/publication-metadata.json text eol=lf
+videos/**/source-media-manifest.json text eol=lf
+videos/**/evidence/*.json text eol=lf

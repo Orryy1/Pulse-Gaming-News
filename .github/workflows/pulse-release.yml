@@ -1,0 +1,208 @@
+name: Pulse release gate
+
+on:
+  pull_request:
+    branches:
+      - main
+      - release/pulse-v1
+  push:
+    branches:
+      - release/pulse-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pulse-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    name: release-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Use the supported Node runtime
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22.17.1
+          cache: npm
+
+      - name: Install the media probe runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Install from package-lock.json
+        run: npm ci
+
+      - name: Install the pinned Evercold HyperFrames material project
+        run: npm --prefix videos/evercold-bastion-short ci
+
+      - name: Acquire exact ephemeral Evercold source media
+        run: >-
+          npm run ops:governed-source-media-ephemeral --
+          acquire
+          --mode LOCAL_PROOF
+          --manifest videos/evercold-bastion-short/source-media-manifest.json
+          --manifest-sha256 f07fa4838d8f0d46e88c35759286760cd83aafb6031f141f7bf8e2dfdf68dc4b
+          --story-id official_d86953ca92ca
+
+      - name: Validate ephemeral bytes and governed rights evidence
+        run: >-
+          npm run ops:governed-source-media-ephemeral --
+          validate
+          --mode LOCAL_PROOF
+          --manifest videos/evercold-bastion-short/source-media-manifest.json
+          --manifest-sha256 f07fa4838d8f0d46e88c35759286760cd83aafb6031f141f7bf8e2dfdf68dc4b
+          --story-id official_d86953ca92ca
+
+      - name: Strictly check the Evercold HyperFrames material project
+        run: npm --prefix videos/evercold-bastion-short run check -- --strict
+
+      - name: Prove release configuration and evidence controls
+        run: >-
+          node --test
+          tests/services/stabilisation-runtime-config.test.js
+          tests/services/governed-editorial-client.test.js
+          tests/services/breaking-source-adapters.test.js
+          tests/services/breaking-source-hardening.test.js
+          tests/services/governed-editorial-evidence-ingress.test.js
+          tests/services/governed-editorial-evidence-handler.test.js
+          tests/services/governed-multi-lane-candidate-eligibility.test.js
+          tests/services/stabilisation-dotenv-precedence.test.js
+          tests/services/dotenv-before-db.test.js
+          tests/services/runtime-build-info.test.js
+          tests/services/health-public-metadata.test.js
+          tests/services/report-governance.test.js
+          tests/services/stabilisation-runtime-provenance-cli.test.js
+          tests/services/ci-secret-scan.test.js
+          tests/services/pulse-release-ci.test.js
+          tests/services/agent-operating-rules.test.js
+          tests/ops/agent-operator-command-contract.test.js
+          tests/services/multi-lane-activation-stage-proof-generator.test.js
+          tests/ops/multi-lane-activation-stage-proofs-cli.test.js
+          tests/services/multi-lane-activation-evidence-collector.test.js
+          tests/ops/multi-lane-activation-evidence-cli.test.js
+          tests/services/evergreen-verdict-production-runner.test.js
+          tests/services/weekly-longform-runtime-capability-probe.test.js
+          tests/ops/weekly-longform-runtime-capabilities-cli.test.js
+          tests/services/governed-breaking-watcher.test.js
+          tests/services/governed-editorial-inventory-handler.test.js
+          tests/services/governed-editorial-inventory-handlers.test.js
+          tests/services/governed-editorial-inventory-preparer.test.js
+          tests/services/governed-editorial-inventory-reconciliation-handler.test.js
+          tests/services/governed-editorial-inventory-candidate-hydrator.test.js
+          tests/services/governed-editorial-inventory-multi-lane-bridge.test.js
+          tests/services/governed-editorial-inventory-registry.test.js
+          tests/services/governed-editorial-inventory-workflow.test.js
+          tests/services/governed-lane-publication-handlers.test.js
+          tests/services/governed-lane-review-handler.test.js
+          tests/services/governed-lane-review-packet.test.js
+          tests/services/governed-multi-lane-scheduler.test.js
+          tests/services/governed-multi-lane-startup-primer.test.js
+          tests/services/governed-story-intake.test.js
+          tests/services/governed-story-intake-inventory-bridge.test.js
+          tests/ops/governed-story-intake-cli.test.js
+          tests/ops/governed-story-intake-inventory-bridge-cli.test.js
+          tests/services/governed-worker-containment.test.js
+          tests/ops/governed-worker-containment-cli.test.js
+          tests/services/sqlite-restore-rehearsal.test.js
+          tests/ops/sqlite-restore-rehearsal-cli.test.js
+          tests/services/governed-owned-motion.test.js
+          tests/ops/governed-owned-motion-cli.test.js
+          tests/services/governed-source-media.test.js
+          tests/services/governed-game-media-admission.test.js
+          tests/services/governed-source-media-actual-manifest.test.js
+          tests/services/governed-source-media-ephemeral.test.js
+          tests/ops/governed-source-media-ephemeral-cli.test.js
+          tests/services/governed-narration-materialize.test.js
+          tests/services/governed-licensed-audio-pack.test.js
+          tests/ops/governed-narration-materialize-cli.test.js
+          tests/services/governed-final-composite.test.js
+          tests/ops/governed-final-composite-cli.test.js
+          tests/services/governed-publication-evidence-package.test.js
+          tests/ops/governed-publication-evidence-package-cli.test.js
+          tests/services/governed-publication-metadata.test.js
+          tests/services/governed-publication-review.test.js
+          tests/ops/governed-publication-review-cli.test.js
+          tests/ops/governed-reviewed-qa-repair.test.js
+          tests/ops/governed-reviewed-qa-repair-cli.test.js
+          tests/services/governed-reviewed-video-qa.test.js
+          tests/ops/governed-reviewed-video-qa-repair.test.js
+          tests/ops/governed-reviewed-video-qa-repair-cli.test.js
+          tests/services/governed-platform-dispatch.test.js
+          tests/services/governed-youtube-private-prestage.test.js
+          tests/services/governed-youtube-publisher-adapter.test.js
+          tests/services/governed-youtube-release-runway.test.js
+          tests/services/governed-youtube-reserve-promotion.test.js
+          tests/services/governed-youtube-runway-handlers.test.js
+          tests/services/governed-youtube-runway-scheduler.test.js
+          tests/services/governed-youtube-scheduled-replay-verifier.test.js
+          tests/services/governed-youtube-schedule-disarm-adapter.test.js
+          tests/services/governed-youtube-window-candidate-authority.test.js
+          tests/services/governed-youtube-window-checkpoint-primer-handler.test.js
+          tests/services/governed-youtube-window-checkpoint-primer.test.js
+          tests/services/governed-youtube-window-inventory-handler.test.js
+          tests/services/governed-youtube-window-inventory-monitor.test.js
+          tests/ops/governed-youtube-window-candidate-authority-cli.test.js
+          tests/services/guarded-youtube-window.test.js
+          tests/ops/guarded-youtube-window-cli.test.js
+          tests/ops/windows-live-guarded-runtime.test.js
+          tests/services/platform-safe-zones.test.js
+          tests/services/evercold-hyperframes-material.test.js
+          tests/services/evercold-platform-safe-zone-runtime.test.js
+          tests/db/publication-authority-audit-migration.test.js
+          tests/db/publication-governance-repository.test.js
+          tests/db/stabilisation-governance-upgrade.test.js
+          tests/db/stabilisation-migration-approval.test.js
+          tests/db/youtube-private-prestage-governance.test.js
+          tests/ops/autonomous-official-source-evidence-apply-cli.test.js
+          tests/services/autonomous-admission-control-proof.test.js
+          tests/services/autonomous-green-admission.test.js
+          tests/services/autonomous-official-candidate-staging.test.js
+          tests/services/autonomous-official-jit-admission-packet.test.js
+          tests/services/autonomous-official-publication-authority.test.js
+          tests/services/autonomous-official-source-evidence-apply.test.js
+          tests/services/bounded-verification-convergence.test.js
+          tests/services/breaking-source-evidence.test.js
+          tests/services/governed-autonomous-jit-admission-handler.test.js
+          tests/services/governed-youtube-autonomous-eligibility-attestation.test.js
+          tests/services/multi-lane-job-routing.test.js
+          tests/services/multi-lane-autonomous-jit-routing.test.js
+          tests/services/official-source-revalidation.test.js
+          tests/services/publication-admission.test.js
+          tests/services/publication-lifecycle.test.js
+          tests/services/publisher-lock.test.js
+          tests/services/publisher-qa-persistence.test.js
+          tests/services/pulse-editorial-contract.test.js
+          tests/services/pulse-gaming-currency-policy.test.js
+          tests/services/reddit-breaking-source.test.js
+          tests/services/youtube-account-binding-verifier.test.js
+          tests/services/youtube-private-object-verifier.test.js
+          tests/services/youtube-public-object-verifier.test.js
+          tests/services/youtube-scheduled-object-armer.test.js
+          tests/services/youtube-scheduled-object-disarmer.test.js
+          tests/services/youtube-upload-governance.test.js
+
+      - name: Validate repository operating rules
+        run: npm run ops:agent-rules
+
+      - name: Scan candidate source without exposing matched values
+        run: node tools/ci-secret-scan.js
+
+      - name: Run the full Node test suite
+        run: npm test
+
+      - name: Build the dashboard
+        run: npm run build

@@ -26,6 +26,9 @@ const {
 const {
   summariseLocalTtsHealth,
 } = require("../../lib/studio/local-tts-readiness");
+const {
+  CTA_POLICY,
+} = require("../../lib/services/pulse-editorial-contract");
 
 function tempAss(contents) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-v2-"));
@@ -555,35 +558,68 @@ test("v2 sound layer can pad the audio bed to a longer outro runtime", () => {
   );
 });
 
-test("studio production voice includes the branded spoken outro by default", () => {
-  const segments = buildProductionVoiceSegments({
-    hook: "Mega Mewtwo is real.",
-    body: "The event is free for all players.",
-    loop: "That is the real shift.",
-  });
+test("studio production voice does not append an unselected CTA", () => {
+  const story = {
+    id: "voice-segments-no-cta",
+    cta: "",
+    full_script: "Mega Mewtwo is real. The event is free for all players.",
+    cta_policy: {
+      policy_version: CTA_POLICY.version,
+      scope: "shorts",
+      include_cta: false,
+      copy_strategy: "none",
+      cohort_bucket: 1,
+      cohort_numerator: 1,
+      cohort_denominator: 3,
+      audit_hash: `sha256:${"b".repeat(64)}`,
+    },
+  };
+  const segments = buildProductionVoiceSegments(
+    {
+      hook: "Mega Mewtwo is real.",
+      body: "The event is free for all players.",
+      loop: "That is the real shift.",
+    },
+    { story },
+  );
 
-  const outro = segments.find((segment) => segment.label === "outro");
-  assert.equal(
-    outro.text,
-    "Follow Pulse Gaming so you never miss a beat.",
-  );
-  assert.equal(
-    resolveStudioOutroLine({}),
-    "Follow Pulse Gaming so you never miss a beat.",
-  );
+  assert.equal(segments.some((segment) => segment.label === "outro"), false);
+  assert.equal(segments.some((segment) => segment.label === "cta"), false);
+  assert.equal(resolveStudioOutroLine(story), "");
 });
 
-test("studio production voice can disable the spoken outro for private tests", () => {
+test("studio production voice adds only an authenticated contextual CTA", () => {
+  const cta = "Which version would you install first?";
+  const story = {
+    id: "voice-segments-selected-cta",
+    cta,
+    full_script: `The compatibility update is confirmed. ${cta}`,
+    cta_policy: {
+      policy_version: CTA_POLICY.version,
+      scope: "shorts",
+      include_cta: true,
+      copy_strategy: CTA_POLICY.copy_strategy,
+      cohort_bucket: 0,
+      cohort_numerator: 1,
+      cohort_denominator: 3,
+      audit_hash: `sha256:${"a".repeat(64)}`,
+    },
+  };
   const segments = buildProductionVoiceSegments(
     {
       hook: "Hook.",
       body: "Body.",
-      loop: "Loop.",
+      loop: "",
     },
-    { STUDIO_V2_DISABLE_SPOKEN_OUTRO: "true" },
+    { story },
   );
 
   assert.equal(segments.some((segment) => segment.label === "outro"), false);
+  assert.equal(
+    segments.find((segment) => segment.label === "cta")?.text,
+    cta,
+  );
+  assert.equal(resolveStudioOutroLine(story), cta);
 });
 
 test("v2 quality report does not penalise SFX when explicitly disabled", () => {
@@ -716,6 +752,12 @@ test("local TTS health summary recognises the loaded Pulse voice without leaking
           alias: "liam",
           loaded: true,
           ref_resolved: true,
+          reference_validation: {
+            technical_ready: true,
+            production_ready: true,
+            hash_matches: true,
+            rights_status: "CLEARED",
+          },
         },
       ],
       engine_count: 1,

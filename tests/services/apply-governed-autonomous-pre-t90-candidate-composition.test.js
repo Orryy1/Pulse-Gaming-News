@@ -24,6 +24,9 @@ const {
   canonicalSha256,
 } = require("../../lib/services/governed-youtube-release-runway");
 const {
+  canonicalHash,
+} = require("../../lib/services/url-canonical");
+const {
   MATERIALISER_ID: T90_SOURCE_MATERIALISER_ID,
   REPORT_SCHEMA_VERSION: T90_SOURCE_REPORT_SCHEMA_VERSION,
 } = require("../../lib/services/governed-autonomous-t90-eligibility-source-report");
@@ -60,17 +63,19 @@ function addStory(db, storyId, overrides = {}) {
   const extra = overrides.extra ?? { breaking_fast_track: true };
   db.prepare(
     `INSERT INTO stories
-       (id, title, full_script, approved, auto_approved, exported_path,
+       (id, title, url, full_script, approved, auto_approved, exported_path,
         breaking_score, score, channel_id, publish_status, youtube_post_id,
         _extra)
      VALUES
-       (@id, @title, @full_script, @approved, 1, @exported_path,
+       (@id, @title, @url, @full_script, @approved, @auto_approved, @exported_path,
         @breaking_score, 100, @channel_id, '', @youtube_post_id, @extra)`,
   ).run({
     id: storyId,
     title: `Official news for ${storyId}`,
+    url: overrides.url ?? null,
     full_script: script,
     approved: overrides.approved ?? 1,
+    auto_approved: overrides.auto_approved ?? 1,
     exported_path: overrides.exported_path ?? null,
     breaking_score: overrides.breaking_score ?? 100,
     channel_id: overrides.channel_id ?? "pulse-gaming",
@@ -86,7 +91,16 @@ function writeJson(filePath, value) {
   return { bytes, sha256: sha256(bytes) };
 }
 
-function candidateFixture(workspaceRoot, storyId, role) {
+function candidateFixture(
+  workspaceRoot,
+  storyId,
+  role,
+  {
+    databaseStoryId = null,
+    canonicalIdentityUrl = null,
+    inventoryFileSha256 = null,
+  } = {},
+) {
   const artifactEntries = STATIC_ARTIFACT_FIELDS.map((field) => [
     field,
     {
@@ -223,6 +237,25 @@ function candidateFixture(workspaceRoot, storyId, role) {
     report,
   );
 
+  const databaseStoryBinding = (() => {
+    if (!databaseStoryId) return null;
+    const body = {
+      schema_version:
+        "pulse-governed-autonomous-database-story-binding-v1",
+      canonical_story_id: storyId,
+      database_story_id: databaseStoryId,
+      canonical_identity_url: canonicalIdentityUrl,
+      inventory_file_sha256:
+        inventoryFileSha256 ||
+        sha256(`${databaseStoryId}:inventory`),
+      final_script_sha256: lineage.script_sha256,
+    };
+    return {
+      ...body,
+      binding_sha256: canonicalSha256(body),
+    };
+  })();
+
   return {
     mediaBytes,
     mediaPath,
@@ -237,6 +270,13 @@ function candidateFixture(workspaceRoot, storyId, role) {
       verdict: "GREEN",
       blockers: [],
       story_id: storyId,
+      ...(databaseStoryBinding
+        ? {
+            intake: {
+              database_story_binding: databaseStoryBinding,
+            },
+          }
+        : {}),
       green_supplement: {
         verdict: "GREEN",
         authority_scope: "LOCAL_PROOF_EVIDENCE_ONLY",
@@ -458,6 +498,323 @@ test("atomically binds exact media and admits PRIMARY/STANDBY through governed c
   assert.equal(result.platform_contacted, false);
   assert.equal(result.network_used, false);
   assert.equal(result.oauth_or_tokens_mutated, false);
+});
+
+test("atomically projects SHA-bound legacy RSS rows to canonical official identities before admission", (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-pre-t90-rss-projection-"),
+  );
+  const fixture = migratedFixture();
+  t.after(() => {
+    fixture.db.close();
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  });
+
+  const definitions = [
+    {
+      role: "PRIMARY",
+      databaseStoryId: "rss_xbox_wire_primary",
+      canonicalIdentityUrl:
+        "https://news.xbox.com/en-us/2026/07/30/primary-update/",
+    },
+    {
+      role: "STANDBY",
+      databaseStoryId: "rss_xbox_wire_standby",
+      canonicalIdentityUrl:
+        "https://news.xbox.com/en-us/2026/07/30/standby-update/",
+    },
+  ].map((entry) => ({
+    ...entry,
+    storyId:
+      `official_${canonicalHash(entry.canonicalIdentityUrl)}`,
+  }));
+
+  const candidates = definitions.map((entry) => {
+    const candidate = candidateFixture(
+      workspaceRoot,
+      entry.storyId,
+      entry.role,
+      entry,
+    );
+    addStory(fixture.db, entry.databaseStoryId, {
+      url: entry.canonicalIdentityUrl,
+      full_script: `${entry.storyId}: script`,
+      extra: {
+        breaking_fast_track: true,
+        canonical_identity_url: entry.canonicalIdentityUrl,
+      },
+    });
+    return candidate;
+  });
+
+  const composition = composeGovernedAutonomousPreT90Candidates({
+    schema_version: REQUEST_SCHEMA_VERSION,
+    mode: "LOCAL_PROOF",
+    now: NOW,
+    scheduled_for: SCHEDULED_FOR,
+    primary: {
+      coordinator_result: candidates[0].coordinator_result,
+      source_snapshot: candidates[0].source_snapshot,
+    },
+    reserve: {
+      coordinator_result: candidates[1].coordinator_result,
+      source_snapshot: candidates[1].source_snapshot,
+    },
+  });
+
+  for (const candidate of composition.candidates) {
+    const binding = candidate.database_story_binding;
+    fixture.db
+      .prepare(
+        `INSERT INTO jobs
+           (kind, channel_id, story_id, payload, status, run_at,
+            max_attempts, requires_gpu, idempotency_key, updated_at)
+         VALUES
+           ('produce_breaking_short', 'pulse-gaming', ?, ?, 'running',
+            ?, 1, 0, ?, ?)`,
+      )
+      .run(
+        binding.database_story_id,
+        JSON.stringify({
+          story_id: candidate.story_id,
+          candidate_revision_sha256:
+            candidate.candidate_revision_sha256,
+          autonomous_production_job: {
+            builder_result: {
+              story_id: candidate.story_id,
+              production_request: {
+                candidate_revision_sha256:
+                  candidate.candidate_revision_sha256,
+                locked_intake: {
+                  database_story_binding: binding,
+                },
+              },
+            },
+          },
+        }),
+        NOW,
+        `active-producer:${candidate.story_id}`,
+        NOW,
+      );
+  }
+
+  const result =
+    applyGovernedAutonomousPreT90CandidateComposition({
+      composition,
+      repos: fixture.repos,
+      workspaceRoot,
+      now: NOW,
+    });
+
+  assert.equal(result.verdict, "APPLIED");
+  assert.deepEqual(
+    result.candidates.map(({ story_id }) => story_id),
+    definitions.map(({ storyId }) => storyId),
+  );
+  for (const definition of definitions) {
+    const canonical = fixture.db
+      .prepare("SELECT * FROM stories WHERE id = ?")
+      .get(definition.storyId);
+    const legacy = fixture.db
+      .prepare("SELECT * FROM stories WHERE id = ?")
+      .get(definition.databaseStoryId);
+    assert.ok(canonical);
+    assert.equal(canonical.approved, 1);
+    assert.equal(canonical.auto_approved, 1);
+    assert.equal(
+      sha256(String(canonical.full_script).trim()),
+      sha256(`${definition.storyId}: script`),
+    );
+    assert.match(
+      legacy.publish_status,
+      /^canonical_projection_consumed$/,
+    );
+    assert.equal(legacy.approved, 0);
+    assert.equal(legacy.auto_approved, 0);
+    const canonicalExtra = JSON.parse(canonical._extra);
+    const legacyExtra = JSON.parse(legacy._extra);
+    assert.equal(
+      canonicalExtra.governed_autonomous_canonical_projection.role,
+      "CANONICAL",
+    );
+    assert.equal(
+      legacyExtra.governed_autonomous_canonical_projection.role,
+      "LEGACY_ALIAS_CONSUMED",
+    );
+    assert.equal(
+      canonicalExtra.governed_autonomous_canonical_projection
+        .binding_sha256,
+      legacyExtra.governed_autonomous_canonical_projection
+        .binding_sha256,
+    );
+  }
+
+  const replay =
+    applyGovernedAutonomousPreT90CandidateComposition({
+      composition,
+      repos: fixture.repos,
+      workspaceRoot,
+      now: NOW,
+    });
+  assert.equal(replay.verdict, "EXISTS");
+  assert.equal(
+    fixture.db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM stories WHERE id LIKE 'official_%'",
+      )
+      .get().count,
+    2,
+  );
+
+  const nonExactComposition =
+    composeGovernedAutonomousPreT90Candidates({
+      schema_version: REQUEST_SCHEMA_VERSION,
+      mode: "LOCAL_PROOF",
+      now: "2026-07-30T07:29:00.000Z",
+      scheduled_for: SCHEDULED_FOR,
+      primary: {
+        coordinator_result: candidates[0].coordinator_result,
+        source_snapshot: candidates[0].source_snapshot,
+      },
+      reserve: {
+        coordinator_result: candidates[1].coordinator_result,
+        source_snapshot: candidates[1].source_snapshot,
+      },
+    });
+  assert.throws(
+    () =>
+      applyGovernedAutonomousPreT90CandidateComposition({
+        composition: nonExactComposition,
+        repos: fixture.repos,
+        workspaceRoot,
+        now: "2026-07-30T07:29:00.000Z",
+      }),
+    (error) =>
+      error?.code ===
+      "pre_t90_apply_canonical_projection_conflict",
+  );
+});
+
+test("a rejected RSS standby rolls back the primary canonical projection and consumed marker", (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-pre-t90-rss-rollback-"),
+  );
+  const fixture = migratedFixture();
+  t.after(() => {
+    fixture.db.close();
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  });
+  const definitions = [
+    {
+      role: "PRIMARY",
+      databaseStoryId: "rss_projection_rollback_primary",
+      canonicalIdentityUrl:
+        "https://news.xbox.com/en-us/2026/07/30/rollback-primary/",
+      autoApproved: 1,
+    },
+    {
+      role: "STANDBY",
+      databaseStoryId: "rss_projection_rollback_standby",
+      canonicalIdentityUrl:
+        "https://news.xbox.com/en-us/2026/07/30/rollback-standby/",
+      autoApproved: 0,
+    },
+  ].map((entry) => ({
+    ...entry,
+    storyId:
+      `official_${canonicalHash(entry.canonicalIdentityUrl)}`,
+  }));
+  const candidates = definitions.map((entry) => {
+    const candidate = candidateFixture(
+      workspaceRoot,
+      entry.storyId,
+      entry.role,
+      entry,
+    );
+    addStory(fixture.db, entry.databaseStoryId, {
+      url: entry.canonicalIdentityUrl,
+      full_script: `${entry.storyId}: script`,
+      auto_approved: entry.autoApproved,
+      extra: {
+        breaking_fast_track: true,
+        canonical_identity_url: entry.canonicalIdentityUrl,
+      },
+    });
+    return candidate;
+  });
+  const composition = composeGovernedAutonomousPreT90Candidates({
+    schema_version: REQUEST_SCHEMA_VERSION,
+    mode: "LOCAL_PROOF",
+    now: NOW,
+    scheduled_for: SCHEDULED_FOR,
+    primary: {
+      coordinator_result: candidates[0].coordinator_result,
+      source_snapshot: candidates[0].source_snapshot,
+    },
+    reserve: {
+      coordinator_result: candidates[1].coordinator_result,
+      source_snapshot: candidates[1].source_snapshot,
+    },
+  });
+
+  fixture.db
+    .prepare(
+      `INSERT INTO platform_posts
+         (story_id, channel_id, platform, status)
+       VALUES (?, 'pulse-gaming', 'youtube', 'blocked')`,
+    )
+    .run(definitions[0].databaseStoryId);
+  assert.throws(
+    () =>
+      applyGovernedAutonomousPreT90CandidateComposition({
+        composition,
+        repos: fixture.repos,
+        workspaceRoot,
+        now: NOW,
+      }),
+    (error) =>
+      error?.code ===
+      "pre_t90_apply_database_story_publication_state_conflict",
+  );
+  fixture.db
+    .prepare("DELETE FROM platform_posts WHERE story_id = ?")
+    .run(definitions[0].databaseStoryId);
+
+  assert.throws(
+    () =>
+      applyGovernedAutonomousPreT90CandidateComposition({
+        composition,
+        repos: fixture.repos,
+        workspaceRoot,
+        now: NOW,
+      }),
+    (error) =>
+      error?.code ===
+      "pre_t90_apply_database_story_approval_required",
+  );
+
+  for (const definition of definitions) {
+    assert.equal(
+      fixture.repos.stories.get(definition.storyId),
+      undefined,
+    );
+    const legacy =
+      fixture.repos.stories.get(definition.databaseStoryId);
+    assert.equal(legacy.publish_status, "");
+    assert.equal(
+      Object.hasOwn(
+        JSON.parse(legacy._extra),
+        "governed_autonomous_canonical_projection",
+      ),
+      false,
+    );
+  }
+  assert.equal(
+    fixture.db
+      .prepare("SELECT COUNT(*) AS count FROM jobs")
+      .get().count,
+    0,
+  );
 });
 
 test("an exact replay is idempotent and does not duplicate audits or jobs", (t) => {
@@ -780,6 +1137,17 @@ test("only exact approved, unpublished breaking stories with the bound normalise
           .run("story-primary");
       },
       code: "pre_t90_apply_story_approval_required",
+    },
+    {
+      name: "not autonomously approved",
+      mutate(fixture) {
+        fixture.db
+          .prepare(
+            "UPDATE stories SET auto_approved = 0 WHERE id = ?",
+          )
+          .run("story-primary");
+      },
+      code: "pre_t90_apply_story_auto_approval_required",
     },
     {
       name: "already published",

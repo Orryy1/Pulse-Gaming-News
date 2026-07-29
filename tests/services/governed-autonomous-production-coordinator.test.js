@@ -17,6 +17,12 @@ const {
 const {
   buildLockedYazdInventoryFixture,
 } = require("../fixtures/governed-story-intake-inventory-bridge");
+const {
+  canonicalHash,
+} = require("../../lib/services/url-canonical");
+const {
+  createGovernedAutonomousDatabaseStoryBinding,
+} = require("../../lib/services/governed-autonomous-database-story-binding");
 
 const GENERATED_AT = "2026-07-29T12:00:00.000Z";
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
@@ -220,16 +226,27 @@ function commercialCreditReport() {
   };
 }
 
-async function fixture(t) {
+async function fixture(t, options = {}) {
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-autonomous-coordinator-"),
   );
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const locked = await buildLockedYazdInventoryFixture(root);
+  const locked = await buildLockedYazdInventoryFixture(root, {
+    ...(options.inventoryStoryId
+      ? { storyId: options.inventoryStoryId }
+      : {}),
+  });
   const workspaceRoot = path.join(root, "trusted-workspace");
   const candidateSourceRoot = path.join(root, "candidate-source");
   await fs.mkdir(workspaceRoot, { recursive: true });
-  const storyId = locked.storyId;
+  const canonicalIdentityUrl =
+    options.useRegistryPrimaryIdentity === true
+      ? locked.newsUrl
+      : locked.canonicalIdentityUrl;
+  const storyId =
+    options.useRegistryPrimaryIdentity === true
+      ? `official_${canonicalHash(canonicalIdentityUrl)}`
+      : locked.storyId;
   const request = {
     schema_version: REQUEST_SCHEMA_VERSION,
     mode: "LOCAL_PROOF",
@@ -242,11 +259,20 @@ async function fixture(t) {
     candidate_source_root: candidateSourceRoot,
     candidate_workspace_relative_root: `output/canary/${storyId}`,
     locked_intake: {
+      database_story_binding:
+        createGovernedAutonomousDatabaseStoryBinding({
+          canonical_story_id: storyId,
+          database_story_id: locked.storyId,
+          canonical_identity_url: canonicalIdentityUrl,
+          inventory_file_sha256:
+            locked.registryFileSha256,
+          final_script_sha256: locked.scriptSha256,
+        }),
       inventory_path: locked.registryPath,
       inventory_file_sha256: locked.registryFileSha256,
       inventory_root: locked.inventoryRoot,
       allowed_roots: [locked.outputRoot, root],
-      canonical_identity_url: locked.canonicalIdentityUrl,
+      canonical_identity_url: canonicalIdentityUrl,
       final_script: locked.script,
       final_script_sha256: locked.scriptSha256,
       script_claim_bindings: locked.scriptClaimBindings,
@@ -274,12 +300,12 @@ async function fixture(t) {
       description: [
         "Yet Another Zombie Defense HD is free to keep for a limited time.",
         "",
-        `Official source: ${locked.canonicalIdentityUrl}`,
+        `Official source: ${canonicalIdentityUrl}`,
         "Official source: Steam",
         "",
         "#Steam #FreeGames #GamingNews #Shorts",
       ].join("\n"),
-      official_source_url: locked.canonicalIdentityUrl,
+      official_source_url: canonicalIdentityUrl,
       required_attributions: ["Official source: Steam"],
       subject_terms: [
         "Yet Another Zombie Defense HD",
@@ -527,6 +553,87 @@ test("materialises the locked official story through real governed staging into 
   assert.equal(result.safety.platform_contacted, false);
   assert.equal(result.safety.narration_network_used, true);
   assert.equal(result.safety.external_publish_authorised, false);
+});
+
+test("canonicalises an exact inventory-bound RSS identity before autonomous production", async (t) => {
+  const input = await fixture(t, {
+    inventoryStoryId: "rss_locked_yazd_official",
+    useRegistryPrimaryIdentity: true,
+  });
+
+  const result =
+    await materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    );
+
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(
+    result.story_id,
+    `official_${canonicalHash(input.locked.newsUrl)}`,
+  );
+  assert.equal(
+    result.intake.legacy_story_id,
+    "rss_locked_yazd_official",
+  );
+  assert.equal(
+    result.intake.database_story_binding.database_story_id,
+    "rss_locked_yazd_official",
+  );
+  assert.equal(
+    result.intake.database_story_binding.canonical_story_id,
+    result.story_id,
+  );
+  assert.equal(
+    result.intake.database_story_binding.inventory_file_sha256,
+    input.locked.registryFileSha256,
+  );
+});
+
+test("binds commercial narration evidence to the later observed credit-governor timestamp without restamping deterministic media", async (t) => {
+  const input = await fixture(t);
+  const creditObservedAt = "2026-07-29T12:05:00.000Z";
+  const generateNarration = input.dependencies.generateNarration;
+  input.dependencies.generateNarration = async (request) => {
+    const generated = await generateNarration(request);
+    return {
+      ...generated,
+      credit_report: {
+        ...generated.credit_report,
+        generated_at: creditObservedAt,
+      },
+    };
+  };
+
+  const result =
+    await materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    );
+  const receipt = JSON.parse(
+    await fs.readFile(
+      result.narration.commercial_receipt_path,
+      "utf8",
+    ),
+  );
+  const narrationManifest = JSON.parse(
+    await fs.readFile(result.narration.manifest_path, "utf8"),
+  );
+  const programmeManifest = JSON.parse(
+    await fs.readFile(result.programme.source_manifest_path, "utf8"),
+  );
+
+  assert.equal(receipt.generated_at, creditObservedAt);
+  assert.equal(
+    receipt.account_entitlement.observed_at,
+    creditObservedAt,
+  );
+  assert.equal(
+    narrationManifest.licence.attested_at,
+    creditObservedAt,
+  );
+  assert.equal(narrationManifest.generated_at, GENERATED_AT);
+  assert.equal(programmeManifest.generated_at, GENERATED_AT);
 });
 
 test("closed request rejects authority smuggling before narration or rendering starts", async (t) => {

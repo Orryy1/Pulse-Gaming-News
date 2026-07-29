@@ -685,3 +685,148 @@ test("editorial backfill rotates past recently attempted stories before filling 
     ),
   );
 });
+
+test("editorial backfill advances past permanent idempotency conflicts instead of starving deferred official stories", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-editorial-backfill-conflict-rotation-"),
+  );
+  t.after(() => fs.remove(outDir));
+  const stories = Array.from({ length: 8 }, (_, index) =>
+    governedStory({
+      id: `conflict-rotation-${index + 1}`,
+      title: `Official Xbox conflict rotation update ${index + 1}`,
+      article_url:
+        `https://news.xbox.com/en-us/2026/07/28/conflict-rotation-${index + 1}/`,
+      url:
+        `https://news.xbox.com/en-us/2026/07/28/conflict-rotation-${index + 1}/`,
+      timestamp:
+        `2026-07-28T${String(13 - index).padStart(2, "0")}:30:00.000Z`,
+    }),
+  );
+  const conflictingIds = new Set(
+    stories.slice(0, 6).map((story) => story.id),
+  );
+  const queued = [];
+
+  const result =
+    await handlers.governed_editorial_evidence_backfill(
+      {
+        kind: "governed_editorial_evidence_backfill",
+        channel_id: "pulse-gaming",
+        payload: {
+          now: NOW,
+          out_dir: outDir,
+          stories,
+          latest_decisions: stories.map((item, index) =>
+            governedDecision(item.id, {
+              total: 100 - index,
+            }),
+          ),
+          scheduler_profile: "governed_multi_lane",
+          governed_multi_lane: true,
+          planning_only: true,
+          live_publish_enabled: false,
+          publish_authority: false,
+          human_admission_required: true,
+          human_review_required: true,
+        },
+      },
+      {
+        repos: {
+          jobs: {
+            enqueue(input) {
+              if (conflictingIds.has(input.story_id)) {
+                const error = new Error("job_idempotency_conflict");
+                error.code = "job_idempotency_conflict";
+                throw error;
+              }
+              queued.push(input);
+              return { id: 300 + queued.length, ...input };
+            },
+          },
+        },
+        log() {},
+      },
+    );
+
+  assert.equal(result.status, "READY", JSON.stringify(result));
+  assert.equal(result.queued_count, 2);
+  assert.deepEqual(
+    queued.map((item) => item.story_id),
+    stories.slice(6).map((item) => item.id),
+  );
+  const report = await fs.readJson(result.report_json);
+  assert.equal(report.enqueue_summary.attempted_count, 8);
+  assert.equal(report.enqueue_summary.already_scheduled_count, 6);
+  assert.equal(report.enqueue_summary.queued_count, 2);
+  assert.deepEqual(
+    report.enqueue_attempts
+      .filter(
+        (attempt) =>
+          attempt.reason ===
+          "governed_editorial_evidence_already_scheduled",
+      )
+      .map((attempt) => attempt.story_id),
+    stories.slice(0, 6).map((item) => item.id),
+  );
+});
+
+test("editorial backfill reports all-conflict supply as already scheduled, never up to date", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-editorial-backfill-all-conflict-"),
+  );
+  t.after(() => fs.remove(outDir));
+  const stories = Array.from({ length: 3 }, (_, index) =>
+    governedStory({
+      id: `all-conflict-${index + 1}`,
+      title: `Official Xbox existing evidence ${index + 1}`,
+      article_url:
+        `https://news.xbox.com/en-us/2026/07/28/all-conflict-${index + 1}/`,
+      url:
+        `https://news.xbox.com/en-us/2026/07/28/all-conflict-${index + 1}/`,
+    }),
+  );
+
+  const result =
+    await handlers.governed_editorial_evidence_backfill(
+      {
+        kind: "governed_editorial_evidence_backfill",
+        channel_id: "pulse-gaming",
+        payload: {
+          now: NOW,
+          out_dir: outDir,
+          stories,
+          latest_decisions: stories.map((item) =>
+            governedDecision(item.id),
+          ),
+          scheduler_profile: "governed_multi_lane",
+          governed_multi_lane: true,
+          planning_only: true,
+          live_publish_enabled: false,
+          publish_authority: false,
+          human_admission_required: true,
+          human_review_required: true,
+        },
+      },
+      {
+        repos: {
+          jobs: {
+            enqueue() {
+              const error = new Error("job_idempotency_conflict");
+              error.code = "job_idempotency_conflict";
+              throw error;
+            },
+          },
+        },
+        log() {},
+      },
+    );
+
+  assert.equal(result.status, "ALREADY_SCHEDULED");
+  assert.notEqual(result.status, "UP_TO_DATE");
+  assert.equal(result.queued_count, 0);
+  const report = await fs.readJson(result.report_json);
+  assert.equal(report.enqueue_summary.attempted_count, 3);
+  assert.equal(report.enqueue_summary.already_scheduled_count, 3);
+  assert.equal(report.enqueue_summary.queued_count, 0);
+});

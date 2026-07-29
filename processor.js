@@ -13,6 +13,7 @@ assertValidRuntimeConfig(process.env);
 
 const axios = require("axios");
 const fs = require("fs-extra");
+const path = require("node:path");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const { countSpokenWords } = require("./lib/services/short-runtime-planner");
@@ -32,6 +33,12 @@ const {
   isStoryTitleDuplicate,
   titleSimilarity,
 } = require("./lib/services/story-title-dedupe");
+const {
+  classifyGovernedSource,
+} = require("./lib/services/governed-editorial-evidence-ingress");
+const {
+  BREAKING_SOURCE_POLICY,
+} = require("./lib/services/breaking-source-policy");
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");
@@ -41,6 +48,8 @@ const LOCAL_SCRIPT_FALLBACK_IDENTITY = Object.freeze({
   model: "deterministic-review-fallback",
   adapter: "processor.manual-review-fallback",
 });
+const MAX_AUTONOMOUS_SCRIPT_REPAIRS_PER_PASS = 4;
+const AUTONOMOUS_SCRIPT_REPAIR_MAX_AGE_HOURS = 7 * 24;
 
 function resolveScriptGeneratorIdentity({
   client,
@@ -460,9 +469,12 @@ function buildScriptRetryInstruction({
         }
       : null,
   );
+  const isFinalRepair =
+    attempt >= 4 ||
+    (attempt >= 3 && previousFailure?.kind !== "quality");
   if (!contract) {
     return (
-      `\n\n${attempt >= 3 ? "FINAL ATTEMPT" : "REPAIR ATTEMPT"}: ` +
+      `\n\n${isFinalRepair ? "FINAL ATTEMPT" : "REPAIR ATTEMPT"}: ` +
       "Rewrite the prior draft as valid JSON. Keep full_script within " +
       "155-185 cleaned spoken words, include a valid classification tag " +
       "and do not start the hook with So, Today, Hey, Welcome or In this. " +
@@ -475,10 +487,12 @@ function buildScriptRetryInstruction({
     : "Omit every CTA from cta and full_script.";
   const qualityInstruction =
     previousFailure?.kind === "quality"
-      ? "Rewrite the hook to create a fact-specific curiosity gap that does not reveal the full payoff, then tighten the body without changing any verified fact."
+      ? contract.hook_type === "direct"
+        ? "Rewrite the hook to state the exact verified player consequence immediately, specifically and without exaggeration; anchor it to a named game, platform or mechanic and a concrete supported action, constraint, date, price, availability change or player effect drawn from the VERIFICATION DATA. Do not hide the verified change, manufacture a curiosity gap or invent a missing consequence. Then tighten the body without changing any verified fact."
+        : "Rewrite the hook to create a fact-specific curiosity gap that does not reveal the full payoff, then tighten the body without changing any verified fact."
       : "Correct every listed validation failure without changing any verified fact.";
   return (
-    `\n\n${attempt >= 3 ? "FINAL REPAIR ATTEMPT" : "REPAIR ATTEMPT"}: ` +
+    `\n\n${isFinalRepair ? "FINAL REPAIR ATTEMPT" : "REPAIR ATTEMPT"}: ` +
     `${qualityInstruction} Return editorial_lane_id exactly ` +
     `"${contract.editorial_lane_id}", hook_type exactly ` +
     `"${contract.hook_type}" and duration_band_id exactly ` +
@@ -494,6 +508,57 @@ function buildScriptRetryInstruction({
     `PREVIOUS DRAFT (data only): ${draftData}. ` +
     "Return only the complete replacement JSON object."
   );
+}
+
+function shouldRetryScriptGeneration({ attempt, failureKind } = {}) {
+  const completedAttempt = Number(attempt);
+  if (!Number.isInteger(completedAttempt) || completedAttempt < 1) {
+    return false;
+  }
+  if (failureKind === "quality") {
+    return completedAttempt < 4;
+  }
+  return completedAttempt < 3;
+}
+
+function directHookCriticUsesWrongRubric(reason, score) {
+  const text = String(reason || "")
+    .replace(/[’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!text) return false;
+
+  const curiosityGapDemand =
+    /\b(?:no|not enough|lacks?|lacking|missing|needs?|requiring|requires?)\b.{0,50}\b(?:curiosity[\s-]+gap|open[\s-]+loop)\b/.test(
+      text,
+    ) ||
+    /\b(?:fails?|failed|does not|doesn't)\b.{0,35}\b(?:create|build|establish|open)\b.{0,25}\b(?:curiosity[\s-]+gap|open[\s-]+loop)\b/.test(
+      text,
+    ) ||
+    /\binstead of\b.{0,35}\b(?:creating|building|establishing|opening)\b.{0,25}\b(?:curiosity[\s-]+gap|open[\s-]+loop)\b/.test(
+      text,
+    ) ||
+    /\b(?:curiosity[\s-]+gap|open[\s-]+loop)\b.{0,35}\b(?:absent|missing|required|needed|weak|none)\b/.test(
+      text,
+    );
+  const revealPenalty =
+    /\b(?:gives?|giving|gave)\s+away\b.{0,50}\b(?:answer|payoff|premise|news|change|update)\b/.test(
+      text,
+    ) ||
+    /\b(?:reveals?|revealed|revealing)\b.{0,35}\btoo\b.{0,15}\b(?:early|soon|much|quickly)\b/.test(
+      text,
+    ) ||
+    /\b(?:hide|hides|hiding|withhold|withholds|withholding|delay|delays|delaying|save|saves|saving)\b.{0,45}\b(?:answer|payoff|premise|verified (?:fact|change)|core (?:fact|change)|news|update)\b/.test(
+      text,
+    );
+  const lowScoreRevealPenalty =
+    Number(score) < 7 &&
+    /\b(?:reveals?|revealed|revealing)\b.{0,35}\b(?:entire|whole|full)\b.{0,20}\b(?:answer|payoff|premise|news|change|update)\b/.test(
+      text,
+    );
+
+  return curiosityGapDemand || revealPenalty || lowScoreRevealPenalty;
 }
 
 // --- Quality gate: score script 1-10 via second LLM call ---
@@ -521,40 +586,71 @@ async function scoreScript(
       contract?.duration_variant === "short"
         ? "- Structural fit (10%): Does the script deliver the lane promise without padding or forcing a mid-roll pivot into a short single-fact update?"
         : "- Midpoint retention (10%): For a standard-runtime or recap story, does a fresh, fact-specific pivot reset attention without using a stock phrase?";
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
-      system: `You score ${formatLabel} scripts for a ${channel.niche} news channel called ${channel.name} (1-10). Criteria (in priority order):
-- HOOK STRENGTH (40% of score): Does it use a CURIOSITY GAP? Does it open a knowledge gap that compels the viewer to keep watching? A hook that reveals the answer or is vague scores 1-3. A hook that creates genuine "wait, WHAT?" tension scores 8-10.
+    const hookCriterion =
+      contract?.hook_type === "direct"
+        ? '- HOOK STRENGTH (40% of score): A direct hook should state the verified consequence immediately in specific, player-relevant language. It must not be penalised for revealing the core verified change. Score whether the exact consequence is clear, surprising or useful enough to stop the scroll without exaggeration.'
+        : '- HOOK STRENGTH (40% of score): Does it use a CURIOSITY GAP? Does it open a knowledge gap that compels the viewer to keep watching? A hook that reveals the answer or is vague scores 1-3. A hook that creates genuine "wait, WHAT?" tension scores 8-10.';
+    const baseSystem = `You score ${formatLabel} scripts for a ${channel.niche} news channel called ${channel.name} (1-10). Criteria (in priority order):
+${hookCriterion}
 ${structureCriterion}
 - Information density (15%): facts per sentence, no filler
 - Source credibility (15%): does it cite sources?
 - Pacing (10%): punchy, no dead air, urgent tone
 ${ctaCriterion}
 A script with a weak hook can NEVER score above 5, regardless of how good the body is.
-Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`,
-      messages: [
-        {
-          role: "user",
-          content: `Score this script:\n${script.full_script}\n\nClassification: ${script.classification}\nStory: ${story.title}`,
-        },
-      ],
-    });
+Reply with ONLY a JSON object: { "score": N, "reason": "one sentence" }`;
+    const governedHookType = String(
+      contract?.hook_type || script?.hook_type || "unspecified",
+    ).toUpperCase();
+    const scoringAttempts = contract?.hook_type === "direct" ? 2 : 1;
 
-    let text = response.content[0].text.trim();
-    if (text.startsWith("```")) {
-      text = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+    for (let scoringAttempt = 1; scoringAttempt <= scoringAttempts; scoringAttempt++) {
+      const rubricCorrection =
+        scoringAttempt > 1
+          ? "\nRUBRIC-CORRECTION RESCORE: The previous critic applied the wrong hook rubric. This governed hook type is DIRECT. Assess whether it states the exact verified player consequence immediately and specifically. Do not apply an open-loop or curiosity-gap criterion. Do not increase the score automatically: score the script afresh against every listed criterion, and return a low score if it is vague, inaccurate, exaggerated or structurally weak."
+          : "";
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 150,
+        system: baseSystem + rubricCorrection,
+        messages: [
+          {
+            role: "user",
+            content:
+              `Score this script:\n${script.full_script}\n\n` +
+              `Classification: ${script.classification}\n` +
+              `Governed hook type: ${governedHookType}\n` +
+              `Story: ${story.title}`,
+          },
+        ],
+      });
+
+      let text = response.content[0].text.trim();
+      if (text.startsWith("```")) {
+        text = text
+          .replace(/^```(?:json)?\s*\n?/, "")
+          .replace(/\n?```\s*$/, "");
+      }
+      const result = JSON.parse(text);
+      const score = Number(result.score);
+      if (!Number.isFinite(score) || score < 1 || score > 10) {
+        throw new Error("quality_gate_score_invalid");
+      }
+      const reason = String(result.reason || "");
+      if (
+        contract?.hook_type === "direct" &&
+        directHookCriticUsesWrongRubric(reason, score)
+      ) {
+        if (scoringAttempt < scoringAttempts) continue;
+        throw new Error("quality_gate_direct_hook_rubric_conflict");
+      }
+      return {
+        score,
+        reason,
+        failed: false,
+      };
     }
-    const result = JSON.parse(text);
-    const score = Number(result.score);
-    if (!Number.isFinite(score) || score < 1 || score > 10) {
-      throw new Error("quality_gate_score_invalid");
-    }
-    return {
-      score,
-      reason: String(result.reason || ""),
-      failed: false,
-    };
+    throw new Error("quality_gate_attempts_exhausted");
   } catch {
     console.log(
       "[processor] Quality gate failed; human review is required",
@@ -753,25 +849,22 @@ async function process_stories() {
   // Cross-cycle dedup: check pending stories against existing daily_news.json
   const existingStories = await db.getStories();
   if (existingStories.length > 0) {
-    const before = stories.length;
-    stories = stories.filter((pending) => {
-      // Check by ID
-      if (existingStories.some((e) => e.id === pending.id)) {
-        console.log(`[processor] Dedup (ID match): ${pending.title}`);
-        return false;
-      }
-      // Check by title similarity (catches same story from different sources/IDs)
-      const similar = existingStories.find(
-        (e) => isStoryTitleDuplicate(e.title, pending.title),
+    const preferredStoryIds =
+      await discoverReadyGovernedInventoryStoryIds();
+    const repairCandidates =
+      selectAutonomousScriptRepairCandidates(
+        stories,
+        existingStories,
+        { preferredStoryIds },
       );
-      if (similar) {
-        console.log(
-          `[processor] Dedup (title match): "${pending.title}" ~ "${similar.title}"`,
-        );
-        return false;
-      }
-      return true;
-    });
+    if (repairCandidates.length > 0) {
+      stories = [...stories, ...repairCandidates];
+      console.log(
+        `[processor] Added ${repairCandidates.length} recent governed script repair candidate(s) outside the current hunt selection`,
+      );
+    }
+    const before = stories.length;
+    stories = filterPendingStoriesForGeneration(stories, existingStories);
     if (before !== stories.length) {
       console.log(
         `[processor] Dedup: filtered ${before - stories.length} duplicates, ${stories.length} remaining`,
@@ -881,7 +974,7 @@ Today's date is ${today}. You MUST follow these rules:
     let previousDraft = null;
     let previousFailure = null;
 
-    while (attempts < 3) {
+    while (attempts < 4) {
       attempts++;
       try {
         if (!client) {
@@ -942,7 +1035,12 @@ Today's date is ${today}. You MUST follow these rules:
           console.log(
             `[processor] Validation failed (attempt ${attempts}): ${errors.join(", ")}`,
           );
-          if (attempts >= 3) {
+          if (
+            !shouldRetryScriptGeneration({
+              attempt: attempts,
+              failureKind: "validation",
+            })
+          ) {
             throw new Error(
               `script_contract_validation_exhausted:${errors.join("; ")}`,
             );
@@ -974,7 +1072,15 @@ Today's date is ${today}. You MUST follow these rules:
             `[processor] Quality gate: ${gate.score}/10 - ${gate.reason}`,
           );
           if (gate.score < 7) {
-            if (attempts >= 3) {
+            const failureKind = gate.failed
+              ? "quality_unavailable"
+              : "quality";
+            if (
+              !shouldRetryScriptGeneration({
+                attempt: attempts,
+                failureKind,
+              })
+            ) {
               throw new Error(
                 gate.failed
                   ? "script_quality_scoring_unavailable"
@@ -986,7 +1092,7 @@ Today's date is ${today}. You MUST follow these rules:
             );
             previousDraft = script;
             previousFailure = {
-              kind: "quality",
+              kind: failureKind,
               score: gate.score,
               reason: gate.reason,
             };
@@ -1029,7 +1135,22 @@ Today's date is ${today}. You MUST follow these rules:
           storyId: story.id,
           attempt: attempts,
         });
-        if (attempts >= 3) {
+        const message = String(err?.message || "");
+        const failureKind = message.startsWith(
+          "script_contract_validation_exhausted:",
+        )
+          ? "validation"
+          : message === "script_quality_threshold_exhausted"
+            ? "quality"
+            : message === "script_quality_scoring_unavailable"
+              ? "quality_unavailable"
+              : "provider";
+        if (
+          !shouldRetryScriptGeneration({
+            attempt: attempts,
+            failureKind,
+          })
+        ) {
           usedLocalFallback = true;
           script = {
             classification: "[BREAKING]",
@@ -1044,7 +1165,13 @@ Today's date is ${today}. You MUST follow these rules:
             contract_failures: ["script_generation_exhausted"],
           };
           applyPulseEditorialMetadata(script, scriptContract, ctaDecision);
+          break;
         }
+        previousFailure = {
+          kind: failureKind,
+          error: message,
+        };
+        script = null;
       }
     }
 
@@ -1110,10 +1237,255 @@ Today's date is ${today}. You MUST follow these rules:
   return enriched;
 }
 
+function needsScriptGenerationRepair(story = {}) {
+  const title = String(story.title || "").trim();
+  const hook = String(story.hook || "").trim();
+  const body = String(story.body || "").trim();
+  const fullScript = String(
+    story.full_script || story.tts_script || "",
+  ).trim();
+  const contractFailures = Array.isArray(story.contract_failures)
+    ? story.contract_failures.map((failure) =>
+        String(failure || "").trim().toLowerCase(),
+      )
+    : [];
+
+  if (
+    contractFailures.includes("script_generation_exhausted") ||
+    /script generation failed[.!]?\s*manual edit required/i.test(body)
+  ) {
+    return true;
+  }
+
+  if (!fullScript) return true;
+
+  const normalise = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  const normalisedFullScript = normalise(fullScript);
+
+  if (
+    normalisedFullScript &&
+    [title, hook]
+      .map(normalise)
+      .filter(Boolean)
+      .includes(normalisedFullScript)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function selectAutonomousScriptRepairCandidates(
+  pendingStories = [],
+  existingStories = [],
+  {
+    now = new Date().toISOString(),
+    maxRepairs = MAX_AUTONOMOUS_SCRIPT_REPAIRS_PER_PASS,
+    preferredStoryIds = [],
+  } = {},
+) {
+  const nowTimestamp = Date.parse(String(now || ""));
+  if (!Number.isFinite(nowTimestamp)) return [];
+  const maximumAgeMs =
+    AUTONOMOUS_SCRIPT_REPAIR_MAX_AGE_HOURS * 60 * 60 * 1000;
+  const pendingIds = new Set(
+    (Array.isArray(pendingStories) ? pendingStories : [])
+      .map((story) => String(story?.id || "").trim())
+      .filter(Boolean),
+  );
+  const preferredIds = new Set(
+    (preferredStoryIds instanceof Set ||
+    Array.isArray(preferredStoryIds)
+      ? [...preferredStoryIds]
+      : []
+    )
+      .map((storyId) => String(storyId || "").trim())
+      .filter(Boolean),
+  );
+  const limit = Math.max(
+    1,
+    Math.min(
+      MAX_AUTONOMOUS_SCRIPT_REPAIRS_PER_PASS,
+      Number.isInteger(Number(maxRepairs))
+        ? Number(maxRepairs)
+        : MAX_AUTONOMOUS_SCRIPT_REPAIRS_PER_PASS,
+    ),
+  );
+
+  return (Array.isArray(existingStories) ? existingStories : [])
+    .filter((story) => {
+      const storyId = String(story?.id || "").trim();
+      if (
+        !storyId ||
+        pendingIds.has(storyId) ||
+        !needsScriptGenerationRepair(story) ||
+        String(story?.youtube_post_id || "").trim()
+      ) {
+        return false;
+      }
+      if (
+        ["failed", "published", "uploaded"].includes(
+          String(story?.publish_status || "")
+            .trim()
+            .toLowerCase(),
+        )
+      ) {
+        return false;
+      }
+      const publishedTimestamp = Date.parse(
+        String(
+          story?.published_at ||
+            story?.timestamp ||
+            story?.created_at ||
+            "",
+        ),
+      );
+      if (
+        !Number.isFinite(publishedTimestamp) ||
+        publishedTimestamp > nowTimestamp + 5 * 60 * 1000 ||
+        nowTimestamp - publishedTimestamp > maximumAgeMs
+      ) {
+        return false;
+      }
+      const sourceUrl = String(
+        story?.source_url ||
+          story?.primary_source_url ||
+          story?.article_url ||
+          story?.url ||
+          "",
+      ).trim();
+      const sourceClass = classifyGovernedSource(
+        sourceUrl,
+        BREAKING_SOURCE_POLICY,
+      )?.source_class;
+      return (
+        sourceClass === "OFFICIAL_FIRST_PARTY" ||
+        (preferredIds.has(storyId) &&
+          sourceClass === "TRUSTED_EDITORIAL")
+      );
+    })
+    .sort((left, right) => {
+      const preferredDelta =
+        Number(preferredIds.has(String(right?.id || ""))) -
+        Number(preferredIds.has(String(left?.id || "")));
+      if (preferredDelta) return preferredDelta;
+      const scoreDelta =
+        Number(right?.breaking_score || right?.score || 0) -
+        Number(left?.breaking_score || left?.score || 0);
+      if (scoreDelta) return scoreDelta;
+      const timeDelta =
+        Date.parse(
+          String(
+            right?.published_at ||
+              right?.timestamp ||
+              right?.created_at ||
+              "",
+          ),
+        ) -
+        Date.parse(
+          String(
+            left?.published_at ||
+              left?.timestamp ||
+              left?.created_at ||
+              "",
+          ),
+        );
+      if (Number.isFinite(timeDelta) && timeDelta) {
+        return timeDelta;
+      }
+      return String(left?.id || "").localeCompare(
+        String(right?.id || ""),
+      );
+    })
+    .slice(0, limit);
+}
+
+async function discoverReadyGovernedInventoryStoryIds({
+  outputRoot = path.resolve(__dirname, "output"),
+  scanGovernedEditorialInventory = require(
+    "./lib/services/governed-editorial-inventory-registry"
+  ).scanGovernedEditorialInventory,
+} = {}) {
+  try {
+    const root = path.resolve(outputRoot);
+    const report = await scanGovernedEditorialInventory({
+      rootDir: path.join(root, "editorial-inventory"),
+      allowedRoots: [root],
+      maximumManifests: 250,
+    });
+    if (
+      report?.mode !== "LOCAL_PROOF" ||
+      report?.safety?.read_only !== true ||
+      report?.safety?.network_used !== false ||
+      !Array.isArray(report?.entries)
+    ) {
+      return new Set();
+    }
+    return new Set(
+      report.entries
+        .filter(
+          (entry) =>
+            Array.isArray(entry?.blockers) &&
+            entry.blockers.length === 0 &&
+            String(
+              entry?.story?.verification_status || "",
+            ).toUpperCase() === "CONFIRMED",
+        )
+        .map((entry) =>
+          String(entry?.story?.id || "").trim(),
+        )
+        .filter(Boolean),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function filterPendingStoriesForGeneration(
+  pendingStories = [],
+  existingStories = [],
+  { logger = console.log } = {},
+) {
+  return pendingStories.filter((pending) => {
+    // Preserve successfully generated stories, but allow the hunter to repair
+    // an exact row whose previous generation attempt exhausted its retries.
+    const exact = existingStories.find((existing) => existing.id === pending.id);
+    if (exact && !needsScriptGenerationRepair(exact)) {
+      logger(`[processor] Dedup (ID match): ${pending.title}`);
+      return false;
+    }
+    if (exact) {
+      logger(`[processor] Repairing failed script generation: ${pending.title}`);
+    }
+
+    // A completed near-identical story still blocks duplicate publication. A
+    // different failed row does not prevent this source from being repaired.
+    const similar = existingStories.find(
+      (existing) =>
+        existing.id !== pending.id &&
+        !needsScriptGenerationRepair(existing) &&
+        isStoryTitleDuplicate(existing.title, pending.title),
+    );
+    if (similar) {
+      logger(
+        `[processor] Dedup (title match): "${pending.title}" ~ "${similar.title}"`,
+      );
+      return false;
+    }
+    return true;
+  });
+}
+
 module.exports = process_stories;
 module.exports.applyPulseEditorialMetadata = applyPulseEditorialMetadata;
 module.exports.buildScriptRetryInstruction =
   buildScriptRetryInstruction;
+module.exports.shouldRetryScriptGeneration =
+  shouldRetryScriptGeneration;
 module.exports.validate = validate;
 module.exports.editorWordCountInstruction = editorWordCountInstruction;
 module.exports.cleanForTTS = cleanForTTS;
@@ -1122,6 +1494,14 @@ module.exports.scoreScript = scoreScript;
 module.exports.resolveScriptGeneratorIdentity =
   resolveScriptGeneratorIdentity;
 module.exports.titleSimilarity = titleSimilarity;
+module.exports.needsScriptGenerationRepair =
+  needsScriptGenerationRepair;
+module.exports.selectAutonomousScriptRepairCandidates =
+  selectAutonomousScriptRepairCandidates;
+module.exports.discoverReadyGovernedInventoryStoryIds =
+  discoverReadyGovernedInventoryStoryIds;
+module.exports.filterPendingStoriesForGeneration =
+  filterPendingStoriesForGeneration;
 
 if (require.main === module) {
   process_stories().catch((err) => {

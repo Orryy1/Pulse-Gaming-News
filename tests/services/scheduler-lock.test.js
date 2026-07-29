@@ -228,3 +228,144 @@ test("cron fire revalidates ownership in the enqueue transaction", () => {
     f.db.close();
   }
 });
+
+test("autonomous planner and T-94 cron fires bind the exact UTC publish window without catch-up across UK DST boundaries", () => {
+  for (const scenario of [
+    {
+      kind: "plan_governed_autonomous_window_production",
+      name: "plan_governed_autonomous_window_production_morning",
+      cron: "35 6 * * *",
+      now: "2026-03-29T06:35:00.000Z",
+      publishHour: 9,
+      scheduledFor: "2026-03-29T09:00:00.000Z",
+    },
+    {
+      kind: "prepare_governed_autonomous_pre_t90_window",
+      name: "prepare_governed_autonomous_pre_t90_window_evening",
+      cron: "26 17 * * *",
+      now: "2026-10-25T17:26:00.000Z",
+      publishHour: 19,
+      scheduledFor: "2026-10-25T19:00:00.000Z",
+    },
+  ]) {
+    const f = fixture();
+    f.db
+      .prepare(
+        `INSERT INTO schedules
+           (name, kind, cron_expr, payload, priority, enabled)
+         VALUES (?, ?, ?, ?, 3, 1)`,
+      )
+      .run(
+        scenario.name,
+        scenario.kind,
+        scenario.cron,
+        JSON.stringify({
+          publish_hour_utc: scenario.publishHour,
+          scheduler_profile: "governed_multi_lane",
+          catch_up_allowed: false,
+          publish_authority: false,
+          external_posting: false,
+          idempotencyTemplate: `${scenario.kind}:{date}:${String(
+            scenario.publishHour,
+          ).padStart(2, "0")}`,
+        }),
+      );
+    const callbacks = [];
+    const handle = startScheduler({
+      repos: f.repos,
+      ownerId: `scheduler-${scenario.kind}`,
+      monitorIntervalMs: 60_000,
+      cronImpl: {
+        validate() {
+          return true;
+        },
+        schedule(_expression, callback) {
+          callbacks.push(callback);
+          return { stop() {} };
+        },
+      },
+      nowProvider: () => new Date(scenario.now),
+      log() {},
+    });
+    try {
+      assert.equal(callbacks.length, 1);
+      callbacks[0]();
+      assert.equal(f.enqueued.length, 1);
+      assert.equal(
+        f.enqueued[0].payload.scheduled_for,
+        scenario.scheduledFor,
+      );
+      assert.equal(
+        f.enqueued[0].payload.scheduler_profile,
+        "governed_multi_lane",
+      );
+      assert.equal(
+        f.enqueued[0].payload.catch_up_allowed,
+        false,
+      );
+      assert.equal(
+        f.enqueued[0].payload.publish_authority,
+        false,
+      );
+      assert.equal(
+        f.enqueued[0].payload.external_posting,
+        false,
+      );
+    } finally {
+      handle.stop();
+      f.db.close();
+    }
+  }
+});
+
+test("scheduled_for derivation is not injected into unrelated runway rows", () => {
+  const f = fixture();
+  f.db
+    .prepare(
+      `INSERT INTO schedules
+         (name, kind, cron_expr, payload, priority, enabled)
+       VALUES (?, ?, ?, ?, 4, 1)`,
+    )
+    .run(
+      "governed_youtube_runway_t90_morning",
+      "governed_youtube_runway_t90",
+      "30 7 * * *",
+      JSON.stringify({
+        publish_hour_utc: 9,
+        catch_up_allowed: false,
+        publish_authority: false,
+        external_posting: false,
+        idempotencyTemplate:
+          "governed_youtube_runway_t90:{date}:09",
+      }),
+    );
+  const callbacks = [];
+  const handle = startScheduler({
+    repos: f.repos,
+    ownerId: "scheduler-unrelated-row",
+    monitorIntervalMs: 60_000,
+    cronImpl: {
+      validate() {
+        return true;
+      },
+      schedule(_expression, callback) {
+        callbacks.push(callback);
+        return { stop() {} };
+      },
+    },
+    nowProvider: () =>
+      new Date("2026-03-29T07:30:00.000Z"),
+    log() {},
+  });
+  try {
+    callbacks[0]();
+    assert.equal(f.enqueued.length, 1);
+    assert.equal(
+      Object.hasOwn(f.enqueued[0].payload, "scheduled_for"),
+      false,
+    );
+  } finally {
+    handle.stop();
+    f.db.close();
+  }
+});

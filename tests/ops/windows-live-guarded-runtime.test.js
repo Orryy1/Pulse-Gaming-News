@@ -13,9 +13,56 @@ const TOOL = path.join(
   "tools",
   "windows-live-guarded-runtime.js",
 );
+const START_OPERATION_NONCE =
+  "11111111-1111-4111-8111-111111111111";
+
+function inMemoryStartLock({
+  operationNonce = START_OPERATION_NONCE,
+  events = [],
+} = {}) {
+  return {
+    operationNonceFactory: () => operationNonce,
+    startLockAcquirer(options) {
+      events.push(["lock_acquire", options]);
+      return {
+        lock_path: "D:/pulse/start-operation.lock.json",
+        operation_nonce: operationNonce,
+        record: {
+          operation_nonce: operationNonce,
+        },
+      };
+    },
+    startLockReleaser(options) {
+      events.push(["lock_release", options]);
+      return {
+        outcome: "start_operation_lock_released",
+        operation_nonce: operationNonce,
+      };
+    },
+    startLockInspector() {
+      return {
+        present: true,
+        valid: true,
+        clear: false,
+        state: "active",
+        operation_nonce: operationNonce,
+        blockers: [],
+      };
+    },
+    staleOwnerArchiver(options) {
+      events.push(["stale_owner_archive", options]);
+      return {
+        outcome: "exact_stale_owner_archived",
+        operation_nonce: operationNonce,
+      };
+    },
+  };
+}
 
 const {
   LIVE_LIFECYCLE_CONFIRMATION,
+  acquireLiveStartOperationLock,
+  archiveExactStaleLiveOwner,
   buildLiveActivationReceipt,
   buildLiveChildEnvironment,
   buildLiveLifecycleDecision,
@@ -24,12 +71,17 @@ const {
   buildLiveScheduledTaskXml,
   prepareLiveSupervision,
   inspectLiveActivationReceipt,
+  inspectLiveStartOperationLock,
+  inspectLiveTaskConflicts,
+  inspectStoppedLiveRuntime,
   loadLiveGuardedRuntimeProfile,
   executeLiveLifecycleAction,
   validateLiveScheduledTaskXml,
   validateLiveGuardedRuntimeProfile,
   safeLiveHealthIdentity,
+  releaseLiveStartOperationLock,
   setLiveScheduledTaskEnabled,
+  startLiveScheduledTask,
 } = require(
   "../../lib/stabilisation/windows-live-guarded-runtime",
 );
@@ -52,6 +104,541 @@ test("activation CLI accepts one explicit non-secret OAuth client hash", () => {
   ]);
 
   assert.equal(options.youtubeOAuthClientSha256, expectedHash);
+});
+
+test("the guarded start action is a separately confirmed mutation and is admitted only for an exact stopped live runway", () => {
+  const common = {
+    action: "start",
+    profileValidation: { valid: true, blockers: [] },
+    checkout: { ready: true, blockers: [] },
+    database: { ready: true, blockers: [] },
+    activation: {
+      valid: true,
+      receipt_sha256: "a".repeat(64),
+      blockers: [],
+    },
+    conflicts: { clear: true, blockers: [] },
+    task: { state: "managed_current", blockers: [] },
+    runtime: {
+      stopped: true,
+      blockers: [],
+    },
+    startOperationLock: {
+      clear: true,
+      state: "absent",
+      blockers: [],
+    },
+    applyRequested: true,
+    confirmation: LIVE_LIFECYCLE_CONFIRMATION,
+  };
+
+  assert.equal(parseLiveRuntimeArgs(["start"]).action, "start");
+
+  const admitted = buildLiveLifecycleDecision(common);
+  assert.equal(admitted.ready, true);
+  assert.equal(admitted.mutation_authorised, true);
+  assert.equal(admitted.planned_effect, "start_verified_runtime");
+  assert.equal(admitted.production_green, false);
+  assert.equal(admitted.external_publish_possible, false);
+
+  for (const [override, blocker] of [
+    [
+      {
+        activation: {
+          valid: false,
+          blockers: ["activation_receipt_commit_mismatch"],
+        },
+      },
+      "activation_receipt_commit_mismatch",
+    ],
+    [
+      { task: { state: "managed_disabled", blockers: [] } },
+      "enabled_managed_task_required",
+    ],
+    [
+      {
+        conflicts: {
+          clear: false,
+          blockers: ["conflicting_runtime_task_enabled"],
+        },
+      },
+      "conflicting_runtime_task_enabled",
+    ],
+    [
+      {
+        runtime: {
+          stopped: false,
+          blockers: ["live_supervisor_port_not_free"],
+        },
+      },
+      "live_supervisor_port_not_free",
+    ],
+    [{ confirmation: "yes" }, "live_lifecycle_confirmation_required"],
+  ]) {
+    const rejected = buildLiveLifecycleDecision({
+      ...common,
+      ...override,
+    });
+    assert.equal(rejected.mutation_authorised, false);
+    assert.ok(rejected.blockers.includes(blocker), blocker);
+  }
+});
+
+test("start doctor carries the stopped-runtime inspection into its mutation decision", () => {
+  const expectedCommit = "e".repeat(40);
+  let runtimeInspections = 0;
+  let startLockInspections = 0;
+  const dependencies = {
+    inspectCheckout: () => ({ ready: true, blockers: [] }),
+    inspectDatabase: () => ({ ready: true, blockers: [] }),
+    inspectActivation: () => ({
+      valid: true,
+      receipt_sha256: "f".repeat(64),
+      blockers: [],
+    }),
+    inspectTask: () => ({
+      state: "managed_current",
+      blockers: [],
+    }),
+    inspectConflicts: () => ({ clear: true, blockers: [] }),
+    inspectRuntime: () => {
+      runtimeInspections += 1;
+      return {
+        stopped: true,
+        owner_receipt_present: false,
+        listening_pids: [],
+        blockers: [],
+      };
+    },
+    inspectStartLock: () => {
+      startLockInspections += 1;
+      return {
+        present: false,
+        valid: true,
+        clear: true,
+        state: "absent",
+        blockers: [],
+      };
+    },
+  };
+  const admitted = buildLiveRuntimeDoctorReport({
+    action: "start",
+    expectedCommit,
+    repoRoot: ROOT,
+    applyRequested: true,
+    confirmation: LIVE_LIFECYCLE_CONFIRMATION,
+    dependencies,
+  });
+  assert.equal(runtimeInspections, 1);
+  assert.equal(startLockInspections, 1);
+  assert.equal(admitted.checks.runtime.stopped, true);
+  assert.equal(
+    admitted.checks.start_operation_lock.state,
+    "absent",
+  );
+  assert.equal(admitted.decision.mutation_authorised, true);
+  assert.equal(
+    admitted.decision.planned_effect,
+    "start_verified_runtime",
+  );
+
+  const blocked = buildLiveRuntimeDoctorReport({
+    action: "start",
+    expectedCommit,
+    repoRoot: ROOT,
+    applyRequested: true,
+    confirmation: LIVE_LIFECYCLE_CONFIRMATION,
+    dependencies: {
+      ...dependencies,
+      inspectRuntime: () => ({
+        stopped: false,
+        owner_receipt_present: true,
+        listening_pids: [4321],
+        blockers: [
+          "live_supervisor_port_not_free",
+          "live_supervisor_owner_receipt_present",
+        ],
+      }),
+    },
+  });
+  assert.equal(blocked.decision.mutation_authorised, false);
+  assert.ok(
+    blocked.decision.blockers.includes(
+      "live_supervisor_port_not_free",
+    ),
+  );
+  assert.ok(
+    blocked.decision.blockers.includes(
+      "live_supervisor_owner_receipt_present",
+    ),
+  );
+  assert.equal(blocked.verdict, "HOLD");
+
+  const locked = buildLiveRuntimeDoctorReport({
+    action: "start",
+    expectedCommit,
+    repoRoot: ROOT,
+    applyRequested: true,
+    confirmation: LIVE_LIFECYCLE_CONFIRMATION,
+    dependencies: {
+      ...dependencies,
+      inspectStartLock: () => ({
+        present: true,
+        valid: true,
+        clear: false,
+        state: "active",
+        operation_nonce: START_OPERATION_NONCE,
+        blockers: ["live_start_operation_lock_active"],
+      }),
+    },
+  });
+  assert.equal(locked.verdict, "HOLD");
+  assert.equal(locked.decision.mutation_authorised, false);
+  assert.equal(
+    locked.checks.start_operation_lock.state,
+    "active",
+  );
+  assert.ok(
+    locked.decision.blockers.includes(
+      "live_start_operation_lock_active",
+    ),
+  );
+
+  const staleUnsafe = buildLiveRuntimeDoctorReport({
+    action: "start",
+    expectedCommit,
+    repoRoot: ROOT,
+    applyRequested: true,
+    confirmation: LIVE_LIFECYCLE_CONFIRMATION,
+    dependencies: {
+      ...dependencies,
+      inspectStartLock: () => ({
+        present: true,
+        valid: true,
+        clear: false,
+        state: "stale_recovery_blocked",
+        operation_nonce: START_OPERATION_NONCE,
+        blockers: [
+          "live_start_operation_stale_recovery_unsafe",
+        ],
+      }),
+    },
+  });
+  assert.equal(staleUnsafe.verdict, "HOLD");
+  assert.equal(staleUnsafe.decision.mutation_authorised, false);
+  assert.ok(
+    staleUnsafe.decision.blockers.includes(
+      "live_start_operation_stale_recovery_unsafe",
+    ),
+  );
+});
+
+test("conflicting task query failures are blockers rather than false absence", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const result = inspectLiveTaskConflicts({
+    profile,
+    execFileSyncImpl() {
+      const error = new Error("Access is denied");
+      error.code = 5;
+      throw error;
+    },
+  });
+
+  assert.equal(result.clear, false);
+  assert.deepEqual(result.tasks, [
+    {
+      task_name: "PulseGaming-Stabilisation-Runtime",
+      state: "inspection_error",
+    },
+  ]);
+  assert.deepEqual(result.blockers, [
+    "conflicting_runtime_task_inspection_failed:" +
+      "PulseGaming-Stabilisation-Runtime",
+  ]);
+});
+
+test("stopped-runtime inspection accepts only an exact dead stale owner that the supervisor can archive", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+  };
+  const exactOwner = {
+    schema_version: "pulse-windows-live-guarded-owner-v1",
+    supervisor_pid: 4100,
+    child_pid: 4200,
+    port: profile.port,
+    repo_root: ROOT.replace(/\\/g, "/"),
+    commit_sha: expectedCommit,
+    profile_sha256:
+      "508c2b2a5284af6d5784ff245e3e4dca2dd6159bd470fdc11d2737bc76495aaa",
+    activation_receipt_sha256: activation.receipt_sha256,
+    start_operation_nonce: START_OPERATION_NONCE,
+    platform: "youtube",
+  };
+  const inspect = (owner) =>
+    inspectStoppedLiveRuntime({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+      }),
+      existsSync: () => true,
+      readFileSync: () => JSON.stringify(owner),
+      processAliveInspector: () => false,
+    });
+
+  const exactStale = inspect(exactOwner);
+  assert.equal(exactStale.stopped, true);
+  assert.equal(exactStale.owner_state, "exact_stale");
+  assert.deepEqual(exactStale.blockers, []);
+
+  const mismatched = inspect({
+    ...exactOwner,
+    commit_sha: "e".repeat(40),
+  });
+  assert.equal(mismatched.stopped, false);
+  assert.equal(mismatched.owner_state, "mismatch");
+  assert.ok(
+    mismatched.blockers.includes(
+      "live_supervisor_owner_receipt_mismatch",
+    ),
+  );
+});
+
+test("start operation lock is durable, cross-process exclusive and nonce-owned", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-start-lock-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const common = {
+      profile,
+      expectedCommit: "d".repeat(40),
+      activationReceiptSha256: "c".repeat(64),
+      processId: 4100,
+    };
+    const first = acquireLiveStartOperationLock({
+      ...common,
+      operationNonce: "11111111-1111-4111-8111-111111111111",
+      generatedAt: "2026-07-29T22:00:00.000Z",
+    });
+    const persisted = JSON.parse(
+      fs.readFileSync(first.lock_path, "utf8"),
+    );
+    assert.equal(
+      persisted.operation_nonce,
+      "11111111-1111-4111-8111-111111111111",
+    );
+    assert.equal(persisted.process_id, 4100);
+    const inspected = inspectLiveStartOperationLock({
+      profile,
+      expectedCommit: common.expectedCommit,
+      activationReceiptSha256:
+        common.activationReceiptSha256,
+      runtime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      processAliveInspector: () => true,
+    });
+    assert.equal(inspected.valid, true);
+    assert.equal(inspected.clear, false);
+    assert.equal(inspected.state, "active");
+    assert.equal(
+      inspected.operation_nonce,
+      first.operation_nonce,
+    );
+    const unsafeStale = inspectLiveStartOperationLock({
+      profile,
+      expectedCommit: common.expectedCommit,
+      activationReceiptSha256:
+        common.activationReceiptSha256,
+      runtime: {
+        stopped: false,
+        listening_pids: [4999],
+        owner_state: "active",
+      },
+      processAliveInspector: () => false,
+    });
+    assert.equal(unsafeStale.clear, false);
+    assert.equal(unsafeStale.state, "stale_recovery_blocked");
+    assert.ok(
+      unsafeStale.blockers.includes(
+        "live_start_operation_stale_recovery_unsafe",
+      ),
+    );
+    const mismatched = inspectLiveStartOperationLock({
+      profile,
+      expectedCommit: "e".repeat(40),
+      activationReceiptSha256:
+        common.activationReceiptSha256,
+      runtime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      processAliveInspector: () => false,
+    });
+    assert.equal(mismatched.clear, false);
+    assert.equal(mismatched.state, "mismatch");
+    assert.ok(
+      mismatched.blockers.includes(
+        "live_start_operation_lock_commit_mismatch",
+      ),
+    );
+
+    assert.throws(
+      () =>
+        acquireLiveStartOperationLock({
+          ...common,
+          operationNonce:
+            "22222222-2222-4222-8222-222222222222",
+          staleRuntime: {
+            stopped: true,
+            listening_pids: [],
+            owner_state: "absent",
+          },
+          processAliveInspector: () => true,
+        }),
+      /live_start_operation_locked/,
+    );
+
+    const recovered = acquireLiveStartOperationLock({
+      ...common,
+      operationNonce:
+        "22222222-2222-4222-8222-222222222222",
+      staleRuntime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      processAliveInspector: () => false,
+      generatedAt: "2026-07-29T22:00:30.000Z",
+    });
+    assert.equal(
+      recovered.operation_nonce,
+      "22222222-2222-4222-8222-222222222222",
+    );
+    assert.equal(
+      fs.existsSync(recovered.recovered_lock_evidence_path),
+      true,
+    );
+    assert.throws(
+      () =>
+        releaseLiveStartOperationLock({
+          lock: {
+            ...first,
+            operation_nonce:
+              "33333333-3333-4333-8333-333333333333",
+          },
+        }),
+      /live_start_operation_lock_ownership_lost/,
+    );
+    assert.equal(fs.existsSync(first.lock_path), true);
+
+    const released = releaseLiveStartOperationLock({
+      lock: recovered,
+      generatedAt: "2026-07-29T22:01:00.000Z",
+    });
+    assert.equal(released.outcome, "start_operation_lock_released");
+    assert.equal(fs.existsSync(first.lock_path), false);
+    assert.equal(fs.existsSync(released.evidence_path), true);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("an exact dead stale owner is archived under the held start nonce before launch", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-stale-owner-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const expectedCommit = "d".repeat(40);
+    const activation = {
+      valid: true,
+      receipt_sha256: "c".repeat(64),
+      blockers: [],
+    };
+    const lock = acquireLiveStartOperationLock({
+      profile,
+      expectedCommit,
+      activationReceiptSha256: activation.receipt_sha256,
+      operationNonce: START_OPERATION_NONCE,
+      processId: process.pid,
+      generatedAt: "2026-07-29T22:00:00.000Z",
+    });
+    const ownerPath = path.join(
+      profile.state_root,
+      "supervisor-owner.json",
+    );
+    fs.writeFileSync(
+      ownerPath,
+      `${JSON.stringify(
+        {
+          schema_version: "pulse-windows-live-guarded-owner-v1",
+          supervisor_pid: 991001,
+          child_pid: 991002,
+          port: profile.port,
+          repo_root: ROOT.replace(/\\/g, "/"),
+          commit_sha: expectedCommit,
+          profile_sha256: lock.record.profile_sha256,
+          activation_receipt_sha256:
+            activation.receipt_sha256,
+          platform: "youtube",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const archived = archiveExactStaleLiveOwner({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      operationNonce: lock.operation_nonce,
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+      }),
+      processAliveInspector: () => false,
+      startLockInspector(options) {
+        return inspectLiveStartOperationLock({
+          ...options,
+          processAliveInspector: (pid) =>
+            Number(pid) === process.pid,
+        });
+      },
+      generatedAt: "2026-07-29T22:00:30.000Z",
+    });
+
+    assert.equal(
+      archived.outcome,
+      "exact_stale_owner_archived",
+    );
+    assert.equal(fs.existsSync(ownerPath), false);
+    assert.equal(fs.existsSync(archived.archived_path), true);
+    releaseLiveStartOperationLock({
+      lock,
+      generatedAt: "2026-07-29T22:01:00.000Z",
+    });
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test("the separate reviewed LIVE_GUARDED profile is exact YouTube-only while the safe profile remains publication-incapable", () => {
@@ -297,6 +884,39 @@ test("default lifecycle handlers install disabled and enable only the exact mana
   );
 });
 
+test("default lifecycle dispatch forwards only the doctor-bound activation into guarded start", async () => {
+  const calls = [];
+  const handlers = createDefaultLiveLifecycleHandlers({
+    startImpl(options) {
+      calls.push(options);
+      return { outcome: "started_verified" };
+    },
+  });
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "a".repeat(64),
+    blockers: [],
+  };
+  const result = await handlers.start({
+    profile,
+    options: {
+      repoRoot: ROOT,
+      expectedCommit: "f".repeat(40),
+    },
+    report: {
+      checks: { activation },
+    },
+  });
+
+  assert.equal(result.outcome, "started_verified");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].profile, profile);
+  assert.equal(calls[0].repoRoot, ROOT);
+  assert.equal(calls[0].expectedCommit, "f".repeat(40));
+  assert.equal(calls[0].activation, activation);
+});
+
 test("enable revalidates source, receipt and competing-task state at the mutation boundary and never runs the task", () => {
   const calls = [];
   const taskStates = [
@@ -364,6 +984,878 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
       "receipt",
     ],
   );
+});
+
+test("guarded start revalidates the exact runway, launches only the managed SYSTEM task and attests exact live ownership", async () => {
+  const calls = [];
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const owner = {
+    schema_version: "pulse-windows-live-guarded-owner-v1",
+    supervisor_pid: 4111,
+    child_pid: 4123,
+    port: profile.port,
+    repo_root: ROOT.replace(/\\/g, "/"),
+    commit_sha: expectedCommit,
+    profile_sha256:
+      "508c2b2a5284af6d5784ff245e3e4dca2dd6159bd470fdc11d2737bc76495aaa",
+    activation_receipt_sha256: activation.receipt_sha256,
+    start_operation_nonce: START_OPERATION_NONCE,
+    platform: "youtube",
+  };
+  let listenerInspection = 0;
+  const liveHealth = {
+    status: "ok",
+    schedulerActive: true,
+    build: { commit_sha: expectedCommit },
+    deployment: { mode: "local", primary: true },
+    runtime: {
+      operating_mode: "LIVE_GUARDED",
+      auto_publish: true,
+      legacy_auto_publish_armed: true,
+      use_sqlite: true,
+      use_job_queue_explicit: "true",
+    },
+  };
+
+  const result = await startLiveScheduledTask({
+    ...inMemoryStartLock({ events: calls }),
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    activation,
+    platform: "win32",
+    sourceDatabaseInspector(options) {
+      calls.push(["source_database", options]);
+      return { checkout: { ready: true }, database: { ready: true } };
+    },
+    activationInspector(options) {
+      calls.push(["activation", options]);
+      return activation;
+    },
+    conflictInspector(options) {
+      calls.push(["conflicts", options]);
+      return { clear: true, blockers: [] };
+    },
+    taskInspector(options) {
+      calls.push(["task", options]);
+      return { state: "managed_current", blockers: [] };
+    },
+    listenerInspector(options) {
+      calls.push(["listeners", options]);
+      listenerInspection += 1;
+      return listenerInspection <= 2
+        ? { available: true, listeningPids: [] }
+        : { available: true, listeningPids: [owner.child_pid] };
+    },
+    healthRequester(options) {
+      calls.push(["health", options]);
+      return liveHealth;
+    },
+    ownerReader(options) {
+      calls.push(["owner", options]);
+      return owner;
+    },
+    execFileSyncImpl(command, args) {
+      calls.push(["exec", { command, args }]);
+      return "";
+    },
+    delayImpl() {
+      throw new Error("start verification should not need to wait");
+    },
+    lifecycleReceiptWriter(options) {
+      calls.push(["receipt", options]);
+      return { receipt_path: "D:/pulse/evidence/start.json" };
+    },
+  });
+
+  assert.deepEqual(
+    calls.find(([name]) => name === "exec")[1],
+    {
+      command: "schtasks.exe",
+      args: ["/Run", "/TN", profile.task_name],
+    },
+  );
+  assert.equal(result.receipt_path, "D:/pulse/evidence/start.json");
+  const receiptCall = calls.find(([name]) => name === "receipt")[1];
+  assert.equal(receiptCall.action, "start");
+  assert.equal(receiptCall.details.outcome, "started_verified");
+  assert.equal(
+    receiptCall.details.activation_receipt_sha256,
+    activation.receipt_sha256,
+  );
+  assert.equal(receiptCall.details.supervisor_pid, owner.supervisor_pid);
+  assert.equal(receiptCall.details.child_pid, owner.child_pid);
+  assert.equal(receiptCall.details.listener_pid, owner.child_pid);
+  assert.equal(
+    receiptCall.details.operation_nonce,
+    START_OPERATION_NONCE,
+  );
+  for (const check of [
+    "source_database",
+    "activation",
+    "conflicts",
+    "task",
+  ]) {
+    assert.equal(
+      calls.filter(([name]) => name === check).length,
+      2,
+      `${check} must be revalidated after launch`,
+    );
+  }
+});
+
+test("mid-flight authority drift prevents started_verified, cleans up its own nonce and emits durable failure evidence", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const driftedActivation = {
+    valid: true,
+    receipt_sha256: "b".repeat(64),
+    blockers: [],
+  };
+  const owner = {
+    schema_version: "pulse-windows-live-guarded-owner-v1",
+    supervisor_pid: 4111,
+    child_pid: 4123,
+    port: profile.port,
+    repo_root: ROOT.replace(/\\/g, "/"),
+    commit_sha: expectedCommit,
+    profile_sha256:
+      "508c2b2a5284af6d5784ff245e3e4dca2dd6159bd470fdc11d2737bc76495aaa",
+    activation_receipt_sha256: activation.receipt_sha256,
+    start_operation_nonce: START_OPERATION_NONCE,
+    platform: "youtube",
+    platform: "youtube",
+  };
+  const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_disabled", blockers: [] },
+  ];
+  const activationStates = [activation, driftedActivation];
+  let sourceChecks = 0;
+  let conflictChecks = 0;
+  let ownerReads = 0;
+  let listenerReads = 0;
+  const mutations = [];
+  const evidence = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector() {
+        sourceChecks += 1;
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activationStates.shift();
+      },
+      conflictInspector() {
+        conflictChecks += 1;
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        return taskStates.shift();
+      },
+      runtimeInspector() {
+        return { stopped: true, blockers: [] };
+      },
+      listenerInspector() {
+        listenerReads += 1;
+        return listenerReads === 1
+          ? { available: true, listeningPids: [owner.child_pid] }
+          : { available: true, listeningPids: [] };
+      },
+      healthRequester() {
+        return {
+          status: "ok",
+          schedulerActive: true,
+          build: { commit_sha: expectedCommit },
+          deployment: { mode: "local", primary: true },
+          runtime: {
+            operating_mode: "LIVE_GUARDED",
+            auto_publish: true,
+            legacy_auto_publish_armed: true,
+            use_sqlite: true,
+            use_job_queue_explicit: "true",
+          },
+        };
+      },
+      ownerReader() {
+        ownerReads += 1;
+        return ownerReads <= 2 ? owner : null;
+      },
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        return "";
+      },
+      delayImpl() {},
+      lifecycleReceiptWriter(options) {
+        evidence.push(options);
+        return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+      },
+    }),
+    /post_launch_activation_receipt_drift/,
+  );
+
+  assert.equal(sourceChecks, 2);
+  assert.equal(conflictChecks, 1);
+  assert.equal(activationStates.length, 0);
+  assert.equal(taskStates.length, 0);
+  assert.deepEqual(
+    mutations.map(({ args }) => args[0]),
+    ["/Run", "/End", "/Change"],
+  );
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].action, "start-failed");
+  assert.equal(evidence[0].details.outcome, "start_failed");
+  assert.equal(evidence[0].details.stopped_verified, true);
+  assert.equal(
+    evidence[0].details.operation_nonce,
+    START_OPERATION_NONCE,
+  );
+  assert.match(
+    evidence[0].details.primary_error,
+    /post_launch_activation_receipt_drift/,
+  );
+});
+
+test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned up with durable evidence", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_disabled", blockers: [] },
+  ];
+  const mutations = [];
+  const evidence = [];
+  const operationEvents = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock({ events: operationEvents }),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit: "d".repeat(40),
+      activation,
+      platform: "win32",
+      sourceDatabaseInspector() {
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activation;
+      },
+      conflictInspector() {
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        return taskStates.shift();
+      },
+      runtimeInspector() {
+        return {
+          stopped: true,
+          owner_state: "exact_stale",
+          listening_pids: [],
+          blockers: [],
+        };
+      },
+      listenerInspector() {
+        return { available: true, listeningPids: [] };
+      },
+      healthRequester() {
+        throw new Error("health must not run after ambiguous /Run");
+      },
+      ownerReader() {
+        return null;
+      },
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        if (args[0] === "/Run") {
+          const error = new Error("scheduled task request timed out");
+          error.code = "ETIMEDOUT";
+          throw error;
+        }
+        return "";
+      },
+      delayImpl() {},
+      lifecycleReceiptWriter(options) {
+        evidence.push(options);
+        return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+      },
+    }),
+    /scheduled task request timed out/,
+  );
+
+  assert.deepEqual(
+    mutations.map(({ args }) => args[0]),
+    ["/Run", "/End", "/Change"],
+  );
+  assert.deepEqual(
+    operationEvents.map(([event]) => event),
+    [
+      "lock_acquire",
+      "stale_owner_archive",
+      "lock_release",
+    ],
+  );
+  assert.equal(taskStates.length, 0);
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].action, "start-failed");
+  assert.equal(evidence[0].details.stopped_verified, true);
+  assert.match(
+    evidence[0].details.primary_error,
+    /scheduled task request timed out/,
+  );
+});
+
+test("runtime identity is re-read after authority revalidation before started_verified", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const owner = {
+    schema_version: "pulse-windows-live-guarded-owner-v1",
+    supervisor_pid: 4111,
+    child_pid: 4123,
+    port: profile.port,
+    repo_root: ROOT.replace(/\\/g, "/"),
+    commit_sha: expectedCommit,
+    profile_sha256:
+      "508c2b2a5284af6d5784ff245e3e4dca2dd6159bd470fdc11d2737bc76495aaa",
+    activation_receipt_sha256: activation.receipt_sha256,
+    start_operation_nonce: START_OPERATION_NONCE,
+    platform: "youtube",
+  };
+  const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_disabled", blockers: [] },
+  ];
+  let healthReads = 0;
+  let ownerReads = 0;
+  let listenerReads = 0;
+  const mutations = [];
+  const evidence = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector() {
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activation;
+      },
+      conflictInspector() {
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        return taskStates.shift();
+      },
+      runtimeInspector() {
+        return { stopped: true, blockers: [] };
+      },
+      listenerInspector() {
+        listenerReads += 1;
+        return listenerReads === 1
+          ? { available: true, listeningPids: [owner.child_pid] }
+          : { available: true, listeningPids: [] };
+      },
+      healthRequester() {
+        healthReads += 1;
+        return healthReads === 1
+          ? {
+              status: "ok",
+              schedulerActive: true,
+              build: { commit_sha: expectedCommit },
+              deployment: { mode: "local", primary: true },
+              runtime: {
+                operating_mode: "LIVE_GUARDED",
+                auto_publish: true,
+                legacy_auto_publish_armed: true,
+                use_sqlite: true,
+                use_job_queue_explicit: "true",
+              },
+            }
+          : null;
+      },
+      ownerReader() {
+        ownerReads += 1;
+        return ownerReads === 1 ? owner : null;
+      },
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        return "";
+      },
+      delayImpl() {},
+      lifecycleReceiptWriter(options) {
+        evidence.push(options);
+        return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+      },
+    }),
+    /post_launch_runtime_identity_drift/,
+  );
+
+  assert.equal(healthReads, 2);
+  assert.deepEqual(
+    mutations.map(({ args }) => args[0]),
+    ["/Run", "/End", "/Change"],
+  );
+  assert.equal(taskStates.length, 0);
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].action, "start-failed");
+  assert.equal(evidence[0].details.stopped_verified, true);
+});
+
+test("guarded start ends and disables only the re-inspected managed task when exact live verification fails", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_disabled", blockers: [] },
+  ];
+  const mutations = [];
+  const evidence = [];
+  const listenerStates = [[], [], [], [4999], []];
+  let delayCalls = 0;
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector() {
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activation;
+      },
+      conflictInspector() {
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        return taskStates.shift();
+      },
+      listenerInspector() {
+        return {
+          available: true,
+          listeningPids: listenerStates.shift() || [],
+        };
+      },
+      healthRequester() {
+        return {
+          status: "ok",
+          schedulerActive: true,
+          build: { commit_sha: "e".repeat(40) },
+          deployment: { mode: "local", primary: true },
+          runtime: {
+            operating_mode: "LIVE_GUARDED",
+            auto_publish: true,
+            legacy_auto_publish_armed: true,
+            use_sqlite: true,
+            use_job_queue_explicit: "true",
+          },
+        };
+      },
+      ownerReader() {
+        return null;
+      },
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        return "";
+      },
+      delayImpl() {
+        delayCalls += 1;
+      },
+      lifecycleReceiptWriter(options) {
+        evidence.push(options);
+        return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+      },
+    }),
+    /live_task_start_verification_failed/,
+  );
+
+  assert.deepEqual(mutations, [
+    {
+      command: "schtasks.exe",
+      args: ["/Run", "/TN", profile.task_name],
+    },
+    {
+      command: "schtasks.exe",
+      args: ["/End", "/TN", profile.task_name],
+    },
+    {
+      command: "schtasks.exe",
+      args: [
+        "/Change",
+        "/TN",
+        profile.task_name,
+        "/DISABLE",
+      ],
+    },
+  ]);
+  assert.equal(taskStates.length, 0);
+  assert.equal(listenerStates.length, 0);
+  assert.ok(delayCalls >= 2);
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].action, "start-failed");
+  assert.equal(evidence[0].details.stopped_verified, true);
+});
+
+test("cleanup command failures and an orphan listener are durably reported without claiming stopped", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const owner = {
+    start_operation_nonce: START_OPERATION_NONCE,
+    child_pid: 4123,
+  };
+  const taskStates = [
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+    { state: "managed_current", blockers: [] },
+  ];
+  const mutations = [];
+  const evidence = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      platform: "win32",
+      timeoutMs: 0,
+      shutdownTimeoutMs: 0,
+      sourceDatabaseInspector() {
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activation;
+      },
+      conflictInspector() {
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        return taskStates.shift();
+      },
+      runtimeInspector() {
+        return { stopped: true, blockers: [] };
+      },
+      listenerInspector() {
+        return {
+          available: true,
+          listeningPids: [owner.child_pid],
+        };
+      },
+      healthRequester() {
+        return null;
+      },
+      ownerReader() {
+        return owner;
+      },
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        if (args[0] === "/End" || args[0] === "/Change") {
+          throw new Error(`${args[0]} failed`);
+        }
+        return "";
+      },
+      delayImpl() {},
+      lifecycleReceiptWriter(options) {
+        evidence.push(options);
+        return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+      },
+    }),
+    /live_task_start_fail_closed_incomplete/,
+  );
+
+  assert.deepEqual(
+    mutations.map(({ args }) => args[0]),
+    ["/Run", "/End", "/Change"],
+  );
+  assert.equal(evidence.length, 1);
+  const failure = evidence[0];
+  assert.equal(failure.action, "start-failed");
+  assert.equal(failure.details.stopped_verified, false);
+  assert.equal(failure.details.cleanup.end_succeeded, false);
+  assert.equal(failure.details.cleanup.disable_succeeded, false);
+  assert.deepEqual(
+    failure.details.cleanup.orphan_listener_pids,
+    [owner.child_pid],
+  );
+  assert.ok(
+    failure.details.cleanup.blockers.some((blocker) =>
+      blocker.startsWith("start_cleanup_end_failed:"),
+    ),
+  );
+  assert.ok(
+    failure.details.cleanup.blockers.some((blocker) =>
+      blocker.startsWith("start_cleanup_disable_failed:"),
+    ),
+  );
+  assert.ok(
+    failure.details.cleanup.blockers.includes(
+      "start_cleanup_orphan_listener",
+    ),
+  );
+});
+
+test("an unexpected cleanup inspection error still produces failure evidence", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const evidence = [];
+  let taskInspections = 0;
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit: "d".repeat(40),
+      activation,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector() {
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activation;
+      },
+      conflictInspector() {
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        taskInspections += 1;
+        if (taskInspections > 1) {
+          throw new Error("task inspection unavailable");
+        }
+        return { state: "managed_current", blockers: [] };
+      },
+      runtimeInspector() {
+        return { stopped: true, blockers: [] };
+      },
+      listenerInspector() {
+        return { available: true, listeningPids: [] };
+      },
+      healthRequester() {
+        return null;
+      },
+      ownerReader() {
+        return null;
+      },
+      execFileSyncImpl() {
+        return "";
+      },
+      delayImpl() {},
+      lifecycleReceiptWriter(options) {
+        evidence.push(options);
+        return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+      },
+    }),
+    /live_task_start_fail_closed_incomplete/,
+  );
+
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].action, "start-failed");
+  assert.equal(evidence[0].details.stopped_verified, false);
+  assert.ok(
+    evidence[0].details.cleanup.blockers.some((blocker) =>
+      blocker.startsWith("start_cleanup_unhandled_error:"),
+    ),
+  );
+});
+
+test("a failed nonce cannot terminate or disable a different successful start owner", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const otherOwner = {
+    child_pid: 5123,
+    start_operation_nonce:
+      "22222222-2222-4222-8222-222222222222",
+  };
+  const mutations = [];
+  const evidence = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector() {
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activation;
+      },
+      conflictInspector() {
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        return { state: "managed_current", blockers: [] };
+      },
+      runtimeInspector() {
+        return { stopped: true, blockers: [] };
+      },
+      listenerInspector() {
+        return {
+          available: true,
+          listeningPids: [otherOwner.child_pid],
+        };
+      },
+      healthRequester() {
+        return null;
+      },
+      ownerReader() {
+        return otherOwner;
+      },
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        return "";
+      },
+      delayImpl() {},
+      lifecycleReceiptWriter(options) {
+        evidence.push(options);
+        return { receipt_path: "D:/pulse/evidence/start-failed.json" };
+      },
+    }),
+    /live_task_start_fail_closed_incomplete/,
+  );
+
+  assert.deepEqual(
+    mutations.map(({ args }) => args[0]),
+    ["/Run"],
+  );
+  assert.equal(evidence.length, 1);
+  assert.equal(evidence[0].details.stopped_verified, false);
+  assert.ok(
+    evidence[0].details.cleanup.blockers.includes(
+      "start_cleanup_owner_operation_nonce_mismatch",
+    ),
+  );
+});
+
+test("guarded start rechecks stopped runtime ownership at the mutation boundary before task launch", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const mutations = [];
+
+  await assert.rejects(
+    startLiveScheduledTask({
+      ...inMemoryStartLock(),
+      profile,
+      repoRoot: ROOT,
+      expectedCommit: "d".repeat(40),
+      activation,
+      platform: "win32",
+      timeoutMs: 0,
+      sourceDatabaseInspector() {
+        return { checkout: { ready: true }, database: { ready: true } };
+      },
+      activationInspector() {
+        return activation;
+      },
+      conflictInspector() {
+        return { clear: true, blockers: [] };
+      },
+      taskInspector() {
+        return { state: "managed_current", blockers: [] };
+      },
+      runtimeInspector() {
+        return {
+          stopped: false,
+          owner_receipt_present: true,
+          listening_pids: [],
+          blockers: ["live_supervisor_owner_receipt_present"],
+        };
+      },
+      listenerInspector() {
+        return { available: true, listeningPids: [] };
+      },
+      healthRequester() {
+        return null;
+      },
+      ownerReader() {
+        return null;
+      },
+      execFileSyncImpl(command, args) {
+        mutations.push({ command, args });
+        return "";
+      },
+      delayImpl() {},
+    }),
+    /live_supervisor_owner_receipt_present/,
+  );
+
+  assert.deepEqual(mutations, []);
 });
 
 test("lifecycle execution never reaches Windows mutation handlers without the already-evaluated exact authority", async () => {

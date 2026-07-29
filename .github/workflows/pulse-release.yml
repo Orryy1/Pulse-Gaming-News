@@ -98,6 +98,27 @@ jobs:
           tests/services/weekly-longform-runtime-capability-probe.test.js
           tests/ops/weekly-longform-runtime-capabilities-cli.test.js
           tests/services/governed-breaking-watcher.test.js
+          tests/services/governed-autonomous-breaking-candidate-contract-compiler.test.js
+          tests/services/governed-autonomous-candidate-completion-receipt.test.js
+          tests/services/governed-autonomous-candidate-completion-receipt-index.test.js
+          tests/services/governed-autonomous-content-qa.test.js
+          tests/services/governed-autonomous-database-story-binding.test.js
+          tests/services/governed-autonomous-pre-t90-candidate-composition.test.js
+          tests/services/governed-autonomous-pre-t90-scheduler-handler.integration.test.js
+          tests/services/governed-autonomous-pre-t90-to-runway-t90.integration.test.js
+          tests/services/governed-autonomous-pre-t90-window-handler.test.js
+          tests/services/governed-autonomous-pre-t90-window-runner.test.js
+          tests/services/governed-autonomous-production-coordinator.test.js
+          tests/services/governed-autonomous-production-job-handler.test.js
+          tests/services/governed-autonomous-production-job-runner.test.js
+          tests/services/governed-autonomous-production-request-builder.test.js
+          tests/services/governed-autonomous-production-runtime.test.js
+          tests/services/governed-autonomous-t90-eligibility-source-report.test.js
+          tests/services/governed-autonomous-visual-gate-decision.test.js
+          tests/services/governed-autonomous-window-production-planner.test.js
+          tests/services/governed-autonomous-window-production-planning-handler.test.js
+          tests/services/governed-autonomous-window-reservation-set.test.js
+          tests/services/governed-owned-programme-pack.test.js
           tests/services/governed-editorial-inventory-handler.test.js
           tests/services/governed-editorial-inventory-handlers.test.js
           tests/services/governed-editorial-inventory-preparer.test.js

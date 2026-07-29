@@ -191,8 +191,9 @@ async function buildGovernedStoryIntakeInventoryBridgeFixture(root) {
   };
 }
 
-async function buildLockedYazdInventoryFixture(root) {
-  const storyId = "official_3b8d305c4e17";
+async function buildLockedYazdInventoryFixture(root, options = {}) {
+  const storyId =
+    options.storyId || "official_3b8d305c4e17";
   const canonicalIdentityUrl =
     "https://store.steampowered.com/app/674750/";
   const newsUrl =

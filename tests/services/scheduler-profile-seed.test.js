@@ -154,6 +154,23 @@ test("governed seed requests live routing only from an explicitly valid LIVE_GUA
     )
     .get();
   assert.equal(JSON.parse(planner.payload).live_publish_enabled, true);
+
+  for (const scheduleName of [
+    "governed_editorial_evidence_backfill",
+    "editorial_inventory_reconcile",
+  ]) {
+    const row = db
+      .prepare("SELECT payload FROM schedules WHERE name = ?")
+      .get(scheduleName);
+    const payload = JSON.parse(row.payload);
+    assert.equal(payload.planning_only, true, scheduleName);
+    assert.equal(
+      payload.live_publish_enabled,
+      false,
+      scheduleName,
+    );
+    assert.equal(payload.publish_authority, false, scheduleName);
+  }
 });
 
 test("profile reconciliation rolls every schedule change back when disabling fails", (t) => {

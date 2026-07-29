@@ -310,6 +310,141 @@ test("two independent trusted editorial bodies can corroborate the same extracte
   );
 });
 
+test("configured publisher prefixes are removed before exact editorial claim identity matching", async () => {
+  const urls = [
+    "https://www.ign.com/articles/xbox-back-compat-prefix",
+    "https://www.eurogamer.net/xbox-back-compat-prefix",
+  ];
+  const exactText = new Map([
+    [
+      "ign",
+      "IGN reports the Xbox backwards compatibility expansion from its captured article body.",
+    ],
+    [
+      "eurogamer",
+      "Eurogamer reports the Xbox backwards compatibility expansion from its captured article body.",
+    ],
+  ]);
+
+  const packet = await captureBreakingSourceEvidence({
+    story: {
+      id: "publisher-independent-claim-identity",
+      title: "Xbox backwards compatibility could expand",
+      subject_ids: ["xbox"],
+      source_candidates: urls,
+    },
+    sourcePolicy: sourcePolicy(),
+    now: NOW,
+    fetchCapture: async ({ url }) => {
+      const sourceId = url.includes("ign.com") ? "ign" : "eurogamer";
+      return {
+        status: 200,
+        final_url: url,
+        content_type: "text/html",
+        bytes: Buffer.from(exactText.get(sourceId), "utf8"),
+      };
+    },
+    extractClaims: async ({ source }) => ({
+      extractor: { id: "fixture-html", version: "1.0.0" },
+      claims: [
+        {
+          claim_key: `${source.source_id}.xbox.original-backcompat.expansion`,
+          text: exactText.get(source.source_id),
+          location: "body",
+        },
+      ],
+    }),
+  });
+
+  assert.equal(packet.verdict, "CORROBORATED");
+  assert.equal(packet.confirmed_claims.length, 1);
+  assert.equal(
+    packet.confirmed_claims[0].claim_key,
+    "xbox.original-backcompat.expansion",
+  );
+  assert.equal(
+    packet.confirmed_claims[0].claim_identity,
+    "xbox.original-backcompat.expansion",
+  );
+  assert.equal(
+    packet.confirmed_claims[0].claim_identity_basis,
+    "configured_publisher_prefix_removed_v1",
+  );
+  assert.deepEqual(
+    packet.confirmed_claims[0].evidence.map(
+      ({ source_id, claim_key, claim_identity_basis }) => ({
+        source_id,
+        claim_key,
+        claim_identity_basis,
+      }),
+    ),
+    [
+      {
+        source_id: "eurogamer",
+        claim_key: "eurogamer.xbox.original-backcompat.expansion",
+        claim_identity_basis: "configured_publisher_prefix_removed_v1",
+      },
+      {
+        source_id: "ign",
+        claim_key: "ign.xbox.original-backcompat.expansion",
+        claim_identity_basis: "configured_publisher_prefix_removed_v1",
+      },
+    ],
+  );
+});
+
+test("publisher-independent matching never strips unconfigured prefixes or merges different suffixes", async () => {
+  const urls = [
+    "https://www.ign.com/articles/xbox-back-compat-bounded-identity",
+    "https://www.eurogamer.net/xbox-back-compat-bounded-identity",
+  ];
+  const captures = async (claimKeys) =>
+    captureBreakingSourceEvidence({
+      story: {
+        id: "bounded-claim-identity",
+        title: "Xbox backwards compatibility could expand",
+        subject_ids: ["xbox"],
+        source_candidates: urls,
+      },
+      sourcePolicy: sourcePolicy(),
+      now: NOW,
+      fetchCapture: async ({ url }) => ({
+        status: 200,
+        final_url: url,
+        content_type: "text/html",
+        bytes: Buffer.from(
+          `${url.includes("ign.com") ? "IGN" : "Eurogamer"} reports the Xbox backwards compatibility expansion.`,
+          "utf8",
+        ),
+      }),
+      extractClaims: async ({ source }) => ({
+        extractor: { id: "fixture-html", version: "1.0.0" },
+        claims: [
+          {
+            claim_key: claimKeys[source.source_id],
+            text: `${source.publisher} reports the Xbox backwards compatibility expansion.`,
+            location: "body",
+          },
+        ],
+      }),
+    });
+
+  const unconfiguredPrefixes = await captures({
+    ign: "wire.xbox.original-backcompat.expansion",
+    eurogamer: "blog.xbox.original-backcompat.expansion",
+  });
+  const differentExactSuffixes = await captures({
+    ign: "ign.xbox.original-backcompat.expansion",
+    eurogamer: "eurogamer.xbox.original-backcompat.achievement-support",
+  });
+
+  for (const packet of [unconfiguredPrefixes, differentExactSuffixes]) {
+    assert.equal(packet.verdict, "HOLD");
+    assert.equal(packet.verified_for_planning, false);
+    assert.deepEqual(packet.confirmed_claims, []);
+  }
+});
+
 test("bounded evidence capture stops after two independent editorial bodies corroborate the claim", async () => {
   const urls = [
     "https://www.ign.com/articles/xbox-back-compat-bounded",

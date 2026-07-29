@@ -85,7 +85,7 @@ test("production mode + USE_SQLITE!=true -> throws, never silently approves", as
   );
 });
 
-test("production scoring can rank stories but Pulse v1 never auto-approves them", async () => {
+test("HUMAN_REVIEW production scoring ranks safe stories without auto-approving them", async () => {
   const repos = makeRepos();
   // Fresh story that should score well: verified flair, high source
   // confidence, recent timestamp, real visuals, strong hook.
@@ -107,7 +107,11 @@ test("production scoring can rank stories but Pulse v1 never auto-approves them"
 
   const summary = await autoApprove({
     repos,
-    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "HUMAN_REVIEW",
+    },
   });
   assert.equal(summary.skipped, undefined, "no skip in prod");
   assert.ok(summary.scored >= 1);
@@ -135,6 +139,102 @@ test("production scoring can rank stories but Pulse v1 never auto-approves them"
     .get();
   assert.equal(storyRow.approved, 0);
   assert.equal(storyRow.auto_approved, 0);
+});
+
+test("LIVE_GUARDED production scoring auto-approves only a rubric-auto candidate", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "live-guarded-auto",
+    title: "Bethesda confirms release date for Elder Scrolls VI",
+    flair: "verified",
+    subreddit: "gamingleaksandrumours",
+    score: 3000,
+    num_comments: 450,
+    hook: "Bethesda just officially confirmed when Elder Scrolls six ships",
+    article_image: "https://cdn/elder.jpg",
+    game_images: JSON.stringify([
+      "https://steam/keyart.jpg",
+      "https://steam/screenshot.jpg",
+    ]),
+    timestamp: new Date().toISOString(),
+  });
+
+  const summary = await autoApprove({
+    repos,
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "LIVE_GUARDED",
+    },
+  });
+
+  assert.equal(summary.approved, 1);
+  assert.equal(summary.review, 0);
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, inputs FROM story_scores
+       WHERE story_id = 'live-guarded-auto'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+  assert.equal(scoreRow.decision, "auto");
+  assert.equal(
+    JSON.parse(scoreRow.inputs).human_review_required,
+    undefined,
+  );
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories
+       WHERE id = 'live-guarded-auto'`,
+    )
+    .get();
+  assert.deepEqual(storyRow, {
+    approved: 1,
+    auto_approved: 1,
+  });
+});
+
+test("mismatched LIVE_GUARDED mode declarations fail closed to human review", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "live-guarded-mode-mismatch",
+    title: "Bethesda confirms release date for Elder Scrolls VI",
+    flair: "verified",
+    subreddit: "gamingleaksandrumours",
+    score: 3000,
+    num_comments: 450,
+    hook: "Bethesda just officially confirmed when Elder Scrolls six ships",
+    article_image: "https://cdn/elder.jpg",
+    game_images: JSON.stringify([
+      "https://steam/keyart.jpg",
+      "https://steam/screenshot.jpg",
+    ]),
+    timestamp: new Date().toISOString(),
+  });
+
+  const summary = await autoApprove({
+    repos,
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "HUMAN_REVIEW",
+    },
+  });
+
+  assert.equal(summary.approved, 0);
+  assert.equal(summary.review, 1);
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories
+       WHERE id = 'live-guarded-mode-mismatch'`,
+    )
+    .get();
+  assert.deepEqual(storyRow, {
+    approved: 0,
+    auto_approved: 0,
+  });
 });
 
 test("dev + USE_SCORING_ENGINE=false -> explicit no-op, nothing approved", async () => {

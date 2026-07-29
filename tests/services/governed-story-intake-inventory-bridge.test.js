@@ -223,6 +223,66 @@ test("materialises the locked YAZD script against clean exact News and Store API
   assert.equal(result.proof.stages.canonical_identity_binding, "PASS");
 });
 
+test("locked official intake derives a deterministic canonical identity from an exact inventory-bound RSS story", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-locked-rss-story-identity-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const storyId = "rss_locked_yazd_official";
+  const fixture = await buildLockedYazdInventoryFixture(root, {
+    storyId,
+  });
+  const canonicalIdentityUrl = fixture.newsUrl;
+
+  const result =
+    await materializeGovernedLockedStoryIntakeFromInventory({
+      inventoryPath: fixture.registryPath,
+      inventoryFileSha256: fixture.registryFileSha256,
+      inventoryRoot: fixture.inventoryRoot,
+      allowedRoots: [fixture.outputRoot, root],
+      canonicalIdentityUrl,
+      finalScript: fixture.script,
+      finalScriptSha256: fixture.scriptSha256,
+      scriptClaimBindings: fixture.scriptClaimBindings,
+      presentationClaimBindings:
+        fixture.presentationClaimBindings,
+      supplementalOfficialSources: [
+        {
+          path: fixture.supplementalPath,
+          file_sha256: fixture.supplementalFileSha256,
+          canonical_sha256: fixture.storePacket.packet_sha256,
+        },
+      ],
+      contract: fixture.contract,
+      freshness: fixture.freshness,
+      visualBrief: fixture.visualBrief,
+      experimentDimensions: {
+        eligible: false,
+        ineligibility_reason:
+          "Breaking high-cadence stories are outside the controlled calibration.",
+      },
+      outputDir: fixture.outputDir,
+    });
+
+  const validation = validateStoryIntakeManifest({
+    manifestPath: result.paths.story_intake,
+  });
+  const canonicalStoryId =
+    `official_${canonicalHash(canonicalIdentityUrl)}`;
+  assert.equal(result.verdict, "VALID");
+  assert.equal(result.legacy_story_id, storyId);
+  assert.equal(result.story_id, canonicalStoryId);
+  assert.equal(validation.storyId, canonicalStoryId);
+  assert.equal(
+    validation.manifest.canonical_identity_url,
+    canonicalIdentityUrl,
+  );
+  assert.equal(
+    validation.sourceEvidence.story_id,
+    canonicalStoryId,
+  );
+});
+
 test("fails closed when archived official Store bytes drift behind a hash-bound packet", async (t) => {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-locked-yazd-source-drift-"),

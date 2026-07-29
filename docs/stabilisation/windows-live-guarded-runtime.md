@@ -18,8 +18,8 @@ The live profile is committed at
   startup
 - independent of an interactive logon and resilient across user logoff
 
-This code has not installed, enabled or started that task. The default command
-is a read-only doctor.
+Nothing in this workflow installs, enables or starts the task automatically.
+The default command is a read-only doctor.
 
 ## Authority boundary
 
@@ -44,9 +44,12 @@ runtime health. It terminates the child after revocation or repeated health
 failure. A disabled task cannot restart it.
 
 The receipt is boot authority, not publication evidence. Every candidate still
-requires exact human approval, rights and QA bindings, a fresh GREEN control
-tower at the governed release commitment and the exact runway chain. The
-doctor therefore never reports production GREEN.
+requires exact evidence-bound candidate authority, rights and QA bindings, a
+fresh GREEN control tower at the governed release commitment and the exact
+runway chain. Eligible low-risk official-source stories may use the governed
+rubric auto-approval path. Uncertain, rights-sensitive or AMBER stories remain
+held for review. The activation receipt grants neither candidate approval nor
+publication permission, and the doctor never reports production GREEN.
 
 ## Read-only doctor
 
@@ -62,8 +65,12 @@ npm run ops:windows-live-guarded-runtime -- doctor `
 ```
 
 The JSON report separates profile, checkout, migration, activation, task,
-conflicting-owner and control-policy evidence. `READY` proves the boot profile
-only. `HOLD` is expected until the explicit cutover is completed.
+conflicting-owner, start-operation-lock and control-policy evidence. `READY`
+proves the boot profile only. A `start` doctor reports top-level `HOLD`
+whenever the port, owner, start-operation lock or other start-specific state
+is blocked, even if the underlying boot profile is otherwise ready.
+Task-query errors are blockers rather than evidence that a conflicting task is
+absent. `HOLD` is expected until the explicit cutover is completed.
 
 No doctor or plan command reads, prints or changes OAuth or token values. The
 database is opened read-only and the supervisor never runs migrations.
@@ -80,8 +87,10 @@ Complete these in order:
 4. Install the new Scheduled Task. Installation always leaves it disabled and
    never starts it.
 5. Run the doctor again.
-6. Enable the exact managed task. Enablement never runs it immediately. The
-   task starts at the next machine boot.
+6. Enable the exact managed task. Enablement never runs it immediately.
+7. Either run the separately guarded `start` action after its doctor is ready,
+   or reboot the machine. Reboot remains the fallback and starts the same
+   exact `SYSTEM` task through its `AtStartup` trigger.
 
 Every mutating command requires both `--apply` and this exact confirmation:
 
@@ -92,11 +101,14 @@ $confirm = "LIVE_GUARDED_YOUTUBE_SYSTEM_RUNTIME"
 Receipt issuance also requires a named operator and a reason:
 
 ```powershell
+$oauthClientSha = "<fresh-account-binding-client-sha256>"
+
 npm run ops:windows-live-guarded-runtime -- issue-activation `
   --repo-root $repo `
   --expected-commit $commit `
   --operator-id "named-operator" `
   --reason "Reviewed governed YouTube runway activation" `
+  --youtube-oauth-client-sha256 $oauthClientSha `
   --apply --confirm $confirm
 ```
 
@@ -109,7 +121,7 @@ npm run ops:windows-live-guarded-runtime -- install `
   --apply --confirm $confirm
 ```
 
-Enable for the next machine boot:
+Enable for guarded start and the next machine boot:
 
 ```powershell
 npm run ops:windows-live-guarded-runtime -- enable `
@@ -118,9 +130,63 @@ npm run ops:windows-live-guarded-runtime -- enable `
   --apply --confirm $confirm
 ```
 
-Install and enable reject profile or activation-path overrides. They also reject
-a dirty checkout, source-commit mismatch, missing or drifted migrations,
-unmanaged task identity and an enabled safe-runtime task.
+Start without reboot:
+
+```powershell
+npm run ops:windows-live-guarded-runtime -- start `
+  --repo-root $repo `
+  --expected-commit $commit `
+  --apply --confirm $confirm
+```
+
+`start` revalidates the exact checkout, database, activation receipt, managed
+task identity, competing runtime and stopped port/owner state immediately
+before asking Task Scheduler to run the task. A durable cross-process lock and
+unique operation nonce serialise start attempts. The supervisor copies that
+nonce into its owner receipt, so cleanup belonging to one failed attempt cannot
+end or disable a different successful owner.
+
+It reports success only after the local health identity, single listener and
+supervisor owner receipt all bind to the expected commit, profile, activation
+receipt and operation nonce. Checkout, database, activation, managed-task
+identity and conflict state are revalidated again immediately before
+`started_verified` evidence is written. Owner, health and single-listener
+identity are then read once more after those authority checks, so a runtime
+that dies or drifts during revalidation cannot receive successful start
+evidence.
+
+Task Scheduler `/Run` errors and timeouts are treated as ambiguous launch
+attempts because the task may already have started before the command failed.
+They therefore enter the same nonce-owned cleanup path as post-launch
+verification failures. Every such failure writes a durable `start-failed`
+lifecycle artefact. Cleanup ends and disables a task only after rechecking its
+task, lock and owner nonce. The artefact records command failures, task state,
+owner clearance and any orphan listener, and sets `stopped_verified` only when
+the managed task is disabled, the port is free and the owner receipt has
+cleared. It does not contact YouTube, mutate OAuth material or claim production
+GREEN.
+
+An exact owner receipt whose processes are dead and whose commit, profile,
+database authority and activation binding still match is treated as stale. The
+guarded start archives it while holding its exact operation nonce and before
+issuing `/Run`; the supervisor still independently enforces exact owner
+creation. Invalid, active or mismatched owner receipts block start.
+
+The start-operation lock is durable across CLI failure. A lock is recoverable
+only when its recorded process is dead, its commit, profile and activation
+bindings are exact, the port has no listener and the owner receipt is absent
+or exact-and-dead. Recovery archives the old lock as evidence before acquiring
+a new nonce. An active process, mismatched binding, live listener, live owner
+or uninspectable state remains `HOLD`.
+
+Install, enable and start reject profile or activation-path overrides. They
+also reject a dirty checkout, source-commit mismatch, missing or drifted
+migrations, unmanaged task identity and an enabled safe-runtime task.
+
+If guarded start is unavailable or fails closed, leave the task disabled,
+resolve the reported blocker, re-enable it and either retry the exact guarded
+start or reboot. Do not substitute an ad-hoc `Start-ScheduledTask` command
+because that bypasses the lifecycle decision and start evidence.
 
 ## Revocation
 

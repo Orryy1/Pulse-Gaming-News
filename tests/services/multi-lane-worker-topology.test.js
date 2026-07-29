@@ -236,3 +236,43 @@ test("the candidate inventory monitor runs in reserved critical planning capacit
     "critical_planning",
   );
 });
+
+test("T-90 deadline work has two isolated short-lease runners that hunt and planning cannot starve", () => {
+  const deadlineKinds = [
+    "prepare_governed_autonomous_pre_t90_window",
+    "governed_youtube_runway_t90",
+  ];
+  const planningKinds = [
+    "plan_governed_autonomous_window_production",
+    "hunt",
+    "governed_editorial_evidence_backfill",
+  ];
+  const definitions = buildMultiLaneWorkerDefinitions({
+    handlers: Object.fromEntries(
+      [...deadlineKinds, ...planningKinds].map((kind) => [
+        kind,
+        () => {},
+      ]),
+    ),
+  });
+  const deadline = definitions.find(
+    (definition) => definition.pool_id === "window_deadline",
+  );
+  const planning = definitions.find(
+    (definition) =>
+      definition.pool_id === "critical_planning",
+  );
+
+  assert.equal(deadline.instances, 2);
+  assert.equal(deadline.lease_ms, 90_000);
+  assert.equal(deadline.heartbeat_ms, 20_000);
+  assert.deepEqual(
+    deadline.kinds.sort(),
+    deadlineKinds.sort(),
+  );
+  assert.deepEqual(
+    planning.kinds.sort(),
+    planningKinds.sort(),
+  );
+  assert.notEqual(deadline.pool_id, planning.pool_id);
+});

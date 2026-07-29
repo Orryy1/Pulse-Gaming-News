@@ -15,6 +15,7 @@ const {
 } = require("../../lib/services/multi-lane-job-routing");
 const { handlers } = require("../../lib/job-handlers");
 const {
+  MULTI_LANE_SCHEDULER_PROFILE,
   STABILISATION_SCHEDULER_PROFILE,
   schedulesForProfile,
 } = require("../../lib/scheduler");
@@ -192,6 +193,7 @@ test("three lanes receive independent budgets and exact dispatch jobs with break
   assert.deepEqual(plan.worker_topology, {
     breaking_planning: { concurrency: 2 },
     critical_planning: { concurrency: 1 },
+    window_deadline: { concurrency: 2 },
     editorial_evidence_capture: { concurrency: 2 },
     editorial_preparation: { concurrency: 1 },
     governed_review: { concurrency: 2 },
@@ -305,6 +307,36 @@ test("stabilisation schedules the multi-lane planner without granting publish au
   assert.equal(schedule.cron_expr, "*/15 * * * *");
   assert.equal(schedule.payload.live_publish_enabled, false);
   assert.equal(schedule.payload.human_admission_required, true);
+});
+
+test("LIVE_GUARDED keeps planning-only inventory schedules outside the publish authority envelope", () => {
+  const schedules = schedulesForProfile(
+    MULTI_LANE_SCHEDULER_PROFILE,
+    { livePublishEnabled: true },
+  );
+  const planningOnly = schedules.filter(
+    (schedule) => schedule.payload?.planning_only === true,
+  );
+
+  assert.ok(planningOnly.length > 0);
+  for (const schedule of planningOnly) {
+    assert.equal(
+      schedule.payload.live_publish_enabled,
+      false,
+      schedule.name,
+    );
+    assert.notEqual(
+      schedule.payload.publish_authority,
+      true,
+      schedule.name,
+    );
+  }
+  assert.equal(
+    schedules.find(
+      (schedule) => schedule.name === "governed_multi_lane_plan",
+    ).payload.live_publish_enabled,
+    true,
+  );
 });
 
 test("scheduled planner writes machine-readable evidence and never posts", async (t) => {
@@ -1039,6 +1071,89 @@ test("DB collection keeps current breaking news ahead of stale high-score rows a
     report.candidate_eligibility.eligible_candidates[0]
       .story_id,
     "current-low-score-story",
+  );
+});
+
+test("deadline-window jobs do not consume critical planning capacity", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-window-deadline-accounting-"),
+  );
+  t.after(() => fs.remove(outDir));
+  const queued = [];
+  const db = {
+    prepare(sql) {
+      if (sql.includes("FROM jobs")) {
+        return {
+          all() {
+            return [
+              {
+                id: 901,
+                kind: "prepare_governed_autonomous_pre_t90_window",
+                payload: "{}",
+                idempotency_key: "pre-t90:2026-07-30:19",
+                status: "pending",
+              },
+              {
+                id: 902,
+                kind: "governed_youtube_runway_t90",
+                payload: "{}",
+                idempotency_key:
+                  "governed_youtube_runway_t90:2026-07-30:19",
+                status: "pending",
+              },
+            ];
+          },
+        };
+      }
+      throw new Error(`unexpected SQL: ${sql}`);
+    },
+  };
+
+  await handlers.governed_multi_lane_plan(
+    {
+      id: 903,
+      channel_id: "pulse-gaming",
+      payload: {
+        now: NOW,
+        out_dir: outDir,
+        candidates: [
+          {
+            lane_id: "evergreen_short",
+            story_id: "evergreen-deadline-isolation",
+            stage: "PLANNING",
+            score: 90,
+          },
+        ],
+        runtime_control: {
+          kill_switch_healthy: true,
+          operating_contract_valid: true,
+          scheduler_owner_healthy: true,
+          autonomous_production_enabled: true,
+          live_publish_enabled: false,
+        },
+      },
+    },
+    {
+      prevalidatedMultiLaneCandidates: true,
+      prevalidatedRuntimeControl: true,
+      repos: {
+        db,
+        jobs: {
+          enqueue(input) {
+            queued.push(input);
+            return { id: 904, ...input };
+          },
+        },
+      },
+      log() {},
+    },
+  );
+
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].kind, "plan_evergreen_short");
+  assert.equal(
+    queued[0].payload.worker_pool,
+    "critical_planning",
   );
 });
 

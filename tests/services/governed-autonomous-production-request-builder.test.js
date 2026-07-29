@@ -19,6 +19,9 @@ const {
 const {
   REQUEST_SCHEMA_VERSION: PRODUCTION_REQUEST_SCHEMA_VERSION,
 } = require("../../lib/services/governed-autonomous-production-coordinator");
+const {
+  createGovernedAutonomousDatabaseStoryBinding,
+} = require("../../lib/services/governed-autonomous-database-story-binding");
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -62,18 +65,28 @@ function reservationSet() {
 function lockedIntake(storyId = "story-primary") {
   const script =
     "Xbox just confirmed four classics are coming back with modern achievement support.";
+  const canonicalIdentityUrl =
+    "https://news.xbox.com/en-us/2026/07/30/classics-return/";
+  const inventoryFileSha256 = sha256("locked-inventory");
   return {
     story_id: storyId,
     locked_intake: {
+      database_story_binding:
+        createGovernedAutonomousDatabaseStoryBinding({
+          canonical_story_id: storyId,
+          database_story_id: storyId,
+          canonical_identity_url: canonicalIdentityUrl,
+          inventory_file_sha256: inventoryFileSha256,
+          final_script_sha256: sha256(script),
+        }),
       inventory_path: "C:\\pulse\\inventory\\locked.json",
-      inventory_file_sha256: sha256("locked-inventory"),
+      inventory_file_sha256: inventoryFileSha256,
       inventory_root: "C:\\pulse\\inventory",
       allowed_roots: [
         "C:\\pulse\\inventory",
         "C:\\pulse\\candidate-source",
       ],
-      canonical_identity_url:
-        "https://news.xbox.com/en-us/2026/07/30/classics-return/",
+      canonical_identity_url: canonicalIdentityUrl,
       final_script: script,
       final_script_sha256: sha256(script),
       script_claim_bindings: [

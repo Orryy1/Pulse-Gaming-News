@@ -224,6 +224,11 @@ function shadowCanonicalDedupe(story, platform, stories) {
 //                  without touching the real repos singleton).
 //   env            override process.env during tests. Defaults to the
 //                  live process.env.
+//
+// HUMAN_REVIEW and every incomplete or mismatched mode keep the manual
+// editorial gate. Only the fully bound production LIVE_GUARDED mode may
+// persist the scoring rubric's existing `auto` decision. Official-source,
+// render-QA and publication gates still remain mandatory afterwards.
 async function autoApprove({ repos: injectedRepos, env = process.env } = {}) {
   const isProd = env.NODE_ENV === "production";
   const sqliteOn = env.USE_SQLITE === "true";
@@ -267,9 +272,23 @@ async function autoApprove({ repos: injectedRepos, env = process.env } = {}) {
   }
 
   const { runScoringPass } = require("./lib/decision-engine");
+  const pulseOperatingMode = String(
+    env.PULSE_OPERATING_MODE || "",
+  )
+    .trim()
+    .toUpperCase();
+  const legacyOperatingMode = String(
+    env.OPERATING_MODE || "",
+  )
+    .trim()
+    .toUpperCase();
+  const governedAutonomousApproval =
+    isProd &&
+    pulseOperatingMode === "LIVE_GUARDED" &&
+    legacyOperatingMode === "LIVE_GUARDED";
   const summary = runScoringPass({
     repos,
-    humanReviewRequired: true,
+    humanReviewRequired: !governedAutonomousApproval,
   });
   return summary;
 }

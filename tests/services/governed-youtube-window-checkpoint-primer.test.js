@@ -668,6 +668,66 @@ test("checkpoint execution accepts at most 60 seconds of runner jitter and fails
   );
 });
 
+test("autonomous pre-T90 preparation is a strict T-94 checkpoint with no early or late catch-up", () => {
+  const kind = "prepare_governed_autonomous_pre_t90_window";
+  const runAt = "2026-07-28T17:26:00.000Z";
+
+  assert.deepEqual(
+    evaluateGovernedYoutubeCheckpointExecutionTime({
+      kind,
+      runAt,
+      now: "2026-07-28T17:26:00.000Z",
+    }),
+    {
+      status: "ACCEPTED",
+      classification: null,
+      due_at: "2026-07-28T17:26:00.000Z",
+      evaluated_at: "2026-07-28T17:26:00.000Z",
+      lateness_ms: 0,
+      maximum_lateness_ms: 60000,
+      execute_checkpoint: true,
+      catch_up_allowed: false,
+      recovery_action: null,
+    },
+  );
+  assert.deepEqual(
+    evaluateGovernedYoutubeCheckpointExecutionTime({
+      kind,
+      runAt,
+      now: "2026-07-28T17:25:59.999Z",
+    }),
+    {
+      status: "NOT_DUE",
+      classification: null,
+      due_at: "2026-07-28T17:26:00.000Z",
+      evaluated_at: "2026-07-28T17:25:59.999Z",
+      lateness_ms: -1,
+      maximum_lateness_ms: 60000,
+      execute_checkpoint: false,
+      catch_up_allowed: false,
+      recovery_action: "WAIT_UNTIL_DUE",
+    },
+  );
+  assert.deepEqual(
+    evaluateGovernedYoutubeCheckpointExecutionTime({
+      kind,
+      runAt,
+      now: "2026-07-28T17:27:00.001Z",
+    }),
+    {
+      status: "MISSED",
+      classification: "MISSED_INTERNAL",
+      due_at: "2026-07-28T17:26:00.000Z",
+      evaluated_at: "2026-07-28T17:27:00.001Z",
+      lateness_ms: 60001,
+      maximum_lateness_ms: 60000,
+      execute_checkpoint: false,
+      catch_up_allowed: false,
+      recovery_action: "WRITE_MISSED_INTERNAL_INCIDENT_ONLY",
+    },
+  );
+});
+
 test("an immutable T-90 lock deterministically creates one exact T-60 verification job without upload authority", () => {
   assert.deepEqual(
     buildGovernedYoutubeT60PrestageJob({

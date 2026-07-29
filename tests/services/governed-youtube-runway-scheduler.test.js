@@ -137,6 +137,90 @@ test("governed profile enables exactly two T-90 locks and two T+15 verifications
   );
 });
 
+test("governed profile plans both autonomous windows after inventory reconciliation and prepares both at T-94", () => {
+  const schedules = schedulesForProfile(
+    MULTI_LANE_SCHEDULER_PROFILE,
+  );
+  const autonomous = schedules.filter((schedule) =>
+    [
+      "plan_governed_autonomous_window_production",
+      "prepare_governed_autonomous_pre_t90_window",
+    ].includes(schedule.kind),
+  );
+
+  assert.deepEqual(
+    autonomous.map((schedule) => [
+      schedule.name,
+      schedule.kind,
+      schedule.cron_expr,
+      schedule.payload.phase,
+      schedule.payload.publish_hour_utc,
+    ]),
+    [
+      [
+        "plan_governed_autonomous_window_production_morning",
+        "plan_governed_autonomous_window_production",
+        "35 6 * * *",
+        "AUTONOMOUS_WINDOW_PRODUCTION_PLAN",
+        9,
+      ],
+      [
+        "plan_governed_autonomous_window_production_evening",
+        "plan_governed_autonomous_window_production",
+        "35 16 * * *",
+        "AUTONOMOUS_WINDOW_PRODUCTION_PLAN",
+        19,
+      ],
+      [
+        "prepare_governed_autonomous_pre_t90_window_morning",
+        "prepare_governed_autonomous_pre_t90_window",
+        "26 7 * * *",
+        "T-94",
+        9,
+      ],
+      [
+        "prepare_governed_autonomous_pre_t90_window_evening",
+        "prepare_governed_autonomous_pre_t90_window",
+        "26 17 * * *",
+        "T-94",
+        19,
+      ],
+    ],
+  );
+  assert.ok(
+    autonomous.every(
+      (schedule) =>
+        schedule.payload.scheduler_profile ===
+          MULTI_LANE_SCHEDULER_PROFILE &&
+        schedule.payload.catch_up_allowed === false &&
+        schedule.payload.publish_authority === false &&
+        schedule.payload.external_posting === false,
+    ),
+  );
+
+  const contract = governedYoutubeRunwayScheduleContract(
+    schedules,
+  );
+  assert.equal(contract.verdict, "GREEN");
+  assert.equal(contract.schedule_count, 4);
+  assert.equal(
+    contract.autonomous_production_plan_schedule_count,
+    2,
+  );
+  assert.equal(
+    contract.autonomous_pre_t90_schedule_count,
+    2,
+  );
+  assert.equal(
+    contract.autonomous_production_planning_enabled,
+    true,
+  );
+  assert.equal(
+    contract.autonomous_pre_t90_preparation_enabled,
+    true,
+  );
+});
+
 test("runway schedule contract fails closed on a missing or drifted checkpoint", () => {
   const schedules = schedulesForProfile(
     MULTI_LANE_SCHEDULER_PROFILE,
@@ -149,14 +233,25 @@ test("runway schedule contract fails closed on a missing or drifted checkpoint",
         schedule.name !==
           "governed_youtube_window_checkpoint_prime_daily" &&
         schedule.name !==
-          "governed_youtube_window_inventory_monitor",
+          "governed_youtube_window_inventory_monitor" &&
+        schedule.name !==
+          "plan_governed_autonomous_window_production_evening",
     )
-    .map((schedule) =>
-      schedule.name ===
-      "governed_youtube_runway_t90_morning"
-        ? { ...schedule, cron_expr: "31 7 * * *" }
-        : schedule,
-    );
+    .map((schedule) => {
+      if (
+        schedule.name ===
+        "governed_youtube_runway_t90_morning"
+      ) {
+        return { ...schedule, cron_expr: "31 7 * * *" };
+      }
+      if (
+        schedule.name ===
+        "prepare_governed_autonomous_pre_t90_window_morning"
+      ) {
+        return { ...schedule, cron_expr: "27 7 * * *" };
+      }
+      return schedule;
+    });
   const contract = governedYoutubeRunwayScheduleContract(
     drifted,
   );
@@ -181,6 +276,26 @@ test("runway schedule contract fails closed on a missing or drifted checkpoint",
     contract.blockers.includes(
       "runway_candidate_inventory_monitor_missing_or_drifted",
     ),
+  );
+  assert.ok(
+    contract.blockers.includes(
+      "autonomous_production_plan_schedule_missing:" +
+        "plan_governed_autonomous_window_production_evening",
+    ),
+  );
+  assert.ok(
+    contract.blockers.includes(
+      "autonomous_pre_t90_schedule_drifted:" +
+        "prepare_governed_autonomous_pre_t90_window_morning",
+    ),
+  );
+  assert.equal(
+    contract.autonomous_production_planning_enabled,
+    false,
+  );
+  assert.equal(
+    contract.autonomous_pre_t90_preparation_enabled,
+    false,
   );
   assert.equal(contract.catch_up_allowed, false);
   assert.equal(contract.publish_authority, false);

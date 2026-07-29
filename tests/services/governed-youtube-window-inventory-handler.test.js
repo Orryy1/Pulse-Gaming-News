@@ -158,6 +158,53 @@ test("an uncovered window durably queues bounded replenishment and emits one sta
   );
 });
 
+test("guarded-live replenishment keeps strict planning repairs non-live while the governed planner inherits live routing", async (t) => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-window-live-routing-"),
+  );
+  t.after(() => fs.remove(root));
+  const jobs = idempotentJobs();
+
+  await runGovernedYoutubeWindowInventoryMonitor({
+    payload: {
+      ...safePayload(root),
+      live_publish_enabled: true,
+    },
+    repos: { db: {}, jobs },
+    readReport: () => report(),
+    notify: async () => {},
+  });
+
+  const byKind = new Map(
+    jobs.values().map((job) => [job.kind, job]),
+  );
+  for (const kind of [
+    "governed_editorial_evidence_backfill",
+    "reconcile_editorial_inventory",
+    "evergreen_candidate_builder",
+  ]) {
+    assert.equal(
+      byKind.get(kind)?.payload.live_publish_enabled,
+      false,
+      kind,
+    );
+    assert.equal(
+      byKind.get(kind)?.payload.human_admission_required,
+      true,
+      kind,
+    );
+  }
+  assert.equal(
+    byKind.get("hunt")?.payload.live_publish_enabled,
+    true,
+  );
+  assert.equal(
+    byKind.get("governed_multi_lane_plan")?.payload
+      .live_publish_enabled,
+    true,
+  );
+});
+
 test("a covered window writes proof without replenishment or alert noise", async (t) => {
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-window-inventory-covered-"),

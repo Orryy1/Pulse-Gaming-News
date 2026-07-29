@@ -115,7 +115,7 @@ test("the same quarter-hour produces byte-stable idempotent job requests", () =>
   assert.deepEqual(first.queued, second.queued);
 });
 
-test("startup planner requests live routing only when every explicit guarded-live control is armed", () => {
+test("guarded-live startup grants live routing only to monitor, hunt and the governed planner", () => {
   const jobs = fakeJobs();
   const result = primeGovernedMultiLaneStartup({
     jobs,
@@ -137,8 +137,34 @@ test("startup planner requests live routing only when every explicit guarded-liv
   });
 
   assert.equal(result.status, "PRIMED");
-  assert.ok(
-    jobs.queued.every((job) => job.payload.live_publish_enabled === true),
+  const liveCapableKinds = new Set([
+    "governed_youtube_window_inventory_monitor",
+    "hunt",
+    "governed_multi_lane_plan",
+  ]);
+  for (const job of jobs.queued) {
+    assert.equal(
+      job.payload.live_publish_enabled,
+      liveCapableKinds.has(job.kind),
+      job.kind,
+    );
+  }
+  for (const kind of [
+    "governed_editorial_evidence_backfill",
+    "reconcile_editorial_inventory",
+    "evergreen_candidate_builder",
+    "plan_weekly_longform",
+  ]) {
+    const job = jobs.queued.find((candidate) => candidate.kind === kind);
+    assert.ok(job, kind);
+    assert.equal(job.payload.planning_only, true, kind);
+    assert.equal(job.payload.live_publish_enabled, false, kind);
+  }
+  assert.equal(
+    jobs.queued.find(
+      (job) => job.kind === "governed_multi_lane_plan",
+    ).payload.live_publish_enabled,
+    true,
   );
 });
 

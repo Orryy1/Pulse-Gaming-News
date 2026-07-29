@@ -708,3 +708,204 @@ test("an unrelated official body claim cannot confirm a misleading discovered pr
     ),
   );
 });
+
+test("an official platform article cannot confirm a different named game merely because both mention that platform", async () => {
+  const url =
+    "https://www.nintendo.com/us/whatsnew/nintendo-switch-2-choose-your-game-bundle-launches-this-summer/";
+  const exactClaim =
+    "Starting in early June, participating retailers will offer the Nintendo Switch 2: Choose Your Game Bundle for the suggested retail price of $499.99, which includes a Nintendo Switch 2 system and a download code that can be redeemed for a digital version of one select game.";
+  const packet = await captureBreakingSourceEvidence({
+    story: {
+      id: "clair-obscur-switch-2-port",
+      title:
+        'Clair Obscur: Expedition 33 devs are working on a Nintendo Switch 2 version, but note the "big technical challenge" of getting it up and running',
+      subject_ids: ["nintendo"],
+      source_candidates: [url],
+    },
+    sourcePolicy: BREAKING_SOURCE_POLICY,
+    now: "2026-07-29T22:00:53.343Z",
+    fetchCapture: async () => ({
+      status: 200,
+      final_url: url,
+      content_type: "text/html",
+      bytes: Buffer.from(`<main><p>${exactClaim}</p></main>`),
+    }),
+    extractClaims: async () => ({
+      extractor: { id: "fixture", version: "1" },
+      claims: [
+        {
+          claim_key: "nintendo.switch_2_bundle_price_games",
+          text: exactClaim,
+          location: "body",
+        },
+      ],
+    }),
+  });
+
+  assert.equal(packet.verdict, "HOLD");
+  assert.equal(packet.verified_for_planning, false);
+  assert.deepEqual(packet.confirmed_claims, []);
+  assert.ok(
+    packet.sources[0].blockers.includes(
+      "source_claim_not_bound_to_discovered_subject",
+    ),
+  );
+});
+
+test("an official article still confirms a named game when its canonical body contains the exact headline subject", async () => {
+  const url =
+    "https://www.nintendo.com/us/whatsnew/clair-obscur-expedition-33/";
+  const exactClaim =
+    "Clair Obscur: Expedition 33 is coming to Nintendo Switch 2.";
+  const packet = await captureBreakingSourceEvidence({
+    story: {
+      id: "clair-obscur-exact-official-subject",
+      title:
+        "Clair Obscur: Expedition 33 is coming to Nintendo Switch 2",
+      subject_ids: ["nintendo"],
+      source_candidates: [url],
+    },
+    sourcePolicy: BREAKING_SOURCE_POLICY,
+    now: "2026-07-29T22:00:53.343Z",
+    fetchCapture: async () => ({
+      status: 200,
+      final_url: url,
+      content_type: "text/html",
+      bytes: Buffer.from(`<main><p>${exactClaim}</p></main>`),
+    }),
+    extractClaims: async () => ({
+      extractor: { id: "fixture", version: "1" },
+      claims: [
+        {
+          claim_key: "nintendo.clair_obscur.switch_2_port",
+          text: exactClaim,
+          location: "body",
+        },
+      ],
+    }),
+  });
+
+  assert.equal(packet.verdict, "OFFICIAL_CONFIRMED");
+  assert.equal(packet.verified_for_planning, true);
+  assert.equal(packet.confirmed_claims.length, 1);
+});
+
+test("title-case action words do not become part of a possessive game subject", async () => {
+  const url =
+    "https://na.finalfantasyxiv.com/lodestone/topics/detail/bastion/";
+  const capture = (claimText, claimKey) =>
+    captureBreakingSourceEvidence({
+      story: {
+        id: "ffxiv-bastion-exact-subject",
+        title:
+          "Final Fantasy XIV's New Tank Uses TWO Giant Shields",
+        subject_ids: ["square-enix"],
+        source_candidates: [url],
+      },
+      sourcePolicy: {
+        official_first_party: [
+          {
+            source_id: "ffxiv-lodestone",
+            owner: "Square Enix",
+            hosts: ["na.finalfantasyxiv.com"],
+            subject_ids: ["square-enix"],
+          },
+        ],
+        trusted_editorial: [],
+      },
+      now: "2026-07-29T22:00:53.343Z",
+      fetchCapture: async () => ({
+        status: 200,
+        final_url: url,
+        content_type: "text/html",
+        bytes: Buffer.from(`<main><p>${claimText}</p></main>`),
+      }),
+      extractClaims: async () => ({
+        extractor: { id: "fixture", version: "1" },
+        claims: [
+          {
+            claim_key: claimKey,
+            text: claimText,
+            location: "body",
+          },
+        ],
+      }),
+    });
+  const exact = await capture(
+    "Final Fantasy XIV introduces Bastion, a new tank that uses two giant shields.",
+    "square_enix.ffxiv.bastion.tank_reveal",
+  );
+  const differentGame = await capture(
+    "Final Fantasy VII Remake uses a new combat system with giant attacks.",
+    "square_enix.ffvii.remake.combat_reveal",
+  );
+
+  assert.equal(exact.verdict, "OFFICIAL_CONFIRMED");
+  assert.equal(exact.verified_for_planning, true);
+  assert.equal(differentGame.verdict, "HOLD");
+  assert.ok(
+    differentGame.sources[0].blockers.includes(
+      "source_claim_not_bound_to_discovered_subject",
+    ),
+  );
+});
+
+test("a number inside a game title remains part of the required official subject identity", async () => {
+  const url = "https://www.ea.com/games/it-takes-two/news/switch-2/";
+  const policy = {
+    official_first_party: [
+      {
+        source_id: "ea-news",
+        owner: "Electronic Arts",
+        hosts: ["ea.com"],
+        subject_ids: ["ea"],
+      },
+    ],
+    trusted_editorial: [],
+  };
+  const story = {
+    id: "it-takes-two-switch-2",
+    title: "It Takes Two gets a Nintendo Switch 2 update",
+    subject_ids: ["ea"],
+    source_candidates: [url],
+  };
+  const capture = (exactClaim, claimKey) =>
+    captureBreakingSourceEvidence({
+      story,
+      sourcePolicy: policy,
+      now: "2026-07-29T22:00:53.343Z",
+      fetchCapture: async () => ({
+        status: 200,
+        final_url: url,
+        content_type: "text/html",
+        bytes: Buffer.from(`<main><p>${exactClaim}</p></main>`),
+      }),
+      extractClaims: async () => ({
+        extractor: { id: "fixture", version: "1" },
+        claims: [
+          {
+            claim_key: claimKey,
+            text: exactClaim,
+            location: "body",
+          },
+        ],
+      }),
+    });
+
+  const exact = await capture(
+    "It Takes Two gets a Nintendo Switch 2 update.",
+    "ea.it_takes_two.switch_2_update",
+  );
+  const differentTitle = await capture(
+    "It Takes a Village is getting a Nintendo Switch 2 update.",
+    "ea.it_takes_a_village.switch_2_update",
+  );
+
+  assert.equal(exact.verdict, "OFFICIAL_CONFIRMED");
+  assert.equal(differentTitle.verdict, "HOLD");
+  assert.ok(
+    differentTitle.sources[0].blockers.includes(
+      "source_claim_not_bound_to_discovered_subject",
+    ),
+  );
+});

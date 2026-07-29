@@ -99,6 +99,191 @@ test("processor quality scoring fails closed when the editorial provider fails",
   assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
 });
 
+test("processor quality scoring honours a selected direct-hook contract instead of demanding an open loop", async () => {
+  let request = null;
+  let calls = 0;
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const result = await processor.scoreScript(
+    {
+      messages: {
+        async create(input) {
+          calls += 1;
+          request = input;
+          return {
+            content: [
+              {
+                text: JSON.stringify({
+                  score: 8,
+                  reason:
+                    "The consequence is immediate and specific without manufacturing a curiosity gap.",
+                }),
+              },
+            ],
+          };
+        },
+      },
+    },
+    scriptForContract(42, selected),
+    { title: "Verified gaming story" },
+    pulseChannel,
+    {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+    },
+  );
+
+  assert.equal(calls, 1);
+  assert.equal(result.score, 8);
+  assert.match(
+    request.system,
+    /direct hook should state the verified consequence immediately/i,
+  );
+  assert.match(
+    request.system,
+    /must not be penalised for revealing the core verified change/i,
+  );
+  assert.doesNotMatch(
+    request.system,
+    /hook that reveals the answer or is vague scores 1-3/i,
+  );
+});
+
+test("processor re-scores a direct hook when the critic applies an open-loop rubric", async () => {
+  const requests = [];
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const responses = [
+    {
+      score: 2,
+      reason: "The hook reveals the entire answer upfront.",
+    },
+    {
+      score: 8,
+      reason:
+        "The verified player consequence lands immediately and specifically.",
+    },
+  ];
+
+  const result = await processor.scoreScript(
+    {
+      messages: {
+        async create(input) {
+          requests.push(input);
+          return {
+            content: [
+              {
+                text: JSON.stringify(responses[requests.length - 1]),
+              },
+            ],
+          };
+        },
+      },
+    },
+    scriptForContract(42, selected),
+    { title: "Verified gaming story" },
+    pulseChannel,
+    {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+    },
+  );
+
+  assert.equal(requests.length, 2);
+  assert.equal(result.score, 8);
+  assert.equal(result.failed, false);
+  assert.match(requests[1].system, /rubric-correction rescore/i);
+  assert.match(
+    requests[1].system,
+    /do not apply an open-loop or curiosity-gap criterion/i,
+  );
+});
+
+test("processor fails a direct-hook quality score closed when the corrected critic repeats the wrong rubric", async () => {
+  let calls = 0;
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+
+  const result = await processor.scoreScript(
+    {
+      messages: {
+        async create() {
+          calls += 1;
+          return {
+            content: [
+              {
+                text: JSON.stringify({
+                  score: 2,
+                  reason:
+                    "It still gives away the answer instead of building a curiosity gap.",
+                }),
+              },
+            ],
+          };
+        },
+      },
+    },
+    scriptForContract(42, selected),
+    { title: "Verified gaming story" },
+    pulseChannel,
+    {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+    },
+  );
+
+  assert.equal(calls, 2);
+  assert.equal(result.score, 0);
+  assert.equal(result.failed, true);
+  assert.match(result.reason, /human review required/i);
+});
+
+test("processor accepts a valid low direct-hook score for a real direct-hook defect", async () => {
+  let calls = 0;
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+
+  const result = await processor.scoreScript(
+    {
+      messages: {
+        async create() {
+          calls += 1;
+          return {
+            content: [
+              {
+                text: JSON.stringify({
+                  score: 3,
+                  reason:
+                    "The hook is vague and never states the exact player consequence.",
+                }),
+              },
+            ],
+          };
+        },
+      },
+    },
+    scriptForContract(42, selected),
+    { title: "Verified gaming story" },
+    pulseChannel,
+    {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+    },
+  );
+
+  assert.equal(calls, 1);
+  assert.equal(result.score, 3);
+  assert.equal(result.failed, false);
+});
+
 test("processor labels a fabricated review fallback as local instead of model-generated", () => {
   const identity = processor.resolveScriptGeneratorIdentity({
     client: {
@@ -116,6 +301,135 @@ test("processor labels a fabricated review fallback as local instead of model-ge
     model: "deterministic-review-fallback",
     adapter: "processor.manual-review-fallback",
   });
+});
+
+test("processor retries an existing title-only generation failure but preserves a real completed script", () => {
+  const failed = {
+    id: "rss_failed",
+    title: "Silent Hill: Townfall hands-on report",
+    hook: "Silent Hill: Townfall hands-on report",
+    body: "Script generation failed. Manual edit required.",
+    full_script: "Silent Hill: Townfall hands-on report",
+  };
+  const complete = {
+    ...failed,
+    id: "rss_complete",
+    body:
+      "The official source confirms the release and the player impact.",
+    full_script:
+      "Silent Hill: Townfall launches on PlayStation 5 on 24 September, but its setting comes from somewhere real. Developer Screen Burn visited and photographed coastal towns across Scotland, giving this new Silent Hill story a distinctly grounded source of inspiration.",
+  };
+
+  assert.equal(
+    processor.needsScriptGenerationRepair(failed),
+    true,
+  );
+  assert.equal(
+    processor.needsScriptGenerationRepair(complete),
+    false,
+  );
+});
+
+test("processor dedup admits an exact failed row for repair without reopening completed stories", () => {
+  const failed = {
+    id: "rss_failed",
+    title: "Silent Hill: Townfall hands-on report",
+    hook: "Silent Hill: Townfall hands-on report",
+    body: "Script generation failed. Manual edit required.",
+    full_script: "Silent Hill: Townfall hands-on report",
+  };
+  const completed = {
+    id: "rss_complete",
+    title: "Xbox adds four classics to PC",
+    hook: "Four Xbox classics just landed on PC.",
+    body: "The official Xbox source confirms the catalogue change.",
+    full_script:
+      "Four Xbox classics just landed on PC. The official Xbox source confirms the catalogue change and what players can access.",
+  };
+  const pending = [
+    { id: failed.id, title: failed.title },
+    { id: completed.id, title: completed.title },
+  ];
+
+  const admitted = processor.filterPendingStoriesForGeneration(
+    pending,
+    [failed, completed],
+    { logger: () => {} },
+  );
+
+  assert.deepEqual(
+    admitted.map((story) => story.id),
+    ["rss_failed"],
+  );
+});
+
+test("processor autonomously recovers recent official script failures even when they fall outside the current hunt top eight", () => {
+  const now = "2026-07-29T22:45:00.000Z";
+  const pending = [
+    {
+      id: "rss_current_top_story",
+      title: "A current top-eight story",
+      url: "https://news.xbox.com/en-us/2026/07/29/current-story/",
+    },
+  ];
+  const failedOfficial = {
+    id: "rss_failed_official",
+    title: "Official PlayStation story needs a script repair",
+    url: "https://blog.playstation.com/2026/07/29/official-story/",
+    published_at: "2026-07-29T18:00:00.000Z",
+    breaking_score: 65,
+    hook: "Official PlayStation story needs a script repair",
+    body: "Script generation failed. Manual edit required.",
+    full_script: "Official PlayStation story needs a script repair",
+    contract_failures: ["script_generation_exhausted"],
+  };
+  const failedEditorial = {
+    ...failedOfficial,
+    id: "rss_failed_editorial",
+    title: "Editorial report needs a script repair",
+    url: "https://www.ign.com/articles/editorial-story",
+  };
+  const unboundEditorial = {
+    ...failedEditorial,
+    id: "rss_unbound_editorial",
+    title: "Unbound editorial report needs a script repair",
+  };
+  const completedOfficial = {
+    ...failedOfficial,
+    id: "rss_completed_official",
+    title: "Completed official story",
+    body: "The official source confirms the exact player consequence.",
+    full_script:
+      "PlayStation confirmed the exact player consequence and when it takes effect.",
+    contract_failures: [],
+  };
+  const oldOfficial = {
+    ...failedOfficial,
+    id: "rss_old_official",
+    title: "Old official story",
+    published_at: "2026-07-20T18:00:00.000Z",
+  };
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates(
+      pending,
+      [
+        failedOfficial,
+        failedEditorial,
+        unboundEditorial,
+        completedOfficial,
+        oldOfficial,
+      ],
+      {
+        now,
+        preferredStoryIds: new Set(["rss_failed_editorial"]),
+      },
+    );
+
+  assert.deepEqual(
+    repairs.map((story) => story.id),
+    ["rss_failed_editorial", "rss_failed_official"],
+  );
 });
 
 test("processor removes every banned sentence opener before validation", () => {
@@ -214,8 +528,84 @@ test("quality retries quote the concrete critic reason instead of repeating a ge
 
   assert.match(instruction, /score/);
   assert.match(instruction, /reveals the entire answer/);
-  assert.match(instruction, /Rewrite the hook/i);
+  assert.match(
+    instruction,
+    /state the exact verified player consequence immediately/i,
+  );
+  assert.match(instruction, /verification data/i);
+  assert.match(instruction, /named game, platform or mechanic/i);
+  assert.doesNotMatch(instruction, /create a fact-specific curiosity gap/i);
   assert.match(instruction, /56-70 cleaned spoken words/);
+});
+
+test("quality retries preserve the curiosity-gap repair for an open-loop contract", () => {
+  const selected = {
+    ...contract(
+      "trailer_truth_standard_38_48",
+      "trailer_truth_check",
+    ),
+    hook_type: "open_loop",
+    hook_instruction: "Challenge the headline, then show proof.",
+  };
+  const instruction = processor.buildScriptRetryInstruction({
+    attempt: 2,
+    contract: selected,
+    ctaDecision: ctaDecision(false),
+    previousDraft: {
+      classification: "[CONFIRMED]",
+      hook: "The trailer confirms the entire answer.",
+      full_script: words(60),
+    },
+    previousFailure: {
+      kind: "quality",
+      score: 2,
+      reason: "The hook is vague and creates no curiosity gap.",
+    },
+  });
+
+  assert.match(instruction, /create a fact-specific curiosity gap/i);
+  assert.doesNotMatch(
+    instruction,
+    /state the exact verified player consequence immediately/i,
+  );
+});
+
+test("processor gives a validated low-quality third draft one bounded quality-only repair without extending validation or provider failure retries", () => {
+  assert.equal(
+    processor.shouldRetryScriptGeneration({
+      attempt: 3,
+      failureKind: "quality",
+    }),
+    true,
+  );
+  assert.equal(
+    processor.shouldRetryScriptGeneration({
+      attempt: 4,
+      failureKind: "quality",
+    }),
+    false,
+  );
+  assert.equal(
+    processor.shouldRetryScriptGeneration({
+      attempt: 3,
+      failureKind: "validation",
+    }),
+    false,
+  );
+  assert.equal(
+    processor.shouldRetryScriptGeneration({
+      attempt: 3,
+      failureKind: "provider",
+    }),
+    false,
+  );
+  assert.equal(
+    processor.shouldRetryScriptGeneration({
+      attempt: 3,
+      failureKind: "quality_unavailable",
+    }),
+    false,
+  );
 });
 
 test("processor validates the selected What Changes short runtime", () => {

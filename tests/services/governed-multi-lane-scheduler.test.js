@@ -1042,6 +1042,307 @@ test("DB collection keeps current breaking news ahead of stale high-score rows a
   );
 });
 
+test("DB collection uses the latest safe governed editorial score for a current evidence-bound breaking story", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-multi-lane-governed-editorial-score-",
+    ),
+  );
+  const db = new Database(":memory:");
+  t.after(() => {
+    db.close();
+    return fs.remove(outDir);
+  });
+  db.exec(`
+    CREATE TABLE stories (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      breaking_score REAL,
+      score REAL,
+      published_at TEXT,
+      timestamp TEXT,
+      created_at TEXT,
+      youtube_post_id TEXT,
+      publish_status TEXT,
+      full_script TEXT,
+      _extra TEXT
+    );
+    CREATE TABLE story_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      story_id TEXT NOT NULL,
+      channel_id TEXT,
+      total INTEGER NOT NULL,
+      decision TEXT NOT NULL,
+      hard_stops TEXT,
+      scored_at TEXT NOT NULL
+    );
+  `);
+  const storyId = "official-story-with-governed-score";
+  db.prepare(`
+    INSERT INTO stories (
+      id,
+      title,
+      breaking_score,
+      score,
+      published_at,
+      created_at,
+      youtube_post_id,
+      publish_status,
+      full_script,
+      _extra
+    ) VALUES (?, ?, ?, ?, ?, ?, '', '', NULL, ?)
+  `).run(
+    storyId,
+    "Official Xbox update changes what players can access",
+    55,
+    50,
+    "2026-07-28T11:00:00.000Z",
+    "2026-07-28T11:00:00.000Z",
+    JSON.stringify({
+      breaking_fast_track: true,
+      verification_status: "CONFIRMED",
+      verified_for_planning: true,
+      primary_source_url:
+        "https://news.xbox.com/en-us/2026/07/28/official-update/",
+      source_evidence_sha256: "7".repeat(64),
+      source_evidence_path:
+        "D:/pulse-data/evidence/official-story-with-governed-score.json",
+      source_evidence_file_sha256: "8".repeat(64),
+    }),
+  );
+  const insertScore = db.prepare(`
+    INSERT INTO story_scores (
+      story_id,
+      channel_id,
+      total,
+      decision,
+      hard_stops,
+      scored_at
+    ) VALUES (?, 'pulse-gaming', ?, ?, ?, ?)
+  `);
+  insertScore.run(
+    storyId,
+    99,
+    "auto",
+    "[]",
+    "2026-07-28T10:00:00.000Z",
+  );
+  insertScore.run(
+    storyId,
+    90,
+    "review",
+    "[]",
+    "2026-07-28T11:30:00.000Z",
+  );
+  const queued = [];
+
+  const result = await handlers.governed_multi_lane_plan(
+    {
+      channel_id: "pulse-gaming",
+      payload: {
+        now: NOW,
+        out_dir: outDir,
+        runtime_control: {
+          kill_switch_healthy: false,
+          operating_contract_valid: true,
+          scheduler_owner_healthy: true,
+          autonomous_production_enabled: true,
+        },
+        queue_state: {
+          inflight_by_pool: {},
+          inflight_by_lane: {},
+          active_idempotency_keys: [],
+        },
+      },
+    },
+    {
+      prevalidatedRuntimeControl: true,
+      repos: {
+        db,
+        jobs: {
+          enqueue(input) {
+            queued.push(input);
+            return { id: 984, ...input };
+          },
+        },
+      },
+      log() {},
+    },
+  );
+
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].kind, "plan_breaking_short");
+  assert.equal(queued[0].story_id, storyId);
+  const report = await fs.readJson(result.report_json);
+  assert.equal(
+    report.candidate_eligibility.eligible_candidates[0]
+      .story_id,
+    storyId,
+  );
+  assert.equal(
+    report.candidate_eligibility.eligible_candidates[0]
+      .score,
+    90,
+  );
+});
+
+test("DB collection does not promote rejected or hard-stopped governed editorial scores", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-multi-lane-unsafe-editorial-score-",
+    ),
+  );
+  const db = new Database(":memory:");
+  t.after(() => {
+    db.close();
+    return fs.remove(outDir);
+  });
+  db.exec(`
+    CREATE TABLE stories (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      breaking_score REAL,
+      score REAL,
+      published_at TEXT,
+      timestamp TEXT,
+      created_at TEXT,
+      youtube_post_id TEXT,
+      publish_status TEXT,
+      full_script TEXT,
+      _extra TEXT
+    );
+    CREATE TABLE story_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      story_id TEXT NOT NULL,
+      channel_id TEXT,
+      total INTEGER NOT NULL,
+      decision TEXT NOT NULL,
+      hard_stops TEXT,
+      scored_at TEXT NOT NULL
+    );
+  `);
+  const insertStory = db.prepare(`
+    INSERT INTO stories (
+      id,
+      title,
+      breaking_score,
+      score,
+      published_at,
+      created_at,
+      youtube_post_id,
+      publish_status,
+      full_script,
+      _extra
+    ) VALUES (?, ?, 55, 50, ?, ?, '', '', NULL, ?)
+  `);
+  const insertScore = db.prepare(`
+    INSERT INTO story_scores (
+      story_id,
+      channel_id,
+      total,
+      decision,
+      hard_stops,
+      scored_at
+    ) VALUES (?, 'pulse-gaming', 95, ?, ?, ?)
+  `);
+  const publishedAt = "2026-07-28T11:00:00.000Z";
+  for (const [storyId, decision, hardStops] of [
+    ["governed-score-rejected", "reject", "[]"],
+    [
+      "governed-score-hard-stopped",
+      "auto",
+      JSON.stringify(["advertiser_unfriendly"]),
+    ],
+  ]) {
+    insertStory.run(
+      storyId,
+      `Unsafe governed score ${storyId}`,
+      publishedAt,
+      publishedAt,
+      JSON.stringify({
+        breaking_fast_track: true,
+        verification_status: "CONFIRMED",
+        verified_for_planning: true,
+        primary_source_url:
+          `https://news.xbox.com/en-us/2026/07/28/${storyId}/`,
+        source_evidence_sha256: "9".repeat(64),
+        source_evidence_path:
+          `D:/pulse-data/evidence/${storyId}.json`,
+        source_evidence_file_sha256: "a".repeat(64),
+      }),
+    );
+    insertScore.run(
+      storyId,
+      decision,
+      hardStops,
+      "2026-07-28T11:30:00.000Z",
+    );
+  }
+  const queued = [];
+
+  const result = await handlers.governed_multi_lane_plan(
+    {
+      channel_id: "pulse-gaming",
+      payload: {
+        now: NOW,
+        out_dir: outDir,
+        runtime_control: {
+          kill_switch_healthy: false,
+          operating_contract_valid: true,
+          scheduler_owner_healthy: true,
+          autonomous_production_enabled: true,
+        },
+        queue_state: {
+          inflight_by_pool: {},
+          inflight_by_lane: {},
+          active_idempotency_keys: [],
+        },
+      },
+    },
+    {
+      prevalidatedRuntimeControl: true,
+      repos: {
+        db,
+        jobs: {
+          enqueue(input) {
+            queued.push(input);
+            return { id: 985, ...input };
+          },
+        },
+      },
+      log() {},
+    },
+  );
+
+  assert.equal(queued.length, 0);
+  const report = await fs.readJson(result.report_json);
+  assert.deepEqual(
+    report.candidate_eligibility.rejected_candidates.map(
+      ({ story_id, score, blockers }) => ({
+        story_id,
+        score,
+        blockers,
+      }),
+    ).sort((left, right) =>
+      left.story_id.localeCompare(right.story_id),
+    ),
+    [
+      {
+        story_id: "governed-score-hard-stopped",
+        score: 55,
+        blockers: ["breaking_score_below_80"],
+      },
+      {
+        story_id: "governed-score-rejected",
+        score: 55,
+        blockers: ["breaking_score_below_80"],
+      },
+    ],
+  );
+});
+
 test("DB collection keeps a script-generation failure sentinel in planning instead of production", async (t) => {
   const storyId = "breaking-script-generation-failed";
   const { queued, report } =

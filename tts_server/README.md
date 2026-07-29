@@ -35,15 +35,42 @@ VoxCPM 2 has two modes. **Do NOT use audio of an ElevenLabs stock voice as your 
 
 Leave `REF_VOICE_PATH` empty. VoxCPM 2 picks a generic voice on each session — surprisingly listenable, fine for getting started but it changes between server restarts so videos won't have a consistent presenter.
 
-### Option B: Reference cloning (recommended for production)
+### Option B: Governed reference cloning (recommended for production)
 
-1. Record 6-30 seconds of yourself reading clearly, save as `voices/main.wav`
-2. In `.env`:
-   ```
-   REF_VOICE_PATH=./voices/main.wav
-   ```
+1. Record 6-30 seconds of yourself reading clearly, or use a voice for which
+   you hold explicit cloning and commercial-use rights.
+2. Keep the WAV in a private data directory outside the Git checkout.
+3. Set `VOICE_REFERENCE_DATA_ROOT` to that directory.
+4. In `voices.json`, name only the relative `ref_voice_file`, its SHA-256,
+   expected duration/sample-rate/channel probe and a cleared rights status plus
+   evidence reference.
 
-The model clones your timbre, prosody and delivery from that one clip and stays consistent across all generations.
+At boot and on every health probe the service resolves the file beneath the
+configured root, rejects traversal/absolute paths, hashes it and probes the WAV.
+A mapped voice cannot load unless the path, hash, probe and rights evidence all
+pass. `ALLOW_UNCLEARED_VOICE_REFERENCE_FOR_LOCAL_QA=true` is available only for
+private diagnostic listening and must remain false in autonomous production.
+The audio itself must never be copied into Git.
+
+Example registry fields:
+
+```json
+{
+  "ref_voice_file": "pulse-owned-presenter.wav",
+  "ref_voice_sha256": "<64 lowercase hex characters>",
+  "ref_voice_probe": {
+    "duration_seconds": 25,
+    "duration_tolerance_seconds": 0.05,
+    "sample_rate_hz": 16000,
+    "channels": 1
+  },
+  "reference_rights_status": "OWNED",
+  "reference_rights_evidence_reference": "rights-ledger:pulse-presenter-v1"
+}
+```
+
+The model then clones the governed reference's timbre, prosody and delivery and
+keeps that presenter identity consistent across generations.
 
 ### Pacing — BASE_SPEED
 
@@ -73,6 +100,7 @@ In `pulse-gaming/.env`:
 ```
 TTS_PROVIDER=local
 LOCAL_TTS_URL=http://127.0.0.1:8765
+VOICE_REFERENCE_DATA_ROOT=D:\pulse-data\private\voice-references
 ```
 
 That's it. `audio.js` will route to the local server. Set `TTS_PROVIDER=elevenlabs` (or unset) to revert.

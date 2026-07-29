@@ -5,7 +5,7 @@ const path = require("node:path");
 const fs = require("fs-extra");
 
 try {
-  require("dotenv").config({ override: true });
+  require("dotenv").config({ override: false });
 } catch {}
 
 const {
@@ -23,18 +23,21 @@ function parseArgs(argv) {
     help: false,
     json: false,
     storyId: null,
+    storyManifest: null,
     frameReport: DEFAULT_FRAME_REPORT,
     segmentReport: DEFAULT_SEGMENT_REPORT,
-    targetRuntimeS: 66,
   };
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--help" || arg === "-?") args.help = true;
     else if (arg === "--json") args.json = true;
     else if (arg === "--story" || arg === "--story-id") args.storyId = argv[++i] || null;
+    else if (arg === "--story-manifest") args.storyManifest = argv[++i] || null;
     else if (arg === "--frame-report") args.frameReport = argv[++i] || DEFAULT_FRAME_REPORT;
     else if (arg === "--segment-report") args.segmentReport = argv[++i] || DEFAULT_SEGMENT_REPORT;
-    else if (arg === "--target-runtime") args.targetRuntimeS = Math.max(1, Number(argv[++i]) || 66);
+    else if (arg === "--target-runtime") {
+      throw new Error("--target-runtime is retired; provide --story-manifest with editorial metadata");
+    }
   }
   return args;
 }
@@ -46,9 +49,9 @@ function printHelp() {
       "",
       "Options:",
       "  --story-id <id>       Story id to inspect",
+      "  --story-manifest <p>  Story JSON containing the editorial contract metadata",
       "  --frame-report <p>    Controlled frame extraction worker report",
       "  --segment-report <p>  Official trailer segment validation report",
-      "  --target-runtime <s>  Runtime target for clip-dominance projection",
       "  --json                Print JSON instead of Markdown",
       "",
       "This command is report-only. It decides whether a story has enough validated footage for a Flash Lane proof.",
@@ -70,14 +73,18 @@ async function main() {
   }
   const frame = await readJson(args.frameReport, "frame report");
   const segment = await readJson(args.segmentReport, "segment report");
+  const storyManifest = args.storyManifest
+    ? await readJson(args.storyManifest, "story manifest")
+    : { path: null, data: { id: args.storyId } };
   const report = buildFlashLaneFootageBackboneReport({
+    story: storyManifest.data,
     storyId: args.storyId,
     frameReport: frame.data,
     segmentValidationReport: segment.data,
-    targetRuntimeS: args.targetRuntimeS,
   });
   report.frame_report_source = frame.path;
   report.segment_report_source = segment.path;
+  report.story_manifest_source = storyManifest.path;
 
   const markdown = renderFlashLaneFootageBackboneMarkdown(report);
   await fs.ensureDir(OUT);
@@ -89,7 +96,14 @@ async function main() {
   process.stderr.write("[footage-backbone] wrote test/output/flash_lane_footage_backbone_v1.{json,md}\n");
 }
 
-main().catch((err) => {
-  process.stderr.write(`[footage-backbone] ${err.stack || err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[footage-backbone] ${err.stack || err.message}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  main,
+  parseArgs,
+};

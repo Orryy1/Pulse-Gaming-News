@@ -1,5 +1,5 @@
 /**
- * PULSE GAMING - One-time Discord server setup
+ * PULSE GAMING NEWS - One-time Discord server setup
  *
  * Creates the entire server structure: categories, channels, roles, pinned messages.
  * Run once with:  node discord/setup.js
@@ -111,7 +111,7 @@ const CATEGORIES = [
   {
     name: '🎬 CONTENT',
     channels: [
-      { name: 'video-drops',      type: ChannelType.GuildText, readOnly: true, topic: 'New Pulse Gaming Shorts posted automatically when they go live' },
+      { name: 'video-drops',      type: ChannelType.GuildText, readOnly: true, topic: 'New Pulse Gaming News Shorts, posted after editorial review' },
       { name: 'clip-submissions',  type: ChannelType.GuildText, topic: 'Share your best gaming clips - might get featured on the channel' },
       { name: 'suggestions',       type: ChannelType.GuildText, topic: 'Suggest topics, games or features you want to see covered' },
     ],
@@ -167,7 +167,7 @@ client.once(Events.ClientReady, async () => {
         hoist: def.hoist,
         permissions: permBits,
         position: i + 1,
-        reason: 'PULSE GAMING server setup',
+        reason: 'PULSE GAMING NEWS server setup',
       });
       console.log(`  Created role: ${role.name}`);
     } else {
@@ -189,7 +189,7 @@ client.once(Events.ClientReady, async () => {
       category = await guild.channels.create({
         name: cat.name,
         type: ChannelType.GuildCategory,
-        reason: 'PULSE GAMING server setup',
+        reason: 'PULSE GAMING NEWS server setup',
       });
       console.log(`  Created category: ${cat.name}`);
     } else {
@@ -263,7 +263,7 @@ client.once(Events.ClientReady, async () => {
           parent: category.id,
           topic: ch.topic || undefined,
           permissionOverwrites: permOverwrites.length > 0 ? permOverwrites : undefined,
-          reason: 'PULSE GAMING server setup',
+          reason: 'PULSE GAMING NEWS server setup',
         });
         console.log(`    Created channel: #${ch.name}`);
       } else {
@@ -292,9 +292,9 @@ client.once(Events.ClientReady, async () => {
   if (rulesChannel) {
     const rulesEmbed = new EmbedBuilder()
       .setColor(config.COLOURS.AMBER)
-      .setTitle('📜 Server Rules - PULSE GAMING')
+      .setTitle('📜 Server Rules - PULSE GAMING NEWS')
       .setDescription(
-        'Welcome to the PULSE GAMING community. Follow these rules to keep the server running smoothly.\n\n' +
+        'Welcome to the PULSE GAMING NEWS community. Follow these rules to keep the server running smoothly.\n\n' +
 
         '**1. Respect All Members**\n' +
         'No harassment, hate speech, discrimination or personal attacks. Treat everyone with respect.\n\n' +
@@ -327,7 +327,7 @@ client.once(Events.ClientReady, async () => {
 
         '*Rules are enforced at moderator discretion. Decisions are final.*'
       )
-      .setFooter({ text: 'PULSE GAMING - Verified leaks. Every day.' })
+      .setFooter({ text: 'PULSE GAMING NEWS - Fast gaming news. Checked. Explained.' })
       .setTimestamp();
 
     const rulesMsg = await rulesChannel.send({ embeds: [rulesEmbed] });
@@ -351,7 +351,7 @@ client.once(Events.ClientReady, async () => {
         '🖥️ - **PC Gamer**\n\n' +
         '*You can select multiple. Remove your reaction to remove the role.*'
       )
-      .setFooter({ text: 'PULSE GAMING' });
+      .setFooter({ text: 'PULSE GAMING NEWS' });
 
     const roleMsg = await roleSelectChannel.send({ embeds: [roleEmbed] });
     for (const emoji of Object.keys(config.PLATFORM_EMOJIS)) {
@@ -375,7 +375,7 @@ client.once(Events.ClientReady, async () => {
         'Giveaways are posted here by the team. Winners are picked at random when the timer ends.\n\n' +
         'Stay active in the server to hear about giveaways first!'
       )
-      .setFooter({ text: 'PULSE GAMING' });
+      .setFooter({ text: 'PULSE GAMING NEWS' });
 
     const giveawayMsg = await giveawaysChannel.send({ embeds: [giveawayEmbed] });
     await giveawayMsg.pin().catch(() => {});
@@ -404,7 +404,7 @@ client.once(Events.ClientReady, async () => {
         '> Level 50 → OG\n\n' +
         '*Use `/leaderboard` or `/rank` to check standings at any time.*'
       )
-      .setFooter({ text: 'PULSE GAMING' })
+      .setFooter({ text: 'PULSE GAMING NEWS' })
       .setTimestamp();
 
     const lbMsg = await leaderboardChannel.send({ embeds: [lbEmbed] });
@@ -430,7 +430,7 @@ client.once(Events.ClientReady, async () => {
         '> Day 5+ - 500 XP (5x MAX)\n\n' +
         '*Miss a day and your streak resets to 1x!*'
       )
-      .setFooter({ text: 'PULSE GAMING' });
+      .setFooter({ text: 'PULSE GAMING NEWS' });
 
     const dailyMsg = await dailyChannel.send({ embeds: [dailyEmbed] });
     await dailyMsg.pin().catch(() => {});

@@ -615,4 +615,16 @@ test("buildStoryFromStillDeckPlan creates a safe local fallback story with v1.5 
   assert.match(fallback.full_script, /Red Dead/);
   assert.match(fallback.full_script, /BioShock/);
   assert.equal(fallback.source_type, "asset_acquisition_report");
+  assert.equal(fallback.loop, "");
+  assert.equal(fallback.cta, "");
+  assert.equal(fallback.production_eligible, false);
+  assert.ok(
+    fallback.publication_blockers.includes(
+      "synthetic_still_deck_story_not_publishable",
+    ),
+  );
+  assert.doesNotMatch(
+    `${fallback.full_script} ${fallback.loop} ${fallback.cta}`,
+    /\b(?:follow|subscribe)\b/i,
+  );
 });

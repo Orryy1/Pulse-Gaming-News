@@ -9,6 +9,11 @@ const {
   groupIntoPhrases,
   extractAssDialogueText,
 } = require("../../lib/studio/v2/subtitle-layer-v2");
+const {
+  CROSS_PLATFORM_PORTRAIT_PROFILE_ID,
+  getAssCaptionSafeZoneContract,
+  validateAssCaptionSafeZone,
+} = require("../../lib/services/platform-safe-zones");
 
 function assIntervals(ass) {
   return ass
@@ -173,4 +178,39 @@ test("buildKineticAss can render Flash Lane captions in uppercase without changi
   assert.match(captions, /POKEMON/);
   assert.doesNotMatch(captions, /Pokemon/);
   assert.ok(assIntervals(ass).every(([start, end]) => end > start));
+});
+
+test("buildKineticAss binds final-composite captions to the strict cross-platform anchor", () => {
+  const captionLayout = getAssCaptionSafeZoneContract(
+    CROSS_PLATFORM_PORTRAIT_PROFILE_ID,
+  );
+  const ass = buildKineticAss({
+    story: { title: "Final Fantasy XIV Bastion" },
+    words: [
+      { word: "Two", start: 0, end: 0.2 },
+      { word: "shields", start: 0.22, end: 0.5 },
+    ],
+    duration: 2,
+    scriptText: "Two shields",
+    maxWordsPerPhrase: captionLayout.max_words_per_phrase,
+    maxPhraseChars: captionLayout.max_phrase_chars,
+    captionCase: "upper",
+    captionLayout,
+  });
+
+  assert.match(
+    ass,
+    /Style: Pop,Impact,78,[^\n]*,2,96,264,720,1/,
+  );
+  assert.match(
+    ass,
+    /Dialogue:[^\n]*\{\\an2\\pos\(456,1200\)\}/,
+  );
+  assert.equal(
+    validateAssCaptionSafeZone({
+      ass,
+      profileId: CROSS_PLATFORM_PORTRAIT_PROFILE_ID,
+    }).verdict,
+    "GREEN",
+  );
 });

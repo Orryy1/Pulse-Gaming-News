@@ -3,14 +3,14 @@ const fs = require("fs-extra");
 const path = require("path");
 const dotenv = require("dotenv");
 const util = require("util");
-const db = require("./lib/db");
 
 const execAsync = util.promisify(exec);
 
 if (!/^(true|1|yes|on)$/i.test(String(process.env.PULSE_SKIP_DOTENV || ""))) {
-  dotenv.config({ override: true });
+  dotenv.config({ override: false, quiet: true });
 }
 
+const db = require("./lib/db");
 const axios = require("axios");
 const brand = require("./brand");
 const { getChannel } = require("./channels");
@@ -18,6 +18,9 @@ const { applyProduceSelection } = require("./lib/produce-selection");
 const {
   classifyShortDuration,
 } = require("./lib/services/short-duration-contract");
+const {
+  paidElevenLabsMusicEnabled,
+} = require("./lib/services/paid-generation-policy");
 
 // Intro card REMOVED - first 1-2 seconds are critical for Shorts retention,
 // a branding card gives swipers a reason to leave before the hook lands
@@ -230,7 +233,7 @@ async function ensureBackgroundMusic(duration, story) {
 
   // Priority 3: Generate via ElevenLabs API (legacy fallback)
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) {
+  if (!apiKey || !paidElevenLabsMusicEnabled(process.env)) {
     const legacy = cached.filter(
       (f) =>
         f.match(/trap_(\d+)s/) &&

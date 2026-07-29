@@ -1,5 +1,5 @@
 const dotenv = require('dotenv');
-dotenv.config({ path: require('path').join(__dirname, '..', '.env'), override: true });
+dotenv.config({ path: require('path').join(__dirname, '..', '.env'), override: false });
 
 const {
   Client, GatewayIntentBits, Collection, REST, Routes,
@@ -199,7 +199,7 @@ commandData.push(dailyCmd.toJSON());
 // ---------------------------------------------------------------------------
 client.once(Events.ClientReady, async () => {
   console.log(`[Bot] Logged in as ${client.user.tag}`);
-  client.user.setActivity('Verified leaks. Every day.', { type: ActivityType.Watching });
+  client.user.setActivity('Fast gaming news. Checked. Explained.', { type: ActivityType.Watching });
 
   // Register slash commands
   const rest = new REST({ version: '10' }).setToken(config.BOT_TOKEN);
@@ -252,9 +252,9 @@ client.on(Events.GuildMemberAdd, async (member) => {
       if (channel) {
         const embed = new EmbedBuilder()
           .setColor(config.COLOURS.AMBER)
-          .setTitle(`Welcome to PULSE GAMING, ${member.user.username}!`)
+          .setTitle(`Welcome to PULSE GAMING NEWS, ${member.user.username}!`)
           .setDescription(
-            `Verified leaks. Every day.\n\n` +
+            `Fast gaming news. Checked. Explained.\n\n` +
             `You are member **#${member.guild.memberCount}** of the Pulse community.\n\n` +
             `**Get started:**\n` +
             `> Head to <#${idMap.channels['role-select'] || ''}> to pick your platform\n` +
@@ -265,7 +265,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
             `[YouTube](${config.SOCIALS.YOUTUBE}) | [TikTok](${config.SOCIALS.TIKTOK}) | [Instagram](${config.SOCIALS.INSTAGRAM}) | [X](${config.SOCIALS.TWITTER})`
           )
           .setThumbnail(member.user.displayAvatarURL({ size: 256 }))
-          .setFooter({ text: 'PULSE GAMING' })
+          .setFooter({ text: 'PULSE GAMING NEWS' })
           .setTimestamp();
 
         await channel.send({ content: `<@${member.id}>`, embeds: [embed] });
@@ -431,7 +431,7 @@ async function handleLeaderboard(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(config.COLOURS.AMBER)
-    .setTitle('🏆 PULSE GAMING Leaderboard')
+    .setTitle('🏆 PULSE GAMING NEWS Leaderboard')
     .setDescription(lines.join('\n'))
     .setFooter({ text: 'Earn XP by chatting, trivia, predictions and daily streaks!' })
     .setTimestamp();
@@ -463,7 +463,7 @@ async function handleRank(interaction) {
       { name: 'Messages', value: `${(userData.messages || 0).toLocaleString()}`, inline: true },
       { name: 'Progress to Next Level', value: `${bar} ${pct}%\n${userData.xp.toLocaleString()} / ${nextLevelXp.toLocaleString()} XP` },
     )
-    .setFooter({ text: 'PULSE GAMING' })
+    .setFooter({ text: 'PULSE GAMING NEWS' })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
@@ -495,7 +495,7 @@ async function handleDaily(interaction) {
         ? `Come back tomorrow to increase your streak to **${result.streak + 1}x**!`
         : `You are at the maximum streak! Keep claiming daily to maintain it.`)
     )
-    .setFooter({ text: 'PULSE GAMING - Claim daily to keep your streak!' })
+    .setFooter({ text: 'PULSE GAMING NEWS - Daily community streak' })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });

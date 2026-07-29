@@ -57,6 +57,8 @@ function seedStory(db, partial) {
     hook: "A brand new reveal just dropped that nobody saw coming tonight",
     body: "Body text.",
     full_script: "Full script.",
+    word_count: 2,
+    quality_score: 8,
   };
   const row = { ...defaults, ...partial };
   const cols = Object.keys(row);
@@ -85,7 +87,7 @@ test("production mode + USE_SQLITE!=true -> throws, never silently approves", as
   );
 });
 
-test("production mode + injected repos -> scoring runs and applies decisions", async () => {
+test("HUMAN_REVIEW production scoring ranks safe stories without auto-approving them", async () => {
   const repos = makeRepos();
   // Fresh story that should score well: verified flair, high source
   // confidence, recent timestamp, real visuals, strong hook.
@@ -107,7 +109,11 @@ test("production mode + injected repos -> scoring runs and applies decisions", a
 
   const summary = await autoApprove({
     repos,
-    env: { NODE_ENV: "production", USE_SQLITE: "true" },
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "HUMAN_REVIEW",
+    },
   });
   assert.equal(summary.skipped, undefined, "no skip in prod");
   assert.ok(summary.scored >= 1);
@@ -115,33 +121,122 @@ test("production mode + injected repos -> scoring runs and applies decisions", a
   // Every decision must be deterministic: check the persisted row.
   const scoreRow = repos.db
     .prepare(
-      `SELECT decision, total FROM story_scores
+      `SELECT decision, total, inputs FROM story_scores
        WHERE story_id = 'prod-auto'
        ORDER BY scored_at DESC LIMIT 1`,
     )
     .get();
   assert.ok(scoreRow, "a story_scores row must be persisted");
-  assert.ok(
-    ["auto", "review", "defer", "reject"].includes(scoreRow.decision),
-    `decision must be one of the four canonical outcomes, got ${scoreRow.decision}`,
-  );
-  // If decision==='auto' the stories row must flip approved=1; if
-  // review/defer/reject the stories row must NOT be approved.
+  assert.equal(scoreRow.decision, "review");
+  assert.equal(summary.approved, 0);
+  assert.ok(summary.review >= 1);
+  const inputs = JSON.parse(scoreRow.inputs);
+  assert.equal(inputs.pre_human_review_decision, "auto");
+  assert.equal(inputs.human_review_required, true);
+
   const storyRow = repos.db
     .prepare(
       `SELECT approved, auto_approved FROM stories WHERE id = 'prod-auto'`,
     )
     .get();
-  if (scoreRow.decision === "auto") {
-    assert.equal(storyRow.approved, 1);
-    assert.equal(storyRow.auto_approved, 1);
-  } else {
-    assert.equal(
-      storyRow.approved,
-      0,
-      `non-auto decision '${scoreRow.decision}' must not set approved=1`,
-    );
-  }
+  assert.equal(storyRow.approved, 0);
+  assert.equal(storyRow.auto_approved, 0);
+});
+
+test("LIVE_GUARDED production scoring auto-approves only a rubric-auto candidate", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "live-guarded-auto",
+    title: "Bethesda confirms release date for Elder Scrolls VI",
+    flair: "verified",
+    subreddit: "gamingleaksandrumours",
+    score: 3000,
+    num_comments: 450,
+    hook: "Bethesda just officially confirmed when Elder Scrolls six ships",
+    article_image: "https://cdn/elder.jpg",
+    game_images: JSON.stringify([
+      "https://steam/keyart.jpg",
+      "https://steam/screenshot.jpg",
+    ]),
+    timestamp: new Date().toISOString(),
+  });
+
+  const summary = await autoApprove({
+    repos,
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "LIVE_GUARDED",
+    },
+  });
+
+  assert.equal(summary.approved, 1);
+  assert.equal(summary.review, 0);
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, inputs FROM story_scores
+       WHERE story_id = 'live-guarded-auto'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+  assert.equal(scoreRow.decision, "auto");
+  assert.equal(
+    JSON.parse(scoreRow.inputs).human_review_required,
+    undefined,
+  );
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories
+       WHERE id = 'live-guarded-auto'`,
+    )
+    .get();
+  assert.deepEqual(storyRow, {
+    approved: 1,
+    auto_approved: 1,
+  });
+});
+
+test("mismatched LIVE_GUARDED mode declarations fail closed to human review", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "live-guarded-mode-mismatch",
+    title: "Bethesda confirms release date for Elder Scrolls VI",
+    flair: "verified",
+    subreddit: "gamingleaksandrumours",
+    score: 3000,
+    num_comments: 450,
+    hook: "Bethesda just officially confirmed when Elder Scrolls six ships",
+    article_image: "https://cdn/elder.jpg",
+    game_images: JSON.stringify([
+      "https://steam/keyart.jpg",
+      "https://steam/screenshot.jpg",
+    ]),
+    timestamp: new Date().toISOString(),
+  });
+
+  const summary = await autoApprove({
+    repos,
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "HUMAN_REVIEW",
+    },
+  });
+
+  assert.equal(summary.approved, 0);
+  assert.equal(summary.review, 1);
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories
+       WHERE id = 'live-guarded-mode-mismatch'`,
+    )
+    .get();
+  assert.deepEqual(storyRow, {
+    approved: 0,
+    auto_approved: 0,
+  });
 });
 
 test("dev + USE_SCORING_ENGINE=false -> explicit no-op, nothing approved", async () => {
@@ -342,4 +437,167 @@ test("low script quality score blocks otherwise-auto stories from auto-approval"
     .get();
   assert.equal(storyRow.approved, 0);
   assert.equal(storyRow.auto_approved, 0);
+});
+
+test("missing script quality score blocks an otherwise-auto story in LIVE_GUARDED", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "missing-script-quality",
+    title: "Clair Obscur Switch 2 port work is now confirmed",
+    flair: "verified",
+    subreddit: "eurogamer",
+    source_type: "rss",
+    score: 3000,
+    num_comments: 450,
+    breaking_score: 95,
+    hook: "Clair Obscur is being rebuilt for Nintendo Switch 2",
+    full_script:
+      "Clair Obscur is being rebuilt for Nintendo Switch 2. " +
+      "The verified report says the port is a major technical challenge for its small development team.",
+    word_count: 26,
+    quality_score: null,
+    timestamp: new Date().toISOString(),
+  });
+
+  const summary = await autoApprove({
+    repos,
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "LIVE_GUARDED",
+    },
+  });
+
+  assert.equal(summary.approved, 0);
+  assert.equal(summary.review, 1);
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'missing-script-quality'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+  assert.equal(scoreRow.decision, "review");
+  assert.match(scoreRow.decision_reason, /script_quality_score missing/);
+  assert.match(
+    JSON.parse(scoreRow.inputs).script_quality_auto_block,
+    /script_quality_score missing/,
+  );
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories
+       WHERE id = 'missing-script-quality'`,
+    )
+    .get();
+  assert.deepEqual(storyRow, { approved: 0, auto_approved: 0 });
+});
+
+test("zero script word count blocks an otherwise-auto story in LIVE_GUARDED", async () => {
+  const repos = makeRepos();
+  seedStory(repos.db, {
+    id: "zero-script-word-count",
+    title: "Wuchang sequel confirmed with its creator returning",
+    flair: "verified",
+    subreddit: "ign",
+    source_type: "rss",
+    score: 3000,
+    num_comments: 450,
+    breaking_score: 95,
+    hook: "Wuchang's sequel brings its original creator back",
+    full_script:
+      "Wuchang's sequel brings its original creator back. " +
+      "The confirmed follow-up continues after the original development team disbanded.",
+    word_count: 0,
+    quality_score: 8,
+    timestamp: new Date().toISOString(),
+  });
+
+  const summary = await autoApprove({
+    repos,
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "LIVE_GUARDED",
+    },
+  });
+
+  assert.equal(summary.approved, 0);
+  assert.equal(summary.review, 1);
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'zero-script-word-count'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+  assert.equal(scoreRow.decision, "review");
+  assert.match(scoreRow.decision_reason, /script_word_count missing_or_zero/);
+  assert.match(
+    JSON.parse(scoreRow.inputs).script_quality_auto_block,
+    /script_word_count missing_or_zero/,
+  );
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories
+       WHERE id = 'zero-script-word-count'`,
+    )
+    .get();
+  assert.deepEqual(storyRow, { approved: 0, auto_approved: 0 });
+});
+
+test("title-only failed script blocks an otherwise-auto story in LIVE_GUARDED", async () => {
+  const repos = makeRepos();
+  const title =
+    "Dispatch launches on Xbox with superhero workplace comedy";
+  seedStory(repos.db, {
+    id: "title-only-failed-script",
+    title,
+    flair: "verified",
+    subreddit: "xboxwire",
+    source_type: "rss",
+    score: 3000,
+    num_comments: 450,
+    breaking_score: 95,
+    hook: title,
+    body: "Script generation failed. Manual edit required.",
+    full_script: title,
+    word_count: 8,
+    quality_score: 8,
+    timestamp: new Date().toISOString(),
+  });
+
+  const summary = await autoApprove({
+    repos,
+    env: {
+      NODE_ENV: "production",
+      USE_SQLITE: "true",
+      PULSE_OPERATING_MODE: "LIVE_GUARDED",
+      OPERATING_MODE: "LIVE_GUARDED",
+    },
+  });
+
+  assert.equal(summary.approved, 0);
+  assert.equal(summary.review, 1);
+  const scoreRow = repos.db
+    .prepare(
+      `SELECT decision, decision_reason, inputs FROM story_scores
+       WHERE story_id = 'title-only-failed-script'
+       ORDER BY scored_at DESC LIMIT 1`,
+    )
+    .get();
+  assert.equal(scoreRow.decision, "review");
+  assert.match(scoreRow.decision_reason, /script_content title_only/);
+  assert.match(
+    JSON.parse(scoreRow.inputs).script_quality_auto_block,
+    /script_content title_only/,
+  );
+  const storyRow = repos.db
+    .prepare(
+      `SELECT approved, auto_approved FROM stories
+       WHERE id = 'title-only-failed-script'`,
+    )
+    .get();
+  assert.deepEqual(storyRow, { approved: 0, auto_approved: 0 });
 });

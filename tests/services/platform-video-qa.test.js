@@ -22,10 +22,11 @@ function probe({ video = {}, audio = {} } = {}) {
       {
         codec_type: "audio",
         codec_name: "aac",
+        sample_rate: "48000",
         ...audio,
       },
     ],
-    format: {},
+    format: { duration: "37.2" },
   };
 }
 
@@ -42,6 +43,18 @@ test("classifyPlatformVideoQa accepts Meta-safe short-form MP4 metadata", () => 
   const result = classifyPlatformVideoQa(probe());
   assert.strictEqual(result.result, "pass");
   assert.deepStrictEqual(result.failures, []);
+  assert.deepStrictEqual(result.technical, {
+    video_codec: "h264",
+    video_profile: "High",
+    pixel_format: "yuv420p",
+    width: 1080,
+    height: 1920,
+    audio_codec: "aac",
+    audio_sample_rate_hz: 48000,
+    has_audio: true,
+    duration_seconds: 37.2,
+    ffprobe_passed: true,
+  });
 });
 
 test("classifyPlatformVideoQa rejects yuv444p / High 4:4:4 renders before upload", () => {

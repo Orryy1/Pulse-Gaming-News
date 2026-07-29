@@ -6,7 +6,7 @@ const mediaPaths = require("./lib/media-paths");
 const { rankThumbnailCandidates } = require("./lib/thumbnail-safety");
 const { applyProduceSelection } = require("./lib/produce-selection");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const brand = require("./brand");
 

@@ -9,6 +9,11 @@ pending_news.json
 image_queue.json
 video_queue.json
 
+# --- Governed, exact-hash source media materialised for LOCAL_PROOF ---
+# Rights-reviewed manifests stay tracked. The fetched publisher bytes are
+# ephemeral operator/CI inputs and must never be distributed through Git.
+videos/evercold-bastion-short/assets/official/
+
 # --- Secret-bearing files (see docs/security-hygiene.md) ---
 # Local OAuth tokens, API tokens, deploy scripts. If any of these end
 # up committed, the corresponding secret MUST be rotated immediately.

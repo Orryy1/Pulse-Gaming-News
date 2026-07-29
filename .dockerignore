@@ -1,0 +1,32 @@
+# Source-control and local agent state
+.git
+.github
+.codex-remote-attachments
+.claude
+
+# Credentials and local environment configuration
+.env
+.env.*
+tokens
+.youtube_token*
+.github_token*
+.railway_token*
+
+# Dependencies and generated build/runtime state
+node_modules
+dist
+output
+test/output
+data
+daily_news.json
+pending_news.json
+image_queue.json
+video_queue.json
+*.db
+*.sqlite*
+*.log
+
+# Exact publisher media is acquired and hash-verified at release/runtime.
+# Keep manifests and renderer projects in videos/, but never copy local
+# materialised official-media bytes into the production image.
+videos/**/assets/official

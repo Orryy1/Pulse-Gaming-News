@@ -7,11 +7,11 @@ const { withRetry } = require("./lib/retry");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const { getPublicUrl } = require("./lib/deployment-mode");
 const { validateVideo } = require("./lib/validate");
+
+dotenv.config({ override: false, quiet: true });
+
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
-
-dotenv.config({ override: true });
-
 const DEFAULT_TOKEN_PATH = path.join(__dirname, "tokens", "tiktok_token.json");
 
 /**

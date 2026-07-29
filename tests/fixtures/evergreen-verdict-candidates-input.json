@@ -1,0 +1,100 @@
+{
+  "now": "2026-07-28T12:00:00.000Z",
+  "manifests": [
+    {
+      "schema_version": "pulse-evergreen-pitch-v1",
+      "manifest_id": "proof-fallout-return-2026",
+      "evergreen_pitch": {
+        "id": "proof-fallout-return-2026",
+        "title": "Which Fallout Is Easiest To Return To In 2026?",
+        "franchise": "Fallout",
+        "format_shape": "ranked_lens",
+        "editorial_criteria": [
+          "opening-hour friction",
+          "build flexibility"
+        ],
+        "item_rationales": [
+          {
+            "subject": "Fallout 3",
+            "judgement": "Fast route from vault exit to exploration.",
+            "source_url": "https://fallout.bethesda.net/en/games/fallout-3"
+          },
+          {
+            "subject": "Fallout New Vegas",
+            "judgement": "Strong early choices with a rougher technical return.",
+            "source_url": "https://fallout.bethesda.net/en/games/fallout-new-vegas"
+          },
+          {
+            "subject": "Fallout 4",
+            "judgement": "Smooth controls with a slower settlement opening.",
+            "source_url": "https://fallout.bethesda.net/en/games/fallout-4"
+          }
+        ],
+        "claims": [
+          {
+            "text": "Fallout 3 begins in Vault 101.",
+            "source_url": "https://fallout.bethesda.net/en/games/fallout-3"
+          },
+          {
+            "text": "New Vegas is set in the Mojave.",
+            "source_url": "https://fallout.bethesda.net/en/games/fallout-new-vegas"
+          },
+          {
+            "text": "Fallout 4 includes settlement building.",
+            "source_url": "https://fallout.bethesda.net/en/games/fallout-4"
+          }
+        ],
+        "source_manifest": [
+          {
+            "name": "Bethesda",
+            "url": "https://fallout.bethesda.net/en/games",
+            "tier": "official_publisher"
+          },
+          {
+            "name": "Steam",
+            "url": "https://store.steampowered.com/franchise/Fallout/",
+            "tier": "official_storefront"
+          }
+        ],
+        "script_contract": {
+          "voice_mode": "sourced_synthesis",
+          "uses_first_person_play_claims": false,
+          "target_duration_seconds": 82,
+          "target_words_per_minute": 195,
+          "opening_premise_words": 11,
+          "closing_cta_count": 1
+        },
+        "media_plan": {
+          "exact_subject_motion_seconds": 62,
+          "clip_count": 7,
+          "distinct_motion_families": 3,
+          "unknown_reuploads": 0,
+          "third_party_music": false,
+          "rights_records": [
+            {
+              "asset_id": "fallout3-owned",
+              "owner": "Pulse Gaming",
+              "source_url": "https://fallout.bethesda.net/en/games/fallout-3",
+              "rights_basis": "owned_capture",
+              "usage": "gameplay_backbone"
+            },
+            {
+              "asset_id": "new-vegas-owned",
+              "owner": "Pulse Gaming",
+              "source_url": "https://fallout.bethesda.net/en/games/fallout-new-vegas",
+              "rights_basis": "owned_capture",
+              "usage": "gameplay_backbone"
+            },
+            {
+              "asset_id": "fallout4-owned",
+              "owner": "Pulse Gaming",
+              "source_url": "https://fallout.bethesda.net/en/games/fallout-4",
+              "rights_basis": "owned_capture",
+              "usage": "gameplay_backbone"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

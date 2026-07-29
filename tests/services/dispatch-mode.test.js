@@ -9,8 +9,8 @@
  *                 failure throws).
  *   dev, default -> queue, non-strict (bootstrap failure skips
  *                   scheduler but does not fall through to legacy).
- *   dev, USE_JOB_QUEUE=false -> legacy_dev, non-strict.
- *   USE_JOB_QUEUE=false in prod -> ignored; stays queue+strict.
+ *   dev, USE_JOB_QUEUE=false -> queue, non-strict.
+ *   USE_JOB_QUEUE=false in prod -> queue+strict.
  *
  * Run: node --test tests/services/dispatch-mode.test.js
  */
@@ -79,13 +79,13 @@ test("resolveDispatchMode: dev default -> queue, non-strict", () => {
   assert.equal(r.reason, "dev_queue_default");
 });
 
-test("resolveDispatchMode: dev + USE_JOB_QUEUE=false -> legacy_dev, non-strict", () => {
+test("resolveDispatchMode: dev + USE_JOB_QUEUE=false cannot arm a second scheduler", () => {
   const r = resolveDispatchMode({
     env: { NODE_ENV: "development", USE_JOB_QUEUE: "false" },
   });
-  assert.equal(r.mode, "legacy_dev");
+  assert.equal(r.mode, "queue");
   assert.equal(r.strict, false);
-  assert.equal(r.reason, "dev_explicit_legacy_opt_in");
+  assert.equal(r.reason, "development_queue_only");
 });
 
 test("resolveDispatchMode: dev + USE_JOB_QUEUE=true -> queue (same as default)", () => {
@@ -95,9 +95,7 @@ test("resolveDispatchMode: dev + USE_JOB_QUEUE=true -> queue (same as default)",
   assert.equal(r.strict, false);
 });
 
-test("resolveDispatchMode: any other value than literal 'false' keeps queue", () => {
-  // Guard against a typo like USE_JOB_QUEUE=0 or USE_JOB_QUEUE=off
-  // accidentally reaching the legacy block.
+test("resolveDispatchMode: all legacy flag spellings keep the durable queue", () => {
   for (const v of ["0", "off", "no", "FALSE", "False", ""]) {
     const r = resolveDispatchMode({ env: { USE_JOB_QUEUE: v } });
     assert.equal(

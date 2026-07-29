@@ -1,0 +1,131 @@
+{
+  "schema_version": "pulse-stabilisation-cutover-plan-v1",
+  "generated_at": "2026-07-27T05:56:56.7374085Z",
+  "source_commit_sha": "e563c041b90f542cb322ba8d26fb51ce30c0048b",
+  "authoritative": false,
+  "status": "PLAN_ONLY",
+  "production_change_authorised": false,
+  "ordered_steps": [
+    {
+      "order": 1,
+      "name": "open_controlled_change_window",
+      "required_evidence": [
+        "named_operator",
+        "change_window_id",
+        "rollback_owner",
+        "kill_switch_tripped"
+      ],
+      "mutation": false
+    },
+    {
+      "order": 2,
+      "name": "create_and_verify_production_sqlite_backup",
+      "required_evidence": [
+        "backup_sha256",
+        "quick_check_ok",
+        "integrity_check_ok",
+        "foreign_key_check_ok",
+        "verification_sidecar"
+      ],
+      "mutation": true
+    },
+    {
+      "order": 3,
+      "name": "apply_migration_020_once",
+      "required_evidence": [
+        "approved_backup_id",
+        "migration_sha256_match",
+        "post_migration_integrity_ok"
+      ],
+      "mutation": true
+    },
+    {
+      "order": 4,
+      "name": "start_one_human_review_primary",
+      "required_evidence": [
+        "runtime_commit_matches_release",
+        "stabilisation_profile_active",
+        "secondary_platform_flags_false",
+        "single_scheduler_lease_owner",
+        "single_publisher_lease_namespace"
+      ],
+      "mutation": true
+    },
+    {
+      "order": 5,
+      "name": "inventory_reconciliation_read_only",
+      "command": "npm run ops:publication-reconciliation",
+      "required_evidence": [
+        "candidate_inventory_json",
+        "identity_less_cases_held",
+        "no_apply_flag"
+      ],
+      "mutation": false
+    },
+    {
+      "order": 6,
+      "name": "verify_authenticated_youtube_channel",
+      "required_evidence": [
+        "channel_id_matches_admission_contract",
+        "oauth_scope_sufficient",
+        "no_token_value_in_evidence"
+      ],
+      "mutation": false
+    },
+    {
+      "order": 7,
+      "name": "admit_one_reviewed_candidate",
+      "required_evidence": [
+        "operator_identity",
+        "request_fingerprint",
+        "media_sha256",
+        "script_sha256",
+        "qa_evidence",
+        "rights_evidence",
+        "scheduled_window"
+      ],
+      "mutation": true
+    },
+    {
+      "order": 8,
+      "name": "observe_guarded_dispatch_and_public_confirmation",
+      "required_evidence": [
+        "one_create_attempt",
+        "external_id",
+        "public_processed_verification",
+        "atomic_story_projection",
+        "published_lifecycle_event"
+      ],
+      "mutation": true
+    },
+    {
+      "order": 9,
+      "name": "close_change_window",
+      "required_evidence": [
+        "no_unknown_dispatches",
+        "lease_health",
+        "post_cutover_backup",
+        "operator_summary"
+      ],
+      "mutation": true
+    }
+  ],
+  "rollback_conditions": [
+    "backup_or_integrity_verification_failure",
+    "migration_checksum_mismatch",
+    "more_than_one_primary_or_scheduler_owner",
+    "secondary_platform_automation_enabled",
+    "authenticated_channel_mismatch",
+    "request_fingerprint_mismatch",
+    "unresolved_platform_create_outcome",
+    "public_object_verification_failure"
+  ],
+  "execution_record": {
+    "started": false,
+    "completed": false,
+    "production_backup_id": null,
+    "production_migration_id": null,
+    "production_deployment_id": null,
+    "youtube_external_id": null
+  }
+}

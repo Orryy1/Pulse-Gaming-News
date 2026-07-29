@@ -1,14 +1,125 @@
-const fs = require("fs-extra");
+"use strict";
+
 const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+loadDotenvOnce({ dotenv, env: process.env });
+assertValidRuntimeConfig(process.env);
+
+const fs = require("fs-extra");
 const sendDiscord = require("./notify");
 const { addBreadcrumb, captureException } = require("./lib/sentry");
 const db = require("./lib/db");
 const { resolveFacebookReelsMode } = require("./lib/platforms/facebook-reels-mode");
-
-dotenv.config({ override: true });
+const {
+  isPublisherLeaseLostError,
+  runWithPublisherLease,
+} = require("./lib/services/publisher-lock");
+const {
+  resolveOperatingContract,
+} = require("./lib/stabilisation/operating-contract");
+const {
+  YOUTUBE_PLATFORM_CONTRACT,
+} = require("./lib/services/governed-publication-metadata");
+const {
+  ADMISSION_LATE_TOLERANCE_MS,
+  ADMISSION_WINDOW_DRIFT_MS,
+  validatePersistedOutsideCadenceAuthorisation,
+} = require("./lib/services/publication-admission");
+const {
+  createYoutubeAuthTelemetry,
+  normaliseYoutubeAuthTelemetry,
+  sanitiseYoutubeError,
+  sanitiseYoutubeErrorMessage,
+} = require("./lib/services/youtube-safety");
 
 // Publish lock - prevents concurrent publishNextStory() calls from creating duplicates
 let publishLock = false;
+const trustedYoutubeCreateBoundaryGates = new WeakSet();
+
+function issueTrustedYoutubeCreateBoundaryGate(revalidate) {
+  const gate = async function trustedYoutubeCreateBoundaryGate() {
+    return revalidate();
+  };
+  trustedYoutubeCreateBoundaryGates.add(gate);
+  return gate;
+}
+
+async function invokeTrustedYoutubeCreateBoundaryGate(gate) {
+  if (
+    typeof gate !== "function" ||
+    !trustedYoutubeCreateBoundaryGates.has(gate)
+  ) {
+    throw publicationDispatchError(
+      "youtube_create_boundary_guard_untrusted",
+    );
+  }
+  return gate();
+}
+
+async function prestageExactGovernedYoutubeRelease(options = {}) {
+  return require("./lib/services/governed-youtube-publisher-adapter")
+    .prestageExactGovernedYoutubeRelease({
+      ...options,
+      issueTrustedYoutubeCreateBoundaryGate:
+        options.issueTrustedYoutubeCreateBoundaryGate ||
+        issueTrustedYoutubeCreateBoundaryGate,
+      validatePublicationEvidence:
+        options.validatePublicationEvidence ||
+        readScheduledPublicationEvidence,
+    });
+}
+
+async function confirmExactGovernedYoutubeScheduledRelease(
+  options = {},
+) {
+  return require("./lib/services/governed-youtube-publisher-adapter")
+    .confirmExactGovernedYoutubeScheduledRelease({
+      ...options,
+      validatePublicationEvidence:
+        options.validatePublicationEvidence ||
+        readScheduledPublicationEvidence,
+    });
+}
+
+async function disarmExactGovernedYoutubeScheduledRelease(
+  options = {},
+) {
+  return require("./lib/services/governed-youtube-publisher-adapter")
+    .disarmExactGovernedYoutubeScheduledRelease({
+      ...options,
+      validatePublicationEvidence:
+        options.validatePublicationEvidence ||
+        readScheduledPublicationEvidence,
+    });
+}
+
+async function verifyExactGovernedYoutubePrivatePrestage(
+  options = {},
+) {
+  return require("./lib/services/governed-youtube-publisher-adapter")
+    .verifyExactGovernedYoutubePrivatePrestage({
+      ...options,
+      validatePublicationEvidence:
+        options.validatePublicationEvidence ||
+        readScheduledPublicationEvidence,
+    });
+}
+
+async function armExactGovernedYoutubeScheduledRelease(
+  options = {},
+) {
+  return require("./lib/services/governed-youtube-publisher-adapter")
+    .armExactGovernedYoutubeScheduledRelease({
+      ...options,
+      validatePublicationEvidence:
+        options.validatePublicationEvidence ||
+        readScheduledPublicationEvidence,
+    });
+}
 
 // Title similarity check (Jaccard > 0.5) - used for dedup across hunt + publish
 function titlesSimilar(a, b) {
@@ -61,21 +172,13 @@ function shadowCanonicalDedupe(story, platform, stories) {
 }
 
 /*
-  Autonomous Publisher - 3x Daily Multi-Platform Posting
+  Pulse v1 stabilisation publisher
 
-  Optimal publish windows (all times UTC / BST):
-  - 12:00 UTC / 1:00 PM BST - lunch break + US morning (7-8am ET)
-  - 17:00 UTC / 6:00 PM BST - post-work peak + US noon
-  - 21:00 UTC / 10:00 PM BST - evening session + US afternoon (4-5pm ET)
-
-  Strategy: 1 Short per window = 3 Shorts/day (algorithm favours frequency)
-
-  This module handles:
-  1. Auto-approval of high-confidence stories
-  2. Full produce pipeline (affiliates → audio → images → assembly)
-  3. publishNextStory() - single-story publish for each window
-  4. publishToAllPlatforms() - batch publish (legacy/manual)
-  5. Discord notifications at each stage
+  The governed automated scope is YouTube only, with two guarded UTC
+  windows, human-reviewed scheduling evidence, a four-hour minimum gap
+  and a hard maximum of two confirmed publications per rolling 24 hours.
+  Secondary adapters remain for later controlled cutovers, but the
+  stabilisation path returns before any of them can execute.
 */
 
 // --- Auto-approval logic ---
@@ -121,6 +224,11 @@ function shadowCanonicalDedupe(story, platform, stories) {
 //                  without touching the real repos singleton).
 //   env            override process.env during tests. Defaults to the
 //                  live process.env.
+//
+// HUMAN_REVIEW and every incomplete or mismatched mode keep the manual
+// editorial gate. Only the fully bound production LIVE_GUARDED mode may
+// persist the scoring rubric's existing `auto` decision. Official-source,
+// render-QA and publication gates still remain mandatory afterwards.
 async function autoApprove({ repos: injectedRepos, env = process.env } = {}) {
   const isProd = env.NODE_ENV === "production";
   const sqliteOn = env.USE_SQLITE === "true";
@@ -164,7 +272,24 @@ async function autoApprove({ repos: injectedRepos, env = process.env } = {}) {
   }
 
   const { runScoringPass } = require("./lib/decision-engine");
-  const summary = runScoringPass({ repos });
+  const pulseOperatingMode = String(
+    env.PULSE_OPERATING_MODE || "",
+  )
+    .trim()
+    .toUpperCase();
+  const legacyOperatingMode = String(
+    env.OPERATING_MODE || "",
+  )
+    .trim()
+    .toUpperCase();
+  const governedAutonomousApproval =
+    isProd &&
+    pulseOperatingMode === "LIVE_GUARDED" &&
+    legacyOperatingMode === "LIVE_GUARDED";
+  const summary = runScoringPass({
+    repos,
+    humanReviewRequired: !governedAutonomousApproval,
+  });
   return summary;
 }
 
@@ -184,7 +309,17 @@ function emptyScoringSummary(reason) {
 
 // --- Full produce pipeline ---
 async function produce() {
+  const options = arguments[0] || {};
   console.log("[publisher] Running produce pipeline...");
+  const exactScope = Array.isArray(options.storyIds);
+  const storyIds = exactScope
+    ? require("./lib/services/exact-story-production-scope").normaliseExactStoryIds(
+        options.storyIds,
+      )
+    : null;
+  if (exactScope && storyIds.length === 0) {
+    throw new Error("exact_production_story_scope_required");
+  }
 
   // Pre-pass: self-heal stale path fields across all stories. If
   // exported_path / audio_path / image_path / story_image_path are
@@ -197,53 +332,49 @@ async function produce() {
   //
   // Runs once at the top of produce so every stage that follows
   // sees a consistent "path set ⇔ file present" invariant.
-  await selfHealStaleMediaPaths();
+  await selfHealStaleMediaPaths({ storyIds });
 
-  const affiliates = require("./affiliates");
   const audio = require("./audio");
   const images = require("./images");
-  const assemble = require("./assemble");
   const { generateEntityMentions } = require("./entities");
 
-  await affiliates();
-  await audio();
+  // Commercial metadata remains frozen until the controlled audience
+  // experiment proves intent. Affiliate generation is not a production stage.
+  const audioResult = await audio({ storyIds });
   // Entity extraction runs between audio (needs word-level timestamps)
-  // and assemble (consumes story.mentions to overlay faces at spoken
-  // moments). Safe to skip — assemble treats missing mentions as no-op.
-  await generateEntityMentions();
-  await images();
-  await assemble();
+  // and the governed renderer, which consumes story.mentions to overlay
+  // faces at spoken moments.
+  const entityResult = await generateEntityMentions({ storyIds });
+  const imageResult = await images({ storyIds });
 
-  // Studio v2.1 quality layer: explicit switch only. The legacy MP4
-  // remains the publishable artefact; v2.1 renders are sidecar
-  // candidates stamped with a human visual review hold. This lets us
-  // test the high-quality layer without accidentally pushing an
-  // experimental render into the normal platform queue.
-  try {
-    const {
-      isStudioV21BatchEnabled,
-      runStudioV21ReviewBatch,
-    } = require("./lib/studio/v2/studio-v21-review-batch");
-    if (isStudioV21BatchEnabled(process.env)) {
-      const limit = Number(process.env.STUDIO_V21_BATCH_LIMIT || 5);
-      const result = await runStudioV21ReviewBatch({
-        db,
-        limit,
-        env: process.env,
-      });
-      console.log(
-        `[publisher] Studio v2.1 review batch complete: candidates=${result.candidates.length}, results=${result.results.length}`,
-      );
-    }
-  } catch (err) {
-    console.log(
-      `[publisher] Studio v2.1 review batch errored (non-fatal): ${err.message}`,
-    );
+  // Studio v2.1 is the sole standard renderer in the governed production
+  // graph. Its candidate becomes the primary exported artefact under a
+  // mandatory human-review hold. Any render, gauntlet or automatic-gate
+  // failure aborts production; legacy assembly is migration-only and is
+  // never a silent fallback.
+  const {
+    runStudioV21ReviewBatch,
+  } = require("./lib/studio/v2/studio-v21-review-batch");
+  const limit = Number(process.env.STUDIO_V21_BATCH_LIMIT || 5);
+  const allStories = await db.getStories();
+  const scopedStories = exactScope
+    ? require("./lib/services/exact-story-production-scope").filterStoriesToExactScope(
+        allStories,
+        { storyIds },
+      )
+    : allStories;
+  if (exactScope && scopedStories.length !== storyIds.length) {
+    throw new Error("exact_production_story_not_found");
   }
-
-  // Generate Instagram Story images for each produced video
-  const { generateStoryImages } = require("./images_story");
-  await generateStoryImages();
+  const result = await runStudioV21ReviewBatch({
+    db,
+    stories: scopedStories,
+    limit,
+    env: process.env,
+  });
+  console.log(
+    `[publisher] Studio v2.1 governed batch complete: candidates=${result.candidates.length}, results=${result.results.length}`,
+  );
 
   // Studio v2: build per-story YouTube thumbnails (1280×720 JPEG) for
   // every approved+exported story that doesn't yet have one. Best-
@@ -255,33 +386,29 @@ async function produce() {
     const {
       buildThumbnailsForApprovedStories,
     } = require("./lib/studio/v2/hf-thumbnail-builder");
-    await buildThumbnailsForApprovedStories();
+    await buildThumbnailsForApprovedStories({ storyIds });
   } catch (err) {
     console.log(
       `[publisher] HF thumbnail batch errored (non-fatal): ${err.message}`,
     );
   }
 
-  // Session 2 — warn-only format-catalogue routing. For every
-  // approved+exported story, score the media inventory and surface
-  // the recommended format. We deliberately do NOT change render
-  // behaviour from this hook yet; the goal is to (a) populate
-  // observability so an operator can see which stories are being
-  // padded into Shorts when they should be Briefing items or blog-
-  // only, and (b) prove the classifier against real production
-  // stories before promoting it. Anything off here is informational
-  // — failures are non-fatal.
-  try {
-    await logFormatRecommendationsForApprovedStories();
-  } catch (err) {
-    console.log(
-      `[publisher] format-catalogue warn-only pass errored (non-fatal): ${err.message}`,
-    );
-  }
-
   console.log("[publisher] Produce pipeline complete");
+  return {
+    exact_scope: exactScope,
+    story_ids: exactScope ? storyIds : result.candidates,
+    audio: audioResult || null,
+    entities: entityResult || null,
+    images: imageResult || null,
+    render: result,
+    human_review_required: true,
+    no_publish: true,
+  };
 }
 
+// Migration-only diagnostic retained for explicit operator tooling. It is not
+// part of the governed produce graph because its legacy runtime recommendations
+// conflict with the canonical Pulse editorial experiment matrix.
 async function logFormatRecommendationsForApprovedStories() {
   const stories = await db.getStories();
   if (!Array.isArray(stories) || stories.length === 0) return;
@@ -317,7 +444,7 @@ async function logFormatRecommendationsForApprovedStories() {
       continue;
     }
     counts[inv.classification] = (counts[inv.classification] || 0) + 1;
-    const runtime = recommendRuntime(inv);
+    const runtime = recommendRuntime(inv, { story });
     const fmt = selectFormatForStory(story, inv);
     const fmtId = fmt?.format?.id || "unknown";
     if (
@@ -369,7 +496,10 @@ async function logFormatRecommendationsForApprovedStories() {
  * Exported for unit tests. Safe to call multiple times — it's a
  * pure "path set but file missing → NULL" operation.
  */
-async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
+async function selfHealStaleMediaPaths({
+  repos: _repos,
+  storyIds = null,
+} = {}) {
   const fs = require("fs-extra");
   const mediaPaths = require("./lib/media-paths");
   const { applyProduceSelection } = require("./lib/produce-selection");
@@ -383,7 +513,13 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
     "thumbnail_candidate_path",
   ];
   let healed = 0;
-  const selectedStories = applyProduceSelection(stories, {
+  const scopedStories = Array.isArray(storyIds)
+    ? require("./lib/services/exact-story-production-scope").filterStoriesToExactScope(
+        stories,
+        { storyIds },
+      )
+    : stories;
+  const selectedStories = applyProduceSelection(scopedStories, {
     stage: "publisher:self-heal",
     log: console.log,
   });
@@ -426,87 +562,51 @@ async function selfHealStaleMediaPaths({ repos: _repos } = {}) {
 }
 
 // --- Staggered multi-platform upload ---
-async function publishToAllPlatforms() {
-  console.log("[publisher] === Multi-Platform Publish ===");
-
-  const results = { youtube: [], tiktok: [], instagram: [] };
-
-  // YouTube Shorts (first priority)
-  try {
-    const { uploadAll: ytUpload } = require("./upload_youtube");
-    results.youtube = await ytUpload();
-    console.log(`[publisher] YouTube: ${results.youtube.length} uploaded`);
-  } catch (err) {
-    console.log(`[publisher] YouTube upload skipped: ${err.message}`);
-  }
-
-  // Wait 60 minutes before TikTok (staggered posting for algorithm)
-  if (process.env.STAGGER_UPLOADS !== "false") {
-    console.log("[publisher] Waiting 60 min before TikTok upload...");
-    await new Promise((r) => setTimeout(r, 60 * 60 * 1000));
-  }
-
-  // TikTok - try official API first. Browser fallback is off by
-  // default in production (Task 5) — see the per-story path below
-  // for the full rationale. Opt in via TIKTOK_BROWSER_FALLBACK=true
-  // from local dev only.
-  try {
-    const { uploadAll: ttUpload } = require("./upload_tiktok");
-    results.tiktok = await ttUpload();
-    console.log(`[publisher] TikTok: ${results.tiktok.length} uploaded (API)`);
-  } catch (err) {
-    const wantBrowserFallback =
-      (process.env.TIKTOK_BROWSER_FALLBACK || "").toLowerCase() === "true";
-    const safeMsg = String(err && err.message ? err.message : err)
-      .replace(/Bearer\s+[^\s"']+/gi, "Bearer <redacted>")
-      .replace(/access_token=[^\s&"']+/gi, "access_token=<redacted>");
-    if (!wantBrowserFallback) {
-      console.log(
-        `[publisher] TikTok API failed: ${safeMsg} (browser fallback disabled — set TIKTOK_BROWSER_FALLBACK=true to enable)`,
-      );
-    } else {
-      console.log(
-        `[publisher] TikTok API failed: ${err.message}, trying browser fallback (TIKTOK_BROWSER_FALLBACK=true)...`,
-      );
-      try {
-        const {
-          uploadAll: ttBrowserUpload,
-        } = require("./upload_tiktok_browser");
-        results.tiktok = await ttBrowserUpload();
-        console.log(
-          `[publisher] TikTok: ${results.tiktok.length} uploaded (browser)`,
-        );
-      } catch (browserErr) {
-        console.log(
-          `[publisher] TikTok browser upload also failed: ${browserErr.message}`,
-        );
-      }
-    }
-  }
-
-  // Wait another 60 minutes before Instagram
-  if (process.env.STAGGER_UPLOADS !== "false") {
-    console.log("[publisher] Waiting 60 min before Instagram upload...");
-    await new Promise((r) => setTimeout(r, 60 * 60 * 1000));
-  }
-
-  // Instagram Reels
-  try {
-    const { uploadAll: igUpload } = require("./upload_instagram");
-    results.instagram = await igUpload();
-    console.log(`[publisher] Instagram: ${results.instagram.length} uploaded`);
-  } catch (err) {
-    console.log(`[publisher] Instagram upload skipped: ${err.message}`);
-  }
-
-  return results;
+async function _publishToAllPlatformsUnlocked(assertLeaseHealthy) {
+  assertLeaseHealthy();
+  return {
+    youtube: [],
+    tiktok: [],
+    instagram: [],
+    publish_dispatch_blocked: true,
+    status: "blocked",
+    top_reason:
+      "legacy_batch_publish_disabled_use_durable_single_story_queue",
+  };
 }
 
-// --- Full autonomous cycle: hunt → approve → produce → publish ---
+// --- Compatibility entrypoint: hunt → review queue → governed production hold ---
+async function publishToAllPlatforms(options = {}) {
+  const leases =
+    options.leases ||
+    (typeof db.useSqlite === "function" && db.useSqlite()
+      ? require("./lib/repositories").getRepos().runtimeLeases
+      : null);
+  const result = await runWithPublisherLease({
+    leases,
+    channelId: options.channelId || process.env.CHANNEL || "pulse-gaming",
+    operation: "publish_batch",
+    leaseMs: options.leaseMs,
+    heartbeatIntervalMs: options.heartbeatIntervalMs,
+    log: (message) => console.log(message),
+    task: ({ assertHealthy }) =>
+      _publishToAllPlatformsUnlocked(assertHealthy),
+  });
+  if (result?.publish_dispatch_blocked) {
+    return {
+      ...result,
+      youtube: [],
+      tiktok: [],
+      instagram: [],
+    };
+  }
+  return result;
+}
+
 async function fullAutonomousCycle() {
   const startTime = Date.now();
   console.log("[publisher] ========================================");
-  console.log("[publisher] FULL AUTONOMOUS CYCLE STARTED");
+  console.log("[publisher] GOVERNED PREPARATION CYCLE STARTED");
   console.log(`[publisher] ${new Date().toISOString()}`);
   console.log("[publisher] ========================================");
 
@@ -569,14 +669,14 @@ async function fullAutonomousCycle() {
       }
 
       await sendDiscord(
-        `**🔎 Pulse Gaming Hunt Complete**\n${newPosts.length} new stories found`,
+        `**🔎 Pulse Gaming News hunt complete**\n${newPosts.length} new stories found`,
       );
     } else {
       console.log("[publisher] No new stories found");
     }
 
-    // Step 2: Auto-approve (scoring engine; see autoApprove() doc above).
-    addBreadcrumb("Auto-approving stories", "pipeline");
+    // Step 2: Score candidates into the mandatory human-review queue.
+    addBreadcrumb("Scoring stories for human review", "pipeline");
     console.log("[publisher] Step 2/4: Running editorial scoring pass...");
     const scoringSummary = await autoApprove();
 
@@ -646,72 +746,62 @@ async function fullAutonomousCycle() {
     console.log("[publisher] Step 3/4: Producing assets...");
     await produce();
 
-    // Step 4: Publish to all platforms
-    if (process.env.AUTO_PUBLISH === "true") {
-      addBreadcrumb("Publishing to all platforms", "pipeline");
-      console.log("[publisher] Step 4/4: Publishing to all platforms...");
-      const results = await publishToAllPlatforms();
-
-      const totalUploaded =
-        results.youtube.length +
-        results.tiktok.length +
-        results.instagram.length;
-      await sendDiscord(
-        `**Pulse Gaming Auto-Publish Complete**\n` +
-          `YouTube: ${results.youtube.length} | TikTok: ${results.tiktok.length} | Instagram: ${results.instagram.length}\n` +
-          `Total: ${totalUploaded} uploads across all platforms`,
-      );
-    } else {
-      console.log(
-        "[publisher] Step 4/4: AUTO_PUBLISH not enabled, skipping uploads",
-      );
-      await sendDiscord(
-        "**Pulse Gaming Produce Complete** - Videos ready. Set AUTO_PUBLISH=true to enable uploads.",
-      );
-    }
+    // Step 4: Stabilisation mode never dispatches. Production candidates
+    // remain held until a named operator completes the governed review.
+    const hold = {
+      status: "held_for_human_review",
+      reason: "stabilisation_human_review_required",
+    };
+    addBreadcrumb("Holding candidates for human review", "pipeline");
+    console.log(
+      `[publisher] Step 4/4: ${hold.status} (${hold.reason})`,
+    );
+    await sendDiscord(
+      "**Pulse Gaming News preparation complete**\nCandidates are held for named human review. No upload was dispatched.",
+    );
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
-    console.log(`[publisher] Autonomous cycle complete in ${elapsed}s`);
+    console.log(`[publisher] Governed preparation complete in ${elapsed}s`);
+    return {
+      ...hold,
+      elapsed_seconds: elapsed,
+      scoring: scoringSummary,
+    };
   } catch (err) {
     captureException(err, { step: "fullAutonomousCycle" });
     console.log(`[publisher] CYCLE ERROR: ${err.message}`);
     await sendDiscord(
-      `**Pulse Gaming ERROR**\nAutonomous cycle failed: ${err.message}`,
+      `**Pulse Gaming News error**\nPreparation cycle failed: ${err.message}`,
     );
+    return {
+      status: "failed",
+      reason: "preparation_cycle_error",
+      error: err.message,
+    };
   }
 }
 
-// --- Publish-only cycle (for the evening optimal posting window) ---
+// --- Legacy publish-only entrypoint (hard-held during stabilisation) ---
 async function publishOnlyCycle() {
-  console.log("[publisher] === PUBLISH-ONLY CYCLE ===");
-
-  try {
-    // Auto-approve any remaining stories
-    await autoApprove();
-
-    // Produce any unapproved assets
-    await produce();
-
-    // Publish
-    if (process.env.AUTO_PUBLISH === "true") {
-      const results = await publishToAllPlatforms();
-      const total =
-        results.youtube.length +
-        results.tiktok.length +
-        results.instagram.length;
-      await sendDiscord(
-        `**Evening Publish Complete** - ${total} videos posted across platforms`,
-      );
-    }
-  } catch (err) {
-    console.log(`[publisher] Publish cycle error: ${err.message}`);
-    await sendDiscord(`**Publish Cycle ERROR**: ${err.message}`);
-  }
+  const hold = {
+    status: "held_for_human_review",
+    reason: "stabilisation_human_review_required",
+  };
+  console.log(
+    `[publisher] Legacy publish-only cycle blocked: ${hold.reason}`,
+  );
+  await sendDiscord(
+    "**Pulse Gaming News publish window held**\nA named human review and governed YouTube dispatch are required.",
+  );
+  return hold;
 }
 
-// --- Publish a single next-available story across all platforms ---
-// Used by the 3x daily publish windows to spread content through the day
-async function publishNextStory() {
+// --- Governed dispatch of a single reviewed YouTube candidate ---
+// Secondary-platform adapters remain visible but frozen by the operating contract.
+async function _publishNextStoryWithMemoryLock(
+  assertLeaseHealthy,
+  runtime = {},
+) {
   // Prevent concurrent publish calls from uploading the same story twice
   if (publishLock) {
     console.log("[publisher] Publish already in progress, skipping");
@@ -720,7 +810,8 @@ async function publishNextStory() {
   publishLock = true;
 
   try {
-    return await _publishNextStoryInner();
+    assertLeaseHealthy();
+    return await _publishNextStoryInner(assertLeaseHealthy, runtime);
   } finally {
     publishLock = false;
   }
@@ -743,6 +834,105 @@ async function publishNextStory() {
 // Cap rationale: 5 is enough to tolerate a handful of stale-pointer
 // stories in the backlog without risking a runaway QA loop on a
 // day where the hunter/processor has shipped many broken items.
+async function publishNextStory(options = {}) {
+  const runtimeEnv = options.env || process.env;
+  const trustedClock = createTrustedPublisherClock(options, runtimeEnv);
+  const operatingContract = resolveOperatingContract({
+    env: runtimeEnv,
+  });
+  if (!operatingContract.live_mutation_allowed) {
+    const topReason =
+      operatingContract.blockers[0] || "live_guarded_mode_required";
+    console.log(
+      `[publisher] Live dispatch blocked by operating contract: ${topReason}`,
+    );
+    return {
+      publish_dispatch_blocked: true,
+      status: "blocked",
+      top_reason: topReason,
+      operating_mode: operatingContract.mode,
+      blockers: operatingContract.blockers,
+    };
+  }
+  let exactDispatchBinding;
+  try {
+    if (
+      options.exactDispatchBinding === undefined ||
+      options.exactDispatchBinding === null
+    ) {
+      throw publicationDispatchError(
+        "guarded_exact_dispatch_binding_required",
+      );
+    }
+    exactDispatchBinding = normaliseExactDispatchBinding(
+      options.exactDispatchBinding,
+    );
+  } catch (error) {
+    const topReason =
+      error?.code ||
+      error?.message ||
+      "guarded_exact_dispatch_binding_invalid";
+    console.log(
+      `[publisher] Live dispatch blocked by exact authority: ${topReason}`,
+    );
+    return {
+      publish_dispatch_blocked: true,
+      status: "blocked",
+      top_reason: topReason,
+      operating_mode: operatingContract.mode,
+    };
+  }
+  const resolvedRepos =
+    options.repos ||
+    (typeof db.useSqlite === "function" && db.useSqlite()
+      ? require("./lib/repositories").getRepos()
+      : null);
+  const leases = options.leases || resolvedRepos?.runtimeLeases || null;
+  return runWithPublisherLease({
+    leases,
+    channelId: options.channelId || process.env.CHANNEL || "pulse-gaming",
+    operation: "publish_next_story",
+    leaseMs: options.leaseMs,
+    heartbeatIntervalMs: options.heartbeatIntervalMs,
+    log: (message) => console.log(message),
+    task: async ({ assertHealthy }) => {
+      assertHealthy();
+      if (!resolvedRepos?.db) {
+        return {
+          publish_dispatch_blocked: true,
+          status: "blocked",
+          top_reason: "publication_cadence_database_required",
+        };
+      }
+      const cadenceEvaluator =
+        options.cadenceEvaluator ||
+        require("./lib/scheduler").evaluateStabilisationPublishCadence;
+      const cadence = cadenceEvaluator({
+        db: resolvedRepos.db,
+        now: trustedClock(),
+        excludeJobId: options.currentJobId || null,
+      });
+      if (!cadence?.allowed) {
+        return {
+          publish_dispatch_blocked: true,
+          status: "blocked",
+          top_reason:
+            cadence?.reason || "stabilisation_publish_cadence_blocked",
+          cadence,
+        };
+      }
+      assertHealthy();
+      return _publishNextStoryWithMemoryLock(assertHealthy, {
+        ...options,
+        exactDispatchBinding,
+        env: runtimeEnv,
+        repos: resolvedRepos,
+        trustedClock,
+      });
+    },
+  });
+}
+
 const MAX_PUBLISH_CANDIDATES_PER_WINDOW = 5;
 
 /**
@@ -768,6 +958,538 @@ function storyIsRetry(s) {
     s.facebook_post_id ||
     s.twitter_post_id
   );
+}
+
+function isRealPlatformPostId(id) {
+  return (
+    typeof id === "string" &&
+    id.trim().length > 0 &&
+    !id.startsWith("DUPE_")
+  );
+}
+
+function publicationDispatchError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function createTrustedPublisherClock(options = {}, env = process.env) {
+  const allowTestClock =
+    String(env.NODE_ENV || "").trim().toLowerCase() === "test";
+  const injected = allowTestClock ? options.now : null;
+  return function trustedPublisherNow() {
+    const value =
+      typeof injected === "function"
+        ? injected()
+        : injected instanceof Date
+          ? new Date(injected.getTime())
+          : injected ?? new Date();
+    const now = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+    if (Number.isNaN(now.getTime())) {
+      throw publicationDispatchError("scheduled_dispatch_clock_invalid");
+    }
+    return now;
+  };
+}
+
+function normaliseExactDispatchBinding(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw publicationDispatchError("guarded_exact_dispatch_binding_invalid");
+  }
+  const scheduled = new Date(value.scheduledFor);
+  const binding = {
+    storyId: String(value.storyId || "").trim(),
+    platform: String(value.platform || "").trim(),
+    scheduledFor: Number.isNaN(scheduled.getTime())
+      ? ""
+      : scheduled.toISOString(),
+    scheduledEventId: String(value.scheduledEventId ?? "").trim(),
+    dispatchIdempotencyKey: String(
+      value.dispatchIdempotencyKey || "",
+    ).trim(),
+    requestFingerprint: String(value.requestFingerprint || "")
+      .trim()
+      .toLowerCase(),
+    databaseDataVersion: Number(value.databaseDataVersion),
+  };
+  if (
+    !binding.storyId ||
+    binding.platform !== "youtube" ||
+    !binding.scheduledFor ||
+    !binding.scheduledEventId ||
+    !binding.dispatchIdempotencyKey ||
+    !/^[a-f0-9]{64}$/.test(binding.requestFingerprint) ||
+    !Number.isSafeInteger(binding.databaseDataVersion) ||
+    binding.databaseDataVersion < 1
+  ) {
+    throw publicationDispatchError("guarded_exact_dispatch_binding_invalid");
+  }
+  return Object.freeze(binding);
+}
+
+function readPublisherSqliteDataVersion(db) {
+  if (!db || typeof db.pragma !== "function") {
+    throw publicationDispatchError(
+      "guarded_database_data_version_unavailable",
+    );
+  }
+  let value;
+  try {
+    value = db.pragma("data_version", { simple: true });
+  } catch {
+    throw publicationDispatchError(
+      "guarded_database_data_version_unavailable",
+    );
+  }
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw publicationDispatchError(
+      "guarded_database_data_version_invalid",
+    );
+  }
+  return value;
+}
+
+function assertExactDatabaseDataVersion(
+  db,
+  binding,
+  mismatchCode,
+) {
+  if (!binding) return;
+  if (
+    readPublisherSqliteDataVersion(db) !==
+    binding.databaseDataVersion
+  ) {
+    throw publicationDispatchError(mismatchCode);
+  }
+}
+
+function assertExactDispatchBinding(binding, storyId, scheduled) {
+  if (!binding) return;
+  const comparisons = [
+    [
+      String(storyId || "").trim(),
+      binding.storyId,
+      "guarded_exact_dispatch_story_mismatch",
+    ],
+    [
+      "youtube",
+      binding.platform,
+      "guarded_exact_dispatch_platform_mismatch",
+    ],
+    [
+      String(scheduled?.scheduledFor || "").trim(),
+      binding.scheduledFor,
+      "guarded_exact_dispatch_schedule_mismatch",
+    ],
+    [
+      String(scheduled?.event?.id ?? "").trim(),
+      binding.scheduledEventId,
+      "guarded_exact_dispatch_event_mismatch",
+    ],
+    [
+      String(scheduled?.idempotencyKey || "").trim(),
+      binding.dispatchIdempotencyKey,
+      "guarded_exact_dispatch_key_mismatch",
+    ],
+    [
+      String(scheduled?.requestFingerprint || "")
+        .trim()
+        .toLowerCase(),
+      binding.requestFingerprint,
+      "guarded_exact_dispatch_fingerprint_mismatch",
+    ],
+  ];
+  for (const [actual, expected, code] of comparisons) {
+    if (actual !== expected) throw publicationDispatchError(code);
+  }
+}
+
+function assertSameScheduledDispatchTicket(
+  initial,
+  current,
+  mismatchCode = "scheduled_dispatch_ticket_changed_before_create",
+) {
+  const comparisons = [
+    [
+      String(current?.scheduledFor || "").trim(),
+      String(initial?.scheduledFor || "").trim(),
+    ],
+    [
+      String(current?.event?.id ?? "").trim(),
+      String(initial?.event?.id ?? "").trim(),
+    ],
+    [
+      String(current?.idempotencyKey || "").trim(),
+      String(initial?.idempotencyKey || "").trim(),
+    ],
+    [
+      String(current?.requestFingerprint || "").trim().toLowerCase(),
+      String(initial?.requestFingerprint || "").trim().toLowerCase(),
+    ],
+    [
+      String(current?.event?.evidence_json || "").trim(),
+      String(initial?.event?.evidence_json || "").trim(),
+    ],
+  ];
+  if (comparisons.some(([actual, expected]) => actual !== expected)) {
+    throw publicationDispatchError(mismatchCode);
+  }
+}
+
+function readScheduledPublicationEvidence(evidence) {
+  const publicationEvidence = evidence?.publication_evidence;
+  if (
+    !publicationEvidence ||
+    typeof publicationEvidence !== "object" ||
+    Array.isArray(publicationEvidence) ||
+    publicationEvidence.schema_version !==
+      "pulse-publication-evidence-v1"
+  ) {
+    throw publicationDispatchError(
+      "scheduled_publication_evidence_required",
+    );
+  }
+  for (const field of [
+    "source_evidence_sha256",
+    "qa_report_sha256",
+    "rights_ledger_sha256",
+    "renderer_manifest_sha256",
+  ]) {
+    if (
+      !/^[a-f0-9]{64}$/i.test(
+        String(publicationEvidence[field] || ""),
+      )
+    ) {
+      throw publicationDispatchError(
+        `scheduled_publication_${field}_required`,
+      );
+    }
+  }
+  const officialSourceReleaseBinding =
+    require("./lib/services/official-source-revalidation")
+      .validateOfficialSourceReleaseBinding(
+        publicationEvidence.official_source_release_binding,
+        {
+          sourceEvidenceSha256:
+            publicationEvidence.source_evidence_sha256,
+        },
+      ).value;
+  const publicationMetadataSha = String(
+    publicationEvidence.publication_metadata_sha256 || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(publicationMetadataSha)) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_sha256_required",
+    );
+  }
+  const publicationMetadata = publicationEvidence.publication_metadata;
+  if (
+    !publicationMetadata ||
+    typeof publicationMetadata !== "object" ||
+    Array.isArray(publicationMetadata)
+  ) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_required",
+    );
+  }
+  const boundMetadataSha = String(
+    publicationMetadata.sha256 || "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(boundMetadataSha)) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_binding_sha256_required",
+    );
+  }
+  if (boundMetadataSha !== publicationMetadataSha) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_sha256_mismatch",
+    );
+  }
+  if (!String(publicationMetadata.path || "").trim()) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_path_required",
+    );
+  }
+  if (
+    String(publicationMetadata.platform || "").trim() !==
+    YOUTUBE_PLATFORM_CONTRACT.reviewedMetadataPlatform
+  ) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_platform_invalid",
+    );
+  }
+  if (!String(publicationMetadata.title || "").trim()) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_title_required",
+    );
+  }
+  if (!String(publicationMetadata.description || "").trim()) {
+    throw publicationDispatchError(
+      "scheduled_publication_metadata_description_required",
+    );
+  }
+  const transformation =
+    publicationEvidence.originality_transformation;
+  if (
+    !["STRONG", "ADEQUATE"].includes(
+      String(transformation?.verdict || "").trim().toUpperCase(),
+    ) ||
+    !String(transformation?.rationale || "").trim() ||
+    !String(transformation?.evidence_ref || "").trim() ||
+    !/^[a-f0-9]{64}$/i.test(
+      String(transformation?.evidence_sha256 || ""),
+    )
+  ) {
+    throw publicationDispatchError(
+      "scheduled_originality_transformation_evidence_required",
+    );
+  }
+  const renderer = publicationEvidence.renderer;
+  if (
+    !String(renderer?.id || "").trim() ||
+    !String(renderer?.role || "").trim() ||
+    !String(renderer?.version || "").trim()
+  ) {
+    throw publicationDispatchError(
+      "scheduled_renderer_identity_required",
+    );
+  }
+  const disclosure =
+    publicationEvidence.synthetic_media_disclosure;
+  const disclosureDecision = String(disclosure?.decision || "")
+    .trim()
+    .toUpperCase();
+  const reviewedAt = new Date(disclosure?.reviewed_at);
+  const expectedYoutubeField =
+    disclosureDecision === "DISCLOSE"
+      ? true
+      : disclosureDecision === "NO_DISCLOSURE_REQUIRED"
+        ? false
+        : null;
+  if (
+    typeof disclosure?.contains_synthetic_media !== "boolean" ||
+    !["DISCLOSE", "NO_DISCLOSURE_REQUIRED"].includes(
+      disclosureDecision,
+    ) ||
+    !String(disclosure?.rationale || "").trim() ||
+    (disclosureDecision === "DISCLOSE" &&
+      !String(disclosure?.disclosure_text || "").trim()) ||
+    typeof disclosure?.youtube_field_value !== "boolean" ||
+    disclosure.youtube_field_value !== expectedYoutubeField ||
+    !disclosure?.reviewed_at ||
+    Number.isNaN(reviewedAt.getTime()) ||
+    (disclosure?.contains_synthetic_media === true &&
+      disclosureDecision === "NO_DISCLOSURE_REQUIRED" &&
+      !String(disclosure?.policy_basis || "").trim())
+  ) {
+    throw publicationDispatchError(
+      "scheduled_synthetic_disclosure_decision_required",
+    );
+  }
+  return {
+    ...publicationEvidence,
+    official_source_release_binding:
+      officialSourceReleaseBinding,
+  };
+}
+
+const SCHEDULED_DISPATCH_EARLY_TOLERANCE_MS = 60 * 1000;
+const SCHEDULED_DISPATCH_LATE_TOLERANCE_MS = 15 * 60 * 1000;
+
+function readScheduledDispatchEvidence(
+  publicationGovernance,
+  storyId,
+  platform,
+  at = new Date(),
+  channelId = null,
+) {
+  if (
+    !publicationGovernance ||
+    typeof publicationGovernance.getLatestLifecycleEvent !== "function"
+  ) {
+    throw publicationDispatchError(
+      "publication_governance_repository_required",
+    );
+  }
+  const event = publicationGovernance.getLatestLifecycleEvent(
+    storyId,
+    platform,
+    "SCHEDULED",
+  );
+  if (!event) {
+    throw publicationDispatchError("scheduled_dispatch_evidence_required");
+  }
+  if (
+    String(event.story_id || "").trim() !== String(storyId || "").trim() ||
+    String(event.platform || "").trim() !== String(platform || "").trim()
+  ) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_event_identity_mismatch",
+    );
+  }
+  let evidence;
+  try {
+    evidence =
+      typeof event.evidence_json === "string"
+        ? JSON.parse(event.evidence_json)
+        : event.evidence;
+  } catch {
+    throw publicationDispatchError("scheduled_dispatch_evidence_invalid");
+  }
+  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
+    throw publicationDispatchError("scheduled_dispatch_evidence_invalid");
+  }
+  const idempotencyKey = String(
+    evidence.dispatch_idempotency_key || "",
+  ).trim();
+  const requestFingerprint = String(
+    evidence.request_fingerprint || "",
+  ).trim();
+  if (!idempotencyKey) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_idempotency_key_required",
+    );
+  }
+  if (!/^[a-f0-9]{64}$/i.test(requestFingerprint)) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_request_fingerprint_required",
+    );
+  }
+  const publicationEvidence =
+    readScheduledPublicationEvidence(evidence);
+  const scheduledFor = new Date(evidence.scheduled_for);
+  const effectiveNow =
+    at instanceof Date
+      ? new Date(at.getTime())
+      : new Date(typeof at === "function" ? at() : at);
+  if (
+    !String(evidence.scheduled_for || "").trim() ||
+    Number.isNaN(scheduledFor.getTime())
+  ) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_time_required",
+    );
+  }
+  if (Number.isNaN(effectiveNow.getTime())) {
+    throw publicationDispatchError("scheduled_dispatch_clock_invalid");
+  }
+  const normalCadence =
+    [9, 19].includes(scheduledFor.getUTCHours()) &&
+    scheduledFor.getUTCMinutes() === 0 &&
+    scheduledFor.getUTCSeconds() === 0 &&
+    scheduledFor.getUTCMilliseconds() === 0;
+  if (!normalCadence) {
+    if (
+      scheduledFor.getUTCSeconds() !== 0 ||
+      scheduledFor.getUTCMilliseconds() !== 0
+    ) {
+      throw publicationDispatchError(
+        "scheduled_dispatch_guarded_window_required",
+      );
+    }
+    const outsideCadenceBlockers =
+      validatePersistedOutsideCadenceAuthorisation(
+        evidence.outside_cadence_authorisation,
+        {
+          storyId,
+          channelId,
+          platform,
+          scheduledFor: scheduledFor.toISOString(),
+          authorisedNoEarlierThan: new Date(
+            scheduledFor.getTime() - ADMISSION_WINDOW_DRIFT_MS,
+          ).toISOString(),
+          authorisedNoLaterThan: new Date(
+            scheduledFor.getTime() + ADMISSION_LATE_TOLERANCE_MS,
+          ).toISOString(),
+          now: effectiveNow.toISOString(),
+          dispatchIdempotencyKey: idempotencyKey,
+          requestFingerprint,
+        },
+      );
+    if (outsideCadenceBlockers.length) {
+      throw publicationDispatchError(outsideCadenceBlockers[0]);
+    }
+  }
+  const scheduleDeltaMs =
+    effectiveNow.getTime() - scheduledFor.getTime();
+  if (scheduleDeltaMs < -SCHEDULED_DISPATCH_EARLY_TOLERANCE_MS) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_window_not_open",
+    );
+  }
+  if (scheduleDeltaMs > SCHEDULED_DISPATCH_LATE_TOLERANCE_MS) {
+    throw publicationDispatchError(
+      "scheduled_dispatch_window_expired",
+    );
+  }
+  return {
+    event,
+    evidence,
+    idempotencyKey,
+    requestFingerprint,
+    publicationEvidence,
+    scheduledFor: scheduledFor.toISOString(),
+  };
+}
+
+function isGovernanceDispatchError(error) {
+  const code = String(error?.code || error?.message || "");
+  return (
+    code === "platform_dispatch_reschedule_required" ||
+    code.startsWith("scheduled_") ||
+    code.startsWith("dispatch_requires_") ||
+    code.startsWith("publication_governance_") ||
+    code.startsWith("publication_dispatch_") ||
+    code.startsWith("publication_fingerprint_") ||
+    code.startsWith("governed_dispatch_") ||
+    code.startsWith("guarded_database_")
+  );
+}
+
+async function finaliseStabilisationYoutubeOnly(
+  story,
+  result,
+  assertLeaseHealthy,
+) {
+  const secondary = [
+    ["tiktok", "tiktok_post_id"],
+    ["instagram", "instagram_media_id"],
+    ["facebook", "facebook_post_id"],
+    ["twitter", "twitter_post_id"],
+    ["instagram_story", "instagram_story_id"],
+    ["facebook_card", "facebook_story_id"],
+    ["twitter_image", "twitter_image_tweet_id"],
+  ];
+  result.publish_scope = "stabilisation_youtube_only";
+  for (const [outcomeKey, storyField] of secondary) {
+    if (isRealPlatformPostId(story[storyField])) {
+      result.platform_outcomes[outcomeKey] = "already_published";
+    } else {
+      result.platform_outcomes[outcomeKey] = "operator_disabled";
+      result.skipped[outcomeKey] = "stabilisation_secondary_platform_freeze";
+    }
+  }
+
+  if (isRealPlatformPostId(story.youtube_post_id)) {
+    story.publish_status = "published";
+    story.published_at =
+      story.published_at || story.youtube_published_at || new Date().toISOString();
+  } else if (result.platform_outcomes.youtube === "failed") {
+    story.publish_status = "failed";
+  } else {
+    story.publish_status = "held";
+  }
+
+  assertLeaseHealthy();
+  await db.upsertStory(story);
+  assertLeaseHealthy();
+  return result;
 }
 
 /**
@@ -827,17 +1549,95 @@ async function persistQaFail(story, { failures, warnings, source }) {
  * Pure / side-effect-free — caller is responsible for persistence
  * on fail and for deciding what to do with warnings on pass.
  *
- * QA helpers throwing is non-fatal: we log and treat as pass. A
- * broken QA module must NEVER freeze the daily publish cycle —
- * the operator gets the Discord summary either way.
+ * QA helpers throwing is a hard, persisted refusal. A missing safety
+ * verdict is not evidence that the asset passed, so the story remains
+ * held until an operator repairs the QA lane and reschedules it.
  */
-async function runPreflightQa(story) {
+async function runPreflightQa(story, context = {}) {
   const warnings = [];
+  let governedAutonomousEvidence = false;
+  let governedAutonomousAuthority = null;
+  let governedReviewAuthority = null;
+
+  try {
+    const autonomousQa =
+      require("./lib/services/governed-autonomous-content-qa");
+    governedAutonomousEvidence =
+      autonomousQa.hasGovernedAutonomousContentQaEvidence(
+        story,
+        context.scheduledDispatch,
+      );
+    if (governedAutonomousEvidence) {
+      governedAutonomousAuthority =
+        await autonomousQa.resolveGovernedAutonomousContentQaAuthority({
+          story,
+          scheduledDispatch: context.scheduledDispatch,
+          exactDispatchBinding: context.exactDispatchBinding,
+          publicationGovernance: context.publicationGovernance,
+          resolveMediaPath: context.resolveMediaPath,
+        });
+    } else {
+      const {
+        hasGovernedReviewedContentQaEvidence,
+        resolveGovernedReviewedContentQaAuthority,
+      } = require("./lib/services/governed-reviewed-content-qa");
+      if (hasGovernedReviewedContentQaEvidence(story)) {
+        governedReviewAuthority =
+          await resolveGovernedReviewedContentQaAuthority({
+            story,
+            scheduledDispatch: context.scheduledDispatch,
+            exactDispatchBinding: context.exactDispatchBinding,
+            resolveMediaPath: context.resolveMediaPath,
+          });
+      }
+    }
+  } catch (qaErr) {
+    const failures = Array.isArray(qaErr?.codes)
+      ? qaErr.codes
+      : [
+          qaErr?.code ||
+            (governedAutonomousAuthority
+              ? "governed_autonomous_content_qa_invalid"
+              : "governed_reviewed_content_qa_invalid"),
+        ];
+    const autonomous =
+      governedAutonomousEvidence ||
+      governedAutonomousAuthority !== null ||
+      String(failures[0] || "").startsWith("governed_autonomous_");
+    console.log(
+      `[publisher] ${autonomous ? "governed autonomous" : "governed review"} QA FAIL (${story.id}): ${failures.join(", ")}`,
+    );
+    return {
+      pass: false,
+      failures,
+      warnings: warnings.slice(),
+      source: autonomous
+        ? "governed_autonomous_review"
+        : "governed_review",
+    };
+  }
 
   // Content QA — metadata + script + MP4 size / existence
   try {
     const { runContentQa } = require("./lib/services/content-qa");
-    const cqa = await runContentQa(story);
+    let cqa = await runContentQa(story);
+    if (governedAutonomousAuthority) {
+      const {
+        reconcileGovernedAutonomousContentQa,
+      } = require("./lib/services/governed-autonomous-content-qa");
+      cqa = reconcileGovernedAutonomousContentQa(
+        cqa,
+        governedAutonomousAuthority,
+      );
+    } else if (governedReviewAuthority) {
+      const {
+        reconcileGovernedReviewedContentQa,
+      } = require("./lib/services/governed-reviewed-content-qa");
+      cqa = reconcileGovernedReviewedContentQa(
+        cqa,
+        governedReviewAuthority,
+      );
+    }
     if (cqa.warnings && cqa.warnings.length > 0) {
       console.log(
         `[publisher] content QA warnings (${story.id}): ${cqa.warnings.join(", ")}`,
@@ -857,17 +1657,36 @@ async function runPreflightQa(story) {
     }
   } catch (qaErr) {
     console.log(
-      `[publisher] content-qa error for ${story.id} (non-fatal): ${qaErr.message}`,
+      `[publisher] content-qa unavailable for ${story.id}: ${qaErr.message}`,
     );
+    captureException(qaErr, {
+      step: "publishNextStory.content_qa",
+      storyId: story.id,
+    });
+    return {
+      pass: false,
+      failures: ["content_qa_unavailable"],
+      warnings: warnings.slice(),
+      source: "content",
+    };
   }
 
   // Video QA — duration + black-frame detection via ffprobe/ffmpeg
   try {
     const { runVideoQa } = require("./lib/services/video-qa");
-    const vqa = story.exported_path
+    let vqa = story.exported_path
       ? await runVideoQa(story.exported_path)
       : { result: "skip", reason: "no_exported_path" };
-    if (vqa.result === "warn" && Array.isArray(vqa.warnings)) {
+    if (governedReviewAuthority) {
+      const {
+        reconcileGovernedReviewedVideoQa,
+      } = require("./lib/services/governed-reviewed-content-qa");
+      vqa = reconcileGovernedReviewedVideoQa(
+        vqa,
+        governedReviewAuthority,
+      );
+    }
+    if (Array.isArray(vqa.warnings) && vqa.warnings.length > 0) {
       console.log(
         `[publisher] video QA warnings (${story.id}): ${vqa.warnings.join(", ")}`,
       );
@@ -891,8 +1710,18 @@ async function runPreflightQa(story) {
     }
   } catch (qaErr) {
     console.log(
-      `[publisher] video-qa error for ${story.id} (non-fatal): ${qaErr.message}`,
+      `[publisher] video-qa unavailable for ${story.id}: ${qaErr.message}`,
     );
+    captureException(qaErr, {
+      step: "publishNextStory.video_qa",
+      storyId: story.id,
+    });
+    return {
+      pass: false,
+      failures: ["video_qa_unavailable"],
+      warnings: warnings.slice(),
+      source: "video",
+    };
   }
 
   // Platform video QA — stream metadata that social APIs reject after upload.
@@ -927,18 +1756,78 @@ async function runPreflightQa(story) {
     }
   } catch (qaErr) {
     console.log(
-      `[publisher] platform-video-qa error for ${story.id} (non-fatal): ${qaErr.message}`,
+      `[publisher] platform-video-qa unavailable for ${story.id}: ${qaErr.message}`,
     );
+    captureException(qaErr, {
+      step: "publishNextStory.platform_video_qa",
+      storyId: story.id,
+    });
+    return {
+      pass: false,
+      failures: ["platform_video_qa_unavailable"],
+      warnings: warnings.slice(),
+      source: "platform_video",
+    };
   }
 
   return { pass: true, warnings };
 }
 
-async function _publishNextStoryInner() {
+async function _publishNextStoryInner(
+  assertLeaseHealthy,
+  runtime = {},
+) {
+  const runtimeEnv = runtime.env || process.env;
+  const sqliteOn = runtimeEnv.USE_SQLITE === "true";
+  const requestedChannelId =
+    runtime.channelId || runtimeEnv.CHANNEL || "pulse-gaming";
+  const authenticatedChannelId =
+    runtimeEnv.CHANNEL || "pulse-gaming";
+  const trustedClock =
+    typeof runtime.trustedClock === "function"
+      ? runtime.trustedClock
+      : createTrustedPublisherClock(runtime, runtimeEnv);
+  const dispatchNow = trustedClock();
+  const exactDispatchBinding = normaliseExactDispatchBinding(
+    runtime.exactDispatchBinding,
+  );
+  if (requestedChannelId !== authenticatedChannelId) {
+    return {
+      publish_dispatch_blocked: true,
+      status: "blocked",
+      top_reason: "youtube_authenticated_channel_mismatch",
+      requested_channel_id: requestedChannelId,
+      authenticated_channel_id: authenticatedChannelId,
+    };
+  }
+  let pubRepos = runtime.repos || null;
+  if (sqliteOn && !pubRepos) {
+    try {
+      pubRepos = require("./lib/repositories").getRepos();
+    } catch (err) {
+      console.log(`[publisher] publish: repos unavailable: ${err.message}`);
+    }
+  }
+  try {
+    assertExactDatabaseDataVersion(
+      pubRepos?.db,
+      exactDispatchBinding,
+      "guarded_database_data_version_changed_before_publisher_entry",
+    );
+  } catch (error) {
+    return {
+      publish_dispatch_blocked: true,
+      status: "blocked",
+      top_reason: error.code || error.message,
+      story_id: exactDispatchBinding?.storyId || null,
+    };
+  }
   const stories = await db.getStories();
+  assertLeaseHealthy();
 
-  // Find stories that still need publishing to at least one platform.
-  // This includes brand-new stories AND partially-published ones (e.g. YT succeeded but IG/FB failed).
+  // Stabilisation has one automated public target: YouTube. A story that
+  // already has a real YouTube ID must not consume another publish window
+  // merely because a frozen secondary platform is still empty.
   //
   // Exclusions (2026-04-21 QA-fail deadlock fix):
   //   - qa_failed === true      The pre-flight content / video QA
@@ -958,15 +1847,30 @@ async function _publishNextStoryInner() {
   // are NOT skipped — they legitimately retry only the missing
   // platforms at the next window.
   const ready = stories.filter((s) => {
+    const storyChannelId = s.channel_id || "pulse-gaming";
+    if (storyChannelId !== requestedChannelId) return false;
+    if (
+      exactDispatchBinding &&
+      s.id !== exactDispatchBinding.storyId
+    ) {
+      return false;
+    }
     if (!s.approved || !s.exported_path) return false;
     if (s.qa_failed === true) return false;
     if (s.publish_status === "failed") return false;
-    return countStoryPlatformsDone(s) < 5;
+    return !isRealPlatformPostId(s.youtube_post_id);
   });
 
   if (ready.length === 0) {
     console.log("[publisher] No stories need publishing");
-    return null;
+    return exactDispatchBinding
+      ? {
+          publish_dispatch_blocked: true,
+          status: "blocked",
+          top_reason: "guarded_exact_story_not_ready",
+          story_id: exactDispatchBinding.storyId,
+        }
+      : null;
   }
 
   // Prioritise: unpublished stories first (0 platforms), then partial, then by score
@@ -979,18 +1883,88 @@ async function _publishNextStoryInner() {
     );
   });
 
+  // A scheduled lifecycle event is the human-reviewed admission ticket for
+  // this window. Filter before applying the QA cap so an arbitrary number of
+  // unscheduled high-score stories cannot starve the approved candidate.
+  const governanceSkipped = [];
+  const scheduledCandidates = [];
+  for (const candidate of ready) {
+    try {
+      const canonicalPost =
+        typeof pubRepos?.platformPosts?.getByStoryPlatform === "function"
+          ? pubRepos.platformPosts.getByStoryPlatform(
+              candidate.id,
+              "youtube",
+            )
+          : null;
+      if (
+        canonicalPost &&
+        (canonicalPost.external_id ||
+          ["blocked", "published", "pending", "uploading"].includes(
+            canonicalPost.status,
+          ))
+      ) {
+        throw publicationDispatchError(
+          canonicalPost.external_id
+            ? "canonical_platform_object_requires_reconciliation"
+            : `canonical_platform_post_${canonicalPost.status}`,
+        );
+      }
+      const scheduled = readScheduledDispatchEvidence(
+          pubRepos?.publicationGovernance,
+          candidate.id,
+          "youtube",
+          dispatchNow,
+          candidate.channel_id || requestedChannelId,
+        );
+      assertExactDispatchBinding(
+        exactDispatchBinding,
+        candidate.id,
+        scheduled,
+      );
+      scheduledCandidates.push({
+        candidate,
+        scheduled,
+      });
+    } catch (error) {
+      governanceSkipped.push({
+        id: candidate.id,
+        title: candidate.title,
+        reason: error.code || error.message,
+      });
+    }
+  }
+
+  if (scheduledCandidates.length === 0) {
+    const top = governanceSkipped[0] || null;
+    console.log(
+      `[publisher] No governed YouTube candidate is scheduled (${governanceSkipped.length} held)`,
+    );
+    return {
+      publish_dispatch_blocked: true,
+      status: "blocked",
+      top_reason: top?.reason || "no_scheduled_youtube_candidate",
+      governance_skipped_count: governanceSkipped.length,
+      governance_skipped: governanceSkipped,
+    };
+  }
+
   // Multi-candidate loop. We'll walk up to
   // MAX_PUBLISH_CANDIDATES_PER_WINDOW stories and take the first
   // one that passes preflight QA. Each QA-failing candidate is
   // persisted so it's skipped in all future windows too.
-  const candidates = ready.slice(0, MAX_PUBLISH_CANDIDATES_PER_WINDOW);
+  const candidates = scheduledCandidates.slice(
+    0,
+    MAX_PUBLISH_CANDIDATES_PER_WINDOW,
+  );
   const qaSkipped = []; // structured {id, title, reason, source, failures}
   let story = null;
+  let scheduledDispatch = null;
   let isRetry = false;
   let preflightWarnings = [];
 
   for (let i = 0; i < candidates.length; i++) {
-    const candidate = candidates[i];
+    const { candidate, scheduled } = candidates[i];
     const candidateIsRetry = storyIsRetry(candidate);
     console.log(
       `[publisher] Candidate ${i + 1}/${candidates.length}${candidateIsRetry ? " (retry)" : ""}: ` +
@@ -1002,24 +1976,36 @@ async function _publishNextStoryInner() {
       // once, so the artefacts are known-good. Take this candidate
       // immediately.
       story = candidate;
+      scheduledDispatch = scheduled;
       isRetry = true;
       break;
     }
 
-    const qa = await runPreflightQa(candidate);
+    const qa = await runPreflightQa(candidate, {
+      scheduledDispatch: scheduled,
+      exactDispatchBinding,
+      publicationGovernance: pubRepos?.publicationGovernance,
+      resolveMediaPath:
+        runtime.resolveMediaPath ||
+        require("./lib/media-paths").resolveExisting,
+    });
+    assertLeaseHealthy();
     if (qa.pass) {
       story = candidate;
+      scheduledDispatch = scheduled;
       isRetry = false;
       preflightWarnings = qa.warnings || [];
       break;
     }
 
     // Hard-fail: persist and continue.
+    assertLeaseHealthy();
     const skipped = await persistQaFail(candidate, {
       failures: qa.failures,
       warnings: qa.warnings,
       source: qa.source,
     });
+    assertLeaseHealthy();
     qaSkipped.push(skipped);
   }
 
@@ -1048,8 +2034,12 @@ async function _publishNextStoryInner() {
       `(score: ${story.breaking_score || story.score || 0}, qa_skipped_before=${qaSkipped.length})`,
   );
 
+  let youtubeAuthTelemetry = createYoutubeAuthTelemetry();
   const result = {
     title: story.title,
+    story_id: story.id,
+    dispatch_idempotency_key: scheduledDispatch?.idempotencyKey || null,
+    request_fingerprint: scheduledDispatch?.requestFingerprint || null,
     // --- Render-quality metadata for Discord summary (audit P1) ---
     // Exposes the assemble.js-stamped fields so the operator sees per-
     // publish render quality without diving into the DB. Falls back
@@ -1135,6 +2125,16 @@ async function _publishNextStoryInner() {
     qa_warnings: preflightWarnings,
     qa_skipped_count: qaSkipped.length,
     qa_skipped: qaSkipped,
+    safety: {
+      youtube_auth: youtubeAuthTelemetry,
+    },
+  };
+  const reportYoutubeAuthTelemetry = (value) => {
+    youtubeAuthTelemetry = normaliseYoutubeAuthTelemetry(value);
+    result.safety.youtube_auth = youtubeAuthTelemetry;
+    if (typeof runtime.onYoutubeAuthTelemetry === "function") {
+      runtime.onYoutubeAuthTelemetry(youtubeAuthTelemetry);
+    }
   };
 
   // Sentinel-cleanup cutover: block/skip outcomes for every platform in
@@ -1150,16 +2150,8 @@ async function _publishNextStoryInner() {
     recordPlatformBlock,
     getPlatformStatus,
   } = require("./lib/services/publish-block");
-  const sqliteOn = process.env.USE_SQLITE === "true";
-  let pubRepos = null;
-  if (sqliteOn) {
-    try {
-      pubRepos = require("./lib/repositories").getRepos();
-    } catch (err) {
-      console.log(`[publisher] publish: repos unavailable: ${err.message}`);
-    }
-  }
-  const pubChannelId = story.channel_id || process.env.CHANNEL || null;
+  const pubChannelId =
+    requestedChannelId;
 
   // 2026-04-30 audit P0 #2: Render contract evaluation.
   // Compute the per-story contract verdict (premium/standard/fallback/
@@ -1179,6 +2171,7 @@ async function _publishNextStoryInner() {
   try {
     const renderDecision = require("./lib/render-decision");
     const decision = await renderDecision.decideForStory(story);
+    assertLeaseHealthy();
     result.render_contract = decision.verdict;
     result.render_contract_gate = decision.gate;
     if (!decision.gate.allowed) {
@@ -1189,38 +2182,52 @@ async function _publishNextStoryInner() {
       );
       result.platform_outcomes = result.platform_outcomes || {};
       result.skipped = result.skipped || {};
-      // Mark every core platform as skipped with the contract reason
-      // so the renderPublishSummary surfaces the gate uniformly.
-      for (const p of ["youtube", "tiktok", "instagram", "facebook"]) {
-        result.platform_outcomes[p] = "skipped";
-        result.skipped[p] = `contract_gate:${decision.verdict.class}`;
-      }
+      result.platform_outcomes.youtube = "governance_blocked";
+      result.skipped.youtube = `contract_gate:${decision.verdict.class}`;
       result.errors.contract = decision.gate.reason;
       // Persist the verdict on the story so subsequent passes see it.
       try {
+        assertLeaseHealthy();
         story.render_contract_class = decision.verdict.class;
         story.render_contract_blocked = true;
         await db.upsertStory(story);
+        assertLeaseHealthy();
       } catch (err) {
+        if (isPublisherLeaseLostError(err)) throw err;
         console.log(
           `[publisher] contract upsert failed (non-fatal): ${err.message}`,
         );
       }
-      return result;
+      return finaliseStabilisationYoutubeOnly(
+        story,
+        result,
+        assertLeaseHealthy,
+      );
     }
     // Allowed — still stamp the class on the story for analytics.
-    try {
-      story.render_contract_class = decision.verdict.class;
-      story.render_contract_blocked = false;
-      await db.upsertStory(story);
-    } catch {
-      /* non-fatal */
-    }
+    // Keep the accepted verdict in memory until final outcome persistence.
+    // A write here through lib/db's singleton uses a different SQLite
+    // connection from the guard-bound repository and would make our own
+    // legitimate commit look like an external data_version race.
+    story.render_contract_class = decision.verdict.class;
+    story.render_contract_blocked = false;
   } catch (err) {
-    // The contract module failing must not block production. Log and
-    // continue with the legacy publish path.
+    if (isPublisherLeaseLostError(err)) throw err;
     console.log(
-      `[publisher] render contract evaluation failed (non-fatal): ${err.message}`,
+      `[publisher] render contract evaluation unavailable: ${err.message}`,
+    );
+    captureException(err, {
+      step: "publishNextStory.render_contract",
+      storyId: story.id,
+    });
+    result.platform_outcomes.youtube = "governance_blocked";
+    result.skipped.youtube = "render_contract_evaluation_unavailable";
+    result.errors.contract = "render_contract_evaluation_unavailable";
+    story.render_contract_blocked = true;
+    return finaliseStabilisationYoutubeOnly(
+      story,
+      result,
+      assertLeaseHealthy,
     );
   }
 
@@ -1249,65 +2256,254 @@ async function _publishNextStoryInner() {
     console.log(
       `[publisher] YouTube: already blocked (${ytPrior.block_reason || "unknown"})`,
     );
-  } else if (ytTitleDupe) {
-    result.youtube = true;
-    result.platform_outcomes.youtube = "duplicate_blocked";
-    const blockResult = recordPlatformBlock({
-      repos: pubRepos,
-      storyId: story.id,
-      platform: "youtube",
-      reason: `title-skip: ${ytTitleDupe.title}`,
-      channelId: pubChannelId,
-    });
-    if (!blockResult.persisted) {
-      story.youtube_post_id = "DUPE_SKIPPED";
-    }
-    console.log(
-      `[publisher] YouTube: SKIPPED duplicate title ~ "${ytTitleDupe.title}" ` +
-        `(persisted=${blockResult.persisted})`,
-    );
   } else {
+    assertLeaseHealthy();
     try {
-      const { uploadShort } = require("./upload_youtube");
-      const ytResult = await uploadShort(story);
-      if (ytResult.blocked) {
-        const blockResult = recordPlatformBlock({
-          repos: pubRepos,
-          storyId: story.id,
-          platform: "youtube",
-          reason: `remote-dupe: ${ytResult.reason || "blocked"}`,
+      if (!pubRepos?.db || !pubRepos?.platformPosts) {
+        throw publicationDispatchError(
+          "publication_dispatch_repositories_required",
+        );
+      }
+      const scheduled =
+        scheduledDispatch ||
+        readScheduledDispatchEvidence(
+          pubRepos.publicationGovernance,
+          story.id,
+          "youtube",
+          dispatchNow,
+          pubChannelId,
+        );
+      assertExactDispatchBinding(
+        exactDispatchBinding,
+        story.id,
+        scheduled,
+      );
+      const governedDispatch =
+        runtime.governedDispatch ||
+        require("./lib/services/governed-platform-dispatch")
+          .dispatchGovernedPlatform;
+      const verifyYoutubePublic =
+        runtime.verifyYoutubePublic ||
+        require("./lib/services/youtube-public-object-verifier")
+          .createYoutubePublicObjectVerifier({
+            apiKey: runtimeEnv.YOUTUBE_API_KEY,
+          });
+      const fingerprintPublicationRequest =
+        runtime.fingerprintPublicationRequest ||
+        require("./lib/services/publication-request-fingerprint")
+          .fingerprintPublicationRequest;
+      const currentFingerprint = await fingerprintPublicationRequest(
+        story,
+        {
           channelId: pubChannelId,
-        });
-        if (!blockResult.persisted) {
-          story.youtube_post_id = "DUPE_BLOCKED";
-        }
+          platform: "youtube",
+          resolveMediaPath:
+            runtime.resolveMediaPath ||
+            require("./lib/media-paths").resolveExisting,
+          channel:
+            runtime.channel ||
+            require("./channels").getChannel(pubChannelId),
+          publicationEvidence: scheduled.publicationEvidence,
+        },
+      );
+      if (
+        currentFingerprint.request_fingerprint !==
+        scheduled.requestFingerprint
+      ) {
+        throw publicationDispatchError(
+          "scheduled_request_fingerprint_mismatch",
+        );
+      }
+      const scheduledBeforeDispatch = readScheduledDispatchEvidence(
+        pubRepos.publicationGovernance,
+        story.id,
+        "youtube",
+        trustedClock(),
+        pubChannelId,
+      );
+      assertSameScheduledDispatchTicket(
+        scheduled,
+        scheduledBeforeDispatch,
+        "scheduled_dispatch_ticket_changed_before_dispatch",
+      );
+      assertExactDispatchBinding(
+        exactDispatchBinding,
+        story.id,
+        scheduledBeforeDispatch,
+      );
+      assertExactDatabaseDataVersion(
+        pubRepos.db,
+        exactDispatchBinding,
+        "guarded_database_data_version_changed_before_dispatch",
+      );
+      assertLeaseHealthy();
+      const { uploadShort } = require("./upload_youtube");
+      const uploadStory = {
+        ...story,
+        synthetic_media_disclosure:
+          scheduledBeforeDispatch.publicationEvidence
+            .synthetic_media_disclosure,
+        governed_publication_metadata_sha256:
+          scheduledBeforeDispatch.publicationEvidence
+            .publication_metadata_sha256,
+        governed_publication_metadata:
+          scheduledBeforeDispatch.publicationEvidence
+            .publication_metadata,
+      };
+      const dispatchResult = await governedDispatch({
+        db: pubRepos.db,
+        platformPosts: pubRepos.platformPosts,
+        governance: pubRepos.publicationGovernance,
+        storyId: story.id,
+        channelId: pubChannelId,
+        platform: "youtube",
+        idempotencyKey: scheduledBeforeDispatch.idempotencyKey,
+        requestFingerprint: currentFingerprint.request_fingerprint,
+        dispatchEvidence: {
+          ...scheduledBeforeDispatch.evidence,
+          scheduled_lifecycle_event_id:
+            scheduledBeforeDispatch.event.id || null,
+          current_media_sha256: currentFingerprint.media_sha256,
+          current_script_sha256: currentFingerprint.script_sha256,
+          current_request_fingerprint:
+            currentFingerprint.request_fingerprint,
+        },
+        actorId: runtime.actorId || null,
+        assertLeaseHealthy,
+        upload: async ({ markCreateAttemptStarted }) => {
+          if (ytTitleDupe) {
+            return {
+              blocked: true,
+              reason: `title-skip: ${ytTitleDupe.title}`,
+            };
+          }
+          const assertYoutubeCreateBoundary =
+            issueTrustedYoutubeCreateBoundaryGate(async () => {
+              assertLeaseHealthy();
+              const currentScheduled = readScheduledDispatchEvidence(
+                pubRepos.publicationGovernance,
+                story.id,
+                "youtube",
+                trustedClock(),
+                pubChannelId,
+              );
+              assertSameScheduledDispatchTicket(
+                scheduledBeforeDispatch,
+                currentScheduled,
+              );
+              assertExactDispatchBinding(
+                exactDispatchBinding,
+                story.id,
+                currentScheduled,
+              );
+              assertExactDatabaseDataVersion(
+                pubRepos.db,
+                exactDispatchBinding,
+                "guarded_database_data_version_changed_before_create",
+              );
+              assertLeaseHealthy();
+            });
+          const ytResult = await uploadShort(uploadStory, {
+            governedDispatch: true,
+            markCreateAttemptStarted,
+            assertYoutubeCreateBoundary,
+            reportAuthTelemetry: reportYoutubeAuthTelemetry,
+            expectedMediaSha256: currentFingerprint.media_sha256,
+          });
+          if (ytResult?.blocked) {
+            return {
+              blocked: true,
+              reason: ytResult.reason || "blocked",
+            };
+          }
+          return {
+            externalId: ytResult?.videoId,
+            externalUrl: ytResult?.url,
+          };
+        },
+        verifyPublic: async (input) => {
+          try {
+            return await verifyYoutubePublic(input);
+          } catch (error) {
+            throw sanitiseYoutubeError(error, runtimeEnv);
+          }
+        },
+      });
+      assertLeaseHealthy();
+      if (dispatchResult?.status === "blocked") {
         console.log(
-          `[publisher] YouTube: BLOCKED duplicate - ${ytResult.reason} ` +
-            `(persisted=${blockResult.persisted})`,
+          `[publisher] YouTube: BLOCKED - ${dispatchResult.reason || "blocked"}`,
         );
         result.youtube = false;
         result.platform_outcomes.youtube = "duplicate_blocked";
-        result.errors.youtube = `dupe-blocked: ${ytResult.reason}`;
-      } else {
-        story.youtube_post_id = ytResult.videoId;
-        story.youtube_url = ytResult.url;
-        story.youtube_published_at = new Date().toISOString();
-        console.log(`[publisher] YouTube: ${ytResult.url}`);
+        result.errors.youtube =
+          `dupe-blocked: ${dispatchResult.reason || "blocked"}`;
+      } else if (
+        dispatchResult?.status === "published" &&
+        dispatchResult.externalId
+      ) {
+        assertLeaseHealthy();
+        story.youtube_post_id = dispatchResult.externalId;
+        story.youtube_url = dispatchResult.externalUrl;
+        story.youtube_published_at =
+          dispatchResult.verification?.verifiedAt ||
+          new Date().toISOString();
+        console.log(`[publisher] YouTube: ${dispatchResult.externalUrl}`);
         result.youtube = true;
         result.platform_outcomes.youtube = "new_upload";
+      } else {
+        throw publicationDispatchError(
+          "governed_dispatch_published_evidence_required",
+        );
       }
-      await db.upsertStory(story);
 
       if (story.title_variants && story.title_variants.length > 1) {
         story.title_check_at = Date.now() + 2 * 60 * 60 * 1000;
       }
     } catch (err) {
-      console.log(`[publisher] YouTube upload failed: ${err.message}`);
-      story.youtube_error = err.message;
-      result.errors.youtube = err.message;
-      result.platform_outcomes.youtube = "failed";
+      if (isPublisherLeaseLostError(err)) throw err;
+      err = sanitiseYoutubeError(err, runtimeEnv);
+      const governanceState =
+        typeof pubRepos?.publicationGovernance?.getState === "function"
+          ? pubRepos.publicationGovernance.getState(story.id, "youtube")
+          : null;
+      const requiresReconciliation =
+        err?.code === "platform_dispatch_reconciliation_required" ||
+        governanceState?.lifecycle_state === "RECONCILIATION_REQUIRED" ||
+        governanceState?.verification_status === "requires_reconciliation";
+      if (requiresReconciliation) {
+        console.log(
+          `[publisher] YouTube dispatch requires reconciliation: ${sanitiseYoutubeErrorMessage(err.message, runtimeEnv)}`,
+        );
+        story.youtube_error = err.message;
+        result.errors.youtube = err.message;
+        result.platform_outcomes.youtube = "reconciliation_required";
+      } else if (isGovernanceDispatchError(err)) {
+        console.log(
+          `[publisher] YouTube dispatch blocked by governance: ${sanitiseYoutubeErrorMessage(err.message, runtimeEnv)}`,
+        );
+        result.errors.youtube = err.message;
+        result.platform_outcomes.youtube = "governance_blocked";
+      } else {
+        console.log(
+          `[publisher] YouTube upload failed: ${sanitiseYoutubeErrorMessage(err.message, runtimeEnv)}`,
+        );
+        story.youtube_error = err.message;
+        result.errors.youtube = err.message;
+        result.platform_outcomes.youtube = "failed";
+      }
     }
   }
+
+  // Pulse v1 stabilisation deliberately has one automated public target:
+  // YouTube. Secondary adapters remain visible in the result, but are
+  // frozen so the controlled experiment produces interpretable analytics
+  // and no hidden fallback can create a second public object.
+  return finaliseStabilisationYoutubeOnly(
+    story,
+    result,
+    assertLeaseHealthy,
+  );
 
   // TikTok - skip if already published or near-duplicate title already uploaded
   shadowCanonicalDedupe(story, "tiktok", stories);
@@ -1336,6 +2532,7 @@ async function _publishNextStoryInner() {
     );
   } else if (ttTitleDupe) {
     result.platform_outcomes.tiktok = "duplicate_blocked";
+    assertLeaseHealthy();
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -1350,18 +2547,23 @@ async function _publishNextStoryInner() {
       `[publisher] TikTok: SKIPPED duplicate title ~ "${ttTitleDupe.title}" ` +
         `(persisted=${blockResult.persisted})`,
     );
+    assertLeaseHealthy();
     await db.upsertStory(story);
   } else {
+    assertLeaseHealthy();
     try {
       const { uploadShort: ttUpload } = require("./upload_tiktok");
       const ttResult = await ttUpload(story);
+      assertLeaseHealthy();
       story.tiktok_post_id = ttResult.publishId;
       story.tiktok_error = null;
       result.tiktok = true;
       result.platform_outcomes.tiktok = "new_upload";
       console.log(`[publisher] TikTok: uploaded (API)`);
+      assertLeaseHealthy();
       await db.upsertStory(story);
     } catch (err) {
+      if (isPublisherLeaseLostError(err)) throw err;
       // --- Buffer fallback: cleanest path through TikTok audit ---
       //
       // Buffer (buffer.com) has completed TikTok's audit. When
@@ -1382,6 +2584,7 @@ async function _publishNextStoryInner() {
           const exportedAbs =
             (await mediaPaths.resolveExisting(story.exported_path)) ||
             story.exported_path;
+          assertLeaseHealthy();
           const captionTitle =
             story.suggested_title ||
             story.suggested_thumbnail_text ||
@@ -1391,11 +2594,13 @@ async function _publishNextStoryInner() {
             "#fyp",
             "#viral",
           ]);
+          assertLeaseHealthy();
           const bufferResult = await publishToTiktokViaBuffer({
             videoPath: exportedAbs,
             caption: String(captionTitle || "").slice(0, 1500),
             hashtags: tags,
           });
+          assertLeaseHealthy();
           if (bufferResult.ok) {
             story.tiktok_post_id = `buffer:${bufferResult.updateId}`;
             story.tiktok_error = null;
@@ -1404,6 +2609,7 @@ async function _publishNextStoryInner() {
             console.log(
               `[publisher] TikTok: queued via Buffer update ${bufferResult.updateId}`,
             );
+            assertLeaseHealthy();
             await db.upsertStory(story);
             // Buffer succeeded — skip browser fallback entirely.
             return result;
@@ -1413,6 +2619,7 @@ async function _publishNextStoryInner() {
           );
         }
       } catch (bufferErr) {
+        if (isPublisherLeaseLostError(bufferErr)) throw bufferErr;
         console.log(
           `[publisher] Buffer fallback errored: ${bufferErr.message} — falling through to legacy paths`,
         );
@@ -1447,18 +2654,22 @@ async function _publishNextStoryInner() {
         console.log(
           `[publisher] TikTok API failed: ${err.message}, trying browser fallback (TIKTOK_BROWSER_FALLBACK=true)...`,
         );
+        assertLeaseHealthy();
         try {
           const {
             uploadShort: ttBrowserUpload,
           } = require("./upload_tiktok_browser");
           const ttResult = await ttBrowserUpload(story);
+          assertLeaseHealthy();
           story.tiktok_post_id = ttResult.publishId;
           story.tiktok_error = null;
           result.tiktok = true;
           result.platform_outcomes.tiktok = "new_upload";
           console.log(`[publisher] TikTok: uploaded (browser)`);
+          assertLeaseHealthy();
           await db.upsertStory(story);
         } catch (browserErr) {
+          if (isPublisherLeaseLostError(browserErr)) throw browserErr;
           console.log(
             `[publisher] TikTok browser also failed: ${browserErr.message}`,
           );
@@ -1497,6 +2708,7 @@ async function _publishNextStoryInner() {
     );
   } else if (igTitleDupe) {
     result.platform_outcomes.instagram = "duplicate_blocked";
+    assertLeaseHealthy();
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -1511,8 +2723,10 @@ async function _publishNextStoryInner() {
       `[publisher] Instagram: SKIPPED duplicate title ~ "${igTitleDupe.title}" ` +
         `(persisted=${blockResult.persisted})`,
     );
+    assertLeaseHealthy();
     await db.upsertStory(story);
   } else {
+    assertLeaseHealthy();
     try {
       const {
         uploadShort: igUpload,
@@ -1522,8 +2736,12 @@ async function _publishNextStoryInner() {
       } = require("./upload_instagram");
       let igResult;
       try {
+        assertLeaseHealthy();
         igResult = await igUpload(story);
+        assertLeaseHealthy();
       } catch (reelErr) {
+        if (isPublisherLeaseLostError(reelErr)) throw reelErr;
+        assertLeaseHealthy();
         if (isInstagramPendingProcessingTimeout(reelErr)) {
           console.log(
             `[publisher] Instagram Reel still processing after local wait: ${reelErr.message}. ` +
@@ -1532,6 +2750,7 @@ async function _publishNextStoryInner() {
           story.instagram_error = reelErr.message;
           result.errors.instagram = reelErr.message;
           result.platform_outcomes.instagram = "accepted_processing";
+          assertLeaseHealthy();
           await db.upsertStory(story);
           igResult = null;
         } else {
@@ -1541,9 +2760,13 @@ async function _publishNextStoryInner() {
           console.log(
             `[publisher] Instagram binary upload transport failed: ${reelErr.message}, trying URL fallback...`,
           );
+          assertLeaseHealthy();
           try {
             igResult = await igUrlUpload(story);
+            assertLeaseHealthy();
           } catch (urlErr) {
+            if (isPublisherLeaseLostError(urlErr)) throw urlErr;
+            assertLeaseHealthy();
             if (isInstagramPendingProcessingTimeout(urlErr)) {
               console.log(
                 `[publisher] Instagram URL Reel still processing after local wait: ${urlErr.message}. ` +
@@ -1552,6 +2775,7 @@ async function _publishNextStoryInner() {
               story.instagram_error = urlErr.message;
               result.errors.instagram = urlErr.message;
               result.platform_outcomes.instagram = "accepted_processing";
+              assertLeaseHealthy();
               await db.upsertStory(story);
               igResult = null;
             } else {
@@ -1561,14 +2785,17 @@ async function _publishNextStoryInner() {
         }
       }
       if (igResult) {
+        assertLeaseHealthy();
         story.instagram_media_id = igResult.mediaId;
         story.instagram_error = null;
         result.instagram = true;
         result.platform_outcomes.instagram = "new_upload";
         console.log(`[publisher] Instagram: uploaded`);
+        assertLeaseHealthy();
         await db.upsertStory(story);
       }
     } catch (err) {
+      if (isPublisherLeaseLostError(err)) throw err;
       console.log(`[publisher] Instagram upload failed: ${err.message}`);
       story.instagram_error = err.message;
       result.errors.instagram = err.message;
@@ -1616,6 +2843,7 @@ async function _publishNextStoryInner() {
     );
   } else if (fbTitleDupe) {
     result.platform_outcomes.facebook = "duplicate_blocked";
+    assertLeaseHealthy();
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -1630,8 +2858,10 @@ async function _publishNextStoryInner() {
       `[publisher] Facebook: SKIPPED duplicate title ~ "${fbTitleDupe.title}" ` +
         `(persisted=${blockResult.persisted})`,
     );
+    assertLeaseHealthy();
     await db.upsertStory(story);
   } else {
+    assertLeaseHealthy();
     try {
       const {
         uploadShort: fbUpload,
@@ -1639,13 +2869,20 @@ async function _publishNextStoryInner() {
       } = require("./upload_facebook");
       let fbResult;
       try {
+        assertLeaseHealthy();
         fbResult = await fbUpload(story);
+        assertLeaseHealthy();
       } catch (reelErr) {
+        if (isPublisherLeaseLostError(reelErr)) throw reelErr;
+        assertLeaseHealthy();
         console.log(
           `[publisher] Facebook Reel binary upload failed: ${reelErr.message}, trying URL fallback...`,
         );
+        assertLeaseHealthy();
         fbResult = await uploadReelViaUrl(story);
+        assertLeaseHealthy();
       }
+      assertLeaseHealthy();
       story.facebook_post_id = fbResult.videoId;
       story.facebook_error = null;
       result.facebook = true;
@@ -1656,8 +2893,10 @@ async function _publishNextStoryInner() {
       // accepted — promote to public_verified for Discord truth.
       result.platform_outcomes.facebook = "public_verified";
       console.log(`[publisher] Facebook: uploaded + verified live`);
+      assertLeaseHealthy();
       await db.upsertStory(story);
     } catch (err) {
+      if (isPublisherLeaseLostError(err)) throw err;
       console.log(`[publisher] Facebook upload failed: ${err.message}`);
       story.facebook_error = err.message;
       result.errors.facebook = err.message;
@@ -1692,6 +2931,7 @@ async function _publishNextStoryInner() {
     );
   } else if (twTitleDupe) {
     result.platform_outcomes.twitter = "duplicate_blocked";
+    assertLeaseHealthy();
     const blockResult = recordPlatformBlock({
       repos: pubRepos,
       storyId: story.id,
@@ -1706,11 +2946,14 @@ async function _publishNextStoryInner() {
       `[publisher] Twitter: SKIPPED duplicate title ~ "${twTitleDupe.title}" ` +
         `(persisted=${blockResult.persisted})`,
     );
+    assertLeaseHealthy();
     await db.upsertStory(story);
   } else {
+    assertLeaseHealthy();
     try {
       const { uploadShort: twUpload } = require("./upload_twitter");
       const twResult = await twUpload(story);
+      assertLeaseHealthy();
       if (twResult && twResult.skipped) {
         result.skipped.twitter = twResult.reason || "skipped";
         result.platform_outcomes.twitter = "skipped";
@@ -1723,9 +2966,11 @@ async function _publishNextStoryInner() {
         result.twitter = true;
         result.platform_outcomes.twitter = "new_upload";
         console.log(`[publisher] Twitter: uploaded`);
+        assertLeaseHealthy();
         await db.upsertStory(story);
       }
     } catch (err) {
+      if (isPublisherLeaseLostError(err)) throw err;
       console.log(`[publisher] Twitter upload failed: ${err.message}`);
       story.twitter_error = err.message;
       result.errors.twitter = err.message;
@@ -1786,12 +3031,14 @@ async function _publishNextStoryInner() {
         `[publisher] Instagram Story: already posted (${story.instagram_story_id})`,
       );
     } else {
+      assertLeaseHealthy();
       try {
         const {
           uploadStoryImage: igStory,
           isInstagramPendingProcessingTimeout,
         } = require("./upload_instagram");
         const igStoryResult = await igStory(story);
+        assertLeaseHealthy();
         story.instagram_story_id = igStoryResult.mediaId;
         result.fallbacks.instagram_story = true;
         result.platform_outcomes.instagram_story = "new_upload";
@@ -1799,6 +3046,7 @@ async function _publishNextStoryInner() {
           `[publisher] Instagram Story: uploaded (${igStoryResult.mediaId})`,
         );
       } catch (err) {
+        if (isPublisherLeaseLostError(err)) throw err;
         console.log(
           `[publisher] Instagram Story upload failed: ${err.message}`,
         );
@@ -1818,9 +3066,11 @@ async function _publishNextStoryInner() {
         `[publisher] Facebook Story: already posted (${story.facebook_story_id})`,
       );
     } else {
+      assertLeaseHealthy();
       try {
         const { uploadStoryImage: fbStory } = require("./upload_facebook");
         const fbStoryResult = await fbStory(story);
+        assertLeaseHealthy();
         story.facebook_story_id = fbStoryResult.storyId;
         result.fallbacks.facebook_card = true;
         result.platform_outcomes.facebook_card = "new_upload";
@@ -1828,6 +3078,7 @@ async function _publishNextStoryInner() {
           `[publisher] Facebook Story: uploaded (${fbStoryResult.storyId})`,
         );
       } catch (err) {
+        if (isPublisherLeaseLostError(err)) throw err;
         console.log(`[publisher] Facebook Story upload failed: ${err.message}`);
         result.errors.facebook_story = err.message;
         result.platform_outcomes.facebook_card = "failed";
@@ -1842,9 +3093,11 @@ async function _publishNextStoryInner() {
         `[publisher] Twitter image tweet: already posted (${story.twitter_image_tweet_id})`,
       );
     } else {
+      assertLeaseHealthy();
       try {
         const { postImageTweet } = require("./upload_twitter");
         const twImgResult = await postImageTweet(story);
+        assertLeaseHealthy();
         if (twImgResult && twImgResult.skipped) {
           result.skipped.twitter_image = twImgResult.reason || "skipped";
           result.platform_outcomes.twitter_image = "skipped";
@@ -1860,6 +3113,7 @@ async function _publishNextStoryInner() {
           );
         }
       } catch (err) {
+        if (isPublisherLeaseLostError(err)) throw err;
         console.log(`[publisher] Twitter image tweet failed: ${err.message}`);
         result.errors.twitter_image = err.message;
         result.platform_outcomes.twitter_image = "failed";
@@ -1867,72 +3121,15 @@ async function _publishNextStoryInner() {
     }
   }
 
-  // Schedule first-hour engagement pass (only on first successful YT publish)
-  if (story.youtube_post_id && !isRetry) {
-    // .unref() so this 5-minute timer doesn't keep the Node event
-    // loop alive on its own — in production the Express server
-    // keeps the process up, and under test we want the publisher
-    // to return a Promise that actually settles the event loop.
-    const t = setTimeout(
-      async () => {
-        try {
-          const { engageFirstHour } = require("./engagement");
-          await engageFirstHour(story.youtube_post_id, story);
-        } catch (err) {
-          console.log(
-            `[publisher] First-hour engagement failed: ${err.message}`,
-          );
-        }
-      },
-      5 * 60 * 1000,
-    );
-    if (t && typeof t.unref === "function") t.unref();
-    console.log(
-      `[publisher] First-hour engagement scheduled for ${story.youtube_post_id} in 5 min`,
-    );
-  }
-
-  // Generate poll/engagement pinned comment (only on first publish, not retries)
-  if (!isRetry) {
-    try {
-      const {
-        generatePollComment,
-        pinComment: pinEngagement,
-      } = require("./engagement");
-      const pollComment = await generatePollComment(story);
-      if (pollComment && story.youtube_post_id) {
-        const commentId = await pinEngagement(
-          story.youtube_post_id,
-          pollComment,
-        );
-        if (commentId) {
-          story.engagement_comment_id = commentId;
-          console.log(`[publisher] Engagement comment pinned: ${commentId}`);
-        }
-      }
-    } catch (err) {
-      console.log(`[publisher] Engagement comment skipped: ${err.message}`);
-    }
-  }
-
-  // Generate blog post (only on first publish)
-  if (!isRetry) {
-    try {
-      const { generateAndSaveBlogPost } = require("./blog/generator");
-      await generateAndSaveBlogPost(story);
-    } catch (err) {
-      console.log("[publisher] Blog generation skipped: " + err.message);
-    }
-  }
+  // First-hour engagement is handled by the separately leased
+  // engage_first_hour_sweep scheduler job. A detached timer here would
+  // outlive this publisher lease and could duplicate work after takeover.
 
   // Post to Discord channels, video drops only (news already posted by processor.js).
   //
   // Migration 012 replaces the old `!isRetry` derived-state guard with
   // durable per-story markers so a re-render that clears platform ids
-  // cannot re-trigger #video-drops or #polls. isRetry is still used for
-  // the YouTube engagement pass / blog gen / pinned comment above — that
-  // logic is correctly "only on first successful publish" and doesn't
-  // have the re-render-resets-ids failure mode that Discord did.
+  // cannot re-trigger #video-drops or #polls.
   try {
     const { postVideoUpload, postStoryPoll } = require("./discord/auto_post");
     const {
@@ -1944,7 +3141,9 @@ async function _publishNextStoryInner() {
 
     let postedVideoDropNow = false;
     if (shouldPostVideoDrop(story)) {
+      assertLeaseHealthy();
       const msg = await postVideoUpload(story);
+      assertLeaseHealthy();
       if (msg) {
         markVideoDropPosted(story);
         postedVideoDropNow = true;
@@ -1953,7 +3152,9 @@ async function _publishNextStoryInner() {
 
     let postedPollNow = false;
     if (shouldPostStoryPoll(story)) {
+      assertLeaseHealthy();
       const pollMsg = await postStoryPoll(story);
+      assertLeaseHealthy();
       if (pollMsg) {
         markStoryPollPosted(story);
         postedPollNow = true;
@@ -1970,13 +3171,17 @@ async function _publishNextStoryInner() {
       );
     }
   } catch (err) {
+    if (isPublisherLeaseLostError(err)) throw err;
     console.log(`[publisher] Discord post skipped: ${err.message}`);
   }
 
   // Save updated story (upsert to avoid wiping other stories)
   try {
+    assertLeaseHealthy();
     await db.upsertStory(story);
+    assertLeaseHealthy();
   } catch (err) {
+    if (isPublisherLeaseLostError(err)) throw err;
     console.log(
       `[publisher] CRITICAL: Failed to save story state after publishing: ${err.message}`,
     );
@@ -1989,13 +3194,20 @@ async function _publishNextStoryInner() {
 }
 
 module.exports = {
+  armExactGovernedYoutubeScheduledRelease,
   autoApprove,
+  confirmExactGovernedYoutubeScheduledRelease,
+  disarmExactGovernedYoutubeScheduledRelease,
   produce,
+  prestageExactGovernedYoutubeRelease,
   publishToAllPlatforms,
   publishNextStory,
   fullAutonomousCycle,
   publishOnlyCycle,
   selfHealStaleMediaPaths,
+  invokeTrustedYoutubeCreateBoundaryGate,
+  readScheduledPublicationEvidence,
+  verifyExactGovernedYoutubePrivatePrestage,
 };
 
 if (require.main === module) {

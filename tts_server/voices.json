@@ -4,12 +4,31 @@
   "TX3LPaxmHKxFdv7VOQHJ": {
     "alias": "liam",
     "channel": "pulse-gaming",
-    "ref_voice_path": "voices/pulse_v2.wav",
-    "base_speed": 1.4,
+    "ref_voice_file": "pulse_liam_sleepy.wav",
+    "ref_voice_sha256": "2311991e66a48400b04b5d5131d2b34f29241aa2d4ed1d667ee7b41d114b761b",
+    "ref_voice_probe": {
+      "duration_seconds": 48.761917,
+      "duration_tolerance_seconds": 0.05,
+      "sample_rate_hz": 24000,
+      "channels": 1
+    },
+    "reference_rights_status": "CLEARED",
+    "reference_rights_evidence_reference": "docs/voice-reference-rights-attestation.md#pulse-liam",
+    "accepted_reference_id": "pulse-sleepy-liam-20260502",
+    "accepted_reference_file": "pulse_liam_sleepy.wav",
+    "base_speed": 1.0,
     "cfg_value": 2.0,
     "inference_timesteps": 20,
-    "ref_voice_text": "A new Metro game just dropped its official reveal trailer, and nobody expected this franchise to return. Metro twenty 39 is officially happening, The reveal trailer just went live, showing what appears to be a deeply personal story centred on a protagonist grappling with a haunting past. Based on the trailer's tone and imagery, the narrative explores themes of indoctrination and trauma.",
-    "notes": "Liam — moderate-pace clone. 25s ref extracted from output/audio/1sn9xhe.mp3 (real ElevenLabs render at natural speed — was previously a 15s clip from 1s4denn.mp3 with stretch artifacts already baked in, plus base_speed 2.6 causing phase-vocoder formant warble = demonic clone-of-a-clone). v2: cleaner ref + 1.4 stretch."
+    "load_denoiser": false,
+    "use_prompt_text": false,
+    "voice_qa": {
+      "enabled": true,
+      "min_median_f0_hz": 95,
+      "retry_same_reference": true,
+      "fallback_without_reference": false
+    },
+    "ref_voice_text": "Welcome, weary traveller. Settle in. Let the world outside fall quiet. Tonight, we walk together through a land that has slept for a thousand years, where kings were buried beneath mountains, and dragons whispered in tongues older than memory. Picture yourself at the edge of a great pine forest at dusk. The sky is the colour of old copper. Snow falls, soft as breath, onto your shoulders, and the air smells of woodsmoke and iron. You are not alone here. The land remembers every footstep it has ever known, and tonight, it remembers yours. Close your eyes. Let your shoulders drop. There is nothing to do. Nothing to fix. Only the story, and the fire, and the slow turning of the world.",
+    "notes": "The longer Sleepy Liam reference previously passed Pulse local voice, cadence and fallback-lock smoke checks and supersedes the rejected pulse_v2 clip. The operator attested on 2026-07-28 that express cloning and commercial-use permission was granted by Liam and the relevant voice owners. ElevenLabs remains the active production provider while included credits are available; this clone is an authorised local fallback and future A/B candidate."
   },
 
   "G17SuINrv2H9FC6nvetn": {

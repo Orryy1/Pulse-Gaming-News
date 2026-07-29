@@ -1,15 +1,21 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const axios = require('axios');
+const { generateTTS } = require('./audio');
 const fs = require('fs-extra');
 const path = require('path');
 const { exec } = require('child_process');
 const util = require('util');
 const dotenv = require('dotenv');
 const db = require('./lib/db');
+const {
+  loadDotenvOnce,
+} = require('./lib/stabilisation/runtime-config');
 
 const execAsync = util.promisify(exec);
 
-dotenv.config({ override: true });
+// Standalone legacy invocations must obey the same paid-AI master switch as
+// the managed runtime. This one-shot loader removes cloud-AI credentials
+// unless PULSE_PAID_AI_ENABLED=true, so an accidental CLI run cannot spend.
+loadDotenvOnce({ dotenv, env: process.env });
 
 const brand = require('./brand');
 const { getChannel } = require('./channels');
@@ -186,7 +192,6 @@ Output ONLY valid JSON with no preamble and no markdown backticks:
 // --- Generate TTS audio via ElevenLabs (with-timestamps endpoint) ---
 
 async function generateCompilationAudio(fullScript, outputPath) {
-  const voiceId = brand.voiceId || process.env.ELEVENLABS_VOICE_ID;
   const voiceSettings = brand.voiceSettings || { stability: 0.20, similarity_boost: 0.80, style: 0.75, speaking_rate: 1.1 };
 
   // Clean the script for TTS
@@ -202,31 +207,9 @@ async function generateCompilationAudio(fullScript, outputPath) {
 
   console.log(`[weekly] Generating TTS audio (${ttsText.length} chars)...`);
 
-  const response = await axios({
-    method: 'POST',
-    url: `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
-    headers: {
-      'xi-api-key': process.env.ELEVENLABS_API_KEY,
-      'Content-Type': 'application/json',
-    },
-    data: {
-      text: ttsText,
-      model_id: brand.voiceModel || 'eleven_multilingual_v2',
-      voice_settings: voiceSettings,
-      output_format: 'mp3_44100_128',
-    },
-    timeout: 120000,
+  await generateTTS(ttsText, outputPath, voiceSettings.speaking_rate, {
+    purpose: 'legacy_weekly_compilation_narration',
   });
-
-  await fs.ensureDir(path.dirname(outputPath));
-
-  const audioBase64 = response.data.audio_base64;
-  await fs.writeFile(outputPath, Buffer.from(audioBase64, 'base64'));
-
-  // Save word timestamps for subtitle sync
-  const timestampsPath = outputPath.replace(/\.mp3$/, '_timestamps.json');
-  const alignment = response.data.alignment || {};
-  await fs.writeJson(timestampsPath, alignment, { spaces: 2 });
 
   console.log(`[weekly] TTS audio saved: ${outputPath}`);
   return outputPath;

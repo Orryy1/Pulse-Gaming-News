@@ -216,7 +216,7 @@ function findMentionWindows(words, entityName) {
 }
 
 // --- Public entry point --------------------------------------------------
-async function generateEntityMentions() {
+async function generateEntityMentions(options = {}) {
   console.log("[entities] === Entity Mention Extraction ===");
 
   const stories = await db.getStories();
@@ -225,8 +225,14 @@ async function generateEntityMentions() {
     return;
   }
 
+  const scopedStories = Array.isArray(options.storyIds)
+    ? require("./lib/services/exact-story-production-scope").filterStoriesToExactScope(
+        stories,
+        options,
+      )
+    : stories;
   const toProcess = applyProduceSelection(
-    stories.filter(
+    scopedStories.filter(
       (s) =>
         s.approved === true &&
         s.audio_path &&
@@ -316,6 +322,11 @@ async function generateEntityMentions() {
   }
 
   await db.saveStories(stories);
+  return {
+    processed: toProcess.length,
+    story_ids: toProcess.map((story) => story.id),
+    exact_scope: Array.isArray(options.storyIds),
+  };
 }
 
 // --- Overlay QA: cap + opening-title guard -----------------------

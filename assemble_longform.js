@@ -6,10 +6,13 @@ const dotenv = require("dotenv");
 
 const execAsync = util.promisify(exec);
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const brand = require("./brand");
 const { getChannel } = require("./channels");
+const {
+  paidElevenLabsMusicEnabled,
+} = require("./lib/services/paid-generation-policy");
 
 const MUSIC_VOLUME = 0.12;
 
@@ -269,7 +272,7 @@ async function ensureLongformMusic(duration) {
 
   // Generate a 120s track (we will loop it in FFmpeg)
   const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) {
+  if (!apiKey || !paidElevenLabsMusicEnabled(process.env)) {
     // Try any existing track
     const allCached = (await fs.readdir(MUSIC_CACHE)).filter((f) =>
       f.endsWith(".mp3"),

@@ -23,7 +23,7 @@ const { validateVideo } = require("./lib/validate");
 const db = require("./lib/db");
 const mediaPaths = require("./lib/media-paths");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 /**
  * Twitter/X is an OPTIONAL publishing channel for Pulse Gaming.

@@ -10,7 +10,7 @@ const {
   defaultOutputPath,
 } = require("../lib/platforms/tiktok-auth-link");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 const ROOT = path.resolve(__dirname, "..");
 

@@ -7,7 +7,7 @@ const {
   writeFacebookReelsEligibilityReport,
 } = require("../../lib/platforms/facebook-reels-eligibility");
 
-dotenv.config({ override: true });
+dotenv.config({ override: false });
 
 async function main() {
   const evidence = await fetchFacebookReelsEvidence();

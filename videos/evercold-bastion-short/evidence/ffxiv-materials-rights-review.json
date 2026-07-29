@@ -1,0 +1,22 @@
+{
+  "schema_version": "pulse-governed-rights-review-evidence-v1",
+  "story_id": "official_d86953ca92ca",
+  "review_status": "ACCEPTED",
+  "rights_basis": "LICENSED",
+  "publisher": "Square Enix",
+  "licence_evidence_url": "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc",
+  "licence_effective_date": "2026-05-07",
+  "reviewed_by": "pulse-editorial-rights-review",
+  "reviewed_at": "2026-07-27T16:54:58.896Z",
+  "scope": "Official FINAL FANTASY XIV art and screenshots from the official Evercold website and official FFXIV channel, embedded in a narrated and materially edited gaming-news report.",
+  "findings": {
+    "covered_materials": ["art", "video", "screenshots", "images"],
+    "permitted_destination": "YouTube and comparable social-network partner programmes",
+    "copyright_notice": "© SQUARE ENIX",
+    "copyright_notice_delivery": ["ON_SCREEN", "DESCRIPTION"],
+    "third_party_music_used": false,
+    "source_audio_used": false,
+    "raw_asset_redistribution": false,
+    "removal_request_must_be_honoured": true
+  }
+}

@@ -1,44 +1,24 @@
+"use strict";
+
+const dotenv = require("dotenv");
+const {
+  assertValidRuntimeConfig,
+  loadDotenvOnce,
+} = require("./lib/stabilisation/runtime-config");
+
+loadDotenvOnce({ dotenv, env: process.env });
+assertValidRuntimeConfig(process.env);
+
 const cron = require("node-cron");
 const fs = require("fs-extra");
 const sendDiscord = require("./notify");
-const dotenv = require("dotenv");
 const db = require("./lib/db");
-
-dotenv.config({ override: true });
-
 /*
-  Pulse Gaming Pipeline v2 -Autonomous Operations
+  Pulse Gaming News — controlled release pipeline
 
-  Modes:
-    hunt      -One-off Reddit + RSS fetch + script generation
-    produce   -Generate audio, images, assemble videos
-    publish   -Upload to YouTube, TikTok, Instagram
-    schedule  -Start autonomous cron scheduler (recommended)
-    full      -Run complete autonomous cycle once
-    approve   -Run auto-approval pass only
-
-  Autonomous Schedule (all times GMT):
-  ┌──────────┬──────────────────────────────────────────────────┐
-  │ Time     │ Action                                           │
-  ├──────────┼──────────────────────────────────────────────────┤
-  │ 06:00    │ Morning hunt -catch overnight US leaks          │
-  │ 10:00    │ Mid-morning hunt -embargo lifts, announcements  │
-  │ 14:00    │ Afternoon hunt -Nintendo Direct timing window   │
-  │ 17:00    │ Evening hunt -US morning announcements          │
-  │ 19:00    │ PUBLISH WINDOW -YouTube Shorts optimal time     │
-  │ 20:00    │ (staggered) TikTok upload                       │
-  │ 21:00    │ (staggered) Instagram Reels upload               │
-  │ 22:00    │ Late hunt -catch PS State of Play window        │
-  └──────────┴──────────────────────────────────────────────────┘
-
-  Research basis:
-  - Gaming announcements peak: 14:00 GMT (Nintendo), 17:00 GMT (embargoes),
-    22:00 GMT (PlayStation), 18:00 GMT (Xbox)
-  - Reddit leak surfacing peaks: 00:00-04:00 GMT (US evening)
-  - YouTube Shorts engagement peaks: 19:00 GMT (UK evening = 2PM ET)
-  - TikTok engagement peaks: 20:00 GMT
-  - Instagram Reels peaks: 21:00 GMT
-  - Friday is statistically the best day for short-form gaming content
+  The durable queue is the only scheduler. Stabilisation mode hunts, scores
+  and renders candidates but holds every upload for named human review.
+  YouTube is the only enabled publication destination for this release.
 */
 
 async function runHunt() {
@@ -86,87 +66,68 @@ async function runHunt() {
 
   const titles = newPosts.map((s) => `- ${s.title}`).join("\n");
   await sendDiscord(
-    `**Pulse Gaming Hunt Complete**\n${newPosts.length} new stories:\n${titles || "(none)"}`,
+    `**Pulse Gaming News hunt complete**\n${newPosts.length} new stories:\n${titles || "(none)"}`,
   );
 
   console.log("[run] Hunt complete");
 }
 
 async function runProduce() {
-  console.log("[run] === PRODUCE MODE ===");
+  console.log("[run] === GOVERNED PRODUCE MODE ===");
+  const { produce } = require("./publisher");
+  await produce();
 
-  const affiliates = require("./affiliates");
-  const audio = require("./audio");
-  const images = require("./images");
-  const assemble = require("./assemble");
-
-  console.log("[run] Step 1: Affiliates...");
-  await affiliates();
-
-  console.log("[run] Step 2: Audio generation...");
-  await audio();
-
-  console.log("[run] Step 3: Professional image generation...");
-  await images();
-
-  console.log("[run] Step 4: Video assembly (multi-image Ken Burns)...");
-  await assemble();
-
-  console.log("[run] Step 5: Instagram Story images...");
-  const { generateStoryImages } = require("./images_story");
-  await generateStoryImages();
-
-  console.log("[run] Step 6: Thumbnail candidates...");
-  try {
-    const {
-      buildThumbnailsForApprovedStories,
-    } = require("./lib/studio/v2/hf-thumbnail-builder");
-    await buildThumbnailsForApprovedStories();
-  } catch (err) {
-    console.log(`[run] Thumbnail candidate batch failed (non-fatal): ${err.message}`);
-  }
-
-  let exportedPaths = [];
   const stories = await db.getStories();
-  exportedPaths = stories
+  const exportedPaths = stories
     .filter((s) => s.exported_path)
     .map((s) => s.exported_path);
 
   await sendDiscord(
-    `**Pulse Gaming Produce Complete**\n${exportedPaths.length} videos exported:\n${exportedPaths.join("\n")}`,
+    `**Pulse Gaming News production complete**\n${exportedPaths.length} governed candidates exported and held for human review.`,
   );
 
-  console.log("[run] Produce complete");
+  console.log(
+    `[run] Governed production complete: ${exportedPaths.length} candidates held`,
+  );
 }
 
 async function runPublish() {
-  console.log("[run] === PUBLISH MODE ===");
+  console.log("[run] === GOVERNED YOUTUBE PUBLISH MODE ===");
 
-  const { publishToAllPlatforms } = require("./publisher");
-  const results = await publishToAllPlatforms();
+  const { publishNextStory } = require("./publisher");
+  const result = await publishNextStory();
 
-  const total =
-    results.youtube.length + results.tiktok.length + results.instagram.length;
-  console.log(`[run] Published ${total} videos across all platforms`);
+  if (!result) {
+    console.log("[run] No governed YouTube candidate is due");
+    return null;
+  }
+  if (result.publish_dispatch_blocked) {
+    console.log(`[run] Publish held: ${result.top_reason}`);
+    return result;
+  }
+  console.log(
+    `[run] YouTube outcome: ${result.platform_outcomes?.youtube || "unknown"}`,
+  );
+  return result;
 }
 
 async function runFull() {
-  console.log("[run] === FULL AUTONOMOUS CYCLE ===");
+  console.log("[run] === GOVERNED PREPARATION CYCLE ===");
 
   const { fullAutonomousCycle } = require("./publisher");
-  await fullAutonomousCycle();
+  return fullAutonomousCycle();
 }
 
 async function runApprove() {
-  console.log("[run] === AUTO-APPROVE MODE ===");
+  console.log("[run] === HUMAN-REVIEW QUEUE SCORING MODE ===");
 
   const { autoApprove } = require("./publisher");
   const summary = await autoApprove();
   if (summary.skipped) {
-    console.log(`[run] Auto-approve skipped: ${summary.skipped}`);
+    console.log(`[run] Scoring skipped: ${summary.skipped}`);
   } else {
     console.log(
-      `[run] Scored ${summary.scored} — auto=${summary.approved} review=${summary.review} defer=${summary.defer} reject=${summary.reject}`,
+      `[run] Scored ${summary.scored} — held=${summary.review} defer=${summary.defer} reject=${summary.reject}`,
     );
   }
 }
@@ -240,16 +201,13 @@ async function runBlog() {
 
 async function runSchedule() {
   console.log("[run] ==========================================");
-  console.log("[run] PULSE GAMING AUTONOMOUS SCHEDULER v2");
+  console.log("[run] PULSE GAMING NEWS GOVERNED SCHEDULER");
   console.log("[run] ==========================================");
   console.log("[run] All times are GMT/UTC");
   console.log("");
 
-  // Phase D: canonical queue is the default. lib/dispatch-mode enforces
-  // that production always uses the queue (no legacy escape) and that
-  // bootstrap failure in prod throws rather than silently arming the
-  // legacy cron block below. USE_JOB_QUEUE=false in dev is the only
-  // way to reach the legacy registry.
+  // The canonical durable queue is the only operational scheduler.
+  // Bootstrap failure never falls through to the archived cron registry.
   const { resolveDispatchMode } = require("./lib/dispatch-mode");
   const dispatch = resolveDispatchMode();
   console.log(
@@ -259,12 +217,14 @@ async function runSchedule() {
   if (dispatch.mode === "queue") {
     try {
       const bootstrap = require("./lib/bootstrap-queue");
-      await bootstrap.start({
-        workerId: `run-${require("os").hostname()}-${process.pid}`,
-        runScheduler: true,
-        runRunner: true,
-        autoSeed: true,
-      });
+        await bootstrap.start({
+          workerId: `run-${require("os").hostname()}-${process.pid}`,
+          runScheduler: true,
+          runRunner: true,
+          runBreakingWatcher:
+            process.env.BREAKING_WATCHER_ENABLED !== "false",
+          autoSeed: true,
+        });
       console.log(
         "[run] canonical scheduler up via bootstrap-queue (lib/scheduler.js + jobs-runner)",
       );
@@ -279,8 +239,7 @@ async function runSchedule() {
         throw err;
       }
       console.error(
-        `[run] bootstrap-queue failed in dev (${err.message}) — no scheduler will run. ` +
-          `Set USE_JOB_QUEUE=false to intentionally use the legacy cron block for local dev.`,
+        `[run] bootstrap-queue failed in dev (${err.message}) — no scheduler will run.`,
       );
       return;
     }
@@ -387,25 +346,15 @@ async function _registerLegacyDevCronRegistry() {
 
   // --- PUBLISH CYCLE (1x daily at optimal engagement window) ---
 
-  // 19:00 GMT -Publish to YouTube Shorts (peak engagement: 7PM GMT)
-  // TikTok and Instagram are staggered by the publisher module (+60min each)
+  // Archived cron registry: even if called directly, its publication window
+  // can only issue a human-review reminder.
   cron.schedule(
     "0 19 * * *",
     async () => {
-      console.log("[schedule] 19:00 GMT -PUBLISH WINDOW");
-      try {
-        if (process.env.AUTO_PUBLISH === "true") {
-          await runPublish();
-        } else {
-          console.log("[schedule] AUTO_PUBLISH not enabled, skipping");
-          await sendDiscord(
-            "**Videos ready for upload** -Set AUTO_PUBLISH=true to enable autonomous posting",
-          );
-        }
-      } catch (err) {
-        console.log(`[schedule] Publish error: ${err.message}`);
-        await sendDiscord(`**ERROR** Publish cycle failed: ${err.message}`);
-      }
+      console.log("[schedule] 19:00 GMT - HUMAN-REVIEW WINDOW");
+      await sendDiscord(
+        "**Pulse Gaming News review window** — candidates remain held until a named operator approves governed YouTube dispatch.",
+      );
     },
     { timezone: "UTC" },
   );
@@ -432,12 +381,10 @@ async function _registerLegacyDevCronRegistry() {
   console.log("  14:00 UTC -Afternoon hunt (Nintendo Direct window)");
   console.log("  17:00 UTC -Evening hunt (Xbox/embargo window)");
   console.log("  18:00 UTC -Produce cycle (audio + images + video)");
-  console.log("  19:00 UTC -PUBLISH (YouTube → TikTok → Instagram)");
+  console.log("  19:00 UTC -Human-review window (YouTube only)");
   console.log("  22:00 UTC -Late hunt (PlayStation State of Play window)");
   console.log("");
-  console.log(
-    `[schedule] AUTO_PUBLISH: ${process.env.AUTO_PUBLISH === "true" ? "ENABLED" : "DISABLED"}`,
-  );
+  console.log("[schedule] Live dispatch: HUMAN REVIEW REQUIRED");
   console.log("[schedule] Process will stay alive. Press Ctrl+C to exit.");
 
   // Run an immediate hunt on startup
@@ -448,7 +395,7 @@ async function _registerLegacyDevCronRegistry() {
       const { autoApprove } = require("./publisher");
       await autoApprove();
       await sendDiscord(
-        "**Pulse Gaming Scheduler Started** -Running autonomously",
+        "**Pulse Gaming News scheduler started** — durable queue active, uploads held for human review.",
       );
     } catch (err) {
       console.log(`[schedule] Initial hunt error: ${err.message}`);
@@ -459,8 +406,8 @@ async function _registerLegacyDevCronRegistry() {
 const mode = process.argv[2];
 
 if (!mode) {
-  console.log("Pulse Gaming Pipeline v2");
-  console.log("========================");
+  console.log("Pulse Gaming News controlled release pipeline");
+  console.log("============================================");
   console.log("Usage:");
   console.log(
     "  node run.js hunt      -Fetch Reddit + RSS stories and generate scripts",
@@ -468,15 +415,15 @@ if (!mode) {
   console.log(
     "  node run.js produce   -Generate audio, images and assemble videos",
   );
-  console.log("  node run.js publish   -Upload to YouTube, TikTok, Instagram");
-  console.log("  node run.js full      -Run complete autonomous cycle once");
-  console.log("  node run.js approve   -Run auto-approval pass");
+  console.log("  node run.js publish   -Request governed YouTube dispatch");
+  console.log("  node run.js full      -Run governed preparation once");
+  console.log("  node run.js approve   -Score the human-review queue");
   console.log(
     "  node run.js watch     -Start breaking news watcher (continuous)",
   );
   console.log("  node run.js weekly    -Compile weekly longform roundup video");
   console.log(
-    "  node run.js schedule  -Start autonomous cron scheduler (24/7)",
+    "  node run.js schedule  -Start the governed durable queue",
   );
   console.log(
     "  node run.js blog      -Rebuild static SEO blog from published stories",

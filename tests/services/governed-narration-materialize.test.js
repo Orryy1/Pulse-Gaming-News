@@ -187,6 +187,56 @@ test("buildGovernedNarrationPlan binds exact script, source hashes, timing and l
   );
 });
 
+test("buildGovernedNarrationPlan accepts the named breaking high-cadence 35-to-42-second band", async (t) => {
+  const values = fixture();
+  t.after(() => fs.rmSync(values.root, { recursive: true, force: true }));
+
+  const plan = await buildGovernedNarrationPlan(
+    planInput(values, {
+      durationBandId:
+        "what_changes_breaking_high_cadence_35_42",
+      finalTargetSeconds: 36.48,
+      visualBreathAllowanceSeconds: 0.48,
+      probeAudio: async () => ({
+        duration_seconds: 36,
+        codec_name: "mp3",
+        has_audio: true,
+      }),
+    }),
+  );
+
+  assert.equal(
+    plan.timing.duration_band_id,
+    "what_changes_breaking_high_cadence_35_42",
+  );
+  assert.equal(plan.timing.final_target_min_seconds, 35);
+  assert.equal(plan.timing.final_target_max_seconds, 42);
+  assert.equal(plan.timing.final_target_seconds, 36.48);
+  assert.equal(plan.timing.audio_duration_seconds, 36);
+
+  await assert.rejects(
+    () =>
+      buildGovernedNarrationPlan(
+        planInput(values, {
+          durationBandId:
+            "what_changes_breaking_high_cadence_35_42",
+          finalTargetSeconds: 33,
+          visualBreathAllowanceSeconds: 0,
+          probeAudio: async () => ({
+            duration_seconds: 32,
+            codec_name: "mp3",
+            has_audio: true,
+          }),
+        }),
+      ),
+    (error) =>
+      error instanceof GovernedNarrationMaterializeError &&
+      error.codes.includes(
+        "narration_final_target_outside_named_duration_band",
+      ),
+  );
+});
+
 test("buildGovernedNarrationPlan fails closed on script, alignment, timing and provider inconsistencies", async (t) => {
   const cases = [
     {

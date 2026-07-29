@@ -310,6 +310,61 @@ test("two independent trusted editorial bodies can corroborate the same extracte
   );
 });
 
+test("bounded evidence capture stops after two independent editorial bodies corroborate the claim", async () => {
+  const urls = [
+    "https://www.ign.com/articles/xbox-back-compat-bounded",
+    "https://www.eurogamer.net/xbox-back-compat-bounded",
+    "https://www.gamespot.com/articles/xbox-back-compat-bounded",
+  ];
+  const policy = sourcePolicy();
+  policy.trusted_editorial.push({
+    source_id: "gamespot",
+    outlet: "GameSpot",
+    hosts: ["gamespot.com"],
+  });
+  let fetchCalls = 0;
+
+  const packet = await captureBreakingSourceEvidence({
+    story: {
+      id: "bounded-editorial-corroboration",
+      title: "Xbox backwards compatibility could expand",
+      subject_ids: ["xbox"],
+      source_candidates: urls,
+    },
+    sourcePolicy: policy,
+    now: NOW,
+    stopAfterEvidenceConfirmation: true,
+    fetchCapture: async ({ url }) => {
+      fetchCalls += 1;
+      const publisher = url.includes("ign.com") ? "IGN" : "Eurogamer";
+      return {
+        status: 200,
+        final_url: url,
+        content_type: "text/html",
+        bytes: Buffer.from(
+          `${publisher} independently reports the Xbox backwards compatibility expansion.`,
+          "utf8",
+        ),
+      };
+    },
+    extractClaims: async ({ source }) => ({
+      extractor: { id: "fixture-html", version: "1.0.0" },
+      claims: [
+        {
+          claim_key: "xbox.original-backcompat.expansion",
+          text: `${source.publisher} independently reports the Xbox backwards compatibility expansion.`,
+          location: "body",
+        },
+      ],
+    }),
+  });
+
+  assert.equal(packet.verdict, "CORROBORATED");
+  assert.equal(packet.verified_for_planning, true);
+  assert.equal(fetchCalls, 2);
+  assert.equal(packet.sources.length, 2);
+});
+
 test("unsafe or non-HTTPS source URLs are rejected before injected fetch runs", async () => {
   let fetchCalls = 0;
   const packet = await captureBreakingSourceEvidence({

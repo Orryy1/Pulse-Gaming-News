@@ -300,7 +300,7 @@ test("repeated real hunts recognise the same breaking discovery despite a later 
   assert.equal(discoveries[0].payload.story.id, breaking.id);
 });
 
-test("editorial evidence discovery captures official body proof and queues inventory, not a breaking re-hunt", async (t) => {
+test("editorial evidence discovery stops after sufficient official body proof and queues inventory, not a breaking re-hunt", async (t) => {
   const outDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-editorial-evidence-discovery-"),
   );
@@ -383,7 +383,11 @@ test("editorial evidence discovery captures official body proof and queues inven
         async captureBreakingSourceEvidence(options) {
           assert.equal(
             options.stopAfterOfficialConfirmation,
-            false,
+            true,
+          );
+          assert.equal(
+            options.stopAfterEvidenceConfirmation,
+            true,
           );
           return packet;
         },

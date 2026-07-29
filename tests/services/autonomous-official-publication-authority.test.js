@@ -146,6 +146,7 @@ function fixtureValues() {
     renderer_manifest_canonical_sha256: "c".repeat(64),
     deterministic_qa_sha256: "d".repeat(64),
     multimodal_visual_qa_sha256: "e".repeat(64),
+    autonomous_green_supplement_sha256: "ab".repeat(32),
     final_mp4_sha256: "f".repeat(64),
     publication_metadata_sha256: "0".repeat(64),
     kill_switch_proof_sha256: "1a".repeat(32),
@@ -197,8 +198,8 @@ function fixtureValues() {
 
 function autonomousReport(lineage) {
   const reportPayload = {
-    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v1",
-    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v1",
+    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v2",
+    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v2",
     mode: "LOCAL_PROOF",
     generated_at: "2026-07-29T09:59:30.000Z",
     valid_until: "2026-07-29T10:01:30.000Z",

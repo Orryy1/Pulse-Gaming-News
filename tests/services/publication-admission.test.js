@@ -378,6 +378,7 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
       publicationEvidence.renderer_manifest_sha256,
     deterministic_qa_sha256: publicationEvidence.qa_report_sha256,
     multimodal_visual_qa_sha256: "ab".repeat(32),
+    autonomous_green_supplement_sha256: "b0".repeat(32),
     final_mp4_sha256: fingerprint.media_sha256,
     publication_metadata_sha256:
       publicationEvidence.publication_metadata_sha256,
@@ -385,8 +386,8 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
     single_owner_proof_sha256: "ad".repeat(32),
   };
   const reportPayload = {
-    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v1",
-    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v1",
+    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v2",
+    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v2",
     mode: "LOCAL_PROOF",
     generated_at: "2026-07-27T08:54:30.000Z",
     valid_until: "2026-07-27T08:56:30.000Z",
@@ -625,6 +626,10 @@ test("autonomous official admission atomically records its exact authority, sche
     input.authority.authority_sha256,
   );
   assert.equal(
+    authorityEvidence.autonomous_green_supplement_sha256,
+    input.authority.lineage.autonomous_green_supplement_sha256,
+  );
+  assert.equal(
     Object.keys(authorityEvidence).some((field) =>
       /actor|operator|human/i.test(field),
     ),
@@ -688,6 +693,40 @@ test("autonomous official admission atomically records its exact authority, sche
   assert.equal(
     db.prepare("SELECT COUNT(*) AS count FROM platform_posts").get().count,
     0,
+  );
+});
+
+test("autonomous official admission requires the GREEN supplement lineage digest before any database write", async (t) => {
+  const { db, repos, story } = fixture(t);
+  const input = await autonomousAdmissionInput(repos, story);
+  const authority = structuredClone(input.authority);
+  delete authority.lineage.autonomous_green_supplement_sha256;
+
+  await assert.rejects(
+    admitAutonomousOfficialPublication({
+      ...input,
+      authority,
+    }),
+    /autonomous_publication_admission_lineage_fields_invalid/,
+  );
+
+  assert.deepEqual(
+    {
+      authority: db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM publication_authority_audit_log",
+        )
+        .get().count,
+      lifecycle: db
+        .prepare("SELECT COUNT(*) AS count FROM publication_lifecycle_events")
+        .get().count,
+      jobs: db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count,
+    },
+    {
+      authority: 0,
+      lifecycle: 0,
+      jobs: 0,
+    },
   );
 });
 

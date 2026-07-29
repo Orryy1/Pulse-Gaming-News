@@ -37,6 +37,7 @@ const ARTIFACT_FIELDS = [
   "multimodal_visual_qa",
   "final_mp4",
   "publication_metadata",
+  "autonomous_green_supplement",
 ];
 
 function sha256(bytes) {
@@ -370,6 +371,16 @@ async function fixture() {
       platform: "youtube_shorts",
     }),
   );
+  const autonomousGreenSupplement = await writeFile(
+    candidateSource,
+    "evidence/autonomous-green-supplement.json",
+    jsonBytes({
+      schema_version: "pulse-autonomous-green-supplement-v1",
+      mode: "LOCAL_PROOF",
+      verdict: "GREEN",
+      story_id: STORY_ID,
+    }),
+  );
 
   const artifacts = {
     story_intake: storyIntake,
@@ -386,6 +397,7 @@ async function fixture() {
     multimodal_visual_qa: visualQa,
     final_mp4: finalMp4,
     publication_metadata: metadata,
+    autonomous_green_supplement: autonomousGreenSupplement,
   };
   assert.deepEqual(Object.keys(artifacts).sort(), [...ARTIFACT_FIELDS].sort());
 
@@ -400,7 +412,7 @@ async function fixture() {
     artifacts,
     visualAssets,
     request: {
-      schema_version: "pulse-autonomous-official-candidate-staging-request-v1",
+      schema_version: "pulse-autonomous-official-candidate-staging-request-v2",
       mode: "LOCAL_PROOF",
       story_id: STORY_ID,
       channel_id: "pulse-gaming",

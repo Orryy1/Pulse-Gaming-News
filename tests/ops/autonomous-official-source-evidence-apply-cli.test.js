@@ -21,7 +21,7 @@ test("CLI accepts only one exact LOCAL_PROOF request and exposes no dispatch swi
   const requestPath = path.join(directory, "request.json");
   const request = {
     schema_version:
-      "pulse-autonomous-official-source-evidence-apply-request-v1",
+      "pulse-autonomous-official-source-evidence-apply-request-v2",
     mode: "LOCAL_PROOF",
   };
   await fs.writeFile(requestPath, JSON.stringify(request));

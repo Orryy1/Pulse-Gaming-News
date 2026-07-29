@@ -277,7 +277,7 @@ function autonomousPublicationAuthority(storyId, overrides = {}) {
     },
   };
   const claims = {
-    verifier_id: "pulse-autonomous-official-publication-authority-v1",
+    verifier_id: "pulse-autonomous-official-publication-authority-v2",
     issued_at: "2026-07-29T11:59:30.000Z",
     valid_until: "2026-07-29T12:01:00.000Z",
     decision: "APPROVED",
@@ -316,6 +316,7 @@ function autonomousPublicationAuthority(storyId, overrides = {}) {
       renderer_manifest_canonical_sha256: "8".repeat(64),
       qa_report_sha256: HASH.qa,
       multimodal_visual_qa_sha256: "4d".repeat(32),
+      autonomous_green_supplement_sha256: "7a".repeat(32),
       media_sha256: HASH.media,
       publication_metadata_sha256: "6".repeat(64),
       rights_ledger_sha256: HASH.rights,

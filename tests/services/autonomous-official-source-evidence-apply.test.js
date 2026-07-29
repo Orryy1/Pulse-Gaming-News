@@ -540,6 +540,61 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
       },
     },
   );
+  const greenSupplementBase = {
+    schema_version: "pulse-autonomous-green-supplement-v1",
+    generated_at: NOW,
+    mode: "LOCAL_PROOF",
+    verdict: "GREEN",
+    authority_scope: "LOCAL_PROOF_EVIDENCE_ONLY",
+    story_id: STORY_ID,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    hashes: {
+      source_intake_sha256: intake.sha256,
+      script_sha256: scriptSha256,
+      narration_sha256: narrationAudio.sha256,
+      motion_manifest_sha256: motionManifest.sha256,
+      render_manifest_sha256: renderer.sha256,
+      final_mp4_sha256: finalMp4.sha256,
+      qa_report_sha256: deterministicQa.sha256,
+      publication_metadata_sha256: metadata.sha256,
+    },
+    prompt_injection: {
+      verdict: "PASS",
+    },
+    artifacts: {},
+    media_items: [
+      { asset_sha256: ownedProgramme.sha256 },
+      { asset_sha256: narrationAudio.sha256 },
+      { asset_sha256: ownedSegment.sha256 },
+    ],
+    validated: {
+      final_media_inventory_complete: true,
+      prompt_injection_verdict: "PASS",
+      distinct_lineage_digests: true,
+      distinct_rights_evidence_digests: true,
+      final_media_item_count: 3,
+    },
+    safety: {
+      local_proof_only: true,
+      publish_authority: false,
+      scheduler_authority: false,
+      database_authority: false,
+      oauth_or_token_authority: false,
+      network_authority: false,
+      network_used: false,
+      platform_contacted: false,
+    },
+  };
+  const autonomousGreenSupplement = await writeJson(
+    root,
+    "evidence/autonomous-green-supplement.json",
+    {
+      ...greenSupplementBase,
+      supplement_sha256: canonicalSha256(greenSupplementBase),
+    },
+  );
   const killSwitchProof = await writeJson(
     root,
     "controls/kill-switch-proof.json",
@@ -588,6 +643,7 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
     multimodal_visual_qa: visualQa,
     final_mp4: finalMp4,
     publication_metadata: metadata,
+    autonomous_green_supplement: autonomousGreenSupplement,
     kill_switch_proof: killSwitchProof,
     single_owner_proof: ownerProof,
   };
@@ -655,6 +711,10 @@ test("atomically materialises distinct autonomous official-source evidence witho
   assert.equal(result.report.audio_policy, "LICENSED_NARRATION_ONLY");
   assert.equal(result.report.qa.deterministic, "PASS");
   assert.equal(result.report.qa.multimodal, "UNANIMOUS_PASS");
+  assert.equal(
+    result.report.lineage.autonomous_green_supplement_sha256,
+    fixture.request.artifacts.autonomous_green_supplement.sha256,
+  );
   assert.match(result.report.report_sha256, /^[a-f0-9]{64}$/);
   const { report_sha256: reportSha256, ...reportPayload } = result.report;
   assert.equal(reportSha256, canonicalSha256(reportPayload));
@@ -710,6 +770,31 @@ test("fails closed when a supporting US price snapshot changes at the just-in-ti
     fs.access(fixture.request.report_path),
     (error) => error.code === "ENOENT",
   );
+});
+
+test("fails closed when the GREEN supplement is cross-bound to another final master", async (t) => {
+  const fixture = await createFixture(t);
+  await rewriteJson(
+    fixture.request.artifacts.autonomous_green_supplement,
+    (supplement) => {
+      supplement.hashes.final_mp4_sha256 = "a".repeat(64);
+      const { supplement_sha256: _prior, ...body } = supplement;
+      supplement.supplement_sha256 = canonicalSha256(body);
+    },
+  );
+
+  await assert.rejects(
+    materialiseAutonomousOfficialSourceEvidence(fixture.request, {
+      clock: () => new Date(NOW),
+      fetchCapture: fixture.fetchCapture,
+      workspaceRoot: fixture.root,
+    }),
+    (error) =>
+      error.codes?.includes(
+        "autonomous_green_supplement_binding_required",
+      ),
+  );
+  assert.equal(fixture.calls.length, 0);
 });
 
 test("fails closed before source reads when kill-switch proof is stale", async (t) => {

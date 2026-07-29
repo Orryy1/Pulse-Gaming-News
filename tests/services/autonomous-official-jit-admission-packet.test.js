@@ -557,6 +557,73 @@ async function createEndToEndFixture(t) {
     "publication/youtube-metadata.json",
     metadataValue,
   );
+  const greenSupplementBase = {
+    schema_version: "pulse-autonomous-green-supplement-v1",
+    generated_at: "2026-07-29T17:30:00.000Z",
+    mode: "LOCAL_PROOF",
+    verdict: "GREEN",
+    authority_scope: "LOCAL_PROOF_EVIDENCE_ONLY",
+    story_id: storyId,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    hashes: {
+      source_intake_sha256: intake.sha256,
+      script_sha256: scriptSha256,
+      narration_sha256: narrationAudio.sha256,
+      motion_manifest_sha256: motionManifest.sha256,
+      render_manifest_sha256: renderer.sha256,
+      final_mp4_sha256: finalMp4.sha256,
+      qa_report_sha256: deterministicQa.sha256,
+      publication_metadata_sha256: metadata.sha256,
+    },
+    prompt_injection: {
+      verdict: "PASS",
+    },
+    artifacts: {},
+    media_items: [
+      {
+        item_id: "visual:owned-programme",
+        asset_sha256: ownedProgramme.sha256,
+        included_in_final: true,
+      },
+      {
+        item_id: "audio:elevenlabs-narration",
+        asset_sha256: narrationAudio.sha256,
+        included_in_final: true,
+      },
+      {
+        item_id: "visual:owned-segment",
+        asset_sha256: ownedSegment.sha256,
+        included_in_final: true,
+      },
+    ],
+    validated: {
+      final_media_inventory_complete: true,
+      prompt_injection_verdict: "PASS",
+      distinct_lineage_digests: true,
+      distinct_rights_evidence_digests: true,
+      final_media_item_count: 3,
+    },
+    safety: {
+      local_proof_only: true,
+      publish_authority: false,
+      scheduler_authority: false,
+      database_authority: false,
+      oauth_or_token_authority: false,
+      network_authority: false,
+      network_used: false,
+      platform_contacted: false,
+    },
+  };
+  const autonomousGreenSupplement = await writeFixtureJson(
+    root,
+    "evidence/autonomous-green-supplement.json",
+    {
+      ...greenSupplementBase,
+      supplement_sha256: canonicalSha256(greenSupplementBase),
+    },
+  );
   const artifacts = {
     story_intake: intake,
     source_evidence: sourceEvidence,
@@ -572,13 +639,14 @@ async function createEndToEndFixture(t) {
     multimodal_visual_qa: visualQa,
     final_mp4: finalMp4,
     publication_metadata: metadata,
+    autonomous_green_supplement: autonomousGreenSupplement,
   };
   const rightsLedger = {
     ledger_version: 1,
     decision: "CLEARED",
     items: [
       {
-        item_id: "owned-segment",
+        item_id: "visual:owned-segment",
         source_url: "owned://pulse/jit/owned-segment",
         asset_sha256: ownedSegment.sha256,
         included_in_final: true,
@@ -587,6 +655,34 @@ async function createEndToEndFixture(t) {
         rights_evidence: {
           reference: motionManifest.path,
           sha256: motionManifest.sha256,
+        },
+        attribution_decision: "NOT_REQUIRED",
+        attribution_text: null,
+      },
+      {
+        item_id: "visual:owned-programme",
+        source_url: "owned://pulse/jit/owned-programme",
+        asset_sha256: ownedProgramme.sha256,
+        included_in_final: true,
+        rights_decision: "CLEARED",
+        rights_basis: "OWNED",
+        rights_evidence: {
+          reference: motionManifest.path,
+          sha256: motionManifest.sha256,
+        },
+        attribution_decision: "NOT_REQUIRED",
+        attribution_text: null,
+      },
+      {
+        item_id: "audio:elevenlabs-narration",
+        source_url: "licensed://elevenlabs/jit/narration",
+        asset_sha256: narrationAudio.sha256,
+        included_in_final: true,
+        rights_decision: "CLEARED",
+        rights_basis: "LICENSED",
+        rights_evidence: {
+          reference: licenceReceipt.path,
+          sha256: licenceReceipt.sha256,
         },
         attribution_decision: "NOT_REQUIRED",
         attribution_text: null,
@@ -1083,6 +1179,23 @@ test("static plan resolution proves every exact hash is contained under the trus
       },
     ],
   };
+  const bridgedSupplement = await writeFixtureJson(
+    root,
+    "evidence/autonomous_green_supplement.bin",
+    {
+      media_items: [
+        {
+          item_id: "owned-visual-1",
+          asset_sha256: rightsLedger.items[0].asset_sha256,
+          included_in_final: true,
+        },
+      ],
+    },
+  );
+  artifacts.autonomous_green_supplement = {
+    path: path.relative(root, bridgedSupplement.path),
+    sha256: bridgedSupplement.sha256,
+  };
   const gateInput = {
     ...greenGateInput(),
     rights_ledger: rightsLedger,
@@ -1122,12 +1235,74 @@ test("static plan resolution proves every exact hash is contained under the trus
     resolved.rights_evidence[0].asset_sha256,
     crypto.createHash("sha256").update(assetBytes).digest("hex"),
   );
+  assert.equal(resolved.rights_bridge.item_count, 1);
+  assert.equal(
+    resolved.rights_bridge.autonomous_green_supplement_sha256,
+    artifacts.autonomous_green_supplement.sha256,
+  );
+  assert.equal(
+    resolved.rights_bridge.publication_gate_rights_ledger_sha256,
+    gateInput.rights_ledger_sha256,
+  );
+
+  const mismatchedSupplement = await writeFixtureJson(
+    root,
+    "evidence/autonomous_green_supplement-mismatch.bin",
+    {
+      media_items: [
+        {
+          item_id: "different-item",
+          asset_sha256: rightsLedger.items[0].asset_sha256,
+          included_in_final: true,
+        },
+      ],
+    },
+  );
+  const mismatchedBridgeManifest =
+    createAutonomousOfficialJitPreparationManifest(
+      preparationInput({
+        artifacts: {
+          ...artifacts,
+          autonomous_green_supplement: {
+            path: path.relative(root, mismatchedSupplement.path),
+            sha256: mismatchedSupplement.sha256,
+          },
+        },
+        owned_visual_assets: ownedVisualAssets,
+        publication_evidence_gate_input: gateInput,
+      }),
+    );
+  await assert.rejects(
+    resolveAutonomousOfficialJitPreparationPlan(mismatchedBridgeManifest, {
+      workspaceRoot: root,
+    }),
+    { code: "autonomous_jit_plan_green_rights_bridge_mismatch" },
+  );
 
   const unboundRightsLedger = structuredClone(rightsLedger);
   unboundRightsLedger.items[0].asset_sha256 = "9".repeat(64);
+  const unboundSupplement = await writeFixtureJson(
+    root,
+    "evidence/autonomous_green_supplement-unbound.bin",
+    {
+      media_items: [
+        {
+          item_id: "owned-visual-1",
+          asset_sha256: unboundRightsLedger.items[0].asset_sha256,
+          included_in_final: true,
+        },
+      ],
+    },
+  );
   const unboundManifest = createAutonomousOfficialJitPreparationManifest(
     preparationInput({
-      artifacts,
+      artifacts: {
+        ...artifacts,
+        autonomous_green_supplement: {
+          path: path.relative(root, unboundSupplement.path),
+          sha256: unboundSupplement.sha256,
+        },
+      },
       owned_visual_assets: ownedVisualAssets,
       publication_evidence_gate_input: {
         ...gateInput,
@@ -1227,6 +1402,23 @@ test("static plan resolution rejects rights evidence that widens use to sponsors
       },
     ],
   };
+  const bridgedSupplement = await writeFixtureJson(
+    root,
+    "evidence/autonomous_green_supplement.bin",
+    {
+      media_items: [
+        {
+          item_id: "owned-visual",
+          asset_sha256: ownedAsset.sha256,
+          included_in_final: true,
+        },
+      ],
+    },
+  );
+  artifacts.autonomous_green_supplement = {
+    path: path.relative(root, bridgedSupplement.path),
+    sha256: bridgedSupplement.sha256,
+  };
   const manifest = createAutonomousOfficialJitPreparationManifest(
     preparationInput({
       artifacts,
@@ -1321,6 +1513,11 @@ test("JIT materialisation creates a fresh exact admission packet from static T-9
   assert.equal(
     result.admission_packet.authority.runway_lock_sha256,
     fixture.runwayLock.lock_sha256,
+  );
+  assert.equal(
+    result.admission_packet.authority.lineage
+      .autonomous_green_supplement_sha256,
+    fixture.preparation.artifacts.autonomous_green_supplement.sha256,
   );
   assert.deepEqual(
     result.admission_packet.publicationEvidence.synthetic_media_disclosure,

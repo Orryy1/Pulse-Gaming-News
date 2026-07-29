@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -26,6 +27,18 @@ const {
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
+
+const FIXTURE_ROOT = path.resolve(
+  "test",
+  "fixtures",
+  "governed-autonomous-production-request-builder",
+);
+const INVENTORY_ROOT = path.join(FIXTURE_ROOT, "inventory");
+const CANDIDATE_SOURCE_ROOT = path.join(
+  FIXTURE_ROOT,
+  "candidate-source",
+);
+const WORKSPACE_ROOT = path.join(FIXTURE_ROOT, "trusted-workspace");
 
 function reservationSet() {
   const body = {
@@ -79,12 +92,12 @@ function lockedIntake(storyId = "story-primary") {
           inventory_file_sha256: inventoryFileSha256,
           final_script_sha256: sha256(script),
         }),
-      inventory_path: "C:\\pulse\\inventory\\locked.json",
+      inventory_path: path.join(INVENTORY_ROOT, "locked.json"),
       inventory_file_sha256: inventoryFileSha256,
-      inventory_root: "C:\\pulse\\inventory",
+      inventory_root: INVENTORY_ROOT,
       allowed_roots: [
-        "C:\\pulse\\inventory",
-        "C:\\pulse\\candidate-source",
+        INVENTORY_ROOT,
+        CANDIDATE_SOURCE_ROOT,
       ],
       canonical_identity_url: canonicalIdentityUrl,
       final_script: script,
@@ -135,8 +148,8 @@ function runtimePolicy() {
     schema_version: RUNTIME_POLICY_SCHEMA_VERSION,
     mode: MODE,
     generated_at: "2026-07-30T07:25:00.000Z",
-    workspace_root: "C:\\pulse\\trusted-workspace",
-    candidate_source_root: "C:\\pulse\\candidate-source",
+    workspace_root: WORKSPACE_ROOT,
+    candidate_source_root: CANDIDATE_SOURCE_ROOT,
     narration: {
       provider: "elevenlabs",
       voice_id: "pulse-liam-approved",
@@ -218,8 +231,8 @@ test("builds the exact coordinator request from one immutable role reservation",
     role: "PRIMARY",
     candidate_revision_sha256: sha256("candidate-revision"),
     request_fingerprint: sha256("candidate-request"),
-    workspace_root: "C:\\pulse\\trusted-workspace",
-    candidate_source_root: "C:\\pulse\\candidate-source",
+    workspace_root: WORKSPACE_ROOT,
+    candidate_source_root: CANDIDATE_SOURCE_ROOT,
     candidate_workspace_relative_root:
       "output/canary/story-primary",
     locked_intake: lockedIntake().locked_intake,

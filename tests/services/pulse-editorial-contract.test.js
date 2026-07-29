@@ -546,6 +546,7 @@ test("generation prompt carries matrix identity, runtime and selective dynamic C
   assert.match(selectedPrompt, /State the consequence immediately/);
   assert.match(selectedPrompt, /25-32 seconds/);
   assert.match(selectedPrompt, /37-47 cleaned spoken words/);
+  assert.match(selectedPrompt, /Preferred drafting target: 39-43/);
   assert.match(selectedPrompt, /story-specific CTA/);
   assert.doesNotMatch(selectedPrompt, /Follow Pulse Gaming News/);
   assert.doesNotMatch(selectedPrompt, /let me know in the comments/i);

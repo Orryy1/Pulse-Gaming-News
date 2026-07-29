@@ -337,6 +337,7 @@ test("conflicting task query failures are blockers rather than false absence", (
   const profile = loadLiveGuardedRuntimeProfile();
   const result = inspectLiveTaskConflicts({
     profile,
+    platform: "win32",
     execFileSyncImpl() {
       const error = new Error("Access is denied");
       error.code = 5;

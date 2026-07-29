@@ -8,6 +8,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  REQUEST_SCHEMA_VERSION,
   stageAutonomousOfficialCandidate,
 } = require("../../lib/services/autonomous-official-candidate-staging");
 const {
@@ -35,6 +36,7 @@ const ARTIFACT_FIELDS = [
   "renderer_manifest",
   "deterministic_qa",
   "multimodal_visual_qa",
+  "autonomous_visual_gate_decision",
   "final_mp4",
   "publication_metadata",
   "autonomous_green_supplement",
@@ -371,6 +373,30 @@ async function fixture() {
       platform: "youtube_shorts",
     }),
   );
+  const autonomousVisualGateDecision = await writeFile(
+    candidateSource,
+    "proof/autonomous-visual-gate-decision.json",
+    jsonBytes({
+      schema_version:
+        "pulse-governed-autonomous-visual-gate-decision-v1",
+      mode: "LOCAL_PROOF",
+      story_id: STORY_ID,
+      channel_id: "pulse-gaming",
+      lane_id: "breaking_short",
+      platform: "youtube",
+      verdict: "PASS",
+      decision_authority: "SYSTEM_POLICY",
+      authority_scope: "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+      bindings: {
+        final_mp4: {
+          sha256: finalMp4.sha256,
+        },
+        visual_qa: {
+          raw_sha256: visualQa.sha256,
+        },
+      },
+    }),
+  );
   const autonomousGreenSupplement = await writeFile(
     candidateSource,
     "evidence/autonomous-green-supplement.json",
@@ -395,6 +421,7 @@ async function fixture() {
     renderer_manifest: renderer,
     deterministic_qa: deterministicQa,
     multimodal_visual_qa: visualQa,
+    autonomous_visual_gate_decision: autonomousVisualGateDecision,
     final_mp4: finalMp4,
     publication_metadata: metadata,
     autonomous_green_supplement: autonomousGreenSupplement,
@@ -412,7 +439,7 @@ async function fixture() {
     artifacts,
     visualAssets,
     request: {
-      schema_version: "pulse-autonomous-official-candidate-staging-request-v2",
+      schema_version: REQUEST_SCHEMA_VERSION,
       mode: "LOCAL_PROOF",
       story_id: STORY_ID,
       channel_id: "pulse-gaming",

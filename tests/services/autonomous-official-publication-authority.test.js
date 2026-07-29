@@ -147,6 +147,7 @@ function fixtureValues() {
     deterministic_qa_sha256: "d".repeat(64),
     multimodal_visual_qa_sha256: "e".repeat(64),
     autonomous_green_supplement_sha256: "ab".repeat(32),
+    autonomous_visual_gate_decision_sha256: "ac".repeat(32),
     final_mp4_sha256: "f".repeat(64),
     publication_metadata_sha256: "0".repeat(64),
     kill_switch_proof_sha256: "1a".repeat(32),
@@ -196,10 +197,10 @@ function fixtureValues() {
   return { lineage, gates, publicationEvidence };
 }
 
-function autonomousReport(lineage) {
+function autonomousReport(lineage, inputFiles = {}) {
   const reportPayload = {
-    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v2",
-    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v2",
+    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v3",
+    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v3",
     mode: "LOCAL_PROOF",
     generated_at: "2026-07-29T09:59:30.000Z",
     valid_until: "2026-07-29T10:01:30.000Z",
@@ -273,7 +274,7 @@ function autonomousReport(lineage) {
         size_bytes: 5000,
       },
     },
-    input_files: {},
+    input_files: inputFiles,
     owned_visual_files: [],
     operational_publish_authority: false,
     dispatch_authorised: false,
@@ -298,7 +299,100 @@ async function fixture(t) {
   );
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const { lineage, gates, publicationEvidence } = fixtureValues();
-  const report = autonomousReport(lineage);
+  const finalMp4Path = path.join(directory, "final.mp4");
+  const visualQaPath = path.join(directory, "visual-qa.json");
+  const visualGateDecisionPath = path.join(
+    directory,
+    "autonomous-visual-gate-decision.json",
+  );
+  const visualGateDecisionBody = {
+    schema_version:
+      "pulse-governed-autonomous-visual-gate-decision-v1",
+    generated_at: "2026-07-29T09:59:20.000Z",
+    mode: "LOCAL_PROOF",
+    story_id: STORY_ID,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    verdict: "PASS",
+    decision_authority: "SYSTEM_POLICY",
+    authority_scope: "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+    visual_review_policy: {
+      policy_id: "pulse-visual-review-policy",
+      policy_version: "2",
+      gate: "AUTONOMOUS_OFFICIAL_UNANIMOUS",
+      required_report_schema:
+        "pulse-local-multimodal-visual-review-v1",
+      required_aggregation: "UNANIMOUS_PASS",
+      minimum_distinct_vision_models: 2,
+    },
+    bindings: {
+      final_mp4: {
+        path: finalMp4Path,
+        sha256: lineage.final_mp4_sha256,
+      },
+      visual_qa: {
+        path: visualQaPath,
+        raw_sha256: lineage.multimodal_visual_qa_sha256,
+        canonical_sha256: "3d".repeat(32),
+      },
+    },
+    model_evidence: {
+      strategy: "UNANIMOUS_PASS",
+      model_ids: ["gemma3:12b", "qwen2.5vl:7b"],
+      distinct_model_count: 2,
+      review_count: 2,
+      pass_count: 2,
+    },
+    controls: {
+      human_approval: false,
+      models_treated_as_humans: false,
+      publish_authority: false,
+      scheduler_authority: false,
+      database_authority: false,
+      oauth_or_token_authority: false,
+      platform_contacted: false,
+      network_used: false,
+    },
+  };
+  const visualGateDecision = {
+    ...visualGateDecisionBody,
+    decision_sha256: canonicalSha256(visualGateDecisionBody),
+  };
+  const visualGateDecisionBytes = Buffer.from(
+    `${JSON.stringify(visualGateDecision, null, 2)}\n`,
+    "utf8",
+  );
+  await fs.writeFile(
+    visualGateDecisionPath,
+    visualGateDecisionBytes,
+  );
+  lineage.autonomous_visual_gate_decision_sha256 =
+    sha256Bytes(visualGateDecisionBytes);
+  const observation = (resolvedPath, observedSha256, sizeBytes) => ({
+    declared_path: resolvedPath,
+    resolved_path: resolvedPath,
+    real_path: resolvedPath,
+    observed_sha256: observedSha256,
+    size_bytes: sizeBytes,
+  });
+  const report = autonomousReport(lineage, {
+    final_mp4: observation(
+      finalMp4Path,
+      lineage.final_mp4_sha256,
+      1024,
+    ),
+    multimodal_visual_qa: observation(
+      visualQaPath,
+      lineage.multimodal_visual_qa_sha256,
+      2048,
+    ),
+    autonomous_visual_gate_decision: observation(
+      visualGateDecisionPath,
+      lineage.autonomous_visual_gate_decision_sha256,
+      visualGateDecisionBytes.length,
+    ),
+  });
   const reportPath = path.join(directory, "autonomous-report.json");
   const reportBytes = Buffer.from(
     `${JSON.stringify(report, null, 2)}\n`,
@@ -308,6 +402,30 @@ async function fixture(t) {
   return {
     report,
     reportPath,
+    visualGateDecision,
+    visualGateSummary: {
+      decision_file_sha256:
+        lineage.autonomous_visual_gate_decision_sha256,
+      decision_self_sha256: visualGateDecision.decision_sha256,
+      decision_authority: "SYSTEM_POLICY",
+      authority_scope: "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+      policy_id: "pulse-visual-review-policy",
+      policy_version: "2",
+      gate: "AUTONOMOUS_OFFICIAL_UNANIMOUS",
+      required_report_schema:
+        "pulse-local-multimodal-visual-review-v1",
+      required_aggregation: "UNANIMOUS_PASS",
+      minimum_distinct_vision_models: 2,
+      distinct_model_count: 2,
+      human_approval: false,
+      models_treated_as_humans: false,
+      publish_authority: false,
+      scheduler_authority: false,
+      database_authority: false,
+      oauth_or_token_authority: false,
+      platform_contacted: false,
+      network_used: false,
+    },
     request: {
       source_report: {
         path: reportPath,
@@ -348,7 +466,7 @@ async function replaceReport(request, report, { rehash = true } = {}) {
 }
 
 test("creates a closed immutable, single-use admission authority without dispatch or publish permission", async (t) => {
-  const { request, report } = await fixture(t);
+  const { request, report, visualGateSummary } = await fixture(t);
   const authority = await createAutonomousOfficialPublicationAuthority(
     request,
     { clock: () => new Date(NOW) },
@@ -360,6 +478,7 @@ test("creates a closed immutable, single-use admission authority without dispatc
     "authority_scope",
     "authority_sha256",
     "authority_type",
+    "autonomous_visual_gate",
     "channel_id",
     "decision",
     "dispatch_authorised",
@@ -384,6 +503,10 @@ test("creates a closed immutable, single-use admission authority without dispatc
     "verifier_id",
   ]);
   assert.equal(authority.decision, "APPROVED");
+  assert.equal(
+    authority.verifier_id,
+    "pulse-autonomous-official-publication-authority-v3",
+  );
   assert.equal(authority.authority_type, "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE");
   assert.equal(authority.authority_scope, "PUBLICATION_ADMISSION_ONLY");
   assert.equal(authority.human_approval, false);
@@ -395,6 +518,7 @@ test("creates a closed immutable, single-use admission authority without dispatc
   assert.equal(authority.issued_at, NOW);
   assert.equal(authority.valid_until, "2026-07-29T10:00:40.000Z");
   assert.equal(authority.source_report.report_sha256, report.report_sha256);
+  assert.deepEqual(authority.autonomous_visual_gate, visualGateSummary);
   assert.deepEqual(authority.required_release_boundary, {
     boundary: "T_MINUS_15",
     official_source_revalidation_required: true,
@@ -405,6 +529,10 @@ test("creates a closed immutable, single-use admission authority without dispatc
     disarm_on_failure: true,
   });
   assert.equal(authority.lineage.media_sha256, report.lineage.final_mp4_sha256);
+  assert.equal(
+    authority.lineage.autonomous_visual_gate_decision_sha256,
+    report.lineage.autonomous_visual_gate_decision_sha256,
+  );
   assert.equal(
     authority.lineage.rights_ledger_sha256,
     request.publication_evidence.rights_ledger_sha256,
@@ -501,6 +629,28 @@ test("rejects unknown request, nested binding and report fields instead of silen
       code: "autonomous_publication_authority_report_fields_invalid",
     },
   );
+
+  const missingVisualDecision = await fixture(t);
+  const missingVisualDecisionReport = structuredClone(
+    missingVisualDecision.report,
+  );
+  delete missingVisualDecisionReport.lineage
+    .autonomous_visual_gate_decision_sha256;
+  await replaceReport(
+    missingVisualDecision.request,
+    missingVisualDecisionReport,
+  );
+  await assert.rejects(
+    createAutonomousOfficialPublicationAuthority(
+      missingVisualDecision.request,
+      {
+        clock: () => new Date(NOW),
+      },
+    ),
+    {
+      code: "autonomous_publication_authority_report_lineage_fields_invalid",
+    },
+  );
 });
 
 test("binds both the exact raw report bytes and the report's independent canonical self-hash", async (t) => {
@@ -525,6 +675,54 @@ test("binds both the exact raw report bytes and the report's independent canonic
     }),
     {
       code: "autonomous_publication_authority_report_self_hash_mismatch",
+    },
+  );
+});
+
+test("independently rehashes and rejects an authority-bearing autonomous visual decision", async (t) => {
+  const drift = await fixture(t);
+  const driftPath =
+    drift.report.input_files.autonomous_visual_gate_decision.resolved_path;
+  await fs.appendFile(driftPath, "\n");
+  await assert.rejects(
+    createAutonomousOfficialPublicationAuthority(drift.request, {
+      clock: () => new Date(NOW),
+    }),
+    {
+      code:
+        "autonomous_publication_authority_visual_gate_file_hash_mismatch",
+    },
+  );
+
+  const elevated = await fixture(t);
+  const elevatedDecision = structuredClone(elevated.visualGateDecision);
+  elevatedDecision.controls.publish_authority = true;
+  delete elevatedDecision.decision_sha256;
+  elevatedDecision.decision_sha256 = canonicalSha256(elevatedDecision);
+  const elevatedBytes = Buffer.from(
+    `${JSON.stringify(elevatedDecision, null, 2)}\n`,
+    "utf8",
+  );
+  const elevatedPath =
+    elevated.report.input_files.autonomous_visual_gate_decision
+      .resolved_path;
+  await fs.writeFile(elevatedPath, elevatedBytes);
+  const elevatedReport = structuredClone(elevated.report);
+  const elevatedFileSha256 = sha256Bytes(elevatedBytes);
+  elevatedReport.lineage.autonomous_visual_gate_decision_sha256 =
+    elevatedFileSha256;
+  elevatedReport.input_files.autonomous_visual_gate_decision
+    .observed_sha256 = elevatedFileSha256;
+  elevatedReport.input_files.autonomous_visual_gate_decision.size_bytes =
+    elevatedBytes.length;
+  await replaceReport(elevated.request, elevatedReport);
+
+  await assert.rejects(
+    createAutonomousOfficialPublicationAuthority(elevated.request, {
+      clock: () => new Date(NOW),
+    }),
+    {
+      code: "autonomous_publication_authority_visual_gate_invalid",
     },
   );
 });

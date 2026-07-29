@@ -2173,6 +2173,22 @@ test("executeGovernedFinalComposite writes a hash-bound studio-v21 LOCAL_PROOF b
       fs.readFileSync(result.composite_manifest_path, "utf8"),
     );
     assert.equal(manifest.mode, "LOCAL_PROOF");
+    assert.equal(manifest.human_visual_review_required, true);
+    assert.deepEqual(manifest.visual_review_requirement, {
+      policy_id: "pulse-visual-review-policy",
+      policy_version: "2",
+      default_gate: "HUMAN_FINAL_RENDER",
+      human_review_required_by_default: true,
+      autonomous_exception_gate: "AUTONOMOUS_OFFICIAL_UNANIMOUS",
+      autonomous_exception_authority_type:
+        "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+      required_report_schema:
+        "pulse-local-multimodal-visual-review-v1",
+      required_decision_schema:
+        "pulse-governed-autonomous-visual-gate-decision-v1",
+      minimum_distinct_vision_models: 2,
+      models_treated_as_humans: false,
+    });
     assert.equal(manifest.hyperframes.material_stage, true);
     assert.equal(manifest.ffmpeg.final_composite, true);
     assert.equal(

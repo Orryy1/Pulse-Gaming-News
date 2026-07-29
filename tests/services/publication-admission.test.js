@@ -378,6 +378,7 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
       publicationEvidence.renderer_manifest_sha256,
     deterministic_qa_sha256: publicationEvidence.qa_report_sha256,
     multimodal_visual_qa_sha256: "ab".repeat(32),
+    autonomous_visual_gate_decision_sha256: "b2".repeat(32),
     autonomous_green_supplement_sha256: "b0".repeat(32),
     final_mp4_sha256: fingerprint.media_sha256,
     publication_metadata_sha256:
@@ -385,9 +386,100 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
     kill_switch_proof_sha256: "ac".repeat(32),
     single_owner_proof_sha256: "ad".repeat(32),
   };
+  const visualQaPath = path.join(
+    os.tmpdir(),
+    `${story.id}-visual-qa.json`,
+  );
+  const visualGateDecisionPath = path.join(
+    os.tmpdir(),
+    `${story.id}-autonomous-visual-gate-decision.json`,
+  );
+  const visualGateDecisionBody = {
+    schema_version:
+      "pulse-governed-autonomous-visual-gate-decision-v1",
+    generated_at: "2026-07-27T08:54:20.000Z",
+    mode: "LOCAL_PROOF",
+    story_id: story.id,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    verdict: "PASS",
+    decision_authority: "SYSTEM_POLICY",
+    authority_scope: "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+    visual_review_policy: {
+      policy_id: "pulse-visual-review-policy",
+      policy_version: "2",
+      gate: "AUTONOMOUS_OFFICIAL_UNANIMOUS",
+      required_report_schema:
+        "pulse-local-multimodal-visual-review-v1",
+      required_aggregation: "UNANIMOUS_PASS",
+      minimum_distinct_vision_models: 2,
+    },
+    bindings: {
+      final_mp4: {
+        path: story.exported_path,
+        sha256: lineage.final_mp4_sha256,
+      },
+      visual_qa: {
+        path: visualQaPath,
+        raw_sha256: lineage.multimodal_visual_qa_sha256,
+        canonical_sha256: "b4".repeat(32),
+      },
+    },
+    model_evidence: {
+      strategy: "UNANIMOUS_PASS",
+      model_ids: ["gemma3:12b", "qwen2.5vl:7b"],
+      distinct_model_count: 2,
+      review_count: 2,
+      pass_count: 2,
+    },
+    controls: {
+      human_approval: false,
+      models_treated_as_humans: false,
+      publish_authority: false,
+      scheduler_authority: false,
+      database_authority: false,
+      oauth_or_token_authority: false,
+      platform_contacted: false,
+      network_used: false,
+    },
+  };
+  const visualGateDecision = {
+    ...visualGateDecisionBody,
+    decision_sha256: canonicalSha256(visualGateDecisionBody),
+  };
+  const visualGateDecisionBytes = Buffer.from(
+    `${JSON.stringify(visualGateDecision, null, 2)}\n`,
+    "utf8",
+  );
+  lineage.autonomous_visual_gate_decision_sha256 =
+    sha256(visualGateDecisionBytes);
+  const visualGateSummary = {
+    decision_file_sha256:
+      lineage.autonomous_visual_gate_decision_sha256,
+    decision_self_sha256: visualGateDecision.decision_sha256,
+    decision_authority: "SYSTEM_POLICY",
+    authority_scope: "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+    policy_id: "pulse-visual-review-policy",
+    policy_version: "2",
+    gate: "AUTONOMOUS_OFFICIAL_UNANIMOUS",
+    required_report_schema:
+      "pulse-local-multimodal-visual-review-v1",
+    required_aggregation: "UNANIMOUS_PASS",
+    minimum_distinct_vision_models: 2,
+    distinct_model_count: 2,
+    human_approval: false,
+    models_treated_as_humans: false,
+    publish_authority: false,
+    scheduler_authority: false,
+    database_authority: false,
+    oauth_or_token_authority: false,
+    platform_contacted: false,
+    network_used: false,
+  };
   const reportPayload = {
-    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v2",
-    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v2",
+    schema_version: "pulse-autonomous-official-source-evidence-apply-report-v3",
+    materialiser_id: "pulse-autonomous-official-source-evidence-apply-v3",
     mode: "LOCAL_PROOF",
     generated_at: "2026-07-27T08:54:30.000Z",
     valid_until: "2026-07-27T08:56:30.000Z",
@@ -461,7 +553,30 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
         size_bytes: 5000,
       },
     },
-    input_files: {},
+    input_files: {
+      final_mp4: {
+        declared_path: story.exported_path,
+        resolved_path: story.exported_path,
+        real_path: story.exported_path,
+        observed_sha256: lineage.final_mp4_sha256,
+        size_bytes: 1024,
+      },
+      multimodal_visual_qa: {
+        declared_path: visualQaPath,
+        resolved_path: visualQaPath,
+        real_path: visualQaPath,
+        observed_sha256: lineage.multimodal_visual_qa_sha256,
+        size_bytes: 2048,
+      },
+      autonomous_visual_gate_decision: {
+        declared_path: visualGateDecisionPath,
+        resolved_path: visualGateDecisionPath,
+        real_path: visualGateDecisionPath,
+        observed_sha256:
+          lineage.autonomous_visual_gate_decision_sha256,
+        size_bytes: visualGateDecisionBytes.length,
+      },
+    },
     owned_visual_files: [],
     operational_publish_authority: false,
     dispatch_authorised: false,
@@ -516,11 +631,18 @@ async function autonomousAdmissionInput(repos, story, overrides = {}) {
     {
       clock: () => issuedAt,
       fileSystem: {
-        async readFile() {
-          return reportBytes;
+        async readFile(filePath) {
+          return path.resolve(filePath) ===
+            path.resolve(visualGateDecisionPath)
+            ? visualGateDecisionBytes
+            : reportBytes;
         },
       },
     },
+  );
+  assert.deepEqual(
+    authority.autonomous_visual_gate,
+    visualGateSummary,
   );
   return {
     repos,
@@ -630,6 +752,14 @@ test("autonomous official admission atomically records its exact authority, sche
     input.authority.lineage.autonomous_green_supplement_sha256,
   );
   assert.equal(
+    authorityEvidence.autonomous_visual_gate_decision_sha256,
+    input.authority.lineage.autonomous_visual_gate_decision_sha256,
+  );
+  assert.deepEqual(
+    authorityEvidence.autonomous_visual_gate,
+    input.authority.autonomous_visual_gate,
+  );
+  assert.equal(
     Object.keys(authorityEvidence).some((field) =>
       /actor|operator|human/i.test(field),
     ),
@@ -672,6 +802,28 @@ test("autonomous official admission atomically records its exact authority, sche
     lifecycle
       .filter((row) => row.to_state !== "AUTONOMOUSLY_APPROVED")
       .every((row) => row.publication_authority_audit_id === null),
+  );
+  const scheduledEvidence = JSON.parse(lifecycle[8].evidence_json);
+  assert.equal(
+    scheduledEvidence.autonomous_visual_gate_decision_sha256,
+    input.authority.lineage.autonomous_visual_gate_decision_sha256,
+  );
+  assert.equal(scheduledEvidence.media_sha256, admitted.media_sha256);
+  assert.equal(
+    scheduledEvidence.qa_report_sha256,
+    input.publicationEvidence.qa_report_sha256,
+  );
+  assert.deepEqual(
+    scheduledEvidence.autonomous_visual_gate,
+    input.authority.autonomous_visual_gate,
+  );
+  assert.equal(scheduledEvidence.story_id, story.id);
+  assert.equal(scheduledEvidence.channel_id, input.channelId);
+  assert.equal(scheduledEvidence.lane_id, input.laneId);
+  assert.equal(scheduledEvidence.platform, input.platform);
+  assert.deepEqual(
+    scheduledEvidence.required_release_boundary,
+    input.authority.required_release_boundary,
   );
 
   assert.deepEqual(
@@ -730,6 +882,55 @@ test("autonomous official admission requires the GREEN supplement lineage digest
   );
 });
 
+test("autonomous official admission rejects missing or tampered autonomous visual gate decision lineage before any database write", async (t) => {
+  const { db, repos, story } = fixture(t);
+  const input = await autonomousAdmissionInput(repos, story);
+  const missing = structuredClone(input.authority);
+  delete missing.lineage.autonomous_visual_gate_decision_sha256;
+  const tampered = structuredClone(input.authority);
+  tampered.lineage.autonomous_visual_gate_decision_sha256 = "b3".repeat(32);
+
+  for (const [authority, expected] of [
+    [missing, /autonomous_publication_admission_lineage_fields_invalid/],
+    [tampered, /autonomous_publication_admission_authority_sha256_invalid/],
+  ]) {
+    await assert.rejects(
+      admitAutonomousOfficialPublication({
+        ...input,
+        authority,
+      }),
+      expected,
+    );
+  }
+
+  assert.deepEqual(
+    {
+      authority: db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM publication_authority_audit_log",
+        )
+        .get().count,
+      lifecycle: db
+        .prepare("SELECT COUNT(*) AS count FROM publication_lifecycle_events")
+        .get().count,
+      state: db
+        .prepare("SELECT COUNT(*) AS count FROM platform_publication_state")
+        .get().count,
+      jobs: db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count,
+      operator: db
+        .prepare("SELECT COUNT(*) AS count FROM operator_audit_log")
+        .get().count,
+    },
+    {
+      authority: 0,
+      lifecycle: 0,
+      state: 0,
+      jobs: 0,
+      operator: 0,
+    },
+  );
+});
+
 test("autonomous official admission establishes the legacy story projection without fabricating human approval", async (t) => {
   const { db, repos, story } = fixture(t, {
     approved: 0,
@@ -755,11 +956,26 @@ test("autonomous official admission establishes the legacy story projection with
     authority_id: input.authority.authority_id,
     authority_sha256: input.authority.authority_sha256,
     approved_at: input.authority.issued_at,
+    autonomous_visual_gate: input.authority.autonomous_visual_gate,
+    autonomous_visual_gate_decision_sha256:
+      input.authority.lineage.autonomous_visual_gate_decision_sha256,
+    media_sha256: admitted.media_sha256,
+    qa_report_sha256: input.publicationEvidence.qa_report_sha256,
   });
   assert.equal(
-    /actor|operator|human/i.test(
+    /actor|operator|reviewed_by/i.test(
       JSON.stringify(extra.autonomous_publication_approval),
     ),
+    false,
+  );
+  assert.equal(
+    extra.autonomous_publication_approval.autonomous_visual_gate
+      .human_approval,
+    false,
+  );
+  assert.equal(
+    extra.autonomous_publication_approval.autonomous_visual_gate
+      .models_treated_as_humans,
     false,
   );
   assert.equal(

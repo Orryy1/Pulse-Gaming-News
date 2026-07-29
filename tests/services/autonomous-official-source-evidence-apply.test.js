@@ -415,6 +415,22 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
       story_id: STORY_ID,
       channel_id: "pulse-gaming",
       script_sha256: scriptSha256,
+      human_visual_review_required: true,
+      visual_review_requirement: {
+        policy_id: "pulse-visual-review-policy",
+        policy_version: "2",
+        default_gate: "HUMAN_FINAL_RENDER",
+        human_review_required_by_default: true,
+        autonomous_exception_gate: "AUTONOMOUS_OFFICIAL_UNANIMOUS",
+        autonomous_exception_authority_type:
+          "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+        required_report_schema:
+          "pulse-local-multimodal-visual-review-v1",
+        required_decision_schema:
+          "pulse-governed-autonomous-visual-gate-decision-v1",
+        minimum_distinct_vision_models: 2,
+        models_treated_as_humans: false,
+      },
       ffmpeg: {
         background_music_used: false,
         sound_effects_used: false,
@@ -489,15 +505,25 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
       ],
       model_aggregation: {
         strategy: "UNANIMOUS_PASS",
-        requested_models: ["gemma3:12b"],
-        review_count: 1,
-        pass_count: 1,
+        requested_models: ["gemma3:12b", "qwen2.5vl:7b"],
+        review_count: 2,
+        pass_count: 2,
         all_reviews_must_pass: true,
       },
       model_reviews: [
         {
           provider: "ollama",
           model: "gemma3:12b",
+          verdict: "PASS",
+          blockers: [],
+          capability_evidence: {
+            completion: true,
+            vision: true,
+          },
+        },
+        {
+          provider: "ollama",
+          model: "qwen2.5vl:7b",
           verdict: "PASS",
           blockers: [],
           capability_evidence: {
@@ -538,6 +564,65 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
         description_approved: true,
         attribution_approved: true,
       },
+    },
+  );
+  const visualQaValue = JSON.parse(
+    await fs.readFile(visualQa.path, "utf8"),
+  );
+  const visualGateDecisionBody = {
+    schema_version: "pulse-governed-autonomous-visual-gate-decision-v1",
+    generated_at: NOW,
+    mode: "LOCAL_PROOF",
+    story_id: STORY_ID,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    verdict: "PASS",
+    decision_authority: "SYSTEM_POLICY",
+    authority_scope: AUTHORITY,
+    visual_review_policy: {
+      policy_id: "pulse-visual-review-policy",
+      policy_version: "2",
+      gate: "AUTONOMOUS_OFFICIAL_UNANIMOUS",
+      required_report_schema: "pulse-local-multimodal-visual-review-v1",
+      required_aggregation: "UNANIMOUS_PASS",
+      minimum_distinct_vision_models: 2,
+    },
+    bindings: {
+      final_mp4: {
+        path: finalMp4.path,
+        sha256: finalMp4.sha256,
+      },
+      visual_qa: {
+        path: visualQa.path,
+        raw_sha256: visualQa.sha256,
+        canonical_sha256: canonicalSha256(visualQaValue),
+      },
+    },
+    model_evidence: {
+      strategy: "UNANIMOUS_PASS",
+      model_ids: ["gemma3:12b", "qwen2.5vl:7b"],
+      distinct_model_count: 2,
+      review_count: 2,
+      pass_count: 2,
+    },
+    controls: {
+      human_approval: false,
+      models_treated_as_humans: false,
+      publish_authority: false,
+      scheduler_authority: false,
+      database_authority: false,
+      oauth_or_token_authority: false,
+      platform_contacted: false,
+      network_used: false,
+    },
+  };
+  const visualGateDecision = await writeJson(
+    root,
+    "final/autonomous-visual-gate-decision.json",
+    {
+      ...visualGateDecisionBody,
+      decision_sha256: canonicalSha256(visualGateDecisionBody),
     },
   );
   const greenSupplementBase = {
@@ -641,6 +726,7 @@ async function createFixture(t, { hostileSourceDirective = "" } = {}) {
     renderer_manifest: renderer,
     deterministic_qa: deterministicQa,
     multimodal_visual_qa: visualQa,
+    autonomous_visual_gate_decision: visualGateDecision,
     final_mp4: finalMp4,
     publication_metadata: metadata,
     autonomous_green_supplement: autonomousGreenSupplement,
@@ -714,6 +800,10 @@ test("atomically materialises distinct autonomous official-source evidence witho
   assert.equal(
     result.report.lineage.autonomous_green_supplement_sha256,
     fixture.request.artifacts.autonomous_green_supplement.sha256,
+  );
+  assert.equal(
+    result.report.lineage.autonomous_visual_gate_decision_sha256,
+    fixture.request.artifacts.autonomous_visual_gate_decision.sha256,
   );
   assert.match(result.report.report_sha256, /^[a-f0-9]{64}$/);
   const { report_sha256: reportSha256, ...reportPayload } = result.report;
@@ -792,6 +882,31 @@ test("fails closed when the GREEN supplement is cross-bound to another final mas
     (error) =>
       error.codes?.includes(
         "autonomous_green_supplement_binding_required",
+      ),
+  );
+  assert.equal(fixture.calls.length, 0);
+});
+
+test("fails closed before source reads when the autonomous visual decision is cross-bound to another final master", async (t) => {
+  const fixture = await createFixture(t);
+  await rewriteJson(
+    fixture.request.artifacts.autonomous_visual_gate_decision,
+    (decision) => {
+      decision.bindings.final_mp4.sha256 = "a".repeat(64);
+      const { decision_sha256: _prior, ...body } = decision;
+      decision.decision_sha256 = canonicalSha256(body);
+    },
+  );
+
+  await assert.rejects(
+    materialiseAutonomousOfficialSourceEvidence(fixture.request, {
+      clock: () => new Date(NOW),
+      fetchCapture: fixture.fetchCapture,
+      workspaceRoot: fixture.root,
+    }),
+    (error) =>
+      error.codes?.includes(
+        "autonomous_visual_gate_decision_binding_required",
       ),
   );
   assert.equal(fixture.calls.length, 0);

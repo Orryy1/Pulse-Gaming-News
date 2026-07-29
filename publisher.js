@@ -1536,34 +1536,65 @@ async function persistQaFail(story, { failures, warnings, source }) {
  */
 async function runPreflightQa(story, context = {}) {
   const warnings = [];
+  let governedAutonomousEvidence = false;
+  let governedAutonomousAuthority = null;
   let governedReviewAuthority = null;
 
   try {
-    const {
-      hasGovernedReviewedContentQaEvidence,
-      resolveGovernedReviewedContentQaAuthority,
-    } = require("./lib/services/governed-reviewed-content-qa");
-    if (hasGovernedReviewedContentQaEvidence(story)) {
-      governedReviewAuthority =
-        await resolveGovernedReviewedContentQaAuthority({
+    const autonomousQa =
+      require("./lib/services/governed-autonomous-content-qa");
+    governedAutonomousEvidence =
+      autonomousQa.hasGovernedAutonomousContentQaEvidence(
+        story,
+        context.scheduledDispatch,
+      );
+    if (governedAutonomousEvidence) {
+      governedAutonomousAuthority =
+        await autonomousQa.resolveGovernedAutonomousContentQaAuthority({
           story,
           scheduledDispatch: context.scheduledDispatch,
           exactDispatchBinding: context.exactDispatchBinding,
+          publicationGovernance: context.publicationGovernance,
           resolveMediaPath: context.resolveMediaPath,
         });
+    } else {
+      const {
+        hasGovernedReviewedContentQaEvidence,
+        resolveGovernedReviewedContentQaAuthority,
+      } = require("./lib/services/governed-reviewed-content-qa");
+      if (hasGovernedReviewedContentQaEvidence(story)) {
+        governedReviewAuthority =
+          await resolveGovernedReviewedContentQaAuthority({
+            story,
+            scheduledDispatch: context.scheduledDispatch,
+            exactDispatchBinding: context.exactDispatchBinding,
+            resolveMediaPath: context.resolveMediaPath,
+          });
+      }
     }
   } catch (qaErr) {
     const failures = Array.isArray(qaErr?.codes)
       ? qaErr.codes
-      : [qaErr?.code || "governed_reviewed_content_qa_invalid"];
+      : [
+          qaErr?.code ||
+            (governedAutonomousAuthority
+              ? "governed_autonomous_content_qa_invalid"
+              : "governed_reviewed_content_qa_invalid"),
+        ];
+    const autonomous =
+      governedAutonomousEvidence ||
+      governedAutonomousAuthority !== null ||
+      String(failures[0] || "").startsWith("governed_autonomous_");
     console.log(
-      `[publisher] governed review QA FAIL (${story.id}): ${failures.join(", ")}`,
+      `[publisher] ${autonomous ? "governed autonomous" : "governed review"} QA FAIL (${story.id}): ${failures.join(", ")}`,
     );
     return {
       pass: false,
       failures,
       warnings: warnings.slice(),
-      source: "governed_review",
+      source: autonomous
+        ? "governed_autonomous_review"
+        : "governed_review",
     };
   }
 
@@ -1571,7 +1602,15 @@ async function runPreflightQa(story, context = {}) {
   try {
     const { runContentQa } = require("./lib/services/content-qa");
     let cqa = await runContentQa(story);
-    if (governedReviewAuthority) {
+    if (governedAutonomousAuthority) {
+      const {
+        reconcileGovernedAutonomousContentQa,
+      } = require("./lib/services/governed-autonomous-content-qa");
+      cqa = reconcileGovernedAutonomousContentQa(
+        cqa,
+        governedAutonomousAuthority,
+      );
+    } else if (governedReviewAuthority) {
       const {
         reconcileGovernedReviewedContentQa,
       } = require("./lib/services/governed-reviewed-content-qa");
@@ -1926,6 +1965,7 @@ async function _publishNextStoryInner(
     const qa = await runPreflightQa(candidate, {
       scheduledDispatch: scheduled,
       exactDispatchBinding,
+      publicationGovernance: pubRepos?.publicationGovernance,
       resolveMediaPath:
         runtime.resolveMediaPath ||
         require("./lib/media-paths").resolveExisting,

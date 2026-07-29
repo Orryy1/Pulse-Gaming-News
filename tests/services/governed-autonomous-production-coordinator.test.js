@@ -499,6 +499,26 @@ test("materialises the locked official story through real governed staging into 
     preparation.artifacts.autonomous_green_supplement.sha256,
     result.green_supplement.json_file_sha256,
   );
+  assert.equal(
+    preparation.artifacts.autonomous_visual_gate_decision.sha256,
+    result.visual_gate_decision.file_sha256,
+  );
+  assert.equal(
+    result.visual_gate_decision.decision.decision_authority,
+    "SYSTEM_POLICY",
+  );
+  assert.equal(
+    result.visual_gate_decision.decision.authority_scope,
+    "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+  );
+  assert.equal(
+    result.visual_gate_decision.decision.controls.human_approval,
+    false,
+  );
+  assert.equal(
+    result.visual_gate_decision.decision.controls.models_treated_as_humans,
+    false,
+  );
   assert.equal(input.generatedNarrations(), 1);
   assert.equal(result.safety.publish_authority, false);
   assert.equal(result.safety.scheduler_authority, false);

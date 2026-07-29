@@ -87,7 +87,7 @@ test("publisher.js: persistQaFail helper writes qa_failed + publish_status=faile
 test("publisher.js: runPreflightQa runs content-QA then video-QA and returns structured pass/fail", () => {
   const idx = SRC.indexOf("async function runPreflightQa(");
   assert.ok(idx > 0, "runPreflightQa helper must exist");
-  const block = SRC.slice(idx, idx + 5500);
+  const block = SRC.slice(idx, idx + 8500);
   assert.match(block, /runContentQa/, "runPreflightQa must call content-QA");
   assert.match(block, /runVideoQa/, "runPreflightQa must call video-QA");
   assert.match(
@@ -109,6 +109,26 @@ test("publisher.js: runPreflightQa runs content-QA then video-QA and returns str
     block,
     /source:\s*["']platform_video["']/,
     "platform-video-QA fail result must tag source: 'platform_video'",
+  );
+  assert.match(
+    block,
+    /hasGovernedAutonomousContentQaEvidence/,
+    "runPreflightQa must detect persisted autonomous visual-policy evidence",
+  );
+  assert.match(
+    block,
+    /resolveGovernedAutonomousContentQaAuthority/,
+    "runPreflightQa must independently resolve autonomous authority",
+  );
+  assert.match(
+    block,
+    /reconcileGovernedAutonomousContentQa/,
+    "runPreflightQa must reconcile only the exact autonomous content-QA exception",
+  );
+  assert.match(
+    block,
+    /publicationGovernance:\s*context\.publicationGovernance/,
+    "autonomous authority resolution must use the immutable governance repository",
   );
 });
 
@@ -160,6 +180,9 @@ test("publisher.js: multi-candidate loop uses MAX_PUBLISH_CANDIDATES_PER_WINDOW 
 const PUBLISHER_RESOLVED = require.resolve("../../publisher.js");
 const DB_RESOLVED = require.resolve("../../lib/db.js");
 const CQA_RESOLVED = require.resolve("../../lib/services/content-qa.js");
+const AUTONOMOUS_CQA_RESOLVED = require.resolve(
+  "../../lib/services/governed-autonomous-content-qa.js",
+);
 const VQA_RESOLVED = require.resolve("../../lib/services/video-qa.js");
 const PVQA_RESOLVED = require.resolve("../../lib/services/platform-video-qa.js");
 const RENDER_DECISION_RESOLVED = require.resolve("../../lib/render-decision.js");
@@ -582,6 +605,9 @@ function withTestPublisherLease(publisher) {
           }),
         };
       },
+      getPublicationAuthorityDecision() {
+        return null;
+      },
     },
   };
   const governedDispatch = async (input) => {
@@ -729,6 +755,7 @@ function withTestPublisherLease(publisher) {
 }
 
 function setupMocks({
+  autonomousCqa = null,
   cqaResult,
   useRealContentQa = false,
   vqaResult,
@@ -782,6 +809,11 @@ function setupMocks({
         return cqaResult;
       },
     });
+  }
+  if (autonomousCqa) {
+    stubModule(AUTONOMOUS_CQA_RESOLVED, autonomousCqa);
+  } else {
+    delete require.cache[AUTONOMOUS_CQA_RESOLVED];
   }
   stubModule(VQA_RESOLVED, {
     async runVideoQa() {
@@ -968,6 +1000,7 @@ beforeEach(() => {
 afterEach(() => {
   clearPublisherCache();
   delete require.cache[RENDER_DECISION_RESOLVED];
+  delete require.cache[AUTONOMOUS_CQA_RESOLVED];
 });
 
 test("publishNextStory: content-QA fail persists qa_failed=true + publish_status=failed + publish_error", async () => {
@@ -2591,6 +2624,149 @@ function createGovernedReviewedShortFixture(t) {
     }),
   };
 }
+
+test("exact autonomous candidate: only the hash-bound visual-policy content exception is reconciled", async (t) => {
+  async function runScenario(
+    child,
+    {
+      vqaResult,
+      pvqaResult,
+      expectedSource,
+      expectedFailure,
+    },
+  ) {
+    const story = {
+      id: `autonomous_content_qa_${expectedSource}`,
+      title: "Exact autonomous official-source candidate",
+      channel_id: "pulse-gaming",
+      lane_id: "breaking_short",
+      approved: true,
+      auto_approved: true,
+      exported_path: "/tmp/autonomous-governed.mp4",
+      autonomous_publication_approval: {
+        approval_type: "AUTONOMOUS_LOW_RISK_OFFICIAL_SOURCE",
+      },
+    };
+    const authority = Object.freeze({
+      type: "test-autonomous-content-qa-authority",
+    });
+    let resolveCalls = 0;
+    let reconcileCalls = 0;
+    const autonomousCqa = {
+      hasGovernedAutonomousContentQaEvidence(candidate, scheduled) {
+        assert.equal(candidate, story);
+        assert.equal(scheduled.event.id, 90);
+        return true;
+      },
+      async resolveGovernedAutonomousContentQaAuthority(input) {
+        resolveCalls += 1;
+        assert.equal(input.story, story);
+        assert.equal(input.scheduledDispatch.event.id, 90);
+        assert.equal(input.exactDispatchBinding.storyId, story.id);
+        assert.equal(
+          typeof input.publicationGovernance
+            .getLatestLifecycleEvent,
+          "function",
+        );
+        assert.equal(
+          typeof input.publicationGovernance
+            .getPublicationAuthorityDecision,
+          "function",
+        );
+        return authority;
+      },
+      reconcileGovernedAutonomousContentQa(result, suppliedAuthority) {
+        reconcileCalls += 1;
+        assert.equal(suppliedAuthority, authority);
+        assert.deepEqual(result.failures, [
+          "human_visual_review_required:studio-v21",
+        ]);
+        return {
+          result: "warn",
+          failures: [],
+          warnings: [
+            "governed_autonomous_visual_policy_resolved:human_visual_review_required:studio-v21",
+          ],
+        };
+      },
+    };
+    const { publishNextStory } = setupMocks({
+      autonomousCqa,
+      cqaResult: {
+        result: "fail",
+        failures: [
+          "human_visual_review_required:studio-v21",
+        ],
+        warnings: [],
+      },
+      vqaResult,
+      pvqaResult,
+      stories: [story],
+    });
+
+    const result = await publishNextStory();
+
+    assert.equal(result.no_safe_candidate, true);
+    assert.equal(result.qa_skipped[0].source, expectedSource);
+    assert.deepEqual(result.qa_skipped[0].failures, [
+      expectedFailure,
+    ]);
+    assert.ok(
+      dbState.stories
+        .find((row) => row.id === story.id)
+        .qa_warnings.includes(
+          "governed_autonomous_visual_policy_resolved:human_visual_review_required:studio-v21",
+        ),
+    );
+    assert.equal(resolveCalls, 1);
+    assert.equal(reconcileCalls, 1);
+    assert.deepEqual(uploaderCalls, []);
+    assert.deepEqual(governedDispatchCalls, []);
+  }
+
+  await t.test(
+    "video QA remains independently blocking",
+    async (child) => {
+      await runScenario(child, {
+        vqaResult: {
+          result: "fail",
+          failures: [
+            "black_segment_too_long (4.20s @ 0.00s)",
+          ],
+          warnings: [],
+        },
+        pvqaResult: {
+          result: "pass",
+          failures: [],
+          warnings: [],
+        },
+        expectedSource: "video",
+        expectedFailure:
+          "black_segment_too_long (4.20s @ 0.00s)",
+      });
+    },
+  );
+
+  await t.test(
+    "platform video QA remains independently blocking",
+    async (child) => {
+      await runScenario(child, {
+        vqaResult: {
+          result: "pass",
+          failures: [],
+          warnings: [],
+        },
+        pvqaResult: {
+          result: "fail",
+          failures: ["pixel_format_not_yuv420p"],
+          warnings: [],
+        },
+        expectedSource: "platform_video",
+        expectedFailure: "pixel_format_not_yuv420p",
+      });
+    },
+  );
+});
 
 test("exact guarded candidate: a hash-bound governed 25-second Short uses its reviewed editorial and renderer contracts", async (t) => {
   const { mediaSha256, scriptSha256, story } =

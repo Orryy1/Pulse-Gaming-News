@@ -357,6 +357,7 @@ async function persistedOutsideCadenceAdmission(t) {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 200,
       consequence_by_ms: 1100,
       proof_by_ms: 2600,

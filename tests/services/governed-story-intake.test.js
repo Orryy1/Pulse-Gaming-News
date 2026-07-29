@@ -276,6 +276,192 @@ test("validates the official source evidence, exact script and deterministic ide
   assert.deepEqual(validated.contract, values.manifest.contract);
 });
 
+test("validates immutable experiment dimensions against the resolved editorial cell", () => {
+  const values = fixture();
+  values.manifest.experiment_dimensions = {
+    eligible: true,
+    experiment_id: "pulse-v1-controlled-12",
+    matrix_version: "pulse-controlled-12-v1",
+    expected_cell_id: "what_changes_for_players:direct:short",
+    topic: "anti-cheat compensation",
+    game: "Delta Force",
+    subject_platform: "PC",
+  };
+  writeJson(values.manifestPath, values.manifest);
+
+  const validated = validateStoryIntakeManifest({
+    manifestPath: values.manifestPath,
+  });
+
+  assert.deepEqual(
+    validated.experimentDimensions,
+    values.manifest.experiment_dimensions,
+  );
+});
+
+test("accepts an explicit ineligible intake reason while legacy manifests remain compatible", () => {
+  const values = highCadenceFixture();
+  values.manifest.experiment_dimensions = {
+    eligible: false,
+    ineligibility_reason:
+      "Breaking high-cadence stories are outside the controlled calibration.",
+  };
+  writeJson(values.manifestPath, values.manifest);
+
+  const validated = validateStoryIntakeManifest({
+    manifestPath: values.manifestPath,
+  });
+
+  assert.deepEqual(
+    validated.experimentDimensions,
+    values.manifest.experiment_dimensions,
+  );
+
+  const legacyCompatible = fixture();
+  legacyCompatible.manifest.story._extra = {
+    experiment_id: "must-not-be-inferred",
+    topic: "mutable metadata",
+    game: "mutable metadata",
+    subject_platform: "mutable metadata",
+  };
+  writeJson(
+    legacyCompatible.manifestPath,
+    legacyCompatible.manifest,
+  );
+  assert.equal(
+    validateStoryIntakeManifest({
+      manifestPath: legacyCompatible.manifestPath,
+    }).experimentDimensions,
+    null,
+  );
+});
+
+test("rejects experiment identity or cell drift from the resolved contract", () => {
+  const cases = [
+    {
+      field: "experiment_id",
+      value: "different-experiment",
+      code: "experiment_dimensions_experiment_id_mismatch",
+    },
+    {
+      field: "matrix_version",
+      value: "different-matrix",
+      code: "experiment_dimensions_matrix_version_mismatch",
+    },
+    {
+      field: "expected_cell_id",
+      value: "platform_pulse:open_loop:standard",
+      code: "experiment_dimensions_cell_contract_mismatch",
+    },
+  ];
+  for (const scenario of cases) {
+    const values = fixture();
+    values.manifest.experiment_dimensions = {
+      eligible: true,
+      experiment_id: "pulse-v1-controlled-12",
+      matrix_version: "pulse-controlled-12-v1",
+      expected_cell_id: "what_changes_for_players:direct:short",
+      topic: "anti-cheat compensation",
+      game: "Delta Force",
+      subject_platform: "PC",
+      [scenario.field]: scenario.value,
+    };
+    writeJson(values.manifestPath, values.manifest);
+
+    assert.throws(
+      () =>
+        validateStoryIntakeManifest({
+          manifestPath: values.manifestPath,
+        }),
+      (error) => {
+        assert.ok(error.codes.includes(scenario.code));
+        return true;
+      },
+    );
+  }
+});
+
+test("rejects an eligible experiment block that mixes in an ineligibility reason", () => {
+  const values = fixture();
+  values.manifest.experiment_dimensions = {
+    eligible: true,
+    experiment_id: "pulse-v1-controlled-12",
+    matrix_version: "pulse-controlled-12-v1",
+    expected_cell_id: "what_changes_for_players:direct:short",
+    topic: "anti-cheat compensation",
+    game: "Delta Force",
+    subject_platform: "PC",
+    ineligibility_reason: "This contradictory field must not be accepted.",
+  };
+  writeJson(values.manifestPath, values.manifest);
+
+  assert.throws(
+    () =>
+      validateStoryIntakeManifest({
+        manifestPath: values.manifestPath,
+      }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "experiment_dimensions_eligible_fields_invalid",
+        ),
+      );
+      return true;
+    },
+  );
+});
+
+test("rejects non-string immutable experiment dimensions", () => {
+  const eligible = fixture();
+  eligible.manifest.experiment_dimensions = {
+    eligible: true,
+    experiment_id: "pulse-v1-controlled-12",
+    matrix_version: "pulse-controlled-12-v1",
+    expected_cell_id: "what_changes_for_players:direct:short",
+    topic: 7,
+    game: "Delta Force",
+    subject_platform: "PC",
+  };
+  writeJson(eligible.manifestPath, eligible.manifest);
+
+  assert.throws(
+    () =>
+      validateStoryIntakeManifest({
+        manifestPath: eligible.manifestPath,
+      }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "experiment_dimensions_topic_required",
+        ),
+      );
+      return true;
+    },
+  );
+
+  const ineligible = highCadenceFixture();
+  ineligible.manifest.experiment_dimensions = {
+    eligible: false,
+    ineligibility_reason: 7,
+  };
+  writeJson(ineligible.manifestPath, ineligible.manifest);
+
+  assert.throws(
+    () =>
+      validateStoryIntakeManifest({
+        manifestPath: ineligible.manifestPath,
+      }),
+    (error) => {
+      assert.ok(
+        error.codes.includes(
+          "experiment_dimensions_ineligibility_reason_required",
+        ),
+      );
+      return true;
+    },
+  );
+});
+
 test("validates the explicit operator-reviewed 36.48-second high-cadence contract against the exact 106-word YAZD spoken script", () => {
   const values = highCadenceFixture();
   const validated = validateStoryIntakeManifest({

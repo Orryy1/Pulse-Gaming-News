@@ -36,6 +36,8 @@ const STORY_ID = "official_d86953ca92ca";
 const SCRIPT =
   "Final Fantasy XIV just revealed a tank that fights with two giant shields.";
 const GENERATED_AT = "2026-07-27T15:00:00.000Z";
+const NARRATOR_VERSION =
+  "pulse-narrator-v1:f7963cc60699bfff84d23165146718f603a6bf0f08a2614245c4d9e1edf52bc4";
 const SOURCE_MEDIA_POLICY = "LICENSED_OFFICIAL_FFXIV";
 const FFXIV_LICENCE_URL =
   "https://support.eu.square-enix.com/rule.php?id=5383&la=2&tag=authc";
@@ -126,6 +128,7 @@ function fixture() {
   );
   const projectDir = path.join(root, "videos", "evercold");
   const evidenceDir = path.join(root, "evidence");
+  const hookSlamPath = path.join(evidenceDir, "hook-slam.png");
   const backbonePath = path.join(evidenceDir, "owned-motion-backbone.mp4");
   const hyperframesPath = path.join(evidenceDir, "evercold-hf.mp4");
   const projectPath = path.join(projectDir, "index.html");
@@ -153,6 +156,7 @@ function fixture() {
 
   fs.mkdirSync(projectDir, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
+  fs.writeFileSync(hookSlamPath, TINY_PNG);
   fs.writeFileSync(backbonePath, "owned-backbone");
   fs.writeFileSync(hyperframesPath, "hyperframes-intermediate");
   fs.writeFileSync(
@@ -282,6 +286,7 @@ function fixture() {
       character_count: SCRIPT.length,
     },
     narration: {
+      narrator_version: NARRATOR_VERSION,
       duration_seconds: 0.72,
       final_target_seconds: 28,
       visual_breath_allowance_seconds: 27.28,
@@ -363,7 +368,28 @@ function fixture() {
     schema_version: "pulse-owned-motion-manifest-v1",
     story_id: STORY_ID,
     generated_at: GENERATED_AT,
+    opening_treatment: {
+      role: "hook_slam",
+      first_frame_text: "A TANK WITH TWO SHIELDS",
+      source: "owned_motion_opening_treatment_v1",
+      asset: {
+        path: "hook-slam.png",
+        sha256: sha256(fs.readFileSync(hookSlamPath)),
+      },
+    },
     assets: [
+      {
+        path: "hook-slam.png",
+        sha256: sha256(fs.readFileSync(hookSlamPath)),
+        media_type: "image",
+        role: "hook_slam",
+        ownership: "owned",
+        rights_basis: "OWNED",
+        attribution_required: false,
+        width: 1080,
+        height: 1920,
+        duration_seconds: null,
+      },
       {
         path: "owned-motion-backbone.mp4",
         sha256: sha256(fs.readFileSync(backbonePath)),
@@ -420,6 +446,7 @@ function fixture() {
     root,
     projectDir,
     evidenceDir,
+    hookSlamPath,
     backbonePath,
     hyperframesPath,
     projectPath,
@@ -1044,6 +1071,7 @@ test("governed narration validation binds licensed audio, source alignment and e
       "pulse-governed-narration-manifest-v1",
     );
     assert.equal(result.provider, "elevenlabs");
+    assert.equal(result.narrator_version, NARRATOR_VERSION);
     assert.equal(result.licence.rights_basis, "LICENSED");
     assert.equal(
       result.timestamps.sha256,
@@ -1052,6 +1080,36 @@ test("governed narration validation binds licensed audio, source alignment and e
     assert.equal(
       result.alignment.sha256,
       sha256(fs.readFileSync(values.alignmentPath)),
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("governed narration validation rejects a narrator version that does not match its generator and voice recipe", () => {
+  const values = fixture();
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(values.narrationManifestPath, "utf8"),
+    );
+    manifest.narration.narrator_version =
+      "pulse-narrator-v1:".concat("0".repeat(64));
+    writeJson(values.narrationManifestPath, manifest);
+
+    assert.throws(
+      () =>
+        validateGovernedNarrationManifest({
+          manifestPath: values.narrationManifestPath,
+          expectedManifestSha256: sha256(
+            fs.readFileSync(values.narrationManifestPath),
+          ),
+          storyId: STORY_ID,
+          scriptSha256: sha256(SCRIPT),
+          audioPath: values.audioPath,
+          timestampsPath: values.timestampsPath,
+          audioDurationSeconds: 0.72,
+        }),
+      /narration_narrator_version_binding_invalid/,
     );
   } finally {
     fs.rmSync(values.root, { recursive: true, force: true });
@@ -1202,6 +1260,14 @@ test("combined manifest validation binds the exact HF video, backbone and projec
     });
     assert.equal(result.hyperframesAsset.role, "hyperframes_intermediate");
     assert.equal(result.backboneAsset.role, "owned_motion_backbone");
+    assert.equal(
+      result.openingTreatment.first_frame_text,
+      "A TANK WITH TWO SHIELDS",
+    );
+    assert.equal(
+      result.openingTreatment.asset.sha256,
+      sha256(fs.readFileSync(values.hookSlamPath)),
+    );
     assert.deepEqual(
       result.projectFiles.map((record) => path.basename(record.path)).sort(),
       ["hyperframes.json", "index.html"],
@@ -2019,6 +2085,19 @@ test("executeGovernedFinalComposite writes a hash-bound studio-v21 LOCAL_PROOF b
     assert.ok(fs.existsSync(result.qa_report_path));
     assert.ok(fs.existsSync(result.composite_manifest_path));
     assert.ok(fs.existsSync(result.markdown_path));
+    assert.equal(
+      result.controlled_experiment_observation_path,
+      undefined,
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(
+          path.dirname(result.composite_manifest_path),
+          "controlled-experiment-observation.json",
+        ),
+      ),
+      false,
+    );
     const captions = fs.readFileSync(result.captions_path, "utf8");
     const captionSafeZone = validateAssCaptionSafeZone({
       ass: captions,
@@ -2059,6 +2138,10 @@ test("executeGovernedFinalComposite writes a hash-bound studio-v21 LOCAL_PROOF b
     assert.equal(renderer.output.audio_codec, "aac");
     assert.equal(renderer.output.audio_sample_rate_hz, 48000);
     assert.equal(renderer.output.duration_seconds, 25);
+    assert.equal(
+      renderer.timing.first_frame_text,
+      "A TANK WITH TWO SHIELDS",
+    );
     assert.equal(renderer.inputs[0].role, "motion");
     assert.equal(renderer.inputs[0].sha256, sha256(fs.readFileSync(values.hyperframesPath)));
 
@@ -2100,7 +2183,382 @@ test("executeGovernedFinalComposite writes a hash-bound studio-v21 LOCAL_PROOF b
       manifest.inputs.hyperframes_intermediate.sha256,
       sha256(fs.readFileSync(values.hyperframesPath)),
     );
+    assert.equal(
+      manifest.inputs.controlled_experiment_observation,
+      undefined,
+    );
+    assert.equal(
+      manifest.controlled_experiment_observation,
+      undefined,
+    );
     assert.equal(manifest.safety.external_calls.length, 0);
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("executeGovernedFinalComposite materialises an eligible controlled-experiment observation from immutable final evidence", async () => {
+  const values = fixture();
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(values.storyIntakePath, "utf8"),
+    );
+    intake.contract.editorial_lane_id =
+      "what_changes_for_players";
+    intake.contract.hook_type = "direct";
+    intake.experiment_dimensions = {
+      eligible: true,
+      experiment_id: "pulse-v1-controlled-12",
+      matrix_version: "pulse-controlled-12-v1",
+      expected_cell_id:
+        "what_changes_for_players:direct:short",
+      topic: "new playable tank class",
+      game: "Final Fantasy XIV",
+      subject_platform: "multi-platform",
+    };
+    writeJson(values.storyIntakePath, intake);
+
+    const result = await executeGovernedFinalComposite(
+      {
+        storyIntakePath: values.storyIntakePath,
+        ownedMotionManifestPath: values.combinedManifestPath,
+        videoPath: values.hyperframesPath,
+        audioPath: values.audioPath,
+        timestampsPath: values.timestampsPath,
+        narrationManifestPath: values.narrationManifestPath,
+        expectedNarrationManifestSha256:
+          values.narrationManifestSha256,
+        outDir: values.outputDir,
+        generatedAt: GENERATED_AT,
+      },
+      {
+        probeMedia(filePath) {
+          if (filePath === values.audioPath) return audioProbe();
+          if (filePath === values.hyperframesPath) return videoProbe();
+          return videoProbe({ duration: 25, audio: true });
+        },
+        measureLoudness(filePath) {
+          return filePath === values.audioPath
+            ? sourceLoudness()
+            : finalLoudness();
+        },
+        measureTerminalSilence() {
+          return terminalSilence();
+        },
+        renderComposite(invocation) {
+          fs.writeFileSync(
+            invocation.outputPath,
+            "controlled-experiment-final",
+          );
+        },
+      },
+    );
+
+    assert.ok(
+      fs.existsSync(result.controlled_experiment_observation_path),
+    );
+    const observation = JSON.parse(
+      fs.readFileSync(
+        result.controlled_experiment_observation_path,
+        "utf8",
+      ),
+    );
+    const renderer = JSON.parse(
+      fs.readFileSync(result.renderer_manifest_path, "utf8"),
+    );
+    const qa = JSON.parse(
+      fs.readFileSync(result.qa_report_path, "utf8"),
+    );
+    assert.deepEqual(observation.identity, {
+      story_id: STORY_ID,
+      channel_id: "pulse-gaming",
+    });
+    assert.deepEqual(observation.experiment, {
+      eligible: true,
+      experiment_id: "pulse-v1-controlled-12",
+      matrix_version: "pulse-controlled-12-v1",
+      expected_cell_id:
+        "what_changes_for_players:direct:short",
+      ineligibility_reason: null,
+    });
+    assert.deepEqual(observation.creative_static, {
+      runtime_seconds: 25,
+      hook_type: "direct",
+      narrator_version: NARRATOR_VERSION,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
+      motion_ratio: 1,
+      topic: "new playable tank class",
+      game: "Final Fantasy XIV",
+      subject_platform: "multi-platform",
+      source_type: "official",
+      consequence_lane: "what_changes_for_players",
+      renderer_version: "studio-v21.5.0",
+      qa_result: "pass",
+    });
+    assert.deepEqual(observation.bindings, {
+      story_intake_sha256: sha256(
+        fs.readFileSync(values.storyIntakePath),
+      ),
+      narration_manifest_sha256: sha256(
+        fs.readFileSync(values.narrationManifestPath),
+      ),
+      renderer_manifest_file_sha256: sha256(
+        fs.readFileSync(result.renderer_manifest_path),
+      ),
+      renderer_manifest_canonical_sha256:
+        qa.renderer_manifest_sha256,
+      qa_report_sha256: sha256(
+        fs.readFileSync(result.qa_report_path),
+      ),
+      media_sha256: result.media_sha256,
+      script_sha256: sha256(SCRIPT),
+    });
+    assert.equal(
+      result.controlled_experiment_observation_sha256,
+      observation.observation_sha256,
+    );
+    assert.equal(
+      result.controlled_experiment_observation_file_sha256,
+      sha256(
+        fs.readFileSync(
+          result.controlled_experiment_observation_path,
+        ),
+      ),
+    );
+
+    const composite = JSON.parse(
+      fs.readFileSync(result.composite_manifest_path, "utf8"),
+    );
+    assert.deepEqual(
+      composite.controlled_experiment_observation,
+      {
+        path: "controlled-experiment-observation.json",
+        file_sha256:
+          result.controlled_experiment_observation_file_sha256,
+        observation_sha256:
+          observation.observation_sha256,
+        eligible: true,
+      },
+    );
+    assert.deepEqual(
+      composite.inputs.controlled_experiment_observation,
+      composite.controlled_experiment_observation,
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("executeGovernedFinalComposite records an explicit ineligible experiment without fabricating creative dimensions", async () => {
+  const values = fixture();
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(values.storyIntakePath, "utf8"),
+    );
+    intake.experiment_dimensions = {
+      eligible: false,
+      ineligibility_reason:
+        "Breaking high-cadence stories are outside the controlled calibration.",
+    };
+    intake.story._extra = {
+      topic: "must not be inferred",
+      game: "must not be inferred",
+      subject_platform: "must not be inferred",
+    };
+    writeJson(values.storyIntakePath, intake);
+
+    const result = await executeGovernedFinalComposite(
+      {
+        storyIntakePath: values.storyIntakePath,
+        ownedMotionManifestPath: values.combinedManifestPath,
+        videoPath: values.hyperframesPath,
+        audioPath: values.audioPath,
+        timestampsPath: values.timestampsPath,
+        narrationManifestPath: values.narrationManifestPath,
+        expectedNarrationManifestSha256:
+          values.narrationManifestSha256,
+        outDir: values.outputDir,
+        generatedAt: GENERATED_AT,
+      },
+      {
+        probeMedia(filePath) {
+          if (filePath === values.audioPath) return audioProbe();
+          if (filePath === values.hyperframesPath) return videoProbe();
+          return videoProbe({ duration: 25, audio: true });
+        },
+        measureLoudness(filePath) {
+          return filePath === values.audioPath
+            ? sourceLoudness()
+            : finalLoudness();
+        },
+        measureTerminalSilence() {
+          return terminalSilence();
+        },
+        renderComposite(invocation) {
+          fs.writeFileSync(
+            invocation.outputPath,
+            "ineligible-experiment-final",
+          );
+        },
+      },
+    );
+
+    const observation = JSON.parse(
+      fs.readFileSync(
+        result.controlled_experiment_observation_path,
+        "utf8",
+      ),
+    );
+    assert.deepEqual(observation.experiment, {
+      eligible: false,
+      experiment_id: null,
+      matrix_version: null,
+      expected_cell_id: null,
+      ineligibility_reason:
+        "Breaking high-cadence stories are outside the controlled calibration.",
+    });
+    assert.equal(observation.creative_static, null);
+    const composite = JSON.parse(
+      fs.readFileSync(result.composite_manifest_path, "utf8"),
+    );
+    assert.equal(
+      composite.controlled_experiment_observation.eligible,
+      false,
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("executeGovernedFinalComposite never interprets missing experiment eligibility as ineligible", async () => {
+  const values = fixture();
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(values.storyIntakePath, "utf8"),
+    );
+    intake.experiment_dimensions = {
+      ineligibility_reason:
+        "An eligibility decision was never recorded.",
+    };
+    writeJson(values.storyIntakePath, intake);
+
+    await assert.rejects(
+      executeGovernedFinalComposite(
+        {
+          storyIntakePath: values.storyIntakePath,
+          ownedMotionManifestPath: values.combinedManifestPath,
+          videoPath: values.hyperframesPath,
+          audioPath: values.audioPath,
+          timestampsPath: values.timestampsPath,
+          narrationManifestPath: values.narrationManifestPath,
+          expectedNarrationManifestSha256:
+            values.narrationManifestSha256,
+          outDir: values.outputDir,
+          generatedAt: GENERATED_AT,
+        },
+        {
+          probeMedia(filePath) {
+            if (filePath === values.audioPath) return audioProbe();
+            if (filePath === values.hyperframesPath) {
+              return videoProbe();
+            }
+            return videoProbe({ duration: 25, audio: true });
+          },
+          measureLoudness(filePath) {
+            return filePath === values.audioPath
+              ? sourceLoudness()
+              : finalLoudness();
+          },
+          measureTerminalSilence() {
+            return terminalSilence();
+          },
+          renderComposite(invocation) {
+            fs.writeFileSync(
+              invocation.outputPath,
+              "missing-eligibility-final",
+            );
+          },
+        },
+      ),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "controlled_experiment_observation_experiment_eligibility_required",
+          ),
+        );
+        return true;
+      },
+    );
+    assert.equal(
+      fs.existsSync(path.join(values.outputDir, STORY_ID)),
+      false,
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("executeGovernedFinalComposite rejects experiment identity on an explicitly ineligible intake", async () => {
+  const values = fixture();
+  try {
+    const intake = JSON.parse(
+      fs.readFileSync(values.storyIntakePath, "utf8"),
+    );
+    intake.experiment_dimensions = {
+      eligible: false,
+      ineligibility_reason:
+        "Breaking high-cadence stories are outside the controlled calibration.",
+      experiment_id: "must-not-be-silently-discarded",
+    };
+    writeJson(values.storyIntakePath, intake);
+
+    await assert.rejects(
+      executeGovernedFinalComposite(
+        {
+          storyIntakePath: values.storyIntakePath,
+          ownedMotionManifestPath: values.combinedManifestPath,
+          videoPath: values.hyperframesPath,
+          audioPath: values.audioPath,
+          timestampsPath: values.timestampsPath,
+          narrationManifestPath: values.narrationManifestPath,
+          expectedNarrationManifestSha256:
+            values.narrationManifestSha256,
+          outDir: values.outputDir,
+          generatedAt: GENERATED_AT,
+        },
+        {
+          probeMedia(filePath) {
+            if (filePath === values.audioPath) return audioProbe();
+            if (filePath === values.hyperframesPath) {
+              return videoProbe();
+            }
+            return videoProbe({ duration: 25, audio: true });
+          },
+          measureLoudness(filePath) {
+            return filePath === values.audioPath
+              ? sourceLoudness()
+              : finalLoudness();
+          },
+          measureTerminalSilence() {
+            return terminalSilence();
+          },
+          renderComposite(invocation) {
+            fs.writeFileSync(
+              invocation.outputPath,
+              "contradictory-ineligible-final",
+            );
+          },
+        },
+      ),
+      (error) => {
+        assert.ok(
+          error.codes.includes(
+            "experiment_dimensions_ineligible_fields_invalid",
+          ),
+        );
+        return true;
+      },
+    );
   } finally {
     fs.rmSync(values.root, { recursive: true, force: true });
   }

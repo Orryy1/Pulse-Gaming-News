@@ -165,6 +165,7 @@ async function fixture(t) {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 0,
       consequence_by_ms: 0,
       proof_by_ms: 0,

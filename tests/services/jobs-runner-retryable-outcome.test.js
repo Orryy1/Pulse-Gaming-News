@@ -7,6 +7,9 @@ const {
   JobsRunner,
   RetryableJobOutcomeError,
 } = require("../../lib/services/jobs-runner");
+const {
+  classifyYouTubeAnalyticsSnapshotCompleteness,
+} = require("../../lib/services/youtube-analytics-snapshot-jobs");
 
 function claimedJob(id, kind) {
   return {
@@ -104,4 +107,76 @@ test("JobsRunner still completes an ordinary policy HOLD that does not explicitl
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], "complete");
   assert.equal(calls[0][1], job.id);
+});
+
+test("JobsRunner recognises the Analytics reporting-lag classifier as a bounded retry", async () => {
+  const job = {
+    ...claimedJob(93, "youtube_analytics_snapshot"),
+    max_attempts: 4,
+  };
+  const { calls, runner } = runnerFixture({
+    jobs: [job],
+    handlers: {
+      async youtube_analytics_snapshot() {
+        return classifyYouTubeAnalyticsSnapshotCompleteness({
+          ingestionResult: {
+            status: "no_data",
+            sourceRequest: { summary: {} },
+            sourcePayload: { summary: { rows: [] } },
+            warnings: [],
+          },
+          job,
+          snapshotWindow: "24h",
+        });
+      },
+    },
+  });
+
+  await runner._tick();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "fail");
+  assert.equal(calls[0][4].code, "retryable_job_outcome");
+  assert.deepEqual(calls[0][4].blockers, [
+    "youtube_analytics_summary_reporting_lag",
+  ]);
+  assert.equal(calls[0][5].retryAfterSeconds, 3600);
+});
+
+test("JobsRunner records the exhausted Analytics result as terminal incomplete audit evidence", async () => {
+  const job = {
+    ...claimedJob(94, "youtube_analytics_snapshot"),
+    attempt_count: 4,
+    max_attempts: 4,
+  };
+  const { calls, runner } = runnerFixture({
+    jobs: [job],
+    handlers: {
+      async youtube_analytics_snapshot() {
+        return classifyYouTubeAnalyticsSnapshotCompleteness({
+          ingestionResult: {
+            status: "no_data",
+            sourceRequest: { summary: {} },
+            sourcePayload: { summary: { rows: [] } },
+            warnings: [],
+          },
+          job,
+          snapshotWindow: "24h",
+        });
+      },
+    },
+  });
+
+  await runner._tick();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "complete");
+  const auditLog = JSON.parse(calls[0][4].log);
+  assert.equal(auditLog.status, "incomplete");
+  assert.equal(auditLog.job_outcome, "TERMINAL");
+  assert.equal(
+    auditLog.completeness_audit.status,
+    "TERMINAL_INCOMPLETE",
+  );
+  assert.equal(auditLog.completeness_audit.terminal, true);
 });

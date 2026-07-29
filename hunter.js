@@ -144,6 +144,22 @@ const DEFAULT_BREAKING_KEYWORDS = [
   "free",
   "update",
 ];
+const PLAYER_IMPACT_BREAKING_KEYWORDS = new Set([
+  "game pass",
+  "playstation plus",
+  "ps plus",
+  "monthly games",
+  "backward compatibility",
+  "backwards compatibility",
+  "achievement support",
+  "achievements",
+  "trophy support",
+  "trophies",
+  "delisting",
+  "delisted",
+  "cross-play",
+  "crossplay",
+]);
 
 function similarity(a, b) {
   return titleSimilarity(a, b);
@@ -159,11 +175,28 @@ function scoreBreakingValue(
 ) {
   let breakingScore = 0;
   const lower = title.toLowerCase();
+  const sourceClass = String(governedSourceClass)
+    .trim()
+    .toUpperCase();
+  let keywordScore = 0;
+  let hasPlayerImpactKeyword = false;
 
   // Keyword matches
   for (const kw of breakingKeywords) {
-    if (lower.includes(kw)) breakingScore += 15;
+    const keyword = String(kw).trim().toLowerCase();
+    if (!keyword || !lower.includes(keyword)) continue;
+    keywordScore += 15;
+    if (PLAYER_IMPACT_BREAKING_KEYWORDS.has(keyword)) {
+      hasPlayerImpactKeyword = true;
+    }
   }
+  if (
+    sourceClass === "OFFICIAL_FIRST_PARTY" &&
+    hasPlayerImpactKeyword
+  ) {
+    keywordScore = Math.max(keywordScore, 30);
+  }
+  breakingScore += keywordScore;
 
   // Reddit engagement signals
   breakingScore += Math.min(score / 10, 100);
@@ -176,10 +209,7 @@ function scoreBreakingValue(
 
   // Discovery priority only. This cannot create verification or publish
   // authority; downstream evidence capture still has to confirm the body.
-  if (
-    String(governedSourceClass).trim().toUpperCase() ===
-    "OFFICIAL_FIRST_PARTY"
-  ) {
+  if (sourceClass === "OFFICIAL_FIRST_PARTY") {
     breakingScore += 45;
   }
 

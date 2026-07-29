@@ -16,6 +16,9 @@ const {
 const {
   createAutonomousEligibleCandidateFixture,
 } = require("../helpers/autonomous-window-eligibility-fixture");
+const {
+  buildControlledExperimentObservation,
+} = require("../../lib/services/controlled-experiment-observation");
 
 const HASH = Object.freeze({
   media: "1".repeat(64),
@@ -28,7 +31,61 @@ const HASH = Object.freeze({
   revision: "8".repeat(64),
 });
 
-function candidate(storyId, standbyAuthorised) {
+function controlledExperimentObservation(
+  storyId = "primary-ready",
+) {
+  const identity = {
+    story_id: storyId,
+    channel_id: "pulse-gaming",
+  };
+  const bindings = {
+    story_intake_sha256: "a1".repeat(32),
+    narration_manifest_sha256: "a2".repeat(32),
+    renderer_manifest_file_sha256: "a3".repeat(32),
+    renderer_manifest_canonical_sha256: "a4".repeat(32),
+    qa_report_sha256: HASH.qa,
+    media_sha256: HASH.media,
+    script_sha256: HASH.script,
+  };
+  return buildControlledExperimentObservation(
+    {
+      identity,
+      experiment: {
+        eligible: true,
+        experiment_id: "pulse-v1-controlled-12",
+        matrix_version: "pulse-controlled-12-v1",
+        expected_cell_id:
+          "what_changes_for_players:direct:short",
+        ineligibility_reason: null,
+      },
+      creative_static: {
+        runtime_seconds: 31.25,
+        hook_type: "direct",
+        narrator_version: "elevenlabs:voice:model:1",
+        first_frame_text: "GAME PASS JUST CHANGED",
+        motion_ratio: 0.625,
+        topic: "Game Pass catalogue update",
+        game: "Fable",
+        subject_platform: "Xbox",
+        source_type: "official",
+        consequence_lane: "what_changes_for_players",
+        renderer_version: "studio-v21.4.0",
+        qa_result: "pass",
+      },
+      bindings,
+    },
+    {
+      expectedIdentity: identity,
+      expectedBindings: bindings,
+    },
+  );
+}
+
+function candidate(
+  storyId,
+  standbyAuthorised,
+  laneId = "breaking_short",
+) {
   const admission = {
     human_review_status: "approved",
     actor_id: "operator-001",
@@ -39,7 +96,7 @@ function candidate(storyId, standbyAuthorised) {
   };
   return {
     story_id: storyId,
-    lane_id: "breaking_short",
+    lane_id: laneId,
     score: standbyAuthorised ? 90 : 110,
     stage: "HUMAN_APPROVED",
     human_review_status: "approved",
@@ -88,7 +145,7 @@ function autonomousRunwayAdmission(storyId, standby = false) {
   return autonomousRunwayCandidate(storyId, standby).admission;
 }
 
-function primaryAdmissionJob() {
+function primaryAdmissionJob(laneId = "breaking_short") {
   return {
     id: 701,
     kind: "admit_governed_publication",
@@ -96,7 +153,7 @@ function primaryAdmissionJob() {
     status: "pending",
     run_at: "2026-07-28 17:45:00",
     idempotency_key:
-      `admit:youtube:breaking_short:primary-ready:${HASH.revision}:` +
+      `admit:youtube:${laneId}:primary-ready:${HASH.revision}:` +
       "2026-07-28T19:00:00.000Z",
     payload: {
       story_id: "primary-ready",
@@ -108,7 +165,13 @@ function primaryAdmissionJob() {
   };
 }
 
-async function materialiseSloMonitorRunway(t) {
+async function materialiseSloMonitorRunway(
+  t,
+  {
+    laneId = "breaking_short",
+    publicationEvidence = null,
+  } = {},
+) {
   const runwayRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-runway-slo-contract-"),
   );
@@ -117,10 +180,10 @@ async function materialiseSloMonitorRunway(t) {
     now: "2026-07-28T17:30:00.000Z",
     publish_hour_utc: 19,
     candidates: [
-      candidate("primary-ready", false),
-      candidate("reserve-ready", true),
+      candidate("primary-ready", false, laneId),
+      candidate("reserve-ready", true, laneId),
     ],
-    admission_jobs: [primaryAdmissionJob()],
+    admission_jobs: [primaryAdmissionJob(laneId)],
   });
   assert.equal(t90.verdict, "GREEN", JSON.stringify(t90));
   const windowDir = path.join(
@@ -138,7 +201,7 @@ async function materialiseSloMonitorRunway(t) {
     t90,
   );
   const admissionJob = {
-    ...primaryAdmissionJob(),
+    ...primaryAdmissionJob(laneId),
     status: "done",
   };
   const scheduledEvidence = {
@@ -147,6 +210,9 @@ async function materialiseSloMonitorRunway(t) {
       "youtube:primary-ready:2026-07-28T19:00:00.000Z",
     request_fingerprint: "a".repeat(64),
     runway_lock_sha256: t90.lock.lock_sha256,
+    ...(publicationEvidence
+      ? { publication_evidence: publicationEvidence }
+      : {}),
   };
   const publicationState = {
     lifecycle_state: "PLATFORM_SCHEDULED",
@@ -2779,8 +2845,14 @@ test("T-60 verifies one exact private processed unscheduled object without disar
   assert.equal(checkpoint.reserve_promoted, false);
 });
 
-test("T-60 transient private processing retries, then confirms the same object and writes one GREEN checkpoint", async (t) => {
-  const runway = await materialiseSloMonitorRunway(t);
+test("T-60 transient private processing retries, then binds the immutable experiment assignment before GREEN", async (t) => {
+  const runway = await materialiseSloMonitorRunway(t, {
+    laneId: "evergreen_short",
+    publicationEvidence: {
+      controlled_experiment_observation:
+        controlledExperimentObservation(),
+    },
+  });
   runway.publicationState.lifecycle_state =
     "PLATFORM_OBJECT_CREATED";
   runway.publicationState.verification_status =
@@ -2799,6 +2871,7 @@ test("T-60 transient private processing retries, then confirms the same object a
   };
   let readCalls = 0;
   let finaliseCalls = 0;
+  let assignmentCalls = 0;
   let clockNow =
     "2026-07-28T18:00:00.000Z";
   const job = {
@@ -2907,6 +2980,58 @@ test("T-60 transient private processing retries, then confirms the same object a
         externalId: "youtube-primary-object",
       };
     },
+    resolveControlledExperimentRuntimeIdentity() {
+      return {
+        valid: true,
+        commit_sha: "c".repeat(40),
+        activation_receipt_sha256: "d".repeat(64),
+        blockers: [],
+      };
+    },
+    assignControlledExperimentAtT60(input) {
+      assignmentCalls += 1;
+      assert.equal(
+        input.observation.observation_sha256,
+        controlledExperimentObservation()
+          .observation_sha256,
+      );
+      assert.equal(
+        input.expectedBindings.media_sha256,
+        HASH.media,
+      );
+      assert.equal(
+        input.expectedBindings.script_sha256,
+        HASH.script,
+      );
+      assert.equal(
+        input.videoId,
+        "youtube-primary-object",
+      );
+      assert.equal(
+        input.scheduledFor,
+        runway.lock.scheduled_for,
+      );
+      return {
+        schema_version:
+          "pulse-controlled-experiment-assignment-binding-v1",
+        status: "ASSIGNED",
+        experiment_eligible: true,
+        experiment_id: "pulse-v1-controlled-12",
+        cell_id:
+          "what_changes_for_players:direct:short",
+        story_id: "primary-ready",
+        channel_id: "pulse-gaming",
+        video_id: "youtube-primary-object",
+        assigned_at: runway.lock.scheduled_for,
+        published_at: runway.lock.scheduled_for,
+        observation_sha256:
+          input.observation.observation_sha256,
+        creative_manifest_sha256: "e".repeat(64),
+        runtime_commit_sha: "c".repeat(40),
+        activation_receipt_sha256: "d".repeat(64),
+        assignment_binding_sha256: "f".repeat(64),
+      };
+    },
   };
 
   const result =
@@ -2927,6 +3052,7 @@ test("T-60 transient private processing retries, then confirms the same object a
   assert.equal(result.retry_allowed, true);
   assert.equal(readCalls, 1);
   assert.equal(finaliseCalls, 0);
+  assert.equal(assignmentCalls, 0);
   assert.equal(
     await fs.pathExists(
       path.join(runway.windowDir, "t60-readiness.json"),
@@ -2971,6 +3097,7 @@ test("T-60 transient private processing retries, then confirms the same object a
   assert.equal(confirmed.retry_allowed, false);
   assert.equal(readCalls, 2);
   assert.equal(finaliseCalls, 1);
+  assert.equal(assignmentCalls, 1);
   const checkpoint = await fs.readJson(
     path.join(runway.windowDir, "t60-readiness.json"),
   );
@@ -2978,6 +3105,11 @@ test("T-60 transient private processing retries, then confirms the same object a
   assert.equal(
     checkpoint.external_id,
     "youtube-primary-object",
+  );
+  assert.equal(
+    checkpoint.controlled_experiment_assignment
+      .assignment_binding_sha256,
+    "f".repeat(64),
   );
   assert.equal(
     await fs.pathExists(
@@ -2988,7 +3120,13 @@ test("T-60 transient private processing retries, then confirms the same object a
 });
 
 test("T0 propagation lag retries, then confirms and reconciles the exact public object once", async (t) => {
-  const runway = await materialiseSloMonitorRunway(t);
+  const runway = await materialiseSloMonitorRunway(t, {
+    laneId: "evergreen_short",
+    publicationEvidence: {
+      controlled_experiment_observation:
+        controlledExperimentObservation(),
+    },
+  });
   const env = {
     PULSE_STATE_ROOT: runway.runwayRoot,
     PULSE_OPERATING_MODE: "LIVE_GUARDED",
@@ -3003,6 +3141,7 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
   };
   let readCalls = 0;
   let confirmCalls = 0;
+  const analyticsJobs = [];
   let clockNow = "2026-07-28T19:00:00.000Z";
   const job = {
     kind: "verify_governed_youtube_release_t0",
@@ -3026,6 +3165,36 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
   };
   const context = {
     ...runway.context,
+    repos: {
+      ...runway.context.repos,
+      jobs: {
+        ...runway.context.repos.jobs,
+        enqueueBatch(inputs) {
+          return inputs.map((input) => {
+            const queued = {
+              id: 900 + analyticsJobs.length,
+              ...input,
+            };
+            analyticsJobs.push(queued);
+            return queued;
+          });
+        },
+      },
+      controlledExperiments: {
+        getAssignment({ experimentId, channelId, videoId }) {
+          assert.equal(
+            experimentId,
+            "pulse-v1-controlled-12",
+          );
+          assert.equal(channelId, "pulse-gaming");
+          assert.equal(videoId, "youtube-primary-object");
+          return {
+            story_id: "primary-ready",
+            video_id: "youtube-primary-object",
+          };
+        },
+      },
+    },
     env,
     workerId: "critical-window-worker",
     assertLeaseHealthy() {},
@@ -3081,6 +3250,7 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
       assert.equal(replayed.confirmed, true);
       runway.publicationState.lifecycle_state = "PUBLISHED";
       runway.publicationState.verification_status = "confirmed";
+      runway.publicationState.verified_at = clockNow;
       return {
         status: "published",
         published: true,
@@ -3159,6 +3329,31 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
   assert.equal(confirmed.retry_allowed, false);
   assert.equal(readCalls, 2);
   assert.equal(confirmCalls, 1);
+  assert.deepEqual(
+    analyticsJobs.map((analyticsJob) => ({
+      kind: analyticsJob.kind,
+      snapshot_window:
+        analyticsJob.payload.snapshotWindow,
+      run_at: analyticsJob.run_at,
+    })),
+    [
+      {
+        kind: "youtube_analytics_snapshot",
+        snapshot_window: "24h",
+        run_at: "2026-07-29T19:00:00.000Z",
+      },
+      {
+        kind: "youtube_analytics_snapshot",
+        snapshot_window: "48h",
+        run_at: "2026-07-30T19:00:00.000Z",
+      },
+      {
+        kind: "youtube_analytics_snapshot",
+        snapshot_window: "7d",
+        run_at: "2026-08-04T19:00:00.000Z",
+      },
+    ],
+  );
   const checkpoint = await fs.readJson(
     path.join(
       runway.windowDir,
@@ -3167,6 +3362,10 @@ test("T0 propagation lag retries, then confirms and reconciles the exact public 
   );
   assert.equal(checkpoint.verdict, "GREEN");
   assert.equal(checkpoint.public_release_confirmed, true);
+  assert.equal(
+    checkpoint.analytics_snapshot_fanout.verdict,
+    "GREEN",
+  );
   assert.equal(
     checkpoint.external_id,
     "youtube-primary-object",
@@ -3702,13 +3901,45 @@ test("T-60 trusts an exact emergency-containment proof and never launches a seco
 });
 
 test("T-15 revalidates the official source and arms the exact private object once", async (t) => {
-  const runway = await materialiseSloMonitorRunway(t);
+  const observation =
+    controlledExperimentObservation();
+  const runway = await materialiseSloMonitorRunway(t, {
+    laneId: "evergreen_short",
+    publicationEvidence: {
+      controlled_experiment_observation:
+        observation,
+    },
+  });
+  const assignmentBinding = {
+    schema_version:
+      "pulse-controlled-experiment-assignment-binding-v1",
+    status: "ASSIGNED",
+    experiment_eligible: true,
+    experiment_id: "pulse-v1-controlled-12",
+    cell_id:
+      "what_changes_for_players:direct:short",
+    story_id: "primary-ready",
+    channel_id: "pulse-gaming",
+    video_id: "youtube-primary-object",
+    assigned_at: runway.lock.scheduled_for,
+    published_at: runway.lock.scheduled_for,
+    observation_sha256:
+      observation.observation_sha256,
+    creative_manifest_sha256: "e".repeat(64),
+    runtime_commit_sha: "c".repeat(40),
+    activation_receipt_sha256: "d".repeat(64),
+    assignment_binding_sha256: "f".repeat(64),
+  };
   const scheduledEvidence = {
     scheduled_for: runway.lock.scheduled_for,
     dispatch_idempotency_key:
       "youtube:primary-ready:2026-07-28T19:00:00.000Z",
     request_fingerprint: "a".repeat(64),
     runway_lock_sha256: runway.lock.lock_sha256,
+    publication_evidence: {
+      controlled_experiment_observation:
+        observation,
+    },
   };
   let state = {
     lifecycle_state: "PLATFORM_OBJECT_CREATED",
@@ -3783,6 +4014,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
       "d".repeat(64),
   };
   let armCalls = 0;
+  let experimentVerificationCalls = 0;
   let replayVerificationCalls = 0;
   let disarmCalls = 0;
   const sourceRevisionSha256 = "b".repeat(64);
@@ -3820,7 +4052,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
           publicationGovernance: governance,
           runtimeLeases: {},
         },
-        resolveRunwayFreshControl() {
+         resolveRunwayFreshControl() {
           return {
             verdict: "GREEN",
             checked_at:
@@ -3829,6 +4061,29 @@ test("T-15 revalidates the official source and arms the exact private object onc
             operating_contract_valid: true,
             scheduler_owner_healthy: true,
             live_publish_enabled: true,
+           };
+         },
+        resolveControlledExperimentRuntimeIdentity() {
+          return {
+            valid: true,
+            commit_sha: "c".repeat(40),
+            activation_receipt_sha256: "d".repeat(64),
+            blockers: [],
+          };
+        },
+        verifyControlledExperimentAtT15(input) {
+          experimentVerificationCalls += 1;
+          assert.equal(
+            input.observation.observation_sha256,
+            observation.observation_sha256,
+          );
+          assert.deepEqual(
+            input.assignmentBinding,
+            assignmentBinding,
+          );
+          return {
+            ...assignmentBinding,
+            status: "VERIFIED",
           };
         },
         async armExactGovernedYoutubeScheduledRelease(
@@ -3950,6 +4205,50 @@ test("T-15 revalidates the official source and arms the exact private object onc
         },
         async notifyRunwayIncident() {},
       };
+  const heldWithoutAssignment =
+    await handlers.verify_governed_youtube_release_tminus15(
+      t15Job,
+      t15Context,
+    );
+  assert.equal(
+    heldWithoutAssignment.verdict,
+    "HOLD",
+    JSON.stringify(heldWithoutAssignment),
+  );
+  assert.ok(
+    heldWithoutAssignment.blockers.includes(
+      "controlled_experiment_t60_checkpoint_required",
+    ),
+  );
+  assert.equal(armCalls, 0);
+  assert.equal(experimentVerificationCalls, 0);
+  assert.match(
+    path.basename(heldWithoutAssignment.readiness_json),
+    /^tminus15-precondition-attempt-[a-f0-9]{12}\.json$/,
+  );
+  assert.equal(
+    await fs.pathExists(
+      path.join(
+        runway.windowDir,
+        "tminus15-readiness.json",
+      ),
+    ),
+    false,
+  );
+
+  await fs.writeJson(
+    path.join(runway.windowDir, "t60-readiness.json"),
+    {
+      phase: "T-60",
+      verdict: "GREEN",
+      scheduled_for: runway.lock.scheduled_for,
+      runway_lock_sha256: runway.lock.lock_sha256,
+      story_id: "primary-ready",
+      external_id: "youtube-primary-object",
+      controlled_experiment_assignment:
+        assignmentBinding,
+    },
+  );
   const result =
     await handlers.verify_governed_youtube_release_tminus15(
       t15Job,
@@ -3976,6 +4275,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
   );
   assert.equal(result.remote_disarm_required, false);
   assert.equal(armCalls, 1);
+  assert.equal(experimentVerificationCalls, 1);
   assert.equal(replayVerificationCalls, 0);
   assert.equal(disarmCalls, 0);
   const checkpoint = await fs.readJson(
@@ -4013,6 +4313,7 @@ test("T-15 revalidates the official source and arms the exact private object onc
     "c".repeat(64),
   );
   assert.equal(armCalls, 1);
+  assert.equal(experimentVerificationCalls, 2);
   assert.equal(replayVerificationCalls, 1);
   assert.equal(disarmCalls, 0);
 });

@@ -40,6 +40,7 @@ function standardManifest(overrides = {}) {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 250,
       consequence_by_ms: 1200,
       proof_by_ms: 2800,
@@ -83,6 +84,10 @@ test("a governed standard render passes in HUMAN_REVIEW", () => {
   assert.deepEqual(result.blockers, []);
   assert.equal(result.evidence.exact_subject_motion_count, 3);
   assert.equal(result.evidence.motion_ratio, 0.5);
+  assert.equal(
+    result.evidence.first_frame_text,
+    "A TANK WITH TWO SHIELDS",
+  );
   assert.match(result.manifest_sha256, /^[a-f0-9]{64}$/);
 });
 
@@ -170,6 +175,19 @@ test("first-frame and first-three-second timing are hard renderer gates", () => 
   assert.ok(result.blockers.includes("hook_later_than_500ms"));
   assert.ok(result.blockers.includes("consequence_later_than_1500ms"));
   assert.ok(result.blockers.includes("proof_later_than_3000ms"));
+});
+
+test("renderer governance rejects a missing first-frame treatment text", () => {
+  const result = evaluateRendererManifest(
+    standardManifest({
+      timing: {
+        first_frame_text: "   ",
+      },
+    }),
+    { operatingMode: "HUMAN_REVIEW" },
+  );
+
+  assert.ok(result.blockers.includes("first_frame_text_required"));
 });
 
 test("the flagship technical profile and approved stack fail closed", () => {

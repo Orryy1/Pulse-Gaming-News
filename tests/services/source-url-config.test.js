@@ -30,7 +30,7 @@ test("Pulse Gaming directly monitors the official Xbox Wire and PlayStation Blog
   );
 });
 
-test("first-party feed stories receive a bounded discovery-priority boost", () => {
+test("first-party feed stories reach governed breaking review only when player-impact signals justify it", () => {
   const official = classifyGovernedSource(
     "https://blog.playstation.com/2026/07/28/example/",
     require("../../lib/services/breaking-source-policy")
@@ -38,24 +38,54 @@ test("first-party feed stories receive a bounded discovery-priority boost", () =
   );
   assert.equal(official.source_class, "OFFICIAL_FIRST_PARTY");
 
-  const editorialScore = scoreBreakingValue(
-    "PlayStation Plus Monthly Games for August",
+  const genericOfficialScore = scoreBreakingValue(
+    "A studio developer diary",
     50,
     0,
-    [],
-    [],
-    "TRUSTED_EDITORIAL",
-  );
-  const officialScore = scoreBreakingValue(
-    "PlayStation Plus Monthly Games for August",
-    50,
-    0,
-    [],
+    pulseGaming.breakingKeywords,
     [],
     official.source_class,
   );
+  const editorialPlayerImpactScore = scoreBreakingValue(
+    "PlayStation Plus Monthly Games for August",
+    50,
+    0,
+    pulseGaming.breakingKeywords,
+    [],
+    "TRUSTED_EDITORIAL",
+  );
+  const officialPlayerImpactScore = scoreBreakingValue(
+    "PlayStation Plus Monthly Games for August",
+    50,
+    0,
+    pulseGaming.breakingKeywords,
+    [],
+    official.source_class,
+  );
+  const singleSignalOfficialPlayerImpactScore =
+    scoreBreakingValue(
+      "A Game Adds Achievement Support",
+      50,
+      0,
+      pulseGaming.breakingKeywords,
+      [],
+      official.source_class,
+    );
+  const singleSignalEditorialPlayerImpactScore =
+    scoreBreakingValue(
+      "A Game Adds Achievement Support",
+      50,
+      0,
+      pulseGaming.breakingKeywords,
+      [],
+      "TRUSTED_EDITORIAL",
+    );
 
-  assert.equal(officialScore - editorialScore, 45);
+  assert.equal(genericOfficialScore, 50);
+  assert.equal(editorialPlayerImpactScore, 35);
+  assert.equal(officialPlayerImpactScore, 80);
+  assert.equal(singleSignalOfficialPlayerImpactScore, 80);
+  assert.equal(singleSignalEditorialPlayerImpactScore, 20);
 });
 
 test("Google Trends gaming source uses the current trending RSS endpoint", () => {

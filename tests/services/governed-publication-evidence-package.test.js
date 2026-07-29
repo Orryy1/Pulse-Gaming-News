@@ -27,6 +27,9 @@ const {
   ATTRIBUTION_TEXT,
   MANIFEST_SCHEMA: SOURCE_MEDIA_MANIFEST_SCHEMA,
 } = require("../../lib/services/governed-source-media");
+const {
+  buildControlledExperimentObservation,
+} = require("../../lib/services/controlled-experiment-observation");
 
 const STORY_ID = "official_d86953ca92ca";
 const CHANNEL_ID = "pulse-gaming";
@@ -330,6 +333,7 @@ function fixture() {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 200,
       consequence_by_ms: 1100,
       proof_by_ms: 2600,
@@ -463,6 +467,83 @@ function fixture() {
     timestamps,
     publicationMetadata,
   };
+}
+
+function addControlledExperimentObservation(values) {
+  const expectedIdentity = {
+    story_id: STORY_ID,
+    channel_id: CHANNEL_ID,
+  };
+  const expectedBindings = {
+    story_intake_sha256: values.intake.sha256,
+    narration_manifest_sha256: sha256(
+      fs.readFileSync(values.options.governedNarrationManifestPath),
+    ),
+    renderer_manifest_file_sha256: sha256(
+      fs.readFileSync(values.options.rendererManifestPath),
+    ),
+    renderer_manifest_canonical_sha256:
+      values.rendererCanonicalSha256,
+    qa_report_sha256: values.qa.sha256,
+    media_sha256: values.finalMp4.sha256,
+    script_sha256: values.scriptSha256,
+  };
+  const observation = buildControlledExperimentObservation(
+    {
+      identity: expectedIdentity,
+      experiment: {
+        eligible: true,
+        experiment_id: "pulse-v1-controlled-12",
+        matrix_version: "pulse-controlled-12-v1",
+        expected_cell_id: "platform_pulse:open_loop:short",
+        ineligibility_reason: null,
+      },
+      creative_static: {
+        runtime_seconds: 28,
+        hook_type: "open_loop",
+        narrator_version: "pulse-liam-v3",
+        first_frame_text: "A TANK WITH TWO SHIELDS",
+        motion_ratio: 0.72,
+        topic: "new-class",
+        game: "Final Fantasy XIV",
+        subject_platform: "multi-platform",
+        source_type: "official_publisher",
+        consequence_lane: "platform_pulse",
+        renderer_version: "pulse-v2-game-native-1",
+        qa_result: "pass",
+      },
+      bindings: expectedBindings,
+    },
+    { expectedIdentity, expectedBindings },
+  );
+  const record = jsonFile(
+    values.root,
+    "controlled-experiment-observation.json",
+    observation,
+  );
+  values.options.controlledExperimentObservationPath =
+    record.absolutePath;
+  values.options.controlledExperimentObservationFileSha256 =
+    record.sha256;
+  const composite = JSON.parse(
+    fs.readFileSync(values.options.finalCompositeManifestPath, "utf8"),
+  );
+  const compositeReference = {
+    path: record.path,
+    file_sha256: record.sha256,
+    observation_sha256: observation.observation_sha256,
+    eligible: true,
+  };
+  composite.controlled_experiment_observation =
+    compositeReference;
+  composite.inputs.controlled_experiment_observation =
+    compositeReference;
+  writeJson(values.options.finalCompositeManifestPath, composite);
+  values.controlledExperimentObservation = {
+    ...record,
+    observation,
+  };
+  return values;
 }
 
 function addLicensedSourceMedia(values) {
@@ -1546,6 +1627,198 @@ test("dry-run validates and plans without writing or inferring human approval", 
   } finally {
     fs.rmSync(values.root, { recursive: true, force: true });
   }
+});
+
+test("an optional controlled-experiment observation is exact-artifact bound through package and review", async () => {
+  const values = addControlledExperimentObservation(fixture());
+  try {
+    const result = await executeGovernedPublicationEvidencePackage({
+      ...values.options,
+      apply: true,
+      humanApproval: values.humanApproval,
+    });
+    const expectedRecord = {
+      path: values.controlledExperimentObservation.path,
+      file_sha256: values.controlledExperimentObservation.sha256,
+      observation_sha256:
+        values.controlledExperimentObservation.observation
+          .observation_sha256,
+    };
+    const review = JSON.parse(
+      fs.readFileSync(result.publication_review_path, "utf8"),
+    );
+    const packageManifest = JSON.parse(
+      fs.readFileSync(result.package_manifest_path, "utf8"),
+    );
+
+    assert.deepEqual(
+      review.controlled_experiment_observation,
+      expectedRecord,
+    );
+    assert.deepEqual(
+      packageManifest.inputs.controlled_experiment_observation,
+      expectedRecord,
+    );
+    assert.equal(
+      packageManifest.bindings
+        .controlled_experiment_observation_file_sha256,
+      expectedRecord.file_sha256,
+    );
+    assert.equal(
+      packageManifest.bindings
+        .controlled_experiment_observation_sha256,
+      expectedRecord.observation_sha256,
+    );
+
+    const validatedReview = await validatePublicationReviewManifest({
+      manifestPath: result.publication_review_path,
+      probe: async () => validProbe(),
+      validationBoundaryAt: GENERATED_AT,
+    });
+    assert.deepEqual(
+      validatedReview.preflightEvidence
+        .controlled_experiment_observation,
+      values.controlledExperimentObservation.observation,
+    );
+    assert.deepEqual(
+      validatedReview.preflightEvidence
+        .controlled_experiment_observation_artifact,
+      {
+        path:
+          values.controlledExperimentObservation.absolutePath,
+        file_sha256: expectedRecord.file_sha256,
+        observation_sha256: expectedRecord.observation_sha256,
+      },
+    );
+  } finally {
+    fs.rmSync(values.root, { recursive: true, force: true });
+  }
+});
+
+test("controlled-experiment observation path, file hash and self-hash all fail closed on tamper", async (t) => {
+  await t.test("file bytes must match the supplied file hash", async () => {
+    const values = addControlledExperimentObservation(fixture());
+    try {
+      fs.appendFileSync(
+        values.controlledExperimentObservation.absolutePath,
+        "\n",
+        "utf8",
+      );
+      await assert.rejects(
+        executeGovernedPublicationEvidencePackage(values.options),
+        (error) => {
+          assert.ok(
+            error.codes.includes(
+              "controlled_experiment_observation_file_sha256_mismatch",
+            ),
+          );
+          return true;
+        },
+      );
+    } finally {
+      fs.rmSync(values.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("canonical content must match its embedded self-hash", async () => {
+    const values = addControlledExperimentObservation(fixture());
+    try {
+      const observation = JSON.parse(
+        fs.readFileSync(
+          values.controlledExperimentObservation.absolutePath,
+          "utf8",
+        ),
+      );
+      observation.creative_static.first_frame_text =
+        "FORGED OPENING";
+      writeJson(
+        values.controlledExperimentObservation.absolutePath,
+        observation,
+      );
+      const fileSha256 = sha256(
+        fs.readFileSync(
+          values.controlledExperimentObservation.absolutePath,
+        ),
+      );
+      values.options.controlledExperimentObservationFileSha256 =
+        fileSha256;
+      const composite = JSON.parse(
+        fs.readFileSync(
+          values.options.finalCompositeManifestPath,
+          "utf8",
+        ),
+      );
+      composite.controlled_experiment_observation.file_sha256 =
+        fileSha256;
+      composite.inputs.controlled_experiment_observation.file_sha256 =
+        fileSha256;
+      writeJson(
+        values.options.finalCompositeManifestPath,
+        composite,
+      );
+
+      await assert.rejects(
+        executeGovernedPublicationEvidencePackage(values.options),
+        (error) => {
+          assert.ok(
+            error.codes.includes(
+              "controlled_experiment_observation_sha256_mismatch",
+            ),
+          );
+          return true;
+        },
+      );
+    } finally {
+      fs.rmSync(values.root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test("the composite must reference the exact artifact path", async () => {
+    const values = addControlledExperimentObservation(fixture());
+    try {
+      const alternatePath = path.join(
+        values.root,
+        "alternate-controlled-experiment-observation.json",
+      );
+      fs.copyFileSync(
+        values.controlledExperimentObservation.absolutePath,
+        alternatePath,
+      );
+      const composite = JSON.parse(
+        fs.readFileSync(
+          values.options.finalCompositeManifestPath,
+          "utf8",
+        ),
+      );
+      composite.controlled_experiment_observation.path =
+        path.basename(alternatePath);
+      composite.inputs.controlled_experiment_observation.path =
+        path.basename(alternatePath);
+      writeJson(
+        values.options.finalCompositeManifestPath,
+        composite,
+      );
+
+      await assert.rejects(
+        executeGovernedPublicationEvidencePackage(values.options),
+        (error) => {
+          assert.ok(
+            error.codes.includes(
+              "composite_controlled_experiment_observation_path_mismatch",
+            ),
+          );
+          assert.ok(
+            error.codes.includes(
+              "final_composite_controlled_experiment_observation_path_mismatch",
+            ),
+          );
+          return true;
+        },
+      );
+    } finally {
+      fs.rmSync(values.root, { recursive: true, force: true });
+    }
+  });
 });
 
 test("publication packaging rejects legacy official evidence without an exact source snapshot", async () => {

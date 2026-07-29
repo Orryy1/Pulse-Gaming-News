@@ -33,6 +33,10 @@ const {
   validateYouTubeAccountBindingProof,
   verifyYouTubeAccountBinding,
 } = require("./lib/services/youtube-account-binding-verifier");
+const {
+  beginYoutubeOAuthConsent,
+  completeYoutubeOAuthConsent,
+} = require("./lib/services/youtube-oauth-consent");
 
 dotenv.config({ override: false });
 
@@ -43,6 +47,11 @@ const CREDENTIALS_PATH = path.join(
   "youtube_credentials.json",
 );
 const PLAYLIST_PATH = path.join(__dirname, "tokens", "youtube_playlists.json");
+const YOUTUBE_OAUTH_PENDING_PATH = path.join(
+  __dirname,
+  "tokens",
+  "youtube_oauth_pending.json",
+);
 const MAX_BOUND_YOUTUBE_MEDIA_BYTES = 512 * 1024 * 1024;
 const YOUTUBE_OAUTH_CLIENT_SHA256_ENV =
   "PULSE_YOUTUBE_OAUTH_CLIENT_SHA256";
@@ -255,7 +264,7 @@ async function loadYoutubeOAuthConfiguration({
   } else {
     clientId = env.YOUTUBE_CLIENT_ID;
     clientSecret = env.YOUTUBE_CLIENT_SECRET;
-    redirectUri = "http://localhost";
+    redirectUri = env.YOUTUBE_REDIRECT_URI || "http://localhost";
   }
   if (!clientId || !clientSecret) {
     throw new Error(
@@ -790,6 +799,30 @@ async function createFreshYoutubeAccountBoundSession({
 
   const session = Object.create(null);
   Object.defineProperties(session, {
+    createYoutubeAnalyticsClient: {
+      enumerable: false,
+      value(factory = google.youtubeAnalytics) {
+        validateCurrentProof();
+        if (typeof factory !== "function") {
+          throw runtimeYoutubeAccountBindingError(
+            "youtube_runtime_analytics_client_factory_required",
+          );
+        }
+        const client = factory({
+          version: "v2",
+          auth: oauth2Client,
+        });
+        if (
+          !client?.reports ||
+          typeof client.reports.query !== "function"
+        ) {
+          throw runtimeYoutubeAccountBindingError(
+            "youtube_runtime_analytics_client_invalid",
+          );
+        }
+        return client;
+      },
+    },
     getYoutubeClient: {
       enumerable: false,
       value() {
@@ -904,59 +937,155 @@ async function buildFreshYoutubeAccountBindingArmInput({
   });
 }
 
+async function probeYoutubeOAuthTokenCandidate({
+  oauth2Client,
+  tokens,
+  configuration,
+  expectedChannelId,
+  expectedOAuthClientSha256,
+  now,
+}) {
+  if (
+    !oauth2Client ||
+    typeof oauth2Client.setCredentials !== "function"
+  ) {
+    throw new Error(
+      "youtube_oauth_token_candidate_client_invalid",
+    );
+  }
+  oauth2Client.setCredentials(tokens);
+  return probeYoutubeAccountBinding({
+    oauth2Client,
+    configuredOAuthClientId: configuration.clientId,
+    expectedOAuthClientSha256,
+    expectedChannelId,
+    now,
+  });
+}
+
 // --- Generate auth URL for initial setup ---
-async function generateAuthUrl() {
-  const credentials = await fs.readJson(CREDENTIALS_PATH);
-  const { client_id, client_secret, redirect_uris } =
-    credentials.installed || credentials.web || {};
-
-  const oauth2Client = new google.auth.OAuth2(
-    client_id,
-    client_secret,
-    redirect_uris?.[0] || "urn:ietf:wg:oauth:2.0:oob",
-  );
-
-  const url = oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: [
-      "https://www.googleapis.com/auth/youtube.upload",
-      "https://www.googleapis.com/auth/youtube",
-      "https://www.googleapis.com/auth/youtube.force-ssl",
-      // Read-only YouTube Analytics. Required by lib/intelligence/
-      // analytics-client real mode (AVD, AVP, retention curve, traffic
-      // source, Shorts feed source, subscribers per video). Without
-      // this scope the analytics client stays in fixture mode. The
-      // operator must re-run `node upload_youtube.js auth` once for
-      // the consent screen to add this to the existing token; existing
-      // tokens are not expanded automatically.
-      "https://www.googleapis.com/auth/yt-analytics.readonly",
-    ],
+async function generateAuthUrl({
+  credentialsPath = CREDENTIALS_PATH,
+  env = process.env,
+  fileSystem,
+  loadOAuthConfiguration =
+    loadYoutubeOAuthConfiguration,
+  log = console.log,
+  now = () => new Date(),
+  oauthClientFactory = (configuration) =>
+    new google.auth.OAuth2(
+      configuration.clientId,
+      configuration.clientSecret,
+      configuration.redirectUri,
+    ),
+  pendingConsentPath = YOUTUBE_OAUTH_PENDING_PATH,
+  randomBytes = crypto.randomBytes,
+  tokenPath = TOKEN_PATH,
+} = {}) {
+  const result = await beginYoutubeOAuthConsent({
+    credentialsPath,
+    env,
+    ...(fileSystem ? { fileSystem } : {}),
+    loadOAuthConfiguration,
+    now,
+    oauthClientFactory,
+    pendingConsentPath,
+    randomBytes,
+    tokenPath,
   });
 
-  console.log("[youtube] Visit this URL to authorise:");
-  console.log(url);
-  console.log("\nThen run: node upload_youtube.js token YOUR_CODE_HERE");
-
-  return { oauth2Client, url };
+  log("[youtube] Visit this URL to authorise:");
+  log(result.url);
+  log(
+    "\nThen run: node upload_youtube.js token \"PASTE_CALLBACK_URL_HERE\"",
+  );
+  return result;
 }
 
 // --- Exchange auth code for token ---
-async function exchangeCode(code) {
-  const credentials = await fs.readJson(CREDENTIALS_PATH);
-  const { client_id, client_secret, redirect_uris } =
-    credentials.installed || credentials.web || {};
+async function exchangeCode(
+  callbackInput,
+  {
+    credentialsPath = CREDENTIALS_PATH,
+    env = process.env,
+    explicitTokenReplacement = false,
+    fileSystem,
+    loadOAuthConfiguration =
+      loadYoutubeOAuthConfiguration,
+    now = () => new Date(),
+    oauthClientFactory = (configuration) =>
+      new google.auth.OAuth2(
+        configuration.clientId,
+        configuration.clientSecret,
+        configuration.redirectUri,
+      ),
+    pendingConsentPath = YOUTUBE_OAUTH_PENDING_PATH,
+    probeTokenCandidate =
+      probeYoutubeOAuthTokenCandidate,
+    randomBytes = crypto.randomBytes,
+    state,
+    tokenPath = TOKEN_PATH,
+  } = {},
+) {
+  return completeYoutubeOAuthConsent({
+    callbackInput,
+    credentialsPath,
+    env,
+    explicitTokenReplacement,
+    ...(fileSystem ? { fileSystem } : {}),
+    loadOAuthConfiguration,
+    now,
+    oauthClientFactory,
+    pendingConsentPath,
+    probeTokenCandidate,
+    randomBytes,
+    state,
+    tokenPath,
+  });
+}
 
-  const oauth2Client = new google.auth.OAuth2(
-    client_id,
-    client_secret,
-    redirect_uris?.[0] || "urn:ietf:wg:oauth:2.0:oob",
-  );
-
-  const { tokens } = await oauth2Client.getToken(code);
-  await fs.ensureDir(path.dirname(TOKEN_PATH));
-  await fs.writeJson(TOKEN_PATH, tokens, { spaces: 2 });
-  console.log("[youtube] Token saved successfully!");
-  return tokens;
+async function runYoutubeOAuthCli(
+  argv = process.argv,
+  {
+    exchangeCode: exchangeCodeCommand = exchangeCode,
+    generateAuthUrl: generateAuthUrlCommand =
+      generateAuthUrl,
+    log = console.log,
+  } = {},
+) {
+  const command = argv?.[2];
+  if (command === "auth") {
+    await generateAuthUrlCommand();
+    return Object.freeze({
+      handled: true,
+      exit_code: 0,
+    });
+  }
+  if (command !== "token") {
+    return Object.freeze({
+      handled: false,
+      exit_code: 0,
+    });
+  }
+  const callbackInput = argv?.[3];
+  if (!callbackInput) {
+    log(
+      'Usage: node upload_youtube.js token "PASTE_CALLBACK_URL_HERE"',
+    );
+    return Object.freeze({
+      handled: true,
+      exit_code: 1,
+    });
+  }
+  await exchangeCodeCommand(callbackInput, {
+    explicitTokenReplacement: true,
+    state: argv?.[4],
+  });
+  log("[youtube] Token saved successfully.");
+  return Object.freeze({
+    handled: true,
+    exit_code: 0,
+  });
 }
 
 // --- Build YouTube metadata (SEO-optimised for Shorts discovery) ---
@@ -2147,6 +2276,8 @@ module.exports = {
   generateAuthUrl,
   exchangeCode,
   getAuthClient,
+  loadYoutubeOAuthConfiguration,
+  runYoutubeOAuthCli,
   refreshYoutubeCredentialsInMemory,
   ensurePlaylists,
   addToPlaylists,
@@ -2166,23 +2297,19 @@ if (require.main === module) {
         sanitiseYoutubeErrorMessage(error?.message || error),
       );
     });
-  } else if (cmd === "auth") {
-    generateAuthUrl().catch((error) => {
-      console.error(
-        sanitiseYoutubeErrorMessage(error?.message || error),
-      );
-    });
-  } else if (cmd === "token") {
-    const code = process.argv[3];
-    if (!code) {
-      console.log("Usage: node upload_youtube.js token YOUR_AUTH_CODE");
-      process.exit(1);
-    }
-    exchangeCode(code).catch((error) => {
-      console.error(
-        sanitiseYoutubeErrorMessage(error?.message || error),
-      );
-    });
+  } else if (cmd === "auth" || cmd === "token") {
+    runYoutubeOAuthCli(process.argv)
+      .then((result) => {
+        if (result.exit_code !== 0) {
+          process.exitCode = result.exit_code;
+        }
+      })
+      .catch((error) => {
+        console.error(
+          sanitiseYoutubeErrorMessage(error?.message || error),
+        );
+        process.exitCode = 1;
+      });
   } else {
     uploadAll().catch((err) => {
       console.log(

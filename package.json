@@ -49,6 +49,7 @@
     "ops:system:doctor": "node tools/system-doctor.js",
     "ops:queue:inspect": "node tools/queue-inspect.js",
     "ops:story-intake": "node tools/governed-story-intake.js",
+    "ops:controlled-experiment-provisioning": "node tools/controlled-experiment-provisioning.js",
     "ops:autonomous-official-source-evidence-apply": "node tools/autonomous-official-source-evidence-apply.js",
     "ops:governed-game-media-admission": "node tools/governed-game-media-admission.js",
     "ops:governed-story-intake-inventory-bridge": "node tools/governed-story-intake-inventory-bridge.js",

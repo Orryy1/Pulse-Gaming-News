@@ -82,6 +82,12 @@ test("buildOwnedMotionPlan creates a dry-run owned visual package for a validate
   assert.equal(plan.visual_grammar.change.before, "10 YEARS");
   assert.equal(plan.visual_grammar.change.after, "30 DAYS");
   assert.equal(plan.visual_grammar.timeline, "3 BUSINESS DAYS");
+  assert.deepEqual(plan.opening_treatment, {
+    role: "hook_slam",
+    first_frame_text:
+      "Delta Force just widened cheater compensation.",
+    source: "owned_motion_opening_treatment_v1",
+  });
 });
 
 test("buildOwnedMotionPlan uses a platform theme only when the validated story supports it", () => {
@@ -95,6 +101,28 @@ test("buildOwnedMotionPlan uses a platform theme only when the validated story s
   });
   assert.equal(plan.platform_theme.id, "xbox");
   assert.equal(plan.platform_theme.label, "XBOX");
+});
+
+test("owned opening render uses the frozen treatment rather than a later story-hook substitution", () => {
+  const intake = validIntake();
+  const plan = buildOwnedMotionPlan({
+    intake,
+    intakeManifestSha256: sha256(JSON.stringify(intake)),
+    outputDir: "C:/proof/frozen-opening",
+    ffmpegAvailable: true,
+  });
+  intake.story.hook = "A mutable replacement must never reach the frame.";
+
+  const svg = buildOwnedStillSvg({
+    role: "hook_slam",
+    intake,
+    plan,
+  });
+
+  assert.match(svg, /Delta Force just/);
+  assert.match(svg, /widened cheater/);
+  assert.match(svg, /compensation\./);
+  assert.doesNotMatch(svg, /mutable replacement/);
 });
 
 test("owned still grammar is data-driven for the FFXIV Evercold feature stack", () => {
@@ -260,6 +288,19 @@ test("materializeOwnedMotion writes only a validated owned asset package under t
   assert.ok(result.manifest.assets.every((asset) => /^[a-f0-9]{64}$/.test(asset.sha256)));
   assert.ok(result.manifest.assets.every((asset) => !path.isAbsolute(asset.path)));
   assert.ok(result.manifest.assets.every((asset) => asset.path.startsWith("assets/")));
+  const openingAsset = result.manifest.assets.find(
+    (asset) => asset.role === "hook_slam",
+  );
+  assert.deepEqual(result.manifest.opening_treatment, {
+    role: "hook_slam",
+    first_frame_text:
+      "Delta Force just widened cheater compensation.",
+    source: "owned_motion_opening_treatment_v1",
+    asset: {
+      path: openingAsset.path,
+      sha256: openingAsset.sha256,
+    },
+  });
   assert.ok(fs.existsSync(result.manifest_path));
   assert.ok(fs.existsSync(result.markdown_path));
   assert.equal(sha256(fs.readFileSync(result.manifest_path)), result.manifest_sha256);

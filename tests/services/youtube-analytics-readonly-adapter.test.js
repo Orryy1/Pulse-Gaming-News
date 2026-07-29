@@ -106,6 +106,83 @@ test("read-only adapter queries explicit channel and video identity without inve
   assert.deepEqual(result.sourcePayload, { summary: sourcePayload });
 });
 
+test("read-only adapter propagates the caller AbortSignal through the report boundary", async () => {
+  const controller = new AbortController();
+  const leaseLost = Object.assign(new Error("job_lease_lost"), {
+    code: "job_lease_lost",
+  });
+  let observedSignal = null;
+  const adapter = createYouTubeAnalyticsReadonlyAdapter({
+    queryReports: async (_request, { signal } = {}) => {
+      observedSignal = signal;
+      return new Promise((resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => reject(signal.reason),
+          { once: true },
+        );
+      });
+    },
+  });
+
+  const pending = adapter.fetchVideoSnapshot({
+    channelId: "UC_PULSE_GAMING",
+    videoId: "youtube-video-1",
+    snapshotWindow: "24h",
+    startDate: "2026-07-26",
+    endDate: "2026-07-27",
+    signal: controller.signal,
+  });
+  await Promise.resolve();
+  assert.ok(observedSignal);
+  assert.equal(observedSignal.aborted, false);
+  controller.abort(leaseLost);
+
+  await assert.rejects(pending, (error) => {
+    assert.equal(error, leaseLost);
+    return true;
+  });
+  assert.equal(observedSignal.aborted, true);
+});
+
+test("read-only adapter aborts an unresponsive report request at the configured deadline", async () => {
+  const adapter = createYouTubeAnalyticsReadonlyAdapter({
+    requestTimeoutMs: 5,
+    queryReports: async () =>
+      new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve({
+              columnHeaders: [
+                { name: "video" },
+                { name: "views" },
+              ],
+              rows: [["youtube-video-1", 120]],
+            }),
+          40,
+        );
+      }),
+  });
+
+  await assert.rejects(
+    adapter.fetchVideoSnapshot({
+      channelId: "UC_PULSE_GAMING",
+      videoId: "youtube-video-1",
+      snapshotWindow: "24h",
+      startDate: "2026-07-26",
+      endDate: "2026-07-27",
+    }),
+    (error) => {
+      assert.equal(
+        error.code,
+        "youtube_analytics_request_timeout",
+      );
+      assert.equal(error.retryable, true);
+      return true;
+    },
+  );
+});
+
 test("read-only adapter preserves observed retention and traffic-source evidence", async () => {
   const requests = [];
   const adapter = createYouTubeAnalyticsReadonlyAdapter({
@@ -316,4 +393,71 @@ test("read-only adapter preserves observed retention and traffic-source evidence
       watch_minutes: 10,
     },
   ]);
+});
+
+test("a failed optional breakdown preserves warning evidence without discarding a valid summary", async () => {
+  const requests = [];
+  const adapter = createYouTubeAnalyticsReadonlyAdapter({
+    queryReports: async (request) => {
+      requests.push(request);
+      if (request.dimensions === "video") {
+        return {
+          columnHeaders: [
+            { name: "video" },
+            { name: "views" },
+          ],
+          rows: [["youtube-video-1", 120]],
+        };
+      }
+      if (request.dimensions === "elapsedVideoTimeRatio") {
+        throw Object.assign(new Error("backend unavailable"), {
+          code: "backendError",
+          retryable: true,
+        });
+      }
+      return { columnHeaders: [], rows: [] };
+    },
+  });
+
+  const result = await adapter.fetchVideoSnapshot({
+    channelId: "UC_PULSE_GAMING",
+    videoId: "youtube-video-1",
+    snapshotWindow: "24h",
+    startDate: "2026-07-26",
+    endDate: "2026-07-27",
+    includeBreakdowns: true,
+  });
+
+  assert.equal(result.status, "collected");
+  assert.deepEqual(result.metrics, { views: 120 });
+  assert.equal(requests.length, 6);
+  assert.deepEqual(result.warnings, [
+    {
+      code: "youtube_analytics_optional_breakdown_unavailable",
+      breakdown: "retention",
+      error_code: "backendError",
+      retryable: true,
+    },
+  ]);
+  assert.deepEqual(result.sourcePayload.retention, {
+    status: "unavailable",
+    error_code: "backendError",
+    retryable: true,
+  });
+  assert.deepEqual(
+    result.sourcePayload.optional_breakdown_warnings,
+    result.warnings,
+  );
+  assert.equal(
+    result.sourceRequest.retention.dimensions,
+    "elapsedVideoTimeRatio",
+  );
+  assert.deepEqual(result.breakdowns.traffic_sources, []);
+  assert.deepEqual(result.breakdowns.country, []);
+  assert.deepEqual(result.breakdowns.age, []);
+  assert.deepEqual(result.breakdowns.device, []);
+  assert.equal(
+    Object.hasOwn(result.breakdowns, "retention_curve"),
+    false,
+  );
 });

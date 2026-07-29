@@ -41,6 +41,15 @@ test("materialises a validator-compliant canonical intake from the exact READY b
     inventoryFileSha256: fixture.registryFileSha256,
     inventoryRoot: fixture.inventoryRoot,
     allowedRoots: [fixture.outputRoot],
+    experimentDimensions: {
+      eligible: true,
+      experiment_id: "pulse-v1-controlled-12",
+      matrix_version: "pulse-controlled-12-v1",
+      expected_cell_id: "what_changes_for_players:direct:short",
+      topic: "backwards compatibility expansion",
+      game: "Original Xbox catalogue",
+      subject_platform: "Xbox",
+    },
     outputDir: fixture.outputDir,
   });
 
@@ -59,6 +68,14 @@ test("materialises a validator-compliant canonical intake from the exact READY b
   assert.equal(validation.storyId, expectedStoryId);
   assert.notEqual(validation.storyId, fixture.storyId);
   assert.equal(validation.wordCount, 37);
+  assert.equal(
+    validation.experimentDimensions?.expected_cell_id,
+    "what_changes_for_players:direct:short",
+  );
+  assert.equal(
+    validation.experimentDimensions?.subject_platform,
+    "Xbox",
+  );
   assert.ok(
     validation.manifest.claims.every(
       (claim) => typeof claim === "string",
@@ -143,6 +160,11 @@ test("materialises the locked YAZD script against clean exact News and Store API
       contract: fixture.contract,
       freshness: fixture.freshness,
       visualBrief: fixture.visualBrief,
+      experimentDimensions: {
+        eligible: false,
+        ineligibility_reason:
+          "Breaking high-cadence stories are outside the controlled calibration.",
+      },
       outputDir: fixture.outputDir,
     });
 
@@ -159,6 +181,10 @@ test("materialises the locked YAZD script against clean exact News and Store API
   assert.deepEqual(
     validation.manifest.story.visual_brief,
     fixture.visualBrief,
+  );
+  assert.equal(
+    validation.experimentDimensions?.eligible,
+    false,
   );
   assert.equal(
     validation.sourceEvidence.canonical_identity_url,

@@ -24,6 +24,9 @@ const {
   buildOfficialSourceReleaseBinding,
 } = require("../../lib/services/official-source-revalidation");
 const {
+  buildControlledExperimentObservation,
+} = require("../../lib/services/controlled-experiment-observation");
+const {
   hashRightsLedger,
 } = require("../../lib/services/publication-evidence-gates");
 const {
@@ -197,6 +200,7 @@ function rendererManifest(overrides = {}) {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 200,
       consequence_by_ms: 1100,
       proof_by_ms: 2600,
@@ -1023,6 +1027,168 @@ test("immutable publication evidence retains the exact reviewed metadata and off
         },
       }),
     /official_source_(?:release_binding|revision)_sha256_mismatch/,
+  );
+});
+
+test("immutable publication evidence retains only an exact controlled-experiment observation bound to reviewed artefacts", () => {
+  const gateInput = completeEvidence();
+  const expectedIdentity = {
+    story_id: "story-admission-1",
+    channel_id: "pulse-gaming",
+  };
+  const expectedBindings = {
+    story_intake_sha256: "a1".repeat(32),
+    narration_manifest_sha256: "a2".repeat(32),
+    renderer_manifest_file_sha256: "a3".repeat(32),
+    renderer_manifest_canonical_sha256:
+      gateInput.renderer_manifest_sha256,
+    qa_report_sha256: gateInput.qa_report_sha256,
+    media_sha256: gateInput.renderer_manifest.output.sha256,
+    script_sha256: sha256(SCRIPT),
+  };
+  const observation = buildControlledExperimentObservation(
+    {
+      identity: expectedIdentity,
+      experiment: {
+        eligible: true,
+        experiment_id: "pulse-v1-controlled-12",
+        matrix_version: "pulse-controlled-12-v1",
+        expected_cell_id:
+          "what_changes_for_players:direct:standard",
+        ineligibility_reason: null,
+      },
+      creative_static: {
+        runtime_seconds: 37.2,
+        hook_type: "direct",
+        narrator_version: "elevenlabs:voice:model:1",
+        first_frame_text: "XBOX JUST CHANGED",
+        motion_ratio: 0.5,
+        topic: "Xbox preservation",
+        game: "Xbox classics",
+        subject_platform: "Xbox",
+        source_type: "official",
+        consequence_lane: "what_changes_for_players",
+        renderer_version: gateInput.renderer_manifest.renderer.version,
+        qa_result: "pass",
+      },
+      bindings: expectedBindings,
+    },
+    { expectedIdentity, expectedBindings },
+  );
+  const evidence = {
+    ...gateInput,
+    controlled_experiment_observation: observation,
+  };
+
+  const immutable = buildImmutablePublicationEvidence({
+    evidence,
+    operatingMode: "LIVE_GUARDED",
+    controlledExperimentExpectedIdentity: expectedIdentity,
+    controlledExperimentExpectedBindings: expectedBindings,
+  });
+  assert.deepEqual(
+    immutable.controlled_experiment_observation,
+    observation,
+  );
+
+  assert.throws(
+    () =>
+      buildImmutablePublicationEvidence({
+        evidence: {
+          ...evidence,
+          controlled_experiment_observation: {
+            ...observation,
+            creative_static: {
+              ...observation.creative_static,
+              first_frame_text: "FORGED OPENING",
+            },
+          },
+        },
+        operatingMode: "LIVE_GUARDED",
+        controlledExperimentExpectedIdentity: expectedIdentity,
+        controlledExperimentExpectedBindings: expectedBindings,
+      }),
+    /controlled_experiment_observation_sha256_mismatch/,
+  );
+});
+
+test("operator admission binds an eligible experiment observation into the immutable scheduled event", async (t) => {
+  const { repos } = fixture(t);
+  const input = admissionInput(repos);
+  const expectedIdentity = {
+    story_id: input.storyId,
+    channel_id: input.channelId,
+  };
+  const expectedBindings = {
+    story_intake_sha256: "b1".repeat(32),
+    narration_manifest_sha256: "b2".repeat(32),
+    renderer_manifest_file_sha256: "b3".repeat(32),
+    renderer_manifest_canonical_sha256:
+      input.evidence.renderer_manifest_sha256,
+    qa_report_sha256: input.evidence.qa_report_sha256,
+    media_sha256:
+      input.evidence.renderer_manifest.output.sha256,
+    script_sha256: sha256(SCRIPT),
+  };
+  const observation = buildControlledExperimentObservation(
+    {
+      identity: expectedIdentity,
+      experiment: {
+        eligible: true,
+        experiment_id: "pulse-v1-controlled-12",
+        matrix_version: "pulse-controlled-12-v1",
+        expected_cell_id:
+          "what_changes_for_players:direct:standard",
+        ineligibility_reason: null,
+      },
+      creative_static: {
+        runtime_seconds: 37.2,
+        hook_type: "direct",
+        narrator_version: "elevenlabs:voice:model:1",
+        first_frame_text: "XBOX JUST CHANGED",
+        motion_ratio: 0.5,
+        topic: "Xbox preservation",
+        game: "Xbox classics",
+        subject_platform: "Xbox",
+        source_type: "official",
+        consequence_lane: "what_changes_for_players",
+        renderer_version:
+          input.evidence.renderer_manifest.renderer.version,
+        qa_result: "pass",
+      },
+      bindings: expectedBindings,
+    },
+    { expectedIdentity, expectedBindings },
+  );
+  input.evidence = {
+    ...input.evidence,
+    story_intake_sha256:
+      expectedBindings.story_intake_sha256,
+    narration_manifest_sha256:
+      expectedBindings.narration_manifest_sha256,
+    renderer_manifest_file_sha256:
+      expectedBindings.renderer_manifest_file_sha256,
+    controlled_experiment_observation: observation,
+  };
+
+  const admitted = await admitPublication(input);
+  assert.equal(admitted.admitted, true, JSON.stringify(admitted));
+  assert.deepEqual(
+    admitted.publication_evidence
+      .controlled_experiment_observation,
+    observation,
+  );
+  const scheduled =
+    repos.publicationGovernance.getLatestLifecycleEvent(
+      input.storyId,
+      input.platform,
+      "SCHEDULED",
+    );
+  assert.deepEqual(
+    JSON.parse(scheduled.evidence_json)
+      .publication_evidence
+      .controlled_experiment_observation,
+    observation,
   );
 });
 

@@ -128,6 +128,8 @@ test("ingestion persists only metrics returned for the explicit assigned video",
   ]);
   assert.equal(result.status, "collected");
   assert.equal(result.persisted, true);
+  assert.equal(result.completeness_status, "COMPLETE");
+  assert.deepEqual(result.warnings, []);
   assert.equal(result.snapshot.views, 120);
   assert.equal(result.snapshot.shown_in_feed, null);
   assert.equal(result.snapshot.stayed_to_watch_percent, null);
@@ -364,6 +366,7 @@ test("a no-data Analytics response remains explicit and does not create a metric
   assert.deepEqual(result, {
     status: "no_data",
     persisted: false,
+    completeness_status: "PENDING_REPORTING_LAG",
     identity: {
       experimentId: "pulse-v1-controlled-12",
       channelId: "pulse-gaming",
@@ -372,6 +375,19 @@ test("a no-data Analytics response remains explicit and does not create a metric
       videoId: "youtube-video-1",
       snapshotWindow: "24h",
     },
+    sourceRequest: {
+      summary: {
+        ids: "channel==UC_PULSE_GAMING",
+        filters: "video==youtube-video-1",
+      },
+    },
+    sourcePayload: {
+      summary: {
+        columnHeaders: [],
+        rows: [],
+      },
+    },
+    warnings: [],
   });
   assert.equal(
     snapshots.getSnapshot({
@@ -383,6 +399,44 @@ test("a no-data Analytics response remains explicit and does not create a metric
     }),
     null,
   );
+  db.close();
+});
+
+test("ingestion propagates its caller AbortSignal to the read-only adapter", async () => {
+  const { db, snapshots } = fixture();
+  const controller = new AbortController();
+  let observedSignal = null;
+  const service = createYouTubeAnalyticsIngestionService({
+    snapshots,
+    now: () => NOW,
+    analyticsAdapter: {
+      async fetchVideoSnapshot(input) {
+        observedSignal = input.signal;
+        return {
+          status: "no_data",
+          channelId: "UC_PULSE_GAMING",
+          videoId: "youtube-video-1",
+          snapshotWindow: "24h",
+          metrics: {},
+          sourceRequest: {},
+          sourcePayload: {},
+        };
+      },
+    },
+  });
+
+  await service.ingestSnapshot({
+    experimentId: "pulse-v1-controlled-12",
+    channelId: "pulse-gaming",
+    youtubeChannelId: "UC_PULSE_GAMING",
+    storyId: "story-1",
+    videoId: "youtube-video-1",
+    snapshotWindow: "24h",
+    publishedAt: "2026-07-26T12:00:00.000Z",
+    signal: controller.signal,
+  });
+
+  assert.equal(observedSignal, controller.signal);
   db.close();
 });
 

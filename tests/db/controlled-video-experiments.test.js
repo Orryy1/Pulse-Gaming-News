@@ -53,6 +53,10 @@ function creativeManifest(overrides = {}) {
 test("experiment ledger persists the canonical 12-cell editorial matrix", () => {
   const { db, experiments } = fixture();
 
+  assert.equal(
+    experiments.getExperiment("pulse-v1-controlled-12"),
+    null,
+  );
   const experiment = experiments.ensureExperiment({
     experimentId: "pulse-v1-controlled-12",
     channelId: "pulse-gaming",
@@ -60,6 +64,10 @@ test("experiment ledger persists the canonical 12-cell editorial matrix", () => 
   assert.equal(
     experiment.assignment_policy,
     "observed-cell-match-v1",
+  );
+  assert.deepEqual(
+    experiments.getExperiment("pulse-v1-controlled-12"),
+    experiment,
   );
   const cells = experiments.listCells("pulse-v1-controlled-12");
 

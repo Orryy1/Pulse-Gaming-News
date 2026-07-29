@@ -125,6 +125,21 @@ test("runtime account-bound session probes and mutates through one non-serialisa
 
   assert.deepEqual(Object.keys(session), []);
   assert.equal(session.getYoutubeClient(), youtubeClient);
+  const youtubeAnalyticsClient = {
+    reports: {
+      async query() {
+        return { data: { rows: [] } };
+      },
+    },
+  };
+  assert.equal(
+    session.createYoutubeAnalyticsClient((input) => {
+      assert.equal(input.version, "v2");
+      assert.equal(input.auth, oauth2Client);
+      return youtubeAnalyticsClient;
+    }),
+    youtubeAnalyticsClient,
+  );
   assert.equal(
     session.getBindingProof().proof_sha256,
     validRuntimeAccountBindingProof().proof_sha256,
@@ -1508,22 +1523,15 @@ test("google-auth automatic refresh failures are observed and sanitised", async 
   });
 });
 
-test("only the separately invoked OAuth exchange flow may persist the YouTube token", () => {
-  const tokenWrites =
-    uploaderSource.match(/\bfs\.writeJson\(TOKEN_PATH\b/g) || [];
+test("ordinary runtime authentication contains no durable YouTube token persistence path", () => {
   const authClientSource = uploaderSource.slice(
     uploaderSource.indexOf("async function getAuthClient"),
     uploaderSource.indexOf("// --- Generate auth URL"),
   );
 
-  assert.equal(tokenWrites.length, 1);
-  assert.match(
-    uploaderSource,
-    /async function exchangeCode\(code\)[\s\S]*?fs\.writeJson\(TOKEN_PATH,\s*tokens,/,
-  );
   assert.doesNotMatch(
     authClientSource,
-    /\bfs\.writeJson\(TOKEN_PATH,/,
+    /\b(?:fs\.writeJson|atomicReplaceJson|completeYoutubeOAuthConsent)\b/,
   );
 });
 

@@ -46,6 +46,7 @@ function evidenceInput(overrides = {}) {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 200,
       consequence_by_ms: 1100,
       proof_by_ms: 2600,
@@ -71,6 +72,10 @@ test("standard manifest bridges verified media metadata without weakening it", (
   assert.equal(manifest.output.height, 1920);
   assert.equal(manifest.output.aspect_ratio, "9:16");
   assert.equal(manifest.output.platform_video_qa_result, "pass");
+  assert.equal(
+    manifest.timing.first_frame_text,
+    "A TANK WITH TWO SHIELDS",
+  );
   assert.equal(manifest.motion.exact_subject_clip_count, 2);
 });
 
@@ -84,6 +89,7 @@ test("standard manifest does not invent stack, timing, motion or rights evidence
   assert.equal(manifest.stack.hyperframes, null);
   assert.equal(manifest.stack.ffmpeg, null);
   assert.equal(manifest.timing.first_frame_exact_subject, null);
+  assert.equal(manifest.timing.first_frame_text, null);
   assert.equal(manifest.timing.hook_visible_by_ms, null);
   assert.equal(manifest.motion.scene_count, null);
   assert.equal(manifest.motion.exact_subject_clip_count, null);

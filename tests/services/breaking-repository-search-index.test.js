@@ -100,3 +100,136 @@ test("the repository search index fails closed for malformed requests and unavai
     /limit_invalid/,
   );
 });
+
+test("the repository search index rejects generic subject-only matches that would waste the evidence deadline", async () => {
+  const index = createBreakingRepositorySearchIndex({
+    repos: fakeRepos([
+      {
+        id: "origin",
+        title: "Halo: Campaign Evolved Is Out Now",
+        subreddit: "XboxWire",
+        url: "https://news.xbox.com/en-us/halo-campaign-evolved/",
+      },
+      {
+        id: "generic-xbox",
+        title: "Xbox leadership discusses studio culture",
+        subreddit: "Xbox",
+        url: "https://www.ign.com/articles/xbox-studio-culture",
+      },
+      {
+        id: "generic-release-words",
+        title: "A new racing game is out right now",
+        subreddit: "GameSpot",
+        url: "https://www.gamespot.com/articles/racing-game-out-now",
+      },
+      {
+        id: "same-proposition",
+        title: "Halo Campaign Evolved launches today",
+        subreddit: "IGN",
+        url: "https://www.ign.com/articles/halo-campaign-evolved-launch",
+      },
+    ]),
+  });
+
+  const result = await index.search({
+    schema_version: "pulse-breaking-corroborator-search-request-v1",
+    story_identity: {
+      id: "origin",
+      subject_ids: ["xbox"],
+    },
+    query: "Halo Campaign Evolved Is Out Now xbox",
+    limit: 10,
+  });
+
+  assert.deepEqual(result.results, [
+    {
+      url: "https://www.ign.com/articles/halo-campaign-evolved-launch",
+      title: "Halo Campaign Evolved launches today",
+    },
+  ]);
+});
+
+test("the repository search index tokenises multiword subject identities before measuring proposition overlap", async () => {
+  const index = createBreakingRepositorySearchIndex({
+    repos: fakeRepos([
+      {
+        id: "origin",
+        title: "Halo: Campaign Evolved Is Out Now",
+        subreddit: "XboxWire",
+        url: "https://news.xbox.com/en-us/halo-campaign-evolved/",
+      },
+      {
+        id: "generic-subject",
+        title: "Microsoft Gaming leadership update",
+        subreddit: "IGN",
+        url: "https://www.ign.com/articles/microsoft-gaming-leadership",
+      },
+      {
+        id: "same-proposition",
+        title: "Halo Campaign Evolved launches today",
+        subreddit: "IGN",
+        url: "https://www.ign.com/articles/halo-campaign-evolved-launch",
+      },
+    ]),
+  });
+
+  const result = await index.search({
+    schema_version: "pulse-breaking-corroborator-search-request-v1",
+    story_identity: {
+      id: "origin",
+      subject_ids: ["microsoft-gaming"],
+    },
+    query:
+      "Halo Campaign Evolved Is Out Now Microsoft Gaming",
+    limit: 10,
+  });
+
+  assert.deepEqual(result.results, [
+    {
+      url: "https://www.ign.com/articles/halo-campaign-evolved-launch",
+      title: "Halo Campaign Evolved launches today",
+    },
+  ]);
+});
+
+test("the repository search index admits a concise subject match only when one specific proposition token also matches", async () => {
+  const index = createBreakingRepositorySearchIndex({
+    repos: fakeRepos([
+      {
+        id: "origin",
+        title: "Fable Delayed Again",
+        subreddit: "XboxWire",
+        url: "https://news.xbox.com/en-us/fable-delay/ ",
+      },
+      {
+        id: "subject-only",
+        title: "Fable studio leadership update",
+        subreddit: "IGN",
+        url: "https://www.ign.com/articles/fable-studio-leadership",
+      },
+      {
+        id: "same-concise-proposition",
+        title: "Fable delayed by publisher",
+        subreddit: "GameSpot",
+        url: "https://www.gamespot.com/articles/fable-delayed",
+      },
+    ]),
+  });
+
+  const result = await index.search({
+    schema_version: "pulse-breaking-corroborator-search-request-v1",
+    story_identity: {
+      id: "origin",
+      subject_ids: ["fable"],
+    },
+    query: "Fable Delayed Again",
+    limit: 10,
+  });
+
+  assert.deepEqual(result.results, [
+    {
+      url: "https://www.gamespot.com/articles/fable-delayed",
+      title: "Fable delayed by publisher",
+    },
+  ]);
+});

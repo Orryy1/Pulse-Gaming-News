@@ -27,6 +27,8 @@ const SCRIPT = [
 const AUDIO_DURATION_SECONDS = 23.684354;
 const GENERATED_AT = "2026-07-27T13:00:00.000Z";
 const LICENCE_ATTESTED_AT = "2026-07-27T12:55:00.000Z";
+const EXPECTED_NARRATOR_VERSION =
+  "pulse-narrator-v1:10c16d892acc39f0b7ad5d295724640543f1318f220812e77b88816b395954c3";
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -167,6 +169,7 @@ test("buildGovernedNarrationPlan binds exact script, source hashes, timing and l
   assert.equal(plan.provider.expected_voice_id, "TX3LPaxmHKxFdv7VOQHJ");
   assert.equal(plan.provider.expected_model_id, "eleven_multilingual_v2");
   assert.equal(plan.provider.expected_speed, 1.1);
+  assert.equal(plan.narrator_version, EXPECTED_NARRATOR_VERSION);
   assert.equal(plan.licence.rights_basis, "LICENSED");
   assert.equal(
     plan.licence.evidence_reference,
@@ -374,6 +377,10 @@ test("materializeGovernedNarration atomically writes governed timestamps and man
     AUDIO_DURATION_SECONDS,
   );
   assert.equal(result.manifest.narration.provider, "elevenlabs");
+  assert.equal(
+    result.manifest.narration.narrator_version,
+    EXPECTED_NARRATOR_VERSION,
+  );
   assert.equal(result.manifest.narration.word_count, 47);
   assert.equal(
     result.manifest.licence.evidence_reference,

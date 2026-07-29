@@ -17,6 +17,7 @@ const {
 } = require("../../lib/stabilisation/renderer-governance");
 const {
   executeGovernedPublicationReview,
+  stableJson,
 } = require("../../lib/services/governed-publication-review");
 const { bindRepositories } = require("../../lib/repositories");
 const {
@@ -39,6 +40,10 @@ const {
 const {
   buildNextPublishCandidatesReport,
 } = require("../../lib/ops/stabilisation-preflight");
+const {
+  buildControlledExperimentObservation,
+  canonicalControlledExperimentObservationSha256,
+} = require("../../lib/services/controlled-experiment-observation");
 
 const NOW = "2026-07-27T12:00:00.000Z";
 const STORY_ID = "official_ff567afb1a07";
@@ -396,6 +401,7 @@ function fixture() {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 200,
       consequence_by_ms: 1100,
       proof_by_ms: 2600,
@@ -513,6 +519,118 @@ function fixture() {
     narration,
     motion,
     publicationMetadata,
+  };
+}
+
+function addControlledExperimentObservation(values) {
+  const storyIntakePath = path.join(
+    values.root,
+    "story-intake.json",
+  );
+  writeJson(storyIntakePath, {
+    schema_version: "pulse-governed-story-intake-v1",
+    story: {
+      id: STORY_ID,
+      channel_id: CHANNEL_ID,
+      full_script: SCRIPT,
+      script_sha256: values.scriptSha256,
+    },
+  });
+  const storyIntake = {
+    path: path.basename(storyIntakePath),
+    absolutePath: storyIntakePath,
+    sha256: sha256(fs.readFileSync(storyIntakePath)),
+  };
+  const narrationManifestPath = path.join(
+    values.root,
+    "governed-narration-manifest.json",
+  );
+  writeJson(narrationManifestPath, {
+    schema_version: "pulse-governed-narration-v1",
+    story_id: STORY_ID,
+    narrator_version: "pulse-liam-v3",
+  });
+  const narrationManifest = {
+    path: path.basename(narrationManifestPath),
+    absolutePath: narrationManifestPath,
+    sha256: sha256(fs.readFileSync(narrationManifestPath)),
+  };
+  const expectedIdentity = {
+    story_id: STORY_ID,
+    channel_id: CHANNEL_ID,
+  };
+  const expectedBindings = {
+    story_intake_sha256: storyIntake.sha256,
+    narration_manifest_sha256: narrationManifest.sha256,
+    renderer_manifest_file_sha256:
+      values.review.renderer_manifest.file_sha256,
+    renderer_manifest_canonical_sha256:
+      values.review.renderer_manifest.canonical_sha256,
+    qa_report_sha256: values.review.qa_report.sha256,
+    media_sha256: values.finalMp4.sha256,
+    script_sha256: values.scriptSha256,
+  };
+  const observation = buildControlledExperimentObservation(
+    {
+      identity: expectedIdentity,
+      experiment: {
+        eligible: true,
+        experiment_id: "pulse-v1-controlled-12",
+        matrix_version: "pulse-controlled-12-v1",
+        expected_cell_id: "platform_pulse:open_loop:short",
+        ineligibility_reason: null,
+      },
+      creative_static: {
+        runtime_seconds: 28,
+        hook_type: "open_loop",
+        narrator_version: "pulse-liam-v3",
+        first_frame_text: "CHEATER COMPENSATION JUST CHANGED",
+        motion_ratio: 0.74,
+        topic: "anti-cheat",
+        game: "Delta Force",
+        subject_platform: "multi-platform",
+        source_type: "official_publisher",
+        consequence_lane: "platform_pulse",
+        renderer_version: "pulse-v2-game-native-1",
+        qa_result: "pass",
+      },
+      bindings: expectedBindings,
+    },
+    { expectedIdentity, expectedBindings },
+  );
+  const observationPath = path.join(
+    values.root,
+    "controlled-experiment-observation.json",
+  );
+  writeJson(observationPath, observation);
+  const observationRecord = {
+    path: path.basename(observationPath),
+    absolutePath: observationPath,
+    file_sha256: sha256(fs.readFileSync(observationPath)),
+    observation_sha256: observation.observation_sha256,
+  };
+  values.review.story_intake = {
+    path: storyIntake.path,
+    sha256: storyIntake.sha256,
+  };
+  values.review.governed_narration_manifest = {
+    path: narrationManifest.path,
+    sha256: narrationManifest.sha256,
+  };
+  values.review.controlled_experiment_observation = {
+    path: observationRecord.path,
+    file_sha256: observationRecord.file_sha256,
+    observation_sha256: observationRecord.observation_sha256,
+  };
+  writeJson(values.reviewPath, values.review);
+  return {
+    ...values,
+    storyIntake,
+    narrationManifest,
+    controlledExperimentObservation: {
+      ...observationRecord,
+      observation,
+    },
   };
 }
 
@@ -1597,6 +1715,190 @@ test("dry-run validates a complete review package and builds scheduler evidence"
     runtimeCommitSha: "a".repeat(40),
   });
   assert.equal(report.candidates[0].preflight_verdict, "PASS");
+});
+
+test("human review provenance and the guarded candidate retain an optional experiment observation self-hash", async () => {
+  const values = addControlledExperimentObservation(fixture());
+  const databasePath = createDatabase(values.root, values);
+  const backupEvidencePath = createBackupEvidence(
+    values.root,
+    databasePath,
+    "controlled-experiment",
+  );
+  const result = await executeGovernedPublicationReview({
+    apply: true,
+    manifestPath: values.reviewPath,
+    databasePath,
+    backupEvidencePath,
+    confirmStoryId: STORY_ID,
+    confirmMediaSha256: values.finalMp4.sha256,
+    confirmScriptSha256: values.scriptSha256,
+    actorId: "render-editor",
+    reason: "Bind the exact controlled experiment observation",
+    generatedAt: NOW,
+    env: applyEnv(),
+    probe: async () => validProbe(),
+  });
+
+  assert.equal(result.verdict, "APPLIED");
+  assert.deepEqual(
+    result.preflight_evidence.controlled_experiment_observation,
+    values.controlledExperimentObservation.observation,
+  );
+  assert.deepEqual(
+    result.preflight_evidence
+      .controlled_experiment_observation_artifact,
+    {
+      path: values.controlledExperimentObservation.absolutePath,
+      file_sha256:
+        values.controlledExperimentObservation.file_sha256,
+      observation_sha256:
+        values.controlledExperimentObservation.observation_sha256,
+    },
+  );
+
+  const db = new Database(databasePath);
+  const audit = db
+    .prepare(
+      `SELECT * FROM operator_audit_log
+       WHERE action = 'governed_publication_review'
+         AND target_id = ?`,
+    )
+    .get(STORY_ID);
+  const auditEvidence = JSON.parse(audit.evidence_json);
+  assert.deepEqual(
+    auditEvidence.controlled_experiment_observation,
+    {
+      path: values.controlledExperimentObservation.absolutePath,
+      file_sha256:
+        values.controlledExperimentObservation.file_sha256,
+      observation_sha256:
+        values.controlledExperimentObservation.observation_sha256,
+    },
+  );
+  assert.deepEqual(
+    auditEvidence.admission_evidence
+      .controlled_experiment_observation,
+    values.controlledExperimentObservation.observation,
+  );
+
+  const prepared = prepareGovernedWindowCandidateAuthority({
+    repos: bindRepositories(db),
+    storyId: STORY_ID,
+    role: "PRIMARY",
+    scheduledFor: "2026-07-29T19:00:00.000Z",
+    humanReviewAuditId: Number(audit.id),
+    actorId: "window-editor",
+    reason: "Bind the exact reviewed evidence into the guarded window",
+    now: new Date("2026-07-29T12:00:00.000Z"),
+  });
+  assert.equal(
+    prepared.authority.candidate_revision
+      .controlled_experiment_observation_sha256,
+    values.controlledExperimentObservation.observation_sha256,
+  );
+  assert.deepEqual(
+    prepared.authority.admission.evidence
+      .controlled_experiment_observation,
+    values.controlledExperimentObservation.observation,
+  );
+  db.close();
+});
+
+test("the guarded candidate rejects a rehashed review envelope containing a tampered experiment observation", async () => {
+  const values = addControlledExperimentObservation(fixture());
+  const databasePath = createDatabase(values.root, values);
+  const backupEvidencePath = createBackupEvidence(
+    values.root,
+    databasePath,
+    "controlled-experiment-tamper",
+  );
+  const result = await executeGovernedPublicationReview({
+    apply: true,
+    manifestPath: values.reviewPath,
+    databasePath,
+    backupEvidencePath,
+    confirmStoryId: STORY_ID,
+    confirmMediaSha256: values.finalMp4.sha256,
+    confirmScriptSha256: values.scriptSha256,
+    actorId: "render-editor",
+    reason: "Bind the exact controlled experiment observation",
+    generatedAt: NOW,
+    env: applyEnv(),
+    probe: async () => validProbe(),
+  });
+  assert.equal(result.verdict, "APPLIED");
+
+  const db = new Database(databasePath);
+  const audit = db
+    .prepare(
+      `SELECT * FROM operator_audit_log
+       WHERE action = 'governed_publication_review'
+         AND target_id = ?`,
+    )
+    .get(STORY_ID);
+  const evidence = JSON.parse(audit.evidence_json);
+  evidence.admission_evidence
+    .controlled_experiment_observation
+    .creative_static.first_frame_text = "FORGED OPENING";
+  evidence.admission_evidence
+    .controlled_experiment_observation
+    .observation_sha256 =
+    canonicalControlledExperimentObservationSha256(
+      evidence.admission_evidence
+        .controlled_experiment_observation,
+    );
+  writeJson(
+    values.controlledExperimentObservation.absolutePath,
+    evidence.admission_evidence
+      .controlled_experiment_observation,
+  );
+  evidence.admission_evidence
+    .controlled_experiment_observation_artifact
+    .file_sha256 = sha256(
+      fs.readFileSync(
+        values.controlledExperimentObservation.absolutePath,
+      ),
+    );
+  evidence.admission_evidence
+    .controlled_experiment_observation_artifact
+    .observation_sha256 =
+    evidence.admission_evidence
+      .controlled_experiment_observation.observation_sha256;
+  evidence.admission_evidence_sha256 = sha256(
+    stableJson(evidence.admission_evidence),
+  );
+  const forgedAudit = db.prepare(
+    `INSERT INTO operator_audit_log
+       (actor_id, action, target_type, target_id, decision, reason,
+        evidence_json, idempotency_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    audit.actor_id,
+    audit.action,
+    audit.target_type,
+    audit.target_id,
+    audit.decision,
+    audit.reason,
+    JSON.stringify(evidence),
+    `${audit.idempotency_key}:forged-envelope`,
+  );
+
+  assert.throws(
+    () =>
+      prepareGovernedWindowCandidateAuthority({
+        repos: bindRepositories(db),
+        storyId: STORY_ID,
+        role: "PRIMARY",
+        scheduledFor: "2026-07-29T19:00:00.000Z",
+        humanReviewAuditId: Number(forgedAudit.lastInsertRowid),
+        actorId: "window-editor",
+        reason: "Attempt to bind tampered evidence",
+        now: new Date("2026-07-29T12:00:00.000Z"),
+      }),
+    /governed_window_candidate_controlled_experiment_provenance_mismatch/,
+  );
+  db.close();
 });
 
 test("review rejects legacy official evidence without the exact release snapshot", async () => {

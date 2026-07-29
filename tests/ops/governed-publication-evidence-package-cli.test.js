@@ -100,6 +100,46 @@ test("CLI requires the source-media path and exact hash as a pair", () => {
   );
 });
 
+test("CLI forwards an optional controlled-experiment observation only as an exact file pair", () => {
+  const observationSha256 = "c".repeat(64);
+  const options = parseArgs(
+    completeArgs([
+      "--controlled-experiment-observation",
+      "controlled-experiment-observation.json",
+      "--controlled-experiment-observation-file-sha256",
+      observationSha256,
+    ]),
+  );
+  assert.equal(
+    options.controlledExperimentObservationPath,
+    "controlled-experiment-observation.json",
+  );
+  assert.equal(
+    options.controlledExperimentObservationFileSha256,
+    observationSha256,
+  );
+  assert.throws(
+    () =>
+      parseArgs(
+        completeArgs([
+          "--controlled-experiment-observation",
+          "controlled-experiment-observation.json",
+        ]),
+      ),
+    /controlled_experiment_observation_pair_required/,
+  );
+  assert.throws(
+    () =>
+      parseArgs(
+        completeArgs([
+          "--controlled-experiment-observation-file-sha256",
+          observationSha256,
+        ]),
+      ),
+    /controlled_experiment_observation_pair_required/,
+  );
+});
+
 test("CLI requires the publication-metadata path and exact hash as a pair", () => {
   const withoutMetadata = completeArgs().filter(
     (value, index, values) =>

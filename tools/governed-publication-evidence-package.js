@@ -11,6 +11,10 @@ const VALUE_ARGUMENTS = Object.freeze({
   "--owned-motion-manifest": "ownedMotionManifestPath",
   "--source-media-manifest": "sourceMediaManifestPath",
   "--source-media-manifest-sha256": "sourceMediaManifestSha256",
+  "--controlled-experiment-observation":
+    "controlledExperimentObservationPath",
+  "--controlled-experiment-observation-file-sha256":
+    "controlledExperimentObservationFileSha256",
   "--governed-narration-manifest": "governedNarrationManifestPath",
   "--final-composite-manifest": "finalCompositeManifestPath",
   "--renderer-manifest": "rendererManifestPath",
@@ -55,6 +59,10 @@ function usage() {
     "Optional governed source media (both values are required together):",
     "  --source-media-manifest PATH",
     "  --source-media-manifest-sha256 SHA256",
+    "",
+    "Optional controlled-experiment observation (both values are required together):",
+    "  --controlled-experiment-observation PATH",
+    "  --controlled-experiment-observation-file-sha256 SHA256",
     "",
     "Apply requires every exact confirmation:",
     "  --apply",
@@ -113,6 +121,14 @@ function parseArgs(argv = []) {
     Boolean(options.sourceMediaManifestSha256)
   ) {
     throw new Error("source_media_manifest_pair_required");
+  }
+  if (
+    Boolean(options.controlledExperimentObservationPath) !==
+    Boolean(options.controlledExperimentObservationFileSha256)
+  ) {
+    throw new Error(
+      "controlled_experiment_observation_pair_required",
+    );
   }
   if (
     Boolean(options.publicationMetadataPath) !==

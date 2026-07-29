@@ -83,6 +83,7 @@ function completeRendererManifest(storyId) {
     },
     timing: {
       first_frame_exact_subject: true,
+      first_frame_text: "A TANK WITH TWO SHIELDS",
       hook_visible_by_ms: 250,
       consequence_by_ms: 1200,
       proof_by_ms: 2800,

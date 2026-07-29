@@ -197,6 +197,49 @@ test("enqueue idempotency keys reuse exact work and reject changed work", () => 
   db.close();
 });
 
+test("atomic batch enqueue rolls back every new row when a mid-batch idempotency conflict occurs", () => {
+  const { db, jobs } = memoryFixture();
+  jobs.enqueue({
+    kind: "youtube_analytics_snapshot",
+    payload: { snapshotWindow: "48h", videoId: "existing-video" },
+    idempotency_key: "analytics-batch:48h",
+  });
+
+  assert.throws(
+    () =>
+      jobs.enqueueBatch([
+        {
+          kind: "youtube_analytics_snapshot",
+          payload: { snapshotWindow: "24h", videoId: "new-video" },
+          idempotency_key: "analytics-batch:24h",
+        },
+        {
+          kind: "youtube_analytics_snapshot",
+          payload: { snapshotWindow: "48h", videoId: "new-video" },
+          idempotency_key: "analytics-batch:48h",
+        },
+        {
+          kind: "youtube_analytics_snapshot",
+          payload: { snapshotWindow: "7d", videoId: "new-video" },
+          idempotency_key: "analytics-batch:7d",
+        },
+      ]),
+    /job_idempotency_conflict/,
+  );
+
+  assert.equal(jobs.getByIdempotencyKey("analytics-batch:24h"), null);
+  assert.equal(jobs.getByIdempotencyKey("analytics-batch:7d"), null);
+  assert.equal(
+    jobs.getByIdempotencyKey("analytics-batch:48h").payload.videoId,
+    "existing-video",
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count,
+    1,
+  );
+  db.close();
+});
+
 test("future ISO run_at is stored canonically and remains pending until SQLite due time", () => {
   const { db, jobs } = memoryFixture();
   const queued = jobs.enqueue({

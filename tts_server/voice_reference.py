@@ -64,9 +64,9 @@ def validate_voice_reference(
         if candidate.suffix.lower() != ".wav":
             raise ValueError("reference must be a WAV file")
         path_valid = True
-    except (OSError, RuntimeError, ValueError) as exc:
+    except (OSError, RuntimeError, ValueError):
         candidate = None
-        reasons.append(f"path_invalid:{exc}")
+        reasons.append("path_invalid")
 
     if not expected_hash:
         reasons.append("expected_sha256_invalid")
@@ -80,8 +80,8 @@ def validate_voice_reference(
             hash_matches = actual_hash == expected_hash
             if not hash_matches:
                 reasons.append("sha256_mismatch")
-        except OSError as exc:
-            reasons.append(f"sha256_probe_failed:{exc}")
+        except OSError:
+            reasons.append("sha256_probe_failed")
 
     if candidate is not None:
         try:
@@ -123,8 +123,8 @@ def validate_voice_reference(
                 probe_reasons.append("wav_compression_unsupported")
             probe_matches = not probe_reasons
             reasons.extend(probe_reasons)
-        except (OSError, EOFError, wave.Error) as exc:
-            reasons.append(f"wav_probe_failed:{exc}")
+        except (OSError, EOFError, wave.Error):
+            reasons.append("wav_probe_failed")
 
     rights_cleared = normalised_rights in _CLEARED_RIGHTS_STATUSES
     if not rights_cleared:

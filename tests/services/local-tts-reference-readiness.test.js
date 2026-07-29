@@ -179,7 +179,7 @@ test("voice reference traversal is rejected without leaking the private root", (
 
   assert.equal(result.production_ready, false);
   assert.equal(result.path_valid, false);
-  assert.match(result.reasons.join(" "), /path_invalid/);
+  assert.deepEqual(result.reasons, ["path_invalid"]);
   assert.equal(JSON.stringify(result).includes(path.resolve(parent)), false);
 });
 

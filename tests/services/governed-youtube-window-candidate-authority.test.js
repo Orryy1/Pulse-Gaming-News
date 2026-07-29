@@ -11,6 +11,7 @@ const Database = require("better-sqlite3");
 const { bindRepositories } = require("../../lib/repositories");
 const { handlers } = require("../../lib/job-handlers");
 const {
+  admitAutonomousGovernedWindowCandidate,
   authoriseGovernedWindowCandidate,
   prepareGovernedWindowCandidateAuthority,
 } = require("../../lib/services/governed-youtube-window-candidate-authority");
@@ -785,6 +786,199 @@ test("the human window-authorisation mutator refuses the autonomous union before
       db.prepare("SELECT COUNT(*) AS count FROM jobs").get().count,
       0,
     );
+  } finally {
+    db.close();
+  }
+});
+
+test("autonomous PRIMARY atomically persists the exact admission, audits it and enqueues one T-75 JIT intent", () => {
+  const { db, repos } = migratedFixture();
+  try {
+    const storyId = "autonomous-primary-admission";
+    addAutonomousStory(db, storyId);
+    const prepared = prepareGovernedWindowCandidateAuthority({
+      repos,
+      storyId,
+      role: "PRIMARY",
+      scheduledFor: SCHEDULED_FOR,
+      approval: autonomousEligibilityApproval(storyId),
+      now: T90_AT,
+    });
+
+    const applied = admitAutonomousGovernedWindowCandidate({
+      repos,
+      ...exactAuthorisationInput(prepared),
+      now: T90_AT,
+    });
+
+    assert.equal(applied.verdict, "APPLIED");
+    assert.equal(applied.mutated, true);
+    assert.equal(applied.external_posting, false);
+    assert.equal(applied.publish_authority_created, false);
+    assert.ok(Number.isInteger(applied.authority_audit_id));
+    assert.ok(Number.isInteger(applied.admission_job_id));
+
+    const extra = JSON.parse(repos.stories.get(storyId)._extra);
+    assert.deepEqual(extra.admission, prepared.authority.admission);
+    assert.equal(extra.approval_type, AUTONOMOUS_AUTHORITY_TYPE);
+    assert.equal(extra.runway_eligibility_verdict, "GREEN");
+    assert.equal(extra.standby_authorised, false);
+    assert.equal(
+      extra.candidate_revision_sha256,
+      prepared.authority.candidate_revision_sha256,
+    );
+    assert.equal(
+      extra.candidate_binding_sha256,
+      prepared.authority.candidate_binding_sha256,
+    );
+    assert.equal(
+      extra.autonomous_eligibility_attestation_sha256,
+      prepared.authority.autonomous_eligibility_attestation_sha256,
+    );
+    for (const field of [
+      "human_review_status",
+      "human_review_event_id",
+      "human_review_evidence_sha256",
+      "human_review_audit_id",
+      "humanReviewAuditId",
+      "operator",
+      "actor_id",
+      "reason",
+      "autonomous_publication_authority",
+    ]) {
+      assert.equal(Object.hasOwn(extra, field), false, field);
+      assert.equal(Object.hasOwn(extra.admission, field), false, field);
+    }
+
+    const audit = db
+      .prepare("SELECT * FROM operator_audit_log WHERE id = ?")
+      .get(applied.authority_audit_id);
+    assert.equal(audit.action, "governed_youtube_window_primary");
+    assert.equal(audit.decision, "APPROVED");
+    assert.equal(audit.target_id, storyId);
+    assert.deepEqual(JSON.parse(audit.evidence_json), prepared.authority);
+
+    const pending = repos.jobs.listPending();
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].kind, "admit_governed_publication");
+    assert.equal(pending[0].story_id, storyId);
+    assert.equal(pending[0].run_at, "2026-07-29 17:45:00");
+    assert.equal(
+      pending[0].idempotency_key,
+      prepared.authority.admission_job_idempotency_key,
+    );
+    assert.equal(pending[0].payload.human_admission_required, false);
+    assert.equal(
+      pending[0].payload.autonomous_jit_materialisation_required,
+      true,
+    );
+    assert.equal(pending[0].payload.publish_authority, false);
+    assert.equal(pending[0].payload.external_posting, false);
+    assert.equal(
+      Object.hasOwn(
+        pending[0].payload.admission,
+        "autonomous_publication_authority",
+      ),
+      false,
+    );
+
+    const retried = admitAutonomousGovernedWindowCandidate({
+      repos,
+      ...exactAuthorisationInput(prepared),
+      now: new Date("2026-07-29T18:00:00.000Z"),
+    });
+    assert.equal(retried.verdict, "EXISTS");
+    assert.equal(retried.mutated, false);
+    assert.equal(retried.authority_audit_id, applied.authority_audit_id);
+    assert.equal(retried.admission_job_id, applied.admission_job_id);
+    assert.equal(repos.jobs.listPending().length, 1);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM operator_audit_log").get()
+        .count,
+      1,
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("autonomous STANDBY persists an exact reserve admission and audit but creates no job", () => {
+  const { db, repos } = migratedFixture();
+  try {
+    const storyId = "autonomous-standby-admission";
+    addAutonomousStory(db, storyId);
+    const prepared = prepareGovernedWindowCandidateAuthority({
+      repos,
+      storyId,
+      role: "STANDBY",
+      scheduledFor: SCHEDULED_FOR,
+      approval: autonomousEligibilityApproval(storyId, "STANDBY"),
+      now: T90_AT,
+    });
+
+    const applied = admitAutonomousGovernedWindowCandidate({
+      repos,
+      ...exactAuthorisationInput(prepared),
+      now: T90_AT,
+    });
+
+    assert.equal(applied.verdict, "APPLIED");
+    assert.equal(applied.admission_job_id, null);
+    assert.equal(repos.jobs.listPending().length, 0);
+    const extra = JSON.parse(repos.stories.get(storyId)._extra);
+    assert.deepEqual(extra.admission, prepared.authority.admission);
+    assert.equal(extra.standby_authorised, true);
+    assert.equal(extra.runway_standby_authorised, true);
+    const audit = db
+      .prepare("SELECT * FROM operator_audit_log WHERE id = ?")
+      .get(applied.authority_audit_id);
+    assert.equal(audit.action, "governed_youtube_runway_standby");
+    assert.equal(audit.decision, "APPROVED");
+  } finally {
+    db.close();
+  }
+});
+
+test("autonomous admission conflicts fail closed and roll back story, audit and T-75 job together", () => {
+  const { db, repos } = migratedFixture();
+  try {
+    const storyId = "autonomous-admission-atomic-conflict";
+    addAutonomousStory(db, storyId);
+    const beforeExtra = repos.stories.get(storyId)._extra;
+    const prepared = prepareGovernedWindowCandidateAuthority({
+      repos,
+      storyId,
+      role: "PRIMARY",
+      scheduledFor: SCHEDULED_FOR,
+      approval: autonomousEligibilityApproval(storyId),
+      now: T90_AT,
+    });
+    repos.jobs.enqueue({
+      kind: "hunt",
+      channel_id: "pulse-gaming",
+      story_id: storyId,
+      payload: { conflicting_work: true },
+      run_at: prepared.authority.admission_run_at,
+      idempotency_key: prepared.authority.admission_job_idempotency_key,
+    });
+
+    assert.throws(
+      () =>
+        admitAutonomousGovernedWindowCandidate({
+          repos,
+          ...exactAuthorisationInput(prepared),
+          now: T90_AT,
+        }),
+      { message: "job_idempotency_conflict" },
+    );
+    assert.equal(repos.stories.get(storyId)._extra, beforeExtra);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM operator_audit_log").get()
+        .count,
+      0,
+    );
+    assert.equal(repos.jobs.listPending().length, 1);
+    assert.equal(repos.jobs.listPending()[0].kind, "hunt");
   } finally {
     db.close();
   }

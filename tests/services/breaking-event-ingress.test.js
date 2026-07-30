@@ -460,6 +460,65 @@ test("capture failures produce a hash-valid HOLD packet with only the real captu
   );
 });
 
+test("breaking evidence retry regenerates its envelope with the trusted attempt clock", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-breaking-trusted-retry-time-",
+    ),
+  );
+  t.after(() => fs.remove(outDir));
+  const attemptNow = "2026-08-10T14:07:00.000Z";
+  const envelope = buildBreakingEventEnvelope({
+    story: story({
+      verification_status: "",
+      primary_source_url: "",
+      source_evidence_sha256: "",
+    }),
+    now: NOW,
+  });
+
+  const result = await handlers.breaking_story_discovery(
+    {
+      payload: {
+        ...envelope,
+        out_dir: outDir,
+      },
+    },
+    {
+      now: () => attemptNow,
+      repos: {
+        jobs: {
+          enqueue() {
+            throw new Error(
+              "a failed capture must not enqueue",
+            );
+          },
+        },
+      },
+      async captureBreakingSourceEvidence() {
+        const error = new Error("fixture capture unavailable");
+        error.code = "BREAKING_SOURCE_CAPTURE_UNAVAILABLE";
+        throw error;
+      },
+      log() {},
+    },
+  );
+
+  const report = await fs.readJson(result.report_json);
+  assert.equal(result.verdict, "HOLD");
+  assert.equal(report.generated_at, attemptNow);
+  assert.equal(report.attempt_observed_at, attemptNow);
+  assert.equal(
+    report.source_evidence.generated_at,
+    attemptNow,
+  );
+  assert.equal(
+    report.story.discovered_at,
+    "2026-07-28T14:03:00.000Z",
+  );
+});
+
 test("discovery never trusts inbound CONFIRMED fields when fresh source capture is unavailable", async (t) => {
   const outDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-breaking-untrusted-confirmation-"),

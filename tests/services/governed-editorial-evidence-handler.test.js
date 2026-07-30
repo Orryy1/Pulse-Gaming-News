@@ -724,6 +724,40 @@ test("immutable evidence fingerprint mismatch remains terminal even when extract
   );
 });
 
+test("editorial evidence retry re-evaluates a stale ingress payload against the trusted attempt clock", async (t) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-editorial-evidence-stale-retry-",
+    ),
+  );
+  t.after(() => fs.remove(rootDir));
+  const attemptNow = "2026-08-10T14:07:00.000Z";
+
+  const { result } =
+    await runGovernedEditorialEvidenceAttempt({
+      outDir: rootDir,
+      attemptNow,
+    });
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "editorial_story_outside_current_window",
+    ),
+    JSON.stringify(result),
+  );
+  assert.equal(result.job_outcome, "TERMINAL");
+  assert.equal(result.retryable, false);
+  assert.equal(
+    Object.hasOwn(result, "retry_after_seconds"),
+    false,
+  );
+  const report = await fs.readJson(result.report_json);
+  assert.equal(report.generated_at, attemptNow);
+  assert.equal(report.attempt_observed_at, attemptNow);
+});
+
 test("READY editorial inventory immediately wakes both evergreen and flagship planning", async (t) => {
   const outDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-inventory-lane-wake-"),

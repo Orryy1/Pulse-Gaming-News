@@ -731,6 +731,140 @@ test("candidate-supply retry preserves fifteen minutes for production before T-9
   assert.equal(result.catch_up_allowed, false);
 });
 
+test("planner re-samples trusted time after asynchronous preparation and cannot enqueue across the production cutoff", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-window-handler-cutoff-race-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, {
+      recursive: true,
+      force: true,
+    }),
+  );
+  const inventoryRoot = path.join(
+    workspaceRoot,
+    "output",
+    "editorial-inventory",
+  );
+  const entries = [
+    readyEntry(inventoryRoot, "rss-alpha", "1"),
+    readyEntry(inventoryRoot, "rss-beta", "2"),
+  ];
+  const clockValues = [
+    "2026-07-30T07:00:00.000Z",
+    "2026-07-30T07:12:00.000Z",
+  ];
+  let clockReads = 0;
+  let plannerCalls = 0;
+
+  const result = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 1,
+      max_attempts: 8,
+    },
+    {
+      now() {
+        const value =
+          clockValues[
+            Math.min(
+              clockReads,
+              clockValues.length - 1,
+            )
+          ];
+        clockReads += 1;
+        return value;
+      },
+      autonomousProductionWorkspaceRoot: workspaceRoot,
+      governedEditorialInventoryRoot: inventoryRoot,
+      governedEditorialInventoryAllowedRoots: [
+        path.join(workspaceRoot, "output"),
+      ],
+      governedAutonomousBreakingRuntimePolicy:
+        runtimePolicy(),
+      repos: {
+        jobs: {
+          enqueueBatch() {
+            throw new Error(
+              "cutoff-crossed planning must not enqueue",
+            );
+          },
+        },
+        stories: {
+          get(storyId) {
+            return dbStory(storyId);
+          },
+        },
+      },
+      async scanGovernedEditorialInventory() {
+        return scanReport(entries);
+      },
+      async hydrateGovernedEditorialInventoryCandidates(input) {
+        return {
+          schema_version:
+            "pulse-governed-editorial-inventory-candidate-hydration-v1",
+          verdict: "READY",
+          candidates: input.candidates.map((candidate) => ({
+            ...candidate,
+            verification_status: "CONFIRMED",
+            verified_for_planning: true,
+          })),
+          hydrated: input.candidates.map((candidate) => ({
+            story_id: candidate.story_id,
+          })),
+          rejected: [],
+          skipped: [],
+          safety: {
+            read_only: true,
+            network_used: false,
+            database_mutated: false,
+            oauth_mutated: false,
+            platform_contacted: false,
+            publish_authority_created: false,
+          },
+        };
+      },
+      async compileGovernedAutonomousBreakingCandidateContract(
+        input,
+      ) {
+        return compiledCandidate(
+          input.story.id,
+          "2026-07-30T06:45:00.000Z",
+        );
+      },
+      async planGovernedAutonomousWindowProduction() {
+        plannerCalls += 1;
+        return queuedPlan(
+          entries.map((entry) =>
+            compiledCandidate(
+              entry.story.id,
+              "2026-07-30T06:45:00.000Z",
+            ),
+          ),
+        );
+      },
+    },
+  );
+
+  assert.equal(clockReads, 2);
+  assert.equal(plannerCalls, 0);
+  assert.equal(result.verdict, "HOLD");
+  assert.deepEqual(result.blockers, [
+    "governed_autonomous_window_planning_must_precede_production_cutoff",
+  ]);
+  assert.equal(result.job_outcome, "TERMINAL");
+  assert.equal(result.retryable, false);
+  assert.equal(result.counts.eligible, 2);
+  assert.equal(result.counts.queued_jobs, 0);
+  assert.equal(result.publish_authority_created, false);
+  assert.equal(result.no_external_posting, true);
+});
+
 test("holds before planning when DB rows are unapproved or only manually approved", async (t) => {
   const workspaceRoot = fs.mkdtempSync(
     path.join(

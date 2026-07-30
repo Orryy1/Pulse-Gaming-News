@@ -8,11 +8,198 @@ dotenv.config({ override: false });
 
 const brand = require("./brand");
 const getBestImage = require("./images_download");
+const {
+  normaliseStoreTitleText,
+} = require("./lib/exact-store-title-identity");
 const { selectThumbnailSubjectImage } = require("./lib/thumbnail-safety");
 const { applyProduceSelection } = require("./lib/produce-selection");
 
 const OUTPUT_DIR = path.join("output", "images");
 const CACHE_DIR = path.join("output", "image_cache");
+
+const PERSISTED_ACQUIRED_MEDIA_FIELDS = Object.freeze([
+  "path",
+  "type",
+  "source",
+  "source_type",
+  "url",
+  "entity",
+  "game_name",
+  "is_video",
+  "movie_name",
+  "steam_app_id",
+  "steam_app_title",
+  "steam_matched_query",
+  "store_app_id",
+  "store_app_title",
+  "store_app_slug",
+  "store_matched_query",
+  "store_match_status",
+  "store_match_verified",
+  "match_basis",
+  "rights_status",
+  "rights_risk_class",
+  "thumbnail_safety_score",
+  "thumbnail_safety_warnings",
+]);
+
+function acquiredMediaRecord(asset) {
+  if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
+    return null;
+  }
+  const record = {};
+  for (const field of PERSISTED_ACQUIRED_MEDIA_FIELDS) {
+    if (asset[field] !== undefined && asset[field] !== null) {
+      record[field] = asset[field];
+    }
+  }
+  return record.path || record.url ? record : null;
+}
+
+function mediaIdentity(asset) {
+  return String(asset?.url || asset?.path || "").trim();
+}
+
+function mediaPathIdentity(asset) {
+  const value =
+    typeof asset === "string" ? asset : String(asset?.path || "").trim();
+  const normalised = String(value || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .toLowerCase();
+  const outputIndex = normalised.lastIndexOf("/output/");
+  return outputIndex >= 0 ? normalised.slice(outputIndex + 1) : normalised;
+}
+
+function verifiedStoreMediaIdentity(asset) {
+  if (
+    !asset ||
+    typeof asset !== "object" ||
+    asset.store_match_verified !== true
+  ) {
+    return null;
+  }
+  const sourceType = String(asset.source_type || "").toLowerCase();
+  const source = String(asset.source || "").toLowerCase();
+  const sourceFamily =
+    sourceType.startsWith("steam_") || source === "steam"
+      ? "steam"
+      : sourceType.startsWith("igdb_") || source === "igdb"
+        ? "igdb"
+        : null;
+  return {
+    sourceFamily,
+    appId: String(asset.store_app_id || asset.steam_app_id || "").trim(),
+    title: normaliseStoreTitleText(
+      asset.store_app_title || asset.steam_app_title || asset.store_app_slug,
+    ),
+  };
+}
+
+function verifiedStoreMediaMatches(asset, exactIdentities) {
+  const identity = verifiedStoreMediaIdentity(asset);
+  if (!identity || (!identity.appId && !identity.title)) return false;
+  return exactIdentities.some((exact) => {
+    if (
+      identity.sourceFamily &&
+      exact.sourceFamily &&
+      identity.sourceFamily !== exact.sourceFamily
+    ) {
+      return false;
+    }
+    if (identity.appId && exact.appId) {
+      return identity.appId === exact.appId;
+    }
+    return Boolean(
+      identity.title && exact.title && identity.title === exact.title,
+    );
+  });
+}
+
+function normaliseAcquiredMediaForStory({
+  existingGameImages = [],
+  existingVideoClips = [],
+  images = [],
+  videoClips = [],
+} = {}) {
+  const downloadedImages = (Array.isArray(images) ? images : [])
+    .map(acquiredMediaRecord)
+    .filter(Boolean);
+  const freshVideoClips = Array.isArray(videoClips)
+    ? videoClips
+    : [];
+  const exactStillIdentities = downloadedImages
+    .filter((asset) => asset.is_video !== true)
+    .map(verifiedStoreMediaIdentity)
+    .filter(Boolean);
+  const existingMedia = Array.isArray(existingGameImages)
+    ? existingGameImages
+    : [];
+  const matchingExistingVideos = existingMedia.filter(
+    (asset) =>
+      asset &&
+      typeof asset === "object" &&
+      asset.is_video === true &&
+      verifiedStoreMediaMatches(asset, exactStillIdentities),
+  );
+  const matchingExistingVideoPaths = new Set(
+    matchingExistingVideos.map(mediaPathIdentity).filter(Boolean),
+  );
+  const priorVideoClips = Array.isArray(existingVideoClips)
+    ? existingVideoClips
+    : [];
+  const retainedVideoClips =
+    freshVideoClips.length > 0
+      ? freshVideoClips
+      : exactStillIdentities.length > 0
+        ? priorVideoClips.filter((clip) =>
+            typeof clip === "object"
+              ? verifiedStoreMediaMatches(clip, exactStillIdentities)
+              : matchingExistingVideoPaths.has(mediaPathIdentity(clip)),
+          )
+        : priorVideoClips;
+  const renderClipPaths = [
+    ...retainedVideoClips,
+  ]
+    .map((clip) =>
+      typeof clip === "string" ? clip : String(clip?.path || "").trim(),
+    )
+    .filter(Boolean);
+  const structuredExactClips = freshVideoClips
+    .filter(
+      (clip) =>
+        clip &&
+        typeof clip === "object" &&
+        clip.store_match_verified === true,
+    )
+    .map(acquiredMediaRecord)
+    .filter(Boolean);
+  const gameImages = existingMedia.filter((asset) => {
+    const isVideo =
+      asset && typeof asset === "object" && asset.is_video === true;
+    if (!isVideo) return true;
+    if (freshVideoClips.length > 0) return false;
+    if (exactStillIdentities.length > 0) {
+      return verifiedStoreMediaMatches(asset, exactStillIdentities);
+    }
+    return true;
+  });
+  const seen = new Set(
+    gameImages.map(mediaIdentity).filter(Boolean),
+  );
+  for (const clip of structuredExactClips) {
+    const identity = mediaIdentity(clip);
+    if (identity && seen.has(identity)) continue;
+    if (identity) seen.add(identity);
+    gameImages.push(clip);
+  }
+  return {
+    downloaded_images: downloadedImages,
+    video_clips: [...new Set(renderClipPaths)],
+    game_images: gameImages,
+  };
+}
 
 // --- Platform safe zone presets ---
 // Each platform overlays UI elements that obscure content in certain regions.
@@ -474,18 +661,19 @@ async function generateImages(options = {}) {
       }
     }
 
-    // Store all image paths for the video assembly to use
-    story.downloaded_images = availableImages.map((i) => ({
-      path: i.path,
-      type: i.type,
-      source: i.source,
-      thumbnail_safety_score: i.thumbnail_safety_score,
-      thumbnail_safety_warnings: i.thumbnail_safety_warnings,
-    }));
-    // Store video clips for assembly (Steam trailers, gameplay footage)
-    if (videoClips.length > 0) {
-      story.video_clips = videoClips.map((c) => c.path);
-    }
+    // Preserve exact store identity and provenance in the canonical story
+    // while retaining the historical string-path shape consumed by the
+    // renderer. Structured exact trailer references are mirrored into
+    // game_images for the governed reference/readiness services.
+    const acquiredMedia = normaliseAcquiredMediaForStory({
+      existingGameImages: story.game_images,
+      existingVideoClips: story.video_clips,
+      images: availableImages,
+      videoClips,
+    });
+    story.downloaded_images = acquiredMedia.downloaded_images;
+    story.game_images = acquiredMedia.game_images;
+    story.video_clips = acquiredMedia.video_clips;
   }
 
   await db.saveStories(stories);
@@ -498,6 +686,8 @@ async function generateImages(options = {}) {
 }
 
 module.exports = generateImages;
+module.exports.normaliseAcquiredMediaForStory =
+  normaliseAcquiredMediaForStory;
 
 if (require.main === module) {
   generateImages().catch((err) => {

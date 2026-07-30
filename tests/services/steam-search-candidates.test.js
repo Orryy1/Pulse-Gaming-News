@@ -105,3 +105,31 @@ test("candidates are deduped when before- and after-colon clean to the same thin
     `duplicate 'cyberpunk' candidates: ${cands.join(" | ")}`,
   );
 });
+
+test("current Townfall headline includes the exact subtitle as a search candidate", () => {
+  const cands = buildSteamSearchCandidates(
+    "Silent Hill: Townfall hands-on report reveals its first-person combat",
+  );
+
+  assert.ok(
+    cands.some(
+      (candidate) =>
+        candidate.toLowerCase() === "silent hill: townfall",
+    ),
+    `expected exact Townfall candidate; got: ${cands.join(" | ")}`,
+  );
+});
+
+test("current Stupid Never Dies headline includes the exact game title as a search candidate", () => {
+  const cands = buildSteamSearchCandidates(
+    "Stylish action RPG Stupid Never Dies gets release date, new trailer",
+  );
+
+  assert.ok(
+    cands.some(
+      (candidate) =>
+        candidate.toLowerCase() === "stupid never dies",
+    ),
+    `expected exact game candidate; got: ${cands.join(" | ")}`,
+  );
+});

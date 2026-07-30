@@ -9,6 +9,11 @@ const axios = require("axios");
 const { classifyOutboundUrl, safeRedirectConfig } = require("./lib/safe-url");
 const mediaPaths = require("./lib/media-paths");
 const { filterUnsafeImagesForRender } = require("./lib/thumbnail-safety");
+const {
+  GENERIC_STORE_TITLE_TOKENS: GENERIC_STEAM_TITLE_TOKENS,
+  normaliseStoreTitleText: normaliseSteamMatchText,
+  titleContainsExactStoreName: titleContainsExactSteamName,
+} = require("./lib/exact-store-title-identity");
 
 const CACHE_DIR = path.join("output", "image_cache");
 const VIDEO_CACHE_DIR = path.join("output", "video_cache");
@@ -26,6 +31,279 @@ function randomUA() {
   return BROWSER_USER_AGENTS[
     Math.floor(Math.random() * BROWSER_USER_AGENTS.length)
   ];
+}
+
+function exactNamedTitleCandidates(rawTitle) {
+  const title = String(rawTitle || "").trim();
+  if (!title) return [];
+  const sequences =
+    title.match(
+      /(?:\b[A-Z][A-Za-z0-9'\u2019.-]*|[A-Z0-9]{2,})(?:(?:\s+|:\s*)(?:[A-Z][A-Za-z0-9'\u2019.-]*|[A-Z0-9]{2,})){1,6}/g,
+    ) || [];
+  const out = [];
+  for (const sequence of sequences) {
+    const tokens = sequence
+      .replace(/:/g, " : ")
+      .split(/\s+/)
+      .filter(Boolean);
+    const wordTokens = tokens.filter((token) => token !== ":");
+    if (wordTokens.length < 2) continue;
+    out.push(sequence);
+
+    let firstDistinctive = 0;
+    while (
+      firstDistinctive < wordTokens.length - 1 &&
+      GENERIC_STEAM_TITLE_TOKENS.has(
+        normaliseSteamMatchText(wordTokens[firstDistinctive]),
+      )
+    ) {
+      firstDistinctive += 1;
+    }
+    if (firstDistinctive > 0) {
+      out.push(wordTokens.slice(firstDistinctive).join(" "));
+    }
+  }
+
+  const subtitleLead = title.match(
+    /^(.+?:\s*[A-Z][A-Za-z0-9'\u2019.-]*)\s+(?:hands-on|preview|review|report|gets|is|has|will|launches|reveals|returns)\b/i,
+  );
+  if (subtitleLead?.[1]) out.push(subtitleLead[1]);
+  return out.slice(0, 6);
+}
+
+/**
+ * Select one Steam result only when the complete official app name is
+ * visibly present in the story headline. Steam storesearch is relevance
+ * ranked, not an identity API, so `items[0]` is never sufficient evidence.
+ *
+ * Returns null for franchise-only, malformed or multi-game ambiguity.
+ */
+function selectExactSteamSearchMatch(story, attempts = []) {
+  const storyTitle = String(story?.title || "").trim();
+  const byAppId = new Map();
+  for (const attempt of Array.isArray(attempts) ? attempts : []) {
+    const searchTerm = String(
+      attempt?.search_term || attempt?.searchTerm || "",
+    ).trim();
+    for (const item of Array.isArray(attempt?.items)
+      ? attempt.items
+      : []) {
+      const appId = String(item?.id || item?.appid || "").trim();
+      const appTitle = String(item?.name || item?.title || "").trim();
+      if (
+        !/^\d{2,12}$/.test(appId) ||
+        !titleContainsExactSteamName(storyTitle, appTitle)
+      ) {
+        continue;
+      }
+      const normalisedTitle = normaliseSteamMatchText(appTitle);
+      const candidate = {
+        app_id: appId,
+        app_title: appTitle,
+        matched_query: searchTerm || null,
+        normalised_title: normalisedTitle,
+        score:
+          normalisedTitle.split(" ").length * 1000 +
+          normalisedTitle.length,
+      };
+      const prior = byAppId.get(appId);
+      if (!prior || candidate.score > prior.score) {
+        byAppId.set(appId, candidate);
+      }
+    }
+  }
+
+  const ranked = [...byAppId.values()].sort(
+    (left, right) =>
+      right.score - left.score ||
+      left.app_id.localeCompare(right.app_id),
+  );
+  if (ranked.length === 0) return null;
+  if (ranked.length > 1) {
+    const first = ranked[0].normalised_title;
+    const everyOtherResultIsAProperNestedTitle = ranked
+      .slice(1)
+      .every(
+        (candidate) =>
+          candidate.normalised_title !== first &&
+          ` ${first} `.includes(
+            ` ${candidate.normalised_title} `,
+          ),
+      );
+    if (!everyOtherResultIsAProperNestedTitle) return null;
+  }
+  const selected = ranked[0];
+  return {
+    app_id: selected.app_id,
+    app_title: selected.app_title,
+    matched_query: selected.matched_query,
+    match_basis: "complete_steam_app_title_in_story_headline",
+    store_match_verified: true,
+  };
+}
+
+function isSteamMediaAsset(asset) {
+  const source = String(asset?.source || "").toLowerCase();
+  const sourceType = String(asset?.source_type || "").toLowerCase();
+  const url = String(asset?.url || "").toLowerCase();
+  return (
+    source === "steam" ||
+    source.startsWith("steam_") ||
+    source.startsWith("steam:") ||
+    sourceType.startsWith("steam_") ||
+    /(?:store\.steampowered\.com|steamstatic\.com)/.test(url)
+  );
+}
+
+function steamAppIdFromAsset(asset) {
+  return (
+    String(
+      asset?.store_app_id ||
+        asset?.steam_app_id ||
+        asset?.appid ||
+        "",
+    ).trim() ||
+    String(asset?.url || "").match(
+      /\/steam\/apps\/(\d{2,12})\//i,
+    )?.[1] ||
+    null
+  );
+}
+
+/**
+ * Revalidate hunter-stamped Steam media before it can suppress the direct
+ * exact-app fallback. Old story rows may contain a franchise-neighbour app
+ * selected by storesearch relevance (for example SILENT HILL 2 for a
+ * Townfall headline). Such rows are untrusted input, not durable identity.
+ */
+function verifyPresavedSteamAsset(story, asset) {
+  if (!isSteamMediaAsset(asset)) return null;
+  const appId = String(steamAppIdFromAsset(asset) || "").trim();
+  const appTitle = String(
+    asset?.store_app_title ||
+      asset?.steam_app_title ||
+      asset?.game_name ||
+      "",
+  ).trim();
+  const matchedQuery = String(
+    asset?.store_matched_query ||
+      asset?.steam_matched_query ||
+      "",
+  ).trim();
+  const urlAppId = String(asset?.url || "").match(
+    /\/steam\/apps\/(\d{2,12})\//i,
+  )?.[1];
+  if (
+    !/^\d{2,12}$/.test(appId) ||
+    !appTitle ||
+    (urlAppId && urlAppId !== appId)
+  ) {
+    return null;
+  }
+
+  const verified = selectExactSteamSearchMatch(story, [
+    {
+      search_term: matchedQuery,
+      items: [{ id: appId, name: appTitle }],
+    },
+  ]);
+  if (!verified || verified.app_id !== appId) return null;
+
+  return {
+    entity: verified.app_title,
+    game_name: verified.app_title,
+    steam_app_id: verified.app_id,
+    steam_app_title: verified.app_title,
+    steam_matched_query: verified.matched_query,
+    store_app_id: verified.app_id,
+    store_app_title: verified.app_title,
+    store_matched_query: verified.matched_query,
+    store_match_status: "verified",
+    store_match_verified: true,
+    match_basis: verified.match_basis,
+    rights_status: asset?.rights_status || "UNREVIEWED",
+    rights_risk_class:
+      asset?.rights_risk_class ||
+      "official_steam_storefront_editorial_use_review_required",
+  };
+}
+
+function verifyPresavedSteamAssetWithSiblings(story, asset) {
+  const direct = verifyPresavedSteamAsset(story, asset);
+  if (direct) return direct;
+
+  const appId = steamAppIdFromAsset(asset);
+  if (!appId) return null;
+  for (const sibling of Array.isArray(story?.game_images)
+    ? story.game_images
+    : []) {
+    if (sibling === asset || steamAppIdFromAsset(sibling) !== appId) {
+      continue;
+    }
+    const siblingIdentity = verifyPresavedSteamAsset(story, sibling);
+    if (!siblingIdentity) continue;
+    return verifyPresavedSteamAsset(story, {
+      ...asset,
+      steam_app_id: siblingIdentity.steam_app_id,
+      steam_app_title: siblingIdentity.steam_app_title,
+      steam_matched_query:
+        siblingIdentity.steam_matched_query,
+      store_app_id: siblingIdentity.store_app_id,
+      store_app_title: siblingIdentity.store_app_title,
+      store_matched_query:
+        siblingIdentity.store_matched_query,
+    });
+  }
+  return null;
+}
+
+function filterMixedSteamAssetsForExactApp(story, assets = []) {
+  const annotated = (Array.isArray(assets) ? assets : []).map(
+    (asset) => {
+      if (!isSteamMediaAsset(asset)) return asset;
+      const identity = verifyPresavedSteamAssetWithSiblings(
+        story,
+        asset,
+      );
+      return identity ? { ...asset, ...identity } : asset;
+    },
+  );
+  if (
+    !annotated.some(
+      (asset) =>
+        isSteamMediaAsset(asset) &&
+        asset.store_match_verified === true,
+    )
+  ) {
+    return annotated;
+  }
+  return annotated.filter(
+    (asset) =>
+      !isSteamMediaAsset(asset) ||
+      asset.store_match_verified === true,
+  );
+}
+
+function inferDownloadedVideoSourceType(asset) {
+  if (isSteamMediaAsset(asset)) return "steam_trailer";
+  const source = String(asset?.source || "").toLowerCase();
+  if (source === "igdb" || source.startsWith("igdb")) {
+    return "igdb_video";
+  }
+  if (source.startsWith("youtube")) {
+    return "youtube_video_reference";
+  }
+  const declared = String(asset?.source_type || "")
+    .trim()
+    .toLowerCase();
+  if (
+    declared &&
+    !declared.startsWith("steam_") &&
+    declared !== "steam_trailer"
+  ) {
+    return declared;
+  }
+  return "external_video_reference";
 }
 
 // --- Build candidate Steam search terms from a story title ---
@@ -63,7 +341,7 @@ function buildSteamSearchCandidates(rawTitle) {
   //   headlines like "Rumour: New Elder Scrolls leak").
   // Candidate C: whole title (last resort).
   const colonIdx = base.indexOf(":");
-  const rawCandidates = [];
+  const rawCandidates = exactNamedTitleCandidates(base);
   if (colonIdx !== -1) {
     rawCandidates.push(base.slice(0, colonIdx));
     rawCandidates.push(base.slice(colonIdx + 1));
@@ -88,7 +366,7 @@ function buildSteamSearchCandidates(rawTitle) {
       out.push(cleaned);
     }
   }
-  return out;
+  return out.slice(0, 6);
 }
 
 /**
@@ -251,8 +529,15 @@ async function downloadImage(url, filename) {
 }
 
 // --- Download the best available images for a story ---
-async function getBestImage(story) {
+async function getBestImage(story, options = {}) {
   let images = [];
+  const downloadImageAsset =
+    options.downloadImage || downloadImage;
+  const downloadVideoAsset =
+    options.downloadVideoClip || downloadVideoClip;
+  const allowNonSteamFallbacks =
+    options.disableNonSteamFallbacks !== true &&
+    options.disableFallbackBroll !== true;
   // Hoisted so the Steam search fallback (RSS-source path) can also
   // contribute trailer clips, not just images. The legacy block at
   // the bottom of this function still handles hunter-stamped
@@ -264,7 +549,7 @@ async function getBestImage(story) {
   if (story.article_image) {
     const ext =
       story.article_image.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || "jpg";
-    const cached = await downloadImage(
+    const cached = await downloadImageAsset(
       story.article_image,
       `${story.id}_article.${ext}`,
     );
@@ -282,8 +567,17 @@ async function getBestImage(story) {
   if (story.game_images && story.game_images.length > 0) {
     for (const img of story.game_images) {
       if (img.is_video) continue; // video clips handled separately below
+      const presavedSteamIdentity = isSteamMediaAsset(img)
+        ? verifyPresavedSteamAssetWithSiblings(story, img)
+        : null;
+      if (isSteamMediaAsset(img) && !presavedSteamIdentity) {
+        console.log(
+          `[images] Skipping unverified pre-saved Steam image for ${story.id}`,
+        );
+        continue;
+      }
       const safeName = `${story.id}_${img.type}_${img.source}.jpg`;
-      const cached = await downloadImage(img.url, safeName);
+      const cached = await downloadImageAsset(img.url, safeName);
       if (cached) {
         const priority =
           img.type === "capsule"
@@ -323,6 +617,7 @@ async function getBestImage(story) {
             img.steam_matched_query ||
             img.igdb_matched_query ||
             null,
+          ...(presavedSteamIdentity || {}),
         });
       }
       if (images.length >= 10) break;
@@ -338,38 +633,119 @@ async function getBestImage(story) {
   // where the game name lives BEFORE the colon. It threw away "Black Flag"
   // and sent Steam the post-colon noise "reveal set for April 23rd..."
   // which matches nothing. Fix: build multiple candidate search terms
-  // (before-colon + after-colon + whole-title), try each in order, accept
-  // the first that returns a Steam hit.
+  // (named-title + before-colon + after-colon + whole-title), then require
+  // a complete official app title in the headline. Storesearch relevance
+  // order is not identity evidence and must never be trusted directly.
   if (
     images.filter((i) => i.type !== "article_hero").length === 0 &&
     story.title
   ) {
     try {
       const candidates = buildSteamSearchCandidates(story.title);
-      let matched = null;
-      for (const searchTerm of candidates) {
-        if (searchTerm.length <= 3) continue;
-        console.log(
-          `[images] No pre-saved game images, searching Steam for: "${searchTerm}"`,
-        );
-        const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(searchTerm)}&cc=gb&l=english`;
-        const searchResp = await axios.get(searchUrl, {
-          timeout: 8000,
-          headers: { "User-Agent": randomUA() },
+      const searchAttempts = [];
+      const steamSearch =
+        options.steamSearch ||
+        (async (searchTerm) => {
+          const searchUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(searchTerm)}&cc=gb&l=english`;
+          const searchResp = await axios.get(searchUrl, {
+            timeout: 8000,
+            headers: { "User-Agent": randomUA() },
+          });
+          return searchResp.data?.items || [];
         });
-        const items = searchResp.data?.items || [];
-        if (items.length > 0) {
-          matched = { items, searchTerm };
-          break;
-        }
-      }
+      const boundedCandidates = candidates
+        .filter((searchTerm) => searchTerm.length > 3)
+        .slice(0, 3);
+      const boundedAttempts = await Promise.all(
+        boundedCandidates.map(async (searchTerm) => {
+          console.log(
+            `[images] No pre-saved game images, searching Steam for: "${searchTerm}"`,
+          );
+          try {
+            const rawItems = await steamSearch(
+              searchTerm,
+              story,
+            );
+            const items = Array.isArray(rawItems)
+              ? rawItems
+              : Array.isArray(rawItems?.items)
+                ? rawItems.items
+                : [];
+            return {
+              search_term: searchTerm,
+              items,
+            };
+          } catch (error) {
+            console.log(
+              `[images] Steam search failed for "${searchTerm}": ${error.message}`,
+            );
+            return {
+              search_term: searchTerm,
+              items: [],
+            };
+          }
+        }),
+      );
+      searchAttempts.push(...boundedAttempts);
+      const matched = selectExactSteamSearchMatch(
+        story,
+        searchAttempts,
+      );
 
       if (matched) {
-        const { items } = matched;
-        {
-          const appId = items[0].id;
-          const steamName = items[0].name;
+        const appId = matched.app_id;
+        const steamName = matched.app_title;
+        const matchedQuery = matched.matched_query;
+        const steamLookup =
+          options.steamLookup ||
+          (async (lookupAppId) => {
+            const detailsRes = await axios.get(
+              `https://store.steampowered.com/api/appdetails?appids=${lookupAppId}`,
+              {
+                timeout: 8000,
+                headers: { "User-Agent": randomUA() },
+              },
+            );
+            return detailsRes.data?.[lookupAppId]?.data || null;
+          });
+        const rawAppData = await steamLookup(
+          String(appId),
+          matched,
+          story,
+        );
+        const appData =
+          rawAppData?.[appId]?.data ||
+          rawAppData?.data ||
+          rawAppData;
+        const verifiedLookup = selectExactSteamSearchMatch(story, [
+          {
+            search_term: matchedQuery,
+            items: appData?.name
+              ? [{ id: appId, name: appData.name }]
+              : [{ id: appId, name: steamName }],
+          },
+        ]);
+        if (
+          verifiedLookup &&
+          verifiedLookup.app_id === String(appId)
+        ) {
           console.log(`[images] Steam match: "${steamName}" (app ${appId})`);
+          const identity = {
+            entity: steamName,
+            game_name: steamName,
+            steam_app_id: String(appId),
+            steam_app_title: steamName,
+            steam_matched_query: matchedQuery,
+            store_app_id: String(appId),
+            store_app_title: steamName,
+            store_matched_query: matchedQuery,
+            store_match_status: "verified",
+            store_match_verified: true,
+            match_basis: matched.match_basis,
+            rights_status: "UNREVIEWED",
+            rights_risk_class:
+              "official_steam_storefront_editorial_use_review_required",
+          };
 
           // Key art, hero, capsule
           const steamUrls = [
@@ -387,7 +763,7 @@ async function getBestImage(story) {
             },
           ];
           for (const s of steamUrls) {
-            const cached = await downloadImage(
+            const cached = await downloadImageAsset(
               s.url,
               `${story.id}_${s.type}_steam_fallback.jpg`,
             );
@@ -398,30 +774,26 @@ async function getBestImage(story) {
                 priority:
                   s.type === "capsule" ? 95 : s.type === "hero" ? 90 : 85,
                 source: "steam",
+                source_type:
+                  s.type === "key_art"
+                    ? "steam_header"
+                    : s.type === "hero"
+                      ? "steam_hero"
+                      : "steam_capsule",
                 url: s.url,
-                game_name: steamName || null,
-                steam_app_id: String(appId),
-                steam_app_title: steamName || null,
-                steam_matched_query: matched.searchTerm,
-                store_app_id: String(appId),
-                store_app_title: steamName || null,
-                store_matched_query: matched.searchTerm,
+                ...identity,
               });
             }
           }
 
-          // Fetch screenshots via app details
+          // Screenshots and official trailer motion share the same exact
+          // app identity that was verified before any media download.
           try {
-            const detailsRes = await axios.get(
-              `https://store.steampowered.com/api/appdetails?appids=${appId}`,
-              { timeout: 8000, headers: { "User-Agent": randomUA() } },
-            );
-            const appData = detailsRes.data?.[appId]?.data;
             if (appData?.screenshots) {
               let ssCount = 0;
               for (const ss of appData.screenshots.slice(0, 4)) {
                 if (ss.path_full) {
-                  const cached = await downloadImage(
+                  const cached = await downloadImageAsset(
                     ss.path_full,
                     `${story.id}_screenshot_steam_${ssCount}.jpg`,
                   );
@@ -431,14 +803,9 @@ async function getBestImage(story) {
                       type: "screenshot",
                       priority: 70 - ssCount,
                       source: "steam",
+                      source_type: "steam_screenshot",
                       url: ss.path_full,
-                      game_name: appData.name || steamName || null,
-                      steam_app_id: String(appId),
-                      steam_app_title: appData.name || steamName || null,
-                      steam_matched_query: matched.searchTerm,
-                      store_app_id: String(appId),
-                      store_app_title: appData.name || steamName || null,
-                      store_matched_query: matched.searchTerm,
+                      ...identity,
                     });
                     ssCount++;
                   }
@@ -463,12 +830,20 @@ async function getBestImage(story) {
             for (const t of trailerUrls) {
               const ext = t.url.includes(".webm") ? "webm" : "mp4";
               const safeName = `${story.id}_steam_trailer_${videoClips.length}.${ext}`;
-              const cached = await downloadVideoClip(t.url, safeName);
+              const cached = await downloadVideoAsset(
+                t.url,
+                safeName,
+              );
               if (cached) {
                 videoClips.push({
                   path: cached,
                   type: "trailer",
-                  source: `steam_fallback:${items[0].name || appId}`,
+                  source: "steam",
+                  source_type: "steam_trailer",
+                  url: t.url,
+                  movie_name: t.name || null,
+                  is_video: true,
+                  ...identity,
                 });
                 console.log(
                   `[images] Steam fallback trailer downloaded for ${story.id}`,
@@ -480,6 +855,10 @@ async function getBestImage(story) {
             /* Steam details failed, non-fatal */
           }
         }
+      } else {
+        console.log(
+          `[images] Steam direct search held: no exact app title matched "${story.title}"`,
+        );
       }
     } catch (err) {
       console.log(`[images] Steam direct search failed: ${err.message}`);
@@ -493,6 +872,7 @@ async function getBestImage(story) {
   // Graceful no-op when TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET aren't
   // provisioned — fetchIgdbImages returns [].
   if (
+    allowNonSteamFallbacks &&
     images.filter((i) => i.source === "steam").length === 0 &&
     images.filter((i) => i.type !== "article_hero").length === 0 &&
     story.title &&
@@ -518,7 +898,7 @@ async function getBestImage(story) {
       for (const img of igdbImages) {
         const ext = "jpg";
         const safeName = `${story.id}_${img.type}_igdb_${igdbCount}.${ext}`;
-        const cached = await downloadImage(img.url, safeName);
+        const cached = await downloadImageAsset(img.url, safeName);
         if (cached) {
           // Cover should outrank screenshots in the final ordering so
           // it lands in the thumbnail-eligible hero slot.
@@ -590,7 +970,7 @@ async function getBestImage(story) {
         if (img.url && seenUrls.has(img.url)) continue;
         const ext = "jpg";
         const safeName = `${story.id}_${img.type}_${img.source}_${img._entity?.replace(/\W+/g, "_") || "x"}.${ext}`;
-        const cached = await downloadImage(img.url, safeName);
+        const cached = await downloadImageAsset(img.url, safeName);
         if (cached) {
           // Priority 80 — sits BELOW dedicated Steam fallback hits
           // (capsule=95, hero=90) but ABOVE article inline (75) and
@@ -725,7 +1105,7 @@ async function getBestImage(story) {
         existingUrls.add(imgUrl);
 
         const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || "jpg";
-        const cached = await downloadImage(
+        const cached = await downloadImageAsset(
           imgUrl,
           `${story.id}_article_inline_${articleImgCount}.${ext}`,
         );
@@ -752,7 +1132,7 @@ async function getBestImage(story) {
 
   // Priority 4: Reddit thumbnail
   if (story.thumbnail_url) {
-    const cached = await downloadImage(
+    const cached = await downloadImageAsset(
       story.thumbnail_url,
       `${story.id}_reddit_thumb.jpg`,
     );
@@ -768,7 +1148,7 @@ async function getBestImage(story) {
 
   // Priority 5: Company logo
   if (story.company_logo_url) {
-    const cached = await downloadImage(
+    const cached = await downloadImageAsset(
       story.company_logo_url,
       `${story.id}_logo.png`,
     );
@@ -783,7 +1163,12 @@ async function getBestImage(story) {
   }
 
   // Priority 6: Pexels free stock photos — reliable API, great for industry/generic stories
-  if (images.length < 6 && story.title && process.env.PEXELS_API_KEY) {
+  if (
+    allowNonSteamFallbacks &&
+    images.length < 6 &&
+    story.title &&
+    process.env.PEXELS_API_KEY
+  ) {
     try {
       // Build a smart search query from the story title
       const pexelsQuery = story.title
@@ -813,7 +1198,7 @@ async function getBestImage(story) {
         const imgUrl =
           photo.src?.large2x || photo.src?.large || photo.src?.original;
         if (!imgUrl) continue;
-        const cached = await downloadImage(
+        const cached = await downloadImageAsset(
           imgUrl,
           `${story.id}_pexels_${pexelsCount}.jpg`,
         );
@@ -839,7 +1224,11 @@ async function getBestImage(story) {
   }
 
   // Priority 7: Unsplash free photos — no API key needed for small volumes (50/hr)
-  if (images.length < 6 && story.title) {
+  if (
+    allowNonSteamFallbacks &&
+    images.length < 6 &&
+    story.title
+  ) {
     try {
       const unsplashQuery = story.title
         .replace(/[^a-zA-Z0-9\s]/g, "")
@@ -861,7 +1250,7 @@ async function getBestImage(story) {
         if (images.length >= 8) break;
         const imgUrl = photo.urls?.regular || photo.urls?.full;
         if (!imgUrl) continue;
-        const cached = await downloadImage(
+        const cached = await downloadImageAsset(
           imgUrl,
           `${story.id}_unsplash_${unsplashCount}.jpg`,
         );
@@ -887,7 +1276,11 @@ async function getBestImage(story) {
   }
 
   // Priority 8: Bing Image Search scraping — more reliable from servers than Google
-  if (images.length < 6 && story.title) {
+  if (
+    allowNonSteamFallbacks &&
+    images.length < 6 &&
+    story.title
+  ) {
     try {
       const bingQuery = encodeURIComponent(
         story.title.replace(/[^a-zA-Z0-9\s]/g, "").trim() + " game screenshot",
@@ -920,7 +1313,7 @@ async function getBestImage(story) {
         )
           continue;
         const ext = imgUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] || "jpg";
-        const cached = await downloadImage(
+        const cached = await downloadImageAsset(
           imgUrl,
           `${story.id}_bing_${bingFound}.${ext}`,
         );
@@ -951,11 +1344,28 @@ async function getBestImage(story) {
   if (story.game_images && story.game_images.length > 0) {
     for (const img of story.game_images) {
       if (!img.is_video) continue;
+      const presavedSteamIdentity = isSteamMediaAsset(img)
+        ? verifyPresavedSteamAssetWithSiblings(story, img)
+        : null;
+      if (isSteamMediaAsset(img) && !presavedSteamIdentity) {
+        console.log(
+          `[images] Skipping unverified pre-saved Steam video for ${story.id}`,
+        );
+        continue;
+      }
       const ext = img.url.includes(".webm") ? "webm" : "mp4";
       const safeName = `${story.id}_${img.type}_${img.source}.${ext}`;
-      const cached = await downloadVideoClip(img.url, safeName);
+      const cached = await downloadVideoAsset(img.url, safeName);
       if (cached) {
-        videoClips.push({ path: cached, type: img.type, source: img.source });
+        videoClips.push({
+          path: cached,
+          type: img.type,
+          source: img.source,
+          source_type: inferDownloadedVideoSourceType(img),
+          url: img.url,
+          is_video: true,
+          ...(presavedSteamIdentity || {}),
+        });
         console.log(
           `[images] Steam ${img.type} clip downloaded for "${(story.title || "").substring(0, 40)}..."`,
         );
@@ -966,7 +1376,7 @@ async function getBestImage(story) {
 
   // Fallback B-roll: IGDB / YouTube search for console exclusives + stories
   // Steam couldn't match. Only fires when Steam returned no video clips.
-  if (videoClips.length === 0) {
+  if (allowNonSteamFallbacks && videoClips.length === 0) {
     try {
       const { fetchFallbackBroll } = require("./fetch_broll");
       const fallback = await fetchFallbackBroll(story);
@@ -985,6 +1395,7 @@ async function getBestImage(story) {
     }
   }
 
+  images = filterMixedSteamAssetsForExactApp(story, images);
   const safety = filterUnsafeImagesForRender(story, images);
   images = safety.images;
   if (safety.rejected.length > 0) {
@@ -1002,8 +1413,10 @@ async function getBestImage(story) {
   // like the same image on loop. We still want the highest-priority
   // hero image FIRST (so the thumbnail reads well), but after that
   // we interleave by source so consecutive visual slots don't share
-  // one game/article. Steam is capped at 2 per video when any other
-  // source is available.
+  // one game/article. Unverified Steam material remains capped at 2
+  // when another source exists. An exact, title-bound app may retain
+  // six distinct assets so a real game-native deck is not collapsed
+  // back into the thin-card failure mode.
   images.sort((a, b) => b.priority - a.priority);
 
   const bySource = {};
@@ -1014,7 +1427,15 @@ async function getBestImage(story) {
   const nonSteamSourceCount = Object.keys(bySource).filter(
     (s) => s !== "steam",
   ).length;
-  const steamCap = nonSteamSourceCount > 0 ? 2 : Infinity;
+  const hasVerifiedExactSteam = (bySource.steam || []).some(
+    (asset) => asset.store_match_verified === true,
+  );
+  const steamCap =
+    nonSteamSourceCount > 0
+      ? hasVerifiedExactSteam
+        ? 6
+        : 2
+      : Infinity;
   if (bySource.steam && bySource.steam.length > steamCap) {
     bySource.steam = bySource.steam.slice(0, steamCap);
   }
@@ -1046,10 +1467,12 @@ async function getBestImage(story) {
   // recordDownload swallows its own errors and returns ok=false on
   // transient failures so the produce loop keeps going.
   try {
-    const provenance = require("./lib/media-provenance");
+    const recordProvenance =
+      options.recordProvenance ||
+      require("./lib/media-provenance").recordDownload;
     for (const img of ordered) {
       try {
-        await provenance.recordDownload({
+        await recordProvenance({
           story_id: story.id,
           channel_id: story.channel_id || null,
           source_url: img.url || null,
@@ -1064,11 +1487,54 @@ async function getBestImage(story) {
             type: img.type,
             source: img.source,
             priority: img.priority,
+            source_type: img.source_type || null,
+            store_app_id: img.store_app_id || null,
+            store_app_title: img.store_app_title || null,
+            store_matched_query:
+              img.store_matched_query || null,
+            store_match_verified:
+              img.store_match_verified === true,
+            rights_status: img.rights_status || null,
+            rights_risk_class:
+              img.rights_risk_class || null,
           },
         });
       } catch (provErr) {
         console.log(
           `[images] provenance record failed (non-fatal): ${provErr.message}`,
+        );
+      }
+    }
+    for (const clip of videoClips) {
+      if (!clip?.url) continue;
+      try {
+        await recordProvenance({
+          story_id: story.id,
+          channel_id: story.channel_id || null,
+          source_url: clip.url,
+          source_type: classifyProvenanceSourceType(clip),
+          file_path: clip.path || null,
+          accepted: true,
+          skipPrescan: true,
+          raw_meta: {
+            type: clip.type,
+            source: clip.source,
+            source_type: clip.source_type || null,
+            movie_name: clip.movie_name || null,
+            store_app_id: clip.store_app_id || null,
+            store_app_title: clip.store_app_title || null,
+            store_matched_query:
+              clip.store_matched_query || null,
+            store_match_verified:
+              clip.store_match_verified === true,
+            rights_status: clip.rights_status || null,
+            rights_risk_class:
+              clip.rights_risk_class || null,
+          },
+        });
+      } catch (provErr) {
+        console.log(
+          `[images] video provenance record failed (non-fatal): ${provErr.message}`,
         );
       }
     }
@@ -1090,6 +1556,20 @@ function classifyProvenanceSourceType(img) {
   if (!img) return "other";
   const src = (img.source || "").toLowerCase();
   const type = (img.type || "").toLowerCase();
+  const sourceType = String(img.source_type || "").toLowerCase();
+  const isVideo =
+    /video|trailer|clip|movie/.test(type) ||
+    /video|trailer|clip|movie/.test(sourceType) ||
+    /\.(mp4|webm|mov)(?:$|\?)/i.test(
+      String(img.url || img.path || ""),
+    );
+  if (isVideo) {
+    if (src === "steam" || src.startsWith("steam")) {
+      return "steam_trailer";
+    }
+    if (src.startsWith("youtube")) return "youtube_broll";
+    return "other";
+  }
   if (src === "article" && type.includes("hero")) return "article_hero";
   if (src === "article" && type.includes("inline")) return "article_inline";
   if (src === "article") return "article_inline";
@@ -1110,9 +1590,8 @@ function classifyProvenanceSourceType(img) {
   if (src === "pexels") return "pexels";
   if (src === "unsplash") return "unsplash";
   if (src === "bing") return "bing";
-  if (src.startsWith("youtube") || src.startsWith("steam_fallback")) {
-    return "steam_trailer";
-  }
+  if (src.startsWith("youtube")) return "youtube_broll";
+  if (src.startsWith("steam_fallback")) return "steam_trailer";
   return "other";
 }
 
@@ -1120,5 +1599,9 @@ module.exports = getBestImage;
 module.exports.downloadVideoClip = downloadVideoClip;
 module.exports.downloadImage = downloadImage;
 module.exports.buildSteamSearchCandidates = buildSteamSearchCandidates;
+module.exports.selectExactSteamSearchMatch =
+  selectExactSteamSearchMatch;
+module.exports.filterMixedSteamAssetsForExactApp =
+  filterMixedSteamAssetsForExactApp;
 module.exports.extractSteamTrailerUrls = extractSteamTrailerUrls;
 module.exports.classifyProvenanceSourceType = classifyProvenanceSourceType;

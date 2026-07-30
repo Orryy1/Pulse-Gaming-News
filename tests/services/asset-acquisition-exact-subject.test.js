@@ -372,6 +372,39 @@ test("specific Silent Hill Townfall media accepts app 1636440 and rejects Silent
   assert.equal(silentHill2.counted_for_premium, false);
 });
 
+test("title-contained exact Steam identity counts new multi-word games without a hard-coded catalogue entry", () => {
+  const plan = buildAssetAcquisitionPlan(
+    baseStory({
+      title:
+        "Stylish action RPG Stupid Never Dies gets release date, new trailer",
+      body:
+        "Stupid Never Dies now has a release date and an official gameplay trailer.",
+      full_script:
+        "Stupid Never Dies now has a release date and an official gameplay trailer.",
+      downloaded_images: [
+        img("steam_hero", "steam", "stupid-never-dies.jpg", {
+          entity: "Stupid Never Dies",
+          url:
+            "https://cdn.akamai.steamstatic.com/steam/apps/3486530/header.jpg",
+          steam_app_id: 3486530,
+          steam_app_title: "Stupid Never Dies",
+          steam_matched_query: "Stupid Never Dies",
+        }),
+      ],
+    }),
+  );
+  const candidate = candidateByPath(
+    plan,
+    "stupid-never-dies.jpg",
+  );
+
+  assert.equal(candidate.store_app_id, "3486530");
+  assert.equal(candidate.store_match_status, "verified");
+  assert.equal(candidate.store_match_verified, true);
+  assert.equal(candidate.subject_match_quality, "exact_game_match");
+  assert.equal(candidate.counted_for_premium, true);
+});
+
 test("v1.3 treats Steam assets without app-title provenance as unverified", () => {
   const plan = buildAssetAcquisitionPlan(
     baseStory({

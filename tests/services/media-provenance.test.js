@@ -37,6 +37,17 @@ test("classifyProvenanceSourceType: steam variants split correctly", () => {
   }
 });
 
+test("classifyProvenanceSourceType: YouTube video is never mislabelled as a Steam trailer", () => {
+  assert.equal(
+    classifyProvenanceSourceType({
+      source: "youtube:publisher",
+      type: "trailer",
+      source_type: "youtube_video_reference",
+    }),
+    "youtube_broll",
+  );
+});
+
 test("classifyProvenanceSourceType: igdb cover vs screenshot", () => {
   assert.equal(
     classifyProvenanceSourceType({ source: "igdb", type: "key_art" }),

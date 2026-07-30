@@ -99,6 +99,149 @@ test("inventory handler runs the exact local-only workflow and creates no extern
   assert.equal(result.no_external_posting, true);
 });
 
+test("inventory handler scopes default workspaces and follow-up discovery to the exact evidence revision", async (t) => {
+  const repoRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-inventory-revisions-"),
+  );
+  t.after(() => fs.remove(repoRoot));
+  const observed = [];
+  const queued = [];
+  const workflowRevisions = new Map([
+    ["2".repeat(64), "3".repeat(64)],
+    ["4".repeat(64), "5".repeat(64)],
+  ]);
+  const context = {
+    repos: {
+      jobs: {
+        enqueue(request) {
+          queued.push(request);
+          return { id: queued.length };
+        },
+      },
+    },
+    async runGovernedEditorialInventoryWorkflow(input) {
+      observed.push(input);
+      const evidenceRevision =
+        input.breaking_source_evidence.canonical_sha256;
+      return {
+        verdict: "READY",
+        blockers: [],
+        paths: {
+          report: path.join(input.output_dir, "workflow.json"),
+          summary: path.join(input.output_dir, "workflow.md"),
+          inventory: path.join(
+            input.output_dir,
+            "inventory",
+            "governed-editorial-inventory.json",
+          ),
+        },
+        report: {
+          workflow_revision_sha256:
+            workflowRevisions.get(evidenceRevision),
+        },
+        safety: {
+          network_used: false,
+          database_mutated: false,
+          oauth_mutated: false,
+          platform_contacted: false,
+          publish_authority_created: false,
+        },
+      };
+    },
+  };
+
+  const first = await handlers.prepare_editorial_inventory(
+    {
+      channel_id: "pulse-gaming",
+      kind: "prepare_editorial_inventory",
+      payload: exactJobPayload({
+        root_dir: repoRoot,
+        now: NOW,
+      }),
+    },
+    context,
+  );
+  const second = await handlers.prepare_editorial_inventory(
+    {
+      channel_id: "pulse-gaming",
+      kind: "prepare_editorial_inventory",
+      payload: exactJobPayload({
+        root_dir: repoRoot,
+        now: NOW,
+        breaking_source_evidence: {
+          path: "C:/proof/breaking-source-evidence-v2.json",
+          file_sha256: "6".repeat(64),
+          canonical_sha256: "4".repeat(64),
+        },
+      }),
+    },
+    context,
+  );
+
+  const firstRevisionRoot = path.join(
+    repoRoot,
+    "output",
+    "editorial-inventory",
+    "xbox-editorial-inventory-1",
+    "revisions",
+    "2".repeat(64),
+  );
+  const secondRevisionRoot = path.join(
+    repoRoot,
+    "output",
+    "editorial-inventory",
+    "xbox-editorial-inventory-1",
+    "revisions",
+    "4".repeat(64),
+  );
+  assert.deepEqual(
+    observed.map((input) => input.output_dir),
+    [firstRevisionRoot, secondRevisionRoot],
+  );
+  assert.equal(first.report_json, path.join(
+    firstRevisionRoot,
+    "editorial-inventory-job.json",
+  ));
+  assert.equal(second.report_json, path.join(
+    secondRevisionRoot,
+    "editorial-inventory-job.json",
+  ));
+  assert.notEqual(first.report_json, second.report_json);
+  assert.equal(queued.length, 4);
+  assert.deepEqual(
+    queued.map((request) => request.payload.inventory_root_dir),
+    [
+      firstRevisionRoot,
+      firstRevisionRoot,
+      secondRevisionRoot,
+      secondRevisionRoot,
+    ],
+  );
+  assert.deepEqual(
+    queued.map(
+      (request) => request.payload.inventory_allowed_roots,
+    ),
+    [
+      [firstRevisionRoot],
+      [firstRevisionRoot],
+      [secondRevisionRoot],
+      [secondRevisionRoot],
+    ],
+  );
+  assert.deepEqual(
+    queued.map(
+      (request) =>
+        request.payload.inventory_evidence_revision_sha256,
+    ),
+    [
+      "2".repeat(64),
+      "2".repeat(64),
+      "4".repeat(64),
+      "4".repeat(64),
+    ],
+  );
+});
+
 test("inventory handler holds incomplete evidence before invoking media generation", async (t) => {
   const outDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-inventory-job-held-"),

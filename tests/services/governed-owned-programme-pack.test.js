@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const fsp = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
@@ -401,7 +402,10 @@ test("materialiser emits one deterministic owned-only programme pack that final 
   });
   assert.equal(combined.thirdPartyMediaUsed, false);
   assert.equal(combined.hyperframesAsset.sha256, result.programme_sha256);
-  assert.equal(combined.projectFiles.length, 5);
+  assert.equal(
+    combined.projectFiles.length,
+    5 + buildScenes().length,
+  );
   assert.deepEqual(
     new Set(
       combined.projectFiles.map((record) =>
@@ -414,6 +418,10 @@ test("materialiser emits one deterministic owned-only programme pack that final 
       "timeline.js",
       "package.json",
       "project-manifest.json",
+      ...buildScenes().map(
+        (item) =>
+          `${item.asset_id}${item.media_type === "image" ? ".png" : ".mp4"}`,
+      ),
     ]),
   );
 
@@ -434,6 +442,103 @@ test("materialiser emits one deterministic owned-only programme pack that final 
   assert.match(
     fs.readFileSync(result.summary_path, "utf8"),
     /No publication authority/i,
+  );
+});
+
+test("materialiser gives strict HyperFrames a self-contained project with hash-bound local assets", async (t) => {
+  const fixture = createFixture(t, "hyperframes-self-contained");
+  const adapters = buildAdapters();
+  const renderProgramme = adapters.renderProgramme;
+  let inspections = 0;
+  adapters.renderProgramme = async (input) => {
+    const projectRoot = input.hyperframesProject.root;
+    const config = JSON.parse(
+      fs.readFileSync(
+        path.join(projectRoot, "hyperframes.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(config.paths.assets, "assets");
+
+    const html = fs.readFileSync(
+      path.join(projectRoot, "index.html"),
+      "utf8",
+    );
+    const mediaSources = [
+      ...html.matchAll(
+        /<(?:img|video)\b[^>]*\bsrc="([^"]+)"/g,
+      ),
+    ].map((match) => match[1]);
+    assert.equal(mediaSources.length, buildScenes().length);
+    assert.ok(
+      mediaSources.every(
+        (source) =>
+          source.startsWith("assets/") &&
+          !source.split("/").includes(".."),
+      ),
+    );
+
+    const projectManifest = JSON.parse(
+      fs.readFileSync(
+        input.hyperframesProject.manifest_path,
+        "utf8",
+      ),
+    );
+    assert.deepEqual(
+      projectManifest.authored_scene_assets.map(
+        (asset) => asset.path,
+      ),
+      mediaSources,
+    );
+    assert.ok(
+      projectManifest.authored_scene_assets.every((asset) => {
+        const candidate = path.resolve(
+          projectRoot,
+          ...asset.path.split("/"),
+        );
+        const source = input.sceneAssets.find(
+          (item) => item.asset_id === asset.asset_id,
+        );
+        return (
+          isWithin(projectRoot, candidate) &&
+          fs.lstatSync(candidate).isFile() &&
+          !fs.lstatSync(candidate).isSymbolicLink() &&
+          sha256(fs.readFileSync(candidate)) === source.sha256 &&
+          asset.sha256 === source.sha256
+        );
+      }),
+    );
+    const projectAssetPaths = projectManifest.project_files
+      .map((file) => file.path)
+      .filter((filePath) => filePath.startsWith("assets/"));
+    assert.equal(projectAssetPaths.length, buildScenes().length);
+    assert.ok(
+      projectAssetPaths.every(
+        (filePath) =>
+          !filePath.split("/").includes("..") &&
+          fs.existsSync(
+            path.resolve(
+              projectRoot,
+              ...filePath.split("/"),
+            ),
+          ),
+      ),
+    );
+    inspections += 1;
+    return renderProgramme(input);
+  };
+
+  const result = await materialiseGovernedOwnedProgrammePack(
+    fixture.options,
+    adapters,
+  );
+
+  assert.equal(inspections, 2);
+  assert.equal(
+    result.hyperframes_project_files.filter((record) =>
+      record.path.includes(`${path.sep}hyperframes${path.sep}assets${path.sep}`),
+    ).length,
+    buildScenes().length,
   );
 });
 
@@ -458,8 +563,28 @@ test("ephemeral staging stays inside the Sharp/VIPS path budget without changing
   );
   const adapters = buildAdapters();
   const renderScene = adapters.renderScene;
+  const originalCopyFile = fsp.copyFile;
   const derivedFramePaths = [];
+  const copiedProjectAssetPaths = [];
   const stageRoots = new Set();
+  fsp.copyFile = async (sourcePath, destinationPath, mode) => {
+    if (
+      destinationPath.includes(
+        `${path.sep}hyperframes${path.sep}assets${path.sep}`,
+      )
+    ) {
+      copiedProjectAssetPaths.push(destinationPath);
+      assert.equal(mode, fs.constants.COPYFILE_EXCL);
+      assert.doesNotMatch(
+        path.basename(destinationPath),
+        /\.tmp$/i,
+      );
+    }
+    return originalCopyFile(sourcePath, destinationPath, mode);
+  };
+  t.after(() => {
+    fsp.copyFile = originalCopyFile;
+  });
   adapters.renderScene = async (input) => {
     if (input.scene.media_type === "video") {
       const framePath = `${input.outputPath}.source.png`;
@@ -505,6 +630,20 @@ test("ephemeral staging stays inside the Sharp/VIPS path budget without changing
   assert.ok(
     derivedFramePaths.every((candidate) => candidate.length <= 259),
     derivedFramePaths.join("\n"),
+  );
+  assert.equal(copiedProjectAssetPaths.length, buildScenes().length);
+  assert.ok(
+    copiedProjectAssetPaths.every(
+      (candidate) => candidate.length <= 259,
+    ),
+    copiedProjectAssetPaths.join("\n"),
+  );
+  assert.ok(
+    copiedProjectAssetPaths.some((candidate) =>
+      candidate.endsWith(
+        `${path.sep}owned-motion-backbone.mp4`,
+      ),
+    ),
   );
   assert.equal(stageRoots.size, 1);
   assert.match(

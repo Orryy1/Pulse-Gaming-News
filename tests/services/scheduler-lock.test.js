@@ -238,6 +238,7 @@ test("autonomous planner and T-94 cron fires bind the exact UTC publish window w
       now: "2026-03-29T06:35:00.000Z",
       publishHour: 9,
       scheduledFor: "2026-03-29T09:00:00.000Z",
+      jobMaxAttempts: 11,
     },
     {
       kind: "prepare_governed_autonomous_pre_t90_window",
@@ -265,6 +266,12 @@ test("autonomous planner and T-94 cron fires bind the exact UTC publish window w
           catch_up_allowed: false,
           publish_authority: false,
           external_posting: false,
+          ...(scenario.jobMaxAttempts
+            ? {
+                job_max_attempts:
+                  scenario.jobMaxAttempts,
+              }
+            : {}),
           idempotencyTemplate: `${scenario.kind}:{date}:${String(
             scenario.publishHour,
           ).padStart(2, "0")}`,
@@ -309,6 +316,17 @@ test("autonomous planner and T-94 cron fires bind the exact UTC publish window w
       );
       assert.equal(
         f.enqueued[0].payload.external_posting,
+        false,
+      );
+      assert.equal(
+        f.enqueued[0].max_attempts,
+        scenario.jobMaxAttempts,
+      );
+      assert.equal(
+        Object.hasOwn(
+          f.enqueued[0].payload,
+          "job_max_attempts",
+        ),
         false,
       );
     } finally {

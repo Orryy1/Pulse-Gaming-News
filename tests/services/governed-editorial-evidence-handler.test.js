@@ -446,6 +446,116 @@ test("editorial evidence discovery stops after sufficient official body proof an
   assert.equal(report.capture_deadline_ms, 90_000);
 });
 
+test("editorial evidence transport failure retries the same immutable job before becoming a terminal HOLD", async (t) => {
+  const rootDir = await fs.mkdtemp(
+    path.join(
+      os.tmpdir(),
+      "pulse-editorial-evidence-retry-",
+    ),
+  );
+  t.after(() => fs.remove(rootDir));
+  const queuedIngress = [];
+  const ingress = enqueueGovernedEditorialEvidence({
+    story: governedStory(),
+    latestDecision: governedDecision(
+      "rss-xbox-classics",
+      {
+        decision: "review",
+        total: 70,
+      },
+    ),
+    jobs: {
+      enqueue(input) {
+        queuedIngress.push(input);
+        return { id: 80, ...input };
+      },
+    },
+    now: NOW,
+  });
+  assert.equal(ingress.queued, true);
+
+  async function runAttempt(attemptCount) {
+    const outDir = path.join(
+      rootDir,
+      `attempt-${attemptCount}`,
+    );
+    const queued = [];
+    const result =
+      await handlers.governed_editorial_evidence_discovery(
+        {
+          ...queuedIngress[0],
+          attempt_count: attemptCount,
+          max_attempts: 3,
+          payload: {
+            ...queuedIngress[0].payload,
+            out_dir: outDir,
+          },
+        },
+        {
+          captureBreakingSourceEvidence,
+          async breakingFetchCapture({ url }) {
+            return {
+              status: 200,
+              final_url: url,
+              content_type: "text/html",
+              bytes: Buffer.from(
+                "<article>Xbox confirmed four classic games are coming to PC with achievements planned.</article>",
+              ),
+            };
+          },
+          async breakingClaimExtractor() {
+            throw new Error("editorial_transport_failed");
+          },
+          repos: {
+            stories: {
+              get() {
+                return governedStory();
+              },
+            },
+            jobs: {
+              enqueue(input) {
+                queued.push(input);
+                return { id: queued.length, ...input };
+              },
+            },
+          },
+          log() {},
+        },
+      );
+    return { queued, result };
+  }
+
+  const retry = await runAttempt(1);
+  assert.equal(retry.result.status, "held");
+  assert.equal(retry.result.job_outcome, "RETRY");
+  assert.equal(retry.result.retryable, true);
+  assert.equal(retry.result.retry_after_seconds, 60);
+  assert.equal(retry.result.attempt_count, 1);
+  assert.equal(retry.result.max_attempts, 3);
+  assert.equal(retry.queued.length, 0);
+  const retryPacket = await fs.readJson(
+    retry.result.source_evidence_json,
+  );
+  assert.deepEqual(retryPacket.sources[0].blockers, [
+    "source_claim_extraction_failed",
+  ]);
+
+  const terminal = await runAttempt(3);
+  assert.equal(terminal.result.status, "held");
+  assert.equal(terminal.result.job_outcome, "TERMINAL");
+  assert.equal(terminal.result.retryable, false);
+  assert.equal(
+    Object.hasOwn(
+      terminal.result,
+      "retry_after_seconds",
+    ),
+    false,
+  );
+  assert.equal(terminal.result.attempt_count, 3);
+  assert.equal(terminal.result.max_attempts, 3);
+  assert.equal(terminal.queued.length, 0);
+});
+
 test("READY editorial inventory immediately wakes both evergreen and flagship planning", async (t) => {
   const outDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-inventory-lane-wake-"),

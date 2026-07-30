@@ -368,10 +368,15 @@ test("holds with explicit missing and stale evidence counts before the planner c
     readyEntry(inventoryRoot, "rss-missing", "3"),
   ];
   let plannerCalled = false;
+  const retryJob = {
+    ...job(),
+    attempt_count: 1,
+    max_attempts: 11,
+  };
 
   const result = await handlers[
     "plan_governed_autonomous_window_production"
-  ](job(), {
+  ](retryJob, {
     autonomousProductionWorkspaceRoot: workspaceRoot,
     governedEditorialInventoryRoot: inventoryRoot,
     governedEditorialInventoryAllowedRoots: [
@@ -439,6 +444,16 @@ test("holds with explicit missing and stale evidence counts before the planner c
       "governed_autonomous_window_two_compilable_candidates_required",
     ),
   );
+  assert.equal(result.job_outcome, "RETRY");
+  assert.equal(result.retryable, true);
+  assert.equal(result.retry_after_seconds, 300);
+  assert.equal(
+    result.retry_deadline,
+    "2026-07-30T07:30:00.000Z",
+  );
+  assert.equal(result.attempt_count, 1);
+  assert.equal(result.max_attempts, 11);
+  assert.equal(result.catch_up_allowed, false);
   assert.deepEqual(result.counts, {
     inventory_ready: 3,
     inventory_rejected: 0,
@@ -475,6 +490,84 @@ test("holds with explicit missing and stale evidence counts before the planner c
   assert.equal(result.no_publish, true);
   assert.equal(result.no_external_posting, true);
   assert.equal(result.no_oauth_or_token_change, true);
+});
+
+test("candidate-supply HOLD becomes terminal when another retry would cross T-90", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-window-handler-t90-boundary-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, {
+      recursive: true,
+      force: true,
+    }),
+  );
+  const inventoryRoot = path.join(
+    workspaceRoot,
+    "output",
+    "editorial-inventory",
+  );
+
+  const result = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 10,
+      max_attempts: 11,
+      payload: {
+        ...job().payload,
+        generated_at: "2026-07-30T07:29:00.000Z",
+      },
+    },
+    {
+      autonomousProductionWorkspaceRoot: workspaceRoot,
+      governedEditorialInventoryRoot: inventoryRoot,
+      governedEditorialInventoryAllowedRoots: [
+        path.join(workspaceRoot, "output"),
+      ],
+      governedAutonomousBreakingRuntimePolicy:
+        runtimePolicy(),
+      repos: {
+        jobs: {
+          enqueueBatch() {},
+        },
+        stories: {
+          get() {
+            return null;
+          },
+        },
+      },
+      async scanGovernedEditorialInventory() {
+        return scanReport([]);
+      },
+    },
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "governed_autonomous_window_two_compilable_candidates_required",
+    ),
+  );
+  assert.equal(result.job_outcome, "TERMINAL");
+  assert.equal(result.retryable, false);
+  assert.equal(
+    Object.hasOwn(result, "retry_after_seconds"),
+    false,
+  );
+  assert.equal(
+    result.retry_deadline,
+    "2026-07-30T07:30:00.000Z",
+  );
+  assert.equal(result.attempt_count, 10);
+  assert.equal(result.max_attempts, 11);
+  assert.equal(result.catch_up_allowed, false);
+  assert.equal(result.publish_authority_created, false);
+  assert.equal(result.no_external_posting, true);
 });
 
 test("holds before planning when DB rows are unapproved or only manually approved", async (t) => {

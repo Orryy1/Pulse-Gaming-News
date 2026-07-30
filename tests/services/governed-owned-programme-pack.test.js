@@ -437,6 +437,84 @@ test("materialiser emits one deterministic owned-only programme pack that final 
   );
 });
 
+test("ephemeral staging stays inside the Sharp/VIPS path budget without changing the final story root", async (t) => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "p-"));
+  t.after(() =>
+    fs.rmSync(tempRoot, { recursive: true, force: true }),
+  );
+  const intake = buildIntake();
+  intake.story.id = "official_763d6a7310b5";
+  const intakePath = path.join(tempRoot, "story-intake.json");
+  const intakeBytes = jsonBytes(intake);
+  fs.writeFileSync(intakePath, intakeBytes);
+  const storyRoot = path.join(
+    tempRoot,
+    "runtime-next-4fb26f9",
+    "output",
+    "canary",
+    intake.story.id,
+    "owned-programme",
+    intake.story.id,
+  );
+  const adapters = buildAdapters();
+  const renderScene = adapters.renderScene;
+  const derivedFramePaths = [];
+  const stageRoots = new Set();
+  adapters.renderScene = async (input) => {
+    if (input.scene.media_type === "video") {
+      const framePath = `${input.outputPath}.source.png`;
+      derivedFramePaths.push(framePath);
+      const determinismSegment =
+        `${path.sep}.determinism${path.sep}`;
+      const determinismIndex =
+        input.outputPath.indexOf(determinismSegment);
+      stageRoots.add(
+        determinismIndex >= 0
+          ? input.outputPath.slice(0, determinismIndex)
+          : path.dirname(path.dirname(input.outputPath)),
+      );
+      if (framePath.length > 259) {
+        throw new Error(
+          `sharp_vips_legacy_path_budget_exceeded:${framePath.length}`,
+        );
+      }
+    }
+    return renderScene(input);
+  };
+
+  const result = await materialiseGovernedOwnedProgrammePack(
+    {
+      mode: "LOCAL_PROOF",
+      storyId: intake.story.id,
+      storyIntakeRef: {
+        path: intakePath,
+        sha256: sha256(intakeBytes),
+      },
+      storyRoot,
+      generatedAt: GENERATED_AT,
+      scenes: buildScenes(),
+    },
+    adapters,
+  );
+
+  assert.equal(result.story_root, path.resolve(storyRoot));
+  assert.ok(
+    derivedFramePaths.length >= 2,
+    "both the primary and deterministic verification renders ran",
+  );
+  assert.ok(
+    derivedFramePaths.every((candidate) => candidate.length <= 259),
+    derivedFramePaths.join("\n"),
+  );
+  assert.equal(stageRoots.size, 1);
+  assert.match(
+    path.basename([...stageRoots][0]),
+    /^\.op-\d+-[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i,
+  );
+  assert.equal(fs.existsSync(storyRoot), true);
+  assert.equal(isWithin(storyRoot, result.programme_path), true);
+});
+
 test("materialiser accepts the exact reviewed 36.48-second high-cadence lane and emits a final-composite-valid pack", async (t) => {
   const fixture = createFixture(
     t,

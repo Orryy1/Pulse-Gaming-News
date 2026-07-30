@@ -17,6 +17,9 @@ const {
 const {
   validateAutonomousOfficialJitPreparationManifest,
 } = require("../../lib/services/autonomous-official-jit-admission-packet");
+const {
+  createGovernedFastNewsLaneDecision,
+} = require("../../lib/services/governed-fast-news-lane-decision");
 
 const STORY_ID = "official_3b8d305c4e17";
 const SHA = {
@@ -510,6 +513,79 @@ test("LOCAL_PROOF staging emits a JIT-valid closed packet with monetisation-scop
   assert.equal(result.safety.oauth_or_tokens_mutated, false);
   assert.equal(result.safety.platform_contacted, false);
   assert.equal(result.safety.network_used, false);
+});
+
+test("LOCAL_PROOF staging validates and propagates an optional fast-news lane decision into the hash-bound preparation", async (t) => {
+  const input = await fixture();
+  t.after(() => fs.rm(input.root, { recursive: true, force: true }));
+  const decision = createGovernedFastNewsLaneDecision({
+    story_id: STORY_ID,
+    evaluated_at: "2026-07-29T17:40:00.000Z",
+    scheduled_for: input.request.scheduled_for,
+    source_published_at: "2026-07-29T17:00:00.000Z",
+    verification_status: "CONFIRMED",
+    source_class: "OFFICIAL_FIRST_PARTY",
+    inventory_file_sha256: "a".repeat(64),
+    source_evidence_sha256: "b".repeat(64),
+    explicit_formats: ["breaking_short"],
+  });
+
+  const result = await stageAutonomousOfficialCandidate({
+    ...input.request,
+    fast_news_lane_decision: decision,
+  });
+  const manifest = validateAutonomousOfficialJitPreparationManifest(
+    result.preparation_manifest,
+  );
+
+  assert.deepEqual(manifest.fast_news_lane_decision, decision);
+  assert.equal(
+    manifest.fast_news_lane_decision.decision_sha256,
+    decision.decision_sha256,
+  );
+});
+
+test("LOCAL_PROOF staging rejects a tampered optional fast-news lane decision before copying candidate files", async (t) => {
+  const input = await fixture();
+  t.after(() => fs.rm(input.root, { recursive: true, force: true }));
+  const decision = JSON.parse(
+    JSON.stringify(
+      createGovernedFastNewsLaneDecision({
+        story_id: STORY_ID,
+        evaluated_at: "2026-07-29T17:40:00.000Z",
+        scheduled_for: input.request.scheduled_for,
+        source_published_at: "2026-07-29T17:00:00.000Z",
+        verification_status: "CONFIRMED",
+        source_class: "OFFICIAL_FIRST_PARTY",
+        inventory_file_sha256: "a".repeat(64),
+        source_evidence_sha256: "b".repeat(64),
+        explicit_formats: ["breaking_short"],
+      }),
+    ),
+  );
+  decision.inventory_file_sha256 = "f".repeat(64);
+
+  await assert.rejects(
+    () =>
+      stageAutonomousOfficialCandidate({
+        ...input.request,
+        fast_news_lane_decision: decision,
+      }),
+    (error) => {
+      assert.deepEqual(error.blockers, [
+        "candidate_staging_fast_news_lane_decision_invalid",
+      ]);
+      return true;
+    },
+  );
+  await assert.rejects(
+    fs.access(
+      path.join(
+        input.workspace,
+        input.request.candidate_workspace_relative_root,
+      ),
+    ),
+  );
 });
 
 test("staging preserves case-sensitive candidate paths for later Linux JIT resolution", async (t) => {

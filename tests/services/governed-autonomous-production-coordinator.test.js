@@ -23,6 +23,14 @@ const {
 const {
   createGovernedAutonomousDatabaseStoryBinding,
 } = require("../../lib/services/governed-autonomous-database-story-binding");
+const {
+  createGovernedFastNewsLaneDecision,
+} = require("../../lib/services/governed-fast-news-lane-decision");
+const {
+  CANDIDATE_REVISION_SCHEMA_VERSION,
+  canonicalSha256: compiledCanonicalSha256,
+  createGovernedAutonomousCompiledCandidateRevision,
+} = require("../../lib/services/governed-autonomous-compiled-candidate-binding");
 
 const GENERATED_AT = "2026-07-29T12:00:00.000Z";
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
@@ -247,6 +255,22 @@ async function fixture(t, options = {}) {
     options.useRegistryPrimaryIdentity === true
       ? `official_${canonicalHash(canonicalIdentityUrl)}`
       : locked.storyId;
+  const fastNewsSourceEvidenceSha256 = sha256(
+    `${locked.storyId}:fast-news-source-evidence`,
+  );
+  const fastNewsLaneDecision =
+    createGovernedFastNewsLaneDecision({
+      story_id: locked.storyId,
+      evaluated_at: GENERATED_AT,
+      scheduled_for: SCHEDULED_FOR,
+      source_published_at: "2026-07-29T11:00:00.000Z",
+      verification_status: "CONFIRMED",
+      source_class: "OFFICIAL_FIRST_PARTY",
+      inventory_file_sha256: locked.registryFileSha256,
+      source_evidence_sha256:
+        fastNewsSourceEvidenceSha256,
+      explicit_formats: [],
+    });
   const request = {
     schema_version: REQUEST_SCHEMA_VERSION,
     mode: "LOCAL_PROOF",
@@ -259,6 +283,7 @@ async function fixture(t, options = {}) {
     candidate_source_root: candidateSourceRoot,
     candidate_workspace_relative_root: `output/canary/${storyId}`,
     locked_intake: {
+      fast_news_lane_decision: fastNewsLaneDecision,
       database_story_binding:
         createGovernedAutonomousDatabaseStoryBinding({
           canonical_story_id: storyId,
@@ -337,6 +362,83 @@ async function fixture(t, options = {}) {
       policy_version: "1",
     },
   };
+  const runtimePolicy = {
+    schema_version:
+      "pulse-governed-autonomous-production-runtime-policy-v1",
+    mode: "LOCAL_PROOF",
+    generated_at: request.generated_at,
+    workspace_root: request.workspace_root,
+    candidate_source_root: request.candidate_source_root,
+    narration: request.narration,
+    visual_qa: request.visual_qa,
+    disclosure_policy: request.disclosure_policy,
+    safety: {
+      local_proof_only: true,
+      database_authority: false,
+      database_mutated: false,
+      network_authority: false,
+      network_used: false,
+      oauth_or_token_authority: false,
+      oauth_or_tokens_mutated: false,
+      platform_contacted: false,
+      publish_authority: false,
+      scheduler_authority: false,
+      external_publish_authorised: false,
+    },
+  };
+  const candidateRevision =
+    createGovernedAutonomousCompiledCandidateRevision({
+      schema_version: CANDIDATE_REVISION_SCHEMA_VERSION,
+      legacy_story_id: locked.storyId,
+      story_id: storyId,
+      scheduled_for: SCHEDULED_FOR,
+      inventory_file_sha256: locked.registryFileSha256,
+      inventory_canonical_sha256: sha256(
+        `${locked.storyId}:inventory-canonical`,
+      ),
+      primary_source_packet_sha256:
+        fastNewsSourceEvidenceSha256,
+      publication_source_evidence_sha256: sha256(
+        `${locked.storyId}:publication-source`,
+      ),
+      rights_ledger_sha256: sha256(
+        `${locked.storyId}:rights-ledger`,
+      ),
+      supplemental_source_packet_sha256: [
+        locked.storePacket.packet_sha256,
+      ],
+      final_script_sha256: locked.scriptSha256,
+      fast_news_lane_decision_sha256:
+        fastNewsLaneDecision.decision_sha256,
+      locked_intake_sha256: compiledCanonicalSha256(
+        request.locked_intake,
+      ),
+      creative_package_sha256: compiledCanonicalSha256(
+        request.creative,
+      ),
+      runtime_policy_sha256:
+        compiledCanonicalSha256(runtimePolicy),
+    });
+  request.candidate_revision = candidateRevision;
+  request.candidate_revision_sha256 =
+    compiledCanonicalSha256(candidateRevision);
+  request.request_fingerprint = compiledCanonicalSha256({
+    schema_version:
+      "pulse-governed-autonomous-breaking-production-request-fingerprint-v1",
+    story_id: storyId,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    scheduled_for: SCHEDULED_FOR,
+    candidate_revision_sha256:
+      request.candidate_revision_sha256,
+    locked_intake_sha256:
+      candidateRevision.locked_intake_sha256,
+    creative_package_sha256:
+      candidateRevision.creative_package_sha256,
+    runtime_policy_sha256:
+      candidateRevision.runtime_policy_sha256,
+  });
 
   let generatedNarrations = 0;
   const dependencies = {
@@ -521,6 +623,10 @@ test("materialises the locked official story through real governed staging into 
   assert.equal(preparation.story_id, input.locked.storyId);
   assert.equal(preparation.role, "PRIMARY");
   assert.equal(preparation.scheduled_for, SCHEDULED_FOR);
+  assert.deepEqual(
+    preparation.fast_news_lane_decision,
+    input.request.locked_intake.fast_news_lane_decision,
+  );
   assert.equal(
     preparation.artifacts.autonomous_green_supplement.sha256,
     result.green_supplement.json_file_sha256,

@@ -221,19 +221,39 @@ test("critical publication claims expire before the bounded T-70 recovery window
   );
 });
 
-test("the candidate inventory monitor runs in reserved critical planning capacity", () => {
+test("runway monitors run serially in isolated short-lease capacity", () => {
   const definitions = buildMultiLaneWorkerDefinitions({
     handlers: {
       governed_youtube_window_inventory_monitor() {},
+      governed_youtube_runway_slo_monitor() {},
+      hunt() {},
+      evergreen_candidate_builder() {},
     },
   });
   const poolFor = (kind) =>
     definitions.find((definition) =>
       definition.kinds.includes(kind),
-    )?.pool_id;
+    );
+  const runwayMonitor = poolFor(
+    "governed_youtube_window_inventory_monitor",
+  );
+
+  assert.equal(runwayMonitor.pool_id, "runway_monitor");
+  assert.equal(runwayMonitor.instances, 1);
+  assert.equal(runwayMonitor.lease_ms, 90_000);
+  assert.equal(runwayMonitor.heartbeat_ms, 20_000);
+  assert.deepEqual(runwayMonitor.kinds.sort(), [
+    "governed_youtube_runway_slo_monitor",
+    "governed_youtube_window_inventory_monitor",
+  ]);
+  assert.equal(poolFor("hunt").pool_id, "critical_planning");
   assert.equal(
-    poolFor("governed_youtube_window_inventory_monitor"),
+    poolFor("evergreen_candidate_builder").pool_id,
     "critical_planning",
+  );
+  assert.notEqual(
+    runwayMonitor.pool_id,
+    poolFor("hunt").pool_id,
   );
 });
 

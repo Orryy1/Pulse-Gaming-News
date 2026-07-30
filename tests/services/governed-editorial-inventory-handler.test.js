@@ -99,6 +99,54 @@ test("inventory handler runs the exact local-only workflow and creates no extern
   assert.equal(result.no_external_posting, true);
 });
 
+test("inventory handler stamps a refresh from its evidence capture time, not the older story publication", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-inventory-refresh-time-"),
+  );
+  t.after(() => fs.remove(outDir));
+  const publishedAt = "2026-07-28T10:00:00.000Z";
+  const evidenceCapturedAt = "2026-07-28T14:05:00.000Z";
+  let observed = null;
+
+  const result = await handlers.prepare_editorial_inventory(
+    {
+      kind: "prepare_editorial_inventory",
+      payload: exactJobPayload({
+        story: {
+          ...exactJobPayload().story,
+          published_at: publishedAt,
+        },
+        generated_at: evidenceCapturedAt,
+        now: "2026-07-28T15:00:00.000Z",
+        out_dir: outDir,
+        root_dir: path.dirname(outDir),
+      }),
+    },
+    {
+      async runGovernedEditorialInventoryWorkflow(input) {
+        observed = input;
+        return {
+          verdict: "READY",
+          blockers: [],
+          paths: {
+            report: path.join(outDir, "workflow.json"),
+            summary: path.join(outDir, "workflow.md"),
+            inventory: path.join(outDir, "inventory.json"),
+          },
+          report: {
+            workflow_revision_sha256: "3".repeat(64),
+          },
+        };
+      },
+    },
+  );
+
+  assert.equal(observed.story.published_at, publishedAt);
+  assert.equal(observed.now, evidenceCapturedAt);
+  const handlerReport = await fs.readJson(result.report_json);
+  assert.equal(handlerReport.generated_at, evidenceCapturedAt);
+});
+
 test("inventory handler scopes default workspaces and follow-up discovery to the exact evidence revision", async (t) => {
   const repoRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-inventory-revisions-"),

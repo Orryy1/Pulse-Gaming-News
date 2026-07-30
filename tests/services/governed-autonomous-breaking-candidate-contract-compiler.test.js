@@ -234,6 +234,38 @@ test("compiles a hydrated READY official source and exact DB story into the plan
     },
   );
   assert.deepEqual(
+    {
+      decision:
+        candidate.locked_intake_binding.locked_intake
+          .fast_news_lane_decision.decision,
+      semantic_classification:
+        candidate.locked_intake_binding.locked_intake
+          .fast_news_lane_decision.semantic_classification,
+      operational_lane_id:
+        candidate.locked_intake_binding.locked_intake
+          .fast_news_lane_decision.operational_lane_id,
+      public_breaking_claim_authorised:
+        candidate.locked_intake_binding.locked_intake
+          .fast_news_lane_decision
+          .public_breaking_claim_authorised,
+      story_id:
+        candidate.locked_intake_binding.locked_intake
+          .fast_news_lane_decision.story_id,
+    },
+    {
+      decision: "ELIGIBLE",
+      semantic_classification: "RECENT_OFFICIAL_FAST_NEWS",
+      operational_lane_id: "breaking_short",
+      public_breaking_claim_authorised: false,
+      story_id: values.story.id,
+    },
+  );
+  assert.match(
+    candidate.locked_intake_binding.locked_intake
+      .fast_news_lane_decision.decision_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  assert.deepEqual(
     candidate.locked_intake_binding.locked_intake
       .script_claim_bindings.map((binding) => binding.clause),
     STANDARD_SCRIPT.split(/(?<=[.!?])\s+/),
@@ -331,6 +363,7 @@ test("compiles a hydrated READY official source and exact DB story into the plan
     locked_intake_binding: candidate.locked_intake_binding,
     creative_package: candidate.creative_package,
     runtime_policy: candidate.runtime_policy,
+    candidate_revision: candidate.candidate_revision,
     candidate_revision_sha256:
       candidate.candidate_revision_sha256,
     request_fingerprint: candidate.request_fingerprint,
@@ -591,6 +624,7 @@ test("is deterministic and returns no human dependency or operational authority"
 
   assert.deepEqual(second, first);
   assert.deepEqual(Object.keys(first).sort(), [
+    "candidate_revision",
     "candidate_revision_sha256",
     "channel_id",
     "creative_package",

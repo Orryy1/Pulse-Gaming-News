@@ -27,6 +27,9 @@ const {
   canonicalHash,
 } = require("../../lib/services/url-canonical");
 const {
+  createGovernedFastNewsLaneDecision,
+} = require("../../lib/services/governed-fast-news-lane-decision");
+const {
   MATERIALISER_ID: T90_SOURCE_MATERIALISER_ID,
   REPORT_SCHEMA_VERSION: T90_SOURCE_REPORT_SCHEMA_VERSION,
 } = require("../../lib/services/governed-autonomous-t90-eligibility-source-report");
@@ -123,6 +126,21 @@ function candidateFixture(
   const candidateRevisionSha256 = sha256(`${storyId}:candidate-revision`);
   const requestFingerprint = sha256(`${storyId}:request-fingerprint`);
   const jitRightsLedgerSha256 = sha256(`${storyId}:jit-rights-ledger`);
+  const fastNewsLaneDecision =
+    createGovernedFastNewsLaneDecision({
+      story_id: databaseStoryId || storyId,
+      evaluated_at: NOW,
+      scheduled_for: SCHEDULED_FOR,
+      source_published_at: "2026-07-30T06:00:00.000Z",
+      verification_status: "CONFIRMED",
+      source_class: "OFFICIAL_FIRST_PARTY",
+      inventory_file_sha256:
+        inventoryFileSha256 ||
+        sha256(`${databaseStoryId || storyId}:inventory`),
+      source_evidence_sha256:
+        artifacts.source_evidence.sha256,
+      explicit_formats: [],
+    });
   const preparation = createAutonomousOfficialJitPreparationManifest({
     story_id: storyId,
     channel_id: "pulse-gaming",
@@ -132,6 +150,7 @@ function candidateFixture(
     role,
     candidate_revision_sha256: candidateRevisionSha256,
     request_fingerprint: requestFingerprint,
+    fast_news_lane_decision: fastNewsLaneDecision,
     artifacts,
     owned_visual_assets: [],
     publication_evidence_gate_input: {
@@ -498,6 +517,41 @@ test("atomically binds exact media and admits PRIMARY/STANDBY through governed c
   assert.equal(result.platform_contacted, false);
   assert.equal(result.network_used, false);
   assert.equal(result.oauth_or_tokens_mutated, false);
+});
+
+test("current governed auto decisions admit confirmed news when the legacy breaking score is stale", (t) => {
+  const fixture = setup(t);
+  for (const storyId of ["story-primary", "story-standby"]) {
+    fixture.db
+      .prepare(
+        "UPDATE stories SET breaking_score = 20, classification = '[CONFIRMED]', _extra = '{}' WHERE id = ?",
+      )
+      .run(storyId);
+    fixture.repos.scoring.record({
+      story_id: storyId,
+      channel_id: "pulse-gaming",
+      total: 78,
+      decision: "auto",
+      decision_reason: "Current governed autonomous decision",
+      hard_stops: [],
+      scorer_version: "test-v1",
+    });
+  }
+
+  const result = apply(fixture);
+
+  assert.equal(result.verdict, "APPLIED");
+  assert.equal(result.database_mutated, true);
+  assert.deepEqual(
+    result.candidates.map(({ story_id, role }) => ({
+      story_id,
+      role,
+    })),
+    [
+      { story_id: "story-primary", role: "PRIMARY" },
+      { story_id: "story-standby", role: "STANDBY" },
+    ],
+  );
 });
 
 test("atomically projects SHA-bound legacy RSS rows to canonical official identities before admission", (t) => {

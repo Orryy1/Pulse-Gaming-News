@@ -12,6 +12,10 @@ const {
   buildPulseGenerationPrompt,
   resolvePulseScriptContract,
 } = require("../../lib/services/pulse-editorial-contract");
+const {
+  readGovernedAutonomousScriptRepairContext,
+  renderGovernedAutonomousScriptRepairEvidence,
+} = require("../../lib/services/governed-autonomous-script-repair-context");
 const PROCESSOR_SOURCE = fs.readFileSync(
   path.join(__dirname, "..", "..", "processor.js"),
   "utf8",
@@ -568,6 +572,346 @@ test("processor autonomously recovers recent official script failures even when 
   assert.deepEqual(
     repairs.map((story) => story.id),
     ["rss_failed_editorial", "rss_failed_official"],
+  );
+  assert.equal(
+    repairs[0].editorial_lane_id,
+    "what_changes_for_players",
+  );
+  assert.equal(repairs[1].editorial_lane_id, undefined);
+});
+
+test("processor retargets a preferred governed inventory story whose valid general script cannot enter autonomous breaking production", () => {
+  const existing = {
+    id: "rss_governed_incompatible",
+    title: "PlayStation confirms Flamecraft for consoles",
+    url: "https://blog.playstation.com/2026/07/29/flamecraft/",
+    published_at: "2026-07-29T18:00:00.000Z",
+    breaking_score: 78,
+    hook: "Flamecraft is coming to PlayStation.",
+    body: "The official PlayStation source confirms the console release.",
+    full_script: `${words(65)} ending.`,
+    word_count: 66,
+    editorial_lane_id: "platform_pulse",
+    duration_band_id: "platform_pulse_standard_42_50",
+    contract_failures: [],
+  };
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates([], [existing], {
+      now: "2026-07-29T22:45:00.000Z",
+      preferredStoryIds: new Set([existing.id]),
+    });
+
+  assert.equal(repairs.length, 1);
+  assert.equal(
+    repairs[0].editorial_lane_id,
+    "what_changes_for_players",
+  );
+  assert.equal(
+    repairs[0].duration_band_id,
+    "what_changes_short_25_32",
+  );
+  assert.equal(repairs[0].target_duration_seconds, null);
+
+  const admitted = processor.filterPendingStoriesForGeneration(
+    repairs,
+    [existing],
+    { logger: () => {} },
+  );
+  assert.deepEqual(
+    admitted.map((story) => story.id),
+    [existing.id],
+  );
+});
+
+test("processor repairs a preferred governed inventory script whose word count fits but whose exact lane contract does not", () => {
+  const existing = {
+    id: "rss_governed_wrong_lane",
+    title: "Xbox confirms a player-facing change",
+    url: "https://news.xbox.com/en-us/2026/07/29/player-change/",
+    published_at: "2026-07-29T18:00:00.000Z",
+    full_script: words(42),
+    editorial_lane_id: "platform_pulse",
+    duration_band_id: "platform_pulse_short_30_36",
+    duration_variant: "short",
+  };
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates([], [existing], {
+      now: "2026-07-29T22:45:00.000Z",
+      preferredStoryIds: new Set([existing.id]),
+    });
+
+  assert.equal(repairs.length, 1);
+  assert.equal(
+    repairs[0].editorial_lane_id,
+    "what_changes_for_players",
+  );
+  assert.equal(
+    repairs[0].duration_band_id,
+    "what_changes_short_25_32",
+  );
+});
+
+test("a Silent Hill governed repair receives only its two validated claims, never the old combat or sneaking prose", () => {
+  const storyId = "rss_859a44c4ba983cbb";
+  const existing = {
+    id: storyId,
+    title: "Silent Hill: Townfall hands-on report",
+    url:
+      "https://blog.playstation.com/2026/07/29/silent-hill-townfall-hands-on-report/",
+    published_at: "2026-07-29T07:00:24.000Z",
+    full_script:
+      "Silent Hill: Townfall forces first-person combat with limited melee weapons. PlayStation Blog confirms sneaking is now vital. You can block charges and strike back, but clubs break quickly. A revolver kills fast yet draws more enemies instantly. This shift makes every encounter far deadlier.",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_short_25_32",
+    contract_failures: ["script_generation_exhausted"],
+  };
+  const confirmedClaims = [
+    {
+      claim_key: "playstation.silent_hill_townfall.launches",
+      text:
+        "Silent Hill: Townfall launches on September 24 on PlayStation 5.",
+    },
+    {
+      claim_key: "screen_burn.develops.townfall",
+      text:
+        "The developers at Screen Burn visited and photographed real coastal towns in Scotland",
+    },
+  ];
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates([], [existing], {
+      now: "2026-07-29T22:45:00.000Z",
+      preferredStoryIds: new Set([storyId]),
+      repairContexts: new Map([
+        [
+          storyId,
+          {
+            story_id: storyId,
+            inventory_file_sha256: "a".repeat(64),
+            source_evidence_sha256: "b".repeat(64),
+            confirmed_claims: confirmedClaims,
+          },
+        ],
+      ]),
+    });
+
+  assert.equal(repairs.length, 1);
+  assert.deepEqual(
+    readGovernedAutonomousScriptRepairContext(repairs[0])
+      .confirmed_claims,
+    confirmedClaims,
+  );
+  const promptEvidence =
+    renderGovernedAutonomousScriptRepairEvidence(repairs[0]);
+  assert.match(promptEvidence, /SOLE FACTUAL BASIS/);
+  assert.doesNotMatch(promptEvidence, /\bcombat\b/i);
+  assert.doesNotMatch(promptEvidence, /\bsneaking\b/i);
+  assert.equal(
+    Object.keys(repairs[0]).some((field) =>
+      field.includes("repair_context"),
+    ),
+    false,
+  );
+});
+
+test("processor preserves Ball x Pit compiler-GREEN standard supply without needlessly rewriting it", () => {
+  const existing = {
+    id: "rss_cb150013403a545b",
+    title:
+      "Ball x Pit final update The Naturalist arrives August 6",
+    url:
+      "https://blog.playstation.com/2026/07/28/ball-x-pit-final-update-the-naturalist-arrives-august-6/",
+    published_at: "2026-07-28T16:00:14.000Z",
+    full_script:
+      "Ball x Pit players face a final choice on August 6. Two new characters force you to pick between double ball slots or extra passive gear, alongside eleven fresh balls and five passives. Do you build an arsenal or rely on item evolutions?",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_short_25_32",
+    contract_status: "human_review_required",
+    contract_failures: ["script_generation_exhausted"],
+  };
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates([], [existing], {
+      now: "2026-07-29T22:45:00.000Z",
+      preferredStoryIds: new Set([existing.id]),
+      repairContexts: new Map([
+        [
+          existing.id,
+          {
+            story_id: existing.id,
+            inventory_file_sha256: "a".repeat(64),
+            source_evidence_sha256: "b".repeat(64),
+            confirmed_claims: [
+              {
+                claim_key:
+                  "playstation.ball-x-pit.naturalist-update-release",
+                text:
+                  "Ball x Pit: The Naturalist Update will be available for all PS5 players next week on August 6.",
+              },
+              {
+                claim_key:
+                  "playstation.ball-x-pit.new-characters-count",
+                text:
+                  "Players of Ball x Pit: The Naturalist Update will come across two new unlockable characters, each with opposite personalities.",
+              },
+              {
+                claim_key:
+                  "playstation.ball-x-pit.ballbearer-ability",
+                text:
+                  "The Ballbearer doubles down on firepower (literally), giving you double the amount of ball slots to build an arsenal at the cost of giving up passive items entirely.",
+              },
+              {
+                claim_key:
+                  "playstation.ball-x-pit.hoary-hoarder-ability",
+                text:
+                  "The Hoary Hoarder takes the opposite approach, lugging around an oversized backpack stuffed with gear. They only have room for two ball slots, but make up for it with twice as many passive slots, letting powerful item Evolutions do the heavy lifting.",
+              },
+            ],
+          },
+        ],
+      ]),
+    });
+
+  assert.deepEqual(repairs, []);
+});
+
+test("processor discovers exact repair contexts through the read-only governed hydrator", async () => {
+  const storyId = "rss_claim_bound_repair";
+  const calls = [];
+  const contexts =
+    await processor.discoverReadyGovernedInventoryScriptRepairContexts({
+      outputRoot: "C:\\pulse-proof",
+      async scanGovernedEditorialInventory(input) {
+        calls.push(["scan", input]);
+        return {
+          mode: "LOCAL_PROOF",
+          safety: {
+            read_only: true,
+            network_used: false,
+          },
+          entries: [
+            {
+              story: {
+                id: storyId,
+                verification_status: "CONFIRMED",
+              },
+              blockers: [],
+            },
+          ],
+        };
+      },
+      async hydrateGovernedEditorialInventoryCandidates(input) {
+        calls.push(["hydrate", input]);
+        return {
+          safety: {
+            read_only: true,
+            network_used: false,
+            database_mutated: false,
+            oauth_mutated: false,
+            platform_contacted: false,
+            publish_authority_created: false,
+          },
+          hydrated: [
+            {
+              story_id: storyId,
+              inventory_file_sha256: "a".repeat(64),
+              source_evidence_sha256: "b".repeat(64),
+              confirmed_claims: [
+                {
+                  claim_key: "official.claim",
+                  text: "An exact official claim.",
+                },
+              ],
+            },
+          ],
+        };
+      },
+    });
+
+  assert.deepEqual([...contexts.keys()], [storyId]);
+  assert.equal(contexts.get(storyId).story_id, storyId);
+  assert.equal(calls[0][0], "scan");
+  assert.equal(calls[1][0], "hydrate");
+  assert.deepEqual(calls[1][1].candidates, [
+    {
+      lane_id: "breaking_short",
+      story_id: storyId,
+      stage: "PLANNING",
+    },
+  ]);
+});
+
+test("processor preserves the compiler-compatible high-cadence breaking profile", () => {
+  const existing = {
+    id: "rss_governed_high_cadence_compatible",
+    title: "Xbox confirms a major player-facing change",
+    url: "https://news.xbox.com/en-us/2026/07/29/player-change/",
+    published_at: "2026-07-29T18:00:00.000Z",
+    full_script: words(110),
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id:
+      "what_changes_breaking_high_cadence_35_42",
+    contract_failures: [],
+  };
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates([], [existing], {
+      now: "2026-07-29T22:45:00.000Z",
+      preferredStoryIds: new Set([existing.id]),
+    });
+
+  assert.deepEqual(repairs, []);
+});
+
+test("a regenerated governed script clears stale approvals before the fresh scoring pass", () => {
+  assert.deepEqual(
+    processor.generatedScriptApprovalState({
+      story: {
+        approved: true,
+        auto_approved: true,
+      },
+      script: { contract_status: "valid" },
+      scriptReplaced: true,
+    }),
+    {
+      approved: false,
+      auto_approved: false,
+      approved_at: null,
+    },
+  );
+});
+
+test("a successful generated script clears stale contract failure state", () => {
+  assert.deepEqual(
+    processor.generatedScriptContractState({
+      script: {
+        hook: "Players can use the new feature tomorrow.",
+        body: "The official announcement confirms the rollout.",
+        full_script:
+          "Players can use the new feature tomorrow. The official announcement confirms the rollout.",
+      },
+    }),
+    {
+      contract_status: "valid",
+      contract_failures: [],
+    },
+  );
+});
+
+test("a generated script hold preserves its exact contract failure", () => {
+  assert.deepEqual(
+    processor.generatedScriptContractState({
+      script: {
+        contract_status: "human_review_required",
+        contract_failures: ["script_generation_exhausted"],
+      },
+    }),
+    {
+      contract_status: "human_review_required",
+      contract_failures: ["script_generation_exhausted"],
+    },
   );
 });
 
@@ -1254,6 +1598,7 @@ test("exhausted contract validation fails closed into human review", () => {
   assert.match(PROCESSOR_SOURCE, /contract_status:\s*"human_review_required"/);
   assert.match(
     PROCESSOR_SOURCE,
-    /script\.contract_status === "human_review_required"\s*\?\s*false/,
+    /script\.contract_status === "human_review_required"/,
   );
+  assert.match(PROCESSOR_SOURCE, /generatedScriptApprovalState/);
 });

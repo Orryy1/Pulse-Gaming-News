@@ -327,6 +327,51 @@ test("v1.3 rejects wrong Steam app titles even when a loose entity label claims 
   assert.equal(candidate.rejection_or_downgrade_reason, "store_app_title_mismatch");
 });
 
+test("specific Silent Hill Townfall media accepts app 1636440 and rejects Silent Hill 2 app 2124490", () => {
+  const plan = buildAssetAcquisitionPlan(
+    baseStory({
+      title: "Silent Hill: Townfall hands-on report",
+      body:
+        "Silent Hill: Townfall launches on 24 September after a hands-on report.",
+      full_script:
+        "Silent Hill: Townfall launches on 24 September after a hands-on report.",
+      downloaded_images: [
+        img("steam_hero", "steam", "townfall-store.jpg", {
+          entity: "Silent Hill",
+          url:
+            "https://cdn.akamai.steamstatic.com/steam/apps/1636440/header.jpg",
+          steam_app_id: 1636440,
+          steam_app_title: "SILENT HILL: Townfall",
+          steam_matched_query: "Silent Hill: Townfall",
+        }),
+        img("steam_hero", "steam", "silent-hill-2-store.jpg", {
+          entity: "Silent Hill",
+          url:
+            "https://cdn.akamai.steamstatic.com/steam/apps/2124490/header.jpg",
+          steam_app_id: 2124490,
+          steam_app_title: "SILENT HILL 2",
+          steam_matched_query: "Silent Hill",
+        }),
+      ],
+    }),
+  );
+  const townfall = candidateByPath(plan, "townfall-store.jpg");
+  const silentHill2 = candidateByPath(
+    plan,
+    "silent-hill-2-store.jpg",
+  );
+
+  assert.equal(townfall.store_app_id, "1636440");
+  assert.equal(townfall.store_match_status, "verified");
+  assert.equal(townfall.store_match_verified, true);
+  assert.equal(townfall.subject_match_quality, "exact_game_match");
+  assert.equal(townfall.counted_for_premium, true);
+  assert.equal(silentHill2.store_app_id, "2124490");
+  assert.equal(silentHill2.store_match_status, "mismatch");
+  assert.equal(silentHill2.store_match_verified, false);
+  assert.equal(silentHill2.counted_for_premium, false);
+});
+
 test("v1.3 treats Steam assets without app-title provenance as unverified", () => {
   const plan = buildAssetAcquisitionPlan(
     baseStory({

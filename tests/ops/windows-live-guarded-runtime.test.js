@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
+const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -82,6 +83,7 @@ const {
   releaseLiveStartOperationLock,
   setLiveScheduledTaskEnabled,
   startLiveScheduledTask,
+  superviseLiveChildSession,
 } = require(
   "../../lib/stabilisation/windows-live-guarded-runtime",
 );
@@ -803,6 +805,172 @@ test("supervision preparation and health identity fail closed unless the receipt
     ),
     false,
   );
+});
+
+test("the live child monitor replaces an unhealthy child without overlapping owners", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-monitor-"),
+  );
+  let keepAlive;
+  try {
+    keepAlive = setInterval(() => {}, 1000);
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    const events = [];
+    let activeChildren = 1;
+    let healthChecks = 0;
+    child.kill = (signal) => {
+      events.push(["kill", signal]);
+      setImmediate(() => {
+        activeChildren = 0;
+        child.emit("exit", null, signal);
+      });
+      return true;
+    };
+    const supervise =
+      typeof superviseLiveChildSession === "function"
+        ? superviseLiveChildSession
+        : async () => ({ outcome: "monitor_restart_not_implemented" });
+
+    const result = await supervise({
+      child,
+      ownerPath,
+      profile: {
+        port: 3001,
+        state_root: temp,
+      },
+      repoRoot: temp,
+      expectedCommit: "c".repeat(40),
+      activationReceiptPath: path.join(
+        temp,
+        "activation-receipt.json",
+      ),
+      activationInspector: () => ({
+        valid: true,
+        blockers: [],
+      }),
+      healthRequester: async () => {
+        healthChecks += 1;
+        return null;
+      },
+      monitorIntervalMs: 2,
+      signalEmitter: new EventEmitter(),
+      writeExitReceiptImpl(details) {
+        events.push(["exit_receipt", details]);
+      },
+      restartDelayMs: 15_000,
+      delayImpl(milliseconds) {
+        events.push(["delay", milliseconds]);
+        return Promise.resolve();
+      },
+      restartImpl(options) {
+        assert.equal(activeChildren, 0);
+        assert.equal(fs.existsSync(ownerPath), false);
+        events.push(["restart", options.expectedCommit]);
+        return Promise.resolve({
+          outcome: "recovered",
+          child_pid: 9090,
+        });
+      },
+      restartOptions: {
+        expectedCommit: "c".repeat(40),
+      },
+    });
+
+    assert.ok(healthChecks >= 3);
+    assert.deepEqual(events, [
+      ["kill", "SIGTERM"],
+      [
+        "exit_receipt",
+        {
+          child_pid: 7084,
+          exit_code: null,
+          signal: "SIGTERM",
+          reason: "live_runtime_health_lost",
+        },
+      ],
+      ["delay", 15_000],
+      ["restart", "c".repeat(40)],
+    ]);
+    assert.deepEqual(result, {
+      outcome: "recovered",
+      child_pid: 9090,
+    });
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("the live child monitor never restarts after activation is revoked", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-revoked-"),
+  );
+  let keepAlive;
+  try {
+    keepAlive = setInterval(() => {}, 1000);
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    let restartCalls = 0;
+    let exitDetails = null;
+    child.kill = (signal) => {
+      setImmediate(() => child.emit("exit", null, signal));
+      return true;
+    };
+
+    await assert.rejects(
+      superviseLiveChildSession({
+        child,
+        ownerPath,
+        profile: {
+          port: 3001,
+          state_root: temp,
+        },
+        repoRoot: temp,
+        expectedCommit: "c".repeat(40),
+        activationReceiptPath: path.join(
+          temp,
+          "activation-receipt.json",
+        ),
+        activationInspector: () => ({
+          valid: false,
+          blockers: ["activation_receipt_commit_mismatch"],
+        }),
+        healthRequester: async () => {
+          throw new Error("health_must_not_run_after_revocation");
+        },
+        monitorIntervalMs: 2,
+        signalEmitter: new EventEmitter(),
+        writeExitReceiptImpl(details) {
+          exitDetails = details;
+        },
+        restartDelayMs: 1,
+        delayImpl: () => Promise.resolve(),
+        restartImpl() {
+          restartCalls += 1;
+          return Promise.resolve();
+        },
+      }),
+      /activation_revoked:activation_receipt_commit_mismatch/,
+    );
+
+    assert.equal(fs.existsSync(ownerPath), false);
+    assert.equal(restartCalls, 0);
+    assert.deepEqual(exitDetails, {
+      child_pid: 7084,
+      exit_code: null,
+      signal: "SIGTERM",
+      reason:
+        "activation_revoked:activation_receipt_commit_mismatch",
+    });
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test("default lifecycle handlers install disabled and enable only the exact managed task without starting it immediately", async () => {

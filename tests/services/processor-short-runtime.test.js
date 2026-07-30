@@ -719,6 +719,75 @@ test("a Silent Hill governed repair receives only its two validated claims, neve
   );
 });
 
+test("a matching pending Silent Hill row is upgraded once into its exact governed repair instead of being deduped away", () => {
+  const storyId = "rss_859a44c4ba983cbb";
+  const existing = {
+    id: storyId,
+    title: "Silent Hill: Townfall hands-on report",
+    url:
+      "https://blog.playstation.com/2026/07/29/silent-hill-townfall-hands-on-report/",
+    published_at: "2026-07-29T07:00:24.000Z",
+    full_script:
+      "Silent Hill: Townfall forces first-person combat with limited melee weapons. PlayStation Blog confirms sneaking is now vital. You can block charges and strike back, but clubs break quickly. A revolver kills fast yet draws more enemies instantly. This shift makes every encounter far deadlier.",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_short_25_32",
+  };
+  const pending = {
+    id: storyId,
+    title: existing.title,
+    url: existing.url,
+    published_at: existing.published_at,
+  };
+  const repairContext = {
+    story_id: storyId,
+    inventory_file_sha256: "a".repeat(64),
+    source_evidence_sha256: "b".repeat(64),
+    confirmed_claims: [
+      {
+        claim_key: "playstation.silent_hill_townfall.launches",
+        text:
+          "Silent Hill: Townfall launches on September 24 on PlayStation 5.",
+      },
+      {
+        claim_key: "screen_burn.develops.townfall",
+        text:
+          "The developers at Screen Burn visited and photographed real coastal towns in Scotland",
+      },
+    ],
+  };
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates(
+      [pending],
+      [existing],
+      {
+        now: "2026-07-30T05:45:00.000Z",
+        preferredStoryIds: new Set([storyId]),
+        repairContexts: new Map([[storyId, repairContext]]),
+      },
+    );
+  assert.equal(repairs.length, 1);
+
+  const queue = processor.mergeAutonomousScriptRepairCandidates(
+    [pending],
+    repairs,
+  );
+  const admitted = processor.filterPendingStoriesForGeneration(
+    queue,
+    [existing],
+    { logger: () => {} },
+  );
+
+  assert.equal(queue.length, 1);
+  assert.equal(admitted.length, 1);
+  assert.equal(admitted[0].id, storyId);
+  assert.deepEqual(
+    readGovernedAutonomousScriptRepairContext(admitted[0])
+      .confirmed_claims,
+    repairContext.confirmed_claims,
+  );
+});
+
 test("governed repair validation rejects a generated clause outside the exact confirmed claims", () => {
   const selected = contract(
     "what_changes_short_25_32",

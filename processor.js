@@ -1443,9 +1443,12 @@ async function process_stories() {
         stories,
         existingStories,
         { preferredStoryIds, repairContexts },
-      );
+    );
     if (repairCandidates.length > 0) {
-      stories = [...stories, ...repairCandidates];
+      stories = mergeAutonomousScriptRepairCandidates(
+        stories,
+        repairCandidates,
+      );
       console.log(
         `[processor] Added ${repairCandidates.length} recent governed script repair candidate(s) outside the current hunt selection`,
       );
@@ -2026,6 +2029,37 @@ function governedAutonomousScriptRepairCandidate(
   return candidate;
 }
 
+function mergeAutonomousScriptRepairCandidates(
+  pendingStories = [],
+  repairCandidates = [],
+) {
+  const replacements = new Map(
+    (Array.isArray(repairCandidates) ? repairCandidates : [])
+      .map((candidate) => [
+        String(candidate?.id || "").trim(),
+        candidate,
+      ])
+      .filter(([storyId]) => storyId),
+  );
+  const merged = [];
+  const seenIds = new Set();
+  for (const pending of Array.isArray(pendingStories)
+    ? pendingStories
+    : []) {
+    const storyId = String(pending?.id || "").trim();
+    if (storyId && seenIds.has(storyId)) continue;
+    merged.push(replacements.get(storyId) || pending);
+    if (storyId) seenIds.add(storyId);
+  }
+  for (const candidate of replacements.values()) {
+    const storyId = String(candidate?.id || "").trim();
+    if (seenIds.has(storyId)) continue;
+    merged.push(candidate);
+    seenIds.add(storyId);
+  }
+  return merged;
+}
+
 function selectAutonomousScriptRepairCandidates(
   pendingStories = [],
   existingStories = [],
@@ -2074,6 +2108,10 @@ function selectAutonomousScriptRepairCandidates(
       const preferred = preferredIds.has(storyId);
       const repairContext =
         exactRepairContexts.get(storyId) || null;
+      const governedPendingUpgrade =
+        pendingIds.has(storyId) &&
+        preferred &&
+        Boolean(repairContext);
       const requiresScriptRepair = preferred
         ? !governedAutonomousScriptIsCompatible(
             story,
@@ -2082,7 +2120,7 @@ function selectAutonomousScriptRepairCandidates(
         : needsScriptGenerationRepair(story);
       if (
         !storyId ||
-        pendingIds.has(storyId) ||
+        (pendingIds.has(storyId) && !governedPendingUpgrade) ||
         !requiresScriptRepair ||
         String(story?.youtube_post_id || "").trim()
       ) {
@@ -2375,6 +2413,8 @@ module.exports.needsScriptGenerationRepair =
   needsScriptGenerationRepair;
 module.exports.selectAutonomousScriptRepairCandidates =
   selectAutonomousScriptRepairCandidates;
+module.exports.mergeAutonomousScriptRepairCandidates =
+  mergeAutonomousScriptRepairCandidates;
 module.exports.discoverReadyGovernedInventoryStoryIds =
   discoverReadyGovernedInventoryStoryIds;
 module.exports.discoverReadyGovernedInventoryScriptRepairContexts =

@@ -102,7 +102,7 @@ test(
           ...townfall,
         },
       });
-      assert.match(svg, /PULSE \/ /);
+      assert.match(svg, /PULSE GAMING/);
       assert.doesNotMatch(svg, /\u00e2\u20ac\u00a2/);
       const rendered = await sharp(Buffer.from(svg, "utf8")).metadata();
       assert.equal(rendered.width, CANVAS.width);
@@ -175,6 +175,192 @@ test(
         );
       }
     }
+  },
+);
+
+test("public SVG labels use only allowlisted editorial copy and fixed Pulse Gaming branding", () => {
+  const cases = [
+    {
+      layout: "TITLE",
+      role: "hook_slam",
+      expectedLayout: "BREAKING UPDATE",
+      expectedRole: "THE HEADLINE",
+    },
+    {
+      layout: "BACKBONE",
+      role: "owned_motion_backbone",
+      expectedLayout: "BREAKING UPDATE",
+      expectedRole: "OFFICIAL UPDATE",
+    },
+    {
+      layout: "TIMELINE",
+      role: "verified_detail",
+      expectedLayout: "WHAT CHANGED",
+      expectedRole: "KEY DETAIL",
+    },
+    {
+      layout: "COMPARISON",
+      role: "verified_change",
+      expectedLayout: "WHY IT MATTERS",
+      expectedRole: "WHAT CHANGED",
+    },
+    {
+      layout: "GRID",
+      role: "source_payoff",
+      expectedLayout: "PLAYER IMPACT",
+      expectedRole: "OFFICIAL SOURCE",
+    },
+    {
+      layout: "IMPACT",
+      role: "player_impact",
+      expectedLayout: "KEY DETAIL",
+      expectedRole: "PLAYER IMPACT",
+    },
+    {
+      layout: "OUTRO",
+      role: "unrecognised_internal_role",
+      expectedLayout: "THE TAKEAWAY",
+      expectedRole: "PULSE UPDATE",
+    },
+    {
+      layout: "UNRECOGNISED_INTERNAL_LAYOUT",
+      role: "hook_slam",
+      expectedLayout: "PULSE UPDATE",
+      expectedRole: "THE HEADLINE",
+    },
+  ];
+
+  for (const item of cases) {
+    const svg = svgForScene({
+      role: item.role,
+      design: {
+        accent_colour: "#FF6B1A",
+        layout: item.layout,
+        headline: "Viewer-facing headline",
+        supporting_text: "Viewer-facing supporting copy.",
+      },
+    });
+    const labels = [
+      ...svg.matchAll(/\baria-label="([^"]+)"/g),
+    ].map((match) => match[1]);
+    assert.ok(labels.includes(item.expectedLayout), item.layout);
+    assert.ok(labels.includes(item.expectedRole), item.role);
+    assert.ok(labels.includes("PULSE GAMING"));
+    assert.doesNotMatch(
+      svg,
+      /\b(?:BACKBONE|HOOK SLAM|OWNED MOTION|SOURCE PAYOFF)\b/,
+    );
+    assert.doesNotMatch(svg, /UNRECOGNISED INTERNAL/);
+  }
+});
+
+test(
+  "exact approved Townfall hook gets a safe owned date lockup and compact signal treatment",
+  { timeout: 30_000 },
+  async (t) => {
+    const approvedHeadline =
+      "SILENT HILL: TOWNFALL LAUNCHES 24 SEPTEMBER";
+    const supportingText =
+      "Silent Hill: Townfall launches 24 September on PlayStation 5 with first-person combat.";
+    const approvedSvg = svgForScene({
+      role: "hook_slam",
+      design: {
+        accent_colour: "#FF6B1A",
+        layout: "TITLE",
+        headline: approvedHeadline,
+        supporting_text: supportingText,
+      },
+    });
+    const nonHookSvg = svgForScene({
+      role: "verified_detail",
+      design: {
+        accent_colour: "#FF6B1A",
+        layout: "COMPARISON",
+        headline: approvedHeadline,
+        supporting_text: supportingText,
+      },
+    });
+    const changedHeadlineSvg = svgForScene({
+      role: "hook_slam",
+      design: {
+        accent_colour: "#FF6B1A",
+        layout: "TITLE",
+        headline:
+          "SILENT HILL: TOWNFALL LAUNCHES 25 SEPTEMBER",
+        supporting_text: supportingText,
+      },
+    });
+
+    assert.match(approvedSvg, /aria-label="24 \/ SEP"/);
+    assert.match(
+      approvedSvg,
+      /data-owned-motif="approved-date-lockup"/,
+    );
+    assert.match(approvedSvg, /data-signal-dot=""/);
+    assert.match(approvedSvg, /data-signal-rule=""/);
+    assert.doesNotMatch(
+      approvedSvg,
+      /<rect x="72" y="150" width="12" height="260"/,
+    );
+    assert.doesNotMatch(nonHookSvg, /24 \/ SEP/);
+    assert.doesNotMatch(changedHeadlineSvg, /24 \/ SEP/);
+
+    const browser = await launchBrowser();
+    t.after(() => browser.close());
+    const page = await browser.newPage({
+      viewport: { width: 1080, height: 1920 },
+    });
+    await page.setContent(approvedSvg, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.evaluate(() => document.fonts.ready);
+
+    const lockup = await page.$eval(
+      '[data-owned-motif="approved-date-lockup"]',
+      (element) => {
+        const box = element.getBBox();
+        return {
+          text: element.textContent.trim(),
+          x: box.x,
+          y: box.y,
+          right: box.x + box.width,
+          bottom: box.y + box.height,
+        };
+      },
+    );
+    assert.equal(lockup.text, "24 / SEP");
+    assert.ok(
+      lockup.x >= 124 &&
+        lockup.right <= 798 &&
+        lockup.y >= 1248 &&
+        lockup.bottom <= 1380,
+      `date lockup leaves its pre-zoom safe area: ${JSON.stringify(lockup)}`,
+    );
+    const zoomed = {
+      x:
+        CANVAS.width / 2 +
+        (lockup.x - CANVAS.width / 2) * PROGRAMME_ZOOM,
+      y:
+        CANVAS.height / 2 +
+        (lockup.y - CANVAS.height / 2) * PROGRAMME_ZOOM,
+      right:
+        CANVAS.width / 2 +
+        (lockup.right - CANVAS.width / 2) * PROGRAMME_ZOOM,
+      bottom:
+        CANVAS.height / 2 +
+        (lockup.bottom - CANVAS.height / 2) * PROGRAMME_ZOOM,
+    };
+    assert.ok(
+      zoomed.x >= SAFE_RECT.x &&
+        zoomed.right <= SAFE_RECT.x + SAFE_RECT.width &&
+        zoomed.y >= SAFE_RECT.y &&
+        zoomed.bottom <= SAFE_RECT.y + SAFE_RECT.height,
+      `date lockup escapes after programme zoom: ${JSON.stringify(zoomed)}`,
+    );
+    assert.ok(
+      zoomed.y >= CAPTION_RECT.y + CAPTION_RECT.height,
+      `date lockup overlaps the caption lane: ${JSON.stringify(zoomed)}`,
+    );
   },
 );
 

@@ -428,6 +428,98 @@ test("local claim extraction samples lead, middle and tail when legacy stories h
   assert.equal(result.claims[0].text, exactClaim);
 });
 
+test("local claim extraction uses an untrusted story title only to retrieve late exact BODY passages", async () => {
+  const storyTitle =
+    "Silent Hill: Townfall reveals stealth gameplay in a remote island mystery";
+  const exactClaim =
+    "Silent Hill: Townfall lets players hide from enemies while exploring the remote island settlement.";
+  const unsupportedHeadlineClaim =
+    "Silent Hill: Townfall launches worldwide on 1 November.";
+  const oversizedBody = [
+    "Official announcement introduction with enough factual prose for governed extraction.",
+    "The studio discussed its launch event in Scotland. ".repeat(180),
+    "General production background without the game name or gameplay details. ".repeat(
+      260,
+    ),
+    exactClaim,
+    "Additional production credits and legal notices without the named game. ".repeat(
+      130,
+    ),
+  ].join(" ");
+  let requestBody = null;
+  const extract = createAnthropicBreakingClaimExtractor({
+    client: {
+      editorial_identity: {
+        provider: "ollama",
+        model: "qwen3.5:27b",
+        adapter: "ollama.api.chat",
+      },
+      messages: {
+        async create(request) {
+          requestBody = JSON.parse(request.messages[0].content);
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  claims: [
+                    {
+                      claim_key:
+                        "konami.townfall.confirms.stealth-gameplay",
+                      text: exactClaim,
+                    },
+                    {
+                      claim_key:
+                        "konami.townfall.claims.unsupported-release-date",
+                      text: unsupportedHeadlineClaim,
+                    },
+                  ],
+                }),
+              },
+            ],
+          };
+        },
+      },
+    },
+    model: "qwen3.5:27b",
+  });
+
+  const result = await extract({
+    story: {
+      id: "townfall-empty-subject-ids",
+      title: storyTitle,
+      subject_ids: [],
+    },
+    source: {
+      source_id: "playstation-blog",
+      source_class: "OFFICIAL_FIRST_PARTY",
+      publisher: "Sony Interactive Entertainment",
+    },
+    content_type: "text/plain",
+    bytes: Buffer.from(oversizedBody),
+  });
+
+  assert.ok(oversizedBody.length > 12_000);
+  assert.ok(requestBody.body_text.length <= 12_000);
+  assert.ok(requestBody.body_text.includes(exactClaim));
+  assert.equal(Object.hasOwn(requestBody.story_identity, "title"), false);
+  assert.equal(
+    JSON.stringify({
+      ...requestBody,
+      body_text: undefined,
+    }).includes(storyTitle),
+    false,
+  );
+  assert.equal(oversizedBody.includes(unsupportedHeadlineClaim), false);
+  assert.deepEqual(
+    result.claims.map((claim) => claim.text),
+    [exactClaim],
+  );
+  assert.ok(
+    result.claims.every((claim) => oversizedBody.includes(claim.text)),
+  );
+});
+
 test("compacted extraction never accepts a quote created across non-contiguous body windows", async () => {
   const oversizedBody = [
     "A".repeat(6_000),

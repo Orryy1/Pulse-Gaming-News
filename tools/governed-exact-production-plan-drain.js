@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
+const crypto = require("node:crypto");
 const path = require("node:path");
 
 const {
@@ -47,7 +48,23 @@ function usage() {
     "Runs one exact governed plan's PRIMARY then STANDBY production jobs",
     "through one lease-fenced JobsRunner. LOCAL_PROOF only.",
     "No publish, OAuth, token, scheduler or watcher authority.",
+    "--timeout-ms bounds the work window; fail-safe shutdown keeps the",
+    "LOCAL_PROOF fence in place until the active handler has truly exited.",
   ].join("\n");
+}
+
+function safeFailureBlocker(error) {
+  const code = String(error?.code || "");
+  if (/^exact_plan_[a-z0-9_]+$/.test(code)) return code;
+  const fingerprint = crypto
+    .createHash("sha256")
+    .update(
+      `${String(error?.name || "Error")}:${String(
+        error?.message || "exact_plan_drain_failed",
+      )}`,
+    )
+    .digest("hex");
+  return `exact_plan_unexpected_error:${fingerprint}`;
 }
 
 function requiredValue(argv, index, flag) {
@@ -211,11 +228,7 @@ if (require.main === module) {
         `${JSON.stringify(
           {
             verdict: "HOLD",
-            blocker: String(
-              error?.code || error?.message || "exact_plan_drain_failed",
-            )
-              .replace(/[^a-zA-Z0-9_:.-]/g, "_")
-              .slice(0, 240),
+            blocker: safeFailureBlocker(error),
           },
           null,
           2,
@@ -231,5 +244,6 @@ module.exports = {
   defaultLoadEnvironment,
   main,
   parseArgs,
+  safeFailureBlocker,
   usage,
 };

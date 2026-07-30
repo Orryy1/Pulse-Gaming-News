@@ -6,6 +6,7 @@ const test = require("node:test");
 const {
   parseArgs,
   main,
+  safeFailureBlocker,
   usage,
 } = require("../../tools/governed-exact-production-plan-drain");
 
@@ -148,4 +149,18 @@ test("usage names the forbidden authority and the exact sequential scope", () =>
   assert.match(text, /LOCAL_PROOF/);
   assert.match(text, /PRIMARY then STANDBY/);
   assert.match(text, /No publish, OAuth, token, scheduler or watcher authority/);
+  assert.match(text, /bounds the work window/);
+  assert.match(text, /until the active handler has truly exited/);
+});
+
+test("CLI failure reporting redacts unexpected exception text", () => {
+  const secret = "sk_live_cli_secret_must_not_escape";
+  const blocker = safeFailureBlocker(
+    new Error(`provider failed with ${secret}`),
+  );
+  assert.match(
+    blocker,
+    /^exact_plan_unexpected_error:[a-f0-9]{64}$/,
+  );
+  assert.equal(blocker.includes(secret), false);
 });

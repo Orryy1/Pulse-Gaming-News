@@ -774,6 +774,73 @@ test("real default planner rechecks T-109 immediately before enqueueBatch after 
   assert.equal(result.no_external_posting, true);
 });
 
+test("non-terminal predecessor lineage retries only while bounded attempts and T-109 runway remain", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-window-lineage-retry-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, {
+      recursive: true,
+      force: true,
+    }),
+  );
+  const harness = realPlannerHandlerHarness({
+    workspaceRoot,
+    clockValues: [
+      "2026-07-30T07:00:00.000Z",
+      "2026-07-30T07:00:00.001Z",
+    ],
+  });
+  harness.context.planGovernedAutonomousWindowProduction =
+    async () => {
+      const error = new Error(
+        "autonomous_window_planner_prior_jobs_not_terminal",
+      );
+      error.code =
+        "autonomous_window_planner_prior_jobs_not_terminal";
+      throw error;
+    };
+
+  const retry = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 1,
+      max_attempts: 8,
+    },
+    harness.context,
+  );
+  assert.deepEqual(retry.blockers, [
+    "autonomous_window_planner_prior_jobs_not_terminal",
+  ]);
+  assert.equal(retry.job_outcome, "RETRY");
+  assert.equal(retry.retry_after_seconds, 300);
+  assert.equal(retry.attempt_count, 1);
+  assert.equal(retry.max_attempts, 8);
+
+  const exhausted = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 8,
+      max_attempts: 8,
+    },
+    harness.context,
+  );
+  assert.equal(exhausted.job_outcome, "TERMINAL");
+  assert.equal(exhausted.retryable, false);
+  assert.equal(
+    Object.hasOwn(exhausted, "retry_after_seconds"),
+    false,
+  );
+  assert.equal(harness.enqueued.length, 0);
+});
+
 test("holds with explicit missing and stale evidence counts before the planner can enqueue", async (t) => {
   const workspaceRoot = fs.mkdtempSync(
     path.join(

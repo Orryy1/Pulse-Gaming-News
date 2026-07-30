@@ -238,7 +238,7 @@ test("autonomous planner and T-94 cron fires bind the exact UTC publish window w
       now: "2026-03-29T06:35:00.000Z",
       publishHour: 9,
       scheduledFor: "2026-03-29T09:00:00.000Z",
-      jobMaxAttempts: 11,
+      jobMaxAttempts: 8,
     },
     {
       kind: "prepare_governed_autonomous_pre_t90_window",

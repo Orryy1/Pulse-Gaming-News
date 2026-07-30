@@ -211,6 +211,7 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
   const result = await handlers[
     "plan_governed_autonomous_window_production"
   ](job(), {
+    now: () => GENERATED_AT,
     autonomousProductionWorkspaceRoot: workspaceRoot,
     governedEditorialInventoryRoot: inventoryRoot,
     governedEditorialInventoryAllowedRoots: [
@@ -371,12 +372,13 @@ test("holds with explicit missing and stale evidence counts before the planner c
   const retryJob = {
     ...job(),
     attempt_count: 1,
-    max_attempts: 11,
+    max_attempts: 8,
   };
 
   const result = await handlers[
     "plan_governed_autonomous_window_production"
   ](retryJob, {
+    now: () => GENERATED_AT,
     autonomousProductionWorkspaceRoot: workspaceRoot,
     governedEditorialInventoryRoot: inventoryRoot,
     governedEditorialInventoryAllowedRoots: [
@@ -449,10 +451,18 @@ test("holds with explicit missing and stale evidence counts before the planner c
   assert.equal(result.retry_after_seconds, 300);
   assert.equal(
     result.retry_deadline,
-    "2026-07-30T07:30:00.000Z",
+    "2026-07-30T07:11:00.000Z",
+  );
+  assert.equal(
+    result.pre_t94_dependency_at,
+    "2026-07-30T07:26:00.000Z",
+  );
+  assert.equal(
+    result.minimum_production_runway_seconds,
+    900,
   );
   assert.equal(result.attempt_count, 1);
-  assert.equal(result.max_attempts, 11);
+  assert.equal(result.max_attempts, 8);
   assert.equal(result.catch_up_allowed, false);
   assert.deepEqual(result.counts, {
     inventory_ready: 3,
@@ -492,7 +502,7 @@ test("holds with explicit missing and stale evidence counts before the planner c
   assert.equal(result.no_oauth_or_token_change, true);
 });
 
-test("candidate-supply HOLD becomes terminal when another retry would cross T-90", async (t) => {
+test("candidate-supply HOLD becomes terminal before the production runway for T-94", async (t) => {
   const workspaceRoot = fs.mkdtempSync(
     path.join(
       os.tmpdir(),
@@ -516,14 +526,15 @@ test("candidate-supply HOLD becomes terminal when another retry would cross T-90
   ](
     {
       ...job(),
-      attempt_count: 10,
-      max_attempts: 11,
+      attempt_count: 8,
+      max_attempts: 8,
       payload: {
         ...job().payload,
-        generated_at: "2026-07-30T07:29:00.000Z",
+        generated_at: "2026-07-30T06:35:00.000Z",
       },
     },
     {
+      now: () => "2026-07-30T07:10:00.000Z",
       autonomousProductionWorkspaceRoot: workspaceRoot,
       governedEditorialInventoryRoot: inventoryRoot,
       governedEditorialInventoryAllowedRoots: [
@@ -561,13 +572,163 @@ test("candidate-supply HOLD becomes terminal when another retry would cross T-90
   );
   assert.equal(
     result.retry_deadline,
-    "2026-07-30T07:30:00.000Z",
+    "2026-07-30T07:11:00.000Z",
   );
-  assert.equal(result.attempt_count, 10);
-  assert.equal(result.max_attempts, 11);
+  assert.equal(
+    result.pre_t94_dependency_at,
+    "2026-07-30T07:26:00.000Z",
+  );
+  assert.equal(
+    result.minimum_production_runway_seconds,
+    900,
+  );
+  assert.equal(result.attempt_count, 8);
+  assert.equal(result.max_attempts, 8);
   assert.equal(result.catch_up_allowed, false);
   assert.equal(result.publish_authority_created, false);
   assert.equal(result.no_external_posting, true);
+});
+
+test("trusted attempt time prevents a frozen payload timestamp from reopening a closed window", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-window-handler-trusted-clock-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, {
+      recursive: true,
+      force: true,
+    }),
+  );
+  const inventoryRoot = path.join(
+    workspaceRoot,
+    "output",
+    "editorial-inventory",
+  );
+  let scanCalled = false;
+
+  const result = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 1,
+      max_attempts: 8,
+      payload: {
+        ...job().payload,
+        generated_at: "2026-07-30T06:35:00.000Z",
+      },
+    },
+    {
+      now: () => "2026-07-30T07:35:00.000Z",
+      autonomousProductionWorkspaceRoot: workspaceRoot,
+      governedEditorialInventoryRoot: inventoryRoot,
+      governedEditorialInventoryAllowedRoots: [
+        path.join(workspaceRoot, "output"),
+      ],
+      governedAutonomousBreakingRuntimePolicy:
+        runtimePolicy(),
+      repos: {
+        jobs: {
+          enqueueBatch() {},
+        },
+        stories: {
+          get() {
+            return null;
+          },
+        },
+      },
+      async scanGovernedEditorialInventory() {
+        scanCalled = true;
+        return scanReport([]);
+      },
+    },
+  );
+
+  assert.equal(scanCalled, false);
+  assert.equal(result.verdict, "HOLD");
+  assert.deepEqual(result.blockers, [
+    "governed_autonomous_window_planning_must_precede_production_cutoff",
+  ]);
+  assert.notEqual(result.job_outcome, "RETRY");
+  assert.equal(result.publish_authority_created, false);
+  assert.equal(result.no_external_posting, true);
+});
+
+test("candidate-supply retry preserves fifteen minutes for production before T-94", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-window-handler-production-runway-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, {
+      recursive: true,
+      force: true,
+    }),
+  );
+  const inventoryRoot = path.join(
+    workspaceRoot,
+    "output",
+    "editorial-inventory",
+  );
+
+  const result = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 7,
+      max_attempts: 8,
+      payload: {
+        ...job().payload,
+        generated_at: "2026-07-30T06:35:00.000Z",
+      },
+    },
+    {
+      now: () => "2026-07-30T07:05:00.000Z",
+      autonomousProductionWorkspaceRoot: workspaceRoot,
+      governedEditorialInventoryRoot: inventoryRoot,
+      governedEditorialInventoryAllowedRoots: [
+        path.join(workspaceRoot, "output"),
+      ],
+      governedAutonomousBreakingRuntimePolicy:
+        runtimePolicy(),
+      repos: {
+        jobs: {
+          enqueueBatch() {},
+        },
+        stories: {
+          get() {
+            return null;
+          },
+        },
+      },
+      async scanGovernedEditorialInventory() {
+        return scanReport([]);
+      },
+    },
+  );
+
+  assert.equal(result.job_outcome, "RETRY");
+  assert.equal(result.retryable, true);
+  assert.equal(result.retry_after_seconds, 300);
+  assert.equal(
+    result.retry_deadline,
+    "2026-07-30T07:11:00.000Z",
+  );
+  assert.equal(
+    result.pre_t94_dependency_at,
+    "2026-07-30T07:26:00.000Z",
+  );
+  assert.equal(
+    result.minimum_production_runway_seconds,
+    900,
+  );
+  assert.equal(result.catch_up_allowed, false);
 });
 
 test("holds before planning when DB rows are unapproved or only manually approved", async (t) => {
@@ -618,6 +779,7 @@ test("holds before planning when DB rows are unapproved or only manually approve
   const result = await handlers[
     "plan_governed_autonomous_window_production"
   ](job(), {
+    now: () => GENERATED_AT,
     autonomousProductionWorkspaceRoot: workspaceRoot,
     governedEditorialInventoryRoot: inventoryRoot,
     governedEditorialInventoryAllowedRoots: [
@@ -751,6 +913,7 @@ test("default runtime policy uses two distinct installed loopback visual reviewe
     const result = await handlers[
       "plan_governed_autonomous_window_production"
     ](job(), {
+      now: () => GENERATED_AT,
       autonomousProductionWorkspaceRoot: workspaceRoot,
       governedEditorialInventoryRoot: inventoryRoot,
       governedEditorialInventoryAllowedRoots: [

@@ -206,7 +206,7 @@ test("governed profile plans both autonomous windows after inventory reconciliat
       )
       .every(
         (schedule) =>
-          schedule.payload.job_max_attempts === 11,
+          schedule.payload.job_max_attempts === 8,
       ),
   );
 

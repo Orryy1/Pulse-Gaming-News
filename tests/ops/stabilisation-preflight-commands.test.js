@@ -225,7 +225,7 @@ function governedMultiLaneSchedules() {
       payload: {
         phase: "AUTONOMOUS_WINDOW_PRODUCTION_PLAN",
         publish_hour_utc: 9,
-        job_max_attempts: 11,
+        job_max_attempts: 8,
         scheduler_profile: "governed_multi_lane",
         catch_up_allowed: false,
         publish_authority: false,
@@ -240,7 +240,7 @@ function governedMultiLaneSchedules() {
       payload: {
         phase: "AUTONOMOUS_WINDOW_PRODUCTION_PLAN",
         publish_hour_utc: 19,
-        job_max_attempts: 11,
+        job_max_attempts: 8,
         scheduler_profile: "governed_multi_lane",
         catch_up_allowed: false,
         publish_authority: false,

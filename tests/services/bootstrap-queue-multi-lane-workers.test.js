@@ -279,6 +279,51 @@ test("bootstrap isolates serial runway monitors from long-running critical plann
   });
 });
 
+test("bootstrap gives exact-window planning a dedicated runner separate from hunt", async () => {
+  await withQueueEnvironment(async () => {
+    const bootstrap = loadFreshBootstrap();
+    const created = [];
+    try {
+      const state = await bootstrap.start({
+        workerId: "exact-window-planning-isolation",
+        autoSeed: false,
+        runScheduler: false,
+        multiLaneWorkers: true,
+        kinds: [
+          "plan_governed_autonomous_window_production",
+          "hunt",
+        ],
+        repos: {},
+        runnerFactory: fakeRunnerFactory(created),
+        log() {},
+      });
+
+      assert.equal(state.runners.length, 2);
+      const exactWindow = state.runners.find(
+        (runner) =>
+          runner.options.poolId ===
+          "exact_window_planning",
+      );
+      const hunt = state.runners.find(
+        (runner) =>
+          runner.options.poolId === "critical_planning",
+      );
+
+      assert.equal(exactWindow.options.poolInstance, 1);
+      assert.deepEqual(exactWindow.options.kinds, [
+        "plan_governed_autonomous_window_production",
+      ]);
+      assert.deepEqual(hunt.options.kinds, ["hunt"]);
+      assert.notEqual(
+        exactWindow.options.workerId,
+        hunt.options.workerId,
+      );
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+});
+
 test("partial multi-runner startup failure stops every created runner and releases the scheduler", async () => {
   await withQueueEnvironment(async () => {
     const bootstrap = loadFreshBootstrap();

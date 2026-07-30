@@ -508,20 +508,21 @@ test("materialiser gives strict HyperFrames a self-contained project with hash-b
         );
       }),
     );
+    const projectAssetPaths = projectManifest.project_files
+      .map((file) => file.path)
+      .filter((filePath) => filePath.startsWith("assets/"));
+    assert.equal(projectAssetPaths.length, buildScenes().length);
     assert.ok(
-      projectManifest.project_files
-        .map((file) => file.path)
-        .filter((filePath) => filePath.startsWith("assets/"))
-        .every(
-          (filePath) =>
-            !filePath.split("/").includes("..") &&
-            fs.existsSync(
-              path.resolve(
-                projectRoot,
-                ...filePath.split("/"),
-              ),
+      projectAssetPaths.every(
+        (filePath) =>
+          !filePath.split("/").includes("..") &&
+          fs.existsSync(
+            path.resolve(
+              projectRoot,
+              ...filePath.split("/"),
             ),
-        ),
+          ),
+      ),
     );
     inspections += 1;
     return renderProgramme(input);

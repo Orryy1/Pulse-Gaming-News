@@ -101,6 +101,30 @@ const FINANCE_RED_FLAGS = [
   "can't lose",
 ];
 
+const PULSE_CONCRETE_EVIDENCE_RULES = Object.freeze([
+  Object.freeze({
+    id: "fresh_availability",
+    claim:
+      /\b(?:today|right now|live)\b|\b(?:available|playable|launch(?:es|ed)?|release(?:s|d)?|arrive(?:s|d)?|join(?:s|ed)?)\b.{0,24}\b(?:now|immediately)\b|\b(?:now|immediately)\b.{0,24}\b(?:available|playable|launch(?:es|ed)?|release(?:s|d)?|arrive(?:s|d)?|join(?:s|ed)?)\b/i,
+    evidence:
+      /\b(?:today|right now|live|available now|now available|playable now|immediately)\b/i,
+  }),
+  Object.freeze({
+    id: "free_access",
+    claim:
+      /\bfree\b|\bwithout (?:any |an? )?(?:extra|additional) cost\b|\bat no (?:extra|additional) cost\b|\bincluded (?:at|for) no (?:extra|additional) cost\b/i,
+    evidence:
+      /\bfree\b|\bwithout (?:any |an? )?(?:extra|additional) cost\b|\bat no (?:extra|additional) cost\b|\bincluded (?:at|for) no (?:extra|additional) cost\b/i,
+  }),
+  Object.freeze({
+    id: "universal_platform_access",
+    claim:
+      /\b(?:all|every) (?:currently |supported |major )*(?:platforms?|consoles?|devices?)\b/i,
+    evidence:
+      /\b(?:all|every) (?:currently |supported |major )*(?:platforms?|consoles?|devices?)\b/i,
+  }),
+]);
+
 // British English enforcement map - common Americanisms Claude defaults to
 const BRITISH_SPELLING = {
   summarize: "summarise",
@@ -149,6 +173,27 @@ function checkAdvertiserSafety(script) {
   const text = (script.full_script || "").toLowerCase();
   const found = DEMONETIZATION_WORDS.filter((w) => text.includes(w));
   return found;
+}
+
+function validatePulseConcreteEvidence(
+  script,
+  { sourceEvidence = "" } = {},
+) {
+  const draftText = [
+    script?.hook,
+    script?.body,
+    script?.cta,
+    script?.full_script,
+    script?.suggested_title,
+    script?.suggested_thumbnail_text,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const boundedEvidence = String(sourceEvidence || "").slice(0, 12_000);
+  return PULSE_CONCRETE_EVIDENCE_RULES.filter(
+    ({ claim, evidence }) =>
+      claim.test(draftText) && !evidence.test(boundedEvidence),
+  ).map(({ id }) => `unsupported_concrete_claim:${id}`);
 }
 
 // --- Fetch source material for fact-checking ---
@@ -480,6 +525,11 @@ function validate(script, channelId, options = {}) {
         decision: ctaDecision,
       }).failures,
     );
+    errors.push(
+      ...validatePulseConcreteEvidence(script, {
+        sourceEvidence: options.sourceEvidence,
+      }),
+    );
   } else if (script.word_count < 155 || script.word_count > 185) {
     errors.push(`Word count ${script.word_count} outside 155-185 range`);
   }
@@ -580,6 +630,188 @@ function sanitiseScript(script) {
   }
 
   return script;
+}
+
+function completeSentenceSegments(value) {
+  const source = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!source) return [];
+  const segments = [
+    ...new Intl.Segmenter("en", {
+      granularity: "sentence",
+    }).segment(source),
+  ]
+    .map(({ segment }) => segment.trim())
+    .filter(Boolean);
+  if (
+    segments.length < 2 ||
+    segments.some(
+      (segment) => !/[.!?](?:\s*\[PAUSE\])?$/i.test(segment),
+    ) ||
+    segments.join(" ").replace(/\s+/g, " ").trim() !== source
+  ) {
+    return [];
+  }
+  return segments;
+}
+
+function sentenceIdentity(value) {
+  return cleanForTTS(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function preferRemoval(left, right) {
+  if (!left) return right;
+  if (!right) return left;
+  if (right.length !== left.length) {
+    return right.length < left.length ? right : left;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (right[index] !== left[index]) {
+      return right[index] > left[index] ? right : left;
+    }
+  }
+  return left;
+}
+
+function removeMatchingBodySentences(body, removedSentences) {
+  const bodySegments = completeSentenceSegments(body);
+  if (bodySegments.length === 0) return body;
+  const removalCounts = new Map();
+  for (const sentence of removedSentences) {
+    const identity = sentenceIdentity(sentence);
+    removalCounts.set(identity, (removalCounts.get(identity) || 0) + 1);
+  }
+  const kept = bodySegments.filter((sentence) => {
+    const identity = sentenceIdentity(sentence);
+    const remaining = removalCounts.get(identity) || 0;
+    if (remaining <= 0) return true;
+    removalCounts.set(identity, remaining - 1);
+    return false;
+  });
+  return kept.join(" ").trim();
+}
+
+function normalisePulseDraftForContract(
+  inputScript,
+  { contract = null } = {},
+) {
+  const script = structuredClone(inputScript || {});
+  const actualWords = countSpokenWords(
+    cleanForTTS(script.full_script || ""),
+  );
+  const result = {
+    script,
+    changed: false,
+    reason: "not_applicable",
+    original_word_count: actualWords,
+    word_count: actualWords,
+    removed_sentence_count: 0,
+  };
+  if (
+    !contract ||
+    contract.format_family !== "short" ||
+    !Number.isInteger(Number(contract.min_words)) ||
+    !Number.isInteger(Number(contract.max_words))
+  ) {
+    return result;
+  }
+  const minimumWords = Number(contract.min_words);
+  const maximumWords = Number(contract.max_words);
+  if (actualWords <= maximumWords) {
+    result.reason =
+      actualWords >= minimumWords
+        ? "already_within_contract"
+        : "not_oversized";
+    return result;
+  }
+
+  const sentences = completeSentenceSegments(script.full_script);
+  if (sentences.length < 3) {
+    result.reason = "no_safe_complete_sentence_fit";
+    return result;
+  }
+
+  const protectedIndexes = new Set([0, sentences.length - 1]);
+  sentences.forEach((sentence, index) => {
+    if (
+      /\b(?:according to|confirms?|confirmed by|reported by|announced by|revealed by)\b/i.test(
+        sentence,
+      )
+    ) {
+      protectedIndexes.add(index);
+    }
+  });
+  const removable = sentences
+    .map((sentence, index) => ({
+      index,
+      words: countSpokenWords(cleanForTTS(sentence)),
+    }))
+    .filter(
+      ({ index, words }) =>
+        words > 0 && !protectedIndexes.has(index),
+    );
+
+  const removalStates = new Map([[0, []]]);
+  for (const candidate of removable) {
+    const priorStates = [...removalStates.entries()];
+    for (const [removedWords, indexes] of priorStates) {
+      const nextWords = removedWords + candidate.words;
+      if (actualWords - nextWords < minimumWords) continue;
+      removalStates.set(
+        nextWords,
+        preferRemoval(
+          removalStates.get(nextWords),
+          [...indexes, candidate.index],
+        ),
+      );
+    }
+  }
+
+  const selected = [...removalStates.entries()]
+    .filter(([removedWords]) => {
+      const remainingWords = actualWords - removedWords;
+      return (
+        removedWords > 0 &&
+        remainingWords >= minimumWords &&
+        remainingWords <= maximumWords
+      );
+    })
+    .sort(
+      ([leftWords, leftIndexes], [rightWords, rightIndexes]) =>
+        leftWords - rightWords ||
+        leftIndexes.length - rightIndexes.length ||
+        rightIndexes.at(-1) - leftIndexes.at(-1),
+    )[0];
+  if (!selected) {
+    result.reason = "no_safe_complete_sentence_fit";
+    return result;
+  }
+
+  const removedIndexes = new Set(selected[1]);
+  const removedSentences = sentences.filter((_, index) =>
+    removedIndexes.has(index),
+  );
+  script.full_script = sentences
+    .filter((_, index) => !removedIndexes.has(index))
+    .join(" ")
+    .trim();
+  script.body = removeMatchingBodySentences(
+    script.body,
+    removedSentences,
+  );
+  script.word_count = countSpokenWords(cleanForTTS(script.full_script));
+  return {
+    ...result,
+    script,
+    changed: true,
+    reason: "oversized_complete_sentences_removed",
+    word_count: script.word_count,
+    removed_sentence_count: removedSentences.length,
+  };
 }
 
 function buildScriptRetryInstruction({
@@ -880,13 +1112,23 @@ async function sonnetEditorPass(
   client,
   script,
   channel,
-  { contract = null, ctaDecision = null } = {},
+  {
+    contract = null,
+    ctaDecision = null,
+    sourceEvidence = "",
+  } = {},
 ) {
   try {
     const isFinance = channel.id === "stacked";
     const complianceRules = isFinance
       ? '1) Remove any language that sounds like financial advice or a guarantee of returns. 2) Ensure the tone is cynical and professional. 3) Verify "This is not financial advice" appears in the script.'
       : "1) Ensure the tone matches the channel persona. 2) Remove any filler words or generic phrasing.";
+    const hookRepairInstruction =
+      contract?.hook_type === "direct"
+        ? "If the selected DIRECT hook is weak, make its exact verified player consequence more immediate and specific. Do not convert it into a curiosity gap."
+        : contract?.hook_type === "open_loop"
+          ? "If the selected OPEN_LOOP hook is weak, strengthen its fact-specific curiosity gap without obscuring the factual basis or misleading."
+          : "If the hook is weak, make its supported player consequence more immediate and specific.";
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
@@ -900,7 +1142,7 @@ async function sonnetEditorPass(
 Rules:
 ${complianceRules}
 3) Verify no serial commas are present. British English only.
-4) If the hook is weak, rewrite it using the Curiosity Gap technique.
+4) ${hookRepairInstruction}
 5) Ensure sentence lengths vary (mix short 3-8 word punches with 15-25 word details).
 6) Remove em dashes. Replace with commas or full stops.
 ${editorWordCountInstruction(channel, { contract, ctaDecision })}
@@ -919,7 +1161,7 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
       text = text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
     }
 
-    const edited = JSON.parse(text);
+    let edited = JSON.parse(text);
 
     // Preserve original classification if editor changed it
     if (
@@ -929,10 +1171,16 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
       edited.classification = script.classification;
     }
 
+    if (channel.id === "pulse-gaming" && contract) {
+      edited = normalisePulseDraftForContract(edited, {
+        contract,
+      }).script;
+    }
     edited.word_count = countSpokenWords(cleanForTTS(edited.full_script || ""));
     const errors = validate(edited, channel.id, {
       contract,
       ctaDecision,
+      sourceEvidence,
     });
     if (errors.length > 0) {
       throw new Error(`editor_validation_failed:${errors.join("; ")}`);
@@ -1086,6 +1334,12 @@ async function process_stories() {
     if (sourceMaterial) factContext.push(sourceMaterial);
     if (searchFacts)
       factContext.push(`ADDITIONAL SEARCH CONTEXT:\n${searchFacts}`);
+    const sourceEvidenceForValidation = [
+      sourceMaterial,
+      `STORY TITLE: ${story.title}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
     // Inject analytics performance insights if available
     const analyticsContext = getAnalyticsContext();
@@ -1177,6 +1431,17 @@ Today's date is ${today}. You MUST follow these rules:
 
         // Post-generation sanitisation: fix banned openers + British English
         sanitiseScript(script);
+        if (scriptContract) {
+          const normalisation = normalisePulseDraftForContract(script, {
+            contract: scriptContract,
+          });
+          script = normalisation.script;
+          if (normalisation.changed) {
+            console.log(
+              `[processor] Deterministic length fit removed ${normalisation.removed_sentence_count} complete sentence(s): ${normalisation.original_word_count} -> ${normalisation.word_count} words`,
+            );
+          }
+        }
         script.word_count = countSpokenWords(
           cleanForTTS(script.full_script || ""),
         );
@@ -1184,6 +1449,7 @@ Today's date is ${today}. You MUST follow these rules:
         const errors = validate(script, channel.id, {
           contract: scriptContract,
           ctaDecision,
+          sourceEvidence: sourceEvidenceForValidation,
         });
         if (errors.length > 0) {
           console.log(
@@ -1261,6 +1527,7 @@ Today's date is ${today}. You MUST follow these rules:
           script = await sonnetEditorPass(client, script, channel, {
             contract: scriptContract,
             ctaDecision,
+            sourceEvidence: sourceEvidenceForValidation,
           });
           // Re-strip em dashes after editor pass
           for (const key of [
@@ -1643,8 +1910,11 @@ module.exports.shouldRetryScriptGeneration =
   shouldRetryScriptGeneration;
 module.exports.validate = validate;
 module.exports.editorWordCountInstruction = editorWordCountInstruction;
+module.exports.sonnetEditorPass = sonnetEditorPass;
 module.exports.cleanForTTS = cleanForTTS;
 module.exports.sanitiseScript = sanitiseScript;
+module.exports.normalisePulseDraftForContract =
+  normalisePulseDraftForContract;
 module.exports.scoreScript = scoreScript;
 module.exports.resolveScriptGeneratorIdentity =
   resolveScriptGeneratorIdentity;

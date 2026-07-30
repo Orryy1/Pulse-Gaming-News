@@ -84,6 +84,7 @@ const {
   setLiveScheduledTaskEnabled,
   startLiveScheduledTask,
   superviseLiveChildSession,
+  runLiveSupervisionLifecycle,
 } = require(
   "../../lib/stabilisation/windows-live-guarded-runtime",
 );
@@ -807,7 +808,7 @@ test("supervision preparation and health identity fail closed unless the receipt
   );
 });
 
-test("the live child monitor replaces an unhealthy child without overlapping owners", async () => {
+test("the live child monitor confirms an unhealthy child exited before requesting a restart", async () => {
   const temp = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-live-child-monitor-"),
   );
@@ -860,23 +861,6 @@ test("the live child monitor replaces an unhealthy child without overlapping own
       writeExitReceiptImpl(details) {
         events.push(["exit_receipt", details]);
       },
-      restartDelayMs: 15_000,
-      delayImpl(milliseconds) {
-        events.push(["delay", milliseconds]);
-        return Promise.resolve();
-      },
-      restartImpl(options) {
-        assert.equal(activeChildren, 0);
-        assert.equal(fs.existsSync(ownerPath), false);
-        events.push(["restart", options.expectedCommit]);
-        return Promise.resolve({
-          outcome: "recovered",
-          child_pid: 9090,
-        });
-      },
-      restartOptions: {
-        expectedCommit: "c".repeat(40),
-      },
     });
 
     assert.ok(healthChecks >= 3);
@@ -891,13 +875,16 @@ test("the live child monitor replaces an unhealthy child without overlapping own
           reason: "live_runtime_health_lost",
         },
       ],
-      ["delay", 15_000],
-      ["restart", "c".repeat(40)],
     ]);
     assert.deepEqual(result, {
-      outcome: "recovered",
-      child_pid: 9090,
+      outcome: "restart_required",
+      reason: "live_runtime_health_lost",
+      child_pid: 7084,
+      exit_code: null,
+      signal: "SIGTERM",
     });
+    assert.equal(activeChildren, 0);
+    assert.equal(fs.existsSync(ownerPath), false);
   } finally {
     clearInterval(keepAlive);
     fs.rmSync(temp, { recursive: true, force: true });
@@ -915,7 +902,6 @@ test("the live child monitor never restarts after activation is revoked", async 
     fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
     const child = new EventEmitter();
     child.pid = 7084;
-    let restartCalls = 0;
     let exitDetails = null;
     child.kill = (signal) => {
       setImmediate(() => child.emit("exit", null, signal));
@@ -948,18 +934,11 @@ test("the live child monitor never restarts after activation is revoked", async 
         writeExitReceiptImpl(details) {
           exitDetails = details;
         },
-        restartDelayMs: 1,
-        delayImpl: () => Promise.resolve(),
-        restartImpl() {
-          restartCalls += 1;
-          return Promise.resolve();
-        },
       }),
       /activation_revoked:activation_receipt_commit_mismatch/,
     );
 
     assert.equal(fs.existsSync(ownerPath), false);
-    assert.equal(restartCalls, 0);
     assert.deepEqual(exitDetails, {
       child_pid: 7084,
       exit_code: null,
@@ -967,6 +946,404 @@ test("the live child monitor never restarts after activation is revoked", async 
       reason:
         "activation_revoked:activation_receipt_commit_mismatch",
     });
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("activation revocation terminates the iterative lifecycle without admitting another generation", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-revoked-lifecycle-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    let startCalls = 0;
+    await assert.rejects(
+      runLiveSupervisionLifecycle({
+        signalEmitter: new EventEmitter(),
+        restartDelayMs: 0,
+        delayImpl: () => Promise.resolve(),
+        maxRestartGenerations: 3,
+        async startGenerationImpl() {
+          startCalls += 1;
+          fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+          const child = new EventEmitter();
+          child.pid = 7084;
+          child.kill = (signal) => {
+            setImmediate(() => child.emit("exit", null, signal));
+            return true;
+          };
+          return {
+            child,
+            ownerPath,
+            profile: { port: 3001, state_root: temp },
+            repoRoot: temp,
+            expectedCommit: "c".repeat(40),
+            activationInspector: () => ({
+              valid: false,
+              blockers: ["activation_receipt_commit_mismatch"],
+            }),
+            healthRequester: async () => {
+              throw new Error(
+                "health_must_not_run_after_revocation",
+              );
+            },
+            monitorIntervalMs: 2,
+            writeExitReceiptImpl() {},
+          };
+        },
+      }),
+      /activation_revoked:activation_receipt_commit_mismatch/,
+    );
+
+    assert.equal(startCalls, 1);
+    assert.equal(fs.existsSync(ownerPath), false);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("explicit supervisor shutdown treats signal and nonzero child exits as terminal success", async (t) => {
+  for (const scenario of [
+    { name: "signal exit", code: null, signal: "SIGTERM" },
+    { name: "forced nonzero exit", code: 9, signal: null },
+    {
+      name: "forced signal exit",
+      code: null,
+      signal: "SIGKILL",
+      forceRequired: true,
+    },
+  ]) {
+    await t.test(scenario.name, async () => {
+      const temp = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pulse-live-child-shutdown-"),
+      );
+      const keepAlive = setInterval(() => {}, 1000);
+      try {
+        const ownerPath = path.join(temp, "supervisor-owner.json");
+        fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+        const child = new EventEmitter();
+        child.pid = 7084;
+        child.kill = (requestedSignal) => {
+          if (
+            scenario.forceRequired &&
+            requestedSignal === "SIGTERM"
+          ) {
+            return true;
+          }
+          setImmediate(() =>
+            child.emit("exit", scenario.code, scenario.signal),
+          );
+          return true;
+        };
+        const signalEmitter = new EventEmitter();
+        let exitDetails = null;
+        const supervision = superviseLiveChildSession({
+          child,
+          ownerPath,
+          profile: {
+            port: 3001,
+            state_root: temp,
+          },
+          repoRoot: temp,
+          expectedCommit: "c".repeat(40),
+          activationInspector: () => ({
+            valid: true,
+            blockers: [],
+          }),
+          healthRequester: async () => {
+            throw new Error("health_must_not_run_during_shutdown");
+          },
+          monitorIntervalMs: 1000,
+          signalEmitter,
+          terminationGraceMs: 2,
+          writeExitReceiptImpl(details) {
+            exitDetails = details;
+          },
+        });
+
+        signalEmitter.emit("SIGTERM");
+        const result = await supervision;
+
+        assert.deepEqual(result, {
+          outcome: "stopped",
+          reason: "supervisor_shutdown",
+          child_pid: 7084,
+          exit_code: scenario.code,
+          signal: scenario.signal,
+        });
+        assert.equal(fs.existsSync(ownerPath), false);
+        assert.deepEqual(exitDetails, {
+          child_pid: 7084,
+          exit_code: scenario.code,
+          signal: scenario.signal,
+          reason: "supervisor_shutdown",
+        });
+      } finally {
+        clearInterval(keepAlive);
+        fs.rmSync(temp, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("child errors and failed kills retain ownership until an exit is confirmed", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-kill-error-"),
+  );
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    let killCalls = 0;
+    child.kill = () => {
+      killCalls += 1;
+      throw new Error("kill_access_denied");
+    };
+    const supervision = superviseLiveChildSession({
+      child,
+      ownerPath,
+      profile: {
+        port: 3001,
+        state_root: temp,
+      },
+      repoRoot: temp,
+      expectedCommit: "c".repeat(40),
+      activationInspector: () => ({
+        valid: true,
+        blockers: [],
+      }),
+      healthRequester: async () => {
+        throw new Error("health_must_not_run_after_child_error");
+      },
+      monitorIntervalMs: 1000,
+      signalEmitter: new EventEmitter(),
+      writeExitReceiptImpl() {},
+      terminationGraceMs: 2,
+    });
+    const observed = supervision.then(
+      (value) => ({ status: "resolved", value }),
+      (error) => ({ status: "rejected", error }),
+    );
+
+    child.emit("error", new Error("child_process_error"));
+    const premature = await Promise.race([
+      observed,
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ status: "pending" }), 20),
+      ),
+    ]);
+
+    assert.deepEqual(premature, { status: "pending" });
+    assert.equal(fs.existsSync(ownerPath), true);
+    assert.ok(killCalls >= 2);
+
+    child.emit("exit", 1, null);
+    const final = await observed;
+    assert.equal(final.status, "rejected");
+    assert.match(final.error.message, /child_process_error/);
+    assert.equal(fs.existsSync(ownerPath), false);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("shutdown during health-loss recovery cancels the restart generation", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-recovery-shutdown-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const signalEmitter = new EventEmitter();
+    let startCalls = 0;
+    let releaseDelayStarted;
+    const delayStarted = new Promise((resolve) => {
+      releaseDelayStarted = resolve;
+    });
+    const lifecycle = runLiveSupervisionLifecycle({
+      signalEmitter,
+      restartDelayMs: 60_000,
+      maxRestartGenerations: 3,
+      delayImpl() {
+        releaseDelayStarted();
+        return new Promise(() => {});
+      },
+      async startGenerationImpl() {
+        startCalls += 1;
+        const ownerPath = path.join(
+          temp,
+          "supervisor-owner.json",
+        );
+        fs.writeFileSync(
+          ownerPath,
+          JSON.stringify({ child_pid: 7000 + startCalls }),
+        );
+        const child = new EventEmitter();
+        child.pid = 7000 + startCalls;
+        child.kill = (signal) => {
+          setImmediate(() => child.emit("exit", null, signal));
+          return true;
+        };
+        return {
+          child,
+          ownerPath,
+          profile: { port: 3001, state_root: temp },
+          repoRoot: temp,
+          expectedCommit: "c".repeat(40),
+          activationInspector: () => ({
+            valid: true,
+            blockers: [],
+          }),
+          healthRequester: async () => null,
+          monitorIntervalMs: 2,
+          writeExitReceiptImpl() {},
+        };
+      },
+    });
+
+    await delayStarted;
+    signalEmitter.emit("SIGTERM");
+    const result = await lifecycle;
+
+    assert.equal(startCalls, 1);
+    assert.deepEqual(result, {
+      outcome: "stopped",
+      reason: "supervisor_shutdown_during_recovery",
+      generation: 1,
+    });
+    assert.equal(
+      fs.existsSync(path.join(temp, "supervisor-owner.json")),
+      false,
+    );
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("the iterative lifecycle recreates one real owner receipt per generation and stays bounded", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-bounded-generations-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    const ownerPids = [];
+    let startCalls = 0;
+    const maxRestartGenerations = 2;
+    const signalEmitter = new EventEmitter();
+
+    await assert.rejects(
+      runLiveSupervisionLifecycle({
+        signalEmitter,
+        restartDelayMs: 0,
+        delayImpl: () => Promise.resolve(),
+        maxRestartGenerations,
+        async startGenerationImpl({ generation }) {
+          assert.equal(signalEmitter.listenerCount("SIGTERM"), 1);
+          assert.equal(signalEmitter.listenerCount("SIGINT"), 1);
+          assert.equal(generation, startCalls + 1);
+          assert.equal(fs.existsSync(ownerPath), false);
+          startCalls += 1;
+          const child = new EventEmitter();
+          child.pid = 8000 + startCalls;
+          fs.writeFileSync(
+            ownerPath,
+            `${JSON.stringify({ child_pid: child.pid })}\n`,
+          );
+          ownerPids.push(
+            JSON.parse(fs.readFileSync(ownerPath, "utf8"))
+              .child_pid,
+          );
+          child.kill = (signal) => {
+            setImmediate(() => child.emit("exit", null, signal));
+            return true;
+          };
+          return {
+            child,
+            ownerPath,
+            profile: { port: 3001, state_root: temp },
+            repoRoot: temp,
+            expectedCommit: "c".repeat(40),
+            activationInspector: () => ({
+              valid: true,
+              blockers: [],
+            }),
+            healthRequester: async () => null,
+            monitorIntervalMs: 2,
+            writeExitReceiptImpl() {},
+          };
+        },
+      }),
+      /live_runtime_health_restart_budget_exhausted:3/,
+    );
+
+    assert.equal(startCalls, maxRestartGenerations + 1);
+    assert.deepEqual(ownerPids, [8001, 8002, 8003]);
+    assert.equal(fs.existsSync(ownerPath), false);
+    assert.equal(signalEmitter.listenerCount("SIGTERM"), 0);
+    assert.equal(signalEmitter.listenerCount("SIGINT"), 0);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a failed restart generation propagates without leaving or overlapping an owner receipt", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-restart-failure-"),
+  );
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    let startCalls = 0;
+    await assert.rejects(
+      runLiveSupervisionLifecycle({
+        signalEmitter: new EventEmitter(),
+        restartDelayMs: 0,
+        delayImpl: () => Promise.resolve(),
+        maxRestartGenerations: 3,
+        async startGenerationImpl() {
+          startCalls += 1;
+          assert.equal(fs.existsSync(ownerPath), false);
+          if (startCalls === 2) {
+            throw new Error("restart_gate_failed");
+          }
+          const child = new EventEmitter();
+          child.pid = 9001;
+          fs.writeFileSync(
+            ownerPath,
+            `${JSON.stringify({ child_pid: child.pid })}\n`,
+          );
+          child.kill = (signal) => {
+            setImmediate(() => child.emit("exit", null, signal));
+            return true;
+          };
+          return {
+            child,
+            ownerPath,
+            profile: { port: 3001, state_root: temp },
+            repoRoot: temp,
+            expectedCommit: "c".repeat(40),
+            activationInspector: () => ({
+              valid: true,
+              blockers: [],
+            }),
+            healthRequester: async () => null,
+            monitorIntervalMs: 2,
+            writeExitReceiptImpl() {},
+          };
+        },
+      }),
+      /restart_gate_failed/,
+    );
+
+    assert.equal(startCalls, 2);
+    assert.equal(fs.existsSync(ownerPath), false);
   } finally {
     clearInterval(keepAlive);
     fs.rmSync(temp, { recursive: true, force: true });

@@ -24,6 +24,14 @@ const {
 const {
   createGovernedAutonomousDatabaseStoryBinding,
 } = require("../../lib/services/governed-autonomous-database-story-binding");
+const {
+  createGovernedFastNewsLaneDecision,
+} = require("../../lib/services/governed-fast-news-lane-decision");
+const {
+  CANDIDATE_REVISION_SCHEMA_VERSION,
+  canonicalSha256,
+  createGovernedAutonomousCompiledCandidateRevision,
+} = require("../../lib/services/governed-autonomous-compiled-candidate-binding");
 
 const GENERATED_AT = "2026-07-30T07:20:00.000Z";
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
@@ -172,6 +180,83 @@ function candidate(
     candidate_revision_sha256: sha256(`${storyId}:revision`),
     request_fingerprint: sha256(`${storyId}:request`),
   };
+}
+
+function compiledFastNewsCandidate(
+  workspaceRoot,
+  storyId,
+  selectionScore,
+) {
+  const value = candidate(
+    workspaceRoot,
+    storyId,
+    selectionScore,
+  );
+  const locked = value.locked_intake_binding.locked_intake;
+  const databaseStoryId =
+    locked.database_story_binding.database_story_id;
+  const decision = createGovernedFastNewsLaneDecision({
+    story_id: databaseStoryId,
+    evaluated_at: GENERATED_AT,
+    scheduled_for: SCHEDULED_FOR,
+    source_published_at: value.source_published_at,
+    verification_status: "CONFIRMED",
+    source_class: "OFFICIAL_FIRST_PARTY",
+    inventory_file_sha256: locked.inventory_file_sha256,
+    source_evidence_sha256: value.source_evidence_sha256,
+    explicit_formats: [],
+  });
+  locked.fast_news_lane_decision = decision;
+  const revision =
+    createGovernedAutonomousCompiledCandidateRevision({
+      schema_version: CANDIDATE_REVISION_SCHEMA_VERSION,
+      legacy_story_id: databaseStoryId,
+      story_id: storyId,
+      scheduled_for: SCHEDULED_FOR,
+      inventory_file_sha256: locked.inventory_file_sha256,
+      inventory_canonical_sha256: sha256(
+        `${storyId}:inventory-canonical`,
+      ),
+      primary_source_packet_sha256:
+        value.source_evidence_sha256,
+      publication_source_evidence_sha256: sha256(
+        `${storyId}:publication-source`,
+      ),
+      rights_ledger_sha256: sha256(
+        `${storyId}:rights-ledger`,
+      ),
+      supplemental_source_packet_sha256: [],
+      final_script_sha256: locked.final_script_sha256,
+      fast_news_lane_decision_sha256:
+        decision.decision_sha256,
+      locked_intake_sha256: canonicalSha256(locked),
+      creative_package_sha256: canonicalSha256(
+        value.creative_package,
+      ),
+      runtime_policy_sha256: canonicalSha256(
+        value.runtime_policy,
+      ),
+    });
+  value.candidate_revision = revision;
+  value.candidate_revision_sha256 =
+    canonicalSha256(revision);
+  value.request_fingerprint = canonicalSha256({
+    schema_version:
+      "pulse-governed-autonomous-breaking-production-request-fingerprint-v1",
+    story_id: storyId,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    scheduled_for: SCHEDULED_FOR,
+    candidate_revision_sha256:
+      value.candidate_revision_sha256,
+    locked_intake_sha256: revision.locked_intake_sha256,
+    creative_package_sha256:
+      revision.creative_package_sha256,
+    runtime_policy_sha256:
+      revision.runtime_policy_sha256,
+  });
+  return value;
 }
 
 function fixture(t) {
@@ -517,6 +602,51 @@ test("rejects candidate tampering and nested authority smuggling before durable 
   );
   assert.equal(values.jobs.listPending().length, 0);
   assert.equal(fs.existsSync(values.reservationOutputPath), false);
+});
+
+test("rejects a newly valid replacement fast-news decision before reservation or queue mutation", async (t) => {
+  const values = fixture(t);
+  const primary = compiledFastNewsCandidate(
+    values.workspaceRoot,
+    "story-beta",
+    120,
+  );
+  const standby = compiledFastNewsCandidate(
+    values.workspaceRoot,
+    "story-gamma",
+    110,
+  );
+  const original =
+    primary.locked_intake_binding.locked_intake
+      .fast_news_lane_decision;
+  primary.locked_intake_binding.locked_intake
+    .fast_news_lane_decision =
+    createGovernedFastNewsLaneDecision({
+      story_id: original.story_id,
+      evaluated_at: "2026-07-30T07:19:00.000Z",
+      scheduled_for: original.scheduled_for,
+      source_published_at: "2026-07-30T06:59:00.000Z",
+      verification_status: "CONFIRMED",
+      source_class: "OFFICIAL_FIRST_PARTY",
+      inventory_file_sha256:
+        original.inventory_file_sha256,
+      source_evidence_sha256:
+        original.source_evidence_sha256,
+      explicit_formats: ["short"],
+    });
+
+  await rejectsCode(
+    planGovernedAutonomousWindowProduction(
+      request(values, {
+        candidates: [primary, standby],
+      }),
+      { jobs: values.jobs },
+    ),
+    "autonomous_window_planner_candidate_revision_invalid",
+  );
+  assert.equal(values.jobs.listPending().length, 0);
+  assert.equal(fs.existsSync(values.reservationOutputPath), false);
+  assert.equal(fs.existsSync(values.planOutputPath), false);
 });
 
 test("queue batch failure cannot leave only one production role enqueued", async (t) => {

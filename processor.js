@@ -39,6 +39,14 @@ const {
 const {
   BREAKING_SOURCE_POLICY,
 } = require("./lib/services/breaking-source-policy");
+const {
+  attachGovernedAutonomousScriptRepairContext,
+  createGovernedAutonomousScriptRepairContext,
+  renderGovernedAutonomousScriptRepairEvidence,
+} = require("./lib/services/governed-autonomous-script-repair-context");
+const {
+  assessGovernedAutonomousBreakingScriptClaimSupport,
+} = require("./lib/services/governed-autonomous-breaking-candidate-contract-compiler");
 
 const { getChannel } = require("./channels");
 const { getAnalyticsContext } = require("./analytics");
@@ -50,6 +58,29 @@ const LOCAL_SCRIPT_FALLBACK_IDENTITY = Object.freeze({
 });
 const MAX_AUTONOMOUS_SCRIPT_REPAIRS_PER_PASS = 4;
 const AUTONOMOUS_SCRIPT_REPAIR_MAX_AGE_HOURS = 7 * 24;
+const AUTONOMOUS_SCRIPT_REPAIR_MARKER =
+  "__pulse_governed_autonomous_script_repair";
+const AUTONOMOUS_BREAKING_SCRIPT_PROFILE = Object.freeze({
+  editorial_lane_id: "what_changes_for_players",
+  duration_band_id: "what_changes_short_25_32",
+  duration_variant: "short",
+  target_duration_seconds: null,
+  min_words: 37,
+  max_words: 47,
+});
+const AUTONOMOUS_BREAKING_HIGH_CADENCE_SCRIPT_PROFILE =
+  Object.freeze({
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id:
+      "what_changes_breaking_high_cadence_35_42",
+    min_words: 100,
+    max_words: 120,
+  });
+const AUTONOMOUS_BREAKING_COMPILER_SCRIPT_PROFILES =
+  Object.freeze([
+    AUTONOMOUS_BREAKING_SCRIPT_PROFILE,
+    AUTONOMOUS_BREAKING_HIGH_CADENCE_SCRIPT_PROFILE,
+  ]);
 
 function resolveScriptGeneratorIdentity({
   client,
@@ -1351,13 +1382,14 @@ async function process_stories() {
   // Cross-cycle dedup: check pending stories against existing daily_news.json
   const existingStories = await db.getStories();
   if (existingStories.length > 0) {
-    const preferredStoryIds =
-      await discoverReadyGovernedInventoryStoryIds();
+    const repairContexts =
+      await discoverReadyGovernedInventoryScriptRepairContexts();
+    const preferredStoryIds = new Set(repairContexts.keys());
     const repairCandidates =
       selectAutonomousScriptRepairCandidates(
         stories,
         existingStories,
-        { preferredStoryIds },
+        { preferredStoryIds, repairContexts },
       );
     if (repairCandidates.length > 0) {
       stories = [...stories, ...repairCandidates];
@@ -1431,16 +1463,25 @@ async function process_stories() {
     // --- Fact-checking: fetch source material ---
     let sourceMaterial = null;
     let searchFacts = null;
+    const governedRepairEvidence =
+      renderGovernedAutonomousScriptRepairEvidence(story);
 
-    try {
-      const [sources, facts] = await Promise.all([
-        fetchSourceMaterial(story),
-        searchCurrentFacts(story.title),
-      ]);
-      sourceMaterial = sources;
-      searchFacts = facts;
-    } catch (err) {
-      console.log(`[processor] Fact-check fetch error: ${err.message}`);
+    if (governedRepairEvidence) {
+      sourceMaterial = governedRepairEvidence;
+      console.log(
+        "[processor] Using exact governed inventory claims as the sole repair evidence",
+      );
+    } else {
+      try {
+        const [sources, facts] = await Promise.all([
+          fetchSourceMaterial(story),
+          searchCurrentFacts(story.title),
+        ]);
+        sourceMaterial = sources;
+        searchFacts = facts;
+      } catch (err) {
+        console.log(`[processor] Fact-check fetch error: ${err.message}`);
+      }
     }
 
     if (sourceMaterial) {
@@ -1477,14 +1518,21 @@ Today's date is ${today}. You MUST follow these rules:
 4. NEVER invent specific dates, prices or statistics that are not in the source material.
 5. If the story references an old event or outdated information, update it to reflect the current situation as of ${today}.
 6. For game release dates: check if the date has already passed. If so, note the game has either released or been delayed.` +
+      (governedRepairEvidence
+        ? `\n7. GOVERNED REPAIR: the GOVERNED CONFIRMED CLAIMS block is the sole factual basis. Every factual clause must be supported by those exact claim keys and text. Do not carry any unsupported claim from the old story row, title, comments or prior script.`
+        : "") +
       (editorialPrompt ? `\n\n${editorialPrompt}` : "");
 
     const userMessage = [
-      `Story title: ${story.title}`,
-      `Flair: ${story.flair}`,
-      `Subreddit: r/${story.subreddit}`,
-      `Score: ${story.score}`,
-      `Top comment: ${story.top_comment}`,
+      `Story title (identity data only): ${story.title}`,
+      ...(governedRepairEvidence
+        ? []
+        : [
+            `Flair: ${story.flair}`,
+            `Subreddit: r/${story.subreddit}`,
+            `Score: ${story.score}`,
+            `Top comment: ${story.top_comment}`,
+          ]),
       `Story URL: ${story.url || story.article_url || "N/A"}`,
       `Date found: ${story.timestamp || today}`,
       factContext.length > 0
@@ -1708,9 +1756,19 @@ Today's date is ${today}. You MUST follow these rules:
     // Clean script for TTS (remove [PAUSE] and [VISUAL] markers)
     const ttsScript = cleanForTTS(script.full_script);
 
+    const approvalState = generatedScriptApprovalState({
+      story,
+      script,
+      scriptReplaced:
+        story?.[AUTONOMOUS_SCRIPT_REPAIR_MARKER] === true,
+    });
+    const contractState = generatedScriptContractState({
+      script,
+    });
     const enrichedStory = {
       ...story,
       ...script,
+      ...contractState,
       tts_script: ttsScript,
       quality_score: qualityScore,
       editorial_generator_identity: resolveScriptGeneratorIdentity({
@@ -1718,14 +1776,7 @@ Today's date is ${today}. You MUST follow these rules:
         usedLocalFallback,
       }),
       content_pillar: getContentPillar(script.classification),
-      approved:
-        script.contract_status === "human_review_required"
-          ? false
-          : story.approved || false,
-      auto_approved:
-        script.contract_status === "human_review_required"
-          ? false
-          : story.auto_approved || false,
+      ...approvalState,
     };
 
     // Generate A/B title variants (non-blocking - if it fails, continue with single title)
@@ -1811,6 +1862,104 @@ function needsScriptGenerationRepair(story = {}) {
   return false;
 }
 
+function governedAutonomousScriptIsCompatible(
+  story = {},
+  repairContext = null,
+) {
+  const spokenWords = countSpokenWords(
+    cleanForTTS(story.full_script || story.tts_script || ""),
+  );
+  const editorialLaneId = String(
+    story.editorial_lane_id || "",
+  ).trim();
+  const durationBandId = String(
+    story.duration_band_id || "",
+  ).trim();
+  const profileCompatible =
+    AUTONOMOUS_BREAKING_COMPILER_SCRIPT_PROFILES.some(
+    (profile) =>
+      spokenWords >= profile.min_words &&
+      spokenWords <= profile.max_words &&
+      editorialLaneId === profile.editorial_lane_id &&
+      durationBandId === profile.duration_band_id,
+  );
+  if (!profileCompatible) return false;
+  if (!repairContext) return true;
+  return (
+    assessGovernedAutonomousBreakingScriptClaimSupport({
+      script: story.full_script || story.tts_script || "",
+      confirmed_claims: repairContext.confirmed_claims,
+    }).verdict === "GREEN"
+  );
+}
+
+function generatedScriptApprovalState({
+  story = {},
+  script = {},
+  scriptReplaced = false,
+} = {}) {
+  if (
+    scriptReplaced ||
+    script.contract_status === "human_review_required"
+  ) {
+    return {
+      approved: false,
+      auto_approved: false,
+      approved_at: null,
+    };
+  }
+  return {
+    approved: story.approved || false,
+    auto_approved: story.auto_approved || false,
+    approved_at: story.approved_at || null,
+  };
+}
+
+function generatedScriptContractState({ script = {} } = {}) {
+  if (script.contract_status === "human_review_required") {
+    return {
+      contract_status: "human_review_required",
+      contract_failures: Array.isArray(script.contract_failures)
+        ? [...script.contract_failures]
+        : ["script_generation_exhausted"],
+    };
+  }
+  return {
+    contract_status: "valid",
+    contract_failures: [],
+  };
+}
+
+function governedAutonomousScriptRepairCandidate(
+  story = {},
+  repairContext = null,
+) {
+  const candidate = {
+    ...story,
+    editorial_lane_id:
+      AUTONOMOUS_BREAKING_SCRIPT_PROFILE.editorial_lane_id,
+    duration_band_id:
+      AUTONOMOUS_BREAKING_SCRIPT_PROFILE.duration_band_id,
+    duration_variant:
+      AUTONOMOUS_BREAKING_SCRIPT_PROFILE.duration_variant,
+    target_duration_seconds:
+      AUTONOMOUS_BREAKING_SCRIPT_PROFILE.target_duration_seconds,
+  };
+  Object.defineProperty(candidate, AUTONOMOUS_SCRIPT_REPAIR_MARKER, {
+    configurable: false,
+    enumerable: false,
+    value: true,
+    writable: false,
+  });
+  if (repairContext) {
+    attachGovernedAutonomousScriptRepairContext(
+      candidate,
+      repairContext,
+    );
+  }
+  return candidate;
+}
+
 function selectAutonomousScriptRepairCandidates(
   pendingStories = [],
   existingStories = [],
@@ -1818,6 +1967,7 @@ function selectAutonomousScriptRepairCandidates(
     now = new Date().toISOString(),
     maxRepairs = MAX_AUTONOMOUS_SCRIPT_REPAIRS_PER_PASS,
     preferredStoryIds = [],
+    repairContexts = new Map(),
   } = {},
 ) {
   const nowTimestamp = Date.parse(String(now || ""));
@@ -1838,6 +1988,10 @@ function selectAutonomousScriptRepairCandidates(
       .map((storyId) => String(storyId || "").trim())
       .filter(Boolean),
   );
+  const exactRepairContexts =
+    repairContexts instanceof Map
+      ? repairContexts
+      : new Map();
   const limit = Math.max(
     1,
     Math.min(
@@ -1851,10 +2005,19 @@ function selectAutonomousScriptRepairCandidates(
   return (Array.isArray(existingStories) ? existingStories : [])
     .filter((story) => {
       const storyId = String(story?.id || "").trim();
+      const preferred = preferredIds.has(storyId);
+      const repairContext =
+        exactRepairContexts.get(storyId) || null;
+      const requiresScriptRepair = preferred
+        ? !governedAutonomousScriptIsCompatible(
+            story,
+            repairContext,
+          )
+        : needsScriptGenerationRepair(story);
       if (
         !storyId ||
         pendingIds.has(storyId) ||
-        !needsScriptGenerationRepair(story) ||
+        !requiresScriptRepair ||
         String(story?.youtube_post_id || "").trim()
       ) {
         return false;
@@ -1933,7 +2096,109 @@ function selectAutonomousScriptRepairCandidates(
         String(right?.id || ""),
       );
     })
-    .slice(0, limit);
+    .slice(0, limit)
+    .map((story) =>
+      preferredIds.has(String(story?.id || "").trim())
+        ? governedAutonomousScriptRepairCandidate(
+            story,
+            exactRepairContexts.get(
+              String(story?.id || "").trim(),
+            ),
+          )
+        : story,
+    );
+}
+
+async function discoverReadyGovernedInventoryScriptRepairContexts({
+  outputRoot = path.resolve(__dirname, "output"),
+  scanGovernedEditorialInventory = require(
+    "./lib/services/governed-editorial-inventory-registry"
+  ).scanGovernedEditorialInventory,
+  hydrateGovernedEditorialInventoryCandidates = require(
+    "./lib/services/governed-editorial-inventory-candidate-hydrator"
+  ).hydrateGovernedEditorialInventoryCandidates,
+} = {}) {
+  try {
+    const root = path.resolve(outputRoot);
+    const inventoryRoot = path.join(
+      root,
+      "editorial-inventory",
+    );
+    const report = await scanGovernedEditorialInventory({
+      rootDir: inventoryRoot,
+      allowedRoots: [root],
+      maximumManifests: 250,
+    });
+    if (
+      report?.mode !== "LOCAL_PROOF" ||
+      report?.safety?.read_only !== true ||
+      report?.safety?.network_used !== false ||
+      !Array.isArray(report?.entries)
+    ) {
+      return new Map();
+    }
+    const storyIds = [
+      ...new Set(
+        report.entries
+          .filter(
+            (entry) =>
+              Array.isArray(entry?.blockers) &&
+              entry.blockers.length === 0 &&
+              String(
+                entry?.story?.verification_status || "",
+              ).toUpperCase() === "CONFIRMED",
+          )
+          .map((entry) =>
+            String(entry?.story?.id || "").trim(),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    if (!storyIds.length) return new Map();
+    const hydration =
+      await hydrateGovernedEditorialInventoryCandidates({
+        candidates: storyIds.map((storyId) => ({
+          lane_id: "breaking_short",
+          story_id: storyId,
+          stage: "PLANNING",
+        })),
+        inventoryRoot,
+        allowedRoots: [root],
+        maximumManifests: 250,
+      });
+    if (
+      hydration?.safety?.read_only !== true ||
+      hydration?.safety?.network_used !== false ||
+      hydration?.safety?.database_mutated !== false ||
+      hydration?.safety?.oauth_mutated !== false ||
+      hydration?.safety?.platform_contacted !== false ||
+      hydration?.safety?.publish_authority_created !== false ||
+      !Array.isArray(hydration?.hydrated)
+    ) {
+      return new Map();
+    }
+    const contexts = new Map();
+    for (const record of hydration.hydrated) {
+      try {
+        const context =
+          createGovernedAutonomousScriptRepairContext({
+            story_id: record?.story_id,
+            inventory_file_sha256:
+              record?.inventory_file_sha256,
+            source_evidence_sha256:
+              record?.source_evidence_sha256,
+            confirmed_claims: record?.confirmed_claims,
+          });
+        contexts.set(context.story_id, context);
+      } catch {
+        // A READY row without an exact bounded official claim projection is
+        // not safe input for autonomous script repair.
+      }
+    }
+    return contexts;
+  } catch {
+    return new Map();
+  }
 }
 
 async function discoverReadyGovernedInventoryStoryIds({
@@ -1986,7 +2251,13 @@ function filterPendingStoriesForGeneration(
     // Preserve successfully generated stories, but allow the hunter to repair
     // an exact row whose previous generation attempt exhausted its retries.
     const exact = existingStories.find((existing) => existing.id === pending.id);
-    if (exact && !needsScriptGenerationRepair(exact)) {
+    const governedAutonomousRepair =
+      pending?.[AUTONOMOUS_SCRIPT_REPAIR_MARKER] === true;
+    if (
+      exact &&
+      !needsScriptGenerationRepair(exact) &&
+      !governedAutonomousRepair
+    ) {
       logger(`[processor] Dedup (ID match): ${pending.title}`);
       return false;
     }
@@ -2040,8 +2311,14 @@ module.exports.selectAutonomousScriptRepairCandidates =
   selectAutonomousScriptRepairCandidates;
 module.exports.discoverReadyGovernedInventoryStoryIds =
   discoverReadyGovernedInventoryStoryIds;
+module.exports.discoverReadyGovernedInventoryScriptRepairContexts =
+  discoverReadyGovernedInventoryScriptRepairContexts;
 module.exports.filterPendingStoriesForGeneration =
   filterPendingStoriesForGeneration;
+module.exports.generatedScriptApprovalState =
+  generatedScriptApprovalState;
+module.exports.generatedScriptContractState =
+  generatedScriptContractState;
 module.exports.extractArticleTextFromHtml =
   extractArticleTextFromHtml;
 

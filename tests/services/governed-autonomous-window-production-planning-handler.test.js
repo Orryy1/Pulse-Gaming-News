@@ -53,6 +53,7 @@ function readyEntry(root, storyId, hashCharacter) {
       id: storyId,
       primary_source_url:
         `https://news.xbox.com/en-us/${storyId}/`,
+      published_at: "2026-07-29T18:00:00.000Z",
       verification_status: "CONFIRMED",
     },
     references: {
@@ -98,6 +99,7 @@ function dbStory(storyId) {
     full_script:
       `${storyId} is officially confirmed for players today with a clear release change and exact platform details.`,
     breaking_score: storyId.endsWith("beta") ? 120 : 100,
+    published_at: "2026-07-29T18:00:00.000Z",
     approved: 1,
     auto_approved: 1,
     youtube_post_id: null,
@@ -195,6 +197,7 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
   const entries = [
     readyEntry(inventoryRoot, "rss-alpha", "1"),
     readyEntry(inventoryRoot, "rss-beta", "2"),
+    readyEntry(inventoryRoot, "rss-longform", "3"),
   ];
   const storyLookups = [];
   const hydrationCalls = [];
@@ -220,7 +223,14 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
       stories: {
         get(storyId) {
           storyLookups.push(storyId);
-          return dbStory(storyId);
+          return storyId === "rss-longform"
+            ? {
+                ...dbStory(storyId),
+                _extra: JSON.stringify({
+                  editorial_format: "weekly_longform",
+                }),
+              }
+            : dbStory(storyId);
         },
       },
     },
@@ -271,7 +281,11 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
     },
   });
 
-  assert.deepEqual(storyLookups, ["rss-alpha", "rss-beta"]);
+  assert.deepEqual(storyLookups, [
+    "rss-alpha",
+    "rss-beta",
+    "rss-longform",
+  ]);
   assert.equal(hydrationCalls.length, 1);
   assert.deepEqual(
     hydrationCalls[0].candidates.map(
@@ -302,11 +316,12 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
   assert.equal(result.status, "autonomous_window_production_planned");
   assert.equal(result.verdict, "GREEN");
   assert.deepEqual(result.counts, {
-    inventory_ready: 2,
+    inventory_ready: 3,
     inventory_rejected: 0,
     db_rows_found: 2,
     db_rows_missing: 0,
     db_rows_approval_rejected: 0,
+    lane_eligibility_rejected: 1,
     hydrated: 2,
     hydration_rejected: 0,
     compilation_succeeded: 2,
@@ -315,6 +330,14 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
     eligible: 2,
     queued_jobs: 2,
   });
+  assert.deepEqual(
+    result.rejected.find(
+      (entry) => entry.story_id === "rss-longform",
+    )?.blockers,
+    [
+      "governed_autonomous_window_explicit_non_fast_news_format",
+    ],
+  );
   assert.equal(result.human_approval_dependency, false);
   assert.equal(result.publish_authority_created, false);
   assert.equal(result.no_publish, true);
@@ -422,6 +445,7 @@ test("holds with explicit missing and stale evidence counts before the planner c
     db_rows_found: 2,
     db_rows_missing: 1,
     db_rows_approval_rejected: 0,
+    lane_eligibility_rejected: 0,
     hydrated: 2,
     hydration_rejected: 0,
     compilation_succeeded: 2,
@@ -565,6 +589,7 @@ test("holds before planning when DB rows are unapproved or only manually approve
     db_rows_found: 1,
     db_rows_missing: 0,
     db_rows_approval_rejected: 2,
+    lane_eligibility_rejected: 0,
     hydrated: 1,
     hydration_rejected: 0,
     compilation_succeeded: 1,

@@ -34,8 +34,16 @@ function writeFile(filePath, value) {
   return sha256(bytes);
 }
 
-function buildInventory(root, storyId = "inventory-story-1") {
-  const storyRoot = path.join(root, storyId);
+function buildInventory(
+  root,
+  storyId = "inventory-story-1",
+  {
+    direct = false,
+    generatedAt = "2026-07-28T12:00:00.000Z",
+    title = "Halo progression has a better answer",
+  } = {},
+) {
+  const storyRoot = direct ? root : path.join(root, storyId);
   const primarySourceUrl =
     "https://news.xbox.com/en-us/halo-progression/";
   const breakingPath = path.join(storyRoot, "breaking-source.json");
@@ -89,11 +97,11 @@ function buildInventory(root, storyId = "inventory-story-1") {
   );
   writeFile(registryPath, {
     schema_version: "pulse-governed-editorial-inventory-v1",
-    generated_at: "2026-07-28T12:00:00.000Z",
+    generated_at: generatedAt,
     verdict: "READY",
     story: {
       id: storyId,
-      title: "Halo progression has a better answer",
+      title,
       franchise: "Halo",
       platform: "xbox",
       topic_key: "multiplayer-progression",
@@ -115,6 +123,146 @@ function buildInventory(root, storyId = "inventory-story-1") {
   });
   return { registryPath, refs };
 }
+
+test("selects the newest valid bound revision from one governed story lineage", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-editorial-inventory-revisions-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const storyId = "same-governed-story";
+  const revisionsRoot = path.join(root, storyId, "revisions");
+  const older = buildInventory(
+    path.join(revisionsRoot, "1".repeat(64), "inventory"),
+    storyId,
+    {
+      direct: true,
+      generatedAt: "2026-07-28T12:00:00.000Z",
+    },
+  );
+  const newer = buildInventory(
+    path.join(revisionsRoot, "2".repeat(64), "inventory"),
+    storyId,
+    {
+      direct: true,
+      generatedAt: "2026-07-28T13:00:00.000Z",
+    },
+  );
+
+  const report = await scanGovernedEditorialInventory({
+    rootDir: root,
+  });
+
+  assert.equal(report.verdict, "READY");
+  assert.equal(report.summary.registry_count, 2);
+  assert.equal(report.summary.ready_count, 1);
+  assert.equal(report.summary.rejected_count, 0);
+  assert.equal(report.entries.length, 1);
+  assert.equal(report.entries[0].story.id, storyId);
+  assert.equal(report.entries[0].registry_path, newer.registryPath);
+  assert.notEqual(report.entries[0].registry_path, older.registryPath);
+  assert.equal(report.evergreen_stories.length, 1);
+  assert.equal(report.weekly_longform_candidates.length, 1);
+});
+
+test("breaks equal revision timestamps by the bound registry hash, not discovery order", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-editorial-inventory-revision-tie-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const storyId = "same-time-governed-story";
+  const revisionsRoot = path.join(root, storyId, "revisions");
+  buildInventory(
+    path.join(revisionsRoot, "a".repeat(64), "inventory"),
+    storyId,
+    {
+      direct: true,
+      generatedAt: "2026-07-28T12:00:00.000Z",
+    },
+  );
+  buildInventory(
+    path.join(revisionsRoot, "b".repeat(64), "inventory"),
+    storyId,
+    {
+      direct: true,
+      generatedAt: "2026-07-28T12:00:00.000Z",
+    },
+  );
+
+  const report = await scanGovernedEditorialInventory({
+    rootDir: root,
+  });
+  const assessed = await Promise.all(
+    (
+      await fs.promises.readdir(revisionsRoot)
+    ).map(async (revision) => {
+      const registryPath = path.join(
+        revisionsRoot,
+        revision,
+        "inventory",
+        "governed-editorial-inventory.json",
+      );
+      return {
+        registryPath,
+        fileSha256: sha256(await fs.promises.readFile(registryPath)),
+      };
+    }),
+  );
+  const expected = assessed.sort(
+    (left, right) =>
+      right.fileSha256.localeCompare(left.fileSha256) ||
+      right.registryPath.localeCompare(left.registryPath),
+  )[0];
+
+  assert.equal(report.verdict, "READY");
+  assert.equal(report.entries.length, 1);
+  assert.equal(report.entries[0].registry_path, expected.registryPath);
+});
+
+test("promotes a refresh revision captured after a later-stamped legacy inventory", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-editorial-inventory-migration-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const storyId = "migrated-governed-story";
+  const storyRoot = path.join(root, storyId);
+  const legacy = buildInventory(
+    path.join(storyRoot, "inventory"),
+    storyId,
+    {
+      direct: true,
+      generatedAt: "2026-07-28T12:00:00.000Z",
+    },
+  );
+  const revision = buildInventory(
+    path.join(
+      storyRoot,
+      "revisions",
+      "c".repeat(64),
+      "inventory",
+    ),
+    storyId,
+    {
+      direct: true,
+      generatedAt: "2026-07-28T14:05:00.000Z",
+    },
+  );
+
+  const report = await scanGovernedEditorialInventory({
+    rootDir: root,
+  });
+
+  assert.equal(report.verdict, "READY");
+  assert.equal(report.summary.registry_count, 2);
+  assert.equal(report.summary.ready_count, 1);
+  assert.equal(report.summary.rejected_count, 0);
+  assert.equal(report.entries[0].registry_path, revision.registryPath);
+  assert.notEqual(report.entries[0].registry_path, legacy.registryPath);
+  assert.deepEqual(report.entries[0].revision_lineage, {
+    lineage_root: storyRoot,
+    revision_sha256: "c".repeat(64),
+    physical_revision_count: 2,
+  });
+});
 
 test("revalidates exact files and emits lane-native candidates without mutating state", async (t) => {
   const root = fs.mkdtempSync(
@@ -192,6 +340,32 @@ test("holds a tampered binding instead of returning it to either lane", async (t
   assert.deepEqual(report.weekly_longform_candidates, []);
 });
 
+test("keeps a manifest with no story identity visible as rejected", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-editorial-inventory-no-identity-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const fixture = buildInventory(root);
+  const registry = JSON.parse(
+    fs.readFileSync(fixture.registryPath, "utf8"),
+  );
+  registry.story.id = "";
+  writeFile(fixture.registryPath, registry);
+
+  const report = await scanGovernedEditorialInventory({
+    rootDir: root,
+  });
+
+  assert.equal(report.verdict, "HOLD");
+  assert.equal(report.entries.length, 0);
+  assert.equal(report.rejected.length, 1);
+  assert.ok(
+    report.rejected[0].blockers.includes(
+      "editorial_inventory_story_id_required",
+    ),
+  );
+});
+
 test("holds a hash-consistent workspace when its story identity belongs to different source claims", async (t) => {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-editorial-inventory-identity-"),
@@ -237,8 +411,16 @@ test("rejects duplicate story identities and references that escape the registry
     path.join(os.tmpdir(), "pulse-editorial-inventory-ambiguous-"),
   );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  buildInventory(path.join(root, "one"), "same-story");
-  buildInventory(path.join(root, "two"), "same-story");
+  buildInventory(
+    path.join(root, "one", "same-story", "inventory"),
+    "same-story",
+    { direct: true },
+  );
+  buildInventory(
+    path.join(root, "two", "same-story", "inventory"),
+    "same-story",
+    { direct: true },
+  );
 
   const duplicateReport = await scanGovernedEditorialInventory({
     rootDir: root,

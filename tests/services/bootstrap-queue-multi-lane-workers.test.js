@@ -232,6 +232,53 @@ test("opt-in multi-lane bootstrap starts isolated kind-filtered runners and pres
   });
 });
 
+test("bootstrap isolates serial runway monitors from long-running critical planning work", async () => {
+  await withQueueEnvironment(async () => {
+    const bootstrap = loadFreshBootstrap();
+    const created = [];
+    try {
+      const state = await bootstrap.start({
+        workerId: "runway-monitor-isolation",
+        autoSeed: false,
+        runScheduler: false,
+        multiLaneWorkers: true,
+        kinds: [
+          "governed_youtube_window_inventory_monitor",
+          "governed_youtube_runway_slo_monitor",
+          "hunt",
+        ],
+        repos: {},
+        runnerFactory: fakeRunnerFactory(created),
+        log() {},
+      });
+
+      assert.equal(state.runners.length, 2);
+      const planning = state.runners.find(
+        (runner) =>
+          runner.options.poolId === "critical_planning",
+      );
+      const runwayMonitor = state.runners.find(
+        (runner) =>
+          runner.options.poolId === "runway_monitor",
+      );
+
+      assert.deepEqual(planning.options.kinds, ["hunt"]);
+      assert.deepEqual(runwayMonitor.options.kinds.sort(), [
+        "governed_youtube_runway_slo_monitor",
+        "governed_youtube_window_inventory_monitor",
+      ]);
+      assert.equal(runwayMonitor.options.leaseMs, 90_000);
+      assert.equal(runwayMonitor.options.heartbeatMs, 20_000);
+      assert.notEqual(
+        runwayMonitor.options.poolId,
+        planning.options.poolId,
+      );
+    } finally {
+      await bootstrap.stop();
+    }
+  });
+});
+
 test("partial multi-runner startup failure stops every created runner and releases the scheduler", async () => {
   await withQueueEnvironment(async () => {
     const bootstrap = loadFreshBootstrap();

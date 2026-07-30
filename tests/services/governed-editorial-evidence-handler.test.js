@@ -431,6 +431,14 @@ test("editorial evidence discovery stops after sufficient official body proof an
     queued[0].payload.breaking_source_evidence.canonical_sha256,
     packet.packet_sha256,
   );
+  assert.equal(
+    queued[0].payload.generated_at,
+    packet.generated_at,
+  );
+  assert.notEqual(
+    queued[0].payload.generated_at,
+    governedStory().timestamp,
+  );
   assert.equal(queued.some((job) => job.kind === "hunt"), false);
   assert.equal(queued.some((job) => job.kind === "publish"), false);
   assert.equal(await fs.pathExists(result.source_evidence_json), true);

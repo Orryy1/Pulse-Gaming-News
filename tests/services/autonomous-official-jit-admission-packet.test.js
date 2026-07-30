@@ -37,6 +37,9 @@ const {
   fingerprintPublicationRequest,
 } = require("../../lib/services/publication-request-fingerprint");
 const {
+  createGovernedFastNewsLaneDecision,
+} = require("../../lib/services/governed-fast-news-lane-decision");
+const {
   extractReadableBody,
 } = require("../../lib/services/breaking-source-adapters");
 const {
@@ -130,6 +133,21 @@ function preparationInput(overrides = {}) {
     publication_evidence_gate_input: greenGateInput(),
     ...overrides,
   };
+}
+
+function fastNewsLaneDecision(overrides = {}) {
+  return createGovernedFastNewsLaneDecision({
+    story_id: "jit-story-1",
+    evaluated_at: "2026-07-29T17:00:00.000Z",
+    scheduled_for: "2026-07-29T19:00:00.000Z",
+    source_published_at: "2026-07-29T16:30:00.000Z",
+    verification_status: "CONFIRMED",
+    source_class: "OFFICIAL_FIRST_PARTY",
+    inventory_file_sha256: "b".repeat(64),
+    source_evidence_sha256: "c".repeat(64),
+    explicit_formats: ["breaking_short"],
+    ...overrides,
+  });
 }
 
 function hashBytes(value) {
@@ -1164,6 +1182,41 @@ test("T-90 preparation manifest is a closed hash-bound static plan with no dynam
     {
       code: "autonomous_jit_preparation_rights_item_fields_invalid",
     },
+  );
+});
+
+test("T-90 preparation optionally binds the full validated fast-news decision while legacy omission remains valid", () => {
+  const legacyManifest =
+    createAutonomousOfficialJitPreparationManifest(preparationInput());
+  const decision = fastNewsLaneDecision();
+  const manifest = createAutonomousOfficialJitPreparationManifest(
+    preparationInput({ fast_news_lane_decision: decision }),
+  );
+  const validated = validateAutonomousOfficialJitPreparationManifest(manifest);
+
+  assert.deepEqual(validated.fast_news_lane_decision, decision);
+  assert.notEqual(
+    validated.preparation_sha256,
+    legacyManifest.preparation_sha256,
+  );
+
+  const tampered = JSON.parse(JSON.stringify(validated));
+  tampered.fast_news_lane_decision.source_evidence_sha256 = "f".repeat(64);
+  assert.throws(
+    () => validateAutonomousOfficialJitPreparationManifest(tampered),
+    { code: "autonomous_jit_preparation_fast_news_lane_decision_invalid" },
+  );
+
+  assert.throws(
+    () =>
+      createAutonomousOfficialJitPreparationManifest(
+        preparationInput({
+          fast_news_lane_decision: fastNewsLaneDecision({
+            scheduled_for: "2026-07-29T20:00:00.000Z",
+          }),
+        }),
+      ),
+    { code: "autonomous_jit_preparation_fast_news_lane_decision_mismatch" },
   );
 });
 

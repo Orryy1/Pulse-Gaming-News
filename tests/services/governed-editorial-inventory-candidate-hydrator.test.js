@@ -17,6 +17,9 @@ const {
   canonicalSha256,
   writeJson,
 } = require("../helpers/governed-editorial-inventory-fixture");
+const {
+  buildGovernedStoryIntakeInventoryBridgeFixture,
+} = require("../fixtures/governed-story-intake-inventory-bridge");
 
 test("hydrates an exact breaking candidate only from a live READY inventory with canonical source and rights bindings", async (t) => {
   const root = fs.mkdtempSync(
@@ -176,6 +179,52 @@ test("uses the exact live READY entry even when an unrelated stale inventory mak
   assert.equal(
     result.candidates[0].source_evidence_sha256,
     fixture.sourcePacket.packet_sha256,
+  );
+});
+
+test("exposes only the exact bounded confirmed claim keys and text after the READY inventory has passed hydration", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-inventory-candidate-claims-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const fixture =
+    await buildGovernedStoryIntakeInventoryBridgeFixture(root);
+
+  const result =
+    await hydrateGovernedEditorialInventoryCandidates({
+      candidates: [
+        {
+          lane_id: "breaking_short",
+          story_id: fixture.storyId,
+          stage: "PLANNING",
+        },
+      ],
+      inventoryRoot: fixture.inventoryRoot,
+      allowedRoots: [fixture.outputRoot],
+    });
+
+  assert.equal(result.verdict, "READY");
+  assert.deepEqual(
+    result.hydrated[0].confirmed_claims,
+    fixture.packet.confirmed_claims.map((group) => ({
+      claim_key: group.claim_key,
+      text: group.evidence[0].text,
+    })),
+  );
+  assert.equal(
+    result.hydrated[0].source_evidence_sha256,
+    fixture.packet.packet_sha256,
+  );
+  assert.equal(
+    result.hydrated[0].inventory_file_sha256,
+    fixture.registryFileSha256,
+  );
+  assert.equal(
+    Object.hasOwn(
+      result.candidates[0],
+      "confirmed_claims",
+    ),
+    false,
   );
 });
 

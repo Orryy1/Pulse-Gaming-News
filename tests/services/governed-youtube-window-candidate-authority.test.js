@@ -815,6 +815,47 @@ test("the human window-authorisation mutator refuses the autonomous union before
   }
 });
 
+test("an exact HUMAN render approval remains admissible when the latest governed editorial decision is review", () => {
+  const { db, repos } = migratedFixture();
+  try {
+    const storyId = "human-review-resolves-governed-review";
+    const { reviewAuditId } = addReviewedStory(db, {
+      storyId,
+    });
+    repos.scoring.record({
+      story_id: storyId,
+      channel_id: "pulse-gaming",
+      total: 99,
+      decision: "review",
+      decision_reason: "Human editorial judgement required",
+      hard_stops: [],
+      scorer_version: "test",
+    });
+
+    const prepared = prepareGovernedWindowCandidateAuthority({
+      repos,
+      storyId,
+      role: "PRIMARY",
+      scheduledFor: SCHEDULED_FOR,
+      approval: {
+        type: "HUMAN",
+        humanReviewAuditId: reviewAuditId,
+      },
+      actorId: "window-editor",
+      reason: "Exact reviewed video approved",
+      now: AUTHORISED_AT,
+    });
+
+    assert.equal(prepared.verdict, "GREEN");
+    assert.equal(
+      prepared.authority.admission.human_review_status,
+      "approved",
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("autonomous PRIMARY atomically persists the exact admission, audits it and enqueues one T-75 JIT intent", () => {
   const { db, repos } = migratedFixture();
   try {

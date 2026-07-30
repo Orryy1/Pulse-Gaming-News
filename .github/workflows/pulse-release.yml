@@ -79,9 +79,16 @@ jobs:
           tests/services/breaking-source-hardening.test.js
           tests/services/governed-editorial-evidence-ingress.test.js
           tests/services/governed-editorial-evidence-handler.test.js
+          tests/services/governed-fast-news-lane-decision.test.js
+          tests/services/governed-breaking-lane-eligibility.test.js
+          tests/services/governed-autonomous-compiled-candidate-binding.test.js
+          tests/services/governed-autonomous-script-repair-context.test.js
           tests/services/governed-multi-lane-candidate-eligibility.test.js
           tests/services/stabilisation-dotenv-precedence.test.js
           tests/services/dotenv-before-db.test.js
+          tests/db/scoring-latest.test.js
+          tests/services/decision-engine-repaired-candidate.test.js
+          tests/services/processor-short-runtime.test.js
           tests/services/runtime-build-info.test.js
           tests/services/health-public-metadata.test.js
           tests/services/report-governance.test.js

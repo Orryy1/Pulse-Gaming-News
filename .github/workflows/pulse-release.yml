@@ -125,6 +125,7 @@ jobs:
           tests/services/governed-autonomous-t90-eligibility-source-report.test.js
           tests/services/governed-autonomous-visual-gate-decision.test.js
           tests/services/governed-autonomous-window-production-planner.test.js
+          tests/services/governed-exact-production-plan-drain.test.js
           tests/services/governed-autonomous-window-production-planning-handler.test.js
           tests/services/governed-autonomous-window-reservation-set.test.js
           tests/services/governed-owned-programme-pack.test.js
@@ -145,6 +146,7 @@ jobs:
           tests/services/governed-story-intake-inventory-bridge.test.js
           tests/ops/governed-story-intake-cli.test.js
           tests/ops/governed-story-intake-inventory-bridge-cli.test.js
+          tests/ops/governed-exact-production-plan-drain-cli.test.js
           tests/services/governed-worker-containment.test.js
           tests/ops/governed-worker-containment-cli.test.js
           tests/services/sqlite-restore-rehearsal.test.js

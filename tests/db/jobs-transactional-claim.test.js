@@ -66,6 +66,42 @@ test("worker identity and lease duration are mandatory", () => {
   db.close();
 });
 
+test("claimExact preserves ordinary lease fencing without falling through to another due job", () => {
+  const { db, jobs } = memoryFixture();
+  const primary = jobs.enqueue({
+    kind: "produce_breaking_short",
+    priority: 10,
+    run_at: "2099-07-30T09:00:00.000Z",
+    idempotency_key: "exact-plan:primary",
+  });
+  const standby = jobs.enqueue({
+    kind: "produce_breaking_short",
+    priority: 11,
+    run_at: "2020-07-30T09:00:00.000Z",
+    idempotency_key: "exact-plan:standby",
+  });
+
+  assert.equal(
+    jobs.claimExact(primary.id, "exact-plan-worker", {
+      kinds: ["produce_breaking_short"],
+    }),
+    null,
+  );
+  assert.equal(jobs.get(primary.id).status, "pending");
+  assert.equal(jobs.get(standby.id).status, "pending");
+  assert.equal(jobs.get(standby.id).attempt_count, 0);
+
+  const claimedStandby = jobs.claimExact(
+    standby.id,
+    "exact-plan-worker",
+    { kinds: ["produce_breaking_short"] },
+  );
+  assert.equal(claimedStandby.id, standby.id);
+  assert.equal(claimedStandby.claimed_by, "exact-plan-worker");
+  assert.ok(claimedStandby.claim_token);
+  db.close();
+});
+
 test("claim exclusion persists across independent database connections", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-job-claim-"));
   const filename = path.join(directory, "jobs.db");

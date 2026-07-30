@@ -179,6 +179,52 @@ test("uses the exact live READY entry even when an unrelated stale inventory mak
   );
 });
 
+test("does not hydrate a hash-consistent inventory whose title belongs to different claims", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-inventory-cross-story-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const fixture = buildReadyInventoryFixture(root, {
+    storyId: "rss_cross_story_hydration",
+  });
+  const registry = JSON.parse(
+    fs.readFileSync(fixture.registryPath, "utf8"),
+  );
+  registry.story = {
+    ...registry.story,
+    title:
+      "Clair Obscur: Expedition 33 devs are working on a Nintendo Switch 2 version",
+    franchise: "Nintendo",
+    platform: "nintendo switch",
+    topic_key: "clair-obscur-expedition-33-switch-2",
+  };
+  delete registry.inventory_sha256;
+  registry.inventory_sha256 = canonicalSha256(registry);
+  writeJson(fixture.registryPath, registry);
+
+  const result =
+    await hydrateGovernedEditorialInventoryCandidates({
+      candidates: [
+        {
+          lane_id: "breaking_short",
+          story_id: fixture.storyId,
+          stage: "PLANNING",
+        },
+      ],
+      inventoryRoot: fixture.inventoryRoot,
+      allowedRoots: [fixture.outputRoot],
+    });
+
+  assert.equal(result.verdict, "HOLD");
+  assert.equal(result.hydrated.length, 0);
+  assert.deepEqual(result.candidates, []);
+  assert.ok(
+    result.rejected[0].blockers.includes(
+      "editorial_inventory_story_source_claim_identity_mismatch",
+    ),
+  );
+});
+
 test("fails closed when file hashes are refreshed around a source packet whose canonical binding is stale", async (t) => {
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-inventory-source-canonical-"),

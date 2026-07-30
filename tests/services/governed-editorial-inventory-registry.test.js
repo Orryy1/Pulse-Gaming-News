@@ -10,6 +10,11 @@ const { test } = require("node:test");
 const {
   scanGovernedEditorialInventory,
 } = require("../../lib/services/governed-editorial-inventory-registry");
+const {
+  buildReadyInventoryFixture,
+  canonicalSha256,
+  writeJson,
+} = require("../helpers/governed-editorial-inventory-fixture");
 
 function sha256(bytes) {
   return crypto.createHash("sha256").update(bytes).digest("hex");
@@ -31,6 +36,8 @@ function writeFile(filePath, value) {
 
 function buildInventory(root, storyId = "inventory-story-1") {
   const storyRoot = path.join(root, storyId);
+  const primarySourceUrl =
+    "https://news.xbox.com/en-us/halo-progression/";
   const breakingPath = path.join(storyRoot, "breaking-source.json");
   const weeklyPath = path.join(storyRoot, "weekly-source.json");
   const rightsPath = path.join(storyRoot, "rights-ledger.json");
@@ -49,7 +56,16 @@ function buildInventory(root, storyId = "inventory-story-1") {
     },
     weekly_source_evidence: {
       path: weeklyPath,
-      file_sha256: writeFile(weeklyPath, { story_id: storyId }),
+      file_sha256: writeFile(weeklyPath, {
+        story_id: storyId,
+        source_url: primarySourceUrl,
+        claims: [
+          {
+            claim_key: "halo.progression.answer",
+            text: "Halo progression has a better answer.",
+          },
+        ],
+      }),
     },
     rights_ledger: {
       path: rightsPath,
@@ -83,7 +99,7 @@ function buildInventory(root, storyId = "inventory-story-1") {
       topic_key: "multiplayer-progression",
       published_at: "2026-07-28T10:00:00.000Z",
       primary_source_url:
-        "https://news.xbox.com/en-us/halo-progression/",
+        primarySourceUrl,
       verification_status: "CONFIRMED",
     },
     ...refs,
@@ -170,6 +186,46 @@ test("holds a tampered binding instead of returning it to either lane", async (t
   assert.ok(
     report.rejected[0].blockers.includes(
       "rights_ledger_file_sha256_mismatch",
+    ),
+  );
+  assert.deepEqual(report.evergreen_stories, []);
+  assert.deepEqual(report.weekly_longform_candidates, []);
+});
+
+test("holds a hash-consistent workspace when its story identity belongs to different source claims", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-editorial-inventory-identity-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const fixture = buildReadyInventoryFixture(root, {
+    storyId: "rss_cross_story_identity",
+  });
+  const registry = JSON.parse(
+    fs.readFileSync(fixture.registryPath, "utf8"),
+  );
+  registry.story = {
+    ...registry.story,
+    title:
+      "Clair Obscur: Expedition 33 devs are working on a Nintendo Switch 2 version",
+    franchise: "Nintendo",
+    platform: "nintendo switch",
+    topic_key: "clair-obscur-expedition-33-switch-2",
+  };
+  delete registry.inventory_sha256;
+  registry.inventory_sha256 = canonicalSha256(registry);
+  writeJson(fixture.registryPath, registry);
+
+  const report = await scanGovernedEditorialInventory({
+    rootDir: fixture.inventoryRoot,
+    allowedRoots: [fixture.outputRoot],
+  });
+
+  assert.equal(report.verdict, "HOLD");
+  assert.equal(report.entries.length, 0);
+  assert.equal(report.rejected.length, 1);
+  assert.ok(
+    report.rejected[0].blockers.includes(
+      "editorial_inventory_story_source_claim_identity_mismatch",
     ),
   );
   assert.deepEqual(report.evergreen_stories, []);

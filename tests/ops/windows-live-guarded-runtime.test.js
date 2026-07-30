@@ -84,6 +84,7 @@ const {
   setLiveScheduledTaskEnabled,
   startLiveScheduledTask,
   superviseLiveChildSession,
+  waitForLiveHealth,
   runLiveSupervisionLifecycle,
 } = require(
   "../../lib/stabilisation/windows-live-guarded-runtime",
@@ -1223,6 +1224,153 @@ test("shutdown during health-loss recovery cancels the restart generation", asyn
     clearInterval(keepAlive);
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test("shutdown while a replacement generation is starting overrides its later start failure", async () => {
+  const signalEmitter = new EventEmitter();
+  let startCalls = 0;
+  let rejectReplacementStart = null;
+  let replacementShutdownSignal = null;
+  let markReplacementStartReached;
+  const replacementStartReached = new Promise((resolve) => {
+    markReplacementStartReached = resolve;
+  });
+  const replacementPending = new Promise((resolve, reject) => {
+    rejectReplacementStart = reject;
+  });
+
+  const lifecycle = runLiveSupervisionLifecycle({
+    signalEmitter,
+    restartDelayMs: 0,
+    delayImpl: () => Promise.resolve(),
+    maxRestartGenerations: 3,
+    async startGenerationImpl({ generation, shutdownSignal }) {
+      startCalls += 1;
+      if (generation === 1) return { generation };
+      replacementShutdownSignal = shutdownSignal;
+      markReplacementStartReached();
+      return replacementPending;
+    },
+    async superviseGenerationImpl() {
+      return {
+        outcome: "restart_required",
+        reason: "live_runtime_health_lost",
+      };
+    },
+  });
+
+  await replacementStartReached;
+  signalEmitter.emit("SIGTERM");
+  rejectReplacementStart(new Error("replacement_start_failed"));
+  const result = await lifecycle;
+
+  assert.equal(startCalls, 2);
+  assert.equal(replacementShutdownSignal.aborted, true);
+  assert.deepEqual(result, {
+    outcome: "stopped",
+    reason: "supervisor_shutdown_during_start",
+    generation: 2,
+  });
+  assert.equal(signalEmitter.listenerCount("SIGTERM"), 0);
+  assert.equal(signalEmitter.listenerCount("SIGINT"), 0);
+});
+
+test("recovery shutdown clears and unreferences the underlying backoff timer", async () => {
+  const signalEmitter = new EventEmitter();
+  const timerHandle = {
+    unref_calls: 0,
+    unref() {
+      this.unref_calls += 1;
+    },
+  };
+  let timerCallback = null;
+  let timerDelay = null;
+  let clearCalls = 0;
+  let startCalls = 0;
+
+  const lifecycle = runLiveSupervisionLifecycle({
+    signalEmitter,
+    restartDelayMs: 50,
+    maxRestartGenerations: 3,
+    setTimeoutImpl(callback, milliseconds) {
+      timerCallback = callback;
+      timerDelay = milliseconds;
+      return timerHandle;
+    },
+    clearTimeoutImpl(handle) {
+      assert.equal(handle, timerHandle);
+      clearCalls += 1;
+    },
+    async startGenerationImpl() {
+      startCalls += 1;
+      return {};
+    },
+    async superviseGenerationImpl() {
+      return {
+        outcome: "restart_required",
+        reason: "live_runtime_health_lost",
+      };
+    },
+  });
+
+  for (let attempt = 0; attempt < 20 && !timerCallback; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  signalEmitter.emit("SIGTERM");
+  const result = await lifecycle;
+
+  assert.equal(timerDelay, 50);
+  assert.equal(timerHandle.unref_calls, 1);
+  assert.equal(clearCalls, 1);
+  assert.equal(startCalls, 1);
+  assert.deepEqual(result, {
+    outcome: "stopped",
+    reason: "supervisor_shutdown_during_recovery",
+    generation: 1,
+  });
+});
+
+test("live health polling aborts promptly and cancels its pending poll timer", async () => {
+  const shutdownController = new AbortController();
+  const timerHandle = {
+    unref_calls: 0,
+    unref() {
+      this.unref_calls += 1;
+    },
+  };
+  let timerStarted;
+  const started = new Promise((resolve) => {
+    timerStarted = resolve;
+  });
+  let clearCalls = 0;
+  let healthCalls = 0;
+  const health = waitForLiveHealth({
+    port: 3001,
+    expectedCommit: "c".repeat(40),
+    healthRequester: async () => {
+      healthCalls += 1;
+      return null;
+    },
+    timeoutMs: 60_000,
+    intervalMs: 60_000,
+    shutdownSignal: shutdownController.signal,
+    setTimeoutImpl(callback, milliseconds) {
+      assert.equal(milliseconds, 60_000);
+      timerStarted();
+      return timerHandle;
+    },
+    clearTimeoutImpl(handle) {
+      assert.equal(handle, timerHandle);
+      clearCalls += 1;
+    },
+  });
+
+  await started;
+  shutdownController.abort("supervisor_shutdown");
+  assert.equal(await health, null);
+  assert.equal(healthCalls, 1);
+  assert.equal(timerHandle.unref_calls, 1);
+  assert.equal(clearCalls, 1);
 });
 
 test("the iterative lifecycle recreates one real owner receipt per generation and stays bounded", async () => {

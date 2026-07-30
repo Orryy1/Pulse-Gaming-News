@@ -8,6 +8,15 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { handlers } = require("../../lib/job-handlers");
+const {
+  RUNTIME_POLICY_SCHEMA_VERSION,
+} = require("../../lib/services/governed-autonomous-production-request-builder");
+const {
+  createGovernedAutonomousDatabaseStoryBinding,
+} = require("../../lib/services/governed-autonomous-database-story-binding");
+const {
+  canonicalHash,
+} = require("../../lib/services/url-canonical");
 
 const GENERATED_AT = "2026-07-30T07:00:00.000Z";
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
@@ -131,6 +140,150 @@ function canonicalCandidateId(storyId) {
   );
 }
 
+function sha256(value) {
+  return crypto
+    .createHash("sha256")
+    .update(String(value))
+    .digest("hex");
+}
+
+function plannerSafety() {
+  return {
+    local_proof_only: true,
+    database_authority: false,
+    database_mutated: false,
+    network_authority: false,
+    network_used: false,
+    oauth_or_token_authority: false,
+    oauth_or_tokens_mutated: false,
+    platform_contacted: false,
+    publish_authority: false,
+    scheduler_authority: false,
+    external_publish_authorised: false,
+  };
+}
+
+function realPlannerCandidate({
+  workspaceRoot,
+  canonicalStoryId,
+  canonicalIdentityUrl,
+  databaseStoryId,
+  generatedAt,
+  selectionScore,
+}) {
+  const finalScript =
+    `${canonicalStoryId} is a confirmed official gaming update with a clear player consequence.`;
+  const inventoryFileSha256 =
+    sha256(`${canonicalStoryId}:inventory`);
+  return {
+    schema_version:
+      "pulse-governed-autonomous-window-production-candidate-v1",
+    mode: "LOCAL_PROOF",
+    story_id: canonicalStoryId,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    scheduled_for: SCHEDULED_FOR,
+    source_type: "official",
+    verification_status: "CONFIRMED",
+    eligibility_verdict: "GREEN",
+    source_evidence_sha256:
+      sha256(`${canonicalStoryId}:source-evidence`),
+    source_published_at: "2026-07-30T06:30:00.000Z",
+    verified_at: "2026-07-30T06:45:00.000Z",
+    selection_score: selectionScore,
+    locked_intake_binding: {
+      story_id: canonicalStoryId,
+      locked_intake: {
+        database_story_binding:
+          createGovernedAutonomousDatabaseStoryBinding({
+            canonical_story_id: canonicalStoryId,
+            database_story_id: databaseStoryId,
+            canonical_identity_url: canonicalIdentityUrl,
+            inventory_file_sha256: inventoryFileSha256,
+            final_script_sha256: sha256(finalScript),
+          }),
+        inventory_path: path.join(
+          workspaceRoot,
+          "inventory",
+          `${canonicalStoryId}.json`,
+        ),
+        inventory_file_sha256: inventoryFileSha256,
+        inventory_root: path.join(
+          workspaceRoot,
+          "inventory",
+        ),
+        allowed_roots: [
+          path.join(workspaceRoot, "inventory"),
+          path.join(workspaceRoot, "candidate-source"),
+        ],
+        canonical_identity_url: canonicalIdentityUrl,
+        final_script: finalScript,
+        final_script_sha256: sha256(finalScript),
+        script_claim_bindings: [
+          {
+            claim_key: `${canonicalStoryId}:claim`,
+            source_index: 0,
+          },
+        ],
+        presentation_claim_bindings: [
+          {
+            claim_key: `${canonicalStoryId}:claim`,
+            scene_index: 0,
+          },
+        ],
+        supplemental_official_sources: [],
+        contract: {
+          editorial_lane_id: "breaking_short",
+        },
+        freshness: {
+          publish_by: "2026-07-30T12:00:00.000Z",
+        },
+        visual_brief: {
+          format: "game_native_news",
+        },
+        experiment_dimensions: {
+          eligible: false,
+        },
+      },
+    },
+    creative_package: {
+      scenes: [
+        {
+          asset_id:
+            `${canonicalStoryId}:official-hero`,
+          role: "hook_slam",
+        },
+      ],
+      title: `${canonicalStoryId} Confirmed`,
+      description:
+        `${canonicalStoryId} has been officially confirmed.`,
+      official_source_url: canonicalIdentityUrl,
+      required_attributions: [
+        "Official source: Xbox Wire",
+      ],
+      subject_terms: [canonicalStoryId],
+    },
+    runtime_policy: {
+      schema_version: RUNTIME_POLICY_SCHEMA_VERSION,
+      mode: "LOCAL_PROOF",
+      generated_at: generatedAt,
+      workspace_root: workspaceRoot,
+      candidate_source_root: path.join(
+        workspaceRoot,
+        "candidate-source",
+        canonicalStoryId,
+      ),
+      ...runtimePolicy(),
+      safety: plannerSafety(),
+    },
+    candidate_revision_sha256:
+      sha256(`${canonicalStoryId}:revision`),
+    request_fingerprint:
+      sha256(`${canonicalStoryId}:request`),
+  };
+}
+
 function queuedPlan(compiled) {
   return {
     status: "CREATED",
@@ -172,6 +325,121 @@ function job() {
       mode: "LOCAL_PROOF",
       publish_authority: false,
       external_posting: false,
+    },
+  };
+}
+
+function realPlannerHandlerHarness({
+  workspaceRoot,
+  clockValues,
+}) {
+  const inventoryRoot = path.join(
+    workspaceRoot,
+    "output",
+    "editorial-inventory",
+  );
+  fs.mkdirSync(inventoryRoot, { recursive: true });
+  const entries = [
+    readyEntry(inventoryRoot, "rss-alpha", "1"),
+    readyEntry(inventoryRoot, "rss-beta", "2"),
+  ];
+  const canonicalIds = new Map([
+    [
+      "rss-alpha",
+      "https://news.xbox.com/en-us/2026/07/30/alpha/",
+    ],
+    [
+      "rss-beta",
+      "https://news.xbox.com/en-us/2026/07/30/beta/",
+    ],
+  ]);
+  const enqueued = [];
+  let clockReads = 0;
+  const context = {
+    now() {
+      const value =
+        clockValues[
+          Math.min(
+            clockReads,
+            clockValues.length - 1,
+          )
+        ];
+      clockReads += 1;
+      return value;
+    },
+    autonomousProductionWorkspaceRoot: workspaceRoot,
+    governedEditorialInventoryRoot: inventoryRoot,
+    governedEditorialInventoryAllowedRoots: [
+      path.join(workspaceRoot, "output"),
+    ],
+    governedAutonomousBreakingRuntimePolicy:
+      runtimePolicy(),
+    repos: {
+      jobs: {
+        enqueueBatch(requests) {
+          enqueued.push(...structuredClone(requests));
+          return requests.map((request, index) => ({
+            id: index + 1,
+            ...structuredClone(request),
+          }));
+        },
+      },
+      stories: {
+        get(storyId) {
+          return dbStory(storyId);
+        },
+      },
+    },
+    async scanGovernedEditorialInventory() {
+      return scanReport(entries);
+    },
+    async hydrateGovernedEditorialInventoryCandidates(input) {
+      return {
+        schema_version:
+          "pulse-governed-editorial-inventory-candidate-hydration-v1",
+        verdict: "READY",
+        candidates: input.candidates.map((candidate) => ({
+          ...candidate,
+          verification_status: "CONFIRMED",
+          verified_for_planning: true,
+        })),
+        hydrated: input.candidates.map((candidate) => ({
+          story_id: candidate.story_id,
+        })),
+        rejected: [],
+        skipped: [],
+        safety: {
+          read_only: true,
+          network_used: false,
+          database_mutated: false,
+          oauth_mutated: false,
+          platform_contacted: false,
+          publish_authority_created: false,
+        },
+      };
+    },
+    async compileGovernedAutonomousBreakingCandidateContract(
+      input,
+    ) {
+      const canonicalIdentityUrl =
+        canonicalIds.get(input.story.id);
+      return realPlannerCandidate({
+        workspaceRoot,
+        canonicalStoryId:
+          `official_${canonicalHash(canonicalIdentityUrl)}`,
+        canonicalIdentityUrl,
+        databaseStoryId: input.story.id,
+        generatedAt: input.generated_at,
+        selectionScore:
+          input.story.id === "rss-alpha" ? 100 : 120,
+      });
+    },
+  };
+  return {
+    context,
+    enqueued,
+    get clockReads() {
+      return clockReads;
     },
   };
 }
@@ -342,6 +610,104 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
   assert.equal(result.human_approval_dependency, false);
   assert.equal(result.publish_authority_created, false);
   assert.equal(result.no_publish, true);
+  assert.equal(result.no_external_posting, true);
+});
+
+test("real default planner keeps one attempt-bound timestamp while boundary clocks advance", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-window-real-planner-binding-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, {
+      recursive: true,
+      force: true,
+    }),
+  );
+  const harness = realPlannerHandlerHarness({
+    workspaceRoot,
+    clockValues: [
+      "2026-07-30T07:00:00.000Z",
+      "2026-07-30T07:00:00.001Z",
+      "2026-07-30T07:00:00.002Z",
+    ],
+  });
+
+  const result = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 1,
+      max_attempts: 8,
+    },
+    harness.context,
+  );
+
+  assert.equal(
+    result.verdict,
+    "GREEN",
+    JSON.stringify(result),
+  );
+  assert.equal(
+    result.status,
+    "autonomous_window_production_planned",
+  );
+  assert.equal(harness.clockReads, 3);
+  assert.equal(harness.enqueued.length, 2);
+  assert.ok(
+    harness.enqueued.every(
+      (request) =>
+        request.run_at ===
+        "2026-07-30T07:00:00.000Z",
+    ),
+  );
+});
+
+test("real default planner rechecks T-109 immediately before enqueueBatch after awaited filesystem work", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-window-real-planner-cutoff-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, {
+      recursive: true,
+      force: true,
+    }),
+  );
+  const harness = realPlannerHandlerHarness({
+    workspaceRoot,
+    clockValues: [
+      "2026-07-30T07:00:00.000Z",
+      "2026-07-30T07:00:00.000Z",
+      "2026-07-30T07:12:00.000Z",
+    ],
+  });
+
+  const result = await handlers[
+    "plan_governed_autonomous_window_production"
+  ](
+    {
+      ...job(),
+      attempt_count: 1,
+      max_attempts: 8,
+    },
+    harness.context,
+  );
+
+  assert.equal(harness.clockReads, 3);
+  assert.equal(harness.enqueued.length, 0);
+  assert.equal(result.verdict, "HOLD");
+  assert.deepEqual(result.blockers, [
+    "governed_autonomous_window_planning_must_precede_production_cutoff",
+  ]);
+  assert.equal(result.job_outcome, "TERMINAL");
+  assert.equal(result.retryable, false);
+  assert.equal(result.publish_authority_created, false);
   assert.equal(result.no_external_posting, true);
 });
 

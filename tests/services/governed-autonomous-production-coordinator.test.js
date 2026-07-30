@@ -441,6 +441,11 @@ async function fixture(t, options = {}) {
   });
 
   let generatedNarrations = 0;
+  const finalCompositeFfmpegPath = path.join(
+    root,
+    "bin",
+    "ffmpeg.exe",
+  );
   const dependencies = {
     async generateNarration({
       script_text: scriptText,
@@ -515,6 +520,7 @@ async function fixture(t, options = {}) {
       };
     },
     finalComposite: {
+      ffmpegPath: finalCompositeFfmpegPath,
       async probeMedia(filePath) {
         if (path.extname(filePath).toLowerCase() === ".mp3") {
           return audioProbe();
@@ -538,6 +544,10 @@ async function fixture(t, options = {}) {
         };
       },
       async renderComposite(invocation) {
+        assert.equal(
+          invocation.command,
+          finalCompositeFfmpegPath,
+        );
         await fs.writeFile(
           invocation.outputPath,
           Buffer.from("exact-governed-final-video", "utf8"),

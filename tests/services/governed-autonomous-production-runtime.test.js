@@ -615,6 +615,10 @@ test("final composite adapters and narration probe use only the injected process
       has_audio: true,
     },
   );
+  assert.equal(
+    input.runtime.dependencies.finalComposite.ffmpegPath,
+    input.ffmpegPath,
+  );
   const loudness =
     await input.runtime.dependencies.finalComposite.measureLoudness(
       audioPath,

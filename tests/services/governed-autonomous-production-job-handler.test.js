@@ -303,6 +303,165 @@ test("canonical autonomous identity resolves only the exact hash-bound legacy in
   assert.equal(result.status, "autonomous_candidate_materialised");
 });
 
+test("governed autonomous production does not fall back to legacy breaking metadata gates", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-handler-governed-routing-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, { recursive: true, force: true }),
+  );
+  const legacyStoryId = "rss_governed_inventory_story";
+  const canonicalStoryId =
+    `official_${canonicalHash(OFFICIAL_SOURCE_URL)}`;
+  const script =
+    "Xbox confirmed four classics are returning with modern achievement support.";
+  const inventory = writeLockedInventory(
+    workspaceRoot,
+    legacyStoryId,
+  );
+  const builderResult =
+    buildGovernedAutonomousProductionRequest(
+      buildInput(workspaceRoot, script, {
+        storyId: canonicalStoryId,
+        databaseStoryId: legacyStoryId,
+        ...inventory,
+      }),
+    );
+  let autonomousRunnerCalls = 0;
+
+  const result = await handlers.produce_breaking_short(
+    {
+      kind: "produce_breaking_short",
+      channel_id: "pulse-gaming",
+      story_id: legacyStoryId,
+      payload: {
+        lane_id: "breaking_short",
+        story_id: canonicalStoryId,
+        candidate_revision_sha256:
+          builderResult.production_request
+            .candidate_revision_sha256,
+        autonomous_production_job: {
+          schema_version:
+            "pulse-governed-autonomous-production-job-payload-v1",
+          builder_result: builderResult,
+        },
+      },
+    },
+    {
+      autonomousProductionWorkspaceRoot: workspaceRoot,
+      governedAutonomousProductionJobDependencies: {
+        marker: "closed-test-dependencies",
+      },
+      repos: {
+        stories: {
+          get(storyId) {
+            if (storyId !== legacyStoryId) return null;
+            return {
+              ...story(script, legacyStoryId),
+              breaking_score: 50,
+              _extra: JSON.stringify({}),
+            };
+          },
+        },
+      },
+      async runGovernedAutonomousProductionJob() {
+        autonomousRunnerCalls += 1;
+        return {
+          status: "AUTONOMOUS_CANDIDATE_MATERIALISED",
+          verdict: "GREEN",
+          blockers: [],
+        };
+      },
+    },
+  );
+
+  assert.equal(autonomousRunnerCalls, 1);
+  assert.equal(
+    result.status,
+    "autonomous_candidate_materialised",
+  );
+  assert.equal(result.human_review_required, false);
+  assert.equal(result.no_publish, true);
+});
+
+test("governed autonomous routing preserves common story production blockers", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(
+      os.tmpdir(),
+      "pulse-autonomous-handler-common-blockers-",
+    ),
+  );
+  t.after(() =>
+    fs.rmSync(workspaceRoot, { recursive: true, force: true }),
+  );
+  const script =
+    "Xbox confirmed four classics are returning with modern achievement support.";
+  const builderResult =
+    buildGovernedAutonomousProductionRequest(
+      buildInput(workspaceRoot, script),
+    );
+  const cases = [
+    {
+      expected: "story_not_approved_for_production",
+      mutate: (value) => ({ ...value, approved: 0 }),
+    },
+    {
+      expected: "final_script_required",
+      mutate: (value) => ({ ...value, full_script: "" }),
+    },
+    {
+      expected: "story_has_terminal_qa_failure",
+      mutate: (value) => ({ ...value, qa_failed: true }),
+    },
+  ];
+
+  for (const testCase of cases) {
+    let autonomousRunnerCalled = false;
+    const result = await handlers.produce_breaking_short(
+      {
+        kind: "produce_breaking_short",
+        channel_id: "pulse-gaming",
+        payload: {
+          lane_id: "breaking_short",
+          story_id: "story-primary",
+          candidate_revision_sha256:
+            builderResult.production_request
+              .candidate_revision_sha256,
+          autonomous_production_job: {
+            schema_version:
+              "pulse-governed-autonomous-production-job-payload-v1",
+            builder_result: builderResult,
+          },
+        },
+      },
+      {
+        autonomousProductionWorkspaceRoot: workspaceRoot,
+        governedAutonomousProductionJobDependencies: {},
+        repos: {
+          stories: {
+            get: () =>
+              testCase.mutate({
+                ...story(script),
+                breaking_score: 50,
+                _extra: JSON.stringify({}),
+              }),
+          },
+        },
+        async runGovernedAutonomousProductionJob() {
+          autonomousRunnerCalled = true;
+        },
+      },
+    );
+
+    assert.equal(autonomousRunnerCalled, false);
+    assert.equal(result.status, "held");
+    assert.deepEqual(result.blockers, [testCase.expected]);
+  }
+});
+
 test("a consumed legacy alias cannot be re-entered through an already queued autonomous production job", async (t) => {
   const workspaceRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-autonomous-handler-consumed-alias-"),

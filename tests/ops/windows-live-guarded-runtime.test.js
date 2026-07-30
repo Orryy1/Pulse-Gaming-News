@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
+const { execFileSync, spawnSync } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -1275,7 +1275,7 @@ test("shutdown while a replacement generation is starting overrides its later st
   assert.equal(signalEmitter.listenerCount("SIGINT"), 0);
 });
 
-test("recovery shutdown clears and unreferences the underlying backoff timer", async () => {
+test("recovery backoff remains referenced while pending and clears promptly on shutdown", async () => {
   const signalEmitter = new EventEmitter();
   const timerHandle = {
     unref_calls: 0,
@@ -1320,7 +1320,7 @@ test("recovery shutdown clears and unreferences the underlying backoff timer", a
   const result = await lifecycle;
 
   assert.equal(timerDelay, 50);
-  assert.equal(timerHandle.unref_calls, 1);
+  assert.equal(timerHandle.unref_calls, 0);
   assert.equal(clearCalls, 1);
   assert.equal(startCalls, 1);
   assert.deepEqual(result, {
@@ -1330,7 +1330,7 @@ test("recovery shutdown clears and unreferences the underlying backoff timer", a
   });
 });
 
-test("live health polling aborts promptly and cancels its pending poll timer", async () => {
+test("live health polling remains referenced and cancels its pending poll timer", async () => {
   const shutdownController = new AbortController();
   const timerHandle = {
     unref_calls: 0,
@@ -1369,8 +1369,67 @@ test("live health polling aborts promptly and cancels its pending poll timer", a
   shutdownController.abort("supervisor_shutdown");
   assert.equal(await health, null);
   assert.equal(healthCalls, 1);
-  assert.equal(timerHandle.unref_calls, 1);
+  assert.equal(timerHandle.unref_calls, 0);
   assert.equal(clearCalls, 1);
+});
+
+test("a real Node process stays alive through recovery backoff and starts the replacement generation", () => {
+  const modulePath = path.join(
+    ROOT,
+    "lib",
+    "stabilisation",
+    "windows-live-guarded-runtime.js",
+  );
+  const script = `
+    const { runLiveSupervisionLifecycle } = require(${JSON.stringify(modulePath)});
+    let starts = 0;
+    runLiveSupervisionLifecycle({
+      restartDelayMs: 75,
+      maxRestartGenerations: 1,
+      async startGenerationImpl() {
+        starts += 1;
+        return {};
+      },
+      async superviseGenerationImpl() {
+        if (starts === 1) {
+          return {
+            outcome: "restart_required",
+            reason: "live_runtime_health_lost",
+          };
+        }
+        return {
+          outcome: "stopped",
+          reason: "replacement_generation_observed",
+        };
+      },
+    }).then((result) => {
+      process.stdout.write(JSON.stringify({ starts, result }));
+    }).catch((error) => {
+      process.stderr.write(error.stack || String(error));
+      process.exitCode = 1;
+    });
+  `;
+  const startedAt = Date.now();
+  const subprocess = spawnSync(process.execPath, ["-e", script], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 2_000,
+  });
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.equal(subprocess.status, 0, subprocess.stderr);
+  assert.equal(subprocess.signal, null, subprocess.stderr);
+  assert.ok(
+    elapsedMs >= 50,
+    `expected referenced recovery wait, process exited in ${elapsedMs}ms`,
+  );
+  assert.deepEqual(JSON.parse(subprocess.stdout), {
+    starts: 2,
+    result: {
+      outcome: "stopped",
+      reason: "replacement_generation_observed",
+    },
+  });
 });
 
 test("the iterative lifecycle recreates one real owner receipt per generation and stays bounded", async () => {

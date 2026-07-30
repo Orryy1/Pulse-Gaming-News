@@ -609,7 +609,11 @@ test("final composite adapters and narration probe use only the injected process
 
   assert.deepEqual(
     await input.runtime.dependencies.probeNarrationAudio(audioPath),
-    { duration_seconds: 12.5 },
+    {
+      duration_seconds: 12.5,
+      codec_name: "mp3",
+      has_audio: true,
+    },
   );
   const loudness =
     await input.runtime.dependencies.finalComposite.measureLoudness(

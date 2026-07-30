@@ -608,6 +608,127 @@ test("processor removes every banned sentence opener before validation", () => {
   );
 });
 
+test("processor deterministically fits an oversized Short by deleting complete interior sentences only", () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const oversized = {
+    classification: "[CONFIRMED]",
+    editorial_lane_id: selected.editorial_lane_id,
+    hook_type: selected.hook_type,
+    duration_band_id: selected.duration_band_id,
+    hook:
+      "Silent Hill: Townfall forces first-person combat with limited melee weapons.",
+    body:
+      "According to the PlayStation Blog, sneaking is now vital. You can block charges and strike back, but clubs break quickly. A revolver kills fast yet draws more enemies instantly. The handheld TV reveals monsters through walls so you can hide instead of fight. This shift makes every encounter far deadlier.",
+    cta: "",
+    full_script:
+      "Silent Hill: Townfall forces first-person combat with limited melee weapons. According to the PlayStation Blog, sneaking is now vital. You can block charges and strike back, but clubs break quickly. A revolver kills fast yet draws more enemies instantly. The handheld TV reveals monsters through walls so you can hide instead of fight. This shift makes every encounter far deadlier.",
+    word_count: 43,
+  };
+
+  const fitted = processor.normalisePulseDraftForContract(oversized, {
+    contract: selected,
+    ctaDecision: ctaDecision(false),
+  });
+
+  assert.equal(fitted.changed, true);
+  assert.equal(fitted.reason, "oversized_complete_sentences_removed");
+  assert.ok(fitted.word_count >= selected.min_words);
+  assert.ok(fitted.word_count <= selected.max_words);
+  assert.match(fitted.script.full_script, /^Silent Hill: Townfall/);
+  assert.match(fitted.script.full_script, /According to the PlayStation Blog/);
+  assert.match(fitted.script.full_script, /every encounter far deadlier\.$/);
+  assert.doesNotMatch(
+    fitted.script.full_script,
+    /handheld TV reveals monsters through walls/,
+  );
+  assert.equal(
+    fitted.script.full_script.includes("The handheld TV"),
+    fitted.script.body.includes("The handheld TV"),
+  );
+});
+
+test("processor leaves an oversized draft untouched when complete-sentence deletion cannot safely fit the contract", () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const oversized = {
+    ...scriptForContract(60, selected),
+    hook: "One deliberately long sentence remains source-bound.",
+    body: "",
+    cta: "",
+    full_script: `${words(59)} ending.`,
+  };
+
+  const fitted = processor.normalisePulseDraftForContract(oversized, {
+    contract: selected,
+    ctaDecision: ctaDecision(false),
+  });
+
+  assert.equal(fitted.changed, false);
+  assert.equal(fitted.reason, "no_safe_complete_sentence_fit");
+  assert.equal(fitted.script.full_script, oversized.full_script);
+});
+
+test("processor rejects concrete availability claims absent from bounded source evidence", () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const draft = {
+    ...scriptForContract(42, selected),
+    hook:
+      "Elder Scrolls Online adds a new Sheogorath questline today.",
+    full_script:
+      "Elder Scrolls Online adds a new Sheogorath questline today. Xbox Wire confirms the Prince of Madness joins Tamriel. The content is live on all supported platforms without extra cost.",
+  };
+  const sourceEvidence =
+    "ARTICLE TITLE: The Elder Scrolls Online: Tour Tamriel with the Prince of Madness in a New Questline\n" +
+    "ARTICLE MEDIA LABELS: Elder Scrolls Online - Sheogorath Questline Hero Image\n" +
+    "ARTICLE BODY: unavailable";
+
+  const errors = processor.validate(draft, "pulse-gaming", {
+    contract: selected,
+    ctaDecision: ctaDecision(false),
+    sourceEvidence,
+  });
+
+  assert.ok(errors.includes("unsupported_concrete_claim:fresh_availability"));
+  assert.ok(errors.includes("unsupported_concrete_claim:free_access"));
+  assert.ok(
+    errors.includes("unsupported_concrete_claim:universal_platform_access"),
+  );
+});
+
+test("processor accepts concrete availability language when the source explicitly supports it", () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const draft = {
+    ...scriptForContract(42, selected),
+    hook:
+      "Elder Scrolls Online adds a new Sheogorath questline today.",
+    full_script:
+      "Elder Scrolls Online adds a new Sheogorath questline today. Xbox Wire confirms the content is live on all supported platforms without extra cost.",
+  };
+
+  const errors = processor.validate(draft, "pulse-gaming", {
+    contract: selected,
+    ctaDecision: ctaDecision(false),
+    sourceEvidence:
+      "Xbox Wire confirms the questline is available today on all supported platforms at no extra cost.",
+  });
+
+  assert.equal(
+    errors.some((error) => error.startsWith("unsupported_concrete_claim:")),
+    false,
+  );
+});
+
 test("Pulse retry instructions carry the exact failed draft, errors and selected budget", () => {
   const selected = contract(
     "platform_pulse_standard_42_50",
@@ -890,6 +1011,84 @@ test("editor prompt uses selected matrix budget and selective CTA decision", () 
   assert.match(instruction, /what_changes_short_25_32/);
   assert.match(instruction, /omit a CTA/i);
   assert.doesNotMatch(instruction, /90-110|155-185/);
+});
+
+test("editor preserves a selected direct hook instead of imposing an open-loop curiosity gap", async () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const original = scriptForContract(42, selected);
+  let request = null;
+
+  const edited = await processor.sonnetEditorPass(
+    {
+      messages: {
+        async create(input) {
+          request = input;
+          return {
+            content: [{ text: JSON.stringify(original) }],
+          };
+        },
+      },
+    },
+    original,
+    pulseChannel,
+    {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+      sourceEvidence: "Nintendo quietly confirmed a hardware shift.",
+    },
+  );
+
+  assert.deepEqual(edited.full_script, original.full_script);
+  assert.match(
+    request.system,
+    /selected DIRECT hook.*exact verified player consequence/i,
+  );
+  assert.doesNotMatch(
+    request.system,
+    /rewrite it using the Curiosity Gap technique/i,
+  );
+});
+
+test("editor rejects an invented availability claim that is absent from source evidence", async () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const original = {
+    ...scriptForContract(42, selected),
+    suggested_title: "Nintendo Hardware Shift",
+  };
+
+  const edited = await processor.sonnetEditorPass(
+    {
+      messages: {
+        async create() {
+          return {
+            content: [
+              {
+                text: JSON.stringify({
+                  ...original,
+                  suggested_title: "Nintendo Hardware Shift Goes Live Today",
+                }),
+              },
+            ],
+          };
+        },
+      },
+    },
+    original,
+    pulseChannel,
+    {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+      sourceEvidence: "Nintendo quietly confirmed a hardware shift.",
+    },
+  );
+
+  assert.equal(edited.suggested_title, original.suggested_title);
 });
 
 test("processor editor pass revalidates edited scripts before accepting them", () => {

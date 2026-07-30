@@ -1136,13 +1136,104 @@ test("generated story metadata records the selected editorial experiment", () =>
   );
   assert.equal(stamped.experiment_cell_id, "platform_pulse:direct:short");
   assert.equal(stamped.duration_band_id, "platform_pulse_short_30_36");
-  assert.deepEqual(stamped.target_duration_seconds, { min: 30, max: 36 });
+  assert.equal(stamped.target_duration_seconds, null);
+  assert.deepEqual(stamped.duration_band_seconds, { min: 30, max: 36 });
   assert.deepEqual(stamped.script_word_range, {
     min: 45,
     max: 52,
     seconds_per_word: 0.68,
   });
   assert.equal(stamped.cta_policy.audit_hash, AUDIT_HASH);
+});
+
+test("contract preparation holds only the malformed story and preserves the next candidate", () => {
+  const malformed = processor.resolveStoryScriptGenerationContext({
+    story: {
+      id: "malformed-target",
+      title: "Malformed candidate",
+      editorial_lane_id: "platform_pulse",
+      hook_type: "direct",
+      duration_band_id: "platform_pulse_short_30_36",
+      target_duration_seconds: 60,
+      approved: true,
+      auto_approved: true,
+    },
+    channel: pulseChannel,
+  });
+  const valid = processor.resolveStoryScriptGenerationContext({
+    story: {
+      id: "valid-next-candidate",
+      title: "Valid next candidate",
+      editorial_lane_id: "platform_pulse",
+      hook_type: "direct",
+      duration_band_id: "platform_pulse_short_30_36",
+    },
+    channel: pulseChannel,
+  });
+
+  assert.equal(malformed.status, "held");
+  assert.equal(malformed.script.contract_status, "human_review_required");
+  assert.deepEqual(malformed.script.contract_failures, [
+    "script_contract_resolution_failed",
+  ]);
+  assert.equal(malformed.script.approved, false);
+  assert.equal(malformed.script.auto_approved, false);
+  assert.match(
+    malformed.error.message,
+    /target_duration_seconds_out_of_selected_band/,
+  );
+
+  assert.equal(valid.status, "ready");
+  assert.equal(valid.scriptContract.duration_band_id, "platform_pulse_short_30_36");
+  assert.equal(valid.scriptContract.target_duration_seconds, null);
+});
+
+test("contract-resolution holds remain eligible for a later governed repair pass", () => {
+  assert.equal(
+    processor.needsScriptGenerationRepair({
+      title: "Held contract story",
+      full_script: "A complete-looking script must not hide the contract hold.",
+      contract_failures: ["script_contract_resolution_failed"],
+    }),
+    true,
+  );
+});
+
+test("Discord story notifications suppress held contract failures but retain valid stories", async () => {
+  const postedStoryIds = [];
+  const summary = await processor.postEligibleDiscordStoryNotifications(
+    [
+      {
+        id: "held-by-status",
+        contract_status: "human_review_required",
+        approved: false,
+        auto_approved: false,
+      },
+      {
+        id: "held-by-contract-failure",
+        contract_failures: ["script_contract_resolution_failed"],
+        approved: false,
+        auto_approved: false,
+      },
+      {
+        id: "valid-unapproved-news-row",
+        contract_status: "valid",
+        approved: false,
+        auto_approved: false,
+      },
+    ],
+    {
+      async postNewStory(story) {
+        postedStoryIds.push(story.id);
+      },
+    },
+  );
+
+  assert.deepEqual(postedStoryIds, ["valid-unapproved-news-row"]);
+  assert.deepEqual(summary, {
+    posted: 1,
+    suppressed: 2,
+  });
 });
 
 test("canonical generation has no fixed 60-second or 61-75 second Pulse rule", () => {

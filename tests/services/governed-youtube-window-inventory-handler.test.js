@@ -205,6 +205,47 @@ test("guarded-live replenishment keeps strict planning repairs non-live while th
   );
 });
 
+test("a legacy repair row cannot deadlock monitoring after the replenishment request contract changes", async (t) => {
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-window-legacy-repair-"),
+  );
+  t.after(() => fs.remove(root));
+  const legacyKey =
+    "window-supply:2026-07-28T19:00:00.000Z:BUILDING:hunt";
+  const jobs = idempotentJobs();
+  const enqueue = jobs.enqueue.bind(jobs);
+  jobs.enqueue = (request) => {
+    if (request.idempotency_key === legacyKey) {
+      throw new Error("job_idempotency_conflict");
+    }
+    return enqueue(request);
+  };
+
+  const result =
+    await runGovernedYoutubeWindowInventoryMonitor({
+      payload: {
+        ...safePayload(root),
+        live_publish_enabled: true,
+      },
+      repos: { db: {}, jobs },
+      readReport: () =>
+        report({
+          status: "BUILDING",
+          escalation: "NONE",
+        }),
+      notify: async () => {},
+    });
+
+  assert.equal(result.verdict, "HOLD");
+  assert.equal(result.repair_jobs.length, 5);
+  assert.equal(jobs.values().length, 5);
+  assert.ok(
+    result.repair_jobs.every(
+      (job) => job.idempotency_key !== legacyKey,
+    ),
+  );
+});
+
 test("a covered window writes proof without replenishment or alert noise", async (t) => {
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "pulse-window-inventory-covered-"),

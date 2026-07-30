@@ -707,6 +707,7 @@ test("editorial backfill advances past permanent idempotency conflicts instead o
     stories.slice(0, 6).map((story) => story.id),
   );
   const queued = [];
+  const existingByKey = new Map();
 
   const result =
     await handlers.governed_editorial_evidence_backfill(
@@ -734,8 +735,16 @@ test("editorial backfill advances past permanent idempotency conflicts instead o
       {
         repos: {
           jobs: {
+            getByIdempotencyKey(key) {
+              return existingByKey.get(key) || null;
+            },
             enqueue(input) {
               if (conflictingIds.has(input.story_id)) {
+                existingByKey.set(input.idempotency_key, {
+                  id: 250 + existingByKey.size,
+                  status: "done",
+                  ...input,
+                });
                 const error = new Error("job_idempotency_conflict");
                 error.code = "job_idempotency_conflict";
                 throw error;
@@ -786,6 +795,7 @@ test("editorial backfill reports all-conflict supply as already scheduled, never
         `https://news.xbox.com/en-us/2026/07/28/all-conflict-${index + 1}/`,
     }),
   );
+  const existingByKey = new Map();
 
   const result =
     await handlers.governed_editorial_evidence_backfill(
@@ -811,7 +821,15 @@ test("editorial backfill reports all-conflict supply as already scheduled, never
       {
         repos: {
           jobs: {
-            enqueue() {
+            getByIdempotencyKey(key) {
+              return existingByKey.get(key) || null;
+            },
+            enqueue(input) {
+              existingByKey.set(input.idempotency_key, {
+                id: 400 + existingByKey.size,
+                status: "done",
+                ...input,
+              });
               const error = new Error("job_idempotency_conflict");
               error.code = "job_idempotency_conflict";
               throw error;
@@ -829,4 +847,141 @@ test("editorial backfill reports all-conflict supply as already scheduled, never
   assert.equal(report.enqueue_summary.attempted_count, 3);
   assert.equal(report.enqueue_summary.already_scheduled_count, 3);
   assert.equal(report.enqueue_summary.queued_count, 0);
+});
+
+test("editorial backfill re-admits an old terminal HOLD once and fences the revision against duplicate work", async (t) => {
+  const outDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "pulse-editorial-backfill-revision-"),
+  );
+  t.after(() => fs.remove(outDir));
+  const db = new Database(":memory:");
+  runMigrations(db, {
+    log() {},
+    env: { PULSE_RUNTIME_MODE: "LOCAL_PROOF" },
+  });
+  db.prepare(
+    "INSERT INTO channels (id, name) VALUES (?, ?)",
+  ).run("pulse-gaming", "Pulse Gaming");
+  t.after(() => db.close());
+  const jobs = bindJobs(db);
+  const currentStory = governedStory({
+    timestamp: "2026-07-28T04:30:00.000Z",
+    created_at: "2026-07-28T04:31:00.000Z",
+  });
+  const latestDecision = governedDecision(currentStory.id, {
+    scored_at: "2026-07-28T04:45:00.000Z",
+  });
+  db.prepare(`
+    INSERT INTO stories
+      (id, title, url, timestamp, channel_id)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(
+    currentStory.id,
+    currentStory.title,
+    currentStory.url,
+    currentStory.timestamp,
+    currentStory.channel_id,
+  );
+  const initial = enqueueGovernedEditorialEvidence({
+    story: currentStory,
+    latestDecision,
+    jobs,
+    now: "2026-07-28T05:00:00.000Z",
+  });
+  const claimed = jobs.claim("terminal-hold-worker", {
+    kinds: ["governed_editorial_evidence_discovery"],
+  });
+  jobs.complete(
+    claimed.id,
+    "terminal-hold-worker",
+    claimed.claim_token,
+    {
+      log: JSON.stringify({
+        ok: true,
+        verdict: "HOLD",
+        blockers: [
+          "official_or_corroborated_body_evidence_required",
+        ],
+      }),
+    },
+  );
+  db.prepare(`
+    UPDATE jobs
+    SET created_at = '2026-07-28 05:00:00',
+        updated_at = '2026-07-28 05:05:00',
+        completed_at = '2026-07-28 05:05:00'
+    WHERE id = ?
+  `).run(initial.job.id);
+
+  const inputJob = {
+    kind: "governed_editorial_evidence_backfill",
+    channel_id: "pulse-gaming",
+    payload: {
+      now: NOW,
+      out_dir: outDir,
+      stories: [currentStory],
+      latest_decisions: [latestDecision],
+      recent_attempted_story_ids: [],
+      scheduler_profile: "governed_multi_lane",
+      governed_multi_lane: true,
+      planning_only: true,
+      live_publish_enabled: false,
+      publish_authority: false,
+      human_admission_required: true,
+      human_review_required: true,
+    },
+  };
+  const context = {
+    repos: { db, jobs },
+    log() {},
+  };
+
+  const first =
+    await handlers.governed_editorial_evidence_backfill(
+      inputJob,
+      context,
+    );
+  const second =
+    await handlers.governed_editorial_evidence_backfill(
+      inputJob,
+      context,
+    );
+  const pending = jobs.listPending();
+  const firstReport = await fs.readJson(first.report_json);
+
+  assert.equal(first.status, "READY", JSON.stringify(first));
+  assert.equal(first.queued_count, 1);
+  assert.equal(
+    first.enqueue_attempts[0].reason,
+    "governed_editorial_evidence_revision_enqueued",
+  );
+  assert.equal(second.status, "ALREADY_SCHEDULED");
+  assert.equal(second.queued_count, 0);
+  assert.equal(pending.length, 1);
+  assert.match(
+    pending[0].idempotency_key,
+    /^governed-editorial-evidence:v2:rss-xbox-classics:[a-f0-9]{64}:[a-f0-9]{64}$/,
+  );
+  assert.equal(
+    pending[0].payload.evidence_attempt_revision
+      .bucket_started_at,
+    "2026-07-28T12:00:00.000Z",
+  );
+  assert.equal(
+    pending[0].payload.evidence_attempt_revision
+      .bucket_ends_at,
+    "2026-07-28T18:00:00.000Z",
+  );
+  assert.notEqual(
+    pending[0].idempotency_key,
+    initial.job.idempotency_key,
+  );
+  assert.equal(
+    firstReport.rotation.evidence_refresh_bucket_hours,
+    6,
+  );
+  assert.equal(
+    firstReport.rotation.recent_attempt_window_hours,
+    5,
+  );
 });

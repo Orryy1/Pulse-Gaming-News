@@ -1047,6 +1047,17 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       calls.push(["task", options]);
       return { state: "managed_current", blockers: [] };
     },
+    runtimeInspector(options) {
+      const listeners = options.listenerInspector({
+        profile: options.profile,
+      });
+      return {
+        stopped:
+          listeners.available === true &&
+          listeners.listeningPids.length === 0,
+        blockers: [],
+      };
+    },
     listenerInspector(options) {
       calls.push(["listeners", options]);
       listenerInspection += 1;
@@ -1481,6 +1492,17 @@ test("guarded start ends and disables only the re-inspected managed task when ex
       },
       taskInspector() {
         return taskStates.shift();
+      },
+      runtimeInspector(options) {
+        const listeners = options.listenerInspector({
+          profile: options.profile,
+        });
+        return {
+          stopped:
+            listeners.available === true &&
+            listeners.listeningPids.length === 0,
+          blockers: [],
+        };
       },
       listenerInspector() {
         return {

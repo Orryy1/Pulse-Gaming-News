@@ -257,6 +257,52 @@ test("duration selection is stable within a lane and selected-band validation is
   );
 });
 
+test("legacy persisted duration-band ranges are normalised without relaxing scalar target validation", () => {
+  const legacy = resolvePulseScriptContract({
+    story: {
+      id: "legacy-platform-duration-range",
+      editorial_lane_id: "platform_pulse",
+      hook_type: "direct",
+      duration_band_id: "platform_pulse_short_30_36",
+      target_duration_seconds: {
+        min: 30,
+        max: 36,
+      },
+    },
+  });
+
+  assert.equal(legacy.target_duration_seconds, null);
+  assert.throws(
+    () =>
+      resolvePulseScriptContract({
+        story: {
+          id: "mismatched-platform-duration-range",
+          editorial_lane_id: "platform_pulse",
+          hook_type: "direct",
+          duration_band_id: "platform_pulse_short_30_36",
+          target_duration_seconds: {
+            min: 29,
+            max: 36,
+          },
+        },
+      }),
+    /target_duration_seconds_out_of_selected_band/,
+  );
+  assert.throws(
+    () =>
+      resolvePulseScriptContract({
+        story: {
+          id: "invalid-platform-duration-scalar",
+          editorial_lane_id: "platform_pulse",
+          hook_type: "direct",
+          duration_band_id: "platform_pulse_short_30_36",
+          target_duration_seconds: 60,
+        },
+      }),
+    /target_duration_seconds_out_of_selected_band/,
+  );
+});
+
 test("hook selection is explicit or deterministic and binds an experiment cell", () => {
   const explicit = resolvePulseScriptContract({
     story: {

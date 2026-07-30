@@ -713,8 +713,11 @@ async function fetchGameImages(gameTitle) {
                 url: videoUrl,
                 type: movie.highlight ? "trailer" : "gameplay_clip",
                 source: "steam",
+                source_type: "steam_trailer",
                 is_video: true,
+                movie_name: movie.name || null,
                 thumbnail: movie.thumbnail,
+                ...steamMeta,
               });
             }
           }

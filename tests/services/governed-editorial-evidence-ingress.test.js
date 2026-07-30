@@ -89,12 +89,21 @@ test("current governed gaming review enters distinct editorial evidence discover
 
 test("an editorial evidence idempotency conflict is a safe already-scheduled no-op", () => {
   let enqueueCalls = 0;
+  let existing = null;
   const result = enqueueGovernedEditorialEvidence({
     story: story(),
     latestDecision: decision(),
     jobs: {
-      enqueue() {
+      getByIdempotencyKey() {
+        return existing;
+      },
+      enqueue(request) {
         enqueueCalls += 1;
+        existing = {
+          id: 902,
+          status: "pending",
+          ...request,
+        };
         throw new Error("job_idempotency_conflict");
       },
     },
@@ -107,7 +116,7 @@ test("an editorial evidence idempotency conflict is a safe already-scheduled no-
     result.reason,
     "governed_editorial_evidence_already_scheduled",
   );
-  assert.equal(result.job, null);
+  assert.equal(result.job.id, 902);
   assert.match(result.fingerprint_sha256, /^[a-f0-9]{64}$/);
   assert.equal(result.assessment.eligible, true);
   assert.equal(
@@ -122,6 +131,191 @@ test("an editorial evidence idempotency conflict is a safe already-scheduled no-
     result.assessment.safety.oauth_mutation_authorised,
     false,
   );
+});
+
+test("an editorial evidence idempotency conflict never hides mismatched work", () => {
+  let baseline = null;
+  enqueueGovernedEditorialEvidence({
+    story: story(),
+    latestDecision: decision(),
+    jobs: {
+      enqueue(request) {
+        baseline = {
+          id: 903,
+          status: "pending",
+          ...request,
+        };
+        return baseline;
+      },
+    },
+    now: NOW,
+  });
+
+  assert.throws(
+    () =>
+      enqueueGovernedEditorialEvidence({
+        story: story(),
+        latestDecision: decision(),
+        jobs: {
+          getByIdempotencyKey() {
+            return {
+              ...baseline,
+              payload: {
+                ...baseline.payload,
+                publish_authority: true,
+              },
+            };
+          },
+          enqueue() {
+            assert.fail("mismatched work must not enqueue");
+          },
+        },
+        now: NOW,
+      }),
+    /job_idempotency_conflict/,
+  );
+});
+
+test("a refresh bucket re-admits legacy terminal or old-runtime evidence once", () => {
+  const jobsByKey = new Map();
+  const legacy = enqueueGovernedEditorialEvidence({
+    story: story(),
+    latestDecision: decision(),
+    jobs: {
+      enqueue(request) {
+        const job = {
+          id: 911,
+          status: "done",
+          completed_at: "2026-07-28T13:55:00.000Z",
+          latest_log_excerpt: JSON.stringify({
+            verdict: "HOLD",
+          }),
+          artifact_path:
+            "C:\\old-runtime\\output\\evidence.json",
+          ...request,
+        };
+        jobsByKey.set(request.idempotency_key, job);
+        return job;
+      },
+    },
+    now: "2026-07-28T13:50:00.000Z",
+  });
+  const jobs = {
+    getByIdempotencyKey(key) {
+      return jobsByKey.get(key) || null;
+    },
+    enqueue(request) {
+      const queued = {
+        id: 912,
+        status: "pending",
+        ...request,
+      };
+      jobsByKey.set(request.idempotency_key, queued);
+      return queued;
+    },
+  };
+  const refreshed = enqueueGovernedEditorialEvidence({
+    story: story(),
+    latestDecision: decision(),
+    jobs,
+    now: NOW,
+    attemptRevisionHours: 6,
+  });
+  const duplicate = enqueueGovernedEditorialEvidence({
+    story: story(),
+    latestDecision: decision(),
+    jobs,
+    now: "2026-07-28T14:55:00.000Z",
+    attemptRevisionHours: 6,
+  });
+
+  assert.equal(refreshed.queued, true);
+  assert.equal(
+    refreshed.reason,
+    "governed_editorial_evidence_revision_enqueued",
+  );
+  assert.notEqual(
+    refreshed.job.idempotency_key,
+    legacy.job.idempotency_key,
+  );
+  assert.match(
+    refreshed.job.idempotency_key,
+    /^governed-editorial-evidence:v2:rss-xbox-classics:[a-f0-9]{64}:[a-f0-9]{64}$/,
+  );
+  assert.equal(
+    refreshed.job.payload.evidence_attempt_revision
+      .bucket_started_at,
+    "2026-07-28T12:00:00.000Z",
+  );
+  assert.equal(
+    refreshed.job.payload.evidence_attempt_revision
+      .bucket_ends_at,
+    "2026-07-28T18:00:00.000Z",
+  );
+  assert.equal(
+    refreshed.job.payload.publish_authority,
+    false,
+  );
+  assert.equal(duplicate.queued, false);
+  assert.equal(
+    duplicate.reason,
+    "governed_editorial_evidence_already_scheduled",
+  );
+  assert.equal(jobsByKey.size, 2);
+});
+
+test("the evidence refresh key rolls forward at the next UTC bucket", () => {
+  const queued = new Map();
+  const jobs = {
+    getByIdempotencyKey(key) {
+      return queued.get(key) || null;
+    },
+    enqueue(request) {
+      const job = {
+        id: queued.size + 920,
+        status: "pending",
+        ...request,
+      };
+      queued.set(request.idempotency_key, job);
+      return job;
+    },
+  };
+  const beforeBoundary = enqueueGovernedEditorialEvidence({
+    story: story(),
+    latestDecision: decision(),
+    jobs,
+    now: "2026-07-28T17:55:00.000Z",
+    attemptRevisionHours: 6,
+  });
+  const afterBoundary = enqueueGovernedEditorialEvidence({
+    story: story(),
+    latestDecision: decision(),
+    jobs,
+    now: "2026-07-28T18:05:00.000Z",
+    attemptRevisionHours: 6,
+  });
+
+  assert.equal(beforeBoundary.queued, true);
+  assert.equal(afterBoundary.queued, true);
+  assert.equal(
+    beforeBoundary.fingerprint_sha256,
+    afterBoundary.fingerprint_sha256,
+  );
+  assert.notEqual(
+    beforeBoundary.job.idempotency_key,
+    afterBoundary.job.idempotency_key,
+  );
+  assert.equal(
+    beforeBoundary.job.payload.evidence_attempt_revision
+      .bucket_started_at,
+    "2026-07-28T12:00:00.000Z",
+  );
+  assert.equal(
+    afterBoundary.job.payload.evidence_attempt_revision
+      .bucket_started_at,
+    "2026-07-28T18:00:00.000Z",
+  );
+  assert.equal(queued.size, 2);
 });
 
 test("stale, off-topic, rejected, hard-stopped or malformed governed decisions stay out of editorial evidence discovery", () => {

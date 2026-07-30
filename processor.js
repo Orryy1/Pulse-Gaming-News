@@ -1094,7 +1094,12 @@ function applyPulseEditorialMetadata(script, contract, ctaDecision) {
     experiment_cell_id: contract.experiment_cell_id,
     duration_band_id: contract.duration_band_id,
     duration_band_label: contract.duration_band_label,
-    target_duration_seconds: {
+    target_duration_seconds:
+      typeof contract.target_duration_seconds === "number" &&
+      Number.isFinite(contract.target_duration_seconds)
+        ? contract.target_duration_seconds
+        : null,
+    duration_band_seconds: {
       min: contract.min_seconds,
       max: contract.max_seconds,
     },
@@ -1106,6 +1111,101 @@ function applyPulseEditorialMetadata(script, contract, ctaDecision) {
     duration_selection: contract.duration_selection,
     cta_policy: ctaDecision,
   });
+}
+
+function buildScriptGenerationHold(
+  story = {},
+  { failureCode = "script_generation_exhausted" } = {},
+) {
+  const title = String(story.title || "Untitled story").trim();
+  return {
+    classification: "[BREAKING]",
+    hook: title,
+    body:
+      failureCode === "script_contract_resolution_failed"
+        ? "Script contract invalid. Manual edit required."
+        : "Script generation failed. Manual edit required.",
+    cta: "",
+    full_script: title,
+    word_count: 0,
+    suggested_thumbnail_text: title.substring(0, 40),
+    suggested_title: title.substring(0, 60),
+    contract_status: "human_review_required",
+    contract_failures: [failureCode],
+    approved: false,
+    auto_approved: false,
+  };
+}
+
+function resolveStoryScriptGenerationContext({ story = {}, channel } = {}) {
+  try {
+    const scriptContract =
+      channel?.id === "pulse-gaming"
+        ? resolvePulseScriptContract({ story })
+        : null;
+    const ctaDecision = scriptContract
+      ? selectCtaDecision({
+          storyId: story.id,
+          formatFamily: scriptContract.format_family,
+        })
+      : null;
+    const editorialPrompt = scriptContract
+      ? buildPulseGenerationPrompt({
+          contract: scriptContract,
+          ctaDecision,
+        })
+      : "";
+    return {
+      status: "ready",
+      scriptContract,
+      ctaDecision,
+      editorialPrompt,
+    };
+  } catch (error) {
+    return {
+      status: "held",
+      error,
+      script: buildScriptGenerationHold(story, {
+        failureCode: "script_contract_resolution_failed",
+      }),
+    };
+  }
+}
+
+function shouldSuppressDiscordStoryNotification(story = {}) {
+  const contractStatus = String(story.contract_status || "")
+    .trim()
+    .toLowerCase();
+  const contractFailures = Array.isArray(story.contract_failures)
+    ? story.contract_failures.map((failure) =>
+        String(failure || "").trim().toLowerCase(),
+      )
+    : [];
+  return (
+    contractStatus === "human_review_required" ||
+    contractFailures.includes("script_contract_resolution_failed") ||
+    contractFailures.includes("script_generation_exhausted")
+  );
+}
+
+async function postEligibleDiscordStoryNotifications(
+  stories = [],
+  { postNewStory } = {},
+) {
+  if (typeof postNewStory !== "function") {
+    throw new TypeError("discord_post_new_story_function_required");
+  }
+  let posted = 0;
+  let suppressed = 0;
+  for (const story of Array.isArray(stories) ? stories : []) {
+    if (shouldSuppressDiscordStoryNotification(story)) {
+      suppressed += 1;
+      continue;
+    }
+    await postNewStory(story);
+    posted += 1;
+  }
+  return { posted, suppressed };
 }
 
 async function sonnetEditorPass(
@@ -1292,22 +1392,41 @@ async function process_stories() {
     addBreadcrumb(`Processing story: ${story.title}`, "processor");
     console.log(`[processor] Scripting: ${story.title}`);
 
-    const scriptContract =
-      channel.id === "pulse-gaming"
-        ? resolvePulseScriptContract({ story })
-        : null;
-    const ctaDecision = scriptContract
-      ? selectCtaDecision({
-          storyId: story.id,
-          formatFamily: scriptContract.format_family,
-        })
-      : null;
-    const editorialPrompt = scriptContract
-      ? buildPulseGenerationPrompt({
-          contract: scriptContract,
-          ctaDecision,
-        })
-      : "";
+    const generationContext = resolveStoryScriptGenerationContext({
+      story,
+      channel,
+    });
+    // A malformed repair row must stay held, but must not discard valid work
+    // already completed elsewhere in this hunt batch.
+    if (generationContext.status === "held") {
+      console.log(
+        `[processor] Script contract held for review: ${generationContext.error.message}`,
+      );
+      captureException(generationContext.error, {
+        step: "scriptContractResolution",
+        storyId: story.id,
+      });
+      const heldScript = generationContext.script;
+      enriched.push({
+        ...story,
+        ...heldScript,
+        tts_script: cleanForTTS(heldScript.full_script),
+        quality_score: null,
+        editorial_generator_identity: resolveScriptGeneratorIdentity({
+          client,
+          usedLocalFallback: true,
+        }),
+        content_pillar: getContentPillar(heldScript.classification),
+        approved: false,
+        auto_approved: false,
+      });
+      continue;
+    }
+    const {
+      scriptContract,
+      ctaDecision,
+      editorialPrompt,
+    } = generationContext;
 
     // --- Fact-checking: fetch source material ---
     let sourceMaterial = null;
@@ -1574,18 +1693,7 @@ Today's date is ${today}. You MUST follow these rules:
           })
         ) {
           usedLocalFallback = true;
-          script = {
-            classification: "[BREAKING]",
-            hook: story.title,
-            body: "Script generation failed. Manual edit required.",
-            cta: "",
-            full_script: story.title,
-            word_count: 0,
-            suggested_thumbnail_text: story.title.substring(0, 40),
-            suggested_title: story.title.substring(0, 60),
-            contract_status: "human_review_required",
-            contract_failures: ["script_generation_exhausted"],
-          };
+          script = buildScriptGenerationHold(story);
           applyPulseEditorialMetadata(script, scriptContract, ctaDecision);
           break;
         }
@@ -1646,11 +1754,12 @@ Today's date is ${today}. You MUST follow these rules:
   // Post new stories to Discord news channels
   try {
     const { postNewStory } = require("./discord/auto_post");
-    for (const story of enriched) {
-      await postNewStory(story);
-    }
+    const discordNotifications =
+      await postEligibleDiscordStoryNotifications(enriched, {
+        postNewStory,
+      });
     console.log(
-      `[processor] Discord: posted ${enriched.length} stories to news channels`,
+      `[processor] Discord: posted ${discordNotifications.posted} eligible stories to news channels; suppressed ${discordNotifications.suppressed} held stories`,
     );
   } catch (err) {
     console.log(`[processor] Discord news posting skipped: ${err.message}`);
@@ -1674,6 +1783,7 @@ function needsScriptGenerationRepair(story = {}) {
 
   if (
     contractFailures.includes("script_generation_exhausted") ||
+    contractFailures.includes("script_contract_resolution_failed") ||
     /script generation failed[.!]?\s*manual edit required/i.test(body)
   ) {
     return true;
@@ -1904,6 +2014,11 @@ function filterPendingStoriesForGeneration(
 
 module.exports = process_stories;
 module.exports.applyPulseEditorialMetadata = applyPulseEditorialMetadata;
+module.exports.buildScriptGenerationHold = buildScriptGenerationHold;
+module.exports.resolveStoryScriptGenerationContext =
+  resolveStoryScriptGenerationContext;
+module.exports.postEligibleDiscordStoryNotifications =
+  postEligibleDiscordStoryNotifications;
 module.exports.buildScriptRetryInstruction =
   buildScriptRetryInstruction;
 module.exports.shouldRetryScriptGeneration =

@@ -2248,6 +2248,59 @@ test("the live task is a disabled-by-default SYSTEM AtStartup service-account ho
   }
 });
 
+test("the live task validator accepts Task Scheduler's normalised restart-policy child order without accepting incorrect values", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const xml = buildLiveScheduledTaskXml({
+    profile,
+    repoRoot: "C:/Pulse/runtime/pulse-v1",
+    expectedCommit,
+    nodeExecutable: "C:/Program Files/nodejs/node.exe",
+  });
+  const taskSchedulerNormalisedXml = xml.replace(
+    "<RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>",
+    "<RestartOnFailure><Count>999</Count><Interval>PT1M</Interval></RestartOnFailure>",
+  );
+
+  assert.deepEqual(
+    validateLiveScheduledTaskXml({
+      xml: taskSchedulerNormalisedXml,
+      profile,
+      repoRoot: "C:/Pulse/runtime/pulse-v1",
+      expectedCommit,
+      nodeExecutable: "C:/Program Files/nodejs/node.exe",
+      expectedEnabled: false,
+    }),
+    {
+      valid: true,
+      enabled: false,
+      blockers: [],
+    },
+  );
+
+  for (const unsafeXml of [
+    taskSchedulerNormalisedXml.replace(
+      "<Count>999</Count>",
+      "<Count>998</Count>",
+    ),
+    taskSchedulerNormalisedXml.replace(
+      "<Interval>PT1M</Interval>",
+      "<Interval>PT2M</Interval>",
+    ),
+  ]) {
+    const result = validateLiveScheduledTaskXml({
+      xml: unsafeXml,
+      profile,
+      repoRoot: "C:/Pulse/runtime/pulse-v1",
+      expectedCommit,
+      nodeExecutable: "C:/Program Files/nodejs/node.exe",
+      expectedEnabled: false,
+    });
+    assert.equal(result.valid, false);
+    assert.ok(result.blockers.includes("task_restart_policy_invalid"));
+  }
+});
+
 test("AUTO_PUBLISH cannot enter a child environment without one exact activation receipt bound to commit, profile and migration set", () => {
   const temp = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-live-receipt-"),

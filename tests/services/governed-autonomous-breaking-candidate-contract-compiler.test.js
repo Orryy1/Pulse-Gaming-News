@@ -495,6 +495,29 @@ test("rejects a script clause that cannot be lexically supported by any exact of
   );
 });
 
+test("rejects a literal authoring control token before a candidate can become GREEN", async (t) => {
+  const values = await standardFixture(t);
+  values.story.full_script =
+    "Yet Another Zombie Defense HD is free to keep on Steam, but the offer ends on 30 July [PAUSE]. Build barricades by day, then survive the night alone or with up to four players. Claim it before the deadline and the full game is yours to keep.";
+
+  await assert.rejects(
+    compileGovernedAutonomousBreakingCandidateContract(
+      compileInput(values),
+    ),
+    (error) => {
+      assert.equal(
+        error.name,
+        "GovernedAutonomousBreakingCandidateContractCompilerError",
+      );
+      assert.equal(
+        error.code,
+        "autonomous_breaking_candidate_script_control_token_forbidden",
+      );
+      return true;
+    },
+  );
+});
+
 test("fails closed on source hash drift and a path-tampered hydrated binding", async (t) => {
   await t.test("source hash drift", async () => {
     const values = await standardFixture(t);

@@ -16,6 +16,9 @@ const {
   readGovernedAutonomousScriptRepairContext,
   renderGovernedAutonomousScriptRepairEvidence,
 } = require("../../lib/services/governed-autonomous-script-repair-context");
+const {
+  assessGovernedAutonomousBreakingScriptClaimSupport,
+} = require("../../lib/services/governed-autonomous-breaking-candidate-contract-compiler");
 const PROCESSOR_SOURCE = fs.readFileSync(
   path.join(__dirname, "..", "..", "processor.js"),
   "utf8",
@@ -716,6 +719,381 @@ test("a Silent Hill governed repair receives only its two validated claims, neve
   );
 });
 
+test("a matching pending Silent Hill row is upgraded once into its exact governed repair instead of being deduped away", () => {
+  const storyId = "rss_859a44c4ba983cbb";
+  const existing = {
+    id: storyId,
+    title: "Silent Hill: Townfall hands-on report",
+    url:
+      "https://blog.playstation.com/2026/07/29/silent-hill-townfall-hands-on-report/",
+    published_at: "2026-07-29T07:00:24.000Z",
+    full_script:
+      "Silent Hill: Townfall forces first-person combat with limited melee weapons. PlayStation Blog confirms sneaking is now vital. You can block charges and strike back, but clubs break quickly. A revolver kills fast yet draws more enemies instantly. This shift makes every encounter far deadlier.",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_short_25_32",
+  };
+  const pending = {
+    id: storyId,
+    title: existing.title,
+    url: existing.url,
+    published_at: existing.published_at,
+  };
+  const repairContext = {
+    story_id: storyId,
+    inventory_file_sha256: "a".repeat(64),
+    source_evidence_sha256: "b".repeat(64),
+    confirmed_claims: [
+      {
+        claim_key: "playstation.silent_hill_townfall.launches",
+        text:
+          "Silent Hill: Townfall launches on September 24 on PlayStation 5.",
+      },
+      {
+        claim_key: "screen_burn.develops.townfall",
+        text:
+          "The developers at Screen Burn visited and photographed real coastal towns in Scotland",
+      },
+    ],
+  };
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates(
+      [pending],
+      [existing],
+      {
+        now: "2026-07-30T05:45:00.000Z",
+        preferredStoryIds: new Set([storyId]),
+        repairContexts: new Map([[storyId, repairContext]]),
+      },
+    );
+  assert.equal(repairs.length, 1);
+
+  const queue = processor.mergeAutonomousScriptRepairCandidates(
+    [pending],
+    repairs,
+  );
+  const admitted = processor.filterPendingStoriesForGeneration(
+    queue,
+    [existing],
+    { logger: () => {} },
+  );
+
+  assert.equal(queue.length, 1);
+  assert.equal(admitted.length, 1);
+  assert.equal(admitted[0].id, storyId);
+  assert.deepEqual(
+    readGovernedAutonomousScriptRepairContext(admitted[0])
+      .confirmed_claims,
+    repairContext.confirmed_claims,
+  );
+});
+
+test("governed repair validation rejects a generated clause outside the exact confirmed claims", () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const confirmedClaims = [
+    {
+      claim_key: "playstation.silent_hill_townfall.launches",
+      text:
+        "Silent Hill: Townfall launches on September 24 on PlayStation 5.",
+    },
+    {
+      claim_key: "screen_burn.develops.townfall",
+      text:
+        "The developers at Screen Burn visited and photographed real coastal towns in Scotland",
+    },
+  ];
+  const draft = {
+    classification: "[CONFIRMED]",
+    editorial_lane_id: selected.editorial_lane_id,
+    hook_type: selected.hook_type,
+    duration_band_id: selected.duration_band_id,
+    hook:
+      "Silent Hill: Townfall forces first-person combat with limited melee weapons.",
+    body:
+      "PlayStation confirms sneaking is now vital. You can block charges and strike back, but clubs break quickly. A revolver draws more enemies instantly.",
+    cta: "",
+    full_script:
+      "Silent Hill: Townfall forces first-person combat with limited melee weapons. PlayStation confirms sneaking is now vital. You can block charges and strike back, but clubs break quickly. A revolver draws more enemies instantly. This makes every encounter far deadlier.",
+    word_count: 40,
+    suggested_thumbnail_text: "TOWNFALL COMBAT",
+  };
+
+  const errors = processor.validate(draft, "pulse-gaming", {
+    contract: selected,
+    ctaDecision: ctaDecision(false),
+    sourceEvidence: confirmedClaims.map((claim) => claim.text).join("\n"),
+    confirmedClaims,
+  });
+
+  assert.ok(
+    errors.includes(
+      "autonomous_breaking_candidate_script_clause_1_unsupported",
+    ),
+  );
+});
+
+test("governed repair validation uses the compiler raw word count instead of TTS acronym expansion", () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const confirmedClaims = [
+    {
+      claim_key: "monstercouch.flamecraft.genre",
+      text: "Flamecraft is a cozy, turn-based strategy game",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.tutorial-voice",
+      text: "The fully narrated interactive tutorial is voiced by Becca Scott",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.ps5-release",
+      text: "Flamecraft is coming to PlayStation 5 later this year",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.demo",
+      text: "A demo is available today",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.local-players",
+      text: "Flamecraft supports up to five local players",
+    },
+  ];
+  const fullScript =
+    "Flamecraft lands on PS5 later this year with a demo live today. This cozy turn-based strategy title supports up to five players locally. Becca Scott voices the fully narrated interactive tutorial, guiding your first steps immediately.";
+  const draft = {
+    classification: "[CONFIRMED]",
+    editorial_lane_id: selected.editorial_lane_id,
+    hook_type: selected.hook_type,
+    duration_band_id: selected.duration_band_id,
+    hook:
+      "Flamecraft lands on PS5 later this year with a demo live today.",
+    body:
+      "This cozy turn-based strategy title supports up to five players locally. Becca Scott voices the fully narrated interactive tutorial, guiding your first steps immediately.",
+    cta: "",
+    full_script: fullScript,
+    word_count: 36,
+    suggested_thumbnail_text: "FLAMECRAFT ON PS5",
+  };
+
+  const errors = processor.validate(draft, "pulse-gaming", {
+    contract: selected,
+    ctaDecision: ctaDecision(false),
+    sourceEvidence: confirmedClaims.map((claim) => claim.text).join("\n"),
+    confirmedClaims,
+  });
+
+  assert.ok(
+    errors.some((error) =>
+      /actual spoken words 36 outside 37-47/.test(error),
+    ),
+  );
+});
+
+test("processor selects the exact 36-word Flamecraft row and accepts a supported 41-word replacement", () => {
+  const storyId = "rss_e1a0ef9c86b15116";
+  const confirmedClaims = [
+    {
+      claim_key: "monstercouch.flamecraft.genre",
+      text: "Flamecraft is a cozy, turn-based strategy game",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.tutorial-voice",
+      text: "The fully narrated interactive tutorial is voiced by Becca Scott",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.ps5-release",
+      text: "Flamecraft is coming to PlayStation 5 later this year",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.demo",
+      text: "A demo is available today",
+    },
+    {
+      claim_key: "monstercouch.flamecraft.local-players",
+      text: "Flamecraft supports up to five local players",
+    },
+  ];
+  const existing = {
+    id: storyId,
+    title: "Flamecraft is coming to PlayStation 5",
+    url: "https://blog.playstation.com/2026/07/29/flamecraft/",
+    published_at: "2026-07-29T18:00:00.000Z",
+    full_script:
+      "Flamecraft lands on PS5 later this year with a demo live today. This cozy turn-based strategy title supports up to five players locally. Becca Scott voices the fully narrated interactive tutorial, guiding your first steps immediately.",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_short_25_32",
+  };
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates([], [existing], {
+      now: "2026-07-29T22:45:00.000Z",
+      preferredStoryIds: new Set([storyId]),
+      repairContexts: new Map([
+        [
+          storyId,
+          {
+            story_id: storyId,
+            inventory_file_sha256: "a".repeat(64),
+            source_evidence_sha256: "b".repeat(64),
+            confirmed_claims: confirmedClaims,
+          },
+        ],
+      ]),
+    });
+
+  assert.equal(repairs.length, 1);
+
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const replacement = {
+    classification: "[CONFIRMED]",
+    editorial_lane_id: selected.editorial_lane_id,
+    hook_type: selected.hook_type,
+    duration_band_id: selected.duration_band_id,
+    hook:
+      "Flamecraft is coming to PlayStation 5 later this year, and its demo is available today.",
+    body:
+      "This cosy turn-based strategy game supports up to five local players. Becca Scott voices the fully narrated interactive tutorial that teaches every player how to begin.",
+    cta: "",
+    full_script:
+      "Flamecraft is coming to PlayStation 5 later this year, and its demo is available today. This cosy turn-based strategy game supports up to five local players. Becca Scott voices the fully narrated interactive tutorial that teaches every player how to begin.",
+    word_count: 41,
+    suggested_thumbnail_text: "FLAMECRAFT ON PS5",
+  };
+  assert.deepEqual(
+    processor.validate(replacement, "pulse-gaming", {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+      sourceEvidence: confirmedClaims.map((claim) => claim.text).join("\n"),
+      confirmedClaims,
+    }),
+    [],
+  );
+});
+
+test("governed repair editor keeps the supported draft when an edit invents an unsupported clause", async () => {
+  const selected = contract(
+    "what_changes_short_25_32",
+    "what_changes_for_players",
+  );
+  const confirmedClaims = [
+    {
+      claim_key: "playstation.silent_hill_townfall.launches",
+      text:
+        "Silent Hill: Townfall launches on September 24 on PlayStation 5.",
+    },
+    {
+      claim_key: "screen_burn.develops.townfall",
+      text:
+        "The developers at Screen Burn visited and photographed real coastal towns in Scotland",
+    },
+  ];
+  const supported = {
+    classification: "[CONFIRMED]",
+    editorial_lane_id: selected.editorial_lane_id,
+    hook_type: selected.hook_type,
+    duration_band_id: selected.duration_band_id,
+    hook:
+      "Silent Hill: Townfall launches September 24 on PlayStation 5.",
+    body:
+      "Screen Burn built its setting from real research, after the developers visited and photographed coastal towns across Scotland to ground this new Silent Hill story in places they had seen themselves.",
+    cta: "",
+    full_script:
+      "Silent Hill: Townfall launches September 24 on PlayStation 5. Screen Burn built its setting from real research, after the developers visited and photographed coastal towns across Scotland to ground this new Silent Hill story in places they had seen themselves.",
+    word_count: 40,
+    suggested_thumbnail_text: "TOWNFALL'S REAL SETTING",
+  };
+  const unsupportedEdit = {
+    ...supported,
+    body:
+      "Combat now uses a first-person camera with breakable melee weapons, limited ammunition and stealth systems that make every enemy encounter more dangerous than before for every player throughout the entire campaign.",
+    full_script:
+      "Silent Hill: Townfall launches September 24 on PlayStation 5. Combat now uses a first-person camera with breakable melee weapons, limited ammunition and stealth systems that make every enemy encounter more dangerous than before for every player throughout the entire campaign.",
+  };
+
+  const edited = await processor.sonnetEditorPass(
+    {
+      messages: {
+        async create() {
+          return {
+            content: [{ text: JSON.stringify(unsupportedEdit) }],
+          };
+        },
+      },
+    },
+    supported,
+    pulseChannel,
+    {
+      contract: selected,
+      ctaDecision: ctaDecision(false),
+      sourceEvidence: confirmedClaims.map((claim) => claim.text).join("\n"),
+      confirmedClaims,
+    },
+  );
+
+  assert.deepEqual(edited, supported);
+});
+
+test("processor repairs a READY governed script that still contains an authoring control token", () => {
+  const storyId = "rss_7fd32291ad76d6dd";
+  const existing = {
+    id: storyId,
+    title: "XBOX @ gamescom 2026",
+    url: "https://news.xbox.com/en-us/2026/07/28/xbox-gamescom-2026/",
+    published_at: "2026-07-28T17:00:00.000Z",
+    full_script:
+      "Play Fable live, Gears campaign and Metro 2039 at Xbox gamescom. Fable gets its first ever live demo theatre [PAUSE]. Play the brutal Gears origins before October 6th. Try Metro 2039 ahead of February 2027 release [PAUSE]. Which hands-on experience are you queuing for?",
+    editorial_lane_id: "what_changes_for_players",
+    duration_band_id: "what_changes_short_25_32",
+  };
+  const confirmedClaims = [
+    {
+      claim_key: "fable.live-demo-theater-confirmed",
+      text:
+        "For the first time ever, Fable will have a live demo theater presentation by Playground Games, showcasing live gameplay to the public",
+    },
+    {
+      claim_key: "gears-of-war.e-day.release-date-announced",
+      text:
+        "Gears of War: E-Day brings the first public playable hands-on experience with campaign to gamescom ahead of its October 6, 2026 release.",
+    },
+    {
+      claim_key: "metro-2039.release-date-revealed",
+      text:
+        "Get hands-on with METRO 2039 for the first time at gamescom ahead of its release in February 2027.",
+    },
+  ];
+  const markerFreeScript = existing.full_script.replace(
+    /\s*\[PAUSE\]\s*/gi,
+    " ",
+  );
+  assert.equal(
+    assessGovernedAutonomousBreakingScriptClaimSupport({
+      script: markerFreeScript,
+      confirmed_claims: confirmedClaims,
+    }).verdict,
+    "GREEN",
+  );
+
+  const repairs =
+    processor.selectAutonomousScriptRepairCandidates([], [existing], {
+      now: "2026-07-30T05:30:00.000Z",
+      preferredStoryIds: new Set([storyId]),
+    });
+
+  assert.equal(repairs.length, 1);
+  assert.equal(repairs[0].id, storyId);
+  assert.equal(
+    repairs[0].duration_band_id,
+    "what_changes_short_25_32",
+  );
+});
+
 test("processor preserves Ball x Pit compiler-GREEN standard supply without needlessly rewriting it", () => {
   const existing = {
     id: "rss_cb150013403a545b",
@@ -950,6 +1328,32 @@ test("processor removes every banned sentence opener before validation", () => {
       .some((error) => error.includes("banned word")),
     false,
   );
+});
+
+test("processor removes authoring control tokens from every persisted public script field", () => {
+  const draft = {
+    hook: "Xbox is bringing three games to gamescom [PAUSE].",
+    body:
+      "Gears and Metro are playable there [VISUAL: official gameplay].",
+    cta: "Which one would you queue for [PAUSE]?",
+    full_script:
+      "Xbox is bringing three games to gamescom [PAUSE]. Gears and Metro are playable there [VISUAL: official gameplay].",
+    suggested_title: "Three Xbox demos [PAUSE]",
+    suggested_thumbnail_text: "PLAY THEM [VISUAL: gamescom]",
+  };
+
+  processor.sanitiseScript(draft);
+
+  assert.deepEqual(draft, {
+    hook: "Xbox is bringing three games to gamescom.",
+    body: "Gears and Metro are playable there.",
+    cta: "Which one would you queue for?",
+    full_script:
+      "Xbox is bringing three games to gamescom. Gears and Metro are playable there.",
+    suggested_title: "Three Xbox demos",
+    suggested_thumbnail_text: "PLAY THEM",
+  });
+  assert.doesNotMatch(JSON.stringify(draft), /\[(?:PAUSE|VISUAL)\b/i);
 });
 
 test("processor deterministically fits an oversized Short by deleting complete interior sentences only", () => {

@@ -42,6 +42,7 @@ const {
 const {
   attachGovernedAutonomousScriptRepairContext,
   createGovernedAutonomousScriptRepairContext,
+  readGovernedAutonomousScriptRepairContext,
   renderGovernedAutonomousScriptRepairEvidence,
 } = require("./lib/services/governed-autonomous-script-repair-context");
 const {
@@ -60,6 +61,8 @@ const MAX_AUTONOMOUS_SCRIPT_REPAIRS_PER_PASS = 4;
 const AUTONOMOUS_SCRIPT_REPAIR_MAX_AGE_HOURS = 7 * 24;
 const AUTONOMOUS_SCRIPT_REPAIR_MARKER =
   "__pulse_governed_autonomous_script_repair";
+const AUTONOMOUS_SCRIPT_CONTROL_TOKEN_PATTERN =
+  /\[(?:PAUSE|VISUAL(?:\s*:[^\]\r\n]*)?)\]/i;
 const AUTONOMOUS_BREAKING_SCRIPT_PROFILE = Object.freeze({
   editorial_lane_id: "what_changes_for_players",
   duration_band_id: "what_changes_short_25_32",
@@ -518,9 +521,24 @@ const CHANNEL_CLASSIFICATIONS = {
   ],
 };
 
+function countScriptContractWords(
+  fullScript,
+  { confirmedClaims = [] } = {},
+) {
+  const exactAutonomousRepair =
+    Array.isArray(confirmedClaims) && confirmedClaims.length > 0;
+  return countSpokenWords(
+    exactAutonomousRepair
+      ? String(fullScript || "")
+      : cleanForTTS(fullScript || ""),
+  );
+}
+
 function validate(script, channelId, options = {}) {
   const errors = [];
-  const actualWords = countSpokenWords(cleanForTTS(script.full_script || ""));
+  const actualWords = countScriptContractWords(script.full_script, {
+    confirmedClaims: options.confirmedClaims,
+  });
   if (channelId === "pulse-gaming") {
     const contract =
       options.contract ||
@@ -561,6 +579,19 @@ function validate(script, channelId, options = {}) {
         sourceEvidence: options.sourceEvidence,
       }),
     );
+    if (
+      Array.isArray(options.confirmedClaims) &&
+      options.confirmedClaims.length > 0
+    ) {
+      const claimAssessment =
+        assessGovernedAutonomousBreakingScriptClaimSupport({
+          script: script.full_script || "",
+          confirmed_claims: options.confirmedClaims,
+        });
+      if (claimAssessment.verdict !== "GREEN") {
+        errors.push(...claimAssessment.blockers);
+      }
+    }
   } else if (script.word_count < 155 || script.word_count > 185) {
     errors.push(`Word count ${script.word_count} outside 155-185 range`);
   }
@@ -628,6 +659,26 @@ function validate(script, channelId, options = {}) {
 
 // --- Post-generation sanitisation: fix banned openers and enforce British English ---
 function sanitiseScript(script) {
+  const publicTextFields = [
+    "hook",
+    "body",
+    "cta",
+    "full_script",
+    "suggested_title",
+    "suggested_thumbnail_text",
+  ];
+  for (const key of publicTextFields) {
+    if (!script[key]) continue;
+    script[key] = String(script[key])
+      .replace(
+        /\s*\[(?:PAUSE|VISUAL(?:\s*:[^\]\r\n]*)?)\]\s*/gi,
+        " ",
+      )
+      .replace(/\s+([,.;:!?])/g, "$1")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
   // Strip banned openers that slip through despite system prompt
   const forbidden =
     /^(?:so|today|hey|welcome|in\s+this|finally|actually)\b[\s,:;-]*/i;
@@ -639,14 +690,7 @@ function sanitiseScript(script) {
   }
 
   // Enforce British English spelling across all text fields
-  for (const key of [
-    "hook",
-    "body",
-    "cta",
-    "full_script",
-    "suggested_title",
-    "suggested_thumbnail_text",
-  ]) {
+  for (const key of publicTextFields) {
     if (!script[key]) continue;
     for (const [american, british] of Object.entries(BRITISH_SPELLING)) {
       const regex = new RegExp(`\\b${american}\\b`, "gi");
@@ -728,12 +772,12 @@ function removeMatchingBodySentences(body, removedSentences) {
 
 function normalisePulseDraftForContract(
   inputScript,
-  { contract = null } = {},
+  { contract = null, confirmedClaims = [] } = {},
 ) {
   const script = structuredClone(inputScript || {});
-  const actualWords = countSpokenWords(
-    cleanForTTS(script.full_script || ""),
-  );
+  const actualWords = countScriptContractWords(script.full_script, {
+    confirmedClaims,
+  });
   const result = {
     script,
     changed: false,
@@ -779,7 +823,9 @@ function normalisePulseDraftForContract(
   const removable = sentences
     .map((sentence, index) => ({
       index,
-      words: countSpokenWords(cleanForTTS(sentence)),
+      words: countScriptContractWords(sentence, {
+        confirmedClaims,
+      }),
     }))
     .filter(
       ({ index, words }) =>
@@ -834,7 +880,9 @@ function normalisePulseDraftForContract(
     script.body,
     removedSentences,
   );
-  script.word_count = countSpokenWords(cleanForTTS(script.full_script));
+  script.word_count = countScriptContractWords(script.full_script, {
+    confirmedClaims,
+  });
   return {
     ...result,
     script,
@@ -1247,6 +1295,7 @@ async function sonnetEditorPass(
     contract = null,
     ctaDecision = null,
     sourceEvidence = "",
+    confirmedClaims = [],
   } = {},
 ) {
   try {
@@ -1305,13 +1354,17 @@ Reply with ONLY the edited JSON object in the same format as the input. No expla
     if (channel.id === "pulse-gaming" && contract) {
       edited = normalisePulseDraftForContract(edited, {
         contract,
+        confirmedClaims,
       }).script;
     }
-    edited.word_count = countSpokenWords(cleanForTTS(edited.full_script || ""));
+    edited.word_count = countScriptContractWords(edited.full_script, {
+      confirmedClaims,
+    });
     const errors = validate(edited, channel.id, {
       contract,
       ctaDecision,
       sourceEvidence,
+      confirmedClaims,
     });
     if (errors.length > 0) {
       throw new Error(`editor_validation_failed:${errors.join("; ")}`);
@@ -1390,9 +1443,12 @@ async function process_stories() {
         stories,
         existingStories,
         { preferredStoryIds, repairContexts },
-      );
+    );
     if (repairCandidates.length > 0) {
-      stories = [...stories, ...repairCandidates];
+      stories = mergeAutonomousScriptRepairCandidates(
+        stories,
+        repairCandidates,
+      );
       console.log(
         `[processor] Added ${repairCandidates.length} recent governed script repair candidate(s) outside the current hunt selection`,
       );
@@ -1463,6 +1519,10 @@ async function process_stories() {
     // --- Fact-checking: fetch source material ---
     let sourceMaterial = null;
     let searchFacts = null;
+    const governedRepairContext =
+      readGovernedAutonomousScriptRepairContext(story);
+    const governedConfirmedClaims =
+      governedRepairContext?.confirmed_claims || [];
     const governedRepairEvidence =
       renderGovernedAutonomousScriptRepairEvidence(story);
 
@@ -1519,7 +1579,7 @@ Today's date is ${today}. You MUST follow these rules:
 5. If the story references an old event or outdated information, update it to reflect the current situation as of ${today}.
 6. For game release dates: check if the date has already passed. If so, note the game has either released or been delayed.` +
       (governedRepairEvidence
-        ? `\n7. GOVERNED REPAIR: the GOVERNED CONFIRMED CLAIMS block is the sole factual basis. Every factual clause must be supported by those exact claim keys and text. Do not carry any unsupported claim from the old story row, title, comments or prior script.`
+        ? `\n7. GOVERNED REPAIR: the GOVERNED CONFIRMED CLAIMS block is the sole factual basis. Every factual clause must be supported by those exact claim keys and text. Do not carry any unsupported claim from the old story row, title, comments or prior script. Do not output authoring or control tokens such as [PAUSE] or [VISUAL: description] in any public field.`
         : "") +
       (editorialPrompt ? `\n\n${editorialPrompt}` : "");
 
@@ -1601,6 +1661,7 @@ Today's date is ${today}. You MUST follow these rules:
         if (scriptContract) {
           const normalisation = normalisePulseDraftForContract(script, {
             contract: scriptContract,
+            confirmedClaims: governedConfirmedClaims,
           });
           script = normalisation.script;
           if (normalisation.changed) {
@@ -1609,14 +1670,15 @@ Today's date is ${today}. You MUST follow these rules:
             );
           }
         }
-        script.word_count = countSpokenWords(
-          cleanForTTS(script.full_script || ""),
-        );
+        script.word_count = countScriptContractWords(script.full_script, {
+          confirmedClaims: governedConfirmedClaims,
+        });
 
         const errors = validate(script, channel.id, {
           contract: scriptContract,
           ctaDecision,
           sourceEvidence: sourceEvidenceForValidation,
+          confirmedClaims: governedConfirmedClaims,
         });
         if (errors.length > 0) {
           console.log(
@@ -1695,6 +1757,7 @@ Today's date is ${today}. You MUST follow these rules:
             contract: scriptContract,
             ctaDecision,
             sourceEvidence: sourceEvidenceForValidation,
+            confirmedClaims: governedConfirmedClaims,
           });
           // Re-strip em dashes after editor pass
           for (const key of [
@@ -1712,9 +1775,9 @@ Today's date is ${today}. You MUST follow these rules:
           }
           sanitiseScript(script);
           applyPulseEditorialMetadata(script, scriptContract, ctaDecision);
-          script.word_count = countSpokenWords(
-            cleanForTTS(script.full_script || ""),
-          );
+          script.word_count = countScriptContractWords(script.full_script, {
+            confirmedClaims: governedConfirmedClaims,
+          });
         }
         break;
       } catch (err) {
@@ -1866,8 +1929,14 @@ function governedAutonomousScriptIsCompatible(
   story = {},
   repairContext = null,
 ) {
+  const fullScript = String(
+    story.full_script || story.tts_script || "",
+  );
+  if (AUTONOMOUS_SCRIPT_CONTROL_TOKEN_PATTERN.test(fullScript)) {
+    return false;
+  }
   const spokenWords = countSpokenWords(
-    cleanForTTS(story.full_script || story.tts_script || ""),
+    fullScript,
   );
   const editorialLaneId = String(
     story.editorial_lane_id || "",
@@ -1960,6 +2029,37 @@ function governedAutonomousScriptRepairCandidate(
   return candidate;
 }
 
+function mergeAutonomousScriptRepairCandidates(
+  pendingStories = [],
+  repairCandidates = [],
+) {
+  const replacements = new Map(
+    (Array.isArray(repairCandidates) ? repairCandidates : [])
+      .map((candidate) => [
+        String(candidate?.id || "").trim(),
+        candidate,
+      ])
+      .filter(([storyId]) => storyId),
+  );
+  const merged = [];
+  const seenIds = new Set();
+  for (const pending of Array.isArray(pendingStories)
+    ? pendingStories
+    : []) {
+    const storyId = String(pending?.id || "").trim();
+    if (storyId && seenIds.has(storyId)) continue;
+    merged.push(replacements.get(storyId) || pending);
+    if (storyId) seenIds.add(storyId);
+  }
+  for (const candidate of replacements.values()) {
+    const storyId = String(candidate?.id || "").trim();
+    if (seenIds.has(storyId)) continue;
+    merged.push(candidate);
+    seenIds.add(storyId);
+  }
+  return merged;
+}
+
 function selectAutonomousScriptRepairCandidates(
   pendingStories = [],
   existingStories = [],
@@ -2008,6 +2108,10 @@ function selectAutonomousScriptRepairCandidates(
       const preferred = preferredIds.has(storyId);
       const repairContext =
         exactRepairContexts.get(storyId) || null;
+      const governedPendingUpgrade =
+        pendingIds.has(storyId) &&
+        preferred &&
+        Boolean(repairContext);
       const requiresScriptRepair = preferred
         ? !governedAutonomousScriptIsCompatible(
             story,
@@ -2016,7 +2120,7 @@ function selectAutonomousScriptRepairCandidates(
         : needsScriptGenerationRepair(story);
       if (
         !storyId ||
-        pendingIds.has(storyId) ||
+        (pendingIds.has(storyId) && !governedPendingUpgrade) ||
         !requiresScriptRepair ||
         String(story?.youtube_post_id || "").trim()
       ) {
@@ -2309,6 +2413,8 @@ module.exports.needsScriptGenerationRepair =
   needsScriptGenerationRepair;
 module.exports.selectAutonomousScriptRepairCandidates =
   selectAutonomousScriptRepairCandidates;
+module.exports.mergeAutonomousScriptRepairCandidates =
+  mergeAutonomousScriptRepairCandidates;
 module.exports.discoverReadyGovernedInventoryStoryIds =
   discoverReadyGovernedInventoryStoryIds;
 module.exports.discoverReadyGovernedInventoryScriptRepairContexts =

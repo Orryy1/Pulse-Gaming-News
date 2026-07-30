@@ -9,8 +9,13 @@ const test = require("node:test");
 
 const {
   REQUEST_SCHEMA_VERSION,
+  materialiseGovernedAutonomousNarrationTimingObservation,
   materialiseGovernedAutonomousOfficialCandidate,
 } = require("../../lib/services/governed-autonomous-production-coordinator");
+const {
+  BUILDER_RESULT_SCHEMA_VERSION,
+  canonicalSha256: builderCanonicalSha256,
+} = require("../../lib/services/governed-autonomous-production-request-builder");
 const {
   validateAutonomousOfficialJitPreparationManifest,
 } = require("../../lib/services/autonomous-official-jit-admission-packet");
@@ -31,9 +36,16 @@ const {
   canonicalSha256: compiledCanonicalSha256,
   createGovernedAutonomousCompiledCandidateRevision,
 } = require("../../lib/services/governed-autonomous-compiled-candidate-binding");
+const {
+  discoverGovernedAutonomousNarrationTimingEvidence,
+  materializeGovernedAutonomousNarrationTimingEvidence,
+  validateGovernedAutonomousNarrationTimingEvidence,
+} = require("../../lib/services/governed-autonomous-narration-timing-evidence");
 
 const GENERATED_AT = "2026-07-29T12:00:00.000Z";
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
+const STANDARD_BREAKING_SCRIPT =
+  "Yet Another Zombie Defense HD is free to keep on Steam, but the offer ends on 30 July. Build barricades by day, then survive the night alone or with up to four players. Claim it before 30 July and add the game to your Steam library.";
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -41,6 +53,37 @@ function sha256(value) {
 
 function jsonBytes(value) {
   return Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function exactBuilderResult(request) {
+  const body = {
+    schema_version: BUILDER_RESULT_SCHEMA_VERSION,
+    mode: "LOCAL_PROOF",
+    story_id:
+      request.locked_intake.database_story_binding
+        .canonical_story_id,
+    role: request.role,
+    scheduled_for: request.scheduled_for,
+    reservation_set_sha256: sha256("reservation-set"),
+    production_request: structuredClone(request),
+    safety: {
+      local_proof_only: true,
+      database_authority: false,
+      database_mutated: false,
+      network_authority: false,
+      network_used: false,
+      oauth_or_token_authority: false,
+      oauth_or_tokens_mutated: false,
+      platform_contacted: false,
+      publish_authority: false,
+      scheduler_authority: false,
+      external_publish_authorised: false,
+    },
+  };
+  return {
+    ...body,
+    builder_sha256: builderCanonicalSha256(body),
+  };
 }
 
 function rendererReceipt(adapterId, extra = {}) {
@@ -91,13 +134,15 @@ function scene({
 }
 
 function scenes(target = 36.48) {
+  const opening = Math.min(3, target);
+  const segment = (target - opening) / 4;
   return [
     scene({
       assetId: "owned-hook",
       role: "hook_slam",
       mediaType: "image",
       start: 0,
-      duration: 3,
+      duration: opening,
       headline: "FREE TO KEEP",
       layout: "TITLE",
     }),
@@ -115,7 +160,7 @@ function scenes(target = 36.48) {
       role: "verified_deadline",
       mediaType: "image",
       start: 3,
-      duration: 7,
+      duration: segment,
       headline: "ENDS 30 JULY",
       layout: "TIMELINE",
     }),
@@ -123,8 +168,8 @@ function scenes(target = 36.48) {
       assetId: "owned-price",
       role: "verified_price",
       mediaType: "image",
-      start: 10,
-      duration: 7,
+      start: opening + segment,
+      duration: segment,
       headline: "100% OFF",
       layout: "COMPARISON",
     }),
@@ -132,8 +177,8 @@ function scenes(target = 36.48) {
       assetId: "owned-coop",
       role: "verified_coop",
       mediaType: "image",
-      start: 17,
-      duration: 7,
+      start: opening + segment * 2,
+      duration: segment,
       headline: "UP TO 4 PLAYERS",
       layout: "GRID",
     }),
@@ -141,8 +186,8 @@ function scenes(target = 36.48) {
       assetId: "owned-impact",
       role: "player_impact",
       mediaType: "image",
-      start: 24,
-      duration: target - 24,
+      start: opening + segment * 3,
+      duration: segment,
       headline: "CLAIM IT NOW",
       layout: "IMPACT",
     }),
@@ -258,6 +303,56 @@ async function fixture(t, options = {}) {
   const fastNewsSourceEvidenceSha256 = sha256(
     `${locked.storyId}:fast-news-source-evidence`,
   );
+  const finalScript =
+    options.provisionalStandard === true
+      ? STANDARD_BREAKING_SCRIPT
+      : locked.script;
+  const finalScriptSha256 = sha256(
+    Buffer.from(finalScript, "utf8"),
+  );
+  const targetDurationSeconds =
+    options.provisionalStandard === true
+      ? 29.92
+      : 36.48;
+  const contract =
+    options.provisionalStandard === true
+      ? {
+          editorial_lane_id:
+            "what_changes_for_players",
+          hook_type: "direct",
+          duration_band_id:
+            "what_changes_short_25_32",
+          target_duration_seconds:
+            targetDurationSeconds,
+        }
+      : locked.contract;
+  const standardBindings = [
+    {
+      clause:
+        "Yet Another Zombie Defense HD is free to keep on Steam, but the offer ends on 30 July.",
+      claim_keys: [
+        "awesome_games_studio.yazd_hd.free",
+        "awesome_games_studio.yazd_hd.claim_period",
+      ],
+    },
+    {
+      clause:
+        "Build barricades by day, then survive the night alone or with up to four players.",
+      claim_keys: [
+        "yet_another_zombie_defense.store_description",
+        "yet_another_zombie_defense.gameplay_loop",
+        "yet_another_zombie_defense.coop",
+      ],
+    },
+    {
+      clause:
+        "Claim it before 30 July and add the game to your Steam library.",
+      claim_keys: [
+        "awesome_games_studio.yazd_hd.claim_period",
+        "awesome_games_studio.yazd_hd.free",
+      ],
+    },
+  ];
   const fastNewsLaneDecision =
     createGovernedFastNewsLaneDecision({
       story_id: locked.storyId,
@@ -291,17 +386,30 @@ async function fixture(t, options = {}) {
           canonical_identity_url: canonicalIdentityUrl,
           inventory_file_sha256:
             locked.registryFileSha256,
-          final_script_sha256: locked.scriptSha256,
+          final_script_sha256: finalScriptSha256,
         }),
       inventory_path: locked.registryPath,
       inventory_file_sha256: locked.registryFileSha256,
       inventory_root: locked.inventoryRoot,
       allowed_roots: [locked.outputRoot, root],
       canonical_identity_url: canonicalIdentityUrl,
-      final_script: locked.script,
-      final_script_sha256: locked.scriptSha256,
-      script_claim_bindings: locked.scriptClaimBindings,
-      presentation_claim_bindings: locked.presentationClaimBindings,
+      final_script: finalScript,
+      final_script_sha256: finalScriptSha256,
+      script_claim_bindings:
+        options.provisionalStandard === true
+          ? standardBindings
+          : locked.scriptClaimBindings,
+      presentation_claim_bindings:
+        options.provisionalStandard === true
+          ? standardBindings.map((binding) => ({
+              presentation_text: binding.clause
+                .split(/\s+/)
+                .slice(0, 6)
+                .join(" ")
+                .toUpperCase(),
+              claim_keys: binding.claim_keys,
+            }))
+          : locked.presentationClaimBindings,
       supplemental_official_sources: [
         {
           path: locked.supplementalPath,
@@ -309,7 +417,7 @@ async function fixture(t, options = {}) {
           canonical_sha256: locked.storePacket.packet_sha256,
         },
       ],
-      contract: locked.contract,
+      contract,
       freshness: locked.freshness,
       visual_brief: locked.visualBrief,
       experiment_dimensions: {
@@ -319,7 +427,7 @@ async function fixture(t, options = {}) {
       },
     },
     creative: {
-      scenes: scenes(),
+      scenes: scenes(targetDurationSeconds),
       title:
         "Yet Another Zombie Defense HD Is Free Until 30 July",
       description: [
@@ -407,7 +515,7 @@ async function fixture(t, options = {}) {
       supplemental_source_packet_sha256: [
         locked.storePacket.packet_sha256,
       ],
-      final_script_sha256: locked.scriptSha256,
+      final_script_sha256: finalScriptSha256,
       fast_news_lane_decision_sha256:
         fastNewsLaneDecision.decision_sha256,
       locked_intake_sha256: compiledCanonicalSha256(
@@ -441,6 +549,7 @@ async function fixture(t, options = {}) {
   });
 
   let generatedNarrations = 0;
+  let ownedSceneRenders = 0;
   const finalCompositeFfmpegPath = path.join(
     root,
     "bin",
@@ -469,6 +578,12 @@ async function fixture(t, options = {}) {
           voice_id: "pulse-liam-approved",
           http_status: 200,
           provider_result_recorded: true,
+          provider_result: {
+            relative_path:
+              "provider-results/exact-replay.json",
+            sha256: "6".repeat(64),
+            byte_length: 2048,
+          },
         },
         credit_report: commercialCreditReport(),
         transform_status: "COMPLETE",
@@ -479,6 +594,7 @@ async function fixture(t, options = {}) {
     ownedProgramme: {
       hyperframesGeneratorIdentity: "hyperframes@0.7.77",
       async renderScene({ outputPath, scene: input }) {
+        ownedSceneRenders += 1;
         await fs.mkdir(path.dirname(outputPath), { recursive: true });
         await fs.writeFile(
           outputPath,
@@ -514,7 +630,8 @@ async function fixture(t, options = {}) {
     },
     async probeNarrationAudio() {
       return {
-        duration_seconds: 36,
+        duration_seconds:
+          options.narrationDurationSeconds ?? 36,
         codec_name: "mp3",
         has_audio: true,
       };
@@ -523,12 +640,23 @@ async function fixture(t, options = {}) {
       ffmpegPath: finalCompositeFfmpegPath,
       async probeMedia(filePath) {
         if (path.extname(filePath).toLowerCase() === ".mp3") {
-          return audioProbe();
+          return audioProbe(
+            options.narrationDurationSeconds ?? 36,
+          );
         }
         if (path.basename(filePath).includes("owned-programme")) {
-          return videoProbe();
+          return videoProbe({
+            duration:
+              request.locked_intake.contract
+                .target_duration_seconds,
+          });
         }
-        return videoProbe({ audio: true });
+        return videoProbe({
+          duration:
+            request.locked_intake.contract
+              .target_duration_seconds,
+          audio: true,
+        });
       },
       async measureLoudness(filePath) {
         return path.extname(filePath).toLowerCase() === ".mp3"
@@ -539,8 +667,10 @@ async function fixture(t, options = {}) {
         return {
           threshold_db: -50,
           minimum_duration_seconds: 0.1,
-          terminal_silence_start_seconds: 36,
-          terminal_silence_seconds: 0.48,
+          terminal_silence_start_seconds:
+            options.alignmentEndSeconds ?? 36,
+          terminal_silence_seconds:
+            options.finalTerminalSilenceSeconds ?? 0.48,
         };
       },
       async renderComposite(invocation) {
@@ -609,7 +739,112 @@ async function fixture(t, options = {}) {
     request,
     dependencies,
     generatedNarrations: () => generatedNarrations,
+    ownedSceneRenders: () => ownedSceneRenders,
   };
+}
+
+function rebindCandidateRequest(request) {
+  const revision =
+    createGovernedAutonomousCompiledCandidateRevision({
+      ...request.candidate_revision,
+      locked_intake_sha256: compiledCanonicalSha256(
+        request.locked_intake,
+      ),
+      creative_package_sha256: compiledCanonicalSha256(
+        request.creative,
+      ),
+    });
+  request.candidate_revision = revision;
+  request.candidate_revision_sha256 =
+    compiledCanonicalSha256(revision);
+  request.request_fingerprint = compiledCanonicalSha256({
+    schema_version:
+      "pulse-governed-autonomous-breaking-production-request-fingerprint-v1",
+    story_id:
+      request.locked_intake.database_story_binding
+        .canonical_story_id,
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    scheduled_for: request.scheduled_for,
+    candidate_revision_sha256:
+      request.candidate_revision_sha256,
+    locked_intake_sha256:
+      revision.locked_intake_sha256,
+    creative_package_sha256:
+      revision.creative_package_sha256,
+    runtime_policy_sha256:
+      revision.runtime_policy_sha256,
+  });
+}
+
+async function bindCachedMeasuredFlash(input, stateRoot) {
+  const reference =
+    await discoverGovernedAutonomousNarrationTimingEvidence({
+      stateRoot,
+      legacyStoryId:
+        input.request.locked_intake.database_story_binding
+          .database_story_id,
+      storyId:
+        input.request.locked_intake.database_story_binding
+          .canonical_story_id,
+      scriptSha256:
+        input.request.locked_intake.final_script_sha256,
+      provider: input.request.narration,
+    });
+  assert.ok(reference);
+  const evidence =
+    validateGovernedAutonomousNarrationTimingEvidence(
+      JSON.parse(await fs.readFile(reference.path, "utf8")),
+      {
+        storyId:
+          input.request.locked_intake.database_story_binding
+            .canonical_story_id,
+        legacyStoryId:
+          input.request.locked_intake.database_story_binding
+            .database_story_id,
+        scriptSha256:
+          input.request.locked_intake.final_script_sha256,
+        provider: input.request.narration,
+        requireAudioSha256: true,
+      },
+    );
+  input.request.locked_intake.contract = {
+    editorial_lane_id: "what_changes_for_players",
+    hook_type: "direct",
+    duration_band_id:
+      "what_changes_breaking_flash_18_24",
+    target_duration_seconds:
+      evidence.target.duration_seconds,
+    target_duration_review: {
+      status: "APPROVED",
+      target_duration_seconds:
+        evidence.target.duration_seconds,
+      script_sha256: evidence.script_sha256,
+      reviewed_by:
+        "SYSTEM_MEASUREMENT:pulse-governed-autonomous-narration-timing-evidence-v1",
+      reviewed_at: evidence.reviewed_at,
+      narration_timing_evidence_path: reference.path,
+      narration_timing_evidence_sha256:
+        reference.file_sha256,
+      narration_provider_result_sha256:
+        evidence.provider_result.sha256,
+      narration_audio_sha256: evidence.audio.sha256,
+      narration_audio_duration_seconds:
+        evidence.audio.duration_seconds,
+      narration_alignment_end_seconds:
+        evidence.alignment.end_seconds,
+      narration_alignment_sha256:
+        evidence.alignment.sha256,
+      narration_tail_seconds:
+        evidence.target.narration_tail_seconds,
+    },
+  };
+  input.request.creative.scenes = scenes(
+    evidence.target.duration_seconds,
+  );
+  rebindCandidateRequest(input.request);
+  return { evidence, reference };
 }
 
 test("materialises the locked official story through real governed staging into a JIT-valid closed packet", async (t) => {
@@ -769,4 +1004,405 @@ test("closed request rejects authority smuggling before narration or rendering s
       "autonomous_production_request_fields_invalid",
   );
   assert.equal(input.generatedNarrations(), 0);
+});
+
+test("caches exact narration timing and requests immutable replan before any owned-programme render", async (t) => {
+  const input = await fixture(t, {
+    provisionalStandard: true,
+    narrationDurationSeconds: 19.691,
+    alignmentEndSeconds: 19.691,
+  });
+  const stateRoot = path.join(input.root, "runtime-state");
+  input.dependencies.narrationTimingEvidence = {
+    state_root: stateRoot,
+  };
+  const generateNarration =
+    input.dependencies.generateNarration;
+  input.dependencies.generateNarration = async (request) => {
+    const result = await generateNarration(request);
+    await fs.writeFile(
+      request.alignment_path,
+      jsonBytes(
+        makeAlignment(
+          request.script_text,
+          19.691,
+        ),
+      ),
+    );
+    return result;
+  };
+
+  await assert.rejects(
+    materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    ),
+    {
+      code:
+        "autonomous_production_narration_timing_replan_required",
+    },
+  );
+
+  assert.equal(input.generatedNarrations(), 1);
+  assert.equal(input.ownedSceneRenders(), 0);
+  const reference =
+    await discoverGovernedAutonomousNarrationTimingEvidence({
+      stateRoot,
+      legacyStoryId:
+        input.request.locked_intake.database_story_binding
+          .database_story_id,
+      storyId:
+        input.request.locked_intake.database_story_binding
+          .canonical_story_id,
+      scriptSha256:
+        input.request.locked_intake.final_script_sha256,
+      provider: input.request.narration,
+    });
+  const evidence =
+    validateGovernedAutonomousNarrationTimingEvidence(
+      JSON.parse(
+        await fs.readFile(reference.path, "utf8"),
+      ),
+      {
+        storyId:
+          input.request.locked_intake
+            .database_story_binding.canonical_story_id,
+        legacyStoryId:
+          input.request.locked_intake
+            .database_story_binding.database_story_id,
+        scriptSha256:
+          input.request.locked_intake
+            .final_script_sha256,
+        provider: input.request.narration,
+        providerResultSha256: "6".repeat(64),
+        alignmentSha256: sha256(
+          jsonBytes(
+            makeAlignment(
+              input.request.locked_intake.final_script,
+              19.691,
+            ),
+          ),
+        ),
+        requireAudioSha256: true,
+      },
+    );
+  assert.equal(evidence.target.duration_seconds, 20.041);
+  assert.equal(evidence.target.narration_tail_seconds, 0.35);
+});
+
+test("a continuous final music mix cannot mask excessive narration-stem tail", async (t) => {
+  const input = await fixture(t, {
+    provisionalStandard: true,
+    narrationDurationSeconds: 19.691,
+    alignmentEndSeconds: 18,
+    finalTerminalSilenceSeconds: 0,
+  });
+  input.dependencies.narrationTimingEvidence = {
+    state_root: path.join(input.root, "runtime-state"),
+  };
+  const generateNarration =
+    input.dependencies.generateNarration;
+  input.dependencies.generateNarration = async (request) => {
+    const result = await generateNarration(request);
+    await fs.writeFile(
+      request.alignment_path,
+      jsonBytes(makeAlignment(request.script_text, 18)),
+    );
+    return result;
+  };
+
+  await assert.rejects(
+    materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    ),
+    {
+      code: "narration_timing_evidence_tail_excessive",
+    },
+  );
+  assert.equal(input.ownedSceneRenders(), 0);
+});
+
+test("observes an exact terminal builder through narration replay only and returns a replan receipt", async (t) => {
+  const input = await fixture(t, {
+    provisionalStandard: true,
+    narrationDurationSeconds: 19.691,
+    alignmentEndSeconds: 19.691,
+  });
+  const stateRoot = path.join(input.root, "runtime-state");
+  input.dependencies.narrationTimingEvidence = {
+    state_root: stateRoot,
+  };
+  const generateNarration =
+    input.dependencies.generateNarration;
+  input.dependencies.generateNarration = async (request) => {
+    const result = await generateNarration(request);
+    await fs.writeFile(
+      request.alignment_path,
+      jsonBytes(
+        makeAlignment(request.script_text, 19.691),
+      ),
+    );
+    return { ...result, network_used: false };
+  };
+
+  const receipt =
+    await materialiseGovernedAutonomousNarrationTimingObservation(
+      exactBuilderResult(input.request),
+      input.dependencies,
+    );
+
+  assert.equal(
+    receipt.schema_version,
+    "pulse-governed-autonomous-narration-timing-observation-v1",
+  );
+  assert.equal(
+    receipt.status,
+    "NARRATION_TIMING_OBSERVED_REPLAN_REQUIRED",
+  );
+  assert.equal(
+    receipt.story_id,
+    input.request.locked_intake.database_story_binding
+      .canonical_story_id,
+  );
+  assert.equal(receipt.timing_evidence.target_duration_seconds, 20.041);
+  assert.match(
+    receipt.timing_evidence.file_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  assert.deepEqual(receipt.safety, {
+    narration_network_used: false,
+    programme_rendered: false,
+    database_mutated: false,
+    oauth_or_tokens_mutated: false,
+    platform_contacted: false,
+    publish_authority_created: false,
+    external_posting: false,
+  });
+  assert.equal(input.generatedNarrations(), 1);
+  assert.equal(input.ownedSceneRenders(), 0);
+});
+
+test("accepts only replay narration that matches the hash-bound measured Flash timing before rendering", async (t) => {
+  const input = await fixture(t, {
+    provisionalStandard: true,
+    narrationDurationSeconds: 19.691,
+    alignmentEndSeconds: 19.691,
+    finalTerminalSilenceSeconds: 0.35,
+  });
+  const stateRoot = path.join(input.root, "runtime-state");
+  const alignmentBytes = jsonBytes(
+    makeAlignment(
+      input.request.locked_intake.final_script,
+      19.691,
+    ),
+  );
+  const timing =
+    await materializeGovernedAutonomousNarrationTimingEvidence({
+      schema_version:
+        "pulse-governed-autonomous-narration-timing-evidence-request-v1",
+      mode: "LOCAL_PROOF",
+      story_id:
+        input.request.locked_intake.database_story_binding
+          .canonical_story_id,
+      legacy_story_id:
+        input.request.locked_intake.database_story_binding
+          .database_story_id,
+      script_sha256:
+        input.request.locked_intake.final_script_sha256,
+      provider: input.request.narration,
+      provider_result_sha256: "6".repeat(64),
+      audio_sha256: sha256(
+        Buffer.from(
+          "exact-mastered-elevenlabs-narration",
+          "utf8",
+        ),
+      ),
+      audio_duration_seconds: 19.691,
+      alignment_sha256: sha256(alignmentBytes),
+      alignment_end_seconds: 19.691,
+      generated_at: GENERATED_AT,
+      reviewed_at: GENERATED_AT,
+      state_root: stateRoot,
+    });
+  input.request.locked_intake.contract = {
+    editorial_lane_id: "what_changes_for_players",
+    hook_type: "direct",
+    duration_band_id:
+      "what_changes_breaking_flash_18_24",
+    target_duration_seconds: 20.041,
+    target_duration_review: {
+      status: "APPROVED",
+      target_duration_seconds: 20.041,
+      script_sha256:
+        input.request.locked_intake.final_script_sha256,
+      reviewed_by:
+        "SYSTEM_MEASUREMENT:pulse-governed-autonomous-narration-timing-evidence-v1",
+      reviewed_at: GENERATED_AT,
+      narration_timing_evidence_path: timing.path,
+      narration_timing_evidence_sha256:
+        timing.file_sha256,
+      narration_provider_result_sha256: "6".repeat(64),
+      narration_audio_sha256:
+        timing.evidence.audio.sha256,
+      narration_audio_duration_seconds: 19.691,
+      narration_alignment_end_seconds: 19.691,
+      narration_alignment_sha256: sha256(alignmentBytes),
+      narration_tail_seconds: 0.35,
+    },
+  };
+  input.request.creative.scenes = scenes(20.041);
+  input.dependencies.narrationTimingEvidence = {
+    state_root: stateRoot,
+  };
+  const generateNarration =
+    input.dependencies.generateNarration;
+  input.dependencies.generateNarration = async (request) => {
+    const result = await generateNarration(request);
+    await fs.writeFile(
+      request.alignment_path,
+      jsonBytes(
+        makeAlignment(
+          request.script_text,
+          19.691,
+        ),
+      ),
+    );
+    return result;
+  };
+  rebindCandidateRequest(input.request);
+
+  const result =
+    await materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    );
+
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(input.generatedNarrations(), 1);
+  assert.ok(input.ownedSceneRenders() > 0);
+  assert.equal(
+    result.narration.timing_evidence_sha256,
+    timing.file_sha256,
+  );
+});
+
+test("replans a timing-observed Flash candidate with durable narration replay and no second paid provider call", async (t) => {
+  const input = await fixture(t, {
+    provisionalStandard: true,
+    narrationDurationSeconds: 19.691,
+    alignmentEndSeconds: 19.691,
+    finalTerminalSilenceSeconds: 0.35,
+  });
+  const stateRoot = path.join(input.root, "runtime-state");
+  input.dependencies.narrationTimingEvidence = {
+    state_root: stateRoot,
+  };
+  const generateNarration =
+    input.dependencies.generateNarration;
+  let generationAttempts = 0;
+  let paidProviderCalls = 0;
+  input.dependencies.generateNarration = async (request) => {
+    generationAttempts += 1;
+    if (generationAttempts === 1) paidProviderCalls += 1;
+    const result = await generateNarration(request);
+    await fs.writeFile(
+      request.alignment_path,
+      jsonBytes(
+        makeAlignment(request.script_text, 19.691),
+      ),
+    );
+    return {
+      ...result,
+      network_used: generationAttempts === 1,
+    };
+  };
+
+  await assert.rejects(
+    materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    ),
+    {
+      code:
+        "autonomous_production_narration_timing_replan_required",
+    },
+  );
+  assert.equal(input.ownedSceneRenders(), 0);
+
+  const timing = await bindCachedMeasuredFlash(
+    input,
+    stateRoot,
+  );
+  const result =
+    await materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    );
+
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(generationAttempts, 2);
+  assert.equal(paidProviderCalls, 1);
+  assert.equal(result.safety.narration_network_used, false);
+  assert.equal(
+    result.narration.timing_evidence_sha256,
+    timing.reference.file_sha256,
+  );
+});
+
+test("rejects replay bytes that do not match the immutable timing evidence before owned rendering", async (t) => {
+  const input = await fixture(t, {
+    provisionalStandard: true,
+    narrationDurationSeconds: 19.691,
+    alignmentEndSeconds: 19.691,
+  });
+  const stateRoot = path.join(input.root, "runtime-state");
+  input.dependencies.narrationTimingEvidence = {
+    state_root: stateRoot,
+  };
+  const generateNarration =
+    input.dependencies.generateNarration;
+  input.dependencies.generateNarration = async (request) => {
+    const result = await generateNarration(request);
+    await fs.writeFile(
+      request.alignment_path,
+      jsonBytes(
+        makeAlignment(request.script_text, 19.691),
+      ),
+    );
+    return result;
+  };
+  await assert.rejects(
+    materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    ),
+    {
+      code:
+        "autonomous_production_narration_timing_replan_required",
+    },
+  );
+  await bindCachedMeasuredFlash(input, stateRoot);
+  const replayNarration =
+    input.dependencies.generateNarration;
+  input.dependencies.generateNarration = async (request) => {
+    const result = await replayNarration(request);
+    await fs.appendFile(
+      request.audio_path,
+      Buffer.from("tampered-replay", "utf8"),
+    );
+    return { ...result, network_used: false };
+  };
+
+  await assert.rejects(
+    materialiseGovernedAutonomousOfficialCandidate(
+      input.request,
+      input.dependencies,
+    ),
+    {
+      code:
+        "autonomous_production_narration_timing_mismatch",
+    },
+  );
+  assert.equal(input.ownedSceneRenders(), 0);
 });

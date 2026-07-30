@@ -469,6 +469,7 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
   ];
   const storyLookups = [];
   const hydrationCalls = [];
+  const timingDiscoveryCalls = [];
   const compilationCalls = [];
   const planningCalls = [];
   const jobs = {
@@ -487,6 +488,12 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
     ],
     governedAutonomousBreakingRuntimePolicy:
       runtimePolicy(),
+    env: {
+      PULSE_STATE_ROOT: path.join(
+        workspaceRoot,
+        "runtime-state",
+      ),
+    },
     repos: {
       jobs,
       stories: {
@@ -532,6 +539,21 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
         },
       };
     },
+    async discoverGovernedAutonomousNarrationTimingEvidence(
+      input,
+    ) {
+      timingDiscoveryCalls.push(input);
+      return {
+        path: path.join(
+          input.stateRoot,
+          `${input.legacyStoryId}.json`,
+        ),
+        file_sha256:
+          input.legacyStoryId === "rss-alpha"
+            ? "7".repeat(64)
+            : "8".repeat(64),
+      };
+    },
     async compileGovernedAutonomousBreakingCandidateContract(
       input,
     ) {
@@ -563,6 +585,24 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
     ["rss-alpha", "rss-beta"],
   );
   assert.equal(compilationCalls.length, 2);
+  assert.deepEqual(
+    timingDiscoveryCalls.map((call) => ({
+      legacyStoryId: call.legacyStoryId,
+      storyId: call.storyId,
+      scriptSha256: call.scriptSha256,
+    })),
+    ["rss-alpha", "rss-beta"].map((storyId) => ({
+      legacyStoryId: storyId,
+      storyId:
+        `official_${canonicalHash(
+          `https://news.xbox.com/en-us/${storyId}/`,
+        )}`,
+      scriptSha256: crypto
+        .createHash("sha256")
+        .update(dbStory(storyId).full_script)
+        .digest("hex"),
+    })),
+  );
   assert.equal(
     compilationCalls[0].candidate.story_id,
     "rss-alpha",
@@ -570,6 +610,29 @@ test("gathers exact READY inventory identities and DB rows before compiling and 
   assert.equal(
     compilationCalls[0].story.id,
     "rss-alpha",
+  );
+  assert.deepEqual(
+    compilationCalls.map(
+      (call) => call.narration_timing_evidence,
+    ),
+    [
+      {
+        path: path.join(
+          workspaceRoot,
+          "runtime-state",
+          "rss-alpha.json",
+        ),
+        file_sha256: "7".repeat(64),
+      },
+      {
+        path: path.join(
+          workspaceRoot,
+          "runtime-state",
+          "rss-beta.json",
+        ),
+        file_sha256: "8".repeat(64),
+      },
+    ],
   );
   assert.equal(planningCalls.length, 1);
   assert.equal(planningCalls[0].options.jobs, jobs);

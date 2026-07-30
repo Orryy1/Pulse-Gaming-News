@@ -105,7 +105,9 @@ jobs:
           tests/services/weekly-longform-runtime-capability-probe.test.js
           tests/ops/weekly-longform-runtime-capabilities-cli.test.js
           tests/services/governed-breaking-watcher.test.js
+          tests/services/elevenlabs-credit-durable-governor.test.js
           tests/services/governed-autonomous-breaking-candidate-contract-compiler.test.js
+          tests/services/governed-autonomous-narration-timing-evidence.test.js
           tests/services/governed-autonomous-candidate-completion-receipt.test.js
           tests/services/governed-autonomous-candidate-completion-receipt-index.test.js
           tests/services/governed-autonomous-content-qa.test.js

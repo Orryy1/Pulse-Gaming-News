@@ -604,6 +604,148 @@ test("activation receipt and process races hold before a backup is trusted", asy
   assert.ok(process.blockers.includes("source_wal_not_quiescent"));
 });
 
+test("transient unavailable quiescence probes are retried without weakening a real hold", async (t) => {
+  const transient = fixture(t);
+  let transientChecks = 0;
+  const recovered = await cleanCloseGovernedSourceWal(
+    request(transient),
+    deps({
+      inspectQuiescence: async () => {
+        transientChecks += 1;
+        if (transientChecks <= 2) {
+          return {
+            available: false,
+            probe_attestations: {
+              listeners: false,
+              processes: false,
+              scheduled_tasks: false,
+            },
+          };
+        }
+        return deps().inspectQuiescence();
+      },
+    }),
+  );
+  assert.equal(recovered.verdict, "PASS", JSON.stringify(recovered));
+  assert.ok(transientChecks >= 3);
+
+  const occupied = fixture(t);
+  let occupiedChecks = 0;
+  const held = await cleanCloseGovernedSourceWal(
+    request(occupied, {
+      change_id: "occupied-change",
+      confirmation_id: "occupied-change",
+    }),
+    deps({
+      inspectQuiescence: async () => {
+        occupiedChecks += 1;
+        return {
+          ...(await deps().inspectQuiescence()),
+          owner_pids: [4242],
+        };
+      },
+    }),
+  );
+  assert.equal(held.verdict, "HOLD");
+  assert.deepEqual(held.blockers, ["source_wal_not_quiescent"]);
+  assert.equal(occupiedChecks, 1);
+
+  const unavailable = fixture(t);
+  const unavailableSha = sha(unavailable.databasePath);
+  let unavailableChecks = 0,
+    unavailableLeaseAcquires = 0;
+  const unavailableResult = await cleanCloseGovernedSourceWal(
+    request(unavailable, {
+      change_id: "unavailable-change",
+      confirmation_id: "unavailable-change",
+    }),
+    deps({
+      inspectQuiescence: async () => {
+        unavailableChecks += 1;
+        return {
+          available: false,
+          probe_attestations: {
+            listeners: false,
+            processes: false,
+            scheduled_tasks: false,
+          },
+        };
+      },
+      acquireLease: () => {
+        unavailableLeaseAcquires += 1;
+        throw new Error("must not acquire");
+      },
+    }),
+  );
+  assert.equal(unavailableResult.verdict, "HOLD");
+  assert.deepEqual(unavailableResult.blockers, [
+    "source_wal_quiescence_unavailable",
+  ]);
+  assert.equal(unavailableResult.status, "HELD");
+  assert.equal(unavailableChecks, 3);
+  assert.equal(unavailableLeaseAcquires, 0);
+  assert.equal(sha(unavailable.databasePath), unavailableSha);
+
+  const transientOccupied = fixture(t);
+  let transientOccupiedChecks = 0;
+  const transientOccupiedResult = await cleanCloseGovernedSourceWal(
+    request(transientOccupied, {
+      change_id: "transient-occupied-change",
+      confirmation_id: "transient-occupied-change",
+    }),
+    deps({
+      inspectQuiescence: async () => {
+        transientOccupiedChecks += 1;
+        const base = await deps().inspectQuiescence();
+        if (transientOccupiedChecks === 1) {
+          return {
+            available: false,
+            probe_attestations: {
+              listeners: false,
+              processes: false,
+              scheduled_tasks: false,
+            },
+          };
+        }
+        return { ...base, owner_pids: [77] };
+      },
+    }),
+  );
+  assert.equal(transientOccupiedResult.verdict, "HOLD");
+  assert.deepEqual(transientOccupiedResult.blockers, [
+    "source_wal_not_quiescent",
+  ]);
+  assert.equal(transientOccupiedChecks, 2);
+
+  const receiptRace = fixture(t);
+  let receiptRaceChecks = 0;
+  const receiptRaceResult = await cleanCloseGovernedSourceWal(
+    request(receiptRace, {
+      change_id: "retry-receipt-race",
+      confirmation_id: "retry-receipt-race",
+    }),
+    deps({
+      inspectQuiescence: async () => {
+        receiptRaceChecks += 1;
+        fs.writeFileSync(receiptRace.receiptPath, "active");
+        return {
+          available: false,
+          probe_attestations: {
+            listeners: false,
+            processes: false,
+            scheduled_tasks: false,
+          },
+        };
+      },
+    }),
+  );
+  assert.equal(receiptRaceResult.verdict, "HOLD");
+  assert.deepEqual(receiptRaceResult.blockers, [
+    "source_wal_activation_receipt_present",
+  ]);
+  assert.equal(receiptRaceChecks, 1);
+});
+
 test("hard-linked sources and partial directories are rejected without overwrite", async (t) => {
   const v = fixture(t),
     link = path.join(v.root, "pulse-hardlink.db");

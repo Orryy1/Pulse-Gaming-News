@@ -62,7 +62,7 @@ function argv(overrides = []) {
 test("parseArgs exposes one closed LOCAL_PROOF exact-plan command surface", () => {
   const parsed = parseArgs(argv());
   assert.equal(parsed.mode, "LOCAL_PROOF");
-  assert.equal(parsed.plan, "C:\\Pulse\\production-plan.json");
+  assert.equal(parsed.plan, path.resolve("C:\\Pulse\\production-plan.json"));
   assert.equal(parsed.planFileSha256, SHA);
   assert.equal(parsed.planSha256, SHA);
   assert.equal(parsed.expectedCommit, COMMIT);

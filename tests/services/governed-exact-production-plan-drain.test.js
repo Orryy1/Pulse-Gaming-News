@@ -2950,7 +2950,7 @@ test("a retryable PRIMARY outcome never makes STANDBY claimable during PRIMARY b
   assert.equal(standby.attempt_count, 0);
 });
 
-test("the default runtime-profile gate accepts only the repository's exact reviewed live profile", async (t) => {
+test("the default runtime-profile gate accepts only the repository's exact reviewed live profile", { skip: process.platform !== "win32" }, async (t) => {
   const values = await fixture(t);
   const reviewedProfile = fs.readFileSync(
     path.resolve(
@@ -4010,7 +4010,7 @@ test("Windows quiescence holds when a targeted script-host recheck remains ambig
   assert.match(processProbeSources[1], /ProcessId = 702/);
 });
 
-test("Windows quiescence binds the canonical owner receipt supervisor and child PIDs", () => {
+test("Windows quiescence binds the canonical owner receipt supervisor and child PIDs", { skip: process.platform !== "win32" }, () => {
   const profile = {
     port: 3001,
     state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
@@ -4089,7 +4089,7 @@ test("Windows quiescence binds the canonical owner receipt supervisor and child 
   assert.deepEqual(result.owner_pids, [8100, 8101]);
 });
 
-test("Windows quiescence fails closed on an unbound canonical owner receipt", () => {
+test("Windows quiescence fails closed on an unbound canonical owner receipt", { skip: process.platform !== "win32" }, () => {
   const profile = {
     port: 3001,
     state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",

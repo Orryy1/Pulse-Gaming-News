@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const test = require("node:test");
 
 const SHA = "a".repeat(64);
@@ -78,9 +79,12 @@ test("parseArgs admits only the complete explicit LOCAL_PROOF quarantine request
   assert.equal(parsed.apply, true);
   assert.equal(parsed.changeId, "chg-42");
   assert.equal(parsed.confirmationId, "chg-42");
-  assert.equal(parsed.workspaceRoot, "C:\\Pulse\\old-plan");
+  assert.equal(parsed.workspaceRoot, path.resolve("C:\\Pulse\\old-plan"));
   assert.equal(parsed.expectedCheckoutCommit, COMMIT);
-  assert.equal(parsed.executorWorkspaceRoot, "D:\\Pulse\\release");
+  assert.equal(
+    parsed.executorWorkspaceRoot,
+    path.resolve("D:\\Pulse\\release"),
+  );
   assert.equal(parsed.expectedExecutorCheckoutCommit, COMMIT);
   assert.equal(parsed.primaryJobId, 135780);
   assert.equal(parsed.standbyJobId, 135781);
@@ -134,9 +138,15 @@ test("main delegates a timestamped exact request with a sealed no-publish author
   assert.equal(exitCode, 0);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].request.generated_at, "2026-08-01T12:00:00.000Z");
-  assert.equal(calls[0].request.workspace_root, "C:\\Pulse\\old-plan");
+  assert.equal(
+    calls[0].request.workspace_root,
+    path.resolve("C:\\Pulse\\old-plan"),
+  );
   assert.equal(calls[0].request.expected_checkout_commit, COMMIT);
-  assert.equal(calls[0].request.executor_workspace_root, "D:\\Pulse\\release");
+  assert.equal(
+    calls[0].request.executor_workspace_root,
+    path.resolve("D:\\Pulse\\release"),
+  );
   assert.equal(calls[0].request.expected_executor_checkout_commit, COMMIT);
   assert.deepEqual(calls[0].dependencies.env, {
     PULSE_OPERATING_MODE: "LOCAL_PROOF",

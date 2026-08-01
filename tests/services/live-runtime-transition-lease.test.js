@@ -72,6 +72,11 @@ test("live transition owners are unique and mutually exclusive", (t) => {
   const values = fixture(t);
   const firstOwner = transitionOwnerId("live-activation", "fixture");
   const secondOwner = transitionOwnerId("live-activation", "fixture");
+  const firstParticipant = participantIdentity(
+    "lease-owner-participant",
+    4001,
+    "2026-08-01T00:00:00.100Z",
+  );
   assert.notEqual(firstOwner, secondOwner);
 
   const first = acquireLiveRuntimeTransitionLease({
@@ -79,8 +84,21 @@ test("live transition owners are unique and mutually exclusive", (t) => {
     ownerId: firstOwner,
     action: "live-activation",
     leaseMs: 60_000,
+    participantIdentity: firstParticipant,
     runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
   });
+  assert.equal(first.participant_id, firstParticipant.participant_id);
+  assert.equal(Object.isFrozen(first.participant_identity), true);
+  assert.deepEqual(first.participant_identity, {
+    ...firstParticipant,
+    role: "owner",
+    process_start_source: "injected",
+  });
+  assert.throws(() => {
+    first.participant_identity.process_id = 4999;
+  }, TypeError);
+  firstParticipant.process_id = 4999;
+  assert.equal(first.participant_identity.process_id, 4001);
   assert.throws(
     () =>
       acquireLiveRuntimeTransitionLease({
@@ -182,8 +200,7 @@ test("handoff sealing atomically removes the current borrower and rejects a repl
           4003,
           "2026-08-01T00:00:00.300Z",
         ),
-        runtimeTransitionLeaseFactory:
-          values.runtimeTransitionLeaseFactory,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
       }),
     /live_runtime_transition_lease_unavailable/,
   );
@@ -192,6 +209,8 @@ test("handoff sealing atomically removes the current borrower and rejects a repl
 
 test("an expired borrowed SEALED transition stays fenced while its handoff supervisor is alive", (t) => {
   const values = fixture(t);
+  const leaseMs = 60_000;
+  const acquiredAt = new Date();
   const parentIdentity = participantIdentity(
     "sealed-dead-parent",
     4005,
@@ -224,7 +243,8 @@ test("an expired borrowed SEALED transition stays fenced while its handoff super
     databasePath: values.databasePath,
     ownerId: "live-start:borrowed-sealed-crash",
     action: "live-start",
-    leaseMs: 10,
+    now: acquiredAt,
+    leaseMs,
     participantIdentity: parentIdentity,
     ownerProcessInspector: inspector,
     runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
@@ -232,7 +252,8 @@ test("an expired borrowed SEALED transition stays fenced while its handoff super
   const borrower = borrowLiveRuntimeTransitionLease({
     databasePath: values.databasePath,
     expectedOwnerId: owner.owner_id,
-    leaseMs: 10,
+    now: new Date(acquiredAt.getTime() + 1),
+    leaseMs,
     participantIdentity: supervisorIdentity,
     runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
   });
@@ -247,17 +268,20 @@ test("an expired borrowed SEALED transition stays fenced while its handoff super
     ).participants.map((item) => item.role),
     ["owner", "handoff_supervisor", "handoff_child"],
   );
+  const sealedExpiresAt = Date.parse(
+    values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).expires_at,
+  );
+  assert.equal(Number.isFinite(sealedExpiresAt), true);
   assert.throws(
     () =>
       acquireLiveRuntimeTransitionLease({
         databasePath: values.databasePath,
         ownerId: "live-start:blocked-by-supervisor",
         action: "live-start",
-        now: new Date(Date.now() + 1000),
-        leaseMs: 10,
+        now: new Date(sealedExpiresAt + 1),
+        leaseMs,
         ownerProcessInspector: inspector,
-        runtimeTransitionLeaseFactory:
-          values.runtimeTransitionLeaseFactory,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
       }),
     /live_runtime_transition_lease_unavailable/,
   );
@@ -267,8 +291,8 @@ test("an expired borrowed SEALED transition stays fenced while its handoff super
     databasePath: values.databasePath,
     ownerId: "live-start:recovered-after-supervisor-exit",
     action: "live-start",
-    now: new Date(Date.now() + 2000),
-    leaseMs: 10,
+    now: new Date(sealedExpiresAt + 2),
+    leaseMs,
     ownerProcessInspector: inspector,
     runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
   });
@@ -285,8 +309,7 @@ test("an active legacy-v2 transition is borrowed and upgraded to explicit OPEN a
     leaseMs: 60_000,
     replaceSameOwner: false,
     metadata: {
-      transition_owner_schema_version:
-        "pulse-live-runtime-transition-owner-v2",
+      transition_owner_schema_version: "pulse-live-runtime-transition-owner-v2",
       context: {},
       participants: [
         {
@@ -337,8 +360,7 @@ test("an expired legacy-v2 transition remains recoverable when every participant
     leaseMs: 1000,
     replaceSameOwner: false,
     metadata: {
-      transition_owner_schema_version:
-        "pulse-live-runtime-transition-owner-v2",
+      transition_owner_schema_version: "pulse-live-runtime-transition-owner-v2",
       context: {},
       participants: [
         {
@@ -368,6 +390,8 @@ test("an expired legacy-v2 transition remains recoverable when every participant
 
 test("an expired SEALED transition stays fenced while its handoff child is alive", (t) => {
   const values = fixture(t);
+  const leaseMs = 60_000;
+  const acquiredAt = new Date();
   const ownerIdentity = participantIdentity(
     "sealed-crashed-owner",
     4031,
@@ -392,7 +416,8 @@ test("an expired SEALED transition stays fenced while its handoff child is alive
     databasePath: values.databasePath,
     ownerId: "live-supervise:sealed-crash",
     action: "live-supervise",
-    leaseMs: 10,
+    now: acquiredAt,
+    leaseMs,
     participantIdentity: ownerIdentity,
     ownerProcessInspector: inspector,
     runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
@@ -410,17 +435,20 @@ test("an expired SEALED transition stays fenced while its handoff child is alive
     sealed.participants.map((item) => item.role),
     ["owner", "handoff_child"],
   );
+  const sealedExpiresAt = Date.parse(
+    values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).expires_at,
+  );
+  assert.equal(Number.isFinite(sealedExpiresAt), true);
   assert.throws(
     () =>
       acquireLiveRuntimeTransitionLease({
         databasePath: values.databasePath,
         ownerId: "live-supervise:blocked-by-child",
         action: "live-supervise",
-        now: new Date(Date.now() + 1000),
-        leaseMs: 10,
+        now: new Date(sealedExpiresAt + 1),
+        leaseMs,
         ownerProcessInspector: inspector,
-        runtimeTransitionLeaseFactory:
-          values.runtimeTransitionLeaseFactory,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
       }),
     /live_runtime_transition_lease_unavailable/,
   );
@@ -430,15 +458,12 @@ test("an expired SEALED transition stays fenced while its handoff child is alive
     databasePath: values.databasePath,
     ownerId: "live-supervise:recovered-after-child-exit",
     action: "live-supervise",
-    now: new Date(Date.now() + 2000),
-    leaseMs: 10,
+    now: new Date(sealedExpiresAt + 2),
+    leaseMs,
     ownerProcessInspector: inspector,
     runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
   });
-  assert.equal(
-    recovered.owner_id,
-    "live-supervise:recovered-after-child-exit",
-  );
+  assert.equal(recovered.owner_id, "live-supervise:recovered-after-child-exit");
   assert.equal(recovered.release(), true);
 });
 
@@ -460,8 +485,7 @@ test("an expired transition lease remains fenced while its owning process is ali
         action: "exact-plan-drain",
         now: new Date("2026-08-01T00:00:02.000Z"),
         leaseMs: 1000,
-        runtimeTransitionLeaseFactory:
-          values.runtimeTransitionLeaseFactory,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
         ownerProcessInspector: () => true,
       }),
     /live_runtime_transition_lease_unavailable/,
@@ -470,10 +494,7 @@ test("an expired transition lease remains fenced while its owning process is ali
     values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME)?.owner_id,
     "exact-plan-drain:first",
   );
-  assert.equal(
-    first.renew(new Date("2026-08-01T00:00:02.100Z")),
-    true,
-  );
+  assert.equal(first.renew(new Date("2026-08-01T00:00:02.100Z")), true);
   first.release();
 });
 
@@ -512,8 +533,7 @@ test("a borrowed lease close failure does not abandon the parent-owned fence", (
     databasePath: values.databasePath,
     ownerId,
     action: "live-start",
-    runtimeTransitionLeaseFactory:
-      values.runtimeTransitionLeaseFactory,
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
   });
   const borrowed = borrowLiveRuntimeTransitionLease({
     databasePath: values.databasePath,
@@ -590,15 +610,11 @@ test("an expired parent cannot be taken over while its registered borrower is al
         now: new Date("2026-08-01T00:00:02.000Z"),
         leaseMs: 1000,
         ownerProcessInspector: inspect,
-        runtimeTransitionLeaseFactory:
-          values.runtimeTransitionLeaseFactory,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
       }),
     /live_runtime_transition_lease_unavailable/,
   );
-  assert.equal(
-    borrower.renew(new Date("2026-08-01T00:00:02.100Z")),
-    true,
-  );
+  assert.equal(borrower.renew(new Date("2026-08-01T00:00:02.100Z")), true);
   assert.equal(borrower.release(), true);
   assert.equal(owner.release(), true);
 });
@@ -773,8 +789,7 @@ test("an owner delete loses a concurrent borrower-registration race", (t) => {
           databasePath: values.databasePath,
           expectedOwnerId: ownerId,
           participantIdentity: borrowerIdentity,
-          runtimeTransitionLeaseFactory:
-            values.runtimeTransitionLeaseFactory,
+          runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
         });
       }
       return values.leases.releaseExactMetadata(options);
@@ -833,10 +848,7 @@ test("failed borrower unregistration remains fenced from parent deletion", (t) =
     runtimeTransitionLeaseFactory: failingFactory,
   });
 
-  assert.throws(
-    () => borrower.release(),
-    /live_runtime_transition_lease_lost/,
-  );
+  assert.throws(() => borrower.release(), /live_runtime_transition_lease_lost/);
   assert.throws(() => owner.release(), /live_runtime_transition_lease_lost/);
   assert.equal(
     JSON.parse(
@@ -874,8 +886,7 @@ test("unknown participant liveness and inspector errors fail closed", (t) => {
           now: new Date("2026-08-01T00:00:02.000Z"),
           leaseMs: 1000,
           ownerProcessInspector,
-          runtimeTransitionLeaseFactory:
-            values.runtimeTransitionLeaseFactory,
+          runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
         }),
       /live_runtime_transition_lease_unavailable/,
     );

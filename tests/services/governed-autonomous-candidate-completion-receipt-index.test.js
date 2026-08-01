@@ -16,6 +16,7 @@ const {
 const {
   indexGovernedAutonomousCandidateCompletionReceipt,
   loadGovernedAutonomousWindowCompletionReceipts,
+  validateGovernedAutonomousCandidateCompletionAuditRow,
 } = require("../../lib/services/governed-autonomous-candidate-completion-receipt-index");
 
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
@@ -260,6 +261,93 @@ test("indexes one immutable non-authority GREEN completion receipt and replays i
     /immutable_operator_audit_log/,
   );
   assert.deepEqual(first.receipt, input.receipt);
+});
+
+test("validates the complete canonical audit-row binding for reuse by exact-plan consumers", async (t) => {
+  const input = await fixture(t);
+  await indexGovernedAutonomousCandidateCompletionReceipt(input);
+  const row = input.db
+    .prepare("SELECT * FROM operator_audit_log")
+    .get();
+  const expectedEvidence = JSON.parse(row.evidence_json);
+
+  assert.deepEqual(
+    validateGovernedAutonomousCandidateCompletionAuditRow(row),
+    expectedEvidence,
+  );
+
+  for (const [field, value, code] of [
+    [
+      "actor_id",
+      "system:other",
+      "candidate_completion_index_audit_identity_invalid",
+    ],
+    [
+      "action",
+      "other_action",
+      "candidate_completion_index_audit_identity_invalid",
+    ],
+    [
+      "target_type",
+      "other_target",
+      "candidate_completion_index_audit_identity_invalid",
+    ],
+    [
+      "decision",
+      "APPROVED",
+      "candidate_completion_index_audit_identity_invalid",
+    ],
+    [
+      "reason",
+      "other reason",
+      "candidate_completion_index_audit_reason_mismatch",
+    ],
+    [
+      "target_id",
+      "other-story",
+      "candidate_completion_index_audit_target_mismatch",
+    ],
+    [
+      "idempotency_key",
+      "other-key",
+      "candidate_completion_index_audit_idempotency_mismatch",
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        validateGovernedAutonomousCandidateCompletionAuditRow({
+          ...row,
+          [field]: value,
+        }),
+      (error) => error?.code === code,
+      field,
+    );
+  }
+
+  assert.throws(
+    () =>
+      validateGovernedAutonomousCandidateCompletionAuditRow({
+        ...row,
+        evidence_json: JSON.stringify(expectedEvidence, null, 2),
+      }),
+    (error) =>
+      error?.code ===
+      "candidate_completion_index_evidence_json_noncanonical",
+  );
+
+  assert.throws(
+    () =>
+      validateGovernedAutonomousCandidateCompletionAuditRow({
+        ...row,
+        evidence_json: JSON.stringify({
+          ...expectedEvidence,
+          unexpected: true,
+        }),
+      }),
+    (error) =>
+      error?.code ===
+      "candidate_completion_index_evidence_fields_invalid",
+  );
 });
 
 test("rejects a conflicting replay for the same guarded window role", async (t) => {

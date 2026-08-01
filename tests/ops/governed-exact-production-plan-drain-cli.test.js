@@ -1,7 +1,16 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
+
+const Database = require("better-sqlite3");
+
+const {
+  assertOpenedExactDatabaseIdentity,
+} = require("../../lib/ops/governed-exact-production-plan-drain");
 
 const {
   parseArgs,
@@ -12,6 +21,17 @@ const {
 
 const SHA = "a".repeat(64);
 const COMMIT = "b".repeat(40);
+const DATABASE_BINDING = Object.freeze({
+  path: "D:\\pulse-data\\pulse.db",
+  real_path: "D:\\pulse-data\\pulse.db",
+  size: 4096,
+  identity: Object.freeze({
+    device: "12345678901234567890",
+    inode: "98765432109876543210",
+    key: "12345678901234567890:98765432109876543210",
+    link_count: "1",
+  }),
+});
 
 function argv(overrides = []) {
   return [
@@ -53,14 +73,11 @@ test("parseArgs exposes one closed LOCAL_PROOF exact-plan command surface", () =
     () => parseArgs(argv(["--publish", "true"])),
     /unknown_argument:--publish/,
   );
-  assert.throws(
-    () => {
-      const unsafe = argv();
-      unsafe[1] = "LIVE_GUARDED";
-      parseArgs(unsafe);
-    },
-    /local_proof_only/,
-  );
+  assert.throws(() => {
+    const unsafe = argv();
+    unsafe[1] = "LIVE_GUARDED";
+    parseArgs(unsafe);
+  }, /local_proof_only/);
 });
 
 test("main opens one exact DB, delegates the closed request and closes the handle", async () => {
@@ -81,6 +98,10 @@ test("main opens one exact DB, delegates the closed request and closes the handl
     loadEnvironment(workspaceRoot) {
       calls.push(["load-env", workspaceRoot]);
     },
+    async inspectDatabaseFile(databasePath) {
+      calls.push(["inspect-db", databasePath]);
+      return DATABASE_BINDING;
+    },
     openDatabase(databasePath) {
       calls.push(["open", databasePath]);
       return database;
@@ -94,6 +115,7 @@ test("main opens one exact DB, delegates the closed request and closes the handl
       calls.push(["drain", request]);
       assert.equal(dependencies.db, database);
       assert.equal(dependencies.repos, repos);
+      assert.equal(dependencies.databaseFileBinding, DATABASE_BINDING);
       assert.equal(request.mode, "LOCAL_PROOF");
       assert.equal(request.generated_at, "2026-07-30T20:30:00.000Z");
       assert.equal(request.expected_plan_file_sha256, SHA);
@@ -117,7 +139,7 @@ test("main opens one exact DB, delegates the closed request and closes the handl
   assert.equal(exitCode, 0);
   assert.deepEqual(
     calls.map((call) => call[0]),
-    ["load-env", "open", "bind", "drain", "close"],
+    ["load-env", "inspect-db", "open", "bind", "drain", "close"],
   );
   assert.match(output, /EXACT_PLAN_DRAIN_COMPLETED/);
 });
@@ -127,6 +149,7 @@ test("main returns non-zero for HOLD and always closes the database", async () =
   const database = { close: () => (closed += 1) };
   const exitCode = await main(argv(), {
     loadEnvironment() {},
+    inspectDatabaseFile: async () => DATABASE_BINDING,
     openDatabase: () => database,
     bindRepositories: () => ({
       db: database,
@@ -144,11 +167,60 @@ test("main returns non-zero for HOLD and always closes the database", async () =
   assert.equal(closed, 1);
 });
 
+test("main rejects a database file swapped after pre-open inspection", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-exact-drain-cli-swap-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  const replacementPath = path.join(root, "replacement.db");
+  const displacedPath = path.join(root, "displaced.db");
+  for (const [filePath, table] of [
+    [databasePath, "original_probe"],
+    [replacementPath, "replacement_probe"],
+  ]) {
+    const handle = new Database(filePath);
+    handle.exec(`CREATE TABLE ${table} (id INTEGER PRIMARY KEY)`);
+    handle.close();
+  }
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const args = argv();
+  args[args.indexOf("--database") + 1] = databasePath;
+
+  await assert.rejects(
+    main(args, {
+      loadEnvironment() {},
+      openDatabase(requestedPath) {
+        fs.renameSync(requestedPath, displacedPath);
+        fs.renameSync(replacementPath, requestedPath);
+        return new Database(requestedPath, { fileMustExist: true });
+      },
+      bindRepositories: (database) => ({
+        db: database,
+        jobs: {},
+        workers: {},
+      }),
+      async runDrain(request, dependencies) {
+        await assertOpenedExactDatabaseIdentity({
+          db: dependencies.db,
+          databasePath: request.database_path,
+          preopenFile: dependencies.databaseFileBinding,
+        });
+        throw new Error("unreachable");
+      },
+      stdout() {},
+    }),
+    /exact_plan_open_database_identity_mismatch/,
+  );
+});
+
 test("usage names the forbidden authority and the exact sequential scope", () => {
   const text = usage();
   assert.match(text, /LOCAL_PROOF/);
   assert.match(text, /PRIMARY then STANDBY/);
-  assert.match(text, /No publish, OAuth, token, scheduler or watcher authority/);
+  assert.match(
+    text,
+    /No publish, OAuth, token, scheduler or watcher authority/,
+  );
   assert.match(text, /bounds the work window/);
   assert.match(text, /until the active handler has truly exited/);
 });
@@ -158,9 +230,6 @@ test("CLI failure reporting redacts unexpected exception text", () => {
   const blocker = safeFailureBlocker(
     new Error(`provider failed with ${secret}`),
   );
-  assert.match(
-    blocker,
-    /^exact_plan_unexpected_error:[a-f0-9]{64}$/,
-  );
+  assert.match(blocker, /^exact_plan_unexpected_error:[a-f0-9]{64}$/);
   assert.equal(blocker.includes(secret), false);
 });

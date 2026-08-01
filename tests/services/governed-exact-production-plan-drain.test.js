@@ -19,6 +19,13 @@ const {
   RUNTIME_POLICY_SCHEMA_VERSION,
 } = require("../../lib/services/governed-autonomous-production-request-builder");
 const {
+  RECEIPT_SCHEMA_VERSION,
+  canonicalSha256: canonicalReceiptSha256,
+} = require("../../lib/services/governed-autonomous-candidate-completion-receipt");
+const {
+  indexGovernedAutonomousCandidateCompletionReceipt,
+} = require("../../lib/services/governed-autonomous-candidate-completion-receipt-index");
+const {
   CANDIDATE_SCHEMA_VERSION,
   REQUEST_SCHEMA_VERSION: PLANNER_REQUEST_SCHEMA_VERSION,
   planGovernedAutonomousWindowProduction,
@@ -28,7 +35,11 @@ const {
 } = require("../../lib/services/governed-autonomous-database-story-binding");
 const {
   DRAIN_REQUEST_SCHEMA_VERSION,
+  assertOpenedExactDatabaseIdentity,
+  inspectExactDatabaseFile,
   drainExactGovernedProductionPlan,
+  defaultCompletionReceiptInspector,
+  inspectExactGovernedPlanQuarantineBindings,
   isCanonicalCodexPowerShellProcessIdentity,
   inspectWindowsPulseQuiescence,
 } = require("../../lib/ops/governed-exact-production-plan-drain");
@@ -43,6 +54,117 @@ const {
 const GENERATED_AT = "2026-07-30T07:20:00.000Z";
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
 const EXPECTED_COMMIT = "a".repeat(40);
+
+test("exact database identity rejects NTFS hard-link aliases", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-exact-database-identity-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  const aliasPath = path.join(root, "pulse-alias.db");
+  const db = new Database(databasePath);
+  db.exec("CREATE TABLE identity_probe (id INTEGER PRIMARY KEY)");
+  db.close();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const identity = await inspectExactDatabaseFile(databasePath);
+  assert.match(identity.identity.device, /^\d+$/);
+  assert.match(identity.identity.inode, /^\d+$/);
+  assert.equal(identity.identity.link_count, "1");
+  assert.equal(
+    identity.identity.key,
+    `${identity.identity.device}:${identity.identity.inode}`,
+  );
+
+  fs.linkSync(databasePath, aliasPath);
+  await assert.rejects(
+    inspectExactDatabaseFile(databasePath),
+    /exact_plan_database_hardlink_forbidden/,
+  );
+});
+
+test("exact database identity preserves BigInt NTFS identifiers beyond Number precision", async () => {
+  const databasePath = "D:\\pulse-data\\pulse.db";
+  const device = 18_446_744_073_709_551_615n;
+  const inode = 9_007_199_254_740_993n;
+  const identity = await inspectExactDatabaseFile(databasePath, {
+    async lstat(requestedPath, options) {
+      assert.equal(requestedPath, databasePath);
+      assert.deepEqual(options, { bigint: true });
+      return {
+        dev: device,
+        ino: inode,
+        nlink: 1n,
+        size: 4096n,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      };
+    },
+    async realpath(requestedPath) {
+      return requestedPath;
+    },
+  });
+
+  assert.deepEqual(identity.identity, {
+    device: device.toString(),
+    inode: inode.toString(),
+    key: `${device}:${inode}`,
+    link_count: "1",
+  });
+});
+
+test("opened better-sqlite3 main stays bound to its pre-open file identity", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-open-database-identity-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  let db = new Database(databasePath);
+  db.exec("CREATE TABLE identity_probe (id INTEGER PRIMARY KEY)");
+  db.close();
+  const preopenFile = await inspectExactDatabaseFile(databasePath);
+  db = new Database(databasePath, { fileMustExist: true });
+  t.after(() => {
+    db.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const opened = await assertOpenedExactDatabaseIdentity({
+    db,
+    databasePath,
+    preopenFile,
+  });
+
+  assert.equal(opened.identity.key, preopenFile.identity.key);
+  assert.equal(opened.identity.link_count, "1");
+});
+
+test("opened main rejects a different pre-open database identity", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-open-database-mismatch-"),
+  );
+  const databasePath = path.join(root, "pulse.db");
+  const otherPath = path.join(root, "other.db");
+  let db = new Database(databasePath);
+  db.exec("CREATE TABLE identity_probe (id INTEGER PRIMARY KEY)");
+  db.close();
+  const other = new Database(otherPath);
+  other.exec("CREATE TABLE other_probe (id INTEGER PRIMARY KEY)");
+  other.close();
+  const wrongPreopenFile = await inspectExactDatabaseFile(otherPath);
+  db = new Database(databasePath, { fileMustExist: true });
+  t.after(() => {
+    db.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  await assert.rejects(
+    assertOpenedExactDatabaseIdentity({
+      db,
+      databasePath,
+      preopenFile: wrongPreopenFile,
+    }),
+    /exact_plan_open_database_identity_mismatch/,
+  );
+});
 
 function sha256(value) {
   return crypto
@@ -74,11 +196,9 @@ function candidate(
   score,
   { timingEvidenceSha256 = null } = {},
 ) {
-  const finalScript =
-    `${storyId} is a confirmed official gaming update with one clear player consequence.`;
+  const finalScript = `${storyId} is a confirmed official gaming update with one clear player consequence.`;
   const inventoryFileSha256 = sha256(`${storyId}:inventory`);
-  const canonicalIdentityUrl =
-    `https://news.xbox.com/en-us/2026/07/30/${storyId}/`;
+  const canonicalIdentityUrl = `https://news.xbox.com/en-us/2026/07/30/${storyId}/`;
   return {
     schema_version: CANDIDATE_SCHEMA_VERSION,
     mode: "LOCAL_PROOF",
@@ -97,14 +217,13 @@ function candidate(
     locked_intake_binding: {
       story_id: storyId,
       locked_intake: {
-        database_story_binding:
-          createGovernedAutonomousDatabaseStoryBinding({
-            canonical_story_id: storyId,
-            database_story_id: databaseStoryId,
-            canonical_identity_url: canonicalIdentityUrl,
-            inventory_file_sha256: inventoryFileSha256,
-            final_script_sha256: sha256(finalScript),
-          }),
+        database_story_binding: createGovernedAutonomousDatabaseStoryBinding({
+          canonical_story_id: storyId,
+          database_story_id: databaseStoryId,
+          canonical_identity_url: canonicalIdentityUrl,
+          inventory_file_sha256: inventoryFileSha256,
+          final_script_sha256: sha256(finalScript),
+        }),
         inventory_path: path.join(
           workspaceRoot,
           "inventory",
@@ -132,8 +251,7 @@ function candidate(
           format: "game_native_news",
           ...(timingEvidenceSha256
             ? {
-                narration_timing_evidence_sha256:
-                  timingEvidenceSha256,
+                narration_timing_evidence_sha256: timingEvidenceSha256,
               }
             : {}),
         },
@@ -213,14 +331,7 @@ async function fixture(t) {
   `);
   db.exec(
     fs.readFileSync(
-      path.resolve(
-        __dirname,
-        "..",
-        "..",
-        "db",
-        "migrations",
-        "004_jobs.sql",
-      ),
+      path.resolve(__dirname, "..", "..", "db", "migrations", "004_jobs.sql"),
       "utf8",
     ),
   );
@@ -239,9 +350,7 @@ async function fixture(t) {
   );
   db.prepare("INSERT INTO channels (id) VALUES (?)").run("pulse-gaming");
   for (const storyId of ["db-primary", "db-standby", "db-extra"]) {
-    db.prepare("INSERT INTO stories (id, approved) VALUES (?, 0)").run(
-      storyId,
-    );
+    db.prepare("INSERT INTO stories (id, approved) VALUES (?, 0)").run(storyId);
   }
   const jobs = bindJobs(db);
   const runtimeLeases = bindRuntimeLeases(db);
@@ -284,6 +393,7 @@ async function fixture(t) {
   const outputDir = path.join(workspaceRoot, "drain-evidence");
   const planFileSha256 = sha256(fs.readFileSync(planPath));
   const profileFileSha256 = sha256(fs.readFileSync(profilePath));
+  const databaseFileBinding = await inspectExactDatabaseFile(databasePath);
   const repos = { db, jobs, runtimeLeases, workers };
   t.after(() => {
     db.close();
@@ -292,6 +402,7 @@ async function fixture(t) {
   return {
     workspaceRoot,
     databasePath,
+    databaseFileBinding,
     db,
     jobs,
     runtimeLeases,
@@ -317,8 +428,7 @@ function request(values, overrides = {}) {
     workspace_root: values.workspaceRoot,
     database_path: values.databasePath,
     runtime_profile_path: values.profilePath,
-    expected_runtime_profile_file_sha256:
-      values.profileFileSha256,
+    expected_runtime_profile_file_sha256: values.profileFileSha256,
     expected_checkout_commit: EXPECTED_COMMIT,
     output_dir: values.outputDir,
     worker_id: "pulse-exact-plan-drain-test",
@@ -342,10 +452,7 @@ function quiescentInspection(overrides = {}) {
     enabled_tasks: [],
     running_tasks: [],
     task_states: [],
-    absent_task_names: [
-      "PulseGaming-Fixture",
-      "PulseGaming-Fixture-Legacy",
-    ],
+    absent_task_names: ["PulseGaming-Fixture", "PulseGaming-Fixture-Legacy"],
     ...overrides,
   };
 }
@@ -353,6 +460,7 @@ function quiescentInspection(overrides = {}) {
 function dependencies(values, productionHandler, overrides = {}) {
   return {
     db: values.db,
+    databaseFileBinding: values.databaseFileBinding,
     repos: values.repos,
     productionHandler,
     runtimeProfileValidator: () => ({ valid: true, blockers: [] }),
@@ -365,14 +473,234 @@ function dependencies(values, productionHandler, overrides = {}) {
     completionReceiptInspector: async ({ attestation }) => ({
       valid: true,
       path: attestation.completion_receipt.path,
-      file_sha256:
-        attestation.completion_receipt.file_sha256,
-      receipt_sha256:
-        attestation.completion_receipt.receipt_sha256,
+      file_sha256: attestation.completion_receipt.file_sha256,
+      receipt_sha256: attestation.completion_receipt.receipt_sha256,
     }),
     ...overrides,
   };
 }
+
+function prepareQuarantineRows(values) {
+  const [primary] = values.planned.plan.production_jobs;
+  values.db
+    .prepare(
+      `UPDATE jobs
+          SET status = 'failed', attempt_count = 3,
+              claimed_by = NULL, claimed_at = NULL, lease_until = NULL
+        WHERE id = ?`,
+    )
+    .run(primary.job_id);
+  const insertRun = values.db.prepare(
+    `INSERT INTO job_runs
+       (job_id, worker_id, attempt, status, started_at, finished_at,
+        duration_ms, error_message)
+     VALUES (?, ?, ?, 'failed', ?, ?, ?, ?)`,
+  );
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    insertRun.run(
+      primary.job_id,
+      `fixture-worker-${attempt}`,
+      attempt,
+      `2026-07-30 1${attempt}:00:00`,
+      `2026-07-30 1${attempt}:00:01`,
+      1000,
+      `fixture_failure_${attempt}`,
+    );
+  }
+}
+
+function quarantineBindingRequest(values, overrides = {}) {
+  const [primary, standby] = values.planned.plan.production_jobs;
+  return {
+    generated_at: "2026-07-30T20:00:00.000Z",
+    plan_path: values.planPath,
+    expected_plan_file_sha256: values.planFileSha256,
+    expected_plan_sha256: values.planned.plan.plan_sha256,
+    workspace_root: values.workspaceRoot,
+    database_path: values.databasePath,
+    runtime_profile_path: values.profilePath,
+    expected_runtime_profile_file_sha256: values.profileFileSha256,
+    expected_checkout_commit: EXPECTED_COMMIT,
+    expected_reservation_file_sha256:
+      values.planned.plan.reservation_set.file_sha256,
+    expected_reservation_set_sha256:
+      values.planned.plan.reservation_set.reservation_set_sha256,
+    expected_primary_job_id: primary.job_id,
+    expected_standby_job_id: standby.job_id,
+    expected_standby_status: "pending",
+    expected_standby_cancellation_reason: null,
+    ...overrides,
+  };
+}
+
+function quarantineBindingDependencies(values, overrides = {}) {
+  return {
+    db: values.db,
+    databaseFileBinding: values.databaseFileBinding,
+    runtimeProfileValidator: () => ({ valid: true, blockers: [] }),
+    workspaceInspector: () => ({
+      available: true,
+      commit: EXPECTED_COMMIT,
+      tracked_clean: true,
+    }),
+    now: () => new Date("2026-07-30T20:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+test("quarantine inspection reuses the exact plan, reservation, profile, database and payload bindings", async (t) => {
+  const values = await fixture(t);
+  const [primary, standby] = values.planned.plan.production_jobs;
+  prepareQuarantineRows(values);
+
+  const inspected = await inspectExactGovernedPlanQuarantineBindings(
+    quarantineBindingRequest(values),
+    quarantineBindingDependencies(values),
+  );
+
+  assert.equal(inspected.plan.plan_sha256, values.planned.plan.plan_sha256);
+  assert.equal(
+    inspected.reservation.file_sha256,
+    values.planned.plan.reservation_set.file_sha256,
+  );
+  assert.equal(inspected.database.opened_path_match, true);
+  assert.deepEqual(
+    inspected.jobs.map((row) => row.status),
+    ["failed", "pending"],
+  );
+  assert.deepEqual(
+    inspected.job_runs.map((row) => row.attempt),
+    [1, 2, 3],
+  );
+  assert.equal(
+    inspected.activation_receipt_path,
+    path.join(values.workspaceRoot, "state", "activation-receipt.json"),
+  );
+});
+
+test("quarantine inspection measures staleness against its authoritative clock", async (t) => {
+  const values = await fixture(t);
+  prepareQuarantineRows(values);
+
+  await assert.rejects(
+    inspectExactGovernedPlanQuarantineBindings(
+      quarantineBindingRequest(values, {
+        generated_at: "2026-08-01T20:00:00.000Z",
+      }),
+      quarantineBindingDependencies(values),
+    ),
+    /exact_plan_quarantine_inspection_time_not_current/,
+  );
+});
+
+test("quarantine inspection output fingerprints rather than exposes job payloads and errors", async (t) => {
+  const values = await fixture(t);
+  const [primary] = values.planned.plan.production_jobs;
+  prepareQuarantineRows(values);
+  const payloadSecret = "fixture_payload_secret_must_not_escape";
+  const errorSecret = "fixture_error_secret_must_not_escape";
+  const row = values.jobs.get(primary.job_id);
+  row.payload.fixture_secret = payloadSecret;
+  values.db
+    .prepare("UPDATE jobs SET payload = ?, last_error = ? WHERE id = ?")
+    .run(JSON.stringify(row.payload), errorSecret, primary.job_id);
+
+  const inspected = await inspectExactGovernedPlanQuarantineBindings(
+    quarantineBindingRequest(values),
+    quarantineBindingDependencies(values),
+  );
+  const serialised = JSON.stringify(inspected);
+
+  assert.equal(serialised.includes(payloadSecret), false);
+  assert.equal(serialised.includes(errorSecret), false);
+  assert.match(inspected.jobs[0].payload_sha256, /^[a-f0-9]{64}$/);
+  assert.match(inspected.jobs[0].last_error_fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(Object.hasOwn(inspected.jobs[0], "payload"), false);
+  assert.equal(Object.hasOwn(inspected.jobs[0], "last_error"), false);
+});
+
+test("quarantine inspection binds a cancelled standby to exact terminal provenance", async (t) => {
+  const cancellationReason = `governed_exact_plan_quarantined:${"b".repeat(64)}`;
+
+  await t.test("accepts the exact durable cancellation", async (t) => {
+    const values = await fixture(t);
+    const [, standby] = values.planned.plan.production_jobs;
+    prepareQuarantineRows(values);
+    values.db
+      .prepare(
+        `UPDATE jobs
+            SET status = 'cancelled', completed_at = ?, last_error = ?
+          WHERE id = ?`,
+      )
+      .run("2026-07-30 20:00:00", cancellationReason, standby.job_id);
+
+    const inspected = await inspectExactGovernedPlanQuarantineBindings(
+      quarantineBindingRequest(values, {
+        expected_standby_status: "cancelled",
+        expected_standby_cancellation_reason: cancellationReason,
+      }),
+      quarantineBindingDependencies(values),
+    );
+
+    assert.equal(inspected.jobs[1].status, "cancelled");
+    assert.equal(
+      inspected.jobs[1].last_error_fingerprint,
+      sha256(cancellationReason),
+    );
+  });
+
+  await t.test(
+    "rejects a cancellation without a completion time",
+    async (t) => {
+      const values = await fixture(t);
+      const [, standby] = values.planned.plan.production_jobs;
+      prepareQuarantineRows(values);
+      values.db
+        .prepare(
+          `UPDATE jobs
+            SET status = 'cancelled', completed_at = NULL, last_error = ?
+          WHERE id = ?`,
+        )
+        .run(cancellationReason, standby.job_id);
+
+      await assert.rejects(
+        inspectExactGovernedPlanQuarantineBindings(
+          quarantineBindingRequest(values, {
+            expected_standby_status: "cancelled",
+            expected_standby_cancellation_reason: cancellationReason,
+          }),
+          quarantineBindingDependencies(values),
+        ),
+        /exact_plan_quarantine_standby_state_invalid/,
+      );
+    },
+  );
+
+  await t.test("rejects different cancellation provenance", async (t) => {
+    const values = await fixture(t);
+    const [, standby] = values.planned.plan.production_jobs;
+    const otherReason = `governed_exact_plan_quarantined:${"c".repeat(64)}`;
+    prepareQuarantineRows(values);
+    values.db
+      .prepare(
+        `UPDATE jobs
+            SET status = 'cancelled', completed_at = ?, last_error = ?
+          WHERE id = ?`,
+      )
+      .run("2026-07-30 20:00:00", otherReason, standby.job_id);
+
+    await assert.rejects(
+      inspectExactGovernedPlanQuarantineBindings(
+        quarantineBindingRequest(values, {
+          expected_standby_status: "cancelled",
+          expected_standby_cancellation_reason: cancellationReason,
+        }),
+        quarantineBindingDependencies(values),
+      ),
+      /exact_plan_quarantine_standby_state_invalid/,
+    );
+  });
+});
 
 function greenProductionResult() {
   return {
@@ -395,8 +723,7 @@ function greenProductionResult() {
       safety: {
         local_proof_only: true,
         database_mutated: true,
-        database_mutation_scope:
-          "IMMUTABLE_COMPLETION_RECEIPT_INDEX",
+        database_mutation_scope: "IMMUTABLE_COMPLETION_RECEIPT_INDEX",
         narration_network_used: true,
         oauth_or_tokens_mutated: false,
         platform_contacted: false,
@@ -411,18 +738,148 @@ function greenProductionResult() {
   };
 }
 
+test("default completion inspection binds the full canonical immutable audit row", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-drain-completion-audit-"),
+  );
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE operator_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id TEXT,
+      decision TEXT,
+      reason TEXT,
+      evidence_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      idempotency_key TEXT
+    );
+    CREATE UNIQUE INDEX ux_operator_audit_idempotency
+      ON operator_audit_log(idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
+    CREATE TRIGGER trg_operator_audit_log_immutable_update
+    BEFORE UPDATE ON operator_audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'immutable_operator_audit_log');
+    END;
+    CREATE TRIGGER trg_operator_audit_log_immutable_delete
+    BEFORE DELETE ON operator_audit_log
+    BEGIN
+      SELECT RAISE(ABORT, 'immutable_operator_audit_log');
+    END;
+  `);
+  t.after(() => {
+    db.close();
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  });
+
+  const receiptBody = {
+    schema_version: RECEIPT_SCHEMA_VERSION,
+    mode: "LOCAL_PROOF",
+    verdict: "GREEN",
+    blockers: [],
+    generated_at: GENERATED_AT,
+    story_id: "story-primary",
+    channel_id: "pulse-gaming",
+    lane_id: "breaking_short",
+    platform: "youtube",
+    scheduled_for: SCHEDULED_FOR,
+    role: "PRIMARY",
+    candidate_revision_sha256: "a".repeat(64),
+    request_fingerprint: "b".repeat(64),
+    coordinator_result: {
+      path: "output/story-primary/coordinator.json",
+      file_sha256: "c".repeat(64),
+      canonical_sha256: "d".repeat(64),
+    },
+    staging_result: {
+      path: "output/story-primary/staging.json",
+      file_sha256: "d".repeat(64),
+      canonical_sha256: "e".repeat(64),
+    },
+    preparation_manifest: {
+      path: "output/story-primary/preparation.json",
+      file_sha256: "e".repeat(64),
+      canonical_sha256: "c".repeat(64),
+    },
+    final_mp4: {
+      path: "output/story-primary/final.mp4",
+      file_sha256: "a".repeat(64),
+    },
+    safety: {
+      local_proof_only: true,
+      database_mutated: false,
+      network_used: false,
+      oauth_or_tokens_mutated: false,
+      platform_contacted: false,
+      publish_authority: false,
+      scheduler_authority: false,
+      external_publish_authorised: false,
+    },
+  };
+  const receipt = {
+    ...receiptBody,
+    receipt_sha256: canonicalReceiptSha256(receiptBody),
+  };
+  const relativePath = "candidate/completion-receipt.json";
+  const absolutePath = path.join(workspaceRoot, ...relativePath.split("/"));
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+  const receiptBytes = Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`);
+  fs.writeFileSync(absolutePath, receiptBytes);
+  const indexed =
+    await indexGovernedAutonomousCandidateCompletionReceipt({
+      db,
+      workspaceRoot,
+      receiptRef: {
+        path: relativePath,
+        file_sha256: sha256(receiptBytes),
+      },
+    });
+  const attestation = {
+    story_id: receipt.story_id,
+    role: receipt.role,
+    channel_id: receipt.channel_id,
+    lane_id: receipt.lane_id,
+    platform: receipt.platform,
+    scheduled_for: receipt.scheduled_for,
+    candidate_revision_sha256: receipt.candidate_revision_sha256,
+    request_fingerprint: receipt.request_fingerprint,
+    completion_receipt: {
+      path: relativePath,
+      file_sha256: sha256(receiptBytes),
+      receipt_sha256: receipt.receipt_sha256,
+    },
+    completion_index: {
+      audit_id: indexed.audit_id,
+      idempotency_key: indexed.idempotency_key,
+    },
+  };
+  const options = {
+    attestation,
+    root: { path: workspaceRoot, real_path: workspaceRoot },
+    db,
+    fileSystem: fs.promises,
+  };
+
+  assert.equal(
+    (await defaultCompletionReceiptInspector(options)).valid,
+    true,
+  );
+  db.exec("DROP TRIGGER trg_operator_audit_log_immutable_update");
+  db.prepare("UPDATE operator_audit_log SET actor_id='attacker'").run();
+  await assert.rejects(
+    () => defaultCompletionReceiptInspector(options),
+    /exact_plan_completion_index_invalid/,
+  );
+});
+
 function rewriteProfile(values, mutate) {
-  const profile = JSON.parse(
-    fs.readFileSync(values.profilePath, "utf8"),
-  );
+  const profile = JSON.parse(fs.readFileSync(values.profilePath, "utf8"));
   mutate(profile);
-  fs.writeFileSync(
-    values.profilePath,
-    `${JSON.stringify(profile, null, 2)}\n`,
-  );
-  values.profileFileSha256 = sha256(
-    fs.readFileSync(values.profilePath),
-  );
+  fs.writeFileSync(values.profilePath, `${JSON.stringify(profile, null, 2)}\n`);
+  values.profileFileSha256 = sha256(fs.readFileSync(values.profilePath));
   return profile;
 }
 
@@ -454,20 +911,12 @@ async function createTimedSuccessor(values) {
       reservation_output_path: values.reservationPath,
       plan_output_path: values.planPath,
       candidates: [
-        candidate(
-          values.workspaceRoot,
-          "story-primary",
-          "db-primary",
-          120,
-          { timingEvidenceSha256: primaryTimingSha256 },
-        ),
-        candidate(
-          values.workspaceRoot,
-          "story-standby",
-          "db-standby",
-          110,
-          { timingEvidenceSha256: standbyTimingSha256 },
-        ),
+        candidate(values.workspaceRoot, "story-primary", "db-primary", 120, {
+          timingEvidenceSha256: primaryTimingSha256,
+        }),
+        candidate(values.workspaceRoot, "story-standby", "db-standby", 110, {
+          timingEvidenceSha256: standbyTimingSha256,
+        }),
       ],
     },
     { jobs: values.jobs },
@@ -484,6 +933,28 @@ async function createTimedSuccessor(values) {
   };
 }
 
+test("drain requires a trusted pre-open database identity before claiming", async (t) => {
+  const values = await fixture(t);
+  let handlerCalls = 0;
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(
+      values,
+      async () => {
+        handlerCalls += 1;
+        return greenProductionResult();
+      },
+      { databaseFileBinding: null },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes("exact_plan_database_preopen_identity_required"),
+  );
+  assert.equal(handlerCalls, 0);
+});
+
 test("runs only the exact PRIMARY then STANDBY plan jobs through one ordinary runner and writes proof", async (t) => {
   const values = await fixture(t);
   const order = [];
@@ -498,32 +969,19 @@ test("runs only the exact PRIMARY then STANDBY plan jobs through one ordinary ru
       async (job, ctx) => {
         order.push({
           id: job.id,
-          role:
-            job.payload.autonomous_production_job.builder_result.role,
+          role: job.payload.autonomous_production_job.builder_result.role,
         });
         assert.equal(ctx.env.PULSE_OPERATING_MODE, "LOCAL_PROOF");
         assert.equal(ctx.env.PULSE_PRIMARY_INSTANCE, "false");
         assert.equal(ctx.env.AUTO_PUBLISH, "false");
         assert.equal(ctx.env.YOUTUBE_AUTO_PUBLISH, "false");
-        assert.equal(
-          ctx.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
-          "false",
-        );
+        assert.equal(ctx.env.PULSE_GUARDED_LIVE_DISPATCH_ENABLED, "false");
         assert.equal(ctx.env.PULSE_KILL_SWITCH, "true");
-        assert.equal(
-          ctx.env.PULSE_EMERGENCY_KILL_SWITCH,
-          "true",
-        );
+        assert.equal(ctx.env.PULSE_EMERGENCY_KILL_SWITCH, "true");
         assert.equal(ctx.env.BREAKING_WATCHER_ENABLED, "false");
-        assert.equal(
-          ctx.env.ELEVENLABS_CREDIT_MONITOR_ENABLED,
-          "false",
-        );
+        assert.equal(ctx.env.ELEVENLABS_CREDIT_MONITOR_ENABLED, "false");
         assert.equal(processEnvironment.AUTO_PUBLISH, "false");
-        assert.equal(
-          processEnvironment.YOUTUBE_AUTO_PUBLISH,
-          "false",
-        );
+        assert.equal(processEnvironment.YOUTUBE_AUTO_PUBLISH, "false");
         return greenProductionResult();
       },
       {
@@ -567,6 +1025,12 @@ test("runs only the exact PRIMARY then STANDBY plan jobs through one ordinary ru
   assert.equal(result.safety.scheduler_started, false);
   assert.equal(result.safety.watcher_started, false);
   assert.equal(result.safety.credit_monitor_started, false);
+  assert.equal(result.database.preopen_identity_match, true);
+  assert.equal(result.database.opened_identity_match, true);
+  assert.deepEqual(
+    result.database.identity,
+    values.databaseFileBinding.identity,
+  );
   assert.equal(processEnvironment.AUTO_PUBLISH, "true");
   assert.equal(processEnvironment.YOUTUBE_AUTO_PUBLISH, "true");
   for (const job of expectedJobs) {
@@ -593,17 +1057,43 @@ test("runs only the exact PRIMARY then STANDBY plan jobs through one ordinary ru
     true,
   );
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.commit.json"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.commit.json")),
     true,
   );
   assert.match(
+    fs.readFileSync(path.join(values.outputDir, "exact-plan-drain.md"), "utf8"),
+    /PRIMARY[\s\S]*STANDBY/,
+  );
+  const reservation = JSON.parse(
     fs.readFileSync(
-      path.join(values.outputDir, "exact-plan-drain.md"),
+      path.join(values.outputDir, "exact-plan-drain-reservation.json"),
       "utf8",
     ),
-    /PRIMARY[\s\S]*STANDBY/,
+  );
+  assert.deepEqual(
+    reservation.attempt.database_file_identity,
+    values.databaseFileBinding.identity,
+  );
+});
+
+test("a database hard-link introduced during the drain prevents GREEN evidence", async (t) => {
+  const values = await fixture(t);
+  const aliasPath = path.join(values.workspaceRoot, "pulse-alias.db");
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(values, async () => greenProductionResult(), {
+      async beforeEvidenceFinalise() {
+        fs.linkSync(values.databasePath, aliasPath);
+      },
+    }),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(result.blockers.includes("exact_plan_database_hardlink_forbidden"));
+  assert.equal(result.evidence.final_json_path, null);
+  assert.equal(
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.commit.json")),
+    false,
   );
 });
 
@@ -640,11 +1130,7 @@ test("evidence namespace conflicts or write denial are discovered before any cla
       get(target, property) {
         if (property === "open") {
           return async (filePath, ...args) => {
-            if (
-              String(filePath).startsWith(
-                `${values.outputDir}${path.sep}`,
-              )
-            ) {
+            if (String(filePath).startsWith(`${values.outputDir}${path.sep}`)) {
               const error = new Error("evidence write denied");
               error.code = "EACCES";
               throw error;
@@ -653,9 +1139,7 @@ test("evidence namespace conflicts or write denial are discovered before any cla
           };
         }
         const value = Reflect.get(target, property);
-        return typeof value === "function"
-          ? value.bind(target)
-          : value;
+        return typeof value === "function" ? value.bind(target) : value;
       },
     });
     let called = 0;
@@ -703,9 +1187,7 @@ test("durable attestations recover exact completed prefixes without duplicate pr
     assert.equal(first.verdict, "HOLD");
     assert.equal(calls, 2);
     assert.equal(
-      fs.existsSync(
-        path.join(values.outputDir, "exact-plan-drain.json"),
-      ),
+      fs.existsSync(path.join(values.outputDir, "exact-plan-drain.json")),
       false,
     );
 
@@ -736,17 +1218,13 @@ test("durable attestations recover exact completed prefixes without duplicate pr
       dependencies(
         values,
         async (job) => {
-          roles.push(
-            job.payload.autonomous_production_job.builder_result.role,
-          );
+          roles.push(job.payload.autonomous_production_job.builder_result.role);
           return greenProductionResult();
         },
         {
           afterDurableCompletion({ role }) {
             if (role === "PRIMARY") {
-              throw new Error(
-                "simulated_crash_after_primary_completion",
-              );
+              throw new Error("simulated_crash_after_primary_completion");
             }
           },
         },
@@ -760,9 +1238,7 @@ test("durable attestations recover exact completed prefixes without duplicate pr
         generated_at: "2026-07-30T23:58:00.000Z",
       }),
       dependencies(values, async (job) => {
-        roles.push(
-          job.payload.autonomous_production_job.builder_result.role,
-        );
+        roles.push(job.payload.autonomous_production_job.builder_result.role);
         return greenProductionResult();
       }),
     );
@@ -774,73 +1250,65 @@ test("durable attestations recover exact completed prefixes without duplicate pr
 });
 
 test("transition-lease evidence is deterministic across replay and legacy GREEN evidence is rejected", async (t) => {
-  await t.test("byte-identical replay contains no invocation owner", async (t) => {
-    const values = await fixture(t);
-    const first = await drainExactGovernedProductionPlan(
-      request(values),
-      dependencies(values, async () => greenProductionResult()),
-    );
-    const jsonPath = path.join(
-      values.outputDir,
-      "exact-plan-drain.json",
-    );
-    const markdownPath = path.join(
-      values.outputDir,
-      "exact-plan-drain.md",
-    );
-    const firstJson = fs.readFileSync(jsonPath);
-    const firstMarkdown = fs.readFileSync(markdownPath);
+  await t.test(
+    "byte-identical replay contains no invocation owner",
+    async (t) => {
+      const values = await fixture(t);
+      const first = await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(values, async () => greenProductionResult()),
+      );
+      const jsonPath = path.join(values.outputDir, "exact-plan-drain.json");
+      const markdownPath = path.join(values.outputDir, "exact-plan-drain.md");
+      const firstJson = fs.readFileSync(jsonPath);
+      const firstMarkdown = fs.readFileSync(markdownPath);
 
-    const replay = await drainExactGovernedProductionPlan(
-      request(values, {
-        generated_at: "2026-08-01T08:30:00.000Z",
-      }),
-      dependencies(values, async () => {
-        throw new Error("completed jobs must not run again");
-      }),
-    );
+      const replay = await drainExactGovernedProductionPlan(
+        request(values, {
+          generated_at: "2026-08-01T08:30:00.000Z",
+        }),
+        dependencies(values, async () => {
+          throw new Error("completed jobs must not run again");
+        }),
+      );
 
-    assert.equal(first.verdict, "GREEN");
-    assert.equal(replay.verdict, "GREEN");
-    assert.equal(first.report_sha256, replay.report_sha256);
-    assert.deepEqual(fs.readFileSync(jsonPath), firstJson);
-    assert.deepEqual(fs.readFileSync(markdownPath), firstMarkdown);
-    assert.equal(firstJson.includes(Buffer.from("exact-plan-drain:")), false);
-  });
+      assert.equal(first.verdict, "GREEN");
+      assert.equal(replay.verdict, "GREEN");
+      assert.equal(first.report_sha256, replay.report_sha256);
+      assert.deepEqual(fs.readFileSync(jsonPath), firstJson);
+      assert.deepEqual(fs.readFileSync(markdownPath), firstMarkdown);
+      assert.equal(firstJson.includes(Buffer.from("exact-plan-drain:")), false);
+    },
+  );
 
-  await t.test("a legacy GREEN report without transition proof cannot replay", async (t) => {
-    const values = await fixture(t);
-    await drainExactGovernedProductionPlan(
-      request(values),
-      dependencies(values, async () => greenProductionResult()),
-    );
-    const jsonPath = path.join(
-      values.outputDir,
-      "exact-plan-drain.json",
-    );
-    const markdownPath = path.join(
-      values.outputDir,
-      "exact-plan-drain.md",
-    );
-    const legacy = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
-    delete legacy.runtime_transition_lease;
-    delete legacy.report_sha256;
-    legacy.report_sha256 = canonicalSha256(legacy);
-    fs.writeFileSync(jsonPath, `${JSON.stringify(legacy, null, 2)}\n`);
-    fs.rmSync(markdownPath, { force: true });
+  await t.test(
+    "a legacy GREEN report without transition proof cannot replay",
+    async (t) => {
+      const values = await fixture(t);
+      await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(values, async () => greenProductionResult()),
+      );
+      const jsonPath = path.join(values.outputDir, "exact-plan-drain.json");
+      const markdownPath = path.join(values.outputDir, "exact-plan-drain.md");
+      const legacy = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+      delete legacy.runtime_transition_lease;
+      delete legacy.report_sha256;
+      legacy.report_sha256 = canonicalSha256(legacy);
+      fs.writeFileSync(jsonPath, `${JSON.stringify(legacy, null, 2)}\n`);
+      fs.rmSync(markdownPath, { force: true });
 
-    const replay = await drainExactGovernedProductionPlan(
-      request(values),
-      dependencies(values, async () => {
-        throw new Error("legacy evidence must not execute jobs");
-      }),
-    );
+      const replay = await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(values, async () => {
+          throw new Error("legacy evidence must not execute jobs");
+        }),
+      );
 
-    assert.equal(replay.verdict, "HOLD");
-    assert.ok(
-      replay.blockers.includes("exact_plan_drain_evidence_conflict"),
-    );
-  });
+      assert.equal(replay.verdict, "HOLD");
+      assert.ok(replay.blockers.includes("exact_plan_drain_evidence_conflict"));
+    },
+  );
 });
 
 test("durable recovery fails closed on attestation, receipt or prefix drift", async (t) => {
@@ -848,18 +1316,13 @@ test("durable recovery fails closed on attestation, receipt or prefix drift", as
     const values = await fixture(t);
     await drainExactGovernedProductionPlan(
       request(values),
-      dependencies(
-        values,
-        async () => greenProductionResult(),
-        {
-          beforeEvidenceFinalise() {
-            throw new Error("simulated_crash_before_evidence");
-          },
+      dependencies(values, async () => greenProductionResult(), {
+        beforeEvidenceFinalise() {
+          throw new Error("simulated_crash_before_evidence");
         },
-      ),
+      }),
     );
-    const primaryId =
-      values.planned.plan.production_jobs[0].job_id;
+    const primaryId = values.planned.plan.production_jobs[0].job_id;
     const run = values.db
       .prepare(
         `SELECT id, log_excerpt
@@ -883,9 +1346,7 @@ test("durable recovery fails closed on attestation, receipt or prefix drift", as
     );
 
     assert.equal(replay.verdict, "HOLD");
-    assert.ok(
-      replay.blockers.includes("exact_plan_job_attestation_invalid"),
-    );
+    assert.ok(replay.blockers.includes("exact_plan_job_attestation_invalid"));
     assert.equal(called, 0);
   });
 
@@ -893,15 +1354,11 @@ test("durable recovery fails closed on attestation, receipt or prefix drift", as
     const values = await fixture(t);
     await drainExactGovernedProductionPlan(
       request(values),
-      dependencies(
-        values,
-        async () => greenProductionResult(),
-        {
-          beforeEvidenceFinalise() {
-            throw new Error("simulated_crash_before_evidence");
-          },
+      dependencies(values, async () => greenProductionResult(), {
+        beforeEvidenceFinalise() {
+          throw new Error("simulated_crash_before_evidence");
         },
-      ),
+      }),
     );
     let called = 0;
 
@@ -923,17 +1380,14 @@ test("durable recovery fails closed on attestation, receipt or prefix drift", as
 
     assert.equal(replay.verdict, "HOLD");
     assert.ok(
-      replay.blockers.includes(
-        "exact_plan_completion_receipt_invalid",
-      ),
+      replay.blockers.includes("exact_plan_completion_receipt_invalid"),
     );
     assert.equal(called, 0);
   });
 
   await t.test("a done suffix without a done prefix", async (t) => {
     const values = await fixture(t);
-    const standbyId =
-      values.planned.plan.production_jobs[1].job_id;
+    const standbyId = values.planned.plan.production_jobs[1].job_id;
     values.db
       .prepare(
         `UPDATE jobs
@@ -953,9 +1407,7 @@ test("durable recovery fails closed on attestation, receipt or prefix drift", as
 
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_database_job_status_invalid",
-      ),
+      result.blockers.includes("exact_plan_database_job_status_invalid"),
     );
     assert.equal(called, 0);
   });
@@ -971,9 +1423,7 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
         return async (filePath, ...args) => {
           if (
             denyMarkdownOnce &&
-            path.basename(String(filePath)).includes(
-              "exact-plan-drain.md",
-            )
+            path.basename(String(filePath)).includes("exact-plan-drain.md")
           ) {
             denyMarkdownOnce = false;
             const error = new Error("markdown interruption");
@@ -987,8 +1437,7 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
         return async (existingPath, newPath) => {
           if (
             denyMarkdownOnce &&
-            path.basename(String(newPath)) ===
-              "exact-plan-drain.md"
+            path.basename(String(newPath)) === "exact-plan-drain.md"
           ) {
             denyMarkdownOnce = false;
             const error = new Error("markdown interruption");
@@ -999,9 +1448,7 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
         };
       }
       const value = Reflect.get(target, property);
-      return typeof value === "function"
-        ? value.bind(target)
-        : value;
+      return typeof value === "function" ? value.bind(target) : value;
     },
   });
   let calls = 0;
@@ -1019,14 +1466,8 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
     ),
     /markdown interruption|EIO/,
   );
-  const jsonPath = path.join(
-    values.outputDir,
-    "exact-plan-drain.json",
-  );
-  const markdownPath = path.join(
-    values.outputDir,
-    "exact-plan-drain.md",
-  );
+  const jsonPath = path.join(values.outputDir, "exact-plan-drain.json");
+  const markdownPath = path.join(values.outputDir, "exact-plan-drain.md");
   const originalJson = fs.readFileSync(jsonPath);
   assert.equal(fs.existsSync(markdownPath), false);
 
@@ -1037,10 +1478,7 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
       if (property === "link") {
         return async (existingPath, newPath) => {
           const result = await target.link(existingPath, newPath);
-          if (
-            path.basename(String(newPath)) ===
-              "exact-plan-drain.md"
-          ) {
+          if (path.basename(String(newPath)) === "exact-plan-drain.md") {
             transitionLost = true;
             heartbeatCallback();
           }
@@ -1048,9 +1486,7 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
         };
       }
       const value = Reflect.get(target, property);
-      return typeof value === "function"
-        ? value.bind(target)
-        : value;
+      return typeof value === "function" ? value.bind(target) : value;
     },
   });
   await assert.rejects(
@@ -1085,9 +1521,7 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
     /exact_plan_live_transition_lease_lost/,
   );
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.commit.json"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.commit.json")),
     false,
   );
 
@@ -1119,8 +1553,7 @@ test("heartbeat loss during evidence staging cannot create replayable committed 
           const result = await target.link(existingPath, newPath);
           if (
             !triggered &&
-            path.basename(String(newPath)) ===
-              "exact-plan-drain.json"
+            path.basename(String(newPath)) === "exact-plan-drain.json"
           ) {
             triggered = true;
             leaseLost = true;
@@ -1130,36 +1563,30 @@ test("heartbeat loss during evidence staging cannot create replayable committed 
         };
       }
       const value = Reflect.get(target, property);
-      return typeof value === "function"
-        ? value.bind(target)
-        : value;
+      return typeof value === "function" ? value.bind(target) : value;
     },
   });
 
   await assert.rejects(
     drainExactGovernedProductionPlan(
       request(values),
-      dependencies(
-        values,
-        async () => greenProductionResult(),
-        {
-          fileSystem,
-          transitionLeaseAcquirer: () => ({
-            renew() {
-              if (leaseLost) {
-                throw new Error("fixture_transition_lost");
-              }
-              return true;
-            },
-            release: () => true,
-          }),
-          setInterval(callback) {
-            heartbeatCallback = callback;
-            return { unref() {} };
+      dependencies(values, async () => greenProductionResult(), {
+        fileSystem,
+        transitionLeaseAcquirer: () => ({
+          renew() {
+            if (leaseLost) {
+              throw new Error("fixture_transition_lost");
+            }
+            return true;
           },
-          clearInterval() {},
+          release: () => true,
+        }),
+        setInterval(callback) {
+          heartbeatCallback = callback;
+          return { unref() {} };
         },
-      ),
+        clearInterval() {},
+      }),
     ),
     /exact_plan_live_transition_lease_lost/,
   );
@@ -1192,9 +1619,7 @@ test("accepts an exact legacy v1 root plan without inventing lineage", async (t)
   delete legacyPlan.lineage;
   delete legacyPlan.plan_sha256;
   legacyPlan.plan_sha256 = canonicalSha256(legacyPlan);
-  const legacyBytes = Buffer.from(
-    `${JSON.stringify(legacyPlan, null, 2)}\n`,
-  );
+  const legacyBytes = Buffer.from(`${JSON.stringify(legacyPlan, null, 2)}\n`);
   fs.writeFileSync(values.planPath, legacyBytes);
   values.planFileSha256 = sha256(legacyBytes);
   values.planned = {
@@ -1219,12 +1644,8 @@ test("accepts an exact legacy v1 root plan without inventing lineage", async (t)
 
 test("accepts only the immutable v2 successor path and proves its predecessor chain before draining", async (t) => {
   const values = await fixture(t);
-  const {
-    predecessor,
-    successor,
-    primaryTimingSha256,
-    standbyTimingSha256,
-  } = await createTimedSuccessor(values);
+  const { predecessor, successor, primaryTimingSha256, standbyTimingSha256 } =
+    await createTimedSuccessor(values);
   const observedOrder = [];
 
   const result = await drainExactGovernedProductionPlan(
@@ -1238,16 +1659,12 @@ test("accepts only the immutable v2 successor path and proves its predecessor ch
   );
 
   const candidateSetSha256 =
-    successor.plan.candidate_set_revision
-      .candidate_set_revision_sha256;
+    successor.plan.candidate_set_revision.candidate_set_revision_sha256;
   assert.equal(result.verdict, "GREEN");
   assert.deepEqual(observedOrder, ["PRIMARY", "STANDBY"]);
   assert.equal(
     path.dirname(successor.path),
-    path.join(
-      path.dirname(path.dirname(successor.path)),
-      candidateSetSha256,
-    ),
+    path.join(path.dirname(path.dirname(successor.path)), candidateSetSha256),
   );
   assert.equal(
     result.plan.lineage.schema_version,
@@ -1258,16 +1675,14 @@ test("accepts only the immutable v2 successor path and proves its predecessor ch
     result.plan.lineage.predecessors.map((entry) => ({
       plan_sha256: entry.plan_sha256,
       file_sha256: entry.file_sha256,
-      candidate_set_revision_sha256:
-        entry.candidate_set_revision_sha256,
+      candidate_set_revision_sha256: entry.candidate_set_revision_sha256,
     })),
     [
       {
         plan_sha256: predecessor.plan.plan_sha256,
         file_sha256: predecessor.file_sha256,
         candidate_set_revision_sha256:
-          predecessor.plan.candidate_set_revision
-            .candidate_set_revision_sha256,
+          predecessor.plan.candidate_set_revision.candidate_set_revision_sha256,
       },
     ],
   );
@@ -1298,8 +1713,7 @@ test("v2 lineage revalidates every predecessor job against the opened database b
   const cases = [
     {
       name: "predecessor idempotency drift",
-      expected:
-        "exact_plan_lineage_predecessor_job_binding_mismatch",
+      expected: "exact_plan_lineage_predecessor_job_binding_mismatch",
       mutate(values, predecessor) {
         values.db
           .prepare("UPDATE jobs SET idempotency_key = ? WHERE id = ?")
@@ -1311,13 +1725,11 @@ test("v2 lineage revalidates every predecessor job against the opened database b
     },
     {
       name: "predecessor payload and builder drift",
-      expected:
-        "exact_plan_lineage_predecessor_job_binding_mismatch",
+      expected: "exact_plan_lineage_predecessor_job_binding_mismatch",
       mutate(values, predecessor) {
         const id = predecessor.plan.production_jobs[0].job_id;
         const row = values.jobs.get(id);
-        row.payload.autonomous_production_job.builder_result.role =
-          "STANDBY";
+        row.payload.autonomous_production_job.builder_result.role = "STANDBY";
         values.db
           .prepare("UPDATE jobs SET payload = ? WHERE id = ?")
           .run(JSON.stringify(row.payload), id);
@@ -1325,8 +1737,7 @@ test("v2 lineage revalidates every predecessor job against the opened database b
     },
     {
       name: "predecessor is no longer terminal",
-      expected:
-        "exact_plan_lineage_predecessor_job_not_terminal",
+      expected: "exact_plan_lineage_predecessor_job_not_terminal",
       mutate(values, predecessor) {
         values.db
           .prepare("UPDATE jobs SET status = 'paused' WHERE id = ?")
@@ -1337,8 +1748,7 @@ test("v2 lineage revalidates every predecessor job against the opened database b
   for (const entry of cases) {
     await t.test(entry.name, async (t) => {
       const values = await fixture(t);
-      const { predecessor } =
-        await createTimedSuccessor(values);
+      const { predecessor } = await createTimedSuccessor(values);
       entry.mutate(values, predecessor);
       let called = 0;
 
@@ -1382,9 +1792,7 @@ test("v2 plans are accepted only at canonical root or immutable successor paths"
 
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_lineage_successor_path_mismatch",
-      ),
+      result.blockers.includes("exact_plan_lineage_successor_path_mismatch"),
     );
     assert.equal(called, 0);
   });
@@ -1392,8 +1800,7 @@ test("v2 plans are accepted only at canonical root or immutable successor paths"
   await t.test("root plan cannot masquerade as a revision", async (t) => {
     const values = await fixture(t);
     const candidateSetSha256 =
-      values.planned.plan.candidate_set_revision
-        .candidate_set_revision_sha256;
+      values.planned.plan.candidate_set_revision.candidate_set_revision_sha256;
     const falseRevisionPath = path.join(
       values.workspaceRoot,
       "revisions",
@@ -1417,9 +1824,7 @@ test("v2 plans are accepted only at canonical root or immutable successor paths"
 
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_lineage_root_path_mismatch",
-      ),
+      result.blockers.includes("exact_plan_lineage_root_path_mismatch"),
     );
     assert.equal(called, 0);
   });
@@ -1458,9 +1863,7 @@ test("exact inputs and database reject traversal and in-root junction aliases", 
 
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_drain_input_link_forbidden",
-      ),
+      result.blockers.includes("exact_plan_drain_input_link_forbidden"),
     );
     assert.equal(called, 0);
   });
@@ -1484,11 +1887,7 @@ test("exact inputs and database reject traversal and in-root junction aliases", 
     );
 
     assert.equal(result.verdict, "HOLD");
-    assert.ok(
-      result.blockers.includes(
-        "exact_plan_database_link_forbidden",
-      ),
-    );
+    assert.ok(result.blockers.includes("exact_plan_database_link_forbidden"));
     assert.equal(called, 0);
   });
 });
@@ -1522,9 +1921,7 @@ test("rejects self-consistent plans whose selection metadata does not describe t
       entry.mutate(plan);
       delete plan.plan_sha256;
       plan.plan_sha256 = canonicalSha256(plan);
-      const bytes = Buffer.from(
-        `${JSON.stringify(plan, null, 2)}\n`,
-      );
+      const bytes = Buffer.from(`${JSON.stringify(plan, null, 2)}\n`);
       fs.writeFileSync(values.planPath, bytes);
       values.planFileSha256 = sha256(bytes);
       values.planned = {
@@ -1544,9 +1941,7 @@ test("rejects self-consistent plans whose selection metadata does not describe t
 
       assert.equal(result.verdict, "HOLD");
       assert.ok(
-        result.blockers.includes(
-          "exact_plan_selection_contract_invalid",
-        ),
+        result.blockers.includes("exact_plan_selection_contract_invalid"),
       );
       assert.equal(called, 0);
       for (const job of values.planned.plan.production_jobs) {
@@ -1564,9 +1959,7 @@ test("a GREEN-shaped handler result cannot advance without explicit no-publish a
   const result = await drainExactGovernedProductionPlan(
     request(values),
     dependencies(values, async (job) => {
-      seen.push(
-        job.payload.autonomous_production_job.builder_result.role,
-      );
+      seen.push(job.payload.autonomous_production_job.builder_result.role);
       return {
         ...greenProductionResult(),
         no_publish: false,
@@ -1582,18 +1975,9 @@ test("a GREEN-shaped handler result cannot advance without explicit no-publish a
     ),
   );
   assert.deepEqual(seen, ["PRIMARY"]);
-  assert.notEqual(
-    values.jobs.get(expectedJobs[0].job_id).status,
-    "done",
-  );
-  assert.equal(
-    values.jobs.get(expectedJobs[1].job_id).status,
-    "pending",
-  );
-  assert.equal(
-    values.jobs.get(expectedJobs[1].job_id).attempt_count,
-    0,
-  );
+  assert.notEqual(values.jobs.get(expectedJobs[0].job_id).status, "done");
+  assert.equal(values.jobs.get(expectedJobs[1].job_id).status, "pending");
+  assert.equal(values.jobs.get(expectedJobs[1].job_id).attempt_count, 0);
 });
 
 test("a GREEN-shaped result must carry exact LOCAL_PROOF and no-authority attestations", async (t) => {
@@ -1631,9 +2015,7 @@ test("a GREEN-shaped result must carry exact LOCAL_PROOF and no-authority attest
         request(values),
         dependencies(values, async () => {
           called += 1;
-          const handlerResult = structuredClone(
-            greenProductionResult(),
-          );
+          const handlerResult = structuredClone(greenProductionResult());
           entry.mutate(handlerResult);
           return handlerResult;
         }),
@@ -1647,9 +2029,8 @@ test("a GREEN-shaped result must carry exact LOCAL_PROOF and no-authority attest
       );
       assert.equal(called, 1);
       assert.equal(
-        values.jobs.get(
-          values.planned.plan.production_jobs[1].job_id,
-        ).attempt_count,
+        values.jobs.get(values.planned.plan.production_jobs[1].job_id)
+          .attempt_count,
         0,
       );
     });
@@ -1679,9 +2060,7 @@ test("fails closed before runner start when another active breaking-production j
 
   assert.equal(result.verdict, "HOLD");
   assert.ok(
-    result.blockers.includes(
-      "exact_plan_active_breaking_job_set_mismatch",
-    ),
+    result.blockers.includes("exact_plan_active_breaking_job_set_mismatch"),
   );
   assert.equal(called, 0);
   for (const job of values.planned.plan.production_jobs) {
@@ -1705,11 +2084,7 @@ test("rejects DB payload drift, profile hash drift and any live owner without cl
       }),
     );
     assert.equal(result.verdict, "HOLD");
-    assert.ok(
-      result.blockers.some((value) =>
-        value.includes("builder"),
-      ),
-    );
+    assert.ok(result.blockers.some((value) => value.includes("builder")));
     assert.equal(values.jobs.get(primary.job_id).status, "pending");
   });
 
@@ -1741,13 +2116,10 @@ test("rejects DB payload drift, profile hash drift and any live owner without cl
     );
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_reservation_file_sha256_mismatch",
-      ),
+      result.blockers.includes("exact_plan_reservation_file_sha256_mismatch"),
     );
     assert.equal(
-      values.jobs.get(values.planned.plan.production_jobs[0].job_id)
-        .status,
+      values.jobs.get(values.planned.plan.production_jobs[0].job_id).status,
       "pending",
     );
   });
@@ -1764,26 +2136,135 @@ test("rejects DB payload drift, profile hash drift and any live owner without cl
         {
           quiescenceInspector: () =>
             quiescentInspection({
-            owner_pids: [4123],
+              owner_pids: [4123],
             }),
         },
       ),
     );
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_live_runtime_not_quiescent",
-      ),
+      result.blockers.includes("exact_plan_live_runtime_not_quiescent"),
     );
   });
+});
+
+test("records the unavailable post-PRIMARY quiescence observation before holding", async (t) => {
+  const values = await fixture(t);
+  const roles = [];
+  let inspectionCount = 0;
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(
+      values,
+      async (job) => {
+        roles.push(job.payload.autonomous_production_job.builder_result.role);
+        return greenProductionResult();
+      },
+      {
+        quiescenceInspector: () => {
+          inspectionCount += 1;
+          return inspectionCount === 4
+            ? quiescentInspection({
+                available: false,
+                probe_attestations: {
+                  listeners: false,
+                  processes: false,
+                  scheduled_tasks: false,
+                },
+              })
+            : quiescentInspection();
+        },
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "exact_plan_runtime_quiescence_inspection_unavailable",
+    ),
+  );
+  assert.deepEqual(roles, ["PRIMARY"]);
+  assert.deepEqual(
+    result.runtime_quiescence.checks.slice(0, 4).map((check) => ({
+      sequence: check.sequence,
+      available: check.available,
+      all_probes_attested: Object.values(check.probe_attestations).every(
+        Boolean,
+      ),
+    })),
+    [
+      {
+        sequence: 1,
+        available: true,
+        all_probes_attested: true,
+      },
+      {
+        sequence: 2,
+        available: true,
+        all_probes_attested: true,
+      },
+      {
+        sequence: 3,
+        available: true,
+        all_probes_attested: true,
+      },
+      {
+        sequence: 4,
+        available: false,
+        all_probes_attested: false,
+      },
+    ],
+  );
+});
+
+test("records a sanitised unavailable quiescence observation when inspection throws", async (t) => {
+  const values = await fixture(t);
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(
+      values,
+      async () => {
+        throw new Error("must_not_run");
+      },
+      {
+        quiescenceInspector: () => {
+          throw new Error("probe_transport_failed");
+        },
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.some((blocker) =>
+      /^exact_plan_unexpected_error:[a-f0-9]{64}$/.test(blocker),
+    ),
+  );
+  assert.deepEqual(result.runtime_quiescence.checks, [
+    {
+      sequence: 1,
+      available: false,
+      probe_attestations: {
+        listeners: false,
+        processes: false,
+        scheduled_tasks: false,
+      },
+      owner_pids: [],
+      listener_pids: [],
+      scheduler_process_pids: [],
+      enabled_tasks: [],
+      running_tasks: [],
+      task_states: [],
+      absent_task_names: [],
+    },
+  ]);
 });
 
 test("requires the exact activation receipt path to remain absent before and throughout the drain", async (t) => {
   await t.test("present regular file blocks before claim", async (t) => {
     const values = await fixture(t);
-    const profile = JSON.parse(
-      fs.readFileSync(values.profilePath, "utf8"),
-    );
+    const profile = JSON.parse(fs.readFileSync(values.profilePath, "utf8"));
     fs.mkdirSync(path.dirname(profile.activation_receipt_path), {
       recursive: true,
     });
@@ -1800,9 +2281,7 @@ test("requires the exact activation receipt path to remain absent before and thr
 
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_activation_receipt_present",
-      ),
+      result.blockers.includes("exact_plan_activation_receipt_present"),
     );
     assert.equal(called, 0);
   });
@@ -1816,19 +2295,12 @@ test("requires the exact activation receipt path to remain absent before and thr
         "activation-receipt-link",
       );
     });
-    const linkTarget = path.join(
-      values.workspaceRoot,
-      "activation-target",
-    );
+    const linkTarget = path.join(values.workspaceRoot, "activation-target");
     fs.mkdirSync(path.dirname(profile.activation_receipt_path), {
       recursive: true,
     });
     fs.mkdirSync(linkTarget);
-    fs.symlinkSync(
-      linkTarget,
-      profile.activation_receipt_path,
-      "junction",
-    );
+    fs.symlinkSync(linkTarget, profile.activation_receipt_path, "junction");
     let called = 0;
 
     const result = await drainExactGovernedProductionPlan(
@@ -1841,92 +2313,75 @@ test("requires the exact activation receipt path to remain absent before and thr
 
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_activation_receipt_present",
-      ),
+      result.blockers.includes("exact_plan_activation_receipt_present"),
     );
     assert.equal(called, 0);
   });
 
-  await t.test("receipt appearing inside the handler prevents completion", async (t) => {
-    const values = await fixture(t);
-    const profile = JSON.parse(
-      fs.readFileSync(values.profilePath, "utf8"),
-    );
-    let called = 0;
+  await t.test(
+    "receipt appearing inside the handler prevents completion",
+    async (t) => {
+      const values = await fixture(t);
+      const profile = JSON.parse(fs.readFileSync(values.profilePath, "utf8"));
+      let called = 0;
 
-    const result = await drainExactGovernedProductionPlan(
-      request(values),
-      dependencies(values, async () => {
-        called += 1;
-        fs.mkdirSync(path.dirname(profile.activation_receipt_path), {
-          recursive: true,
-        });
-        fs.writeFileSync(profile.activation_receipt_path, "{}\n");
-        return greenProductionResult();
-      }),
-    );
+      const result = await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(values, async () => {
+          called += 1;
+          fs.mkdirSync(path.dirname(profile.activation_receipt_path), {
+            recursive: true,
+          });
+          fs.writeFileSync(profile.activation_receipt_path, "{}\n");
+          return greenProductionResult();
+        }),
+      );
 
-    assert.equal(result.verdict, "HOLD");
-    assert.ok(
-      result.blockers.includes(
-        "exact_plan_activation_receipt_present",
-      ),
-    );
-    assert.equal(called, 1);
-    assert.equal(
-      values.jobs.get(
-        values.planned.plan.production_jobs[0].job_id,
-      ).status,
-      "pending",
-    );
-    assert.equal(
-      values.jobs.get(
-        values.planned.plan.production_jobs[1].job_id,
-      ).attempt_count,
-      0,
-    );
-  });
+      assert.equal(result.verdict, "HOLD");
+      assert.ok(
+        result.blockers.includes("exact_plan_activation_receipt_present"),
+      );
+      assert.equal(called, 1);
+      assert.equal(
+        values.jobs.get(values.planned.plan.production_jobs[0].job_id).status,
+        "pending",
+      );
+      assert.equal(
+        values.jobs.get(values.planned.plan.production_jobs[1].job_id)
+          .attempt_count,
+        0,
+      );
+    },
+  );
 
-  await t.test("receipt appearing at the final evidence boundary prevents GREEN", async (t) => {
-    const values = await fixture(t);
-    const profile = JSON.parse(
-      fs.readFileSync(values.profilePath, "utf8"),
-    );
+  await t.test(
+    "receipt appearing at the final evidence boundary prevents GREEN",
+    async (t) => {
+      const values = await fixture(t);
+      const profile = JSON.parse(fs.readFileSync(values.profilePath, "utf8"));
 
-    const result = await drainExactGovernedProductionPlan(
-      request(values),
-      dependencies(
-        values,
-        async () => greenProductionResult(),
-        {
+      const result = await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(values, async () => greenProductionResult(), {
           beforeEvidenceFinalise() {
-            fs.mkdirSync(
-              path.dirname(profile.activation_receipt_path),
-              { recursive: true },
-            );
-            fs.writeFileSync(
-              profile.activation_receipt_path,
-              "{}\n",
-            );
+            fs.mkdirSync(path.dirname(profile.activation_receipt_path), {
+              recursive: true,
+            });
+            fs.writeFileSync(profile.activation_receipt_path, "{}\n");
           },
-        },
-      ),
-    );
+        }),
+      );
 
-    assert.equal(result.verdict, "HOLD");
-    assert.ok(
-      result.blockers.includes(
-        "exact_plan_activation_receipt_present",
-      ),
-    );
-    assert.equal(
-      fs.existsSync(
-        path.join(values.outputDir, "exact-plan-drain.json"),
-      ),
-      false,
-    );
-  });
+      assert.equal(result.verdict, "HOLD");
+      assert.ok(
+        result.blockers.includes("exact_plan_activation_receipt_present"),
+      );
+      assert.equal(
+        fs.existsSync(path.join(values.outputDir, "exact-plan-drain.json")),
+        false,
+      );
+    },
+  );
 });
 
 test("the durable live-transition lease excludes activation and runtime start for the complete drain boundary", async (t) => {
@@ -1949,166 +2404,246 @@ test("the durable live-transition lease excludes activation and runtime start fo
 
     assert.equal(result.verdict, "HOLD");
     assert.ok(
-      result.blockers.includes(
-        "exact_plan_live_transition_lease_unavailable",
-      ),
+      result.blockers.includes("exact_plan_live_transition_lease_unavailable"),
     );
     assert.equal(called, 0);
     assert.equal(
-      values.runtimeLeases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME)
-        ?.owner_id,
+      values.runtimeLeases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME)?.owner_id,
       "live-start:other",
     );
   });
 
-  await t.test("competing acquisition is denied through final inspection and the lease is then released", async (t) => {
-    const values = await fixture(t);
-    const competing = [];
-    const attemptCompetingAcquire = (boundary) => {
-      const result = values.runtimeLeases.acquire({
-        name: LIVE_RUNTIME_TRANSITION_LEASE_NAME,
-        ownerId: `live-activation:${boundary}`,
-        leaseMs: 60_000,
-      });
-      competing.push([boundary, result.acquired]);
-    };
+  await t.test(
+    "competing acquisition is denied through final inspection and the lease is then released",
+    async (t) => {
+      const values = await fixture(t);
+      const competing = [];
+      const attemptCompetingAcquire = (boundary) => {
+        const result = values.runtimeLeases.acquire({
+          name: LIVE_RUNTIME_TRANSITION_LEASE_NAME,
+          ownerId: `live-activation:${boundary}`,
+          leaseMs: 60_000,
+        });
+        competing.push([boundary, result.acquired]);
+      };
 
-    const result = await drainExactGovernedProductionPlan(
-      request(values),
-      dependencies(
-        values,
-        async () => {
-          attemptCompetingAcquire("handler");
-          return greenProductionResult();
-        },
-        {
-          beforeEvidenceFinalise() {
-            attemptCompetingAcquire("finalise");
+      const result = await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(
+          values,
+          async () => {
+            attemptCompetingAcquire("handler");
+            return greenProductionResult();
           },
-        },
-      ),
-    );
+          {
+            beforeEvidenceFinalise() {
+              attemptCompetingAcquire("finalise");
+            },
+          },
+        ),
+      );
 
-    assert.equal(result.verdict, "GREEN");
-    assert.deepEqual(competing, [
-      ["handler", false],
-      ["handler", false],
-      ["finalise", false],
-    ]);
-    assert.equal(
-      values.runtimeLeases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME),
-      null,
-    );
-    assert.deepEqual(result.runtime_transition_lease, {
-      required: true,
-      name: LIVE_RUNTIME_TRANSITION_LEASE_NAME,
-      acquired: true,
-      held_through_finalisation: true,
-    });
-    assert.equal(
-      JSON.stringify(result).includes("exact-plan-drain:"),
-      false,
-    );
-  });
+      assert.equal(result.verdict, "GREEN");
+      assert.deepEqual(competing, [
+        ["handler", false],
+        ["handler", false],
+        ["finalise", false],
+      ]);
+      assert.equal(
+        values.runtimeLeases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME),
+        null,
+      );
+      assert.deepEqual(result.runtime_transition_lease, {
+        required: true,
+        name: LIVE_RUNTIME_TRANSITION_LEASE_NAME,
+        acquired: true,
+        held_through_finalisation: true,
+      });
+      assert.equal(JSON.stringify(result).includes("exact-plan-drain:"), false);
+    },
+  );
 
-  await t.test("background heartbeat loss converts the run to a fixed secret-safe HOLD", async (t) => {
-    const values = await fixture(t);
-    let heartbeatCallback = null;
-    let lost = false;
-    let released = false;
-    let cleared = false;
-    const result = await drainExactGovernedProductionPlan(
-      request(values),
-      dependencies(
-        values,
-        async () => {
-          lost = true;
-          heartbeatCallback();
-          return greenProductionResult();
-        },
-        {
-          transitionLeaseAcquirer() {
-            return {
+  await t.test(
+    "an explicit non-throwing false renewal fails closed before production",
+    async (t) => {
+      const values = await fixture(t);
+      let productionCalls = 0;
+      let releaseAttempts = 0;
+
+      const result = await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(
+          values,
+          async () => {
+            productionCalls += 1;
+            return greenProductionResult();
+          },
+          {
+            transitionLeaseAcquirer: () => ({
+              renew: () => false,
+              release() {
+                releaseAttempts += 1;
+                return true;
+              },
+            }),
+          },
+        ),
+      );
+
+      assert.equal(result.verdict, "HOLD");
+      assert.ok(
+        result.blockers.includes("exact_plan_live_transition_lease_lost"),
+      );
+      assert.equal(productionCalls, 0);
+      assert.equal(releaseAttempts, 1);
+    },
+  );
+
+  await t.test(
+    "a non-throwing false heartbeat renewal remains lost and fails closed",
+    async (t) => {
+      const values = await fixture(t);
+      let heartbeatCallback = null;
+      let heartbeatRunning = false;
+      let heartbeatRenewals = 0;
+      let releaseAttempts = 0;
+
+      const result = await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(
+          values,
+          async () => {
+            heartbeatRunning = true;
+            heartbeatCallback();
+            heartbeatRunning = false;
+            return greenProductionResult();
+          },
+          {
+            transitionLeaseAcquirer: () => ({
               renew() {
-                if (lost) {
-                  throw new Error(
-                    "must_not_escape_secret_transition_detail",
-                  );
+                if (heartbeatRunning) {
+                  heartbeatRenewals += 1;
+                  return false;
                 }
                 return true;
               },
               release() {
-                released = true;
+                releaseAttempts += 1;
                 return true;
               },
-            };
+            }),
+            setInterval(callback) {
+              heartbeatCallback = callback;
+              return { unref() {} };
+            },
+            clearInterval() {},
           },
-          setInterval(callback) {
-            heartbeatCallback = callback;
-            return { unref() {} };
-          },
-          clearInterval() {
-            cleared = true;
-          },
-        },
-      ),
-    );
+        ),
+      );
 
-    assert.equal(result.verdict, "HOLD");
-    assert.ok(
-      result.blockers.includes(
-        "exact_plan_live_transition_lease_lost",
-      ),
-    );
-    assert.equal(
-      result.blockers.some((value) =>
-        value.includes("must_not_escape_secret_transition_detail"),
-      ),
-      false,
-    );
-    assert.equal(released, true);
-    assert.equal(cleared, true);
-  });
+      assert.equal(result.verdict, "HOLD");
+      assert.ok(
+        result.blockers.includes("exact_plan_live_transition_lease_lost"),
+      );
+      assert.equal(heartbeatRenewals, 1);
+      assert.equal(releaseAttempts, 1);
+    },
+  );
 
-  await t.test("release failure after the GREEN commit link cannot return success even after heartbeat loss", async (t) => {
-    const values = await fixture(t);
-    const realFileSystem = fs.promises;
-    let heartbeatCallback = null;
-    let lost = false;
-    let triggered = false;
-    let releaseAttempts = 0;
-    const fileSystem = new Proxy(realFileSystem, {
-      get(target, property) {
-        if (property === "link") {
-          return async (existingPath, newPath) => {
-            const result = await target.link(existingPath, newPath);
-            if (
-              !triggered &&
-              path.basename(String(newPath)) ===
-                "exact-plan-drain.commit.json"
-            ) {
-              triggered = true;
-              lost = true;
-              heartbeatCallback();
-            }
-            return result;
-          };
-        }
-        const value = Reflect.get(target, property);
-        return typeof value === "function"
-          ? value.bind(target)
-          : value;
-      },
-    });
-
-    let observedError = null;
-    try {
-      await drainExactGovernedProductionPlan(
+  await t.test(
+    "background heartbeat loss converts the run to a fixed secret-safe HOLD",
+    async (t) => {
+      const values = await fixture(t);
+      let heartbeatCallback = null;
+      let lost = false;
+      let released = false;
+      let cleared = false;
+      const result = await drainExactGovernedProductionPlan(
         request(values),
         dependencies(
           values,
-          async () => greenProductionResult(),
+          async () => {
+            lost = true;
+            heartbeatCallback();
+            return greenProductionResult();
+          },
           {
+            transitionLeaseAcquirer() {
+              return {
+                renew() {
+                  if (lost) {
+                    throw new Error("must_not_escape_secret_transition_detail");
+                  }
+                  return true;
+                },
+                release() {
+                  released = true;
+                  return true;
+                },
+              };
+            },
+            setInterval(callback) {
+              heartbeatCallback = callback;
+              return { unref() {} };
+            },
+            clearInterval() {
+              cleared = true;
+            },
+          },
+        ),
+      );
+
+      assert.equal(result.verdict, "HOLD");
+      assert.ok(
+        result.blockers.includes("exact_plan_live_transition_lease_lost"),
+      );
+      assert.equal(
+        result.blockers.some((value) =>
+          value.includes("must_not_escape_secret_transition_detail"),
+        ),
+        false,
+      );
+      assert.equal(released, true);
+      assert.equal(cleared, true);
+    },
+  );
+
+  await t.test(
+    "release failure after the GREEN commit link cannot return success even after heartbeat loss",
+    async (t) => {
+      const values = await fixture(t);
+      const realFileSystem = fs.promises;
+      let heartbeatCallback = null;
+      let lost = false;
+      let triggered = false;
+      let releaseAttempts = 0;
+      const fileSystem = new Proxy(realFileSystem, {
+        get(target, property) {
+          if (property === "link") {
+            return async (existingPath, newPath) => {
+              const result = await target.link(existingPath, newPath);
+              if (
+                !triggered &&
+                path.basename(String(newPath)) ===
+                  "exact-plan-drain.commit.json"
+              ) {
+                triggered = true;
+                lost = true;
+                heartbeatCallback();
+              }
+              return result;
+            };
+          }
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+
+      let observedError = null;
+      try {
+        await drainExactGovernedProductionPlan(
+          request(values),
+          dependencies(values, async () => greenProductionResult(), {
             fileSystem,
             transitionLeaseAcquirer: () => ({
               renew() {
@@ -2127,31 +2662,100 @@ test("the durable live-transition lease excludes activation and runtime start fo
               return { unref() {} };
             },
             clearInterval() {},
-          },
-        ),
-      );
-    } catch (error) {
-      observedError = error;
-    }
+          }),
+        );
+      } catch (error) {
+        observedError = error;
+      }
 
-    assert.ok(observedError);
-    assert.equal(
-      observedError.message,
-      "exact_plan_live_transition_lease_release_failed",
-    );
-    assert.equal(
-      observedError.message.includes("secret_release_detail"),
-      false,
-    );
-    assert.equal(triggered, true);
-    assert.equal(releaseAttempts, 1);
-    assert.equal(
-      fs.existsSync(
-        path.join(values.outputDir, "exact-plan-drain.commit.json"),
-      ),
-      true,
-    );
-  });
+      assert.ok(observedError);
+      assert.equal(
+        observedError.message,
+        "exact_plan_live_transition_lease_release_failed",
+      );
+      assert.equal(
+        observedError.message.includes("secret_release_detail"),
+        false,
+      );
+      assert.equal(triggered, true);
+      assert.equal(releaseAttempts, 1);
+      assert.equal(
+        fs.existsSync(
+          path.join(values.outputDir, "exact-plan-drain.commit.json"),
+        ),
+        true,
+      );
+    },
+  );
+
+  await t.test(
+    "a non-throwing false release result fails closed with the fixed lease error",
+    async (t) => {
+      const values = await fixture(t);
+      let releaseAttempts = 0;
+
+      await assert.rejects(
+        drainExactGovernedProductionPlan(
+          request(values),
+          dependencies(values, async () => greenProductionResult(), {
+            transitionLeaseAcquirer: () => ({
+              renew: () => true,
+              release() {
+                releaseAttempts += 1;
+                return false;
+              },
+            }),
+          }),
+        ),
+        (error) => {
+          assert.equal(
+            error.message,
+            "exact_plan_live_transition_lease_release_failed",
+          );
+          return true;
+        },
+      );
+
+      assert.equal(releaseAttempts, 1);
+    },
+  );
+});
+
+test("the final database fence validates a real lease without renewing through a competing SQLite writer", async (t) => {
+  const values = await fixture(t);
+  let leaseDatabase = null;
+
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(values, async () => greenProductionResult(), {
+      transitionLeaseAcquirer(options) {
+        return acquireLiveRuntimeTransitionLease({
+          ...options,
+          runtimeTransitionLeaseFactory({ databasePath }) {
+            leaseDatabase = new Database(databasePath, {
+              fileMustExist: true,
+              timeout: 25,
+            });
+            return {
+              leases: bindRuntimeLeases(leaseDatabase),
+              close() {
+                leaseDatabase?.close();
+                leaseDatabase = null;
+              },
+            };
+          },
+        });
+      },
+    }),
+  );
+
+  assert.equal(result.verdict, "GREEN", JSON.stringify(result));
+  assert.deepEqual(result.blockers, []);
+  assert.equal(leaseDatabase, null);
+  assert.equal(
+    values.runtimeLeases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME),
+    null,
+  );
 });
 
 test("a bounded timeout aborts and drains the runner without claiming STANDBY", async (t) => {
@@ -2160,9 +2764,7 @@ test("a bounded timeout aborts and drains the runner without claiming STANDBY", 
   const result = await drainExactGovernedProductionPlan(
     request(values, { timeout_ms: 30, poll_interval_ms: 5 }),
     dependencies(values, async (job, ctx) => {
-      seen.push(
-        job.payload.autonomous_production_job.builder_result.role,
-      );
+      seen.push(job.payload.autonomous_production_job.builder_result.role);
       await new Promise((resolve, reject) => {
         const timer = setTimeout(resolve, 1000);
         ctx.signal.addEventListener(
@@ -2182,8 +2784,7 @@ test("a bounded timeout aborts and drains the runner without claiming STANDBY", 
   assert.ok(result.blockers.includes("exact_plan_drain_timeout"));
   assert.deepEqual(seen, ["PRIMARY"]);
   assert.notEqual(
-    values.jobs.get(values.planned.plan.production_jobs[1].job_id)
-      .status,
+    values.jobs.get(values.planned.plan.production_jobs[1].job_id).status,
     "done",
   );
   assert.equal(result.execution.drained, true);
@@ -2241,8 +2842,7 @@ test("a non-cooperative handler keeps the environment and evidence sink fenced u
   const beforeRelease = {
     settled,
     autoPublish: processEnvironment.AUTO_PUBLISH,
-    youtubeAutoPublish:
-      processEnvironment.YOUTUBE_AUTO_PUBLISH,
+    youtubeAutoPublish: processEnvironment.YOUTUBE_AUTO_PUBLISH,
     jsonExists: fs.existsSync(
       path.join(values.outputDir, "exact-plan-drain.json"),
     ),
@@ -2263,26 +2863,19 @@ test("a non-cooperative handler keeps the environment and evidence sink fenced u
   });
   assert.equal(result.verdict, "HOLD");
   assert.ok(result.blockers.includes("exact_plan_drain_timeout"));
-  assert.ok(
-    result.blockers.includes(
-      "exact_plan_runner_drain_bound_exceeded",
-    ),
-  );
+  assert.ok(result.blockers.includes("exact_plan_runner_drain_bound_exceeded"));
   assert.equal(result.execution.work_window_exceeded, true);
   assert.equal(result.execution.drain_bound_exceeded, true);
   assert.equal(result.execution.drained, true);
   assert.equal(processEnvironment.AUTO_PUBLISH, "true");
   assert.equal(processEnvironment.YOUTUBE_AUTO_PUBLISH, "true");
   assert.notEqual(
-    values.jobs.get(
-      values.planned.plan.production_jobs[0].job_id,
-    ).status,
+    values.jobs.get(values.planned.plan.production_jobs[0].job_id).status,
     "done",
   );
   assert.equal(
-    values.jobs.get(
-      values.planned.plan.production_jobs[1].job_id,
-    ).attempt_count,
+    values.jobs.get(values.planned.plan.production_jobs[1].job_id)
+      .attempt_count,
     0,
   );
 });
@@ -2302,15 +2895,11 @@ test("unexpected handler errors are redacted before blockers or evidence are emi
   assert.equal(result.verdict, "HOLD");
   assert.equal(serialised.includes(secret), false);
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.json"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.json")),
     false,
   );
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.md"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.md")),
     false,
   );
   assert.ok(
@@ -2327,10 +2916,7 @@ test("unexpected handler errors are redacted before blockers or evidence are emi
         LIMIT 1`,
     )
     .get(values.planned.plan.production_jobs[0].job_id);
-  assert.equal(
-    JSON.stringify(persistedRun).includes(secret),
-    false,
-  );
+  assert.equal(JSON.stringify(persistedRun).includes(secret), false);
 });
 
 test("a retryable PRIMARY outcome never makes STANDBY claimable during PRIMARY backoff", async (t) => {
@@ -2343,9 +2929,7 @@ test("a retryable PRIMARY outcome never makes STANDBY claimable during PRIMARY b
       poll_interval_ms: 200,
     }),
     dependencies(values, async (job) => {
-      seen.push(
-        job.payload.autonomous_production_job.builder_result.role,
-      );
+      seen.push(job.payload.autonomous_production_job.builder_result.role);
       return {
         status: "held",
         job_outcome: "RETRY",
@@ -2391,9 +2975,7 @@ test("the default runtime-profile gate accepts only the repository's exact revie
   );
 
   assert.equal(result.verdict, "HOLD");
-  assert.ok(
-    result.blockers.includes("exact_plan_open_database_path_mismatch"),
-  );
+  assert.ok(result.blockers.includes("exact_plan_open_database_path_mismatch"));
   assert.equal(
     result.blockers.some((blocker) =>
       blocker.startsWith("exact_plan_runtime_profile_invalid:"),
@@ -2440,20 +3022,17 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
             {
               pid: 5001,
               name: "node.exe",
-              command_line:
-                "node C:\\Pulse\\pulse-gaming\\server.js",
+              command_line: "node C:\\Pulse\\pulse-gaming\\server.js",
             },
             {
               pid: 5002,
               name: "node.exe",
-              command_line:
-                'node "C:\\Pulse\\pulse-gaming\\run.js" full',
+              command_line: 'node "C:\\Pulse\\pulse-gaming\\run.js" full',
             },
             {
               pid: 5003,
               name: "node.exe",
-              command_line:
-                "node C:\\Pulse\\pulse-gaming\\publisher.js full",
+              command_line: "node C:\\Pulse\\pulse-gaming\\publisher.js full",
             },
             {
               pid: 5004,
@@ -2544,7 +3123,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
               pid: 5019,
               name: "node.exe",
               command_line:
-                'node C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js remote\nnode -e "require(\'./server\')"',
+                "node C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js remote\nnode -e \"require('./server')\"",
             },
             {
               pid: 5020,
@@ -2573,8 +3152,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
             {
               pid: 5024,
               name: "cmd.exe",
-              command_line:
-                "cmd.exe /c powershell -enc:SECRET_BASE64_PAYLOAD",
+              command_line: "cmd.exe /c powershell -enc:SECRET_BASE64_PAYLOAD",
             },
             {
               pid: 5025,
@@ -2597,8 +3175,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
               name: "powershell.exe",
               executable_path:
                 "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-              command_line:
-                "powershell.exe ―EncodedCommand UNICODE_BAR_SECRET",
+              command_line: "powershell.exe ―EncodedCommand UNICODE_BAR_SECRET",
             },
             {
               pid: 5028,
@@ -2613,8 +3190,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
               name: "powershell.exe",
               executable_path:
                 "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-              command_line:
-                'powershell.exe "–enc" QUOTED_UNICODE_SECRET',
+              command_line: 'powershell.exe "–enc" QUOTED_UNICODE_SECRET',
             },
             {
               pid: 5030,
@@ -2670,10 +3246,8 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
           attested: true,
           items: [
             {
-              TaskName:
-                "PulseGaming-LiveGuarded-YouTube-Runtime",
-              TaskPath:
-                "\\PulseGaming-LiveGuarded-YouTube-Runtime",
+              TaskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
+              TaskPath: "\\PulseGaming-LiveGuarded-YouTube-Runtime",
               State: "Ready",
               Enabled: true,
               Hidden: false,
@@ -2689,8 +3263,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
             },
             {
               TaskName: "PulseGaming-LiveWatchdog-Supervisor",
-              TaskPath:
-                "\\Legacy\\PulseGaming-LiveWatchdog-Supervisor",
+              TaskPath: "\\Legacy\\PulseGaming-LiveWatchdog-Supervisor",
               State: 3,
               Enabled: true,
               Hidden: false,
@@ -2821,8 +3394,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
                 {
                   Type: 0,
                   Execute: "powershell.exe",
-                  Arguments:
-                    '"-EncodedCommand" QUOTED_TASK_SWITCH_SECRET',
+                  Arguments: '"-EncodedCommand" QUOTED_TASK_SWITCH_SECRET',
                   WorkingDirectory: "C:\\Other",
                 },
               ],
@@ -2852,8 +3424,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
                 {
                   Type: 0,
                   Execute: "powershell.exe",
-                  Arguments:
-                    '"-"EncodedCommand SPLIT_TASK_1_SECRET',
+                  Arguments: '"-"EncodedCommand SPLIT_TASK_1_SECRET',
                   WorkingDirectory: "C:\\Other",
                 },
               ],
@@ -2868,8 +3439,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
                 {
                   Type: 0,
                   Execute: "powershell.exe",
-                  Arguments:
-                    '-Enc"odedCommand" SPLIT_TASK_2_SECRET',
+                  Arguments: '-Enc"odedCommand" SPLIT_TASK_2_SECRET',
                   WorkingDirectory: "C:\\Other",
                 },
               ],
@@ -2884,8 +3454,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
                 {
                   Type: 0,
                   Execute: "powershell.exe",
-                  Arguments:
-                    '-Encoded"Command" SPLIT_TASK_3_SECRET',
+                  Arguments: '-Encoded"Command" SPLIT_TASK_3_SECRET',
                   WorkingDirectory: "C:\\Other",
                 },
               ],
@@ -2900,8 +3469,7 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
                 {
                   Type: 0,
                   Execute: "powershell.exe",
-                  Arguments:
-                    '"-Enc"odedCommand SPLIT_TASK_4_SECRET',
+                  Arguments: '"-Enc"odedCommand SPLIT_TASK_4_SECRET',
                   WorkingDirectory: "C:\\Other",
                 },
               ],
@@ -2935,52 +3503,18 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
     scheduled_tasks: true,
   });
   assert.deepEqual(result.listener_pids, [4321]);
-  assert.deepEqual(result.owner_pids, [
-    5000,
-    5001,
-    5002,
-    5003,
-    5004,
-    5005,
-    5006,
-    5008,
-    5009,
-    5010,
-    5011,
-    5012,
-    5013,
-    5014,
-    5015,
-    5016,
-    5018,
-    5019,
-    5023,
-    5024,
-    5025,
-    5026,
-    5027,
-    5028,
-    5029,
-    5030,
-    5031,
-    5032,
-    5033,
-    5034,
-  ]);
-  assert.deepEqual(result.scheduler_process_pids, [
-    5001,
-    5002,
-    5005,
-    5006,
-    5008,
-    5009,
-    5010,
-    5011,
-    5012,
-    5013,
-    5014,
-    5015,
-  ]);
+  assert.deepEqual(
+    result.owner_pids,
+    [
+      5000, 5001, 5002, 5003, 5004, 5005, 5006, 5008, 5009, 5010, 5011, 5012,
+      5013, 5014, 5015, 5016, 5018, 5019, 5023, 5024, 5025, 5026, 5027, 5028,
+      5029, 5030, 5031, 5032, 5033, 5034,
+    ],
+  );
+  assert.deepEqual(
+    result.scheduler_process_pids,
+    [5001, 5002, 5005, 5006, 5008, 5009, 5010, 5011, 5012, 5013, 5014, 5015],
+  );
   assert.deepEqual(result.enabled_tasks, [
     "PulseGaming-LiveGuarded-YouTube-Runtime",
     "\\Hidden\\Opaque-Caret-Encoded-Switch",
@@ -3051,10 +3585,7 @@ test("the Codex parser exemption requires the authoritative canonical PowerShell
       "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
   };
 
-  assert.equal(
-    isCanonicalCodexPowerShellProcessIdentity(canonical),
-    true,
-  );
+  assert.equal(isCanonicalCodexPowerShellProcessIdentity(canonical), true);
   assert.equal(
     isCanonicalCodexPowerShellProcessIdentity({
       ...canonical,
@@ -3128,9 +3659,7 @@ test("an expired transition fence stays exclusive and its exact live participant
   assert.equal(result.verdict, "GREEN");
   assert.deepEqual(result.blockers, []);
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.commit.json"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.commit.json")),
     true,
   );
 });
@@ -3195,6 +3724,292 @@ test("Windows quiescence fails closed when a script-capable host command line is
   }
 });
 
+test("Windows quiescence discards an absent ambiguous script-host PID after one targeted recheck", () => {
+  const profile = {
+    port: 3001,
+    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
+  };
+  const processProbeSources = [];
+  const probeOrder = [];
+  const result = inspectWindowsPulseQuiescence({
+    platform: "win32",
+    profile,
+    workspaceRoot: "C:\\Pulse\\pulse-gaming",
+    fileSystemSync: { existsSync: () => false },
+    execFileSyncImpl(_executable, args) {
+      const source = args.at(-1);
+      if (source.includes("Get-CimInstance Win32_Process")) {
+        processProbeSources.push(source);
+        if (source.includes("ProcessId = 701")) {
+          probeOrder.push("process_by_pid");
+          return JSON.stringify({
+            probe: "process_by_pid",
+            attested: true,
+            items: [],
+          });
+        }
+        probeOrder.push("processes");
+        return JSON.stringify({
+          probe: "processes",
+          attested: true,
+          items: [
+            {
+              pid: 701,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line: null,
+            },
+          ],
+        });
+      }
+      if (source.includes("Get-NetTCPConnection")) {
+        probeOrder.push("listeners");
+        return JSON.stringify({
+          probe: "listeners",
+          attested: true,
+          items: [],
+        });
+      }
+      if (source.includes("Schedule.Service")) {
+        probeOrder.push("scheduled_tasks");
+        return JSON.stringify({
+          probe: "scheduled_tasks",
+          attested: true,
+          items: [],
+        });
+      }
+      throw new Error("unexpected inspection command");
+    },
+  });
+
+  assert.equal(result.available, true);
+  assert.deepEqual(result.probe_attestations, {
+    listeners: true,
+    processes: true,
+    scheduled_tasks: true,
+  });
+  assert.equal(processProbeSources.length, 2);
+  assert.match(processProbeSources[1], /ProcessId = 701/);
+  assert.deepEqual(probeOrder, [
+    "processes",
+    "process_by_pid",
+    "scheduled_tasks",
+    "listeners",
+  ]);
+});
+
+test("a refreshed same-PID Pulse process holds the drain as a live owner", async (t) => {
+  const values = await fixture(t);
+  const roles = [];
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(
+      values,
+      async (job) => {
+        roles.push(job.payload.autonomous_production_job.builder_result.role);
+        return greenProductionResult();
+      },
+      {
+        quiescenceInspector: ({ profile, workspaceRoot, expectedCommit }) =>
+          inspectWindowsPulseQuiescence({
+            platform: "win32",
+            profile,
+            workspaceRoot,
+            expectedCommit,
+            fileSystemSync: { existsSync: () => false },
+            execFileSyncImpl(_executable, args) {
+              const source = args.at(-1);
+              if (source.includes("Get-CimInstance Win32_Process")) {
+                if (source.includes("ProcessId = 703")) {
+                  return JSON.stringify({
+                    probe: "process_by_pid",
+                    attested: true,
+                    items: [
+                      {
+                        pid: 703,
+                        name: "node.exe",
+                        executable_path: "C:\\Program Files\\nodejs\\node.exe",
+                        command_line:
+                          '"C:\\Program Files\\nodejs\\node.exe" "C:\\Pulse\\pulse-gaming\\run.js" schedule',
+                      },
+                    ],
+                  });
+                }
+                return JSON.stringify({
+                  probe: "processes",
+                  attested: true,
+                  items: [
+                    {
+                      pid: 703,
+                      name: "node.exe",
+                      executable_path: "C:\\Program Files\\nodejs\\node.exe",
+                      command_line: null,
+                    },
+                  ],
+                });
+              }
+              if (source.includes("Get-NetTCPConnection")) {
+                return JSON.stringify({
+                  probe: "listeners",
+                  attested: true,
+                  items: [],
+                });
+              }
+              if (source.includes("Schedule.Service")) {
+                return JSON.stringify({
+                  probe: "scheduled_tasks",
+                  attested: true,
+                  items: [],
+                });
+              }
+              throw new Error("unexpected inspection command");
+            },
+          }),
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(result.blockers.includes("exact_plan_live_runtime_not_quiescent"));
+  assert.deepEqual(roles, []);
+  assert.deepEqual(result.runtime_quiescence.checks[0].owner_pids, [703]);
+});
+
+test("Windows quiescence fails closed when a targeted recheck reports a different PID", () => {
+  const profile = {
+    port: 3001,
+    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
+  };
+  const result = inspectWindowsPulseQuiescence({
+    platform: "win32",
+    profile,
+    workspaceRoot: "C:\\Pulse\\pulse-gaming",
+    fileSystemSync: { existsSync: () => false },
+    execFileSyncImpl(_executable, args) {
+      const source = args.at(-1);
+      if (source.includes("Get-CimInstance Win32_Process")) {
+        if (source.includes("ProcessId = 704")) {
+          return JSON.stringify({
+            probe: "process_by_pid",
+            attested: true,
+            items: [
+              {
+                pid: 705,
+                name: "node.exe",
+                executable_path: "C:\\Program Files\\nodejs\\node.exe",
+                command_line: "node.exe harmless.js",
+              },
+            ],
+          });
+        }
+        return JSON.stringify({
+          probe: "processes",
+          attested: true,
+          items: [
+            {
+              pid: 704,
+              name: "node.exe",
+              executable_path: "C:\\Program Files\\nodejs\\node.exe",
+              command_line: null,
+            },
+          ],
+        });
+      }
+      if (source.includes("Get-NetTCPConnection")) {
+        return JSON.stringify({
+          probe: "listeners",
+          attested: true,
+          items: [],
+        });
+      }
+      if (source.includes("Schedule.Service")) {
+        return JSON.stringify({
+          probe: "scheduled_tasks",
+          attested: true,
+          items: [],
+        });
+      }
+      throw new Error("unexpected inspection command");
+    },
+  });
+
+  assert.equal(result.available, false);
+  assert.deepEqual(result.probe_attestations, {
+    listeners: false,
+    processes: false,
+    scheduled_tasks: false,
+  });
+});
+
+test("Windows quiescence holds when a targeted script-host recheck remains ambiguous", () => {
+  const profile = {
+    port: 3001,
+    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
+  };
+  const processProbeSources = [];
+  const ambiguousRow = {
+    pid: 702,
+    name: "node.exe",
+    executable_path: "C:\\Program Files\\nodejs\\node.exe",
+    command_line: null,
+  };
+  const result = inspectWindowsPulseQuiescence({
+    platform: "win32",
+    profile,
+    workspaceRoot: "C:\\Pulse\\pulse-gaming",
+    fileSystemSync: { existsSync: () => false },
+    execFileSyncImpl(_executable, args) {
+      const source = args.at(-1);
+      if (source.includes("Get-CimInstance Win32_Process")) {
+        processProbeSources.push(source);
+        if (source.includes("ProcessId = 702")) {
+          return JSON.stringify({
+            probe: "process_by_pid",
+            attested: true,
+            items: [ambiguousRow],
+          });
+        }
+        return JSON.stringify({
+          probe: "processes",
+          attested: true,
+          items: [ambiguousRow],
+        });
+      }
+      if (source.includes("Get-NetTCPConnection")) {
+        return JSON.stringify({
+          probe: "listeners",
+          attested: true,
+          items: [],
+        });
+      }
+      if (source.includes("Schedule.Service")) {
+        return JSON.stringify({
+          probe: "scheduled_tasks",
+          attested: true,
+          items: [],
+        });
+      }
+      throw new Error("unexpected inspection command");
+    },
+  });
+
+  assert.equal(result.available, false);
+  assert.deepEqual(result.probe_attestations, {
+    listeners: false,
+    processes: false,
+    scheduled_tasks: false,
+  });
+  assert.equal(processProbeSources.length, 2);
+  assert.match(processProbeSources[1], /ProcessId = 702/);
+});
+
 test("Windows quiescence binds the canonical owner receipt supervisor and child PIDs", () => {
   const profile = {
     port: 3001,
@@ -3202,10 +4017,7 @@ test("Windows quiescence binds the canonical owner receipt supervisor and child 
     task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
     conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
   };
-  const ownerPath = path.join(
-    profile.state_root,
-    "supervisor-owner.json",
-  );
+  const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
   const result = inspectWindowsPulseQuiescence({
     platform: "win32",
     profile,
@@ -3284,10 +4096,7 @@ test("Windows quiescence fails closed on an unbound canonical owner receipt", ()
     task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
     conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
   };
-  const ownerPath = path.join(
-    profile.state_root,
-    "supervisor-owner.json",
-  );
+  const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
   const result = inspectWindowsPulseQuiescence({
     platform: "win32",
     profile,
@@ -3390,39 +4199,31 @@ test("final queue drift is rejected before a GREEN evidence commit is published"
   const values = await fixture(t);
   const result = await drainExactGovernedProductionPlan(
     request(values),
-    dependencies(
-      values,
-      async () => greenProductionResult(),
-      {
-        beforeEvidenceFinalise() {
-          values.jobs.enqueue({
-            kind: "produce_breaking_short",
-            channel_id: "pulse-gaming",
-            story_id: "db-extra",
-            payload: {
-              lane_id: "breaking_short",
-              story_id: "story-extra",
-            },
-            priority: 1,
-            run_at: GENERATED_AT,
-            max_attempts: 3,
-            idempotency_key: "extra-breaking-job-at-final-boundary",
-          });
-        },
+    dependencies(values, async () => greenProductionResult(), {
+      beforeEvidenceFinalise() {
+        values.jobs.enqueue({
+          kind: "produce_breaking_short",
+          channel_id: "pulse-gaming",
+          story_id: "db-extra",
+          payload: {
+            lane_id: "breaking_short",
+            story_id: "story-extra",
+          },
+          priority: 1,
+          run_at: GENERATED_AT,
+          max_attempts: 3,
+          idempotency_key: "extra-breaking-job-at-final-boundary",
+        });
       },
-    ),
+    }),
   );
 
   assert.equal(result.verdict, "HOLD");
   assert.ok(
-    result.blockers.includes(
-      "exact_plan_active_breaking_job_set_mismatch",
-    ),
+    result.blockers.includes("exact_plan_active_breaking_job_set_mismatch"),
   );
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.commit.json"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.commit.json")),
     false,
   );
 });
@@ -3430,22 +4231,17 @@ test("final queue drift is rejected before a GREEN evidence commit is published"
 test("final predecessor binding drift is rejected before a GREEN evidence commit is published", async (t) => {
   const values = await fixture(t);
   const { predecessor } = await createTimedSuccessor(values);
-  const predecessorJobId =
-    predecessor.plan.production_jobs[0].job_id;
+  const predecessorJobId = predecessor.plan.production_jobs[0].job_id;
 
   const result = await drainExactGovernedProductionPlan(
     request(values),
-    dependencies(
-      values,
-      async () => greenProductionResult(),
-      {
-        beforeEvidenceFinalise() {
-          values.db
-            .prepare("UPDATE jobs SET max_attempts = 99 WHERE id = ?")
-            .run(predecessorJobId);
-        },
+    dependencies(values, async () => greenProductionResult(), {
+      beforeEvidenceFinalise() {
+        values.db
+          .prepare("UPDATE jobs SET max_attempts = 99 WHERE id = ?")
+          .run(predecessorJobId);
       },
-    ),
+    }),
   );
 
   assert.equal(result.verdict, "HOLD");
@@ -3455,9 +4251,7 @@ test("final predecessor binding drift is rejected before a GREEN evidence commit
     ),
   );
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.commit.json"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.commit.json")),
     false,
   );
 });
@@ -3474,16 +4268,12 @@ test("the final evidence commit is published while an authoritative database wri
       if (property === "link") {
         return async (sourcePath, destinationPath) => {
           if (
-            String(destinationPath).endsWith(
-              "exact-plan-drain.commit.json",
-            )
+            String(destinationPath).endsWith("exact-plan-drain.commit.json")
           ) {
             commitLinkObserved = true;
             try {
               competingDatabase
-                .prepare(
-                  "UPDATE jobs SET max_attempts = 99 WHERE id = ?",
-                )
+                .prepare("UPDATE jobs SET max_attempts = 99 WHERE id = ?")
                 .run(primaryJobId);
             } catch (error) {
               competingWriteCode = error?.code || null;
@@ -3514,9 +4304,7 @@ test("the final evidence commit is published while an authoritative database wri
   assert.equal(competingWriteCode, "SQLITE_BUSY");
   assert.equal(values.jobs.get(primaryJobId).max_attempts, 3);
   assert.equal(
-    fs.existsSync(
-      path.join(values.outputDir, "exact-plan-drain.commit.json"),
-    ),
+    fs.existsSync(path.join(values.outputDir, "exact-plan-drain.commit.json")),
     true,
   );
 });

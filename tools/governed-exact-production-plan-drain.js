@@ -7,9 +7,8 @@ const path = require("node:path");
 const {
   DRAIN_REQUEST_SCHEMA_VERSION,
   drainExactGovernedProductionPlan,
-} = require(
-  "../lib/ops/governed-exact-production-plan-drain"
-);
+  inspectExactDatabaseFile,
+} = require("../lib/ops/governed-exact-production-plan-drain");
 
 const DEFAULT_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 250;
@@ -140,10 +139,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       ? parseInteger(parsed["--timeout-ms"], "--timeout-ms")
       : DEFAULT_TIMEOUT_MS,
     pollIntervalMs: parsed["--poll-interval-ms"]
-      ? parseInteger(
-          parsed["--poll-interval-ms"],
-          "--poll-interval-ms",
-        )
+      ? parseInteger(parsed["--poll-interval-ms"], "--poll-interval-ms")
       : DEFAULT_POLL_INTERVAL_MS,
   };
 }
@@ -168,26 +164,26 @@ function defaultLoadEnvironment(workspaceRoot) {
 }
 
 async function main(argv = process.argv.slice(2), dependencies = {}) {
-  const stdout =
-    dependencies.stdout || ((text) => process.stdout.write(text));
+  const stdout = dependencies.stdout || ((text) => process.stdout.write(text));
   const parsed = parseArgs(argv);
   if (parsed.help) {
     stdout(`${usage()}\n`);
     return 0;
   }
-  const openDatabase =
-    dependencies.openDatabase || defaultOpenDatabase;
+  const openDatabase = dependencies.openDatabase || defaultOpenDatabase;
   const loadEnvironment =
     dependencies.loadEnvironment || defaultLoadEnvironment;
+  const inspectDatabaseFile =
+    dependencies.inspectDatabaseFile || inspectExactDatabaseFile;
   const bindRepositories =
     dependencies.bindRepositories ||
     require("../lib/repositories").bindRepositories;
-  const runDrain =
-    dependencies.runDrain || drainExactGovernedProductionPlan;
+  const runDrain = dependencies.runDrain || drainExactGovernedProductionPlan;
   const now = dependencies.now || (() => new Date());
   let database = null;
   try {
     loadEnvironment(parsed.workspaceRoot);
+    const databaseFileBinding = await inspectDatabaseFile(parsed.database);
     database = openDatabase(parsed.database);
     const repos = bindRepositories(database);
     const result = await runDrain(
@@ -201,15 +197,14 @@ async function main(argv = process.argv.slice(2), dependencies = {}) {
         workspace_root: parsed.workspaceRoot,
         database_path: parsed.database,
         runtime_profile_path: parsed.runtimeProfile,
-        expected_runtime_profile_file_sha256:
-          parsed.runtimeProfileFileSha256,
+        expected_runtime_profile_file_sha256: parsed.runtimeProfileFileSha256,
         expected_checkout_commit: parsed.expectedCommit,
         output_dir: parsed.outDir,
         worker_id: parsed.workerId,
         timeout_ms: parsed.timeoutMs,
         poll_interval_ms: parsed.pollIntervalMs,
       },
-      { db: database, repos },
+      { db: database, repos, databaseFileBinding },
     );
     stdout(`${JSON.stringify(result, null, 2)}\n`);
     return result.verdict === "GREEN" ? 0 : 1;

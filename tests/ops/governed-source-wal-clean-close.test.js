@@ -1064,6 +1064,40 @@ test("sqlite_sequence is part of the logical digest", async (t) => {
   );
 });
 
+test("the fenced request window permits twenty-minute real-database proofs but no longer", async (t) => {
+  const accepted = fixture(t);
+  const generated = new Date(Date.now() - 1000);
+  const acceptedResult = await cleanCloseGovernedSourceWal(
+    request(accepted, {
+      generated_at: generated.toISOString(),
+      expires_at: new Date(
+        generated.getTime() + 20 * 60 * 1000,
+      ).toISOString(),
+    }),
+    deps({ now: () => generated, completionNow: () => new Date() }),
+  );
+  assert.equal(
+    acceptedResult.verdict,
+    "PASS",
+    JSON.stringify(acceptedResult),
+  );
+
+  const rejected = fixture(t);
+  const rejectedResult = await cleanCloseGovernedSourceWal(
+    request(rejected, {
+      generated_at: generated.toISOString(),
+      expires_at: new Date(
+        generated.getTime() + 20 * 60 * 1000 + 1,
+      ).toISOString(),
+      change_id: "too-long-window",
+      confirmation_id: "too-long-window",
+    }),
+    deps({ now: () => generated }),
+  );
+  assert.equal(rejectedResult.verdict, "HOLD");
+  assert.deepEqual(rejectedResult.blockers, ["source_wal_timestamp_invalid"]);
+});
+
 test("request generation may precede the operation and backup verification clocks", async (t) => {
   const v = fixture(t),
     operationClock = new Date(Date.now() - 30_000),

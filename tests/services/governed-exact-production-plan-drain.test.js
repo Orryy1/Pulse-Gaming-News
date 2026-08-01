@@ -10,6 +10,9 @@ const test = require("node:test");
 const Database = require("better-sqlite3");
 
 const { bind: bindJobs } = require("../../lib/repositories/jobs");
+const {
+  bind: bindRuntimeLeases,
+} = require("../../lib/repositories/runtime_leases");
 const { bind: bindWorkers } = require("../../lib/repositories/workers");
 const {
   canonicalSha256,
@@ -26,8 +29,16 @@ const {
 const {
   DRAIN_REQUEST_SCHEMA_VERSION,
   drainExactGovernedProductionPlan,
+  isCanonicalCodexPowerShellProcessIdentity,
   inspectWindowsPulseQuiescence,
 } = require("../../lib/ops/governed-exact-production-plan-drain");
+const {
+  acquireLiveRuntimeTransitionLease,
+  LIVE_RUNTIME_TRANSITION_LEASE_NAME,
+} = require("../../lib/stabilisation/live-runtime-transition-lease");
+const {
+  profileFingerprint,
+} = require("../../lib/stabilisation/windows-local-runtime-supervisor");
 
 const GENERATED_AT = "2026-07-30T07:20:00.000Z";
 const SCHEDULED_FOR = "2026-07-30T09:00:00.000Z";
@@ -191,6 +202,14 @@ async function fixture(t) {
       id TEXT PRIMARY KEY,
       approved INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE runtime_leases (
+      name TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      acquired_at TEXT NOT NULL,
+      heartbeat_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      metadata TEXT
+    );
   `);
   db.exec(
     fs.readFileSync(
@@ -225,6 +244,7 @@ async function fixture(t) {
     );
   }
   const jobs = bindJobs(db);
+  const runtimeLeases = bindRuntimeLeases(db);
   const workers = bindWorkers(db);
   const planPath = path.join(workspaceRoot, "production-plan.json");
   const reservationPath = path.join(workspaceRoot, "reservation.json");
@@ -264,7 +284,7 @@ async function fixture(t) {
   const outputDir = path.join(workspaceRoot, "drain-evidence");
   const planFileSha256 = sha256(fs.readFileSync(planPath));
   const profileFileSha256 = sha256(fs.readFileSync(profilePath));
-  const repos = { db, jobs, workers };
+  const repos = { db, jobs, runtimeLeases, workers };
   t.after(() => {
     db.close();
     fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -274,6 +294,7 @@ async function fixture(t) {
     databasePath,
     db,
     jobs,
+    runtimeLeases,
     repos,
     planPath,
     reservationPath,
@@ -571,6 +592,12 @@ test("runs only the exact PRIMARY then STANDBY plan jobs through one ordinary ru
     fs.existsSync(path.join(values.outputDir, "exact-plan-drain.json")),
     true,
   );
+  assert.equal(
+    fs.existsSync(
+      path.join(values.outputDir, "exact-plan-drain.commit.json"),
+    ),
+    true,
+  );
   assert.match(
     fs.readFileSync(
       path.join(values.outputDir, "exact-plan-drain.md"),
@@ -743,6 +770,76 @@ test("durable attestations recover exact completed prefixes without duplicate pr
     assert.equal(replay.verdict, "GREEN");
     assert.equal(replay.execution.recovered_done_prefix, 1);
     assert.deepEqual(roles, ["PRIMARY", "STANDBY"]);
+  });
+});
+
+test("transition-lease evidence is deterministic across replay and legacy GREEN evidence is rejected", async (t) => {
+  await t.test("byte-identical replay contains no invocation owner", async (t) => {
+    const values = await fixture(t);
+    const first = await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(values, async () => greenProductionResult()),
+    );
+    const jsonPath = path.join(
+      values.outputDir,
+      "exact-plan-drain.json",
+    );
+    const markdownPath = path.join(
+      values.outputDir,
+      "exact-plan-drain.md",
+    );
+    const firstJson = fs.readFileSync(jsonPath);
+    const firstMarkdown = fs.readFileSync(markdownPath);
+
+    const replay = await drainExactGovernedProductionPlan(
+      request(values, {
+        generated_at: "2026-08-01T08:30:00.000Z",
+      }),
+      dependencies(values, async () => {
+        throw new Error("completed jobs must not run again");
+      }),
+    );
+
+    assert.equal(first.verdict, "GREEN");
+    assert.equal(replay.verdict, "GREEN");
+    assert.equal(first.report_sha256, replay.report_sha256);
+    assert.deepEqual(fs.readFileSync(jsonPath), firstJson);
+    assert.deepEqual(fs.readFileSync(markdownPath), firstMarkdown);
+    assert.equal(firstJson.includes(Buffer.from("exact-plan-drain:")), false);
+  });
+
+  await t.test("a legacy GREEN report without transition proof cannot replay", async (t) => {
+    const values = await fixture(t);
+    await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(values, async () => greenProductionResult()),
+    );
+    const jsonPath = path.join(
+      values.outputDir,
+      "exact-plan-drain.json",
+    );
+    const markdownPath = path.join(
+      values.outputDir,
+      "exact-plan-drain.md",
+    );
+    const legacy = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+    delete legacy.runtime_transition_lease;
+    delete legacy.report_sha256;
+    legacy.report_sha256 = canonicalSha256(legacy);
+    fs.writeFileSync(jsonPath, `${JSON.stringify(legacy, null, 2)}\n`);
+    fs.rmSync(markdownPath, { force: true });
+
+    const replay = await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(values, async () => {
+        throw new Error("legacy evidence must not execute jobs");
+      }),
+    );
+
+    assert.equal(replay.verdict, "HOLD");
+    assert.ok(
+      replay.blockers.includes("exact_plan_drain_evidence_conflict"),
+    );
   });
 });
 
@@ -933,6 +1030,67 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
   const originalJson = fs.readFileSync(jsonPath);
   assert.equal(fs.existsSync(markdownPath), false);
 
+  let heartbeatCallback = null;
+  let transitionLost = false;
+  const replayFileSystem = new Proxy(realFileSystem, {
+    get(target, property) {
+      if (property === "link") {
+        return async (existingPath, newPath) => {
+          const result = await target.link(existingPath, newPath);
+          if (
+            path.basename(String(newPath)) ===
+              "exact-plan-drain.md"
+          ) {
+            transitionLost = true;
+            heartbeatCallback();
+          }
+          return result;
+        };
+      }
+      const value = Reflect.get(target, property);
+      return typeof value === "function"
+        ? value.bind(target)
+        : value;
+    },
+  });
+  await assert.rejects(
+    drainExactGovernedProductionPlan(
+      request(values, {
+        generated_at: "2026-07-30T23:56:00.000Z",
+      }),
+      dependencies(
+        values,
+        async () => {
+          throw new Error("completed jobs must not run again");
+        },
+        {
+          fileSystem: replayFileSystem,
+          transitionLeaseAcquirer: () => ({
+            renew() {
+              if (transitionLost) {
+                throw new Error("fixture_transition_lost");
+              }
+              return true;
+            },
+            release: () => true,
+          }),
+          setInterval(callback) {
+            heartbeatCallback = callback;
+            return { unref() {} };
+          },
+          clearInterval() {},
+        },
+      ),
+    ),
+    /exact_plan_live_transition_lease_lost/,
+  );
+  assert.equal(
+    fs.existsSync(
+      path.join(values.outputDir, "exact-plan-drain.commit.json"),
+    ),
+    false,
+  );
+
   const replay = await drainExactGovernedProductionPlan(
     request(values, {
       generated_at: "2026-07-30T23:57:00.000Z",
@@ -946,6 +1104,83 @@ test("JSON-before-Markdown interruption is finalised deterministically on replay
   assert.equal(calls, 2);
   assert.deepEqual(fs.readFileSync(jsonPath), originalJson);
   assert.equal(fs.existsSync(markdownPath), true);
+});
+
+test("heartbeat loss during evidence staging cannot create replayable committed GREEN evidence", async (t) => {
+  const values = await fixture(t);
+  const realFileSystem = fs.promises;
+  let heartbeatCallback = null;
+  let leaseLost = false;
+  let triggered = false;
+  const fileSystem = new Proxy(realFileSystem, {
+    get(target, property) {
+      if (property === "link") {
+        return async (existingPath, newPath) => {
+          const result = await target.link(existingPath, newPath);
+          if (
+            !triggered &&
+            path.basename(String(newPath)) ===
+              "exact-plan-drain.json"
+          ) {
+            triggered = true;
+            leaseLost = true;
+            heartbeatCallback();
+          }
+          return result;
+        };
+      }
+      const value = Reflect.get(target, property);
+      return typeof value === "function"
+        ? value.bind(target)
+        : value;
+    },
+  });
+
+  await assert.rejects(
+    drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(
+        values,
+        async () => greenProductionResult(),
+        {
+          fileSystem,
+          transitionLeaseAcquirer: () => ({
+            renew() {
+              if (leaseLost) {
+                throw new Error("fixture_transition_lost");
+              }
+              return true;
+            },
+            release: () => true,
+          }),
+          setInterval(callback) {
+            heartbeatCallback = callback;
+            return { unref() {} };
+          },
+          clearInterval() {},
+        },
+      ),
+    ),
+    /exact_plan_live_transition_lease_lost/,
+  );
+
+  const commitPath = path.join(
+    values.outputDir,
+    "exact-plan-drain.commit.json",
+  );
+  assert.equal(triggered, true);
+  assert.equal(fs.existsSync(commitPath), false);
+
+  const recovered = await drainExactGovernedProductionPlan(
+    request(values, {
+      generated_at: "2026-08-01T08:45:00.000Z",
+    }),
+    dependencies(values, async () => {
+      throw new Error("completed jobs must not run again");
+    }),
+  );
+  assert.equal(recovered.verdict, "GREEN");
+  assert.equal(fs.existsSync(commitPath), true);
 });
 
 test("accepts an exact legacy v1 root plan without inventing lineage", async (t) => {
@@ -1652,6 +1887,271 @@ test("requires the exact activation receipt path to remain absent before and thr
       0,
     );
   });
+
+  await t.test("receipt appearing at the final evidence boundary prevents GREEN", async (t) => {
+    const values = await fixture(t);
+    const profile = JSON.parse(
+      fs.readFileSync(values.profilePath, "utf8"),
+    );
+
+    const result = await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(
+        values,
+        async () => greenProductionResult(),
+        {
+          beforeEvidenceFinalise() {
+            fs.mkdirSync(
+              path.dirname(profile.activation_receipt_path),
+              { recursive: true },
+            );
+            fs.writeFileSync(
+              profile.activation_receipt_path,
+              "{}\n",
+            );
+          },
+        },
+      ),
+    );
+
+    assert.equal(result.verdict, "HOLD");
+    assert.ok(
+      result.blockers.includes(
+        "exact_plan_activation_receipt_present",
+      ),
+    );
+    assert.equal(
+      fs.existsSync(
+        path.join(values.outputDir, "exact-plan-drain.json"),
+      ),
+      false,
+    );
+  });
+});
+
+test("the durable live-transition lease excludes activation and runtime start for the complete drain boundary", async (t) => {
+  await t.test("a pre-held transition blocks before production", async (t) => {
+    const values = await fixture(t);
+    values.runtimeLeases.acquire({
+      name: LIVE_RUNTIME_TRANSITION_LEASE_NAME,
+      ownerId: "live-start:other",
+      leaseMs: 60_000,
+    });
+    let called = 0;
+
+    const result = await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(values, async () => {
+        called += 1;
+        return greenProductionResult();
+      }),
+    );
+
+    assert.equal(result.verdict, "HOLD");
+    assert.ok(
+      result.blockers.includes(
+        "exact_plan_live_transition_lease_unavailable",
+      ),
+    );
+    assert.equal(called, 0);
+    assert.equal(
+      values.runtimeLeases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME)
+        ?.owner_id,
+      "live-start:other",
+    );
+  });
+
+  await t.test("competing acquisition is denied through final inspection and the lease is then released", async (t) => {
+    const values = await fixture(t);
+    const competing = [];
+    const attemptCompetingAcquire = (boundary) => {
+      const result = values.runtimeLeases.acquire({
+        name: LIVE_RUNTIME_TRANSITION_LEASE_NAME,
+        ownerId: `live-activation:${boundary}`,
+        leaseMs: 60_000,
+      });
+      competing.push([boundary, result.acquired]);
+    };
+
+    const result = await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(
+        values,
+        async () => {
+          attemptCompetingAcquire("handler");
+          return greenProductionResult();
+        },
+        {
+          beforeEvidenceFinalise() {
+            attemptCompetingAcquire("finalise");
+          },
+        },
+      ),
+    );
+
+    assert.equal(result.verdict, "GREEN");
+    assert.deepEqual(competing, [
+      ["handler", false],
+      ["handler", false],
+      ["finalise", false],
+    ]);
+    assert.equal(
+      values.runtimeLeases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME),
+      null,
+    );
+    assert.deepEqual(result.runtime_transition_lease, {
+      required: true,
+      name: LIVE_RUNTIME_TRANSITION_LEASE_NAME,
+      acquired: true,
+      held_through_finalisation: true,
+    });
+    assert.equal(
+      JSON.stringify(result).includes("exact-plan-drain:"),
+      false,
+    );
+  });
+
+  await t.test("background heartbeat loss converts the run to a fixed secret-safe HOLD", async (t) => {
+    const values = await fixture(t);
+    let heartbeatCallback = null;
+    let lost = false;
+    let released = false;
+    let cleared = false;
+    const result = await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(
+        values,
+        async () => {
+          lost = true;
+          heartbeatCallback();
+          return greenProductionResult();
+        },
+        {
+          transitionLeaseAcquirer() {
+            return {
+              renew() {
+                if (lost) {
+                  throw new Error(
+                    "must_not_escape_secret_transition_detail",
+                  );
+                }
+                return true;
+              },
+              release() {
+                released = true;
+                return true;
+              },
+            };
+          },
+          setInterval(callback) {
+            heartbeatCallback = callback;
+            return { unref() {} };
+          },
+          clearInterval() {
+            cleared = true;
+          },
+        },
+      ),
+    );
+
+    assert.equal(result.verdict, "HOLD");
+    assert.ok(
+      result.blockers.includes(
+        "exact_plan_live_transition_lease_lost",
+      ),
+    );
+    assert.equal(
+      result.blockers.some((value) =>
+        value.includes("must_not_escape_secret_transition_detail"),
+      ),
+      false,
+    );
+    assert.equal(released, true);
+    assert.equal(cleared, true);
+  });
+
+  await t.test("release failure after the GREEN commit link cannot return success even after heartbeat loss", async (t) => {
+    const values = await fixture(t);
+    const realFileSystem = fs.promises;
+    let heartbeatCallback = null;
+    let lost = false;
+    let triggered = false;
+    let releaseAttempts = 0;
+    const fileSystem = new Proxy(realFileSystem, {
+      get(target, property) {
+        if (property === "link") {
+          return async (existingPath, newPath) => {
+            const result = await target.link(existingPath, newPath);
+            if (
+              !triggered &&
+              path.basename(String(newPath)) ===
+                "exact-plan-drain.commit.json"
+            ) {
+              triggered = true;
+              lost = true;
+              heartbeatCallback();
+            }
+            return result;
+          };
+        }
+        const value = Reflect.get(target, property);
+        return typeof value === "function"
+          ? value.bind(target)
+          : value;
+      },
+    });
+
+    let observedError = null;
+    try {
+      await drainExactGovernedProductionPlan(
+        request(values),
+        dependencies(
+          values,
+          async () => greenProductionResult(),
+          {
+            fileSystem,
+            transitionLeaseAcquirer: () => ({
+              renew() {
+                if (lost) {
+                  throw new Error("secret_renewal_detail");
+                }
+                return true;
+              },
+              release() {
+                releaseAttempts += 1;
+                throw new Error("secret_release_detail");
+              },
+            }),
+            setInterval(callback) {
+              heartbeatCallback = callback;
+              return { unref() {} };
+            },
+            clearInterval() {},
+          },
+        ),
+      );
+    } catch (error) {
+      observedError = error;
+    }
+
+    assert.ok(observedError);
+    assert.equal(
+      observedError.message,
+      "exact_plan_live_transition_lease_release_failed",
+    );
+    assert.equal(
+      observedError.message.includes("secret_release_detail"),
+      false,
+    );
+    assert.equal(triggered, true);
+    assert.equal(releaseAttempts, 1);
+    assert.equal(
+      fs.existsSync(
+        path.join(values.outputDir, "exact-plan-drain.commit.json"),
+      ),
+      true,
+    );
+  });
 });
 
 test("a bounded timeout aborts and drains the runner without claiming STANDBY", async (t) => {
@@ -1933,22 +2433,238 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
           items: [
             {
               pid: 5000,
+              name: "node.exe",
               command_line:
                 "node C:\\Pulse\\pulse-gaming\\tools\\windows-local-runtime-supervisor.js ensure",
             },
             {
               pid: 5001,
+              name: "node.exe",
               command_line:
                 "node C:\\Pulse\\pulse-gaming\\server.js",
             },
             {
+              pid: 5002,
+              name: "node.exe",
+              command_line:
+                'node "C:\\Pulse\\pulse-gaming\\run.js" full',
+            },
+            {
+              pid: 5003,
+              name: "node.exe",
+              command_line:
+                "node C:\\Pulse\\pulse-gaming\\publisher.js full",
+            },
+            {
+              pid: 5004,
+              name: "node.exe",
+              command_line:
+                "node C:\\Pulse\\pulse-gaming\\upload_youtube.js publish --token PROCESS_SECRET",
+            },
+            {
+              pid: 5005,
+              name: "node.exe",
+              command_line:
+                "node .\\workers\\local-worker.js --root C:\\Pulse\\pulse-gaming",
+            },
+            {
+              pid: 5006,
+              name: "powershell.exe",
+              command_line:
+                "powershell -File C:\\Pulse\\pulse-gaming\\tools\\local-live-watchdog.ps1",
+            },
+            {
+              pid: 5007,
+              name: "node.exe",
+              command_line:
+                "node C:\\Pulse\\pulse-gaming\\tools\\windows-ollama-watchdog.js ensure --profile governed_multi_lane",
+            },
+            {
+              pid: 5008,
+              name: "node.exe",
+              command_line:
+                "node C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js --workspace C:\\Pulse\\pulse-gaming --note run.js full",
+            },
+            {
+              pid: 5009,
+              name: "powershell.exe",
+              command_line:
+                "powershell -Command npx @wonderwhy-er/desktop-commander '&' node C:\\Pulse\\pulse-gaming\\run.js full",
+            },
+            {
+              pid: 5010,
+              name: "node.exe",
+              command_line: "node server.js",
+            },
+            {
+              pid: 5011,
+              name: "node.exe",
+              command_line: "node run.js full",
+            },
+            {
+              pid: 5012,
+              name: "node.exe",
+              command_line: "node run.js publish",
+            },
+            {
+              pid: 5013,
+              name: "node.exe",
+              command_line: "node run.js produce",
+            },
+            {
+              pid: 5014,
+              name: "node.exe",
+              command_line: "node run.js schedule",
+            },
+            {
+              pid: 5015,
+              name: "node.exe",
+              command_line:
+                "node C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js --cwd C:\\Pulse\\pulse-gaming npm start",
+            },
+            {
+              pid: 5016,
+              name: "powershell.exe",
+              command_line:
+                "powershell -Command node C:\\Pulse\\pulse-gaming\\tools\\windows-ollama-watchdog.js ensure --profile governed_multi_lane ';' node -e \"require('./server')\"",
+            },
+            {
+              pid: 5017,
+              name: "node.exe",
+              command_line:
+                '"node" "C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js" remote',
+            },
+            {
+              pid: 5018,
+              name: "powershell.exe",
+              command_line:
+                'powershell -Command "node C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js $(node -e \\\"require(\'./server\')\\\")"',
+            },
+            {
+              pid: 5019,
+              name: "node.exe",
+              command_line:
+                'node C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js remote\nnode -e "require(\'./server\')"',
+            },
+            {
+              pid: 5020,
+              name: "cmd.exe",
+              command_line:
+                'C:\\Windows\\System32\\cmd.exe /c ""C:\\Program Files\\nodejs\\npx.cmd" --yes @wonderwhy-er/desktop-commander@0.2.46 remote "',
+            },
+            {
+              pid: 5021,
+              name: "node.exe",
+              command_line:
+                '"C:\\Program Files\\nodejs\\node.exe" "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js" --yes @wonderwhy-er/desktop-commander@0.2.46 remote',
+            },
+            {
+              pid: 5022,
+              name: "cmd.exe",
+              command_line:
+                "C:\\Windows\\System32\\cmd.exe /d /s /c desktop-commander remote",
+            },
+            {
+              pid: 5023,
+              name: "powershell.exe",
+              command_line:
+                "powershell.exe -EncodedCommand SECRET_BASE64_PAYLOAD",
+            },
+            {
+              pid: 5024,
+              name: "cmd.exe",
+              command_line:
+                "cmd.exe /c powershell -enc:SECRET_BASE64_PAYLOAD",
+            },
+            {
+              pid: 5025,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                "powershell.exe –EncodedCommand UNICODE_PROCESS_SECRET",
+            },
+            {
+              pid: 5026,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                "powershell.exe —EncodedCommand UNICODE_EM_DASH_SECRET",
+            },
+            {
+              pid: 5027,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                "powershell.exe ―EncodedCommand UNICODE_BAR_SECRET",
+            },
+            {
+              pid: 5028,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                'powershell.exe "-EncodedCommand" QUOTED_SWITCH_SECRET',
+            },
+            {
+              pid: 5029,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                'powershell.exe "–enc" QUOTED_UNICODE_SECRET',
+            },
+            {
+              pid: 5030,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                'powershell.exe "-"EncodedCommand SPLIT_QUOTE_1_SECRET',
+            },
+            {
+              pid: 5031,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                'powershell.exe -Enc"odedCommand" SPLIT_QUOTE_2_SECRET',
+            },
+            {
+              pid: 5032,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                'powershell.exe -Encoded"Command" SPLIT_QUOTE_3_SECRET',
+            },
+            {
+              pid: 5033,
+              name: "powershell.exe",
+              executable_path:
+                "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+              command_line:
+                'powershell.exe "-Enc"odedCommand SPLIT_QUOTE_4_SECRET',
+            },
+            {
+              pid: 5034,
+              name: "cmd.exe",
+              executable_path: "C:\\Windows\\System32\\cmd.exe",
+              command_line:
+                "cmd.exe /c powershell.exe -Enc^odedCommand CARET_SWITCH_SECRET",
+            },
+            {
               pid: 6000,
+              name: "node.exe",
               command_line: "node C:\\Other\\server.js",
             },
           ],
         });
       }
       if (source.includes("Schedule.Service")) {
+        assert.match(source, /GetTasks\(1\)/);
         return JSON.stringify({
           probe: "scheduled_tasks",
           attested: true,
@@ -1956,16 +2672,257 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
             {
               TaskName:
                 "PulseGaming-LiveGuarded-YouTube-Runtime",
+              TaskPath:
+                "\\PulseGaming-LiveGuarded-YouTube-Runtime",
               State: "Ready",
               Enabled: true,
+              Hidden: false,
+              Actions: [],
             },
             {
               TaskName: "PulseGaming-Stabilisation-Runtime",
+              TaskPath: "\\PulseGaming-Stabilisation-Runtime",
               State: 4,
               Enabled: false,
+              Hidden: false,
+              Actions: [],
+            },
+            {
+              TaskName: "PulseGaming-LiveWatchdog-Supervisor",
+              TaskPath:
+                "\\Legacy\\PulseGaming-LiveWatchdog-Supervisor",
+              State: 3,
+              Enabled: true,
+              Hidden: false,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments:
+                    "-File C:\\Pulse\\pulse-gaming\\tools\\local-live-watchdog.ps1",
+                  WorkingDirectory: "C:\\Pulse\\pulse-gaming",
+                },
+              ],
+            },
+            {
+              TaskName: "Custom-Hidden-Pulse-Wrapper",
+              TaskPath: "\\Custom\\Custom-Hidden-Pulse-Wrapper",
+              State: 2,
+              Enabled: false,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments: "-EncodedCommand TASK_SECRET",
+                  WorkingDirectory: "C:\\Pulse\\pulse-gaming",
+                },
+              ],
+            },
+            {
+              TaskName: "PulseGaming-Ollama-Watchdog",
+              TaskPath: "\\PulseGaming-Ollama-Watchdog",
+              State: 3,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "node.exe",
+                  Arguments:
+                    "C:\\Pulse\\pulse-gaming\\tools\\windows-ollama-watchdog.js ensure --profile governed_multi_lane",
+                  WorkingDirectory: "C:\\Pulse\\pulse-gaming",
+                },
+              ],
+            },
+            {
+              TaskName: "Desktop-Commander-Bridge",
+              TaskPath: "\\Tools\\Desktop-Commander-Bridge",
+              State: 3,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "node.exe",
+                  Arguments:
+                    "C:\\cache\\node_modules\\@wonderwhy-er\\desktop-commander\\dist\\index.js",
+                  WorkingDirectory: "C:\\Pulse\\pulse-gaming",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Maintenance",
+              TaskPath: "\\Hidden\\Opaque-Maintenance",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments: "-EnCo SECRET_TASK_PAYLOAD",
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Unicode-Maintenance",
+              TaskPath: "\\Hidden\\Opaque-Unicode-Maintenance",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments: "–EncodedCommand UNICODE_TASK_SECRET",
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Unicode-Em-Dash",
+              TaskPath: "\\Hidden\\Opaque-Unicode-Em-Dash",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments: "—EncodedCommand UNICODE_EM_TASK_SECRET",
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Unicode-Horizontal-Bar",
+              TaskPath: "\\Hidden\\Opaque-Unicode-Horizontal-Bar",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments: "―EncodedCommand UNICODE_BAR_TASK_SECRET",
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Quoted-Encoded-Switch",
+              TaskPath: "\\Hidden\\Opaque-Quoted-Encoded-Switch",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments:
+                    '"-EncodedCommand" QUOTED_TASK_SWITCH_SECRET',
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Quoted-Unicode-Switch",
+              TaskPath: "\\Hidden\\Opaque-Quoted-Unicode-Switch",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments: '"–enc" QUOTED_UNICODE_TASK_SECRET',
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Quoted-Split-1",
+              TaskPath: "\\Hidden\\Opaque-Quoted-Split-1",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments:
+                    '"-"EncodedCommand SPLIT_TASK_1_SECRET',
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Quoted-Split-2",
+              TaskPath: "\\Hidden\\Opaque-Quoted-Split-2",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments:
+                    '-Enc"odedCommand" SPLIT_TASK_2_SECRET',
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Quoted-Split-3",
+              TaskPath: "\\Hidden\\Opaque-Quoted-Split-3",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments:
+                    '-Encoded"Command" SPLIT_TASK_3_SECRET',
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Quoted-Split-4",
+              TaskPath: "\\Hidden\\Opaque-Quoted-Split-4",
+              State: 4,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "powershell.exe",
+                  Arguments:
+                    '"-Enc"odedCommand SPLIT_TASK_4_SECRET',
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
+            },
+            {
+              TaskName: "Opaque-Caret-Encoded-Switch",
+              TaskPath: "\\Hidden\\Opaque-Caret-Encoded-Switch",
+              State: 3,
+              Enabled: true,
+              Hidden: true,
+              Actions: [
+                {
+                  Type: 0,
+                  Execute: "cmd.exe",
+                  Arguments:
+                    "/c powershell.exe -Enc^odedCommand CARET_TASK_SECRET",
+                  WorkingDirectory: "C:\\Other",
+                },
+              ],
             },
           ],
-          absent_task_names: [],
         });
       }
       throw new Error("unexpected inspection command");
@@ -1978,18 +2935,402 @@ test("Windows quiescence inspection reports listeners, Pulse owners, schedulers 
     scheduled_tasks: true,
   });
   assert.deepEqual(result.listener_pids, [4321]);
-  assert.deepEqual(result.owner_pids, [5000, 5001]);
-  assert.deepEqual(result.scheduler_process_pids, [5001]);
+  assert.deepEqual(result.owner_pids, [
+    5000,
+    5001,
+    5002,
+    5003,
+    5004,
+    5005,
+    5006,
+    5008,
+    5009,
+    5010,
+    5011,
+    5012,
+    5013,
+    5014,
+    5015,
+    5016,
+    5018,
+    5019,
+    5023,
+    5024,
+    5025,
+    5026,
+    5027,
+    5028,
+    5029,
+    5030,
+    5031,
+    5032,
+    5033,
+    5034,
+  ]);
+  assert.deepEqual(result.scheduler_process_pids, [
+    5001,
+    5002,
+    5005,
+    5006,
+    5008,
+    5009,
+    5010,
+    5011,
+    5012,
+    5013,
+    5014,
+    5015,
+  ]);
   assert.deepEqual(result.enabled_tasks, [
     "PulseGaming-LiveGuarded-YouTube-Runtime",
+    "\\Hidden\\Opaque-Caret-Encoded-Switch",
+    "\\Hidden\\Opaque-Maintenance",
+    "\\Hidden\\Opaque-Quoted-Encoded-Switch",
+    "\\Hidden\\Opaque-Quoted-Split-1",
+    "\\Hidden\\Opaque-Quoted-Split-2",
+    "\\Hidden\\Opaque-Quoted-Split-3",
+    "\\Hidden\\Opaque-Quoted-Split-4",
+    "\\Hidden\\Opaque-Quoted-Unicode-Switch",
+    "\\Hidden\\Opaque-Unicode-Em-Dash",
+    "\\Hidden\\Opaque-Unicode-Horizontal-Bar",
+    "\\Hidden\\Opaque-Unicode-Maintenance",
+    "\\Legacy\\PulseGaming-LiveWatchdog-Supervisor",
+    "\\Tools\\Desktop-Commander-Bridge",
   ]);
   assert.deepEqual(result.running_tasks, [
     "PulseGaming-Stabilisation-Runtime",
+    "\\Custom\\Custom-Hidden-Pulse-Wrapper",
+    "\\Hidden\\Opaque-Maintenance",
+    "\\Hidden\\Opaque-Quoted-Encoded-Switch",
+    "\\Hidden\\Opaque-Quoted-Split-1",
+    "\\Hidden\\Opaque-Quoted-Split-2",
+    "\\Hidden\\Opaque-Quoted-Split-3",
+    "\\Hidden\\Opaque-Quoted-Split-4",
+    "\\Hidden\\Opaque-Quoted-Unicode-Switch",
+    "\\Hidden\\Opaque-Unicode-Em-Dash",
+    "\\Hidden\\Opaque-Unicode-Horizontal-Bar",
+    "\\Hidden\\Opaque-Unicode-Maintenance",
   ]);
+  const serialised = JSON.stringify(result);
+  for (const sensitive of [
+    "PROCESS_SECRET",
+    "TASK_SECRET",
+    "UNICODE_PROCESS_SECRET",
+    "UNICODE_TASK_SECRET",
+    "UNICODE_EM_DASH_SECRET",
+    "UNICODE_EM_TASK_SECRET",
+    "UNICODE_BAR_SECRET",
+    "UNICODE_BAR_TASK_SECRET",
+    "QUOTED_SWITCH_SECRET",
+    "QUOTED_TASK_SWITCH_SECRET",
+    "QUOTED_UNICODE_SECRET",
+    "QUOTED_UNICODE_TASK_SECRET",
+    "SPLIT_QUOTE_1_SECRET",
+    "SPLIT_QUOTE_2_SECRET",
+    "SPLIT_QUOTE_3_SECRET",
+    "SPLIT_QUOTE_4_SECRET",
+    "SPLIT_TASK_1_SECRET",
+    "SPLIT_TASK_2_SECRET",
+    "SPLIT_TASK_3_SECRET",
+    "SPLIT_TASK_4_SECRET",
+    "CARET_SWITCH_SECRET",
+    "CARET_TASK_SECRET",
+    "command_line",
+    "Arguments",
+    "WorkingDirectory",
+    "Actions",
+  ]) {
+    assert.equal(serialised.includes(sensitive), false);
+  }
+});
+
+test("the Codex parser exemption requires the authoritative canonical PowerShell process identity", () => {
+  const canonical = {
+    name: "powershell.exe",
+    executable_path:
+      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+  };
+
   assert.equal(
-    Object.prototype.hasOwnProperty.call(result, "command_line"),
+    isCanonicalCodexPowerShellProcessIdentity(canonical),
+    true,
+  );
+  assert.equal(
+    isCanonicalCodexPowerShellProcessIdentity({
+      ...canonical,
+      name: "node.exe",
+    }),
     false,
   );
+  assert.equal(
+    isCanonicalCodexPowerShellProcessIdentity({
+      ...canonical,
+      executable_path: "C:\\Temp\\powershell.exe",
+    }),
+    false,
+  );
+  assert.equal(
+    isCanonicalCodexPowerShellProcessIdentity({
+      ...canonical,
+      executable_path:
+        "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe",
+    }),
+    false,
+  );
+  assert.equal(
+    isCanonicalCodexPowerShellProcessIdentity({
+      ...canonical,
+      executable_path: "",
+    }),
+    false,
+  );
+});
+
+test("an expired transition fence stays exclusive and its exact live participant recovers after a non-cooperative handler", async (t) => {
+  const values = await fixture(t);
+  let competingBlocked = false;
+  const runtimeTransitionLeaseFactory = () => ({
+    leases: values.runtimeLeases,
+    close() {},
+  });
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(
+      values,
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        assert.throws(
+          () =>
+            acquireLiveRuntimeTransitionLease({
+              databasePath: values.databasePath,
+              ownerId: "live-start:competitor",
+              action: "live-start",
+              leaseMs: 1000,
+              runtimeTransitionLeaseFactory,
+            }),
+          /live_runtime_transition_lease_unavailable/,
+        );
+        competingBlocked = true;
+        return greenProductionResult();
+      },
+      {
+        transitionLeaseAcquirer(options) {
+          return acquireLiveRuntimeTransitionLease({
+            ...options,
+            leaseMs: 200,
+          });
+        },
+      },
+    ),
+  );
+
+  assert.equal(competingBlocked, true);
+  assert.equal(result.verdict, "GREEN");
+  assert.deepEqual(result.blockers, []);
+  assert.equal(
+    fs.existsSync(
+      path.join(values.outputDir, "exact-plan-drain.commit.json"),
+    ),
+    true,
+  );
+});
+
+test("Windows quiescence fails closed when a script-capable host command line is unavailable", () => {
+  const profile = {
+    port: 3001,
+    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
+  };
+  const inspect = (processes) =>
+    inspectWindowsPulseQuiescence({
+      platform: "win32",
+      profile,
+      workspaceRoot: "C:\\Pulse\\pulse-gaming",
+      fileSystemSync: { existsSync: () => false },
+      execFileSyncImpl(_executable, args) {
+        const source = args.at(-1);
+        if (source.includes("Get-NetTCPConnection")) {
+          return JSON.stringify({
+            probe: "listeners",
+            attested: true,
+            items: [],
+          });
+        }
+        if (source.includes("Win32_Process")) {
+          return JSON.stringify({
+            probe: "processes",
+            attested: true,
+            items: processes,
+          });
+        }
+        if (source.includes("Schedule.Service")) {
+          return JSON.stringify({
+            probe: "scheduled_tasks",
+            attested: true,
+            items: [],
+          });
+        }
+        throw new Error("unexpected inspection command");
+      },
+    });
+
+  for (const [index, name] of [
+    "node.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "cmd.exe",
+    "wscript.exe",
+    "cscript.exe",
+  ].entries()) {
+    const result = inspect([
+      {
+        pid: 7000 + index,
+        name,
+        executable_path: `C:\\Windows\\System32\\${name}`,
+        command_line: null,
+      },
+    ]);
+    assert.equal(result.available, false, name);
+  }
+});
+
+test("Windows quiescence binds the canonical owner receipt supervisor and child PIDs", () => {
+  const profile = {
+    port: 3001,
+    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
+  };
+  const ownerPath = path.join(
+    profile.state_root,
+    "supervisor-owner.json",
+  );
+  const result = inspectWindowsPulseQuiescence({
+    platform: "win32",
+    profile,
+    workspaceRoot: "C:\\Pulse\\pulse-gaming",
+    expectedCommit: EXPECTED_COMMIT,
+    fileSystemSync: {
+      existsSync: (candidate) => candidate === ownerPath,
+      lstatSync: () => ({
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      }),
+      realpathSync: (candidate) => candidate,
+      readFileSync: () =>
+        JSON.stringify({
+          schema_version: "pulse-windows-live-guarded-owner-v1",
+          generated_at: GENERATED_AT,
+          supervisor_pid: 8100,
+          supervisor_process_started_at: GENERATED_AT,
+          child_pid: 8101,
+          child_process_started_at: GENERATED_AT,
+          port: 3001,
+          repo_root: "C:/Pulse/pulse-gaming",
+          commit_sha: EXPECTED_COMMIT,
+          profile_sha256: profileFingerprint(profile),
+          activation_receipt_sha256: "b".repeat(64),
+          start_operation_nonce: null,
+          platform: "youtube",
+        }),
+    },
+    execFileSyncImpl(_executable, args) {
+      const source = args.at(-1);
+      if (source.includes("Get-NetTCPConnection")) {
+        return JSON.stringify({
+          probe: "listeners",
+          attested: true,
+          items: [],
+        });
+      }
+      if (source.includes("Win32_Process")) {
+        return JSON.stringify({
+          probe: "processes",
+          attested: true,
+          items: [
+            {
+              pid: 8100,
+              name: "codex.exe",
+              command_line: "codex safe-supervisor",
+            },
+            {
+              pid: 8101,
+              name: "other.exe",
+              command_line: "other safe-child",
+            },
+          ],
+        });
+      }
+      if (source.includes("Schedule.Service")) {
+        return JSON.stringify({
+          probe: "scheduled_tasks",
+          attested: true,
+          items: [],
+        });
+      }
+      throw new Error("unexpected inspection command");
+    },
+  });
+
+  assert.equal(result.available, true);
+  assert.deepEqual(result.owner_pids, [8100, 8101]);
+});
+
+test("Windows quiescence fails closed on an unbound canonical owner receipt", () => {
+  const profile = {
+    port: 3001,
+    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
+  };
+  const ownerPath = path.join(
+    profile.state_root,
+    "supervisor-owner.json",
+  );
+  const result = inspectWindowsPulseQuiescence({
+    platform: "win32",
+    profile,
+    workspaceRoot: "C:\\Pulse\\pulse-gaming",
+    expectedCommit: EXPECTED_COMMIT,
+    fileSystemSync: {
+      existsSync: (candidate) => candidate === ownerPath,
+      lstatSync: () => ({
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      }),
+      realpathSync: (candidate) => candidate,
+      readFileSync: () => "{}",
+    },
+    execFileSyncImpl(_executable, args) {
+      const source = args.at(-1);
+      if (source.includes("Get-NetTCPConnection")) {
+        return JSON.stringify({
+          probe: "listeners",
+          attested: true,
+          items: [],
+        });
+      }
+      if (source.includes("Win32_Process")) {
+        return JSON.stringify({
+          probe: "processes",
+          attested: true,
+          items: [],
+        });
+      }
+      if (source.includes("Schedule.Service")) {
+        return JSON.stringify({
+          probe: "scheduled_tasks",
+          attested: true,
+          items: [],
+        });
+      }
+      throw new Error("unexpected inspection command");
+    },
+  });
+
+  assert.equal(result.available, false);
+  assert.deepEqual(result.owner_pids, []);
 });
 
 test("Windows quiescence is unavailable when any independent probe lacks an affirmative attestation", () => {
@@ -2043,4 +3384,139 @@ test("Windows quiescence is unavailable when any independent probe lacks an affi
     processes: false,
     scheduled_tasks: false,
   });
+});
+
+test("final queue drift is rejected before a GREEN evidence commit is published", async (t) => {
+  const values = await fixture(t);
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(
+      values,
+      async () => greenProductionResult(),
+      {
+        beforeEvidenceFinalise() {
+          values.jobs.enqueue({
+            kind: "produce_breaking_short",
+            channel_id: "pulse-gaming",
+            story_id: "db-extra",
+            payload: {
+              lane_id: "breaking_short",
+              story_id: "story-extra",
+            },
+            priority: 1,
+            run_at: GENERATED_AT,
+            max_attempts: 3,
+            idempotency_key: "extra-breaking-job-at-final-boundary",
+          });
+        },
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "exact_plan_active_breaking_job_set_mismatch",
+    ),
+  );
+  assert.equal(
+    fs.existsSync(
+      path.join(values.outputDir, "exact-plan-drain.commit.json"),
+    ),
+    false,
+  );
+});
+
+test("final predecessor binding drift is rejected before a GREEN evidence commit is published", async (t) => {
+  const values = await fixture(t);
+  const { predecessor } = await createTimedSuccessor(values);
+  const predecessorJobId =
+    predecessor.plan.production_jobs[0].job_id;
+
+  const result = await drainExactGovernedProductionPlan(
+    request(values),
+    dependencies(
+      values,
+      async () => greenProductionResult(),
+      {
+        beforeEvidenceFinalise() {
+          values.db
+            .prepare("UPDATE jobs SET max_attempts = 99 WHERE id = ?")
+            .run(predecessorJobId);
+        },
+      },
+    ),
+  );
+
+  assert.equal(result.verdict, "HOLD");
+  assert.ok(
+    result.blockers.includes(
+      "exact_plan_lineage_predecessor_job_binding_mismatch",
+    ),
+  );
+  assert.equal(
+    fs.existsSync(
+      path.join(values.outputDir, "exact-plan-drain.commit.json"),
+    ),
+    false,
+  );
+});
+
+test("the final evidence commit is published while an authoritative database write lock is held", async (t) => {
+  const values = await fixture(t);
+  const primaryJobId = values.planned.plan.production_jobs[0].job_id;
+  const competingDatabase = new Database(values.databasePath);
+  competingDatabase.pragma("busy_timeout = 1");
+  let competingWriteCode = null;
+  let commitLinkObserved = false;
+  const fileSystem = new Proxy(fs.promises, {
+    get(target, property, receiver) {
+      if (property === "link") {
+        return async (sourcePath, destinationPath) => {
+          if (
+            String(destinationPath).endsWith(
+              "exact-plan-drain.commit.json",
+            )
+          ) {
+            commitLinkObserved = true;
+            try {
+              competingDatabase
+                .prepare(
+                  "UPDATE jobs SET max_attempts = 99 WHERE id = ?",
+                )
+                .run(primaryJobId);
+            } catch (error) {
+              competingWriteCode = error?.code || null;
+            }
+          }
+          return target.link(sourcePath, destinationPath);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+  let result;
+  try {
+    result = await drainExactGovernedProductionPlan(
+      request(values),
+      dependencies(values, async () => greenProductionResult(), {
+        fileSystem,
+      }),
+    );
+  } finally {
+    if (competingDatabase.open) competingDatabase.close();
+  }
+
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(commitLinkObserved, true);
+  assert.equal(competingWriteCode, "SQLITE_BUSY");
+  assert.equal(values.jobs.get(primaryJobId).max_attempts, 3);
+  assert.equal(
+    fs.existsSync(
+      path.join(values.outputDir, "exact-plan-drain.commit.json"),
+    ),
+    true,
+  );
 });

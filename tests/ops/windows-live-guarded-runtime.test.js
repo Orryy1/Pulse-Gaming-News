@@ -7,21 +7,175 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
+const { inspect } = require("node:util");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const TOOL = path.join(
-  ROOT,
-  "tools",
-  "windows-live-guarded-runtime.js",
-);
-const START_OPERATION_NONCE =
-  "11111111-1111-4111-8111-111111111111";
+const TOOL = path.join(ROOT, "tools", "windows-live-guarded-runtime.js");
+const START_OPERATION_NONCE = "11111111-1111-4111-8111-111111111111";
+const TEST_PROCESS_STARTED_AT = "2026-07-29T21:59:00.000Z";
+const TEST_REUSED_PROCESS_STARTED_AT = "2026-07-30T08:15:00.000Z";
+
+function processIdentityInspector(identities = {}) {
+  return ({ pid }) => {
+    const identity = identities[Number(pid)];
+    if (identity === "UNAVAILABLE") {
+      return {
+        available: false,
+        exists: null,
+        process_id: Number(pid),
+        process_started_at: null,
+      };
+    }
+    if (!identity) {
+      return {
+        available: true,
+        exists: false,
+        process_id: Number(pid),
+        process_started_at: null,
+      };
+    }
+    return {
+      available: true,
+      exists: true,
+      process_id: Number(pid),
+      process_started_at: identity,
+    };
+  };
+}
+
+function inMemoryTransitionLease({ preheldOwner = null, events = [] } = {}) {
+  let current = preheldOwner
+    ? {
+        owner_id: preheldOwner,
+        expires_at: "2099-01-01T00:00:00.000Z",
+        metadata: JSON.stringify({
+          transition_owner_schema_version:
+            "pulse-live-runtime-transition-owner-v2",
+          admission_state: "OPEN",
+          context: {},
+          participants: [
+            {
+              participant_id: "22222222-2222-4222-8222-222222222222",
+              role: "owner",
+              process_id: process.pid,
+              process_started_at: TEST_PROCESS_STARTED_AT,
+              process_start_source: "injected",
+            },
+          ],
+        }),
+      }
+    : null;
+  const leases = {
+    acquire({ ownerId, leaseMs, metadata = null, now = new Date() }) {
+      if (current && current.owner_id !== ownerId) {
+        return { acquired: false, lease: current };
+      }
+      current = {
+        owner_id: ownerId,
+        expires_at: new Date(
+          new Date(now).getTime() + Number(leaseMs),
+        ).toISOString(),
+        metadata:
+          metadata === null || metadata === undefined
+            ? null
+            : JSON.stringify(metadata),
+      };
+      events.push(["transition_acquire", ownerId]);
+      return { acquired: true, lease: current };
+    },
+    get() {
+      return current;
+    },
+    heartbeat({ ownerId, leaseMs, now = new Date() }) {
+      if (!current || current.owner_id !== ownerId) return false;
+      current = {
+        owner_id: ownerId,
+        expires_at: new Date(
+          new Date(now).getTime() + Number(leaseMs),
+        ).toISOString(),
+      };
+      events.push(["transition_renew", ownerId]);
+      return true;
+    },
+    compareAndSwapMetadata({
+      ownerId,
+      expectedMetadata,
+      metadata,
+      leaseMs,
+      now = new Date(),
+      allowExpired = false,
+    }) {
+      const expected =
+        expectedMetadata === null || expectedMetadata === undefined
+          ? null
+          : String(expectedMetadata);
+      const nowIso = new Date(now).toISOString();
+      if (
+        !current ||
+        current.owner_id !== ownerId ||
+        current.metadata !== expected ||
+        (allowExpired !== true && current.expires_at <= nowIso)
+      ) {
+        return false;
+      }
+      current = {
+        owner_id: ownerId,
+        expires_at: new Date(
+          new Date(now).getTime() + Number(leaseMs),
+        ).toISOString(),
+        metadata:
+          metadata === null || metadata === undefined
+            ? null
+            : JSON.stringify(metadata),
+      };
+      events.push(["transition_renew", ownerId]);
+      return true;
+    },
+    releaseExactMetadata({ ownerId, expectedMetadata }) {
+      const expected =
+        expectedMetadata === null || expectedMetadata === undefined
+          ? null
+          : String(expectedMetadata);
+      if (
+        !current ||
+        current.owner_id !== ownerId ||
+        current.metadata !== expected
+      ) {
+        return false;
+      }
+      events.push(["transition_release", ownerId]);
+      current = null;
+      return true;
+    },
+    release(_name, ownerId) {
+      if (!current || current.owner_id !== ownerId) return false;
+      events.push(["transition_release", ownerId]);
+      current = null;
+      return true;
+    },
+  };
+  return {
+    factory() {
+      return {
+        leases,
+        close() {
+          events.push(["transition_close", current?.owner_id || null]);
+        },
+      };
+    },
+    current() {
+      return current;
+    },
+  };
+}
 
 function inMemoryStartLock({
   operationNonce = START_OPERATION_NONCE,
   events = [],
 } = {}) {
+  const transition = inMemoryTransitionLease();
   return {
+    runtimeTransitionLeaseFactory: transition.factory,
     operationNonceFactory: () => operationNonce,
     startLockAcquirer(options) {
       events.push(["lock_acquire", options]);
@@ -57,6 +211,10 @@ function inMemoryStartLock({
         operation_nonce: operationNonce,
       };
     },
+    processIdentityInspector: processIdentityInspector({
+      4111: TEST_PROCESS_STARTED_AT,
+      4123: TEST_PROCESS_STARTED_AT,
+    }),
   };
 }
 
@@ -72,29 +230,82 @@ const {
   buildLiveScheduledTaskXml,
   prepareLiveSupervision,
   inspectLiveActivationReceipt,
+  inspectWindowsProcessIdentity,
   inspectLiveStartOperationLock,
   inspectLiveTaskConflicts,
   inspectStoppedLiveRuntime,
+  issueLiveActivationReceipt,
   loadLiveGuardedRuntimeProfile,
   executeLiveLifecycleAction,
   validateLiveScheduledTaskXml,
   validateLiveGuardedRuntimeProfile,
   safeLiveHealthIdentity,
   releaseLiveStartOperationLock,
+  revokeLiveActivationReceipt,
   setLiveScheduledTaskEnabled,
   startLiveScheduledTask,
+  startLiveSupervisionGeneration,
   superviseLiveChildSession,
   waitForLiveHealth,
   runLiveSupervisionLifecycle,
-} = require(
-  "../../lib/stabilisation/windows-live-guarded-runtime",
-);
+} = require("../../lib/stabilisation/windows-live-guarded-runtime");
+const {
+  borrowLiveRuntimeTransitionLease,
+} = require("../../lib/stabilisation/live-runtime-transition-lease");
+
+test("the default Windows process identity probe returns only PID and creation time", () => {
+  assert.equal(typeof inspectWindowsProcessIdentity, "function");
+  const calls = [];
+  const identity = inspectWindowsProcessIdentity({
+    pid: 4123,
+    platform: "win32",
+    execFileSyncImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return JSON.stringify({
+        probe: "process_identity",
+        attested: true,
+        process_id: 4123,
+        process_started_at: TEST_PROCESS_STARTED_AT,
+      });
+    },
+  });
+
+  assert.deepEqual(identity, {
+    available: true,
+    exists: true,
+    process_id: 4123,
+    process_started_at: TEST_PROCESS_STARTED_AT,
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command.toLowerCase(), "powershell.exe");
+  assert.equal(JSON.stringify(calls[0]).includes("4123"), true);
+  assert.equal(JSON.stringify(calls[0]).includes("command_line"), false);
+
+  assert.deepEqual(
+    inspectWindowsProcessIdentity({
+      pid: 4999,
+      platform: "win32",
+      execFileSyncImpl() {
+        return JSON.stringify({
+          probe: "process_identity",
+          attested: true,
+          process_id: 4999,
+          process_started_at: null,
+        });
+      },
+    }),
+    {
+      available: true,
+      exists: false,
+      process_id: 4999,
+      process_started_at: null,
+    },
+  );
+});
 const {
   loadSafeRuntimeProfile,
   validateSafeRuntimeProfile,
-} = require(
-  "../../lib/stabilisation/windows-local-runtime-supervisor",
-);
+} = require("../../lib/stabilisation/windows-local-runtime-supervisor");
 const {
   parseArgs: parseLiveRuntimeArgs,
 } = require("../../tools/windows-live-guarded-runtime");
@@ -236,15 +447,9 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
   assert.equal(runtimeInspections, 1);
   assert.equal(startLockInspections, 1);
   assert.equal(admitted.checks.runtime.stopped, true);
-  assert.equal(
-    admitted.checks.start_operation_lock.state,
-    "absent",
-  );
+  assert.equal(admitted.checks.start_operation_lock.state, "absent");
   assert.equal(admitted.decision.mutation_authorised, true);
-  assert.equal(
-    admitted.decision.planned_effect,
-    "start_verified_runtime",
-  );
+  assert.equal(admitted.decision.planned_effect, "start_verified_runtime");
 
   const blocked = buildLiveRuntimeDoctorReport({
     action: "start",
@@ -267,14 +472,10 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
   });
   assert.equal(blocked.decision.mutation_authorised, false);
   assert.ok(
-    blocked.decision.blockers.includes(
-      "live_supervisor_port_not_free",
-    ),
+    blocked.decision.blockers.includes("live_supervisor_port_not_free"),
   );
   assert.ok(
-    blocked.decision.blockers.includes(
-      "live_supervisor_owner_receipt_present",
-    ),
+    blocked.decision.blockers.includes("live_supervisor_owner_receipt_present"),
   );
   assert.equal(blocked.verdict, "HOLD");
 
@@ -298,14 +499,9 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
   });
   assert.equal(locked.verdict, "HOLD");
   assert.equal(locked.decision.mutation_authorised, false);
-  assert.equal(
-    locked.checks.start_operation_lock.state,
-    "active",
-  );
+  assert.equal(locked.checks.start_operation_lock.state, "active");
   assert.ok(
-    locked.decision.blockers.includes(
-      "live_start_operation_lock_active",
-    ),
+    locked.decision.blockers.includes("live_start_operation_lock_active"),
   );
 
   const staleUnsafe = buildLiveRuntimeDoctorReport({
@@ -322,9 +518,7 @@ test("start doctor carries the stopped-runtime inspection into its mutation deci
         clear: false,
         state: "stale_recovery_blocked",
         operation_nonce: START_OPERATION_NONCE,
-        blockers: [
-          "live_start_operation_stale_recovery_unsafe",
-        ],
+        blockers: ["live_start_operation_stale_recovery_unsafe"],
       }),
     },
   });
@@ -372,7 +566,9 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
   const exactOwner = {
     schema_version: "pulse-windows-live-guarded-owner-v1",
     supervisor_pid: 4100,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4200,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -382,7 +578,7 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
     start_operation_nonce: START_OPERATION_NONCE,
     platform: "youtube",
   };
-  const inspect = (owner) =>
+  const inspect = (owner, identityInspector = processIdentityInspector({})) =>
     inspectStoppedLiveRuntime({
       profile,
       repoRoot: ROOT,
@@ -394,7 +590,7 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
       }),
       existsSync: () => true,
       readFileSync: () => JSON.stringify(owner),
-      processAliveInspector: () => false,
+      processIdentityInspector: identityInspector,
     });
 
   const exactStale = inspect(exactOwner);
@@ -409,16 +605,44 @@ test("stopped-runtime inspection accepts only an exact dead stale owner that the
   assert.equal(mismatched.stopped, false);
   assert.equal(mismatched.owner_state, "mismatch");
   assert.ok(
-    mismatched.blockers.includes(
-      "live_supervisor_owner_receipt_mismatch",
+    mismatched.blockers.includes("live_supervisor_owner_receipt_mismatch"),
+  );
+
+  const active = inspect(
+    exactOwner,
+    processIdentityInspector({
+      4100: TEST_PROCESS_STARTED_AT,
+    }),
+  );
+  assert.equal(active.stopped, false);
+  assert.equal(active.owner_state, "active");
+  assert.ok(active.blockers.includes("live_supervisor_owner_process_alive"));
+
+  const reusedPid = inspect(
+    exactOwner,
+    processIdentityInspector({
+      4100: TEST_REUSED_PROCESS_STARTED_AT,
+      4200: TEST_REUSED_PROCESS_STARTED_AT,
+    }),
+  );
+  assert.equal(reusedPid.stopped, true);
+  assert.equal(reusedPid.owner_state, "exact_stale");
+
+  const unavailable = inspect(
+    exactOwner,
+    processIdentityInspector({ 4100: "UNAVAILABLE" }),
+  );
+  assert.equal(unavailable.stopped, false);
+  assert.equal(unavailable.owner_state, "identity_unavailable");
+  assert.ok(
+    unavailable.blockers.includes(
+      "live_supervisor_owner_process_identity_unavailable",
     ),
   );
 });
 
 test("start operation lock is durable, cross-process exclusive and nonce-owned", () => {
-  const temp = fs.mkdtempSync(
-    path.join(os.tmpdir(), "pulse-live-start-lock-"),
-  );
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-live-start-lock-"));
   try {
     const profile = {
       ...loadLiveGuardedRuntimeProfile(),
@@ -429,50 +653,51 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
       expectedCommit: "d".repeat(40),
       activationReceiptSha256: "c".repeat(64),
       processId: 4100,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_PROCESS_STARTED_AT,
+      }),
     };
     const first = acquireLiveStartOperationLock({
       ...common,
       operationNonce: "11111111-1111-4111-8111-111111111111",
       generatedAt: "2026-07-29T22:00:00.000Z",
     });
-    const persisted = JSON.parse(
-      fs.readFileSync(first.lock_path, "utf8"),
-    );
+    const persisted = JSON.parse(fs.readFileSync(first.lock_path, "utf8"));
     assert.equal(
       persisted.operation_nonce,
       "11111111-1111-4111-8111-111111111111",
     );
     assert.equal(persisted.process_id, 4100);
+    assert.equal(persisted.process_started_at, TEST_PROCESS_STARTED_AT);
     const inspected = inspectLiveStartOperationLock({
       profile,
       expectedCommit: common.expectedCommit,
-      activationReceiptSha256:
-        common.activationReceiptSha256,
+      activationReceiptSha256: common.activationReceiptSha256,
       runtime: {
         stopped: true,
         listening_pids: [],
         owner_state: "absent",
       },
-      processAliveInspector: () => true,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_PROCESS_STARTED_AT,
+      }),
     });
     assert.equal(inspected.valid, true);
     assert.equal(inspected.clear, false);
     assert.equal(inspected.state, "active");
-    assert.equal(
-      inspected.operation_nonce,
-      first.operation_nonce,
-    );
+    assert.equal(inspected.operation_nonce, first.operation_nonce);
     const unsafeStale = inspectLiveStartOperationLock({
       profile,
       expectedCommit: common.expectedCommit,
-      activationReceiptSha256:
-        common.activationReceiptSha256,
+      activationReceiptSha256: common.activationReceiptSha256,
       runtime: {
         stopped: false,
         listening_pids: [4999],
         owner_state: "active",
       },
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
     });
     assert.equal(unsafeStale.clear, false);
     assert.equal(unsafeStale.state, "stale_recovery_blocked");
@@ -481,52 +706,72 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
         "live_start_operation_stale_recovery_unsafe",
       ),
     );
-    const mismatched = inspectLiveStartOperationLock({
+    const identityUnavailable = inspectLiveStartOperationLock({
       profile,
-      expectedCommit: "e".repeat(40),
-      activationReceiptSha256:
-        common.activationReceiptSha256,
+      expectedCommit: common.expectedCommit,
+      activationReceiptSha256: common.activationReceiptSha256,
       runtime: {
         stopped: true,
         listening_pids: [],
         owner_state: "absent",
       },
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({
+        4100: "UNAVAILABLE",
+      }),
+    });
+    assert.equal(identityUnavailable.valid, false);
+    assert.equal(identityUnavailable.clear, false);
+    assert.equal(identityUnavailable.state, "identity_unavailable");
+    assert.ok(
+      identityUnavailable.blockers.includes(
+        "live_start_operation_lock_process_identity_unavailable",
+      ),
+    );
+    const mismatched = inspectLiveStartOperationLock({
+      profile,
+      expectedCommit: "e".repeat(40),
+      activationReceiptSha256: common.activationReceiptSha256,
+      runtime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      processIdentityInspector: processIdentityInspector({}),
     });
     assert.equal(mismatched.clear, false);
     assert.equal(mismatched.state, "mismatch");
     assert.ok(
-      mismatched.blockers.includes(
-        "live_start_operation_lock_commit_mismatch",
-      ),
+      mismatched.blockers.includes("live_start_operation_lock_commit_mismatch"),
     );
 
     assert.throws(
       () =>
         acquireLiveStartOperationLock({
           ...common,
-          operationNonce:
-            "22222222-2222-4222-8222-222222222222",
+          operationNonce: "22222222-2222-4222-8222-222222222222",
           staleRuntime: {
             stopped: true,
             listening_pids: [],
             owner_state: "absent",
           },
-          processAliveInspector: () => true,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+          }),
         }),
       /live_start_operation_locked/,
     );
 
     const recovered = acquireLiveStartOperationLock({
       ...common,
-      operationNonce:
-        "22222222-2222-4222-8222-222222222222",
+      operationNonce: "22222222-2222-4222-8222-222222222222",
       staleRuntime: {
         stopped: true,
         listening_pids: [],
         owner_state: "absent",
       },
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
       generatedAt: "2026-07-29T22:00:30.000Z",
     });
     assert.equal(
@@ -534,16 +779,16 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
       "22222222-2222-4222-8222-222222222222",
     );
     assert.equal(
-      fs.existsSync(recovered.recovered_lock_evidence_path),
-      true,
+      recovered.record.process_started_at,
+      TEST_REUSED_PROCESS_STARTED_AT,
     );
+    assert.equal(fs.existsSync(recovered.recovered_lock_evidence_path), true);
     assert.throws(
       () =>
         releaseLiveStartOperationLock({
           lock: {
             ...first,
-            operation_nonce:
-              "33333333-3333-4333-8333-333333333333",
+            operation_nonce: "33333333-3333-4333-8333-333333333333",
           },
         }),
       /live_start_operation_lock_ownership_lost/,
@@ -557,6 +802,214 @@ test("start operation lock is durable, cross-process exclusive and nonce-owned",
     assert.equal(released.outcome, "start_operation_lock_released");
     assert.equal(fs.existsSync(first.lock_path), false);
     assert.equal(fs.existsSync(released.evidence_path), true);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("an interrupted start-lock write never publishes partial authority and is recovered deterministically", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-start-lock-interrupted-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const lockPath = path.join(temp, "start-operation.lock.json");
+    let interrupted = false;
+    const interruptedFileSystem = new Proxy(fs, {
+      get(target, property, receiver) {
+        if (property !== "writeFileSync") {
+          return Reflect.get(target, property, receiver);
+        }
+        return (destination, bytes, encoding) => {
+          if (!interrupted && Number.isInteger(destination)) {
+            interrupted = true;
+            fs.writeSync(destination, Buffer.from("{", "utf8"));
+            throw new Error("fixture_interrupted_before_lock_publication");
+          }
+          return fs.writeFileSync(destination, bytes, encoding);
+        };
+      },
+    });
+
+    assert.throws(
+      () =>
+        acquireLiveStartOperationLock({
+          profile,
+          expectedCommit: "d".repeat(40),
+          activationReceiptSha256: "c".repeat(64),
+          operationNonce: "11111111-1111-4111-8111-111111111111",
+          processId: 4100,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+          }),
+          generatedAt: "2026-07-29T22:00:00.000Z",
+          fileSystemSync: interruptedFileSystem,
+        }),
+      /fixture_interrupted_before_lock_publication/,
+    );
+    assert.equal(fs.existsSync(lockPath), false);
+    assert.equal(
+      fs.readdirSync(temp).filter((name) => name.endsWith(".pending")).length,
+      1,
+    );
+
+    assert.throws(
+      () =>
+        acquireLiveStartOperationLock({
+          profile,
+          expectedCommit: "d".repeat(40),
+          activationReceiptSha256: "c".repeat(64),
+          operationNonce: "22222222-2222-4222-8222-222222222222",
+          processId: 4200,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+            4200: TEST_REUSED_PROCESS_STARTED_AT,
+          }),
+          staleRuntime: {
+            stopped: true,
+            listening_pids: [],
+            owner_state: "absent",
+          },
+          generatedAt: "2026-07-29T22:00:30.000Z",
+        }),
+      /live_start_operation_locked/,
+    );
+    assert.equal(fs.existsSync(lockPath), false);
+
+    const recovered = acquireLiveStartOperationLock({
+      profile,
+      expectedCommit: "d".repeat(40),
+      activationReceiptSha256: "c".repeat(64),
+      operationNonce: "22222222-2222-4222-8222-222222222222",
+      processId: 4200,
+      processIdentityInspector: processIdentityInspector({
+        4100: TEST_REUSED_PROCESS_STARTED_AT,
+        4200: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      staleRuntime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      generatedAt: "2026-07-29T22:00:30.000Z",
+    });
+
+    assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(
+      fs.readdirSync(temp).some((name) => name.endsWith(".pending")),
+      false,
+    );
+    assert.equal(recovered.recovered_incomplete_evidence_paths.length, 1);
+    assert.equal(
+      fs.existsSync(recovered.recovered_incomplete_evidence_paths[0]),
+      true,
+    );
+    releaseLiveStartOperationLock({
+      lock: recovered,
+      generatedAt: "2026-07-29T22:01:00.000Z",
+    });
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("start-lock publication never replaces a competing final authority", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-start-lock-no-clobber-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const lockPath = path.join(temp, "start-operation.lock.json");
+    const competingBytes = '{"competing_authority":true}\n';
+    let injected = false;
+    const racingFileSystem = new Proxy(fs, {
+      get(target, property, receiver) {
+        if (property !== "linkSync") {
+          return Reflect.get(target, property, receiver);
+        }
+        return (source, destination) => {
+          if (!injected && destination === lockPath) {
+            injected = true;
+            fs.writeFileSync(destination, competingBytes, {
+              encoding: "utf8",
+              flag: "wx",
+            });
+          }
+          return fs.linkSync(source, destination);
+        };
+      },
+    });
+
+    assert.throws(
+      () =>
+        acquireLiveStartOperationLock({
+          profile,
+          expectedCommit: "d".repeat(40),
+          activationReceiptSha256: "c".repeat(64),
+          operationNonce: "11111111-1111-4111-8111-111111111111",
+          processId: 4100,
+          processIdentityInspector: processIdentityInspector({
+            4100: TEST_PROCESS_STARTED_AT,
+          }),
+          generatedAt: "2026-07-29T22:00:00.000Z",
+          fileSystemSync: racingFileSystem,
+        }),
+      /live_start_operation_locked/,
+    );
+    assert.equal(fs.readFileSync(lockPath, "utf8"), competingBytes);
+    assert.equal(
+      fs.readdirSync(temp).some((name) => name.endsWith(".pending")),
+      false,
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a legacy truncated final start lock is quarantined only on an exact stopped runway", () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-start-lock-truncated-"),
+  );
+  try {
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+    };
+    const lockPath = path.join(temp, "start-operation.lock.json");
+    fs.writeFileSync(lockPath, "{", "utf8");
+
+    const recovered = acquireLiveStartOperationLock({
+      profile,
+      expectedCommit: "d".repeat(40),
+      activationReceiptSha256: "c".repeat(64),
+      operationNonce: "22222222-2222-4222-8222-222222222222",
+      processId: 4200,
+      processIdentityInspector: processIdentityInspector({
+        4200: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      staleRuntime: {
+        stopped: true,
+        listening_pids: [],
+        owner_state: "absent",
+      },
+      generatedAt: "2026-07-29T22:00:30.000Z",
+    });
+
+    assert.equal(fs.existsSync(lockPath), true);
+    assert.equal(recovered.recovered_incomplete_evidence_paths.length, 1);
+    const quarantined = recovered.recovered_incomplete_evidence_paths[0];
+    assert.equal(fs.existsSync(quarantined), true);
+    assert.equal(fs.readFileSync(quarantined, "utf8"), "{");
+    releaseLiveStartOperationLock({
+      lock: recovered,
+      generatedAt: "2026-07-29T22:01:00.000Z",
+    });
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -583,25 +1036,26 @@ test("an exact dead stale owner is archived under the held start nonce before la
       activationReceiptSha256: activation.receipt_sha256,
       operationNonce: START_OPERATION_NONCE,
       processId: process.pid,
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+      }),
       generatedAt: "2026-07-29T22:00:00.000Z",
     });
-    const ownerPath = path.join(
-      profile.state_root,
-      "supervisor-owner.json",
-    );
+    const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
     fs.writeFileSync(
       ownerPath,
       `${JSON.stringify(
         {
           schema_version: "pulse-windows-live-guarded-owner-v1",
           supervisor_pid: 991001,
+          supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
           child_pid: 991002,
+          child_process_started_at: TEST_PROCESS_STARTED_AT,
           port: profile.port,
           repo_root: ROOT.replace(/\\/g, "/"),
           commit_sha: expectedCommit,
           profile_sha256: lock.record.profile_sha256,
-          activation_receipt_sha256:
-            activation.receipt_sha256,
+          activation_receipt_sha256: activation.receipt_sha256,
           platform: "youtube",
         },
         null,
@@ -620,21 +1074,19 @@ test("an exact dead stale owner is archived under the held start nonce before la
         available: true,
         listeningPids: [],
       }),
-      processAliveInspector: () => false,
+      processIdentityInspector: processIdentityInspector({}),
       startLockInspector(options) {
         return inspectLiveStartOperationLock({
           ...options,
-          processAliveInspector: (pid) =>
-            Number(pid) === process.pid,
+          processIdentityInspector: processIdentityInspector({
+            [process.pid]: TEST_PROCESS_STARTED_AT,
+          }),
         });
       },
       generatedAt: "2026-07-29T22:00:30.000Z",
     });
 
-    assert.equal(
-      archived.outcome,
-      "exact_stale_owner_archived",
-    );
+    assert.equal(archived.outcome, "exact_stale_owner_archived");
     assert.equal(fs.existsSync(ownerPath), false);
     assert.equal(fs.existsSync(archived.archived_path), true);
     releaseLiveStartOperationLock({
@@ -656,34 +1108,22 @@ test("the separate reviewed LIVE_GUARDED profile is exact YouTube-only while the
     live.profile_id,
     "pulse-v1-governed-multi-lane-live-guarded-youtube",
   );
-  assert.equal(
-    live.environment.PULSE_SCHEDULER_PROFILE,
-    "governed_multi_lane",
-  );
+  assert.equal(live.environment.PULSE_SCHEDULER_PROFILE, "governed_multi_lane");
   assert.equal(live.environment.PULSE_OPERATING_MODE, "LIVE_GUARDED");
   assert.equal(live.environment.OPERATING_MODE, "LIVE_GUARDED");
   assert.equal(live.environment.AUTO_PUBLISH, "true");
-  assert.equal(
-    live.environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
-    "true",
-  );
+  assert.equal(live.environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED, "true");
   assert.equal(live.environment.PULSE_EMERGENCY_KILL_SWITCH, "false");
   assert.equal(live.environment.PULSE_KILL_SWITCH, "false");
   assert.equal(live.environment.YOUTUBE_AUTO_PUBLISH, "true");
   assert.equal(live.platform_policy.primary, "youtube");
   assert.equal(live.platform_policy.control_tower_required, true);
-  assert.equal(
-    live.platform_policy.fresh_control_required_per_release,
-    true,
-  );
+  assert.equal(live.platform_policy.fresh_control_required_per_release, true);
   assert.equal(
     live.platform_policy.oauth_client_sha256_bound_to_activation,
     true,
   );
-  assert.equal(
-    live.environment.PULSE_YOUTUBE_OAUTH_CLIENT_SHA256,
-    undefined,
-  );
+  assert.equal(live.environment.PULSE_YOUTUBE_OAUTH_CLIENT_SHA256, undefined);
 
   for (const key of [
     "TIKTOK_ENABLED",
@@ -761,14 +1201,10 @@ test("supervision preparation and health identity fail closed unless the receipt
   });
   assert.equal(prepared.runtime_environment.AUTO_PUBLISH, "true");
   assert.equal(
-    prepared.runtime_environment
-      .PULSE_LIVE_GUARDED_ACTIVATION_RECEIPT_SHA256,
+    prepared.runtime_environment.PULSE_LIVE_GUARDED_ACTIVATION_RECEIPT_SHA256,
     activation.receipt_sha256,
   );
-  assert.equal(
-    prepared.runtime_environment.YOUTUBE_REFRESH_TOKEN,
-    undefined,
-  );
+  assert.equal(prepared.runtime_environment.YOUTUBE_REFRESH_TOKEN, undefined);
 
   const liveHealth = {
     status: "ok",
@@ -783,10 +1219,7 @@ test("supervision preparation and health identity fail closed unless the receipt
       use_job_queue_explicit: "true",
     },
   };
-  assert.equal(
-    safeLiveHealthIdentity(liveHealth, expectedCommit),
-    true,
-  );
+  assert.equal(safeLiveHealthIdentity(liveHealth, expectedCommit), true);
   assert.equal(
     safeLiveHealthIdentity(
       {
@@ -807,6 +1240,556 @@ test("supervision preparation and health identity fail closed unless the receipt
     ),
     false,
   );
+});
+
+test("the real supervision-generation path borrows the exact parent transition lease through owner and lifecycle attestation", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-transition-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "9".repeat(40);
+  const activationReceiptSha256 = "8".repeat(64);
+  const transitionEvents = [];
+  const transition = inMemoryTransitionLease({
+    preheldOwner: `live-start:${START_OPERATION_NONCE}`,
+    events: transitionEvents,
+  });
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  const child = new EventEmitter();
+  child.pid = 7412;
+  const kills = [];
+  child.kill = (signal) => {
+    kills.push(signal);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  const liveHealth = {
+    status: "ok",
+    schedulerActive: true,
+    build: { commit_sha: expectedCommit },
+    deployment: { mode: "local", primary: true },
+    runtime: {
+      operating_mode: "LIVE_GUARDED",
+      auto_publish: true,
+      legacy_auto_publish_armed: true,
+      use_sqlite: true,
+      use_job_queue_explicit: "true",
+    },
+  };
+  let lifecycleWrites = 0;
+
+  const generation = await startLiveSupervisionGeneration({
+    repoRoot: ROOT,
+    expectedCommit,
+    profilePath: path.join(temp, "profile.json"),
+    platform: "win32",
+    runtimeTransitionLeaseFactory: transition.factory,
+    transitionLeaseBorrower(options) {
+      return borrowLiveRuntimeTransitionLease({
+        ...options,
+        participantIdentity: {
+          participant_id:
+            "33333333-3333-4333-8333-333333333333",
+          process_id: process.pid,
+          process_started_at: TEST_PROCESS_STARTED_AT,
+          process_start_source: "injected",
+        },
+      });
+    },
+    profileLoader: () => profile,
+    doctorBuilder: () => ({
+      checks: {
+        activation: {
+          valid: true,
+          receipt_sha256: activationReceiptSha256,
+        },
+      },
+    }),
+    supervisionPreparer: () => ({
+      activation_receipt_sha256: activationReceiptSha256,
+      runtime_environment: {},
+    }),
+    activationInspector: () => ({
+      valid: true,
+      receipt_sha256: activationReceiptSha256,
+    }),
+    startOperationInspector: () => ({
+      present: true,
+      valid: true,
+      operation_nonce: START_OPERATION_NONCE,
+      blockers: [],
+    }),
+    listenerInspector: () => ({
+      available: true,
+      listeningPids: [],
+    }),
+    processIdentityInspector: processIdentityInspector({
+      [process.pid]: TEST_PROCESS_STARTED_AT,
+      [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+    }),
+    healthRequester: async () => liveHealth,
+    spawnImpl: () => child,
+    lifecycleReceiptWriter(options) {
+      lifecycleWrites += 1;
+      assert.equal(options.action, "supervise-start");
+      assert.equal(
+        transition.current()?.owner_id,
+        `live-start:${START_OPERATION_NONCE}`,
+      );
+      return { receipt_path: path.join(temp, "start.json") };
+    },
+    ownerWriter(ownerPath, value) {
+      assert.equal(
+        lifecycleWrites,
+        1,
+        "the owner receipt must be the final handoff publication",
+      );
+      const transitionMetadata = JSON.parse(
+        transition.current()?.metadata || "null",
+      );
+      assert.equal(
+        transitionMetadata?.admission_state,
+        "SEALED",
+        "handoff must atomically close transition borrowing before publication",
+      );
+      assert.deepEqual(
+        transitionMetadata?.participants?.map((participant) =>
+          participant.role,
+        ),
+        ["owner", "handoff_supervisor", "handoff_child"],
+        "the transition borrower must become an exact child-bound seal before owner publication",
+      );
+      const handoffSupervisor = transitionMetadata.participants[1];
+      assert.equal(handoffSupervisor.process_id, process.pid);
+      assert.equal(
+        handoffSupervisor.process_started_at,
+        TEST_PROCESS_STARTED_AT,
+      );
+      const handoffChild = transitionMetadata.participants[2];
+      assert.equal(handoffChild.process_id, child.pid);
+      assert.equal(
+        handoffChild.process_started_at,
+        TEST_REUSED_PROCESS_STARTED_AT,
+      );
+      assert.throws(
+        () =>
+          borrowLiveRuntimeTransitionLease({
+            databasePath: profile.database_path,
+            expectedOwnerId: `live-start:${START_OPERATION_NONCE}`,
+            runtimeTransitionLeaseFactory: transition.factory,
+          }),
+        /live_runtime_transition_lease_unavailable/,
+        "a replacement supervisor must not borrow during owner publication",
+      );
+      fs.mkdirSync(path.dirname(ownerPath), { recursive: true });
+      fs.writeFileSync(ownerPath, `${JSON.stringify(value, null, 2)}\n`);
+    },
+  });
+
+  assert.equal(generation.child, child);
+  assert.deepEqual(kills, []);
+  assert.equal(lifecycleWrites, 1);
+  assert.equal(
+    transition.current()?.owner_id,
+    `live-start:${START_OPERATION_NONCE}`,
+  );
+  assert.equal(
+    transitionEvents.some(([name]) => name === "transition_release"),
+    false,
+  );
+  assert.equal(
+    transitionEvents.some(([name]) => name === "transition_close"),
+    true,
+  );
+  const owner = JSON.parse(fs.readFileSync(generation.ownerPath, "utf8"));
+  assert.equal(owner.child_pid, child.pid);
+  assert.equal(owner.supervisor_process_started_at, TEST_PROCESS_STARTED_AT);
+  assert.equal(owner.child_process_started_at, TEST_REUSED_PROCESS_STARTED_AT);
+  assert.equal(owner.start_operation_nonce, START_OPERATION_NONCE);
+});
+
+test("an owned generation keeps a sealed transition durable until the owner receipt is published", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-owned-handoff-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "a".repeat(40);
+  const activationReceiptSha256 = "b".repeat(64);
+  const transition = inMemoryTransitionLease();
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  const child = new EventEmitter();
+  child.pid = 7462;
+  child.kill = (signal) => {
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  let observedOwnerId = null;
+
+  const generation = await startLiveSupervisionGeneration({
+    repoRoot: ROOT,
+    expectedCommit,
+    profilePath: path.join(temp, "profile.json"),
+    platform: "win32",
+    runtimeTransitionLeaseFactory: transition.factory,
+    profileLoader: () => profile,
+    doctorBuilder: () => ({
+      checks: {
+        activation: {
+          valid: true,
+          receipt_sha256: activationReceiptSha256,
+        },
+      },
+    }),
+    supervisionPreparer: () => ({
+      activation_receipt_sha256: activationReceiptSha256,
+      runtime_environment: {},
+    }),
+    activationInspector: () => ({
+      valid: true,
+      receipt_sha256: activationReceiptSha256,
+    }),
+    startOperationInspector: () => ({
+      present: false,
+      valid: true,
+      operation_nonce: null,
+      blockers: [],
+    }),
+    listenerInspector: () => ({
+      available: true,
+      listeningPids: [],
+    }),
+    processIdentityInspector: processIdentityInspector({
+      [process.pid]: TEST_PROCESS_STARTED_AT,
+      [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+    }),
+    healthRequester: async () => ({
+      status: "ok",
+      schedulerActive: true,
+      build: { commit_sha: expectedCommit },
+      deployment: { mode: "local", primary: true },
+      runtime: {
+        operating_mode: "LIVE_GUARDED",
+        auto_publish: true,
+        legacy_auto_publish_armed: true,
+        use_sqlite: true,
+        use_job_queue_explicit: "true",
+      },
+    }),
+    spawnImpl: () => child,
+    lifecycleReceiptWriter: () => ({
+      receipt_path: path.join(temp, "start.json"),
+    }),
+    ownerWriter(ownerPath, value) {
+      const held = transition.current();
+      assert.ok(
+        held,
+        "the durable transition must still exist at owner publication",
+      );
+      observedOwnerId = held.owner_id;
+      const metadata = JSON.parse(held.metadata);
+      assert.equal(metadata.admission_state, "SEALED");
+      assert.deepEqual(
+        metadata.participants.map((participant) => participant.role),
+        ["owner", "handoff_child"],
+      );
+      assert.equal(metadata.participants[1].process_id, child.pid);
+      assert.equal(
+        metadata.participants[1].process_started_at,
+        TEST_REUSED_PROCESS_STARTED_AT,
+      );
+      assert.throws(
+        () =>
+          borrowLiveRuntimeTransitionLease({
+            databasePath: profile.database_path,
+            expectedOwnerId: held.owner_id,
+            runtimeTransitionLeaseFactory: transition.factory,
+          }),
+        /live_runtime_transition_lease_unavailable/,
+      );
+      fs.mkdirSync(path.dirname(ownerPath), { recursive: true });
+      fs.writeFileSync(ownerPath, `${JSON.stringify(value, null, 2)}\n`);
+    },
+  });
+
+  assert.ok(observedOwnerId?.startsWith("live-supervise:"));
+  assert.equal(transition.current(), null);
+  assert.equal(fs.existsSync(generation.ownerPath), true);
+});
+
+test("an owned transition release failure terminates the child and removes its owner receipt before rejecting", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-release-failure-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "7".repeat(40);
+  const activationReceiptSha256 = "6".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  const child = new EventEmitter();
+  child.pid = 7512;
+  const kills = [];
+  child.kill = (signal) => {
+    kills.push(signal);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      profilePath: path.join(temp, "profile.json"),
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: {
+            valid: true,
+            receipt_sha256: activationReceiptSha256,
+          },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: activationReceiptSha256,
+        runtime_environment: {},
+      }),
+      activationInspector: () => ({
+        valid: true,
+        receipt_sha256: activationReceiptSha256,
+      }),
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew() {
+          return true;
+        },
+        sealForHandoff() {
+          return true;
+        },
+        release() {
+          throw new Error("fixture_release_failed");
+        },
+      }),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+      }),
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+        [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      healthRequester: async () => ({
+        status: "ok",
+        schedulerActive: true,
+        build: { commit_sha: expectedCommit },
+        deployment: { mode: "local", primary: true },
+        runtime: {
+          operating_mode: "LIVE_GUARDED",
+          auto_publish: true,
+          legacy_auto_publish_armed: true,
+          use_sqlite: true,
+          use_job_queue_explicit: "true",
+        },
+      }),
+      spawnImpl: () => child,
+      lifecycleReceiptWriter: () => ({
+        receipt_path: path.join(temp, "start.json"),
+      }),
+    }),
+    /live_runtime_transition_lease_release_failed/,
+  );
+
+  assert.deepEqual(kills, ["SIGTERM"]);
+  assert.equal(fs.existsSync(ownerPath), false);
+});
+
+test("a generation revalidates activation under the transition lease before spawning", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-leased-authority-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "5".repeat(40);
+  const receiptSha = "4".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "activation.json"),
+  };
+  let activationCalls = 0;
+  let spawnCalls = 0;
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: { valid: true, receipt_sha256: receiptSha },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: receiptSha,
+        runtime_environment: {},
+      }),
+      activationInspector: () => {
+        activationCalls += 1;
+        return activationCalls === 1
+          ? { valid: true, receipt_sha256: receiptSha }
+          : {
+              valid: false,
+              receipt_sha256: null,
+              blockers: ["activation_receipt_missing"],
+            };
+      },
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew: () => true,
+        release: () => true,
+      }),
+      spawnImpl() {
+        spawnCalls += 1;
+        throw new Error("must_not_spawn");
+      },
+    }),
+    /exact_live_activation_receipt_required/,
+  );
+
+  assert.equal(activationCalls, 2);
+  assert.equal(spawnCalls, 0);
+});
+
+test("activation revoked during health verification terminates the child before handoff", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-generation-post-health-authority-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "3".repeat(40);
+  const receiptSha = "2".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "activation.json"),
+  };
+  const child = new EventEmitter();
+  child.pid = 7612;
+  const kills = [];
+  child.kill = (signal) => {
+    kills.push(signal);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  let activationCalls = 0;
+  let lifecycleWrites = 0;
+  const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: { valid: true, receipt_sha256: receiptSha },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: receiptSha,
+        runtime_environment: {},
+      }),
+      activationInspector: () => {
+        activationCalls += 1;
+        return activationCalls < 3
+          ? { valid: true, receipt_sha256: receiptSha }
+          : {
+              valid: false,
+              receipt_sha256: null,
+              blockers: ["activation_receipt_missing"],
+            };
+      },
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew: () => true,
+        release: () => true,
+      }),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+      }),
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+        [child.pid]: TEST_REUSED_PROCESS_STARTED_AT,
+      }),
+      spawnImpl: () => child,
+      healthRequester: async () => ({
+        status: "ok",
+        schedulerActive: true,
+        build: { commit_sha: expectedCommit },
+        deployment: { mode: "local", primary: true },
+        runtime: {
+          operating_mode: "LIVE_GUARDED",
+          auto_publish: true,
+          legacy_auto_publish_armed: true,
+          use_sqlite: true,
+          use_job_queue_explicit: "true",
+        },
+      }),
+      lifecycleReceiptWriter() {
+        lifecycleWrites += 1;
+      },
+    }),
+    /exact_live_activation_receipt_required/,
+  );
+
+  assert.equal(activationCalls, 3);
+  assert.deepEqual(kills, ["SIGTERM"]);
+  assert.equal(lifecycleWrites, 0);
+  assert.equal(fs.existsSync(ownerPath), false);
 });
 
 test("the live child monitor confirms an unhealthy child exited before requesting a restart", async () => {
@@ -845,10 +1828,7 @@ test("the live child monitor confirms an unhealthy child exited before requestin
       },
       repoRoot: temp,
       expectedCommit: "c".repeat(40),
-      activationReceiptPath: path.join(
-        temp,
-        "activation-receipt.json",
-      ),
+      activationReceiptPath: path.join(temp, "activation-receipt.json"),
       activationInspector: () => ({
         valid: true,
         blockers: [],
@@ -896,6 +1876,8 @@ test("the live child monitor never restarts after activation is revoked", async 
   const temp = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-live-child-revoked-"),
   );
+  const secretSentinel =
+    "SENTINEL_REVOCATION_BLOCKER_MUST_NOT_PERSIST_3b5c";
   let keepAlive;
   try {
     keepAlive = setInterval(() => {}, 1000);
@@ -919,13 +1901,10 @@ test("the live child monitor never restarts after activation is revoked", async 
         },
         repoRoot: temp,
         expectedCommit: "c".repeat(40),
-        activationReceiptPath: path.join(
-          temp,
-          "activation-receipt.json",
-        ),
+        activationReceiptPath: path.join(temp, "activation-receipt.json"),
         activationInspector: () => ({
           valid: false,
-          blockers: ["activation_receipt_commit_mismatch"],
+          blockers: [secretSentinel],
         }),
         healthRequester: async () => {
           throw new Error("health_must_not_run_after_revocation");
@@ -936,21 +1915,132 @@ test("the live child monitor never restarts after activation is revoked", async 
           exitDetails = details;
         },
       }),
-      /activation_revoked:activation_receipt_commit_mismatch/,
+      (error) => {
+        const message = String(error?.message || error);
+        assert.match(message, /^activation_revoked:[a-f0-9]{64}$/);
+        assert.equal(message.includes(secretSentinel), false);
+        return true;
+      },
     );
 
     assert.equal(fs.existsSync(ownerPath), false);
-    assert.deepEqual(exitDetails, {
-      child_pid: 7084,
-      exit_code: null,
-      signal: "SIGTERM",
-      reason:
-        "activation_revoked:activation_receipt_commit_mismatch",
-    });
+    assert.equal(exitDetails.child_pid, 7084);
+    assert.equal(exitDetails.exit_code, null);
+    assert.equal(exitDetails.signal, "SIGTERM");
+    assert.match(exitDetails.reason, /^activation_revoked:[a-f0-9]{64}$/);
+    assert.equal(JSON.stringify(exitDetails).includes(secretSentinel), false);
   } finally {
     clearInterval(keepAlive);
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test("activation monitor exceptions are redacted from supervise-exit evidence and the final error", async () => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-monitor-error-"),
+  );
+  const secretSentinel =
+    "SENTINEL_MONITOR_ERROR_MUST_NOT_PERSIST_2a4b";
+  let keepAlive;
+  try {
+    keepAlive = setInterval(() => {}, 1000);
+    const ownerPath = path.join(temp, "supervisor-owner.json");
+    fs.writeFileSync(ownerPath, '{"child_pid":7084}\n');
+    const child = new EventEmitter();
+    child.pid = 7084;
+    let exitDetails = null;
+    child.kill = (signal) => {
+      setImmediate(() => child.emit("exit", null, signal));
+      return true;
+    };
+
+    await assert.rejects(
+      superviseLiveChildSession({
+        child,
+        ownerPath,
+        profile: {
+          port: 3001,
+          state_root: temp,
+        },
+        repoRoot: temp,
+        expectedCommit: "c".repeat(40),
+        activationReceiptPath: path.join(temp, "activation-receipt.json"),
+        activationInspector() {
+          throw new Error(`activation inspection failed ${secretSentinel}`);
+        },
+        healthRequester: async () => {
+          throw new Error("health_must_not_run_after_monitor_error");
+        },
+        monitorIntervalMs: 2,
+        signalEmitter: new EventEmitter(),
+        writeExitReceiptImpl(details) {
+          exitDetails = details;
+        },
+      }),
+      (error) => {
+        const message = String(error?.message || error);
+        assert.match(message, /^live_runtime_monitor_error:[a-f0-9]{64}$/);
+        assert.equal(message.includes(secretSentinel), false);
+        return true;
+      },
+    );
+
+    assert.equal(fs.existsSync(ownerPath), false);
+    assert.match(
+      exitDetails.reason,
+      /^live_runtime_monitor_error:[a-f0-9]{64}$/,
+    );
+    assert.equal(JSON.stringify(exitDetails).includes(secretSentinel), false);
+  } finally {
+    clearInterval(keepAlive);
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("a finishing child cannot delete a replacement supervisor-owner receipt", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-child-owner-replaced-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const ownerPath = path.join(temp, "supervisor-owner.json");
+  fs.writeFileSync(
+    ownerPath,
+    `${JSON.stringify({
+      child_pid: 7084,
+      child_process_started_at: TEST_PROCESS_STARTED_AT,
+    })}\n`,
+  );
+  const replacement = {
+    child_pid: 8084,
+    child_process_started_at: TEST_REUSED_PROCESS_STARTED_AT,
+  };
+  const child = new EventEmitter();
+  child.pid = 7084;
+  child.kill = (signal) => {
+    fs.writeFileSync(ownerPath, `${JSON.stringify(replacement)}\n`);
+    queueMicrotask(() => child.emit("exit", 0, signal));
+    return true;
+  };
+  const signalEmitter = new EventEmitter();
+  const supervision = superviseLiveChildSession({
+    child,
+    ownerPath,
+    profile: {
+      port: 3001,
+      state_root: temp,
+    },
+    repoRoot: temp,
+    expectedCommit: "c".repeat(40),
+    signalEmitter,
+    monitorIntervalMs: 60_000,
+    writeExitReceiptImpl() {
+      throw new Error("exit receipt must follow exact owner cleanup");
+    },
+  });
+
+  signalEmitter.emit("SIGTERM");
+  await assert.rejects(supervision, /live_supervisor_owner_cleanup_mismatch/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(ownerPath, "utf8")), replacement);
 });
 
 test("activation revocation terminates the iterative lifecycle without admitting another generation", async () => {
@@ -987,9 +2077,7 @@ test("activation revocation terminates the iterative lifecycle without admitting
               blockers: ["activation_receipt_commit_mismatch"],
             }),
             healthRequester: async () => {
-              throw new Error(
-                "health_must_not_run_after_revocation",
-              );
+              throw new Error("health_must_not_run_after_revocation");
             },
             monitorIntervalMs: 2,
             writeExitReceiptImpl() {},
@@ -1029,10 +2117,7 @@ test("explicit supervisor shutdown treats signal and nonzero child exits as term
         const child = new EventEmitter();
         child.pid = 7084;
         child.kill = (requestedSignal) => {
-          if (
-            scenario.forceRequired &&
-            requestedSignal === "SIGTERM"
-          ) {
+          if (scenario.forceRequired && requestedSignal === "SIGTERM") {
             return true;
           }
           setImmediate(() =>
@@ -1131,7 +2216,8 @@ test("child errors and failed kills retain ownership until an exit is confirmed"
       (error) => ({ status: "rejected", error }),
     );
 
-    child.emit("error", new Error("child_process_error"));
+    const secretSentinel = "SENTINEL_CHILD_CAUSE_MUST_NOT_ESCAPE";
+    child.emit("error", new Error(secretSentinel));
     const premature = await Promise.race([
       observed,
       new Promise((resolve) =>
@@ -1146,7 +2232,15 @@ test("child errors and failed kills retain ownership until an exit is confirmed"
     child.emit("exit", 1, null);
     const final = await observed;
     assert.equal(final.status, "rejected");
-    assert.match(final.error.message, /child_process_error/);
+    assert.match(
+      final.error.message,
+      /^live_runtime_child_error:[a-f0-9]{64}$/,
+    );
+    assert.equal(final.error.message.includes(secretSentinel), false);
+    assert.equal(
+      inspect(final.error, { depth: 5 }).includes(secretSentinel),
+      false,
+    );
     assert.equal(fs.existsSync(ownerPath), false);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
@@ -1175,10 +2269,7 @@ test("shutdown during health-loss recovery cancels the restart generation", asyn
       },
       async startGenerationImpl() {
         startCalls += 1;
-        const ownerPath = path.join(
-          temp,
-          "supervisor-owner.json",
-        );
+        const ownerPath = path.join(temp, "supervisor-owner.json");
         fs.writeFileSync(
           ownerPath,
           JSON.stringify({ child_pid: 7000 + startCalls }),
@@ -1463,8 +2554,7 @@ test("the iterative lifecycle recreates one real owner receipt per generation an
             `${JSON.stringify({ child_pid: child.pid })}\n`,
           );
           ownerPids.push(
-            JSON.parse(fs.readFileSync(ownerPath, "utf8"))
-              .child_pid,
+            JSON.parse(fs.readFileSync(ownerPath, "utf8")).child_pid,
           );
           child.kill = (signal) => {
             setImmediate(() => child.emit("exit", null, signal));
@@ -1631,10 +2721,7 @@ test("default lifecycle handlers install disabled and enable only the exact mana
     report: { checks: {} },
   });
   assert.equal(issued.outcome, "activation_receipt_issued");
-  assert.equal(
-    calls[3][1].youtubeOAuthClientSha256,
-    "6".repeat(64),
-  );
+  assert.equal(calls[3][1].youtubeOAuthClientSha256, "6".repeat(64));
 });
 
 test("default lifecycle dispatch forwards only the doctor-bound activation into guarded start", async () => {
@@ -1670,8 +2757,201 @@ test("default lifecycle dispatch forwards only the doctor-bound activation into 
   assert.equal(calls[0].activation, activation);
 });
 
+test("an exact-plan transition lease blocks activation, enable and start before any live mutation", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const transition = inMemoryTransitionLease({
+    preheldOwner: "exact-plan-drain:other",
+  });
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  let sourceInspections = 0;
+  let runtimeInspections = 0;
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        runtimeTransitionLeaseFactory: transition.factory,
+        sourceDatabaseInspector() {
+          sourceInspections += 1;
+        },
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabled({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        enabled: true,
+        activation,
+        platform: "win32",
+        runtimeTransitionLeaseFactory: transition.factory,
+        sourceDatabaseInspector() {
+          sourceInspections += 1;
+        },
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  await assert.rejects(
+    startLiveScheduledTask({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit: "d".repeat(40),
+      activation,
+      platform: "win32",
+      operationNonceFactory: () => START_OPERATION_NONCE,
+      runtimeTransitionLeaseFactory: transition.factory,
+      runtimeInspector() {
+        runtimeInspections += 1;
+        return { stopped: true, blockers: [] };
+      },
+      execFileSyncImpl() {
+        taskMutations += 1;
+      },
+    }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+
+  assert.equal(sourceInspections, 0);
+  assert.equal(runtimeInspections, 0);
+  assert.equal(taskMutations, 0);
+  assert.equal(transition.current()?.owner_id, "exact-plan-drain:other");
+});
+
+test("scheduled-task enablement rejects non-boolean values before acquiring authority or mutating schtasks", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  for (const value of ["false", "true", 0, 1, null, undefined]) {
+    let leaseAcquisitions = 0;
+    let taskMutations = 0;
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          enabled: value,
+          platform: "win32",
+          transitionLeaseAcquirer() {
+            leaseAcquisitions += 1;
+            throw new Error("must_not_acquire");
+          },
+          taskInspector: () => ({ state: "managed_disabled" }),
+          execFileSyncImpl() {
+            taskMutations += 1;
+          },
+        }),
+      /live_task_enabled_boolean_required/,
+      String(value),
+    );
+    assert.equal(leaseAcquisitions, 0, String(value));
+    assert.equal(taskMutations, 0, String(value));
+  }
+});
+
+test("activation receipt issue and exact no-op both hold and release the transition lease", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-activation-transition-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const transition = inMemoryTransitionLease();
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(
+      temp,
+      "state",
+      "activation-receipt.json",
+    ),
+  };
+  const receipt = {
+    schema_version: "fixture-live-activation-v1",
+    receipt_sha256: "a".repeat(64),
+  };
+  let receiptPresent = false;
+  const common = {
+    profile,
+    repoRoot: ROOT,
+    expectedCommit: "d".repeat(40),
+    operatorId: "pulse-autonomous-release",
+    reason: "governed cutover",
+    youtubeOAuthClientSha256: "6".repeat(64),
+    generatedAt: "2026-08-01T08:00:00.000Z",
+    runtimeTransitionLeaseFactory: transition.factory,
+    activationReceiptBuilder: () => receipt,
+    activationReceiptInspector: () => ({
+      valid: true,
+      receipt_sha256: receipt.receipt_sha256,
+    }),
+    receiptExists: () => receiptPresent,
+    receiptWriter(filePath, value) {
+      assert.ok(transition.current());
+      assert.equal(filePath, path.resolve(profile.activation_receipt_path));
+      assert.equal(value, receipt);
+      receiptPresent = true;
+    },
+    sourceDatabaseInspector() {
+      assert.ok(transition.current());
+      return { checkout: { ready: true }, database: { ready: true } };
+    },
+  };
+
+  const issued = issueLiveActivationReceipt(common);
+  assert.equal(issued.outcome, "activation_receipt_issued");
+  assert.equal(transition.current(), null);
+  const replayed = issueLiveActivationReceipt(common);
+  assert.equal(replayed.outcome, "no_op_exact_activation_receipt_exists");
+  assert.equal(transition.current(), null);
+});
+
+test("activation revocation is excluded by an active exact-plan transition fence", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-revoke-transition-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const receiptPath = path.join(temp, "state", "activation-receipt.json");
+  fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+  fs.writeFileSync(receiptPath, '{"valid":true}\n');
+  const transition = inMemoryTransitionLease({
+    preheldOwner: "exact-plan-drain:other",
+  });
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: receiptPath,
+  };
+
+  assert.throws(
+    () =>
+      revokeLiveActivationReceipt({
+        profile,
+        expectedCommit: "e".repeat(40),
+        taskDisabledConfirmed: true,
+        runtimeTransitionLeaseFactory: transition.factory,
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.equal(fs.existsSync(receiptPath), true);
+});
+
 test("enable revalidates source, receipt and competing-task state at the mutation boundary and never runs the task", () => {
   const calls = [];
+  const transition = inMemoryTransitionLease();
   const taskStates = [
     { state: "managed_disabled", blockers: [] },
     { state: "managed_current", blockers: [] },
@@ -1682,6 +2962,7 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
     blockers: [],
   };
   const result = setLiveScheduledTaskEnabled({
+    runtimeTransitionLeaseFactory: transition.factory,
     profile: loadLiveGuardedRuntimeProfile(),
     repoRoot: ROOT,
     expectedCommit: "d".repeat(40),
@@ -1710,12 +2991,14 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
       return "";
     },
     lifecycleReceiptWriter(options) {
+      assert.ok(transition.current());
       calls.push(["receipt", options]);
       return { outcome: options.details.outcome };
     },
   });
 
   assert.equal(result.outcome, "enabled_for_next_boot");
+  assert.equal(transition.current(), null);
   const exec = calls.find(([name]) => name === "exec")[1];
   assert.equal(exec.command, "schtasks.exe");
   assert.deepEqual(exec.args, [
@@ -1741,6 +3024,7 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
 
 test("guarded start revalidates the exact runway, launches only the managed SYSTEM task and attests exact live ownership", async () => {
   const calls = [];
+  const transition = inMemoryTransitionLease();
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
   const activation = {
@@ -1751,7 +3035,9 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
   const owner = {
     schema_version: "pulse-windows-live-guarded-owner-v1",
     supervisor_pid: 4111,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -1778,6 +3064,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
 
   const result = await startLiveScheduledTask({
     ...inMemoryStartLock({ events: calls }),
+    runtimeTransitionLeaseFactory: transition.factory,
     profile,
     repoRoot: ROOT,
     expectedCommit,
@@ -1805,8 +3092,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       });
       return {
         stopped:
-          listeners.available === true &&
-          listeners.listeningPids.length === 0,
+          listeners.available === true && listeners.listeningPids.length === 0,
         blockers: [],
       };
     },
@@ -1833,19 +3119,21 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       throw new Error("start verification should not need to wait");
     },
     lifecycleReceiptWriter(options) {
+      assert.equal(
+        transition.current()?.owner_id,
+        `live-start:${START_OPERATION_NONCE}`,
+      );
       calls.push(["receipt", options]);
       return { receipt_path: "D:/pulse/evidence/start.json" };
     },
   });
 
-  assert.deepEqual(
-    calls.find(([name]) => name === "exec")[1],
-    {
-      command: "schtasks.exe",
-      args: ["/Run", "/TN", profile.task_name],
-    },
-  );
+  assert.deepEqual(calls.find(([name]) => name === "exec")[1], {
+    command: "schtasks.exe",
+    args: ["/Run", "/TN", profile.task_name],
+  });
   assert.equal(result.receipt_path, "D:/pulse/evidence/start.json");
+  assert.equal(transition.current(), null);
   const receiptCall = calls.find(([name]) => name === "receipt")[1];
   assert.equal(receiptCall.action, "start");
   assert.equal(receiptCall.details.outcome, "started_verified");
@@ -1856,21 +3144,100 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
   assert.equal(receiptCall.details.supervisor_pid, owner.supervisor_pid);
   assert.equal(receiptCall.details.child_pid, owner.child_pid);
   assert.equal(receiptCall.details.listener_pid, owner.child_pid);
-  assert.equal(
-    receiptCall.details.operation_nonce,
-    START_OPERATION_NONCE,
-  );
-  for (const check of [
-    "source_database",
-    "activation",
-    "conflicts",
-    "task",
-  ]) {
+  assert.equal(receiptCall.details.operation_nonce, START_OPERATION_NONCE);
+  for (const check of ["source_database", "activation", "conflicts", "task"]) {
     assert.equal(
       calls.filter(([name]) => name === check).length,
       2,
       `${check} must be revalidated after launch`,
     );
+  }
+});
+
+test("guarded start redacts finalizer failures from thrown errors", async (t) => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+    blockers: [],
+  };
+  const scenarios = [
+    {
+      name: "start-operation lock release",
+      stage: "start_operation_lock_release_failed",
+      sentinel: "SENTINEL_START_LOCK_RELEASE_MUST_NOT_ESCAPE",
+      failLockRelease: true,
+    },
+    {
+      name: "transition lease release",
+      stage: "start_transition_lease_release_failed",
+      sentinel: "SENTINEL_TRANSITION_RELEASE_MUST_NOT_ESCAPE",
+      failTransitionRelease: true,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      let transitionReleaseCalls = 0;
+      let lockReleaseCalls = 0;
+      let thrown = null;
+
+      try {
+        await startLiveScheduledTask({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit,
+          activation,
+          platform: "win32",
+          transitionLeaseAcquirer() {
+            return {
+              renew() {},
+              release() {
+                transitionReleaseCalls += 1;
+                if (scenario.failTransitionRelease) {
+                  throw new Error(scenario.sentinel);
+                }
+              },
+            };
+          },
+          runtimeInspector() {
+            return { stopped: true, blockers: [] };
+          },
+          startLockAcquirer() {
+            return { operation_nonce: START_OPERATION_NONCE };
+          },
+          startLockReleaser() {
+            lockReleaseCalls += 1;
+            if (scenario.failLockRelease) {
+              throw new Error(scenario.sentinel);
+            }
+          },
+          sourceDatabaseInspector() {
+            return { checkout: { ready: true }, database: { ready: true } };
+          },
+          activationInspector() {
+            return { valid: false, receipt_sha256: null, blockers: [] };
+          },
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      assert.ok(thrown);
+      assert.match(
+        thrown.message,
+        new RegExp(
+          `^live_task_start_finalization_failed:${scenario.stage}:[a-f0-9]{64}$`,
+        ),
+      );
+      assert.equal(
+        inspect(thrown, { depth: 5 }).includes(scenario.sentinel),
+        false,
+      );
+      assert.equal(lockReleaseCalls, 1);
+      assert.equal(transitionReleaseCalls, 1);
+    });
   }
 });
 
@@ -1890,7 +3257,9 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
   const owner = {
     schema_version: "pulse-windows-live-guarded-owner-v1",
     supervisor_pid: 4111,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -1991,18 +3360,16 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
   assert.equal(evidence[0].action, "start-failed");
   assert.equal(evidence[0].details.outcome, "start_failed");
   assert.equal(evidence[0].details.stopped_verified, true);
-  assert.equal(
-    evidence[0].details.operation_nonce,
-    START_OPERATION_NONCE,
-  );
+  assert.equal(evidence[0].details.operation_nonce, START_OPERATION_NONCE);
   assert.match(
     evidence[0].details.primary_error,
     /post_launch_activation_receipt_drift/,
   );
 });
 
-test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned up with durable evidence", async () => {
+test("an ambiguous schtasks Run error is redacted from durable evidence and the final error", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
+  const secretSentinel = "SENTINEL_RUN_ERROR_MUST_NOT_PERSIST_7f9a";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
@@ -2058,7 +3425,9 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
       execFileSyncImpl(command, args) {
         mutations.push({ command, args });
         if (args[0] === "/Run") {
-          const error = new Error("scheduled task request timed out");
+          const error = new Error(
+            `scheduled task request timed out ${secretSentinel}`,
+          );
           error.code = "ETIMEDOUT";
           throw error;
         }
@@ -2070,7 +3439,15 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
         return { receipt_path: "D:/pulse/evidence/start-failed.json" };
       },
     }),
-    /scheduled task request timed out/,
+    (error) => {
+      const message = String(error?.message || error);
+      assert.match(
+        message,
+        /^live_task_start_failed:start_task_run_failed:[a-f0-9]{64}$/,
+      );
+      assert.equal(message.includes(secretSentinel), false);
+      return true;
+    },
   );
 
   assert.deepEqual(
@@ -2079,11 +3456,7 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
   );
   assert.deepEqual(
     operationEvents.map(([event]) => event),
-    [
-      "lock_acquire",
-      "stale_owner_archive",
-      "lock_release",
-    ],
+    ["lock_acquire", "stale_owner_archive", "lock_release"],
   );
   assert.equal(taskStates.length, 0);
   assert.equal(evidence.length, 1);
@@ -2091,8 +3464,9 @@ test("an ambiguous schtasks Run error is treated as a launch attempt and cleaned
   assert.equal(evidence[0].details.stopped_verified, true);
   assert.match(
     evidence[0].details.primary_error,
-    /scheduled task request timed out/,
+    /^start_task_run_failed:[a-f0-9]{64}$/,
   );
+  assert.equal(JSON.stringify(evidence).includes(secretSentinel), false);
 });
 
 test("runtime identity is re-read after authority revalidation before started_verified", async () => {
@@ -2106,7 +3480,9 @@ test("runtime identity is re-read after authority revalidation before started_ve
   const owner = {
     schema_version: "pulse-windows-live-guarded-owner-v1",
     supervisor_pid: 4111,
+    supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
+    child_process_started_at: TEST_PROCESS_STARTED_AT,
     port: profile.port,
     repo_root: ROOT.replace(/\\/g, "/"),
     commit_sha: expectedCommit,
@@ -2306,12 +3682,7 @@ test("guarded start ends and disables only the re-inspected managed task when ex
     },
     {
       command: "schtasks.exe",
-      args: [
-        "/Change",
-        "/TN",
-        profile.task_name,
-        "/DISABLE",
-      ],
+      args: ["/Change", "/TN", profile.task_name, "/DISABLE"],
     },
   ]);
   assert.equal(taskStates.length, 0);
@@ -2325,6 +3696,9 @@ test("guarded start ends and disables only the re-inspected managed task when ex
 test("cleanup command failures and an orphan listener are durably reported without claiming stopped", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
+  const endSecretSentinel = "SENTINEL_END_ERROR_MUST_NOT_PERSIST_6e8b";
+  const disableSecretSentinel =
+    "SENTINEL_DISABLE_ERROR_MUST_NOT_PERSIST_5d7c";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
@@ -2382,8 +3756,11 @@ test("cleanup command failures and an orphan listener are durably reported witho
       },
       execFileSyncImpl(command, args) {
         mutations.push({ command, args });
-        if (args[0] === "/End" || args[0] === "/Change") {
-          throw new Error(`${args[0]} failed`);
+        if (args[0] === "/End") {
+          throw new Error(`${args[0]} failed ${endSecretSentinel}`);
+        }
+        if (args[0] === "/Change") {
+          throw new Error(`${args[0]} failed ${disableSecretSentinel}`);
         }
         return "";
       },
@@ -2393,7 +3770,13 @@ test("cleanup command failures and an orphan listener are durably reported witho
         return { receipt_path: "D:/pulse/evidence/start-failed.json" };
       },
     }),
-    /live_task_start_fail_closed_incomplete/,
+    (error) => {
+      const message = String(error?.message || error);
+      assert.match(message, /^live_task_start_fail_closed_incomplete:/);
+      assert.equal(message.includes(endSecretSentinel), false);
+      assert.equal(message.includes(disableSecretSentinel), false);
+      return true;
+    },
   );
 
   assert.deepEqual(
@@ -2406,29 +3789,30 @@ test("cleanup command failures and an orphan listener are durably reported witho
   assert.equal(failure.details.stopped_verified, false);
   assert.equal(failure.details.cleanup.end_succeeded, false);
   assert.equal(failure.details.cleanup.disable_succeeded, false);
-  assert.deepEqual(
-    failure.details.cleanup.orphan_listener_pids,
-    [owner.child_pid],
+  assert.deepEqual(failure.details.cleanup.orphan_listener_pids, [
+    owner.child_pid,
+  ]);
+  assert.ok(
+    failure.details.cleanup.blockers.some((blocker) =>
+      /^start_cleanup_end_failed:[a-f0-9]{64}$/.test(blocker),
+    ),
   );
   assert.ok(
     failure.details.cleanup.blockers.some((blocker) =>
-      blocker.startsWith("start_cleanup_end_failed:"),
+      /^start_cleanup_disable_failed:[a-f0-9]{64}$/.test(blocker),
     ),
   );
   assert.ok(
-    failure.details.cleanup.blockers.some((blocker) =>
-      blocker.startsWith("start_cleanup_disable_failed:"),
-    ),
+    failure.details.cleanup.blockers.includes("start_cleanup_orphan_listener"),
   );
-  assert.ok(
-    failure.details.cleanup.blockers.includes(
-      "start_cleanup_orphan_listener",
-    ),
-  );
+  assert.equal(JSON.stringify(failure).includes(endSecretSentinel), false);
+  assert.equal(JSON.stringify(failure).includes(disableSecretSentinel), false);
 });
 
 test("an unexpected cleanup inspection error still produces failure evidence", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
+  const cleanupSecretSentinel =
+    "SENTINEL_CLEANUP_ERROR_MUST_NOT_PERSIST_4c6d";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
@@ -2458,7 +3842,9 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
       taskInspector() {
         taskInspections += 1;
         if (taskInspections > 1) {
-          throw new Error("task inspection unavailable");
+          throw new Error(
+            `task inspection unavailable ${cleanupSecretSentinel}`,
+          );
         }
         return { state: "managed_current", blockers: [] };
       },
@@ -2483,7 +3869,12 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
         return { receipt_path: "D:/pulse/evidence/start-failed.json" };
       },
     }),
-    /live_task_start_fail_closed_incomplete/,
+    (error) => {
+      const message = String(error?.message || error);
+      assert.match(message, /^live_task_start_fail_closed_incomplete:/);
+      assert.equal(message.includes(cleanupSecretSentinel), false);
+      return true;
+    },
   );
 
   assert.equal(evidence.length, 1);
@@ -2491,9 +3882,10 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
   assert.equal(evidence[0].details.stopped_verified, false);
   assert.ok(
     evidence[0].details.cleanup.blockers.some((blocker) =>
-      blocker.startsWith("start_cleanup_unhandled_error:"),
+      /^start_cleanup_unhandled_error:[a-f0-9]{64}$/.test(blocker),
     ),
   );
+  assert.equal(JSON.stringify(evidence).includes(cleanupSecretSentinel), false);
 });
 
 test("a failed nonce cannot terminate or disable a different successful start owner", async () => {
@@ -2506,8 +3898,7 @@ test("a failed nonce cannot terminate or disable a different successful start ow
   };
   const otherOwner = {
     child_pid: 5123,
-    start_operation_nonce:
-      "22222222-2222-4222-8222-222222222222",
+    start_operation_nonce: "22222222-2222-4222-8222-222222222222",
   };
   const mutations = [];
   const evidence = [];
@@ -2742,8 +4133,7 @@ test("doctor proof reports READY only for exact clean source, migrated DB, activ
   assert.equal(report.profile.platform, "youtube");
   assert.equal(report.profile.secondary_automation_frozen, true);
   assert.equal(
-    report.checks.control_policy
-      .fresh_green_control_tower_required_per_release,
+    report.checks.control_policy.fresh_green_control_tower_required_per_release,
     true,
   );
   assert.equal(seen.length, 5);
@@ -2751,10 +4141,7 @@ test("doctor proof reports READY only for exact clean source, migrated DB, activ
     seen.find(([name]) => name === "database")[1].migrationsDir,
     /db[\\/]migrations$/,
   );
-  assert.doesNotMatch(
-    JSON.stringify(report),
-    /must-not-leak-this-value/i,
-  );
+  assert.doesNotMatch(JSON.stringify(report), /must-not-leak-this-value/i);
 
   const blocked = buildLiveRuntimeDoctorReport({
     expectedCommit,
@@ -2811,9 +4198,7 @@ test("activation preflight refuses to authorise issuance without an exact OAuth 
 
   const missing = buildLiveRuntimeDoctorReport(base);
   assert.ok(
-    missing.decision.blockers.includes(
-      "youtube_oauth_client_sha256_required",
-    ),
+    missing.decision.blockers.includes("youtube_oauth_client_sha256_required"),
   );
 
   const malformed = buildLiveRuntimeDoctorReport({
@@ -2821,9 +4206,7 @@ test("activation preflight refuses to authorise issuance without an exact OAuth 
     youtubeOAuthClientSha256: "not-a-sha256",
   });
   assert.ok(
-    malformed.decision.blockers.includes(
-      "youtube_oauth_client_sha256_invalid",
-    ),
+    malformed.decision.blockers.includes("youtube_oauth_client_sha256_invalid"),
   );
 
   const exact = buildLiveRuntimeDoctorReport({
@@ -2865,9 +4248,7 @@ test("install stays disabled and enable is separately gated by exact apply confi
   });
   assert.equal(wrongConfirmation.mutation_authorised, false);
   assert.ok(
-    wrongConfirmation.blockers.includes(
-      "live_lifecycle_confirmation_required",
-    ),
+    wrongConfirmation.blockers.includes("live_lifecycle_confirmation_required"),
   );
 
   const authorisedInstall = buildLiveLifecycleDecision({
@@ -2917,11 +4298,7 @@ test("install stays disabled and enable is separately gated by exact apply confi
     confirmation: LIVE_LIFECYCLE_CONFIRMATION,
   });
   assert.equal(unsafeRevoke.mutation_authorised, false);
-  assert.ok(
-    unsafeRevoke.blockers.includes(
-      "task_absent_or_disabled_required",
-    ),
-  );
+  assert.ok(unsafeRevoke.blockers.includes("task_absent_or_disabled_required"));
 
   const revoke = buildLiveLifecycleDecision({
     ...common,
@@ -2991,10 +4368,9 @@ test("the live task is a disabled-by-default SYSTEM AtStartup service-account ho
   });
 
   const unsafeVariants = [
-    xml.replace("<BootTrigger>", "<LogonTrigger>").replace(
-      "</BootTrigger>",
-      "</LogonTrigger>",
-    ),
+    xml
+      .replace("<BootTrigger>", "<LogonTrigger>")
+      .replace("</BootTrigger>", "</LogonTrigger>"),
     xml.replace("S-1-5-18", "S-1-5-21-1000"),
     xml.replace(
       "</UserId>",
@@ -3002,10 +4378,7 @@ test("the live task is a disabled-by-default SYSTEM AtStartup service-account ho
     ),
     xml.replace("HighestAvailable", "LeastPrivilege"),
     xml.replace("<Enabled>false</Enabled>", "<Enabled>true</Enabled>"),
-    xml.replace(
-      "</Arguments>",
-      " --unexpected-extra-action</Arguments>",
-    ),
+    xml.replace("</Arguments>", " --unexpected-extra-action</Arguments>"),
   ];
   for (const unsafeXml of unsafeVariants) {
     assert.equal(
@@ -3076,9 +4449,7 @@ test("the live task validator accepts Task Scheduler's normalised restart-policy
 });
 
 test("AUTO_PUBLISH cannot enter a child environment without one exact activation receipt bound to commit, profile and migration set", () => {
-  const temp = fs.mkdtempSync(
-    path.join(os.tmpdir(), "pulse-live-receipt-"),
-  );
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-live-receipt-"));
   try {
     const migrationsDir = path.join(temp, "migrations");
     fs.mkdirSync(migrationsDir);
@@ -3170,17 +4541,11 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       },
     });
     assert.equal(environment.AUTO_PUBLISH, "true");
-    assert.equal(
-      environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED,
-      "true",
-    );
+    assert.equal(environment.PULSE_GUARDED_LIVE_DISPATCH_ENABLED, "true");
     assert.equal(environment.PULSE_EMERGENCY_KILL_SWITCH, "false");
     assert.equal(environment.PULSE_KILL_SWITCH, "false");
     assert.equal(environment.PULSE_OPERATING_MODE, "LIVE_GUARDED");
-    assert.equal(
-      environment.PULSE_SCHEDULER_PROFILE,
-      "governed_multi_lane",
-    );
+    assert.equal(environment.PULSE_SCHEDULER_PROFILE, "governed_multi_lane");
     assert.equal(environment.YOUTUBE_AUTO_PUBLISH, "true");
     assert.equal(environment.TIKTOK_ENABLED, "false");
     assert.equal(environment.INSTAGRAM_AUTO_PUBLISH, "false");
@@ -3274,14 +4639,12 @@ test("activation authority has no silent calendar expiry but every commit, profi
       ),
     );
     assert.ok(
-      controlDrift.blockers.includes(
-        "activation_receipt_fingerprint_mismatch",
-      ),
+      controlDrift.blockers.includes("activation_receipt_fingerprint_mismatch"),
     );
 
     const oauthClientDrift = structuredClone(original);
-    oauthClientDrift.youtube_account_binding
-      .expected_oauth_client_sha256 = "not-a-sha256";
+    oauthClientDrift.youtube_account_binding.expected_oauth_client_sha256 =
+      "not-a-sha256";
     const oauthBindingDrift = inspect(oauthClientDrift);
     assert.ok(
       oauthBindingDrift.blockers.includes(
@@ -3307,13 +4670,7 @@ test("the live CLI defaults to a machine-readable, non-mutating doctor and rejec
   ).trim();
   const output = execFileSync(
     process.execPath,
-    [
-      TOOL,
-      "--repo-root",
-      ROOT,
-      "--expected-commit",
-      commit,
-    ],
+    [TOOL, "--repo-root", ROOT, "--expected-commit", commit],
     {
       cwd: ROOT,
       encoding: "utf8",

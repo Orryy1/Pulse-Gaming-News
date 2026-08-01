@@ -4010,10 +4010,15 @@ test("Windows quiescence holds when a targeted script-host recheck remains ambig
   assert.match(processProbeSources[1], /ProcessId = 702/);
 });
 
-test("Windows quiescence binds the canonical owner receipt supervisor and child PIDs", { skip: process.platform !== "win32" }, () => {
+test("Windows quiescence binds the canonical owner receipt supervisor and child PIDs", () => {
+  const stateRoot = path.resolve(
+    "test-fixtures",
+    "pulse-live-guarded-youtube",
+  );
+  const workspaceRoot = path.resolve("test-fixtures", "pulse-gaming");
   const profile = {
     port: 3001,
-    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    state_root: stateRoot,
     task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
     conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
   };
@@ -4021,7 +4026,7 @@ test("Windows quiescence binds the canonical owner receipt supervisor and child 
   const result = inspectWindowsPulseQuiescence({
     platform: "win32",
     profile,
-    workspaceRoot: "C:\\Pulse\\pulse-gaming",
+    workspaceRoot,
     expectedCommit: EXPECTED_COMMIT,
     fileSystemSync: {
       existsSync: (candidate) => candidate === ownerPath,
@@ -4039,7 +4044,7 @@ test("Windows quiescence binds the canonical owner receipt supervisor and child 
           child_pid: 8101,
           child_process_started_at: GENERATED_AT,
           port: 3001,
-          repo_root: "C:/Pulse/pulse-gaming",
+          repo_root: workspaceRoot,
           commit_sha: EXPECTED_COMMIT,
           profile_sha256: profileFingerprint(profile),
           activation_receipt_sha256: "b".repeat(64),
@@ -4089,10 +4094,15 @@ test("Windows quiescence binds the canonical owner receipt supervisor and child 
   assert.deepEqual(result.owner_pids, [8100, 8101]);
 });
 
-test("Windows quiescence fails closed on an unbound canonical owner receipt", { skip: process.platform !== "win32" }, () => {
+test("Windows quiescence fails closed on an unbound canonical owner receipt", () => {
+  const stateRoot = path.resolve(
+    "test-fixtures",
+    "pulse-live-guarded-youtube",
+  );
+  const workspaceRoot = path.resolve("test-fixtures", "pulse-gaming");
   const profile = {
     port: 3001,
-    state_root: "D:\\pulse-data\\runtime\\pulse-live-guarded-youtube",
+    state_root: stateRoot,
     task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
     conflicting_task_names: ["PulseGaming-Stabilisation-Runtime"],
   };
@@ -4100,7 +4110,7 @@ test("Windows quiescence fails closed on an unbound canonical owner receipt", { 
   const result = inspectWindowsPulseQuiescence({
     platform: "win32",
     profile,
-    workspaceRoot: "C:\\Pulse\\pulse-gaming",
+    workspaceRoot,
     expectedCommit: EXPECTED_COMMIT,
     fileSystemSync: {
       existsSync: (candidate) => candidate === ownerPath,

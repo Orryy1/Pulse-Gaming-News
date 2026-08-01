@@ -16,6 +16,7 @@ const {
 
 const CANVAS = Object.freeze({ width: 1080, height: 1920 });
 const PROGRAMME_ZOOM = 1.06;
+const TOWNFALL_STORY_ID = "official_cb7d986c3ad4";
 const SAFE_RECT = getPlatformSafeZoneProfile(
   CROSS_PLATFORM_PORTRAIT_PROFILE_ID,
 ).safe_rect;
@@ -263,6 +264,7 @@ test(
     const supportingText =
       "Silent Hill: Townfall launches 24 September on PlayStation 5 with first-person combat.";
     const approvedSvg = svgForScene({
+      story_id: TOWNFALL_STORY_ID,
       role: "hook_slam",
       design: {
         accent_colour: "#FF6B1A",
@@ -272,6 +274,7 @@ test(
       },
     });
     const nonHookSvg = svgForScene({
+      story_id: TOWNFALL_STORY_ID,
       role: "verified_detail",
       design: {
         accent_colour: "#FF6B1A",
@@ -281,12 +284,32 @@ test(
       },
     });
     const changedHeadlineSvg = svgForScene({
+      story_id: TOWNFALL_STORY_ID,
       role: "hook_slam",
       design: {
         accent_colour: "#FF6B1A",
         layout: "TITLE",
         headline:
           "SILENT HILL: TOWNFALL LAUNCHES 25 SEPTEMBER",
+        supporting_text: supportingText,
+      },
+    });
+    const wrongStorySvg = svgForScene({
+      story_id: "official_unrelated_story",
+      role: "hook_slam",
+      design: {
+        accent_colour: "#FF6B1A",
+        layout: "TITLE",
+        headline: approvedHeadline,
+        supporting_text: supportingText,
+      },
+    });
+    const missingStorySvg = svgForScene({
+      role: "hook_slam",
+      design: {
+        accent_colour: "#FF6B1A",
+        layout: "TITLE",
+        headline: approvedHeadline,
         supporting_text: supportingText,
       },
     });
@@ -304,6 +327,14 @@ test(
     );
     assert.doesNotMatch(nonHookSvg, /24 \/ SEP/);
     assert.doesNotMatch(changedHeadlineSvg, /24 \/ SEP/);
+    assert.doesNotMatch(
+      wrongStorySvg,
+      /data-owned-motif="approved-date-lockup"/,
+    );
+    assert.doesNotMatch(
+      missingStorySvg,
+      /data-owned-motif="approved-date-lockup"/,
+    );
 
     const browser = await launchBrowser();
     t.after(() => browser.close());
@@ -361,6 +392,192 @@ test(
       zoomed.y >= CAPTION_RECT.y + CAPTION_RECT.height,
       `date lockup overlaps the caption lane: ${JSON.stringify(zoomed)}`,
     );
+  },
+);
+
+test(
+  "exact approved Townfall non-hook scenes get distinct safe lower fact lockups",
+  { timeout: 30_000 },
+  async (t) => {
+    const cases = [
+      {
+        role: "verified_change",
+        layout: "TIMELINE",
+        headline: "SCREEN BURN INTERACTIVE CONFIRMS THE GAME",
+        supporting_text:
+          "Screen Burn Interactive confirms the game replaces the iconic radio with an active CRTV device.",
+        lockup: "RADIO → CRTV",
+      },
+      {
+        role: "verified_detail",
+        layout: "COMPARISON",
+        headline: "THIS SHIFT MARKS THE FRANCHISE'S FIRST",
+        supporting_text:
+          "This shift marks the franchise's first full-length title using this perspective.",
+        lockup: "FULL-LENGTH / FIRST-PERSON",
+      },
+      {
+        role: "player_impact",
+        layout: "GRID",
+        headline: "SILENT HILL: TOWNFALL LAUNCHES 24 SEPTEMBER",
+        supporting_text:
+          "Silent Hill: Townfall launches 24 September on PlayStation 5 with first-person combat.",
+        lockup: "PLAYSTATION 5 / FIRST-PERSON",
+      },
+      {
+        role: "source_payoff",
+        layout: "IMPACT",
+        headline: "SCREEN BURN INTERACTIVE CONFIRMS THE GAME",
+        supporting_text:
+          "Screen Burn Interactive confirms the game replaces the iconic radio with an active CRTV device.",
+        lockup: "PLAYSTATION BLOG",
+      },
+    ];
+    assert.equal(new Set(cases.map((item) => item.lockup)).size, cases.length);
+    const browser = await launchBrowser();
+    t.after(() => browser.close());
+    const page = await browser.newPage({
+      viewport: { width: 1080, height: 1920 },
+    });
+
+    for (const item of cases) {
+      const exactSvg = svgForScene({
+        story_id: TOWNFALL_STORY_ID,
+        role: item.role,
+        design: {
+          accent_colour: "#FF6B1A",
+          layout: item.layout,
+          headline: item.headline,
+          supporting_text: item.supporting_text,
+        },
+      });
+      const nearMissScenes = [
+        {
+          story_id: "official_unrelated_story",
+          role: item.role,
+          headline: item.headline,
+          supporting_text: item.supporting_text,
+        },
+        {
+          role: item.role,
+          headline: item.headline,
+          supporting_text: item.supporting_text,
+        },
+        {
+          story_id: TOWNFALL_STORY_ID,
+          role: `${item.role}_near_miss`,
+          headline: item.headline,
+          supporting_text: item.supporting_text,
+        },
+        {
+          story_id: TOWNFALL_STORY_ID,
+          role: item.role,
+          headline: `${item.headline}!`,
+          supporting_text: item.supporting_text,
+        },
+        {
+          story_id: TOWNFALL_STORY_ID,
+          role: item.role,
+          headline: item.headline,
+          supporting_text: `${item.supporting_text}!`,
+        },
+      ];
+
+      assert.match(
+        exactSvg,
+        /data-owned-motif="approved-fact-lockup"/,
+        item.role,
+      );
+      assert.match(
+        exactSvg,
+        new RegExp(`aria-label="${item.lockup}"`),
+        item.role,
+      );
+      assert.equal(
+        (exactSvg.match(/data-owned-motif="approved-fact-lockup"/g) || [])
+          .length,
+        1,
+        item.role,
+      );
+      assert.doesNotMatch(
+        exactSvg,
+        /data-owned-motif="approved-date-lockup"/,
+        item.role,
+      );
+      for (const nearMissScene of nearMissScenes) {
+        const nearMissSvg = svgForScene({
+          story_id: nearMissScene.story_id,
+          role: nearMissScene.role,
+          design: {
+            accent_colour: "#FF6B1A",
+            layout: item.layout,
+            headline: nearMissScene.headline,
+            supporting_text: nearMissScene.supporting_text,
+          },
+        });
+        assert.doesNotMatch(
+          nearMissSvg,
+          /data-owned-motif="approved-fact-lockup"/,
+          JSON.stringify(nearMissScene),
+        );
+        assert.doesNotMatch(
+          nearMissSvg,
+          new RegExp(`aria-label="${item.lockup}"`),
+          JSON.stringify(nearMissScene),
+        );
+      }
+
+      await page.setContent(exactSvg, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.evaluate(() => document.fonts.ready);
+      const lockup = await page.$eval(
+        '[data-owned-motif="approved-fact-lockup"]',
+        (element) => {
+          const box = element.getBBox();
+          return {
+            text: element.textContent.trim(),
+            x: box.x,
+            y: box.y,
+            right: box.x + box.width,
+            bottom: box.y + box.height,
+          };
+        },
+      );
+      assert.equal(lockup.text, item.lockup);
+      assert.ok(
+        lockup.x >= 124 &&
+          lockup.right <= 798 &&
+          lockup.y >= 1248 &&
+          lockup.bottom <= 1380,
+        `fact lockup leaves its pre-zoom safe area: ${JSON.stringify(lockup)}`,
+      );
+      const zoomed = {
+        x:
+          CANVAS.width / 2 +
+          (lockup.x - CANVAS.width / 2) * PROGRAMME_ZOOM,
+        y:
+          CANVAS.height / 2 +
+          (lockup.y - CANVAS.height / 2) * PROGRAMME_ZOOM,
+        right:
+          CANVAS.width / 2 +
+          (lockup.right - CANVAS.width / 2) * PROGRAMME_ZOOM,
+        bottom:
+          CANVAS.height / 2 +
+          (lockup.bottom - CANVAS.height / 2) * PROGRAMME_ZOOM,
+      };
+      assert.ok(
+        zoomed.x >= SAFE_RECT.x &&
+          zoomed.right <= SAFE_RECT.x + SAFE_RECT.width &&
+          zoomed.y >= SAFE_RECT.y &&
+          zoomed.bottom <= SAFE_RECT.y + SAFE_RECT.height,
+        `fact lockup escapes after programme zoom: ${JSON.stringify(zoomed)}`,
+      );
+      assert.ok(
+        zoomed.y >= CAPTION_RECT.y + CAPTION_RECT.height,
+        `fact lockup overlaps the caption lane: ${JSON.stringify(zoomed)}`,
+      );
+    }
   },
 );
 

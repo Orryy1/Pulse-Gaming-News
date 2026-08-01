@@ -120,6 +120,7 @@ jobs:
           tests/services/governed-autonomous-production-coordinator.test.js
           tests/services/governed-autonomous-production-job-handler.test.js
           tests/services/governed-autonomous-production-job-runner.test.js
+          tests/services/governed-autonomous-production-media-adapters.test.js
           tests/services/governed-autonomous-production-request-builder.test.js
           tests/services/governed-autonomous-production-runtime.test.js
           tests/services/governed-autonomous-t90-eligibility-source-report.test.js

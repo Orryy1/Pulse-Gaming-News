@@ -100,6 +100,30 @@ test("binds the exact task instance to its EnginePID", async () => {
   ]);
 });
 
+test("rejects every non-exact task name before the Task Scheduler probe", async () => {
+  for (const taskName of [
+    "PulseGaming-Stabilisation-Runtime",
+    " PulseGaming-LiveGuarded-YouTube-Runtime",
+  ]) {
+    let probeCalls = 0;
+    const result = await inspectExactWindowsTaskInstances({
+      taskName,
+      runPowerShell: async () => {
+        probeCalls += 1;
+        return [{ InstanceGuid: "legacy-guid", EnginePID: 4100, State: 4 }];
+      },
+    });
+
+    assert.equal(probeCalls, 0, taskName);
+    assert.deepEqual(result, {
+      ok: false,
+      task_name: taskName,
+      instances: [],
+      blockers: ["windows_task_name_not_authorised"],
+    });
+  }
+});
+
 test("queries only the exact task path and rejects an incomplete instance", async () => {
   let scriptSeen = null;
   const result = await inspectExactWindowsTaskInstances({
@@ -122,6 +146,23 @@ test("queries only the exact task path and rejects an incomplete instance", asyn
   assert.deepEqual(result.blockers, [
     "windows_task_instance_identity_incomplete",
   ]);
+});
+
+test("fails closed when the exact Task Scheduler probe throws", async () => {
+  const result = await inspectExactWindowsTaskInstances({
+    taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    runPowerShell: async () => {
+      throw new Error("sensitive Task Scheduler failure");
+    },
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    instances: [],
+    blockers: ["windows_task_instance_probe_failed"],
+  });
+  assert.equal(JSON.stringify(result).includes("sensitive"), false);
 });
 
 test("reads the current Windows Job membership with fixed probe code", async () => {
@@ -156,6 +197,29 @@ test("fails closed when current Job membership cannot be probed", async () => {
     blockers: ["windows_job_membership_probe_failed"],
   });
   assert.equal(JSON.stringify(result).includes("raw failure detail"), false);
+});
+
+test("rejects missing or null Job membership data without rejecting an explicit empty list", async () => {
+  for (const value of [{}, { ProcessIds: null }]) {
+    const result = await inspectCurrentWindowsJobMembership({
+      runPowerShell: async () => value,
+    });
+
+    assert.deepEqual(result, {
+      ok: false,
+      process_ids: [],
+      blockers: ["windows_job_membership_invalid"],
+    });
+  }
+
+  const explicitEmpty = await inspectCurrentWindowsJobMembership({
+    runPowerShell: async () => ({ ProcessIds: [] }),
+  });
+  assert.deepEqual(explicitEmpty, {
+    ok: true,
+    process_ids: [],
+    blockers: [],
+  });
 });
 
 test("compares canonical authority observations without key-order drift", () => {
@@ -198,6 +262,101 @@ test("observes only the exact task, supervisor and child authority chain", async
   );
   assert.equal(JSON.stringify(result).includes(SUPERVISOR_COMMAND), false);
   assert.equal(JSON.stringify(result).includes(CHILD_COMMAND), false);
+});
+
+test("bounded observation rejects a legacy authority before any probe", async () => {
+  for (const taskName of [
+    "PulseGaming-Stabilisation-Runtime",
+    "PulseGaming-LiveGuarded-YouTube-Runtime ",
+  ]) {
+    let probeCalls = 0;
+    const result = await observeBoundedWindowsAuthority({
+      expected: {
+        ...authorityExpected(),
+        taskName,
+      },
+      probes: {
+        async inspectExactWindowsTaskInstances() {
+          probeCalls += 1;
+          return {
+            ok: true,
+            task_name: taskName,
+            instances: [
+              { instance_guid: "guid-1", engine_pid: 4100, state: 4 },
+            ],
+            blockers: [],
+          };
+        },
+      },
+    });
+
+    assert.equal(probeCalls, 0, taskName);
+    assert.deepEqual(result.blockers, ["windows_task_name_not_authorised"]);
+  }
+});
+
+test("bounded observation requires every targeted identity binding before probing", async () => {
+  const requiredFields = [
+    "taskInstanceGuid",
+    "supervisorPid",
+    "supervisorCreationTimeUtc",
+    "supervisorExecutablePath",
+    "supervisorCommandSha256",
+    "childPid",
+    "childCreationTimeUtc",
+    "childExecutablePath",
+    "childCommandSha256",
+  ];
+  const invalidValues = [
+    ["taskInstanceGuid", ""],
+    ["supervisorPid", 0],
+    ["supervisorCreationTimeUtc", "not-a-time"],
+    ["supervisorExecutablePath", "node.exe"],
+    ["supervisorCommandSha256", "not-a-hash"],
+    ["childCreationTimeUtc", "not-a-time"],
+    ["childPid", 4100],
+    ["childExecutablePath", "server.js"],
+    ["childCommandSha256", "f".repeat(63)],
+  ];
+
+  for (const field of requiredFields) {
+    const expected = authorityExpected();
+    delete expected[field];
+    let probeCalls = 0;
+    const result = await observeBoundedWindowsAuthority({
+      expected,
+      runPowerShell: async () => {
+        probeCalls += 1;
+        throw new Error("must not probe");
+      },
+    });
+
+    assert.equal(probeCalls, 0, `missing ${field}`);
+    assert.deepEqual(
+      result.blockers,
+      ["windows_authority_expected_identity_invalid"],
+      `missing ${field}`,
+    );
+  }
+
+  for (const [field, value] of invalidValues) {
+    const expected = { ...authorityExpected(), [field]: value };
+    let probeCalls = 0;
+    const result = await observeBoundedWindowsAuthority({
+      expected,
+      runPowerShell: async () => {
+        probeCalls += 1;
+        throw new Error("must not probe");
+      },
+    });
+
+    assert.equal(probeCalls, 0, `malformed ${field}`);
+    assert.deepEqual(
+      result.blockers,
+      ["windows_authority_expected_identity_invalid"],
+      `malformed ${field}`,
+    );
+  }
 });
 
 test("fails closed for zero or multiple exact task instances", async () => {

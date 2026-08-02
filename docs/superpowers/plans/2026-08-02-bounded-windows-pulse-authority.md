@@ -256,6 +256,98 @@ git add lib/stabilisation/bounded-runtime-db-authority.js lib/services/scheduler
 git commit -m "feat: bind runtime database authority"
 ```
 
+### Task 3b: Bind post-admission publication to immutable authority
+
+**Depends on:** a clean independent review of Task 3.
+
+**Files:**
+- Modify: `publisher.js`
+- Modify: `lib/bootstrap-queue.js`
+- Modify: `lib/services/jobs-runner.js`
+- Modify: `lib/job-handlers.js`
+- Modify: `lib/services/publisher-lock.js`
+- Modify: `lib/services/governed-youtube-publisher-adapter.js`
+- Modify: `lib/services/governed-youtube-scheduled-replay-verifier.js`
+- Modify `lib/stabilisation/bounded-runtime-db-authority.js` only if a test demonstrates an inspector defect.
+
+**Interfaces:**
+- Consumes: trusted runtime authority supplied by bootstrap and immutable scheduled-admission evidence.
+- Produces: a canonical `publisher:global` lease binding for one of the seven closed post-admission operations.
+
+- [ ] **Step 1: Write failing authority-propagation tests**
+
+Cover the publisher lock, queue bootstrap, claimed-job context, publication handlers, YouTube adapters and scheduled replay. Prove that missing, malformed or drifted runtime/admission fields prevent the lease task from running and that job payloads, direct CLI calls and legacy server paths cannot inject authority.
+
+- [ ] **Step 2: Canonicalise the complete publication binding once**
+
+Preserve and validate story ID, platform `youtube`, scheduled event ID/time, dispatch idempotency key, request fingerprint and `runwayLockSha256`. In `LIVE_GUARDED`, require both trusted runtime authority and this immutable admission context before acquiring `publisher:global`. Generic metadata must not override schema, operation, purpose, PID/start time, runtime ID, authority fingerprint or admitted-operation hash.
+
+- [ ] **Step 3: Bind the closed post-admission allowlist**
+
+Permit only:
+
+- `publish_next_story`
+- `disarm_governed_youtube_scheduled_release`
+- `prestage_governed_youtube_release`
+- `verify_governed_youtube_private_prestage`
+- `arm_governed_youtube_scheduled_release`
+- `confirm_governed_youtube_scheduled_release`
+- `verify_governed_youtube_scheduled_replay`
+
+`publishToAllPlatforms` must return its existing disabled/held result before acquiring the lease. Thread the same immutable binding through every governed adapter and exact durable-job handler. Preserve all platform, rights, quality, freshness, replay, compensation and reconciliation gates; a compensated verification must not nest a second publisher lease.
+
+- [ ] **Step 4: Prove evidence is complete and secret-safe**
+
+`readScheduledDispatchEvidence` and the final binding assertion must compare the runway hash as well as the existing fields. Returned evidence must not expose raw lease owners, environment values or token-shaped material.
+
+- [ ] **Step 5: Run focused Node 22 tests, review and commit**
+
+Run the publisher lock, QA persistence, bootstrap, jobs runner, governed lane/runway handlers, YouTube publisher/disarm/replay adapters and guarded-window suites. Require an independent review before Task 3c.
+
+### Task 3c: Give pre-admission work a separate single-flight authority
+
+**Depends on:** clean independent reviews of Tasks 3 and 3b.
+
+**Files:**
+- Create: `lib/services/publication-admission-lock.js`
+- Create: `tests/services/publication-admission-lock.test.js`
+- Modify: `lib/bootstrap-queue.js`
+- Modify: `lib/services/jobs-runner.js`
+- Modify: `lib/stabilisation/bounded-runtime-db-authority.js`
+- Modify: `lib/services/governed-autonomous-pre-t90-window-runner.js`
+- Modify: `lib/job-handlers.js`
+- Modify as required: `lib/services/autonomous-admission-control-proof.js`
+- Modify as required: `lib/services/autonomous-official-jit-admission-packet.js`
+
+**Interfaces:**
+- Consumes: trusted runtime authority and the exact currently claimed durable job.
+- Produces: `publication-admission:global`, a non-publishing lease with schema `pulse-runtime-generation-publication-admission-lease-v1` and scope `PUBLICATION_ADMISSION_ONLY`.
+
+- [ ] **Step 1: Write failing separation and exact-claim tests**
+
+Prove admission and publisher leases cannot substitute for one another. Require exact job ID, kind, claimed worker, claim token, unfinished `job_runs` row, unexpired claim and idempotency-key hash. Prove payloads cannot supply authority and stale, foreign or malformed admission leases make the bounded DB inspector return HOLD.
+
+- [ ] **Step 2: Implement the closed operation-to-job map**
+
+Hard-code and reject every other combination:
+
+- `governed_autonomous_pre_t90_window_preparation` -> `prepare_governed_autonomous_pre_t90_window`
+- `autonomous_t75_jit_admission` -> `admit_governed_publication`
+- `promote_governed_youtube_reserve_release` -> `prestage_governed_youtube_release`
+- `promote_confirmed_disarm_youtube_reserve_release` -> `governed_youtube_runway_t60`
+
+- [ ] **Step 3: Acquire and maintain the lease transactionally**
+
+Reuse `runtime_leases`; do not add a migration. Acquire inside one immediate transaction that validates `main.jobs` and the exact unfinished `main.job_runs` claim-token row. Cap the lease to the remaining job-claim lifetime and revalidate on every heartbeat/assertion. Mark all external-create and platform-mutation flags explicitly false. Expose only hashed contention evidence.
+
+- [ ] **Step 4: Integrate without broadening admission**
+
+Pre-T90 preparation, T-75 JIT admission and both reserve-promotion paths use the new lease rather than `publisher:global` before a valid immutable SCHEDULED ticket exists. Rename proof/packet fields to `publicationAdmissionLease` / `publication_admission_lease`. Never carry the admission lease into the resulting scheduled dispatch binding or publication authority. Preserve existing single-owner, compensation and recovery controls.
+
+- [ ] **Step 5: Run focused Node 22 tests, review and commit**
+
+Run the new lock suite plus runner lease-deadline, bootstrap, bounded DB authority, admission proof/JIT packet, pre-T90, admission, integration, private-prestage and reserve-promotion suites. Require a fresh independent review before transition-lease work.
+
 ### Task 4: Fence transition leases with the same authority fingerprint
 
 **Files:**

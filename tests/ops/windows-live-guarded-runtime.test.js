@@ -229,11 +229,14 @@ const {
   buildLiveTaskAuthorityBinding,
   createDefaultLiveLifecycleHandlers,
   buildLiveScheduledTaskXml,
+  buildLiveProcessCommandAuthority,
   prepareLiveSupervision,
   inspectLiveActivationReceipt,
+  inspectLiveDatabaseIdentity,
   inspectWindowsProcessIdentity,
   inspectLiveStartOperationLock,
   inspectLiveTaskConflicts,
+  inspectLiveTaskBoundHandoff,
   inspectStoppedLiveRuntime,
   inspectBoundedWindowsAuthority,
   issueLiveActivationReceipt,
@@ -271,6 +274,7 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
     releaseSha: BOUNDED_RELEASE_SHA,
     profileSha256: BOUNDED_PROFILE_SHA,
     databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+    conflictingTaskNames: ["PulseGaming-Stabilisation-Runtime"],
     runtimeInstanceId: BOUNDED_RUNTIME_ID,
     taskInstanceGuid: BOUNDED_INSTANCE_GUID,
     supervisorPid: 4100,
@@ -356,7 +360,11 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
       command_sha256: expected.childCommandSha256,
       blockers: [],
     },
-    job_membership: { process_ids: [4100, 4200], child_present: true },
+    job_membership: {
+      process_ids: [4100, 4200],
+      child_present: true,
+      blockers: [],
+    },
     blockers: [],
   };
   return {
@@ -364,6 +372,7 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
     expected,
     probes: {
       taskDefinitionInspector: async () => ({
+        task_name: expected.taskName,
         state: "managed_current",
         blockers: [],
       }),
@@ -380,6 +389,7 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
       listenerInspector: async () => ({
         available: true,
         listeningPids: [4200],
+        blockers: [],
       }),
       healthRequester: async () => ({
         status: "ok",
@@ -393,6 +403,7 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
           use_sqlite: true,
           use_job_queue_explicit: "true",
         },
+        blockers: [],
       }),
       databaseAuthorityInspector: async () => ({
         ok: true,
@@ -434,7 +445,12 @@ function taskBoundActivation({
     valid: true,
     schema_version: "pulse-windows-live-guarded-activation-receipt-v2",
     receipt_sha256: receiptSha,
-    task_definition_sha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    task_definition_sha256: buildLiveProcessCommandAuthority({
+      profile,
+      repoRoot,
+      expectedCommit,
+      nodeExecutable: process.execPath,
+    }).supervisor_command_sha256,
     runtime_instance_id: BOUNDED_RUNTIME_ID,
     authority_binding: authorityBinding,
     authority_fingerprint: require("node:crypto")
@@ -463,6 +479,7 @@ function taskBoundHandoffObservation(child, expected = {}) {
       state: 4,
     },
     supervisor: {
+      ok: true,
       pid: process.pid,
       creation_time_utc: TEST_PROCESS_STARTED_AT,
       executable_path:
@@ -471,8 +488,10 @@ function taskBoundHandoffObservation(child, expected = {}) {
       command_sha256:
         expected.expectedSupervisorCommandSha256 ||
         BOUNDED_SUPERVISOR_COMMAND_SHA,
+      blockers: [],
     },
     child: {
+      ok: true,
       pid: child.pid,
       parent_pid: process.pid,
       creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
@@ -481,11 +500,13 @@ function taskBoundHandoffObservation(child, expected = {}) {
         process.execPath.replace(/\\/g, "/"),
       command_sha256:
         expected.expectedChildCommandSha256 || BOUNDED_CHILD_COMMAND_SHA,
+      blockers: [],
     },
     job_membership: {
       process_ids: [process.pid, child.pid],
       supervisor_present: true,
       child_present: true,
+      blockers: [],
     },
     blockers: [],
   };
@@ -687,12 +708,18 @@ function stoppedBoundedAuthorityFixture() {
     releaseSha: BOUNDED_RELEASE_SHA,
     profileSha256: BOUNDED_PROFILE_SHA,
     databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+    conflictingTaskNames: ["PulseGaming-Stabilisation-Runtime"],
+    supervisorExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    supervisorCommandSha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    childExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    childCommandSha256: BOUNDED_CHILD_COMMAND_SHA,
   };
   return {
     mode: "QUIESCENT",
     expected,
     probes: {
       taskDefinitionInspector: async () => ({
+        task_name: expected.taskName,
         state: "managed_disabled",
         blockers: [],
       }),
@@ -719,6 +746,7 @@ function stoppedBoundedAuthorityFixture() {
       listenerInspector: async () => ({
         available: true,
         listeningPids: [],
+        blockers: [],
       }),
       databaseAuthorityInspector: async () => ({
         ok: true,
@@ -758,7 +786,9 @@ test("STOPPED_BOUND rejects unarchived exact-stale owners and validates governed
   for (const mutation of [
     { authority_fingerprint: "0".repeat(64) },
     { supervisor_command_sha256: "invalid" },
+    { supervisor_command_sha256: "7".repeat(64) },
     { child_executable_path: "node.exe" },
+    { child_executable_path: "D:/other/node.exe" },
     { archive_receipt_sha256: "invalid" },
     { archive_policy_applied: false },
   ]) {
@@ -886,6 +916,81 @@ test("ACTIVE_BOUND requires blocker-free evidence from every live authority prob
   }
 });
 
+test("bounded authority requires explicit blocker arrays and exact RUNNING task evidence", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "authorityObserver",
+    "listenerInspector",
+    "healthRequester",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => {
+      const result = { ...(await original(...args)) };
+      delete result.blockers;
+      return result;
+    };
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      probe,
+    );
+  }
+
+  for (const mutation of [
+    { task_name: "Different-Task" },
+    { state: 3 },
+    { instance_guid: "99999999-2222-4333-8444-555555555555" },
+    { engine_pid: 4999 },
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes.authorityObserver;
+    fixture.probes.authorityObserver = async () => {
+      const result = await original();
+      return Object.prototype.hasOwnProperty.call(mutation, "task_name")
+        ? { ...result, task_name: mutation.task_name }
+        : {
+            ...result,
+            task_instance: { ...result.task_instance, ...mutation },
+          };
+    };
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      inspect(mutation),
+    );
+  }
+});
+
+test("STOPPED_BOUND requires explicit blocker arrays from every quiescent result", async () => {
+  for (const probe of [
+    "taskDefinitionInspector",
+    "taskInstancesInspector",
+    "conflictInspector",
+    "activationReceiptInspector",
+    "ownerReceiptInspector",
+    "listenerInspector",
+    "databaseAuthorityInspector",
+  ]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    const original = fixture.probes[probe];
+    fixture.probes[probe] = async (...args) => {
+      const result = { ...(await original(...args)) };
+      delete result.blockers;
+      return result;
+    };
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "HOLD",
+      probe,
+    );
+  }
+});
+
 test("STOPPED_BOUND requires blocker-free evidence from every quiescent authority probe", async () => {
   for (const probe of [
     "taskDefinitionInspector",
@@ -932,17 +1037,55 @@ test("ACTIVE_BOUND requires complete clear evidence for bounded legacy-task conf
       result.blockers.includes("live_conflicting_task_authority_untrusted"),
     );
   }
+});
 
-  const unrelated = activeBoundedAuthorityFixture();
-  unrelated.probes.conflictInspector = async () => ({
-    clear: true,
-    tasks: [{ task_name: "Unrelated-Backup-Task", state: "enabled" }],
-    blockers: [],
-  });
-  assert.equal(
-    (await inspectBoundedWindowsAuthority(unrelated)).state,
-    "ACTIVE_BOUND",
-  );
+test("bounded verdicts reconcile the exact configured conflict-task roster", async () => {
+  for (const tasks of [
+    [],
+    [
+      { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+      { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+    ],
+    [{ task_name: "Unrelated-Backup-Task", state: "disabled" }],
+    [{ task_name: "PulseGaming-Stabilisation-Runtime", state: "enabled" }],
+    [
+      {
+        task_name: "PulseGaming-Stabilisation-Runtime",
+        state: "inspection_error",
+      },
+    ],
+    [{ task_name: "PulseGaming-Stabilisation-Runtime", state: "unknown" }],
+  ]) {
+    for (const fixture of [
+      activeBoundedAuthorityFixture(),
+      stoppedBoundedAuthorityFixture(),
+    ]) {
+      fixture.probes.conflictInspector = async () => ({
+        clear: true,
+        tasks,
+        blockers: [],
+      });
+      assert.equal(
+        (await inspectBoundedWindowsAuthority(fixture)).state,
+        "HOLD",
+        `${fixture.mode}:${inspect(tasks)}`,
+      );
+    }
+  }
+
+  for (const state of ["absent", "disabled"]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.probes.conflictInspector = async () => ({
+      clear: true,
+      tasks: [{ task_name: "PulseGaming-Stabilisation-Runtime", state }],
+      blockers: [],
+    });
+    assert.equal(
+      (await inspectBoundedWindowsAuthority(fixture)).state,
+      "ACTIVE_BOUND",
+      state,
+    );
+  }
 });
 
 test("the default Windows process identity probe returns only PID and creation time", () => {
@@ -1248,6 +1391,59 @@ test("conflicting task query failures are blockers rather than false absence", (
   ]);
 });
 
+test("configured conflict inspection distinguishes exact COM absence without enumerating tasks", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const calls = [];
+  const absent = inspectLiveTaskConflicts({
+    profile,
+    platform: "win32",
+    execFileSyncImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return JSON.stringify({
+        Found: false,
+        Enabled: null,
+        HResult: -2147024894,
+      });
+    },
+  });
+  assert.deepEqual(absent, {
+    clear: true,
+    tasks: [
+      {
+        task_name: "PulseGaming-Stabilisation-Runtime",
+        state: "absent",
+      },
+    ],
+    blockers: [],
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command.toLowerCase(), "powershell.exe");
+  assert.equal(calls[0].args.join(" ").includes("GetTask("), true);
+  assert.equal(calls[0].args.join(" ").includes("GetTasks("), false);
+  assert.equal(
+    calls[0].args.join(" ").includes("PulseGaming-Stabilisation-Runtime"),
+    true,
+  );
+
+  const unavailable = inspectLiveTaskConflicts({
+    profile,
+    platform: "win32",
+    execFileSyncImpl() {
+      return JSON.stringify({
+        Found: false,
+        Enabled: null,
+        HResult: -2147024891,
+      });
+    },
+  });
+  assert.equal(unavailable.clear, false);
+  assert.equal(unavailable.tasks[0].state, "inspection_error");
+  assert.deepEqual(unavailable.blockers, [
+    "conflicting_runtime_task_inspection_failed:" +
+      "PulseGaming-Stabilisation-Runtime",
+  ]);
+});
+
 test("stopped-runtime inspection accepts only an exact dead stale owner that the supervisor can archive", () => {
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
@@ -1385,6 +1581,10 @@ test("stopped-runtime inspection validates owner-v2 task authority before declar
       existsSync: () => true,
       readFileSync: () => JSON.stringify(owner),
       processIdentityInspector: processIdentityInspector({}),
+      expectedSupervisorExecutablePath: binding.node_path,
+      expectedSupervisorCommandSha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+      expectedChildExecutablePath: binding.node_path,
+      expectedChildCommandSha256: BOUNDED_CHILD_COMMAND_SHA,
     });
 
   assert.equal(inspectOwner(exactOwnerV2).owner_state, "exact_stale");
@@ -1392,9 +1592,13 @@ test("stopped-runtime inspection validates owner-v2 task authority before declar
     { runtime_instance_id: undefined },
     { task_instance_guid: "invalid" },
     { supervisor_executable_path: "node.exe" },
+    { supervisor_executable_path: "D:/other/node.exe" },
     { supervisor_command_sha256: "invalid" },
+    { supervisor_command_sha256: "f".repeat(64) },
     { child_parent_pid: 4999 },
+    { child_executable_path: "D:/other/node.exe" },
     { child_command_sha256: "invalid" },
+    { child_command_sha256: "f".repeat(64) },
     { child_in_job: false },
     { authority_fingerprint: "0".repeat(64) },
   ]) {
@@ -2008,6 +2212,88 @@ test("supervision preparation and health identity fail closed unless the receipt
   );
 });
 
+test("handoff command fingerprints use the exact full Win32 process command-line domain", async () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  const expectedCommit = "d".repeat(40);
+  const nodePath = "D:/pulse-tools/node-v22.17.1/node.exe";
+  const repoRoot = "D:/pulse/releases/pulse-v1";
+  const expectedSupervisorCommandLine =
+    '"D:/pulse-tools/node-v22.17.1/node.exe" ' +
+    '"D:\\pulse\\releases\\pulse-v1\\tools\\windows-live-guarded-runtime.js" ' +
+    "supervise --noninteractive --repo-root " +
+    '"D:\\pulse\\releases\\pulse-v1" --expected-commit ' +
+    `${expectedCommit} --activation-receipt ` +
+    '"D:/pulse-data/runtime/pulse-live-guarded-youtube/activation-receipt.json"';
+  const expectedChildCommandLine =
+    '"D:/pulse-tools/node-v22.17.1/node.exe" server.js';
+  const authority = buildLiveProcessCommandAuthority({
+    profile,
+    repoRoot,
+    expectedCommit,
+    nodeExecutable: nodePath,
+  });
+  assert.equal(
+    authority.supervisor_command_line,
+    expectedSupervisorCommandLine,
+  );
+  assert.equal(authority.child_command_line, expectedChildCommandLine);
+  const expectedSupervisorHash = require("node:crypto")
+    .createHash("sha256")
+    .update(expectedSupervisorCommandLine)
+    .digest("hex");
+  const expectedChildHash = require("node:crypto")
+    .createHash("sha256")
+    .update(expectedChildCommandLine)
+    .digest("hex");
+  assert.equal(authority.supervisor_command_sha256, expectedSupervisorHash);
+  assert.equal(authority.child_command_sha256, expectedChildHash);
+
+  const handoff = await inspectLiveTaskBoundHandoff({
+    profile,
+    supervisorPid: 4100,
+    childPid: 4200,
+    expectedSupervisorCreationTimeUtc: "2026-08-02T10:00:00.000Z",
+    expectedSupervisorExecutablePath: nodePath,
+    expectedSupervisorCommandSha256: expectedSupervisorHash,
+    expectedChildCreationTimeUtc: "2026-08-02T10:00:01.000Z",
+    expectedChildExecutablePath: nodePath,
+    expectedChildCommandSha256: expectedChildHash,
+    execFileSyncImpl(executable, arguments_) {
+      assert.equal(executable, "powershell.exe");
+      const script = arguments_.at(-1);
+      if (script.includes("GetInstances(0)")) {
+        return JSON.stringify({
+          InstanceGuid: BOUNDED_INSTANCE_GUID,
+          EnginePID: 4100,
+          State: 4,
+        });
+      }
+      if (script.includes("ProcessId = 4100")) {
+        return JSON.stringify({
+          ProcessId: 4100,
+          ParentProcessId: 900,
+          CreationDate: "2026-08-02T10:00:00.000Z",
+          ExecutablePath: nodePath,
+          CommandLine: expectedSupervisorCommandLine,
+        });
+      }
+      if (script.includes("ProcessId = 4200")) {
+        return JSON.stringify({
+          ProcessId: 4200,
+          ParentProcessId: 4100,
+          CreationDate: "2026-08-02T10:00:01.000Z",
+          ExecutablePath: nodePath,
+          CommandLine: expectedChildCommandLine,
+        });
+      }
+      return JSON.stringify({ ProcessIds: [4100, 4200] });
+    },
+  });
+  assert.equal(handoff.ok, true);
+  assert.equal(handoff.supervisor.command_sha256, expectedSupervisorHash);
+  assert.equal(handoff.child.command_sha256, expectedChildHash);
+});
+
 test("the real supervision-generation path borrows the exact parent transition lease through owner and lifecycle attestation", async (t) => {
   const temp = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-live-generation-transition-"),
@@ -2121,6 +2407,7 @@ test("the real supervision-generation path borrows the exact parent transition l
     listenerInspector: () => ({
       available: true,
       listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
+      blockers: [],
     }),
     processIdentityInspector: processIdentityInspector({
       [process.pid]: TEST_PROCESS_STARTED_AT,
@@ -2229,17 +2516,18 @@ test("the real supervision-generation path borrows the exact parent transition l
     );
     assert.equal(
       options.databaseIdentitySha256,
-      require("node:crypto")
-        .createHash("sha256")
-        .update(fs.readFileSync(profile.database_path))
-        .digest("hex"),
+      inspectLiveDatabaseIdentity({ databasePath: profile.database_path })
+        .database_identity_sha256,
     );
   }
 });
 
-test("owner-v2 publication rejects executable, command or complete Job membership drift", async (t) => {
+test("owner-v2 publication rejects incomplete or contradictory task, process, Job and listener evidence", async (t) => {
   let childPid = 7800;
-  const run = async (mutateObservation) => {
+  const run = async (
+    mutateObservation,
+    omitHandoffListenerBlockers = false,
+  ) => {
     const temp = fs.mkdtempSync(
       path.join(os.tmpdir(), "pulse-live-handoff-authority-"),
     );
@@ -2294,6 +2582,9 @@ test("owner-v2 publication rejects executable, command or complete Job membershi
         listenerInspector: () => ({
           available: true,
           listeningPids: listenerReads++ === 0 ? [] : [child.pid],
+          ...(listenerReads > 1 && omitHandoffListenerBlockers
+            ? {}
+            : { blockers: [] }),
         }),
         processIdentityInspector: processIdentityInspector({
           [process.pid]: TEST_PROCESS_STARTED_AT,
@@ -2326,6 +2617,20 @@ test("owner-v2 publication rejects executable, command or complete Job membershi
   };
 
   for (const mutate of [
+    (value) => {
+      const result = { ...value };
+      delete result.blockers;
+      return result;
+    },
+    (value) => ({ ...value, task_name: "Different-Task" }),
+    (value) => ({
+      ...value,
+      task_instance: { ...value.task_instance, instance_guid: "invalid" },
+    }),
+    (value) => ({
+      ...value,
+      task_instance: { ...value.task_instance, state: 3 },
+    }),
     (value) => ({
       ...value,
       supervisor: { ...value.supervisor, executable_path: "D:/wrong/node.exe" },
@@ -2344,15 +2649,31 @@ test("owner-v2 publication rejects executable, command or complete Job membershi
     }),
     (value) => ({
       ...value,
+      supervisor: {
+        ...value.supervisor,
+        blockers: ["windows_authority_process_probe_failed"],
+      },
+    }),
+    (value) => ({
+      ...value,
       job_membership: {
         process_ids: [value.child.pid],
         supervisor_present: false,
         child_present: true,
+        blockers: [],
+      },
+    }),
+    (value) => ({
+      ...value,
+      job_membership: {
+        ...value.job_membership,
+        blockers: ["windows_job_membership_probe_failed"],
       },
     }),
   ]) {
     await run(mutate);
   }
+  await run((value) => value, true);
 });
 
 test("an owned generation keeps a sealed transition durable until the owner receipt is published", async (t) => {
@@ -2419,6 +2740,7 @@ test("an owned generation keeps a sealed transition durable until the owner rece
     listenerInspector: () => ({
       available: true,
       listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
+      blockers: [],
     }),
     processIdentityInspector: processIdentityInspector({
       [process.pid]: TEST_PROCESS_STARTED_AT,
@@ -2554,6 +2876,7 @@ test("an owned transition release failure terminates the child and removes its o
       listenerInspector: () => ({
         available: true,
         listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
+        blockers: [],
       }),
       processIdentityInspector: processIdentityInspector({
         [process.pid]: TEST_PROCESS_STARTED_AT,
@@ -5520,6 +5843,42 @@ test("activation v2 binds the planned runtime authority without claiming future 
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test("live database identity survives content writes but rejects replacement and linked files", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-db-identity-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const databasePath = path.join(temp, "pulse.db");
+  fs.writeFileSync(databasePath, "first sqlite bytes\n");
+
+  const original = inspectLiveDatabaseIdentity({ databasePath });
+  assert.match(original.database_identity_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(original.canonical_real_path.endsWith("/pulse.db"), true);
+
+  fs.appendFileSync(databasePath, "wal checkpoint content change\n");
+  const afterWrite = inspectLiveDatabaseIdentity({ databasePath });
+  assert.equal(
+    afterWrite.database_identity_sha256,
+    original.database_identity_sha256,
+  );
+
+  const displaced = path.join(temp, "original.db");
+  fs.renameSync(databasePath, displaced);
+  fs.writeFileSync(databasePath, "replacement sqlite bytes\n");
+  const replacement = inspectLiveDatabaseIdentity({ databasePath });
+  assert.notEqual(
+    replacement.database_identity_sha256,
+    original.database_identity_sha256,
+  );
+
+  const linked = path.join(temp, "linked.db");
+  fs.linkSync(databasePath, linked);
+  assert.throws(
+    () => inspectLiveDatabaseIdentity({ databasePath }),
+    /live_database_identity_link_forbidden/,
+  );
 });
 
 test("AUTO_PUBLISH cannot enter a child environment without one exact activation receipt bound to commit, profile and migration set", () => {

@@ -268,21 +268,49 @@ git commit -m "feat: bind runtime database authority"
 - Modify: `lib/services/publisher-lock.js`
 - Modify: `lib/services/governed-youtube-publisher-adapter.js`
 - Modify: `lib/services/governed-youtube-scheduled-replay-verifier.js`
-- Modify `lib/stabilisation/bounded-runtime-db-authority.js` only if a test demonstrates an inspector defect.
+- Modify: `lib/stabilisation/bounded-runtime-db-authority.js`
+- Test: `tests/services/publisher-lock.test.js`
+- Test: `tests/services/publisher-qa-persistence.test.js`
+- Test: `tests/services/bootstrap-queue-multi-lane-workers.test.js`
+- Test: `tests/services/bootstrap-queue-primary-safety.test.js`
+- Test: `tests/services/jobs-runner.test.js`
+- Test: `tests/services/governed-lane-publication-handlers.test.js`
+- Test: `tests/services/governed-youtube-runway-handlers.test.js`
+- Test: `tests/services/governed-youtube-publisher-adapter.test.js`
+- Test: `tests/services/governed-youtube-schedule-disarm-adapter.test.js`
+- Test: `tests/services/governed-youtube-scheduled-replay-verifier.test.js`
+- Test: `tests/services/guarded-youtube-window.test.js`
 
 **Interfaces:**
-- Consumes: trusted runtime authority supplied by bootstrap and immutable scheduled-admission evidence.
-- Produces: a canonical `publisher:global` lease binding for one of the seven closed post-admission operations.
+- Consumes: trusted runtime authority supplied by bootstrap, a frozen canonical claimed-job authority and immutable scheduled-admission evidence.
+- Produces: a canonical exact-metadata-CAS `publisher:global` lease binding for one of the seven closed post-admission operations.
 
 - [ ] **Step 1: Write failing authority-propagation tests**
 
-Cover the publisher lock, queue bootstrap, claimed-job context, publication handlers, YouTube adapters and scheduled replay. Prove that missing, malformed or drifted runtime/admission fields prevent the lease task from running and that job payloads, direct CLI calls and legacy server paths cannot inject authority.
+Cover the publisher lock, queue bootstrap, claimed-job context, publication handlers, YouTube adapters and scheduled replay. Prove that missing, malformed or drifted runtime/admission/job fields prevent the lease task from running and that job payloads, direct CLI calls and legacy server paths cannot inject authority. Prove `publishToAllPlatforms` returns its existing disabled/held result before it reads or acquires a lease and never invokes a secondary-platform adapter.
 
 - [ ] **Step 2: Canonicalise the complete publication binding once**
 
-Preserve and validate story ID, platform `youtube`, scheduled event ID/time, dispatch idempotency key, request fingerprint and `runwayLockSha256`. In `LIVE_GUARDED`, require both trusted runtime authority and this immutable admission context before acquiring `publisher:global`. Generic metadata must not override schema, operation, purpose, PID/start time, runtime ID, authority fingerprint or admitted-operation hash.
+Replace the admitted binding with closed schema `pulse-admitted-publication-operation-v2`. Preserve and validate canonical `channel_id`, story ID, platform `youtube`, a positive safe-integer scheduled event ID, canonical scheduled time, dispatch idempotency key, request fingerprint and `runwayLockSha256`. Include `channel_id` in the admitted-operation hash, reserve it against generic metadata and compare it with the durable SCHEDULED event/state evidence. Reject `0`, negative, fractional, unsafe and non-numeric event IDs and prove a `pulse-gaming` binding cannot be substituted with `stacked`.
 
-- [ ] **Step 3: Bind the closed post-admission allowlist**
+Build one frozen, minimally cloned claimed-job authority from repository data, never from payload authority fields. Its digest must bind job ID, kind, canonical `channel_id`, story ID, canonical `run_at`, canonical parsed payload, positive safe-integer `attempt_count`, claimed worker, claim-token/open `job_runs` identity and idempotency-key hash. Re-read and recompute it on every assertion. Hard-code this job-kind-to-publisher-operation map and reject all other pairs:
+
+- `dispatch_governed_publication` -> `publish_next_story`
+- `prestage_governed_youtube_release` -> `prestage_governed_youtube_release`
+- `governed_youtube_runway_t60` -> `verify_governed_youtube_private_prestage`
+- `governed_youtube_runway_t60` -> `disarm_governed_youtube_scheduled_release`
+- `verify_governed_youtube_release_tminus15` -> `arm_governed_youtube_scheduled_release`
+- `verify_governed_youtube_release_tminus15` -> `verify_governed_youtube_scheduled_replay`
+- `verify_governed_youtube_release_tminus15` -> `disarm_governed_youtube_scheduled_release`
+- `verify_governed_youtube_release_t0` -> `confirm_governed_youtube_scheduled_release`
+
+At minimum, `publish_next_story` must be impossible outside a currently claimed `dispatch_governed_publication` job. In `LIVE_GUARDED`, require trusted runtime authority, the exact claimed-job authority and immutable admission context before acquiring `publisher:global`.
+
+- [ ] **Step 3: Fence acquire, heartbeat, assertion and release by exact metadata CAS**
+
+Construct the authoritative metadata without merging untrusted generic metadata into reserved fields, serialise it once canonically and retain the exact raw metadata string returned by acquisition. Acquire with `replaceSameOwner: false`. Heartbeat and `assertHealthy` must compare-and-swap the exact owner plus that raw metadata snapshot; release must use `releaseExactMetadata` with the same snapshot. A same-owner replacement, metadata drift or old-generation handle must lose authority, must not release the successor and must prevent every later irreversible callback. Returned evidence may expose only trusted constants, expected values, hashes and boolean mismatch flags, never raw owner, claim token, environment or OAuth-shaped material.
+
+- [ ] **Step 4: Bind the closed post-admission allowlist and lifecycle continuations**
 
 Permit only:
 
@@ -296,11 +324,13 @@ Permit only:
 
 `publishToAllPlatforms` must return its existing disabled/held result before acquiring the lease. Thread the same immutable binding through every governed adapter and exact durable-job handler. Preserve all platform, rights, quality, freshness, replay, compensation and reconciliation gates; a compensated verification must not nest a second publisher lease.
 
-- [ ] **Step 4: Prove evidence is complete and secret-safe**
+Add `PLATFORM_SCHEDULE_DISARMED` only to the continuation states for `disarm_governed_youtube_scheduled_release`. No other publisher operation may gain that state. Prove a crash or lease loss after the durable disarm commit but before lease release replays as the terminal disarm continuation without reopening create, arm or confirm authority. Preserve `createAttemptStarted`, `updateAttemptStarted`, `platformContacted`, `reconciliationRequired` and `remoteDisarmRequired` when lease loss occurs.
+
+- [ ] **Step 5: Prove evidence is complete and secret-safe**
 
 `readScheduledDispatchEvidence` and the final binding assertion must compare the runway hash as well as the existing fields. Returned evidence must not expose raw lease owners, environment values or token-shaped material.
 
-- [ ] **Step 5: Run focused Node 22 tests, review and commit**
+- [ ] **Step 6: Run focused Node 22 tests, review and commit**
 
 Run the publisher lock, QA persistence, bootstrap, jobs runner, governed lane/runway handlers, YouTube publisher/disarm/replay adapters and guarded-window suites. Require an independent review before Task 3c.
 
@@ -316,16 +346,32 @@ Run the publisher lock, QA persistence, bootstrap, jobs runner, governed lane/ru
 - Modify: `lib/stabilisation/bounded-runtime-db-authority.js`
 - Modify: `lib/services/governed-autonomous-pre-t90-window-runner.js`
 - Modify: `lib/job-handlers.js`
-- Modify as required: `lib/services/autonomous-admission-control-proof.js`
-- Modify as required: `lib/services/autonomous-official-jit-admission-packet.js`
+- Modify: `lib/services/publication-admission.js`
+- Modify: `lib/services/autonomous-admission-control-proof.js`
+- Modify: `lib/services/autonomous-official-jit-admission-packet.js`
+- Modify: `lib/services/autonomous-official-source-evidence-apply.js`
+- Test: `tests/services/jobs-runner-lease-deadline.test.js`
+- Test: `tests/services/bootstrap-queue-multi-lane-workers.test.js`
+- Test: `tests/services/bootstrap-queue-primary-safety.test.js`
+- Test: `tests/services/bounded-runtime-db-authority.test.js`
+- Test: `tests/services/publication-admission.test.js`
+- Test: `tests/services/autonomous-admission-control-proof.test.js`
+- Test: `tests/services/autonomous-official-jit-admission-packet.test.js`
+- Test: `tests/services/autonomous-official-source-evidence-apply.test.js`
+- Test: `tests/services/governed-autonomous-pre-t90-window-runner.test.js`
+- Test: `tests/services/governed-autonomous-pre-t90-window-handler.test.js`
+- Test: `tests/services/governed-autonomous-jit-admission-handler.test.js`
+- Test: `tests/services/governed-autonomous-pre-t90-to-runway-t90.integration.test.js`
+- Test: `tests/services/governed-youtube-private-prestage.test.js`
+- Test: `tests/services/governed-youtube-reserve-promotion.test.js`
 
 **Interfaces:**
 - Consumes: trusted runtime authority and the exact currently claimed durable job.
-- Produces: `publication-admission:global`, a non-publishing lease with schema `pulse-runtime-generation-publication-admission-lease-v1` and scope `PUBLICATION_ADMISSION_ONLY`.
+- Produces: `publication-admission:global`, a non-publishing exact-metadata-CAS lease with schema `pulse-runtime-generation-publication-admission-lease-v1`, scope `PUBLICATION_ADMISSION_ONLY` and a canonical non-secret claimed-job authority digest.
 
 - [ ] **Step 1: Write failing separation and exact-claim tests**
 
-Prove admission and publisher leases cannot substitute for one another. Require exact job ID, kind, claimed worker, claim token, unfinished `job_runs` row, unexpired claim and idempotency-key hash. Prove payloads cannot supply authority and stale, foreign or malformed admission leases make the bounded DB inspector return HOLD.
+Prove admission and publisher leases cannot substitute for one another. Require exact positive safe-integer job ID and attempt, kind, canonical `channel_id`, story ID, canonical `run_at`, canonical payload, claimed worker, claim token matching the positive safe-integer unfinished `job_runs.id`, unexpired claim and idempotency-key hash. Prove payloads cannot supply authority and stale, foreign or malformed admission leases make the bounded DB inspector return HOLD. Add causal drift cases for payload, story, channel, `run_at`, attempt and open run.
 
 - [ ] **Step 2: Implement the closed operation-to-job map**
 
@@ -336,17 +382,46 @@ Hard-code and reject every other combination:
 - `promote_governed_youtube_reserve_release` -> `prestage_governed_youtube_release`
 - `promote_confirmed_disarm_youtube_reserve_release` -> `governed_youtube_runway_t60`
 
-- [ ] **Step 3: Acquire and maintain the lease transactionally**
+The operation is lock-selected, not payload-selected. Reject every unmapped pair. For `admit_governed_publication`, authorise only the autonomous official-source JIT branch; the non-JIT branch must explicitly return HOLD in `LIVE_GUARDED` unless a separately reviewed authority is added later.
 
-Reuse `runtime_leases`; do not add a migration. Acquire inside one immediate transaction that validates `main.jobs` and the exact unfinished `main.job_runs` claim-token row. Cap the lease to the remaining job-claim lifetime and revalidate on every heartbeat/assertion. Mark all external-create and platform-mutation flags explicitly false. Expose only hashed contention evidence.
+- [ ] **Step 3: Acquire and maintain the lease with SQLite time and exact metadata CAS**
 
-- [ ] **Step 4: Integrate without broadening admission**
+Reuse `runtime_leases`; do not add a migration. Read current time from SQLite in every acquire, heartbeat, assertion and expiry-cap calculation; JavaScript clocks, payload timestamps and handler `now` values cannot grant or extend authority. Acquire inside one immediate transaction that validates `main.jobs` and the exact unfinished `main.job_runs` claim-token row. Cap the lease to the remaining job-claim lifetime. Acquire with `replaceSameOwner: false`, retain one canonical raw metadata snapshot and use exact owner-plus-metadata CAS for every heartbeat/assertion and `releaseExactMetadata` for release. Same-owner replacement and clock/payload drift must fail closed. Mark every external-create and platform-mutation flag explicitly false. Expose only hashed contention evidence.
+
+- [ ] **Step 4: Reassert admission authority inside the SCHEDULED-creation transaction**
+
+Expose `assertHealthyInTransaction()` on the admission lease handle. It must use the caller's existing immediate transaction without starting a nested `BEGIN` and re-read the exact admission lease metadata, `main.jobs` claim and unfinished `main.job_runs` row. Compose it with the existing `transactionBoundaryCheck` and `transactionCompletionCheck` in `admitPublication` and `admitAutonomousOfficialPublication`: assert immediately before the transaction, after the boundary hook, before the completion hook and immediately before the transaction callback returns to COMMIT. Claim or lease loss at any checkpoint must roll back all lifecycle, cancellation, audit and successor-job writes. No SCHEDULED authority or successor work may commit from a merely pre-transaction assertion.
+
+- [ ] **Step 5: Version proof, packet and apply artefacts and make retries crash-safe**
 
 Pre-T90 preparation, T-75 JIT admission and both reserve-promotion paths use the new lease rather than `publisher:global` before a valid immutable SCHEDULED ticket exists. Rename proof/packet fields to `publicationAdmissionLease` / `publication_admission_lease`. Never carry the admission lease into the resulting scheduled dispatch binding or publication authority. Preserve existing single-owner, compensation and recovery controls.
 
-- [ ] **Step 5: Run focused Node 22 tests, review and commit**
+Replace publisher-owner proof fields with `publication_admission_*` fields and the exact non-secret claimed-job authority digest. Introduce closed schema `pulse-publication-admission-owner-proof-v1`, bump the admission-control result to `pulse-autonomous-admission-control-proof-result-v2`, the JIT result/resolved-plan schemas to v4 and the source-evidence apply request/report/result/materialiser schemas to v4. Update every closed field set, validator, lineage hash and consumer together. Add `lib/services/autonomous-official-source-evidence-apply.js` and its test suite to this production change. Publisher-based v1 proof/packet/apply artefacts must fail closed rather than being silently upgraded.
+
+Bind JIT attempt identity and artefact paths to the durable positive safe-integer `attempt_count`. If the process crashes after proof materialisation but before SCHEDULED commit, a fresh claim must create or exactly replay a distinct attempt without overwriting the prior attempt; conflicting prior artefacts are quarantined/HOLD. Test the crash boundary and successful fresh-claim recovery.
+
+- [ ] **Step 6: Extend every DB authority snapshot and quiescence path**
+
+Treat `publication-admission:global` as the third governed lease in every live read, stable snapshot digest, evidence projection and QUIESCENT check. Add every job column needed by the claimed-job digest. A valid exact active admission lease may coexist only with its matching runtime/job in LIVE; publisher/admission schema substitution, stale/foreign/malformed bindings and an active admission lease in QUIESCENT all yield HOLD. Returned evidence must stay secret-safe.
+
+- [ ] **Step 7: Run focused Node 22 tests, review and commit**
 
 Run the new lock suite plus runner lease-deadline, bootstrap, bounded DB authority, admission proof/JIT packet, pre-T90, admission, integration, private-prestage and reserve-promotion suites. Require a fresh independent review before transition-lease work.
+
+#### Mandatory Task 3b/3c regression matrix
+
+- Disabled `publishToAllPlatforms` returns before touching the lease repository and never calls YouTube or any secondary-platform adapter.
+- Trusted runtime, exact claimed-job and immutable admission authority propagate through all seven post-admission adapter/replay operations.
+- Same-owner lease replacement, metadata drift and an old-generation release all fail exact CAS; no irreversible callback runs after drift.
+- Lease loss preserves all compensation flags and private verification never nests a second publisher lease.
+- `PLATFORM_SCHEDULE_DISARMED` is terminal only for the disarm continuation; it grants no create, prestage, arm, replay or confirm authority.
+- Claim or admission-lease loss immediately before `BEGIN`, after the transaction boundary, before completion and before COMMIT rolls back lifecycle, cancellation, audit and successor writes.
+- Publisher-based v1 proof, packet and apply artefacts are rejected by the new closed schemas.
+- Payload/story/channel/`run_at`/attempt/open-run drift, past/future payload clocks and the exact SQLite expiry boundary fail closed.
+- A crash after proof writes but before SCHEDULED commit permits a fresh durable attempt without clobbering the old attempt.
+- Event IDs `0`, negative, fractional, unsafe or non-numeric fail both camelCase and snake_case binding normalisers.
+- The DB inspector accepts one exact admission lease, rejects publisher/admission substitution both ways and rejects stale, foreign or malformed admission authority in LIVE and any active admission authority in QUIESCENT.
+- No result or artefact contains a raw owner ID, claim token, environment value or OAuth-shaped secret.
 
 ### Task 4: Fence transition leases with the same authority fingerprint
 

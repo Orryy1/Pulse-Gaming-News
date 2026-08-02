@@ -18,13 +18,21 @@ function fakePowerShell(value) {
   };
 }
 
-function commandSha256(value) {
-  return crypto.createHash("sha256").update(value).digest("hex");
+function commandArgumentsSha256(arguments_) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(arguments_))
+    .digest("hex");
 }
 
 const SUPERVISOR_COMMAND =
   '"D:\\pulse-tools\\node-v22.17.1\\node.exe" tools\\windows-live-guarded-runtime.js supervise';
 const CHILD_COMMAND = '"D:\\pulse-tools\\node-v22.17.1\\node.exe" server.js';
+const SUPERVISOR_ARGUMENTS = [
+  "tools\\windows-live-guarded-runtime.js",
+  "supervise",
+];
+const CHILD_ARGUMENTS = ["server.js"];
 const INSTANCE_GUID = "11111111-1111-4111-8111-111111111111";
 const SECOND_INSTANCE_GUID = "22222222-2222-4222-8222-222222222222";
 
@@ -35,11 +43,11 @@ function authorityExpected() {
     supervisorPid: 4100,
     supervisorCreationTimeUtc: "2026-08-02T10:00:00.000Z",
     supervisorExecutablePath: "D:\\pulse-tools\\node-v22.17.1\\node.exe",
-    supervisorCommandSha256: commandSha256(SUPERVISOR_COMMAND),
+    supervisorCommandSha256: commandArgumentsSha256(SUPERVISOR_ARGUMENTS),
     childPid: 4200,
     childCreationTimeUtc: "2026-08-02T10:00:01.000Z",
     childExecutablePath: "D:\\pulse-tools\\node-v22.17.1\\node.exe",
-    childCommandSha256: commandSha256(CHILD_COMMAND),
+    childCommandSha256: commandArgumentsSha256(CHILD_ARGUMENTS),
   };
 }
 
@@ -51,21 +59,24 @@ function boundedPowerShell({ instances, jobPids = [4100, 4200] } = {}) {
       ParentProcessId: 700,
       CreationDate: "2026-08-02T10:00:00.000Z",
       ExecutablePath: "D:\\pulse-tools\\node-v22.17.1\\node.exe",
-      CommandLine: SUPERVISOR_COMMAND,
+      CommandParsed: true,
+      CommandSha256: commandArgumentsSha256(SUPERVISOR_ARGUMENTS),
     },
     4200: {
       ProcessId: 4200,
       ParentProcessId: 4100,
       CreationDate: "2026-08-02T10:00:01.000Z",
       ExecutablePath: "D:\\pulse-tools\\node-v22.17.1\\node.exe",
-      CommandLine: CHILD_COMMAND,
+      CommandParsed: true,
+      CommandSha256: commandArgumentsSha256(CHILD_ARGUMENTS),
     },
     9999: {
       ProcessId: 9999,
       ParentProcessId: 1,
       CreationDate: "2026-08-02T10:00:02.000Z",
       ExecutablePath: "D:\\unrelated\\node.exe",
-      CommandLine: "unrelated secret command",
+      CommandParsed: true,
+      CommandSha256: "f".repeat(64),
     },
   };
   return {

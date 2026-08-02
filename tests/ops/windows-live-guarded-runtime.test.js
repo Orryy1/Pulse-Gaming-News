@@ -2068,6 +2068,120 @@ test("an exact dead stale owner is archived under the held start nonce before la
   }
 });
 
+test("scheduled-task start supplies reviewed argv authority before locking and archives only the exact dead owner-v2", async (t) => {
+  const expectedCommit = "d".repeat(40);
+  const run = async (mutateOwner = (owner) => owner) => {
+    const temp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-start-prelock-owner-v2-"),
+    );
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      state_root: temp,
+      activation_receipt_path: path.join(temp, "activation.json"),
+    };
+    const activation = taskBoundActivation({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      receiptSha: "c".repeat(64),
+    });
+    const commandAuthority = buildLiveProcessCommandAuthority({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      nodeExecutable: activation.authority_binding.node_path,
+    });
+    const owner = mutateOwner({
+      schema_version: "pulse-windows-live-guarded-owner-v2",
+      runtime_instance_id: activation.runtime_instance_id,
+      task_name: profile.task_name,
+      task_instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: 991001,
+      supervisor_pid: 991001,
+      supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
+      supervisor_creation_time_utc: TEST_PROCESS_STARTED_AT,
+      supervisor_executable_path: activation.authority_binding.node_path,
+      supervisor_command_sha256: commandAuthority.supervisor_command_sha256,
+      child_pid: 991002,
+      child_process_started_at: TEST_REUSED_PROCESS_STARTED_AT,
+      child_creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
+      child_parent_pid: 991001,
+      child_executable_path: activation.authority_binding.node_path,
+      child_command_sha256: commandAuthority.child_command_sha256,
+      child_in_job: true,
+      listener_port: profile.port,
+      listener_pid: 991002,
+      port: profile.port,
+      repo_root: ROOT.replace(/\\/g, "/"),
+      commit_sha: expectedCommit,
+      release_sha: expectedCommit,
+      profile_sha256: activation.authority_binding.profile_sha256,
+      database_identity_sha256:
+        activation.authority_binding.database_identity_sha256,
+      authority_binding: activation.authority_binding,
+      authority_fingerprint: activation.authority_fingerprint,
+      activation_receipt_sha256: activation.receipt_sha256,
+      platform: "youtube",
+      blockers: [],
+    });
+    fs.writeFileSync(
+      path.join(temp, "supervisor-owner.json"),
+      `${JSON.stringify(owner, null, 2)}\n`,
+    );
+    let archiveCalls = 0;
+    const startLock = inMemoryStartLock();
+    const promise = startLiveScheduledTask({
+      ...startLock,
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      platform: "win32",
+      sourceDatabaseInspector: () => ({ ready: true }),
+      activationInspector: () => activation,
+      conflictInspector: () => ({ clear: true, blockers: [] }),
+      taskInspector: () => ({ state: "managed_current", blockers: [] }),
+      runtimeInspector: (options) => inspectStoppedLiveRuntime(options),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+        blockers: [],
+      }),
+      processIdentityInspector: processIdentityInspector({}),
+      staleOwnerArchiver() {
+        archiveCalls += 1;
+        throw new Error("test_exact_owner_archive_reached");
+      },
+    });
+    return { promise, archiveCalls: () => archiveCalls };
+  };
+
+  const exact = await run();
+  await assert.rejects(exact.promise, /test_exact_owner_archive_reached/);
+  assert.equal(exact.archiveCalls(), 1);
+
+  for (const mutateOwner of [
+    (owner) => ({
+      ...owner,
+      supervisor_executable_path: "D:/alternate/node.exe",
+    }),
+    (owner) => ({
+      ...owner,
+      supervisor_command_sha256: "f".repeat(64),
+    }),
+    (owner) => ({
+      ...owner,
+      child_executable_path: "D:/alternate/node.exe",
+    }),
+    (owner) => ({ ...owner, child_command_sha256: "f".repeat(64) }),
+  ]) {
+    const alternate = await run(mutateOwner);
+    await assert.rejects(alternate.promise, /live_runtime_not_stopped/);
+    assert.equal(alternate.archiveCalls(), 0);
+  }
+});
+
 test("the separate reviewed LIVE_GUARDED profile is exact YouTube-only while the safe profile remains publication-incapable", () => {
   const live = loadLiveGuardedRuntimeProfile();
   assert.deepEqual(validateLiveGuardedRuntimeProfile(live), {
@@ -2212,38 +2326,45 @@ test("supervision preparation and health identity fail closed unless the receipt
   );
 });
 
-test("handoff command fingerprints use the exact full Win32 process command-line domain", async () => {
+test("handoff command fingerprints use semantic argv independently of valid Windows quoting", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
   const nodePath = "D:/pulse-tools/node-v22.17.1/node.exe";
   const repoRoot = "D:/pulse/releases/pulse-v1";
-  const expectedSupervisorCommandLine =
-    '"D:/pulse-tools/node-v22.17.1/node.exe" ' +
+  const expectedSupervisorArguments = [
+    "D:\\pulse\\releases\\pulse-v1\\tools\\windows-live-guarded-runtime.js",
+    "supervise",
+    "--noninteractive",
+    "--repo-root",
+    "D:\\pulse\\releases\\pulse-v1",
+    "--expected-commit",
+    expectedCommit,
+    "--activation-receipt",
+    "D:/pulse-data/runtime/pulse-live-guarded-youtube/activation-receipt.json",
+  ];
+  const expectedChildArguments = ["server.js"];
+  const independentlyAuthoredSupervisorCommandLine =
+    "D:\\pulse-tools\\node-v22.17.1\\node.exe " +
     '"D:\\pulse\\releases\\pulse-v1\\tools\\windows-live-guarded-runtime.js" ' +
-    "supervise --noninteractive --repo-root " +
-    '"D:\\pulse\\releases\\pulse-v1" --expected-commit ' +
+    '"supervise" --noninteractive --repo-root ' +
+    "D:\\pulse\\releases\\pulse-v1 --expected-commit " +
     `${expectedCommit} --activation-receipt ` +
     '"D:/pulse-data/runtime/pulse-live-guarded-youtube/activation-receipt.json"';
-  const expectedChildCommandLine =
-    '"D:/pulse-tools/node-v22.17.1/node.exe" server.js';
+  const independentlyAuthoredChildCommandLine =
+    '"D:/pulse-tools/node-v22.17.1/node.exe" "server.js"';
   const authority = buildLiveProcessCommandAuthority({
     profile,
     repoRoot,
     expectedCommit,
     nodeExecutable: nodePath,
   });
-  assert.equal(
-    authority.supervisor_command_line,
-    expectedSupervisorCommandLine,
-  );
-  assert.equal(authority.child_command_line, expectedChildCommandLine);
   const expectedSupervisorHash = require("node:crypto")
     .createHash("sha256")
-    .update(expectedSupervisorCommandLine)
+    .update(JSON.stringify(expectedSupervisorArguments))
     .digest("hex");
   const expectedChildHash = require("node:crypto")
     .createHash("sha256")
-    .update(expectedChildCommandLine)
+    .update(JSON.stringify(expectedChildArguments))
     .digest("hex");
   assert.equal(authority.supervisor_command_sha256, expectedSupervisorHash);
   assert.equal(authority.child_command_sha256, expectedChildHash);
@@ -2274,7 +2395,9 @@ test("handoff command fingerprints use the exact full Win32 process command-line
           ParentProcessId: 900,
           CreationDate: "2026-08-02T10:00:00.000Z",
           ExecutablePath: nodePath,
-          CommandLine: expectedSupervisorCommandLine,
+          CommandParsed: true,
+          CommandSha256: expectedSupervisorHash,
+          _test_only_command_line: independentlyAuthoredSupervisorCommandLine,
         });
       }
       if (script.includes("ProcessId = 4200")) {
@@ -2283,7 +2406,9 @@ test("handoff command fingerprints use the exact full Win32 process command-line
           ParentProcessId: 4100,
           CreationDate: "2026-08-02T10:00:01.000Z",
           ExecutablePath: nodePath,
-          CommandLine: expectedChildCommandLine,
+          CommandParsed: true,
+          CommandSha256: expectedChildHash,
+          _test_only_command_line: independentlyAuthoredChildCommandLine,
         });
       }
       return JSON.stringify({ ProcessIds: [4100, 4200] });
@@ -2292,6 +2417,16 @@ test("handoff command fingerprints use the exact full Win32 process command-line
   assert.equal(handoff.ok, true);
   assert.equal(handoff.supervisor.command_sha256, expectedSupervisorHash);
   assert.equal(handoff.child.command_sha256, expectedChildHash);
+  assert.equal(
+    JSON.stringify(handoff).includes(
+      independentlyAuthoredSupervisorCommandLine,
+    ),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(handoff).includes(independentlyAuthoredChildCommandLine),
+    false,
+  );
 });
 
 test("the real supervision-generation path borrows the exact parent transition lease through owner and lifecycle attestation", async (t) => {
@@ -2674,6 +2809,167 @@ test("owner-v2 publication rejects incomplete or contradictory task, process, Jo
     await run(mutate);
   }
   await run((value) => value, true);
+});
+
+test("supervisor boot cleanup refuses every malformed dead owner-v2 before archival", async (t) => {
+  let ownerPid = 994000;
+  const run = async (mutateOwner = (owner) => owner) => {
+    const temp = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pulse-live-boot-stale-owner-v2-"),
+    );
+    t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+    const expectedCommit = "9".repeat(40);
+    const profile = {
+      ...loadLiveGuardedRuntimeProfile(),
+      database_path: path.join(temp, "pulse.db"),
+      state_root: path.join(temp, "state"),
+      activation_receipt_path: path.join(temp, "activation.json"),
+    };
+    fs.writeFileSync(profile.database_path, "identity\n");
+    const activation = taskBoundActivation({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      receiptSha: "8".repeat(64),
+    });
+    const commands = buildLiveProcessCommandAuthority({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      nodeExecutable: activation.authority_binding.node_path,
+    });
+    const supervisorPid = ++ownerPid;
+    const childPid = ++ownerPid;
+    const owner = mutateOwner({
+      schema_version: "pulse-windows-live-guarded-owner-v2",
+      runtime_instance_id: activation.runtime_instance_id,
+      task_name: profile.task_name,
+      task_instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: supervisorPid,
+      supervisor_pid: supervisorPid,
+      supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
+      supervisor_creation_time_utc: TEST_PROCESS_STARTED_AT,
+      supervisor_executable_path: activation.authority_binding.node_path,
+      supervisor_command_sha256: commands.supervisor_command_sha256,
+      child_pid: childPid,
+      child_process_started_at: TEST_REUSED_PROCESS_STARTED_AT,
+      child_creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
+      child_parent_pid: supervisorPid,
+      child_executable_path: activation.authority_binding.node_path,
+      child_command_sha256: commands.child_command_sha256,
+      child_in_job: true,
+      listener_port: profile.port,
+      listener_pid: childPid,
+      port: profile.port,
+      repo_root: ROOT.replace(/\\/g, "/"),
+      commit_sha: expectedCommit,
+      release_sha: expectedCommit,
+      profile_sha256: activation.authority_binding.profile_sha256,
+      database_identity_sha256:
+        activation.authority_binding.database_identity_sha256,
+      authority_binding: activation.authority_binding,
+      authority_fingerprint: activation.authority_fingerprint,
+      activation_receipt_sha256: activation.receipt_sha256,
+      platform: "youtube",
+      blockers: [],
+    });
+    const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
+    fs.mkdirSync(profile.state_root, { recursive: true });
+    fs.writeFileSync(ownerPath, `${JSON.stringify(owner, null, 2)}\n`);
+    let spawnCalls = 0;
+    const promise = startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      platform: "win32",
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: {
+            valid: true,
+            receipt_sha256: activation.receipt_sha256,
+          },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: activation.receipt_sha256,
+        runtime_environment: {},
+      }),
+      activationInspector: () => activation,
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: () => ({
+        renew: () => true,
+        release: () => true,
+      }),
+      listenerInspector: () => ({
+        available: true,
+        listeningPids: [],
+        blockers: [],
+      }),
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+      }),
+      spawnImpl: () => {
+        spawnCalls += 1;
+        throw new Error("test_spawn_reached_after_exact_stale_archive");
+      },
+    });
+    return { promise, ownerPath, spawnCalls: () => spawnCalls };
+  };
+
+  const exact = await run();
+  await assert.rejects(
+    exact.promise,
+    /test_spawn_reached_after_exact_stale_archive/,
+  );
+  assert.equal(exact.spawnCalls(), 1);
+  assert.equal(fs.existsSync(exact.ownerPath), false);
+
+  const malformedCases = [
+    ["runtime ID", (owner) => ({ ...owner, runtime_instance_id: "invalid" })],
+    ["task name", (owner) => ({ ...owner, task_name: "Different-Task" })],
+    ["task GUID", (owner) => ({ ...owner, task_instance_guid: "invalid" })],
+    ["EnginePID", (owner) => ({ ...owner, engine_pid: owner.engine_pid + 1 })],
+    [
+      "parentage",
+      (owner) => ({ ...owner, child_parent_pid: owner.supervisor_pid + 1 }),
+    ],
+    ["listener", (owner) => ({ ...owner, listener_pid: owner.child_pid + 1 })],
+    ["owner blockers", (owner) => ({ ...owner, blockers: ["stale"] })],
+    ["release", (owner) => ({ ...owner, release_sha: "7".repeat(40) })],
+    [
+      "database identity",
+      (owner) => ({ ...owner, database_identity_sha256: "7".repeat(64) }),
+    ],
+    [
+      "authority binding",
+      (owner) => ({
+        ...owner,
+        authority_binding: {
+          ...owner.authority_binding,
+          database_identity_sha256: "7".repeat(64),
+        },
+      }),
+    ],
+    [
+      "authority fingerprint",
+      (owner) => ({ ...owner, authority_fingerprint: "7".repeat(64) }),
+    ],
+  ];
+  for (const [label, mutateOwner] of malformedCases) {
+    const malformed = await run(mutateOwner);
+    await assert.rejects(
+      malformed.promise,
+      /live_supervisor_owner_receipt_mismatch/,
+      label,
+    );
+    assert.equal(malformed.spawnCalls(), 0, label);
+    assert.equal(fs.existsSync(malformed.ownerPath), true, label);
+  }
 });
 
 test("an owned generation keeps a sealed transition durable until the owner receipt is published", async (t) => {

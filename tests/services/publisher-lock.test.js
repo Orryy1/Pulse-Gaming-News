@@ -8,6 +8,7 @@ const Database = require("better-sqlite3");
 
 const { bind } = require("../../lib/repositories/runtime_leases");
 const {
+  acquirePublisherLease,
   defaultPublisherOwnerId,
   runWithPublisherLease,
 } = require("../../lib/services/publisher-lock");
@@ -182,6 +183,120 @@ test("publisher lease metadata describes the real operation only", async () => {
       assert.equal(Object.hasOwn(metadata, "profile"), false);
     },
   });
+  db.close();
+});
+
+test("publisher lease metadata binds one runtime generation to one admitted operation", () => {
+  const { db, leases } = fixture();
+  const lease = acquirePublisherLease({
+    leases,
+    ownerId: "publisher-runtime-private-owner",
+    operation: "publish_next_story",
+    runtimeAuthority: {
+      runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+      child_pid: process.pid,
+      child_started_at: "2026-08-02T10:00:00.000Z",
+      authority_fingerprint: "a".repeat(64),
+    },
+    admissionContext: {
+      story_id: "story-73",
+      platform: "youtube",
+      scheduled_event_id: 73,
+      scheduled_for: "2026-08-02T19:00:00.000Z",
+      dispatch_idempotency_key: "publish:2026-08-02:19",
+      request_fingerprint: "b".repeat(64),
+      runway_lock_sha256: "c".repeat(64),
+    },
+    metadata: {
+      operation: "publish_batch",
+      process_id: 1,
+      purpose: "caller_override",
+      schema_version: "caller-schema",
+      runtime_instance_id: "ri-99999999-9999-4999-8999-999999999999",
+      admitted_operation: { caller: "forged" },
+    },
+  });
+
+  const metadata = JSON.parse(lease.metadata);
+  assert.deepEqual(
+    {
+      ...metadata,
+      admitted_operation_sha256: undefined,
+    },
+    {
+      channel_id: "pulse-gaming",
+      operation: "publish_next_story",
+      process_id: process.pid,
+      purpose: "single_flight_platform_dispatch",
+      schema_version: "pulse-runtime-generation-publisher-lease-v1",
+      runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+      process_started_at: "2026-08-02T10:00:00.000Z",
+      authority_fingerprint: "a".repeat(64),
+      admitted_operation: {
+        schema_version: "pulse-admitted-publication-operation-v1",
+        story_id: "story-73",
+        platform: "youtube",
+        scheduled_event_id: 73,
+        scheduled_for: "2026-08-02T19:00:00.000Z",
+        dispatch_idempotency_key: "publish:2026-08-02:19",
+        request_fingerprint: "b".repeat(64),
+        runway_lock_sha256: "c".repeat(64),
+      },
+      admitted_operation_sha256: undefined,
+    },
+  );
+  assert.match(metadata.admitted_operation_sha256, /^[a-f0-9]{64}$/);
+
+  leases.release(lease.lease_name, lease.owner_id);
+  db.close();
+});
+
+test("live-guarded publisher fails closed before acquiring an unbound lease", async () => {
+  const { db, leases } = fixture();
+  let taskCalls = 0;
+
+  const result = await runWithPublisherLease({
+    leases,
+    env: { PULSE_OPERATING_MODE: "LIVE_GUARDED" },
+    task: async () => {
+      taskCalls += 1;
+    },
+  });
+
+  assert.equal(result.publish_dispatch_blocked, true);
+  assert.equal(result.top_reason, "durable_publish_lock_unavailable");
+  assert.equal(taskCalls, 0);
+  assert.equal(leases.get("publisher:global"), null);
+  db.close();
+});
+
+test("publisher lock hashes a competing private owner instead of exposing it", async () => {
+  const { db, leases } = fixture();
+  const first = acquirePublisherLease({
+    leases,
+    ownerId: "publisher-private-first-owner",
+  });
+
+  const blocked = await runWithPublisherLease({
+    leases,
+    ownerId: "publisher-private-second-owner",
+    task: async () => {
+      throw new Error("blocked_publisher_task_must_not_run");
+    },
+  });
+
+  assert.equal(blocked.publish_dispatch_blocked, true);
+  assert.equal(
+    blocked.current_lock_owner_sha256,
+    "62821acd839cc593a24b3d6033ef6b9ece9911e8a9750baf9b08f7d5e54098f3",
+  );
+  assert.equal(Object.hasOwn(blocked, "current_lock_owner"), false);
+  assert.equal(
+    JSON.stringify(blocked).includes("publisher-private-first-owner"),
+    false,
+  );
+
+  leases.release(first.lease_name, first.owner_id);
   db.close();
 });
 

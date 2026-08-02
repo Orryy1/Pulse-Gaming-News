@@ -265,6 +265,13 @@ const BOUNDED_PROFILE_SHA = "a".repeat(64);
 const BOUNDED_DATABASE_SHA = "b".repeat(64);
 const BOUNDED_SUPERVISOR_COMMAND_SHA = "c".repeat(64);
 const BOUNDED_CHILD_COMMAND_SHA = "e".repeat(64);
+const BOUNDED_WORKER_TOPOLOGY = [
+  {
+    pool_id: "critical_publication",
+    instances: 1,
+    kinds: ["publish"],
+  },
+];
 
 function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
   const expected = {
@@ -285,6 +292,7 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
     childCreationTimeUtc: "2026-08-02T10:00:01.000Z",
     childExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
     childCommandSha256: BOUNDED_CHILD_COMMAND_SHA,
+    workerTopology: BOUNDED_WORKER_TOPOLOGY,
   };
   const binding = {
     task_name: expected.taskName,
@@ -531,6 +539,37 @@ test("ACTIVE_BOUND requires one continuous task-to-lease identity", async () => 
   assert.equal(result.verdict, "GREEN");
   assert.equal(result.state, "ACTIVE_BOUND");
   assert.match(result.authority_fingerprint, /^[a-f0-9]{64}$/);
+});
+
+test("ACTIVE_BOUND supplies the exact runtime generation and worker topology to database authority", async () => {
+  const fixture = activeBoundedAuthorityFixture();
+  const observed = [];
+  fixture.probes.databaseAuthorityInspector = async (options) => {
+    observed.push(options);
+    return {
+      ok: true,
+      database_identity_sha256: BOUNDED_DATABASE_SHA,
+      blockers: [],
+    };
+  };
+
+  const result = await inspectBoundedWindowsAuthority(fixture);
+
+  assert.equal(result.state, "ACTIVE_BOUND");
+  assert.equal(observed.length, 2);
+  for (const observation of observed) {
+    assert.equal(observation.mode, "LIVE");
+    assert.equal(observation.expected.runtime_instance_id, BOUNDED_RUNTIME_ID);
+    assert.equal(observation.expected.child_pid, 4200);
+    assert.equal(
+      observation.expected.child_started_at,
+      "2026-08-02T10:00:01.000Z",
+    );
+    assert.deepEqual(
+      observation.expected.worker_topology,
+      BOUNDED_WORKER_TOPOLOGY,
+    );
+  }
 });
 
 test("a mismatched task InstanceGuid is HOLD", async () => {
@@ -2251,6 +2290,8 @@ test("supervision preparation and health identity fail closed unless the receipt
     valid: true,
     receipt_sha256: "8".repeat(64),
     youtube_oauth_client_sha256: "7".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_fingerprint: "6".repeat(64),
     blockers: [],
   };
   assert.throws(
@@ -6290,6 +6331,29 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       environment.PULSE_LIVE_GUARDED_ACTIVATION_RECEIPT_SHA256,
       activation.receipt_sha256,
     );
+    assert.equal(
+      environment.PULSE_LIVE_RUNTIME_INSTANCE_ID,
+      activation.runtime_instance_id,
+    );
+    assert.equal(
+      environment.PULSE_LIVE_AUTHORITY_FINGERPRINT,
+      activation.authority_fingerprint,
+    );
+    for (const malformedActivation of [
+      { ...activation, runtime_instance_id: "ri-token-shaped-secret" },
+      { ...activation, authority_fingerprint: "not-a-sha256" },
+    ]) {
+      assert.throws(
+        () =>
+          buildLiveChildEnvironment({
+            profile,
+            expectedCommit,
+            activation: malformedActivation,
+            systemEnvironment: {},
+          }),
+        /live_activation_runtime_authority_invalid/,
+      );
+    }
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }

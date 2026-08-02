@@ -226,6 +226,7 @@ const {
   buildLiveChildEnvironment,
   buildLiveLifecycleDecision,
   buildLiveRuntimeDoctorReport,
+  buildLiveTaskAuthorityBinding,
   createDefaultLiveLifecycleHandlers,
   buildLiveScheduledTaskXml,
   prepareLiveSupervision,
@@ -234,6 +235,7 @@ const {
   inspectLiveStartOperationLock,
   inspectLiveTaskConflicts,
   inspectStoppedLiveRuntime,
+  inspectBoundedWindowsAuthority,
   issueLiveActivationReceipt,
   loadLiveGuardedRuntimeProfile,
   executeLiveLifecycleAction,
@@ -252,6 +254,402 @@ const {
 const {
   borrowLiveRuntimeTransitionLease,
 } = require("../../lib/stabilisation/live-runtime-transition-lease");
+
+const BOUNDED_INSTANCE_GUID = "11111111-2222-4333-8444-555555555555";
+const BOUNDED_RUNTIME_ID = "ri-11111111-2222-4333-8444-555555555555";
+const BOUNDED_RELEASE_SHA = "d".repeat(40);
+const BOUNDED_PROFILE_SHA = "a".repeat(64);
+const BOUNDED_DATABASE_SHA = "b".repeat(64);
+const BOUNDED_SUPERVISOR_COMMAND_SHA = "c".repeat(64);
+const BOUNDED_CHILD_COMMAND_SHA = "e".repeat(64);
+
+function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
+  const expected = {
+    taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    releaseSha: BOUNDED_RELEASE_SHA,
+    profileSha256: BOUNDED_PROFILE_SHA,
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+    runtimeInstanceId: BOUNDED_RUNTIME_ID,
+    taskInstanceGuid: BOUNDED_INSTANCE_GUID,
+    supervisorPid: 4100,
+    supervisorCreationTimeUtc: "2026-08-02T10:00:00.000Z",
+    supervisorExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    supervisorCommandSha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    childPid: 4200,
+    childCreationTimeUtc: "2026-08-02T10:00:01.000Z",
+    childExecutablePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    childCommandSha256: BOUNDED_CHILD_COMMAND_SHA,
+  };
+  const binding = {
+    task_name: expected.taskName,
+    node_path: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkout_real_path: "D:/pulse/releases/pulse-v1",
+    release_sha: expected.releaseSha,
+    profile_sha256: expected.profileSha256,
+    database_identity_sha256: expected.databaseIdentitySha256,
+  };
+  const authorityFingerprint = require("node:crypto")
+    .createHash("sha256")
+    .update(
+      '{"checkout_real_path":"D:/pulse/releases/pulse-v1","database_identity_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","node_path":"D:/pulse-tools/node-v22.17.1/node.exe","profile_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","release_sha":"dddddddddddddddddddddddddddddddddddddddd","task_name":"PulseGaming-LiveGuarded-YouTube-Runtime"}',
+    )
+    .digest("hex");
+  const activation = {
+    valid: true,
+    schema_version: "pulse-windows-live-guarded-activation-receipt-v2",
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_binding: binding,
+    authority_fingerprint: authorityFingerprint,
+    blockers: [],
+  };
+  const owner = {
+    valid: true,
+    schema_version: "pulse-windows-live-guarded-owner-v2",
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_binding: binding,
+    authority_fingerprint: authorityFingerprint,
+    task_name: expected.taskName,
+    task_instance_guid: ownerInstanceGuid || BOUNDED_INSTANCE_GUID,
+    engine_pid: 4100,
+    supervisor_pid: 4100,
+    supervisor_creation_time_utc: expected.supervisorCreationTimeUtc,
+    child_pid: 4200,
+    child_creation_time_utc: expected.childCreationTimeUtc,
+    child_parent_pid: 4100,
+    child_in_job: true,
+    listener_port: 3001,
+    listener_pid: 4200,
+    release_sha: expected.releaseSha,
+    profile_sha256: expected.profileSha256,
+    database_identity_sha256: expected.databaseIdentitySha256,
+    blockers: [],
+  };
+  const observation = {
+    ok: true,
+    task_name: expected.taskName,
+    task_instance: {
+      instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: 4100,
+      state: 4,
+    },
+    supervisor: {
+      ok: true,
+      pid: 4100,
+      creation_time_utc: expected.supervisorCreationTimeUtc,
+      parent_pid: 900,
+      executable_path: expected.supervisorExecutablePath,
+      command_sha256: expected.supervisorCommandSha256,
+      blockers: [],
+    },
+    child: {
+      ok: true,
+      pid: 4200,
+      creation_time_utc: expected.childCreationTimeUtc,
+      parent_pid: 4100,
+      executable_path: expected.childExecutablePath,
+      command_sha256: expected.childCommandSha256,
+      blockers: [],
+    },
+    job_membership: { process_ids: [4100, 4200], child_present: true },
+    blockers: [],
+  };
+  return {
+    mode: "LIVE",
+    expected,
+    probes: {
+      taskDefinitionInspector: async () => ({
+        state: "managed_current",
+        blockers: [],
+      }),
+      activationReceiptInspector: async () => activation,
+      ownerReceiptInspector: async () => owner,
+      authorityObserver: async () => observation,
+      listenerInspector: async () => ({
+        available: true,
+        listeningPids: [4200],
+      }),
+      healthRequester: async () => ({
+        status: "ok",
+        schedulerActive: true,
+        build: { commit_sha: expected.releaseSha },
+        deployment: { mode: "local", primary: true },
+        runtime: {
+          operating_mode: "LIVE_GUARDED",
+          auto_publish: true,
+          legacy_auto_publish_armed: true,
+          use_sqlite: true,
+          use_job_queue_explicit: "true",
+        },
+      }),
+      databaseAuthorityInspector: async () => ({
+        ok: true,
+        database_identity_sha256: expected.databaseIdentitySha256,
+        scheduler: { owner_sha256: "f".repeat(64) },
+        blockers: [],
+      }),
+    },
+  };
+}
+
+function activationAuthorityOptions() {
+  return {
+    runtimeInstanceId: BOUNDED_RUNTIME_ID,
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+  };
+}
+
+function taskBoundActivation({
+  profile,
+  repoRoot,
+  expectedCommit,
+  receiptSha,
+}) {
+  const authorityBinding = buildLiveTaskAuthorityBinding({
+    taskName: profile.task_name,
+    nodePath: process.execPath,
+    checkoutRealPath: repoRoot,
+    releaseSha: expectedCommit,
+    profileSha256: require("node:crypto")
+      .createHash("sha256")
+      .update(JSON.stringify(profile))
+      .digest("hex"),
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+  });
+  return {
+    valid: true,
+    schema_version: "pulse-windows-live-guarded-activation-receipt-v2",
+    receipt_sha256: receiptSha,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    authority_binding: authorityBinding,
+    authority_fingerprint: require("node:crypto")
+      .createHash("sha256")
+      .update(
+        JSON.stringify(
+          Object.fromEntries(
+            Object.entries(authorityBinding).sort(([left], [right]) =>
+              left.localeCompare(right),
+            ),
+          ),
+        ),
+      )
+      .digest("hex"),
+    blockers: [],
+  };
+}
+
+function taskBoundHandoffObservation(child) {
+  return {
+    ok: true,
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    task_instance: {
+      instance_guid: BOUNDED_INSTANCE_GUID,
+      engine_pid: process.pid,
+      state: 4,
+    },
+    supervisor: {
+      pid: process.pid,
+      creation_time_utc: TEST_PROCESS_STARTED_AT,
+      executable_path: process.execPath.replace(/\\/g, "/"),
+      command_sha256: BOUNDED_SUPERVISOR_COMMAND_SHA,
+    },
+    child: {
+      pid: child.pid,
+      parent_pid: process.pid,
+      creation_time_utc: TEST_REUSED_PROCESS_STARTED_AT,
+      executable_path: process.execPath.replace(/\\/g, "/"),
+      command_sha256: BOUNDED_CHILD_COMMAND_SHA,
+    },
+    job_membership: {
+      process_ids: [process.pid, child.pid],
+      child_present: true,
+    },
+    blockers: [],
+  };
+}
+
+test("builds one deterministic non-secret live task authority binding", () => {
+  const fixture = activeBoundedAuthorityFixture();
+  assert.deepEqual(buildLiveTaskAuthorityBinding(fixture.expected), {
+    task_name: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    node_path: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkout_real_path: "D:/pulse/releases/pulse-v1",
+    release_sha: BOUNDED_RELEASE_SHA,
+    profile_sha256: BOUNDED_PROFILE_SHA,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+  });
+});
+
+test("ACTIVE_BOUND requires one continuous task-to-lease identity", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    activeBoundedAuthorityFixture(),
+  );
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(result.state, "ACTIVE_BOUND");
+  assert.match(result.authority_fingerprint, /^[a-f0-9]{64}$/);
+});
+
+test("a mismatched task InstanceGuid is HOLD", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    activeBoundedAuthorityFixture({
+      ownerInstanceGuid: "99999999-2222-4333-8444-555555555555",
+    }),
+  );
+  assert.equal(result.state, "HOLD");
+  assert.deepEqual(result.blockers, ["live_task_instance_receipt_mismatch"]);
+});
+
+test("ACTIVE_BOUND independently checks every expected task and process identity", async () => {
+  for (const [field, value, blocker] of [
+    [
+      "taskInstanceGuid",
+      "99999999-2222-4333-8444-555555555555",
+      "live_task_instance_receipt_mismatch",
+    ],
+    ["supervisorPid", 4999, "live_task_process_identity_mismatch"],
+    [
+      "supervisorCreationTimeUtc",
+      "2026-08-02T10:00:09.000Z",
+      "live_task_process_identity_mismatch",
+    ],
+    [
+      "supervisorCommandSha256",
+      "1".repeat(64),
+      "live_task_process_identity_mismatch",
+    ],
+    ["childPid", 4998, "live_task_process_identity_mismatch"],
+    [
+      "childCreationTimeUtc",
+      "2026-08-02T10:00:19.000Z",
+      "live_task_process_identity_mismatch",
+    ],
+    [
+      "childCommandSha256",
+      "2".repeat(64),
+      "live_task_process_identity_mismatch",
+    ],
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.expected[field] = value;
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", field);
+    assert.ok(result.blockers.includes(blocker), field);
+  }
+});
+
+function stoppedBoundedAuthorityFixture() {
+  const expected = {
+    taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    releaseSha: BOUNDED_RELEASE_SHA,
+    profileSha256: BOUNDED_PROFILE_SHA,
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+  };
+  return {
+    mode: "QUIESCENT",
+    expected,
+    probes: {
+      taskDefinitionInspector: async () => ({
+        state: "managed_disabled",
+        blockers: [],
+      }),
+      taskInstancesInspector: async () => ({
+        ok: true,
+        instances: [],
+        blockers: [],
+      }),
+      conflictInspector: async () => ({
+        clear: true,
+        tasks: [
+          { task_name: "PulseGaming-Stabilisation-Runtime", state: "disabled" },
+        ],
+        blockers: [],
+      }),
+      activationReceiptInspector: async () => ({
+        present: false,
+        blockers: ["token-shaped command sk-live-secret"],
+      }),
+      ownerReceiptInspector: async () => ({
+        state: "absent",
+        blockers: [],
+      }),
+      listenerInspector: async () => ({
+        available: true,
+        listeningPids: [],
+      }),
+      databaseAuthorityInspector: async () => ({
+        ok: true,
+        database_identity_sha256: BOUNDED_DATABASE_SHA,
+        scheduler: { owner: "scheduler:raw-private-owner" },
+        blockers: [],
+      }),
+    },
+  };
+}
+
+test("STOPPED_BOUND requires two stable quiescent observations", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    stoppedBoundedAuthorityFixture(),
+  );
+  assert.equal(result.verdict, "GREEN");
+  assert.equal(result.state, "STOPPED_BOUND");
+  assert.match(result.authority_fingerprint, /^[a-f0-9]{64}$/);
+});
+
+test("changing bounded observations are HOLD", async () => {
+  const fixture = stoppedBoundedAuthorityFixture();
+  let reads = 0;
+  fixture.probes.taskDefinitionInspector = async () => ({
+    state: reads++ === 0 ? "managed_disabled" : "managed_current",
+    blockers: [],
+  });
+  const result = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(result.state, "HOLD");
+  assert.deepEqual(result.blockers, ["bounded_authority_observation_unstable"]);
+});
+
+test("bounded verdicts never expose raw command text or database lease owners", async () => {
+  const result = await inspectBoundedWindowsAuthority(
+    stoppedBoundedAuthorityFixture(),
+  );
+  const serialised = JSON.stringify(result);
+  assert.equal(serialised.includes("sk-live-secret"), false);
+  assert.equal(serialised.includes("scheduler:raw-private-owner"), false);
+});
+
+test("bounded verdicts reject contradictory probe states without copying raw blockers", async () => {
+  const taskFixture = stoppedBoundedAuthorityFixture();
+  taskFixture.probes.taskDefinitionInspector = async () => ({
+    state: "managed_disabled",
+    blockers: ["raw task error with sk-live-private"],
+  });
+  const taskResult = await inspectBoundedWindowsAuthority(taskFixture);
+  assert.equal(taskResult.state, "HOLD");
+  assert.ok(
+    taskResult.blockers.includes("quiescent_task_definition_untrusted"),
+  );
+  assert.equal(JSON.stringify(taskResult).includes("sk-live-private"), false);
+
+  const databaseFixture = activeBoundedAuthorityFixture();
+  databaseFixture.probes.databaseAuthorityInspector = async () => ({
+    ok: false,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    blockers: ["lease owner scheduler:raw-private-owner"],
+  });
+  const databaseResult = await inspectBoundedWindowsAuthority(databaseFixture);
+  assert.equal(databaseResult.state, "HOLD");
+  assert.deepEqual(databaseResult.blockers, [
+    "live_database_authority_mismatch",
+  ]);
+  assert.equal(
+    JSON.stringify(databaseResult).includes("scheduler:raw-private-owner"),
+    false,
+  );
+});
 
 test("the default Windows process identity probe returns only PID and creation time", () => {
   assert.equal(typeof inspectWindowsProcessIdentity, "function");
@@ -1286,6 +1684,13 @@ test("the real supervision-generation path borrows the exact parent transition l
     },
   };
   let lifecycleWrites = 0;
+  const boundedActivation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: activationReceiptSha256,
+  });
+  let boundedListenerReads = 0;
 
   const generation = await startLiveSupervisionGeneration({
     repoRoot: ROOT,
@@ -1297,8 +1702,7 @@ test("the real supervision-generation path borrows the exact parent transition l
       return borrowLiveRuntimeTransitionLease({
         ...options,
         participantIdentity: {
-          participant_id:
-            "33333333-3333-4333-8333-333333333333",
+          participant_id: "33333333-3333-4333-8333-333333333333",
           process_id: process.pid,
           process_started_at: TEST_PROCESS_STARTED_AT,
           process_start_source: "injected",
@@ -1318,10 +1722,8 @@ test("the real supervision-generation path borrows the exact parent transition l
       activation_receipt_sha256: activationReceiptSha256,
       runtime_environment: {},
     }),
-    activationInspector: () => ({
-      valid: true,
-      receipt_sha256: activationReceiptSha256,
-    }),
+    activationInspector: () => boundedActivation,
+    taskAuthorityObserver: async () => taskBoundHandoffObservation(child),
     startOperationInspector: () => ({
       present: true,
       valid: true,
@@ -1330,7 +1732,7 @@ test("the real supervision-generation path borrows the exact parent transition l
     }),
     listenerInspector: () => ({
       available: true,
-      listeningPids: [],
+      listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
     }),
     processIdentityInspector: processIdentityInspector({
       [process.pid]: TEST_PROCESS_STARTED_AT,
@@ -1362,8 +1764,8 @@ test("the real supervision-generation path borrows the exact parent transition l
         "handoff must atomically close transition borrowing before publication",
       );
       assert.deepEqual(
-        transitionMetadata?.participants?.map((participant) =>
-          participant.role,
+        transitionMetadata?.participants?.map(
+          (participant) => participant.role,
         ),
         ["owner", "handoff_supervisor", "handoff_child"],
         "the transition borrower must become an exact child-bound seal before owner publication",
@@ -1412,6 +1814,18 @@ test("the real supervision-generation path borrows the exact parent transition l
   );
   const owner = JSON.parse(fs.readFileSync(generation.ownerPath, "utf8"));
   assert.equal(owner.child_pid, child.pid);
+  assert.equal(owner.schema_version, "pulse-windows-live-guarded-owner-v2");
+  assert.equal(owner.runtime_instance_id, BOUNDED_RUNTIME_ID);
+  assert.equal(owner.task_instance_guid, BOUNDED_INSTANCE_GUID);
+  assert.equal(owner.engine_pid, process.pid);
+  assert.equal(owner.child_parent_pid, process.pid);
+  assert.equal(owner.child_in_job, true);
+  assert.equal(owner.listener_port, 3001);
+  assert.equal(owner.listener_pid, child.pid);
+  assert.equal(
+    owner.authority_fingerprint,
+    boundedActivation.authority_fingerprint,
+  );
   assert.equal(owner.supervisor_process_started_at, TEST_PROCESS_STARTED_AT);
   assert.equal(owner.child_process_started_at, TEST_REUSED_PROCESS_STARTED_AT);
   assert.equal(owner.start_operation_nonce, START_OPERATION_NONCE);
@@ -1442,6 +1856,13 @@ test("an owned generation keeps a sealed transition durable until the owner rece
     return true;
   };
   let observedOwnerId = null;
+  const boundedActivation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: activationReceiptSha256,
+  });
+  let boundedListenerReads = 0;
 
   const generation = await startLiveSupervisionGeneration({
     repoRoot: ROOT,
@@ -1462,10 +1883,8 @@ test("an owned generation keeps a sealed transition durable until the owner rece
       activation_receipt_sha256: activationReceiptSha256,
       runtime_environment: {},
     }),
-    activationInspector: () => ({
-      valid: true,
-      receipt_sha256: activationReceiptSha256,
-    }),
+    activationInspector: () => boundedActivation,
+    taskAuthorityObserver: async () => taskBoundHandoffObservation(child),
     startOperationInspector: () => ({
       present: false,
       valid: true,
@@ -1474,7 +1893,7 @@ test("an owned generation keeps a sealed transition durable until the owner rece
     }),
     listenerInspector: () => ({
       available: true,
-      listeningPids: [],
+      listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
     }),
     processIdentityInspector: processIdentityInspector({
       [process.pid]: TEST_PROCESS_STARTED_AT,
@@ -1560,6 +1979,13 @@ test("an owned transition release failure terminates the child and removes its o
     return true;
   };
   const ownerPath = path.join(profile.state_root, "supervisor-owner.json");
+  const boundedActivation = taskBoundActivation({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+    receiptSha: activationReceiptSha256,
+  });
+  let boundedListenerReads = 0;
 
   await assert.rejects(
     startLiveSupervisionGeneration({
@@ -1580,10 +2006,8 @@ test("an owned transition release failure terminates the child and removes its o
         activation_receipt_sha256: activationReceiptSha256,
         runtime_environment: {},
       }),
-      activationInspector: () => ({
-        valid: true,
-        receipt_sha256: activationReceiptSha256,
-      }),
+      activationInspector: () => boundedActivation,
+      taskAuthorityObserver: async () => taskBoundHandoffObservation(child),
       startOperationInspector: () => ({
         present: false,
         valid: true,
@@ -1603,7 +2027,7 @@ test("an owned transition release failure terminates the child and removes its o
       }),
       listenerInspector: () => ({
         available: true,
-        listeningPids: [],
+        listeningPids: boundedListenerReads++ === 0 ? [] : [child.pid],
       }),
       processIdentityInspector: processIdentityInspector({
         [process.pid]: TEST_PROCESS_STARTED_AT,
@@ -1876,8 +2300,7 @@ test("the live child monitor never restarts after activation is revoked", async 
   const temp = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-live-child-revoked-"),
   );
-  const secretSentinel =
-    "SENTINEL_REVOCATION_BLOCKER_MUST_NOT_PERSIST_3b5c";
+  const secretSentinel = "SENTINEL_REVOCATION_BLOCKER_MUST_NOT_PERSIST_3b5c";
   let keepAlive;
   try {
     keepAlive = setInterval(() => {}, 1000);
@@ -1939,8 +2362,7 @@ test("activation monitor exceptions are redacted from supervise-exit evidence an
   const temp = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-live-child-monitor-error-"),
   );
-  const secretSentinel =
-    "SENTINEL_MONITOR_ERROR_MUST_NOT_PERSIST_2a4b";
+  const secretSentinel = "SENTINEL_MONITOR_ERROR_MUST_NOT_PERSIST_2a4b";
   let keepAlive;
   try {
     keepAlive = setInterval(() => {}, 1000);
@@ -2883,6 +3305,7 @@ test("activation receipt issue and exact no-op both hold and release the transit
     receipt_sha256: "a".repeat(64),
   };
   let receiptPresent = false;
+  let builtAuthority = null;
   const common = {
     profile,
     repoRoot: ROOT,
@@ -2891,8 +3314,20 @@ test("activation receipt issue and exact no-op both hold and release the transit
     reason: "governed cutover",
     youtubeOAuthClientSha256: "6".repeat(64),
     generatedAt: "2026-08-01T08:00:00.000Z",
+    runtimeInstanceIdFactory: () => BOUNDED_RUNTIME_ID,
+    nodeExecutable: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
     runtimeTransitionLeaseFactory: transition.factory,
-    activationReceiptBuilder: () => receipt,
+    activationReceiptBuilder: (options) => {
+      builtAuthority = {
+        runtimeInstanceId: options.runtimeInstanceId,
+        nodePath: options.nodePath,
+        checkoutRealPath: options.checkoutRealPath,
+        databaseIdentitySha256: options.databaseIdentitySha256,
+      };
+      return receipt;
+    },
     activationReceiptInspector: () => ({
       valid: true,
       receipt_sha256: receipt.receipt_sha256,
@@ -2912,6 +3347,12 @@ test("activation receipt issue and exact no-op both hold and release the transit
 
   const issued = issueLiveActivationReceipt(common);
   assert.equal(issued.outcome, "activation_receipt_issued");
+  assert.deepEqual(builtAuthority, {
+    runtimeInstanceId: BOUNDED_RUNTIME_ID,
+    nodePath: "D:/pulse-tools/node-v22.17.1/node.exe",
+    checkoutRealPath: "D:/pulse/releases/pulse-v1",
+    databaseIdentitySha256: BOUNDED_DATABASE_SHA,
+  });
   assert.equal(transition.current(), null);
   const replayed = issueLiveActivationReceipt(common);
   assert.equal(replayed.outcome, "no_op_exact_activation_receipt_exists");
@@ -3033,7 +3474,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
     blockers: [],
   };
   const owner = {
-    schema_version: "pulse-windows-live-guarded-owner-v1",
+    schema_version: "pulse-windows-live-guarded-owner-v2",
     supervisor_pid: 4111,
     supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
@@ -3255,7 +3696,7 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
     blockers: [],
   };
   const owner = {
-    schema_version: "pulse-windows-live-guarded-owner-v1",
+    schema_version: "pulse-windows-live-guarded-owner-v2",
     supervisor_pid: 4111,
     supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
@@ -3478,7 +3919,7 @@ test("runtime identity is re-read after authority revalidation before started_ve
     blockers: [],
   };
   const owner = {
-    schema_version: "pulse-windows-live-guarded-owner-v1",
+    schema_version: "pulse-windows-live-guarded-owner-v2",
     supervisor_pid: 4111,
     supervisor_process_started_at: TEST_PROCESS_STARTED_AT,
     child_pid: 4123,
@@ -3697,8 +4138,7 @@ test("cleanup command failures and an orphan listener are durably reported witho
   const profile = loadLiveGuardedRuntimeProfile();
   const expectedCommit = "d".repeat(40);
   const endSecretSentinel = "SENTINEL_END_ERROR_MUST_NOT_PERSIST_6e8b";
-  const disableSecretSentinel =
-    "SENTINEL_DISABLE_ERROR_MUST_NOT_PERSIST_5d7c";
+  const disableSecretSentinel = "SENTINEL_DISABLE_ERROR_MUST_NOT_PERSIST_5d7c";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
@@ -3811,8 +4251,7 @@ test("cleanup command failures and an orphan listener are durably reported witho
 
 test("an unexpected cleanup inspection error still produces failure evidence", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
-  const cleanupSecretSentinel =
-    "SENTINEL_CLEANUP_ERROR_MUST_NOT_PERSIST_4c6d";
+  const cleanupSecretSentinel = "SENTINEL_CLEANUP_ERROR_MUST_NOT_PERSIST_4c6d";
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
@@ -4448,6 +4887,102 @@ test("the live task validator accepts Task Scheduler's normalised restart-policy
   }
 });
 
+test("activation v2 binds the planned runtime authority without claiming future process identity", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-live-v2-receipt-"));
+  try {
+    const migrationsDir = path.join(temp, "migrations");
+    fs.mkdirSync(migrationsDir);
+    fs.writeFileSync(
+      path.join(migrationsDir, "001_fixture.sql"),
+      "SELECT 1;\n",
+    );
+    const profile = loadLiveGuardedRuntimeProfile();
+    const expectedCommit = BOUNDED_RELEASE_SHA;
+    const receipt = buildLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      operatorId: "operator-42",
+      reason: "Reviewed exact YouTube runway activation",
+      youtubeOAuthClientSha256: "6".repeat(64),
+      generatedAt: "2026-08-02T09:00:00.000Z",
+      ...activationAuthorityOptions(),
+    });
+
+    assert.equal(
+      receipt.schema_version,
+      "pulse-windows-live-guarded-activation-receipt-v2",
+    );
+    assert.equal(receipt.runtime_instance_id, BOUNDED_RUNTIME_ID);
+    assert.equal(receipt.task_name, "PulseGaming-LiveGuarded-YouTube-Runtime");
+    assert.equal(
+      receipt.task_path,
+      "\\PulseGaming-LiveGuarded-YouTube-Runtime",
+    );
+    assert.match(receipt.task_definition_sha256, /^[a-f0-9]{64}$/);
+    assert.match(receipt.authority_fingerprint, /^[a-f0-9]{64}$/);
+    assert.equal(receipt.authority_binding.release_sha, expectedCommit);
+    assert.equal(
+      receipt.authority_binding.database_identity_sha256,
+      BOUNDED_DATABASE_SHA,
+    );
+    assert.equal("task_instance_guid" in receipt, false);
+    assert.equal("supervisor_pid" in receipt, false);
+    assert.equal("child_pid" in receipt, false);
+
+    const receiptPath = path.join(temp, "activation.json");
+    fs.writeFileSync(receiptPath, `${JSON.stringify(receipt)}\n`);
+    const exact = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+      ...activationAuthorityOptions(),
+    });
+    assert.equal(exact.valid, true);
+    assert.equal(exact.runtime_instance_id, BOUNDED_RUNTIME_ID);
+    assert.equal(exact.authority_fingerprint, receipt.authority_fingerprint);
+
+    const databaseDrift = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+      ...activationAuthorityOptions(),
+      databaseIdentitySha256: "9".repeat(64),
+    });
+    assert.equal(databaseDrift.valid, false);
+    assert.ok(
+      databaseDrift.blockers.includes(
+        "activation_receipt_task_authority_invalid",
+      ),
+    );
+
+    const legacy = {
+      ...receipt,
+      schema_version: "pulse-windows-live-guarded-activation-receipt-v1",
+    };
+    legacy.receipt_sha256 = require("node:crypto")
+      .createHash("sha256")
+      .update("")
+      .digest("hex");
+    fs.writeFileSync(receiptPath, `${JSON.stringify(legacy)}\n`);
+    const rejectedLegacy = inspectLiveActivationReceipt({
+      profile,
+      expectedCommit,
+      migrationsDir,
+      receiptPath,
+      ...activationAuthorityOptions(),
+    });
+    assert.equal(rejectedLegacy.valid, false);
+    assert.ok(
+      rejectedLegacy.blockers.includes("activation_receipt_schema_invalid"),
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("AUTO_PUBLISH cannot enter a child environment without one exact activation receipt bound to commit, profile and migration set", () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-live-receipt-"));
   try {
@@ -4493,6 +5028,7 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
           operatorId: "operator-42",
           reason: "Reviewed exact YouTube runway activation",
           generatedAt: "2026-07-28T12:00:00.000Z",
+          ...activationAuthorityOptions(),
         }),
       /youtube_oauth_client_sha256_required/,
     );
@@ -4505,6 +5041,7 @@ test("AUTO_PUBLISH cannot enter a child environment without one exact activation
       reason: "Reviewed exact YouTube runway activation",
       generatedAt: "2026-07-28T12:00:00.000Z",
       youtubeOAuthClientSha256: expectedOAuthClientSha256,
+      ...activationAuthorityOptions(),
     });
     assert.deepEqual(receipt.youtube_account_binding, {
       env_key: "PULSE_YOUTUBE_OAUTH_CLIENT_SHA256",
@@ -4586,6 +5123,7 @@ test("activation authority has no silent calendar expiry but every commit, profi
       reason: "Reviewed exact YouTube runway activation",
       generatedAt: "2020-01-01T00:00:00.000Z",
       youtubeOAuthClientSha256: "6".repeat(64),
+      ...activationAuthorityOptions(),
     });
     assert.equal(original.expiry.expires_at, null);
 

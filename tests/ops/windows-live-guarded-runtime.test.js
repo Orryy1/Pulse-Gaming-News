@@ -44,7 +44,11 @@ function processIdentityInspector(identities = {}) {
   };
 }
 
-function inMemoryTransitionLease({ preheldOwner = null, events = [] } = {}) {
+function inMemoryTransitionLease({
+  preheldOwner = null,
+  preheldAuthorityContextSha256 = "0".repeat(64),
+  events = [],
+} = {}) {
   let current = preheldOwner
     ? {
         owner_id: preheldOwner,
@@ -52,6 +56,7 @@ function inMemoryTransitionLease({ preheldOwner = null, events = [] } = {}) {
         metadata: JSON.stringify({
           transition_owner_schema_version:
             "pulse-live-runtime-transition-owner-v2",
+          authority_context_sha256: preheldAuthorityContextSha256,
           admission_state: "OPEN",
           context: {},
           participants: [
@@ -229,6 +234,7 @@ const {
   buildLiveRuntimeDoctorReport,
   buildLiveTaskAuthorityBinding,
   createDefaultLiveLifecycleHandlers,
+  currentLiveTransitionAuthorityContext,
   buildLiveScheduledTaskXml,
   buildLiveProcessCommandAuthority,
   prepareLiveSupervision,
@@ -240,18 +246,20 @@ const {
   inspectLiveTaskBoundHandoff,
   inspectStoppedLiveRuntime,
   inspectBoundedWindowsAuthority,
-  issueLiveActivationReceipt,
+  installLiveScheduledTask: installLiveScheduledTaskWithoutTestAuthority,
+  issueLiveActivationReceipt: issueLiveActivationReceiptWithoutTestAuthority,
   loadLiveGuardedRuntimeProfile,
   executeLiveLifecycleAction,
   validateLiveScheduledTaskXml,
   validateLiveGuardedRuntimeProfile,
   safeLiveHealthIdentity,
   releaseLiveStartOperationLock,
-  revokeLiveActivationReceipt,
-  setLiveScheduledTaskEnabled,
-  startLiveScheduledTask,
-  startLiveSupervisionGeneration,
+  revokeLiveActivationReceipt: revokeLiveActivationReceiptWithoutTestAuthority,
+  setLiveScheduledTaskEnabled: setLiveScheduledTaskEnabledWithoutTestAuthority,
+  startLiveScheduledTask: startLiveScheduledTaskWithoutTestAuthority,
+  startLiveSupervisionGeneration: startLiveSupervisionGenerationWithoutTestAuthority,
   superviseLiveChildSession,
+  uninstallLiveScheduledTask: uninstallLiveScheduledTaskWithoutTestAuthority,
   waitForLiveHealth,
   runLiveSupervisionLifecycle,
 } = require("../../lib/stabilisation/windows-live-guarded-runtime");
@@ -274,6 +282,101 @@ const BOUNDED_WORKER_TOPOLOGY = [
     kinds: ["publish"],
   },
 ];
+
+function canonicalAuthorityPath(value) {
+  return path.win32
+    .normalize(String(value || ""))
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "");
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+function independentlyMeasuredTransitionAuthorityContext({
+  profile,
+  repoRoot,
+  expectedCommit,
+}) {
+  const databaseRealPath = fs.realpathSync.native(
+    path.resolve(profile.database_path),
+  );
+  const databaseStats = fs.statSync(databaseRealPath, { bigint: true });
+  const databaseIdentity = {
+    canonical_real_path: canonicalAuthorityPath(databaseRealPath),
+    device_id: databaseStats.dev.toString(10),
+    file_id: databaseStats.ino.toString(10),
+  };
+  const binding = {
+    checkout_real_path: canonicalAuthorityPath(
+      fs.realpathSync.native(path.resolve(repoRoot)),
+    ),
+    database_identity_sha256: sha256(JSON.stringify(databaseIdentity)),
+    node_path: canonicalAuthorityPath(
+      fs.realpathSync.native(process.execPath),
+    ),
+    profile_sha256: sha256(JSON.stringify(profile)),
+    release_sha: expectedCommit,
+    task_name: profile.task_name,
+  };
+  return sha256(JSON.stringify(binding));
+}
+
+function withTestTransitionAuthority(options = {}) {
+  if (options.transitionAuthorityContextProvider) return options;
+  return {
+    ...options,
+    transitionAuthorityContextProvider: ({ profile, repoRoot, expectedCommit }) =>
+      independentlyMeasuredTransitionAuthorityContext({
+        profile,
+        repoRoot,
+        expectedCommit,
+      }),
+  };
+}
+
+function issueLiveActivationReceipt(options) {
+  return issueLiveActivationReceiptWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function installLiveScheduledTask(options) {
+  return installLiveScheduledTaskWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function revokeLiveActivationReceipt(options) {
+  return revokeLiveActivationReceiptWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function setLiveScheduledTaskEnabled(options) {
+  return setLiveScheduledTaskEnabledWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function startLiveScheduledTask(options) {
+  return startLiveScheduledTaskWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function startLiveSupervisionGeneration(options) {
+  return startLiveSupervisionGenerationWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
+
+function uninstallLiveScheduledTask(options) {
+  return uninstallLiveScheduledTaskWithoutTestAuthority(
+    withTestTransitionAuthority(options),
+  );
+}
 
 function boundedExpectedRuntime() {
   return {
@@ -2759,10 +2862,7 @@ test("the real supervision-generation path borrows the exact parent transition l
   const expectedCommit = "9".repeat(40);
   const activationReceiptSha256 = "8".repeat(64);
   const transitionEvents = [];
-  const transition = inMemoryTransitionLease({
-    preheldOwner: `live-start:${START_OPERATION_NONCE}`,
-    events: transitionEvents,
-  });
+  const authorityBoundaryEvents = [];
   const profile = {
     ...loadLiveGuardedRuntimeProfile(),
     database_path: path.join(temp, "pulse.db"),
@@ -2774,6 +2874,18 @@ test("the real supervision-generation path borrows the exact parent transition l
     ),
   };
   fs.writeFileSync(profile.database_path, "bounded database identity\n");
+  const authorityContextSha256 = independentlyMeasuredTransitionAuthorityContext(
+    {
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+    },
+  );
+  const transition = inMemoryTransitionLease({
+    preheldOwner: `live-start:${START_OPERATION_NONCE}`,
+    preheldAuthorityContextSha256: authorityContextSha256,
+    events: transitionEvents,
+  });
   const child = new EventEmitter();
   child.pid = 7412;
   const kills = [];
@@ -2813,7 +2925,12 @@ test("the real supervision-generation path borrows the exact parent transition l
     profilePath: path.join(temp, "profile.json"),
     platform: "win32",
     runtimeTransitionLeaseFactory: transition.factory,
+    transitionAuthorityContextProvider() {
+      authorityBoundaryEvents.push("authority");
+      return authorityContextSha256;
+    },
     transitionLeaseBorrower(options) {
+      assert.equal(options.authorityContextSha256, authorityContextSha256);
       return borrowLiveRuntimeTransitionLease({
         ...options,
         participantIdentity: {
@@ -2876,6 +2993,8 @@ test("the real supervision-generation path borrows the exact parent transition l
     spawnImpl: () => child,
     lifecycleReceiptWriter(options) {
       lifecycleWrites += 1;
+      assert.equal(authorityBoundaryEvents.at(-1), "authority");
+      authorityBoundaryEvents.push("supervise-start-receipt");
       assert.equal(options.action, "supervise-start");
       assert.equal(
         transition.current()?.owner_id,
@@ -2884,6 +3003,8 @@ test("the real supervision-generation path borrows the exact parent transition l
       return { receipt_path: path.join(temp, "start.json") };
     },
     ownerWriter(ownerPath, value) {
+      assert.equal(authorityBoundaryEvents.at(-1), "authority");
+      authorityBoundaryEvents.push("owner-receipt");
       assert.equal(
         lifecycleWrites,
         1,
@@ -2921,6 +3042,7 @@ test("the real supervision-generation path borrows the exact parent transition l
           borrowLiveRuntimeTransitionLease({
             databasePath: profile.database_path,
             expectedOwnerId: `live-start:${START_OPERATION_NONCE}`,
+            authorityContextSha256,
             runtimeTransitionLeaseFactory: transition.factory,
           }),
         /live_runtime_transition_lease_unavailable/,
@@ -2934,6 +3056,10 @@ test("the real supervision-generation path borrows the exact parent transition l
   assert.equal(generation.child, child);
   assert.deepEqual(kills, []);
   assert.equal(lifecycleWrites, 1);
+  assert.ok(
+    authorityBoundaryEvents.lastIndexOf("authority") <
+      authorityBoundaryEvents.lastIndexOf("owner-receipt"),
+  );
   assert.equal(
     transition.current()?.owner_id,
     `live-start:${START_OPERATION_NONCE}`,
@@ -2999,6 +3125,7 @@ test("owner-v2 publication rejects incomplete or contradictory task, process, Jo
       state_root: path.join(temp, "state"),
       activation_receipt_path: path.join(temp, "activation.json"),
     };
+    fs.writeFileSync(profile.database_path, "identity\n");
     const activation = taskBoundActivation({
       profile,
       repoRoot: ROOT,
@@ -3317,6 +3444,7 @@ test("an owned generation keeps a sealed transition durable until the owner rece
       "activation-receipt.json",
     ),
   };
+  fs.writeFileSync(profile.database_path, "identity\n");
   const child = new EventEmitter();
   child.pid = 7462;
   child.kill = (signal) => {
@@ -3411,6 +3539,12 @@ test("an owned generation keeps a sealed transition durable until the owner rece
           borrowLiveRuntimeTransitionLease({
             databasePath: profile.database_path,
             expectedOwnerId: held.owner_id,
+            authorityContextSha256:
+              independentlyMeasuredTransitionAuthorityContext({
+                profile,
+                repoRoot: ROOT,
+                expectedCommit,
+              }),
             runtimeTransitionLeaseFactory: transition.factory,
           }),
         /live_runtime_transition_lease_unavailable/,
@@ -3442,6 +3576,7 @@ test("an owned transition release failure terminates the child and removes its o
       "activation-receipt.json",
     ),
   };
+  fs.writeFileSync(profile.database_path, "identity\n");
   const child = new EventEmitter();
   child.pid = 7512;
   const kills = [];
@@ -3547,6 +3682,7 @@ test("a generation revalidates activation under the transition lease before spaw
     state_root: path.join(temp, "state"),
     activation_receipt_path: path.join(temp, "activation.json"),
   };
+  fs.writeFileSync(profile.database_path, "identity\n");
   let activationCalls = 0;
   let spawnCalls = 0;
 
@@ -3615,6 +3751,7 @@ test("activation revoked during health verification terminates the child before 
     state_root: path.join(temp, "state"),
     activation_receipt_path: path.join(temp, "activation.json"),
   };
+  fs.writeFileSync(profile.database_path, "identity\n");
   const child = new EventEmitter();
   child.pid = 7612;
   const kills = [];
@@ -4759,6 +4896,848 @@ test("default lifecycle dispatch forwards only the doctor-bound activation into 
   assert.equal(calls[0].activation, activation);
 });
 
+test("every live transition caller supplies one exact independently measured authority context", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-transition-authority-context-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "transition authority identity\n");
+  const expectedCommit = "d".repeat(40);
+  const receiptSha256 = "c".repeat(64);
+  const expectedAuthorityContextSha256 =
+    independentlyMeasuredTransitionAuthorityContext({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+    });
+  const activation = {
+    valid: true,
+    receipt_sha256: receiptSha256,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    blockers: [],
+  };
+  const captured = [];
+  const capture = (label) => (options) => {
+    captured.push({ label, options });
+    throw new Error(`transition_context_captured:${label}`);
+  };
+
+  assert.throws(
+    () =>
+      installLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        enabled: false,
+        platform: "win32",
+        transitionLeaseAcquirer: capture("install"),
+      }),
+    /transition_context_captured:install/,
+  );
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        nodeExecutable: "Z:/untrusted/payload-node.exe",
+        checkoutRealPath: "Z:/untrusted/payload-checkout",
+        databaseIdentitySha256: "f".repeat(64),
+        transitionLeaseAcquirer: capture("issue-activation"),
+      }),
+    /transition_context_captured:issue-activation/,
+  );
+  for (const enabled of [true, false]) {
+    const label = enabled ? "enable" : "disable";
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit,
+          enabled,
+          startImmediately: false,
+          activation,
+          platform: "win32",
+          transitionLeaseAcquirer: capture(label),
+        }),
+      new RegExp(`transition_context_captured:${label}`),
+    );
+  }
+  await assert.rejects(
+    startLiveScheduledTask({
+      profile,
+      repoRoot: ROOT,
+      expectedCommit,
+      activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      platform: "win32",
+      transitionLeaseAcquirer: capture("start"),
+    }),
+    /transition_context_captured:start/,
+  );
+  assert.throws(
+    () =>
+      revokeLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        taskDisabledConfirmed: true,
+        transitionLeaseAcquirer: capture("revoke-activation"),
+      }),
+    /transition_context_captured:revoke-activation/,
+  );
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        platform: "win32",
+        transitionLeaseAcquirer: capture("uninstall"),
+      }),
+    /transition_context_captured:uninstall/,
+  );
+
+  const supervisionOptions = {
+    repoRoot: ROOT,
+    expectedCommit,
+    profilePath: path.join(temp, "profile.json"),
+    platform: "win32",
+    profileLoader: () => profile,
+    doctorBuilder: () => ({
+      checks: {
+        activation: { valid: true, receipt_sha256: receiptSha256 },
+      },
+    }),
+    supervisionPreparer: () => ({
+      activation_receipt_sha256: receiptSha256,
+      runtime_environment: {},
+    }),
+    activationInspector: () => activation,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+  };
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      ...supervisionOptions,
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer: capture("supervise-owner"),
+    }),
+    /transition_context_captured:supervise-owner/,
+  );
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      ...supervisionOptions,
+      startOperationInspector: () => ({
+        present: true,
+        valid: true,
+        operation_nonce: START_OPERATION_NONCE,
+        blockers: [],
+      }),
+      transitionLeaseAcquirer() {
+        throw new Error("unexpected_transition_owner_path");
+      },
+      transitionLeaseBorrower: capture("supervise-borrow"),
+    }),
+    /transition_context_captured:supervise-borrow/,
+  );
+
+  assert.deepEqual(
+    captured.map(({ label }) => label),
+    [
+      "install",
+      "issue-activation",
+      "enable",
+      "disable",
+      "start",
+      "revoke-activation",
+      "uninstall",
+      "supervise-owner",
+      "supervise-borrow",
+    ],
+  );
+  for (const { options } of captured) {
+    assert.equal(
+      options.authorityContextSha256,
+      expectedAuthorityContextSha256,
+    );
+    assert.equal(options.databasePath, profile.database_path);
+    assert.equal(typeof options.authorityContextProvider, "function");
+    assert.equal(
+      options.authorityContextProvider(),
+      expectedAuthorityContextSha256,
+    );
+  }
+});
+
+test("enable and disable no-op receipts require a fresh lease assertion", () => {
+  const profile = loadLiveGuardedRuntimeProfile();
+  for (const enabled of [true, false]) {
+    let receiptWrites = 0;
+    let authorityAssertions = 0;
+    assert.throws(
+      () =>
+        setLiveScheduledTaskEnabled({
+          profile,
+          repoRoot: ROOT,
+          expectedCommit: "d".repeat(40),
+          enabled,
+          activation: {
+            valid: true,
+            receipt_sha256: "c".repeat(64),
+          },
+          platform: "win32",
+          transitionLeaseAcquirer: () => ({
+            assertCurrentAuthority() {
+              authorityAssertions += 1;
+              throw new Error("live_runtime_transition_lease_lost");
+            },
+            renew() {
+              throw new Error("unexpected_mutating_renew");
+            },
+            release() {
+              return true;
+            },
+          }),
+          sourceDatabaseInspector: () => ({ ready: true }),
+          activationInspector: () => ({
+            valid: true,
+            receipt_sha256: "c".repeat(64),
+          }),
+          conflictInspector: () => ({ clear: true, blockers: [] }),
+          taskInspector: () => ({
+            state: enabled ? "managed_current" : "managed_disabled",
+          }),
+          lifecycleReceiptWriter() {
+            receiptWrites += 1;
+            return { outcome: "must_not_write" };
+          },
+        }),
+      /live_runtime_transition_lease_lost/,
+      enabled ? "enable" : "disable",
+    );
+    assert.equal(authorityAssertions, 1, enabled ? "enable" : "disable");
+    assert.equal(receiptWrites, 0, enabled ? "enable" : "disable");
+  }
+});
+
+test("install no-op evidence and uninstall task deletion require fresh transition authority", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-install-uninstall-authority-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const lease = () => ({
+    assertCurrentAuthority() {
+      throw new Error("live_runtime_transition_lease_lost");
+    },
+    renew() {
+      throw new Error("live_runtime_transition_lease_lost");
+    },
+    release() {
+      return true;
+    },
+  });
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      installLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        enabled: false,
+        platform: "win32",
+        sourceDatabaseInspector: () => ({ ready: true }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        transitionLeaseAcquirer: lease,
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(fs.existsSync(path.join(profile.state_root, "evidence")), false);
+
+  assert.throws(
+    () =>
+      uninstallLiveScheduledTask({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        platform: "win32",
+        taskInspector: () => ({ state: "managed_disabled" }),
+        transitionLeaseAcquirer: lease,
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("task enablement remeasures authority after source inspection and before schtasks mutation", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-enable-boundary-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const expectedCommit = "d".repeat(40);
+  let taskMutations = 0;
+  const transition = inMemoryTransitionLease();
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+  };
+
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabled({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        enabled: true,
+        activation,
+        platform: "win32",
+        runtimeTransitionLeaseFactory: transition.factory,
+        sourceDatabaseInspector() {
+          fs.renameSync(profile.database_path, `${profile.database_path}.old`);
+          fs.writeFileSync(profile.database_path, "replacement identity\n");
+          return { ready: true };
+        },
+        activationInspector: () => activation,
+        conflictInspector: () => ({ clear: true, blockers: [] }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("task enablement rehashes the exact profile after acquisition", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-enable-profile-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const activation = {
+    valid: true,
+    receipt_sha256: "c".repeat(64),
+  };
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabled({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit: "d".repeat(40),
+        enabled: true,
+        activation,
+        platform: "win32",
+        runtimeTransitionLeaseFactory: inMemoryTransitionLease().factory,
+        sourceDatabaseInspector() {
+          profile.test_authority_profile_drift = true;
+          return { ready: true };
+        },
+        activationInspector: () => activation,
+        conflictInspector: () => ({ clear: true, blockers: [] }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("task enablement remeasures the physical profile file after acquisition", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-enable-physical-profile-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const repoRoot = path.join(temp, "checkout");
+  fs.mkdirSync(repoRoot);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  const profilePath = path.join(temp, "runtime-profile.json");
+  const profileBytes = `${JSON.stringify(profile, null, 2)}\n`;
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  fs.writeFileSync(profilePath, profileBytes);
+  const expectedCommit = "d".repeat(40);
+  const checkoutInspector = () => ({
+    ready: true,
+    commit_sha: expectedCommit,
+  });
+  let taskMutations = 0;
+
+  assert.throws(
+    () =>
+      setLiveScheduledTaskEnabledWithoutTestAuthority({
+        profile,
+        repoRoot,
+        expectedCommit,
+        enabled: true,
+        activation: { valid: true, receipt_sha256: "c".repeat(64) },
+        platform: "win32",
+        runtimeTransitionLeaseFactory: inMemoryTransitionLease().factory,
+        transitionAuthorityContextProvider: (options) =>
+          currentLiveTransitionAuthorityContext({
+            ...options,
+            profilePath,
+            checkoutInspector,
+          }),
+        sourceDatabaseInspector() {
+          fs.renameSync(profilePath, `${profilePath}.old`);
+          fs.writeFileSync(profilePath, profileBytes);
+          return { ready: true };
+        },
+        activationInspector: () => ({
+          valid: true,
+          receipt_sha256: "c".repeat(64),
+        }),
+        conflictInspector: () => ({ clear: true, blockers: [] }),
+        taskInspector: () => ({ state: "managed_disabled" }),
+        execFileSyncImpl() {
+          taskMutations += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(taskMutations, 0);
+});
+
+test("transition authority rejects a checkout reached through a junction", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-checkout-alias-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const realCheckout = path.join(temp, "real-checkout");
+  const checkoutAlias = path.join(temp, "checkout-alias");
+  fs.mkdirSync(realCheckout);
+  fs.symlinkSync(realCheckout, checkoutAlias, "junction");
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  const profilePath = path.join(temp, "runtime-profile.json");
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  fs.writeFileSync(profilePath, `${JSON.stringify(profile, null, 2)}\n`);
+  const expectedCommit = "d".repeat(40);
+
+  assert.throws(
+    () =>
+      currentLiveTransitionAuthorityContext({
+        profile,
+        profilePath,
+        repoRoot: checkoutAlias,
+        expectedCommit,
+        checkoutInspector: () => ({
+          ready: true,
+          commit_sha: expectedCommit,
+        }),
+      }),
+    /live_transition_checkout_identity_invalid/,
+  );
+});
+
+test("production transition authority rejects a supplied release SHA that is not measured at HEAD", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-release-sha-measurement-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  const profilePath = path.join(temp, "runtime-profile.json");
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  fs.writeFileSync(profilePath, `${JSON.stringify(profile, null, 2)}\n`);
+  let leaseAcquisitions = 0;
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceiptWithoutTestAuthority({
+        profile,
+        profilePath,
+        repoRoot: ROOT,
+        expectedCommit: "0".repeat(40),
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        transitionLeaseAcquirer() {
+          leaseAcquisitions += 1;
+          throw new Error("must_not_acquire");
+        },
+      }),
+    /live_transition_release_authority_invalid/,
+  );
+  assert.equal(leaseAcquisitions, 0);
+});
+
+test("activation receipt writing remeasures authority after receipt construction", (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-activation-write-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  const expectedCommit = "d".repeat(40);
+  let currentAuthority = independentlyMeasuredTransitionAuthorityContext({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+  });
+  let receiptWrites = 0;
+  const transition = inMemoryTransitionLease();
+
+  assert.throws(
+    () =>
+      issueLiveActivationReceipt({
+        profile,
+        repoRoot: ROOT,
+        expectedCommit,
+        operatorId: "pulse-autonomous-release",
+        reason: "governed cutover",
+        youtubeOAuthClientSha256: "6".repeat(64),
+        runtimeTransitionLeaseFactory: transition.factory,
+        transitionAuthorityContextProvider: () => currentAuthority,
+        sourceDatabaseInspector: () => ({ ready: true }),
+        receiptExists: () => false,
+        activationReceiptBuilder() {
+          currentAuthority = "e".repeat(64);
+          return { receipt_sha256: "f".repeat(64) };
+        },
+        receiptWriter() {
+          receiptWrites += 1;
+        },
+      }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(receiptWrites, 0);
+});
+
+test("supervision remeasures authority after listener inspection and immediately before child spawn", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-supervise-spawn-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "d".repeat(40);
+  const receiptSha256 = "c".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  let currentAuthority = independentlyMeasuredTransitionAuthorityContext({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+  });
+  let spawnCalls = 0;
+  const transition = inMemoryTransitionLease();
+  const activation = {
+    valid: true,
+    receipt_sha256: receiptSha256,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+  };
+
+  await assert.rejects(
+    startLiveSupervisionGeneration({
+      repoRoot: ROOT,
+      expectedCommit,
+      profilePath: path.join(temp, "profile.json"),
+      platform: "win32",
+      runtimeTransitionLeaseFactory: transition.factory,
+      transitionAuthorityContextProvider: () => currentAuthority,
+      profileLoader: () => profile,
+      doctorBuilder: () => ({
+        checks: {
+          activation: { valid: true, receipt_sha256: receiptSha256 },
+        },
+      }),
+      supervisionPreparer: () => ({
+        activation_receipt_sha256: receiptSha256,
+        runtime_environment: {},
+      }),
+      activationInspector: () => activation,
+      startOperationInspector: () => ({
+        present: false,
+        valid: true,
+        operation_nonce: null,
+        blockers: [],
+      }),
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+      processIdentityInspector: processIdentityInspector({
+        [process.pid]: TEST_PROCESS_STARTED_AT,
+      }),
+      listenerInspector() {
+        currentAuthority = "e".repeat(64);
+        return { available: true, listeningPids: [], blockers: [] };
+      },
+      spawnImpl() {
+        spawnCalls += 1;
+        throw new Error("child_spawn_must_not_run");
+      },
+    }),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(spawnCalls, 0);
+});
+
+test("supervision remeasures authority immediately before each durable log creation", async (t) => {
+  const temp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-live-supervise-log-drift-"),
+  );
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const expectedCommit = "d".repeat(40);
+  const receiptSha256 = "c".repeat(64);
+  const profile = {
+    ...loadLiveGuardedRuntimeProfile(),
+    database_path: path.join(temp, "pulse.db"),
+    state_root: path.join(temp, "state"),
+    activation_receipt_path: path.join(temp, "state", "activation.json"),
+  };
+  fs.writeFileSync(profile.database_path, "authority identity\n");
+  let currentAuthority = independentlyMeasuredTransitionAuthorityContext({
+    profile,
+    repoRoot: ROOT,
+    expectedCommit,
+  });
+  const transition = inMemoryTransitionLease();
+  const activation = {
+    valid: true,
+    receipt_sha256: receiptSha256,
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+  };
+  const logRoot = path.join(profile.state_root, "logs");
+  const originalMkdirSync = fs.mkdirSync;
+  fs.mkdirSync = function driftAfterLogDirectory(target, options) {
+    const result = originalMkdirSync.call(fs, target, options);
+    if (path.resolve(String(target)) === path.resolve(logRoot)) {
+      currentAuthority = "e".repeat(64);
+    }
+    return result;
+  };
+
+  try {
+    await assert.rejects(
+      startLiveSupervisionGeneration({
+        repoRoot: ROOT,
+        expectedCommit,
+        profilePath: path.join(temp, "profile.json"),
+        platform: "win32",
+        runtimeTransitionLeaseFactory: transition.factory,
+        transitionAuthorityContextProvider: () => currentAuthority,
+        profileLoader: () => profile,
+        doctorBuilder: () => ({
+          checks: {
+            activation: { valid: true, receipt_sha256: receiptSha256 },
+          },
+        }),
+        supervisionPreparer: () => ({
+          activation_receipt_sha256: receiptSha256,
+          runtime_environment: {},
+        }),
+        activationInspector: () => activation,
+        startOperationInspector: () => ({
+          present: false,
+          valid: true,
+          operation_nonce: null,
+          blockers: [],
+        }),
+        workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+        processIdentityInspector: processIdentityInspector({
+          [process.pid]: TEST_PROCESS_STARTED_AT,
+        }),
+        listenerInspector: () => ({
+          available: true,
+          listeningPids: [],
+          blockers: [],
+        }),
+        spawnImpl() {
+          throw new Error("child_spawn_must_not_run");
+        },
+      }),
+      /live_runtime_transition_lease_lost/,
+    );
+  } finally {
+    fs.mkdirSync = originalMkdirSync;
+  }
+  assert.equal(fs.existsSync(path.join(logRoot, "runtime.stdout.log")), false);
+  assert.equal(fs.existsSync(path.join(logRoot, "runtime.stderr.log")), false);
+});
+
+test("supervision borrow rejects independently measured authority drift before child mutation", async (t) => {
+  const driftCases = [
+    {
+      label: "database identity",
+      mutate({ profile }) {
+        fs.renameSync(profile.database_path, `${profile.database_path}.old`);
+        fs.writeFileSync(profile.database_path, "replacement identity\n");
+      },
+    },
+    {
+      label: "profile",
+      mutate(values) {
+        values.profile = {
+          ...values.profile,
+          test_authority_context_drift: true,
+        };
+      },
+    },
+    {
+      label: "checkout",
+      mutate(values) {
+        values.repoRoot = values.otherRepoRoot;
+      },
+    },
+    {
+      label: "release commit",
+      mutate(values) {
+        values.expectedCommit = "e".repeat(40);
+      },
+    },
+  ];
+
+  for (const driftCase of driftCases) {
+    await t.test(driftCase.label, async (t) => {
+      const temp = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pulse-live-transition-context-drift-"),
+      );
+      t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+      const repoRoot = path.join(temp, "checkout-a");
+      const otherRepoRoot = path.join(temp, "checkout-b");
+      fs.mkdirSync(repoRoot);
+      fs.mkdirSync(otherRepoRoot);
+      const baseProfile = {
+        ...loadLiveGuardedRuntimeProfile(),
+        database_path: path.join(temp, "pulse.db"),
+        state_root: path.join(temp, "state"),
+        activation_receipt_path: path.join(
+          temp,
+          "state",
+          "activation.json",
+        ),
+      };
+      fs.writeFileSync(baseProfile.database_path, "original identity\n");
+      const baseCommit = "d".repeat(40);
+      const ownerAuthorityContextSha256 =
+        independentlyMeasuredTransitionAuthorityContext({
+          profile: baseProfile,
+          repoRoot,
+          expectedCommit: baseCommit,
+        });
+      const transition = inMemoryTransitionLease({
+        preheldOwner: `live-start:${START_OPERATION_NONCE}`,
+        preheldAuthorityContextSha256: ownerAuthorityContextSha256,
+      });
+      const values = {
+        profile: baseProfile,
+        repoRoot,
+        otherRepoRoot,
+        expectedCommit: baseCommit,
+      };
+      driftCase.mutate(values);
+      const receiptSha256 = "c".repeat(64);
+      const activation = {
+        valid: true,
+        receipt_sha256: receiptSha256,
+        runtime_instance_id: BOUNDED_RUNTIME_ID,
+        blockers: [],
+      };
+      let spawnCalls = 0;
+
+      await assert.rejects(
+        startLiveSupervisionGeneration({
+          repoRoot: values.repoRoot,
+          expectedCommit: values.expectedCommit,
+          profilePath: path.join(temp, "profile.json"),
+          platform: "win32",
+          runtimeTransitionLeaseFactory: transition.factory,
+          profileLoader: () => values.profile,
+          doctorBuilder: () => ({
+            checks: {
+              activation: { valid: true, receipt_sha256: receiptSha256 },
+            },
+          }),
+          supervisionPreparer: () => ({
+            activation_receipt_sha256: receiptSha256,
+            runtime_environment: {},
+          }),
+          activationInspector: () => activation,
+          startOperationInspector: () => ({
+            present: true,
+            valid: true,
+            operation_nonce: START_OPERATION_NONCE,
+            blockers: [],
+          }),
+          workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
+          spawnImpl() {
+            spawnCalls += 1;
+            throw new Error("child_mutation_must_not_start");
+          },
+        }),
+        /live_runtime_transition_lease_unavailable/,
+      );
+      assert.equal(spawnCalls, 0);
+      assert.equal(
+        transition.current()?.owner_id,
+        `live-start:${START_OPERATION_NONCE}`,
+      );
+    });
+  }
+});
+
 test("an exact-plan transition lease blocks activation, enable and start before any live mutation", async () => {
   const profile = loadLiveGuardedRuntimeProfile();
   const transition = inMemoryTransitionLease({
@@ -4882,6 +5861,7 @@ test("activation receipt issue and exact no-op both hold and release the transit
       "activation-receipt.json",
     ),
   };
+  fs.writeFileSync(profile.database_path, "identity\n");
   const receipt = {
     schema_version: "fixture-live-activation-v1",
     receipt_sha256: "a".repeat(64),
@@ -4958,11 +5938,13 @@ test("activation revocation is excluded by an active exact-plan transition fence
     state_root: path.join(temp, "state"),
     activation_receipt_path: receiptPath,
   };
+  fs.writeFileSync(profile.database_path, "identity\n");
 
   assert.throws(
     () =>
       revokeLiveActivationReceipt({
         profile,
+        repoRoot: ROOT,
         expectedCommit: "e".repeat(40),
         taskDisabledConfirmed: true,
         runtimeTransitionLeaseFactory: transition.factory,

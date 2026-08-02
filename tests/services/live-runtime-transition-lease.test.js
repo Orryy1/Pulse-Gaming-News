@@ -13,10 +13,34 @@ const {
 } = require("../../lib/repositories/runtime_leases");
 const {
   LIVE_RUNTIME_TRANSITION_LEASE_NAME,
-  acquireLiveRuntimeTransitionLease,
-  borrowLiveRuntimeTransitionLease,
+  acquireLiveRuntimeTransitionLease:
+    acquireLiveRuntimeTransitionLeaseWithoutAuthorityDefault,
+  borrowLiveRuntimeTransitionLease:
+    borrowLiveRuntimeTransitionLeaseWithoutAuthorityDefault,
   transitionOwnerId,
+  validateLiveRuntimeTransitionLeaseRow,
 } = require("../../lib/stabilisation/live-runtime-transition-lease");
+
+const AUTHORITY_CONTEXT_SHA256 =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const DIFFERENT_AUTHORITY_CONTEXT_SHA256 =
+  "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+function acquireLiveRuntimeTransitionLease(options = {}) {
+  return acquireLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+    authorityContextSha256: AUTHORITY_CONTEXT_SHA256,
+    authorityContextProvider: () => AUTHORITY_CONTEXT_SHA256,
+    ...options,
+  });
+}
+
+function borrowLiveRuntimeTransitionLease(options = {}) {
+  return borrowLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+    authorityContextSha256: AUTHORITY_CONTEXT_SHA256,
+    authorityContextProvider: () => AUTHORITY_CONTEXT_SHA256,
+    ...options,
+  });
+}
 
 function fixture(t) {
   const root = fs.mkdtempSync(
@@ -67,6 +91,483 @@ function factoryWithLeaseOverrides(values, overrides) {
     close() {},
   });
 }
+
+function driftAuthorityContext(values) {
+  const row = values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME);
+  const metadata = JSON.parse(row.metadata);
+  metadata.authority_context_sha256 = DIFFERENT_AUTHORITY_CONTEXT_SHA256;
+  values.db
+    .prepare("UPDATE runtime_leases SET metadata = ? WHERE name = ?")
+    .run(JSON.stringify(metadata), LIVE_RUNTIME_TRANSITION_LEASE_NAME);
+}
+
+test("non-live governed maintenance leases retain their legacy authority contract", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+    databasePath: values.databasePath,
+    action: "governed_source_wal_clean_close",
+    binding: "fixture-maintenance",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  const row = values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME);
+
+  assert.equal(
+    Object.hasOwn(JSON.parse(row.metadata), "authority_context_sha256"),
+    false,
+  );
+  assert.ok(
+    validateLiveRuntimeTransitionLeaseRow(row, {
+      ownerId: owner.owner_id,
+      now: new Date(),
+    }),
+  );
+  const borrower = borrowLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+    databasePath: values.databasePath,
+    expectedOwnerId: owner.owner_id,
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  assert.equal(owner.assertCurrentAuthority(), null);
+  assert.equal(borrower.assertCurrentAuthority(), null);
+  assert.equal(borrower.release(), true);
+  assert.equal(owner.renew(), true);
+  assert.equal(owner.release(), true);
+});
+
+test("acquire stores the exact canonical authority context fingerprint", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:authority-context",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+
+  assert.equal(
+    JSON.parse(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).metadata)
+      .authority_context_sha256,
+    AUTHORITY_CONTEXT_SHA256,
+  );
+  owner.release();
+});
+
+test("acquire rejects a missing or non-canonical authority context fingerprint", (t) => {
+  const values = fixture(t);
+  const invalidFingerprints = [
+    undefined,
+    "A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  ];
+
+  for (const authorityContextSha256 of invalidFingerprints) {
+    assert.throws(
+      () =>
+        acquireLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+          databasePath: values.databasePath,
+          ownerId: "live-start:invalid-authority-context",
+          action: "live-start",
+          authorityContextSha256,
+          runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+        }),
+      /live_runtime_transition_authority_context_invalid/,
+    );
+  }
+  assert.equal(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
+});
+
+test("borrow rejects the exact owner token under a different authority context", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:authority-context-borrow",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+
+  assert.throws(
+    () =>
+      borrowLiveRuntimeTransitionLease({
+        databasePath: values.databasePath,
+        expectedOwnerId: owner.owner_id,
+        authorityContextSha256: DIFFERENT_AUTHORITY_CONTEXT_SHA256,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.deepEqual(
+    JSON.parse(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).metadata)
+      .participants.map((item) => item.role),
+    ["owner"],
+  );
+  owner.release();
+});
+
+test("borrow rejects a missing or non-canonical authority context fingerprint", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:invalid-borrow-authority-context",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  const invalidFingerprints = [
+    undefined,
+    "A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  ];
+
+  for (const authorityContextSha256 of invalidFingerprints) {
+    assert.throws(
+      () =>
+        borrowLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+          databasePath: values.databasePath,
+          expectedOwnerId: owner.owner_id,
+          authorityContextSha256,
+          runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+        }),
+      /live_runtime_transition_authority_context_invalid/,
+    );
+  }
+  owner.release();
+});
+
+test("live owners and borrowers require an executable fresh authority provider", (t) => {
+  const values = fixture(t);
+  assert.throws(
+    () =>
+      acquireLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+        databasePath: values.databasePath,
+        ownerId: "live-start:fresh-provider-required",
+        action: "live-start",
+        authorityContextSha256: AUTHORITY_CONTEXT_SHA256,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.equal(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
+
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:fresh-borrow-provider-required",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  assert.throws(
+    () =>
+      borrowLiveRuntimeTransitionLeaseWithoutAuthorityDefault({
+        databasePath: values.databasePath,
+        expectedOwnerId: owner.owner_id,
+        authorityContextSha256: AUTHORITY_CONTEXT_SHA256,
+        runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.deepEqual(
+    JSON.parse(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).metadata)
+      .participants.map((item) => item.role),
+    ["owner"],
+  );
+  owner.release();
+});
+
+test("fresh authority provider exceptions and malformed results fail closed before admission", (t) => {
+  const values = fixture(t);
+  const providers = [
+    () => {
+      throw new Error("secret provider failure");
+    },
+    () => "A".repeat(64),
+  ];
+  for (const [index, authorityContextProvider] of providers.entries()) {
+    assert.throws(
+      () =>
+        acquireLiveRuntimeTransitionLease({
+          databasePath: values.databasePath,
+          ownerId: `live-start:provider-failure-${index}`,
+          action: "live-start",
+          authorityContextProvider,
+          runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+        }),
+      /live_runtime_transition_lease_unavailable/,
+    );
+    assert.equal(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
+  }
+});
+
+test("owner renew fails closed after authority context drift", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:owner-renew-context-drift",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  driftAuthorityContext(values);
+
+  assert.throws(
+    () => owner.renew(),
+    /live_runtime_transition_lease_lost/,
+  );
+});
+
+test("owner release fails closed after authority context drift", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:owner-release-context-drift",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  driftAuthorityContext(values);
+
+  assert.throws(() => owner.release(), /live_runtime_transition_lease_lost/);
+  assert.notEqual(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
+});
+
+test("borrower renew fails closed after authority context drift", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:borrower-renew-context-drift",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  const borrower = borrowLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    expectedOwnerId: owner.owner_id,
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  driftAuthorityContext(values);
+
+  assert.throws(
+    () => borrower.renew(),
+    /live_runtime_transition_lease_lost/,
+  );
+});
+
+test("borrower release fails closed after authority context drift", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:borrower-release-context-drift",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  const borrower = borrowLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    expectedOwnerId: owner.owner_id,
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  driftAuthorityContext(values);
+
+  assert.throws(() => borrower.release(), /live_runtime_transition_lease_lost/);
+  assert.notEqual(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
+});
+
+test("acquire remeasures authority after inspection and before durable admission", (t) => {
+  const values = fixture(t);
+  let currentAuthority = AUTHORITY_CONTEXT_SHA256;
+  let acquireCalls = 0;
+  const runtimeTransitionLeaseFactory = factoryWithLeaseOverrides(values, {
+    get(name) {
+      const row = values.leases.get(name);
+      currentAuthority = DIFFERENT_AUTHORITY_CONTEXT_SHA256;
+      return row;
+    },
+    acquire(options) {
+      acquireCalls += 1;
+      return values.leases.acquire(options);
+    },
+  });
+
+  assert.throws(
+    () =>
+      acquireLiveRuntimeTransitionLease({
+        databasePath: values.databasePath,
+        ownerId: "live-start:authority-drift-before-acquire",
+        action: "live-start",
+        authorityContextProvider: () => currentAuthority,
+        runtimeTransitionLeaseFactory,
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.equal(acquireCalls, 0);
+  assert.equal(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
+});
+
+test("borrow remeasures authority after inspection and before participant admission", (t) => {
+  const values = fixture(t);
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:authority-drift-before-borrow",
+    action: "live-start",
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  let currentAuthority = AUTHORITY_CONTEXT_SHA256;
+  let metadataCasCalls = 0;
+  const runtimeTransitionLeaseFactory = factoryWithLeaseOverrides(values, {
+    get(name) {
+      const row = values.leases.get(name);
+      currentAuthority = DIFFERENT_AUTHORITY_CONTEXT_SHA256;
+      return row;
+    },
+    compareAndSwapMetadata(options) {
+      metadataCasCalls += 1;
+      return values.leases.compareAndSwapMetadata(options);
+    },
+  });
+
+  assert.throws(
+    () =>
+      borrowLiveRuntimeTransitionLease({
+        databasePath: values.databasePath,
+        expectedOwnerId: owner.owner_id,
+        authorityContextProvider: () => currentAuthority,
+        runtimeTransitionLeaseFactory,
+      }),
+    /live_runtime_transition_lease_unavailable/,
+  );
+  assert.equal(metadataCasCalls, 0);
+  assert.deepEqual(
+    JSON.parse(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).metadata)
+      .participants.map((item) => item.role),
+    ["owner"],
+  );
+  owner.release();
+});
+
+for (const mutation of ["renew", "sealForHandoff", "release"]) {
+  test(`owner ${mutation} remeasures live authority before durable mutation`, (t) => {
+    const values = fixture(t);
+    let currentAuthority = AUTHORITY_CONTEXT_SHA256;
+    let metadataCasCalls = 0;
+    let exactDeleteCalls = 0;
+    const runtimeTransitionLeaseFactory = factoryWithLeaseOverrides(values, {
+      compareAndSwapMetadata(options) {
+        metadataCasCalls += 1;
+        return values.leases.compareAndSwapMetadata(options);
+      },
+      releaseExactMetadata(options) {
+        exactDeleteCalls += 1;
+        return values.leases.releaseExactMetadata(options);
+      },
+    });
+    const owner = acquireLiveRuntimeTransitionLease({
+      databasePath: values.databasePath,
+      ownerId: `live-start:owner-live-drift-${mutation}`,
+      action: "live-start",
+      authorityContextProvider: () => currentAuthority,
+      runtimeTransitionLeaseFactory,
+    });
+    const casCallsAfterAcquire = metadataCasCalls;
+    currentAuthority = DIFFERENT_AUTHORITY_CONTEXT_SHA256;
+
+    assert.throws(
+      () =>
+        mutation === "sealForHandoff"
+          ? owner.sealForHandoff({
+              childParticipantIdentity: participantIdentity(
+                `owner-live-drift-child-${mutation}`,
+                4801,
+                "2026-08-01T00:00:00.100Z",
+              ),
+            })
+          : owner[mutation](),
+      /live_runtime_transition_lease_lost/,
+    );
+    assert.equal(metadataCasCalls, casCallsAfterAcquire);
+    assert.equal(exactDeleteCalls, 0);
+    assert.notEqual(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
+  });
+}
+
+for (const mutation of ["renew", "sealForHandoff", "release"]) {
+  test(`borrower ${mutation} remeasures live authority before durable mutation`, (t) => {
+    const values = fixture(t);
+    const owner = acquireLiveRuntimeTransitionLease({
+      databasePath: values.databasePath,
+      ownerId: `live-start:borrower-live-drift-${mutation}`,
+      action: "live-start",
+      runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+    });
+    let currentAuthority = AUTHORITY_CONTEXT_SHA256;
+    let metadataCasCalls = 0;
+    const runtimeTransitionLeaseFactory = factoryWithLeaseOverrides(values, {
+      compareAndSwapMetadata(options) {
+        metadataCasCalls += 1;
+        return values.leases.compareAndSwapMetadata(options);
+      },
+    });
+    const borrower = borrowLiveRuntimeTransitionLease({
+      databasePath: values.databasePath,
+      expectedOwnerId: owner.owner_id,
+      authorityContextProvider: () => currentAuthority,
+      runtimeTransitionLeaseFactory,
+    });
+    const casCallsAfterBorrow = metadataCasCalls;
+    currentAuthority = DIFFERENT_AUTHORITY_CONTEXT_SHA256;
+
+    assert.throws(
+      () =>
+        mutation === "sealForHandoff"
+          ? borrower.sealForHandoff({
+              childParticipantIdentity: participantIdentity(
+                `borrower-live-drift-child-${mutation}`,
+                4802,
+                "2026-08-01T00:00:00.200Z",
+              ),
+            })
+          : borrower[mutation](),
+      /live_runtime_transition_lease_lost/,
+    );
+    assert.equal(metadataCasCalls, casCallsAfterBorrow);
+  });
+}
+
+test("read-only authority assertion fails closed on provider drift without mutation", (t) => {
+  const values = fixture(t);
+  let currentAuthority = AUTHORITY_CONTEXT_SHA256;
+  let metadataCasCalls = 0;
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:read-only-authority-assertion",
+    action: "live-start",
+    authorityContextProvider: () => currentAuthority,
+    runtimeTransitionLeaseFactory: factoryWithLeaseOverrides(values, {
+      compareAndSwapMetadata(options) {
+        metadataCasCalls += 1;
+        return values.leases.compareAndSwapMetadata(options);
+      },
+    }),
+  });
+  currentAuthority = DIFFERENT_AUTHORITY_CONTEXT_SHA256;
+
+  assert.throws(
+    () => owner.assertCurrentAuthority(),
+    /live_runtime_transition_lease_lost/,
+  );
+  assert.equal(metadataCasCalls, 0);
+});
+
+test("lease row validation rejects a durable row outside the freshly expected authority", (t) => {
+  const values = fixture(t);
+  const now = new Date();
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:row-fresh-authority",
+    action: "live-start",
+    now,
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+  const row = values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME);
+
+  assert.equal(
+    validateLiveRuntimeTransitionLeaseRow(row, {
+      ownerId: owner.owner_id,
+      now: new Date(now.getTime() + 1),
+      authorityContextSha256: DIFFERENT_AUTHORITY_CONTEXT_SHA256,
+    }),
+    null,
+  );
+  owner.release();
+});
 
 test("live transition owners are unique and mutually exclusive", (t) => {
   const values = fixture(t);
@@ -310,6 +811,7 @@ test("an active legacy-v2 transition is borrowed and upgraded to explicit OPEN a
     replaceSameOwner: false,
     metadata: {
       transition_owner_schema_version: "pulse-live-runtime-transition-owner-v2",
+      authority_context_sha256: AUTHORITY_CONTEXT_SHA256,
       context: {},
       participants: [
         {
@@ -361,6 +863,7 @@ test("an expired legacy-v2 transition remains recoverable when every participant
     replaceSameOwner: false,
     metadata: {
       transition_owner_schema_version: "pulse-live-runtime-transition-owner-v2",
+      authority_context_sha256: AUTHORITY_CONTEXT_SHA256,
       context: {},
       participants: [
         {
@@ -734,6 +1237,46 @@ test("a parent prunes a proven-dead borrower before exact deletion", (t) => {
   assert.ok(metadataCasCalls > callsAfterRegistration);
   assert.equal(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME), null);
   assert.throws(() => borrower.renew(), /live_runtime_transition_lease_lost/);
+});
+
+test("a parent remeasures authority after borrower liveness inspection and before pruning", (t) => {
+  const values = fixture(t);
+  let currentAuthority = AUTHORITY_CONTEXT_SHA256;
+  let metadataCasCalls = 0;
+  const owner = acquireLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    ownerId: "live-start:dead-borrower-authority-drift",
+    action: "live-start",
+    authorityContextProvider: () => currentAuthority,
+    ownerProcessInspector() {
+      currentAuthority = DIFFERENT_AUTHORITY_CONTEXT_SHA256;
+      return false;
+    },
+    runtimeTransitionLeaseFactory: factoryWithLeaseOverrides(values, {
+      compareAndSwapMetadata(options) {
+        metadataCasCalls += 1;
+        return values.leases.compareAndSwapMetadata(options);
+      },
+    }),
+  });
+  borrowLiveRuntimeTransitionLease({
+    databasePath: values.databasePath,
+    expectedOwnerId: owner.owner_id,
+    participantIdentity: participantIdentity(
+      "dead-borrower-authority-drift",
+      4852,
+      "2026-08-01T00:00:00.200Z",
+    ),
+    runtimeTransitionLeaseFactory: values.runtimeTransitionLeaseFactory,
+  });
+
+  assert.throws(() => owner.release(), /live_runtime_transition_lease_lost/);
+  assert.equal(metadataCasCalls, 0);
+  assert.deepEqual(
+    JSON.parse(values.leases.get(LIVE_RUNTIME_TRANSITION_LEASE_NAME).metadata)
+      .participants.map((item) => item.role),
+    ["owner", "borrower"],
+  );
 });
 
 test("a borrower registration cannot resurrect a row released during its CAS", (t) => {

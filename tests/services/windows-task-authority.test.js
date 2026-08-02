@@ -25,11 +25,13 @@ function commandSha256(value) {
 const SUPERVISOR_COMMAND =
   '"D:\\pulse-tools\\node-v22.17.1\\node.exe" tools\\windows-live-guarded-runtime.js supervise';
 const CHILD_COMMAND = '"D:\\pulse-tools\\node-v22.17.1\\node.exe" server.js';
+const INSTANCE_GUID = "11111111-1111-4111-8111-111111111111";
+const SECOND_INSTANCE_GUID = "22222222-2222-4222-8222-222222222222";
 
 function authorityExpected() {
   return {
     taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
-    taskInstanceGuid: "guid-1",
+    taskInstanceGuid: INSTANCE_GUID,
     supervisorPid: 4100,
     supervisorCreationTimeUtc: "2026-08-02T10:00:00.000Z",
     supervisorExecutablePath: "D:\\pulse-tools\\node-v22.17.1\\node.exe",
@@ -71,7 +73,9 @@ function boundedPowerShell({ instances, jobPids = [4100, 4200] } = {}) {
     async runPowerShell({ script }) {
       if (script.includes("Schedule.Service")) {
         return (
-          instances ?? [{ InstanceGuid: "guid-1", EnginePID: 4100, State: 4 }]
+          instances ?? [
+            { InstanceGuid: INSTANCE_GUID, EnginePID: 4100, State: 4 },
+          ]
         );
       }
       if (script.includes("Win32_Process")) {
@@ -91,12 +95,12 @@ test("binds the exact task instance to its EnginePID", async () => {
   const result = await inspectExactWindowsTaskInstances({
     taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
     runPowerShell: fakePowerShell([
-      { InstanceGuid: "guid-1", EnginePID: 4100, State: 4 },
+      { InstanceGuid: INSTANCE_GUID, EnginePID: 4100, State: 4 },
     ]),
   });
 
   assert.deepEqual(result.instances, [
-    { instance_guid: "guid-1", engine_pid: 4100, state: 4 },
+    { instance_guid: INSTANCE_GUID, engine_pid: 4100, state: 4 },
   ]);
 });
 
@@ -130,7 +134,7 @@ test("queries only the exact task path and rejects an incomplete instance", asyn
     taskName: "PulseGaming-LiveGuarded-YouTube-Runtime",
     runPowerShell: async ({ script }) => {
       scriptSeen = script;
-      return [{ InstanceGuid: "guid-1", EnginePID: null, State: 4 }];
+      return [{ InstanceGuid: INSTANCE_GUID, EnginePID: null, State: 4 }];
     },
   });
 
@@ -224,8 +228,8 @@ test("rejects missing or null Job membership data without rejecting an explicit 
 
 test("compares canonical authority observations without key-order drift", () => {
   const stable = compareStableAuthorityObservations(
-    { task: { engine_pid: 4100, instance_guid: "guid-1" }, ok: true },
-    { ok: true, task: { instance_guid: "guid-1", engine_pid: 4100 } },
+    { task: { engine_pid: 4100, instance_guid: INSTANCE_GUID }, ok: true },
+    { ok: true, task: { instance_guid: INSTANCE_GUID, engine_pid: 4100 } },
   );
   const changed = compareStableAuthorityObservations(
     { task: { engine_pid: 4100 } },
@@ -251,7 +255,7 @@ test("observes only the exact task, supervisor and child authority chain", async
   assert.deepEqual(result.blockers, []);
   assert.deepEqual(powershell.requestedPids, [4100, 4200]);
   assert.deepEqual(result.task_instance, {
-    instance_guid: "guid-1",
+    instance_guid: INSTANCE_GUID,
     engine_pid: 4100,
     state: 4,
   });
@@ -282,7 +286,7 @@ test("bounded observation rejects a legacy authority before any probe", async ()
             ok: true,
             task_name: taskName,
             instances: [
-              { instance_guid: "guid-1", engine_pid: 4100, state: 4 },
+              { instance_guid: INSTANCE_GUID, engine_pid: 4100, state: 4 },
             ],
             blockers: [],
           };
@@ -359,12 +363,57 @@ test("bounded observation requires every targeted identity binding before probin
   }
 });
 
+test("bounded observation rejects a malformed non-empty InstanceGuid before probing", async () => {
+  let probeCalls = 0;
+  const result = await observeBoundedWindowsAuthority({
+    expected: {
+      ...authorityExpected(),
+      taskInstanceGuid: "guid-1",
+    },
+    runPowerShell: async () => {
+      probeCalls += 1;
+      throw new Error("must not probe");
+    },
+  });
+
+  assert.equal(probeCalls, 0);
+  assert.deepEqual(result.blockers, [
+    "windows_authority_expected_identity_invalid",
+  ]);
+});
+
+test("bounded observation rejects parseable noncanonical creation timestamps before probing", async () => {
+  for (const [field, value] of [
+    ["supervisorCreationTimeUtc", "2026-08-02T11:00:00.000+01:00"],
+    ["childCreationTimeUtc", "2026-08-02T10:00:01Z"],
+  ]) {
+    let probeCalls = 0;
+    const result = await observeBoundedWindowsAuthority({
+      expected: {
+        ...authorityExpected(),
+        [field]: value,
+      },
+      runPowerShell: async () => {
+        probeCalls += 1;
+        throw new Error("must not probe");
+      },
+    });
+
+    assert.equal(probeCalls, 0, field);
+    assert.deepEqual(
+      result.blockers,
+      ["windows_authority_expected_identity_invalid"],
+      field,
+    );
+  }
+});
+
 test("fails closed for zero or multiple exact task instances", async () => {
   for (const instances of [
     [],
     [
-      { InstanceGuid: "guid-1", EnginePID: 4100, State: 4 },
-      { InstanceGuid: "guid-2", EnginePID: 4101, State: 4 },
+      { InstanceGuid: INSTANCE_GUID, EnginePID: 4100, State: 4 },
+      { InstanceGuid: SECOND_INSTANCE_GUID, EnginePID: 4101, State: 4 },
     ],
   ]) {
     const powershell = boundedPowerShell({ instances });
@@ -381,7 +430,7 @@ test("fails closed for zero or multiple exact task instances", async () => {
 
 test("fails closed when the task engine, process chain or Job membership drifts", async () => {
   const engineDrift = boundedPowerShell({
-    instances: [{ InstanceGuid: "guid-1", EnginePID: 9998, State: 4 }],
+    instances: [{ InstanceGuid: INSTANCE_GUID, EnginePID: 9998, State: 4 }],
   });
   const wrongEngine = await observeBoundedWindowsAuthority({
     expected: authorityExpected(),

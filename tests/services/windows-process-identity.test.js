@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { execFileSync, spawn } = require("node:child_process");
 const crypto = require("node:crypto");
+const { once } = require("node:events");
 const test = require("node:test");
 
 const {
@@ -23,6 +25,144 @@ const fakeProcessProbe = async ({ script }) => {
 function commandSha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
+
+const WINDOWS_HELPER_SOURCE =
+  "process.send({argv:process.argv.slice(1)});setInterval(()=>{},1000)";
+
+function runRealWindowsPowerShell({ script }) {
+  return String(
+    execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+      ],
+      {
+        encoding: "utf8",
+        timeout: 5000,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    ),
+  ).trim();
+}
+
+async function stopHelper(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, "exit", { signal: AbortSignal.timeout(3000) });
+  child.kill();
+  await exited;
+}
+
+test(
+  "real Windows process probe causally hashes equivalent raw quoting (regression-only)",
+  {
+    skip:
+      process.platform === "win32"
+        ? false
+        : "requires Windows CIM and CommandLineToArgvW",
+    timeout: 45000,
+  },
+  async () => {
+    const helpers = [];
+    const cases = [
+      {
+        rawArguments: ["-e", `"${WINDOWS_HELPER_SOURCE}"`, "--", '"two words"'],
+        argument: "two words",
+      },
+      {
+        rawArguments: [
+          '"-e"',
+          `"${WINDOWS_HELPER_SOURCE}"`,
+          '"--"',
+          '"two words"',
+        ],
+        argument: "two words",
+      },
+      {
+        rawArguments: [
+          "-e",
+          `"${WINDOWS_HELPER_SOURCE}"`,
+          "--",
+          '"other words"',
+        ],
+        argument: "other words",
+      },
+    ];
+
+    try {
+      for (const testCase of cases) {
+        const child = spawn(process.execPath, testCase.rawArguments, {
+          stdio: ["ignore", "ignore", "ignore", "ipc"],
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+        });
+        helpers.push(child);
+        assert.ok(Number.isInteger(child.pid) && child.pid > 0);
+        const [ready] = await once(child, "message", {
+          signal: AbortSignal.timeout(5000),
+        });
+        assert.deepEqual(ready, {
+          argv: [testCase.argument],
+        });
+      }
+
+      const results = [];
+      for (const child of helpers) {
+        results.push(
+          await inspectWindowsAuthorityProcess({
+            pid: child.pid,
+            runPowerShell: runRealWindowsPowerShell,
+          }),
+        );
+      }
+
+      for (const result of results) {
+        assert.equal(result.ok, true);
+        assert.deepEqual(result.blockers, []);
+        assert.equal(
+          new Date(result.creation_time_utc).toISOString(),
+          result.creation_time_utc,
+        );
+        assert.match(
+          result.creation_time_utc,
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+        );
+        assert.deepEqual(Object.keys(result).sort(), [
+          "blockers",
+          "command_sha256",
+          "creation_time_utc",
+          "executable_path",
+          "ok",
+          "parent_pid",
+          "pid",
+        ]);
+        assert.equal(
+          JSON.stringify(result).includes(WINDOWS_HELPER_SOURCE),
+          false,
+        );
+        assert.equal("command_line" in result, false);
+        assert.equal("argv" in result, false);
+      }
+
+      assert.notDeepEqual(cases[0].rawArguments, cases[1].rawArguments);
+      assert.equal(results[0].command_sha256, results[1].command_sha256);
+      assert.notEqual(results[2].command_sha256, results[0].command_sha256);
+    } finally {
+      const cleanup = await Promise.allSettled(
+        helpers.map((helper) => stopHelper(helper)),
+      );
+      const cleanupFailure = cleanup.find(
+        (result) => result.status === "rejected",
+      );
+      if (cleanupFailure) throw cleanupFailure.reason;
+    }
+  },
+);
 
 test("process command authority uses canonical parsed argv across equivalent Windows quoting", async () => {
   const expectedCommandSha256 = commandSha256(

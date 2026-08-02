@@ -5,10 +5,14 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
+const Database = require("better-sqlite3");
 
+const { runMigrations } = require("../../lib/migrate");
+const { bindRepositories } = require("../../lib/repositories");
 const {
   buildAutonomousScheduleSummary,
   buildMultiLaneRuntimeObservability,
+  buildRunningClaimSetSha256,
 } = require("../../lib/services/multi-lane-runtime-observability");
 
 test("runtime observability reports active isolated pool IDs and instance counts without worker identities", () => {
@@ -77,11 +81,33 @@ test("runtime observability reports active isolated pool IDs and instance counts
       {
         pool_id: "editorial_evidence_capture",
         active_instances: 2,
+        heartbeat_ms: 30000,
+        kinds: ["governed_editorial_evidence_discovery"],
       },
-      { pool_id: "editorial_preparation", active_instances: 1 },
-      { pool_id: "breaking_production", active_instances: 2 },
-      { pool_id: "evergreen_production", active_instances: 1 },
-      { pool_id: "longform_production", active_instances: 1 },
+      {
+        pool_id: "editorial_preparation",
+        active_instances: 1,
+        heartbeat_ms: 30000,
+        kinds: ["prepare_editorial_inventory", "reconcile_editorial_inventory"],
+      },
+      {
+        pool_id: "breaking_production",
+        active_instances: 2,
+        heartbeat_ms: 30000,
+        kinds: ["produce_breaking_short"],
+      },
+      {
+        pool_id: "evergreen_production",
+        active_instances: 1,
+        heartbeat_ms: 30000,
+        kinds: ["produce_evergreen_short"],
+      },
+      {
+        pool_id: "longform_production",
+        active_instances: 1,
+        heartbeat_ms: 30000,
+        kinds: ["produce_weekly_longform"],
+      },
     ],
     running_worker_set_sha256: crypto
       .createHash("sha256")
@@ -99,8 +125,136 @@ test("runtime observability reports active isolated pool IDs and instance counts
         ),
       )
       .digest("hex"),
+    active_claim_count: 0,
+    running_claim_set_sha256: crypto
+      .createHash("sha256")
+      .update("[]")
+      .digest("hex"),
   });
   assert.doesNotMatch(JSON.stringify(result), /hostname|1234|must-not-leak/);
+});
+
+test("runtime observability binds repository-returned active jobs to a secret-safe current claim-set digest", (t) => {
+  const db = new Database(":memory:");
+  t.after(() => db.close());
+  runMigrations(db, {
+    env: { NODE_ENV: "test", PULSE_OPERATING_MODE: "LOCAL_PROOF" },
+    log() {},
+  });
+  const repos = bindRepositories(db);
+  const workerId =
+    "server-ri-11111111-2222-4333-8444-555555555555-critical_publication-1";
+  repos.workers.register({ id: workerId, status: "idle" });
+  repos.jobs.enqueue({ kind: "publish", payload: { admitted: true } });
+  const claimed = repos.jobs.claim(workerId, {
+    kinds: ["publish"],
+    leaseMs: 90_000,
+  });
+  assert.ok(claimed);
+  // jobs.claim() exposes SQLite's run row id as an opaque decimal string.
+  assert.equal(typeof claimed.claim_token, "string");
+  const claimToken = claimed.claim_token;
+  const result = buildMultiLaneRuntimeObservability({
+    bootstrapState: {
+      runners: [
+        {
+          workerId,
+          poolId: "critical_publication",
+          kinds: ["publish"],
+          heartbeatMs: 20_000,
+          running: true,
+          current: claimed,
+        },
+      ],
+    },
+    env: {},
+  });
+
+  assert.equal(result.isolated_worker_pools.active_claim_count, 1);
+  assert.match(
+    result.isolated_worker_pools.running_claim_set_sha256,
+    /^[a-f0-9]{64}$/,
+  );
+  assert.deepEqual(result.isolated_worker_pools.pools, [
+    {
+      pool_id: "critical_publication",
+      active_instances: 1,
+      heartbeat_ms: 20_000,
+      kinds: ["publish"],
+    },
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /claim_token|"job_id"|"run_id"|"worker_id"/,
+  );
+
+  const changed = buildMultiLaneRuntimeObservability({
+    bootstrapState: {
+      runners: [
+        {
+          workerId: "server-ri-11111111-2222-4333-8444-555555555555-critical_publication-1",
+          poolId: "critical_publication",
+          kinds: ["publish"],
+          heartbeatMs: 20_000,
+          running: true,
+          current: {
+            id: claimed.id,
+            kind: "publish",
+            attempt_count: claimed.attempt_count,
+            claim_token: String(Number(claimToken) + 1),
+          },
+        },
+      ],
+    },
+    env: {},
+  });
+  assert.notEqual(
+    changed.isolated_worker_pools.running_claim_set_sha256,
+    result.isolated_worker_pools.running_claim_set_sha256,
+  );
+
+  const changedKind = buildMultiLaneRuntimeObservability({
+    bootstrapState: {
+      runners: [
+        {
+          workerId: "server-ri-11111111-2222-4333-8444-555555555555-critical_publication-1",
+          poolId: "critical_publication",
+          kinds: ["publish", "publish_recovery"],
+          heartbeatMs: 20_000,
+          running: true,
+          current: {
+            id: claimed.id,
+            kind: "publish_recovery",
+            attempt_count: claimed.attempt_count,
+            claim_token: claimToken,
+          },
+        },
+      ],
+    },
+    env: {},
+  });
+  assert.notEqual(
+    changedKind.isolated_worker_pools.running_claim_set_sha256,
+    result.isolated_worker_pools.running_claim_set_sha256,
+  );
+});
+
+test("claim-set digest rejects non-canonical or unsafe decimal run IDs", () => {
+  for (const runId of ["0", "01", "+1", "1e2", " 1", "9007199254740992"]) {
+    assert.equal(
+      buildRunningClaimSetSha256([
+        {
+          worker_id: "server-ri-11111111-2222-4333-8444-555555555555-critical_publication-1",
+          job_id: 1,
+          kind: "publish",
+          run_id: runId,
+          attempt: 1,
+        },
+      ]),
+      null,
+      runId,
+    );
+  }
 });
 
 test("runtime observability reports the breaking watcher default and live scheduler state", () => {

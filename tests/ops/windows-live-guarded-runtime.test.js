@@ -275,6 +275,13 @@ const BOUNDED_WORKER_TOPOLOGY = [
   },
 ];
 
+function boundedExpectedRuntime() {
+  return {
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    worker_topology: BOUNDED_WORKER_TOPOLOGY,
+  };
+}
+
 function boundedRunningWorkerSetSha256() {
   return crypto
     .createHash("sha256")
@@ -291,8 +298,20 @@ function boundedMultiLaneHealth() {
       active_runner_count: 1,
       active_pool_count: 1,
       compatibility_runner_count: 0,
-      pools: [{ pool_id: "critical_publication", active_instances: 1 }],
+      pools: [
+        {
+          pool_id: "critical_publication",
+          active_instances: 1,
+          heartbeat_ms: 30000,
+          kinds: ["publish"],
+        },
+      ],
       running_worker_set_sha256: boundedRunningWorkerSetSha256(),
+      active_claim_count: 0,
+      running_claim_set_sha256: crypto
+        .createHash("sha256")
+        .update("[]")
+        .digest("hex"),
     },
   };
 }
@@ -597,6 +616,56 @@ test("ACTIVE_BOUND supplies the exact runtime generation and worker topology to 
       BOUNDED_WORKER_TOPOLOGY,
     );
   }
+});
+
+test("ACTIVE_BOUND binds database claims to the digest derived from live runner health", async () => {
+  const fixture = activeBoundedAuthorityFixture();
+  const healthClaimSha256 = "7".repeat(64);
+  fixture.probes.healthRequester = async () => {
+    const health = {
+      status: "ok",
+      schedulerActive: true,
+      build: { commit_sha: BOUNDED_RELEASE_SHA },
+      deployment: { mode: "local", primary: true },
+      runtime: {
+        operating_mode: "LIVE_GUARDED",
+        auto_publish: true,
+        legacy_auto_publish_armed: true,
+        use_sqlite: true,
+        use_job_queue_explicit: "true",
+      },
+      multiLaneRuntime: boundedMultiLaneHealth(),
+      blockers: [],
+    };
+    health.multiLaneRuntime.isolated_worker_pools.active_claim_count = 1;
+    health.multiLaneRuntime.isolated_worker_pools.running_claim_set_sha256 =
+      healthClaimSha256;
+    return health;
+  };
+  fixture.probes.databaseAuthorityInspector = async ({ expected }) => ({
+    ok:
+      expected.runtime_claim_set_count === 1 &&
+      expected.runtime_claim_set_sha256 === healthClaimSha256,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
+    blockers:
+      expected.runtime_claim_set_sha256 === healthClaimSha256
+        ? []
+        : ["runtime_db_runtime_claim_set_mismatch"],
+  });
+
+  const green = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(green.state, "ACTIVE_BOUND");
+
+  fixture.probes.databaseAuthorityInspector = async ({ expected }) => ({
+    ok: expected.runtime_claim_set_sha256 === "8".repeat(64),
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
+    blockers: ["runtime_db_runtime_claim_set_mismatch"],
+  });
+  const held = await inspectBoundedWindowsAuthority(fixture);
+  assert.equal(held.state, "HOLD");
+  assert.ok(held.blockers.includes("live_database_authority_mismatch"));
 });
 
 test("a mismatched task InstanceGuid is HOLD", async () => {
@@ -2291,6 +2360,7 @@ test("scheduled-task start supplies reviewed argv authority before locking and a
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       sourceDatabaseInspector: () => ({ ready: true }),
       activationInspector: () => activation,
@@ -2506,6 +2576,76 @@ test("supervision preparation and health identity fail closed unless the receipt
     ),
     false,
   );
+  assert.equal(safeLiveHealthIdentity(liveHealth, expectedCommit), false);
+
+  for (const [name, mutate] of [
+    [
+      "default disabled",
+      (pools) => ({ ...pools, default_enabled: false }),
+    ],
+    [
+      "wrong active pool count",
+      (pools) => ({ ...pools, active_pool_count: 2 }),
+    ],
+    [
+      "attacker pool",
+      (pools) => ({
+        ...pools,
+        active_runner_count: 2,
+        active_pool_count: 2,
+        pools: [
+          ...pools.pools,
+          {
+            pool_id: "attacker_pool",
+            active_instances: 1,
+            heartbeat_ms: 30000,
+            kinds: ["publish"],
+          },
+        ],
+      }),
+    ],
+    [
+      "duplicate pool ID",
+      (pools) => ({ ...pools, pools: [...pools.pools, pools.pools[0]] }),
+    ],
+    [
+      "unbounded instances",
+      (pools) => ({
+        ...pools,
+        pools: [{ ...pools.pools[0], active_instances: 101 }],
+      }),
+    ],
+    [
+      "wrong kinds",
+      (pools) => ({
+        ...pools,
+        pools: [{ ...pools.pools[0], kinds: ["attacker_kind"] }],
+      }),
+    ],
+    [
+      "wrong heartbeat",
+      (pools) => ({
+        ...pools,
+        pools: [{ ...pools.pools[0], heartbeat_ms: 29999 }],
+      }),
+    ],
+  ]) {
+    const observed = liveHealth.multiLaneRuntime.isolated_worker_pools;
+    assert.equal(
+      safeLiveHealthIdentity(
+        {
+          ...liveHealth,
+          multiLaneRuntime: {
+            isolated_worker_pools: mutate(observed),
+          },
+        },
+        expectedCommit,
+        expectedRuntime,
+      ),
+      false,
+      name,
+    );
+  }
 });
 
 test("handoff command fingerprints use semantic argv independently of valid Windows quoting", async () => {
@@ -2669,6 +2809,7 @@ test("the real supervision-generation path borrows the exact parent transition l
   const generation = await startLiveSupervisionGeneration({
     repoRoot: ROOT,
     expectedCommit,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
     profilePath: path.join(temp, "profile.json"),
     platform: "win32",
     runtimeTransitionLeaseFactory: transition.factory,
@@ -2876,6 +3017,7 @@ test("owner-v2 publication rejects incomplete or contradictory task, process, Jo
       startLiveSupervisionGeneration({
         repoRoot: ROOT,
         expectedCommit,
+        workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
         platform: "win32",
         profileLoader: () => profile,
         doctorBuilder: () => ({
@@ -3064,6 +3206,7 @@ test("supervisor boot cleanup refuses every malformed dead owner-v2 before archi
     const promise = startLiveSupervisionGeneration({
       repoRoot: ROOT,
       expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       profileLoader: () => profile,
       doctorBuilder: () => ({
@@ -3192,6 +3335,7 @@ test("an owned generation keeps a sealed transition durable until the owner rece
   const generation = await startLiveSupervisionGeneration({
     repoRoot: ROOT,
     expectedCommit,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
     profilePath: path.join(temp, "profile.json"),
     platform: "win32",
     runtimeTransitionLeaseFactory: transition.factory,
@@ -3319,6 +3463,7 @@ test("an owned transition release failure terminates the child and removes its o
     startLiveSupervisionGeneration({
       repoRoot: ROOT,
       expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       profilePath: path.join(temp, "profile.json"),
       platform: "win32",
       profileLoader: () => profile,
@@ -3409,6 +3554,7 @@ test("a generation revalidates activation under the transition lease before spaw
     startLiveSupervisionGeneration({
       repoRoot: ROOT,
       expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       profileLoader: () => profile,
       doctorBuilder: () => ({
@@ -3423,7 +3569,11 @@ test("a generation revalidates activation under the transition lease before spaw
       activationInspector: () => {
         activationCalls += 1;
         return activationCalls === 1
-          ? { valid: true, receipt_sha256: receiptSha }
+          ? {
+              valid: true,
+              receipt_sha256: receiptSha,
+              runtime_instance_id: BOUNDED_RUNTIME_ID,
+            }
           : {
               valid: false,
               receipt_sha256: null,
@@ -3481,6 +3631,7 @@ test("activation revoked during health verification terminates the child before 
     startLiveSupervisionGeneration({
       repoRoot: ROOT,
       expectedCommit,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       profileLoader: () => profile,
       doctorBuilder: () => ({
@@ -3495,7 +3646,11 @@ test("activation revoked during health verification terminates the child before 
       activationInspector: () => {
         activationCalls += 1;
         return activationCalls < 3
-          ? { valid: true, receipt_sha256: receiptSha }
+          ? {
+              valid: true,
+              receipt_sha256: receiptSha,
+              runtime_instance_id: BOUNDED_RUNTIME_ID,
+            }
           : {
               valid: false,
               receipt_sha256: null,
@@ -3548,7 +3703,7 @@ test("activation revoked during health verification terminates the child before 
   assert.equal(fs.existsSync(ownerPath), false);
 });
 
-test("the live child monitor confirms an unhealthy child exited before requesting a restart", async () => {
+test("the live child monitor rejects an attacker pool and confirms exit before restart", async () => {
   const temp = fs.mkdtempSync(
     path.join(os.tmpdir(), "pulse-live-child-monitor-"),
   );
@@ -3584,6 +3739,7 @@ test("the live child monitor confirms an unhealthy child exited before requestin
       },
       repoRoot: temp,
       expectedCommit: "c".repeat(40),
+      expectedRuntime: boundedExpectedRuntime(),
       activationReceiptPath: path.join(temp, "activation-receipt.json"),
       activationInspector: () => ({
         valid: true,
@@ -3591,7 +3747,32 @@ test("the live child monitor confirms an unhealthy child exited before requestin
       }),
       healthRequester: async () => {
         healthChecks += 1;
-        return null;
+        return {
+          status: "ok",
+          schedulerActive: true,
+          build: { commit_sha: "c".repeat(40) },
+          deployment: { mode: "local", primary: true },
+          runtime: {
+            operating_mode: "LIVE_GUARDED",
+            auto_publish: true,
+            legacy_auto_publish_armed: true,
+            use_sqlite: true,
+            use_job_queue_explicit: "true",
+          },
+          multiLaneRuntime: {
+            isolated_worker_pools: {
+              ...boundedMultiLaneHealth().isolated_worker_pools,
+              pools: [
+                {
+                  pool_id: "attacker_pool",
+                  active_instances: 1,
+                  heartbeat_ms: 5_000,
+                  kinds: ["publish"],
+                },
+              ],
+            },
+          },
+        };
       },
       monitorIntervalMs: 2,
       signalEmitter: new EventEmitter(),
@@ -3656,6 +3837,7 @@ test("the live child monitor never restarts after activation is revoked", async 
         },
         repoRoot: temp,
         expectedCommit: "c".repeat(40),
+        expectedRuntime: boundedExpectedRuntime(),
         activationReceiptPath: path.join(temp, "activation-receipt.json"),
         activationInspector: () => ({
           valid: false,
@@ -3718,6 +3900,7 @@ test("activation monitor exceptions are redacted from supervise-exit evidence an
         },
         repoRoot: temp,
         expectedCommit: "c".repeat(40),
+        expectedRuntime: boundedExpectedRuntime(),
         activationReceiptPath: path.join(temp, "activation-receipt.json"),
         activationInspector() {
           throw new Error(`activation inspection failed ${secretSentinel}`);
@@ -3785,6 +3968,7 @@ test("a finishing child cannot delete a replacement supervisor-owner receipt", a
     },
     repoRoot: temp,
     expectedCommit: "c".repeat(40),
+    expectedRuntime: boundedExpectedRuntime(),
     signalEmitter,
     monitorIntervalMs: 60_000,
     writeExitReceiptImpl() {
@@ -3826,6 +4010,7 @@ test("activation revocation terminates the iterative lifecycle without admitting
             profile: { port: 3001, state_root: temp },
             repoRoot: temp,
             expectedCommit: "c".repeat(40),
+            expectedRuntime: boundedExpectedRuntime(),
             activationInspector: () => ({
               valid: false,
               blockers: ["activation_receipt_commit_mismatch"],
@@ -3890,6 +4075,7 @@ test("explicit supervisor shutdown treats signal and nonzero child exits as term
           },
           repoRoot: temp,
           expectedCommit: "c".repeat(40),
+          expectedRuntime: boundedExpectedRuntime(),
           activationInspector: () => ({
             valid: true,
             blockers: [],
@@ -3953,6 +4139,7 @@ test("child errors and failed kills retain ownership until an exit is confirmed"
       },
       repoRoot: temp,
       expectedCommit: "c".repeat(40),
+      expectedRuntime: boundedExpectedRuntime(),
       activationInspector: () => ({
         valid: true,
         blockers: [],
@@ -4216,6 +4403,67 @@ test("live health polling remains referenced and cancels its pending poll timer"
   assert.equal(healthCalls, 1);
   assert.equal(timerHandle.unref_calls, 0);
   assert.equal(clearCalls, 1);
+});
+
+test("live health polling rejects attacker pools before accepting the exact topology", async () => {
+  const expectedCommit = "c".repeat(40);
+  const exactHealth = {
+    status: "ok",
+    schedulerActive: true,
+    build: { commit_sha: expectedCommit },
+    deployment: { mode: "local", primary: true },
+    runtime: {
+      operating_mode: "LIVE_GUARDED",
+      auto_publish: true,
+      legacy_auto_publish_armed: true,
+      use_sqlite: true,
+      use_job_queue_explicit: "true",
+    },
+    multiLaneRuntime: boundedMultiLaneHealth(),
+  };
+  let calls = 0;
+  const result = await waitForLiveHealth({
+    port: 3001,
+    expectedCommit,
+    expectedRuntime: {
+      runtime_instance_id: BOUNDED_RUNTIME_ID,
+      worker_topology: BOUNDED_WORKER_TOPOLOGY,
+    },
+    healthRequester: async () => {
+      calls += 1;
+      if (calls > 1) return exactHealth;
+      const isolated = exactHealth.multiLaneRuntime.isolated_worker_pools;
+      return {
+        ...exactHealth,
+        multiLaneRuntime: {
+          isolated_worker_pools: {
+            ...isolated,
+            active_runner_count: 2,
+            active_pool_count: 2,
+            pools: [
+              ...isolated.pools,
+              {
+                pool_id: "attacker_pool",
+                active_instances: 1,
+                heartbeat_ms: 30000,
+                kinds: ["publish"],
+              },
+            ],
+          },
+        },
+      };
+    },
+    timeoutMs: 1000,
+    intervalMs: 1,
+    setTimeoutImpl(callback) {
+      queueMicrotask(callback);
+      return { unref() {} };
+    },
+    clearTimeoutImpl() {},
+  });
+
+  assert.equal(result, exactHealth);
+  assert.equal(calls, 2);
 });
 
 test("a real Node process stays alive through recovery backoff and starts the replacement generation", () => {
@@ -4519,6 +4767,7 @@ test("an exact-plan transition lease blocks activation, enable and start before 
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   let sourceInspections = 0;
@@ -4566,6 +4815,7 @@ test("an exact-plan transition lease blocks activation, enable and start before 
       repoRoot: ROOT,
       expectedCommit: "d".repeat(40),
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       operationNonceFactory: () => START_OPERATION_NONCE,
       runtimeTransitionLeaseFactory: transition.factory,
@@ -4732,6 +4982,7 @@ test("enable revalidates source, receipt and competing-task state at the mutatio
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const result = setLiveScheduledTaskEnabled({
@@ -4803,6 +5054,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const owner = {
@@ -4821,6 +5073,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
     platform: "youtube",
   };
   let listenerInspection = 0;
+  let healthInspection = 0;
   const liveHealth = {
     status: "ok",
     schedulerActive: true,
@@ -4843,6 +5096,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
     repoRoot: ROOT,
     expectedCommit,
     activation,
+    workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
     platform: "win32",
     sourceDatabaseInspector(options) {
       calls.push(["source_database", options]);
@@ -4879,6 +5133,29 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
     },
     healthRequester(options) {
       calls.push(["health", options]);
+      healthInspection += 1;
+      if (healthInspection === 1) {
+        const isolated = liveHealth.multiLaneRuntime.isolated_worker_pools;
+        return {
+          ...liveHealth,
+          multiLaneRuntime: {
+            isolated_worker_pools: {
+              ...isolated,
+              active_runner_count: 2,
+              active_pool_count: 2,
+              pools: [
+                ...isolated.pools,
+                {
+                  pool_id: "attacker_pool",
+                  active_instances: 1,
+                  heartbeat_ms: 30000,
+                  kinds: ["publish"],
+                },
+              ],
+            },
+          },
+        };
+      }
       return liveHealth;
     },
     ownerReader(options) {
@@ -4889,9 +5166,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       calls.push(["exec", { command, args }]);
       return "";
     },
-    delayImpl() {
-      throw new Error("start verification should not need to wait");
-    },
+    delayImpl() {},
     lifecycleReceiptWriter(options) {
       assert.equal(
         transition.current()?.owner_id,
@@ -4907,6 +5182,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
     args: ["/Run", "/TN", profile.task_name],
   });
   assert.equal(result.receipt_path, "D:/pulse/evidence/start.json");
+  assert.equal(healthInspection, 3);
   assert.equal(transition.current(), null);
   const receiptCall = calls.find(([name]) => name === "receipt")[1];
   assert.equal(receiptCall.action, "start");
@@ -4934,6 +5210,7 @@ test("guarded start redacts finalizer failures from thrown errors", async (t) =>
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const scenarios = [
@@ -4963,6 +5240,7 @@ test("guarded start redacts finalizer failures from thrown errors", async (t) =>
           repoRoot: ROOT,
           expectedCommit,
           activation,
+          workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
           platform: "win32",
           transitionLeaseAcquirer() {
             return {
@@ -5021,6 +5299,7 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const driftedActivation = {
@@ -5065,6 +5344,7 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -5148,6 +5428,7 @@ test("an ambiguous schtasks Run error is redacted from durable evidence and the 
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const taskStates = [
@@ -5167,6 +5448,7 @@ test("an ambiguous schtasks Run error is redacted from durable evidence and the 
       repoRoot: ROOT,
       expectedCommit: "d".repeat(40),
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       sourceDatabaseInspector() {
         return { checkout: { ready: true }, database: { ready: true } };
@@ -5250,6 +5532,7 @@ test("runtime identity is re-read after authority revalidation before started_ve
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const owner = {
@@ -5287,6 +5570,7 @@ test("runtime identity is re-read after authority revalidation before started_ve
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -5363,6 +5647,7 @@ test("guarded start ends and disables only the re-inspected managed task when ex
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const taskStates = [
@@ -5383,6 +5668,7 @@ test("guarded start ends and disables only the re-inspected managed task when ex
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -5478,6 +5764,7 @@ test("cleanup command failures and an orphan listener are durably reported witho
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const owner = {
@@ -5500,6 +5787,7 @@ test("cleanup command failures and an orphan listener are durably reported witho
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       shutdownTimeoutMs: 0,
@@ -5591,6 +5879,7 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const evidence = [];
@@ -5603,6 +5892,7 @@ test("an unexpected cleanup inspection error still produces failure evidence", a
       repoRoot: ROOT,
       expectedCommit: "d".repeat(40),
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -5669,6 +5959,7 @@ test("a failed nonce cannot terminate or disable a different successful start ow
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const otherOwner = {
@@ -5685,6 +5976,7 @@ test("a failed nonce cannot terminate or disable a different successful start ow
       repoRoot: ROOT,
       expectedCommit,
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {
@@ -5745,6 +6037,7 @@ test("guarded start rechecks stopped runtime ownership at the mutation boundary 
   const activation = {
     valid: true,
     receipt_sha256: "c".repeat(64),
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
     blockers: [],
   };
   const mutations = [];
@@ -5756,6 +6049,7 @@ test("guarded start rechecks stopped runtime ownership at the mutation boundary 
       repoRoot: ROOT,
       expectedCommit: "d".repeat(40),
       activation,
+      workerTopologyProvider: () => BOUNDED_WORKER_TOPOLOGY,
       platform: "win32",
       timeoutMs: 0,
       sourceDatabaseInspector() {

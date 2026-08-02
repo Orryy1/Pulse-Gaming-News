@@ -29,6 +29,68 @@ function fixture() {
   return { db, leases: bind(db) };
 }
 
+function boundPublisherFixture() {
+  const state = fixture();
+  state.db.exec(`
+    CREATE TABLE publication_lifecycle_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      story_id TEXT NOT NULL,
+      platform TEXT,
+      from_state TEXT,
+      to_state TEXT NOT NULL,
+      evidence_json TEXT,
+      idempotency_key TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE platform_publication_state (
+      story_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      lifecycle_state TEXT NOT NULL,
+      PRIMARY KEY (story_id, platform)
+    );
+  `);
+  const admission = {
+    story_id: "story-73",
+    platform: "youtube",
+    scheduled_for: "2026-08-02T19:00:00.000Z",
+    dispatch_idempotency_key: "publish:2026-08-02:19",
+    request_fingerprint: "b".repeat(64),
+    runway_lock_sha256: "c".repeat(64),
+  };
+  const inserted = state.db
+    .prepare(
+      `INSERT INTO publication_lifecycle_events
+         (story_id, platform, from_state, to_state, evidence_json,
+          idempotency_key, created_at)
+       VALUES (?, 'youtube', 'READY', 'SCHEDULED', ?, ?, ?)`,
+    )
+    .run(
+      admission.story_id,
+      JSON.stringify({
+        schedule_verified: true,
+        control_tower_verdict: "GREEN",
+        control_tower_checked_at: "2026-08-02T18:55:00.000Z",
+        scheduled_for: admission.scheduled_for,
+        kill_switch_healthy: true,
+        operating_contract_valid: true,
+        dispatch_idempotency_key: admission.dispatch_idempotency_key,
+        request_fingerprint: admission.request_fingerprint,
+        runway_lock_sha256: admission.runway_lock_sha256,
+      }),
+      `${admission.dispatch_idempotency_key}:lifecycle:SCHEDULED`,
+      "2026-08-02T18:55:00.000Z",
+    );
+  admission.scheduled_event_id = Number(inserted.lastInsertRowid);
+  state.db
+    .prepare(
+      `INSERT INTO platform_publication_state
+         (story_id, platform, lifecycle_state)
+       VALUES (?, 'youtube', 'SCHEDULED')`,
+    )
+    .run(admission.story_id);
+  return { ...state, admission };
+}
+
 function scheduledDispatchFixture({
   storyId = "publisher-lock-story",
   scheduledFor = "2026-07-27T09:00:00.000Z",
@@ -187,8 +249,9 @@ test("publisher lease metadata describes the real operation only", async () => {
 });
 
 test("publisher lease metadata binds one runtime generation to one admitted operation", () => {
-  const { db, leases } = fixture();
+  const { db, leases, admission } = boundPublisherFixture();
   const lease = acquirePublisherLease({
+    db,
     leases,
     ownerId: "publisher-runtime-private-owner",
     operation: "publish_next_story",
@@ -198,15 +261,7 @@ test("publisher lease metadata binds one runtime generation to one admitted oper
       child_started_at: "2026-08-02T10:00:00.000Z",
       authority_fingerprint: "a".repeat(64),
     },
-    admissionContext: {
-      story_id: "story-73",
-      platform: "youtube",
-      scheduled_event_id: 73,
-      scheduled_for: "2026-08-02T19:00:00.000Z",
-      dispatch_idempotency_key: "publish:2026-08-02:19",
-      request_fingerprint: "b".repeat(64),
-      runway_lock_sha256: "c".repeat(64),
-    },
+    admissionContext: admission,
     metadata: {
       operation: "publish_batch",
       process_id: 1,
@@ -222,6 +277,7 @@ test("publisher lease metadata binds one runtime generation to one admitted oper
     {
       ...metadata,
       admitted_operation_sha256: undefined,
+      start_lifecycle_sha256: undefined,
     },
     {
       channel_id: "pulse-gaming",
@@ -236,7 +292,7 @@ test("publisher lease metadata binds one runtime generation to one admitted oper
         schema_version: "pulse-admitted-publication-operation-v1",
         story_id: "story-73",
         platform: "youtube",
-        scheduled_event_id: 73,
+        scheduled_event_id: 1,
         scheduled_for: "2026-08-02T19:00:00.000Z",
         dispatch_idempotency_key: "publish:2026-08-02:19",
         request_fingerprint: "b".repeat(64),
@@ -244,10 +300,15 @@ test("publisher lease metadata binds one runtime generation to one admitted oper
       },
       publisher_operation_set_sha256:
         "10fad4b25680b3a3f536332c5a09926406f6d863db98c47c393c6b1d21559460",
+      publisher_phase: "FRESH_DISPATCH",
+      start_lifecycle_event_id: 1,
+      start_lifecycle_state: "SCHEDULED",
+      start_lifecycle_sha256: undefined,
       admitted_operation_sha256: undefined,
     },
   );
   assert.match(metadata.admitted_operation_sha256, /^[a-f0-9]{64}$/);
+  assert.match(metadata.start_lifecycle_sha256, /^[a-f0-9]{64}$/);
 
   leases.release(lease.lease_name, lease.owner_id);
   db.close();

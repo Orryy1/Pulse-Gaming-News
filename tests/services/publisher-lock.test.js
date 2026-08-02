@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 const Database = require("better-sqlite3");
@@ -312,6 +313,161 @@ test("publisher lease metadata binds one runtime generation to one admitted oper
 
   leases.release(lease.lease_name, lease.owner_id);
   db.close();
+});
+
+test("bound publisher acquisition rejects a lease repository from another database before either database is written", (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "pulse-publisher-lock-cross-db-"),
+  );
+  const authorityDb = new Database(path.join(root, "authority.db"));
+  const leaseDb = new Database(path.join(root, "lease.db"));
+  t.after(() => {
+    authorityDb.close();
+    leaseDb.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  for (const db of [authorityDb, leaseDb]) {
+    db.exec(`
+      CREATE TABLE runtime_leases (
+        name TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        acquired_at TEXT NOT NULL,
+        heartbeat_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        metadata TEXT
+      );
+      CREATE TABLE publication_lifecycle_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        story_id TEXT NOT NULL,
+        platform TEXT,
+        from_state TEXT,
+        to_state TEXT NOT NULL,
+        evidence_json TEXT,
+        idempotency_key TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE platform_publication_state (
+        story_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        lifecycle_state TEXT NOT NULL,
+        PRIMARY KEY (story_id, platform)
+      );
+    `);
+  }
+  const admission = {
+    story_id: "cross-db-story",
+    platform: "youtube",
+    scheduled_for: "2026-08-02T19:00:00.000Z",
+    dispatch_idempotency_key: "publish:cross-db:19",
+    request_fingerprint: "b".repeat(64),
+    runway_lock_sha256: "c".repeat(64),
+  };
+  const inserted = authorityDb
+    .prepare(
+      `INSERT INTO publication_lifecycle_events
+         (story_id, platform, from_state, to_state, evidence_json,
+          idempotency_key, created_at)
+       VALUES (?, 'youtube', 'READY', 'SCHEDULED', ?, ?, ?)`,
+    )
+    .run(
+      admission.story_id,
+      JSON.stringify({
+        schedule_verified: true,
+        control_tower_verdict: "GREEN",
+        control_tower_checked_at: "2026-08-02T18:55:00.000Z",
+        scheduled_for: admission.scheduled_for,
+        kill_switch_healthy: true,
+        operating_contract_valid: true,
+        dispatch_idempotency_key: admission.dispatch_idempotency_key,
+        request_fingerprint: admission.request_fingerprint,
+        runway_lock_sha256: admission.runway_lock_sha256,
+      }),
+      `${admission.dispatch_idempotency_key}:lifecycle:SCHEDULED`,
+      "2026-08-02T18:55:00.000Z",
+    );
+  admission.scheduled_event_id = Number(inserted.lastInsertRowid);
+  authorityDb
+    .prepare(
+      `INSERT INTO platform_publication_state
+         (story_id, platform, lifecycle_state)
+       VALUES (?, 'youtube', 'SCHEDULED')`,
+    )
+    .run(admission.story_id);
+
+  let caught = null;
+  try {
+    acquirePublisherLease({
+      db: authorityDb,
+      leases: bind(leaseDb),
+      ownerId: "cross-db-owner",
+      operation: "publish_next_story",
+      runtimeAuthority: {
+        runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+        child_pid: process.pid,
+        child_started_at: "2026-08-02T10:00:00.000Z",
+        authority_fingerprint: "a".repeat(64),
+      },
+      admissionContext: admission,
+    });
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.equal(
+    authorityDb.prepare("SELECT COUNT(*) AS count FROM runtime_leases").get()
+      .count,
+    0,
+  );
+  assert.equal(
+    leaseDb.prepare("SELECT COUNT(*) AS count FROM runtime_leases").get().count,
+    0,
+  );
+  assert.match(
+    String(caught?.message || ""),
+    /publisher_runtime_lease_repository_database_mismatch/,
+  );
+});
+
+test("same-database publisher acquisition rolls back lease and trigger writes atomically", (t) => {
+  const { db, leases, admission } = boundPublisherFixture();
+  t.after(() => db.close());
+  db.exec(`
+    CREATE TABLE publisher_lease_write_probe (id INTEGER PRIMARY KEY);
+    CREATE TRIGGER abort_publisher_lease_acquisition
+    AFTER INSERT ON runtime_leases
+    BEGIN
+      INSERT INTO publisher_lease_write_probe(id) VALUES (NULL);
+      SELECT RAISE(ABORT, 'forced publisher lease rollback');
+    END;
+  `);
+
+  assert.throws(
+    () =>
+      acquirePublisherLease({
+        db,
+        leases,
+        ownerId: "same-db-rollback-owner",
+        operation: "publish_next_story",
+        runtimeAuthority: {
+          runtime_instance_id: "ri-11111111-2222-4333-8444-555555555555",
+          child_pid: process.pid,
+          child_started_at: "2026-08-02T10:00:00.000Z",
+          authority_fingerprint: "a".repeat(64),
+        },
+        admissionContext: admission,
+      }),
+    /forced publisher lease rollback/,
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM runtime_leases").get().count,
+    0,
+  );
+  assert.equal(
+    db
+      .prepare("SELECT COUNT(*) AS count FROM publisher_lease_write_probe")
+      .get().count,
+    0,
+  );
 });
 
 test("live-guarded publisher fails closed before acquiring an unbound lease", async () => {

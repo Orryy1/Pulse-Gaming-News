@@ -1221,6 +1221,53 @@ for (const schemaMutation of [
   });
 }
 
+test("rejects an authority-mutating trigger attached to a non-authority table", (t) => {
+  const { db, dbPath } = fixture(t);
+  db.exec(`
+    CREATE TRIGGER rogue_authority_mutator
+    AFTER UPDATE ON stories
+    BEGIN
+      DELETE FROM runtime_leases;
+    END;
+  `);
+
+  const result = inspectBoundedRuntimeDbAuthority({
+    db,
+    mode: "QUIESCENT",
+    expected: {
+      authority_fingerprint: AUTHORITY_FINGERPRINT,
+      database_identity_sha256: databaseIdentitySha256(dbPath),
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.blockers.includes("runtime_db_schema_invalid"));
+});
+
+test("rejects an authority-mutating INSTEAD OF trigger attached to a view", (t) => {
+  const { db, dbPath } = fixture(t);
+  db.exec(`
+    CREATE VIEW rogue_authority_view AS SELECT id FROM stories;
+    CREATE TRIGGER rogue_authority_view_mutator
+    INSTEAD OF DELETE ON rogue_authority_view
+    BEGIN
+      DELETE FROM runtime_leases;
+    END;
+  `);
+
+  const result = inspectBoundedRuntimeDbAuthority({
+    db,
+    mode: "QUIESCENT",
+    expected: {
+      authority_fingerprint: AUTHORITY_FINGERPRINT,
+      database_identity_sha256: databaseIdentitySha256(dbPath),
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(result.blockers.includes("runtime_db_schema_invalid"));
+});
+
 test("rejects disabled SQLite foreign-key enforcement explicitly", (t) => {
   const { db, dbPath } = fixture(t);
   db.pragma("foreign_keys = OFF");

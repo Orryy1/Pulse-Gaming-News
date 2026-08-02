@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
@@ -16,38 +17,47 @@ test("runtime observability reports active isolated pool IDs and instance counts
       workerId: "server-hostname-1234",
       runners: [
         {
-          workerId:
-            "server-hostname-1234-editorial_evidence_capture-1",
+          workerId: "server-hostname-1234-editorial_evidence_capture-1",
           kinds: ["governed_editorial_evidence_discovery"],
+          running: true,
         },
         {
-          workerId:
-            "server-hostname-1234-editorial_evidence_capture-2",
+          workerId: "server-hostname-1234-editorial_evidence_capture-2",
           kinds: ["governed_editorial_evidence_discovery"],
+          running: true,
         },
         {
-          workerId:
-            "server-hostname-1234-editorial_preparation-1",
+          workerId: "server-hostname-1234-editorial_preparation-1",
           kinds: [
             "prepare_editorial_inventory",
             "reconcile_editorial_inventory",
           ],
+          running: true,
         },
         {
           workerId: "server-hostname-1234-breaking_production-1",
           kinds: ["produce_breaking_short"],
+          running: true,
         },
         {
           workerId: "server-hostname-1234-breaking_production-2",
           kinds: ["produce_breaking_short"],
+          running: true,
         },
         {
           workerId: "server-hostname-1234-evergreen_production-1",
           kinds: ["produce_evergreen_short"],
+          running: true,
         },
         {
           workerId: "server-hostname-1234-longform_production-1",
           kinds: ["produce_weekly_longform"],
+          running: true,
+        },
+        {
+          workerId: "server-hostname-1234-longform_production-2",
+          kinds: ["produce_weekly_longform"],
+          running: false,
         },
       ],
       token: "must-not-leak",
@@ -73,6 +83,22 @@ test("runtime observability reports active isolated pool IDs and instance counts
       { pool_id: "evergreen_production", active_instances: 1 },
       { pool_id: "longform_production", active_instances: 1 },
     ],
+    running_worker_set_sha256: crypto
+      .createHash("sha256")
+      .update(
+        JSON.stringify(
+          [
+            "server-hostname-1234-breaking_production-1",
+            "server-hostname-1234-breaking_production-2",
+            "server-hostname-1234-editorial_evidence_capture-1",
+            "server-hostname-1234-editorial_evidence_capture-2",
+            "server-hostname-1234-editorial_preparation-1",
+            "server-hostname-1234-evergreen_production-1",
+            "server-hostname-1234-longform_production-1",
+          ].sort(),
+        ),
+      )
+      .digest("hex"),
   });
   assert.doesNotMatch(JSON.stringify(result), /hostname|1234|must-not-leak/);
 });
@@ -119,8 +145,7 @@ test("runtime observability exposes only sanitised fail-closed ElevenLabs credit
       elevenLabsCreditMonitor: {
         status() {
           return {
-            schema_version:
-              "pulse-elevenlabs-credit-runtime-health-v1",
+            schema_version: "pulse-elevenlabs-credit-runtime-health-v1",
             active: true,
             verdict: "WARN",
             allow_paid_synthesis: true,
@@ -276,10 +301,7 @@ test("runtime observability exposes a bounded schedule summary for each governed
       {
         lane_id: "weekly_longform",
         schedule_count: 2,
-        schedule_names: [
-          "governed_multi_lane_plan",
-          "weekly_longform_planner",
-        ],
+        schedule_names: ["governed_multi_lane_plan", "weekly_longform_planner"],
       },
     ],
   );
@@ -327,5 +349,8 @@ test("server health and autonomous status expose the same read-only multi-lane r
   assert.match(helperBlock, /buildMultiLaneRuntimeObservability/);
   assert.match(helperBlock, /schedulesForProfile/);
   assert.match(helperBlock, /bootstrap-queue/);
-  assert.doesNotMatch(helperBlock, /API_TOKEN|ACCESS_TOKEN|DB_PATH|token[s]?\//i);
+  assert.doesNotMatch(
+    helperBlock,
+    /API_TOKEN|ACCESS_TOKEN|DB_PATH|token[s]?\//i,
+  );
 });

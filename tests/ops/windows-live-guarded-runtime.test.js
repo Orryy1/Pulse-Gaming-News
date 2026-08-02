@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { execFileSync, spawnSync } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
@@ -265,6 +266,7 @@ const BOUNDED_PROFILE_SHA = "a".repeat(64);
 const BOUNDED_DATABASE_SHA = "b".repeat(64);
 const BOUNDED_SUPERVISOR_COMMAND_SHA = "c".repeat(64);
 const BOUNDED_CHILD_COMMAND_SHA = "e".repeat(64);
+const BOUNDED_DATABASE_SNAPSHOT_SHA = "9".repeat(64);
 const BOUNDED_WORKER_TOPOLOGY = [
   {
     pool_id: "critical_publication",
@@ -272,6 +274,28 @@ const BOUNDED_WORKER_TOPOLOGY = [
     kinds: ["publish"],
   },
 ];
+
+function boundedRunningWorkerSetSha256() {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify([`server-${BOUNDED_RUNTIME_ID}-critical_publication-1`]),
+    )
+    .digest("hex");
+}
+
+function boundedMultiLaneHealth() {
+  return {
+    isolated_worker_pools: {
+      default_enabled: true,
+      active_runner_count: 1,
+      active_pool_count: 1,
+      compatibility_runner_count: 0,
+      pools: [{ pool_id: "critical_publication", active_instances: 1 }],
+      running_worker_set_sha256: boundedRunningWorkerSetSha256(),
+    },
+  };
+}
 
 function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
   const expected = {
@@ -411,11 +435,13 @@ function activeBoundedAuthorityFixture({ ownerInstanceGuid } = {}) {
           use_sqlite: true,
           use_job_queue_explicit: "true",
         },
+        multiLaneRuntime: boundedMultiLaneHealth(),
         blockers: [],
       }),
       databaseAuthorityInspector: async () => ({
         ok: true,
         database_identity_sha256: expected.databaseIdentitySha256,
+        snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
         scheduler: { owner_sha256: "f".repeat(64) },
         blockers: [],
       }),
@@ -549,6 +575,7 @@ test("ACTIVE_BOUND supplies the exact runtime generation and worker topology to 
     return {
       ok: true,
       database_identity_sha256: BOUNDED_DATABASE_SHA,
+      snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
       blockers: [],
     };
   };
@@ -790,6 +817,7 @@ function stoppedBoundedAuthorityFixture() {
       databaseAuthorityInspector: async () => ({
         ok: true,
         database_identity_sha256: BOUNDED_DATABASE_SHA,
+        snapshot_sha256: BOUNDED_DATABASE_SNAPSHOT_SHA,
         scheduler: { owner: "scheduler:raw-private-owner" },
         blockers: [],
       }),
@@ -873,6 +901,93 @@ test("changing bounded observations are HOLD", async () => {
   const result = await inspectBoundedWindowsAuthority(fixture);
   assert.equal(result.state, "HOLD");
   assert.deepEqual(result.blockers, ["bounded_authority_observation_unstable"]);
+});
+
+test("ACTIVE_BOUND requires a stable canonical database snapshot digest", async () => {
+  for (const snapshotSha256 of [undefined, "not-a-sha"]) {
+    const fixture = activeBoundedAuthorityFixture();
+    fixture.probes.databaseAuthorityInspector = async () => ({
+      ok: true,
+      database_identity_sha256: BOUNDED_DATABASE_SHA,
+      snapshot_sha256: snapshotSha256,
+      blockers: [],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", String(snapshotSha256));
+    assert.ok(
+      result.blockers.includes("live_database_authority_mismatch"),
+      String(snapshotSha256),
+    );
+  }
+
+  const changing = activeBoundedAuthorityFixture();
+  let reads = 0;
+  changing.probes.databaseAuthorityInspector = async () => ({
+    ok: true,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: reads++ === 0 ? "1".repeat(64) : "2".repeat(64),
+    blockers: [],
+  });
+  const changed = await inspectBoundedWindowsAuthority(changing);
+  assert.equal(changed.state, "HOLD");
+  assert.deepEqual(changed.blockers, [
+    "bounded_authority_observation_unstable",
+  ]);
+});
+
+test("STOPPED_BOUND requires a stable canonical database snapshot digest", async () => {
+  for (const snapshotSha256 of [undefined, "not-a-sha"]) {
+    const fixture = stoppedBoundedAuthorityFixture();
+    fixture.probes.databaseAuthorityInspector = async () => ({
+      ok: true,
+      database_identity_sha256: BOUNDED_DATABASE_SHA,
+      snapshot_sha256: snapshotSha256,
+      blockers: [],
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD", String(snapshotSha256));
+    assert.ok(
+      result.blockers.includes("quiescent_database_authority_mismatch"),
+      String(snapshotSha256),
+    );
+  }
+
+  const changing = stoppedBoundedAuthorityFixture();
+  let reads = 0;
+  changing.probes.databaseAuthorityInspector = async () => ({
+    ok: true,
+    database_identity_sha256: BOUNDED_DATABASE_SHA,
+    snapshot_sha256: reads++ === 0 ? "1".repeat(64) : "2".repeat(64),
+    blockers: [],
+  });
+  const changed = await inspectBoundedWindowsAuthority(changing);
+  assert.equal(changed.state, "HOLD");
+  assert.deepEqual(changed.blockers, [
+    "bounded_authority_observation_unstable",
+  ]);
+});
+
+test("ACTIVE_BOUND requires health to report the exact running worker set", async () => {
+  for (const isolatedWorkerPools of [
+    {
+      ...boundedMultiLaneHealth().isolated_worker_pools,
+      running_worker_set_sha256: "0".repeat(64),
+    },
+    {
+      ...boundedMultiLaneHealth().isolated_worker_pools,
+      active_runner_count: 0,
+    },
+  ]) {
+    const fixture = activeBoundedAuthorityFixture();
+    const original = fixture.probes.healthRequester;
+    fixture.probes.healthRequester = async () => ({
+      ...(await original()),
+      multiLaneRuntime: { isolated_worker_pools: isolatedWorkerPools },
+    });
+    const result = await inspectBoundedWindowsAuthority(fixture);
+    assert.equal(result.state, "HOLD");
+    assert.ok(result.blockers.includes("live_task_health_mismatch"));
+  }
 });
 
 test("bounded verdicts never expose raw command text or database lease owners", async () => {
@@ -2343,8 +2458,16 @@ test("supervision preparation and health identity fail closed unless the receipt
       use_sqlite: true,
       use_job_queue_explicit: "true",
     },
+    multiLaneRuntime: boundedMultiLaneHealth(),
   };
-  assert.equal(safeLiveHealthIdentity(liveHealth, expectedCommit), true);
+  const expectedRuntime = {
+    runtime_instance_id: BOUNDED_RUNTIME_ID,
+    worker_topology: BOUNDED_WORKER_TOPOLOGY,
+  };
+  assert.equal(
+    safeLiveHealthIdentity(liveHealth, expectedCommit, expectedRuntime),
+    true,
+  );
   assert.equal(
     safeLiveHealthIdentity(
       {
@@ -2355,6 +2478,7 @@ test("supervision preparation and health identity fail closed unless the receipt
         },
       },
       expectedCommit,
+      expectedRuntime,
     ),
     false,
   );
@@ -2362,6 +2486,23 @@ test("supervision preparation and health identity fail closed unless the receipt
     safeLiveHealthIdentity(
       { ...liveHealth, schedulerActive: false },
       expectedCommit,
+      expectedRuntime,
+    ),
+    false,
+  );
+  assert.equal(
+    safeLiveHealthIdentity(
+      {
+        ...liveHealth,
+        multiLaneRuntime: {
+          isolated_worker_pools: {
+            ...liveHealth.multiLaneRuntime.isolated_worker_pools,
+            running_worker_set_sha256: "0".repeat(64),
+          },
+        },
+      },
+      expectedCommit,
+      expectedRuntime,
     ),
     false,
   );
@@ -2513,6 +2654,7 @@ test("the real supervision-generation path borrows the exact parent transition l
       use_sqlite: true,
       use_job_queue_explicit: "true",
     },
+    multiLaneRuntime: boundedMultiLaneHealth(),
   };
   let lifecycleWrites = 0;
   const boundedActivation = taskBoundActivation({
@@ -2778,6 +2920,7 @@ test("owner-v2 publication rejects incomplete or contradictory task, process, Jo
             use_sqlite: true,
             use_job_queue_explicit: "true",
           },
+          multiLaneRuntime: boundedMultiLaneHealth(),
         }),
         spawnImpl: () => child,
         taskAuthorityObserver: async (options) =>
@@ -3095,6 +3238,7 @@ test("an owned generation keeps a sealed transition durable until the owner rece
         use_sqlite: true,
         use_job_queue_explicit: "true",
       },
+      multiLaneRuntime: boundedMultiLaneHealth(),
     }),
     spawnImpl: () => child,
     lifecycleReceiptWriter: () => ({
@@ -3231,6 +3375,7 @@ test("an owned transition release failure terminates the child and removes its o
           use_sqlite: true,
           use_job_queue_explicit: "true",
         },
+        multiLaneRuntime: boundedMultiLaneHealth(),
       }),
       spawnImpl: () => child,
       lifecycleReceiptWriter: () => ({
@@ -3388,6 +3533,7 @@ test("activation revoked during health verification terminates the child before 
           use_sqlite: true,
           use_job_queue_explicit: "true",
         },
+        multiLaneRuntime: boundedMultiLaneHealth(),
       }),
       lifecycleReceiptWriter() {
         lifecycleWrites += 1;
@@ -4687,6 +4833,7 @@ test("guarded start revalidates the exact runway, launches only the managed SYST
       use_sqlite: true,
       use_job_queue_explicit: "true",
     },
+    multiLaneRuntime: boundedMultiLaneHealth(),
   };
 
   const result = await startLiveScheduledTask({
@@ -4956,6 +5103,7 @@ test("mid-flight authority drift prevents started_verified, cleans up its own no
             use_sqlite: true,
             use_job_queue_explicit: "true",
           },
+          multiLaneRuntime: boundedMultiLaneHealth(),
         };
       },
       ownerReader() {
@@ -5177,6 +5325,7 @@ test("runtime identity is re-read after authority revalidation before started_ve
                 use_sqlite: true,
                 use_job_queue_explicit: "true",
               },
+              multiLaneRuntime: boundedMultiLaneHealth(),
             }
           : null;
       },
@@ -5278,6 +5427,7 @@ test("guarded start ends and disables only the re-inspected managed task when ex
             use_sqlite: true,
             use_job_queue_explicit: "true",
           },
+          multiLaneRuntime: boundedMultiLaneHealth(),
         };
       },
       ownerReader() {

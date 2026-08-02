@@ -12,10 +12,7 @@ const {
   defaultPublisherOwnerId,
   runWithPublisherLease,
 } = require("../../lib/services/publisher-lock");
-const {
-  handlers,
-  renderPublishSummary,
-} = require("../../lib/job-handlers");
+const { handlers, renderPublishSummary } = require("../../lib/job-handlers");
 
 function fixture() {
   const db = new Database(":memory:");
@@ -53,11 +50,13 @@ function scheduledDispatchFixture({
       PRIMARY KEY (story_id, platform)
     );
   `);
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO publication_lifecycle_events
       (story_id, platform, to_state, evidence_json, created_at)
     VALUES (?, 'youtube', 'SCHEDULED', ?, ?)
-  `).run(
+  `,
+  ).run(
     storyId,
     JSON.stringify({
       schedule_verified: true,
@@ -66,17 +65,18 @@ function scheduledDispatchFixture({
       scheduled_for: scheduledFor,
       kill_switch_healthy: true,
       operating_contract_valid: true,
-      dispatch_idempotency_key:
-        `youtube:${storyId}:${scheduledFor}`,
+      dispatch_idempotency_key: `youtube:${storyId}:${scheduledFor}`,
       request_fingerprint: "a".repeat(64),
     }),
     "2026-07-27T08:55:00.000Z",
   );
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO platform_publication_state
       (story_id, platform, lifecycle_state)
     VALUES (?, 'youtube', 'SCHEDULED')
-  `).run(storyId);
+  `,
+  ).run(storyId);
   return db;
 }
 
@@ -242,6 +242,8 @@ test("publisher lease metadata binds one runtime generation to one admitted oper
         request_fingerprint: "b".repeat(64),
         runway_lock_sha256: "c".repeat(64),
       },
+      publisher_operation_set_sha256:
+        "10fad4b25680b3a3f536332c5a09926406f6d863db98c47c393c6b1d21559460",
       admitted_operation_sha256: undefined,
     },
   );
@@ -418,10 +420,7 @@ test("every live publisher entrypoint uses one durable coordinator", () => {
     source,
     /async function publishNextStory\(options = \{\}\)[\s\S]*runWithPublisherLease/,
   );
-  assert.match(
-    source,
-    /_publishToAllPlatformsUnlocked\(assertLeaseHealthy\)/,
-  );
+  assert.match(source, /_publishToAllPlatformsUnlocked\(assertLeaseHealthy\)/);
   assert.match(
     source,
     /_publishNextStoryInner\(assertLeaseHealthy,\s*runtime\)/,
